@@ -68,7 +68,7 @@ describe('patch canvas command', () => {
   let automergeService!: AutomergeService;
   let databasePath!: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     databasePath = join(tmpdir(), `canvas-cmds-patch-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({
       cacheDir: tmpdir(),
@@ -76,12 +76,13 @@ describe('patch canvas command', () => {
       dataDir: tmpdir(),
       silentMigrations: true,
     });
+    await dbService.start();
     automergeService = new AutomergeService(databasePath);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     automergeService.stop();
-    dbService.stop();
+    await dbService.stop();
   });
 
   test('patches one explicit element id and reports stable changed ids', async () => {

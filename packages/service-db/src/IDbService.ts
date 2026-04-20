@@ -1,4 +1,4 @@
-import type { IService, IStoppableService } from '@vibecanvas/runtime';
+import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type * as schema from './schema';
 
 type TCanvasRecord = typeof schema.canvas.$inferSelect;
@@ -36,7 +36,7 @@ type TGetFileArgs = {
  * concrete persistence technology. Implementation-specific query surfaces live
  * on concrete classes like `DbServiceBunSqlite`.
  */
-export interface IDbService extends IService, IStoppableService {
+export interface IDbService extends IService, IStartableService, IStoppableService {
   canvas: {
     listAll(): TCanvasRecord[];
     findByName(name: string): TCanvasRecord | null;

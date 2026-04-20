@@ -6,17 +6,18 @@ import { fxExecuteCanvasList } from "packages/canvas-cmds/src/cmds/fx.cmd.list";
 describe('list canvas command', () => {
   let dbService!: DbServiceBunSqlite
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dbService = new DbServiceBunSqlite({
       cacheDir: tmpdir(),
       databasePath: ":memory:",
       dataDir: tmpdir(),
       silentMigrations: true
     })
+    await dbService.start();
   })
 
-  afterEach(() => {
-    dbService.stop();
+  afterEach(async () => {
+    await dbService.stop();
   });
 
   test("should be empty", async () => {

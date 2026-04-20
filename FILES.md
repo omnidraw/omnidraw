@@ -239,6 +239,7 @@ prefix: `apps/cli/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../tests/plugins/cli/harness.ts` |  |  |
 | ❓ | `AutomergePlugin.ts` |  |  |
 | ❓ | `bootstrap.ts` |  |  |
 | ❓ | `build-config.ts` |  |  |
@@ -277,7 +278,7 @@ prefix: `apps/cli/src/`
 | ❓ | `resolve-paths.ts` |  |  |
 | ❓ | `router.ts` |  |  |
 | ❓ | `ServerPlugin.ts` |  |  |
-| ❓ | `setup-services.ts` |  |  |
+| 🤖 | `setup-services.ts` |  |  |
 | ❓ | `setup-signals.ts` |  |  |
 | ❓ | `tx.ensure-local-filesystem-row.ts` |  |  |
 
@@ -498,8 +499,8 @@ prefix: `packages/service-db/src/`
 | ❓ | `fx.get-file.ts` |  |  |
 | ❓ | `fx.migrations.test.ts` |  |  |
 | ❓ | `fx.migrations.ts` |  |  |
-| ❓ | `IDbService.ts` |  |  |
-| ❓ | `index.ts` |  |  |
+| 🤖 | `IDbService.ts` |  |  |
+| 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
 | ❓ | `schema.ts` |  |  |
 | ❓ | `tx.create-file.ts` |  |  |

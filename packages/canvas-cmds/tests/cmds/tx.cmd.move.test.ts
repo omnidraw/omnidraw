@@ -18,14 +18,15 @@ describe('move canvas command', () => {
   let automergeService!: AutomergeService;
   let databasePath!: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     databasePath = join(tmpdir(), `canvas-cmds-move-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({ cacheDir: tmpdir(), databasePath, dataDir: tmpdir(), silentMigrations: true });
+    await dbService.start();
     automergeService = new AutomergeService(databasePath);
   });
-  afterEach(() => {
+  afterEach(async () => {
     automergeService.stop();
-    dbService.stop();
+    await dbService.stop();
   });
 
   test('moves one element relatively', async () => {

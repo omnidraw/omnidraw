@@ -38,7 +38,7 @@ describe('AutomergeService', () => {
   let dbService!: DbServiceBunSqlite;
   const services: AutomergeService[] = [];
 
-  beforeEach(() => {
+  beforeEach(async () => {
     databasePath = join(tmpdir(), `automerge-service-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({
       databasePath,
@@ -46,13 +46,14 @@ describe('AutomergeService', () => {
       cacheDir: tmpdir(),
       silentMigrations: true,
     });
+    await dbService.start();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     while (services.length > 0) {
       services.pop()?.stop();
     }
-    dbService.stop();
+    await dbService.stop();
   });
 
   test('loads persisted documents through both path and shared sqlite connection', async () => {

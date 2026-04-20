@@ -1,7 +1,7 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeServer';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
-import { createSqliteDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -41,7 +41,7 @@ function setupServices(config: ICliConfig) {
     return { services, eventPublisher };
   }
 
-  const dbService = createSqliteDb({
+  const dbService = new DbServiceBunSqlite({
     databasePath: config.dbPath,
     dataDir: config.dataPath,
     cacheDir: config.cachePath,
@@ -50,6 +50,7 @@ function setupServices(config: ICliConfig) {
   const filesystemService = new FilesystemServiceNode(eventPublisher);
   const ptyService = new PtyServiceBunPty();
 
+  
   services.provide('db', 20, dbService);
   services.provide('filesystem', 30, filesystemService);
   services.provide('pty', 40, ptyService);
@@ -61,3 +62,4 @@ function setupServices(config: ICliConfig) {
 }
 
 export { setupServices };
+

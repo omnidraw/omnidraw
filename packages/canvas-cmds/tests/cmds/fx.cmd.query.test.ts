@@ -49,7 +49,7 @@ describe('query canvas command', () => {
   let automergeService!: AutomergeService;
   let databasePath!: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     databasePath = join(tmpdir(), `canvas-cmds-query-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({
       cacheDir: tmpdir(),
@@ -57,12 +57,13 @@ describe('query canvas command', () => {
       dataDir: tmpdir(),
       silentMigrations: true,
     });
+    await dbService.start();
     automergeService = new AutomergeService(databasePath);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     automergeService.stop();
-    dbService.stop();
+    await dbService.stop();
   });
 
   test('matches exact ids and defaults to summary mode', async () => {

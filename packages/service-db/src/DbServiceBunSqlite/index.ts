@@ -39,14 +39,26 @@ export class DbServiceBunSqlite implements IDbService {
   readonly name = 'db' as const;
   readonly sqlite: Database;
   readonly drizzle: TDrizzleDb;
+  #startPromise: Promise<void> | null = null;
+  #stopped = false;
 
   constructor(private readonly config: IDbConfig) {
     this.sqlite = new Database(config.databasePath);
     configureSqlite(this.sqlite);
 
     this.drizzle = drizzle({ client: this.sqlite, schema });
+  }
 
-    void txRunDatabaseMigrations({
+  start(): Promise<void> {
+    if (this.#stopped) {
+      throw new Error('Database service has been stopped');
+    }
+
+    if (this.#startPromise !== null) {
+      return this.#startPromise;
+    }
+
+    this.#startPromise = txRunDatabaseMigrations({
       env: {
         VIBECANVAS_MIGRATIONS_DIR: process.env.VIBECANVAS_MIGRATIONS_DIR,
         VIBECANVAS_COMPILED: process.env.VIBECANVAS_COMPILED,
@@ -74,12 +86,17 @@ export class DbServiceBunSqlite implements IDbService {
       migrate,
       log: (message) => console.log(message),
     }, {
-      dataDir: config.dataDir,
-      cacheDir: config.cacheDir,
+      dataDir: this.config.dataDir,
+      cacheDir: this.config.cacheDir,
       db: this.drizzle,
       sqlite: this.sqlite,
-      silent: config.silentMigrations,
+      silent: this.config.silentMigrations,
+    }).catch((error) => {
+      this.#startPromise = null;
+      throw error;
     });
+
+    return this.#startPromise;
   }
 
   canvas = {
@@ -115,7 +132,13 @@ export class DbServiceBunSqlite implements IDbService {
       .all()[0]!,
   };
 
-  stop() {
+  async stop() {
+    if (this.#stopped) {
+      return;
+    }
+
+    this.#stopped = true;
+    await this.#startPromise?.catch(() => undefined);
     this.sqlite.close();
   }
 
@@ -134,6 +157,8 @@ export class DbServiceBunSqlite implements IDbService {
   }
 }
 
-export function createSqliteDb(config: IDbConfig): DbServiceBunSqlite {
-  return new DbServiceBunSqlite(config);
+export async function createSqliteDb(config: IDbConfig): Promise<DbServiceBunSqlite> {
+  const dbService = new DbServiceBunSqlite(config);
+  await dbService.start();
+  return dbService;
 }
