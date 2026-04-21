@@ -18,10 +18,10 @@ export class ToolService implements IService<TToolServiceHooks> {
     toolsChange: new SyncHook<[]>,
     activeToolChange: new SyncHook<[string]>,
   };
-  private activeToolId = "select";
-  private readonly tools = new Map<string, TTool>();
-  private readonly runtimeHooks!: IRuntimeHooks;
-  private previewOrigin: TToolCanvasPoint | null = null;
+  #activeToolId = "select";
+  readonly #tools = new Map<string, TTool>();
+  readonly #runtimeHooks!: IRuntimeHooks;
+  #previewOrigin: TToolCanvasPoint | null = null;
 
   constructor(
     private sceneService: SceneService,
@@ -35,13 +35,17 @@ export class ToolService implements IService<TToolServiceHooks> {
     this.runtimeHooks = ctx.hooks;
   }
 
+  get activeToolId() {
+    return this.#activeToolId
+  }
+
   registerTool(tool: TTool) {
-    this.tools.set(tool.id, tool);
+    this.#tools.set(tool.id, tool);
 
     // setup create-draw
     if (tool.behavior.type === "mode" && tool.behavior.mode === "draw-create" && tool.drawCreate) {
-      this.runtimeHooks.pointerDown.tap((event) => {
-        if (this.activeToolId !== tool.id) {
+      this.#runtimeHooks.pointerDown.tap((event) => {
+        if (this.#activeToolId !== tool.id) {
           return;
         }
 
@@ -51,18 +55,18 @@ export class ToolService implements IService<TToolServiceHooks> {
         }
 
         const preview = tool.drawCreate?.startDraft({ event, point });
-        this.previewOrigin = point;
+        this.#previewOrigin = point;
         if (preview) {
           this.sceneService.setPreviewNode(preview);
         }
       });
 
-      this.runtimeHooks.pointerMove.tap((event) => {
-        if (this.activeToolId !== tool.id) {
+      this.#runtimeHooks.pointerMove.tap((event) => {
+        if (this.#activeToolId !== tool.id) {
           return;
         }
 
-        if (!this.sceneService.previewNode || !this.previewOrigin) {
+        if (!this.sceneService.previewNode || !this.#previewOrigin) {
           return;
         }
 
@@ -75,14 +79,14 @@ export class ToolService implements IService<TToolServiceHooks> {
           draft: this.sceneService.previewNode,
           event: event as TToolPointerEvent,
           point,
-          origin: this.previewOrigin,
+          origin: this.#previewOrigin,
           shiftKey: event.evt.shiftKey,
           now: Date.now(),
         });
       });
 
-      this.runtimeHooks.pointerUp.tap(() => {
-        if (this.activeToolId !== tool.id) {
+      this.#runtimeHooks.pointerUp.tap(() => {
+        if (this.#activeToolId !== tool.id) {
           return;
         }
 
@@ -113,17 +117,56 @@ export class ToolService implements IService<TToolServiceHooks> {
    * Removes a tool from the editor registry.
    */
   unregisterTool(id: string) {
-    const didDelete = this.tools.delete(id);
+    const didDelete = this.#tools.delete(id);
     if (!didDelete) {
       return;
     }
 
-    if (this.activeToolId === id) {
-      this.activeToolId = "select";
-      this.hooks.activeToolChange.call(this.activeToolId);
+    if (this.#activeToolId === id) {
+      this.#activeToolId = "select";
+      this.hooks.activeToolChange.call(this.#activeToolId);
     }
 
     this.hooks.toolsChange.call();
+  }
+
+  /**
+   * Returns one registered tool by id.
+   */
+  getTool(id: string) {
+    return this.#tools.get(id);
+  }
+
+  /**
+   * Returns registered tools in stable toolbar order.
+   * Priority is expected in the range 0..10000.
+   */
+  getTools() {
+    return [...this.#tools.values()].sort((left, right) => {
+      const leftPriority = left.priority ?? 10000;
+      const rightPriority = right.priority ?? 10000;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      return left.label.localeCompare(right.label);
+    });
+  }
+
+  /**
+   * Sets the current active tool if it exists.
+   */
+  setActiveTool(id: string) {
+    if (!this.#tools.has(id)) {
+      return;
+    }
+
+    if (this.activeToolId === id) {
+      return;
+    }
+
+    this.activeToolId = id;
+    this.hooks.activeToolChange.call(id);
   }
 
   private commitPreview() {

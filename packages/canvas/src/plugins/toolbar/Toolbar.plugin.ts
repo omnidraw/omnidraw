@@ -9,6 +9,8 @@ import type { SelectionService } from "../../services/selection/SelectionService
 import type { IRuntimeHooks } from "../../types";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { EditorService, TEditorTool } from "src/services/editor/EditorService";
+import type { ToolService } from "src/services";
+import { txSelectTool } from "./tx.select-tool";
 
 function getModeFromTool(tool: TEditorTool | undefined) {
   if (!tool) {
@@ -55,20 +57,6 @@ function txSyncCursor(render: SceneService, selection: SelectionService) {
   }
 }
 
-function txSelectTool(editor: EditorService, toolId: string) {
-  const tool = editor.getTool(toolId);
-  if (!tool) {
-    return false;
-  }
-
-  if (tool.behavior.type === "mode") {
-    editor.setActiveTool(toolId);
-    return true;
-  }
-
-  tool.onSelect?.();
-  return true;
-}
 
 function fnGetShortcutToolId(editor: EditorService, event: KeyboardEvent) {
   if (event.altKey) {
@@ -95,7 +83,7 @@ function fnGetShortcutToolId(editor: EditorService, event: KeyboardEvent) {
 
 function mountToolbar(args: {
   scene: SceneService;
-  editor: EditorService;
+  tool: ToolService;
   onToolSelect: (toolId: string) => void;
 }) {
   const mountElement = document.createElement("div");
@@ -104,7 +92,7 @@ function mountToolbar(args: {
 
   const disposeRender = render(() => {
     return createComponent(RuntimeToolbar, {
-      editor: args.editor,
+      tool: args.tool,
       onToolSelect: args.onToolSelect,
     });
   }, mountElement);
@@ -123,7 +111,7 @@ function mountToolbar(args: {
  * Toolbar should stay dumb and only reflect registered tool state.
  */
 export function createToolbarPlugin(): IPlugin<{
-  editor: EditorService;
+  tool: ToolService;
   scene: SceneService;
   selection: SelectionService;
 }, IRuntimeHooks> {
@@ -133,11 +121,11 @@ export function createToolbarPlugin(): IPlugin<{
   return {
     name: "toolbar",
     apply(ctx) {
-      const editor = ctx.services.require("editor");
+      const tool = ctx.services.require("tool");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
 
-      editor.registerTool({
+      tool.registerTool({
         id: "hand",
         label: "Hand",
         icon: Hand,
@@ -145,7 +133,7 @@ export function createToolbarPlugin(): IPlugin<{
         priority: 0,
         behavior: { type: "mode", mode: "hand" },
       });
-      editor.registerTool({
+      tool.registerTool({
         id: "select",
         label: "Select",
         icon: MousePointer2,
@@ -154,21 +142,21 @@ export function createToolbarPlugin(): IPlugin<{
         behavior: { type: "mode", mode: "select" },
       });
 
-      selection.setMode(getModeFromTool(editor.getActiveTool()));
+      selection.setMode(getModeFromTool(tool.getTool(tool.activeToolId)));
 
       ctx.hooks.init.tap(() => {
         toolbarMount = mountToolbar({
           scene,
-          editor,
+          tool,
           onToolSelect: (toolId) => {
-            txSelectTool(editor, toolId);
+            txSelectTool({ toolService: tool }, { toolId });
           },
         });
         txSyncCursor(scene, selection);
       });
 
-      editor.hooks.activeToolChange.tap((toolId) => {
-        selection.setMode(getModeFromTool(editor.getTool(toolId)));
+      tool.hooks.activeToolChange.tap((toolId) => {
+        selection.setMode(getModeFromTool(tool.getTool(toolId)));
         txSyncCursor(scene, selection);
         ctx.hooks.toolSelect.call(toolId);
       });
@@ -181,15 +169,15 @@ export function createToolbarPlugin(): IPlugin<{
 
           event.preventDefault();
           if (toolBeforeSpaceHold === null) {
-            toolBeforeSpaceHold = editor.activeToolId;
-            if (editor.activeToolId !== "hand") {
-              txSelectTool(editor, "hand");
+            toolBeforeSpaceHold = tool.activeToolId;
+            if (tool.activeToolId !== "hand") {
+              txSelectTool({ toolService: tool }, { toolId: "hand" });
             }
           }
           return true;
         }
 
-        const toolId = fnGetShortcutToolId(editor, event);
+        const toolId = fnGetShortcutToolId(tool, event);
         if (!toolId) {
           return false;
         }
@@ -197,7 +185,7 @@ export function createToolbarPlugin(): IPlugin<{
         if (toolId !== "hand") {
           selection.setSelection([]);
         }
-        txSelectTool(editor, toolId);
+        txSelectTool({ toolService: tool }, { toolId });
         return true;
       });
 
@@ -211,15 +199,15 @@ export function createToolbarPlugin(): IPlugin<{
         }
 
         event.preventDefault();
-        txSelectTool(editor, toolBeforeSpaceHold);
+        txSelectTool({ toolService: tool }, { toolId: toolBeforeSpaceHold });
         toolBeforeSpaceHold = null;
         return true;
       });
 
       ctx.hooks.destroy.tap(() => {
         toolBeforeSpaceHold = null;
-        editor.unregisterTool("hand");
-        editor.unregisterTool("select");
+        tool.unregisterTool("hand");
+        tool.unregisterTool("select");
         toolbarMount?.dispose();
         toolbarMount = null;
       });

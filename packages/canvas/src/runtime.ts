@@ -107,7 +107,7 @@ function createServices(config: {
   // services.provide("canvasRegistry", 30, canvasRegistry);
   // services.provide("contextMenu", 40, contextMenu);
   // services.provide("history", 50, history);
-  // services.provide("selection", 60, selection);
+  services.provide("selection", 60, selection);
   services.provide("crdt", 70, crdt);
   // services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);
@@ -123,7 +123,7 @@ export function buildRuntime(config: IRuntimeConfig) {
   const plugins: Array<import("@vibecanvas/runtime").IPlugin<any, IRuntimeHooks, IRuntimeConfig>> = [
     createEventListenerPlugin(),
     createGridPlugin(),
-    // createToolbarPlugin(),
+    createToolbarPlugin(),
     // createSelectionStyleMenuPlugin(),
     // createContextMenuPlugin(),
     // createHistoryControlPlugin(),

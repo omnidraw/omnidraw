@@ -1,19 +1,20 @@
 import DOMPurify from "dompurify";
-import "./styles.css";
-import type { EditorService, TEditorToolIcon } from "../../services/editor/EditorService";
 import { For, createSignal, onCleanup } from "solid-js";
+import type { ToolService } from "../../services/tool/ToolService";
+import type { TToolIcon } from "../../services/tool/types";
+import "./styles.css";
 import { ToolButton } from "./ToolButton";
 
 export type TRuntimeToolbarTool = {
   id: string;
   label: string;
-  icon?: TEditorToolIcon;
+  icon?: TToolIcon;
   shortcuts?: string[];
   active?: boolean;
 };
 
 export type TRuntimeToolbarProps = {
-  editor: EditorService;
+  tool: ToolService;
   onToolSelect: (toolId: string) => void;
 };
 
@@ -41,14 +42,14 @@ function getShortcutParts(shortcuts: string[] | undefined) {
 
 export function RuntimeToolbar(props: TRuntimeToolbarProps) {
   const [isCollapsed, setIsCollapsed] = createSignal(false);
-  const [tools, setTools] = createSignal(props.editor.getTools());
-  const [activeToolId, setActiveToolId] = createSignal(props.editor.activeToolId);
+  const [tools, setTools] = createSignal(props.tool.getTools());
+  const [activeToolId, setActiveToolId] = createSignal(props.tool.activeToolId);
 
-  const offToolsChange = props.editor.hooks.toolsChange.tap(() => {
-    setTools(props.editor.getTools());
+  const offToolsChange = props.tool.hooks.toolsChange.tap(() => {
+    setTools(props.tool.getTools());
   });
 
-  const offActiveToolChange = props.editor.hooks.activeToolChange.tap((toolId) => {
+  const offActiveToolChange = props.tool.hooks.activeToolChange.tap((toolId) => {
     setActiveToolId(toolId);
   });
 
