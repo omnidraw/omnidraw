@@ -95,18 +95,18 @@ function createServices(config: {
     canvasRegistry,
   });
 
-  services.provide("scene", 10, scene);
-  services.provide("camera", 20, camera);
-  services.provide("canvasRegistry", 30, canvasRegistry);
-  services.provide("contextMenu", 40, contextMenu);
-  services.provide("history", 50, history);
-  services.provide("selection", 60, selection);
-  services.provide("crdt", 70, crdt);
-  services.provide("logging", 80, logging);
-  services.provide("editor", 90, editor);
-  services.provide("renderOrder", 100, renderOrder);
-  services.provide("theme", 110, config.themeService);
-  services.provide("widgetManager", 120, widgetManager);
+  // services.provide("scene", 10, scene);
+  // services.provide("camera", 20, camera);
+  // services.provide("canvasRegistry", 30, canvasRegistry);
+  // services.provide("contextMenu", 40, contextMenu);
+  // services.provide("history", 50, history);
+  // services.provide("selection", 60, selection);
+  // services.provide("crdt", 70, crdt);
+  // services.provide("logging", 80, logging);
+  // services.provide("editor", 90, editor);
+  // services.provide("renderOrder", 100, renderOrder);
+  // services.provide("theme", 110, config.themeService);
+  // services.provide("widgetManager", 120, widgetManager);
 
   return services;
 }
@@ -114,24 +114,24 @@ function createServices(config: {
 export function buildRuntime(config: IRuntimeConfig) {
   const plugins: Array<import("@vibecanvas/runtime").IPlugin<any, IRuntimeHooks, IRuntimeConfig>> = [
     createEventListenerPlugin(),
-    createGridPlugin(),
-    createToolbarPlugin(),
-    createSelectionStyleMenuPlugin(),
-    createContextMenuPlugin(),
-    createHistoryControlPlugin(),
-    createRenderOrderPlugin(),
-    createSelectPlugin(),
-    createTransformPlugin(),
-    createShape1dPlugin(),
-    createShape2dPlugin(),
-    createPenPlugin(),
-    createTextPlugin(),
-    createImagePlugin(),
-    createGroupPlugin(),
-    createSceneHydratorPlugin(),
-    createVisualDebugPlugin(),
-    createCameraControlPlugin(),
-    createHostedComponentPlugin(),
+    // createGridPlugin(),
+    // createToolbarPlugin(),
+    // createSelectionStyleMenuPlugin(),
+    // createContextMenuPlugin(),
+    // createHistoryControlPlugin(),
+    // createRenderOrderPlugin(),
+    // createSelectPlugin(),
+    // createTransformPlugin(),
+    // createShape1dPlugin(),
+    // createShape2dPlugin(),
+    // createPenPlugin(),
+    // createTextPlugin(),
+    // createImagePlugin(),
+    // createGroupPlugin(),
+    // createSceneHydratorPlugin(),
+    // createVisualDebugPlugin(),
+    // createCameraControlPlugin(),
+    // createHostedComponentPlugin(),
   ];
 
   if (config.env.DEV) {
