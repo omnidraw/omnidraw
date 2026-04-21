@@ -16,7 +16,7 @@ import {
 } from "./plugins";
 import {
   CameraService,
-  CanvasRegistryService,
+  CanvasRegistryService, ToolService, ElementService, SessionService,
   ContextMenuService, CrdtService, EditorService, HistoryService,
   LoggingService, RenderOrderService, SceneService, SelectionService,
   WidgetManagerService,
@@ -69,6 +69,8 @@ function createServices(config: {
   themeService: ThemeService;
 }): IServiceRegistry {
   const services = createServiceRegistry();
+  const elementService = new ElementService();
+  const sessionService = new SessionService();
   const scene = new SceneService({ container: config.container, });
   const camera = new CameraService({ scene });
   const canvasRegistry = new CanvasRegistryService();
@@ -76,6 +78,7 @@ function createServices(config: {
   const history = new HistoryService();
   const selection = new SelectionService();
   const crdt = new CrdtService({ docHandle: config.docHandle });
+  const toolService = new ToolService(scene, canvasRegistry, crdt, selection);
   const logging = new LoggingService();
   const editor = new EditorService(scene, canvasRegistry, crdt, selection);
   const widgetManager = new WidgetManagerService({
@@ -95,13 +98,13 @@ function createServices(config: {
     canvasRegistry,
   });
 
-  // services.provide("scene", 10, scene);
+  services.provide("scene", 10, scene);
   // services.provide("camera", 20, camera);
   // services.provide("canvasRegistry", 30, canvasRegistry);
   // services.provide("contextMenu", 40, contextMenu);
   // services.provide("history", 50, history);
   // services.provide("selection", 60, selection);
-  // services.provide("crdt", 70, crdt);
+  services.provide("crdt", 70, crdt);
   // services.provide("logging", 80, logging);
   // services.provide("editor", 90, editor);
   // services.provide("renderOrder", 100, renderOrder);

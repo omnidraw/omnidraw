@@ -1,13 +1,13 @@
 import type { IService } from "@vibecanvas/runtime";
 import { SyncHook } from "@vibecanvas/tapable";
 
-export interface TCanvasRegistryServiceHooks {
+export interface TElementServiceHooks {
   elementsChange: SyncHook<[]>;
 }
 
-export class ElementService implements IService<TCanvasRegistryServiceHooks> {
+export class ElementService implements IService<TElementServiceHooks> {
   readonly name = "ElementService";
-  readonly hooks: TCanvasRegistryServiceHooks = {
+  readonly hooks: TElementServiceHooks = {
     elementsChange: new SyncHook<[]>,
   };
 

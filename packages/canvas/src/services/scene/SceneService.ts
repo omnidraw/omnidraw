@@ -23,15 +23,15 @@ export class SceneService implements IService<TSceneServiceHooks>, IStartableSer
   staticForegroundLayer!: Konva.Layer;
   dynamicLayer!: Konva.Layer;
   resizeObserver!: ResizeObserver;
-  private previewNode: Konva.Node | null = null;
-  private started = false;
+  #previewNode: Konva.Node | null = null;
+  #started = false;
 
   constructor(args: TSceneServiceArgs) {
     this.container = args.container;
   }
 
   start(): void | Promise<void> {
-    if (this.started) {
+    if (this.#started) {
       return;
     }
 
@@ -45,17 +45,17 @@ export class SceneService implements IService<TSceneServiceHooks>, IStartableSer
     this.#attachLayers();
     this.resizeObserver = this.#createResizeObserver();
     this.resizeObserver.observe(this.container);
-    this.started = true;
+    this.#started = true;
   }
 
   stop(): void | Promise<void> {
-    if (!this.started) {
+    if (!this.#started) {
       return;
     }
 
     this.resizeObserver.disconnect();
     this.stage.destroy();
-    this.started = false;
+    this.#started = false;
   }
 
   #createStage() {
@@ -95,29 +95,28 @@ export class SceneService implements IService<TSceneServiceHooks>, IStartableSer
     this.hooks.resize.call(width, height);
   }
 
+  get previewNode(): Konva.Node | null {
+    return this.#previewNode;
+  }
+
   setPreviewNode(node: Konva.Node | null) {
-    if (this.previewNode === node) {
+    if (this.#previewNode === node) {
       return;
     }
 
     if (node === null) {
-      this.abortPreview();
+      this.clearPreviewState();
       return;
     }
 
     if (node instanceof Konva.Shape || node instanceof Konva.Group) {
       this.dynamicLayer.add(node);
     }
-    this.previewNode = node;
-  }
-
-  abortPreview() {
-    this.previewNode?.destroy();
-    this.clearPreviewState();
+    this.#previewNode = node;
   }
 
   clearPreviewState() {
-    this.previewNode?.destroy()
-    this.previewNode = null;
+    this.#previewNode?.destroy()
+    this.#previewNode = null;
   }
 }
