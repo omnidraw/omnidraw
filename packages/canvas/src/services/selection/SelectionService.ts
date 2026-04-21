@@ -1,9 +1,7 @@
 import type { IService } from "@vibecanvas/runtime";
 import { SyncHook } from "@vibecanvas/tapable";
-import { CanvasMode } from "./CONSTANTS";
-import type { Group } from "konva/lib/Group";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import Konva from "konva";
+import { CanvasMode } from "./CONSTANTS";
 
 export interface TSelectionServiceHooks {
   change: SyncHook<[]>;

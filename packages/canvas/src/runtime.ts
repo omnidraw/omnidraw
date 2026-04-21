@@ -105,11 +105,11 @@ function createServices(config: {
   services.provide("scene", 10, scene);
   services.provide("camera", 20, camera);
   // services.provide("canvasRegistry", 30, canvasRegistry);
-  // services.provide("contextMenu", 40, contextMenu);
-  // services.provide("history", 50, history);
+  services.provide("contextMenu", 40, contextMenu);
+  services.provide("history", 50, history);
   services.provide("selection", 60, selection);
   services.provide("crdt", 70, crdt);
-  // services.provide("logging", 80, logging);
+  services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);
   // services.provide("editor", 90, editor);
   // services.provide("renderOrder", 100, renderOrder);
@@ -126,7 +126,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createToolbarPlugin(),
     // createSelectionStyleMenuPlugin(),
     // createContextMenuPlugin(),
-    // createHistoryControlPlugin(),
+    createHistoryControlPlugin(),
     // createRenderOrderPlugin(),
     // createSelectPlugin(),
     // createTransformPlugin(),
