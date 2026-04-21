@@ -23,8 +23,8 @@ export class SceneService implements IService<TSceneServiceHooks>, IStartableSer
   staticForegroundLayer!: Konva.Layer;
   dynamicLayer!: Konva.Layer;
   resizeObserver!: ResizeObserver;
-
-  started = false;
+  private previewNode: Konva.Node | null = null;
+  private started = false;
 
   constructor(args: TSceneServiceArgs) {
     this.container = args.container;
@@ -93,5 +93,31 @@ export class SceneService implements IService<TSceneServiceHooks>, IStartableSer
     this.stage.size({ width, height });
     this.stage.batchDraw();
     this.hooks.resize.call(width, height);
+  }
+
+  setPreviewNode(node: Konva.Node | null) {
+    if (this.previewNode === node) {
+      return;
+    }
+
+    if (node === null) {
+      this.abortPreview();
+      return;
+    }
+
+    if (node instanceof Konva.Shape || node instanceof Konva.Group) {
+      this.dynamicLayer.add(node);
+    }
+    this.previewNode = node;
+  }
+
+  abortPreview() {
+    this.previewNode?.destroy();
+    this.clearPreviewState();
+  }
+
+  clearPreviewState() {
+    this.previewNode?.destroy()
+    this.previewNode = null;
   }
 }

@@ -9,3 +9,6 @@ export * from "./logging/LoggingService";
 export * from "./scene/SceneService";
 export * from "./render-order/RenderOrderService";
 export * from "./selection/SelectionService";
+export * from "./session/SessionService";
+export * from "./tool/ToolService";
+export * from "./element/ElementService";
