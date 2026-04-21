@@ -214,7 +214,8 @@ Owns rectangle, diamond, and ellipse behavior:
 - draw-create flow
 - serialization and hydration
 - drag/clone behavior
-- attached-text integration for supported hosts
+- inline text owned by shape2d persisted data
+- runtime-only derived text nodes for inline text rendering/editing
 
 ### `pen`
 Owns freehand pen behavior:
@@ -233,8 +234,9 @@ Owns free-text behavior:
 - theme-aware text updates
 
 Note:
-- attached text exists in the package and shape2d integrates with it
-- free-text runtime is stable enough to treat as current architecture
+- free text stays a standalone `text` element
+- shape inline text is not owned by the text plugin anymore
+- shape2d owns inline text data and editing entrypoints
 
 ### `image`
 Owns image behavior:
@@ -277,32 +279,140 @@ Do not treat it as production architecture.
 ### `visual-debug`
 Development/debug rendering helpers.
 
-## Editor registry model
+## Registry model
 
-`EditorService` is central to the current design.
-It owns:
+### `EditorService`
+
+`EditorService` owns transient editor state:
 - registered tools
 - active tool id
 - editing text id
 - editing shape1d id
 - preview node
-- shared transformer ref
-- node -> element serializers
-- node -> group serializers
-- group -> node creators
-- element -> node creators
-- existing-node setup hooks
-- element -> node update hooks
-- clone follow-up hooks
+
+Use it when:
+- registering a user-facing creation tool
+- switching active tools
+- tracking edit mode state
+
+### `CanvasRegistryService`
+
+`CanvasRegistryService` is the runtime registry for persisted scene content.
+It owns the mapping between runtime nodes and persisted elements/groups.
+
+Important element hooks you can register:
+- `matchesElement`
+- `matchesNode`
+- `toElement`
+- `createNode`
+- `attachListeners`
+- `updateElement`
+- `createDragClone`
+- `getSelectionStyleMenu`
+- `getTransformOptions`
+- transform hooks like `onResize` / `afterResize`
+
+Important mental model:
+- `createNode(element)` creates the root runtime node for one persisted element
+- `toElement(node)` serializes that runtime node back to one persisted element
+- `updateElement(element)` must be able to replay persisted state onto the already-mounted runtime node
+- if an element needs extra visuals, prefer runtime-only derived children or one returned root `Konva.Group`
 
 When adding a new scene element type, the normal pattern is:
-1. register a tool if users can create it directly
-2. register `toElement`
-3. register `createShapeFromTElement`
-4. register `setupExistingShape`
-5. register `updateShapeFromTElement`
-6. optionally register clone behavior
-7. make sure `scene-hydrator` can load it through the registry
+1. update the persisted schema in `packages/service-automerge/src/types/canvas-doc.zod.ts`
+2. create a plugin under `src/plugins/<feature>`
+3. register an element definition in `CanvasRegistryService` with at least:
+   - `matchesElement`
+   - `matchesNode`
+   - `toElement`
+   - `createNode`
+   - `attachListeners`
+   - `updateElement`
+4. register a tool in `EditorService` if users can create it directly
+5. insert created roots through `RenderOrderService`
+6. persist creates/updates/deletes through `CrdtService`
+7. add tests using the runtime harness in `packages/canvas/tests/new-test-setup.ts`
+
+## New element checklist
+
+When you add a new persisted element type, make sure all of these exist:
+
+1. **Persisted contract**
+   - schema in `service-automerge`
+   - inferred types compile cleanly
+
+2. **Runtime create path**
+   - `createNode(element)` returns the root runtime node
+   - new nodes are added to the right parent/layer
+   - insertion goes through `RenderOrderService.assignOrderOnInsert(...)`
+
+3. **Runtime serialize path**
+   - `toElement(node)` round-trips the runtime node back to persisted data
+   - this must work for freshly created nodes, dragged nodes, transformed nodes, and clones
+
+4. **Replay/update path**
+   - `updateElement(element)` updates an existing mounted node from persisted state
+   - hydrate/reload/undo/redo should not need special ad-hoc reconstruction outside this contract
+
+5. **Interaction wiring**
+   - `attachListeners(node)` or local `tx.setup-node.ts` wires pointer/drag/transform behavior
+   - selection integrates with the shared select/transform plugins
+
+6. **Hydration path**
+   - `scene-hydrator` can rebuild it only through `canvasRegistry.createNodeFromElement(...)`
+   - if your element needs derived runtime children, they must be recreated from `updateElement(element)` after the root node has been added to its parent
+
+7. **History + CRDT path**
+   - create/update/delete actions patch through `CrdtService`
+   - undo/redo restores the same element through persisted data, not hidden runtime state
+
+8. **Delete/group/ungroup path**
+   - if the element uses derived runtime-only children, these must not be treated as standalone persisted elements
+   - restore flows that re-add the root node should call `canvasRegistry.updateElement(element)` so derived children come back too
+
+9. **Selection style / transform path**
+   - register `getSelectionStyleMenu` if the element exposes style controls
+   - register transform options/hooks if resize/rotate behavior is custom
+
+## Clone-drag checklist
+
+If your new element is supposed to support clone-drag, the usual missing pieces are:
+
+1. **A registry clone handler exists**
+   - register `createDragClone` on the matching `CanvasRegistryService` element definition
+
+2. **Your listener path actually starts clone-drag**
+   - `attachListeners(...)` or `tx.setup-node.ts` must detect the modifier drag path
+   - current convention is Alt/Option-drag for clone-drag
+
+3. **`toElement(...)` works for the preview clone**
+   - clone finalization depends on serializing the preview/final node back into a persisted `TElement`
+   - if `toElement(...)` returns `null`, clone-drag finalization is effectively broken
+
+4. **Finalization does the full handoff**
+   - move preview from `dynamicLayer` to the final parent/layer
+   - attach runtime listeners/setup to the final node
+   - assign order with `RenderOrderService`
+   - patch the created element through `CrdtService`
+   - record undo/redo in `HistoryService`
+
+5. **Derived runtime children are handled correctly**
+   - if one logical element renders extra runtime nodes, prefer them to be runtime-only derived children
+   - rebuild them from `updateElement(element)`
+   - call `canvasRegistry.updateElement(element)` after hydrate/redo/group/ungroup restore paths re-add the root node
+   - register a `RenderOrderService` bundle resolver if the root and derived children must move together in z-order
+   - make delete snapshot logic ignore runtime-only derived children
+
+6. **Hydrate + redo can recreate the clone from persisted data alone**
+   - if redo only recreates the root node but not its derived runtime children, clone-drag will look half-broken even though the CRDT write succeeded
+
+If clone-drag is broken, check these in order:
+- missing `createDragClone`
+- missing modifier-drag wiring in `attachListeners`
+- missing or incorrect `toElement`
+- missing CRDT patch on finalize
+- missing render-order insertion/bundle resolver
+- missing derived-child rebuild in `updateElement`
 
 ## CRDT boundary
 
@@ -352,14 +462,10 @@ Preferred pattern:
 ## Tests
 
 Current tests live under:
-- `packages/canvas/tests/new-services`
-- `packages/canvas/tests/new-plugins`
+- `packages/canvas/tests/plugins`
+- `packages/canvas/tests/services`
 - `packages/canvas/tests/components`
 - `packages/canvas/tests/scenarios`
-
-Important note again:
-- `new-services` and `new-plugins` are historical names
-- they target the current runtime in `src/`
 
 Useful harness files:
 - `packages/canvas/tests/new-test-setup.ts` — current runtime harness via `buildRuntime()`
@@ -375,9 +481,9 @@ Preferred path:
 1. create a plugin under `src/plugins/<feature>`
 2. register a tool in `EditorService`
 3. use selection/editor/scene/crdt/history services
-4. register serializers/creators/updaters in `EditorService`
+4. register serializers/creators/updaters in `CanvasRegistryService`
 5. mount overlay UI only if needed
-6. add runtime-based tests under `tests/new-plugins`
+6. add runtime-based tests under `tests/plugins`
 
 ### Add shared state or shared runtime capability
 
@@ -391,11 +497,12 @@ Preferred path:
 Preferred path:
 1. define runtime node creation from `TElement`
 2. define node serialization back to `TElement`
-3. register setup/update hooks in `EditorService`
+3. register create/serialize/listener/update hooks in `CanvasRegistryService`
 4. insert through `RenderOrderService`
 5. persist through `CrdtService`
-6. make sure hydrate/reload works
-7. add tests
+6. make sure hydrate/reload/undo/redo works from persisted data only
+7. if clone-drag is expected, implement `createDragClone`
+8. add tests
 
 ## Package folder map
 

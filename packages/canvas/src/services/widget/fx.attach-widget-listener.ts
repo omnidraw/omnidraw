@@ -23,7 +23,7 @@ type TPortal = {
   node: Node<NodeConfig>
   editorService: EditorService
   selectionService: SelectionService
-  hooks: IRuntimeHooks
+  hooks?: IRuntimeHooks
 }
 type TArgs = {
 }

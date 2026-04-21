@@ -63,7 +63,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         const node = fnCreateWidgetNode(Konva, colors, element)
         return node
       },
-      attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService }, {})
+      createDragClone(args) {
+
+        return true
+      },
+      attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService, hooks: {} }, {})
     })
 
   }
