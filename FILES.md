@@ -170,13 +170,20 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/selection-style-menu/fx.mount-selection-style-menu.ts` |  | Selection styling overlay for selected elements and active tools |
 | ❓ | `plugins/selection-style-menu/SelectionStyleMenu.plugin.ts` |  | Floating selection style popover wiring |
 | ✅ | `plugins/shape1d/fn.draft.ts` |  | Shape1d draft and fallback preview element construction |
+| ❓ | `plugins/shape1d/fn.selection-style.ts` |  | Shape1d selection-style defaults for line and arrow registry entries |
 | ❓ | `plugins/shape1d/fx.geometry.ts` |  | Shape1D coordinate transforms, insertion midpoints, anchor-drag geometry |
 | ❓ | `plugins/shape1d/fx.node.ts` |  | shape1d Konva guards, styling, world-position serialization |
-| ❓ | `plugins/shape1d/Shape1d.plugin.ts` |  | Line/arrow plugin: draft, edit handles, transform/history sync |
+| 🤖 | `plugins/shape1d/Shape1d.plugin.ts` |  | Line/arrow plugin: draft, edit handles, transform/history sync |
+| ❓ | `plugins/shape1d/tx.draft.ts` |  | Shape1d draft preview sync, cancel, and finalize helpers |
+| ❓ | `plugins/shape1d/tx.edit-mode.ts` |  | Shape1d edit-mode handles, enter/exit, and selection refresh |
 | ❓ | `plugins/shape1d/tx.element.ts` |  | Shape node sync and preview clone creation |
 | ❓ | `plugins/shape1d/tx.history.ts` |  | Shape1d undo/redo for element edits and creation |
+| ❓ | `plugins/shape1d/tx.register-shape1d-element.ts` |  | Register one full shape1d canvas element definition per tool/type |
+| ❓ | `plugins/shape1d/tx.register-shape1d-tool.ts` |  | Register one shape1d drawing tool and return cleanup |
 | ❓ | `plugins/shape1d/tx.render.ts` |  | Konva line/arrow node creation, caps, bounds, scene runtime |
 | ❓ | `plugins/shape1d/tx.runtime.ts` |  | Shape drag, clone-drag, multi-select movement, history/CRDT sync |
+| ❓ | `plugins/shape1d/tx.shape-move.ts` |  | Shape1d move session patching and drag history finalization |
+| ❓ | `plugins/shape1d/typed.ts` |  | Shared local shape1d plugin state and move-session typings |
 | ❓ | `plugins/shape2d/CONSTANTS.ts` |  | Shape2d inline-text runtime attrs, ids, and derived node naming |
 | ✅ | `plugins/shape2d/fn.node.ts` |  | Konva node kind resolution via attrs plus runtime class guards |
 | ✅ | `plugins/shape2d/fn.text-host-bounds.ts` |  | Shape text layout bounds for rect, ellipse, diamond |

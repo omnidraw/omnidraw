@@ -5,7 +5,6 @@ import Konva from "konva";
 import Minus from "lucide-static/icons/minus.svg?raw";
 import { throttle } from "@solid-primitives/scheduled";
 import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
-import { DEFAULT_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import type { IRuntimeHooks } from "../../types";
@@ -20,21 +19,7 @@ import type { SceneService } from "../../services/scene/SceneService";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import { txDeleteSelection } from "../select/tx.delete-selection";
-import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
-import {
-  DEFAULT_OPACITY,
-  DEFAULT_STROKE_COLOR_TOKEN,
-  DEFAULT_STROKE_WIDTH,
-  DEFAULT_STROKE_WIDTH_TOKEN,
-  EDIT_HANDLE_FILL,
-  EDIT_HANDLE_RADIUS,
-  EDIT_HANDLE_STROKE,
-  INSERT_HANDLE_RADIUS,
-  type THandleDragSnapshot,
-  type TPoint,
-  type TShape1dNode,
-} from "./CONSTANTS";
-import { fnCreateDraftElement, fnCreateFallbackPreviewElement } from "./fn.draft";
+import { type THandleDragSnapshot, type TPoint, type TShape1dNode } from "./CONSTANTS";
 import { fxApplyAnchorDrag, fxGetInsertionPoint, fxLocalPointToWorld } from "./fx.geometry";
 import {
   fxFindShape1dNodeById,
@@ -43,17 +28,37 @@ import {
   fxIsShape1dNode,
   fxIsSupportedElementType,
   fxIsSupportedTool,
-  fxToPositionPatch,
   fxToTElement,
 } from "./fx.node";
+import {
+  txCancelShape1dDraft,
+  txFinalizeShape1dDraft,
+  txResetShape1dDraft,
+  txResetShape1dPreview,
+  txStartShape1dDraft,
+  txUpdateShape1dDraftCurrentPoint,
+} from "./tx.draft";
+import {
+  txClearShape1dEditHandles,
+  txEnterShape1dEditMode,
+  txExitShape1dEditMode,
+  txRefreshShape1dEditMode,
+} from "./tx.edit-mode";
 import { txCreatePreviewClone, txUpdateShapeFromElement } from "./tx.element";
-import { txRecordCreateHistory, txRecordElementHistory, type TPortalTxRecordShape1dHistory } from "./tx.history";
+import { type TPortalTxRecordShape1dHistory } from "./tx.history";
+import { txRegisterShape1dElement } from "./tx.register-shape1d-element";
+import { txRegisterShape1dTool } from "./tx.register-shape1d-tool";
 import { txAttachShapeRuntime, txCreateShapeFromElement } from "./tx.render";
+import {
+  txEnsureShape1dMove,
+  txFinalizeShape1dMove,
+  txPatchShape1dMove,
+} from "./tx.shape-move";
 import { txCreateCloneDrag, txSetupShapeListeners } from "./tx.runtime";
+import type { TShape1dPluginState } from "./typed";
 
 const TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR = "vcTransformMoveBeforeElement";
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
-const SHAPE1D_MOVE_BEFORE_ELEMENT_ATTR = "vcShape1dMoveBeforeElement";
 const MOVE_PATCH_INTERVAL_MS = 100;
 
 const setNodeZIndex = (node: Konva.Group | Konva.Shape, zIndex: string) => txSetNodeZIndex({}, { node, zIndex });
@@ -72,10 +77,6 @@ function createCreateId(render: SceneService) {
   };
 }
 
-function getTypedShape1dNode(node: Konva.Node | null | undefined): TShape1dNode | null {
-  return fxIsShape1dNode({ Shape: Konva.Shape }, { node }) ? (node as TShape1dNode) : null;
-}
-
 /**
  * Owns line/arrow registration, create flow, edit handles, clone-drag,
  * transform ownership, and CanvasRegistry integration for 1d shapes.
@@ -92,14 +93,17 @@ export function createShape1dPlugin(): IPlugin<{
   selection: SelectionService;
   theme: ThemeService;
 }, IRuntimeHooks> {
-  let previewShape: TShape1dNode | null = null;
-  let draftElementId: string | null = null;
-  let draftStartPoint: TPoint | null = null;
-  let draftCurrentPoint: TPoint | null = null;
-  let anchorHandles: Konva.Circle[] = [];
-  let insertHandles: Konva.Circle[] = [];
-  let activeHandleDrag: THandleDragSnapshot | null = null;
-  let previousToolId = "select";
+  const state: TShape1dPluginState = {
+    previewShape: null,
+    draftElementId: null,
+    draftStartPoint: null,
+    draftCurrentPoint: null,
+    anchorHandles: [],
+    insertHandles: [],
+    activeHandleDrag: null,
+    previousToolId: "select",
+    moveSessions: new Map(),
+  };
 
   return {
     name: "shape1d",
@@ -114,13 +118,9 @@ export function createShape1dPlugin(): IPlugin<{
       const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
       const theme = ctx.services.require("theme");
-      previousToolId = editor.activeToolId;
+      state.previousToolId = editor.activeToolId;
       const createId = createCreateId(render);
       const now = () => Date.now();
-      const moveSessions = new Map<string, {
-        beforeElement: TElement;
-        throttledPatch: (patch: Pick<TElement, "id" | "x" | "y" | "parentGroupId" | "updatedAt">) => void;
-      }>();
 
       const createShapeNode = (config?: Record<string, unknown>) => {
         return new Konva.Shape({
@@ -178,381 +178,6 @@ export function createShape1dPlugin(): IPlugin<{
         return isTool(editor.activeToolId) ? editor.activeToolId : null;
       }
 
-      function getRememberedStyle(tool: "line" | "arrow" | null) {
-        return tool ? theme.getRememberedStyle(tool) : {};
-      }
-
-      function createDraftFromState() {
-        const tool = currentTool();
-        if (!tool) {
-          return null;
-        }
-
-        return fnCreateDraftElement({
-          activeTool: tool,
-          draftElementId,
-          draftStartPoint,
-          draftCurrentPoint,
-          createId,
-          now,
-          rememberedStyle: getRememberedStyle(tool),
-        });
-      }
-
-      function createFallbackPreviewFromState() {
-        const tool = currentTool();
-        if (!tool) {
-          return null;
-        }
-
-        return fnCreateFallbackPreviewElement({
-          activeTool: tool,
-          draftElementId,
-          createId,
-          now,
-          rememberedStyle: getRememberedStyle(tool),
-        });
-      }
-
-      function resetDraft() {
-        draftElementId = null;
-        draftStartPoint = null;
-        draftCurrentPoint = null;
-      }
-
-      function resetPreview() {
-        previewShape?.destroy();
-        previewShape = null;
-        render.dynamicLayer.batchDraw();
-      }
-
-      function ensurePreviewShape() {
-        if (previewShape) {
-          return previewShape;
-        }
-
-        const previewElement = createFallbackPreviewFromState();
-        if (!previewElement) {
-          return null;
-        }
-
-        previewShape = createShape(previewElement);
-        previewShape.listening(false);
-        previewShape.visible(false);
-        previewShape.draggable(false);
-        render.dynamicLayer.add(previewShape);
-        return previewShape;
-      }
-
-      function syncPreview() {
-        const element = createDraftFromState();
-        if (!element) {
-          resetPreview();
-          return;
-        }
-
-        const nextPreviewShape = ensurePreviewShape();
-        if (!nextPreviewShape) {
-          return;
-        }
-
-        updateShape(nextPreviewShape, element);
-        nextPreviewShape.listening(false);
-        nextPreviewShape.visible(true);
-        nextPreviewShape.draggable(false);
-        render.dynamicLayer.batchDraw();
-      }
-
-      function clearEditHandles() {
-        anchorHandles.forEach((handle) => {
-          handle.destroy();
-        });
-        insertHandles.forEach((handle) => {
-          handle.destroy();
-        });
-        anchorHandles = [];
-        insertHandles = [];
-        render.dynamicLayer.batchDraw();
-      }
-
-      function refreshEditHandlePositions(node: TShape1dNode) {
-        const data = getData(node);
-        if (!data) {
-          return;
-        }
-
-        anchorHandles.forEach((handle, pointIndex) => {
-          const point = data.points[pointIndex];
-          if (point) {
-            handle.position(toWorld(node, point));
-          }
-        });
-        insertHandles.forEach((handle, segmentIndex) => {
-          handle.position(toWorld(node, insertionPoint(data, segmentIndex)));
-        });
-        render.dynamicLayer.batchDraw();
-      }
-
-      function exitEditMode(args?: { preserveSelection?: boolean }) {
-        const editingId = editor.editingShape1dId;
-        if (editingId !== null) {
-          const node = findNode(editingId);
-          if (node) {
-            const previousDraggable = node.getAttr("vcShape1dPrevDraggable");
-            node.draggable(typeof previousDraggable === "boolean" ? previousDraggable : true);
-            node.setAttr("vcShape1dPrevDraggable", undefined);
-          }
-        }
-
-        activeHandleDrag = null;
-        clearEditHandles();
-        editor.setEditingShape1dId(null);
-        if (!args?.preserveSelection && selection.selection.length === 1 && selection.selection[0]?.id() === editingId) {
-          selection.clear();
-        }
-      }
-
-      function renderEditHandles(node: TShape1dNode) {
-        clearEditHandles();
-        const data = getData(node);
-        if (!data || data.points.length === 0) {
-          return;
-        }
-
-        data.points.forEach((point, pointIndex) => {
-          const worldPoint = toWorld(node, point);
-          const handle = new Konva.Circle({
-            x: worldPoint.x,
-            y: worldPoint.y,
-            radius: EDIT_HANDLE_RADIUS,
-            fill: EDIT_HANDLE_FILL,
-            stroke: EDIT_HANDLE_STROKE,
-            strokeWidth: 2,
-            draggable: true,
-          });
-
-          handle.setAttr("vcInteractionOverlay", true);
-          handle.setAttr("vcShape1dHandleKind", "anchor");
-          handle.setAttr("vcShape1dPointIndex", pointIndex);
-          handle.on("dragstart", () => {
-            const editableNode = findNode(node.id());
-            if (!editableNode) {
-              return;
-            }
-
-            activeHandleDrag = {
-              nodeId: editableNode.id(),
-              pointIndex,
-              beforeElement: toElement(editableNode),
-              beforePoints: structuredClone(getData(editableNode)?.points ?? []),
-              beforeAbsoluteTransform: editableNode.getAbsoluteTransform().copy(),
-            };
-          });
-          handle.on("dragmove", () => {
-            const drag = activeHandleDrag;
-            if (!drag) {
-              return;
-            }
-
-            const editableNode = findNode(drag.nodeId);
-            const pointer = render.dynamicLayer.getRelativePointerPosition();
-            if (!editableNode || !pointer) {
-              return;
-            }
-
-            applyAnchorDrag(editableNode, drag, { x: pointer.x, y: pointer.y });
-            refreshEditHandlePositions(editableNode);
-          });
-          handle.on("dragend", () => {
-            const drag = activeHandleDrag;
-            activeHandleDrag = null;
-            if (!drag) {
-              return;
-            }
-
-            const editableNode = findNode(drag.nodeId);
-            if (!editableNode) {
-              return;
-            }
-
-            const afterElement = toElement(editableNode);
-            txRecordElementHistory(historyPortal, {
-              beforeElement: drag.beforeElement,
-              afterElement,
-              label: "edit-shape1d-point",
-            });
-            renderEditHandles(editableNode);
-          });
-          render.dynamicLayer.add(handle);
-          anchorHandles.push(handle);
-        });
-
-        for (let index = 0; index < data.points.length - 1; index += 1) {
-          const insertPoint = insertionPoint(data, index);
-          const worldPoint = toWorld(node, insertPoint);
-          const handle = new Konva.Circle({
-            x: worldPoint.x,
-            y: worldPoint.y,
-            radius: INSERT_HANDLE_RADIUS,
-            fill: "rgba(255,255,255,0.92)",
-            stroke: EDIT_HANDLE_STROKE,
-            strokeWidth: 2,
-            dash: [2, 2],
-            draggable: true,
-          });
-
-          handle.setAttr("vcInteractionOverlay", true);
-          handle.setAttr("vcShape1dHandleKind", "insert");
-          handle.setAttr("vcShape1dSegmentIndex", index);
-          handle.on("dragstart", () => {
-            const editableNode = findNode(node.id());
-            if (!editableNode) {
-              return;
-            }
-
-            const beforeElement = toElement(editableNode);
-            const currentData = getData(editableNode);
-            if (!currentData) {
-              return;
-            }
-
-            const createdPoint = insertionPoint(currentData, index);
-            const nextData = structuredClone(currentData);
-            nextData.points.splice(index + 1, 0, createdPoint);
-            editableNode.setAttr("vcElementData", nextData);
-            editableNode.getLayer()?.batchDraw();
-            handle.setAttr("vcShape1dHandleKind", "anchor");
-            handle.setAttr("vcShape1dPointIndex", index + 1);
-            activeHandleDrag = {
-              nodeId: editableNode.id(),
-              pointIndex: index + 1,
-              beforeElement,
-              beforePoints: structuredClone(currentData.points),
-              beforeAbsoluteTransform: editableNode.getAbsoluteTransform().copy(),
-            };
-          });
-          handle.on("dragmove", () => {
-            const drag = activeHandleDrag;
-            if (!drag) {
-              return;
-            }
-
-            const editableNode = findNode(drag.nodeId);
-            const pointer = render.dynamicLayer.getRelativePointerPosition();
-            if (!editableNode || !pointer) {
-              return;
-            }
-
-            applyAnchorDrag(editableNode, drag, { x: pointer.x, y: pointer.y });
-            const updatedPoint = getData(editableNode)?.points[drag.pointIndex];
-            if (updatedPoint) {
-              handle.position(toWorld(editableNode, updatedPoint));
-            }
-            render.dynamicLayer.batchDraw();
-          });
-          handle.on("dragend", () => {
-            const drag = activeHandleDrag;
-            activeHandleDrag = null;
-            if (!drag) {
-              return;
-            }
-
-            const editableNode = findNode(drag.nodeId);
-            if (!editableNode) {
-              return;
-            }
-
-            const afterElement = toElement(editableNode);
-            txRecordElementHistory(historyPortal, {
-              beforeElement: drag.beforeElement,
-              afterElement,
-              label: "insert-shape1d-point",
-            });
-            renderEditHandles(editableNode);
-          });
-          handle.on("pointerclick", (event: Konva.KonvaEventObject<PointerEvent>) => {
-            if (activeHandleDrag) {
-              return;
-            }
-
-            event.cancelBubble = true;
-            const editableNode = findNode(node.id());
-            const currentData = editableNode ? getData(editableNode) : null;
-            if (!editableNode || !currentData) {
-              return;
-            }
-
-            const beforeElement = toElement(editableNode);
-            const nextData = structuredClone(currentData);
-            nextData.points.splice(index + 1, 0, insertPoint);
-            editableNode.setAttr("vcElementData", nextData);
-            editableNode.getLayer()?.batchDraw();
-            const afterElement = toElement(editableNode);
-            txRecordElementHistory(historyPortal, {
-              beforeElement,
-              afterElement,
-              label: "insert-shape1d-point",
-            });
-            renderEditHandles(editableNode);
-          });
-          render.dynamicLayer.add(handle);
-          insertHandles.push(handle);
-        }
-
-        anchorHandles.forEach((handle) => {
-          handle.moveToTop();
-        });
-        insertHandles.forEach((handle) => {
-          handle.moveToTop();
-        });
-        render.dynamicLayer.batchDraw();
-      }
-
-      function enterEditMode(node: TShape1dNode) {
-        if (editor.editingShape1dId === node.id()) {
-          renderEditHandles(node);
-          return;
-        }
-
-        exitEditMode({ preserveSelection: true });
-        node.setAttr("vcShape1dPrevDraggable", node.draggable());
-        node.draggable(false);
-        selection.setSelection([node]);
-        selection.setFocusedNode(node);
-        editor.setEditingShape1dId(node.id());
-        renderEditHandles(node);
-      }
-
-      function refreshEditMode() {
-        const editingId = editor.editingShape1dId;
-        if (!editingId) {
-          clearEditHandles();
-          return;
-        }
-
-        const node = findNode(editingId);
-        const filteredSelection = fnFilterSelection({
-          editor: canvasRegistry,
-          selection: selection.selection,
-        });
-        if (!node || filteredSelection.length !== 1 || filteredSelection[0] !== node) {
-          exitEditMode();
-          return;
-        }
-
-        renderEditHandles(node);
-      }
-
-      function cancelDraft() {
-        if (!previewShape && !draftStartPoint) {
-          return;
-        }
-
-        resetDraft();
-        resetPreview();
-        editor.setActiveTool("select");
-      }
-
       function setupNode(node: TShape1dNode) {
         txAttachShapeRuntime({}, { node });
         txSetupShapeListeners(runtimePortal, { node });
@@ -562,276 +187,83 @@ export function createShape1dPlugin(): IPlugin<{
         return node;
       }
 
-      function finalizeDraft() {
-        if (selection.mode !== CanvasMode.DRAW_CREATE) {
-          return;
-        }
-
-        if (!currentTool()) {
-          return;
-        }
-
-        const element = createDraftFromState();
-        resetDraft();
-        resetPreview();
-        editor.setActiveTool("select");
-        if (!element) {
-          return;
-        }
-
-        const node = setupNode(createShape(element));
-        render.staticForegroundLayer.add(node);
-        renderOrder.assignOrderOnInsert({
-          parent: render.staticForegroundLayer,
-          nodes: [node],
-          position: "front",
-        });
-        txRecordCreateHistory(historyPortal, {
-          element: toElement(node),
-          node,
-          label: "create-shape1d",
-        });
-        render.staticForegroundLayer.batchDraw();
-      }
-
-      const txBeginShapeMove = (node: TShape1dNode, beforeElement?: TElement | null) => {
-        const resolvedBeforeElement = beforeElement ? structuredClone(beforeElement) : structuredClone(toElement(node));
-        node.setAttr(SHAPE1D_MOVE_BEFORE_ELEMENT_ATTR, structuredClone(resolvedBeforeElement));
-        moveSessions.set(node.id(), {
-          beforeElement: resolvedBeforeElement,
-          throttledPatch: throttle((patch: Pick<TElement, "id" | "x" | "y" | "parentGroupId" | "updatedAt">) => {
-            const builder = crdt.build();
-            builder.patchElement(patch.id, "x", patch.x);
-            builder.patchElement(patch.id, "y", patch.y);
-            builder.patchElement(patch.id, "parentGroupId", patch.parentGroupId);
-            builder.patchElement(patch.id, "updatedAt", patch.updatedAt);
-            builder.commit();
-          }, MOVE_PATCH_INTERVAL_MS),
-        });
+      const draftPortal = {
+        state,
+        editor,
+        render,
+        renderOrder,
+        selection,
+        theme,
+        createId,
+        now,
+        createShape,
+        updateShape,
+        setupNode,
+        toElement,
+        historyPortal,
       };
 
-      const txEnsureShapeMove = (node: TShape1dNode) => {
-        const existingSession = moveSessions.get(node.id());
-        if (existingSession) {
-          return existingSession;
-        }
-
-        const beforeElement = node.getAttr(SHAPE1D_MOVE_BEFORE_ELEMENT_ATTR) as TElement | undefined;
-        const transformBeforeElement = node.getAttr(TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR) as TElement | undefined;
-        txBeginShapeMove(node, beforeElement ?? transformBeforeElement ?? null);
-        return moveSessions.get(node.id()) ?? null;
+      const editModePortal = {
+        state,
+        Circle: Konva.Circle,
+        canvasRegistry,
+        editor,
+        render,
+        selection,
+        historyPortal,
+        findNode,
+        getData,
+        toWorld,
+        insertionPoint,
+        applyAnchorDrag,
+        toElement,
       };
 
-      const txPatchShapeMove = (node: TShape1dNode) => {
-        const session = txEnsureShapeMove(node);
-        if (!session) {
-          return false;
-        }
-
-        session.throttledPatch(fxToPositionPatch({ editor: canvasRegistry, now }, { node }));
-        return true;
+      const movePortal = {
+        state,
+        canvasRegistry,
+        crdt,
+        history,
+        now,
+        movePatchIntervalMs: MOVE_PATCH_INTERVAL_MS,
+        transformMoveBeforeAttr: TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR,
+        toElement,
+        applyElement,
       };
 
-      const txFinalizeShapeMove = (node: TShape1dNode) => {
-        const session = moveSessions.get(node.id());
-        moveSessions.delete(node.id());
-        node.setAttr(SHAPE1D_MOVE_BEFORE_ELEMENT_ATTR, undefined);
-        if (!session) {
-          return false;
-        }
-
-        const beforeElement = structuredClone(session.beforeElement);
-        const afterElement = structuredClone(toElement(node));
-        const moveCommitResult = (() => {
-          const builder = crdt.build();
-          builder.patchElement(afterElement.id, afterElement);
-          return builder.commit();
-        })();
-
-        const didMove = beforeElement.x !== afterElement.x || beforeElement.y !== afterElement.y;
-        if (!didMove) {
-          return true;
-        }
-
-        history.record({
-          label: "drag-shape1d",
-          undo: () => {
-            applyElement(beforeElement);
-            moveCommitResult.rollback();
-          },
-          redo: () => {
-            applyElement(afterElement);
-            crdt.applyOps({ ops: moveCommitResult.redoOps });
-          },
-        });
-
-        return true;
-      };
-
-      const unregisterShape1dBase = canvasRegistry.registerElement({
-        id: "shape1d-base",
-        matchesElement: (element) => element.data.type === "line" || element.data.type === "arrow",
-        matchesNode: (node) => isNode(node),
-        toElement: (node) => {
-          if (!isNode(node)) {
-            return null;
-          }
-
-          return toElement(node);
-        },
-        createNode: (element) => {
-          if (!isType(element.data.type)) {
-            return null;
-          }
-
-          return createShape(element);
-        },
-        attachListeners: (node) => {
-          if (!isNode(node)) {
-            return false;
-          }
-
-          setupNode(node);
-          return true;
-        },
-        updateElement: (element) => {
-          if (!isType(element.data.type)) {
-            return false;
-          }
-
-          const node = findNode(element.id);
-          if (!node) {
-            return false;
-          }
-
-          updateShape(node, element);
-          return true;
-        },
-        createDragClone: ({ node }) => {
-          if (!isNode(node)) {
-            return false;
-          }
-
+      const shape1dRegistryPortal = {
+        Shape: Konva.Shape,
+        canvasRegistry,
+        crdt,
+        history,
+        applyElement,
+        createShape,
+        findNode,
+        getData,
+        isNode,
+        setupNode,
+        toElement,
+        txCreateCloneDrag: (node: TShape1dNode) => {
           txCreateCloneDrag(runtimePortal, { node });
-          return true;
         },
-        getTransformOptions: () => ({
-          enabledAnchors: ["top-left", "top-right", "bottom-left", "bottom-right"],
-          keepRatio: false,
-          flipEnabled: false,
-        }),
-        onMove: ({ node }) => {
-          const shapeNode = getTypedShape1dNode(node);
-          if (!shapeNode) {
-            return { cancel: false, crdt: false };
-          }
+        txEnsureShapeMove: (node: TShape1dNode) => txEnsureShape1dMove(movePortal, { node }),
+        txPatchShapeMove: (node: TShape1dNode) => txPatchShape1dMove(movePortal, { node }),
+        txFinalizeShapeMove: (node: TShape1dNode) => txFinalizeShape1dMove(movePortal, { node }),
+        updateShape,
+      };
 
-          txEnsureShapeMove(shapeNode);
-          txPatchShapeMove(shapeNode);
-          return { cancel: true, crdt: false };
-        },
-        afterMove: ({ node }) => {
-          const shapeNode = getTypedShape1dNode(node);
-          if (!shapeNode) {
-            return { cancel: false, crdt: false };
-          }
-
-          txFinalizeShapeMove(shapeNode);
-          return { cancel: true, crdt: false };
-        },
-        afterResize: ({ node }) => ({
-          cancel: node instanceof Konva.Shape && isNode(node)
-            ? txFinalizeOwnedTransform({
-              crdt,
-              history,
-              applyElement,
-              serializeAfterElement: (candidateNode) => {
-                const shapeNode = getTypedShape1dNode(candidateNode);
-                if (!shapeNode) {
-                  return null;
-                }
-
-                const element = toElement(shapeNode);
-                updateShape(shapeNode, element);
-                return structuredClone(element);
-              },
-            }, {
-              node,
-              label: "transform-shape1d",
-              beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
-            })
-            : false,
-          crdt: false,
-        }),
-        afterRotate: ({ node }) => ({
-          cancel: node instanceof Konva.Shape && isNode(node)
-            ? txFinalizeOwnedTransform({
-              crdt,
-              history,
-              applyElement,
-              serializeAfterElement: (candidateNode) => {
-                const shapeNode = getTypedShape1dNode(candidateNode);
-                if (!shapeNode) {
-                  return null;
-                }
-
-                const element = toElement(shapeNode);
-                updateShape(shapeNode, element);
-                return structuredClone(element);
-              },
-            }, {
-              node,
-              label: "rotate-shape1d",
-              beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
-            })
-            : false,
-          crdt: false,
-        }),
+      const unregisterLineElement = txRegisterShape1dElement(shape1dRegistryPortal, {
+        type: "line",
+        beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
       });
 
-      const unregisterLine = canvasRegistry.registerElement({
-        id: "line",
-        matchesElement: (element) => element.data.type === "line",
-        getSelectionStyleMenu: () => ({
-          sections: {
-            showStrokeColorPicker: true,
-            showStrokeWidthPicker: true,
-            showOpacityPicker: true,
-            showLineTypePicker: true,
-          },
-          values: {
-            strokeColor: DEFAULT_STROKE_COLOR_TOKEN,
-            strokeWidth: DEFAULT_STROKE_WIDTH_TOKEN,
-            opacity: DEFAULT_OPACITY,
-            lineType: "straight",
-          },
-          strokeWidthOptions: [...DEFAULT_STROKE_WIDTHS],
-        }),
+      const unregisterArrowElement = txRegisterShape1dElement(shape1dRegistryPortal, {
+        type: "arrow",
+        beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
       });
 
-      const unregisterArrow = canvasRegistry.registerElement({
-        id: "arrow",
-        matchesElement: (element) => element.data.type === "arrow",
-        getSelectionStyleMenu: () => ({
-          sections: {
-            showStrokeColorPicker: true,
-            showStrokeWidthPicker: true,
-            showOpacityPicker: true,
-            showLineTypePicker: true,
-            showStartCapPicker: true,
-            showEndCapPicker: true,
-          },
-          values: {
-            strokeColor: DEFAULT_STROKE_COLOR_TOKEN,
-            strokeWidth: DEFAULT_STROKE_WIDTH_TOKEN,
-            opacity: DEFAULT_OPACITY,
-            lineType: "straight",
-            startCap: "none",
-            endCap: "arrow",
-          },
-          strokeWidthOptions: [...DEFAULT_STROKE_WIDTHS],
-        }),
-      });
+      let unregisterArrowTool = () => {};
+      let unregisterLineTool = () => {};
 
       contextMenu.registerProvider("shape1d", ({ targetElement, activeSelection }) => {
         if (!targetElement || !isType(targetElement.data.type)) {
@@ -844,27 +276,25 @@ export function createShape1dPlugin(): IPlugin<{
           priority: 300,
           onSelect: () => {
             selection.setSelection(activeSelection);
-            txDeleteSelection({ Group: Konva.Group, Shape: Konva.Shape, Layer: Konva.Layer, canvasRegistry, crdt, history, render, renderOrder, selection }, {});
+            txDeleteSelection({ canvasRegistry, crdt, history, render, renderOrder, selection }, {});
           },
         }];
       });
 
       ctx.hooks.init.tap(() => {
-        editor.registerTool({
+        unregisterArrowTool = txRegisterShape1dTool({ editor }, {
           id: "arrow",
           label: "Arrow",
           icon: ArrowRight,
           shortcuts: ["5", "a"],
           priority: 50,
-          behavior: { type: "mode", mode: "draw-create" },
         });
-        editor.registerTool({
+        unregisterLineTool = txRegisterShape1dTool({ editor }, {
           id: "line",
           label: "Line",
           icon: Minus,
           shortcuts: ["6", "l"],
           priority: 60,
-          behavior: { type: "mode", mode: "draw-create" },
         });
       });
 
@@ -882,10 +312,9 @@ export function createShape1dPlugin(): IPlugin<{
           return;
         }
 
-        draftElementId = createId();
-        draftStartPoint = [pointer.x, pointer.y];
-        draftCurrentPoint = [pointer.x, pointer.y];
-        syncPreview();
+        txStartShape1dDraft(draftPortal, {
+          point: { x: pointer.x, y: pointer.y },
+        });
       });
 
       ctx.hooks.pointerMove.tap(() => {
@@ -893,7 +322,7 @@ export function createShape1dPlugin(): IPlugin<{
           return;
         }
 
-        if (!currentTool() || !draftStartPoint) {
+        if (!currentTool() || !state.draftStartPoint) {
           return;
         }
 
@@ -902,12 +331,13 @@ export function createShape1dPlugin(): IPlugin<{
           return;
         }
 
-        draftCurrentPoint = [pointer.x, pointer.y];
-        syncPreview();
+        txUpdateShape1dDraftCurrentPoint(draftPortal, {
+          point: { x: pointer.x, y: pointer.y },
+        });
       });
 
       ctx.hooks.pointerUp.tap(() => {
-        finalizeDraft();
+        txFinalizeShape1dDraft(draftPortal);
       });
 
       ctx.hooks.pointerCancel.tap(() => {
@@ -915,17 +345,17 @@ export function createShape1dPlugin(): IPlugin<{
           return;
         }
 
-        cancelDraft();
+        txCancelShape1dDraft(draftPortal);
       });
 
       ctx.hooks.keydown.tap((event) => {
         if (event.key === "Escape"
           && selection.mode === CanvasMode.DRAW_CREATE
           && currentTool()
-          && previewShape) {
+          && state.previewShape) {
           event.preventDefault();
           event.stopPropagation();
-          cancelDraft();
+          txCancelShape1dDraft(draftPortal);
           return;
         }
 
@@ -946,7 +376,7 @@ export function createShape1dPlugin(): IPlugin<{
 
           event.preventDefault();
           event.stopPropagation();
-          enterEditMode(target);
+          txEnterShape1dEditMode(editModePortal, { node: target });
           return;
         }
 
@@ -956,7 +386,7 @@ export function createShape1dPlugin(): IPlugin<{
 
         event.preventDefault();
         event.stopPropagation();
-        exitEditMode();
+        txExitShape1dEditMode(editModePortal);
       });
 
       ctx.hooks.elementPointerDoubleClick.tap((event) => {
@@ -968,13 +398,13 @@ export function createShape1dPlugin(): IPlugin<{
           return false;
         }
 
-        enterEditMode(event.currentTarget);
+        txEnterShape1dEditMode(editModePortal, { node: event.currentTarget });
         return true;
       });
 
       ctx.hooks.pointerDown.tap((event) => {
         if (selection.mode === CanvasMode.SELECT && editor.editingShape1dId !== null && event.target === render.stage) {
-          exitEditMode();
+          txExitShape1dEditMode(editModePortal);
         }
       });
 
@@ -983,26 +413,26 @@ export function createShape1dPlugin(): IPlugin<{
           return;
         }
 
-        resetDraft();
-        resetPreview();
+        txResetShape1dDraft(draftPortal);
+        txResetShape1dPreview(draftPortal);
       });
 
       editor.hooks.activeToolChange.tap((toolId) => {
-        if (toolId !== previousToolId) {
-          resetDraft();
-          resetPreview();
+        if (toolId !== state.previousToolId) {
+          txResetShape1dDraft(draftPortal);
+          txResetShape1dPreview(draftPortal);
         }
-        previousToolId = toolId;
+        state.previousToolId = toolId;
       });
 
       selection.hooks.change.tap(() => {
-        refreshEditMode();
+        txRefreshShape1dEditMode(editModePortal);
       });
       camera.hooks.change.tap(() => {
-        refreshEditMode();
+        txRefreshShape1dEditMode(editModePortal);
       });
       editor.hooks.editingShape1dChange.tap(() => {
-        refreshEditMode();
+        txRefreshShape1dEditMode(editModePortal);
       });
       theme.hooks.change.tap(() => {
         render.staticForegroundLayer.find((candidate: Konva.Node) => {
@@ -1015,22 +445,21 @@ export function createShape1dPlugin(): IPlugin<{
           updateShape(candidate, toElement(candidate));
         });
         render.staticForegroundLayer.batchDraw();
-        refreshEditMode();
+        txRefreshShape1dEditMode(editModePortal);
       });
 
       ctx.hooks.destroy.tap(() => {
-        resetDraft();
-        resetPreview();
-        clearEditHandles();
-        activeHandleDrag = null;
-        moveSessions.clear();
+        txResetShape1dDraft(draftPortal);
+        txResetShape1dPreview(draftPortal);
+        txClearShape1dEditHandles(editModePortal);
+        state.activeHandleDrag = null;
+        state.moveSessions.clear();
         editor.setEditingShape1dId(null);
         contextMenu.unregisterProvider("shape1d");
-        unregisterShape1dBase();
-        unregisterLine();
-        unregisterArrow();
-        editor.unregisterTool("arrow");
-        editor.unregisterTool("line");
+        unregisterLineElement();
+        unregisterArrowElement();
+        unregisterArrowTool();
+        unregisterLineTool();
       });
     },
   };
