@@ -192,6 +192,7 @@ Never put detailed plan in this file
 - [x]: [S40](s/S40.md) - canvas: move inline shape text ownership into shape2d
 - [ ]: [S41](s/S41.md) - canvas: introduce CloneService and centralize clone lifecycle
 - [ ]: [S41] - remove fnCreateLegacyShape2dInlineTextMigrationPlan in next version
+- [ ]: [S42] - service refactor
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research

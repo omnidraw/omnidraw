@@ -67,7 +67,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
         return true
       },
-      attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService, hooks: {} }, {})
+      attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService,  }, {})
     })
 
   }
