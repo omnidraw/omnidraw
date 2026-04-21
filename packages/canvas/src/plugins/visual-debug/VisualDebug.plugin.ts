@@ -1,11 +1,9 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
+import { fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
+import type { CameraService, ElementService, SceneService, SelectionService } from "../../services";
 import type { IRuntimeHooks } from "../../types";
-import type { CameraService } from "../../services/camera/CameraService";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
 
 const SHOULD_RENDER_SELECTION = true;
 const SHOULD_RENDER_FOCUSED_ID = true;
@@ -14,8 +12,8 @@ function formatCameraInfo(x: number, y: number, zoom: number) {
   return `x=${Math.round(x)} y=${Math.round(y)} zoom=${zoom.toFixed(2)}`;
 }
 
-function formatCanvasNodeType(canvasRegistry: CanvasRegistryService, node: Konva.Node) {
-  const nodeType = canvasRegistry.getNodeType(node);
+function formatCanvasNodeType(node: Konva.Node) {
+  const nodeType =  fnGetCanvasNodeKind(node)
   if (nodeType) {
     return nodeType;
   }
@@ -23,13 +21,13 @@ function formatCanvasNodeType(canvasRegistry: CanvasRegistryService, node: Konva
   return node.getClassName();
 }
 
-function formatSelectionInfo(canvasRegistry: CanvasRegistryService, selection: SelectionService) {
+function formatSelectionInfo(selection: SelectionService) {
   const lines: string[] = [];
 
   if (SHOULD_RENDER_SELECTION) {
     const selectedTypes = selection.selection.length === 0
       ? "[]"
-      : `[${selection.selection.map((node) => formatCanvasNodeType(canvasRegistry, node)).join(", ")}]`;
+      : `[${selection.selection.map((node) => formatCanvasNodeType(node)).join(", ")}]`;
     lines.push(`selection ${selectedTypes}`);
   }
 
@@ -42,7 +40,7 @@ function formatSelectionInfo(canvasRegistry: CanvasRegistryService, selection: S
 
 export function createVisualDebugPlugin(): IPlugin<{
   camera: CameraService;
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   scene: SceneService;
   selection: SelectionService;
   theme: ThemeService;
@@ -61,7 +59,7 @@ export function createVisualDebugPlugin(): IPlugin<{
       ctx.hooks.init.tap(() => {
         const scene = ctx.services.require("scene");
         const camera = ctx.services.require("camera");
-        const canvasRegistry = ctx.services.require("canvasRegistry");
+        const element = ctx.services.require("element");
         const selection = ctx.services.require("selection");
         const theme = ctx.services.require("theme");
         text = new Konva.Text({
@@ -78,7 +76,7 @@ export function createVisualDebugPlugin(): IPlugin<{
           }
 
           const lines = [formatCameraInfo(camera.x, camera.y, camera.zoom)];
-          const selectionInfo = formatSelectionInfo(canvasRegistry, selection);
+          const selectionInfo = formatSelectionInfo(selection);
           if (selectionInfo.length > 0) {
             lines.push(selectionInfo);
           }
@@ -104,12 +102,13 @@ export function createVisualDebugPlugin(): IPlugin<{
         offSceneResize = scene.hooks.resize.tap(() => {
           syncText();
         });
-        offElementsChange = canvasRegistry.hooks.elementsChange.tap(() => {
+        offElementsChange = element.hooks.elementsChange.tap(() => {
           syncText();
         });
-        offGroupsChange = canvasRegistry.hooks.groupsChange.tap(() => {
-          syncText();
-        });
+        // TODO: add group
+        // offGroupsChange = canvasRegistry.hooks.groupsChange.tap(() => {
+        //   syncText();
+        // });
       });
 
       ctx.hooks.destroy.tap(() => {
