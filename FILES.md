@@ -226,6 +226,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `services/logging/LoggingService.ts` |  | Canvas debug logs gated by per-target localStorage |
 | ❓ | `services/render-order/RenderOrderService.ts` |  | Bundle-aware sibling z-order |
 | ✅ | `services/scene/SceneService.ts` |  | Konva stage lifecycle, layers, container resize hook |
+| ✅ | `services/scene/SessionService.ts` |  | temporary data, Edit state. |
 | ❓ | `services/selection/SelectionService.ts` |  | canvas selection state, focus, mode, change notifications |
 | ❓ | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
