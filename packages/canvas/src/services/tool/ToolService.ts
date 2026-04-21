@@ -6,6 +6,7 @@ import type { IRuntimeConfig, IRuntimeHooks } from "src/types";
 import type { CanvasRegistryService, CrdtService, SceneService, SelectionService } from "..";
 import { fxGetCanvasPoint } from "./fx.get-canvas-point";
 import { TTool, TToolCanvasPoint, TToolPointerEvent } from "./types";
+export * from "./types";
 
 export interface TToolServiceHooks {
   toolsChange: SyncHook<[]>;
@@ -165,7 +166,7 @@ export class ToolService implements IService<TToolServiceHooks> {
       return;
     }
 
-    this.activeToolId = id;
+    this.setActiveTool(id)
     this.hooks.activeToolChange.call(id);
   }
 
