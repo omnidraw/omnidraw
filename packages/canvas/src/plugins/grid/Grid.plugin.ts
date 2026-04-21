@@ -2,15 +2,15 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import Grid2x2 from "lucide-static/icons/grid-2x2.svg?raw";
+import type { ToolService } from "src/services";
 import type { CameraService } from "../../services/camera/CameraService";
-import type { EditorService } from "../../services/editor/EditorService";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { IRuntimeHooks } from "../../types";
 import { txDrawGrid } from "./tx.draw";
 
 export function createGridPlugin(): IPlugin<{
   camera: CameraService;
-  editor: EditorService;
+  tool: ToolService;
   scene: SceneService;
   theme: ThemeService;
 }, IRuntimeHooks> {
@@ -19,7 +19,7 @@ export function createGridPlugin(): IPlugin<{
   return {
     name: "grid",
     apply(ctx) {
-      const editor = ctx.services.require("editor");
+      const tool = ctx.services.require("tool");
       const scene = ctx.services.require("scene");
       const camera = ctx.services.require("camera");
       const theme = ctx.services.require("theme");
@@ -48,7 +48,7 @@ export function createGridPlugin(): IPlugin<{
           },
         });
 
-        editor.registerTool({
+        tool.registerTool({
           id: "grid",
           label: "Grid",
           icon: Grid2x2,
@@ -83,7 +83,7 @@ export function createGridPlugin(): IPlugin<{
       });
 
       ctx.hooks.destroy.tap(() => {
-        editor.unregisterTool("grid");
+        tool.unregisterTool("grid");
       });
     },
   };

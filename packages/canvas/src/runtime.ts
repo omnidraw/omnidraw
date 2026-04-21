@@ -37,7 +37,11 @@ declare module "@vibecanvas/runtime" {
     selection: SelectionService;
     theme: ThemeService;
     canvasRegistry: CanvasRegistryService;
+    tool: ToolService;
+    element: ElementService;
+    session: SessionService;
     widgetManager: WidgetManagerService;
+
   }
 }
 
@@ -78,7 +82,7 @@ function createServices(config: {
   const history = new HistoryService();
   const selection = new SelectionService();
   const crdt = new CrdtService({ docHandle: config.docHandle });
-  const toolService = new ToolService(scene, canvasRegistry, crdt, selection);
+  const tool = new ToolService(scene, canvasRegistry, crdt, selection);
   const logging = new LoggingService();
   const editor = new EditorService(scene, canvasRegistry, crdt, selection);
   const widgetManager = new WidgetManagerService({
@@ -99,16 +103,17 @@ function createServices(config: {
   });
 
   services.provide("scene", 10, scene);
-  // services.provide("camera", 20, camera);
+  services.provide("camera", 20, camera);
   // services.provide("canvasRegistry", 30, canvasRegistry);
   // services.provide("contextMenu", 40, contextMenu);
   // services.provide("history", 50, history);
   // services.provide("selection", 60, selection);
   services.provide("crdt", 70, crdt);
   // services.provide("logging", 80, logging);
+  services.provide("tool", 90, tool);
   // services.provide("editor", 90, editor);
   // services.provide("renderOrder", 100, renderOrder);
-  // services.provide("theme", 110, config.themeService);
+  services.provide("theme", 110, config.themeService);
   // services.provide("widgetManager", 120, widgetManager);
 
   return services;
@@ -117,7 +122,7 @@ function createServices(config: {
 export function buildRuntime(config: IRuntimeConfig) {
   const plugins: Array<import("@vibecanvas/runtime").IPlugin<any, IRuntimeHooks, IRuntimeConfig>> = [
     createEventListenerPlugin(),
-    // createGridPlugin(),
+    createGridPlugin(),
     // createToolbarPlugin(),
     // createSelectionStyleMenuPlugin(),
     // createContextMenuPlugin(),
@@ -133,7 +138,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     // createGroupPlugin(),
     // createSceneHydratorPlugin(),
     // createVisualDebugPlugin(),
-    // createCameraControlPlugin(),
+    createCameraControlPlugin(),
     // createHostedComponentPlugin(),
   ];
 
