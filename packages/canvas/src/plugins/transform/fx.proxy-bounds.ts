@@ -2,7 +2,7 @@ import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import type { SceneService } from "../../services/scene/SceneService";
 
 type TPortalFxGetProxyBounds = {
-  render: SceneService;
+  scene: SceneService;
 };
 
 type TArgsFxGetProxyBounds = {
@@ -12,7 +12,7 @@ type TArgsFxGetProxyBounds = {
 export function fxGetProxyBounds(portal: TPortalFxGetProxyBounds, args: TArgsFxGetProxyBounds) {
   const localRect = args.node.getClientRect({ relativeTo: args.node });
   const nodeTransform = args.node.getAbsoluteTransform();
-  const layerInverseTransform = portal.render.staticForegroundLayer.getAbsoluteTransform().copy();
+  const layerInverseTransform = portal.scene.staticForegroundLayer.getAbsoluteTransform().copy();
   layerInverseTransform.invert();
 
   const topLeft = layerInverseTransform.point(nodeTransform.point({ x: localRect.x, y: localRect.y }));

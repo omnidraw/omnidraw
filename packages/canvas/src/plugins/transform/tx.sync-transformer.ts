@@ -1,14 +1,11 @@
 import type Konva from "konva";
-import type { CanvasRegistryService } from "../../services";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
+import type { ElementService, SceneService, SelectionService, SessionService } from "../../services";
 import { fxGetSelectionTransformOptions } from "./fx.selection-transform-options";
 
 type TPortalTxSyncTransformer = {
-  canvasRegistry: CanvasRegistryService;
-  editor: EditorService;
+  element: ElementService;
+  session: SessionService;
   Konva: typeof Konva;
   scene: SceneService;
   selection: SelectionService;
@@ -19,17 +16,17 @@ type TArgsTxSyncTransformer = Record<string, never>;
 
 export function txSyncTransformer(portal: TPortalTxSyncTransformer, args: TArgsTxSyncTransformer) {
   void args;
-  if (portal.editor.editingTextId !== null || portal.editor.editingShape1dId !== null) {
+  if (portal.session.editingId !== null) {
     portal.transformer.setNodes([]);
     portal.transformer.update();
     portal.scene.dynamicLayer.batchDraw();
     return;
   }
 
-  const filteredSelection = fnFilterSelection({ editor: portal.canvasRegistry, selection: portal.selection.selection });
+  const filteredSelection = fnFilterSelection({ selection: portal.selection.selection });
   const transformOptions = fxGetSelectionTransformOptions({
     Konva: portal.Konva,
-    canvasRegistry: portal.canvasRegistry,
+    element: portal.element,
   }, {
     selection: filteredSelection,
   });

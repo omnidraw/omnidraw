@@ -14,14 +14,14 @@ export class SessionService implements IService {
     editingChange: new SyncHook<string | null>(),
   };
 
-  private editingId: string | null = null;
+  #_editingId: string | null = null;
 
-  getEditingId(): string | null {
-    return this.editingId;
+  get editingId() {
+    return this.#_editingId;
   }
 
-  setEditingId(editingId: string | null) {
-    this.editingId = editingId;
+  set editingId(editingId: string | null) {
+    this.#_editingId = editingId;
     this.hooks.editingChange.call(editingId);
   }
 }

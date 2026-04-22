@@ -5,9 +5,8 @@ import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { throttle } from "@solid-primitives/scheduled";
-import type { CanvasRegistryService, TCanvasTransformAnchor } from "../../services";
+import { ElementService, GroupService, SessionService, type CanvasRegistryService, type TCanvasTransformAnchor } from "../../services";
 import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
 import type { HistoryService } from "../../services/history/HistoryService";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
@@ -38,12 +37,12 @@ type TTransformDragProxyState = {
  * Element-groups are treated as serializable roots, while structural groups recurse into children.
  */
 function collectSerializableNodes(
-  canvasRegistry: CanvasRegistryService,
+  elementSrv: ElementService,
   nodes: Konva.Node[],
 ): Array<Group | Shape<ShapeConfig>> {
   return nodes.flatMap((node) => {
     if (node instanceof Konva.Group) {
-      return canvasRegistry.toElement(node) ? [node] : collectSerializableNodes(canvasRegistry, node.getChildren());
+      return elementSrv.toElement(node) ? [node] : collectSerializableNodes(elementSrv  , node.getChildren());
     }
 
     if (node instanceof Konva.Shape) {
@@ -58,19 +57,19 @@ function collectSerializableNodes(
  * Serializes the current runtime nodes into persisted canvas elements.
  * Used for transform snapshots and history capture.
  */
-function serializeSelection(canvasRegistry: CanvasRegistryService, nodes: Konva.Node[]) {
-  const serializableNodes = collectSerializableNodes(canvasRegistry, nodes);
+function serializeSelection(elementSrv: ElementService, nodes: Konva.Node[]) {
+  const serializableNodes = collectSerializableNodes(elementSrv, nodes);
   return serializableNodes
-    .map((node) => canvasRegistry.toElement(node))
+    .map((node) => elementSrv.toElement(node))
     .filter((element): element is TElement => element !== null);
 }
 
 /**
  * Replays persisted elements back onto the existing runtime scene.
  */
-function applyElements(canvasRegistry: CanvasRegistryService, elements: TElement[]) {
+function applyElements(elementSrv: ElementService, elements: TElement[]) {
   elements.forEach((element) => {
-    canvasRegistry.updateElement(element);
+    elementSrv.updateElement(element);
   });
 }
 
@@ -93,7 +92,7 @@ function normalizeSelectedGroupTransforms(nodes: Konva.Node[]) {
 /**
  * Re-emits transform on selected structural groups so plugins can refresh derived visuals.
  */
-function refreshSelectedGroups(canvasRegistry: CanvasRegistryService, selection: SelectionService) {
+function refreshSelectedGroups(selection: SelectionService) {
   selection.selection.forEach((node) => {
     if (fnIsCanvasGroupNode(node)) {
       node.fire("transform");
@@ -126,7 +125,7 @@ function isTypedAnchor(anchor: string | null): anchor is TCanvasTransformAnchor 
  * Dispatches resize-finalization callbacks after the interactive transformer gesture ends.
  */
 function txApplySelectionResizeHooks(args: {
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   scene: SceneService;
   selection: Array<Group | Shape<ShapeConfig>>;
   anchors: TCanvasTransformAnchor[];
@@ -134,7 +133,7 @@ function txApplySelectionResizeHooks(args: {
   const pointer = getTransformerPointer(args.scene);
 
   return txDispatchSelectionTransformHooks({
-    canvasRegistry: args.canvasRegistry,
+    element: args.element,
   }, {
     selection: args.selection,
     createArgs: (node, element) => ({
@@ -149,11 +148,11 @@ function txApplySelectionResizeHooks(args: {
 }
 
 function txApplySelectionRotateHooks(args: {
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   selection: Array<Group | Shape<ShapeConfig>>;
 }) {
   return txDispatchSelectionTransformHooks({
-    canvasRegistry: args.canvasRegistry,
+    element: args.element,
   }, {
     selection: args.selection,
     createArgs: (node, element) => ({
@@ -170,7 +169,7 @@ function txApplySelectionRotateHooks(args: {
  * Dispatches resize-finalization callbacks after the interactive transformer gesture ends.
  */
 function txFinalizeSelectionResize(args: {
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   scene: SceneService;
   selection: Array<Group | Shape<ShapeConfig>>;
   anchors: TCanvasTransformAnchor[];
@@ -178,7 +177,7 @@ function txFinalizeSelectionResize(args: {
   const pointer = getTransformerPointer(args.scene);
 
   return txDispatchSelectionTransformHooks({
-    canvasRegistry: args.canvasRegistry,
+    element: args.element,
   }, {
     selection: args.selection,
     createArgs: (node, element) => ({
@@ -193,11 +192,11 @@ function txFinalizeSelectionResize(args: {
 }
 
 function txFinalizeSelectionRotate(args: {
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   selection: Array<Group | Shape<ShapeConfig>>;
 }) {
   return txDispatchSelectionTransformHooks({
-    canvasRegistry: args.canvasRegistry,
+    element: args.element,
   }, {
     selection: args.selection,
     createArgs: (node, element) => ({
@@ -244,9 +243,10 @@ function syncTransformerTheme(theme: ThemeService, transformer: Konva.Transforme
  * - drag proxy stays behind the visual node so direct pointer targeting still works
  */
 export function createTransformPlugin(): IPlugin<{
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
+  group: GroupService;
+  session: SessionService;
   crdt: CrdtService;
-  editor: EditorService;
   history: HistoryService;
   scene: SceneService;
   selection: SelectionService;
@@ -260,11 +260,12 @@ export function createTransformPlugin(): IPlugin<{
   return {
     name: "transform",
     apply(ctx) {
-      const canvasRegistry = ctx.services.require("canvasRegistry");
+      const element = ctx.services.require("element");
+      const group = ctx.services.require("group");
+      const session = ctx.services.require("session");
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
       const history = ctx.services.require("history");
-      const render = ctx.services.require("scene");
+      const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
       const theme = ctx.services.require("theme");
 
@@ -275,9 +276,9 @@ export function createTransformPlugin(): IPlugin<{
 
         txSyncTransformer({
           Konva,
-          scene: render,
-          canvasRegistry,
-          editor,
+          scene,
+          element,
+          session,
           selection,
           transformer,
         }, {});
@@ -291,7 +292,7 @@ export function createTransformPlugin(): IPlugin<{
         dragProxy.visible(false);
         dragProxy.listening(false);
         dragProxy.draggable(false);
-        render.staticForegroundLayer.batchDraw();
+        scene.staticForegroundLayer.batchDraw();
       };
 
       const txEnsureDragProxyAttached = () => {
@@ -299,8 +300,8 @@ export function createTransformPlugin(): IPlugin<{
           return null;
         }
 
-        if (dragProxy.getParent() !== render.staticForegroundLayer) {
-          render.staticForegroundLayer.add(dragProxy);
+        if (dragProxy.getParent() !== scene.staticForegroundLayer) {
+          scene.staticForegroundLayer.add(dragProxy);
         }
 
         return dragProxy;
@@ -311,12 +312,12 @@ export function createTransformPlugin(): IPlugin<{
           return;
         }
 
-        if (editor.editingTextId !== null || editor.editingShape1dId !== null) {
+        if (session.editingId !== null) {
           hideDragProxy();
           return;
         }
 
-        const target = fxGetProxyDragTarget({ canvasRegistry, Konva }, { selection });
+        const target = fxGetProxyDragTarget({ element, Konva }, { selection });
         if (!target) {
           hideDragProxy();
           return;
@@ -327,7 +328,7 @@ export function createTransformPlugin(): IPlugin<{
           return;
         }
 
-        const bounds = fxGetProxyBounds({ render }, { node: target });
+        const bounds = fxGetProxyBounds({ scene }, { node: target });
         attachedDragProxy.position(bounds.position);
         attachedDragProxy.rotation(bounds.rotation);
         attachedDragProxy.scale({ x: 1, y: 1 });
@@ -338,13 +339,13 @@ export function createTransformPlugin(): IPlugin<{
         const targetIndex = target.zIndex();
         const proxyIndex = attachedDragProxy.zIndex();
         attachedDragProxy.zIndex(proxyIndex < targetIndex ? Math.max(0, targetIndex - 1) : targetIndex);
-        render.staticForegroundLayer.batchDraw();
+        scene.staticForegroundLayer.batchDraw();
       };
 
-      const applyProxyDragElement = (element: TElement) => {
-        applyElements(canvasRegistry, [element]);
+      const applyProxyDragElement = (el: TElement) => {
+        applyElements(element, [el]);
         refreshTransformer();
-        render.staticForegroundLayer.batchDraw();
+        scene.staticForegroundLayer.batchDraw();
       };
 
       ctx.hooks.init.tap(() => {
@@ -363,20 +364,20 @@ export function createTransformPlugin(): IPlugin<{
           name: TRANSFORM_DRAG_PROXY_NAME,
         });
         dragProxy.setAttr(INTERACTION_OVERLAY_ATTR, true);
-        render.staticForegroundLayer.add(dragProxy);
+        scene.staticForegroundLayer.add(dragProxy);
 
         dragProxy.on("dragstart", (event) => {
           if (!dragProxy) {
             return;
           }
 
-          const target = fxGetProxyDragTarget({ canvasRegistry, Konva }, { selection });
+          const target = fxGetProxyDragTarget({ element, Konva }, { selection });
 
           if (event.evt?.altKey) {
             dragProxy.stopDrag();
             dragProxy.absolutePosition(dragProxy.absolutePosition());
             if (target) {
-              canvasRegistry.createDragClone({
+              element.createDragClone({
                 node: target,
                 selection: selection.selection,
               });
@@ -391,7 +392,7 @@ export function createTransformPlugin(): IPlugin<{
             return;
           }
 
-          const beforeElement = canvasRegistry.toElement(target);
+          const beforeElement = element.toElement(target);
           if (!beforeElement) {
             dragProxy.stopDrag();
             refreshDragProxy();
@@ -429,29 +430,29 @@ export function createTransformPlugin(): IPlugin<{
             y: state.nodeStartPosition.y + dy,
           });
 
-          const element = canvasRegistry.toElement(state.node);
-          if (element) {
+          const el = element.toElement(state.node);
+          if (el) {
             const moveResult = txDispatchSelectionTransformHooks({
-              canvasRegistry,
+              element,
             }, {
               selection: selection.selection,
               createArgs: () => ({
                 node: state.node,
-                element,
-                pointer: render.dynamicLayer.getRelativePointerPosition(),
+                element: el,
+                pointer: scene.dynamicLayer.getRelativePointerPosition(),
                 selection: selection.selection,
               }),
               getHook: (definition) => definition.onMove,
             });
 
             if (!moveResult.cancel) {
-              const nextElement = canvasRegistry.toElement(state.node);
+              const nextElement = element.toElement(state.node);
               if (nextElement) {
                 state.throttledPatch(nextElement);
               }
             }
           }
-          render.staticForegroundLayer.batchDraw();
+          scene.staticForegroundLayer.batchDraw();
         });
 
         dragProxy.on("dragend", () => {
@@ -462,7 +463,7 @@ export function createTransformPlugin(): IPlugin<{
 
           const state = dragProxyState;
           dragProxyState = null;
-          const afterElement = canvasRegistry.toElement(state.node);
+          const afterElement = element.toElement(state.node);
           state.node.setAttr(TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR, undefined);
           if (!afterElement) {
             refreshDragProxy();
@@ -470,13 +471,13 @@ export function createTransformPlugin(): IPlugin<{
           }
 
           const afterMoveResult = txDispatchSelectionTransformHooks({
-            canvasRegistry,
+            element,
           }, {
             selection: selection.selection,
             createArgs: () => ({
               node: state.node,
               element: afterElement,
-              pointer: render.dynamicLayer.getRelativePointerPosition(),
+              pointer: scene.dynamicLayer.getRelativePointerPosition(),
               selection: selection.selection,
             }),
             getHook: (definition) => definition.afterMove,
@@ -515,13 +516,13 @@ export function createTransformPlugin(): IPlugin<{
 
         transformer = new Konva.Transformer();
         syncTransformerTheme(theme, transformer);
-        render.dynamicLayer.add(transformer);
+        scene.dynamicLayer.add(transformer);
 
         transformer.on("transformstart", () => {
           const nodes = transformer?.getNodes() ?? [];
-          beforeElements = serializeSelection(canvasRegistry, nodes);
+          beforeElements = serializeSelection(element, nodes);
           nodes.forEach((node) => {
-            const beforeElement = canvasRegistry.toElement(node);
+            const beforeElement = element.toElement(node);
             if (!beforeElement) {
               return;
             }
@@ -540,19 +541,19 @@ export function createTransformPlugin(): IPlugin<{
           const selectedNodes = transformer.getNodes() as Array<Group | Shape<ShapeConfig>>;
           if (activeAnchor === "rotater") {
             txApplySelectionRotateHooks({
-              canvasRegistry,
+              element,
               selection: selectedNodes,
             });
           } else {
             txApplySelectionResizeHooks({
-              canvasRegistry,
-              scene: render,
+              element,
+              scene: scene,
               selection: selectedNodes,
               anchors,
             });
           }
           transformer.forceUpdate();
-          render.dynamicLayer.batchDraw();
+          scene.dynamicLayer.batchDraw();
           refreshDragProxy();
         });
 
@@ -566,17 +567,17 @@ export function createTransformPlugin(): IPlugin<{
           const anchors = isTypedAnchor(activeAnchor) ? [activeAnchor] : [];
           const transformResult = activeAnchor === "rotater"
             ? txFinalizeSelectionRotate({
-              canvasRegistry,
+              element,
               selection: nodes as Array<Group | Shape<ShapeConfig>>,
             })
             : txFinalizeSelectionResize({
-              canvasRegistry,
-              scene: render,
+              element,
+              scene: scene,
               selection: nodes as Array<Group | Shape<ShapeConfig>>,
               anchors,
             });
 
-          const afterElements = serializeSelection(canvasRegistry, nodes);
+          const afterElements = serializeSelection(element, nodes);
           if (afterElements.length === 0) {
             return;
           }
@@ -589,15 +590,15 @@ export function createTransformPlugin(): IPlugin<{
           const fallbackAfterElements = afterElements.filter((element) => !transformResult.handledNodeIds.has(element.id));
 
           if (fallbackAfterElements.length === 0) {
-            refreshSelectedGroups(canvasRegistry, selection);
+            refreshSelectedGroups(selection);
             refreshTransformer();
             refreshDragProxy();
             return;
           }
 
           normalizeSelectedGroupTransforms(nodes);
-          applyElements(canvasRegistry, fallbackAfterElements);
-          refreshSelectedGroups(canvasRegistry, selection);
+          applyElements(element, fallbackAfterElements);
+          refreshSelectedGroups(selection);
           refreshTransformer();
           refreshDragProxy();
           const transformBuilder = crdt.build();
@@ -616,15 +617,15 @@ export function createTransformPlugin(): IPlugin<{
           history.record({
             label: "transform",
             undo: () => {
-              applyElements(canvasRegistry, undoElements);
-              refreshSelectedGroups(canvasRegistry, selection);
+              applyElements(element, undoElements);
+              refreshSelectedGroups(selection);
               refreshTransformer();
               refreshDragProxy();
               transformCommitResult.rollback();
             },
             redo: () => {
-              applyElements(canvasRegistry, redoElements);
-              refreshSelectedGroups(canvasRegistry, selection);
+              applyElements(element, redoElements);
+              refreshSelectedGroups(selection);
               refreshTransformer();
               refreshDragProxy();
               crdt.applyOps({ ops: transformCommitResult.redoOps });
@@ -639,19 +640,11 @@ export function createTransformPlugin(): IPlugin<{
           refreshTransformer();
           refreshDragProxy();
         });
-        editor.hooks.editingTextChange.tap(() => {
+        session.hooks.editingChange.tap(() => {
           refreshTransformer();
           refreshDragProxy();
         });
-        editor.hooks.editingShape1dChange.tap(() => {
-          refreshTransformer();
-          refreshDragProxy();
-        });
-        canvasRegistry.hooks.elementsChange.tap(() => {
-          refreshTransformer();
-          refreshDragProxy();
-        });
-        canvasRegistry.hooks.groupsChange.tap(() => {
+        group.hooks.groupsChange.tap(() => {
           refreshTransformer();
           refreshDragProxy();
         });

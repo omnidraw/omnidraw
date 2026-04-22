@@ -1,8 +1,6 @@
-import type Konva from "konva";
-import type { Group } from "konva/lib/Group";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CanvasRegistryService, TCanvasTransformAnchor } from "../../services";
+import type { Node } from "konva/lib/Node";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import type { ElementService, TCanvasTransformAnchor } from "../../services";
 import { fxIsShape1dNode } from "../shape1d/fx.node";
 
 const GROUP_ANCHORS: TCanvasTransformAnchor[] = [
@@ -24,12 +22,12 @@ const DEFAULT_ANCHORS: TCanvasTransformAnchor[] = [
 ];
 
 type TPortalFxGetSelectionTransformOptions = {
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   Konva: typeof Konva;
 };
 
 type TArgsFxGetSelectionTransformOptions = {
-  selection: Array<Group | Shape<ShapeConfig>>;
+  selection: Array<Node>;
 };
 
 export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTransformOptions, args: TArgsFxGetSelectionTransformOptions) {
@@ -45,7 +43,7 @@ export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTran
   let flipEnabled = true;
 
   for (const node of args.selection) {
-    const transformOptions = portal.canvasRegistry.getTransformOptions({
+    const transformOptions = portal.element.getTransformOptions({
       node,
       selection: args.selection,
     });

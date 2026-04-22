@@ -145,7 +145,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createHistoryControlPlugin(),
     createRenderOrderPlugin(),
     createSelectPlugin(),
-    // createTransformPlugin(),
+    createTransformPlugin(),
     // createShape1dPlugin(),
     // createShape2dPlugin(),
     // createPenPlugin(),
