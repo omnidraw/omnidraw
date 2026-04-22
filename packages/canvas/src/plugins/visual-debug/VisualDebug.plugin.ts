@@ -2,7 +2,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import { fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
-import type { CameraService, ElementService, SceneService, SelectionService } from "../../services";
+import type { CameraService, ElementService, GroupService, SceneService, SelectionService } from "../../services";
 import type { IRuntimeHooks } from "../../types";
 
 const SHOULD_RENDER_SELECTION = true;
@@ -44,6 +44,7 @@ export function createVisualDebugPlugin(): IPlugin<{
   scene: SceneService;
   selection: SelectionService;
   theme: ThemeService;
+  group: GroupService;
 }, IRuntimeHooks> {
   return {
     name: "visual-debug",
@@ -60,6 +61,7 @@ export function createVisualDebugPlugin(): IPlugin<{
         const scene = ctx.services.require("scene");
         const camera = ctx.services.require("camera");
         const element = ctx.services.require("element");
+        const group = ctx.services.require("group");
         const selection = ctx.services.require("selection");
         const theme = ctx.services.require("theme");
         text = new Konva.Text({
@@ -105,10 +107,9 @@ export function createVisualDebugPlugin(): IPlugin<{
         offElementsChange = element.hooks.elementsChange.tap(() => {
           syncText();
         });
-        // TODO: add group
-        // offGroupsChange = canvasRegistry.hooks.groupsChange.tap(() => {
-        //   syncText();
-        // });
+        offGroupsChange = group.hooks.groupsChange.tap(() => {
+          syncText();
+        });
       });
 
       ctx.hooks.destroy.tap(() => {
