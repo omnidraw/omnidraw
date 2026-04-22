@@ -3,7 +3,6 @@ import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canva
 import { SyncHook } from "@vibecanvas/tapable";
 import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CanvasRegistryService } from "../canvas-registry/CanvasRegistryService";
 
 export type TContextMenuScope = "canvas" | "item" | "selection";
 export type TContextMenuNode = Group | Shape<ShapeConfig>;
@@ -17,8 +16,6 @@ export type TContextMenuAction = {
   onSelect: () => void | Promise<void>;
 };
 
-export type TContextMenuCanvasRegistry = Pick<CanvasRegistryService, "toElement" | "toGroup">;
-
 export type TContextMenuProviderArgs = {
   scope: TContextMenuScope;
   targetNode: TContextMenuNode | null;
@@ -26,7 +23,6 @@ export type TContextMenuProviderArgs = {
   targetGroup: TGroup | null;
   selection: TContextMenuNode[];
   activeSelection: TContextMenuNode[];
-  canvasRegistry: TContextMenuCanvasRegistry;
 };
 
 export type TContextMenuProvider = (args: TContextMenuProviderArgs) => TContextMenuAction[];

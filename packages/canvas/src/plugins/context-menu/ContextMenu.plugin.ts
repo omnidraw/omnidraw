@@ -1,18 +1,19 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import Konva from "konva";
-import { fnIsCanvasGroupNode, fnIsCanvasNode } from "../../core/fn.canvas-node-semantics";
 import { createComponent, createMemo, createSignal } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { CanvasContextMenu } from "../../components/CanvasContextMenu";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { ContextMenuService, TContextMenuNode, TContextMenuScope } from "../../services/context-menu/ContextMenuService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import { fnIsCanvasGroupNode, fnIsCanvasNode } from "../../core/fn.canvas-node-semantics";
+import type {
+  ContextMenuService,
+  ElementService, GroupService,
+  SceneService, SelectionService,
+  TContextMenuNode, TContextMenuScope
+} from "../../services";
 import type { IRuntimeHooks } from "../../types";
 
 function getSelectionPath(
   scene: SceneService,
-  canvasRegistry: Pick<CanvasRegistryService, "toElement" | "toGroup">,
   node: TContextMenuNode,
 ): TContextMenuNode[] {
   const path: TContextMenuNode[] = [];
@@ -31,7 +32,6 @@ function getSelectionPath(
 
 function filterSelection(
   scene: SceneService,
-  canvasRegistry: Pick<CanvasRegistryService, "toElement" | "toGroup">,
   selection: Konva.Node[],
 ): TContextMenuNode[] {
   void scene;
@@ -67,7 +67,6 @@ function filterSelection(
 
 function findTargetNode(
   scene: SceneService,
-  canvasRegistry: Pick<CanvasRegistryService, "toElement" | "toGroup">,
   pointer: { x: number; y: number },
 ): TContextMenuNode | null {
   const directHit = scene.stage.getIntersection(pointer);
@@ -99,19 +98,18 @@ function findTargetNode(
 
 function resolveSelection(
   scene: SceneService,
-  canvasRegistry: Pick<CanvasRegistryService, "toElement" | "toGroup">,
   selection: SelectionService,
   target: TContextMenuNode,
 ): TContextMenuNode[] {
   const currentSelection = selection.selection.filter((node): node is TContextMenuNode => {
     return fnIsCanvasNode(node);
   });
-  const activeSelection = filterSelection(scene, canvasRegistry, currentSelection);
+  const activeSelection = filterSelection(scene, currentSelection);
   if (activeSelection.includes(target)) {
     return currentSelection;
   }
 
-  const path = getSelectionPath(scene, canvasRegistry, target);
+  const path = getSelectionPath(scene, target);
   const topLevelNode = path[0];
   const isFlatMultiSelect = currentSelection.length > 1
     && !currentSelection.some((node) => {
@@ -205,7 +203,8 @@ function mountContextMenu(args: {
  * Feature actions come from ContextMenuService providers.
  */
 export function createContextMenuPlugin(): IPlugin<{
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
+  group: GroupService;
   contextMenu: ContextMenuService;
   scene: SceneService;
   selection: SelectionService;
@@ -215,7 +214,8 @@ export function createContextMenuPlugin(): IPlugin<{
   return {
     name: "context-menu",
     apply(ctx) {
-      const canvasRegistry = ctx.services.require("canvasRegistry");
+      const element = ctx.services.require("element");
+      const group = ctx.services.require("group");
       const contextMenu = ctx.services.require("contextMenu");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
@@ -234,13 +234,13 @@ export function createContextMenuPlugin(): IPlugin<{
 
           scene.stage.setPointersPositions(event);
           const pointer = scene.stage.getPointerPosition();
-          const targetNode = pointer ? findTargetNode(scene, canvasRegistry, pointer) : null;
+          const targetNode = pointer ? findTargetNode(scene, pointer) : null;
           const nextSelection = targetNode
-            ? resolveSelection(scene, canvasRegistry, selection, targetNode)
+            ? resolveSelection(scene, selection, targetNode)
             : selection.selection.filter((node): node is TContextMenuNode => {
               return fnIsCanvasNode(node);
             });
-          const activeSelection = filterSelection(scene, canvasRegistry, nextSelection);
+          const activeSelection = filterSelection(scene, nextSelection);
           const scope = getMenuScope(targetNode, nextSelection);
 
           if (targetNode) {
@@ -253,11 +253,10 @@ export function createContextMenuPlugin(): IPlugin<{
             context: {
               scope,
               targetNode,
-              targetElement: targetNode ? canvasRegistry.toElement(targetNode) : null,
-              targetGroup: targetNode ? canvasRegistry.toGroup(targetNode) : null,
+              targetElement: targetNode ? element.toElement(targetNode) : null,
+              targetGroup: targetNode ? group.toGroup(targetNode) : null,
               selection: nextSelection,
               activeSelection,
-              canvasRegistry,
             },
           });
         };
