@@ -1,13 +1,11 @@
 import { fnGetSelectionPath } from "./fn.get-selection-path";
-import type { TCanvasSemanticsEditor } from "../../core/fn.canvas-node-semantics";
 import type { SceneService } from "../../services/scene/SceneService";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { TElementPointerEvent } from "../../types";
 
 export type TPortalHandleElementPointerDown = {
-  editor: TCanvasSemanticsEditor;
-  render: SceneService;
+  scene: SceneService;
   selection: SelectionService;
   hasSameSelectionOrder: (
     currentSelection: Array<{ id(): string }>,
@@ -41,7 +39,7 @@ export function txHandleElementPointerDown(
   portal: TPortalHandleElementPointerDown,
   args: TArgsHandleElementPointerDown,
 ) {
-  const path = fnGetSelectionPath({ render: portal.render, editor: portal.editor, node: args.event.currentTarget });
+  const path = fnGetSelectionPath({ scene: portal.scene, node: args.event.currentTarget });
   const nextDepth = Math.min(Math.max(portal.selection.selection.length, 1), path.length);
   const nextSelection = path.slice(0, nextDepth);
 

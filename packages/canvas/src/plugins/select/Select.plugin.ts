@@ -2,12 +2,9 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { Node } from "konva/lib/Node";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { ContextMenuService } from "../../services/context-menu/ContextMenuService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
+import type {
+  ContextMenuService, CrdtService, HistoryService, RenderOrderService, SceneService
+} from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeHooks } from "../../types";
@@ -15,6 +12,7 @@ import { txDeleteSelection } from "./tx.delete-selection";
 import { txHandleElementPointerDoubleClick } from "./tx.handle-element-pointer-double-click";
 import { txHandleElementPointerDown } from "./tx.handle-element-pointer-down";
 import { txHandleStagePointerMove } from "./tx.handle-stage-pointer-move";
+import { ElementService, GroupService } from "src/services";
 
 function hasSameSelectionOrder(
   currentSelection: Array<{ id(): string }>,
@@ -79,7 +77,6 @@ function txHandleStagePointerDown(args: {
  * Uses SelectionService as the shared runtime state.
  */
 export function createSelectPlugin(): IPlugin<{
-  canvasRegistry: CanvasRegistryService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
   history: HistoryService;
@@ -87,15 +84,18 @@ export function createSelectPlugin(): IPlugin<{
   renderOrder: RenderOrderService;
   selection: SelectionService;
   theme: ThemeService;
+  element: ElementService;
+  group: GroupService;
 }, IRuntimeHooks> {
   return {
     name: "select",
     apply(ctx) {
-      const canvasRegistry = ctx.services.require("canvasRegistry");
+      const element = ctx.services.require("element");
+      const group = ctx.services.require("group");
       const contextMenu = ctx.services.require("contextMenu");
       const crdt = ctx.services.require("crdt");
       const history = ctx.services.require("history");
-      const render = ctx.services.require("scene");
+      const scene = ctx.services.require("scene");
       const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
       const theme = ctx.services.require("theme");
@@ -114,12 +114,12 @@ export function createSelectPlugin(): IPlugin<{
 
       ctx.hooks.init.tap(() => {
         syncSelectionRectangleTheme();
-        render.dynamicLayer.add(selectionRectangle);
+        scene.dynamicLayer.add(selectionRectangle);
       });
 
       theme.hooks.change.tap(() => {
         syncSelectionRectangleTheme();
-        render.dynamicLayer.batchDraw();
+        scene.dynamicLayer.batchDraw();
       });
 
       contextMenu.registerProvider("delete-selection", ({ scope, activeSelection }) => {
@@ -133,7 +133,7 @@ export function createSelectPlugin(): IPlugin<{
           priority: 300,
           onSelect: () => {
             selection.setSelection(activeSelection);
-            txDeleteSelection({ canvasRegistry, crdt, history, render, renderOrder, selection }, {});
+            txDeleteSelection({ element, group, crdt, history, scene, renderOrder, selection }, {});
           },
         }];
       });
@@ -151,7 +151,7 @@ export function createSelectPlugin(): IPlugin<{
           return true;
         }
 
-        return txHandleElementPointerDown({ editor: canvasRegistry, render, selection, hasSameSelectionOrder }, { event });
+        return txHandleElementPointerDown({ scene, selection, hasSameSelectionOrder }, { event });
       });
 
       ctx.hooks.elementPointerDoubleClick.tap((event) => {
@@ -163,7 +163,7 @@ export function createSelectPlugin(): IPlugin<{
           return true;
         }
 
-        return txHandleElementPointerDoubleClick({ editor: canvasRegistry, render, selection, hasSameSelectionOrder }, { event });
+        return txHandleElementPointerDoubleClick({ scene, selection, hasSameSelectionOrder }, { event });
       });
 
       ctx.hooks.pointerDown.tap((event) => {
@@ -180,7 +180,7 @@ export function createSelectPlugin(): IPlugin<{
         }
 
         txHandleStagePointerDown({
-          scene: render,
+          scene: scene,
           selection,
           selectionRectangle,
           event,
@@ -201,12 +201,12 @@ export function createSelectPlugin(): IPlugin<{
             Group: Konva.Group,
             Shape: Konva.Shape,
             Util: Konva.Util,
-            render,
+            scene,
             selection,
             selectionRectangle,
             hasSameSelectionOrder,
           },
-          { pointer: getSelectionLayerPointerPosition(render) },
+          { pointer: getSelectionLayerPointerPosition(scene) },
         );
       });
 
@@ -237,7 +237,7 @@ export function createSelectPlugin(): IPlugin<{
 
         event.preventDefault();
         event.stopPropagation();
-        txDeleteSelection({ canvasRegistry, crdt, history, render, renderOrder, selection }, {});
+        txDeleteSelection({ element, group, crdt, history, scene, renderOrder, selection }, {});
       });
 
       ctx.hooks.destroy.tap(() => {

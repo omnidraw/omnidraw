@@ -6,7 +6,7 @@ export type TPortalHandleStagePointerMove = {
   Group: typeof Konva.Group;
   Shape: typeof Konva.Shape;
   Util: typeof Konva.Util;
-  render: SceneService;
+  scene: SceneService;
   selection: SelectionService;
   selectionRectangle: Konva.Rect;
   hasSameSelectionOrder: (
@@ -43,8 +43,8 @@ export function txHandleStagePointerMove(
     height: args.pointer.y - portal.selectionRectangle.y(),
   });
 
-  const topNodes = portal.render.staticForegroundLayer.getChildren((node) => {
-    return node.parent?.id() === portal.render.staticForegroundLayer.id();
+  const topNodes = portal.scene.staticForegroundLayer.getChildren((node) => {
+    return node.parent?.id() === portal.scene.staticForegroundLayer.id();
   });
   const nextSelection = topNodes
     .filter((node) => {

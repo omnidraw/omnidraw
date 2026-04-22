@@ -1,12 +1,10 @@
-import { fnGetSelectionPath } from "./fn.get-selection-path";
-import type { TCanvasSemanticsEditor } from "../../core/fn.canvas-node-semantics";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { TElementPointerEvent } from "../../types";
+import { fnGetSelectionPath } from "./fn.get-selection-path";
 
 export type TPortalHandleElementPointerDoubleClick = {
-  editor: TCanvasSemanticsEditor;
-  render: SceneService;
+  scene: SceneService;
   selection: SelectionService;
   hasSameSelectionOrder: (
     currentSelection: Array<{ id(): string }>,
@@ -44,7 +42,7 @@ export function txHandleElementPointerDoubleClick(
   portal: TPortalHandleElementPointerDoubleClick,
   args: TArgsHandleElementPointerDoubleClick,
 ) {
-  const path = fnGetSelectionPath({ render: portal.render, editor: portal.editor, node: args.event.currentTarget });
+  const path = fnGetSelectionPath({ scene: portal.scene, node: args.event.currentTarget });
 
   if (!isSelectionPathPrefix(portal.selection.selection, path)) {
     return false;

@@ -347,4 +347,22 @@ export class GroupService implements IService<TGroupServiceHooks>, IStartableSer
     this.hooks.groupsChange.call();
   }
 
+  /**
+   * Creates one runtime node from one persisted group.
+   * Groups are single-owner registrations.
+   */
+  createNodeFromGroup(group: TGroup) {
+    for (const definition of this.getGroups()) {
+      const node = definition.createNode(group);
+      if (!node) {
+        continue;
+      }
+
+      definition.attachListeners?.(node);
+      node.setAttr(VC_NODE_KIND_ATTR, 'group');
+      return node;
+    }
+
+    return null;
+  }
 }
