@@ -20,6 +20,7 @@ import {
   ContextMenuService, CrdtService, EditorService, HistoryService,
   LoggingService, RenderOrderService, SceneService, SelectionService,
   WidgetManagerService,
+  GroupService,
 } from "./services";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
 
@@ -41,7 +42,7 @@ declare module "@vibecanvas/runtime" {
     element: ElementService;
     session: SessionService;
     widgetManager: WidgetManagerService;
-
+    group: GroupService;
   }
 }
 
@@ -73,7 +74,7 @@ function createServices(config: {
   themeService: ThemeService;
 }): IServiceRegistry {
   const services = createServiceRegistry();
-  const elementService = new ElementService();
+  const element = new ElementService();
   const sessionService = new SessionService();
   const scene = new SceneService({ container: config.container, });
   const camera = new CameraService({ scene });
@@ -101,10 +102,23 @@ function createServices(config: {
     scene,
     canvasRegistry,
   });
+  const group = new GroupService(
+    camera,
+    element,
+    contextMenu,
+    crdt,
+    history,
+    logging,
+    scene,
+    renderOrder,
+    selection,
+    config.themeService,
+  );
 
   services.provide("scene", 10, scene);
   services.provide("camera", 20, camera);
-  services.provide("element", 30, elementService);
+  services.provide("element", 30, element);
+  services.provide("group", 230, group);
   // services.provide("canvasRegistry", 30, canvasRegistry);
   services.provide("contextMenu", 40, contextMenu);
   services.provide("history", 50, history);
@@ -134,7 +148,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     // createTransformPlugin(),
     // createShape1dPlugin(),
     // createShape2dPlugin(),
-    createPenPlugin(),
+    // createPenPlugin(),
     // createTextPlugin(),
     // createImagePlugin(),
     // createGroupPlugin(),

@@ -12,3 +12,4 @@ export * from "./selection/SelectionService";
 export * from "./session/SessionService";
 export * from "./tool/ToolService";
 export * from "./element/ElementService";
+export * from "./group/GroupService";

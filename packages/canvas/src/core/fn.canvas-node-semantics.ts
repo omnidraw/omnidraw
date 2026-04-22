@@ -3,11 +3,6 @@ import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { VC_NODE_KIND_ATTR } from "./CONSTANTS";
 import { isKonvaGroup } from "./GUARDS";
 
-export type TCanvasSemanticsEditor = {
-  toElement?(node: Konva.Node): unknown;
-  toGroup(node: Konva.Node): unknown;
-};
-
 export type TCanvasNode = Konva.Group | Shape<ShapeConfig>;
 export type TCanvasNodeKind = "group" | "element";
 

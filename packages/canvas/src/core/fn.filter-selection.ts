@@ -1,9 +1,7 @@
 import type Konva from "konva";
-import { fnIsCanvasGroupNode, type TCanvasSemanticsEditor } from "./fn.canvas-node-semantics";
-import { isKonvaGroup } from "./GUARDS";
+import { fnIsCanvasGroupNode } from "./fn.canvas-node-semantics";
 
 export type TArgsFilterSelection = {
-  editor?: TCanvasSemanticsEditor;
   selection: Array<Konva.Node>;
 };
 
@@ -11,10 +9,6 @@ export function fnFilterSelection(
   args: TArgsFilterSelection,
 ) {
   let subSelection = args.selection.find((node) => {
-    if (!args.editor) {
-      return isKonvaGroup(node.getParent());
-    }
-
     const parent = node.getParent();
     return parent && fnIsCanvasGroupNode(parent);
   });

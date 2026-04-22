@@ -59,14 +59,3 @@ export type TTool = {
     | { type: "modal" };
   drawCreate?: TToolDrawCreateBehavior;
 };
-
-/**
- * Editor-local hook bag.
- * Used for tool registry and editing state changes.
- */
-export interface TEditorServiceHooks {
-  toolsChange: SyncHook<[]>;
-  activeToolChange: SyncHook<[string]>;
-  editingTextChange: SyncHook<[string | null]>;
-  editingShape1dChange: SyncHook<[string | null]>;
-}

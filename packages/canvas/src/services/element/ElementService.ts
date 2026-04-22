@@ -5,8 +5,8 @@ import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
 import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
 import type { TCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
+import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { fnMergeSelectionStyleMenuConfigs } from "./fn-merge-selection-style-menu-configs";
-import { fnSortByPriority } from "./fn.sort-by-priority";
 import type {
   TElementElementDefinition,
   TElementServiceHooks,
