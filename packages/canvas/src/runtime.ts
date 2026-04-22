@@ -148,7 +148,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createTransformPlugin(),
     // createShape1dPlugin(),
     // createShape2dPlugin(),
-    // createPenPlugin(),
+    createPenPlugin(),
     // createTextPlugin(),
     // createImagePlugin(),
     // createGroupPlugin(),

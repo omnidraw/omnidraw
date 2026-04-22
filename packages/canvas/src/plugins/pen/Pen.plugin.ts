@@ -10,7 +10,8 @@ import { isKonvaPath } from "../../core/GUARDS";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import type {
   TCanvasTransformAnchor, CrdtService, HistoryService,
-  RenderOrderService, SceneService, SelectionService, ElementService, TToolCanvasPoint, ToolService
+  RenderOrderService, SceneService, SelectionService, ElementService, TToolCanvasPoint, ToolService,
+  GroupService
 } from "../../services";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import { DEFAULT_OPACITY, DEFAULT_STROKE_WIDTH_TOKEN } from "./CONSTANTS";
@@ -37,7 +38,7 @@ const PEN_TRANSFORM_ANCHORS: TCanvasTransformAnchor[] = [
 function fxCreatePenElementFromDraft(args: {
   id: string;
   now: number;
-  points: TEditorToolCanvasPoint[];
+  points: TToolCanvasPoint[];
   rememberedStyle?: Pick<TThemeRememberedStyle, "strokeColor" | "strokeWidth" | "opacity">;
 }): TElement {
   const penData = fnCreatePenDataFromStrokePoints({ points: args.points });
@@ -67,13 +68,13 @@ function fxCreatePenElementFromDraft(args: {
   };
 }
 
-function fxToPenElement(element: ElementService, now: () => number, node: Konva.Node) {
+function fxToPenElement(group: GroupService, now: () => number, node: Konva.Node) {
   if (!isKonvaPath(node)) {
     return null;
   }
 
   return fxPenPathToElement({
-    editor: { toGroup: (candidate) => element.toGroup(candidate) },
+    editor: { toGroup: (candidate) => group.toGroup(candidate) },
     now,
   }, {
     node,
@@ -289,7 +290,7 @@ export function createPenPlugin(): IPlugin<{
   scene: SceneService;
   selection: SelectionService;
   theme: ThemeService;
-  canvasRegistry: CanvasRegistryService;
+  group: GroupService;
 }, IRuntimeHooks> {
   return {
     name: "pen",
@@ -302,6 +303,8 @@ export function createPenPlugin(): IPlugin<{
       const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
       const theme = ctx.services.require("theme");
+      const group = ctx.services.require("group");
+
       const now = () => Date.now();
       const createId = createCreateId(render);
 
@@ -311,7 +314,7 @@ export function createPenPlugin(): IPlugin<{
       }>();
 
       const toElement = (node: Konva.Path) => {
-        const element = fxToPenElement(canvasRegistry, now, node);
+        const element = fxToPenElement(group, now, node);
         if (!element) {
           throw new Error("Failed to serialize pen node");
         }
@@ -319,8 +322,8 @@ export function createPenPlugin(): IPlugin<{
         return element;
       };
 
-      const applyElement = (element: TElement) => {
-        canvasRegistry.updateElement(element);
+      const applyElement = (el: TElement) => {
+        element.updateElement(el);
         render.staticForegroundLayer.batchDraw();
       };
 
@@ -470,11 +473,11 @@ export function createPenPlugin(): IPlugin<{
         return node;
       };
 
-      canvasRegistry.registerElement({
+      element.registerElement({
         id: "pen",
         matchesElement: (element) => element.data.type === "pen",
         matchesNode: (node) => isKonvaPath(node),
-        toElement: (node) => fxToPenElement(canvasRegistry, now, node),
+        toElement: (node) => fxToPenElement(group, now, node),
         createNode: (element) => fxCreatePenRuntimeNode(theme, element),
         attachListeners: (node) => {
           if (!isKonvaPath(node)) {
@@ -604,7 +607,7 @@ export function createPenPlugin(): IPlugin<{
             return;
           }
 
-          const element = fxToPenElement(canvasRegistry, now, candidate);
+          const element = fxToPenElement(group, now, candidate);
           if (!element || element.data.type !== "pen") {
             return;
           }

@@ -3,9 +3,9 @@ import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
 import type { IRuntimeConfig, IRuntimeHooks } from "src/types";
-import type { CanvasRegistryService, CrdtService, SceneService, SelectionService } from "..";
+import type { CrdtService, ElementService, SceneService, SelectionService } from "..";
 import { fxGetCanvasPoint } from "./fx.get-canvas-point";
-import { TTool, TToolCanvasPoint, TToolPointerEvent } from "./types";
+import type { TTool, TToolCanvasPoint, TToolPointerEvent } from "./types";
 export * from "./types";
 
 export interface TToolServiceHooks {
@@ -26,14 +26,14 @@ export class ToolService implements IService<TToolServiceHooks> {
 
   constructor(
     private sceneService: SceneService,
-    private canvasRegistry: CanvasRegistryService,
+    private elementService: ElementService,
     private crdt: CrdtService,
     private selection: SelectionService,
   ) { }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
     // @ts-expect-error this is safe, start runs before any use
-    this.runtimeHooks = ctx.hooks;
+    this.#runtimeHooks = ctx.hooks;
   }
 
   get activeToolId() {
@@ -177,14 +177,14 @@ export class ToolService implements IService<TToolServiceHooks> {
 
     const previewNode = this.sceneService.previewNode;
     previewNode.id(crypto.randomUUID())
-    const element = this.canvasRegistry.toElement(previewNode);
+    const element = this.elementService.toElement(previewNode);
     if (!element) {
       this.sceneService.clearPreviewState();
       return;
     }
     const newNode: Konva.Node = previewNode.clone()
     newNode.moveTo(this.sceneService.staticForegroundLayer)
-    this.canvasRegistry.attachListeners(newNode);
+    this.elementService.attachListeners(newNode);
     const builder = this.crdt.build();
     builder.patchElement(element.id, element);
     builder.commit();
