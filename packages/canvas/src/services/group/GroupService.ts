@@ -129,8 +129,8 @@ export class GroupService implements IService<TGroupServiceHooks>, IStartableSer
             createId: () => crypto.randomUUID(),
             getNodeZIndex,
             setNodeZIndex,
-            attachListeners: this.attachListeners,
-            toGroup: this.toGroup,
+            attachListeners: (node) => this.attachListeners(node),
+            toGroup: (node) => this.toGroup(node),
           }, {
             sourceGroup: groupNode,
           });

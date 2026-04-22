@@ -138,11 +138,11 @@ export function txCreateGroupCloneDrag(
     });
 
     const builder = portal.crdt.build();
-    elements.forEach((element) => {
-      builder.patchElement(element.id, element);
-    });
     groups.forEach((group) => {
       builder.patchGroup(group.id, group);
+    });
+    elements.forEach((element) => {
+      builder.patchElement(element.id, element);
     });
     builder.commit();
     portal.selection.setSelection([previewClone]);

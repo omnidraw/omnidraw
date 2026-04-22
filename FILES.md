@@ -224,6 +224,8 @@ prefix: `packages/canvas/src/`
 | ✅ | `services/editor/fx.get-canvas-point.ts` |  | Editor tool pointer events → canvas point + pressure |
 | ✅ | `services/history/HistoryService.ts` |  | Undo/redo stack service for runtime actions |
 | ✅ | `services/logging/LoggingService.ts` |  | Canvas debug logs gated by per-target localStorage |
+| 🤖 | `services/group/GroupService.ts` |  | Group node lifecycle, serialization, and clone-drag wiring |
+| 🤖 | `services/group/tx.create-group-clone-drag.ts` |  | Group duplicate drag preview, subtree re-id, and CRDT commit on drop |
 | 🤖 | `services/render-order/RenderOrderService.ts` |  | Bundle-aware sibling z-order |
 | ✅ | `services/scene/SceneService.ts` |  | Konva stage lifecycle, layers, container resize hook |
 | ✅ | `services/scene/SessionService.ts` |  | temporary data, Edit state. |
