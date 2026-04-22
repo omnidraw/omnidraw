@@ -1,7 +1,6 @@
 export type {
   TCanvasNode,
   TCanvasNodeKind,
-  TCanvasSemanticsEditor,
 } from "./fn.canvas-node-semantics";
 
 export {

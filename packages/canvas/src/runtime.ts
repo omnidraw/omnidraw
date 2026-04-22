@@ -83,7 +83,7 @@ function createServices(config: {
   const history = new HistoryService();
   const selection = new SelectionService();
   const crdt = new CrdtService({ docHandle: config.docHandle });
-  const tool = new ToolService(scene, canvasRegistry, crdt, selection);
+  const tool = new ToolService(scene, element, crdt, selection);
   const logging = new LoggingService();
   const editor = new EditorService(scene, canvasRegistry, crdt, selection);
   const widgetManager = new WidgetManagerService({
@@ -152,7 +152,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     // createTextPlugin(),
     // createImagePlugin(),
     // createGroupPlugin(),
-    // createSceneHydratorPlugin(),
+    createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
     // createHostedComponentPlugin(),

@@ -4,9 +4,9 @@ import Konva from "konva";
 import { isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
 import { fnCreateLegacyShape2dInlineTextMigrationPlan } from "../../core/fn.shape2d";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
 import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
+import type { ElementService } from "../../services/element/ElementService";
+import type { GroupService } from "../../services/group/GroupService";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeHooks } from "../../types";
@@ -15,8 +15,6 @@ type TSceneNode = Konva.Group | Konva.Shape;
 type TSceneStateSnapshot = {
   selectionIds: string[];
   focusedId: string | null;
-  editingTextId: string | null;
-  editingShape1dId: string | null;
 };
 
 function compareByPersistedOrder(left: { id: string; zIndex?: string }, right: { id: string; zIndex?: string }) {
@@ -28,12 +26,10 @@ function compareByPersistedOrder(left: { id: string; zIndex?: string }, right: {
   return left.id.localeCompare(right.id);
 }
 
-function captureSceneState(selection: SelectionService, editor: EditorService): TSceneStateSnapshot {
+function captureSceneState(selection: SelectionService): TSceneStateSnapshot {
   return {
     selectionIds: selection.selection.map((node) => node.id()),
     focusedId: selection.focusedId,
-    editingTextId: editor.editingTextId,
-    editingShape1dId: editor.editingShape1dId,
   };
 }
 
@@ -53,20 +49,18 @@ function findSceneNodeById(scene: SceneService, id: string | null): TSceneNode |
   return node;
 }
 
-function restoreSceneState(scene: SceneService, selection: SelectionService, editor: EditorService, snapshot: TSceneStateSnapshot) {
+function restoreSceneState(scene: SceneService, selection: SelectionService, snapshot: TSceneStateSnapshot) {
   const nextSelection = snapshot.selectionIds
     .map((id) => findSceneNodeById(scene, id))
     .filter((node): node is TSceneNode => node !== null);
 
   selection.setSelection(nextSelection);
   selection.setFocusedId(findSceneNodeById(scene, snapshot.focusedId)?.id() ?? null);
-  editor.setEditingTextId(findSceneNodeById(scene, snapshot.editingTextId)?.id() ?? null);
-  editor.setEditingShape1dId(findSceneNodeById(scene, snapshot.editingShape1dId)?.id() ?? null);
 }
 
 function loadGroupsTopDown(args: {
   groups: TGroup[];
-  canvasRegistry: CanvasRegistryService;
+  group: GroupService;
   scene: SceneService;
 }) {
   const groupsById = new Map(args.groups.map((group) => [group.id, group]));
@@ -90,7 +84,7 @@ function loadGroupsTopDown(args: {
         continue;
       }
 
-      const groupNode = args.canvasRegistry.createNodeFromGroup(group);
+      const groupNode = args.group.createNodeFromGroup(group);
       remainingGroupIds.delete(groupId);
       if (!groupNode) {
         continue;
@@ -109,7 +103,7 @@ function loadGroupsTopDown(args: {
 
 function loadElementsTopDown(args: {
   elements: TElement[];
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   scene: SceneService;
 }) {
   const groupsById = new Map(
@@ -132,24 +126,21 @@ function loadElementsTopDown(args: {
       return;
     }
 
-    const node = args.canvasRegistry.createNodeFromElement(element);
+    const node = args.element.createNodeFromElement(element);
     if (!node) {
       return;
     }
 
     if (isKonvaGroup(node) || isKonvaShape(node)) {
       parent.add(node);
-      args.canvasRegistry.updateElement(element);
+      args.element.updateElement(element);
     }
   });
 
   return invalidElementIds;
 }
 
-function sortSceneTopDown(scene: SceneService, canvasRegistry: CanvasRegistryService, parent: Konva.Layer | Konva.Group) {
-  void scene;
-  void canvasRegistry;
-
+function sortSceneTopDown(parent: Konva.Layer | Konva.Group) {
   parent.getChildren()
     .filter((candidate): candidate is TSceneNode => isKonvaGroup(candidate) || isKonvaShape(candidate))
     .slice()
@@ -162,7 +153,7 @@ function sortSceneTopDown(scene: SceneService, canvasRegistry: CanvasRegistrySer
     .forEach((child, index) => {
       child.zIndex(index);
       if (fnIsCanvasGroupNode(child)) {
-        sortSceneTopDown(scene, canvasRegistry, child as Konva.Group);
+        sortSceneTopDown(child as Konva.Group);
       }
     });
 }
@@ -185,23 +176,28 @@ function txMigrateLegacyShape2dInlineText(crdt: CrdtService) {
   builder.commit();
 }
 
-function loadCanvas(crdt: CrdtService, canvasRegistry: CanvasRegistryService, scene: SceneService) {
-  txMigrateLegacyShape2dInlineText(crdt);
-  const doc = crdt.doc();
+function loadCanvas(args: {
+  crdt: CrdtService;
+  element: ElementService;
+  group: GroupService;
+  scene: SceneService;
+}) {
+  txMigrateLegacyShape2dInlineText(args.crdt);
+  const doc = args.crdt.doc();
   const groups = Object.values(doc.groups).sort(compareByPersistedOrder);
   const elements = Object.values(doc.elements).sort(compareByPersistedOrder);
 
-  loadGroupsTopDown({ groups, canvasRegistry, scene });
-  const invalidElementIds = loadElementsTopDown({ elements, canvasRegistry, scene });
+  loadGroupsTopDown({ groups, group: args.group, scene: args.scene });
+  const invalidElementIds = loadElementsTopDown({ elements, element: args.element, scene: args.scene });
   if (invalidElementIds.length > 0) {
-    const builder = crdt.build();
+    const builder = args.crdt.build();
     invalidElementIds.forEach((id) => {
       builder.deleteElement(id);
     });
     builder.commit();
   }
-  sortSceneTopDown(scene, canvasRegistry, scene.staticForegroundLayer);
-  scene.stage.batchDraw();
+  sortSceneTopDown(args.scene.staticForegroundLayer);
+  args.scene.stage.batchDraw();
 }
 
 /**
@@ -209,19 +205,19 @@ function loadCanvas(crdt: CrdtService, canvasRegistry: CanvasRegistryService, sc
  */
 export function createSceneHydratorPlugin(): IPlugin<{
   crdt: CrdtService;
-  editor: EditorService;
+  element: ElementService;
+  group: GroupService;
   scene: SceneService;
   selection: SelectionService;
-  canvasRegistry: CanvasRegistryService;
 }, IRuntimeHooks> {
   return {
     name: "scene-hydrator",
     apply(ctx) {
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
+      const element = ctx.services.require("element");
+      const group = ctx.services.require("group");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
-      const canvasRegistry = ctx.services.require("canvasRegistry");
 
       let destroyed = false;
       let isReloading = false;
@@ -240,10 +236,10 @@ export function createSceneHydratorPlugin(): IPlugin<{
         isReloading = true;
 
         try {
-          const snapshot = captureSceneState(selection, editor);
+          const snapshot = captureSceneState(selection);
           scene.staticForegroundLayer.destroyChildren();
-          loadCanvas(crdt, canvasRegistry, scene);
-          restoreSceneState(scene, selection, editor, snapshot);
+          loadCanvas({ crdt, element, group, scene });
+          restoreSceneState(scene, selection, snapshot);
         } finally {
           isReloading = false;
         }
@@ -268,7 +264,7 @@ export function createSceneHydratorPlugin(): IPlugin<{
       });
 
       ctx.hooks.initAsync.tapPromise(async () => {
-        loadCanvas(crdt, canvasRegistry, scene);
+        loadCanvas({ crdt, element, group, scene });
       });
 
       ctx.hooks.destroy.tap(() => {

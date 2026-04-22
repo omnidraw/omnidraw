@@ -162,11 +162,11 @@ export class ToolService implements IService<TToolServiceHooks> {
       return;
     }
 
-    if (this.activeToolId === id) {
+    if (this.#activeToolId === id) {
       return;
     }
 
-    this.setActiveTool(id)
+    this.#activeToolId = id;
     this.hooks.activeToolChange.call(id);
   }
 

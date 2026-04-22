@@ -1,6 +1,7 @@
 import type { IService } from "@vibecanvas/runtime";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
+import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import { fnCreateOrderedZIndex } from "../../core/fn.create-ordered-z-index";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
@@ -86,7 +87,6 @@ export class RenderOrderService implements IService<Record<string, never>> {
   readonly crdt: CrdtService;
   readonly history: HistoryService;
   readonly scene: SceneService;
-  readonly canvasRegistry: CanvasRegistryService
   readonly syncDomOrder?: () => void;
   #bundleResolvers = new Map<string, TRenderOrderBundleResolver>();
 
@@ -94,7 +94,6 @@ export class RenderOrderService implements IService<Record<string, never>> {
     this.crdt = args.crdt;
     this.history = args.history;
     this.scene = args.scene;
-    this.canvasRegistry = args.canvasRegistry;
     this.syncDomOrder = args.syncDomOrder;
   }
 
@@ -193,7 +192,7 @@ export class RenderOrderService implements IService<Record<string, never>> {
       items: getImmediateOrderedChildren(parent).map((node) => ({
         id: node.id(),
         zIndex: fnGetNodeZIndex({ node }),
-        kind: this.canvasRegistry.getNodeType(node) === "group" ? "group" : "element",
+        kind: fnIsCanvasGroupNode(node) ? 'group' : 'element',
       })),
     };
   }
