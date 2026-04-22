@@ -6,7 +6,6 @@ import { fnCreateOrderedZIndex } from "../../core/fn.create-ordered-z-index";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type { TRenderOrderSnapshot } from "../../types";
-import type { CanvasRegistryService } from "../canvas-registry/CanvasRegistryService";
 import type { CrdtService } from "../crdt/CrdtService";
 import type { HistoryService } from "../history/HistoryService";
 import type { SceneService } from "../scene/SceneService";
@@ -20,7 +19,6 @@ export type TRenderOrderServiceArgs = {
   crdt: CrdtService;
   history: HistoryService;
   scene: SceneService;
-  canvasRegistry: CanvasRegistryService;
   syncDomOrder?: () => void;
 };
 
@@ -364,8 +362,7 @@ export class RenderOrderService implements IService<Record<string, never>> {
       const zIndex = fnCreateOrderedZIndex(persistedIndex);
       persistedIndex += 1;
 
-      const nodeType = this.canvasRegistry.getNodeType(node);
-      if (nodeType === "group") {
+      if (fnIsCanvasGroupNode(node)) {
         // Some flows insert runtime nodes before their first CRDT create commit.
         // Persist zIndex only after the group exists in the doc, otherwise
         // builder path patches would throw on a missing entity.
@@ -381,7 +378,7 @@ export class RenderOrderService implements IService<Record<string, never>> {
       // Some flows insert runtime nodes before their first CRDT create commit.
       // Persist zIndex only after the element exists in the doc, otherwise
       // builder path patches would throw on a missing entity.
-      if (nodeType !== null && this.crdt.doc().elements[node.id()] !== undefined) {
+      if (this.crdt.doc().elements[node.id()] !== undefined) {
         elementPatches.push({
           id: node.id(),
           zIndex,

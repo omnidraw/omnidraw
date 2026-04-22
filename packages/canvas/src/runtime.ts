@@ -5,22 +5,23 @@ import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
   createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
-  createGroupPlugin, createHistoryControlPlugin,
-  createHostedComponentPlugin,
-  createImagePlugin, createPenPlugin,
+  createHistoryControlPlugin,
+  createPenPlugin,
   createRecorderPlugin, createRenderOrderPlugin, createSceneHydratorPlugin,
-  createSelectionStyleMenuPlugin,
   createSelectPlugin,
-  createShape1dPlugin, createShape2dPlugin, createTextPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import {
   CameraService,
-  CanvasRegistryService, ToolService, ElementService, SessionService,
-  ContextMenuService, CrdtService, EditorService, HistoryService,
-  LoggingService, RenderOrderService, SceneService, SelectionService,
-  WidgetManagerService,
+  CanvasRegistryService,
+  ContextMenuService, CrdtService, EditorService,
+  ElementService,
   GroupService,
+  HistoryService,
+  LoggingService, RenderOrderService, SceneService, SelectionService,
+  SessionService,
+  ToolService,
+  WidgetManagerService,
 } from "./services";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
 
@@ -100,7 +101,6 @@ function createServices(config: {
     crdt,
     history,
     scene,
-    canvasRegistry,
   });
   const group = new GroupService(
     camera,

@@ -211,7 +211,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/transform/tx.dispatch-selection-transform-hooks.ts` |  | Selection-transform hook fanout; aggregate cancel/crdt, track handled no |
 | ❓ | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
 | ❓ | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node |
-| 🤖 | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins |
+| ✅ | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins |
 | ❓ | `services/camera/CameraService.ts` |  | Canvas camera pan/zoom viewport state driving scene layers |
 | ❓ | `services/canvas-registry/CanvasRegistryService.ts` |  | Canvas semantic registry: nodes↔elements/groups, lifecycle hooks, select |
 | 🫠 | `services/canvas-registry/fn-merge-selection-style-menu-configs.ts` | weak merge semantics; convention drift | Combining layered selection-style menu configs across canvas registry |
@@ -224,7 +224,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `services/editor/fx.get-canvas-point.ts` |  | Editor tool pointer events → canvas point + pressure |
 | ✅ | `services/history/HistoryService.ts` |  | Undo/redo stack service for runtime actions |
 | ✅ | `services/logging/LoggingService.ts` |  | Canvas debug logs gated by per-target localStorage |
-| ❓ | `services/render-order/RenderOrderService.ts` |  | Bundle-aware sibling z-order |
+| 🤖 | `services/render-order/RenderOrderService.ts` |  | Bundle-aware sibling z-order |
 | ✅ | `services/scene/SceneService.ts` |  | Konva stage lifecycle, layers, container resize hook |
 | ✅ | `services/scene/SessionService.ts` |  | temporary data, Edit state. |
 | ❓ | `services/selection/SelectionService.ts` |  | canvas selection state, focus, mode, change notifications |
