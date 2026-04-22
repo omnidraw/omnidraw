@@ -1,14 +1,16 @@
-import type { IService } from "@vibecanvas/runtime";
+import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import { fnCreateOrderedZIndex } from "../../core/fn.create-ordered-z-index";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
-import type { TRenderOrderSnapshot } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, TRenderOrderSnapshot } from "../../types";
 import type { CrdtService } from "../crdt/CrdtService";
 import type { HistoryService } from "../history/HistoryService";
 import type { SceneService } from "../scene/SceneService";
+import { IServiceContext } from "@vibecanvas/runtime/interface.js";
+import { ContextMenuService } from "../context-menu/ContextMenuService";
 
 export type TOrderedNode = Konva.Group | Konva.Shape;
 export type TParentContainer = Konva.Layer | Konva.Group;
@@ -19,6 +21,7 @@ export type TRenderOrderServiceArgs = {
   crdt: CrdtService;
   history: HistoryService;
   scene: SceneService;
+  contextMenu: ContextMenuService;
   syncDomOrder?: () => void;
 };
 
@@ -38,6 +41,10 @@ function sortNodesForBundle(nodes: TOrderedNode[], parent: TParentContainer) {
   const children = getImmediateOrderedChildren(parent);
   const order = new Map(children.map((node, index) => [node.id(), index]));
   return [...nodes].sort((left, right) => (order.get(left.id()) ?? 0) - (order.get(right.id()) ?? 0));
+}
+
+function hasSameParent(selection: Parameters<RenderOrderService["bringSelectionToFront"]>[0]) {
+  return selection.length <= 1 || selection.every((node) => node.getParent() === selection[0]?.getParent());
 }
 
 function insertNodes(
@@ -78,13 +85,14 @@ function insertNodes(
   return [...stationary, ...moving];
 }
 
-export class RenderOrderService implements IService<Record<string, never>> {
+export class RenderOrderService implements IService<Record<string, never>>, IStartableService {
   readonly name = "renderOrder";
   readonly hooks = {};
 
   readonly crdt: CrdtService;
   readonly history: HistoryService;
   readonly scene: SceneService;
+  readonly contextMenu: ContextMenuService;
   readonly syncDomOrder?: () => void;
   #bundleResolvers = new Map<string, TRenderOrderBundleResolver>();
 
@@ -92,7 +100,62 @@ export class RenderOrderService implements IService<Record<string, never>> {
     this.crdt = args.crdt;
     this.history = args.history;
     this.scene = args.scene;
+    this.contextMenu = args.contextMenu;
     this.syncDomOrder = args.syncDomOrder;
+  }
+
+  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
+
+    this.contextMenu.registerProvider("render-order", ({ scope, activeSelection }) => {
+      if (scope === "canvas") {
+        return [];
+      }
+
+      const disabled = activeSelection.length === 0 || !hasSameParent(activeSelection);
+      return [
+        {
+          id: "render-order-bring-to-front",
+          label: "Bring to front",
+          disabled,
+          priority: 100,
+          onSelect: () => {
+            this.bringSelectionToFront(activeSelection);
+          },
+        },
+        {
+          id: "render-order-move-forward",
+          label: "Move forward",
+          disabled,
+          priority: 110,
+          onSelect: () => {
+            this.moveSelectionUp(activeSelection);
+          },
+        },
+        {
+          id: "render-order-move-backward",
+          label: "Move backward",
+          disabled,
+          priority: 120,
+          onSelect: () => {
+            this.moveSelectionDown(activeSelection);
+          },
+        },
+        {
+          id: "render-order-send-to-back",
+          label: "Send to back",
+          disabled,
+          priority: 130,
+          onSelect: () => {
+            this.sendSelectionToBack(activeSelection);
+          },
+        },
+      ];
+    });
+
+    ctx.hooks.destroy.tap(() => {
+      this.contextMenu.unregisterProvider("render-order");
+      this.clearBundleResolvers();
+    });
   }
 
   registerBundleResolver(id: string, resolver: TRenderOrderBundleResolver) {

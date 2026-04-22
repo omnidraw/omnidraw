@@ -101,6 +101,7 @@ function createServices(config: {
     crdt,
     history,
     scene,
+    contextMenu,
   });
   const group = new GroupService(
     camera,
