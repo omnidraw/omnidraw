@@ -5,16 +5,13 @@ import { resolveThemeColor, type ThemeService, type TThemeRememberedStyle } from
 import Konva from "konva";
 import Pencil from "lucide-static/icons/pencil.svg?raw";
 import { getStroke } from "perfect-freehand";
-import { EditorService, type TEditorToolCanvasPoint } from "src/services/editor/EditorService";
 import { PEN_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
 import { isKonvaPath } from "../../core/GUARDS";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
-import type { CanvasRegistryService, TCanvasTransformAnchor } from "../../services";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type {
+  TCanvasTransformAnchor, CrdtService, HistoryService,
+  RenderOrderService, SceneService, SelectionService, ElementService, TToolCanvasPoint, ToolService
+} from "../../services";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import { DEFAULT_OPACITY, DEFAULT_STROKE_WIDTH_TOKEN } from "./CONSTANTS";
 import { fnCreatePenDataFromStrokePoints } from "./fn.math";
@@ -70,13 +67,13 @@ function fxCreatePenElementFromDraft(args: {
   };
 }
 
-function fxToPenElement(canvasRegistry: CanvasRegistryService, now: () => number, node: Konva.Node) {
+function fxToPenElement(element: ElementService, now: () => number, node: Konva.Node) {
   if (!isKonvaPath(node)) {
     return null;
   }
 
   return fxPenPathToElement({
-    editor: { toGroup: (candidate) => canvasRegistry.toGroup(candidate) },
+    editor: { toGroup: (candidate) => element.toGroup(candidate) },
     now,
   }, {
     node,
@@ -97,7 +94,7 @@ function fxCreatePenRuntimeNode(theme: ThemeService, element: TElement) {
 function fxStartPenDraftNode(args: {
   theme: ThemeService;
   now: () => number;
-  point: TEditorToolCanvasPoint;
+  point: TToolCanvasPoint;
   rememberedStyle?: Pick<TThemeRememberedStyle, "strokeColor" | "strokeWidth" | "opacity">;
 }) {
   const node = fxCreatePenRuntimeNode(args.theme, fxCreatePenElementFromDraft({
@@ -121,12 +118,12 @@ function txUpdatePenDraftNode(args: {
   render: SceneService;
   theme: ThemeService;
   previewNode: Konva.Path;
-  point: TEditorToolCanvasPoint;
+  point: TToolCanvasPoint;
   now: number;
   rememberedStyle?: Pick<TThemeRememberedStyle, "strokeColor" | "strokeWidth" | "opacity">;
 }) {
   const points = [
-    ...((args.previewNode.getAttr(DRAFT_POINTS_ATTR) as TEditorToolCanvasPoint[] | undefined) ?? []),
+    ...((args.previewNode.getAttr(DRAFT_POINTS_ATTR) as TToolCanvasPoint[] | undefined) ?? []),
     args.point,
   ];
   args.previewNode.setAttr(DRAFT_POINTS_ATTR, points);
@@ -154,7 +151,7 @@ function txUpdatePenDraft(args: {
   render: SceneService;
   theme: ThemeService;
   previewNode: Konva.Node;
-  point: TEditorToolCanvasPoint;
+  point: TToolCanvasPoint;
   now: number;
   rememberedStyle?: Pick<TThemeRememberedStyle, "strokeColor" | "strokeWidth" | "opacity">;
 }) {
@@ -285,7 +282,8 @@ function txCommitPenTransform(args: {
  */
 export function createPenPlugin(): IPlugin<{
   crdt: CrdtService;
-  editor: EditorService;
+  element: ElementService;
+  tool: ToolService;
   history: HistoryService;
   renderOrder: RenderOrderService;
   scene: SceneService;
@@ -297,7 +295,8 @@ export function createPenPlugin(): IPlugin<{
     name: "pen",
     apply(ctx) {
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
+      const element = ctx.services.require("element");
+      const tool = ctx.services.require("tool");
       const history = ctx.services.require("history");
       const render = ctx.services.require("scene");
       const renderOrder = ctx.services.require("renderOrder");
@@ -305,7 +304,6 @@ export function createPenPlugin(): IPlugin<{
       const theme = ctx.services.require("theme");
       const now = () => Date.now();
       const createId = createCreateId(render);
-      const canvasRegistry = ctx.services.require("canvasRegistry");
 
       const moveSessions = new Map<string, {
         beforeElement: TElement;
@@ -617,7 +615,7 @@ export function createPenPlugin(): IPlugin<{
       });
 
       ctx.hooks.init.tap(() => {
-        editor.registerTool({
+        tool.registerTool({
           id: "pen",
           label: "Pen",
           icon: Pencil,
@@ -643,7 +641,7 @@ export function createPenPlugin(): IPlugin<{
       });
 
       ctx.hooks.destroy.tap(() => {
-        editor.unregisterTool("pen")
+        tool.unregisterTool("pen")
       });
 
     },
