@@ -1,6 +1,6 @@
 import Konva from "konva";
 import { describe, expect, test } from "vitest";
-import { fxToElement } from "../../../src/plugins/text/fx.to-element";
+import { fxToElement } from "../../../src/plugins/text/fx.to-text-element";
 
 describe("text scale persistence", () => {
   test("fxToElement preserves scale and keeps style font token canonical", () => {

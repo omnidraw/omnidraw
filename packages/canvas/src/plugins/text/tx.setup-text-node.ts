@@ -1,12 +1,9 @@
-import { txUpdateTextNodeFromElement } from "./tx.update-text-node-from-element";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type { ThemeService } from "@vibecanvas/service-theme";
 import type Konva from "konva";
+import type { CrdtService, HistoryService, SceneService, SelectionService } from "../../services";
+import type { IRuntimeHooks } from "../../types";
+import { txUpdateTextNodeFromElement } from "./tx.update-text-node-from-element";
 
 export type TPortalSetupTextNode = {
   Konva: typeof Konva;
@@ -20,7 +17,7 @@ export type TPortalSetupTextNode = {
   now: () => number;
   startDragClone: (args: {
     node: Konva.Node;
-    selection: Array<Konva.Group | Konva.Shape>;
+    selection: Array<Konva.Node>;
   }) => boolean;
   createThrottledPatch: (callback: (element: TElement) => void) => (element: TElement) => void;
 };

@@ -1,29 +1,28 @@
-import type { IPlugin } from "@vibecanvas/runtime";
 import { layoutWithLines, prepareWithSegments } from "@chenglou/pretext";
 import { throttle } from "@solid-primitives/scheduled";
-import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
-import Type from "lucide-static/icons/type.svg?raw";
+import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TTextData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
-import type { CameraService } from "../../services/camera/CameraService";
-import type { ContextMenuService } from "../../services/context-menu/ContextMenuService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { TCanvasTransformAnchor, SelectionService, CanvasRegistryService } from "../../services";
+import Type from "lucide-static/icons/type.svg?raw";
+import { isKonvaText } from "../../core/GUARDS";
+import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
+import type {
+  CameraService,
+  ContextMenuService,
+  CrdtService,
+  ElementService,
+  GroupService,
+  HistoryService,
+  RenderOrderService, SceneService,
+  SelectionService,
+  SessionService,
+  TCanvasTransformAnchor,
+  ToolService
+} from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { IRuntimeHooks } from "../../types";
-import { fnCreateTextElement } from "./fn.create-text-element";
-import { fxToElement } from "./fx.to-element";
-import { txCreateTextCloneDrag } from "./tx.create-text-clone-drag";
-import { txEnterEditMode } from "./tx.enter-edit-mode";
-import { txSetupTextNode } from "./tx.setup-text-node";
-import { txUpdateTextNodeFromElement } from "./tx.update-text-node-from-element";
-import { isKonvaText } from "../../core/GUARDS";
 import { txDeleteSelection } from "../select/tx.delete-selection";
-import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import {
   DEFAULT_TEXT_ALIGN,
   DEFAULT_TEXT_FONT_FAMILY,
@@ -31,6 +30,12 @@ import {
   DEFAULT_TEXT_LINE_HEIGHT,
   DEFAULT_TEXT_VERTICAL_ALIGN,
 } from "./CONSTANTS";
+import { fnCreateTextElement } from "./fn.create-text-element";
+import { fxToTextElement } from "./fx.to-text-element";
+import { txCreateTextCloneDrag } from "./tx.create-text-clone-drag";
+import { txEnterEditMode } from "./tx.enter-edit-mode";
+import { txSetupTextNode } from "./tx.setup-text-node";
+import { txUpdateTextNodeFromElement } from "./tx.update-text-node-from-element";
 
 const FREE_TEXT_NAME = "free-text";
 const TEXT_USES_THEME_COLOR_ATTR = "vcUsesThemeTextColor";
@@ -91,20 +96,6 @@ function createTextNode(theme: ThemeService, element: TElement) {
   node.setAttr("vcTextAutoResize", data.autoResize);
   node.name(FREE_TEXT_NAME);
   return node;
-}
-
-function fxSerializeTextNode(canvasRegistry: CanvasRegistryService, args: {
-  node: Konva.Text;
-  createdAt: number;
-  updatedAt: number;
-}) {
-  return fxToElement({
-    editor: { toGroup: (node) => canvasRegistry.toGroup(node) },
-  }, {
-    node: args.node,
-    createdAt: args.createdAt,
-    updatedAt: args.updatedAt,
-  });
 }
 
 function fxApplyRememberedTextToolStyle(args: {
@@ -168,30 +159,34 @@ function txApplyTextTransform(args: {
  */
 export function createTextPlugin(): IPlugin<{
   camera: CameraService;
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
+  group: GroupService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
-  editor: EditorService;
   history: HistoryService;
   scene: SceneService;
   renderOrder: RenderOrderService;
   selection: SelectionService;
   theme: ThemeService;
+  session: SessionService;
+  tool: ToolService;
 }, IRuntimeHooks> {
   return {
     name: "text",
     apply(ctx) {
       const camera = ctx.services.require("camera");
-      const canvasRegistry = ctx.services.require("canvasRegistry");
+      const element = ctx.services.require("element");
+      const group = ctx.services.require("group");
+      const session = ctx.services.require("session");
       const contextMenu = ctx.services.require("contextMenu");
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
       const history = ctx.services.require("history");
       const scene = ctx.services.require("scene");
       const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
       const theme = ctx.services.require("theme");
       const document = scene.container.ownerDocument;
+      const tool = ctx.services.require("tool");
       const createId = () => crypto.randomUUID();
       const now = () => Date.now();
 
@@ -203,8 +198,8 @@ export function createTextPlugin(): IPlugin<{
             return;
           }
 
-          const element = canvasRegistry.toElement(candidate);
-          if (!element || element.data.type !== "text") {
+          const el = element.toElement(candidate);
+          if (!el || el.data.type !== "text") {
             return;
           }
 
@@ -213,7 +208,7 @@ export function createTextPlugin(): IPlugin<{
             scene,
             theme,
           }, {
-            element,
+            element: el,
             freeTextName: FREE_TEXT_NAME,
           });
         });
@@ -228,10 +223,10 @@ export function createTextPlugin(): IPlugin<{
           hooks: ctx.hooks,
           render: scene,
           selection,
-          serializeNode: ({ node, createdAt, updatedAt }) => fxSerializeTextNode(canvasRegistry, { node, createdAt, updatedAt }),
+          serializeNode: ({ node, createdAt, updatedAt }) => fxToTextElement({Date}, { node }),
           theme,
           now,
-          startDragClone: (args) => canvasRegistry.createDragClone(args),
+          startDragClone: (args) => element.createDragClone(args),
           createThrottledPatch: (callback) => throttle(callback, 100),
         }, {
           freeTextName: FREE_TEXT_NAME,
@@ -240,12 +235,12 @@ export function createTextPlugin(): IPlugin<{
         return node;
       };
 
-      const applyElement = (element: TElement) => {
-        canvasRegistry.updateElement(element);
+      const applyElement = (el: TElement) => {
+        element.updateElement(el);
         scene.staticForegroundLayer.batchDraw();
       };
 
-      const unregisterTextElement = canvasRegistry.registerElement({
+      const unregisterTextElement = element.registerElement({
         id: "text",
         matchesElement: (element) => element.data.type === "text" && element.data.containerId === null,
         matchesNode: (node) => isKonvaText(node) && node.name() === FREE_TEXT_NAME,
@@ -254,12 +249,7 @@ export function createTextPlugin(): IPlugin<{
             return null;
           }
 
-          const timestamp = now();
-          return fxSerializeTextNode(canvasRegistry, {
-            node,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          });
+          return fxToTextElement({ Date }, { node, });
         },
         createNode: (element) => {
           if (element.data.type !== "text" || element.data.containerId !== null) {
@@ -273,8 +263,8 @@ export function createTextPlugin(): IPlugin<{
             return false;
           }
 
-          const element = canvasRegistry.toElement(node);
-          if (!element || element.data.type !== "text" || element.data.containerId !== null) {
+          const el = element.toElement(node);
+          if (!el || el.data.type !== "text" || el.data.containerId !== null) {
             return false;
           }
 
@@ -285,11 +275,7 @@ export function createTextPlugin(): IPlugin<{
             selection,
             createId,
             now,
-            serializeNode: ({ node: candidateNode, createdAt, updatedAt }) => fxSerializeTextNode(canvasRegistry, {
-              node: candidateNode,
-              createdAt,
-              updatedAt,
-            }),
+            serializeNode: ({ node: candidateNode, createdAt, updatedAt }) => fxToTextElement({ Date }, { node: candidateNode, }),
             setupNode,
           }, {
             freeTextName: FREE_TEXT_NAME,
@@ -371,12 +357,7 @@ export function createTextPlugin(): IPlugin<{
                   return null;
                 }
 
-                const timestamp = now();
-                return fxSerializeTextNode(canvasRegistry, {
-                  node: candidateNode,
-                  createdAt: beforeElement?.createdAt ?? timestamp,
-                  updatedAt: timestamp,
-                });
+                return fxToTextElement({ Date }, { node: candidateNode, });
               },
             }, {
               node,
@@ -401,12 +382,7 @@ export function createTextPlugin(): IPlugin<{
                   return null;
                 }
 
-                const timestamp = now();
-                return fxSerializeTextNode(canvasRegistry, {
-                  node: candidateNode,
-                  createdAt: beforeElement?.createdAt ?? timestamp,
-                  updatedAt: timestamp,
-                });
+                return fxToTextElement({Date}, { node: candidateNode });
               },
             }, {
               node,
@@ -429,13 +405,13 @@ export function createTextPlugin(): IPlugin<{
           priority: 300,
           onSelect: () => {
             selection.setSelection(activeSelection);
-            txDeleteSelection({ canvasRegistry, crdt, history, render: scene, renderOrder, selection }, {});
+            txDeleteSelection({ element, group, crdt, history, scene, renderOrder, selection }, {});
           },
         }];
       });
 
       ctx.hooks.init.tap(() => {
-        editor.registerTool({
+        tool.registerTool({
           id: "text",
           label: "Text",
           icon: Type,
@@ -454,7 +430,7 @@ export function createTextPlugin(): IPlugin<{
           return;
         }
 
-        if (editor.activeToolId !== "text") {
+        if (tool.activeToolId !== "text") {
           return;
         }
 
@@ -464,7 +440,7 @@ export function createTextPlugin(): IPlugin<{
         }
 
         const timestamp = now();
-        const element = fxApplyRememberedTextToolStyle({
+        const el = fxApplyRememberedTextToolStyle({
           element: fnCreateTextElement({
             id: createId(),
             x: pointer.x,
@@ -482,7 +458,7 @@ export function createTextPlugin(): IPlugin<{
             ...theme.getRememberedStyle("text"),
           },
         });
-        const node = canvasRegistry.createNodeFromElement(element);
+        const node = element.createNodeFromElement(el);
         if (!isKonvaText(node)) {
           return;
         }
@@ -496,15 +472,15 @@ export function createTextPlugin(): IPlugin<{
         scene.staticForegroundLayer.batchDraw();
         selection.setSelection([node]);
         selection.setFocusedNode(node);
-        editor.setActiveTool("select");
+        tool.setActiveTool("select");
 
         txEnterEditMode({
           Konva,
           camera,
-          canvasRegistry,
+          element,
+          session,
           crdt,
           document,
-          editor,
           history,
           scene,
           selection,
@@ -529,10 +505,10 @@ export function createTextPlugin(): IPlugin<{
         txEnterEditMode({
           Konva,
           camera,
-          canvasRegistry,
+          element,
+          session,
           crdt,
           document,
-          editor,
           history,
           scene,
           selection,
@@ -549,7 +525,7 @@ export function createTextPlugin(): IPlugin<{
       ctx.hooks.destroy.tap(() => {
         contextMenu.unregisterProvider("text");
         unregisterTextElement();
-        editor.unregisterTool("text");
+        tool.unregisterTool("text");
       });
     },
   };

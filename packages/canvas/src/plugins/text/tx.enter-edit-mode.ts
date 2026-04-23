@@ -10,32 +10,26 @@ import {
   fnRemoveShape2dInlineText,
 } from "../../core/fn.shape2d";
 import { fxMeasureTextLayout } from "../../core/fx.pretext";
-import type { CameraService } from "../../services/camera/CameraService";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type {
+  CameraService, CrdtService, ElementService,
+  HistoryService, SceneService, SelectionService,
+  SessionService
+} from "../../services";
 import { SHAPE2D_INLINE_TEXT_HOST_ID_ATTR } from "../shape2d/CONSTANTS";
 import { fnGetShapeTextHostBounds } from "../shape2d/fn.text-host-bounds";
 import { DEFAULT_TEXT_LINE_HEIGHT } from "./CONSTANTS";
 import { fnComputeTextHeight } from "./fn.compute-text-height";
 import { fxComputeTextWidth } from "./fx.compute-text-width";
-import { fxToElement } from "./fx.to-element";
+import { fxToTextElement } from "./fx.to-text-element";
 import { txUpdateTextNodeFromElement } from "./tx.update-text-node-from-element";
 
 export type TPortalEnterEditMode = {
   Konva: typeof Konva;
   camera: Pick<CameraService, "hooks">;
-  canvasRegistry?: Pick<CanvasRegistryService, "toElement" | "toGroup" | "updateElement">;
+  element: ElementService;
+  session: SessionService;
   crdt: CrdtService;
   document: Document;
-  editor: Pick<EditorService, "setEditingTextId"> & {
-    toElement?: (node: Konva.Node) => TElement | null;
-    toGroup?: (node: Konva.Node) => unknown;
-    updateShapeFromTElement?: (element: TElement) => boolean;
-  };
   history: HistoryService;
   scene: SceneService;
   selection: SelectionService;
@@ -91,28 +85,12 @@ function suppressNextSelectionHandling(portal: TPortalEnterEditMode, args: { rea
   portal.selection.suppressSelectionHandling(120);
 }
 
-function fxSerializeTextNode(portal: TPortalEnterEditMode, args: {
-  node: Konva.Text;
-  createdAt: number;
-  updatedAt: number;
-}) {
-  const toGroup = (node: Konva.Node) => {
-    if (portal.canvasRegistry) {
-      return portal.canvasRegistry.toGroup(node);
-    }
-
-    return portal.editor.toGroup?.(node) ?? null;
-  };
-
-  return fxToElement({ editor: { toGroup } }, args);
-}
-
 function fxGetNodeElement(portal: TPortalEnterEditMode, args: { node: Konva.Node }) {
-  return portal.canvasRegistry?.toElement(args.node) ?? portal.editor.toElement?.(args.node) ?? null;
+  return portal.element?.toElement(args.node) ?? portal.element.toElement?.(args.node) ?? null;
 }
 
 function applyRuntimeElement(portal: TPortalEnterEditMode, args: { element: TElement }) {
-  return portal.canvasRegistry?.updateElement(args.element) ?? portal.editor.updateShapeFromTElement?.(args.element) ?? false;
+  return portal.element?.updateElement(args.element) ?? false;
 }
 
 function fxSyncTextareaColor(portal: TPortalEnterEditMode, args: {
@@ -128,7 +106,7 @@ function fxSyncTextareaColor(portal: TPortalEnterEditMode, args: {
 export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEditMode) {
   let activeNode = args.node;
   const now = Date.now();
-  const originalElement = fxSerializeTextNode(portal, { node: activeNode, createdAt: now, updatedAt: now });
+  const originalElement = fxToTextElement({Date}, { node: activeNode });
   const originalText = activeNode.text();
   const originalData = originalElement.data as TTextData;
   const resolvedShapeTextHostNode = args.shapeTextHostNode
@@ -148,7 +126,7 @@ export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEd
     ? fnGetShape2dTextData(originalHostElement)
     : null;
 
-  portal.editor.setEditingTextId(activeNode.id());
+  portal.session.editingId = activeNode.id();
   activeNode.visible(false);
   portal.scene.stage.batchDraw();
 
@@ -315,7 +293,7 @@ export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEd
     if (textarea.parentNode) {
       textarea.remove();
     }
-    portal.editor.setEditingTextId(null);
+    portal.session.editingId = null;
   };
 
   const commitShapeInlineText = (args: {
@@ -445,12 +423,7 @@ export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEd
     activeNode.visible(true);
     portal.scene.staticForegroundLayer.batchDraw();
 
-    const nextNow = Date.now();
-    const nextElement = fxSerializeTextNode(portal, {
-      node: activeNode,
-      createdAt: originalElement.createdAt,
-      updatedAt: nextNow,
-    });
+    const nextElement = fxToTextElement({Date}, { node: activeNode, });
     const commitResult = (() => {
       const builder = portal.crdt.build();
       builder.patchElement(nextElement.id, nextElement);

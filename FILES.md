@@ -197,11 +197,11 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/text/fn.compute-text-height.ts` |  | Auto-resizing multiline text node bounding-box height |
 | ✅ | `plugins/text/fn.create-text-element.ts` |  | Creating default persisted text elements from coordinates and timestamps |
 | ❓ | `plugins/text/fx.compute-text-width.ts` |  | Konva multiline text autosize width measurement |
-| ❓ | `plugins/text/fx.to-element.ts` |  | Konva shape node → persisted canvas element snapshot |
-| 🤖 | `plugins/text/Text.plugin.ts` |  | Free-text plugin: element/group + tool/session based create, edit, transform, theme sync |
+| ✅ | `plugins/text/fx.to-text-element.ts` |  | Konva shape node → persisted canvas element snapshot |
+| 🫠 | `plugins/text/Text.plugin.ts` | reduce in size, slim apply method, no local fns  | Free-text plugin: element/group + tool/session based create, edit, transform, theme sync |
 | ❓ | `plugins/text/tx.create-text-clone-drag.ts` |  | Text drag-duplicate preview committed on drag end |
-| 🤖 | `plugins/text/tx.enter-edit-mode.ts` |  | Inline textarea editing for canvas text/shape labels |
-| ❓ | `plugins/text/tx.setup-text-node.ts` |  | Text node pointer hooks, drag sync, alt-clone history |
+| ✅ | `plugins/text/tx.enter-edit-mode.ts` |  | Inline textarea editing for canvas text/shape labels |
+| ✅ | `plugins/text/tx.setup-text-node.ts` |  | Text node pointer hooks, drag sync, alt-clone history |
 | 🤖 | `plugins/text/tx.update-text-node-from-element.ts` |  | Existing Konva text node visual sync from text element model |
 | ❓ | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, cursor, temporary hand |
 | ❓ | `plugins/transform/fx.proxy-bounds.ts` |  | Transform overlay needs layer-relative rotated shape bounds |

@@ -20,3 +20,8 @@ export const TEXT_FONT_PRESET_BY_TOKEN = {
   "@text/l": "L",
   "@text/xl": "XL",
 } as const;
+
+export const VC_USES_THEME_TEXT_COLOR_ATTR = "vcUsesThemeTextColor";
+export const VC_ORIGINAL_TEXT_ATTR = "vcOriginalText";
+export const VC_CONTAINER_ID_ATTR = "vcContainerId";
+export const VC_TEXT_AUTO_RESIZE_ATTR = "vcTextAutoResize";

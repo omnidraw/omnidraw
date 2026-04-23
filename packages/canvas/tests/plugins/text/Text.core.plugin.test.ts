@@ -1,7 +1,7 @@
 import Konva from "konva";
 import type { TElement, TTextData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { describe, expect, test } from "vitest";
-import { fxToElement } from "../../../src/plugins/text/fx.to-element";
+import { fxToElement } from "../../../src/plugins/text/fx.to-text-element";
 import { txUpdateTextNodeFromElement } from "../../../src/plugins/text/tx.update-text-node-from-element";
 import { THEME_ID_DARK } from "@vibecanvas/service-theme";
 import { createNewCanvasHarness, createMockDocHandle, flushCanvasEffects } from "../../new-test-setup";
