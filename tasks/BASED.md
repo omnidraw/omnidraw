@@ -195,6 +195,34 @@ Never put detailed plan in this file
 - [ ]: [S42] - service refactor
 - [ ]: [S43](s/S43.md) - canvas: normalize clone-drag through CloneService
 
+### S42 canvas test repair lanes
+
+Current baseline, 2026-04-23: `bunx vitest run tests` in `packages/canvas` reports 40 files, 148 tests, 8 failing files, 11 failing tests.
+
+Lane 1: services + transform contracts
+- [ ] Own `packages/canvas/tests/services/**` and `packages/canvas/tests/plugins/transform/**`.
+- [ ] Update tests from removed `CanvasRegistryService` / old editor shape to `ElementService`, `GroupService`, `RenderOrderService`, `SceneService`, `SessionService`, and `ToolService`.
+- [ ] Fix or remove stale expectations around group z-index patching and transform helper portals.
+- [ ] Focused run: `bunx vitest run tests/services tests/plugins/transform`.
+
+Lane 2: text plugin edit/session behavior
+- [ ] Own `packages/canvas/tests/plugins/text/**`.
+- [ ] Replace old `editor.editingTextId` assertions with the current session/edit-mode state.
+- [ ] Update text serialization tests to inject required portals such as `Date`, and keep viewport overlay tests only if they match current runtime semantics.
+- [ ] Focused run: `bunx vitest run tests/plugins/text`.
+
+Lane 3: element creation, media, and clone-drag helpers
+- [ ] Own `packages/canvas/tests/plugins/image/**`, `packages/canvas/tests/plugins/shape2d/**`, `packages/canvas/tests/plugins/shape1d/**`, and `packages/canvas/tests/plugins/pen/**`.
+- [ ] Update image insert and shape clone tests for `ElementService` writes, current CRDT builder calls, and the refactored clone lifecycle.
+- [ ] Remove old clone assertions that only test deleted service wiring; add focused tests only for missing real behavior.
+- [ ] Focused run: `bunx vitest run tests/plugins/image tests/plugins/shape2d tests/plugins/shape1d tests/plugins/pen`.
+
+Lane 4: passing-but-stale coverage audit + final integration
+- [ ] Own `packages/canvas/tests/plugins/camera/**`, `packages/canvas/tests/plugins/group/**`, `packages/canvas/tests/plugins/scene-hydrator/**`, `packages/canvas/tests/plugins/selection-style-menu/**`, and canvas test docs.
+- [ ] Audit currently passing tests for stale service assumptions hidden behind broad mocks.
+- [ ] Delete obsolete tests that only cover removed runtime paths; add small tests for meaningful gaps introduced by S42.
+- [ ] Final run after lane merges: `bunx vitest run tests`, then update `tasks/s/S42.md` and `packages/canvas/TESTS.md` with the result.
+
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research
 - [ ]: [E5](e/E5.md) - how to implement state machine system?

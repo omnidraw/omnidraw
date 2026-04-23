@@ -37,7 +37,7 @@ Path rule
 |---|---|---|---|
 | 🤖 | `package.json` |  | Use this when adding or updating root workspace scripts like the functio |
 | 🤖 | `scripts/sort-filename.ts` |  | Sort FILES.md rows by filepath. |
-| ❓ | `tasks/BASED.md` |  | Based task overview and active work index. |
+| ❓ | `tasks/BASED.md` |  | Based task overview, active work index, and short lane plans. |
 | ❓ | `tasks/s/S43.md` |  | CloneService clone-drag normalization task plan. |
 | 🤖 | `packages/canvas/TESTS.md` |  | Canvas test migration log and focused test run notes. |
 

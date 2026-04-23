@@ -8,18 +8,18 @@ import {
   createHistoryControlPlugin,
   createImagePlugin,
   createPenPlugin,
-  createRecorderPlugin, createRenderOrderPlugin, createSceneHydratorPlugin,
-  createSelectPlugin, createSelectionStyleMenuPlugin,
+  createRecorderPlugin,
+  createSceneHydratorPlugin,
+  createSelectionStyleMenuPlugin,
+  createSelectPlugin,
   createShape1dPlugin,
   createShape2dPlugin,
   createTextPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import { CameraService } from "./services/camera/CameraService";
-import { CanvasRegistryService } from "./services/canvas-registry/CanvasRegistryService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
-import { EditorService } from "./services/editor/EditorService";
 import { ElementService } from "./services/element/ElementService";
 import { GroupService } from "./services/group/GroupService";
 import { HistoryService } from "./services/history/HistoryService";
@@ -38,14 +38,12 @@ declare module "@vibecanvas/runtime" {
     camera: CameraService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;
-    editor: EditorService;
     history: HistoryService;
     logging: LoggingService;
     scene: SceneService;
     renderOrder: RenderOrderService;
     selection: SelectionService;
     theme: ThemeService;
-    canvasRegistry: CanvasRegistryService;
     tool: ToolService;
     element: ElementService;
     session: SessionService;
@@ -86,22 +84,20 @@ function createServices(config: {
   const sessionService = new SessionService();
   const scene = new SceneService({ container: config.container, });
   const camera = new CameraService({ scene });
-  const canvasRegistry = new CanvasRegistryService();
   const contextMenu = new ContextMenuService();
   const history = new HistoryService();
   const selection = new SelectionService();
   const crdt = new CrdtService({ docHandle: config.docHandle });
   const tool = new ToolService(scene, element, crdt, selection);
   const logging = new LoggingService();
-  const editor = new EditorService(scene, canvasRegistry, crdt, selection);
   const widgetManager = new WidgetManagerService({
     crdtService: crdt,
     contextMenuService: contextMenu,
     loggingService: logging,
-    editorService: editor,
     themeService: config.themeService,
-    canvasRegistryService: canvasRegistry,
     selectionService: selection,
+    elementService: element,
+    toolService: tool,
   });
 
   const renderOrder = new RenderOrderService({
@@ -127,14 +123,12 @@ function createServices(config: {
   services.provide("camera", 20, camera);
   services.provide("element", 30, element);
   services.provide("group", 230, group);
-  // services.provide("canvasRegistry", 30, canvasRegistry);
   services.provide("contextMenu", 40, contextMenu);
   services.provide("history", 50, history);
   services.provide("selection", 60, selection);
   services.provide("crdt", 70, crdt);
   services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);
-  // services.provide("editor", 90, editor);
   services.provide("renderOrder", 100, renderOrder);
   services.provide("theme", 110, config.themeService);
   // services.provide("widgetManager", 120, widgetManager);
@@ -161,7 +155,6 @@ export function buildRuntime(config: IRuntimeConfig) {
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
-    // createHostedComponentPlugin(),
   ];
 
   if (config.env.DEV) {
