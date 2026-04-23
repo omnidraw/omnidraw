@@ -3,15 +3,11 @@ import type Konva from "konva";
 import type { SceneService } from "../services/scene/SceneService";
 import type { SelectionService } from "../services/selection/SelectionService";
 import { isKonvaGroup, isKonvaShape } from "./GUARDS";
-import type { TCanvasSemanticsEditor } from "./fn.canvas-node-semantics";
 import { fnFilterSelection } from "./fn.filter-selection";
-
-export type TSelectionStyleElementEditor = TCanvasSemanticsEditor & {
-  toElement(node: Konva.Node): TElement | null;
-};
+import type { ElementService } from "src/services";
 
 export type TPortalResolveSelectionStyleElements = {
-  editor: TSelectionStyleElementEditor;
+  element: ElementService
   scene: SceneService;
   selection: SelectionService;
 };
@@ -19,7 +15,7 @@ export type TPortalResolveSelectionStyleElements = {
 
 export type TPortalResolveFocusedSelectionStyleElements = {
   Konva: typeof Konva;
-  editor: TSelectionStyleElementEditor;
+  element: ElementService
   scene: SceneService;
 };
 
@@ -28,7 +24,7 @@ export type TArgsResolveFocusedSelectionStyleElements = {
 };
 
 function collectSelectionStyleElements(args: {
-  editor: TSelectionStyleElementEditor;
+  element: ElementService;
   rootNodes: Konva.Node[];
 }) {
   const shapeNodes: Konva.Shape[] = [];
@@ -57,7 +53,7 @@ function collectSelectionStyleElements(args: {
 
   const seenElementIds = new Set<string>();
   return shapeNodes
-    .map((node) => args.editor.toElement(node))
+    .map((node) => args.element.toElement(node))
     .filter((element): element is TElement => Boolean(element))
     .filter((element) => {
       if (seenElementIds.has(element.id)) {
@@ -74,7 +70,6 @@ export function fxResolveSelectionStyleElements(
 ) {
 
   const filteredSelection = fnFilterSelection({
-    editor: portal.editor,
     selection: portal.selection.selection,
   });
   const rootNodes = filteredSelection.filter((node, index) => {
@@ -88,7 +83,7 @@ export function fxResolveSelectionStyleElements(
   });
 
   return collectSelectionStyleElements({
-    editor: portal.editor,
+    element: portal.element,
     rootNodes: rootNodes
   });
 }
@@ -111,7 +106,7 @@ export function fxResolveFocusedSelectionStyleElements(
   }
 
   return collectSelectionStyleElements({
-    editor: portal.editor,
+    element: portal.element,
     rootNodes: [focusedNode],
   });
 }

@@ -30,7 +30,7 @@ function getShape1dNode(harness: Awaited<ReturnType<typeof createNewCanvasHarnes
     return candidate.id() === id;
   });
 
-  if (!fxIsShape1dNode({ Shape: Konva.Shape }, { node })) {
+  if (!fxIsShape1dNode( { node })) {
     throw new Error(`Expected shape1d node '${id}'`);
   }
 
@@ -133,7 +133,7 @@ describe("shape1d plugin", () => {
       harness.runtime.hooks.pointerMove.call(createHookPointerEvent("pointermove", 0.5) as Konva.KonvaEventObject<MouseEvent>);
     });
 
-    expect(harness.dynamicLayer.find((node: Konva.Node) => fxIsShape1dNode({ Shape: Konva.Shape }, { node }))).toHaveLength(1);
+    expect(harness.dynamicLayer.find((node: Konva.Node) => fxIsShape1dNode( { node }))).toHaveLength(1);
 
     harness.runtime.hooks.pointerUp.call(createHookPointerEvent("pointerup", 0.5));
     await flushCanvasEffects();
@@ -142,8 +142,8 @@ describe("shape1d plugin", () => {
     expect(elements).toHaveLength(1);
     expect(elements[0]?.data.type).toBe("line");
     expect(elements[0]?.data.type === "line" && elements[0].data.points.length).toBe(2);
-    expect(harness.staticForegroundLayer.find((node: Konva.Node) => fxIsShape1dNode({ Shape: Konva.Shape }, { node }))).toHaveLength(1);
-    expect(harness.dynamicLayer.find((node: Konva.Node) => fxIsShape1dNode({ Shape: Konva.Shape }, { node }))).toHaveLength(0);
+    expect(harness.staticForegroundLayer.find((node: Konva.Node) => fxIsShape1dNode( { node }))).toHaveLength(1);
+    expect(harness.dynamicLayer.find((node: Konva.Node) => fxIsShape1dNode( { node }))).toHaveLength(0);
     expect(editor.activeToolId).toBe("select");
     expect(selection.mode).toBe("select");
 

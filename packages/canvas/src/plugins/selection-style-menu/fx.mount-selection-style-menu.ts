@@ -1,11 +1,10 @@
-import type { ThemeService } from "@vibecanvas/service-theme";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { ThemeService } from "@vibecanvas/service-theme";
 import type Konva from "konva";
 import type * as Solid from "solid-js";
 import type * as SolidWeb from "solid-js/web";
 import type { SelectionStyleMenu as TSelectionStyleMenuComponent } from "../../components/SelectionStyleMenu";
 import type { TCapStyle, TFontFamily, TLineType } from "../../components/SelectionStyleMenu/types";
-import { fxResolveSelectionStyleElements } from "../../core/fx.resolve-selection-style-elements";
 import { fnResolveSelectionStyleTextElements } from "../../core/fn.resolve-selection-style-text-elements";
 import {
   fnGetSelectionStyleMenuSections,
@@ -15,13 +14,7 @@ import {
   fnHasSelectionStylePropertySupport,
   type TSelectionStyleProperty,
 } from "../../core/fn.selection-style-menu";
-import type { CanvasRegistryService, TCanvasRegistrySelectionStyleConfig } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import { fxFindShape1dNodeById } from "../shape1d/fx.node";
+import { fxResolveSelectionStyleElements } from "../../core/fx.resolve-selection-style-elements";
 import type {
   TPortalApplySelectionStyleChange,
   TSelectionStyleChangePlan,
@@ -30,6 +23,16 @@ import type {
   txCommitSelectionStyleChange as TTxCommitSelectionStyleChange,
   txCreateSelectionStyleChangePlan as TTxCreateSelectionStyleChangePlan,
 } from "../../core/tx.apply-selection-style-change";
+import type {
+  CrdtService,
+  ElementService,
+  HistoryService,
+  SceneService, SelectionService,
+  SessionService,
+  TCanvasRegistrySelectionStyleConfig,
+  ToolService
+} from "../../services";
+import { fxFindShape1dNodeById } from "../shape1d/fx.node";
 
 const OPACITY_COMMIT_DEBOUNCE_MS = 120;
 
@@ -48,13 +51,14 @@ type TPortalMountSelectionStyleMenu = {
   txCreateSelectionStyleChangePlan: typeof TTxCreateSelectionStyleChangePlan;
   setTimeout: (handler: () => void, timeout?: number) => TSelectionStyleMenuTimer;
   clearTimeout: (timer: TSelectionStyleMenuTimer | null) => void;
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   crdt: CrdtService;
-  editor: Pick<EditorService, "editingShape1dId" | "editingTextId" | "getActiveTool" | "hooks">;
+  session: SessionService;
   history: HistoryService;
   scene: SceneService;
   selection: SelectionService;
   theme: ThemeService;
+  tool: ToolService;
 };
 
 type TArgsMountSelectionStyleMenu = Record<string, never>;
@@ -111,19 +115,17 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
   portal.scene.stage.container().appendChild(mountElement);
 
   const txRefreshEditingShape1d = () => {
-    if (portal.editor.editingShape1dId === null) {
+    if (portal.session.editingId === null) {
       return;
     }
 
-    const editingNode = fxFindShape1dNodeById({ Shape: portal.Konva.Shape, render: portal.scene }, { id: portal.editor.editingShape1dId });
+    const editingNode = fxFindShape1dNodeById({ Shape: portal.Konva.Shape, render: portal.scene }, { id: portal.session.editingId });
     editingNode?.getLayer()?.batchDraw();
   };
 
   const txPortal: TPortalApplySelectionStyleChange = {
-    Konva: portal.Konva,
     crdt: portal.crdt,
-    editor: portal.canvasRegistry,
-    canvasRegistry: portal.canvasRegistry,
+    element: portal.element,
     history: portal.history,
     scene: portal.scene,
     selection: portal.selection,
@@ -171,10 +173,9 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
   };
 
   portal.selection.hooks.change.tap(syncVersion);
-  portal.editor.hooks.activeToolChange.tap(syncVersion);
-  portal.editor.hooks.editingTextChange.tap(syncVersion);
-  portal.editor.hooks.editingShape1dChange.tap(syncVersion);
-  portal.canvasRegistry.hooks.elementsChange.tap(syncVersion);
+  portal.tool.hooks.activeToolChange.tap(syncVersion);
+  portal.session.hooks.editingChange.tap(syncVersion);
+  portal.element.hooks.elementsChange.tap(syncVersion);
   portal.crdt.hooks.change.tap(syncVersion);
   portal.theme.hooks.change.tap(syncVersion);
   portal.theme.hooks.rememberedStyleChange.tap(syncVersion);
@@ -183,11 +184,10 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
     const selectedElements = portal.createMemo(() => {
       version();
       return fxResolveSelectionStyleElements({
-        Konva: portal.Konva,
-        editor: portal.canvasRegistry,
+        element: portal.element,
         scene: portal.scene,
         selection: portal.selection,
-      }, {});
+      });
     });
 
     const selectedEntries = portal.createMemo(() => {
@@ -195,7 +195,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
 
       const entries: Array<{ element: TElement; config: TCanvasRegistrySelectionStyleConfig }> = [];
       selectedElements().forEach((element) => {
-        const config = portal.canvasRegistry.getSelectionStyleMenuConfigByElement({
+        const config = portal.element.getSelectionStyleMenuConfigByElement({
           element,
           theme: portal.theme,
         });
@@ -219,7 +219,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
       return fnResolveSelectionStyleTextElements({
         elements: elements(),
       }).filter((element) => {
-        return portal.canvasRegistry.getSelectionStyleMenuConfigByElement({
+        return portal.element.getSelectionStyleMenuConfigByElement({
           element,
           theme: portal.theme,
         }) !== null;
@@ -229,7 +229,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
     const activeToolId = portal.createMemo(() => {
       version();
 
-      const activeTool = portal.editor.getActiveTool();
+      const activeTool = portal.tool.getTool(portal.tool.activeToolId);
       if (!activeTool || activeTool.behavior.type !== "mode") {
         return null;
       }
@@ -247,7 +247,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
         return null;
       }
 
-      return portal.canvasRegistry.getSelectionStyleMenuConfigById({
+      return portal.element.getSelectionStyleMenuConfigById({
         id: toolId,
         theme: portal.theme,
       });
@@ -284,7 +284,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
       version();
 
       const textareaMounted = portal.scene.stage.container().querySelector("textarea") !== null;
-      const isEditingTextActive = portal.editor.editingTextId !== null && textareaMounted;
+      const isEditingTextActive = portal.session.editingId !== null && textareaMounted;
       if (isEditingTextActive) {
         return false;
       }

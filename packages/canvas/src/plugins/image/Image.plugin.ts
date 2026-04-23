@@ -241,7 +241,6 @@ function filterSelection(render: SceneService, canvasRegistry: Pick<CanvasRegist
   void render;
 
   return fnFilterSelection({
-    editor: canvasRegistry,
     selection: selection.filter((node): node is Konva.Group | Konva.Shape => {
       return node instanceof Konva.Group || node instanceof Konva.Shape;
     }),

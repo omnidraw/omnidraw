@@ -36,7 +36,6 @@ export function txSyncDraggability(
   });
 
   const activeNodes = fnFilterSelection({
-    editor: portal.canvasRegistry,
     selection: portal.selection.selection,
   });
 

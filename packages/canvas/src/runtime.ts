@@ -8,7 +8,7 @@ import {
   createHistoryControlPlugin,
   createPenPlugin,
   createRecorderPlugin, createRenderOrderPlugin, createSceneHydratorPlugin,
-  createSelectPlugin,
+  createSelectPlugin, createSelectionStyleMenuPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import {
@@ -141,10 +141,9 @@ export function buildRuntime(config: IRuntimeConfig) {
     createEventListenerPlugin(),
     createGridPlugin(),
     createToolbarPlugin(),
-    // createSelectionStyleMenuPlugin(),
+    createSelectionStyleMenuPlugin(),
     createContextMenuPlugin(),
     createHistoryControlPlugin(),
-    createRenderOrderPlugin(),
     createSelectPlugin(),
     createTransformPlugin(),
     // createShape1dPlugin(),

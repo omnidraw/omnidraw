@@ -314,7 +314,6 @@ export function txRefreshShape1dEditMode(portal: TPortalTxShape1dEditMode) {
 
   const node = portal.findNode(editingId);
   const filteredSelection = fnFilterSelection({
-    editor: portal.canvasRegistry,
     selection: portal.selection.selection,
   });
   if (!node || filteredSelection.length !== 1 || filteredSelection[0] !== node) {

@@ -1,38 +1,26 @@
-import type Konva from "konva";
-import { fxResolveSelectionStyleElements } from "./fx.resolve-selection-style-elements";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type {
+  CrdtService,
+  ElementService,
+  HistoryService,
+  SceneService,
+  SelectionService
+} from "../services";
 import { fnResolveSelectionStyleTextElements } from "./fn.resolve-selection-style-text-elements";
 import {
   fnGetSelectionStyleStrokeColorKey,
   fnHasSelectionStylePropertySupport,
   type TSelectionStyleProperty,
 } from "./fn.selection-style-menu";
+import { fxResolveSelectionStyleElements } from "./fx.resolve-selection-style-elements";
 import {
   fxCloneElementWithSelectionStyle,
   fxCreateSelectionStyleDataPatch,
 } from "./fx.selection-style-element-patch";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { CrdtService } from "../services/crdt/CrdtService";
-import type { HistoryService } from "../services/history/HistoryService";
-import type { SceneService } from "../services/scene/SceneService";
-import type { SelectionService } from "../services/selection/SelectionService";
-import type { TCanvasRegistrySelectionStyleConfig } from "../services/canvas-registry/CanvasRegistryService";
-
-export type TApplySelectionStyleChangeEditor = {
-  toElement(node: Konva.Node): TElement | null;
-  toGroup(node: Konva.Node): unknown;
-};
-
-export type TApplySelectionStyleChangeCanvasRegistry = {
-  updateElement(element: TElement): boolean;
-  getSelectionStyleMenuConfigByElement(args: {
-    element: TElement;
-  }): TCanvasRegistrySelectionStyleConfig | null;
-};
 
 export type TPortalApplySelectionStyleChange = {
   crdt: CrdtService;
-  editor: TApplySelectionStyleChangeEditor;
-  canvasRegistry: TApplySelectionStyleChangeCanvasRegistry;
+  element: ElementService;
   history: HistoryService;
   scene: SceneService;
   selection: SelectionService;
@@ -59,9 +47,9 @@ export type TArgsCommitSelectionStyleChange = {
   plan: TSelectionStyleChangePlan;
 };
 
-function fnApplyElements(canvasRegistry: TApplySelectionStyleChangeCanvasRegistry, elements: TElement[]) {
-  elements.forEach((element) => {
-    canvasRegistry.updateElement(element);
+function fnApplyElements(element: ElementService, elements: TElement[]) {
+  elements.forEach((el) => {
+    element.updateElement(el);
   });
 }
 
@@ -88,7 +76,7 @@ export function txCreateSelectionStyleChangePlan(
   args: TArgsCreateSelectionStyleChangePlan,
 ): TSelectionStyleChangePlan | null {
   const resolvedElements = fxResolveSelectionStyleElements({
-    editor: portal.editor,
+    element: portal.element,
     scene: portal.scene,
     selection: portal.selection,
   });
@@ -99,7 +87,7 @@ export function txCreateSelectionStyleChangePlan(
     : resolvedElements;
   const beforeElements = targetElements.map((element) => structuredClone(element));
   const afterElements = targetElements.flatMap((element) => {
-    const config = portal.canvasRegistry.getSelectionStyleMenuConfigByElement({ element });
+    const config = portal.element.getSelectionStyleMenuConfigByElement({ element });
     if (!fnHasSelectionStylePropertySupport({ config, property: args.property })) {
       return [];
     }
@@ -164,7 +152,7 @@ export function txApplySelectionStyleChangeRuntime(
   portal: TPortalApplySelectionStyleChange,
   args: TArgsApplySelectionStyleChangeRuntime,
 ) {
-  fnApplyElements(portal.canvasRegistry, args.plan.afterElements);
+  fnApplyElements(portal.element, args.plan.afterElements);
   portal.txRefreshEditingShape1d();
 }
 
@@ -186,12 +174,12 @@ export function txCommitSelectionStyleChange(
       const revert = args.plan.afterElements
         .map((element) => args.plan.beforeById.get(element.id))
         .filter((element): element is TElement => Boolean(element));
-      fnApplyElements(portal.canvasRegistry, revert);
+      fnApplyElements(portal.element, revert);
       portal.txRefreshEditingShape1d();
       commitResult.rollback();
     },
     redo: () => {
-      fnApplyElements(portal.canvasRegistry, args.plan.afterElements);
+      fnApplyElements(portal.element, args.plan.afterElements);
       portal.txRefreshEditingShape1d();
       portal.crdt.applyOps({ ops: commitResult.redoOps });
     },

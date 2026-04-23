@@ -132,7 +132,7 @@ export function createShape1dPlugin(): IPlugin<{
       };
       const findNode = (id: string): TShape1dNode | null => fxFindShape1dNodeById({ Shape: Konva.Shape, render }, { id }) ?? null;
       const getData = (node: TShape1dNode) => fxGetElementData({}, { node });
-      const isNode = (node: Konva.Node | null | undefined): node is TShape1dNode => fxIsShape1dNode({ Shape: Konva.Shape }, { node });
+      const isNode = (node: Konva.Node | null | undefined): node is TShape1dNode => fxIsShape1dNode( { node });
       const isTool = (tool: string): tool is "line" | "arrow" => fxIsSupportedTool({}, { tool });
       const isType = (type: string): boolean => fxIsSupportedElementType({}, { type });
       const toWorld = (node: TShape1dNode, point: TPoint | { x: number; y: number }) => fxLocalPointToWorld({}, { node, point });
@@ -363,7 +363,6 @@ export function createShape1dPlugin(): IPlugin<{
           && selection.mode === CanvasMode.SELECT
           && editor.editingShape1dId === null) {
           const filteredSelection = fnFilterSelection({
-            editor: canvasRegistry,
             selection: selection.selection,
           });
           const target = filteredSelection.length === 1 && isNode(filteredSelection[0])
@@ -391,7 +390,6 @@ export function createShape1dPlugin(): IPlugin<{
 
       ctx.hooks.elementPointerDoubleClick.tap((event) => {
         const filteredSelection = fnFilterSelection({
-          editor: canvasRegistry,
           selection: selection.selection,
         });
         if (!isNode(event.currentTarget) || filteredSelection.length !== 1 || filteredSelection[0] !== event.currentTarget) {

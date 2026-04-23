@@ -1,16 +1,17 @@
 import type { TElement, TElementStyle } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type Konva from "konva";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
-import type { SceneService } from "../../services/scene/SceneService";
-import { fnGetWorldPosition } from "../../core/fn.world-position";
+import type Konva from "konva";
 import { fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
+import { fnGetWorldPosition } from "../../core/fn.world-position";
+import { isKonvaShape } from "../../core/GUARDS";
+import type { SceneService } from "../../services/scene/SceneService";
 import {
-  DEFAULT_STROKE,
-  DEFAULT_STROKE_WIDTH,
-  STROKE_WIDTH_VALUE_BY_TOKEN,
-  type TShape1dData,
-  type TShape1dNode,
-  ELEMENT_CREATED_AT_ATTR,
+    DEFAULT_STROKE,
+    DEFAULT_STROKE_WIDTH,
+    ELEMENT_CREATED_AT_ATTR,
+    STROKE_WIDTH_VALUE_BY_TOKEN,
+    type TShape1dData,
+    type TShape1dNode,
 } from "./CONSTANTS";
 
 export type TPortalFxIsSupportedTool = {};
@@ -27,10 +28,9 @@ export function fxIsSupportedElementType(portal: TPortalFxIsSupportedElementType
   return args.type === "line" || args.type === "arrow";
 }
 
-export type TPortalFxIsShape1dNode = { Shape: typeof Konva.Shape };
 export type TArgsFxIsShape1dNode = { node: Konva.Node | null | undefined };
-export function fxIsShape1dNode(portal: TPortalFxIsShape1dNode, args: TArgsFxIsShape1dNode): args is TArgsFxIsShape1dNode & { node: TShape1dNode } {
-  if (!(args.node instanceof portal.Shape)) {
+export function fxIsShape1dNode( args: TArgsFxIsShape1dNode): args is TArgsFxIsShape1dNode & { node: TShape1dNode } {
+  if (!(isKonvaShape(args.node))) {
     return false;
   }
 
@@ -38,10 +38,9 @@ export function fxIsShape1dNode(portal: TPortalFxIsShape1dNode, args: TArgsFxIsS
   return Boolean(data && fxIsSupportedElementType({}, { type: data.type }));
 }
 
-export type TPortalFxHasRenderableRuntime = TPortalFxIsShape1dNode;
 export type TArgsFxHasRenderableRuntime = TArgsFxIsShape1dNode;
-export function fxHasRenderableRuntime(portal: TPortalFxHasRenderableRuntime, args: TArgsFxHasRenderableRuntime): args is TArgsFxHasRenderableRuntime & { node: TShape1dNode } {
-  return fxIsShape1dNode(portal, args)
+export function fxHasRenderableRuntime(args: TArgsFxHasRenderableRuntime): args is TArgsFxHasRenderableRuntime & { node: TShape1dNode } {
+  return fxIsShape1dNode(args)
     && typeof args.node.getSelfRect === "function"
     && typeof args.node.sceneFunc?.() === "function";
 }
@@ -50,10 +49,10 @@ export type TPortalFxFindShape1dNodeById = { Shape: typeof Konva.Shape; render: 
 export type TArgsFxFindShape1dNodeById = { id: string };
 export function fxFindShape1dNodeById(portal: TPortalFxFindShape1dNodeById, args: TArgsFxFindShape1dNodeById): TShape1dNode | null {
   const candidate = portal.render.staticForegroundLayer.findOne((node: Konva.Node) => {
-    return fxIsShape1dNode({ Shape: portal.Shape }, { node }) && node.id() === args.id;
+    return fxIsShape1dNode( { node }) && node.id() === args.id;
   });
 
-  return fxIsShape1dNode({ Shape: portal.Shape }, { node: candidate }) ? (candidate as TShape1dNode) : null;
+  return fxIsShape1dNode( { node: candidate }) ? (candidate as TShape1dNode) : null;
 }
 
 export type TPortalFxGetElementData = {};

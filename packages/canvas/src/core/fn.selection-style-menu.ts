@@ -1,7 +1,7 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TSelectionStyleMenuSections, TSelectionStyleMenuValues } from "../components/SelectionStyleMenu";
 import type { TCapStyle, TFontFamily, TLineType, TStrokeWidthOption } from "../components/SelectionStyleMenu/types";
-import type { TCanvasRegistrySelectionStyleConfig } from "../services/canvas-registry/CanvasRegistryService";
+import type { TElementSelectionStyleConfig } from "../services/element/types";
 import { DEFAULT_TEXT_FONT_SIZE_TOKEN } from "../plugins/text/CONSTANTS";
 import { fnGetShape2dTextData } from "./fn.shape2d";
 
@@ -79,7 +79,7 @@ function getMergedSections(configs: TCanvasRegistrySelectionStyleConfig[]) {
   }, getEmptySections());
 }
 
-function getMergedValues(configs: TCanvasRegistrySelectionStyleConfig[]) {
+function getMergedValues(configs: TElementSelectionStyleConfig[]) {
   return configs.reduce((values, config) => {
     if (!config.values) {
       return values;
@@ -94,7 +94,7 @@ function getMergedValues(configs: TCanvasRegistrySelectionStyleConfig[]) {
 
 
 export function fnHasSelectionStylePropertySupport(args: {
-  config: TCanvasRegistrySelectionStyleConfig | null | undefined;
+  config: TElementSelectionStyleConfig | null | undefined;
   property: TSelectionStyleProperty;
 }) {
   const sectionKey = getSectionKeyForProperty(args.property);
@@ -112,13 +112,13 @@ export function fnGetSelectionStyleStrokeColorKey(element: TElement): "strokeCol
 }
 
 export function fnGetSelectionStyleMenuSections(args: {
-  configs: TCanvasRegistrySelectionStyleConfig[];
+  configs: TElementSelectionStyleConfig[];
 }): TSelectionStyleMenuSections {
   return getMergedSections(args.configs);
 }
 
 export function fnGetSelectionStyleStrokeWidthOptions(args: {
-  configs: TCanvasRegistrySelectionStyleConfig[];
+  configs: TElementSelectionStyleConfig[];
 }): TStrokeWidthOption[] | undefined {
   const options = args.configs.flatMap((config) => config.strokeWidthOptions ?? []);
   if (options.length === 0) {
@@ -138,7 +138,7 @@ export function fnGetSelectionStyleStrokeWidthOptions(args: {
 export function fnGetSelectionStyleMenuValues(args: {
   elements: TElement[];
   textElements: TElement[];
-  configs: TCanvasRegistrySelectionStyleConfig[];
+  configs: TElementSelectionStyleConfig[];
 }): TSelectionStyleMenuValues {
   const sections = getMergedSections(args.configs);
   const defaults = getMergedValues(args.configs);

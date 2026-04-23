@@ -79,7 +79,7 @@ function isShape2dTextHostNode(node: Konva.Node | null | undefined): node is Kon
 }
 
 function getFocusedShape2dTextHost(canvasRegistry: CanvasRegistryService, selection: SelectionService) {
-  const filtered = fnFilterSelection({ editor: canvasRegistry, selection: selection.selection });
+  const filtered = fnFilterSelection({ selection: selection.selection });
   if (filtered.length !== 1) {
     return null;
   }
@@ -294,7 +294,6 @@ export function createShape2dPlugin(): IPlugin<{
           },
           filterSelection: (nodes) => {
             return fnFilterSelection({
-              editor: canvasRegistry,
               selection: nodes.filter((candidate): candidate is Konva.Group | Konva.Shape => {
                 return isKonvaGroup(candidate) || isKonvaShape(candidate);
               }),

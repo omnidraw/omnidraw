@@ -35,7 +35,7 @@ export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTran
     && fnIsCanvasGroupNode(args.selection[0]);
   const isMultiSelection = args.selection.length > 1;
   const hasTextOnly = args.selection.length > 0 && args.selection.every((node) => node instanceof portal.Konva.Text);
-  const hasShape1dOnly = args.selection.length > 0 && args.selection.every((node) => fxIsShape1dNode({ Shape: portal.Konva.Shape }, { node }));
+  const hasShape1dOnly = args.selection.length > 0 && args.selection.every((node) => fxIsShape1dNode( { node }));
 
   const defaultUseCornerAnchors = isSingleGroupSelection || hasTextOnly || hasShape1dOnly || isMultiSelection;
   let enabledAnchors: TCanvasTransformAnchor[] = defaultUseCornerAnchors ? [...GROUP_ANCHORS] : [...DEFAULT_ANCHORS];

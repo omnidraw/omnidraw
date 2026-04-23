@@ -1,38 +1,35 @@
 import type { IPlugin } from "@vibecanvas/runtime";
+import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import { createComponent, createMemo, createSignal } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
+import type { ElementService, SessionService, ToolService, CrdtService, HistoryService, SceneService, SelectionService } from "../../services";
 import { SelectionStyleMenu } from "../../components/SelectionStyleMenu";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import { txApplySelectionStyleChange, txApplySelectionStyleChangeRuntime, txCommitSelectionStyleChange, txCreateSelectionStyleChangePlan } from "../../core/tx.apply-selection-style-change";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeHooks } from "../../types";
 import { fxMountSelectionStyleMenu } from "./fx.mount-selection-style-menu";
 
 type TSelectionStyleMenuTimer = number | ReturnType<typeof globalThis.setTimeout>;
 
 export function createSelectionStyleMenuPlugin(): IPlugin<{
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   crdt: CrdtService;
-  editor: EditorService;
   history: HistoryService;
   scene: SceneService;
   selection: SelectionService;
   theme: ThemeService;
+  tool: ToolService;
+  session: SessionService;
 }, IRuntimeHooks> {
   let menuMount: ReturnType<typeof fxMountSelectionStyleMenu> | null = null;
 
   return {
     name: "selection-style-menu",
     apply(ctx) {
-      const canvasRegistry = ctx.services.require("canvasRegistry");
+      const element = ctx.services.require("element");
+      const tool = ctx.services.require("tool");
+      const session = ctx.services.require("session");
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
       const history = ctx.services.require("history");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
@@ -75,13 +72,14 @@ export function createSelectionStyleMenuPlugin(): IPlugin<{
           txCreateSelectionStyleChangePlan,
           setTimeout: setSelectionStyleMenuTimeout,
           clearTimeout: clearSelectionStyleMenuTimeout,
-          canvasRegistry,
+          element,
           crdt,
-          editor,
           history,
           scene,
           selection,
           theme,
+          session,
+          tool
         }, {});
       });
 
