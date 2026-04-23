@@ -11,6 +11,8 @@ import {
     WIDGET_HOST_HEADER_HEIGHT,
     WIDGET_HOST_HEADER_ID,
     WIDGET_HOST_MAXIMIZE_BUTTON_ID,
+    WIDGET_HOST_MIN_BODY_HEIGHT,
+    WIDGET_HOST_MIN_HEIGHT,
     WIDGET_HOST_MINIMIZE_BUTTON_ID,
     WIDGET_HOST_MIN_WIDTH,
     WIDGET_HOST_WINDOW_STROKE_WIDTH
@@ -57,7 +59,9 @@ type TArgsUpdateHost = {
 
 export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   const border = portal.group.findOne(`#${WIDGET_HOST_BORDER_ID}`)
-  const header = portal.group.findOne(`#${WIDGET_HOST_HEADER_ID}-group`)
+  const header = portal.group.getChildren().find((child) => {
+    return child instanceof portal.konva.Group && child.id() === WIDGET_HOST_HEADER_ID
+  })
   const body = portal.group.findOne(`#${WIDGET_HOST_BODY_ID}`)
   const divider = portal.group.findOne(`#${WIDGET_HOST_DIVIDER_ID}`)
   const closeButton = portal.group.findOne(`#${WIDGET_HOST_CLOSE_BUTTON_ID}`)
@@ -68,8 +72,8 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
 
   const hostThemeColors = getHostThemeColors(portal.themeService)
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.point.x - portal.group.x())
-  const height = Math.max(WIDGET_HOST_HEADER_HEIGHT, args.point.y - portal.group.y())
-  const bodyHeight = Math.max(0, height - WIDGET_HOST_HEADER_HEIGHT)
+  const height = Math.max(WIDGET_HOST_MIN_HEIGHT, args.point.y - portal.group.y())
+  const bodyHeight = Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, height - WIDGET_HOST_HEADER_HEIGHT)
   const dividerWidth = Math.max(0, width - WIDGET_HOST_WINDOW_STROKE_WIDTH * 2)
 
   portal.group.width(width)
@@ -94,18 +98,22 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
     divider.width(dividerWidth)
     divider.height(WIDGET_HOST_DIVIDER_HEIGHT)
     divider.fill(hostThemeColors.dividerFill)
+    divider.visible(true)
+    divider.listening(false)
   }
 
   body.y(WIDGET_HOST_HEADER_HEIGHT)
   body.width(width)
   body.height(bodyHeight)
   body.fill(hostThemeColors.bodyFill)
+  body.visible(true)
+  body.listening(true)
 
   const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
   if (widgetData?.type === 'widget') {
     widgetData.w = width
     widgetData.h = WIDGET_HOST_HEADER_HEIGHT + bodyHeight
-    widgetData.expanded = bodyHeight > 0
+    widgetData.expanded = true
     portal.group.setAttr(ELEMENT_DATA_ATTR, widgetData)
   }
 
@@ -141,7 +149,7 @@ export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
     expanded: true,
     kind: args.kind,
     window: 'contained',
-    h: WIDGET_HOST_HEADER_HEIGHT,
+    h: WIDGET_HOST_MIN_HEIGHT,
     w: WIDGET_HOST_MIN_WIDTH,
     payload: args.initialPayload
   }

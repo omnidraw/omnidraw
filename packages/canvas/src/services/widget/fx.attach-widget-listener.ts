@@ -1,8 +1,7 @@
 import type { TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import type Konva from 'konva'
 import { fnCurry } from '@vibecanvas/shared-functions/functional/fn.curry'
-import type { Node, NodeConfig } from 'konva/lib/Node'
-import { isKonvaCircle, isKonvaGroup, isKonvaRect } from '../../core/GUARDS'
+import type { IRuntimeHooks, TElementPointerEvent } from '../../types'
 import {
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
@@ -16,12 +15,18 @@ import {
 } from './CONSTANTS'
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
 import type { SelectionService } from '../selection/SelectionService'
-import { IRuntimeHooks } from 'src/types'
 
 type TPortal = {
-  node: Node<NodeConfig>
-  selectionService: SelectionService
-  hooks?: IRuntimeHooks
+  Circle: typeof Konva.Circle;
+  Group: typeof Konva.Group;
+  Rect: typeof Konva.Rect;
+  hooks: IRuntimeHooks;
+  node: Konva.Node;
+  selection: SelectionService;
+  startDragClone: (args: {
+    node: Konva.Node;
+    selection: Konva.Node[];
+  }) => boolean;
 }
 type TArgs = {
 }
@@ -31,6 +36,8 @@ function toHoverFill(fill: string | CanvasGradient) {
 }
 
 function setupButtons(args: {
+  Circle: typeof Konva.Circle;
+  Rect: typeof Konva.Rect;
   node: Konva.Group;
   setCursor: (cursor: string) => void;
   syncExpandedState: (expanded: boolean) => void;
@@ -43,7 +50,7 @@ function setupButtons(args: {
 
   buttonIds.forEach((buttonId) => {
     const button = args.node.findOne(`#${buttonId}`)
-    if (!isKonvaCircle(button)) {
+    if (!(button instanceof args.Circle)) {
       return
     }
 
@@ -82,26 +89,26 @@ function setupButtons(args: {
 }
 
 function syncExpandedState(portal: TPortal, expanded: boolean) {
-  if (!isKonvaGroup(portal.node)) return
+  if (!(portal.node instanceof portal.Group)) return
   const body = portal.node.findOne(`#${WIDGET_HOST_BODY_ID}`)
-  if (isKonvaRect(body)) {
+  if (body instanceof portal.Rect) {
     body.visible(expanded)
     body.listening(expanded)
   }
 
   const border = portal.node.findOne(`#${WIDGET_HOST_BORDER_ID}`)
-  if (isKonvaRect(border)) {
+  if (border instanceof portal.Rect) {
     border.height(expanded ? portal.node.height() : WIDGET_HOST_HEADER_HEIGHT)
   }
 
   const divider = portal.node.findOne(`#${WIDGET_HOST_DIVIDER_ID}`)
-  if (isKonvaRect(divider)) {
+  if (divider instanceof portal.Rect) {
     divider.visible(expanded)
     divider.listening(false)
   }
 
   const header = portal.node.findOne(`#${WIDGET_HOST_HEADER_ID}`)
-  if (isKonvaRect(header)) {
+  if (header instanceof portal.Rect) {
     header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0])
   }
 
@@ -116,7 +123,7 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
   portal.node.getLayer()?.batchDraw()
 }
 
-function setupCursor(setCursor: (cursor: string) => void, group: Node<NodeConfig>, header: Node<NodeConfig>) {
+function setupCursor(setCursor: (cursor: string) => void, group: Konva.Group, header: Konva.Node) {
   header.off('pointerover pointerout pointerdown pointerup dragstart dragend')
   header.on('pointerover', () => {
     setCursor('grab')
@@ -138,10 +145,24 @@ function setupCursor(setCursor: (cursor: string) => void, group: Node<NodeConfig
   })
 }
 
-function setupSelectable(portal: TPortal) {
+function safeStopDrag(node: Konva.Node) {
+  try {
+    if (node.isDragging()) {
+      node.stopDrag()
+    }
+  } catch {
+    return
+  }
+}
 
+function setupSelectable(portal: TPortal) {
+  if (!(portal.node instanceof portal.Group)) {
+    return false
+  }
+
+  portal.node.off('pointerclick pointerdown dragstart pointerdblclick')
   portal.node.on("pointerclick", (event) => {
-    if (portal.selectionService.mode !== "select") {
+    if (portal.selection.mode !== "select") {
       return;
     }
 
@@ -149,8 +170,8 @@ function setupSelectable(portal: TPortal) {
   });
 
   portal.node.on("pointerdown dragstart", (event) => {
-    if (portal.selectionService.mode !== "select") {
-      portal.safeStopDrag(args.node);
+    if (portal.selection.mode !== "select") {
+      safeStopDrag(portal.node);
       return;
     }
 
@@ -163,15 +184,32 @@ function setupSelectable(portal: TPortal) {
     }
 
     if (event.evt?.altKey) {
-      isCloneDrag = true;
-      portal.safeStopDrag(args.node);
-      portal.createCloneDrag(args.node);
+      safeStopDrag(portal.node);
+      portal.startDragClone({
+        node: portal.node,
+        selection: portal.selection.selection,
+      });
     }
   });
+
+  portal.node.on("pointerdblclick", (event) => {
+    if (portal.selection.mode !== "select") {
+      return;
+    }
+
+    const earlyExit = portal.hooks.elementPointerDoubleClick.call(event as TElementPointerEvent);
+    if (earlyExit) {
+      event.cancelBubble = true;
+    }
+  });
+
+  portal.node.draggable(true)
+  portal.node.listening(true)
+  return true
 }
 
 export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
-  if(!isKonvaGroup(portal.node)) return
+  if (!(portal.node instanceof portal.Group)) return false
 
   const setCursor = (cursor: string) => {
     const stage = portal.node.getStage()
@@ -181,12 +219,14 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
   }
   const header = portal.node.findOne('#header')
 
-  portal.node.off('dragend')
-
+  const didAttachSelectable = setupSelectable(portal)
   setupButtons({
+    Circle: portal.Circle,
+    Rect: portal.Rect,
     node: portal.node,
     setCursor,
     syncExpandedState: fnCurry(syncExpandedState)(portal),
   })
   if(header) setupCursor(setCursor, portal.node, header)
+  return didAttachSelectable
 }

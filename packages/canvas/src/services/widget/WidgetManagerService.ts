@@ -53,23 +53,24 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       }, { widgetConfig: wConfig })
     }
 
-    // this.canvasRegistry.registerElement({
-    //   id: wConfig.id,
-    //   toElement: fnToWidgetElement,
-    //   matchesNode: (node) => node.getAttr(WIDGET_HOST_ELEMENT_DATA_ATTR)?.type === 'widget',
-    //   matchesElement: (element) => element.data.type === "widget" && element.data.kind === wConfig.id,
+    this.#elementService.registerElement({
+      id: wConfig.id,
+      toElement: fnToWidgetElement,
+      matchesNode: (node) => node.getAttr(ELEMENT_DATA_ATTR)?.type === 'widget',
+      matchesElement: (element) => element.data.type === "widget" && element.data.kind === wConfig.id,
 
-    //   createNode: (element) => {
-    //     const colors = fnGetHostThemeColors(this.themeService)
-    //     const node = fnCreateWidgetNode(Konva, colors, element)
-    //     return node
-    //   },
-    //   createDragClone(args) {
+      createNode: (element) => {
+        const colors = fnGetHostThemeColors(this.#themeService)
+        const node = fnCreateWidgetNode(Konva, colors, element)
+        return node
+      },
+      createDragClone(args) {
 
-    //     return true
-    //   },
-    //   attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService,  }, {})
-    // })
+        return true
+      },
+      
+      attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService,  }, {})
+    })
 
   }
 

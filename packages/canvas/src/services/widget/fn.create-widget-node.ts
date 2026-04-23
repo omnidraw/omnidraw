@@ -8,6 +8,8 @@ import {
   WIDGET_HOST_DIVIDER_ID,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
+  WIDGET_HOST_MIN_BODY_HEIGHT,
+  WIDGET_HOST_MIN_HEIGHT,
   WIDGET_HOST_MAXIMIZE_BUTTON_ID,
   WIDGET_HOST_MINIMIZE_BUTTON_ID,
   WIDGET_HOST_MIN_WIDTH,
@@ -119,12 +121,13 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   if (element.data.type !== 'widget') return null
 
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, element.data.w)
-  const height = Math.max(WIDGET_HOST_HEADER_HEIGHT, element.data.h)
+  const height = Math.max(WIDGET_HOST_MIN_HEIGHT, element.data.h)
   const bodyHeight = Math.max(0, height - WIDGET_HOST_HEADER_HEIGHT)
   const dividerWidth = Math.max(0, width - WIDGET_HOST_WINDOW_STROKE_WIDTH * 2)
   const isExpanded = element.data.expanded !== false
 
   const group = new konva.Group({
+    id: element.id,
     x: element.x,
     y: element.y,
     width,
@@ -133,9 +136,9 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
 
   const body = createBody(konva, colors)
   body.width(width)
-  body.height(bodyHeight)
-  body.visible(isExpanded)
-  body.listening(isExpanded)
+  body.height(Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, bodyHeight))
+  body.visible(true)
+  body.listening(true)
 
   const header = createHeader(konva, colors)
   const border = createBorder(konva, colors)
@@ -144,7 +147,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
 
   if (border) {
     border.width(width)
-    border.height(isExpanded ? height : WIDGET_HOST_HEADER_HEIGHT)
+    border.height(isExpanded ? height : WIDGET_HOST_MIN_HEIGHT)
   }
 
   if (headerBackground instanceof konva.Rect) {
@@ -155,7 +158,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
 
   if (divider instanceof konva.Rect) {
     divider.width(dividerWidth)
-    divider.visible(isExpanded)
+    divider.visible(true)
     divider.listening(false)
   }
 
@@ -163,7 +166,12 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   group.add(header)
   group.add(body)
 
-  group.setAttr(ELEMENT_DATA_ATTR, element.data)
+  group.setAttr(ELEMENT_DATA_ATTR, {
+    ...element.data,
+    w: width,
+    h: height,
+    expanded: true,
+  })
   group.setAttr(ELEMENT_STYLE_ATTR, {})
 
   return group
