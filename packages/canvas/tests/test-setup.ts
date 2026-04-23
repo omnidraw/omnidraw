@@ -1,6 +1,7 @@
 import Konva from "konva";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { JSDOM } from "jsdom";
 import type { DocHandle } from "@automerge/automerge-repo";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { createRoot } from "solid-js";
@@ -20,6 +21,41 @@ type TCanvasTestHarness = {
   dynamicLayer: Konva.Layer;
   destroy: () => void;
 };
+
+export function ensureDom() {
+  if (typeof document !== "undefined" && typeof window !== "undefined") {
+    return;
+  }
+
+  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  vi.stubGlobal?.("window", dom.window);
+  vi.stubGlobal?.("document", dom.window.document);
+  vi.stubGlobal?.("navigator", dom.window.navigator);
+  vi.stubGlobal?.("HTMLElement", dom.window.HTMLElement);
+  vi.stubGlobal?.("HTMLInputElement", dom.window.HTMLInputElement);
+  vi.stubGlobal?.("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
+  vi.stubGlobal?.("MouseEvent", dom.window.MouseEvent);
+  vi.stubGlobal?.("KeyboardEvent", dom.window.KeyboardEvent);
+  vi.stubGlobal?.("Event", dom.window.Event);
+  vi.stubGlobal?.("Range", dom.window.Range);
+  vi.stubGlobal?.("DOMRect", dom.window.DOMRect);
+
+  if (typeof window === "undefined") {
+    Object.assign(globalThis, {
+      window: dom.window,
+      document: dom.window.document,
+      navigator: dom.window.navigator,
+      HTMLElement: dom.window.HTMLElement,
+      HTMLInputElement: dom.window.HTMLInputElement,
+      HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+      MouseEvent: dom.window.MouseEvent,
+      KeyboardEvent: dom.window.KeyboardEvent,
+      Event: dom.window.Event,
+      Range: dom.window.Range,
+      DOMRect: dom.window.DOMRect,
+    });
+  }
+}
 
 export function ensureResizeObserver() {
   if (typeof ResizeObserver !== "undefined") {
@@ -156,6 +192,7 @@ export async function createCanvasTestHarness(args: {
   height?: number;
   appCapabilities?: TLegacyAppCapabilities;
 }): Promise<TCanvasTestHarness> {
+  ensureDom();
   ensureResizeObserver();
   ensureRangeGeometryMocks();
 

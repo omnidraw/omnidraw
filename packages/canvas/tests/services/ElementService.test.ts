@@ -1,9 +1,9 @@
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
-import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { CanvasRegistryService } from "../../src/services/canvas-registry/CanvasRegistryService";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import { ElementService } from "../../src/services/element/ElementService";
 
-function createElement(args?: { id?: string; type?: "text" }): TElement {
+function createElement(args?: { id?: string; type?: "text" }) : TElement {
   return {
     id: args?.id ?? "element-1",
     x: 10,
@@ -30,19 +30,9 @@ function createElement(args?: { id?: string; type?: "text" }): TElement {
   };
 }
 
-function createGroup(id = "group-1"): TGroup {
-  return {
-    id,
-    parentGroupId: null,
-    zIndex: "z00000000",
-    locked: false,
-    createdAt: 1,
-  };
-}
-
-describe("CanvasRegistryService", () => {
+describe("ElementService", () => {
   test("registers and sorts element definitions and emits hooks on change", () => {
-    const service = new CanvasRegistryService();
+    const service = new ElementService();
     const changeSpy = vi.fn();
     service.hooks.elementsChange.tap(changeSpy);
 
@@ -77,7 +67,7 @@ describe("CanvasRegistryService", () => {
   });
 
   test("serializes nodes with base and modifier definitions in priority order", () => {
-    const service = new CanvasRegistryService();
+    const service = new ElementService();
     const node = new Konva.Rect({ id: "shape-1" });
     const calls: string[] = [];
 
@@ -119,11 +109,10 @@ describe("CanvasRegistryService", () => {
       data: { type: "text" },
     });
     expect(calls).toEqual(["base:shape-1", "base-after:shape-1", "after:shape-1"]);
-    expect(service.getNodeType(node)).toBe("text");
   });
 
   test("creates nodes, runs modifiers and listeners, and aggregates update results", () => {
-    const service = new CanvasRegistryService();
+    const service = new ElementService();
     const element = createElement({ id: "shape-2", type: "text" });
     const node = new Konva.Rect({ id: "shape-2" });
     const calls: string[] = [];
@@ -189,54 +178,8 @@ describe("CanvasRegistryService", () => {
     expect(calls).toEqual(["update-base", "update-a"]);
   });
 
-  test("prefers group semantics for type, creation, serialization, and listener attachment", () => {
-    const service = new CanvasRegistryService();
-    const node = new Konva.Group({ id: "group-1" });
-    const group = createGroup("group-1");
-    const groupChangeSpy = vi.fn();
-    const calls: string[] = [];
-
-    service.hooks.groupsChange.tap(groupChangeSpy);
-
-    service.registerElement({
-      id: "element-fallback",
-      matchesNode: () => true,
-      toElement: () => createElement({ id: "group-1", type: "text" }),
-      attachListeners: () => {
-        calls.push("element-listeners");
-        return true;
-      },
-    });
-
-    const unregisterGroup = service.registerGroup({
-      id: "group-def",
-      priority: 5,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      toGroup: (candidate) => candidate.id() === group.id ? group : null,
-      createNode: (candidate) => candidate.id === group.id ? node : null,
-      attachListeners: (candidate) => {
-        calls.push(`group-listeners:${candidate.id()}`);
-        return true;
-      },
-    });
-
-    expect(groupChangeSpy).toHaveBeenCalledTimes(1);
-    expect(service.toGroup(node)).toEqual(group);
-    expect(service.getNodeType(node)).toBe("group");
-    expect(service.createNodeFromGroup(group)).toBe(node);
-    expect(calls).toEqual(["group-listeners:group-1"]);
-
-    calls.length = 0;
-    expect(service.attachListeners(node)).toBe(true);
-    expect(calls).toEqual(["group-listeners:group-1"]);
-
-    unregisterGroup();
-    expect(groupChangeSpy).toHaveBeenCalledTimes(2);
-    expect(service.getGroups()).toEqual([]);
-  });
-
-  test("merges transform options and aggregates transform hook results", () => {
-    const service = new CanvasRegistryService();
+  test("merges transform options across matching definitions", () => {
+    const service = new ElementService();
     const node = new Konva.Rect({ id: "shape-3" });
     const element = createElement({ id: "shape-3", type: "text" });
     const selection = [node] as Array<Konva.Group | Konva.Shape>;
@@ -254,14 +197,6 @@ describe("CanvasRegistryService", () => {
           keepRatio: true,
         };
       },
-      onResize: ({ node: candidateNode }) => {
-        calls.push(`on-base:${candidateNode.id()}`);
-        return { cancel: false, crdt: true };
-      },
-      afterResize: ({ node: candidateNode }) => {
-        calls.push(`after-base:${candidateNode.id()}`);
-        return { cancel: false, crdt: false };
-      },
     });
 
     service.registerElement({
@@ -275,14 +210,6 @@ describe("CanvasRegistryService", () => {
           keepRatio: false,
         };
       },
-      onResize: ({ node: candidateNode }) => {
-        calls.push(`on-modifier:${candidateNode.id()}`);
-        return { cancel: true, crdt: false };
-      },
-      afterResize: ({ node: candidateNode }) => {
-        calls.push(`after-modifier:${candidateNode.id()}`);
-        return { cancel: true, crdt: true };
-      },
     });
 
     expect(service.getTransformOptions({ node, selection })).toEqual({
@@ -290,45 +217,14 @@ describe("CanvasRegistryService", () => {
       keepRatio: false,
       flipEnabled: true,
     });
-    const resizeArgs = { node, element, pointer: null, anchors: ["top-left"] as Array<"top-left">, selection };
-    const definitions = service.getMatchingElementDefinitionsByNode(node);
-    const onResizeResult = definitions.reduce((result, definition) => {
-      const next = definition.onResize?.(resizeArgs);
-      if (!next) {
-        return result;
-      }
-
-      return {
-        cancel: result.cancel || next.cancel,
-        crdt: result.crdt || next.crdt,
-      };
-    }, { cancel: false, crdt: false });
-    const afterResizeResult = definitions.reduce((result, definition) => {
-      const next = definition.afterResize?.(resizeArgs);
-      if (!next) {
-        return result;
-      }
-
-      return {
-        cancel: result.cancel || next.cancel,
-        crdt: result.crdt || next.crdt,
-      };
-    }, { cancel: false, crdt: false });
-
-    expect(onResizeResult).toEqual({ cancel: true, crdt: true });
-    expect(afterResizeResult).toEqual({ cancel: true, crdt: true });
     expect(calls).toEqual([
       "options-base:shape-3:shape-3:1",
       "options-modifier:shape-3",
-      "on-base:shape-3",
-      "on-modifier:shape-3",
-      "after-base:shape-3",
-      "after-modifier:shape-3",
     ]);
   });
 
   test("returns default transform results when node does not resolve to an element", () => {
-    const service = new CanvasRegistryService();
+    const service = new ElementService();
     const node = new Konva.Rect({ id: "unknown" });
     const selection = [node] as Array<Konva.Group | Konva.Shape>;
 

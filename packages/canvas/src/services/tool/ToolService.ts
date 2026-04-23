@@ -195,6 +195,7 @@ export class ToolService implements IService<TToolServiceHooks> {
     this.selection.setSelection([newNode]);
     this.selection.setFocusedNode(newNode);
     this.sceneService.clearPreviewState();
+    this.setActiveTool("select");
     this.sceneService.staticForegroundLayer.batchDraw();
   }
 }

@@ -21,7 +21,9 @@ import { txSaveJsonFile } from "./tx.file";
 import { txMountRecorderPanel } from "./tx.mount";
 import type { TCrdtOp, TRecording, TStep } from "./CONSTANTS";
 
-const REDUCED_EVENTS = true;
+function fnGetDefaultReducedEvents() {
+  return true;
+}
 
 type TRecorderState = {
   recording: boolean;
@@ -50,14 +52,15 @@ function createRecorderState(): TRecorderState {
   const [recordingSignal, setRecordingSignal] = createSignal(false);
   const [stepCount, setStepCount] = createSignal(0);
   const [opCount, setOpCount] = createSignal(0);
-  const [reducedEventsSignal, setReducedEventsSignal] = createSignal(REDUCED_EVENTS);
+  const defaultReducedEvents = fnGetDefaultReducedEvents();
+  const [reducedEventsSignal, setReducedEventsSignal] = createSignal(defaultReducedEvents);
   const [canExport, setCanExport] = createSignal(false);
 
   return {
     recording: false,
-    reducedEvents: REDUCED_EVENTS,
+    reducedEvents: defaultReducedEvents,
     pointerPressed: false,
-    recordingData: fnCreateEmptyRecording({ reducedEvents: REDUCED_EVENTS }),
+    recordingData: fnCreateEmptyRecording({ reducedEvents: defaultReducedEvents }),
     restoreCrdtWrite: null,
     restoreNodeFire: null,
     open,

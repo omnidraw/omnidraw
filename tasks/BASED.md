@@ -193,6 +193,7 @@ Never put detailed plan in this file
 - [ ]: [S41](s/S41.md) - canvas: introduce CloneService and centralize clone lifecycle
 - [ ]: [S41] - remove fnCreateLegacyShape2dInlineTextMigrationPlan in next version
 - [ ]: [S42] - service refactor
+- [ ]: [S43](s/S43.md) - canvas: normalize clone-drag through CloneService
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research

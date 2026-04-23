@@ -60,11 +60,11 @@ function getDiamondBaseSize(node: Konva.Line) {
 
 function getInlineTextData(node: Konva.Shape) {
   const data = node.getAttr(ELEMENT_DATA_ATTR) as TElement["data"] | undefined;
-  if (!data || (data.type !== "rect" && data.type !== "diamond" && data.type !== "ellipse")) {
-    return null;
+  if (data && (data.type === "rect" || data.type === "diamond" || data.type === "ellipse")) {
+    return structuredClone((data.text as TTextData | null | undefined) ?? null);
   }
 
-  return structuredClone((data.text as TTextData | null | undefined) ?? null);
+  return structuredClone((node.getAttr("vcShapeTextData") as TTextData | null | undefined) ?? null);
 }
 
 export function fxToShape2dElement(portal: TPortalToShape2dElement, args: TArgsToShape2dElement) {
@@ -90,7 +90,7 @@ export function fxToShape2dElement(portal: TPortalToShape2dElement, args: TArgsT
   const scaleX = absoluteScale.x / layerScaleX;
   const scaleY = absoluteScale.y / layerScaleY;
   const updatedAt = Number(node.getAttr(VC_UPDATED_AT_ATTR) ?? portal.now());
-  const createdAt = Number(node.getAttr(VC_CREATED_AT_ATTR) ?? updatedAt);
+  const createdAt = Number(node.getAttr(VC_CREATED_AT_ATTR) ?? node.getAttr("vcElementCreatedAt") ?? updatedAt);
 
   let x = worldPosition.x;
   let y = worldPosition.y;

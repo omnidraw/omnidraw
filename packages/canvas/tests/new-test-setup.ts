@@ -3,7 +3,7 @@ import type { DocHandle } from "@automerge/automerge-repo";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ThemeService } from "@vibecanvas/service-theme";
 import { buildRuntime } from "../src/runtime";
-import { createMockDocHandle, createTestContainer, ensureRangeGeometryMocks, ensureResizeObserver, flushCanvasEffects } from "./test-setup";
+import { createMockDocHandle, createTestContainer, ensureDom, ensureRangeGeometryMocks, ensureResizeObserver, flushCanvasEffects } from "./test-setup";
 
 export type TNewCanvasHarness = {
   runtime: ReturnType<typeof buildRuntime>;
@@ -31,6 +31,7 @@ export async function createNewCanvasHarness(args?: {
     showInfo(title: string, description?: string): void;
   };
 }) {
+  ensureDom();
   ensureResizeObserver();
   ensureRangeGeometryMocks();
 

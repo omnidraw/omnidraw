@@ -74,3 +74,7 @@ export function fxToTextElement(portal: TPortal, args: TArgs) {
     data,
   } satisfies TElement;
 }
+
+export function fxToElement(portal: TPortal, args: TArgs) {
+  return fxToTextElement(portal, args);
+}

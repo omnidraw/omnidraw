@@ -1,7 +1,7 @@
 import Konva from "konva";
 import { describe, expect, test } from "vitest";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { CanvasRegistryService } from "../../../src/services/canvas-registry/CanvasRegistryService";
+import { ElementService } from "../../../src/services/element/ElementService";
 import { fxGetSelectionTransformOptions } from "../../../src/plugins/transform/fx.selection-transform-options";
 
 function createTextElement(id: string): TElement {
@@ -43,11 +43,11 @@ function createGroup(id: string): TGroup {
 
 describe("fxGetSelectionTransformOptions", () => {
   test("uses corner-only anchors for multi-selection", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const nodeA = new Konva.Rect({ id: "a" });
     const nodeB = new Konva.Rect({ id: "b" });
 
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "rect",
       matchesNode: (candidate) => candidate.id() === nodeA.id() || candidate.id() === nodeB.id(),
       toElement: (candidate) => createTextElement(candidate.id()),
@@ -55,7 +55,7 @@ describe("fxGetSelectionTransformOptions", () => {
 
     const result = fxGetSelectionTransformOptions({
       Konva,
-      canvasRegistry,
+      element,
     }, {
       selection: [nodeA, nodeB],
     });
@@ -70,10 +70,10 @@ describe("fxGetSelectionTransformOptions", () => {
   });
 
   test("applies single-selection registry overrides", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const node = new Konva.Rect({ id: "shape-1" });
 
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "rect",
       matchesNode: (candidate) => candidate.id() === node.id(),
       toElement: (candidate) => createTextElement(candidate.id()),
@@ -86,7 +86,7 @@ describe("fxGetSelectionTransformOptions", () => {
 
     const result = fxGetSelectionTransformOptions({
       Konva,
-      canvasRegistry,
+      element,
     }, {
       selection: [node],
     });

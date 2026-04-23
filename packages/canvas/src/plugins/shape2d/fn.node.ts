@@ -12,16 +12,18 @@ export function fnGetShape2dNodeType(args: {
   node: Konva.Node;
 }): TShape2dElementType | null {
   const data = args.node.getAttr(ELEMENT_DATA_ATTR) as TElement["data"] | undefined;
+  const legacyType = args.node.getAttr("vcShape2dType");
+  const type = typeof legacyType === "string" ? legacyType : data?.type;
 
-  if (data?.type === "rect" && args.node instanceof args.Rect) {
+  if (type === "rect" && args.node instanceof args.Rect) {
     return "rect";
   }
 
-  if (data?.type === "diamond" && args.node instanceof args.Line) {
+  if (type === "diamond" && args.node instanceof args.Line) {
     return "diamond";
   }
 
-  if (data?.type === "ellipse" && args.node instanceof args.Ellipse) {
+  if (type === "ellipse" && args.node instanceof args.Ellipse) {
     return "ellipse";
   }
 

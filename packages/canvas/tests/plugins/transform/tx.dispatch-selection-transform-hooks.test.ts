@@ -1,7 +1,7 @@
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { CanvasRegistryService } from "../../../src/services/canvas-registry/CanvasRegistryService";
+import { ElementService } from "../../../src/services/element/ElementService";
 import { txDispatchSelectionTransformHooks } from "../../../src/plugins/transform/tx.dispatch-selection-transform-hooks";
 
 function createTextElement(id: string): TElement {
@@ -33,11 +33,11 @@ function createTextElement(id: string): TElement {
 
 describe("txDispatchSelectionTransformHooks", () => {
   test("merges hook results across matching definitions and tracks handled nodes", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const node = new Konva.Rect({ id: "shape-1" });
     const calls: string[] = [];
 
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "base",
       priority: 10,
       matchesNode: (candidate) => candidate.id() === node.id(),
@@ -47,7 +47,7 @@ describe("txDispatchSelectionTransformHooks", () => {
         return { cancel: false, crdt: true };
       },
     });
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "override",
       priority: 20,
       matchesNode: (candidate) => candidate.id() === node.id(),
@@ -58,12 +58,12 @@ describe("txDispatchSelectionTransformHooks", () => {
     });
 
     const result = txDispatchSelectionTransformHooks({
-      canvasRegistry,
+      element,
     }, {
       selection: [node],
-      createArgs: (selectedNode, element) => ({
+      createArgs: (selectedNode, currentElement) => ({
         node: selectedNode,
-        element,
+        element: currentElement,
         selection: [selectedNode],
       }),
       getHook: (definition) => definition.onResize,
@@ -76,23 +76,23 @@ describe("txDispatchSelectionTransformHooks", () => {
   });
 
   test("skips nodes that cannot serialize to elements", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const node = new Konva.Rect({ id: "missing" });
     const hookSpy = vi.fn();
 
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "noop",
       matchesNode: () => false,
       onResize: hookSpy,
     });
 
     const result = txDispatchSelectionTransformHooks({
-      canvasRegistry,
+      element,
     }, {
       selection: [node],
-      createArgs: (selectedNode, element) => ({
+      createArgs: (selectedNode, currentElement) => ({
         node: selectedNode,
-        element,
+        element: currentElement,
         selection: [selectedNode],
       }),
       getHook: (definition) => definition.onResize,

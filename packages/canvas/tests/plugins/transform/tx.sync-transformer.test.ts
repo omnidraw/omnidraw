@@ -1,9 +1,10 @@
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { CanvasRegistryService } from "../../../src/services/canvas-registry/CanvasRegistryService";
-import { SelectionService } from "../../../src/services/selection/SelectionService";
 import { txSyncTransformer } from "../../../src/plugins/transform/tx.sync-transformer";
+import { ElementService } from "../../../src/services/element/ElementService";
+import { SelectionService } from "../../../src/services/selection/SelectionService";
+import { SessionService } from "../../../src/services/session/SessionService";
 
 function createTextElement(id: string): TElement {
   return {
@@ -78,16 +79,15 @@ function createTransformerMock() {
 }
 
 describe("txSyncTransformer", () => {
-  test("clears transformer nodes while text or shape1d editing is active", () => {
+  test("clears transformer nodes while editing is active", () => {
     const batchDrawSpy = vi.fn();
     const transformer = createTransformerMock();
+    const session = new SessionService();
+    session.editingId = "text-1";
 
     txSyncTransformer({
-      canvasRegistry: new CanvasRegistryService(),
-      editor: {
-        editingTextId: "text-1",
-        editingShape1dId: null,
-      } as never,
+      element: new ElementService(),
+      session,
       Konva,
       scene: {
         dynamicLayer: { batchDraw: batchDrawSpy },
@@ -102,14 +102,15 @@ describe("txSyncTransformer", () => {
   });
 
   test("syncs filtered nodes and transform options onto transformer", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const selection = new SelectionService();
+    const session = new SessionService();
     const transformer = createTransformerMock();
     const batchDrawSpy = vi.fn();
     const nodeA = attachToStage(new Konva.Rect({ id: "a" }));
     const nodeB = attachToStage(new Konva.Rect({ id: "b" }));
 
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "rect",
       matchesNode: (candidate) => candidate.id() === nodeA.id() || candidate.id() === nodeB.id(),
       toElement: (candidate) => createTextElement(candidate.id()),
@@ -118,11 +119,8 @@ describe("txSyncTransformer", () => {
     selection.setSelection([nodeA, nodeB]);
 
     txSyncTransformer({
-      canvasRegistry,
-      editor: {
-        editingTextId: null,
-        editingShape1dId: null,
-      } as never,
+      element,
+      session,
       Konva,
       scene: {
         dynamicLayer: { batchDraw: batchDrawSpy },

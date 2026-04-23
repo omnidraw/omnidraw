@@ -15,18 +15,21 @@ import {
   createTextPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
-import {
-  CameraService,
-  CanvasRegistryService,
-  ContextMenuService, CrdtService, EditorService,
-  ElementService,
-  GroupService,
-  HistoryService,
-  LoggingService, RenderOrderService, SceneService, SelectionService,
-  SessionService,
-  ToolService,
-  WidgetManagerService,
-} from "./services";
+import { CameraService } from "./services/camera/CameraService";
+import { CanvasRegistryService } from "./services/canvas-registry/CanvasRegistryService";
+import { ContextMenuService } from "./services/context-menu/ContextMenuService";
+import { CrdtService } from "./services/crdt/CrdtService";
+import { EditorService } from "./services/editor/EditorService";
+import { ElementService } from "./services/element/ElementService";
+import { GroupService } from "./services/group/GroupService";
+import { HistoryService } from "./services/history/HistoryService";
+import { LoggingService } from "./services/logging/LoggingService";
+import { RenderOrderService } from "./services/render-order/RenderOrderService";
+import { SceneService } from "./services/scene/SceneService";
+import { SelectionService } from "./services/selection/SelectionService";
+import { SessionService } from "./services/session/SessionService";
+import { ToolService } from "./services/tool/ToolService";
+import { WidgetManagerService } from "./services/widget/WidgetManagerService";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
 
 

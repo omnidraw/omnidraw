@@ -34,9 +34,17 @@ Migrated and passing on new runtime:
 - `tests/new-plugins/render-order/RenderOrder.plugin.test.ts` — 3 passing, 1 skipped
 - `tests/new-plugins/scene-hydrator/SceneHydrator.plugin.test.ts` — 1 passing
 
-Last run:
+Last migrated-runtime run:
 - `bunx vitest run tests/new-services/*.test.ts tests/new-plugins/camera/CameraControl.plugin.test.ts tests/new-plugins/text/Text.click-create.plugin.test.ts tests/new-plugins/text/Text.core.plugin.test.ts tests/new-plugins/text/Text.editing.plugin.test.ts tests/new-plugins/text/Text.regressions.plugin.test.ts tests/new-plugins/image/Image.plugin.test.ts tests/new-plugins/render-order/RenderOrder.plugin.test.ts tests/new-plugins/scene-hydrator/SceneHydrator.plugin.test.ts tests/new-plugins/group/Group.plugin.test.ts tests/new-plugins/selection/Selection.plugin.test.ts`
 - result: `14 files passed, 50 tests passed, 3 skipped`
+
+Latest focused legacy-runtime maintenance run:
+- replaced stale direct tests that still expected `CanvasRegistryService` / editor edit ids in transform helpers
+- removed obsolete `tests/services/CanvasRegistryService.test.ts`
+- added `tests/services/ElementService.test.ts`
+- added `tests/services/GroupService.test.ts`
+- `bunx vitest run tests/plugins/transform/fx.proxy-drag-target.test.ts tests/plugins/transform/fx.selection-transform-options.test.ts tests/plugins/transform/tx.dispatch-selection-transform-hooks.test.ts tests/plugins/transform/tx.sync-transformer.test.ts tests/services/ElementService.test.ts tests/services/GroupService.test.ts`
+- result: `6 files passed, 16 tests passed`
 
 Big reality check from new runtime:
 - all current `src/new-services/*` now have direct test coverage

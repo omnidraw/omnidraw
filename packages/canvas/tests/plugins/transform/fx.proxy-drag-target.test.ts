@@ -1,7 +1,7 @@
 import Konva from "konva";
 import { describe, expect, test } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { CanvasRegistryService } from "../../../src/services/canvas-registry/CanvasRegistryService";
+import { ElementService } from "../../../src/services/element/ElementService";
 import { SelectionService } from "../../../src/services/selection/SelectionService";
 import { fxGetProxyDragTarget } from "../../../src/plugins/transform/fx.proxy-drag-target";
 
@@ -46,7 +46,7 @@ function attachToStage<TNode extends Konva.Node>(node: TNode) {
 
 describe("fxGetProxyDragTarget", () => {
   test("returns a selected shape1d node in select mode", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const selection = new SelectionService();
     const node = attachToStage(new Konva.Line({ id: "line-1", points: [0, 0, 100, 0] }));
     node.setAttr("vcElementData", { type: "line", points: [[0, 0], [100, 0]], startBinding: null, endBinding: null, lineType: "straight" });
@@ -54,7 +54,7 @@ describe("fxGetProxyDragTarget", () => {
     selection.setSelection([node]);
 
     const result = fxGetProxyDragTarget({
-      canvasRegistry,
+      element,
       Konva,
     }, {
       selection,
@@ -64,11 +64,11 @@ describe("fxGetProxyDragTarget", () => {
   });
 
   test("returns a selected pen path when registry serializes it as pen", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const selection = new SelectionService();
     const node = attachToStage(new Konva.Path({ id: "pen-1", data: "M0 0 L10 10" }));
 
-    canvasRegistry.registerElement({
+    element.registerElement({
       id: "pen",
       matchesNode: (candidate) => candidate.id() === node.id(),
       toElement: (candidate) => createPenElement(candidate.id()),
@@ -77,7 +77,7 @@ describe("fxGetProxyDragTarget", () => {
     selection.setSelection([node]);
 
     const result = fxGetProxyDragTarget({
-      canvasRegistry,
+      element,
       Konva,
     }, {
       selection,
@@ -87,17 +87,17 @@ describe("fxGetProxyDragTarget", () => {
   });
 
   test("returns null for non-select mode or filtered multi-selection", () => {
-    const canvasRegistry = new CanvasRegistryService();
+    const element = new ElementService();
     const selection = new SelectionService();
     const nodeA = attachToStage(new Konva.Rect({ id: "a" }));
     const nodeB = attachToStage(new Konva.Rect({ id: "b" }));
 
     selection.mode = "draw_create" as typeof selection.mode;
     selection.setSelection([nodeA]);
-    expect(fxGetProxyDragTarget({ canvasRegistry, Konva }, { selection })).toBeNull();
+    expect(fxGetProxyDragTarget({ element, Konva }, { selection })).toBeNull();
 
     selection.mode = "select" as typeof selection.mode;
     selection.setSelection([nodeA, nodeB]);
-    expect(fxGetProxyDragTarget({ canvasRegistry, Konva }, { selection })).toBeNull();
+    expect(fxGetProxyDragTarget({ element, Konva }, { selection })).toBeNull();
   });
 });

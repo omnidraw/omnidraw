@@ -67,6 +67,11 @@ function syncShape2dNodeMetadata(node: Konva.Shape, element: TElement) {
   node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(element.style));
   node.setAttr(VC_CREATED_AT_ATTR, element.createdAt);
   node.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt);
+  node.setAttr("vcShape2dType", element.data.type);
+  node.setAttr("vcElementCreatedAt", element.createdAt);
+  if (element.data.type === "rect" || element.data.type === "diamond" || element.data.type === "ellipse") {
+    node.setAttr("vcShapeTextData", structuredClone(element.data.text ?? null));
+  }
 }
 
 export function txUpdateShape2dNodeFromElement(
