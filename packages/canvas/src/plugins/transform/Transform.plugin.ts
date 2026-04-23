@@ -5,7 +5,7 @@ import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { throttle } from "@solid-primitives/scheduled";
-import { ElementService, GroupService, SessionService, type CanvasRegistryService, type TCanvasTransformAnchor } from "../../services";
+import type { ElementService, GroupService, SessionService, CanvasRegistryService, TCanvasTransformAnchor } from "../../services";
 import type { CrdtService } from "../../services/crdt/CrdtService";
 import type { HistoryService } from "../../services/history/HistoryService";
 import type { SceneService } from "../../services/scene/SceneService";

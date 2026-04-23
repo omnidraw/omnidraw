@@ -3,7 +3,7 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { Node } from "konva/lib/Node";
 import type {
-  ContextMenuService, CrdtService, HistoryService, RenderOrderService, SceneService
+  ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, RenderOrderService, SceneService
 } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { SelectionService } from "../../services/selection/SelectionService";
@@ -12,7 +12,6 @@ import { txDeleteSelection } from "./tx.delete-selection";
 import { txHandleElementPointerDoubleClick } from "./tx.handle-element-pointer-double-click";
 import { txHandleElementPointerDown } from "./tx.handle-element-pointer-down";
 import { txHandleStagePointerMove } from "./tx.handle-stage-pointer-move";
-import { ElementService, GroupService } from "src/services";
 
 function hasSameSelectionOrder(
   currentSelection: Array<{ id(): string }>,

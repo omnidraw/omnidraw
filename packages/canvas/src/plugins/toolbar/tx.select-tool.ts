@@ -1,4 +1,4 @@
-import { ToolService } from "../../services";
+import type { ToolService } from "../../services";
 
 type TPortal = {
   toolService: ToolService;
