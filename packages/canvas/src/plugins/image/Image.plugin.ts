@@ -24,6 +24,7 @@ import type {
   ToolService,
 } from "../../services";
 import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
+import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { fnGetWorldPosition } from "../../core/fn.world-position";
@@ -137,7 +138,7 @@ function loadImageIntoNode(node: Konva.Image, source: string | null) {
   image.src = source;
 }
 
-function createImageNode(render: SceneService, element: TElement) {
+function createImageNode(element: TElement) {
   const data = element.data as TImageData;
   const node = new Konva.Image({
     id: element.id,
@@ -153,6 +154,7 @@ function createImageNode(render: SceneService, element: TElement) {
     image: undefined,
   });
 
+  node.setAttr(VC_NODE_KIND_ATTR, "element");
   syncNodeMetadata(node, element);
   setNodeZIndex(node, element.zIndex);
   loadImageIntoNode(node, fnGetImageSource({ url: data.url, base64: data.base64 }));
@@ -359,6 +361,15 @@ export function createImagePlugin(): IPlugin<{
         return node;
       };
 
+      const createRuntimeImageNode = (element: TElement) => {
+        const node = elementService.createNodeFromElement(element);
+        if (!(node instanceof Konva.Image)) {
+          throw new Error("Failed to create image runtime node");
+        }
+
+        return node;
+      };
+
       const cloneDragPortal = {
         cloneBackendFileForElementPortal,
         crdt,
@@ -367,7 +378,7 @@ export function createImagePlugin(): IPlugin<{
         renderOrder,
         selection,
         createPreviewClone: (sourceNode: Konva.Image) => createPreviewClone(render, sourceNode),
-        createImageNode: (element: TElement) => createImageNode(render, element),
+        createImageNode: (element: TElement) => createImageNode(element),
         setupNode,
         toElement,
         now: () => Date.now(),
@@ -401,8 +412,7 @@ export function createImagePlugin(): IPlugin<{
           }),
           getViewportCenter: () => getViewportCenter(render),
           getViewportWorldSize: () => getViewportWorldSize(render),
-          createImageNode: (element) => createImageNode(render, element),
-          setupNode,
+          createRuntimeNode: createRuntimeImageNode,
           toElement,
         }, args);
       };
@@ -447,7 +457,7 @@ export function createImagePlugin(): IPlugin<{
             return null;
           }
 
-          return createImageNode(render, element);
+          return createImageNode(element);
         },
         attachListeners: (node) => {
           if (!(node instanceof Konva.Image)) {

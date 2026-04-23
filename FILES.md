@@ -144,7 +144,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/image/Image.plugin.ts` |  | Image import, paste/drop, node sync, clone-drag orchestration |
 | ❓ | `plugins/image/tx.clone-backend-file-for-element.ts` |  | Duplicate backend image asset, update node and CRDT URL |
 | ❓ | `plugins/image/tx.create-image-clone-drag.ts` |  | Image clone drag finalizes preview, persistence, undo/redo, selection |
-| ❓ | `plugins/image/tx.insert-image.ts` |  | Image upload insertion |
+| 🤖 | `plugins/image/tx.insert-image.ts` |  | Image upload insertion |
 | ❓ | `plugins/image/tx.setup-image-listeners.ts` |  | Attach image selection, clone-drag, multi-drag history listeners |
 | ❓ | `plugins/image/tx.update-image-node-from-element.ts` |  | Sync Konva image node from canvas element state |
 | ✅ | `plugins/pen/fn.draft-element.ts` |  | Pen stroke points → draft canvas element |
@@ -198,7 +198,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/text/fn.create-text-element.ts` |  | Creating default persisted text elements from coordinates and timestamps |
 | ❓ | `plugins/text/fx.compute-text-width.ts` |  | Konva multiline text autosize width measurement |
 | ❓ | `plugins/text/fx.to-element.ts` |  | Konva shape node → persisted canvas element snapshot |
-| 🤖 | `plugins/text/Text.plugin.ts` |  | Free-text plugin: create, edit, transform, theme-sync, serialize Konva t |
+| 🤖 | `plugins/text/Text.plugin.ts` |  | Free-text plugin: element/group + tool/session based create, edit, transform, theme sync |
 | ❓ | `plugins/text/tx.create-text-clone-drag.ts` |  | Text drag-duplicate preview committed on drag end |
 | 🤖 | `plugins/text/tx.enter-edit-mode.ts` |  | Inline textarea editing for canvas text/shape labels |
 | ❓ | `plugins/text/tx.setup-text-node.ts` |  | Text node pointer hooks, drag sync, alt-clone history |

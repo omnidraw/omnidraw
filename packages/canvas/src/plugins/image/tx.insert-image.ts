@@ -26,8 +26,7 @@ export type TPortalInsertImage = {
   getImageDimensions: (source: string) => Promise<{ width: number; height: number }>;
   getViewportCenter: () => { x: number; y: number };
   getViewportWorldSize: () => { width: number; height: number };
-  createImageNode: (element: TElement) => Konva.Image;
-  setupNode: (node: Konva.Image) => Konva.Image;
+  createRuntimeNode: (element: TElement) => Konva.Image;
   toElement: (node: Konva.Image) => TElement;
 };
 
@@ -79,7 +78,7 @@ export async function txInsertImage(
       now: portal.now(),
     });
 
-    const node = portal.setupNode(portal.createImageNode(element));
+    const node = portal.createRuntimeNode(element);
     node.setDraggable(true);
     portal.render.staticForegroundLayer.add(node);
     portal.renderOrder.assignOrderOnInsert({
@@ -107,7 +106,7 @@ export async function txInsertImage(
         portal.render.staticForegroundLayer.batchDraw();
       },
       redo() {
-        const recreatedNode = portal.setupNode(portal.createImageNode(insertedElement));
+        const recreatedNode = portal.createRuntimeNode(insertedElement);
         recreatedNode.setDraggable(true);
         portal.render.staticForegroundLayer.add(recreatedNode);
         portal.renderOrder.setNodeZIndex(recreatedNode, insertedElement.zIndex);
