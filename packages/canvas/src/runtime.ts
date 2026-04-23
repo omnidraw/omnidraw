@@ -6,6 +6,7 @@ import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
   createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
   createHistoryControlPlugin,
+  createImagePlugin,
   createPenPlugin,
   createRecorderPlugin, createRenderOrderPlugin, createSceneHydratorPlugin,
   createSelectPlugin, createSelectionStyleMenuPlugin,
@@ -150,7 +151,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     // createShape2dPlugin(),
     createPenPlugin(),
     // createTextPlugin(),
-    // createImagePlugin(),
+    createImagePlugin(),
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),

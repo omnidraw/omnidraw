@@ -3,7 +3,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import ImageIcon from "lucide-static/icons/image.svg?raw";
 import Konva from "konva";
-import type { TCloneImage, TDeleteImage, TUploadImage } from "../../types";
+import type { IRuntimeHooks, TCloneImage, TDeleteImage, TUploadImage } from "../../types";
 import {
   fnFileToDataUrl,
   fnGetImageDimensions,
@@ -11,15 +11,18 @@ import {
   fnGetSupportedImageFormat,
   fnParseDataUrl,
 } from "../../core/fn.image-utils";
-import type { ContextMenuService } from "../../services/context-menu/ContextMenuService";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type {
+  ContextMenuService,
+  CrdtService,
+  ElementService,
+  GroupService,
+  HistoryService,
+  RenderOrderService,
+  SceneService,
+  SelectionService,
+  SessionService,
+  ToolService,
+} from "../../services";
 import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
@@ -92,8 +95,8 @@ function getViewportWorldSize(render: SceneService) {
   };
 }
 
-function shouldIgnoreClipboardEvent(editor: EditorService, event: ClipboardEvent) {
-  if (editor.editingTextId !== null) {
+function shouldIgnoreClipboardEvent(session: Pick<SessionService, "editingId">, event: ClipboardEvent) {
+  if (session.editingId !== null) {
     return true;
   }
 
@@ -171,7 +174,7 @@ function updateImageNodeFromElement(render: SceneService, node: Konva.Image, ele
   });
 }
 
-function toElement(render: SceneService, canvasRegistry: Pick<CanvasRegistryService, "toGroup">, node: Konva.Image): TElement {
+function toElement(node: Konva.Image): TElement {
   const worldPosition = fnGetWorldPosition({
     absolutePosition: node.absolutePosition(),
     parentTransform: node.getLayer()?.getAbsoluteTransform() ?? null,
@@ -237,9 +240,7 @@ function safeStopDrag(node: Konva.Node) {
   }
 }
 
-function filterSelection(render: SceneService, canvasRegistry: Pick<CanvasRegistryService, "toElement" | "toGroup">, selection: Konva.Node[]) {
-  void render;
-
+function filterSelection(selection: Konva.Node[]) {
   return fnFilterSelection({
     selection: selection.filter((node): node is Konva.Group | Konva.Shape => {
       return node instanceof Konva.Group || node instanceof Konva.Shape;
@@ -252,28 +253,32 @@ function filterSelection(render: SceneService, canvasRegistry: Pick<CanvasRegist
  * Supports picker, paste, drop, drag, and serialization hooks.
  */
 export function createImagePlugin(): IPlugin<{
-  canvasRegistry: CanvasRegistryService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
-  editor: EditorService;
+  element: ElementService;
+  group: GroupService;
   history: HistoryService;
   scene: SceneService;
   renderOrder: RenderOrderService;
   selection: SelectionService;
+  session: SessionService;
+  tool: ToolService;
 }, IRuntimeHooks> {
   let fileInput: HTMLInputElement | null = null;
 
   return {
     name: "image",
     apply(ctx) {
-      const canvasRegistry = ctx.services.require("canvasRegistry");
       const contextMenu = ctx.services.require("contextMenu");
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
+      const elementService = ctx.services.require("element");
+      const groupService = ctx.services.require("group");
       const history = ctx.services.require("history");
       const render = ctx.services.require("scene");
       const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
+      const session = ctx.services.require("session");
+      const toolService = ctx.services.require("tool");
 
       const updateImageNodeFromElementPortal = {
         setNodeZIndex,
@@ -300,7 +305,7 @@ export function createImagePlugin(): IPlugin<{
       };
 
       const applyElement = (element: TElement) => {
-        const didUpdate = canvasRegistry.updateElement(element);
+        const didUpdate = elementService.updateElement(element);
         if (!didUpdate) {
           return;
         }
@@ -320,18 +325,21 @@ export function createImagePlugin(): IPlugin<{
 
       const setupNode = (node: Konva.Image) => {
         txSetupImageListeners({
-          canvasRegistry,
+          canvasRegistry: {
+            toElement: (candidate) => elementService.toElement(candidate),
+            toGroup: (candidate) => groupService.toGroup(candidate),
+          },
           crdt,
           history,
           render,
           selection,
           hooks: ctx.hooks,
-          startDragClone: (args) => canvasRegistry.createDragClone(args),
+          startDragClone: (args) => elementService.createDragClone(args),
           applyElement,
           updateImageNodeFromElementPortal,
-          filterSelection: (nodes) => filterSelection(render, canvasRegistry, nodes),
+          filterSelection,
           safeStopDrag,
-          toElement: (imageNode) => toElement(render, canvasRegistry, imageNode),
+          toElement,
           createThrottledPatch: () => {
             return throttle((element: TElement) => {
               if (crdt.doc().elements[element.id] === undefined) {
@@ -361,7 +369,7 @@ export function createImagePlugin(): IPlugin<{
         createPreviewClone: (sourceNode: Konva.Image) => createPreviewClone(render, sourceNode),
         createImageNode: (element: TElement) => createImageNode(render, element),
         setupNode,
-        toElement: (imageNode: Konva.Image) => toElement(render, canvasRegistry, imageNode),
+        toElement,
         now: () => Date.now(),
       };
 
@@ -395,7 +403,7 @@ export function createImagePlugin(): IPlugin<{
           getViewportWorldSize: () => getViewportWorldSize(render),
           createImageNode: (element) => createImageNode(render, element),
           setupNode,
-          toElement: (node) => toElement(render, canvasRegistry, node),
+          toElement,
         }, args);
       };
 
@@ -410,22 +418,20 @@ export function createImagePlugin(): IPlugin<{
           priority: 300,
           onSelect: () => {
             selection.setSelection(activeSelection);
-            txDeleteSelection({ canvasRegistry, crdt, history, render, renderOrder, selection }, {});
+            txDeleteSelection({
+              element: elementService,
+              group: groupService,
+              crdt,
+              history,
+              scene: render,
+              renderOrder,
+              selection,
+            }, {});
           },
         }];
       });
 
-      editor.registerTool({
-        id: "image",
-        label: "Image",
-        icon: ImageIcon,
-        shortcuts: ["9"],
-        priority: 90,
-        behavior: { type: "action" },
-        onSelect: openFilePicker,
-      });
-
-      const unregisterImageElement = canvasRegistry.registerElement({
+      const unregisterImageElement = elementService.registerElement({
         id: "image",
         matchesElement: (element) => element.data.type === "image",
         matchesNode: (node) => node instanceof Konva.Image,
@@ -434,7 +440,7 @@ export function createImagePlugin(): IPlugin<{
             return null;
           }
 
-          return toElement(render, canvasRegistry, node);
+          return toElement(node);
         },
         createNode: (element) => {
           if (element.data.type !== "image") {
@@ -480,6 +486,16 @@ export function createImagePlugin(): IPlugin<{
       });
 
       ctx.hooks.init.tap(() => {
+        toolService.registerTool({
+          id: "image",
+          label: "Image",
+          icon: ImageIcon,
+          shortcuts: ["9"],
+          priority: 90,
+          behavior: { type: "action" },
+          onSelect: openFilePicker,
+        });
+
         fileInput = document.createElement("input");
         fileInput.type = "file";
         fileInput.accept = "image/png,image/jpeg,image/gif,image/webp";
@@ -505,7 +521,7 @@ export function createImagePlugin(): IPlugin<{
         render.stage.container().appendChild(fileInput);
 
         const onPaste = (event: ClipboardEvent) => {
-          if (shouldIgnoreClipboardEvent(editor, event)) {
+          if (shouldIgnoreClipboardEvent(session, event)) {
             return;
           }
 
@@ -577,7 +593,7 @@ export function createImagePlugin(): IPlugin<{
       ctx.hooks.destroy.tap(() => {
         contextMenu.unregisterProvider("image");
         unregisterImageElement();
-        editor.unregisterTool("image");
+        toolService.unregisterTool("image");
       });
     },
   };

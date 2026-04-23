@@ -141,7 +141,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/image/fn.create-image-element.ts` |  | Center-placed image element creation from dimensions and source metadata |
 | ✅ | `plugins/image/fn.fit-image-to-viewport.ts` |  | Initial viewport image fit sizing capped to half smaller viewport dimens |
 | ✅ | `plugins/image/fn.to-image-element.ts` |  | Image payload → canonical canvas element |
-| ❓ | `plugins/image/Image.plugin.ts` |  | Image import, paste/drop, node sync, clone-drag orchestration |
+| 🤖 | `plugins/image/Image.plugin.ts` |  | Image import, paste/drop, node sync, clone-drag orchestration |
 | ❓ | `plugins/image/tx.clone-backend-file-for-element.ts` |  | Duplicate backend image asset, update node and CRDT URL |
 | ❓ | `plugins/image/tx.create-image-clone-drag.ts` |  | Image clone drag finalizes preview, persistence, undo/redo, selection |
 | ❓ | `plugins/image/tx.insert-image.ts` |  | Image upload insertion |
