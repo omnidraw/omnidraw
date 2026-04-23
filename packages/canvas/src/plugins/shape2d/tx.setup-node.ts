@@ -1,18 +1,17 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import { fnGetCanvasAncestorGroups, fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import {
+  fnGetCanvasAncestorGroups,
+  fnGetCanvasNodeKind,
+  fnIsCanvasGroupNode,
+} from "../../core/fn.canvas-node-semantics";
+import type { ElementService, CrdtService, HistoryService, SceneService, SelectionService } from "../../services";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import { fnSerializeSubtreeElements } from "../group/fn.serialize-subtree-elements";
 
 export type TPortalSetupShape2dNode = {
   Group: typeof Konva.Group;
   Shape: typeof Konva.Shape;
-  canvasRegistry: CanvasRegistryService;
+  element: Pick<ElementService, "toElement" | "updateElement">;
   crdt: CrdtService;
   history: HistoryService;
   render: SceneService;
@@ -45,7 +44,7 @@ function findSceneNodeById(portal: TPortalSetupShape2dNode, id: string) {
 }
 
 function applyElement(portal: TPortalSetupShape2dNode, element: TElement) {
-  const didUpdate = portal.canvasRegistry.updateElement(element);
+  const didUpdate = portal.element.updateElement(element);
   if (!didUpdate) {
     return;
   }
@@ -58,21 +57,39 @@ function applyElement(portal: TPortalSetupShape2dNode, element: TElement) {
   fnGetCanvasAncestorGroups(node).forEach((group) => {
     group.fire("transform");
   });
+  portal.render.staticForegroundLayer.batchDraw();
+}
+
+function serializeSubtreeElements(portal: TPortalSetupShape2dNode, group: Konva.Group) {
+  const elements: TElement[] = [];
+
+  group.getChildren().forEach((child) => {
+    const kind = fnGetCanvasNodeKind(child);
+    if (kind === "element") {
+      const element = portal.element.toElement(child);
+      if (element) {
+        elements.push(structuredClone(element));
+      }
+      return;
+    }
+
+    if (kind === "group" && fnIsCanvasGroupNode(child)) {
+      elements.push(...serializeSubtreeElements(portal, child));
+    }
+  });
+
+  return elements;
 }
 
 function serializeNodeElements(portal: TPortalSetupShape2dNode, node: Konva.Node) {
   const kind = fnGetCanvasNodeKind(node);
   if (kind === "element") {
-    const element = portal.canvasRegistry.toElement(node);
+    const element = portal.element.toElement(node);
     return element ? [structuredClone(element)] : [];
   }
 
   if (kind === "group" && fnIsCanvasGroupNode(node)) {
-    return fnSerializeSubtreeElements({
-      canvasRegistry: portal.canvasRegistry,
-      Shape: portal.Shape,
-      group: node as Konva.Group,
-    }).map((element) => structuredClone(element));
+    return serializeSubtreeElements(portal, node).map((element) => structuredClone(element));
   }
 
   return [] as TElement[];

@@ -78,6 +78,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `components/SelectionStyleMenu/FontFamilyPicker.tsx` |  | Text styling panel font family option grid selector |
 | ❓ | `components/SelectionStyleMenu/FontSizePicker.tsx` |  | Text selection font-size preset token picker |
 | ❓ | `components/SelectionStyleMenu/LineTypePicker.tsx` |  | Line style selector buttons for selection formatting |
+| 🤖 | `components/SelectionStyleMenu/index.tsx` |  | Selection style menu shell, focus management, and escape handling |
 | ❓ | `components/SelectionStyleMenu/OpacitySlider.tsx` |  | Opacity drag math, pointer capture, percent display synchronization |
 | ❓ | `components/SelectionStyleMenu/StrokeWidthPicker.tsx` |  | Stroke width option chips inside selection styling menu |
 | ❓ | `components/SelectionStyleMenu/TextAlignPicker.tsx` |  | Text alignment toggle in selection style controls |
@@ -185,15 +186,15 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/shape1d/tx.runtime.ts` |  | Shape drag, clone-drag, multi-select movement, history/CRDT sync |
 | 🤖 | `plugins/shape1d/tx.shape-move.ts` |  | Shape1d move session patching and drag history finalization |
 | ❓ | `plugins/shape1d/typed.ts` |  | Shared local shape1d plugin state and move-session typings |
-| ❓ | `plugins/shape2d/CONSTANTS.ts` |  | Shape2d inline-text runtime attrs, ids, and derived node naming |
-| ✅ | `plugins/shape2d/fn.node.ts` |  | Konva node kind resolution via attrs plus runtime class guards |
-| ✅ | `plugins/shape2d/fn.text-host-bounds.ts` |  | Shape text layout bounds for rect, ellipse, diamond |
+| 🤖 | `plugins/shape2d/CONSTANTS.ts` |  | Shape2d inline-text runtime attrs, ids, and derived node naming |
+| 🤖 | `plugins/shape2d/fn.node.ts` |  | Konva node kind resolution via attrs plus runtime class guards |
+| 🤖 | `plugins/shape2d/fn.text-host-bounds.ts` |  | Shape text layout bounds for rect, ellipse, diamond |
 | 🤖 | `plugins/shape2d/fx.attached-text.ts` |  | Shape-embedded text creation, syncing, persistence, edit-mode handoff |
-| 🤖 | `plugins/shape2d/fx.create-node.ts` |  | Pen element → themed Konva.Path |
+| 🤖 | `plugins/shape2d/fx.create-node.ts` |  | Shape2d element → themed Konva node |
 | 🤖 | `plugins/shape2d/fx.to-element.ts` |  | Shape node → persisted element with inline text payload |
 | 🤖 | `plugins/shape2d/Shape2d.plugin.ts` |  | Shape drawing lifecycle, preview, cloning, attached-text sync |
 | 🤖 | `plugins/shape2d/tx.create-clone-drag.ts` |  | Shape clone preview drag, finalize persist, history, linked duplicates |
-| ❓ | `plugins/shape2d/tx.setup-node.ts` |  | Shape node events: selection, clone-drag, multi-drag, CRDT history |
+| 🤖 | `plugins/shape2d/tx.setup-node.ts` |  | Shape node events: selection, clone-drag, multi-drag, CRDT history |
 | 🤖 | `plugins/shape2d/tx.update-node-from-element.ts` |  | Syncs shape nodes from element props into Konva scene |
 | ✅ | `plugins/text/fn.compute-text-height.ts` |  | Auto-resizing multiline text node bounding-box height |
 | ✅ | `plugins/text/fn.create-text-element.ts` |  | Creating default persisted text elements from coordinates and timestamps |

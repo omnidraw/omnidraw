@@ -70,6 +70,10 @@ export function SelectionStyleMenu(props: {
   onInteraction?: () => void;
 }) {
   const shouldShow = createMemo(() => props.visible());
+  const resolvedStrokeWidthOptions = createMemo(() => {
+    const options = props.strokeWidthOptions?.() ?? [];
+    return options.length > 0 ? options : [...DEFAULT_STROKE_WIDTHS];
+  });
   const [expandedColorPanel, setExpandedColorPanel] = createSignal<"fill" | "stroke" | null>(null);
 
   return (
@@ -152,7 +156,7 @@ export function SelectionStyleMenu(props: {
               <div style={sectionStyle}>
                 <span style={labelStyle}>WIDTH</span>
                 <StrokeWidthPicker
-                  options={props.strokeWidthOptions?.() ?? [...DEFAULT_STROKE_WIDTHS]}
+                  options={resolvedStrokeWidthOptions()}
                   value={props.values().strokeWidth}
                   onChange={props.onStrokeWidthChange}
                 />

@@ -1,15 +1,18 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
+import type {
+  CrdtService,
+  ElementService,
+  HistoryService,
+  RenderOrderService,
+  SceneService,
+  SelectionService,
+} from "../../services";
 
 export type TPortalCreateShape2dCloneDrag = {
   Konva: typeof Konva;
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   crdt: CrdtService;
   history: HistoryService;
   render: SceneService;
@@ -60,6 +63,7 @@ export function txCreateShape2dCloneDrag(
     }
 
     previewClone.moveTo(portal.render.staticForegroundLayer);
+    previewClone.setAttr(VC_NODE_KIND_ATTR, "element");
     portal.setupNode(previewClone);
     portal.renderOrder.assignOrderOnInsert({
       parent: portal.render.staticForegroundLayer,
@@ -72,7 +76,7 @@ export function txCreateShape2dCloneDrag(
       return;
     }
 
-    portal.canvasRegistry.updateElement(clonedElement);
+    portal.element.updateElement(clonedElement);
     const createCommitResult = (() => {
       const builder = portal.crdt.build();
       builder.patchElement(clonedElement.id, clonedElement);
@@ -90,13 +94,13 @@ export function txCreateShape2dCloneDrag(
         portal.render.staticForegroundLayer.batchDraw();
       },
       redo() {
-        const recreatedNode = portal.canvasRegistry.createNodeFromElement(clonedElement);
+        const recreatedNode = portal.element.createNodeFromElement(clonedElement);
         if (!(recreatedNode instanceof portal.Konva.Shape)) {
           return;
         }
 
         portal.render.staticForegroundLayer.add(recreatedNode);
-        portal.canvasRegistry.updateElement(clonedElement);
+        portal.element.updateElement(clonedElement);
         portal.renderOrder.sortChildren(portal.render.staticForegroundLayer);
         portal.crdt.applyOps({ ops: createCommitResult.redoOps });
         portal.selection.setSelection([recreatedNode]);

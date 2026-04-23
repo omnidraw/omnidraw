@@ -1,17 +1,18 @@
-import type Konva from "konva";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { fnGetDiamondPoints } from "../../core/fn.shape2d";
-import type { SceneService } from "../../services/scene/SceneService";
 import type { ThemeService } from "@vibecanvas/service-theme";
-import { SHAPE2D_TEXT_DATA_ATTR } from "./CONSTANTS";
-
-const ELEMENT_STYLE_ATTR = "vcElementStyle";
+import type Konva from "konva";
+import {
+  ELEMENT_DATA_ATTR,
+  ELEMENT_STYLE_ATTR,
+  VC_CREATED_AT_ATTR,
+  VC_UPDATED_AT_ATTR,
+} from "../../core/CONSTANTS";
+import { fnGetDiamondPoints } from "../../core/fn.shape2d";
 
 export type TPortalCreateShape2dNode = {
   Rect: typeof Konva.Rect;
   Line: typeof Konva.Line;
   Ellipse: typeof Konva.Ellipse;
-  render: SceneService;
   theme: ThemeService;
   setNodeZIndex: (node: Konva.Shape, zIndex: string) => void;
 };
@@ -19,6 +20,13 @@ export type TPortalCreateShape2dNode = {
 export type TArgsCreateShape2dNode = {
   element: TElement;
 };
+
+function fxSyncShape2dNodeMetadata(node: Konva.Shape, element: TElement) {
+  node.setAttr(ELEMENT_DATA_ATTR, structuredClone(element.data));
+  node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(element.style));
+  node.setAttr(VC_CREATED_AT_ATTR, element.createdAt);
+  node.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt);
+}
 
 export function fxCreateShape2dNode(portal: TPortalCreateShape2dNode, args: TArgsCreateShape2dNode) {
   const style = args.element.style;
@@ -41,12 +49,11 @@ export function fxCreateShape2dNode(portal: TPortalCreateShape2dNode, args: TArg
       cornerRadius: portal.theme.resolveCornerRadius(style.cornerRadius, 0),
       draggable: true,
       listening: true,
+      scaleX: args.element.scaleX ?? 1,
+      scaleY: args.element.scaleY ?? 1,
     });
 
-    node.setAttr("vcShape2dType", "rect");
-    node.setAttr("vcElementCreatedAt", args.element.createdAt);
-    node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(style));
-    node.setAttr(SHAPE2D_TEXT_DATA_ATTR, structuredClone(args.element.data.text ?? null));
+    fxSyncShape2dNodeMetadata(node, args.element);
     portal.setNodeZIndex(node, args.element.zIndex);
     return node;
   }
@@ -69,12 +76,11 @@ export function fxCreateShape2dNode(portal: TPortalCreateShape2dNode, args: TArg
       dash: portal.theme.resolveStrokeDash(style.strokeStyle, style.strokeWidth),
       draggable: true,
       listening: true,
+      scaleX: args.element.scaleX ?? 1,
+      scaleY: args.element.scaleY ?? 1,
     });
 
-    node.setAttr("vcShape2dType", "diamond");
-    node.setAttr("vcElementCreatedAt", args.element.createdAt);
-    node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(style));
-    node.setAttr(SHAPE2D_TEXT_DATA_ATTR, structuredClone(args.element.data.text ?? null));
+    fxSyncShape2dNodeMetadata(node, args.element);
     portal.setNodeZIndex(node, args.element.zIndex);
     return node;
   }
@@ -94,12 +100,11 @@ export function fxCreateShape2dNode(portal: TPortalCreateShape2dNode, args: TArg
       dash: portal.theme.resolveStrokeDash(style.strokeStyle, style.strokeWidth),
       draggable: true,
       listening: true,
+      scaleX: args.element.scaleX ?? 1,
+      scaleY: args.element.scaleY ?? 1,
     });
 
-    node.setAttr("vcShape2dType", "ellipse");
-    node.setAttr("vcElementCreatedAt", args.element.createdAt);
-    node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(style));
-    node.setAttr(SHAPE2D_TEXT_DATA_ATTR, structuredClone(args.element.data.text ?? null));
+    fxSyncShape2dNodeMetadata(node, args.element);
     portal.setNodeZIndex(node, args.element.zIndex);
     return node;
   }

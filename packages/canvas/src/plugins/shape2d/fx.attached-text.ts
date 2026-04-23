@@ -1,23 +1,30 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type Konva from "konva";
+import { VC_Z_INDEX_ATTR } from "../../core/CONSTANTS";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import {
   fnCreateShape2dTextData,
   fnGetShape2dTextData,
   fnIsShape2dElementType,
 } from "../../core/fn.shape2d";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import { fnGetShapeTextHostBounds } from "./fn.text-host-bounds";
+import type {
+  ElementService,
+  SceneService,
+  SelectionService,
+  SessionService,
+} from "../../services";
 import {
   DEFAULT_ATTACHED_TEXT_ALIGN,
   DEFAULT_ATTACHED_TEXT_VERTICAL_ALIGN,
   DEFAULT_TEXT_LINE_HEIGHT,
   TEXT_FONT_SIZE_TOKEN_BY_PRESET,
+  VC_ORIGINAL_TEXT_ATTR,
+  VC_TEXT_AUTO_RESIZE_ATTR,
+  VC_USES_THEME_TEXT_COLOR_ATTR,
 } from "../text/CONSTANTS";
+import { fnGetShapeTextHostBounds } from "./fn.text-host-bounds";
 import {
   SHAPE2D_INLINE_TEXT_DERIVED_ATTR,
   SHAPE2D_INLINE_TEXT_HOST_ID_ATTR,
@@ -25,29 +32,37 @@ import {
   SHAPE2D_INLINE_TEXT_NAME,
 } from "./CONSTANTS";
 
-export type TPortalAttachedText = {
+export type TPortalGetAttachedTextNode = {
   Konva: typeof Konva;
-  canvasRegistry: Pick<CanvasRegistryService, "toElement">;
-  editor: Pick<EditorService, "editingTextId">;
-  scene: SceneService;
-  selection: SelectionService;
-  theme: ThemeService;
-  enterEditMode: (args: {
-    freeTextName: string;
-    node: Konva.Text;
-    isNew: boolean;
-    shapeTextHostNode: Konva.Shape;
-  }) => void;
+  scene: Pick<SceneService, "staticForegroundLayer">;
 };
 
 export type TArgsGetAttachedTextNode = {
   shapeNode: Konva.Shape;
 };
 
+export type TPortalSyncAttachedTextNodeToShape = {
+  Konva: typeof Konva;
+  element: Pick<ElementService, "toElement">;
+  scene: Pick<SceneService, "staticForegroundLayer">;
+  theme: ThemeService;
+};
+
 export type TArgsSyncAttachedTextNodeToShape = {
   shapeNode: Konva.Shape;
   textNode?: Konva.Text;
   forceCreate?: boolean;
+};
+
+export type TPortalOpenAttachedTextEditMode = TPortalSyncAttachedTextNodeToShape & {
+  selection: Pick<SelectionService, "mode">;
+  session: Pick<SessionService, "editingId">;
+  enterEditMode: (args: {
+    freeTextName: string;
+    node: Konva.Text;
+    isNew: boolean;
+    shapeTextHostNode: Konva.Shape;
+  }) => void;
 };
 
 export type TArgsOpenAttachedTextEditMode = {
@@ -65,7 +80,7 @@ function getShapeTextFillColor(theme: ThemeService, element: Pick<TElement, "sty
   ) ?? theme.getTheme().colors.canvasText;
 }
 
-function getTextNode(portal: TPortalAttachedText, hostId: string) {
+function getTextNode(portal: TPortalGetAttachedTextNode, hostId: string) {
   const node = portal.scene.staticForegroundLayer.findOne((candidate: Konva.Node) => {
     return candidate instanceof portal.Konva.Text
       && candidate.getAttr(SHAPE2D_INLINE_TEXT_HOST_ID_ATTR) === hostId;
@@ -74,8 +89,8 @@ function getTextNode(portal: TPortalAttachedText, hostId: string) {
   return node instanceof portal.Konva.Text ? node : null;
 }
 
-function getHostElement(portal: TPortalAttachedText, shapeNode: Konva.Shape) {
-  const element = portal.canvasRegistry.toElement(shapeNode);
+function getHostElement(portal: TPortalSyncAttachedTextNodeToShape, shapeNode: Konva.Shape) {
+  const element = portal.element.toElement(shapeNode);
   if (!element || !fnIsShape2dElementType(element.data.type)) {
     return null;
   }
@@ -83,7 +98,7 @@ function getHostElement(portal: TPortalAttachedText, shapeNode: Konva.Shape) {
   return element;
 }
 
-function createTextNode(portal: TPortalAttachedText, shapeNode: Konva.Shape) {
+function createTextNode(portal: TPortalSyncAttachedTextNodeToShape, shapeNode: Konva.Shape) {
   return new portal.Konva.Text({
     id: getTextNodeId(shapeNode.id()),
     name: SHAPE2D_INLINE_TEXT_NAME,
@@ -92,7 +107,7 @@ function createTextNode(portal: TPortalAttachedText, shapeNode: Konva.Shape) {
   });
 }
 
-function getOrCreateTextNode(portal: TPortalAttachedText, args: {
+function getOrCreateTextNode(portal: TPortalSyncAttachedTextNodeToShape, args: {
   shapeNode: Konva.Shape;
   textNode?: Konva.Text;
 }) {
@@ -101,11 +116,11 @@ function getOrCreateTextNode(portal: TPortalAttachedText, args: {
     ?? createTextNode(portal, args.shapeNode);
 }
 
-export function fxGetAttachedTextNode(portal: TPortalAttachedText, args: TArgsGetAttachedTextNode) {
+export function fxGetAttachedTextNode(portal: TPortalGetAttachedTextNode, args: TArgsGetAttachedTextNode) {
   return getTextNode(portal, args.shapeNode.id());
 }
 
-export function fxSyncAttachedTextNodeToShape(portal: TPortalAttachedText, args: TArgsSyncAttachedTextNodeToShape) {
+export function fxSyncAttachedTextNodeToShape(portal: TPortalSyncAttachedTextNodeToShape, args: TArgsSyncAttachedTextNodeToShape) {
   const hostElement = getHostElement(portal, args.shapeNode);
   if (!hostElement) {
     args.textNode?.destroy();
@@ -169,20 +184,20 @@ export function fxSyncAttachedTextNodeToShape(portal: TPortalAttachedText, args:
   textNode.name(SHAPE2D_INLINE_TEXT_NAME);
   textNode.setAttr(SHAPE2D_INLINE_TEXT_DERIVED_ATTR, true);
   textNode.setAttr(SHAPE2D_INLINE_TEXT_HOST_ID_ATTR, args.shapeNode.id());
-  textNode.setAttr("vcOriginalText", inlineTextData.originalText);
-  textNode.setAttr("vcTextAutoResize", false);
-  textNode.setAttr("vcUsesThemeTextColor", !hostElement.style.strokeColor);
-  textNode.setAttr("vcZIndex", args.shapeNode.getAttr("vcZIndex") as string | undefined);
+  textNode.setAttr(VC_ORIGINAL_TEXT_ATTR, inlineTextData.originalText);
+  textNode.setAttr(VC_TEXT_AUTO_RESIZE_ATTR, false);
+  textNode.setAttr(VC_USES_THEME_TEXT_COLOR_ATTR, !hostElement.style.strokeColor);
+  textNode.setAttr(VC_Z_INDEX_ATTR, fnGetNodeZIndex({ node: args.shapeNode }));
   textNode.zIndex(Math.min(args.shapeNode.zIndex() + 1, Math.max(parent.getChildren().length - 1, 0)));
   return textNode;
 }
 
-export function fxOpenAttachedTextEditMode(portal: TPortalAttachedText, args: TArgsOpenAttachedTextEditMode) {
+export function fxOpenAttachedTextEditMode(portal: TPortalOpenAttachedTextEditMode, args: TArgsOpenAttachedTextEditMode) {
   if (portal.selection.mode !== "select") {
     return false;
   }
 
-  if (portal.editor.editingTextId !== null) {
+  if (portal.session.editingId !== null) {
     return false;
   }
 

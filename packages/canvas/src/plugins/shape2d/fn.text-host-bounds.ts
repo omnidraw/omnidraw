@@ -1,4 +1,5 @@
 import type Konva from "konva";
+import { fnGetShape2dNodeType } from "./fn.node";
 
 export type TShapeTextHostBounds = {
   x: number;
@@ -52,7 +53,15 @@ export function fnGetShapeTextHostBounds(args: TArgsGetShapeTextHostBounds) {
     } satisfies TShapeTextHostBounds;
   }
 
-  if (args.node instanceof args.Line && args.node.getAttr("vcShape2dType") === "diamond") {
+  if (
+    args.node instanceof args.Line
+    && fnGetShape2dNodeType({
+      Rect: args.Rect,
+      Line: args.Line,
+      Ellipse: args.Ellipse,
+      node: args.node,
+    }) === "diamond"
+  ) {
     const size = getDiamondSize(args.node);
     return {
       x: args.node.x(),

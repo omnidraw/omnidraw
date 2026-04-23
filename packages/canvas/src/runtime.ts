@@ -10,6 +10,8 @@ import {
   createPenPlugin,
   createRecorderPlugin, createRenderOrderPlugin, createSceneHydratorPlugin,
   createSelectPlugin, createSelectionStyleMenuPlugin,
+  createShape1dPlugin,
+  createShape2dPlugin,
   createTextPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
@@ -148,8 +150,8 @@ export function buildRuntime(config: IRuntimeConfig) {
     createHistoryControlPlugin(),
     createSelectPlugin(),
     createTransformPlugin(),
-    // createShape1dPlugin(),
-    // createShape2dPlugin(),
+    createShape1dPlugin(),
+    createShape2dPlugin(),
     createPenPlugin(),
     createTextPlugin(),
     createImagePlugin(),

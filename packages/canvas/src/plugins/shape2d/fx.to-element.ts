@@ -1,22 +1,21 @@
-import type Konva from "konva";
 import type { TElement, TElementStyle, TTextData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type Konva from "konva";
+import {
+  ELEMENT_DATA_ATTR,
+  ELEMENT_STYLE_ATTR,
+  VC_CREATED_AT_ATTR,
+  VC_UPDATED_AT_ATTR,
+} from "../../core/CONSTANTS";
 import { fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { fnCreateShape2dElement } from "../../core/fn.shape2d";
 import { fnGetWorldPosition } from "../../core/fn.world-position";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { SceneService } from "../../services/scene/SceneService";
 import { fnGetShape2dNodeType } from "./fn.node";
-import { SHAPE2D_TEXT_DATA_ATTR } from "./CONSTANTS";
-
-const ELEMENT_STYLE_ATTR = "vcElementStyle";
 
 export type TPortalToShape2dElement = {
   Rect: typeof Konva.Rect;
   Line: typeof Konva.Line;
   Ellipse: typeof Konva.Ellipse;
-  canvasRegistry: Pick<CanvasRegistryService, "toGroup">;
-  render: SceneService;
   now: () => number;
 };
 
@@ -59,8 +58,22 @@ function getDiamondBaseSize(node: Konva.Line) {
   };
 }
 
+function getInlineTextData(node: Konva.Shape) {
+  const data = node.getAttr(ELEMENT_DATA_ATTR) as TElement["data"] | undefined;
+  if (!data || (data.type !== "rect" && data.type !== "diamond" && data.type !== "ellipse")) {
+    return null;
+  }
+
+  return structuredClone((data.text as TTextData | null | undefined) ?? null);
+}
+
 export function fxToShape2dElement(portal: TPortalToShape2dElement, args: TArgsToShape2dElement) {
-  const type = fnGetShape2dNodeType({ Rect: portal.Rect, Line: portal.Line, Ellipse: portal.Ellipse, node: args.node });
+  const type = fnGetShape2dNodeType({
+    Rect: portal.Rect,
+    Line: portal.Line,
+    Ellipse: portal.Ellipse,
+    node: args.node,
+  });
   if (!type) {
     return null;
   }
@@ -76,8 +89,8 @@ export function fxToShape2dElement(portal: TPortalToShape2dElement, args: TArgsT
   const layerScaleY = layer?.scaleY() ?? 1;
   const scaleX = absoluteScale.x / layerScaleX;
   const scaleY = absoluteScale.y / layerScaleY;
-  const updatedAt = portal.now();
-  const createdAt = Number(node.getAttr("vcElementCreatedAt") ?? updatedAt);
+  const updatedAt = Number(node.getAttr(VC_UPDATED_AT_ATTR) ?? portal.now());
+  const createdAt = Number(node.getAttr(VC_CREATED_AT_ATTR) ?? updatedAt);
 
   let x = worldPosition.x;
   let y = worldPosition.y;
@@ -100,7 +113,7 @@ export function fxToShape2dElement(portal: TPortalToShape2dElement, args: TArgsT
     return null;
   }
 
-  const inlineTextData = structuredClone((node.getAttr(SHAPE2D_TEXT_DATA_ATTR) as TTextData | null | undefined) ?? null);
+  const inlineTextData = getInlineTextData(node);
 
   return fnCreateShape2dElement({
     id: node.id(),
@@ -111,7 +124,7 @@ export function fxToShape2dElement(portal: TPortalToShape2dElement, args: TArgsT
     width,
     height,
     createdAt,
-    updatedAt,
+    updatedAt: portal.now(),
     parentGroupId: fnGetCanvasParentGroupId(node),
     zIndex: fnGetNodeZIndex({ node }),
     style: getNodeStyle(node),
