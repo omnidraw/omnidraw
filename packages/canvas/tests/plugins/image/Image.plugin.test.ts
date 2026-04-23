@@ -51,11 +51,11 @@ describe("Image plugin", () => {
       },
     });
 
-    const editor = harness.runtime.services.require("editor");
-    const canvasRegistry = harness.runtime.services.require("canvasRegistry");
+    const tool = harness.runtime.services.require("tool");
+    const element = harness.runtime.services.require("element");
 
-    expect(editor.getTool("image")?.id).toBe("image");
-    expect(canvasRegistry.getSelectionStyleMenuConfigById({ id: "image" })).toBeNull();
+    expect(tool.getTool("image")?.id).toBe("image");
+    expect(element.getSelectionStyleMenuConfigById({ id: "image" })).toBeNull();
 
     await flushCanvasEffects();
 
@@ -64,7 +64,7 @@ describe("Image plugin", () => {
     });
 
     expect(node).toBeInstanceOf(Konva.Image);
-    expect(canvasRegistry.toElement(node as Konva.Image)?.data.type).toBe("image");
+    expect(element.toElement(node as Konva.Image)?.data.type).toBe("image");
 
     await harness.destroy();
   });

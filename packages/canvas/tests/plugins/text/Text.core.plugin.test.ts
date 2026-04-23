@@ -38,8 +38,8 @@ function createTextElement(overrides?: Partial<TElement>): TElement {
 }
 
 function addHydratedTextNode(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>, element?: TElement) {
-  const canvasRegistry = harness.runtime.services.require("canvasRegistry");
-  const node = canvasRegistry.createNodeFromElement(element ?? createTextElement());
+  const elementService = harness.runtime.services.require("element");
+  const node = elementService.createNodeFromElement(element ?? createTextElement());
   if (!(node instanceof Konva.Text)) {
     throw new Error("Expected text node");
   }
@@ -67,9 +67,9 @@ function simulateTransformerRotate(transformer: Konva.Transformer, node: Konva.T
 }
 
 describe("new Text plugin core", () => {
-  test("createNodeFromElement hydrates a Konva.Text and canvasRegistry.toElement serializes it back", async () => {
+  test("createNodeFromElement hydrates a Konva.Text and element.toElement serializes it back", async () => {
     const harness = await createNewCanvasHarness();
-    const canvasRegistry = harness.runtime.services.require("canvasRegistry");
+    const elementService = harness.runtime.services.require("element");
     const render = harness.runtime.services.require("scene");
 
     const element = createTextElement({
@@ -83,14 +83,14 @@ describe("new Text plugin core", () => {
     });
 
     const node = addHydratedTextNode(harness, element);
-    const roundTrip = fxToElement({ editor: canvasRegistry }, { node, createdAt: element.createdAt, updatedAt: element.updatedAt });
+    const roundTrip = fxToElement({ Date }, { node });
     const data = roundTrip.data as TTextData;
 
     expect(node.text()).toBe("Hello world");
     expect(data.text).toBe("Hello world");
     expect(roundTrip.style.fontSize).toBe("@text/s");
     expect(roundTrip.style.textAlign).toBe("left");
-    expect(canvasRegistry.toElement(node)?.data.type).toBe("text");
+    expect(elementService.toElement(node)?.data.type).toBe("text");
 
     await harness.destroy();
   });
@@ -98,7 +98,7 @@ describe("new Text plugin core", () => {
   test("token text color repaints on theme change and round-trips stored token", async () => {
     const harness = await createNewCanvasHarness();
     const theme = harness.runtime.services.require("theme");
-    const canvasRegistry = harness.runtime.services.require("canvasRegistry");
+    const elementService = harness.runtime.services.require("element");
     const node = addHydratedTextNode(harness, createTextElement({
       id: "text-token-1",
       style: {
@@ -108,13 +108,13 @@ describe("new Text plugin core", () => {
     }));
 
     expect(node.fill()).toBe("#7e22ce");
-    expect(canvasRegistry.toElement(node)?.style.strokeColor).toBe("@purple/700");
+    expect(elementService.toElement(node)?.style.strokeColor).toBe("@purple/700");
 
     theme.setTheme(THEME_ID_DARK);
     await flushCanvasEffects();
 
     expect(node.fill()).toBe("#c084fc");
-    expect(canvasRegistry.toElement(node)?.style.strokeColor).toBe("@purple/700");
+    expect(elementService.toElement(node)?.style.strokeColor).toBe("@purple/700");
 
     await harness.destroy();
   });

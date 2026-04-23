@@ -23,13 +23,7 @@ describe("text scale persistence", () => {
       fontSize: "@text/s",
     });
 
-    const element = fxToElement({
-      editor: { toGroup: () => null },
-    }, {
-      node,
-      createdAt: 1,
-      updatedAt: 2,
-    });
+    const element = fxToElement({ Date }, { node });
 
     expect(element.scaleX).toBe(2);
     expect(element.scaleY).toBe(2);

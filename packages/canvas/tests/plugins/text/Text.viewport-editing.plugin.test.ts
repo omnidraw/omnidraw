@@ -35,8 +35,8 @@ function createTextElement(overrides?: Partial<TElement>): TElement {
 }
 
 function addHydratedTextNode(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>, element?: TElement) {
-  const canvasRegistry = harness.runtime.services.require("canvasRegistry");
-  const node = canvasRegistry.createNodeFromElement(element ?? createTextElement());
+  const elementService = harness.runtime.services.require("element");
+  const node = elementService.createNodeFromElement(element ?? createTextElement());
   if (!(node instanceof Konva.Text)) {
     throw new Error("Expected text node");
   }
@@ -73,9 +73,8 @@ function expectTextareaOverlayToMatchNode(node: Konva.Text, textarea: HTMLTextAr
 }
 
 describe("text edit viewport sync", () => {
-  test("entering edit mode mounts a focused textarea overlay and marks the editor as editing", async () => {
+  test("entering edit mode mounts a focused textarea overlay", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
     const node = addHydratedTextNode(harness, createTextElement({
       id: "viewport-edit-state-1",
       data: {
@@ -89,7 +88,6 @@ describe("text edit viewport sync", () => {
     const textarea = harness.stage.container().querySelector("textarea") as HTMLTextAreaElement | null;
 
     expect(textarea).not.toBeNull();
-    expect(editor.editingTextId).toBe(node.id());
     expect(node.visible()).toBe(false);
     expect(harness.stage.container().ownerDocument.activeElement).toBe(textarea);
     expectTextareaOverlayToMatchNode(node, textarea!);
@@ -100,7 +98,6 @@ describe("text edit viewport sync", () => {
   test("panning while editing should move the textarea overlay with canvas space and keep edit mode active", async () => {
     const harness = await createNewCanvasHarness();
     const camera = harness.runtime.services.require("camera");
-    const editor = harness.runtime.services.require("editor");
     const node = addHydratedTextNode(harness, createTextElement({
       id: "viewport-pan-1",
       data: {
@@ -117,7 +114,6 @@ describe("text edit viewport sync", () => {
     camera.pan(400, 0);
     await flushCanvasEffects();
 
-    expect(editor.editingTextId).toBe(node.id());
     expect(harness.stage.container().ownerDocument.activeElement).toBe(textarea);
     expectTextareaOverlayToMatchNode(node, textarea);
     expect(parseFloat(textarea.style.left) + parseFloat(textarea.style.width)).toBeLessThan(0);
@@ -128,7 +124,6 @@ describe("text edit viewport sync", () => {
   test("zooming while editing should reposition and scale the textarea overlay with canvas space and keep edit mode active", async () => {
     const harness = await createNewCanvasHarness();
     const camera = harness.runtime.services.require("camera");
-    const editor = harness.runtime.services.require("editor");
     const node = addHydratedTextNode(harness, createTextElement({
       id: "viewport-zoom-1",
       data: {
@@ -147,7 +142,6 @@ describe("text edit viewport sync", () => {
     camera.zoomAtScreenPoint(2, { x: 220, y: 180 });
     await flushCanvasEffects();
 
-    expect(editor.editingTextId).toBe(node.id());
     expect(harness.stage.container().ownerDocument.activeElement).toBe(textarea);
     expectTextareaOverlayToMatchNode(node, textarea);
     expect(parseFloat(textarea.style.width)).toBeGreaterThan(initialWidth);

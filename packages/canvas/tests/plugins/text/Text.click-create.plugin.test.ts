@@ -20,10 +20,10 @@ function firePointerUp(stage: Konva.Stage, layer: Konva.Layer, runtime: ReturnTy
 describe("new Text plugin click-create", () => {
   test("pointerUp in click-create + text tool adds a text node", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const selection = harness.runtime.services.require("selection");
 
-    editor.setActiveTool("text");
+    tool.setActiveTool("text");
     await flushCanvasEffects();
 
     const before = harness.staticForegroundLayer.getChildren().filter((node) => node instanceof Konva.Text).length;
@@ -34,7 +34,7 @@ describe("new Text plugin click-create", () => {
     const added = textNodes.at(-1);
 
     expect(selection.mode).toBe(CanvasMode.SELECT);
-    expect(editor.activeToolId).toBe("select");
+    expect(tool.activeToolId).toBe("select");
     expect(textNodes.length).toBe(before + 1);
     expect(added).toBeTruthy();
     expect(added?.x()).toBeCloseTo(100, 0);
@@ -45,7 +45,7 @@ describe("new Text plugin click-create", () => {
 
   test("remembered text tool style is used for new text", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const theme = harness.runtime.services.require("theme");
 
     theme.setRememberedStyle("text", {
@@ -56,7 +56,7 @@ describe("new Text plugin click-create", () => {
       verticalAlign: "middle",
       opacity: 0.5,
     });
-    editor.setActiveTool("text");
+    tool.setActiveTool("text");
     await flushCanvasEffects();
 
     firePointerUp(harness.stage, harness.staticForegroundLayer, harness.runtime, 100, 150);
@@ -78,9 +78,9 @@ describe("new Text plugin click-create", () => {
 
   test("new text opens textarea edit UI and Escape cancels the empty new node", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
 
-    editor.setActiveTool("text");
+    tool.setActiveTool("text");
     await flushCanvasEffects();
 
     firePointerUp(harness.stage, harness.staticForegroundLayer, harness.runtime, 100, 150);
@@ -88,14 +88,12 @@ describe("new Text plugin click-create", () => {
 
     const textarea = harness.stage.container().querySelector("textarea") as HTMLTextAreaElement | null;
     expect(textarea).not.toBeNull();
-    expect(editor.editingTextId).not.toBeNull();
     expect(parseFloat(textarea!.style.height)).toBeGreaterThan(0);
 
     textarea!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await flushCanvasEffects();
 
     expect(harness.stage.container().querySelector("textarea")).toBeNull();
-    expect(editor.editingTextId).toBeNull();
     expect(harness.staticForegroundLayer.getChildren().filter((node) => node instanceof Konva.Text)).toHaveLength(0);
 
     await harness.destroy();
@@ -103,10 +101,10 @@ describe("new Text plugin click-create", () => {
 
   test("pointerUp outside click-create mode is ignored", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const selection = harness.runtime.services.require("selection");
 
-    editor.setActiveTool("text");
+    tool.setActiveTool("text");
     selection.mode = CanvasMode.DRAW_CREATE;
     await flushCanvasEffects();
 

@@ -196,9 +196,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S41] - remove fnCreateLegacyShape2dInlineTextMigrationPlan in next version
 - [ ]: [S42] - service refactor
 - [ ]: [S43](s/S43.md) - canvas: normalize clone-drag through CloneService
-- [ ]: [S44](s/S44.md) - canvas tests: services and transform lane
-- [ ]: [S45](s/S45.md) - canvas tests: text edit/session lane
-- [ ]: [S46](s/S46.md) - canvas tests: element creation and clone lane
+- [x]: [S44](s/S44.md) - canvas tests: services and transform lane
+- [x]: [S45](s/S45.md) - canvas tests: text edit/session lane
+- [x]: [S46](s/S46.md) - canvas tests: element creation and clone lane
 - [ ]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
 
 ## E xplorations

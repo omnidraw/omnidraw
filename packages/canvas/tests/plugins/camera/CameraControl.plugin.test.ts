@@ -53,7 +53,7 @@ async function createHandHarness(args?: { canvasId?: string }) {
       },
     }),
   });
-  const editor = harness.runtime.services.require("editor");
+  const tool = harness.runtime.services.require("tool");
   const selection = harness.runtime.services.require("selection");
   const camera = harness.runtime.services.require("camera");
   const shape = getRectNode(harness, element.id);
@@ -64,7 +64,7 @@ async function createHandHarness(args?: { canvasId?: string }) {
 
   return {
     ...harness,
-    editor,
+    tool,
     selection,
     camera,
     handLayer: handLayer!,
@@ -104,9 +104,9 @@ describe("new CameraControl plugin", () => {
   });
 
   test("hand drag pans camera and resets drag state on release", async () => {
-    const { destroy, editor, selection, camera, handLayer } = await createHandHarness();
+    const { destroy, tool, selection, camera, handLayer } = await createHandHarness();
 
-    editor.setActiveTool("hand");
+    tool.setActiveTool("hand");
     await flushCanvasEffects();
 
     expect(selection.mode).toBe(CanvasMode.HAND);
@@ -133,9 +133,9 @@ describe("new CameraControl plugin", () => {
   });
 
   test("hand layer blocks selection and shape drag interactions", async () => {
-    const { destroy, editor, selection, camera, handLayer, shape } = await createHandHarness();
+    const { destroy, tool, selection, camera, handLayer, shape } = await createHandHarness();
 
-    editor.setActiveTool("hand");
+    tool.setActiveTool("hand");
     await flushCanvasEffects();
 
     const beforeShapePosition = { x: shape.x(), y: shape.y() };
@@ -152,9 +152,9 @@ describe("new CameraControl plugin", () => {
   });
 
   test("leaving hand mode mid-drag clears internal drag state", async () => {
-    const { destroy, editor, selection, camera, handLayer } = await createHandHarness();
+    const { destroy, tool, selection, camera, handLayer } = await createHandHarness();
 
-    editor.setActiveTool("hand");
+    tool.setActiveTool("hand");
     await flushCanvasEffects();
 
     dispatchPointerEvent(handLayer, "pointerdown", { pointerId: 3, clientX: 200, clientY: 180 });
@@ -165,7 +165,7 @@ describe("new CameraControl plugin", () => {
     expect(camera.y).toBe(30);
     expect(handLayer.style.cursor).toBe("grabbing");
 
-    editor.setActiveTool("select");
+    tool.setActiveTool("select");
     await flushCanvasEffects();
 
     expect(selection.mode).toBe(CanvasMode.SELECT);
@@ -271,9 +271,9 @@ describe("new CameraControl plugin", () => {
 
   test("persists viewport changes after hand pan and ctrl-wheel zoom", async () => {
     const canvasId = "camera-persist";
-    const { destroy, editor, camera, handLayer, runtime, stage } = await createHandHarness({ canvasId });
+    const { destroy, tool, camera, handLayer, runtime, stage } = await createHandHarness({ canvasId });
 
-    editor.setActiveTool("hand");
+    tool.setActiveTool("hand");
     await flushCanvasEffects();
 
     dispatchPointerEvent(handLayer, "pointerdown", { pointerId: 10, clientX: 320, clientY: 220 });

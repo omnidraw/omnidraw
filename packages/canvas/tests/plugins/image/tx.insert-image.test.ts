@@ -59,8 +59,8 @@ describe("txInsertImage", () => {
       getImageDimensions: vi.fn(async () => ({ width: 1200, height: 600 })),
       getViewportCenter: () => ({ x: 300, y: 200 }),
       getViewportWorldSize: () => ({ width: 800, height: 600 }),
-      createImageNode: (element) => createRuntimeImageNode(element),
-      setupNode: (node) => {
+      createRuntimeNode: (element) => {
+        const node = createRuntimeImageNode(element);
         createdNodes.push(node);
         return node;
       },

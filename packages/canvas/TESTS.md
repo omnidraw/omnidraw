@@ -39,12 +39,18 @@ Last migrated-runtime run:
 - result: `14 files passed, 50 tests passed, 3 skipped`
 
 Latest focused legacy-runtime maintenance run:
-- replaced stale direct tests that still expected `CanvasRegistryService` / editor edit ids in transform helpers
-- removed obsolete `tests/services/CanvasRegistryService.test.ts`
-- added `tests/services/ElementService.test.ts`
-- added `tests/services/GroupService.test.ts`
-- `bunx vitest run tests/plugins/transform/fx.proxy-drag-target.test.ts tests/plugins/transform/fx.selection-transform-options.test.ts tests/plugins/transform/tx.dispatch-selection-transform-hooks.test.ts tests/plugins/transform/tx.sync-transformer.test.ts tests/services/ElementService.test.ts tests/services/GroupService.test.ts`
-- result: `6 files passed, 16 tests passed`
+- S47 stale coverage audit refreshed lower-failure folders that still had stale service assumptions
+- camera and selection-style-menu tests now use `ToolService` through `services.require("tool")`
+- group regression test now creates nodes through `ElementService`, not `CanvasRegistryService`
+- `bunx vitest run tests/plugins/camera tests/plugins/group tests/plugins/scene-hydrator tests/plugins/selection-style-menu`
+- result: `4 files passed, 12 tests passed`
+
+Latest full legacy-runtime integration run:
+- `bunx vitest run tests`
+- result: `37 files passed, 3 failed, 138 tests passed, 4 failed`
+- remaining blockers:
+  - `tests/plugins/shape1d/Shape1d.plugin.test.ts` compile error: duplicate local `element` const
+  - `tests/plugins/text/Text.click-create.plugin.test.ts` and `tests/plugins/text/Text.viewport-editing.plugin.test.ts` still assert old text edit/session state expectations
 
 Big reality check from new runtime:
 - all current `src/new-services/*` now have direct test coverage

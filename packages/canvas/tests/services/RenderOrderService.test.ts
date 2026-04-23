@@ -1,5 +1,6 @@
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
+import { VC_NODE_KIND_ATTR } from "../../src/core/CONSTANTS";
 import { fnCreateOrderedZIndex } from "../../src/core/fn.create-ordered-z-index";
 import { RenderOrderService } from "../../src/services/render-order/RenderOrderService";
 
@@ -145,6 +146,7 @@ describe("RenderOrderService", () => {
     staticForegroundLayer.add(host);
     host.add(shape);
     host.add(groupNode);
+    groupNode.setAttr(VC_NODE_KIND_ATTR, "group");
 
     service.assignOrderOnInsert({ parent: host, nodes: [shape, groupNode], position: "back" });
     expect(patchElement).toHaveBeenCalledWith("shape-1", "zIndex", fnCreateOrderedZIndex(0));

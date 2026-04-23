@@ -33,8 +33,8 @@ function addRectNode(
   harness: Awaited<ReturnType<typeof createNewCanvasHarness>>,
   element: TElement,
 ) {
-  const canvasRegistry = harness.runtime.services.require("canvasRegistry");
-  const node = canvasRegistry.createNodeFromElement(element);
+  const elementService = harness.runtime.services.require("element");
+  const node = elementService.createNodeFromElement(element);
 
   if (!(node instanceof Konva.Rect)) {
     throw new Error("Expected Konva.Rect node");

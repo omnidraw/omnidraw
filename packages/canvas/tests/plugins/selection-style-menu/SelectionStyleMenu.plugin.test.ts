@@ -65,11 +65,11 @@ function clickElement(element: HTMLElement) {
 describe("SelectionStyleMenu plugin", () => {
   test("stores remembered pen tool color from the menu when nothing is selected", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const theme = harness.runtime.services.require("theme");
     const root = getStageDom(harness);
 
-    editor.setActiveTool("pen");
+    tool.setActiveTool("pen");
     await flushCanvasEffects();
 
     const blueButton = getButtonByTitle(root, "blue/700");
@@ -90,7 +90,7 @@ describe("SelectionStyleMenu plugin", () => {
       },
     });
     const harness = await createNewCanvasHarness({ docHandle });
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const selection = harness.runtime.services.require("selection");
     const root = getStageDom(harness);
     const selectedNode = harness.staticForegroundLayer.findOne<Konva.Path>(`#${element.id}`);
@@ -98,7 +98,7 @@ describe("SelectionStyleMenu plugin", () => {
       throw new Error("Expected hydrated selected pen node");
     }
 
-    editor.setActiveTool("pen");
+    tool.setActiveTool("pen");
     await flushCanvasEffects();
 
     const rememberedBlueButton = getButtonByTitle(root, "blue/700");
@@ -123,10 +123,10 @@ describe("SelectionStyleMenu plugin", () => {
 
   test("renders expanded color shades in a side panel", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const root = getStageDom(harness);
 
-    editor.setActiveTool("pen");
+    tool.setActiveTool("pen");
     await flushCanvasEffects();
 
     const currentColorButton = getButtonByTitle(root, "base/900", 1);

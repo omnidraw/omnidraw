@@ -49,8 +49,8 @@ function firePointerUp(harness: Awaited<ReturnType<typeof createNewCanvasHarness
 }
 
 function addHydratedTextNode(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>, element?: TElement) {
-  const canvasRegistry = harness.runtime.services.require("canvasRegistry");
-  const node = canvasRegistry.createNodeFromElement(element ?? createTextElement());
+  const elementService = harness.runtime.services.require("element");
+  const node = elementService.createNodeFromElement(element ?? createTextElement());
   if (!(node instanceof Konva.Text)) {
     throw new Error("Expected text node");
   }
@@ -78,9 +78,10 @@ async function openEdit(node: Konva.Text) {
 describe("new Text plugin regressions", () => {
   test("Escape on a newly created empty text removes the node", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
+    const session = harness.runtime.services.require("session");
 
-    editor.setActiveTool("text");
+    tool.setActiveTool("text");
     await flushCanvasEffects();
 
     firePointerUp(harness, 100, 150);
@@ -95,7 +96,7 @@ describe("new Text plugin regressions", () => {
 
     expect(harness.stage.container().querySelector("textarea")).toBeNull();
     expect(harness.staticForegroundLayer.find("Text")).toHaveLength(0);
-    expect(editor.editingTextId).toBeNull();
+    expect(session.editingId).toBeNull();
 
     await harness.destroy();
   });
@@ -149,9 +150,9 @@ describe("new Text plugin regressions", () => {
     try {
       const docHandle = createMockDocHandle();
       const harness = await createNewCanvasHarness({ docHandle });
-      const editor = harness.runtime.services.require("editor");
+      const tool = harness.runtime.services.require("tool");
 
-      editor.setActiveTool("text");
+      tool.setActiveTool("text");
       await flushCanvasEffects();
 
       firePointerUp(harness, 100, 150);

@@ -61,7 +61,7 @@ describe("txCreateShape2dCloneDrag", () => {
 
     const previewClone = txCreateShape2dCloneDrag({
       Konva,
-      canvasRegistry: {
+      element: {
         createNodeFromElement: (element: TElement) => new Konva.Rect({ id: element.id, x: element.x, y: element.y, width: 120, height: 80 }),
         updateElement: vi.fn(() => true),
       } as never,
@@ -73,6 +73,7 @@ describe("txCreateShape2dCloneDrag", () => {
       render: { staticForegroundLayer, dynamicLayer } as never,
       renderOrder: {
         assignOrderOnInsert: vi.fn(),
+        getOrderBundle: vi.fn((node) => [node]),
         sortChildren: vi.fn(),
       } as never,
       selection: selection as never,

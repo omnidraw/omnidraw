@@ -2,7 +2,7 @@ import Konva from "konva";
 import { describe, expect, test } from "vitest";
 import { fxGetProxyBounds } from "../../../src/plugins/transform/fx.proxy-bounds";
 
-function createMockRender() {
+function createMockScene() {
   const layer = new Konva.Layer();
   return {
     staticForegroundLayer: layer,
@@ -11,11 +11,11 @@ function createMockRender() {
 
 describe("fxGetProxyBounds", () => {
   test("returns layer-space bounds for an unrotated shape", () => {
-    const render = createMockRender();
+    const scene = createMockScene();
     const node = new Konva.Rect({ x: 30, y: 40, width: 120, height: 50, strokeWidth: 0 });
 
     const result = fxGetProxyBounds({
-      render: render as never,
+      scene: scene as never,
     }, {
       node,
     });
@@ -28,11 +28,11 @@ describe("fxGetProxyBounds", () => {
   });
 
   test("preserves node rotation in returned bounds", () => {
-    const render = createMockRender();
+    const scene = createMockScene();
     const node = new Konva.Rect({ x: 10, y: 20, width: 100, height: 40, rotation: 45, strokeWidth: 0 });
 
     const result = fxGetProxyBounds({
-      render: render as never,
+      scene: scene as never,
     }, {
       node,
     });

@@ -35,8 +35,8 @@ function createTextElement(overrides?: Partial<TElement>): TElement {
 }
 
 function addHydratedTextNode(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>, element?: TElement) {
-  const canvasRegistry = harness.runtime.services.require("canvasRegistry");
-  const node = canvasRegistry.createNodeFromElement(element ?? createTextElement());
+  const elementService = harness.runtime.services.require("element");
+  const node = elementService.createNodeFromElement(element ?? createTextElement());
   if (!(node instanceof Konva.Text)) {
     throw new Error("Expected text node");
   }

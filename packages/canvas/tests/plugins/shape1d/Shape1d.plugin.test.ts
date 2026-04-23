@@ -120,10 +120,10 @@ function createArrowElement(args?: {
 describe("shape1d plugin", () => {
   test("draw-create commits a line to scene and CRDT then returns to select", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const selection = harness.runtime.services.require("selection");
 
-    editor.setActiveTool("line");
+    tool.setActiveTool("line");
     await flushCanvasEffects();
 
     withDynamicPointer(harness, { x: 120, y: 80 }, () => {
@@ -144,7 +144,7 @@ describe("shape1d plugin", () => {
     expect(elements[0]?.data.type === "line" && elements[0].data.points.length).toBe(2);
     expect(harness.staticForegroundLayer.find((node: Konva.Node) => fxIsShape1dNode( { node }))).toHaveLength(1);
     expect(harness.dynamicLayer.find((node: Konva.Node) => fxIsShape1dNode( { node }))).toHaveLength(0);
-    expect(editor.activeToolId).toBe("select");
+    expect(tool.activeToolId).toBe("select");
     expect(selection.mode).toBe("select");
 
     await harness.destroy();
@@ -152,7 +152,7 @@ describe("shape1d plugin", () => {
 
   test("remembered line tool style is used for newly created lines", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const theme = harness.runtime.services.require("theme");
 
     theme.setRememberedStyle("line", {
@@ -161,7 +161,7 @@ describe("shape1d plugin", () => {
       opacity: 0.4,
       lineType: "curved",
     });
-    editor.setActiveTool("line");
+    tool.setActiveTool("line");
     await flushCanvasEffects();
 
     withDynamicPointer(harness, { x: 100, y: 100 }, () => {
@@ -188,7 +188,7 @@ describe("shape1d plugin", () => {
 
   test("remembered arrow tool style is used for newly created arrows", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const theme = harness.runtime.services.require("theme");
 
     theme.setRememberedStyle("arrow", {
@@ -199,7 +199,7 @@ describe("shape1d plugin", () => {
       startCap: "dot",
       endCap: "diamond",
     });
-    editor.setActiveTool("arrow");
+    tool.setActiveTool("arrow");
     await flushCanvasEffects();
 
     withDynamicPointer(harness, { x: 110, y: 95 }, () => {
@@ -236,11 +236,11 @@ describe("shape1d plugin", () => {
 
     const harness = await createNewCanvasHarness({ docHandle });
     const node = getShape1dNode(harness, element.id);
-    const canvasRegistry = harness.runtime.services.require("canvasRegistry");
+    const elementService = harness.runtime.services.require("element");
 
     expect(node).toBeInstanceOf(Konva.Shape);
-    expect(canvasRegistry.toElement(node)?.id).toBe(element.id);
-    expect(canvasRegistry.toElement(node)?.data.type).toBe("line");
+    expect(elementService.toElement(node)?.id).toBe(element.id);
+    expect(elementService.toElement(node)?.data.type).toBe("line");
 
     await harness.destroy();
   });

@@ -168,10 +168,10 @@ function simulateTransformerRotate(transformer: Konva.Transformer, node: Konva.P
 describe("new Pen plugin", () => {
   test("Escape cancels an in-progress pen preview", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const selection = harness.runtime.services.require("selection");
 
-    editor.setActiveTool("pen");
+    tool.setActiveTool("pen");
     await flushCanvasEffects();
 
     withDynamicPointer(harness, { x: 120, y: 80 }, () => {
@@ -190,7 +190,7 @@ describe("new Pen plugin", () => {
     expect(harness.dynamicLayer.find((node: Konva.Node) => node instanceof Konva.Path)).toHaveLength(0);
     expect(harness.staticForegroundLayer.find((node: Konva.Node) => node instanceof Konva.Path)).toHaveLength(0);
     expect(Object.keys(harness.docHandle.doc().elements)).toHaveLength(0);
-    expect(editor.activeToolId).toBe("select");
+    expect(tool.activeToolId).toBe("select");
     expect(selection.mode).toBe("select");
 
     await harness.destroy();
@@ -198,7 +198,7 @@ describe("new Pen plugin", () => {
 
   test("remembered pen tool style is used for the next stroke", async () => {
     const harness = await createNewCanvasHarness();
-    const editor = harness.runtime.services.require("editor");
+    const tool = harness.runtime.services.require("tool");
     const theme = harness.runtime.services.require("theme");
 
     theme.setRememberedStyle("pen", {
@@ -206,7 +206,7 @@ describe("new Pen plugin", () => {
       strokeWidth: "@stroke-width/heavy",
       opacity: 0.5,
     });
-    editor.setActiveTool("pen");
+    tool.setActiveTool("pen");
     await flushCanvasEffects();
 
     withDynamicPointer(harness, { x: 120, y: 80 }, () => {
@@ -547,17 +547,17 @@ describe("new Pen plugin", () => {
 
     const harness = await createNewCanvasHarness({ docHandle });
     const theme = harness.runtime.services.require("theme");
-    const canvasRegistry = harness.runtime.services.require("canvasRegistry");
+    const elementService = harness.runtime.services.require("element");
     const node = harness.staticForegroundLayer.findOne<Konva.Path>(`#${element.id}`)!;
 
     expect(node.fill()).toBe("#22c55e");
-    expect(canvasRegistry.toElement(node)?.style.backgroundColor).toBe("@green/500");
+    expect(elementService.toElement(node)?.style.backgroundColor).toBe("@green/500");
 
     theme.setTheme(THEME_ID_DARK);
     await flushCanvasEffects();
 
     expect(node.fill()).toBe("#16a34a");
-    expect(canvasRegistry.toElement(node)?.style.backgroundColor).toBe("@green/500");
+    expect(elementService.toElement(node)?.style.backgroundColor).toBe("@green/500");
 
     await harness.destroy();
   });
