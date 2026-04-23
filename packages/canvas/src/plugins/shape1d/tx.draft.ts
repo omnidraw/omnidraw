@@ -1,9 +1,6 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type { RenderOrderService, SceneService, SelectionService, ToolService } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import { fnCreateDraftElement, fnCreateFallbackPreviewElement } from "./fn.draft";
 import type { TShape1dTool, TShape1dNode } from "./CONSTANTS";
@@ -11,8 +8,8 @@ import { txRecordCreateHistory, type TPortalTxRecordShape1dHistory } from "./tx.
 import type { TShape1dPluginState } from "./typed";
 
 function txGetCurrentShape1dTool(portal: TPortalTxShape1dDraft): TShape1dTool | null {
-  const tool = portal.editor.activeToolId;
-  return tool === "line" || tool === "arrow" ? tool : null;
+  const activeToolId = portal.tool.activeToolId;
+  return activeToolId === "line" || activeToolId === "arrow" ? activeToolId : null;
 }
 
 function txGetRememberedShape1dStyle(portal: TPortalTxShape1dDraft, tool: TShape1dTool | null) {
@@ -72,7 +69,7 @@ function txEnsureShape1dPreviewNode(portal: TPortalTxShape1dDraft) {
 
 export type TPortalTxShape1dDraft = {
   state: TShape1dPluginState;
-  editor: EditorService;
+  tool: ToolService;
   render: SceneService;
   renderOrder: RenderOrderService;
   selection: SelectionService;
@@ -144,7 +141,7 @@ export function txCancelShape1dDraft(portal: TPortalTxShape1dDraft) {
 
   txResetShape1dDraft(portal);
   txResetShape1dPreview(portal);
-  portal.editor.setActiveTool("select");
+  portal.tool.setActiveTool("select");
 }
 
 export function txFinalizeShape1dDraft(portal: TPortalTxShape1dDraft) {
@@ -159,7 +156,7 @@ export function txFinalizeShape1dDraft(portal: TPortalTxShape1dDraft) {
   const element = txCreateDraftElementFromState(portal);
   txResetShape1dDraft(portal);
   txResetShape1dPreview(portal);
-  portal.editor.setActiveTool("select");
+  portal.tool.setActiveTool("select");
   if (!element) {
     return;
   }

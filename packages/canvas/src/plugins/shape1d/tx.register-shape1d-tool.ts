@@ -1,8 +1,8 @@
-import type { EditorService } from "../../services/editor/EditorService";
+import type { ToolService } from "../../services";
 import type { TShape1dTool } from "./CONSTANTS";
 
 export type TPortalTxRegisterShape1dTool = {
-  editor: EditorService;
+  tool: ToolService;
 };
 
 export type TArgsTxRegisterShape1dTool = {
@@ -14,7 +14,7 @@ export type TArgsTxRegisterShape1dTool = {
 };
 
 export function txRegisterShape1dTool(portal: TPortalTxRegisterShape1dTool, args: TArgsTxRegisterShape1dTool) {
-  portal.editor.registerTool({
+  portal.tool.registerTool({
     id: args.id,
     label: args.label,
     icon: args.icon,
@@ -24,6 +24,6 @@ export function txRegisterShape1dTool(portal: TPortalTxRegisterShape1dTool, args
   });
 
   return () => {
-    portal.editor.unregisterTool(args.id);
+    portal.tool.unregisterTool(args.id);
   };
 }

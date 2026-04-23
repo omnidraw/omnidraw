@@ -1,8 +1,6 @@
 import { throttle as THROTTLE } from "@solid-primitives/scheduled";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
+import type { CrdtService, HistoryService } from "../../services";
 import { fxToPositionPatch } from "./fx.node";
 import type { TShape1dNode } from "./CONSTANTS";
 import type { TShape1dPluginState } from "./typed";
@@ -11,7 +9,6 @@ const SHAPE1D_MOVE_BEFORE_ELEMENT_ATTR = "vcShape1dMoveBeforeElement";
 
 export type TPortalTxShape1dMove = {
   state: TShape1dPluginState;
-  canvasRegistry: CanvasRegistryService;
   crdt: CrdtService;
   history: HistoryService;
   now: () => number;
@@ -68,7 +65,7 @@ export function txPatchShape1dMove(portal: TPortalTxShape1dMove, args: TArgsTxPa
     return false;
   }
 
-  session.throttledPatch(fxToPositionPatch({ editor: portal.canvasRegistry, now: portal.now }, { node: args.node }));
+  session.throttledPatch(fxToPositionPatch({ now: portal.now }, { node: args.node }));
   return true;
 }
 

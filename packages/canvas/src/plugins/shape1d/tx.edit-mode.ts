@@ -1,8 +1,7 @@
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
+import type { SceneService, SelectionService, SessionService } from "../../services";
 import {
   EDIT_HANDLE_FILL,
   EDIT_HANDLE_RADIUS,
@@ -142,7 +141,7 @@ function txRenderShape1dEditHandles(portal: TPortalTxShape1dEditMode, args: TArg
       const createdPoint = portal.insertionPoint(currentData, index);
       const nextData = structuredClone(currentData);
       nextData.points.splice(index + 1, 0, createdPoint);
-      editableNode.setAttr("vcElementData", nextData);
+      editableNode.setAttr(ELEMENT_DATA_ATTR, nextData);
       editableNode.getLayer()?.batchDraw();
       handle.setAttr("vcShape1dHandleKind", "anchor");
       handle.setAttr("vcShape1dPointIndex", index + 1);
@@ -208,7 +207,7 @@ function txRenderShape1dEditHandles(portal: TPortalTxShape1dEditMode, args: TArg
       const beforeElement = portal.toElement(editableNode);
       const nextData = structuredClone(currentData);
       nextData.points.splice(index + 1, 0, insertPoint);
-      editableNode.setAttr("vcElementData", nextData);
+      editableNode.setAttr(ELEMENT_DATA_ATTR, nextData);
       editableNode.getLayer()?.batchDraw();
       const afterElement = portal.toElement(editableNode);
       txRecordElementHistory(portal.historyPortal, {
@@ -234,8 +233,7 @@ function txRenderShape1dEditHandles(portal: TPortalTxShape1dEditMode, args: TArg
 export type TPortalTxShape1dEditMode = {
   state: TShape1dPluginState;
   Circle: typeof Konva.Circle;
-  canvasRegistry: CanvasRegistryService;
-  editor: EditorService;
+  session: SessionService;
   render: SceneService;
   selection: SelectionService;
   historyPortal: TPortalTxRecordShape1dHistory;
@@ -244,7 +242,7 @@ export type TPortalTxShape1dEditMode = {
   toWorld: (node: TShape1dNode, point: TPoint | { x: number; y: number }) => { x: number; y: number };
   insertionPoint: (data: TShape1dData, segmentIndex: number) => TPoint;
   applyAnchorDrag: (node: TShape1dNode, drag: THandleDragSnapshot, worldPoint: { x: number; y: number }) => void;
-  toElement: (node: TShape1dNode) => ReturnType<TPortalTxRecordShape1dHistory["canvasRegistry"]["toElement"]> extends infer TReturn ? Exclude<TReturn, null> : never;
+  toElement: (node: TShape1dNode) => TElement;
 };
 
 export type TArgsTxRefreshShape1dEditHandlePositions = {
@@ -268,7 +266,7 @@ export type TArgsTxExitShape1dEditMode = {
 };
 
 export function txExitShape1dEditMode(portal: TPortalTxShape1dEditMode, args?: TArgsTxExitShape1dEditMode) {
-  const editingId = portal.editor.editingShape1dId;
+  const editingId = portal.session.editingId;
   if (editingId !== null) {
     const node = portal.findNode(editingId);
     if (node) {
@@ -280,7 +278,7 @@ export function txExitShape1dEditMode(portal: TPortalTxShape1dEditMode, args?: T
 
   portal.state.activeHandleDrag = null;
   txClearShape1dEditHandles(portal);
-  portal.editor.setEditingShape1dId(null);
+  portal.session.editingId = null;
   if (!args?.preserveSelection && portal.selection.selection.length === 1 && portal.selection.selection[0]?.id() === editingId) {
     portal.selection.clear();
   }
@@ -291,7 +289,7 @@ export type TArgsTxEnterShape1dEditMode = {
 };
 
 export function txEnterShape1dEditMode(portal: TPortalTxShape1dEditMode, args: TArgsTxEnterShape1dEditMode) {
-  if (portal.editor.editingShape1dId === args.node.id()) {
+  if (portal.session.editingId === args.node.id()) {
     txRenderShape1dEditHandles(portal, { node: args.node });
     return;
   }
@@ -301,12 +299,12 @@ export function txEnterShape1dEditMode(portal: TPortalTxShape1dEditMode, args: T
   args.node.draggable(false);
   portal.selection.setSelection([args.node]);
   portal.selection.setFocusedNode(args.node);
-  portal.editor.setEditingShape1dId(args.node.id());
+  portal.session.editingId = args.node.id();
   txRenderShape1dEditHandles(portal, { node: args.node });
 }
 
 export function txRefreshShape1dEditMode(portal: TPortalTxShape1dEditMode) {
-  const editingId = portal.editor.editingShape1dId;
+  const editingId = portal.session.editingId;
   if (!editingId) {
     txClearShape1dEditHandles(portal);
     return;

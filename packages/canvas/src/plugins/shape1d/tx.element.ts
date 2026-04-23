@@ -1,8 +1,9 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR } from "../../core/CONSTANTS";
 import { fnGetAbsolutePositionFromWorldPosition } from "../../core/fn.world-position";
-import { DEFAULT_OPACITY, ELEMENT_CREATED_AT_ATTR, MIN_HIT_STROKE_WIDTH, type TShape1dNode } from "./CONSTANTS";
+import { DEFAULT_OPACITY, MIN_HIT_STROKE_WIDTH, type TShape1dNode } from "./CONSTANTS";
 import { fxGetStrokeColorFromStyle, fxGetStrokeWidthFromStyle, fxIsSupportedElementType, fxToTElement } from "./fx.node";
 import { txCreateShapeFromElement } from "./tx.render";
 
@@ -35,16 +36,15 @@ export function txUpdateShapeFromElement(portal: TPortalTxUpdateShapeFromElement
   args.node.hitStrokeWidth(Math.max(MIN_HIT_STROKE_WIDTH, strokeWidth + 8));
   args.node.opacity(args.element.style.opacity ?? DEFAULT_OPACITY);
   args.node.scale({ x: args.element.scaleX ?? 1, y: args.element.scaleY ?? 1 });
-  args.node.setAttr(ELEMENT_CREATED_AT_ATTR, args.element.createdAt);
-  args.node.setAttr("vcElementData", structuredClone(args.element.data));
-  args.node.setAttr("vcElementStyle", structuredClone(args.element.style));
+  args.node.setAttr(VC_CREATED_AT_ATTR, args.element.createdAt);
+  args.node.setAttr(ELEMENT_DATA_ATTR, structuredClone(args.element.data));
+  args.node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(args.element.style));
   portal.setNodeZIndex(args.node, args.element.zIndex);
 }
 
 export type TPortalTxCreatePreviewClone = {
   createId: () => string;
   now: () => number;
-  editor: { toGroup(node: Konva.Node): unknown };
   theme: { getTheme(): string | TThemeDefinition };
   resolveThemeColor: (theme: string | TThemeDefinition, value: string | undefined, fallback?: string | undefined) => string | undefined;
   createShapeNode: (config?: Record<string, unknown>) => TShape1dNode;
@@ -52,7 +52,7 @@ export type TPortalTxCreatePreviewClone = {
 };
 export type TArgsTxCreatePreviewClone = { node: TShape1dNode };
 export function txCreatePreviewClone(portal: TPortalTxCreatePreviewClone, args: TArgsTxCreatePreviewClone) {
-  const element = fxToTElement({ editor: portal.editor, now: portal.now }, { node: args.node });
+  const element = fxToTElement({ now: portal.now }, { node: args.node });
   const timestamp = portal.now();
   const clone = txCreateShapeFromElement({
     createShapeNode: portal.createShapeNode,

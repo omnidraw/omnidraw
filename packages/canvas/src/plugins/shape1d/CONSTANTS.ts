@@ -15,7 +15,6 @@ export type THandleDragSnapshot = {
   beforeAbsoluteTransform: Konva.Transform;
 };
 
-export const ELEMENT_CREATED_AT_ATTR = "vcElementCreatedAt";
 export const DEFAULT_STROKE = "#0f172a";
 export const DEFAULT_STROKE_COLOR_TOKEN = "@base/900";
 export const DEFAULT_OPACITY = 0.92;

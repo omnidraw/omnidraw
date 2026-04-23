@@ -1,19 +1,14 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type { CrdtService, ElementService, HistoryService, RenderOrderService, SceneService, SelectionService } from "../../services";
 import { fxFindShape1dNodeById, type TPortalFxFindShape1dNodeById } from "./fx.node";
 import type { TShape1dNode } from "./CONSTANTS";
 import { txCreateShapeFromElement } from "./tx.render";
 
 export type TPortalTxRecordShape1dHistory = {
   Shape: typeof Konva.Shape;
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   crdt: CrdtService;
   history: HistoryService;
   render: SceneService;
@@ -40,11 +35,11 @@ export function txRecordElementHistory(portal: TPortalTxRecordShape1dHistory, ar
   portal.history.record({
     label: args.label,
     undo() {
-      portal.canvasRegistry.updateElement(args.beforeElement);
+      portal.element.updateElement(args.beforeElement);
       commitResult.rollback();
     },
     redo() {
-      portal.canvasRegistry.updateElement(args.afterElement);
+      portal.element.updateElement(args.afterElement);
       portal.crdt.applyOps({ ops: commitResult.redoOps });
     },
   });
@@ -87,7 +82,7 @@ export function txRecordCreateHistory(portal: TPortalTxRecordShape1dHistory, arg
         portal.render.staticForegroundLayer.add(currentNode);
       }
 
-      portal.canvasRegistry.updateElement(snapshot);
+      portal.element.updateElement(snapshot);
       portal.renderOrder.sortChildren(portal.render.staticForegroundLayer);
       portal.crdt.applyOps({ ops: commitResult.redoOps });
       portal.selection.setSelection([currentNode]);

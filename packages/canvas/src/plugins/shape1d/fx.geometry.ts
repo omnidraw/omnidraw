@@ -1,4 +1,5 @@
 import type Konva from "konva";
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { fnGetAbsolutePositionFromWorldPosition } from "../../core/fn.world-position";
 import {
   CURVE_TENSION,
@@ -111,6 +112,6 @@ export function fxApplyAnchorDrag(portal: TPortalFxApplyAnchorDrag, args: TArgsF
     nextData.points[args.drag.pointIndex] = [nextLocal.x, nextLocal.y];
   }
 
-  args.node.setAttr("vcElementData", nextData);
+  args.node.setAttr(ELEMENT_DATA_ATTR, nextData);
   args.node.getLayer()?.batchDraw();
 }

@@ -1,8 +1,6 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
+import type { ElementService, CrdtService, HistoryService } from "../../services";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import { fnGetShape1dSelectionStyleMenuConfig } from "./fn.selection-style";
 import type { TShape1dData, TShape1dNode, TShape1dTool } from "./CONSTANTS";
@@ -57,7 +55,7 @@ function txFinalizeShape1dTransform(
 
 export type TPortalTxRegisterShape1dElement = {
   Shape: typeof Konva.Shape;
-  canvasRegistry: CanvasRegistryService;
+  element: ElementService;
   crdt: CrdtService;
   history: HistoryService;
   applyElement: (element: TElement) => void;
@@ -80,7 +78,7 @@ export type TArgsTxRegisterShape1dElement = {
 };
 
 export function txRegisterShape1dElement(portal: TPortalTxRegisterShape1dElement, args: TArgsTxRegisterShape1dElement) {
-  return portal.canvasRegistry.registerElement({
+  return portal.element.registerElement({
     id: args.type,
     matchesElement: (element) => element.data.type === args.type,
     matchesNode: (node) => txResolveMatchingShape1dNode(portal, node, args.type) !== null,

@@ -1,17 +1,11 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type { CrdtService, ElementService, GroupService, HistoryService, RenderOrderService, SceneService, SelectionService } from "../../services";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import { fnGetCanvasAncestorGroups, fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
-import { fnSerializeSubtreeElements } from "../group/fn.serialize-subtree-elements";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import { type TShape1dNode } from "./CONSTANTS";
+import type { TShape1dNode } from "./CONSTANTS";
 import { fxToPositionPatch, fxToTElement } from "./fx.node";
 import { txCreatePreviewClone } from "./tx.element";
 import { txRecordCreateHistory, type TPortalTxRecordShape1dHistory } from "./tx.history";
@@ -36,8 +30,11 @@ export type TPortalTxShape1dRuntime = TPortalTxRecordShape1dHistory & {
   createId: () => string;
   now: () => number;
   createThrottledPatch: (callback: (patch: Pick<TElement, "id" | "x" | "y" | "parentGroupId" | "updatedAt">) => void) => (patch: Pick<TElement, "id" | "x" | "y" | "parentGroupId" | "updatedAt">) => void;
+  group: GroupService;
 };
 export type TArgsTxSetupShapeListeners = { node: TShape1dNode };
+
+type TSceneNode = Konva.Group | Konva.Shape;
 
 function findSceneNodeById(portal: TPortalTxShape1dRuntime, id: string) {
   const node = portal.render.staticForegroundLayer.findOne((candidate: Konva.Node) => {
@@ -52,7 +49,7 @@ function findSceneNodeById(portal: TPortalTxShape1dRuntime, id: string) {
 }
 
 function applyElement(portal: TPortalTxShape1dRuntime, element: TElement) {
-  const didUpdate = portal.canvasRegistry.updateElement(element);
+  const didUpdate = portal.element.updateElement(element);
   if (!didUpdate) {
     return;
   }
@@ -62,24 +59,27 @@ function applyElement(portal: TPortalTxShape1dRuntime, element: TElement) {
     return;
   }
 
-  fnGetCanvasAncestorGroups(node).forEach((group) => {
-    group.fire("transform");
+  fnGetCanvasAncestorGroups(node).forEach((groupNode) => {
+    groupNode.fire("transform");
   });
+}
+
+function serializeSubtreeElements(portal: TPortalTxShape1dRuntime, groupNode: Konva.Group) {
+  return groupNode.find((node: Konva.Node) => node instanceof portal.Konva.Shape)
+    .map((node) => portal.element.toElement(node))
+    .filter((element): element is TElement => element !== null)
+    .map((element) => structuredClone(element));
 }
 
 function serializeNodeElements(portal: TPortalTxShape1dRuntime, node: Konva.Node) {
   const kind = fnGetCanvasNodeKind(node);
   if (kind === "element") {
-    const element = portal.canvasRegistry.toElement(node);
+    const element = portal.element.toElement(node);
     return element ? [structuredClone(element)] : [];
   }
 
   if (kind === "group" && fnIsCanvasGroupNode(node)) {
-    return fnSerializeSubtreeElements({
-      canvasRegistry: portal.canvasRegistry,
-      Shape: portal.Konva.Shape,
-      group: node as Konva.Group,
-    }).map((element) => structuredClone(element));
+    return serializeSubtreeElements(portal, node as Konva.Group);
   }
 
   return [] as TElement[];
@@ -96,7 +96,7 @@ export function txFinalizePreviewClone(portal: TPortalTxShape1dRuntime, args: TA
   args.previewClone.setDraggable(true);
   portal.renderOrder.assignOrderOnInsert({ parent: portal.render.staticForegroundLayer, nodes: [args.previewClone], position: "front" });
 
-  const createdElement = fxToTElement({ editor: portal.canvasRegistry, now: portal.now }, { node: args.previewClone });
+  const createdElement = fxToTElement({ now: portal.now }, { node: args.previewClone });
   txRecordCreateHistory(portal, { element: createdElement, node: args.previewClone, label: "clone-shape1d" });
   portal.render.dynamicLayer.batchDraw();
   portal.render.staticForegroundLayer.batchDraw();
@@ -108,7 +108,6 @@ export function txCreateCloneDrag(portal: TPortalTxShape1dRuntime, args: TArgsTx
   const previewClone = txCreatePreviewClone({
     createId: portal.createId,
     now: portal.now,
-    editor: portal.canvasRegistry,
     theme: portal.theme,
     resolveThemeColor: portal.resolveThemeColor,
     createShapeNode: portal.createShapeNode,
@@ -173,7 +172,7 @@ export function txSetupShapeListeners(portal: TPortalTxShape1dRuntime, args: TAr
       return;
     }
 
-    originalElement = fxToTElement({ editor: portal.canvasRegistry, now: portal.now }, { node: args.node });
+    originalElement = fxToTElement({ now: portal.now }, { node: args.node });
     multiDragStartPositions.clear();
     passengerOriginalElements.clear();
 
@@ -208,7 +207,7 @@ export function txSetupShapeListeners(portal: TPortalTxShape1dRuntime, args: TAr
     if (isCloneDrag) {
       return;
     }
-    throttledPatch(fxToPositionPatch({ editor: portal.canvasRegistry, now: portal.now }, { node: args.node }));
+    throttledPatch(fxToPositionPatch({ now: portal.now }, { node: args.node }));
     const selected = fnFilterSelection({ selection: portal.selection.selection });
     if (selected.length <= 1) {
       return;
@@ -241,7 +240,7 @@ export function txSetupShapeListeners(portal: TPortalTxShape1dRuntime, args: TAr
       return;
     }
 
-    const nextElement = fxToTElement({ editor: portal.canvasRegistry, now: portal.now }, { node: args.node });
+    const nextElement = fxToTElement({ now: portal.now }, { node: args.node });
     const beforeElement = originalElement ? structuredClone(originalElement) : null;
     const afterElement = structuredClone(nextElement);
 

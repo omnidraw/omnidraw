@@ -1,7 +1,8 @@
 import type { TArrowData, TElement, TElementStyle } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
-import { DEFAULT_OPACITY, ELEMENT_CREATED_AT_ATTR, MIN_HIT_STROKE_WIDTH, type TPoint, type TShape1dData, type TShape1dNode } from "./CONSTANTS";
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR } from "../../core/CONSTANTS";
+import { DEFAULT_OPACITY, MIN_HIT_STROKE_WIDTH, type TPoint, type TShape1dData, type TShape1dNode } from "./CONSTANTS";
 import { fxGetStrokeColorFromStyle, fxGetStrokeWidthFromStyle, fxIsSupportedElementType } from "./fx.node";
 
 function getBoundsPadding(data: TShape1dData, strokeWidth: number) {
@@ -88,7 +89,7 @@ function traceCapPath(context: Konva.Context, data: TArrowData, edge: "start" | 
 }
 
 function drawScene(context: Konva.Context, node: TShape1dNode) {
-  const data = node.getAttr("vcElementData") as TShape1dData | undefined;
+  const data = node.getAttr(ELEMENT_DATA_ATTR) as TShape1dData | undefined;
   if (!data || data.points.length < 2) {
     return;
   }
@@ -107,8 +108,8 @@ function drawScene(context: Konva.Context, node: TShape1dNode) {
 }
 
 function getSelfRect(node: TShape1dNode) {
-  const data = node.getAttr("vcElementData") as TShape1dData | undefined;
-  const strokeWidth = fxGetStrokeWidthFromStyle({}, { style: ((node.getAttr("vcElementStyle") as TElementStyle | undefined) ?? {}) });
+  const data = node.getAttr(ELEMENT_DATA_ATTR) as TShape1dData | undefined;
+  const strokeWidth = fxGetStrokeWidthFromStyle({}, { style: ((node.getAttr(ELEMENT_STYLE_ATTR) as TElementStyle | undefined) ?? {}) });
   if (!data || data.points.length === 0) {
     return { x: -strokeWidth, y: -strokeWidth, width: strokeWidth * 2, height: strokeWidth * 2 };
   }
@@ -170,9 +171,9 @@ export function txCreateShapeFromElement(portal: TPortalTxCreateShapeFromElement
 
   txAttachShapeRuntime({}, { node });
   node.scale({ x: args.element.scaleX ?? 1, y: args.element.scaleY ?? 1 });
-  node.setAttr(ELEMENT_CREATED_AT_ATTR, args.element.createdAt);
-  node.setAttr("vcElementData", structuredClone(args.element.data));
-  node.setAttr("vcElementStyle", structuredClone(args.element.style));
+  node.setAttr(VC_CREATED_AT_ATTR, args.element.createdAt);
+  node.setAttr(ELEMENT_DATA_ATTR, structuredClone(args.element.data));
+  node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(args.element.style));
   portal.setNodeZIndex(node, args.element.zIndex);
   return node;
 }

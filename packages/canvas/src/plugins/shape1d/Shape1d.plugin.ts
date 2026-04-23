@@ -5,21 +5,28 @@ import Konva from "konva";
 import Minus from "lucide-static/icons/minus.svg?raw";
 import { throttle } from "@solid-primitives/scheduled";
 import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import type { IRuntimeHooks } from "../../types";
-import type { CameraService } from "../../services/camera/CameraService";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { ContextMenuService } from "../../services/context-menu/ContextMenuService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { EditorService } from "../../services/editor/EditorService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
-import type { SceneService } from "../../services/scene/SceneService";
+import type {
+  CameraService,
+  ContextMenuService,
+  CrdtService,
+  ElementService,
+  GroupService,
+  HistoryService,
+  RenderOrderService,
+  SceneService,
+  SelectionService,
+  SessionService,
+  ToolService,
+  TToolCanvasPoint,
+} from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
-import type { SelectionService } from "../../services/selection/SelectionService";
 import { txDeleteSelection } from "../select/tx.delete-selection";
 import { type THandleDragSnapshot, type TPoint, type TShape1dNode } from "./CONSTANTS";
+import { fnCreateDraftElement } from "./fn.draft";
 import { fxApplyAnchorDrag, fxGetInsertionPoint, fxLocalPointToWorld } from "./fx.geometry";
 import {
   fxFindShape1dNodeById,
@@ -31,23 +38,14 @@ import {
   fxToTElement,
 } from "./fx.node";
 import {
-  txCancelShape1dDraft,
-  txFinalizeShape1dDraft,
-  txResetShape1dDraft,
-  txResetShape1dPreview,
-  txStartShape1dDraft,
-  txUpdateShape1dDraftCurrentPoint,
-} from "./tx.draft";
-import {
   txClearShape1dEditHandles,
   txEnterShape1dEditMode,
   txExitShape1dEditMode,
   txRefreshShape1dEditMode,
 } from "./tx.edit-mode";
-import { txCreatePreviewClone, txUpdateShapeFromElement } from "./tx.element";
+import { txUpdateShapeFromElement } from "./tx.element";
 import { type TPortalTxRecordShape1dHistory } from "./tx.history";
 import { txRegisterShape1dElement } from "./tx.register-shape1d-element";
-import { txRegisterShape1dTool } from "./tx.register-shape1d-tool";
 import { txAttachShapeRuntime, txCreateShapeFromElement } from "./tx.render";
 import {
   txEnsureShape1dMove,
@@ -77,21 +75,80 @@ function createCreateId(render: SceneService) {
   };
 }
 
+function fxCreateShape1dDraftNode(args: {
+  createShapeNode: (config?: Record<string, unknown>) => TShape1dNode;
+  point: TToolCanvasPoint;
+}) {
+  const node = args.createShapeNode({
+    id: "shape1d-draft",
+    x: args.point.x,
+    y: args.point.y,
+    visible: false,
+    listening: false,
+    draggable: false,
+  });
+
+  txAttachShapeRuntime({}, { node });
+  return node;
+}
+
+function txUpdateShape1dDraftNode(args: {
+  previewNode: Konva.Node;
+  activeTool: "line" | "arrow";
+  origin: TToolCanvasPoint;
+  point: TToolCanvasPoint;
+  now: () => number;
+  rememberedStyle: ReturnType<ThemeService["getRememberedStyle"]>;
+  updateShape: (node: TShape1dNode, element: TElement) => void;
+}) {
+  if (!(args.previewNode instanceof Konva.Shape)) {
+    return;
+  }
+
+  const previewNode = args.previewNode as TShape1dNode;
+  const element = fnCreateDraftElement({
+    activeTool: args.activeTool,
+    draftElementId: previewNode.id(),
+    draftStartPoint: [args.origin.x, args.origin.y],
+    draftCurrentPoint: [args.point.x, args.point.y],
+    createId: () => previewNode.id(),
+    now: args.now,
+    rememberedStyle: args.rememberedStyle,
+  });
+
+  if (!element) {
+    previewNode.setAttr(ELEMENT_DATA_ATTR, undefined);
+    previewNode.visible(false);
+    previewNode.listening(false);
+    previewNode.draggable(false);
+    previewNode.getLayer()?.batchDraw();
+    return;
+  }
+
+  args.updateShape(previewNode, element);
+  previewNode.visible(true);
+  previewNode.listening(false);
+  previewNode.draggable(false);
+  previewNode.getLayer()?.batchDraw();
+}
+
 /**
  * Owns line/arrow registration, create flow, edit handles, clone-drag,
- * transform ownership, and CanvasRegistry integration for 1d shapes.
+ * transform ownership, and element integration for 1d shapes.
  */
 export function createShape1dPlugin(): IPlugin<{
   camera: CameraService;
-  canvasRegistry: CanvasRegistryService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
-  editor: EditorService;
+  element: ElementService;
+  group: GroupService;
   history: HistoryService;
   scene: SceneService;
   renderOrder: RenderOrderService;
   selection: SelectionService;
+  session: SessionService;
   theme: ThemeService;
+  tool: ToolService;
 }, IRuntimeHooks> {
   const state: TShape1dPluginState = {
     previewShape: null,
@@ -109,16 +166,17 @@ export function createShape1dPlugin(): IPlugin<{
     name: "shape1d",
     apply(ctx) {
       const camera = ctx.services.require("camera");
-      const canvasRegistry = ctx.services.require("canvasRegistry");
       const contextMenu = ctx.services.require("contextMenu");
       const crdt = ctx.services.require("crdt");
-      const editor = ctx.services.require("editor");
+      const element = ctx.services.require("element");
+      const group = ctx.services.require("group");
       const history = ctx.services.require("history");
       const render = ctx.services.require("scene");
       const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
+      const session = ctx.services.require("session");
       const theme = ctx.services.require("theme");
-      state.previousToolId = editor.activeToolId;
+      const tool = ctx.services.require("tool");
       const createId = createCreateId(render);
       const now = () => Date.now();
 
@@ -132,17 +190,17 @@ export function createShape1dPlugin(): IPlugin<{
       };
       const findNode = (id: string): TShape1dNode | null => fxFindShape1dNodeById({ Shape: Konva.Shape, render }, { id }) ?? null;
       const getData = (node: TShape1dNode) => fxGetElementData({}, { node });
-      const isNode = (node: Konva.Node | null | undefined): node is TShape1dNode => fxIsShape1dNode( { node });
-      const isTool = (tool: string): tool is "line" | "arrow" => fxIsSupportedTool({}, { tool });
+      const isNode = (node: Konva.Node | null | undefined): node is TShape1dNode => fxIsShape1dNode({}, { node });
+      const isTool = (toolId: string): toolId is "line" | "arrow" => fxIsSupportedTool({}, { tool: toolId });
       const isType = (type: string): boolean => fxIsSupportedElementType({}, { type });
       const toWorld = (node: TShape1dNode, point: TPoint | { x: number; y: number }) => fxLocalPointToWorld({}, { node, point });
       const insertionPoint = (data: Parameters<typeof fxGetInsertionPoint>[1]["data"], segmentIndex: number) => fxGetInsertionPoint({}, { data, segmentIndex });
       const applyAnchorDrag = (node: TShape1dNode, drag: THandleDragSnapshot, worldPoint: { x: number; y: number }) => fxApplyAnchorDrag({}, { node, drag, worldPoint });
-      const createShape = (element: TElement) => txCreateShapeFromElement({ createShapeNode, setNodeZIndex, theme, resolveThemeColor }, { element });
-      const updateShape = (node: TShape1dNode, element: TElement) => txUpdateShapeFromElement({ theme, resolveThemeColor, setNodeZIndex }, { node, element });
-      const toElement = (node: TShape1dNode) => fxToTElement({ editor: canvasRegistry, now }, { node });
-      const applyElement = (element: TElement) => {
-        const didUpdate = canvasRegistry.updateElement(element);
+      const createShape = (shapeElement: TElement) => txCreateShapeFromElement({ createShapeNode, setNodeZIndex, theme, resolveThemeColor }, { element: shapeElement });
+      const updateShape = (node: TShape1dNode, shapeElement: TElement) => txUpdateShapeFromElement({ theme, resolveThemeColor, setNodeZIndex }, { node, element: shapeElement });
+      const toElement = (node: TShape1dNode) => fxToTElement({ now }, { node });
+      const applyElement = (shapeElement: TElement) => {
+        const didUpdate = element.updateElement(shapeElement);
         if (!didUpdate) {
           return;
         }
@@ -152,7 +210,7 @@ export function createShape1dPlugin(): IPlugin<{
 
       const historyPortal: TPortalTxRecordShape1dHistory = {
         Shape: Konva.Shape,
-        canvasRegistry,
+        element,
         crdt,
         history,
         render,
@@ -171,11 +229,12 @@ export function createShape1dPlugin(): IPlugin<{
         hooks: ctx.hooks,
         createId,
         now,
+        group,
         createThrottledPatch: (callback: (patch: Pick<TElement, "id" | "x" | "y" | "parentGroupId" | "updatedAt">) => void) => throttle(callback, MOVE_PATCH_INTERVAL_MS),
       };
 
       function currentTool() {
-        return isTool(editor.activeToolId) ? editor.activeToolId : null;
+        return isTool(tool.activeToolId) ? tool.activeToolId : null;
       }
 
       function setupNode(node: TShape1dNode) {
@@ -187,27 +246,10 @@ export function createShape1dPlugin(): IPlugin<{
         return node;
       }
 
-      const draftPortal = {
-        state,
-        editor,
-        render,
-        renderOrder,
-        selection,
-        theme,
-        createId,
-        now,
-        createShape,
-        updateShape,
-        setupNode,
-        toElement,
-        historyPortal,
-      };
-
       const editModePortal = {
         state,
         Circle: Konva.Circle,
-        canvasRegistry,
-        editor,
+        session,
         render,
         selection,
         historyPortal,
@@ -221,7 +263,6 @@ export function createShape1dPlugin(): IPlugin<{
 
       const movePortal = {
         state,
-        canvasRegistry,
         crdt,
         history,
         now,
@@ -231,9 +272,9 @@ export function createShape1dPlugin(): IPlugin<{
         applyElement,
       };
 
-      const shape1dRegistryPortal = {
+      const shape1dElementPortal = {
         Shape: Konva.Shape,
-        canvasRegistry,
+        element,
         crdt,
         history,
         applyElement,
@@ -252,18 +293,15 @@ export function createShape1dPlugin(): IPlugin<{
         updateShape,
       };
 
-      const unregisterLineElement = txRegisterShape1dElement(shape1dRegistryPortal, {
+      const unregisterLineElement = txRegisterShape1dElement(shape1dElementPortal, {
         type: "line",
         beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
       });
 
-      const unregisterArrowElement = txRegisterShape1dElement(shape1dRegistryPortal, {
+      const unregisterArrowElement = txRegisterShape1dElement(shape1dElementPortal, {
         type: "arrow",
         beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
       });
-
-      let unregisterArrowTool = () => {};
-      let unregisterLineTool = () => {};
 
       contextMenu.registerProvider("shape1d", ({ targetElement, activeSelection }) => {
         if (!targetElement || !isType(targetElement.data.type)) {
@@ -276,92 +314,82 @@ export function createShape1dPlugin(): IPlugin<{
           priority: 300,
           onSelect: () => {
             selection.setSelection(activeSelection);
-            txDeleteSelection({ canvasRegistry, crdt, history, render, renderOrder, selection }, {});
+            txDeleteSelection({
+              element,
+              group,
+              crdt,
+              history,
+              scene: render,
+              renderOrder,
+              selection,
+            }, {});
           },
         }];
       });
 
       ctx.hooks.init.tap(() => {
-        unregisterArrowTool = txRegisterShape1dTool({ editor }, {
+        tool.registerTool({
           id: "arrow",
           label: "Arrow",
           icon: ArrowRight,
           shortcuts: ["5", "a"],
           priority: 50,
+          behavior: { type: "mode", mode: "draw-create" },
+          drawCreate: {
+            startDraft: (args) => fxCreateShape1dDraftNode({ createShapeNode, point: args.point }),
+            updateDraft: (previewNode, args) => {
+              txUpdateShape1dDraftNode({
+                previewNode,
+                activeTool: "arrow",
+                origin: args.origin,
+                point: args.point,
+                now,
+                rememberedStyle: theme.getRememberedStyle("arrow"),
+                updateShape,
+              });
+            },
+          },
         });
-        unregisterLineTool = txRegisterShape1dTool({ editor }, {
+
+        tool.registerTool({
           id: "line",
           label: "Line",
           icon: Minus,
           shortcuts: ["6", "l"],
           priority: 60,
+          behavior: { type: "mode", mode: "draw-create" },
+          drawCreate: {
+            startDraft: (args) => fxCreateShape1dDraftNode({ createShapeNode, point: args.point }),
+            updateDraft: (previewNode, args) => {
+              txUpdateShape1dDraftNode({
+                previewNode,
+                activeTool: "line",
+                origin: args.origin,
+                point: args.point,
+                now,
+                rememberedStyle: theme.getRememberedStyle("line"),
+                updateShape,
+              });
+            },
+          },
         });
-      });
-
-      ctx.hooks.pointerDown.tap(() => {
-        if (selection.mode !== CanvasMode.DRAW_CREATE) {
-          return;
-        }
-
-        if (!currentTool()) {
-          return;
-        }
-
-        const pointer = render.dynamicLayer.getRelativePointerPosition();
-        if (!pointer) {
-          return;
-        }
-
-        txStartShape1dDraft(draftPortal, {
-          point: { x: pointer.x, y: pointer.y },
-        });
-      });
-
-      ctx.hooks.pointerMove.tap(() => {
-        if (selection.mode !== CanvasMode.DRAW_CREATE) {
-          return;
-        }
-
-        if (!currentTool() || !state.draftStartPoint) {
-          return;
-        }
-
-        const pointer = render.dynamicLayer.getRelativePointerPosition();
-        if (!pointer) {
-          return;
-        }
-
-        txUpdateShape1dDraftCurrentPoint(draftPortal, {
-          point: { x: pointer.x, y: pointer.y },
-        });
-      });
-
-      ctx.hooks.pointerUp.tap(() => {
-        txFinalizeShape1dDraft(draftPortal);
-      });
-
-      ctx.hooks.pointerCancel.tap(() => {
-        if (selection.mode !== CanvasMode.DRAW_CREATE || !currentTool()) {
-          return;
-        }
-
-        txCancelShape1dDraft(draftPortal);
       });
 
       ctx.hooks.keydown.tap((event) => {
         if (event.key === "Escape"
           && selection.mode === CanvasMode.DRAW_CREATE
           && currentTool()
-          && state.previewShape) {
+          && render.previewNode) {
           event.preventDefault();
           event.stopPropagation();
-          txCancelShape1dDraft(draftPortal);
+          render.clearPreviewState();
+          tool.setActiveTool("select");
           return;
         }
 
         if (event.key === "Enter"
           && selection.mode === CanvasMode.SELECT
-          && editor.editingShape1dId === null) {
+          && session.editingId === null) {
           const filteredSelection = fnFilterSelection({
             selection: selection.selection,
           });
@@ -379,7 +407,7 @@ export function createShape1dPlugin(): IPlugin<{
           return;
         }
 
-        if (event.key !== "Escape" || editor.editingShape1dId === null) {
+        if (event.key !== "Escape" || session.editingId === null) {
           return;
         }
 
@@ -401,26 +429,15 @@ export function createShape1dPlugin(): IPlugin<{
       });
 
       ctx.hooks.pointerDown.tap((event) => {
-        if (selection.mode === CanvasMode.SELECT && editor.editingShape1dId !== null && event.target === render.stage) {
+        if (selection.mode === CanvasMode.SELECT && session.editingId !== null && event.target === render.stage) {
           txExitShape1dEditMode(editModePortal);
         }
       });
 
-      ctx.hooks.toolSelect.tap((toolId) => {
-        if (isTool(toolId)) {
-          return;
+      tool.hooks.activeToolChange.tap((toolId) => {
+        if (toolId !== "select" && session.editingId !== null) {
+          txExitShape1dEditMode(editModePortal, { preserveSelection: true });
         }
-
-        txResetShape1dDraft(draftPortal);
-        txResetShape1dPreview(draftPortal);
-      });
-
-      editor.hooks.activeToolChange.tap((toolId) => {
-        if (toolId !== state.previousToolId) {
-          txResetShape1dDraft(draftPortal);
-          txResetShape1dPreview(draftPortal);
-        }
-        state.previousToolId = toolId;
       });
 
       selection.hooks.change.tap(() => {
@@ -429,7 +446,7 @@ export function createShape1dPlugin(): IPlugin<{
       camera.hooks.change.tap(() => {
         txRefreshShape1dEditMode(editModePortal);
       });
-      editor.hooks.editingShape1dChange.tap(() => {
+      session.hooks.editingChange.tap(() => {
         txRefreshShape1dEditMode(editModePortal);
       });
       theme.hooks.change.tap(() => {
@@ -447,17 +464,15 @@ export function createShape1dPlugin(): IPlugin<{
       });
 
       ctx.hooks.destroy.tap(() => {
-        txResetShape1dDraft(draftPortal);
-        txResetShape1dPreview(draftPortal);
         txClearShape1dEditHandles(editModePortal);
         state.activeHandleDrag = null;
         state.moveSessions.clear();
-        editor.setEditingShape1dId(null);
+        session.editingId = null;
         contextMenu.unregisterProvider("shape1d");
         unregisterLineElement();
         unregisterArrowElement();
-        unregisterArrowTool();
-        unregisterLineTool();
+        tool.unregisterTool("arrow");
+        tool.unregisterTool("line");
       });
     },
   };
@@ -473,7 +488,6 @@ export const Shape1dPlugin = {
   txCreateShapeFromElement,
   txUpdateShapeFromElement,
   fxToTElement,
-  txCreatePreviewClone,
   txCreateCloneDrag,
   txSetupShapeListeners,
 };
