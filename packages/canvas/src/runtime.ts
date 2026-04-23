@@ -151,7 +151,6 @@ export function buildRuntime(config: IRuntimeConfig) {
     createPenPlugin(),
     // createTextPlugin(),
     // createImagePlugin(),
-    // createGroupPlugin(),
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
