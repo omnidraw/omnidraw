@@ -65,6 +65,9 @@ export function SelectionStyleMenu(props: {
   onLineTypeChange: (lineType: TLineType) => void;
   onStartCapChange: (capStyle: TCapStyle) => void;
   onEndCapChange: (capStyle: TCapStyle) => void;
+  rootRef?: (element: HTMLDivElement) => void;
+  onEscape?: () => void;
+  onInteraction?: () => void;
 }) {
   const shouldShow = createMemo(() => props.visible());
   const [expandedColorPanel, setExpandedColorPanel] = createSignal<"fill" | "stroke" | null>(null);
@@ -80,7 +83,21 @@ export function SelectionStyleMenu(props: {
           "pointer-events": "none",
         }}
       >
-        <div style={{ display: "flex", gap: "0.5rem", "align-items": "flex-start" }}>
+        <div
+          ref={props.rootRef}
+          tabIndex={0}
+          style={{ display: "flex", gap: "0.5rem", "align-items": "flex-start", outline: "none" }}
+          onPointerDown={() => props.onInteraction?.()}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            props.onEscape?.();
+          }}
+        >
           <div
             style={{
               width: "18.5rem",

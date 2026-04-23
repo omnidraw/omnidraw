@@ -167,6 +167,18 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
     }, OPACITY_COMMIT_DEBOUNCE_MS);
   };
 
+  let menuRoot: HTMLDivElement | undefined;
+
+  const txFocusMenuRoot = () => {
+    portal.setTimeout(() => {
+      menuRoot?.focus();
+    }, 0);
+  };
+
+  const txFocusCanvas = () => {
+    portal.scene.stage.container().focus();
+  };
+
   const [version, setVersion] = portal.createSignal(0);
   const syncVersion = () => {
     setVersion((value) => value + 1);
@@ -364,6 +376,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
 
       if (elements().length === 0) {
         syncVersion();
+        txFocusMenuRoot();
         return;
       }
 
@@ -373,12 +386,14 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
           portal.txApplySelectionStyleChangeRuntime(txPortal, { plan });
           scheduleSelectionStyleCommit(plan);
           syncVersion();
+          txFocusMenuRoot();
         }
         return;
       }
 
       portal.txApplySelectionStyleChange(txPortal, { property, value });
       syncVersion();
+      txFocusMenuRoot();
     };
 
     return portal.createComponent(portal.SelectionStyleMenu, {
@@ -387,6 +402,17 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
       values,
       strokeWidthOptions: () => strokeWidthOptions() ?? [],
       colorPalette,
+      rootRef: (element) => {
+        menuRoot = element;
+      },
+      onEscape: () => {
+        portal.tool.setActiveTool("select");
+        txFocusCanvas();
+        syncVersion();
+      },
+      onInteraction: () => {
+        txFocusMenuRoot();
+      },
       onFillChange: (color) => applyStyle("fill", color),
       onStrokeChange: (color) => applyStyle("stroke", color),
       onStrokeWidthChange: (width) => applyStyle("strokeWidth", width),
