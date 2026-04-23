@@ -5,8 +5,6 @@ export const WIDGET_HOST_DIVIDER_ID = 'divider'
 export const WIDGET_HOST_CLOSE_BUTTON_ID = 'traffic-light-close'
 export const WIDGET_HOST_MINIMIZE_BUTTON_ID = 'traffic-light-minimize'
 export const WIDGET_HOST_MAXIMIZE_BUTTON_ID = 'traffic-light-maximize'
-export const WIDGET_HOST_ELEMENT_DATA_ATTR = 'vcElementData'
-export const WIDGET_HOST_ELEMENT_STYLE_ATTR = 'vcElementStyle'
 
 export const WIDGET_HOST_MIN_WIDTH = 100
 export const WIDGET_HOST_HEADER_HEIGHT = 28

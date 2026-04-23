@@ -8,20 +8,18 @@ import {
   WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_CLOSE_BUTTON_ID,
   WIDGET_HOST_DIVIDER_ID,
-  WIDGET_HOST_ELEMENT_DATA_ATTR,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
   WIDGET_HOST_MAXIMIZE_BUTTON_ID,
   WIDGET_HOST_MINIMIZE_BUTTON_ID,
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
 } from './CONSTANTS'
-import type { EditorService } from '../editor/EditorService'
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
 import type { SelectionService } from '../selection/SelectionService'
 import { IRuntimeHooks } from 'src/types'
 
 type TPortal = {
   node: Node<NodeConfig>
-  editorService: EditorService
   selectionService: SelectionService
   hooks?: IRuntimeHooks
 }
@@ -73,7 +71,7 @@ function setupButtons(args: {
       event.cancelBubble = true
       args.setCursor('pointer')
       if (buttonId === WIDGET_HOST_MINIMIZE_BUTTON_ID) {
-        const widgetData = args.node.getAttr(WIDGET_HOST_ELEMENT_DATA_ATTR) as TWidgetData | undefined
+        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
         const nextExpanded = widgetData?.type === 'widget'
           ? widgetData.expanded === false
           : false
@@ -107,9 +105,9 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
     header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0])
   }
 
-  const widgetData = portal.node.getAttr(WIDGET_HOST_ELEMENT_DATA_ATTR) as TWidgetData | undefined
+  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
   if (widgetData?.type === 'widget') {
-    portal.node.setAttr(WIDGET_HOST_ELEMENT_DATA_ATTR, {
+    portal.node.setAttr(ELEMENT_DATA_ATTR, {
       ...widgetData,
       expanded,
     } satisfies TWidgetData)

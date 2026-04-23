@@ -2,11 +2,11 @@ import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/
 import { fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { isKonvaGroup } from "../../core/GUARDS";
-import { WIDGET_HOST_ELEMENT_DATA_ATTR } from "./CONSTANTS";
+import { ELEMENT_DATA_ATTR } from "./../../core/CONSTANTS";
 
 export function fnToWidgetElement(node: unknown) {
   if(!isKonvaGroup(node)) return null
-  const data: TWidgetData = node.getAttr(WIDGET_HOST_ELEMENT_DATA_ATTR)
+  const data: TWidgetData = node.getAttr(ELEMENT_DATA_ATTR)
   if(!data) return null
 
   const element: TElement = {

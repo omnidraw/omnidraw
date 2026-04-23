@@ -1,22 +1,23 @@
 import type { TElement, TElementData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import type { ThemeService } from '@vibecanvas/service-theme'
 import type Konva from 'konva'
-import type { TEditorToolDrawCreateStartDraftArgs, TEditorToolDrawCreateUpdateDraftArgs } from '../editor/EditorService'
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
 import {
-  WIDGET_HOST_BODY_ID,
-  WIDGET_HOST_BORDER_ID,
-  WIDGET_HOST_CLOSE_BUTTON_ID,
-  WIDGET_HOST_DIVIDER_HEIGHT,
-  WIDGET_HOST_DIVIDER_ID,
-  WIDGET_HOST_ELEMENT_DATA_ATTR,
-  WIDGET_HOST_HEADER_HEIGHT,
-  WIDGET_HOST_HEADER_ID,
-  WIDGET_HOST_MAXIMIZE_BUTTON_ID,
-  WIDGET_HOST_MINIMIZE_BUTTON_ID,
-  WIDGET_HOST_MIN_WIDTH,
-  WIDGET_HOST_WINDOW_STROKE_WIDTH
+    WIDGET_HOST_BODY_ID,
+    WIDGET_HOST_BORDER_ID,
+    WIDGET_HOST_CLOSE_BUTTON_ID,
+    WIDGET_HOST_DIVIDER_HEIGHT,
+    WIDGET_HOST_DIVIDER_ID,
+    WIDGET_HOST_HEADER_HEIGHT,
+    WIDGET_HOST_HEADER_ID,
+    WIDGET_HOST_MAXIMIZE_BUTTON_ID,
+    WIDGET_HOST_MINIMIZE_BUTTON_ID,
+    WIDGET_HOST_MIN_WIDTH,
+    WIDGET_HOST_WINDOW_STROKE_WIDTH
 } from './CONSTANTS'
+
 import { fnCreateWidgetNode } from './fn.create-widget-node'
+import type { TToolCanvasPoint, TToolDrawCreateStartDraftArgs } from '../tool/types'
 
 type THostThemeColors = {
   headerFill: string;
@@ -50,7 +51,9 @@ type TPortalUpdateHost = {
   themeService: ThemeService;
 }
 
-type TArgsUpdateHost = TEditorToolDrawCreateUpdateDraftArgs
+type TArgsUpdateHost = {
+  point: TToolCanvasPoint
+}
 
 export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   const border = portal.group.findOne(`#${WIDGET_HOST_BORDER_ID}`)
@@ -98,12 +101,12 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   body.height(bodyHeight)
   body.fill(hostThemeColors.bodyFill)
 
-  const widgetData = portal.group.getAttr(WIDGET_HOST_ELEMENT_DATA_ATTR) as TWidgetData | undefined
+  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
   if (widgetData?.type === 'widget') {
     widgetData.w = width
     widgetData.h = WIDGET_HOST_HEADER_HEIGHT + bodyHeight
     widgetData.expanded = bodyHeight > 0
-    portal.group.setAttr(WIDGET_HOST_ELEMENT_DATA_ATTR, widgetData)
+    portal.group.setAttr(ELEMENT_DATA_ATTR, widgetData)
   }
 
   if (closeButton instanceof portal.konva.Circle) {
@@ -128,7 +131,7 @@ type TPortalCreateHost = {
   crypto: typeof crypto;
 }
 
-type TArgsCreateHost = { kind: string, initialPayload: Record<string, any> } & TEditorToolDrawCreateStartDraftArgs
+type TArgsCreateHost = { kind: string, initialPayload: Record<string, any> } & TToolDrawCreateStartDraftArgs
 
 export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
   const hostThemeColors = getHostThemeColors(portal.themeService)

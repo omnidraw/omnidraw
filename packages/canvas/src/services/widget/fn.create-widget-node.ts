@@ -6,8 +6,6 @@ import {
   WIDGET_HOST_CLOSE_BUTTON_ID,
   WIDGET_HOST_DIVIDER_HEIGHT,
   WIDGET_HOST_DIVIDER_ID,
-  WIDGET_HOST_ELEMENT_DATA_ATTR,
-  WIDGET_HOST_ELEMENT_STYLE_ATTR,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
   WIDGET_HOST_MAXIMIZE_BUTTON_ID,
@@ -20,6 +18,7 @@ import {
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from './CONSTANTS';
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR } from "../../core/CONSTANTS"
 import type { THostThemeColors } from "./types";
 
 
@@ -164,8 +163,8 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   group.add(header)
   group.add(body)
 
-  group.setAttr(WIDGET_HOST_ELEMENT_DATA_ATTR, element.data)
-  group.setAttr(WIDGET_HOST_ELEMENT_STYLE_ATTR, {})
+  group.setAttr(ELEMENT_DATA_ATTR, element.data)
+  group.setAttr(ELEMENT_STYLE_ATTR, {})
 
   return group
 }

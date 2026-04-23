@@ -131,7 +131,7 @@ function createServices(config: {
   services.provide("tool", 90, tool);
   services.provide("renderOrder", 100, renderOrder);
   services.provide("theme", 110, config.themeService);
-  // services.provide("widgetManager", 120, widgetManager);
+  services.provide("widgetManager", 120, widgetManager);
   services.provide("session", 130, sessionService)
 
   return services;

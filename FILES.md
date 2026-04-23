@@ -37,8 +37,12 @@ Path rule
 |---|---|---|---|
 | 🤖 | `package.json` |  | Use this when adding or updating root workspace scripts like the functio |
 | 🤖 | `scripts/sort-filename.ts` |  | Sort FILES.md rows by filepath. |
-| ❓ | `tasks/BASED.md` |  | Based task overview, active work index, and short lane plans. |
+| ❓ | `tasks/BASED.md` |  | Based task overview and active work index. |
 | ❓ | `tasks/s/S43.md` |  | CloneService clone-drag normalization task plan. |
+| ❓ | `tasks/s/S44.md` |  | Canvas test repair lane for services and transform tests. |
+| ❓ | `tasks/s/S45.md` |  | Canvas test repair lane for text edit and session tests. |
+| ❓ | `tasks/s/S46.md` |  | Canvas test repair lane for element creation and clone tests. |
+| ❓ | `tasks/s/S47.md` |  | Canvas test repair lane for stale coverage audit and integration. |
 | 🤖 | `packages/canvas/TESTS.md` |  | Canvas test migration log and focused test run notes. |
 
 ## packages/canvas
