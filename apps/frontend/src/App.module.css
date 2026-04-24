@@ -9,10 +9,3 @@
   flex: 1 1 0%;
   overflow: hidden;
 }
-
-.overlayEntrypoint {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}

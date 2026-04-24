@@ -1,10 +1,10 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { CameraService } from "../../services/camera/CameraService";
 import type { SceneService } from "../../services/scene/SceneService";
-import type { IRuntimeHooks } from "../../types";
-import { fxReadCameraStateFromLocalStorage } from "./fx.read-camera-state-from-localstorage";
+import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { fnGetHandLayerStyle } from "./fn.get-hand-layer-style";
 import { fnGetPointerDelta } from "./fn.get-pointer-delta";
+import { fxReadCameraStateFromLocalStorage } from "./fx.read-camera-state-from-localstorage";
 import { txSyncHandLayer } from "./tx.sync-hand-layer";
 import { txWriteCameraStateToLocalStorage } from "./tx.write-camera-state-to-localstorage";
 
@@ -25,7 +25,7 @@ function getDefaultStorage(): Storage | null {
 export function createCameraControlPlugin(): IPlugin<{
   camera: CameraService;
   scene: SceneService;
-}, IRuntimeHooks> {
+}, IRuntimeHooks, IRuntimeConfig> {
   let handLayer: HTMLDivElement | null = null;
   let isHandDragging = false;
   let activePointerId: number | null = null;
@@ -101,8 +101,10 @@ export function createCameraControlPlugin(): IPlugin<{
 
       ctx.hooks.init.tap(() => {
         handLayer = document.createElement("div");
-        handLayer.className = "absolute inset-0";
+        handLayer.id = "hand-layer";
         Object.assign(handLayer.style, {
+          position: "absolute",
+          inset: 0,
           display: "none",
           pointerEvents: "none",
           background: "transparent",

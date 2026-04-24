@@ -22,10 +22,6 @@ const App = (props: RouteSectionProps) => {
       />
       <main id="main" class={styles.main}>
         {props.children}
-        <div
-          id="canvas-overlay-entrypoint"
-          class={styles.overlayEntrypoint}
-        />
       </main>
       <Toaster />
     </div>
