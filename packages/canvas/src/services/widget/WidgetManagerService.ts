@@ -11,6 +11,7 @@ import { fnToWidgetElement } from "./fn.to-widget-element";
 import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
 import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
+import { txResizeWidgetHost } from "./tx.resize-widget-host";
 
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig> {
@@ -58,7 +59,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       toElement: fnToWidgetElement,
       matchesNode: (node) => node.getAttr(ELEMENT_DATA_ATTR)?.type === 'widget',
       matchesElement: (element) => element.data.type === "widget" && element.data.kind === wConfig.id,
-
       createNode: (element) => {
         const colors = fnGetHostThemeColors(this.#themeService)
         const node = fnCreateWidgetNode(Konva, colors, element)
@@ -68,6 +68,27 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
         return true
       },
+      getTransformOptions(args) {
+        return {
+          flipEnabled: false,
+          keepRatio: false,
+        }
+      },
+      onResize: ({ node, element }) => {
+        if (element.data.type !== "widget") return;
+
+        txResizeWidgetHost({
+          Group: Konva.Group,
+          Rect: Konva.Rect,
+        }, {
+          node,
+        });
+
+        return {
+          cancel: true,
+          crdt: false,
+        };
+      },
 
       attachListeners: (node) => fxAttachWidgetListener({
         node,
@@ -76,7 +97,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         Rect: Konva.Rect,
         hooks: this.runtimeHooks,
         selection: this.#selectionService,
-
+        toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
+        crdtService: this.#crdtService,
       }, {})
     })
 

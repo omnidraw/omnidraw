@@ -1,7 +1,10 @@
-import type { TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
-import type Konva from 'konva'
+import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import { fnCurry } from '@vibecanvas/shared-functions/functional/fn.curry'
+import type Konva from 'konva'
+import type { CrdtService } from '..'
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
 import type { IRuntimeHooks, TElementPointerEvent } from '../../types'
+import type { SelectionService } from '../selection/SelectionService'
 import {
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
@@ -13,8 +16,6 @@ import {
   WIDGET_HOST_MINIMIZE_BUTTON_ID,
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
 } from './CONSTANTS'
-import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
-import type { SelectionService } from '../selection/SelectionService'
 
 type TPortal = {
   Circle: typeof Konva.Circle;
@@ -23,10 +24,8 @@ type TPortal = {
   hooks: IRuntimeHooks;
   node: Konva.Node;
   selection: SelectionService;
-  // startDragClone: (args: {
-  //   node: Konva.Node;
-  //   selection: Konva.Node[];
-  // }) => boolean;
+  toElement: (node: Konva.Node) => TElement | null;
+  crdtService: CrdtService;
 }
 type TArgs = {
 }
@@ -208,6 +207,20 @@ function setupSelectable(portal: TPortal) {
   return true
 }
 
+function setupDragListener(portal: TPortal) {
+  if (!(portal.node instanceof portal.Group)) return false
+
+  portal.node.off('dragend')
+  portal.node.on('dragend', () => {
+    portal.crdtService.build()
+      .patchElement(portal.node.id(), 'x', portal.node.x())
+      .patchElement(portal.node.id(), 'y', portal.node.y())
+      .commit()
+  })
+
+  return true
+}
+
 export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
   if (!(portal.node instanceof portal.Group)) return false
 
@@ -228,5 +241,7 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
     syncExpandedState: fnCurry(syncExpandedState)(portal),
   })
   if(header) setupCursor(setCursor, portal.node, header)
+  setupDragListener(portal)
+
   return didAttachSelectable
 }
