@@ -34,12 +34,12 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.style.backgroundColor = 'red';
   div.style.transformOrigin = "0 0";
   div.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${portal.cameraService.zoom})`;
-  portal.cameraService.hooks.change.tap(() => {
+  const removeListener = portal.cameraService.hooks.change.tap(() => {
     const canvasX = body.x();
     const canvasY = body.y();
     div.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${portal.cameraService.zoom})`;
   })
   portal.widgetPortal.appendChild(div);
 
-
+  return removeListener;
 }

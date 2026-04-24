@@ -78,7 +78,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         const colors = fnGetHostThemeColors(this.#themeService)
         const node = fnCreateWidgetNode(Konva, colors, element)
         console.log('create node', element)
-        txAttachDomPortal({node, widgetPortal: this.#widgetPortal, document, widgetServie: this, cameraService: this.#cameraService}, {element})
+        const onRemove = txAttachDomPortal({node, widgetPortal: this.#widgetPortal, document, widgetServie: this, cameraService: this.#cameraService}, {element})
+        // TODO [S49]: add onRemove to some callback later
         return node
       },
       createDragClone(args) {
