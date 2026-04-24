@@ -72,6 +72,51 @@ describe("txResizeWidgetHost", () => {
     });
   });
 
+  test("keeps the opposite edge fixed when top-left resize crosses the minimum width", () => {
+    ensureDom();
+
+    const initialX = -2171.33453673711;
+    const initialY = -1003.3797483203443;
+    const initialWidth = 1504.400526341555;
+    const initialHeight = 998.7729413663093;
+    const initialRight = initialX + initialWidth;
+    const initialBottom = initialY + initialHeight;
+
+    const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), createWidgetElement({
+      w: initialWidth,
+      h: initialHeight,
+    }));
+    expect(node).toBeInstanceOf(Konva.Group);
+    const group = node as Konva.Group;
+    group.position({ x: initialX, y: initialY });
+    group.setAttr("vcTransformBeforeElement", {
+      ...createWidgetElement({
+        w: initialWidth,
+        h: initialHeight,
+      }),
+      x: initialX,
+      y: initialY,
+    });
+
+    group.position({ x: -342.2084183215952, y: -987.84576773782 });
+    group.scale({
+      x: 0.01,
+      y: 983.2467791430098 / initialHeight,
+    });
+
+    expect(txResizeWidgetHost({
+      Group: Konva.Group,
+      Rect: Konva.Rect,
+    }, {
+      node: group,
+      anchors: ["top-left"],
+    })).toBe(true);
+
+    expect(group.width()).toBe(WIDGET_HOST_MIN_WIDTH);
+    expect(group.x()).toBeCloseTo(initialRight - WIDGET_HOST_MIN_WIDTH);
+    expect(group.y() + group.height()).toBeCloseTo(initialBottom);
+  });
+
   test("clamps resized widget height so the body remains visible", () => {
     ensureDom();
 

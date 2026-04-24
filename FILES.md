@@ -250,7 +250,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, tool config |
 | 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning and cleanup listener wiring |
 | ❓ | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview and CRDT commit |
-| ❓ | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
+| 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
 | 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools canvas adapters example widget |
 
 ## .pi/extensions/functional-core

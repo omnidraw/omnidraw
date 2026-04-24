@@ -1,5 +1,6 @@
-import type { TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
+import type { TElementTransformAnchor } from "../element/types";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import {
   WIDGET_HOST_BODY_ID,
@@ -21,16 +22,30 @@ type TPortal = {
 
 type TArgs = {
   node: Konva.Node;
+  anchors?: TElementTransformAnchor[];
 }
+
+const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
 
 function txApplyWidgetHostSize(portal: TPortal, args: {
   node: Konva.Group;
   width: number;
   height: number;
+  anchors?: TElementTransformAnchor[];
 }) {
   const bodyHeight = Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, args.height - WIDGET_HOST_HEADER_HEIGHT);
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_HEADER_HEIGHT + bodyHeight);
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.width);
+
+  const beforeElement = args.node.getAttr(TRANSFORM_BEFORE_ELEMENT_ATTR) as TElement | undefined;
+  if (beforeElement?.data.type === "widget") {
+    if (args.anchors?.some((anchor) => anchor.endsWith("left"))) {
+      args.node.x(beforeElement.x + beforeElement.data.w - width);
+    }
+    if (args.anchors?.some((anchor) => anchor.startsWith("top"))) {
+      args.node.y(beforeElement.y + beforeElement.data.h - height);
+    }
+  }
 
   args.node.width(width);
   args.node.height(height);
@@ -93,6 +108,7 @@ export function txResizeWidgetHost(portal: TPortal, args: TArgs) {
     node: args.node,
     width: scaledWidth,
     height: scaledHeight,
+    anchors: args.anchors,
   });
 
   return true;

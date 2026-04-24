@@ -98,7 +98,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           keepRatio: false,
         }
       },
-      onResize: ({ node, element }) => {
+      onResize: ({ node, element, anchors }) => {
         if (element.data.type !== "widget") return;
 
         txResizeWidgetHost({
@@ -106,6 +106,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           Rect: Konva.Rect,
         }, {
           node,
+          anchors,
         });
         const syncWidgetDomPortal = node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as TWidgetDomPortalSync | undefined;
         syncWidgetDomPortal?.();
