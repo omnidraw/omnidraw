@@ -138,7 +138,7 @@ function mountContextMenu(args: {
   contextMenu: ContextMenuService;
 }) {
   const mountElement = args.scene.container.ownerDocument.createElement("div");
-  mountElement.className = "absolute inset-0 pointer-events-none";
+  mountElement.id = "context-menu";
   args.scene.stage.container().appendChild(mountElement);
 
   const [version, setVersion] = createSignal(0);

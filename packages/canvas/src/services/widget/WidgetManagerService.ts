@@ -1,8 +1,8 @@
 import type { IService, IStartableService } from "@vibecanvas/runtime";
-import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
+import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
-import type { ContextMenuService, CrdtService, ElementService, LoggingService, SelectionService, ToolService } from "..";
+import type { ContextMenuService, CrdtService, ElementService, LoggingService, SceneService, SelectionService, ToolService } from "..";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { fnCreateWidgetNode } from "./fn.create-widget-node";
@@ -14,7 +14,7 @@ import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServicePr
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 
 
-export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig> {
+export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
   #crdtService: CrdtService;
   #loggingService: LoggingService;
@@ -23,6 +23,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #contextMenuService: ContextMenuService;
   #elementService: ElementService;
   #toolService: ToolService;
+  #sceneService: SceneService;
+  #domPortal!: HTMLDivElement;
   private readonly runtimeHooks!: IRuntimeHooks;
 
 
@@ -34,6 +36,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#contextMenuService = props.contextMenuService;
     this.#elementService = props.elementService;
     this.#toolService = props.toolService;
+    this.#sceneService = props.sceneService;
 
     console.log('WidgetManagerService constructor', props)
   }
@@ -41,7 +44,15 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
     // @ts-expect-error this is safe, start runs before any other method
     this.runtimeHooks = ctx.hooks;
+    this.#domPortal = document.createElement("div");
+    this.#sceneService.stage.container().appendChild(this.#domPortal);
+    // this.#domPortal.style =
+    this.#domPortal.append('hi')
     this.setupExampleWidget();
+  }
+
+  stop(): void | Promise<void> {
+    this.#domPortal.remove()
   }
 
   registerWidget(wConfig: IWidgetConfig) {

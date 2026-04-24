@@ -4,9 +4,9 @@ import { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types
 import type * as schema from "@vibecanvas/service-db/schema";
 import { createEffect, createResource, Match, onCleanup, Switch } from "solid-js";
 import { findDocument } from "../automerge";
-import type { TCloneImage, TDeleteImage, TFileCapability, TFiletreeCapability, TTerminalCapability, TUploadImage } from "../services/canvas/interface";
 import type { IRuntime } from "@vibecanvas/runtime";
 import { buildRuntime } from "../runtime";
+import { TCloneImage, TDeleteImage, TUploadImage } from "../types";
 
 export type TBackendCanvas = typeof schema.canvas.$inferSelect;
 
@@ -17,9 +17,6 @@ type CanvasPageProps = {
     cloneImage: TCloneImage;
     deleteImage: TDeleteImage;
   };
-  filetree?: TFiletreeCapability;
-  file?: TFileCapability;
-  terminal?: TTerminalCapability;
   store: {
     sidebarVisible: () => boolean;
     onToggleSidebar: () => void;

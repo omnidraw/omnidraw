@@ -87,7 +87,7 @@ function mountToolbar(args: {
   onToolSelect: (toolId: string) => void;
 }) {
   const mountElement = document.createElement("div");
-  mountElement.className = "absolute inset-0 pointer-events-none";
+  mountElement.id = "toolbar";
   args.scene.stage.container().appendChild(mountElement);
 
   const disposeRender = render(() => {

@@ -58,8 +58,7 @@ async function createHandHarness(args?: { canvasId?: string }) {
   const camera = harness.runtime.services.require("camera");
   const shape = getRectNode(harness, element.id);
 
-  const handLayer = Array.from(harness.stage.container().querySelectorAll("div.absolute.inset-0"))
-    .find((candidate) => (candidate as HTMLDivElement).style.touchAction === "none") as HTMLDivElement | null;
+  const handLayer = harness.stage.container()?.querySelector("#hand-layer")
   expect(handLayer).toBeTruthy();
 
   return {

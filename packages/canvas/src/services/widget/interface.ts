@@ -18,6 +18,7 @@ export interface IWidgetManagerServiceHooks {
 }
 
 export interface IWidgetManagerServiceProps {
+  containerRef: HTMLDivElement;
   crdtService: CrdtService;
   contextMenuService: ContextMenuService;
   loggingService: LoggingService;

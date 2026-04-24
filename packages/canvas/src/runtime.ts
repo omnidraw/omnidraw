@@ -106,6 +106,7 @@ function createServices(config: {
     toolService: tool,
     sceneService: scene,
     renderOrderService: renderOrder,
+    containerRef: config.container,
   });
   const group = new GroupService(
     camera,

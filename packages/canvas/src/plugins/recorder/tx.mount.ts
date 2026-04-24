@@ -43,7 +43,7 @@ export type TArgsTxMountRecorderPanel = {
 
 export function txMountRecorderPanel(portal: TPortalTxMountRecorderPanel, args: TArgsTxMountRecorderPanel) {
   const mountElement = portal.document.createElement("div");
-  mountElement.className = "absolute inset-0 pointer-events-none";
+  mountElement.id = "recorder-panel";
   portal.SceneService.stage.container().appendChild(mountElement);
 
   const disposeRender = portal.renderUi(
