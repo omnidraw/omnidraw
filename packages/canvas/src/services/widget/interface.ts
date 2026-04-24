@@ -1,6 +1,7 @@
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { SyncHook } from "@vibecanvas/tapable";
 import type {
+  CameraService,
   ContextMenuService,
   CrdtService,
   ElementService,
@@ -18,7 +19,6 @@ export interface IWidgetManagerServiceHooks {
 }
 
 export interface IWidgetManagerServiceProps {
-  containerRef: HTMLDivElement;
   crdtService: CrdtService;
   contextMenuService: ContextMenuService;
   loggingService: LoggingService;
@@ -28,6 +28,7 @@ export interface IWidgetManagerServiceProps {
   toolService: ToolService;
   sceneService: SceneService;
   renderOrderService: RenderOrderService;
+  cameraService: CameraService;
 }
 
 export interface IWidgetConfig {

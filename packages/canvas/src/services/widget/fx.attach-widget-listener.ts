@@ -230,7 +230,7 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
       stage.container().style.cursor = cursor
     }
   }
-  const header = portal.node.findOne('#header')
+  const header = portal.node.findOne('#' + WIDGET_HOST_HEADER_ID)
 
   const didAttachSelectable = setupSelectable(portal)
   setupButtons({

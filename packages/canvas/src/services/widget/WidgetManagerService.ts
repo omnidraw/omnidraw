@@ -2,7 +2,7 @@ import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
-import type { ContextMenuService, CrdtService, ElementService, LoggingService, SceneService, SelectionService, ToolService } from "..";
+import type { CameraService, ContextMenuService, CrdtService, ElementService, LoggingService, SceneService, SelectionService, ToolService } from "..";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { fnCreateWidgetNode } from "./fn.create-widget-node";
@@ -12,6 +12,7 @@ import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
 import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
+import { txAttachDomPortal } from "./tx.attach-dom-portal";
 
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
@@ -24,7 +25,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #elementService: ElementService;
   #toolService: ToolService;
   #sceneService: SceneService;
-  #domPortal!: HTMLDivElement;
+  #cameraService: CameraService;
+  #widgetPortal!: HTMLDivElement;
   private readonly runtimeHooks!: IRuntimeHooks;
 
 
@@ -37,6 +39,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#elementService = props.elementService;
     this.#toolService = props.toolService;
     this.#sceneService = props.sceneService;
+    this.#cameraService = props.cameraService;
 
     console.log('WidgetManagerService constructor', props)
   }
@@ -44,15 +47,16 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
     // @ts-expect-error this is safe, start runs before any other method
     this.runtimeHooks = ctx.hooks;
-    this.#domPortal = document.createElement("div");
-    this.#sceneService.stage.container().appendChild(this.#domPortal);
+    this.#widgetPortal = document.createElement("div");
+    this.#widgetPortal.style = "position: absolute; inset: 0; background: #424590; opacity: 0.5; pointer-events: none;";
+    this.#sceneService.stage.container().appendChild(this.#widgetPortal);
     // this.#domPortal.style =
-    this.#domPortal.append('hi')
+    this.#widgetPortal.id = "widget-portal";
     this.setupExampleWidget();
   }
 
   stop(): void | Promise<void> {
-    this.#domPortal.remove()
+    this.#widgetPortal.remove()
   }
 
   registerWidget(wConfig: IWidgetConfig) {
@@ -73,6 +77,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       createNode: (element) => {
         const colors = fnGetHostThemeColors(this.#themeService)
         const node = fnCreateWidgetNode(Konva, colors, element)
+        console.log('create node', element)
+        txAttachDomPortal({node, widgetPortal: this.#widgetPortal, document, widgetServie: this, cameraService: this.#cameraService}, {element})
         return node
       },
       createDragClone(args) {
