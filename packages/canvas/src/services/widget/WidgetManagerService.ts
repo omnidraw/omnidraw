@@ -13,6 +13,7 @@ import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txAttachDomPortal } from "./tx.attach-dom-portal";
+import { WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
 
 const WIDGET_DOM_PORTAL_SYNC_ATTR = "__widgetDomPortalSync";
 type TWidgetDomPortalSync = () => void;
@@ -96,6 +97,13 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         return {
           flipEnabled: false,
           keepRatio: false,
+          boundBoxFunc: (oldBox, newBox) => {
+            if (newBox.width < WIDGET_HOST_MIN_WIDTH || newBox.height < WIDGET_HOST_MIN_HEIGHT) {
+              return oldBox;
+            }
+
+            return newBox;
+          },
         }
       },
       onResize: ({ node, element, anchors }) => {

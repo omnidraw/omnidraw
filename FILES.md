@@ -216,10 +216,10 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, sidebar toggle, cursor, temporary hand |
 | ❓ | `plugins/transform/fx.proxy-bounds.ts` |  | Transform overlay needs layer-relative rotated shape bounds |
 | ❓ | `plugins/transform/fx.proxy-drag-target.ts` |  | Single selected shape or pen path proxy-drag target |
-| ❓ | `plugins/transform/fx.selection-transform-options.ts` |  | Selection transformer anchors ratio border flip resolution |
+| 🤖 | `plugins/transform/fx.selection-transform-options.ts` |  | Selection transformer anchors ratio border flip resolution |
 | ❓ | `plugins/transform/Transform.plugin.ts` |  | Selection transform, drag-proxy moves, resize/rotate hooks, history |
 | ❓ | `plugins/transform/tx.dispatch-selection-transform-hooks.ts` |  | Selection-transform hook fanout; aggregate cancel/crdt, track handled no |
-| ❓ | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
+| 🤖 | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
 | ❓ | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node |
 | ✅ | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins |
 | ❓ | `services/camera/CameraService.ts` |  | Canvas camera pan/zoom viewport state driving scene layers |
@@ -230,6 +230,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
 | ✅ | `services/crdt/fxBuilder.ts` |  | Batch canvas CRDT patches/deletes into commit+rollback ops |
 | ✅ | `services/crdt/tx.apply-ops.ts` |  | Replay recorded CRDT entity ops into Automerge |
+| 🤖 | `services/element/types.ts` |  | Element registry lifecycle and transform option typings |
 | ✅ | `services/editor/EditorService.ts` |  | Editor tool state, draft previews, CRDT commits |
 | ✅ | `services/editor/fx.get-canvas-point.ts` |  | Editor tool pointer events → canvas point + pressure |
 | ✅ | `services/history/HistoryService.ts` |  | Undo/redo stack service for runtime actions |

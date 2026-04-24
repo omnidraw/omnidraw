@@ -21,10 +21,18 @@ export type TElementTransformAnchor =
   | "bottom-center"
   | "bottom-right";
 
+export type TElementTransformBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type TElementTransformOptions = {
   enabledAnchors?: TElementTransformAnchor[];
   keepRatio?: boolean;
   flipEnabled?: boolean;
+  boundBoxFunc?: (oldBox: TElementTransformBox, newBox: TElementTransformBox) => TElementTransformBox;
 };
 
 export type TElementMoveArgs = {

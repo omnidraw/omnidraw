@@ -1,6 +1,6 @@
 import type { Node } from "konva/lib/Node";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
-import type { ElementService, TCanvasTransformAnchor } from "../../services";
+import type { ElementService, TCanvasTransformAnchor, TElementTransformOptions } from "../../services";
 import { fxIsShape1dNode } from "../shape1d/fx.node";
 
 const GROUP_ANCHORS: TCanvasTransformAnchor[] = [
@@ -41,6 +41,7 @@ export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTran
   let enabledAnchors: TCanvasTransformAnchor[] = defaultUseCornerAnchors ? [...GROUP_ANCHORS] : [...DEFAULT_ANCHORS];
   let keepRatio = defaultUseCornerAnchors;
   let flipEnabled = true;
+  let boundBoxFunc: TElementTransformOptions["boundBoxFunc"];
 
   for (const node of args.selection) {
     const transformOptions = portal.element.getTransformOptions({
@@ -63,6 +64,9 @@ export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTran
     if (args.selection.length === 1 && transformOptions.flipEnabled === true) {
       flipEnabled = true;
     }
+    if (args.selection.length === 1 && transformOptions.boundBoxFunc) {
+      boundBoxFunc = transformOptions.boundBoxFunc;
+    }
   }
 
   return {
@@ -71,5 +75,6 @@ export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTran
     enabledAnchors,
     keepRatio,
     flipEnabled,
+    boundBoxFunc,
   };
 }

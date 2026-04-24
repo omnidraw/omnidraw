@@ -35,6 +35,7 @@ export function txSyncTransformer(portal: TPortalTxSyncTransformer, args: TArgsT
   portal.transformer.borderDash(transformOptions.borderDash);
   portal.transformer.keepRatio(transformOptions.keepRatio);
   portal.transformer.flipEnabled(transformOptions.flipEnabled);
+  portal.transformer.boundBoxFunc(transformOptions.boundBoxFunc);
   portal.transformer.enabledAnchors(transformOptions.enabledAnchors);
   portal.transformer.setNodes(filteredSelection);
   portal.transformer.update();
