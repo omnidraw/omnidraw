@@ -2,7 +2,6 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import { isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
-import { fnCreateLegacyShape2dInlineTextMigrationPlan } from "../../core/fn.shape2d";
 import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import type { CrdtService } from "../../services/crdt/CrdtService";
 import type { ElementService } from "../../services/element/ElementService";
@@ -158,31 +157,12 @@ function sortSceneTopDown(parent: Konva.Layer | Konva.Group) {
     });
 }
 
-function txMigrateLegacyShape2dInlineText(crdt: CrdtService) {
-  const migration = fnCreateLegacyShape2dInlineTextMigrationPlan({
-    elements: crdt.doc().elements,
-  });
-  if (migration.patchElements.length === 0 && migration.deleteElementIds.length === 0) {
-    return;
-  }
-
-  const builder = crdt.build();
-  migration.patchElements.forEach((element) => {
-    builder.patchElement(element.id, element);
-  });
-  migration.deleteElementIds.forEach((id) => {
-    builder.deleteElement(id);
-  });
-  builder.commit();
-}
-
 function loadCanvas(args: {
   crdt: CrdtService;
   element: ElementService;
   group: GroupService;
   scene: SceneService;
 }) {
-  txMigrateLegacyShape2dInlineText(args.crdt);
   const doc = args.crdt.doc();
   const groups = Object.values(doc.groups).sort(compareByPersistedOrder);
   const elements = Object.values(doc.elements).sort(compareByPersistedOrder);

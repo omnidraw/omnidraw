@@ -22,7 +22,6 @@ import type {
   zRectData,
   zTerminalData,
   zTextData,
-  zCustomData,
   zWidgetData,
 } from './canvas-doc.zod';
 
@@ -44,7 +43,6 @@ export type TFileData = z.infer<typeof zFileData>;
 export type TIframeBrowserTab = z.infer<typeof zIframeBrowserTab>;
 export type TIframeBrowserData = z.infer<typeof zIframeBrowserData>;
 export type TWidgetData = z.infer<typeof zWidgetData>;
-export type TCustomData = z.infer<typeof zCustomData>;
 
 
 export type TElementData = z.infer<typeof zElementData>;

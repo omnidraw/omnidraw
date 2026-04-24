@@ -111,9 +111,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B22] - style color pallet breaks layout
 - [x]: [B23] - bug: pan/zoom on textedit -> text box moves with 
 - [ ]: [B24] - bug: handtool not working -> drag
-- [ ]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
+- [x]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
 - [ ]: [B26] - investigate if cli respect zIndex - check tmp/script
-- [ ]: [B27] - preview does not attach listeners correctly for all elements
+- [x]: [B27] - preview does not attach listeners correctly for all elements
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -188,18 +188,18 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S34] - test canvas/core if all fn fx file function are correct
 - [x]: [S35](s/S35.md) - canvas/core: align fn fx tx file boundaries, injected portals, and callers
 - [x]: [S36](s/S36.md) - transform ownership: plugin only renders/dispatches; element plugins own drag + crdt
-- [ ]: [S37](s/S37.md) - Refactor canvas service/plugin --> simplification written by hand
-- [ ]: [S38] - make fn,fx,tx files extension also lint script
-- [ ]: [S39] - add TGroup and TElement types for canvas (human leaf file)
+- [x]: [S37](s/S37.md) - Refactor canvas service/plugin --> simplification written by hand
+- [x]: [S38] - make fn,fx,tx files extension also lint script
+- [x]: [S39] - add TGroup and TElement types for canvas (human leaf file)
 - [x]: [S40](s/S40.md) - canvas: move inline shape text ownership into shape2d
-- [ ]: [S41](s/S41.md) - canvas: introduce CloneService and centralize clone lifecycle
-- [ ]: [S41] - remove fnCreateLegacyShape2dInlineTextMigrationPlan in next version
-- [ ]: [S42] - service refactor
-- [ ]: [S43](s/S43.md) - canvas: normalize clone-drag through CloneService
+- [x]: [S41](s/S41.md) - canvas: introduce CloneService and centralize clone lifecycle
+- [x]: [S41] - remove fnCreateLegacyShape2dInlineTextMigrationPlan in next version
+- [x]: [S42] - service refactor
+- [x]: [S43](s/S43.md) - canvas: normalize clone-drag through CloneService
 - [x]: [S44](s/S44.md) - canvas tests: services and transform lane
 - [x]: [S45](s/S45.md) - canvas tests: text edit/session lane
 - [x]: [S46](s/S46.md) - canvas tests: element creation and clone lane
-- [ ]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
+- [x]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research

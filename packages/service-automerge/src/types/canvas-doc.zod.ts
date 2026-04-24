@@ -129,17 +129,6 @@ export const zWidgetData = z.object({
 /**
  * @deprecated will be replaced with widget
  */
-export const zCustomData = z.object({
-  type: z.literal('custom'),
-  w: z.number(),
-  h: z.number(),
-  expanded: z.boolean(),
-  payload: z.any()
-});
-
-/**
- * @deprecated will be replaced with widget
- */
 export const zFiletreeData = z.object({
   type: z.literal('filetree'),
   w: z.number(),
@@ -211,7 +200,6 @@ export const zElementData = z.union([
   zPenData,
   zTextData,
   zImageData,
-  zCustomData,
   zFiletreeData,
   zTerminalData,
   zFileData,
