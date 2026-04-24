@@ -13,9 +13,8 @@ import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txAttachDomPortal } from "./tx.attach-dom-portal";
-import { WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
+import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
 
-const WIDGET_DOM_PORTAL_SYNC_ATTR = "__widgetDomPortalSync";
 type TWidgetDomPortalSync = () => void;
 
 

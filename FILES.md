@@ -244,7 +244,9 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/tool/ToolService.ts` |  | Runtime tool registry, active tool switching, and draw-create preview commit |
 | ❓ | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
-| ❓ | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing constants |
+| 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing constants |
+| ❓ | `../tests/services/widget/fx.attach-widget-listener.portal-visibility.test.ts` |  | Widget minimize button should hide mounted DOM portal body. |
+| ❓ | `../tests/services/widget/tx.attach-dom-portal.visibility.test.ts` |  | Widget DOM portal body stays mounted but hidden while collapsed. |
 | 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host header/button hover, cursor, selection, and drag commit wiring |
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |

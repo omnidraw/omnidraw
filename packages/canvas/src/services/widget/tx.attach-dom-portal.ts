@@ -1,4 +1,5 @@
-import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
 import { WIDGET_HOST_BODY_ID } from './CONSTANTS';
 import type { CameraService, WidgetManagerService } from '..';
@@ -38,7 +39,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (disposed || !div.isConnected) return;
 
     const matrix = body.getAbsoluteTransform().getMatrix();
+    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
 
+    div.style.display = widgetData?.type === 'widget' && widgetData.expanded === false ? 'none' : '';
     div.style.width = `${body.width()}px`;
     div.style.height = `${body.height()}px`;
     div.style.transform = `matrix(${matrix.join(',')})`;

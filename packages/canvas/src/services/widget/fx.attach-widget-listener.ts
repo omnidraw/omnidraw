@@ -6,6 +6,7 @@ import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
 import type { IRuntimeHooks, TElementPointerEvent } from '../../types'
 import type { SelectionService } from '../selection/SelectionService'
 import {
+  WIDGET_DOM_PORTAL_SYNC_ATTR,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_CLOSE_BUTTON_ID,
@@ -119,6 +120,8 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
     } satisfies TWidgetData)
   }
 
+  const syncWidgetDomPortal = portal.node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as (() => void) | undefined
+  syncWidgetDomPortal?.()
   portal.node.getLayer()?.batchDraw()
 }
 
