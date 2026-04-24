@@ -1,7 +1,13 @@
 import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
-import { WIDGET_HOST_BODY_ID } from './CONSTANTS';
+import {
+  WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX,
+  WIDGET_HOST_BODY_ID,
+  WIDGET_HOST_HEADER_HEIGHT,
+  WIDGET_WINDOW_CONTAINED,
+  WIDGET_WINDOW_FULLSCREEN,
+} from './CONSTANTS';
 import type { CameraService, WidgetManagerService } from '..';
 
 type TPortal = {
@@ -30,6 +36,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   if (!isKonvaRect(body)) return;
 
   const div = portal.document.createElement('div');
+  const fullscreenHeader = portal.document.createElement('div');
+  const fullscreenWindowButton = portal.document.createElement('button');
   const view = portal.document.defaultView;
 
   let disposed = false;
@@ -37,11 +45,35 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   const syncDiv = () => {
     if (disposed || !div.isConnected) return;
+    if (!isKonvaGroup(portal.node)) return
 
     const matrix = body.getAbsoluteTransform().getMatrix();
     const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    const isCollapsed = widgetData?.type === 'widget' && widgetData.expanded === false;
+    const isFullscreen = widgetData?.type === 'widget' && widgetData.window === WIDGET_WINDOW_FULLSCREEN;
 
-    div.style.display = widgetData?.type === 'widget' && widgetData.expanded === false ? 'none' : '';
+    div.style.display = isCollapsed ? 'none' : '';
+
+    if (isFullscreen) {
+      const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
+      portal.widgetPortal.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
+      fullscreenHeader.style.display = '';
+      fullscreenHeader.style.width = `${fullscreenParent.clientWidth}px`;
+      fullscreenHeader.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
+      fullscreenHeader.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
+      div.style.top = `${WIDGET_HOST_HEADER_HEIGHT}px`;
+      div.style.width = `${fullscreenParent.clientWidth}px`;
+      div.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
+      div.style.transform = 'none';
+      div.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
+      return;
+    }
+
+    portal.widgetPortal.style.zIndex = '';
+    fullscreenHeader.style.display = 'none';
+    fullscreenHeader.style.zIndex = '';
+    div.style.top = '0';
+    div.style.zIndex = '';
     div.style.width = `${body.width()}px`;
     div.style.height = `${body.height()}px`;
     div.style.transform = `matrix(${matrix.join(',')})`;
@@ -52,24 +84,85 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   portal.node.on('dragmove', syncDiv);
 
   const removeListener = (() => {
+    if (!isKonvaGroup(portal.node)) return;
+
     disposed = true;
     removeCameraListener();
     if (view && initialRenderTimer !== null) {
       view.clearTimeout(initialRenderTimer);
     }
     portal.node.off('dragmove', syncDiv);
+    fullscreenHeader.remove();
     div.remove();
   }) as TWidgetDomPortalListener;
   removeListener.syncDiv = syncDiv;
+
+  fullscreenHeader.dataset.widgetFullscreenHeaderId = args.element.id;
+  fullscreenHeader.style.position = 'absolute';
+  fullscreenHeader.style.left = '0';
+  fullscreenHeader.style.top = '0';
+  fullscreenHeader.style.display = 'none';
+  fullscreenHeader.style.alignItems = 'center';
+  fullscreenHeader.style.justifyContent = 'flex-end';
+  fullscreenHeader.style.boxSizing = 'border-box';
+  fullscreenHeader.style.padding = '0 10px';
+  fullscreenHeader.style.backgroundColor = '#111827';
+  fullscreenHeader.style.borderBottom = '1px solid #374151';
+  fullscreenHeader.style.pointerEvents = 'auto';
+
+  const windowIcon = portal.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  windowIcon.setAttribute('viewBox', '0 0 24 24');
+  windowIcon.setAttribute('width', '16');
+  windowIcon.setAttribute('height', '16');
+  windowIcon.setAttribute('aria-hidden', 'true');
+  windowIcon.innerHTML = '<path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Zm2 0v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9H6V7Zm11-1H7a1 1 0 0 0-1 1v1h12V7a1 1 0 0 0-1-1Z" fill="currentColor" />';
+
+  fullscreenWindowButton.dataset.widgetFullscreenWindowButtonId = args.element.id;
+  fullscreenWindowButton.type = 'button';
+  const windowButtonLabel = portal.document.createElement('span');
+  windowButtonLabel.textContent = 'Exit Fullscreen';
+
+  fullscreenWindowButton.title = 'Exit Fullscreen';
+  fullscreenWindowButton.setAttribute('aria-label', 'Exit Fullscreen');
+  fullscreenWindowButton.style.display = 'inline-flex';
+  fullscreenWindowButton.style.alignItems = 'center';
+  fullscreenWindowButton.style.justifyContent = 'center';
+  fullscreenWindowButton.style.gap = '6px';
+  fullscreenWindowButton.style.height = '24px';
+  fullscreenWindowButton.style.border = '1px solid #4b5563';
+  fullscreenWindowButton.style.borderRadius = '6px';
+  fullscreenWindowButton.style.backgroundColor = '#1f2937';
+  fullscreenWindowButton.style.color = '#f9fafb';
+  fullscreenWindowButton.style.cursor = 'pointer';
+  fullscreenWindowButton.style.fontSize = '12px';
+  fullscreenWindowButton.style.fontWeight = '600';
+  fullscreenWindowButton.style.lineHeight = '1';
+  fullscreenWindowButton.style.padding = '0 8px';
+  fullscreenWindowButton.appendChild(windowIcon);
+  fullscreenWindowButton.appendChild(windowButtonLabel);
+  fullscreenWindowButton.onclick = () => {
+    if (!isKonvaGroup(portal.node)) return;
+
+    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    if (widgetData?.type === 'widget') {
+      portal.node.setAttr(ELEMENT_DATA_ATTR, {
+        ...widgetData,
+        window: WIDGET_WINDOW_CONTAINED,
+      } satisfies TWidgetData);
+    }
+    syncDiv();
+  };
+  fullscreenHeader.appendChild(fullscreenWindowButton);
 
   div.dataset.widgetElementId = args.element.id;
   div.style.position = 'absolute';
   div.style.left = '0';
   div.style.top = '0';
   div.style.transformOrigin = '0 0';
-  div.style.backgroundColor = 'red';
+  div.style.backgroundColor = 'white';
   div.style.pointerEvents = 'auto';
 
+  portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
   if (view) {
     initialRenderTimer = view.setTimeout(syncDiv, 0);

@@ -16,6 +16,8 @@ import {
   WIDGET_HOST_MAXIMIZE_BUTTON_ID,
   WIDGET_HOST_MINIMIZE_BUTTON_ID,
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
+  WIDGET_WINDOW_CONTAINED,
+  WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS'
 
 type TPortal = {
@@ -41,6 +43,7 @@ function setupButtons(args: {
   node: Konva.Group;
   setCursor: (cursor: string) => void;
   syncExpandedState: (expanded: boolean) => void;
+  syncWindowState: (windowMode: typeof WIDGET_WINDOW_CONTAINED | typeof WIDGET_WINDOW_FULLSCREEN) => void;
 }) {
   const buttonIds = [
     WIDGET_HOST_CLOSE_BUTTON_ID,
@@ -84,8 +87,20 @@ function setupButtons(args: {
           : false
         args.syncExpandedState(nextExpanded)
       }
+      if (buttonId === WIDGET_HOST_MAXIMIZE_BUTTON_ID) {
+        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
+        const nextWindowMode = widgetData?.type === 'widget' && widgetData.window === WIDGET_WINDOW_FULLSCREEN
+          ? WIDGET_WINDOW_CONTAINED
+          : WIDGET_WINDOW_FULLSCREEN
+        args.syncWindowState(nextWindowMode)
+      }
     })
   })
+}
+
+function syncWidgetDomPortal(portal: TPortal) {
+  const syncWidgetDomPortal = portal.node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as (() => void) | undefined
+  syncWidgetDomPortal?.()
 }
 
 function syncExpandedState(portal: TPortal, expanded: boolean) {
@@ -120,8 +135,22 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
     } satisfies TWidgetData)
   }
 
-  const syncWidgetDomPortal = portal.node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as (() => void) | undefined
-  syncWidgetDomPortal?.()
+  syncWidgetDomPortal(portal)
+  portal.node.getLayer()?.batchDraw()
+}
+
+function syncWindowState(portal: TPortal, windowMode: typeof WIDGET_WINDOW_CONTAINED | typeof WIDGET_WINDOW_FULLSCREEN) {
+  if (!(portal.node instanceof portal.Group)) return
+
+  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
+  if (widgetData?.type === 'widget') {
+    portal.node.setAttr(ELEMENT_DATA_ATTR, {
+      ...widgetData,
+      window: windowMode,
+    } satisfies TWidgetData)
+  }
+
+  syncWidgetDomPortal(portal)
   portal.node.getLayer()?.batchDraw()
 }
 
@@ -242,6 +271,7 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
     node: portal.node,
     setCursor,
     syncExpandedState: fnCurry(syncExpandedState)(portal),
+    syncWindowState: fnCurry(syncWindowState)(portal),
   })
   if(header) setupCursor(setCursor, portal.node, header)
   setupDragListener(portal)

@@ -20,3 +20,6 @@ export const WIDGET_HOST_TRAFFIC_LIGHT_START_X = 16
 export const WIDGET_HOST_TRAFFIC_LIGHT_SPACING = 14
 
 export const WIDGET_DOM_PORTAL_SYNC_ATTR = '__widgetDomPortalSync'
+export const WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX = '10000'
+export const WIDGET_WINDOW_CONTAINED = 'contained'
+export const WIDGET_WINDOW_FULLSCREEN = 'fullscreen'

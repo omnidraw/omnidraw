@@ -247,7 +247,9 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing constants |
+| ❓ | `../tests/services/widget/fx.attach-widget-listener.fullscreen.test.ts` |  | Widget maximize button should fullscreen same mounted DOM body div. |
 | ❓ | `../tests/services/widget/fx.attach-widget-listener.portal-visibility.test.ts` |  | Widget minimize button should hide mounted DOM portal body. |
+| ❓ | `../tests/services/widget/tx.attach-dom-portal.fullscreen.test.ts` |  | Widget DOM portal fullscreen style reuses existing body div. |
 | ❓ | `../tests/services/widget/tx.attach-dom-portal.visibility.test.ts` |  | Widget DOM portal body stays mounted but hidden while collapsed. |
 | 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host header/button hover, cursor, selection, and drag commit wiring |
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |

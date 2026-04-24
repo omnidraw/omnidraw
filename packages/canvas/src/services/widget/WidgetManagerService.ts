@@ -52,7 +52,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     // @ts-expect-error this is safe, start runs before any other method
     this.runtimeHooks = ctx.hooks;
     this.#widgetPortal = document.createElement("div");
-    this.#widgetPortal.style = "position: absolute; inset: 0; background: #424590; opacity: 0.5; pointer-events: none;";
+    this.#widgetPortal.style = "position: absolute; inset: 0; pointer-events: none;";
     this.#sceneService.stage.container().appendChild(this.#widgetPortal);
     // this.#domPortal.style =
     this.#widgetPortal.id = "widget-portal";
