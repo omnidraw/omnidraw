@@ -90,6 +90,12 @@ function createServices(config: {
   const crdt = new CrdtService({ docHandle: config.docHandle });
   const tool = new ToolService(scene, element, crdt, selection);
   const logging = new LoggingService();
+  const renderOrder = new RenderOrderService({
+    crdt,
+    history,
+    scene,
+    contextMenu,
+  });
   const widgetManager = new WidgetManagerService({
     crdtService: crdt,
     contextMenuService: contextMenu,
@@ -98,13 +104,8 @@ function createServices(config: {
     selectionService: selection,
     elementService: element,
     toolService: tool,
-  });
-
-  const renderOrder = new RenderOrderService({
-    crdt,
-    history,
-    scene,
-    contextMenu,
+    sceneService: scene,
+    renderOrderService: renderOrder,
   });
   const group = new GroupService(
     camera,

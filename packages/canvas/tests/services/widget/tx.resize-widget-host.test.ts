@@ -56,7 +56,6 @@ describe("txResizeWidgetHost", () => {
     expect(txResizeWidgetHost({
       Group: Konva.Group,
       Rect: Konva.Rect,
-      now: () => 99,
     }, {
       node: group,
     })).toBe(true);
@@ -87,7 +86,6 @@ describe("txResizeWidgetHost", () => {
     expect(txResizeWidgetHost({
       Group: Konva.Group,
       Rect: Konva.Rect,
-      now: () => 99,
     }, {
       node: group,
     })).toBe(true);

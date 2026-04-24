@@ -24,7 +24,7 @@ describe("widget draw host", () => {
     const node = fxDrawHost({
       konva: Konva,
       themeService: new ThemeService(),
-      crypto: { randomUUID: () => "widget-1" } as Crypto,
+      crypto: { randomUUID: () => "widget-1" } as unknown as Crypto,
     }, {
       event: {} as never,
       point: createPoint(10, 20),
@@ -53,7 +53,7 @@ describe("widget draw host", () => {
     const group = fxDrawHost({
       konva: Konva,
       themeService: new ThemeService(),
-      crypto: { randomUUID: () => "widget-1" } as Crypto,
+      crypto: { randomUUID: () => "widget-1" } as unknown as Crypto,
     }, {
       event: {} as never,
       point: createPoint(10, 20),

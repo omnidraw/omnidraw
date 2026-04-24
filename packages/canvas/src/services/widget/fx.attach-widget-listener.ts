@@ -23,10 +23,10 @@ type TPortal = {
   hooks: IRuntimeHooks;
   node: Konva.Node;
   selection: SelectionService;
-  startDragClone: (args: {
-    node: Konva.Node;
-    selection: Konva.Node[];
-  }) => boolean;
+  // startDragClone: (args: {
+  //   node: Konva.Node;
+  //   selection: Konva.Node[];
+  // }) => boolean;
 }
 type TArgs = {
 }
@@ -185,10 +185,10 @@ function setupSelectable(portal: TPortal) {
 
     if (event.evt?.altKey) {
       safeStopDrag(portal.node);
-      portal.startDragClone({
-        node: portal.node,
-        selection: portal.selection.selection,
-      });
+      // portal.startDragClone({
+      //   node: portal.node,
+      //   selection: portal.selection.selection,
+      // });
     }
   });
 

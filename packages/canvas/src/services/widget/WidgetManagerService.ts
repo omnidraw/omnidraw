@@ -68,8 +68,16 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
         return true
       },
-      
-      attachListeners: (node) => fxAttachWidgetListener({ node, editorService: this.editorService, selectionService: this.selectionService,  }, {})
+
+      attachListeners: (node) => fxAttachWidgetListener({
+        node,
+        Circle: Konva.Circle,
+        Group: Konva.Group,
+        Rect: Konva.Rect,
+        hooks: this.runtimeHooks,
+        selection: this.#selectionService,
+
+      }, {})
     })
 
   }
