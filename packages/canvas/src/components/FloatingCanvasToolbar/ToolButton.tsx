@@ -15,12 +15,17 @@ interface ToolButtonProps {
 }
 
 export function ToolButton(props: ToolButtonProps) {
+  const hasWideShortcut = () => Boolean(props.shortcut && props.shortcut.length > 3);
+
   return (
     <button
       type="button"
       onClick={props.onClick}
       class="vc-toolbar-button"
-      classList={{ "vc-toolbar-button--active": props.isActive }}
+      classList={{
+        "vc-toolbar-button--active": props.isActive,
+        "vc-toolbar-button--has-wide-shortcut": hasWideShortcut(),
+      }}
     >
       {props.icon}
       {props.letterShortcut && (
@@ -40,6 +45,7 @@ export function ToolButton(props: ToolButtonProps) {
           classList={{
             "vc-toolbar-button__shortcut--active": props.isActive,
             "vc-toolbar-button__shortcut--muted": !props.isActive,
+            "vc-toolbar-button__shortcut--wide": hasWideShortcut(),
           }}
         >
           {props.shortcut}

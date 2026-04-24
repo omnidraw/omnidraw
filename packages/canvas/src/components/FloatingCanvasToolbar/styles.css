@@ -69,6 +69,12 @@
   transition: background-color 150ms ease, color 150ms ease;
 }
 
+.vc-toolbar-button--has-wide-shortcut {
+  height: 2.25rem;
+  align-items: flex-start;
+  padding-top: 0.25rem;
+}
+
 .vc-toolbar-button__icon {
   display: inline-flex;
   width: 14px;
@@ -96,6 +102,7 @@
   font-family: var(--font-mono);
   font-size: 7px;
   font-weight: 500;
+  line-height: 1;
 }
 
 .vc-toolbar-button__shortcut--left {
@@ -104,6 +111,14 @@
 
 .vc-toolbar-button__shortcut--right {
   right: 1px;
+}
+
+.vc-toolbar-button__shortcut--wide {
+  right: 0;
+  bottom: 2px;
+  left: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .vc-toolbar-button__shortcut--active {

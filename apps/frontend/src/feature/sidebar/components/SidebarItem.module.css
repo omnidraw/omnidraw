@@ -1,8 +1,22 @@
 .root {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0;
+  gap: 0.125rem;
+  min-height: 2.25rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.root:hover {
+  border-color: var(--border);
+  background: var(--background);
+}
+
+.rootSelected,
+.rootSelected:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--background));
 }
 
 .canvasButton {
@@ -10,8 +24,8 @@
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 2.25rem;
-  padding: 0.5625rem 0.75rem;
+  min-height: 2.125rem;
+  padding: 0.4375rem 0.625rem 0.4375rem 0.875rem;
   border: 1px solid transparent;
   background: transparent;
   color: color-mix(in srgb, var(--foreground) 92%, var(--muted-foreground));
@@ -20,30 +34,26 @@
 }
 
 .canvasButton:hover {
-  border-color: color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--muted) 72%, transparent);
   color: var(--foreground);
 }
 
 .canvasButtonSelected,
 .canvasButtonSelected:hover {
-  border-color: color-mix(in srgb, var(--primary) 26%, var(--border));
-  background: color-mix(in srgb, var(--primary) 10%, var(--card));
   color: var(--foreground);
 }
 
 .canvasButton:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--ring);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.15;
-  font-weight: 500;
+  font-weight: 650;
 }
 
 .menuTrigger {
@@ -51,12 +61,13 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 1.875rem;
+  height: 1.875rem;
   padding: 0.25rem;
   border: 1px solid transparent;
+  border-radius: 0;
   color: var(--muted-foreground);
-  opacity: 0;
+  opacity: 0.42;
   transition: opacity 150ms ease, background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -68,8 +79,8 @@
 
 .menuTrigger:hover,
 .menuTrigger[data-expanded] {
-  border-color: color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  border-color: var(--border);
+  background: var(--background);
   color: var(--foreground);
 }
 
@@ -83,6 +94,7 @@
   min-width: 8.75rem;
   padding: 0.25rem 0;
   border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 0;
   background: var(--popover);
   color: var(--popover-foreground);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
@@ -96,7 +108,7 @@
   width: 100%;
   padding: 0.5rem 0.75rem;
   color: var(--foreground);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   line-height: 1rem;
   outline: none;
   transition: background-color 100ms ease, color 100ms ease;

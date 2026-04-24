@@ -1,8 +1,8 @@
 import type { RouteSectionProps } from "@solidjs/router";
 import { onMount } from "solid-js";
-import { Toaster, showToast } from "./components/ui/Toast";
+import { Toaster } from "./components/ui/Toast";
 import { Sidebar } from "./feature/sidebar";
-import { store } from "./store";
+import { setStore, store } from "./store";
 import styles from "./App.module.css";
 
 const App = (props: RouteSectionProps) => {
@@ -18,7 +18,7 @@ const App = (props: RouteSectionProps) => {
     <div class={styles.shell}>
       <Sidebar
         visible={store.sidebarVisible}
-        onSettingsClick={() => showToast("Settings", "Coming soon...")}
+        onToggleSidebar={() => setStore("sidebarVisible", (visible) => !visible)}
       />
       <main id="main" class={styles.main}>
         {props.children}

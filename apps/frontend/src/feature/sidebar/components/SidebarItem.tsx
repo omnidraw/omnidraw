@@ -14,6 +14,10 @@ export type SidebarItemProps = {
 };
 
 const SidebarItem: Component<SidebarItemProps> = (props) => {
+  const rootClass = () => {
+    return [styles.root, props.selected ? styles.rootSelected : ""].filter(Boolean).join(" ");
+  };
+
   const canvasButtonClass = () => {
     return [styles.canvasButton, props.selected ? styles.canvasButtonSelected : ""].filter(Boolean).join(" ");
   };
@@ -21,17 +25,21 @@ const SidebarItem: Component<SidebarItemProps> = (props) => {
   const dangerMenuItemClass = `${styles.menuItem} ${styles.menuItemDanger}`;
 
   return (
-    <div class={styles.root}>
+    <div class={rootClass()}>
       <button
         type="button"
         class={canvasButtonClass()}
+        aria-current={props.selected ? "page" : undefined}
         onClick={() => props.onClick?.()}
       >
-        <span class={styles.label}>{props.name}</span>
+        <span class={styles.label} title={props.name}>{props.name}</span>
       </button>
 
       <DropdownMenu modal={false}>
-        <DropdownMenu.Trigger class={styles.menuTrigger}>
+        <DropdownMenu.Trigger
+          class={styles.menuTrigger}
+          aria-label={`Options for ${props.name}`}
+        >
           <MoreHorizontal size={14} />
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>

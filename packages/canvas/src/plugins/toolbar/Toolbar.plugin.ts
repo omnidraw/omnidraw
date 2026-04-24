@@ -1,18 +1,18 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import Hand from "lucide-static/icons/hand.svg?raw";
 import MousePointer2 from "lucide-static/icons/mouse-pointer-2.svg?raw";
+import SidebarOpen from "lucide-static/icons/sidebar-open.svg?raw";
 import { createComponent } from "solid-js";
 import { render } from "solid-js/web";
 import { RuntimeToolbar } from "../../components/FloatingCanvasToolbar/RuntimeToolbar";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
-import type { EditorService, TEditorTool } from "src/services/editor/EditorService";
-import type { ToolService } from "src/services";
+import type { ToolService, TTool } from "../../services";
 import { txSelectTool } from "./tx.select-tool";
 
-function getModeFromTool(tool: TEditorTool | undefined) {
+function getModeFromTool(tool: TTool | undefined) {
   if (!tool) {
     return CanvasMode.SELECT;
   }
@@ -58,7 +58,7 @@ function txSyncCursor(render: SceneService, selection: SelectionService) {
 }
 
 
-function fnGetShortcutToolId(editor: EditorService, event: KeyboardEvent) {
+function fnGetShortcutToolId(toolService: ToolService, event: KeyboardEvent) {
   if (event.altKey) {
     return null;
   }
@@ -70,7 +70,7 @@ function fnGetShortcutToolId(editor: EditorService, event: KeyboardEvent) {
   const normalizedKey = fnNormalizeShortcut(key);
   const candidate = prefix ? `${prefix}+${normalizedKey}` : normalizedKey;
 
-  for (const tool of editor.getTools()) {
+  for (const tool of toolService.getTools()) {
     for (const shortcut of tool.shortcuts ?? []) {
       if (fnNormalizeShortcut(shortcut) === candidate) {
         return tool.id;
@@ -114,7 +114,7 @@ export function createToolbarPlugin(): IPlugin<{
   tool: ToolService;
   scene: SceneService;
   selection: SelectionService;
-}, IRuntimeHooks> {
+}, IRuntimeHooks, IRuntimeConfig> {
   let toolbarMount: ReturnType<typeof mountToolbar> | null = null;
   let toolBeforeSpaceHold: string | null = null;
 
@@ -125,6 +125,15 @@ export function createToolbarPlugin(): IPlugin<{
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
 
+      tool.registerTool({
+        id: "sidebar",
+        label: "Sidebar",
+        icon: SidebarOpen,
+        shortcuts: ["ctrl+b"],
+        priority: 10001,
+        behavior: { type: "action" },
+        onSelect: ctx.config.onToggleSidebar,
+      });
       tool.registerTool({
         id: "hand",
         label: "Hand",
@@ -182,7 +191,8 @@ export function createToolbarPlugin(): IPlugin<{
           return false;
         }
 
-        if (toolId !== "hand") {
+        const shortcutTool = tool.getTool(toolId);
+        if (shortcutTool?.behavior.type === "mode" && toolId !== "hand") {
           selection.setSelection([]);
         }
         txSelectTool({ toolService: tool }, { toolId });
@@ -206,6 +216,7 @@ export function createToolbarPlugin(): IPlugin<{
 
       ctx.hooks.destroy.tap(() => {
         toolBeforeSpaceHold = null;
+        tool.unregisterTool("sidebar");
         tool.unregisterTool("hand");
         tool.unregisterTool("select");
         toolbarMount?.dispose();

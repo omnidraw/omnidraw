@@ -78,9 +78,9 @@ prefix: `packages/canvas/src/`
 | ❓ | `components/filetree/path-display.ts` |  | Home-relative path display |
 | ❓ | `components/filetree/PathPickerDialog.tsx` |  | Browse folders and confirm directory selection |
 | ❓ | `components/FloatingCanvasToolbar/RuntimeToolbar.tsx` |  | Floating toolbar UI: sanitize SVG icons, reflect editor tool state |
-| ❓ | `components/FloatingCanvasToolbar/styles.css` |  | Floating canvas/runtime toolbar visuals, states, tooltips, keycap hints |
+| 🤖 | `components/FloatingCanvasToolbar/styles.css` |  | Floating canvas/runtime toolbar visuals, states, tooltips, keycap hints |
 | ❓ | `components/FloatingCanvasToolbar/toolbar.types.ts` |  | Toolbar tool roster and keyboard shortcut mapping source |
-| ❓ | `components/FloatingCanvasToolbar/ToolButton.tsx` |  | Floating toolbar button |
+| 🤖 | `components/FloatingCanvasToolbar/ToolButton.tsx` |  | Floating toolbar button with shortcut label layout |
 | ❓ | `components/SelectionStyleMenu/CapPicker.tsx` |  | Arrow endpoint cap style buttons for selection menu |
 | ❓ | `components/SelectionStyleMenu/ColorPicker.tsx` |  | Theme token swatches for fill/stroke selection popover |
 | ❓ | `components/SelectionStyleMenu/FontFamilyPicker.tsx` |  | Text styling panel font family option grid selector |
@@ -213,7 +213,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/text/tx.enter-edit-mode.ts` |  | Inline textarea editing for canvas text/shape labels |
 | ✅ | `plugins/text/tx.setup-text-node.ts` |  | Text node pointer hooks, drag sync, alt-clone history |
 | 🤖 | `plugins/text/tx.update-text-node-from-element.ts` |  | Existing Konva text node visual sync from text element model |
-| ❓ | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, cursor, temporary hand |
+| 🤖 | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, sidebar toggle, cursor, temporary hand |
 | ❓ | `plugins/transform/fx.proxy-bounds.ts` |  | Transform overlay needs layer-relative rotated shape bounds |
 | ❓ | `plugins/transform/fx.proxy-drag-target.ts` |  | Single selected shape or pen path proxy-drag target |
 | ❓ | `plugins/transform/fx.selection-transform-options.ts` |  | Selection transformer anchors ratio border flip resolution |
@@ -309,7 +309,7 @@ prefix: `apps/frontend/src/`
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
 | ❓ | `App.module.css` |  |  |
-| ❓ | `App.tsx` |  |  |
+| 🤖 | `App.tsx` |  | App shell wiring for sidebar visibility and route content |
 | ❓ | `automerge.ts` |  |  |
 | ❓ | `backend.types.ts` |  |  |
 | ❓ | `canvas.tsx` |  |  |
@@ -326,11 +326,11 @@ prefix: `apps/frontend/src/`
 | ❓ | `route-state.module.css` |  |  |
 | ❓ | `scroll-area.module.css` |  |  |
 | ❓ | `scroll-area.tsx` |  |  |
-| ❓ | `Sidebar.module.css` |  |  |
-| ❓ | `Sidebar.tsx` |  |  |
+| 🤖 | `Sidebar.module.css` |  | Sidebar shell layout, create action, canvas list, footer controls |
+| 🤖 | `Sidebar.tsx` |  | Sidebar navigation orchestration for canvases, dialogs, and theme toggle |
 | ❓ | `SidebarDialog.module.css` |  |  |
-| ❓ | `SidebarItem.module.css` |  |  |
-| ❓ | `SidebarItem.tsx` |  |  |
+| 🤖 | `SidebarItem.module.css` |  | Canvas navigation row styling, selected state, and item menu visuals |
+| 🤖 | `SidebarItem.tsx` |  | Sidebar canvas row with navigation and rename/delete menu actions |
 | ❓ | `store.ts` |  |  |
 | ❓ | `theme.memory.test.ts` |  |  |
 | ❓ | `theme.memory.ts` |  |  |

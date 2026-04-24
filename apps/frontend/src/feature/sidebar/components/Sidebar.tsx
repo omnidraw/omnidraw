@@ -2,6 +2,7 @@ import { Button } from "@kobalte/core/button";
 import * as ToggleButton from "@kobalte/core/toggle-button";
 import { useLocation, useNavigate } from "@solidjs/router";
 import MoonStar from "lucide-solid/icons/moon-star";
+import PanelLeft from "lucide-solid/icons/panel-left";
 import Plus from "lucide-solid/icons/plus";
 import Sun from "lucide-solid/icons/sun";
 import type { Component } from "solid-js";
@@ -20,7 +21,7 @@ import styles from "./Sidebar.module.css";
 
 export type SidebarProps = {
   visible?: boolean;
-  onSettingsClick?: () => void;
+  onToggleSidebar?: () => void;
 };
 
 const Sidebar: Component<SidebarProps> = (props) => {
@@ -102,32 +103,58 @@ const Sidebar: Component<SidebarProps> = (props) => {
 
   return (
     <>
-      <aside class={sidebarClass()}>
+      <aside class={sidebarClass()} aria-label="Canvas navigation">
         <div class={styles.header}>
-          <h1 class={styles.brand}>VIBECANVAS</h1>
+          <div class={styles.brandLockup}>
+            <h1 class={styles.brand}>VIBECANVAS</h1>
+          </div>
+          <Button
+            class={styles.sidebarToggle}
+            onClick={() => props.onToggleSidebar?.()}
+            aria-label="Toggle sidebar"
+          >
+            <PanelLeft size={15} />
+          </Button>
         </div>
 
-        <div class={styles.list}>
-          <For each={store.canvases}>
-            {(canvas) => (
-              <SidebarItem
-                name={canvas.name}
-                selected={activeCanvasId() === canvas.id}
-                onClick={() => navigate(`/c/${canvas.id}`)}
-                onRename={() => handleOpenRenameDialog(canvas.id, canvas.name)}
-                onDelete={() => handleOpenDeleteDialog(canvas)}
-              />
-            )}
-          </For>
-
+        <div class={styles.primaryAction}>
           <Button
             class={styles.createButton}
             onClick={() => setCreateDialogOpen(true)}
           >
-            <Plus size={14} class={styles.createIcon} />
+            <Plus size={15} class={styles.createIcon} />
             <span class={styles.createLabel}>New Canvas</span>
           </Button>
         </div>
+
+        <nav class={styles.nav} aria-label="Canvases">
+          <div class={styles.sectionHeader}>
+            <span class={styles.sectionTitle}>Canvases</span>
+            <span class={styles.sectionCount}>{store.canvases.length}</span>
+          </div>
+
+          <div class={styles.list}>
+            <For
+              each={store.canvases}
+              fallback={
+                <div class={styles.emptyState}>
+                  <p class={styles.emptyTitle}>No canvases yet</p>
+                  <p class={styles.emptyBody}>Create one to start drawing.</p>
+                </div>
+              }
+            >
+              {(canvas) => (
+                <SidebarItem
+                  name={canvas.name}
+                  selected={activeCanvasId() === canvas.id}
+                  onClick={() => navigate(`/c/${canvas.id}`)}
+                  onRename={() => handleOpenRenameDialog(canvas.id, canvas.name)}
+                  onDelete={() => handleOpenDeleteDialog(canvas)}
+                />
+              )}
+            </For>
+          </div>
+        </nav>
 
         <div class={styles.footer}>
           <ToggleButton.Root
@@ -138,10 +165,10 @@ const Sidebar: Component<SidebarProps> = (props) => {
           >
             <div class={styles.themeToggleLead}>
               {isDarkTheme() ? <MoonStar size={14} class={styles.themeIconDark} /> : <Sun size={14} class={styles.themeIconLight} />}
-              <span class={styles.themeToggleLabel}>Dark mode</span>
+              <span class={styles.themeToggleLabel}>Theme</span>
             </div>
             <span class={styles.themeStatus}>
-              {isDarkTheme() ? "ON" : "OFF"}
+              {isDarkTheme() ? "Dark" : "Light"}
             </span>
           </ToggleButton.Root>
         </div>
