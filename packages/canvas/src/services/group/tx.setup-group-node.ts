@@ -1,14 +1,14 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TCrdtBuilder, TCrdtRecordedOp } from "../../services/crdt/fxBuilder";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
 import type { CrdtService } from "../../services/crdt/CrdtService";
 import type { HistoryService } from "../../services/history/HistoryService";
 import type { LoggingService } from "../../services/logging/LoggingService";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import { fnSerializeSubtreeElements } from "./fn.serialize-subtree-elements";
-import { ElementService } from "../element/ElementService";
+import type { ElementService } from "../element/ElementService";
+import { txSyncWidgetDomPortals } from "../widget/tx.sync-widget-dom-portals";
 
 type TGroupDragMetrics = {
   startedAt: number;
@@ -282,6 +282,8 @@ export function txSetupGroupNode(
   });
 
   args.group.on("dragmove", () => {
+    txSyncWidgetDomPortals({}, { node: args.group });
+
     if (isCloneDrag) {
       isCloneDrag = false;
       return;
@@ -315,10 +317,13 @@ export function txSetupGroupNode(
   });
 
   args.group.on("transform", () => {
+    txSyncWidgetDomPortals({}, { node: args.group });
     portal.refreshBoundaries();
   });
 
   args.group.on("dragend", () => {
+    txSyncWidgetDomPortals({}, { node: args.group });
+
     if (isCloneDrag) {
       isCloneDrag = false;
       beforeElements = [];

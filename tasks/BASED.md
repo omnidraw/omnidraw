@@ -151,6 +151,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A35] - multiselect => clone drag
 - [x]: [A36](a/A36.md) - theme: centralize canvas style ownership in ThemeService
 - [ ]: [A37] - shape1d binding -> must safe them to TElementData
+- [ ]: [A38](a/A38.md) - widgets: fullscreen DOM window mode
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port

@@ -20,7 +20,7 @@ import {
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from './CONSTANTS';
-import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR } from "../../core/CONSTANTS"
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS"
 import type { THostThemeColors } from "./types";
 
 
@@ -137,8 +137,8 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   const body = createBody(konva, colors)
   body.width(width)
   body.height(Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, bodyHeight))
-  body.visible(true)
-  body.listening(true)
+  body.visible(isExpanded)
+  body.listening(isExpanded)
 
   const header = createHeader(konva, colors)
   const border = createBorder(konva, colors)
@@ -158,7 +158,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
 
   if (divider instanceof konva.Rect) {
     divider.width(dividerWidth)
-    divider.visible(true)
+    divider.visible(isExpanded)
     divider.listening(false)
   }
 
@@ -170,9 +170,11 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
     ...element.data,
     w: width,
     h: height,
-    expanded: true,
+    expanded: isExpanded,
   })
-  group.setAttr(ELEMENT_STYLE_ATTR, {})
+  group.setAttr(ELEMENT_STYLE_ATTR, element.style ?? {})
+  group.setAttr(VC_CREATED_AT_ATTR, element.createdAt)
+  group.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt)
 
   return group
 }

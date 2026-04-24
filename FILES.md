@@ -236,13 +236,15 @@ prefix: `packages/canvas/src/`
 | ✅ | `services/history/HistoryService.ts` |  | Undo/redo stack service for runtime actions |
 | ✅ | `services/logging/LoggingService.ts` |  | Canvas debug logs gated by per-target localStorage |
 | 🤖 | `services/group/GroupService.ts` |  | Group node lifecycle, serialization, and clone-drag wiring |
+| 🫠 | `services/group/fn.serialize-subtree-elements.ts` | service read logic in fn file | Group subtree canvas element nodes to TElement serialization |
 | 🤖 | `services/group/tx.create-group-clone-drag.ts` |  | Group duplicate drag preview, subtree re-id, and CRDT commit on drop |
+| 🤖 | `services/group/tx.setup-group-node.ts` |  | Group drag lifecycle: selection, clone-alt-drag, CRDT/history sync, metrics, widget portal sync |
 | 🤖 | `services/render-order/RenderOrderService.ts` |  | Bundle-aware sibling z-order |
 | ✅ | `services/scene/SceneService.ts` |  | Konva stage lifecycle, layers, container resize hook |
 | ✅ | `services/scene/SessionService.ts` |  | temporary data, Edit state. |
 | ❓ | `services/selection/SelectionService.ts` |  | canvas selection state, focus, mode, change notifications |
 | 🤖 | `services/tool/ToolService.ts` |  | Runtime tool registry, active tool switching, and draw-create preview commit |
-| ❓ | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
+| 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing constants |
 | ❓ | `../tests/services/widget/fx.attach-widget-listener.portal-visibility.test.ts` |  | Widget minimize button should hide mounted DOM portal body. |
@@ -254,6 +256,8 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning and cleanup listener wiring |
 | ❓ | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview and CRDT commit |
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
+| ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
+| ❓ | `services/widget/tx.update-widget-node-from-element.ts` |  | Replay persisted widget geometry/data onto an existing Konva host and DOM portal. |
 | 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools canvas adapters example widget |
 
 ## .pi/extensions/functional-core

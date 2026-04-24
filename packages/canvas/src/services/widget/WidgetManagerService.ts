@@ -13,6 +13,7 @@ import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txAttachDomPortal } from "./tx.attach-dom-portal";
+import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
 import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
 
 type TWidgetDomPortalSync = () => void;
@@ -87,6 +88,26 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         }
         // TODO [S49]: add onRemove to some callback later
         return node
+      },
+      updateElement: (element) => {
+        if (element.data.type !== "widget" || element.data.kind !== wConfig.id) {
+          return false;
+        }
+
+        const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
+          return candidate.id() === element.id;
+        });
+        if (!node) {
+          return false;
+        }
+
+        return txUpdateWidgetNodeFromElement({
+          Group: Konva.Group,
+          Rect: Konva.Rect,
+        }, {
+          node,
+          element,
+        });
       },
       createDragClone(args) {
 

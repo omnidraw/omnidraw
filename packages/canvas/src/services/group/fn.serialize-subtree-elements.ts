@@ -11,7 +11,7 @@ export type TArgsSerializeSubtreeElements = {
 };
 
 export function fnSerializeSubtreeElements(args: TArgsSerializeSubtreeElements) {
-  return args.group.find((node: Node) => node instanceof args.Shape)
+  return args.group.find((node: Node) => node !== args.group)
     .map((node) => args.element.toElement(node))
     .filter((element): element is TElement => element !== null);
 }
