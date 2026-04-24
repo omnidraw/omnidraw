@@ -8,6 +8,7 @@ import { WIDGET_HOST_HEADER_HEIGHT } from "../../../src/services/widget/CONSTANT
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
 import { txAttachDomPortal } from "../../../src/services/widget/tx.attach-dom-portal";
+import { txResizeWidgetHost } from "../../../src/services/widget/tx.resize-widget-host";
 import { createTestContainer, ensureDom } from "../../test-setup";
 
 function createWidgetElement(): TElement {
@@ -127,6 +128,40 @@ describe("txAttachDomPortal", () => {
     cameraService.hooks.change.call();
 
     expect(div.style.transform).toBe("matrix(1.5,0,0,1.5,115,272)");
+
+    removeListener?.();
+    stage.destroy();
+    widgetPortal.remove();
+  });
+
+  test("syncs the widget body div after widget resize", () => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
+
+    const removeListener = txAttachDomPortal({
+      node: group,
+      document,
+      widgetServie: {} as WidgetManagerService,
+      widgetPortal,
+      cameraService,
+    }, { element });
+
+    cameraService.hooks.change.call();
+    const div = firstPortalDiv(widgetPortal);
+    expect(div.style.width).toBe("160px");
+    expect(div.style.height).toBe(`${120 - WIDGET_HOST_HEADER_HEIGHT}px`);
+
+    group.scale({ x: 2, y: 1.5 });
+    txResizeWidgetHost({
+      Group: Konva.Group,
+      Rect: Konva.Rect,
+    }, {
+      node: group,
+    });
+    removeListener?.syncDiv();
+
+    expect(div.style.width).toBe("320px");
+    expect(div.style.height).toBe(`${180 - WIDGET_HOST_HEADER_HEIGHT}px`);
+    expect(div.style.transform).toBe("matrix(1,0,0,1,10,48)");
 
     removeListener?.();
     stage.destroy();

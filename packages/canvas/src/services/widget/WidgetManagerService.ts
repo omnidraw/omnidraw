@@ -14,6 +14,9 @@ import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServicePr
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txAttachDomPortal } from "./tx.attach-dom-portal";
 
+const WIDGET_DOM_PORTAL_SYNC_ATTR = "__widgetDomPortalSync";
+type TWidgetDomPortalSync = () => void;
+
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
@@ -79,6 +82,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         const node = fnCreateWidgetNode(Konva, colors, element)
         console.log('create node', element)
         const onRemove = txAttachDomPortal({node, widgetPortal: this.#widgetPortal, document, widgetServie: this, cameraService: this.#cameraService}, {element})
+        if (node && onRemove) {
+          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
+        }
         // TODO [S49]: add onRemove to some callback later
         return node
       },
@@ -101,6 +107,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         }, {
           node,
         });
+        const syncWidgetDomPortal = node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as TWidgetDomPortalSync | undefined;
+        syncWidgetDomPortal?.();
 
         return {
           cancel: true,

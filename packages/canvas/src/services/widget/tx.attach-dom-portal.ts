@@ -15,6 +15,10 @@ type TArgs = {
   element: TElement;
 };
 
+export type TWidgetDomPortalListener = (() => void) & {
+  syncDiv: () => void;
+};
+
 /**
  * For a given widget node. It will attach a dom div to render the widget content.
  */
@@ -44,7 +48,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   portal.node.on('dragmove', syncDiv);
 
-  const removeListener = () => {
+  const removeListener = (() => {
     disposed = true;
     removeCameraListener();
     if (view && initialRenderTimer !== null) {
@@ -52,7 +56,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     }
     portal.node.off('dragmove', syncDiv);
     div.remove();
-  };
+  }) as TWidgetDomPortalListener;
+  removeListener.syncDiv = syncDiv;
 
   div.dataset.widgetElementId = args.element.id;
   div.style.position = 'absolute';
