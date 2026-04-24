@@ -6,33 +6,12 @@ Konva uses a Stage → Layer → Group → Shape hierarchy. You create a Stage (
 
 Key capabilities: object-oriented shape management, full event system (click, hover, touch, drag), built-in drag-and-drop, animations and tweens, image filters (blur, brighten, contrast, grayscale, etc.), canvas serialization/deserialization (toJSON/fromJSON), high-quality image export (toDataURL, toBlob), node nesting and grouping, hit detection, and caching for performance.
 
-Framework bindings:
-- React: `react-konva` — declarative React components for canvas shapes
-- Vue: `vue-konva` — Vue components for Konva
-- Svelte: `svelte-konva` — Svelte components for Konva
-- Angular: `ng2-konva` — Angular directives for Konva
-
-Install: `npm install konva` (and `react-konva` / `vue-konva` / `svelte-konva` for frameworks)
+Install: `npm install konva`
 
 ## Docs
 
 - [Getting Started](https://konvajs.org/docs/index.html): Installation, basic setup, first canvas
-- [Framework Overview](https://konvajs.org/docs/overview.html): Architecture, shapes, styles, events, drag-and-drop, filters, animations, serialization
 - [API Reference](https://konvajs.org/api/Konva.html): Full API documentation for all classes
-- [FAQ](https://konvajs.org/docs/faq.html): Common questions about Konva.js
-- [About Konva](https://konvajs.org/docs/about.html): Project history, adoption, key facts
-
-## Guides & Comparisons
-
-- [Why Konva?](https://konvajs.org/docs/guides/why-konva.html): When to use Konva, ideal use cases, what Konva is NOT
-- [Best JavaScript Canvas Libraries](https://konvajs.org/docs/guides/best-canvas-library.html): Comparison of Konva vs Fabric.js vs PixiJS vs Paper.js vs p5.js
-
-## Framework Integrations
-
-- [React (react-konva)](https://konvajs.org/docs/react/index.html): Getting started with React and canvas
-- [Vue (vue-konva)](https://konvajs.org/docs/vue/index.html): Getting started with Vue and canvas
-- [Svelte (svelte-konva)](https://konvajs.org/docs/svelte/index.html): Getting started with Svelte and canvas
-- [Angular (ng2-konva)](https://konvajs.org/docs/angular/index.html): Getting started with Angular and canvas
 
 ## Tutorials
 
@@ -46,19 +25,17 @@ Install: `npm install konva` (and `react-konva` / `vue-konva` / `svelte-konva` f
 - [Select and Transform](https://konvajs.org/docs/select_and_transform/Basic_demo.html): Resize, rotate, and transform shapes interactively
 - [Node.js](https://konvajs.org/docs/nodejs/index.html): Server-side canvas rendering
 
-## Demos
+## Konva Events
+To detect shape events with Konva, we can use the on() method to bind event handlers to a node.
 
-- [All Demos](https://konvajs.org/docs/sandbox.html): 60+ interactive examples
-- [Canvas Editor](https://konvajs.org/docs/sandbox/Canvas_Editor.html): Full design editor (Polotno SDK)
-- [Free Drawing](https://konvajs.org/docs/sandbox/Free_Drawing.html): Freehand drawing / whiteboard
-- [Image Labeling](https://konvajs.org/docs/sandbox/Image_Labeling.html): ML annotation tool
-- [Seats Reservation](https://konvajs.org/docs/sandbox/Seats_Reservation.html): Interactive seat map
-- [Connected Objects](https://konvajs.org/docs/sandbox/Connected_Objects.html): Diagrams with connected draggable nodes
-- [Interactive Floor Plan](https://konvajs.org/docs/sandbox/Interactive_Building_Map.html): Building map with hover sections
+The on() method requires an event type and a function to be executed when the event occurs.
 
-## Optional
+Mouse events: mouseover, mouseout, mouseenter, mouseleave, mousemove, mousedown, mouseup, wheel, click, dblclick.
 
-- [AI Tools](https://konvajs.org/docs/ai_tools.html): MCP integration for Cursor, Claude, Windsurf
-- [Support](https://konvajs.org/docs/support.html): Stack Overflow, Discord, GitHub Issues
-- [GitHub Repository](https://github.com/konvajs/konva): Source code, issues, changelog
-- [npm Package](https://www.npmjs.com/package/konva): Installation and version info
+Touch events: touchstart, touchmove, touchend, tap, dbltap.
+
+Pointer events: pointerdown, pointermove, pointereup, pointercancel, pointerover, pointerenter, pointerout,pointerleave, pointerclick, pointerdblclick.
+
+Drag events: dragstart, dragmove, and dragend.
+
+Transform events: transformstart, transform, transformend.

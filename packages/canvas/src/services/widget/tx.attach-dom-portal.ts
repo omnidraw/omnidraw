@@ -42,12 +42,15 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   const removeCameraListener = portal.cameraService.hooks.change.tap(syncDiv);
 
+  portal.node.on('dragmove', syncDiv);
+
   const removeListener = () => {
     disposed = true;
     removeCameraListener();
     if (view && initialRenderTimer !== null) {
       view.clearTimeout(initialRenderTimer);
     }
+    portal.node.off('dragmove', syncDiv);
     div.remove();
   };
 
