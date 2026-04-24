@@ -73,61 +73,63 @@
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .actionsSingle {
   gap: 0;
 }
 
-.button {
+.content .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2rem;
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--border);
-  font-size: 0.75rem;
+  min-height: 2.25rem;
+  padding: 0.625rem 1.125rem;
+  border: 2px solid var(--border);
+  font-size: 0.8125rem;
   line-height: 1rem;
-  font-weight: 500;
+  font-weight: 700;
   transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
 }
 
-.button:disabled {
+.content .button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
-.button:focus-visible {
+.content .button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.secondaryButton {
+.content .secondaryButton {
   background: var(--secondary);
   color: var(--secondary-foreground);
 }
 
-.secondaryButton:hover:not(:disabled) {
+.content .secondaryButton:hover:not(:disabled) {
   background: var(--accent);
 }
 
-.primaryButton {
-  border-color: transparent;
-  background: var(--primary);
-  color: var(--primary-foreground);
+.content .primaryButton {
+  border-color: var(--primary);
+  background: var(--background);
+  color: var(--foreground);
 }
 
-.primaryButton:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 88%, black);
+.content .primaryButton:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--foreground);
 }
 
-.destructiveButton {
+.content .destructiveButton {
   border-color: transparent;
   background: var(--destructive);
   color: var(--destructive-foreground);
 }
 
-.destructiveButton:hover:not(:disabled) {
+.content .destructiveButton:hover:not(:disabled) {
   background: color-mix(in srgb, var(--destructive) 88%, black);
 }

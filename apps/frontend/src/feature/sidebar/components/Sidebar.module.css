@@ -116,7 +116,7 @@
   min-height: 0;
   flex: 1 1 0%;
   flex-direction: column;
-  padding: 0.125rem 0.5rem 0.75rem;
+  padding: 0.125rem 0 0.75rem;
 }
 
 .sectionHeader {
@@ -124,7 +124,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.375rem 0.375rem 0.5rem;
+  padding: 0.375rem 1rem 0.5rem;
   color: var(--muted-foreground);
 }
 
@@ -156,9 +156,7 @@
   min-height: 0;
   flex: 1 1 0%;
   flex-direction: column;
-  gap: 0.125rem;
   overflow-y: auto;
-  padding-right: 0.125rem;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted-foreground) 34%, transparent) transparent;
 }
@@ -186,7 +184,7 @@
 }
 
 .footer {
-  padding: 0.75rem;
+  padding: 0;
   border-top: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
   background: var(--card);
 }
@@ -198,8 +196,8 @@
   gap: 0.75rem;
   min-width: 0;
   width: 100%;
-  min-height: 2.375rem;
-  padding: 0.625rem 0.875rem 0.625rem 1rem;
+  min-height: 2.25rem;
+  padding: 0.5rem 0;
   border: 1px solid var(--border);
   border-radius: 0;
   background: var(--background);
@@ -210,7 +208,6 @@
 }
 
 .themeToggle:hover {
-  border-color: var(--foreground);
   background: var(--accent);
 }
 
@@ -228,8 +225,10 @@
 .themeToggleLead {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   gap: 0.5rem;
   min-width: 0;
+  padding-left: 0.375rem;
 }
 
 .themeToggleLabel {
@@ -251,6 +250,8 @@
 }
 
 .themeStatus {
+  flex: 0 0 auto;
+  padding-right: 0.625rem;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
   font-size: 0.75rem;

@@ -328,7 +328,7 @@ prefix: `apps/frontend/src/`
 | ❓ | `scroll-area.tsx` |  |  |
 | 🤖 | `Sidebar.module.css` |  | Sidebar shell layout, create action, canvas list, footer controls |
 | 🤖 | `Sidebar.tsx` |  | Sidebar navigation orchestration for canvases, dialogs, and theme toggle |
-| ❓ | `SidebarDialog.module.css` |  |  |
+| 🤖 | `SidebarDialog.module.css` |  | Shared sidebar dialog layout, inputs, and action button styling |
 | 🤖 | `SidebarItem.module.css` |  | Canvas navigation row styling, selected state, and item menu visuals |
 | 🤖 | `SidebarItem.tsx` |  | Sidebar canvas row with navigation and rename/delete menu actions |
 | ❓ | `store.ts` |  |  |
