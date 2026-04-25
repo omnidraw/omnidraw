@@ -251,16 +251,16 @@ prefix: `packages/canvas/src/`
 | ❓ | `../tests/services/widget/fx.attach-widget-listener.portal-visibility.test.ts` |  | Widget minimize button should hide mounted DOM portal body. |
 | ❓ | `../tests/services/widget/tx.attach-dom-portal.fullscreen.test.ts` |  | Widget DOM portal fullscreen style reuses existing body div. |
 | ❓ | `../tests/services/widget/tx.attach-dom-portal.visibility.test.ts` |  | Widget DOM portal body stays mounted but hidden while collapsed. |
-| 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host header/button hover, cursor, selection, and drag commit wiring |
+| 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host body activation, header selection, button hover, cursor, and drag commit wiring |
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, tool config |
-| 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning and cleanup listener wiring |
+| 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, active pointer-event routing, glow, and cleanup listener wiring |
 | ❓ | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview and CRDT commit |
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
 | ❓ | `services/widget/tx.update-widget-node-from-element.ts` |  | Replay persisted widget geometry/data onto an existing Konva host and DOM portal. |
-| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools canvas adapters example widget |
+| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, canvas adapters, active DOM portals, and example widget |
 
 ## .pi/extensions/functional-core
 **SKIP** (internal pi extension tooling; intentionally untracked in this table)

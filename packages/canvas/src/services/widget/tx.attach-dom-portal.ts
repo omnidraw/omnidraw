@@ -4,11 +4,12 @@ import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
 import {
   WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX,
   WIDGET_HOST_BODY_ID,
+  WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_WINDOW_CONTAINED,
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
-import type { CameraService, WidgetManagerService } from '..';
+import type { CameraService, SelectionService, WidgetManagerService } from '..';
 
 type TPortal = {
   node: unknown;
@@ -16,6 +17,7 @@ type TPortal = {
   widgetServie: WidgetManagerService;
   widgetPortal: HTMLDivElement;
   cameraService: CameraService;
+  selectionService?: SelectionService;
 };
 
 type TArgs = {
@@ -51,8 +53,23 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
     const isCollapsed = widgetData?.type === 'widget' && widgetData.expanded === false;
     const isFullscreen = widgetData?.type === 'widget' && widgetData.window === WIDGET_WINDOW_FULLSCREEN;
+    const isActive = portal.selectionService?.focusedId === args.element.id;
 
     div.style.display = isCollapsed ? 'none' : '';
+    div.style.pointerEvents = isActive ? 'auto' : 'none';
+    div.style.boxShadow = isActive
+      ? '0 0 0 2px #38bdf8, 0 0 24px rgba(56, 189, 248, 0.45)'
+      : '';
+
+    const border = portal.node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
+    if (isKonvaRect(border)) {
+      border.shadowEnabled(isActive);
+      border.shadowColor('#38bdf8');
+      border.shadowBlur(isActive ? 18 : 0);
+      border.shadowOpacity(isActive ? 0.65 : 0);
+      border.shadowForStrokeEnabled(true);
+      border.getLayer()?.batchDraw();
+    }
 
     if (isFullscreen) {
       const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
@@ -80,6 +97,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   };
 
   const removeCameraListener = portal.cameraService.hooks.change.tap(syncDiv);
+  const removeSelectionListener = portal.selectionService?.hooks.change.tap(syncDiv) ?? (() => undefined);
 
   portal.node.on('dragmove', syncDiv);
 
@@ -88,6 +106,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
     disposed = true;
     removeCameraListener();
+    removeSelectionListener();
     if (view && initialRenderTimer !== null) {
       view.clearTimeout(initialRenderTimer);
     }
@@ -155,12 +174,13 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenHeader.appendChild(fullscreenWindowButton);
 
   div.dataset.widgetElementId = args.element.id;
+  div.dataset.hostedWidgetRoot = 'true';
   div.style.position = 'absolute';
   div.style.left = '0';
   div.style.top = '0';
   div.style.transformOrigin = '0 0';
   div.style.backgroundColor = 'white';
-  div.style.pointerEvents = 'auto';
+  div.style.pointerEvents = 'none';
 
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);

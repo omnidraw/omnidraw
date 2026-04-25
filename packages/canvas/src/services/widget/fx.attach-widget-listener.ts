@@ -186,6 +186,38 @@ function safeStopDrag(node: Konva.Node) {
   }
 }
 
+type TKonvaTargetWithId = {
+  id: () => string;
+}
+
+function getKonvaTargetId(target: unknown) {
+  if (!target || typeof (target as TKonvaTargetWithId).id !== 'function') {
+    return null
+  }
+
+  return (target as TKonvaTargetWithId).id()
+}
+
+function isWidgetBodyTarget(target: unknown) {
+  return getKonvaTargetId(target) === WIDGET_HOST_BODY_ID
+}
+
+function activateWidgetBody(portal: TPortal) {
+  if (portal.selection.selection.length > 0) {
+    portal.selection.setSelection([])
+  }
+
+  if (portal.selection.focusedId !== portal.node.id()) {
+    portal.selection.setFocusedId(portal.node.id())
+  }
+}
+
+function deactivateWidgetBodyAfterHostSelection(portal: TPortal) {
+  if (portal.selection.focusedId === portal.node.id()) {
+    portal.selection.setFocusedId(null)
+  }
+}
+
 function setupSelectable(portal: TPortal) {
   if (!(portal.node instanceof portal.Group)) {
     return false
@@ -195,6 +227,11 @@ function setupSelectable(portal: TPortal) {
   portal.node.on("pointerclick", (event) => {
     if (portal.selection.mode !== "select") {
       return;
+    }
+
+    if (isWidgetBodyTarget(event.target)) {
+      event.cancelBubble = true
+      return
     }
 
     portal.hooks.elementPointerClick.call(event as TElementPointerEvent);
@@ -207,7 +244,14 @@ function setupSelectable(portal: TPortal) {
     }
 
     if (event.type === "pointerdown") {
+      if (isWidgetBodyTarget(event.target)) {
+        activateWidgetBody(portal)
+        event.cancelBubble = true
+        return
+      }
+
       const earlyExit = portal.hooks.elementPointerDown.call(event as TElementPointerEvent);
+      deactivateWidgetBodyAfterHostSelection(portal)
       if (earlyExit) {
         event.cancelBubble = true;
       }
@@ -228,7 +272,13 @@ function setupSelectable(portal: TPortal) {
       return;
     }
 
+    if (isWidgetBodyTarget(event.target)) {
+      event.cancelBubble = true
+      return
+    }
+
     const earlyExit = portal.hooks.elementPointerDoubleClick.call(event as TElementPointerEvent);
+    deactivateWidgetBodyAfterHostSelection(portal)
     if (earlyExit) {
       event.cancelBubble = true;
     }
