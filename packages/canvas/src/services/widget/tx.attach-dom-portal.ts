@@ -10,6 +10,7 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
 import type { CameraService, SelectionService, WidgetManagerService } from '..';
+import { sandboxExample } from './sanbox-example';
 
 type TPortal = {
   node: unknown;
@@ -184,6 +185,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
+  console.log('txAttachDomPortal')
+  sandboxExample(div)
   if (view) {
     initialRenderTimer = view.setTimeout(syncDiv, 0);
   } else {
