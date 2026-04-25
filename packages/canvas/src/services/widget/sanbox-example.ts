@@ -1,7 +1,8 @@
 import {  html } from '@arrow-js/core'
 import {  sandbox } from '@arrow-js/sandbox'
 import Hand from 'lucide-static/icons/hand.svg?raw'
-
+import mainjs from '../../../../widget-filesystem/dist/main.js?raw'
+import maincss from '../../../../widget-filesystem/dist/main.css?raw'
 const source = {
   'main.ts': [
     "import { html, reactive, svg } from '@arrow-js/core'",
@@ -25,10 +26,15 @@ const source = {
   ].join('\n'),
 }
 
+const o = {
+  'main.js': mainjs,
+  'main.css': maincss,
+}
+
 export function sandboxExample(root: HTMLElement) {
   html`<section>${
   sandbox({
-  source })}</section>`(
+  source: o })}</section>`(
     root)
 
 }

@@ -35,6 +35,7 @@ Path rule
 ## root
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `bun.lock` |  | Workspace dependency lockfile; update when package manifests change. |
 | 🤖 | `package.json` |  | Use this when adding or updating root workspace scripts like the functio |
 | 🤖 | `scripts/sort-filename.ts` |  | Sort FILES.md rows by filepath. |
 | ❓ | `tasks/BASED.md` |  | Based task overview and active work index. |
@@ -495,6 +496,18 @@ prefix: `packages/canvas-cmds/src/`
 | ❓ | `tx.cmd.reorder.ts` |  |  |
 | ❓ | `tx.cmd.ungroup.ts` |  |  |
 | ❓ | `types.ts` |  |  |
+
+## packages/widget-filesystem
+prefix: `packages/widget-filesystem/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `.gitignore` |  | Ignore widget package build outputs and local tooling files. |
+| 🤖 | `package.json` |  | Widget filesystem package metadata and esbuild sandbox bundle script. |
+| 🤖 | `src/assets.d.ts` |  | SVG module typing for widget asset imports bundled by esbuild. |
+| 🤖 | `src/widget.css` |  | Filesystem widget stylesheet bundled by esbuild into dist/main.css. |
+| 🤖 | `src/widget.ts` |  | Arrow filesystem widget entry bundled by esbuild into dist/main.js. |
+| 🤖 | `tsconfig.json` |  | TypeScript config for widget filesystem package source. |
 
 ## packages/orpc-client
 prefix: `packages/orpc-client/src/`
