@@ -1,4 +1,5 @@
 import { html, reactive } from "@arrow-js/core";
+import { EditorState } from "@codemirror/state";
 import HandIconUrl from "lucide-static/icons/hand.svg";
 import "./widget.css";
 
@@ -51,17 +52,27 @@ const state = reactive({
   path: "/",
   selectedPath: "",
   preview: "",
+  editorLineCount: 0,
 });
+
+function createCodeMirrorState(doc: string) {
+  return EditorState.create({ doc });
+}
 
 function openDirectory(path: string) {
   state.path = path;
   state.selectedPath = "";
   state.preview = "";
+  state.editorLineCount = 0;
 }
 
 function openFile(entry: TFilesystemEntry) {
+  const preview = entry.content ?? "";
+  const editorState = createCodeMirrorState(preview);
+
   state.selectedPath = entry.path;
-  state.preview = entry.content ?? "";
+  state.preview = preview;
+  state.editorLineCount = editorState.doc.lines;
 }
 
 function openEntry(entry: TFilesystemEntry) {
@@ -77,6 +88,8 @@ function goUp() {
   if (state.path === "/") return;
   openDirectory("/");
 }
+console.log('hello')
+window.alert('hi')
 
 export default html`
   <main class="fs-widget">
@@ -116,6 +129,9 @@ export default html`
 
       <article class="fs-preview">
         <h2>${() => state.selectedPath || "No file selected"}</h2>
+        ${() => state.selectedPath ? html`
+          <p class="fs-editor-meta">CodeMirror document: ${() => state.editorLineCount} line(s)</p>
+        ` : ""}
         <pre>${() => state.preview}</pre>
       </article>
     </section>

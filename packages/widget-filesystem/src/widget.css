@@ -112,6 +112,12 @@
   font-size: 13px;
 }
 
+.fs-editor-meta {
+  margin: 0 0 8px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
 .fs-preview pre {
   margin: 0;
   white-space: pre-wrap;

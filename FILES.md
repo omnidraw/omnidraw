@@ -503,10 +503,10 @@ prefix: `packages/widget-filesystem/`
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
 | ❓ | `.gitignore` |  | Ignore widget package build outputs and local tooling files. |
-| 🤖 | `package.json` |  | Widget filesystem package metadata and esbuild sandbox bundle script. |
+| 🤖 | `package.json` |  | Widget filesystem package metadata, CodeMirror dependency, and esbuild sandbox bundle script. |
 | 🤖 | `src/assets.d.ts` |  | SVG module typing for widget asset imports bundled by esbuild. |
 | 🤖 | `src/widget.css` |  | Filesystem widget stylesheet bundled by esbuild into dist/main.css. |
-| 🤖 | `src/widget.ts` |  | Arrow filesystem widget entry bundled by esbuild into dist/main.js. |
+| 🤖 | `src/widget.ts` |  | Arrow filesystem widget entry with bundled asset and CodeMirror state demo. |
 | 🤖 | `tsconfig.json` |  | TypeScript config for widget filesystem package source. |
 
 ## packages/orpc-client
