@@ -179,7 +179,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/scene-hydrator/SceneHydrator.plugin.ts` |  | Rehydrate Konva scene from CRDT via group/element services, preserving selection state |
 | ✅ | `plugins/select/fn.get-selection-path.ts` |  | Ancestor canvas-node selection path from node to foreground layer |
 | ❓ | `plugins/select/Select.plugin.ts` |  | Canvas selection, marquee drag, delete, drill-down interactions |
-| 🤖 | `plugins/select/tx.delete-selection.ts` | group guard should me moved, needs better guard | Delete selected canvas nodes |
+| 🤖 | `plugins/select/tx.delete-selection.ts` | group guard should me moved, needs better guard | Delete selected canvas nodes through element/group services with undo-redo |
 | ❓ | `plugins/select/tx.handle-element-pointer-double-click.ts` |  | Double-click drills selection one level deeper along ancestry |
 | ❓ | `plugins/select/tx.handle-element-pointer-down.ts` |  | Element click selection depth cycling, shift-toggle, focus updates |
 | ❓ | `plugins/select/tx.handle-stage-pointer-move.ts` |  | Drag-select updates rect, intersects top-layer selectable nodes |
@@ -207,7 +207,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/shape2d/fx.attached-text.ts` |  | Shape-embedded text creation, syncing, persistence, edit-mode handoff |
 | 🤖 | `plugins/shape2d/fx.create-node.ts` |  | Shape2d element → themed Konva node |
 | 🤖 | `plugins/shape2d/fx.to-element.ts` |  | Shape node → persisted element with inline text payload |
-| 🤖 | `plugins/shape2d/Shape2d.plugin.ts` |  | Shape drawing lifecycle, preview, cloning, attached-text sync |
+| 🤖 | `plugins/shape2d/Shape2d.plugin.ts` |  | Shape drawing lifecycle, preview, cloning, attached-text sync and removal cleanup |
 | 🤖 | `plugins/shape2d/tx.create-clone-drag.ts` |  | Shape clone preview drag, finalize persist, history, linked duplicates |
 | 🤖 | `plugins/shape2d/tx.setup-node.ts` |  | Shape node events: selection, clone-drag, multi-drag, CRDT history |
 | 🤖 | `plugins/shape2d/tx.update-node-from-element.ts` |  | Syncs shape nodes from element props into Konva scene |

@@ -6,7 +6,7 @@ import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { isCanvasElementNode, isCanvasGroupNode, isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
 import { fnGetCanvasNodeKind, } from "../../core/fn.canvas-node-semantics";
-import { TNodeOnRemove } from "../../core/types";
+import type { TNodeOnRemove } from "../../core/types";
 import type {
   CrdtService, ElementService, GroupService, HistoryService, RenderOrderService,
   SceneService, SelectionService
@@ -281,14 +281,6 @@ function restoreDeleteSnapshot(portal: TPortalDeleteSelection, snapshot: TDelete
     }
   });
 
-  const builder = portal.crdt.build();
-  snapshot.groups.forEach((group) => {
-    builder.patchGroup(group.id, group);
-  });
-  snapshot.elements.forEach((element) => {
-    builder.patchElement(element.id, element);
-  });
-  builder.commit();
   sortSceneTopDown(portal, portal.scene.staticForegroundLayer);
 
   const restoredRoots = snapshot.rootIds
@@ -364,9 +356,37 @@ function deleteSelectionInternal(portal: TPortalDeleteSelection, args: TArgsDele
   return true;
 }
 
-export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDeleteSelection) {
-  // return deleteSelectionInternal(portal, args);
+function commitDeleteWithServices(
+  portal: TPortalDeleteSelection,
+  args: {
+    roots: TSceneNode[];
+    snapshot: TDeleteSnapshot;
+  },
+) {
+  let builder = portal.crdt.build();
 
+  args.roots.forEach((node) => {
+    if (isCanvasGroupNode(node)) {
+      builder = portal.group.removeGroup(node, builder);
+      return;
+    }
+
+    if (isCanvasElementNode(node)) {
+      builder = portal.element.removeElement(node, builder);
+    }
+  });
+
+  args.snapshot.elementIds.forEach((id) => {
+    builder.deleteElement(id);
+  });
+  args.snapshot.groupIds.forEach((id) => {
+    builder.deleteGroup(id);
+  });
+
+  return builder.commit();
+}
+
+export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDeleteSelection) {
   const selection = (args.selection ?? portal.selection.selection)
     .filter((node): node is TSceneNode => isSceneNode(portal, node));
   const roots = collapseSelectionToDeleteRoots(selection);
@@ -380,27 +400,50 @@ export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDel
     });
   }));
 
-  console.log(expandedRoots)
-  let builder = portal.crdt.build()
-  expandedRoots.forEach(node => {
-    if (isCanvasGroupNode(node)) {
-      builder = portal.group.removeGroup(node, builder)
-    } else if (isCanvasElementNode(node)) {
-      builder = portal.element.removeElement(node, builder)
-    } else {
-      // TODO: remove after feature is done
-      console.log('not found', node)
-    }
-  })
+  const collected = collectDeleteSnapshot(portal, expandedRoots);
+  if (!collected) {
+    return false;
+  }
 
-  const commitResult = builder.commit()
+  const { snapshot } = collected;
+  const commitResult = commitDeleteWithServices(portal, {
+    roots: expandedRoots,
+    snapshot,
+  });
+
+  portal.selection.clear();
+  portal.scene.stage.batchDraw();
+
+  if (args.recordHistory === false) {
+    return true;
+  }
+
   portal.history.record({
-    undo: () => commitResult.rollback(),
-    redo: () => commitResult.undoOps.forEach(op => op()),
+    undo: () => {
+      commitResult.rollback();
+      restoreDeleteSnapshot(portal, snapshot);
+    },
+    redo: () => {
+      const redoRoots = snapshot.rootIds
+        .map((id) => findSceneNodeById(portal, id))
+        .filter((node): node is TSceneNode => node !== null);
+
+      if (redoRoots.length === 0) {
+        portal.crdt.applyOps({ ops: commitResult.redoOps });
+        portal.selection.clear();
+        portal.scene.stage.batchDraw();
+        return;
+      }
+
+      commitDeleteWithServices(portal, {
+        roots: redoRoots,
+        snapshot,
+      });
+      portal.selection.clear();
+      portal.scene.stage.batchDraw();
+    },
     label: `Delete ${expandedRoots.length} ${expandedRoots.length === 1 ? 'item' : 'items'}`,
-  })
-  portal.selection.setSelection([])
+  });
 
-  return true
-
+  return true;
 }

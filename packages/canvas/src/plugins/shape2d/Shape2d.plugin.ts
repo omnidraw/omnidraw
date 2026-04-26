@@ -18,6 +18,7 @@ import {
   type TShape2dElementType,
   type TShape2dToolId,
 } from "../../core/fn.shape2d";
+import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type {
   CameraService,
@@ -272,7 +273,19 @@ export function createShape2dPlugin(): IPlugin<{
         return fxSyncAttachedTextNodeToShape(createAttachedTextSyncPortal(), { shapeNode });
       };
 
+      const attachShapeOnRemove = (shapeNode: Konva.Shape) => {
+        shapeNode.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
+          const removedNode = removeArgs.node;
+          if (!isKonvaShape(removedNode) || !isShape2dTextHostNode(removedNode)) {
+            return;
+          }
+
+          fxGetAttachedTextNode(createAttachedTextReadPortal(), { shapeNode: removedNode })?.destroy();
+        });
+      };
+
       const setupNode = (node: Konva.Shape) => {
+        attachShapeOnRemove(node);
         txSetupShape2dNode({
           Group: Konva.Group,
           Shape: Konva.Shape,
@@ -459,6 +472,7 @@ export function createShape2dPlugin(): IPlugin<{
         matchesNode: (node) => isShape2dTextHostNode(node),
         afterCreateNode: ({ node }) => {
           if (isShape2dTextHostNode(node)) {
+            attachShapeOnRemove(node);
             syncShapeAttachedText(node);
           }
         },
