@@ -16,13 +16,12 @@ Order matters here. Services can take others in constructor if depends on.
 
 ## How Element are registered
 
-EditorService.registryTool -> Add to toolbar
-CanvasRegistry.registerElement -> Add as renderable type
+ToolService.registryTool -> Add to toolbar
+ElementService.registerElement -> Add as renderable type
 
 ## How is Element are added to canvas
 
-Always throw scene-hydrator.
-On load. Fetch crdt: convert TElement -> Konva.Node
+On load. Fetch crdt: convert TElement -> Konva.Node via scene-hydrator
 Via Toolaction (draw/click) -> Preview adds to crdt -> triggers scene-hydrator again
 
 ## How Crdt works
