@@ -3,8 +3,8 @@ import type { TElement, TElementData } from "@vibecanvas/service-automerge/types
 import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
-import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
-import type { TCanvasNodeKind } from "../../core/types";
+import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
+import type { TCanvasNodeKind, TNodeOnRemove } from "../../core/types";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { fnMergeSelectionStyleMenuConfigs } from "./fn-merge-selection-style-menu-configs";
 import type {
@@ -16,6 +16,15 @@ import type { CrdtService } from "..";
 import type { TCrdtBuilder } from "../crdt/fxBuilder";
 import { isCanvasElementNode } from "../../core/GUARDS";
 export * from "./types";
+
+function callNodeOnRemove(node: Konva.Node) {
+  const onRemove = node.getAttr(VC_ON_REMOVE_ATTR);
+  if (typeof onRemove !== "function") {
+    return;
+  }
+
+  (onRemove as TNodeOnRemove)({ node });
+}
 
 /**
  * Every element registers here
@@ -116,7 +125,6 @@ export class ElementService implements IService<TElementServiceHooks> {
    */
   removeElement(node: unknown, builder: TCrdtBuilder) {
     if(!isCanvasElementNode(node)) return builder
-    console.log('removeElementById', node)
     const data = node.getAttr('vcElementData') as TElementData
     const isWidget = data.type === 'widget'
     return builder.deleteElement(node.id(), {
@@ -125,6 +133,7 @@ export class ElementService implements IService<TElementServiceHooks> {
         console.log('def', def, data, this.getElementDefinitions())
         if(!def) return
         def.onDelete?.(args.entity)
+        callNodeOnRemove(node)
         node.destroy()
       },
       onRollback: (args) => {

@@ -8,7 +8,7 @@ import Konva from "konva";
 import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
-import { isCanvasGroupNode } from "../../core/GUARDS";
+import { isCanvasElementNode, isCanvasGroupNode } from "../../core/GUARDS";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type { CameraService } from "../../services/camera/CameraService";
 import type { ContextMenuService } from "../../services/context-menu/ContextMenuService";
@@ -351,7 +351,16 @@ export class GroupService implements IService<TGroupServiceHooks>, IStartableSer
    * Remove group
    */
   removeGroup(node: unknown, builder: TCrdtBuilder) {
+    if(!isCanvasGroupNode(node)) return builder
     console.log('removeGroupById', node)
+    node.children.forEach(child => {
+      if(isCanvasGroupNode(child)) {
+        this.removeGroup(child, builder)
+      } else if(isCanvasElementNode(child)) {
+        this.element.removeElement(child, builder)
+      }
+    })
+    node.destroy()
 
     return builder;
   }

@@ -4,7 +4,7 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, LoggingService, SceneService, SelectionService, ToolService } from "..";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
-import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
+import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { fnCreateWidgetNode } from "./fn.create-widget-node";
 import { fnGetHostThemeColors } from "./fn.get-host-theme-colors";
 import { fnToWidgetElement } from "./fn.to-widget-element";
@@ -95,6 +95,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           this.#domPortalCleanups.add(onRemove);
           node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
         }
+        node?.setAttr(VC_ON_REMOVE_ATTR, (args: { node: unknown }) => {
+          console.log(VC_ON_REMOVE_ATTR, args)
+        })
         // TODO [S49]: add onRemove to some callback later
         return node
       },

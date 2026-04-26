@@ -6,6 +6,7 @@ import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { isCanvasElementNode, isCanvasGroupNode, isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
 import { fnGetCanvasNodeKind, } from "../../core/fn.canvas-node-semantics";
+import { TNodeOnRemove } from "../../core/types";
 import type {
   CrdtService, ElementService, GroupService, HistoryService, RenderOrderService,
   SceneService, SelectionService
@@ -43,7 +44,6 @@ type TCollectedDeleteData = {
   destroyNodes: TSceneNode[];
 };
 
-type TNodeOnRemove = (args: { node: TSceneNode }) => void;
 
 function isSceneNode(portal: TPortalDeleteSelection, node: Node | null | undefined): node is TSceneNode {
   void portal;
@@ -393,7 +393,13 @@ export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDel
     }
   })
 
-  console.log(builder.commit())
+  const commitResult = builder.commit()
+  portal.history.record({
+    undo: () => commitResult.rollback(),
+    redo: () => commitResult.undoOps.forEach(op => op()),
+    label: `Delete ${expandedRoots.length} ${expandedRoots.length === 1 ? 'item' : 'items'}`,
+  })
+  portal.selection.setSelection([])
 
   return true
 
