@@ -3,6 +3,7 @@ import type { Group } from "konva/lib/Group";
 import type { Layer } from "konva/lib/Layer";
 import type { Node } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
+import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
 import { fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import type {
@@ -38,8 +39,11 @@ type TDeleteSnapshot = {
 
 type TCollectedDeleteData = {
   snapshot: TDeleteSnapshot;
+  removeNodes: TSceneNode[];
   destroyNodes: TSceneNode[];
 };
+
+type TNodeOnRemove = (args: { node: TSceneNode }) => void;
 
 function isSceneNode(portal: TPortalDeleteSelection, node: Node | null | undefined): node is TSceneNode {
   void portal;
@@ -52,6 +56,15 @@ function isSceneParent(portal: TPortalDeleteSelection, node: Node | null | undef
 
 function isRuntimeOnlyDerivedNode(node: Node) {
   return node.getAttr(SHAPE2D_INLINE_TEXT_DERIVED_ATTR) === true;
+}
+
+function callNodeOnRemove(node: TSceneNode) {
+  const onRemove = node.getAttr(VC_ON_REMOVE_ATTR);
+  if (typeof onRemove !== "function") {
+    return;
+  }
+
+  (onRemove as TNodeOnRemove)({ node });
 }
 
 function isNodeDescendantOf(node: Node, ancestor: Node) {
@@ -186,6 +199,7 @@ function collectDeleteSnapshot(portal: TPortalDeleteSelection, roots: TSceneNode
       groupIds: [...groupIds],
       elementIds: [...elementIds],
     },
+    removeNodes: visitedNodes,
     destroyNodes: visitedNodes.filter((node, index) => {
       return !visitedNodes.some((candidate, candidateIndex) => {
         if (candidateIndex === index) {
@@ -305,7 +319,10 @@ function deleteSelectionInternal(portal: TPortalDeleteSelection, args: TArgsDele
     return false;
   }
 
-  const { snapshot, destroyNodes } = collected;
+  const { snapshot, removeNodes, destroyNodes } = collected;
+  removeNodes.forEach((node) => {
+    callNodeOnRemove(node);
+  });
   destroyNodes.forEach((node) => {
     node.destroy();
   });

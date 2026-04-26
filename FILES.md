@@ -100,7 +100,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `components/terminal/TerminalHostedWidget.tsx` |  | Hosted terminal wrapper bridging canvas widget lifecycle hooks |
 | ❓ | `components/terminal/TerminalWidget.css` |  | Terminal widget chrome, header, status, unavailable, and error styling |
 | ❓ | `components/terminal/TerminalWidget.tsx` |  | Embeds hosted terminal, focus/reload wiring, clipboard image upload |
-| 🟡 | `core/CONSTANTS.ts` |  | Image MIME whitelist and canvas node z-index attribute |
+| 🤖 | `core/CONSTANTS.ts` |  | Image MIME whitelist and canvas node z-index/remove-callback attrs |
 | ✅ | `core/fn.canvas-node-semantics.ts` |  | helper canvas node getter |
 | ✅ | `core/fn.create-ordered-z-index.ts` |  | Stable lexicographic z-order keys from numeric indices |
 | ✅ | `core/fn.get-node-z-index.ts` |  | Resolve persisted node stacking order attribute safely |
@@ -235,8 +235,8 @@ prefix: `packages/canvas/src/`
 | 🫠 | `services/canvas-registry/fn-merge-selection-style-menu-configs.ts` | weak merge semantics; convention drift | Combining layered selection-style menu configs across canvas registry |
 | ✅ | `services/canvas-registry/fn.sort-by-priority.ts` |  | Deterministic registry ordering: ascending priority, stable id tiebreak |
 | ❓ | `services/context-menu/ContextMenuService.ts` |  | Right-click canvas/item/selection menus from plugin-provided actions |
-| ❓ | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
-| ✅ | `services/crdt/fxBuilder.ts` |  | Batch canvas CRDT patches/deletes into commit+rollback ops |
+| ✅ | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
+| ✅ | `services/crdt/fxBuilder.ts` |  | Batch canvas CRDT patches/deletes into commit+rollback ops/effects |
 | ✅ | `services/crdt/tx.apply-ops.ts` |  | Replay recorded CRDT entity ops into Automerge |
 | 🤖 | `services/element/types.ts` |  | Element registry lifecycle and transform option typings |
 | ✅ | `services/editor/EditorService.ts` |  | Editor tool state, draft previews, CRDT commits |

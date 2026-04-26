@@ -156,7 +156,10 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
           undoOps: commitResult.undoOps,
           redoOps: commitResult.redoOps,
           rollback: () => {
-            this.applyOps({ ops: commitResult.undoOps });
+            this.#runLocalChange(() => {
+              commitResult.rollback();
+            });
+            this.hooks.write.call(commitResult.undoOps);
           },
         };
       },

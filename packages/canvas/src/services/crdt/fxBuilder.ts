@@ -13,6 +13,17 @@ export type TCrdtEntityTarget = "element" | "group";
 export type TCrdtPathKey = string | number;
 export type TValueOrUpdater<T> = T | ((current: T) => T);
 
+export type TCrdtDeleteEntityEffectArgs<TEntity extends { id: string }> = {
+  id: string;
+  target: TCrdtEntityTarget;
+  entity: TEntity;
+};
+
+export type TCrdtDeleteEntityCallbacks<TEntity extends { id: string }> = {
+  onCommit?: (args: TCrdtDeleteEntityEffectArgs<TEntity>) => void;
+  onRollback?: (args: TCrdtDeleteEntityEffectArgs<TEntity>) => void;
+};
+
 export type TCrdtRecordedSetEntityPathOp = {
   kind: "set-entity-path";
   target: TCrdtEntityTarget;
@@ -82,6 +93,12 @@ type TQueuedDeleteEntityOp = {
   kind: "delete-entity";
   target: TCrdtEntityTarget;
   id: string;
+  callbacks?: TCrdtDeleteEntityCallbacks<TElement | TGroup>;
+};
+
+type TCrdtDeleteEntityEffect = {
+  callback: (args: TCrdtDeleteEntityEffectArgs<TElement | TGroup>) => void;
+  args: TCrdtDeleteEntityEffectArgs<TElement | TGroup>;
 };
 
 export type TCrdtQueuedOp =
@@ -110,6 +127,10 @@ export type TCrdtPatchEntity<TEntity extends { id: string }, TBuilder> = {
 
 export type TCrdtDeleteEntity<TEntity extends { id: string }, TBuilder> = {
   (id: string): TBuilder;
+  (
+    id: string,
+    callbacks: TCrdtDeleteEntityCallbacks<TEntity>,
+  ): TBuilder;
   <TKey extends TEntityKey<TEntity>>(
     id: string,
     key: TKey,
@@ -158,34 +179,50 @@ export function fxCreateCrdtBuilder(
       });
       return builder;
     }) as TCrdtPatchEntity<TGroup, TCrdtBuilder>,
-    deleteElement: ((id: string, key?: TEntityKey<TElement>, nestedKey?: TCrdtPathKey) => {
+    deleteElement: ((id: string, keyOrCallbacks?: TEntityKey<TElement> | TCrdtDeleteEntityCallbacks<TElement>, nestedKey?: TCrdtPathKey) => {
+      const callbacks = fxIsCrdtDeleteEntityCallbacks({}, { value: keyOrCallbacks })
+        ? keyOrCallbacks as TCrdtDeleteEntityCallbacks<TElement>
+        : undefined;
       fxQueueDeleteEntityOp<TElement>({
         queuedOps,
         target: "element",
         id,
-        key,
+        key: callbacks ? undefined : keyOrCallbacks as TEntityKey<TElement> | undefined,
         nestedKey,
+        callbacks,
       });
       return builder;
     }) as TCrdtDeleteEntity<TElement, TCrdtBuilder>,
-    deleteGroup: ((id: string, key?: TEntityKey<TGroup>, nestedKey?: TCrdtPathKey) => {
+    deleteGroup: ((id: string, keyOrCallbacks?: TEntityKey<TGroup> | TCrdtDeleteEntityCallbacks<TGroup>, nestedKey?: TCrdtPathKey) => {
+      const callbacks = fxIsCrdtDeleteEntityCallbacks({}, { value: keyOrCallbacks })
+        ? keyOrCallbacks as TCrdtDeleteEntityCallbacks<TGroup>
+        : undefined;
       fxQueueDeleteEntityOp<TGroup>({
         queuedOps,
         target: "group",
         id,
-        key,
+        key: callbacks ? undefined : keyOrCallbacks as TEntityKey<TGroup> | undefined,
         nestedKey,
+        callbacks,
       });
       return builder;
     }) as TCrdtDeleteEntity<TGroup, TCrdtBuilder>,
     commit: () => {
       const undoOps: TCrdtRecordedOp[] = [];
       const redoOps: TCrdtRecordedOp[] = [];
+      const commitEffects: TCrdtDeleteEntityEffect[] = [];
+      const rollbackEffects: TCrdtDeleteEntityEffect[] = [];
 
       portal.docHandle.change((doc) => {
         for (const queuedOp of queuedOps) {
           const concreteOp = fxResolveQueuedCrdtOp(portal, { doc, op: queuedOp });
           const inverseOp = fxApplyRecordedCrdtOp(portal, { doc, op: concreteOp });
+          fxQueueCrdtDeleteEntityEffects(portal, {
+            queuedOp,
+            inverseOp,
+            commitEffects,
+            rollbackEffects,
+          });
           redoOps.push(fxCloneRecordedCrdtOp(portal, { op: concreteOp }));
           if (inverseOp !== null) {
             undoOps.push(inverseOp);
@@ -197,6 +234,9 @@ export function fxCreateCrdtBuilder(
 
       const committedUndoOps = undoOps.reverse();
       const committedRedoOps = redoOps;
+      const committedRollbackEffects = rollbackEffects.reverse();
+
+      fxRunCrdtDeleteEntityEffects({}, { effects: commitEffects });
 
       return {
         undoOps: committedUndoOps,
@@ -205,6 +245,7 @@ export function fxCreateCrdtBuilder(
           txApplyCrdtOps(portal, {
             ops: committedUndoOps,
           });
+          fxRunCrdtDeleteEntityEffects({}, { effects: committedRollbackEffects });
         },
       };
     },
@@ -247,12 +288,16 @@ function fxQueueDeleteEntityOp<TEntity extends { id: string }>(args: {
   id: string;
   key?: TEntityKey<TEntity>;
   nestedKey?: TCrdtPathKey;
+  callbacks?: TCrdtDeleteEntityCallbacks<TEntity>;
 }): void {
   if (args.key === undefined) {
     args.queuedOps.push({
       kind: "delete-entity",
       target: args.target,
       id: args.id,
+      callbacks: args.callbacks === undefined
+        ? undefined
+        : fxToCrdtQueuedDeleteEntityCallbacks<TEntity>({}, { callbacks: args.callbacks }),
     });
     return;
   }
@@ -265,6 +310,89 @@ function fxQueueDeleteEntityOp<TEntity extends { id: string }>(args: {
       ? [args.key as TCrdtPathKey]
       : [args.key as TCrdtPathKey, args.nestedKey],
   });
+}
+
+function fxIsCrdtDeleteEntityCallbacks<TEntity extends { id: string }>(
+  _portal: Record<string, never>,
+  args: { value: TEntityKey<TEntity> | TCrdtDeleteEntityCallbacks<TEntity> | undefined },
+): args is { value: TCrdtDeleteEntityCallbacks<TEntity> } {
+  return typeof args.value === "object" && args.value !== null;
+}
+
+function fxToCrdtQueuedDeleteEntityCallbacks<TEntity extends { id: string }>(
+  _portal: Record<string, never>,
+  args: { callbacks: TCrdtDeleteEntityCallbacks<TEntity> },
+): TCrdtDeleteEntityCallbacks<TElement | TGroup> {
+  return {
+    onCommit: args.callbacks.onCommit === undefined
+      ? undefined
+      : (effectArgs) => {
+        args.callbacks.onCommit?.(effectArgs as unknown as TCrdtDeleteEntityEffectArgs<TEntity>);
+      },
+    onRollback: args.callbacks.onRollback === undefined
+      ? undefined
+      : (effectArgs) => {
+        args.callbacks.onRollback?.(effectArgs as unknown as TCrdtDeleteEntityEffectArgs<TEntity>);
+      },
+  };
+}
+
+function fxQueueCrdtDeleteEntityEffects(
+  portal: TPortalFxBuilder,
+  args: {
+    queuedOp: TCrdtQueuedOp;
+    inverseOp: TCrdtRecordedOp | null;
+    commitEffects: TCrdtDeleteEntityEffect[];
+    rollbackEffects: TCrdtDeleteEntityEffect[];
+  },
+): void {
+  if (args.queuedOp.kind !== "delete-entity" || args.queuedOp.callbacks === undefined) {
+    return;
+  }
+
+  if (args.inverseOp?.kind !== "replace-entity") {
+    return;
+  }
+
+  const effectArgs: TCrdtDeleteEntityEffectArgs<TElement | TGroup> = {
+    id: args.queuedOp.id,
+    target: args.queuedOp.target,
+    entity: fxCloneEntityValue(portal, { value: args.inverseOp.value }),
+  };
+
+  if (args.queuedOp.callbacks.onCommit) {
+    args.commitEffects.push({
+      callback: args.queuedOp.callbacks.onCommit,
+      args: fxCloneCrdtDeleteEntityEffectArgs(portal, { args: effectArgs }),
+    });
+  }
+
+  if (args.queuedOp.callbacks.onRollback) {
+    args.rollbackEffects.push({
+      callback: args.queuedOp.callbacks.onRollback,
+      args: fxCloneCrdtDeleteEntityEffectArgs(portal, { args: effectArgs }),
+    });
+  }
+}
+
+function fxCloneCrdtDeleteEntityEffectArgs(
+  portal: TPortalFxBuilder,
+  args: { args: TCrdtDeleteEntityEffectArgs<TElement | TGroup> },
+): TCrdtDeleteEntityEffectArgs<TElement | TGroup> {
+  return {
+    id: args.args.id,
+    target: args.args.target,
+    entity: fxCloneEntityValue(portal, { value: args.args.entity }),
+  };
+}
+
+function fxRunCrdtDeleteEntityEffects(
+  _portal: Record<string, never>,
+  args: { effects: TCrdtDeleteEntityEffect[] },
+): void {
+  for (const effect of args.effects) {
+    effect.callback(effect.args);
+  }
 }
 
 function fxResolveQueuedCrdtOp(
@@ -282,7 +410,15 @@ function fxResolveQueuedCrdtOp(
     };
   }
 
-  if (args.op.kind === "delete-entity" || args.op.kind === "remove-entity-path") {
+  if (args.op.kind === "delete-entity") {
+    return {
+      kind: "delete-entity",
+      target: args.op.target,
+      id: args.op.id,
+    };
+  }
+
+  if (args.op.kind === "remove-entity-path") {
     return args.op;
   }
 
@@ -456,7 +592,9 @@ function fxCloneRecordedCrdtOp(
 
   if (args.op.kind === "delete-entity") {
     return {
-      ...args.op,
+      kind: "delete-entity",
+      target: args.op.target,
+      id: args.op.id,
     };
   }
 
