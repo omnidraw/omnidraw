@@ -152,7 +152,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A36](a/A36.md) - theme: centralize canvas style ownership in ThemeService
 - [ ]: [A37] - shape1d binding -> must safe them to TElementData
 - [x]: [A38](a/A38.md) - widgets: fullscreen DOM window mode
-- [ ]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
+- [x]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port

@@ -4,7 +4,7 @@ import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.
 import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
-  createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
+  createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createFilesystemPlugin, createGridPlugin,
   createHistoryControlPlugin,
   createImagePlugin,
   createPenPlugin,
@@ -154,6 +154,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createPenPlugin(),
     createTextPlugin(),
     createImagePlugin(),
+    createFilesystemPlugin(),
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),

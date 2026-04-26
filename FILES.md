@@ -39,6 +39,7 @@ Path rule
 | 🤖 | `package.json` |  | Use this when adding or updating root workspace scripts like the functio |
 | 🤖 | `scripts/sort-filename.ts` |  | Sort FILES.md rows by filepath. |
 | ❓ | `tasks/BASED.md` |  | Based task overview and active work index. |
+| 🤖 | `tasks/a/A39.md` |  | Filesystem IDE canvas plugin implementation task checklist and notes. |
 | ❓ | `tasks/s/S43.md` |  | CloneService clone-drag normalization task plan. |
 | ❓ | `tasks/s/S44.md` |  | Canvas test repair lane for services and transform tests. |
 | ❓ | `tasks/s/S45.md` |  | Canvas test repair lane for text edit and session tests. |
@@ -129,6 +130,11 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/camera-control/tx.write-camera-state-to-localstorage.ts` |  | Persist per-canvas camera viewport into localStorage safely |
 | ❓ | `plugins/context-menu/ContextMenu.plugin.ts` |  | Right-click hit-testing, selection resolution, Solid canvas menu mountin |
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
+| ❓ | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
+| ❓ | `plugins/filesystem/RootPathDialog.ts` |  | Arrow root/cwd picker dialog before creating filesystem widgets. |
+| 🤖 | `plugins/filesystem/typed.ts` |  | Filesystem plugin local widget and API helper types. |
+| ❓ | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
+| 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with file tree, tabs, and CodeMirror mount. |
 | ✅ | `plugins/grid/fn.math.ts` |  | Grid spacing and line offsets from zoom/pan |
 | ❓ | `plugins/grid/Grid.plugin.ts` |  | Registers toggleable canvas grid overlay reacting to camera theme resize |
 | ❓ | `plugins/grid/tx.draw.ts` |  | Canvas viewport grid rendering: minor/major lines from pan+zoom layout |
@@ -157,6 +163,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/image/tx.insert-image.ts` |  | Image upload insertion |
 | ❓ | `plugins/image/tx.setup-image-listeners.ts` |  | Attach image selection, clone-drag, multi-drag history listeners |
 | ❓ | `plugins/image/tx.update-image-node-from-element.ts` |  | Sync Konva image node from canvas element state |
+| 🤖 | `plugins/index.ts` |  | Canvas plugin barrel exports. |
 | ✅ | `plugins/pen/fn.draft-element.ts` |  | Pen stroke points → draft canvas element |
 | 🫠 | `plugins/pen/fn.style.ts` | sloppy details; unused strokeWidth arg | Pen style normalization, color-key selection, node-derived style cloning |
 | ❓ | `plugins/pen/fx.path.ts` |  | Pen path metadata detection and element serialization helpers |
