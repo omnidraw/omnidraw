@@ -267,7 +267,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
 | ❓ | `services/widget/tx.update-widget-node-from-element.ts` |  | Replay persisted widget geometry/data onto an existing Konva host and DOM portal. |
-| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, canvas adapters, active DOM portals, and example widget |
+| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, canvas adapters, active DOM portals, cleanup hooks, and example widget |
 
 ## .pi/extensions/functional-core
 **SKIP** (internal pi extension tooling; intentionally untracked in this table)

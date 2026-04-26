@@ -92,13 +92,18 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           renderDom: wConfig.renderDom,
         }, {element})
         if (node && onRemove) {
-          this.#domPortalCleanups.add(onRemove);
-          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
+          const removeDomPortal = (() => {
+            onRemove();
+            this.#domPortalCleanups.delete(removeDomPortal);
+          }) as TWidgetDomPortalListener;
+          removeDomPortal.syncDiv = onRemove.syncDiv;
+
+          this.#domPortalCleanups.add(removeDomPortal);
+          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeDomPortal.syncDiv);
+          node.setAttr(VC_ON_REMOVE_ATTR, () => {
+            removeDomPortal();
+          });
         }
-        node?.setAttr(VC_ON_REMOVE_ATTR, (args: { node: unknown }) => {
-          console.log(VC_ON_REMOVE_ATTR, args)
-        })
-        // TODO [S49]: add onRemove to some callback later
         return node
       },
       updateElement: (element) => {
