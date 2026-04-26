@@ -12,7 +12,7 @@ import type {
   TTool,
   ToolService,
 } from "..";
-
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
 export interface IWidgetManagerServiceHooks {
   widgetChange: SyncHook<[]>;
@@ -31,10 +31,16 @@ export interface IWidgetManagerServiceProps {
   cameraService: CameraService;
 }
 
+export type TWidgetRenderArgs = {
+  root: HTMLDivElement;
+  element: TElement;
+};
+
+export type TWidgetRenderCleanup = () => void;
+
 export interface IWidgetConfig {
   id: string;
   tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
   initialPayload?: Record<string, any>;
-
-
+  renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
 }

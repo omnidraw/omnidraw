@@ -1,0 +1,385 @@
+.vc-filesystem-widget {
+  --vc-filesystem-bg: #0f172a;
+  --vc-filesystem-panel: #111827;
+  --vc-filesystem-panel-2: #0b1220;
+  --vc-filesystem-editor-bg: #0b1020;
+  --vc-filesystem-fg: #e5e7eb;
+  --vc-filesystem-muted-fg: #94a3b8;
+  --vc-filesystem-border: #243244;
+  --vc-filesystem-accent: #2563eb;
+  --vc-filesystem-accent-soft: rgba(37, 99, 235, 0.24);
+  --vc-filesystem-danger: #f87171;
+  display: grid;
+  grid-template-columns: minmax(180px, 28%) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vc-filesystem-bg);
+  color: var(--vc-filesystem-fg);
+  font: 12px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  user-select: none;
+}
+
+.vc-filesystem-sidebar {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--vc-filesystem-border);
+  background: var(--vc-filesystem-panel);
+}
+
+.vc-filesystem-rootbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px;
+  border-bottom: 1px solid var(--vc-filesystem-border);
+}
+
+.vc-filesystem-root {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vc-filesystem-muted-fg);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-filesystem-icon-button,
+.vc-filesystem-dialog-button,
+.vc-filesystem-dialog-close {
+  border: 1px solid var(--vc-filesystem-border);
+  border-radius: 6px;
+  background: #172033;
+  color: var(--vc-filesystem-fg);
+  cursor: pointer;
+  font: inherit;
+}
+
+.vc-filesystem-icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.vc-filesystem-icon-button:hover,
+.vc-filesystem-dialog-button:hover,
+.vc-filesystem-dialog-close:hover {
+  background: #1f2a44;
+}
+
+.vc-filesystem-tree {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.vc-filesystem-tree-row {
+  display: grid;
+  grid-template-columns: 12px 18px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--vc-filesystem-fg);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.vc-filesystem-tree-row:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.vc-filesystem-tree-row.is-selected {
+  background: var(--vc-filesystem-accent-soft);
+}
+
+.vc-filesystem-tree-row.is-disabled {
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.vc-filesystem-tree-twist,
+.vc-filesystem-tree-icon {
+  display: inline-flex;
+  justify-content: center;
+}
+
+.vc-filesystem-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-filesystem-main {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 34px minmax(0, 1fr) 24px;
+  background: var(--vc-filesystem-editor-bg);
+}
+
+.vc-filesystem-tabs {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--vc-filesystem-border);
+  background: var(--vc-filesystem-panel-2);
+}
+
+.vc-filesystem-tab,
+.vc-filesystem-tab-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 180px;
+  height: 33px;
+  padding: 0 10px;
+  border: 0;
+  border-right: 1px solid var(--vc-filesystem-border);
+  background: transparent;
+  color: var(--vc-filesystem-muted-fg);
+  font: inherit;
+}
+
+.vc-filesystem-tab {
+  cursor: pointer;
+}
+
+.vc-filesystem-tab span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-filesystem-tab:hover {
+  background: rgba(148, 163, 184, 0.10);
+  color: var(--vc-filesystem-fg);
+}
+
+.vc-filesystem-tab.is-active {
+  background: var(--vc-filesystem-editor-bg);
+  color: var(--vc-filesystem-fg);
+}
+
+.vc-filesystem-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: var(--vc-filesystem-muted-fg);
+}
+
+.vc-filesystem-tab-close:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--vc-filesystem-fg);
+}
+
+.vc-filesystem-tab-state {
+  color: #60a5fa;
+}
+
+.vc-filesystem-editor-shell {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vc-filesystem-editor-host {
+  position: absolute;
+  inset: 0;
+}
+
+.vc-filesystem-empty-editor,
+.vc-filesystem-editor-banner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  max-width: min(420px, calc(100% - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--vc-filesystem-border);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: var(--vc-filesystem-muted-fg);
+  text-align: center;
+  pointer-events: none;
+}
+
+.vc-filesystem-editor-banner {
+  left: 12px;
+  right: 12px;
+  top: 12px;
+  transform: none;
+  max-width: none;
+  text-align: left;
+}
+
+.vc-filesystem-editor-banner.is-error {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: var(--vc-filesystem-danger);
+}
+
+.vc-filesystem-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 8px;
+  border-top: 1px solid var(--vc-filesystem-border);
+  background: #0a1020;
+  color: var(--vc-filesystem-muted-fg);
+  font-size: 11px;
+}
+
+.vc-filesystem-statusbar span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-filesystem-message {
+  padding: 12px;
+  color: var(--vc-filesystem-muted-fg);
+}
+
+.vc-filesystem-dialog-mount {
+  position: absolute;
+  inset: 0;
+  z-index: 20000;
+  pointer-events: auto;
+}
+
+.vc-filesystem-dialog-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(2, 6, 23, 0.62);
+  color: var(--vc-filesystem-fg, #e5e7eb);
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.vc-filesystem-dialog {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(140px, 280px) auto auto;
+  width: min(640px, calc(100% - 32px));
+  max-height: min(680px, calc(100% - 32px));
+  border: 1px solid var(--vc-filesystem-border, #243244);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--vc-filesystem-panel, #111827);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.vc-filesystem-dialog-header,
+.vc-filesystem-dialog-footer,
+.vc-filesystem-dialog-actions,
+.vc-filesystem-dialog-path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.vc-filesystem-dialog-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--vc-filesystem-border, #243244);
+}
+
+.vc-filesystem-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.vc-filesystem-dialog-header p {
+  margin: 2px 0 0;
+  color: var(--vc-filesystem-muted-fg, #94a3b8);
+  font-size: 12px;
+}
+
+.vc-filesystem-dialog-close {
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+
+.vc-filesystem-dialog-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--vc-filesystem-border, #243244);
+  border-radius: 8px;
+  background: #0b1020;
+  color: var(--vc-filesystem-fg, #e5e7eb);
+  font: inherit;
+  padding: 0 10px;
+}
+
+.vc-filesystem-dialog-button {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.vc-filesystem-dialog-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vc-filesystem-dialog-button.is-primary {
+  border-color: var(--vc-filesystem-accent, #2563eb);
+  background: var(--vc-filesystem-accent, #2563eb);
+  color: white;
+}
+
+.vc-filesystem-dialog-actions {
+  padding-top: 0;
+}
+
+.vc-filesystem-dialog-browser {
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--vc-filesystem-border, #243244);
+  border-bottom: 1px solid var(--vc-filesystem-border, #243244);
+}
+
+.vc-filesystem-dialog-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--vc-filesystem-fg, #e5e7eb);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.vc-filesystem-dialog-folder:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.vc-filesystem-dialog-error {
+  padding: 8px 12px;
+  color: var(--vc-filesystem-danger, #f87171);
+}
+
+.vc-filesystem-dialog-footer {
+  justify-content: flex-end;
+}

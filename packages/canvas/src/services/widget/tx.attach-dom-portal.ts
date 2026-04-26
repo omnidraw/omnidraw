@@ -10,7 +10,7 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
 import type { CameraService, SelectionService, WidgetManagerService } from '..';
-import { sandboxExample } from './sanbox-example';
+import type { TWidgetRenderCleanup, TWidgetRenderArgs } from './interface';
 
 type TPortal = {
   node: unknown;
@@ -19,6 +19,7 @@ type TPortal = {
   widgetPortal: HTMLDivElement;
   cameraService: CameraService;
   selectionService?: SelectionService;
+  renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
 };
 
 type TArgs = {
@@ -45,6 +46,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   let disposed = false;
   let initialRenderTimer: number | null = null;
+  let cleanupRender: TWidgetRenderCleanup | void;
 
   const syncDiv = () => {
     if (disposed || !div.isConnected) return;
@@ -99,11 +101,18 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   const removeCameraListener = portal.cameraService.hooks.change.tap(syncDiv);
   const removeSelectionListener = portal.selectionService?.hooks.change.tap(syncDiv) ?? (() => undefined);
+  const stopActiveDomEvent = (event: Event) => {
+    if (div.style.pointerEvents !== 'auto') return;
+    event.stopPropagation();
+  };
+  const domEventTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick', 'wheel', 'keydown', 'keyup'];
+  domEventTypes.forEach((eventType) => div.addEventListener(eventType, stopActiveDomEvent));
 
   portal.node.on('dragmove', syncDiv);
 
   const removeListener = (() => {
     if (!isKonvaGroup(portal.node)) return;
+    if (disposed) return;
 
     disposed = true;
     removeCameraListener();
@@ -112,10 +121,16 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       view.clearTimeout(initialRenderTimer);
     }
     portal.node.off('dragmove', syncDiv);
+    portal.node.off('destroy', onNodeDestroy);
+    domEventTypes.forEach((eventType) => div.removeEventListener(eventType, stopActiveDomEvent));
+    cleanupRender?.();
+    cleanupRender = undefined;
     fullscreenHeader.remove();
     div.remove();
   }) as TWidgetDomPortalListener;
   removeListener.syncDiv = syncDiv;
+  const onNodeDestroy = () => removeListener();
+  portal.node.on('destroy', onNodeDestroy);
 
   fullscreenHeader.dataset.widgetFullscreenHeaderId = args.element.id;
   fullscreenHeader.style.position = 'absolute';
@@ -185,8 +200,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
-  console.log('txAttachDomPortal')
-  sandboxExample(div)
+  cleanupRender = portal.renderDom?.({ root: div, element: args.element });
   if (view) {
     initialRenderTimer = view.setTimeout(syncDiv, 0);
   } else {

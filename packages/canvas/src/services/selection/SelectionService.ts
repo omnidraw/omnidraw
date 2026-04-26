@@ -1,6 +1,6 @@
 import type { IService } from "@vibecanvas/runtime";
 import { SyncHook } from "@vibecanvas/tapable";
-import Konva from "konva";
+import type Konva from "konva";
 import { CanvasMode } from "./CONSTANTS";
 
 export interface TSelectionServiceHooks {

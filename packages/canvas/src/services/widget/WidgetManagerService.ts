@@ -12,7 +12,7 @@ import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
 import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
-import { txAttachDomPortal } from "./tx.attach-dom-portal";
+import { txAttachDomPortal, type TWidgetDomPortalListener } from "./tx.attach-dom-portal";
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
 import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
 
@@ -31,6 +31,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #sceneService: SceneService;
   #cameraService: CameraService;
   #widgetPortal!: HTMLDivElement;
+  // TODO: remove, we want to use elementRegistry.onRemove
+  #domPortalCleanups = new Set<TWidgetDomPortalListener>();
   private readonly runtimeHooks!: IRuntimeHooks;
 
 
@@ -44,8 +46,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#toolService = props.toolService;
     this.#sceneService = props.sceneService;
     this.#cameraService = props.cameraService;
-
-    console.log('WidgetManagerService constructor', props)
   }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
@@ -56,10 +56,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService.stage.container().appendChild(this.#widgetPortal);
     // this.#domPortal.style =
     this.#widgetPortal.id = "widget-portal";
-    this.setupExampleWidget();
   }
 
   stop(): void | Promise<void> {
+    this.#domPortalCleanups.forEach((cleanup) => cleanup());
+    this.#domPortalCleanups.clear();
     this.#widgetPortal.remove()
   }
 
@@ -81,7 +82,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       createNode: (element) => {
         const colors = fnGetHostThemeColors(this.#themeService)
         const node = fnCreateWidgetNode(Konva, colors, element)
-        console.log('create node', element)
         const onRemove = txAttachDomPortal({
           node,
           widgetPortal: this.#widgetPortal,
@@ -89,8 +89,10 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           widgetServie: this,
           cameraService: this.#cameraService,
           selectionService: this.#selectionService,
+          renderDom: wConfig.renderDom,
         }, {element})
         if (node && onRemove) {
+          this.#domPortalCleanups.add(onRemove);
           node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
         }
         // TODO [S49]: add onRemove to some callback later
@@ -166,16 +168,4 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
   }
 
-  setupExampleWidget() {
-    const widgetConfig: IWidgetConfig = {
-      id: "example",
-      tool: {
-        label: "Example",
-        shortcuts: ['m']
-
-      }
-    }
-
-    this.registerWidget(widgetConfig);
-  }
 }

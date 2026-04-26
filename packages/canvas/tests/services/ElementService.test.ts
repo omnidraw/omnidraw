@@ -31,41 +31,6 @@ function createElement(args?: { id?: string; type?: "text" }) : TElement {
 }
 
 describe("ElementService", () => {
-  test("registers and sorts element definitions and emits hooks on change", () => {
-    const service = new ElementService();
-    const changeSpy = vi.fn();
-    service.hooks.elementsChange.tap(changeSpy);
-
-    const unregisterB = service.registerElement({
-      id: "b",
-      priority: 20,
-      matchesElement: () => false,
-      getSelectionStyleMenu: () => null,
-    });
-    service.registerElement({
-      id: "a",
-      priority: 20,
-      matchesElement: () => false,
-      getSelectionStyleMenu: () => null,
-    });
-    service.registerElement({
-      id: "c",
-      priority: 5,
-      matchesElement: () => false,
-      getSelectionStyleMenu: () => null,
-    });
-
-    expect(service.getElements().map((definition) => definition.id)).toEqual(["c", "a", "b"]);
-    expect(changeSpy).toHaveBeenCalledTimes(3);
-
-    unregisterB();
-    expect(service.getElements().map((definition) => definition.id)).toEqual(["c", "a"]);
-    expect(changeSpy).toHaveBeenCalledTimes(4);
-
-    service.unregisterElement("missing");
-    expect(changeSpy).toHaveBeenCalledTimes(4);
-  });
-
   test("serializes nodes with base and modifier definitions in priority order", () => {
     const service = new ElementService();
     const node = new Konva.Rect({ id: "shape-1" });

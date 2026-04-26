@@ -12,6 +12,8 @@ import type {
   TElementServiceHooks,
   TElementTransformOptions
 } from "./types";
+import { CrdtService } from "../crdt/CrdtService";
+import { TCrdtBuilder } from "../crdt/fxBuilder";
 export * from "./types";
 
 /**
@@ -37,6 +39,11 @@ export class ElementService implements IService<TElementServiceHooks> {
   };
 
   readonly #elements: TElementElementDefinition[] = [];
+  readonly #crdtService: CrdtService;
+
+  constructor(crdtService: CrdtService) {
+    this.#crdtService = crdtService;
+  }
 
   registerElement(definition: TElementElementDefinition) {
     this.#elements.push(definition);
@@ -57,7 +64,7 @@ export class ElementService implements IService<TElementServiceHooks> {
     this.hooks.elementsChange.call();
   }
 
-  getElements() {
+  private getElementDefinitions() {
     return fnSortByPriority(this.#elements);
   }
 
@@ -66,7 +73,7 @@ export class ElementService implements IService<TElementServiceHooks> {
    * Results are ordered by ascending priority.
    */
   getMatchingElementDefinitionsByElement(element: TElement) {
-    return this.getElements().filter((definition) => definition.matchesElement?.(element) ?? false);
+    return this.getElementDefinitions().filter((definition) => definition.matchesElement?.(element) ?? false);
   }
 
   /**
@@ -74,7 +81,7 @@ export class ElementService implements IService<TElementServiceHooks> {
    * Results are ordered by ascending priority.
    */
   getMatchingElementDefinitionsByNode(node: Konva.Node) {
-    return this.getElements().filter((definition) => definition.matchesNode?.(node) ?? false);
+    return this.getElementDefinitions().filter((definition) => definition.matchesNode?.(node) ?? false);
   }
 
   /**
@@ -101,6 +108,14 @@ export class ElementService implements IService<TElementServiceHooks> {
     }
 
     return element;
+  }
+
+  /**
+   * Remove element by id
+   */
+  removeElementById(id: string, builder: TCrdtBuilder) {
+    builder.deleteElement('id', 'data', 'type')
+
   }
 
   /**
@@ -144,7 +159,7 @@ export class ElementService implements IService<TElementServiceHooks> {
     id: string;
     theme?: ThemeService;
   }) {
-    return fnMergeSelectionStyleMenuConfigs(this.getElements()
+    return fnMergeSelectionStyleMenuConfigs(this.getElementDefinitions()
       .filter((definition) => definition.id === args.id)
       .map((definition) => {
         return definition.getSelectionStyleMenu?.({
