@@ -6,7 +6,7 @@
 export type TTool =
   | "hand"
   | "select"
-  | "rectangle"
+  | "rect"
   | "diamond"
   | "ellipse"
   | "arrow"
@@ -28,7 +28,7 @@ export interface IToolDefinition {
 export const TOOL_SHORTCUTS: Record<string, TTool> = {
   // Number shortcuts
   "1": "select",
-  "2": "rectangle",
+  "2": "rect",
   "3": "diamond",
   "4": "ellipse",
   "5": "arrow",
@@ -38,7 +38,7 @@ export const TOOL_SHORTCUTS: Record<string, TTool> = {
   "9": "image",
   // Letter shortcuts
   "h": "hand",
-  "r": "rectangle",
+  "r": "rect",
   "d": "diamond",
   "o": "ellipse",
   "a": "arrow",
@@ -55,7 +55,7 @@ export const TOOL_SHORTCUTS: Record<string, TTool> = {
 export const TOOLS: IToolDefinition[] = [
   { tool: "hand", letterShortcut: "h" },
   { tool: "select", shortcut: "1", letterShortcut: "esc" },
-  { tool: "rectangle", shortcut: "2", letterShortcut: "r" },
+  { tool: "rect", shortcut: "2", letterShortcut: "r" },
   { tool: "diamond", shortcut: "3", letterShortcut: "d" },
   { tool: "ellipse", shortcut: "4", letterShortcut: "o" },
   { tool: "arrow", shortcut: "5", letterShortcut: "a" },

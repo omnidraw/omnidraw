@@ -111,7 +111,7 @@ When adding feature-local logic:
 
 3. `dynamicLayer`
    - transient interaction UI
-   - selection rectangle, transformer, previews, edit handles, group boundaries
+   - selection rect, transformer, previews, edit handles, group boundaries
    - camera-transformed
 
 This layer split is intentional. Keep it.
@@ -209,7 +209,7 @@ Owns line and arrow behavior:
 - history integration
 
 ### `shape2d`
-Owns rectangle, diamond, and ellipse behavior:
+Owns rect, diamond, and ellipse behavior:
 - tool registration
 - draw-create flow
 - serialization and hydration

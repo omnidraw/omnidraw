@@ -48,10 +48,10 @@ export function isCanvasNode(
   return fnGetCanvasNodeKind(node) !== null;
 }
 
-export function isCanvasGroupNode( node: Konva.Node ): node is Konva.Group {
+export function isCanvasGroupNode( node: unknown ): node is Konva.Group {
   return fnGetCanvasNodeKind(node) === "group";
 }
 
-export function isCanvasElementNode( node: Konva.Node, ): node is TCanvasNode {
+export function isCanvasElementNode( node: unknown, ): node is TCanvasNode {
   return fnGetCanvasNodeKind(node) === "element";
 }

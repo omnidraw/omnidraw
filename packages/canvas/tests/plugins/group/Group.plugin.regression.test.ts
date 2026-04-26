@@ -46,7 +46,7 @@ function addRectNode(
 }
 
 describe("group plugin regressions", () => {
-  test("grouping two rectangles should create a persisted group and select it", async () => {
+  test("grouping two rects should create a persisted group and select it", async () => {
     const harness = await createNewCanvasHarness();
     const selection = harness.runtime.services.require("selection");
 

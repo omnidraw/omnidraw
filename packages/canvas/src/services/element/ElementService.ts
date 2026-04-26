@@ -1,5 +1,5 @@
 import type { IService } from "@vibecanvas/runtime";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TElementData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
@@ -12,8 +12,9 @@ import type {
   TElementServiceHooks,
   TElementTransformOptions
 } from "./types";
-import { CrdtService } from "../crdt/CrdtService";
-import { TCrdtBuilder } from "../crdt/fxBuilder";
+import type { CrdtService } from "..";
+import type { TCrdtBuilder } from "../crdt/fxBuilder";
+import { isCanvasElementNode } from "../../core/GUARDS";
 export * from "./types";
 
 /**
@@ -111,13 +112,27 @@ export class ElementService implements IService<TElementServiceHooks> {
   }
 
   /**
-   * Remove element by id
+   * Remove element
    */
-  removeElementById(id: string, builder: TCrdtBuilder) {
-    // builder.deleteElement('id', {})
-    console.log('removeElementById', id)
-
-    return builder
+  removeElement(node: unknown, builder: TCrdtBuilder) {
+    if(!isCanvasElementNode(node)) return builder
+    console.log('removeElementById', node)
+    const data = node.getAttr('vcElementData') as TElementData
+    const isWidget = data.type === 'widget'
+    return builder.deleteElement(node.id(), {
+      onCommit: (args) => {
+        const def = this.getElementDefinitions().find(def => isWidget ? def.id === data.kind : def.id === data.type)
+        console.log('def', def, data, this.getElementDefinitions())
+        if(!def) return
+        def.onDelete?.(args.entity)
+        node.destroy()
+      },
+      onRollback: (args) => {
+        const def = this.getElementDefinitions().find(def => isWidget ? def.id === data.kind : def.id === data.type)
+        if(!def) return
+        def.onRestore?.(args.entity)
+      }
+    })
   }
 
   /**

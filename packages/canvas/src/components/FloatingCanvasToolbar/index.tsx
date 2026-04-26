@@ -38,7 +38,7 @@ interface IFloatingCanvasToolbarProps {
 const TOOL_ICONS: Record<TTool, () => JSX.Element> = {
   hand: () => <Hand size={14} />,
   select: () => <MousePointer2 size={14} />,
-  rectangle: () => <Square size={14} />,
+  rect: () => <Square size={14} />,
   diamond: () => <Diamond size={14} />,
   ellipse: () => <Circle size={14} />,
   arrow: () => <ArrowRight size={14} />,

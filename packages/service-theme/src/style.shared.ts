@@ -92,7 +92,7 @@ export const THEME_FONT_SIZE_VALUE_MAP = Object.fromEntries(
 ) as TThemeFontSizeValueMap;
 
 export const THEME_STYLE_DEFAULTS_BY_SCOPE = {
-  rectangle: {
+  rect: {
     backgroundColor: "@base/300",
     strokeWidth: "@stroke-width/none",
     cornerRadius: "@corner-radius/none",

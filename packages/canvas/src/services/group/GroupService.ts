@@ -348,10 +348,10 @@ export class GroupService implements IService<TGroupServiceHooks>, IStartableSer
   }
 
   /**
-   * Remove group by id
+   * Remove group
    */
-  removeGroupById(id: string, builder: TCrdtBuilder) {
-    console.log('removeGroupById', id)
+  removeGroup(node: unknown, builder: TCrdtBuilder) {
+    console.log('removeGroupById', node)
 
     return builder;
   }

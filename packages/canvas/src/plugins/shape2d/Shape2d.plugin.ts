@@ -429,7 +429,7 @@ export function createShape2dPlugin(): IPlugin<{
       });
 
       const unregisterRectangle = registerShapeElement({
-        id: "rectangle",
+        id: "rect",
         type: "rect",
         label: "Rectangle",
         icon: Square,
@@ -511,7 +511,7 @@ export function createShape2dPlugin(): IPlugin<{
       ctx.hooks.init.tap(() => {
         [
           {
-            id: "rectangle" as const,
+            id: "rect" as const,
             label: "Rectangle",
             icon: Square,
             shortcuts: ["2", "r"],
@@ -713,7 +713,7 @@ export function createShape2dPlugin(): IPlugin<{
         unregisterRectangle();
         unregisterDiamond();
         unregisterEllipse();
-        tool.unregisterTool("rectangle");
+        tool.unregisterTool("rect");
         tool.unregisterTool("diamond");
         tool.unregisterTool("ellipse");
       });

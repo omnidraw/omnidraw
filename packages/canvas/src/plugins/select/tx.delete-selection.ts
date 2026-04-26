@@ -384,16 +384,16 @@ export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDel
   let builder = portal.crdt.build()
   expandedRoots.forEach(node => {
     if (isCanvasGroupNode(node)) {
-      builder = portal.group.removeGroupById(node.id(), builder)
+      builder = portal.group.removeGroup(node, builder)
     } else if (isCanvasElementNode(node)) {
-      builder = portal.element.removeElementById(node.id(), builder)
+      builder = portal.element.removeElement(node, builder)
     } else {
       // TODO: remove after feature is done
       console.log('not found', node)
     }
   })
 
-  builder.commit()
+  console.log(builder.commit())
 
   return true
 

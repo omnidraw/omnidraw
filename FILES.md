@@ -182,7 +182,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/select/tx.delete-selection.ts` | group guard should me moved, needs better guard | Delete selected canvas nodes |
 | ❓ | `plugins/select/tx.handle-element-pointer-double-click.ts` |  | Double-click drills selection one level deeper along ancestry |
 | ❓ | `plugins/select/tx.handle-element-pointer-down.ts` |  | Element click selection depth cycling, shift-toggle, focus updates |
-| ❓ | `plugins/select/tx.handle-stage-pointer-move.ts` |  | Drag-select updates rectangle, intersects top-layer selectable nodes |
+| ❓ | `plugins/select/tx.handle-stage-pointer-move.ts` |  | Drag-select updates rect, intersects top-layer selectable nodes |
 | 🤖 | `plugins/selection-style-menu/fx.mount-selection-style-menu.ts` |  | Selection styling overlay for selected elements and active tools |
 | ❓ | `plugins/selection-style-menu/SelectionStyleMenu.plugin.ts` |  | Floating selection style popover wiring |
 | 🤖 | `plugins/shape1d/CONSTANTS.ts` |  | Shape1d runtime constants, handle sizing, and style token defaults |

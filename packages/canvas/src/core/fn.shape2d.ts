@@ -11,7 +11,7 @@ export type TShape2dPoint = {
   y: number;
 };
 
-export type TShape2dToolId = "rectangle" | "diamond" | "ellipse";
+export type TShape2dToolId = "rect" | "diamond" | "ellipse";
 export type TShape2dElementType = "rect" | "diamond" | "ellipse";
 export type TShape2dBounds = {
   x: number;
@@ -33,7 +33,7 @@ const DEFAULT_STYLE: TElementStyle = {
 };
 
 export function fnIsShape2dToolId(toolId: string): toolId is TShape2dToolId {
-  return toolId === "rectangle" || toolId === "diamond" || toolId === "ellipse";
+  return toolId === "rect" || toolId === "diamond" || toolId === "ellipse";
 }
 
 export function fnIsShape2dElementType(elementType: string): elementType is TShape2dElementType {
@@ -41,7 +41,7 @@ export function fnIsShape2dElementType(elementType: string): elementType is TSha
 }
 
 export function fnGetShape2dElementTypeFromTool(toolId: TShape2dToolId): TShape2dElementType {
-  if (toolId === "rectangle") {
+  if (toolId === "rect") {
     return "rect";
   }
 

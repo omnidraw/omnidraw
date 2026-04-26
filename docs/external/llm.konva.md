@@ -15,7 +15,7 @@ Install: `npm install konva`
 
 ## Tutorials
 
-- [Shapes](https://konvajs.org/docs/shapes/Rect.html): Drawing rectangles, circles, lines, text, images, paths, and more
+- [Shapes](https://konvajs.org/docs/shapes/Rect.html): Drawing rects, circles, lines, text, images, paths, and more
 - [Events](https://konvajs.org/docs/events/Binding_Events.html): Click, hover, touch, keyboard, and custom events
 - [Drag and Drop](https://konvajs.org/docs/drag_and_drop/Drag_and_Drop.html): Built-in drag-and-drop system
 - [Animations](https://konvajs.org/docs/animations/Create_an_Animation.html): Frame-based animations and tweens

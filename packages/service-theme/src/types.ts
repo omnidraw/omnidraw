@@ -32,7 +32,7 @@ export const THEME_STROKE_STYLES = ["solid", "dashed", "dotted"] as const;
 export const THEME_TEXT_ALIGNS = ["left", "center", "right"] as const;
 export const THEME_VERTICAL_ALIGNS = ["top", "middle", "bottom"] as const;
 export const THEME_STYLE_SCOPE_IDS = [
-  "rectangle",
+  "rect",
   "diamond",
   "ellipse",
   "line",
