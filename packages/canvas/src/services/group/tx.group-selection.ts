@@ -1,6 +1,7 @@
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import { fnGetCanvasNodeKind, isCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import type { CrdtService, ElementService, GroupService, HistoryService, SceneService, SelectionService } from "../../services";
 import { fnGetSelectionBounds } from "./fn.get-selection-bounds";
 import { fnFindSceneNodeById, fnGetGroupChildren, fnGetSelectionGroupParent, fnIsSceneNode, fnIsSceneParent, type TSceneNode } from "./fn.scene-node";

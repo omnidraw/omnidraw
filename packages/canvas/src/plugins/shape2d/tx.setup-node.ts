@@ -1,6 +1,6 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import { isCanvasGroupNode } from "src/core/GUARDS";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import {
     fnGetCanvasAncestorGroups,
     fnGetCanvasNodeKind,

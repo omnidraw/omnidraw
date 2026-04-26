@@ -110,7 +110,6 @@ prefix: `packages/canvas/src/`
 | ✅ | `core/fn.shape2d.ts` |  | Shape tool drafts, bounds, type mapping, element creation |
 | ✅ | `core/fn.text-style.ts` |  | Text sizing/alignment presets and proportional preset scaling |
 | ✅ | `core/fn.world-position.ts` |  | Pointer/world coordinate conversion across parent transforms |
-| ❓ | `core/fx.canvas-node-semantics.ts` |  | Konva semantic node typing: group/element checks, parent ancestry |
 | ✅ | `core/fn.filter-selection.ts` |  | Nested canvas selection collapsing to deepest live sub-selection |
 | ❓ | `core/fx.node-space.ts` |  | Konva node absolute-to-layer-local coordinate conversion |
 | ❓ | `core/fx.pretext.ts` |  | Pretext line-wrapped text measurement before canvas rendering |

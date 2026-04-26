@@ -1,7 +1,7 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
 import type Konva from "konva";
-import { isCanvasGroupNode } from "src/core/GUARDS";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import { fnGetCanvasAncestorGroups, fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import type { GroupService } from "../../services";

@@ -1,5 +1,6 @@
 # Temporary Todos - do not touch
 
+- [x] update crdt to add callbacks
 - [ ] add onRemove to register element
 - [ ] add onRemove to group service
 - [ ] remove packages/canvas/src/plugins/select/tx.delete-selection.ts:344

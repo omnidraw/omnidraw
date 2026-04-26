@@ -4,7 +4,7 @@ import type { Layer } from "konva/lib/Layer";
 import type { Node } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
-import { isCanvasGroupNode, isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
+import { isCanvasElementNode, isCanvasGroupNode, isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
 import { fnGetCanvasNodeKind, } from "../../core/fn.canvas-node-semantics";
 import type {
   CrdtService, ElementService, GroupService, HistoryService, RenderOrderService,
@@ -381,9 +381,19 @@ export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDel
   }));
 
   console.log(expandedRoots)
+  let builder = portal.crdt.build()
   expandedRoots.forEach(node => {
-    isCanvasGroupNode
+    if (isCanvasGroupNode(node)) {
+      builder = portal.group.removeGroupById(node.id(), builder)
+    } else if (isCanvasElementNode(node)) {
+      builder = portal.element.removeElementById(node.id(), builder)
+    } else {
+      // TODO: remove after feature is done
+      console.log('not found', node)
+    }
   })
+
+  builder.commit()
 
   return true
 
