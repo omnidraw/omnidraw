@@ -1,9 +1,12 @@
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
+import { fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import type {
-  CrdtService, HistoryService, SceneService, SelectionService, ElementService, GroupService
+    CrdtService,
+    ElementService, GroupService,
+    HistoryService, SceneService, SelectionService
 } from "../../services";
-import { fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import { fnGetSelectionBounds } from "./fn.get-selection-bounds";
 import { fnFindSceneNodeById, fnGetGroupChildren, fnGetSelectionGroupParent, fnIsSceneParent, type TSceneNode } from "./fn.scene-node";
 import { fnToGroupPatch } from "./fn.to-group-patch";
@@ -31,7 +34,7 @@ export function txUngroupSelection(
   args: TArgsUngroupSelection,
 ) {
   const group = [...portal.selection.selection].reverse().find((node): node is Konva.Group => {
-    return fnIsCanvasGroupNode(node);
+    return isCanvasGroupNode(node);
   });
   if (!group) {
     return;
@@ -147,7 +150,7 @@ export function txUngroupSelection(
     },
     redo() {
       const currentGroupNode = fnFindSceneNodeById({ scene: portal.scene, id: groupPatch.id });
-      if (currentGroupNode && !fnIsCanvasGroupNode(currentGroupNode)) {
+      if (currentGroupNode && !isCanvasGroupNode(currentGroupNode)) {
         return;
       }
 

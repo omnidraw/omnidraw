@@ -1,5 +1,5 @@
 import type { Node } from "konva/lib/Node";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import type { ElementService, TCanvasTransformAnchor, TElementTransformOptions } from "../../services";
 import { fxIsShape1dNode } from "../shape1d/fx.node";
 
@@ -32,7 +32,7 @@ type TArgsFxGetSelectionTransformOptions = {
 
 export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTransformOptions, args: TArgsFxGetSelectionTransformOptions) {
   const isSingleGroupSelection = args.selection.length === 1
-    && fnIsCanvasGroupNode(args.selection[0]);
+    && isCanvasGroupNode(args.selection[0]);
   const isMultiSelection = args.selection.length > 1;
   const hasTextOnly = args.selection.length > 0 && args.selection.every((node) => node instanceof portal.Konva.Text);
   const hasShape1dOnly = args.selection.length > 0 && args.selection.every((node) => fxIsShape1dNode( { node }));

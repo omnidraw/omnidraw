@@ -1,8 +1,8 @@
-import { fnGetSelectionPath } from "./fn.get-selection-path";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import type { SceneService } from "../../services/scene/SceneService";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { TElementPointerEvent } from "../../types";
+import { fnGetSelectionPath } from "./fn.get-selection-path";
 
 export type TPortalHandleElementPointerDown = {
   scene: SceneService;
@@ -66,7 +66,7 @@ export function txHandleElementPointerDown(
   const isFlatMultiSelect = portal.selection.selection.length > 1
     && !portal.selection.selection.some((node) => {
       const parent = node.getParent()
-      return parent && fnIsCanvasGroupNode(parent)
+      return parent && isCanvasGroupNode(parent)
     });
 
   if (isFlatMultiSelect && topLevelNode && portal.selection.selection.includes(topLevelNode)) {

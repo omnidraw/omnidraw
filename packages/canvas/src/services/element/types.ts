@@ -213,6 +213,14 @@ type TElementElementHookBag = {
    * Called after resize handling completes.
    */
   afterResize?: TElementResizeHook;
+  /**
+   * Called after canvas element is removed
+   */
+  onDelete?: () => {}
+  /**
+   * Called when deleted element is restored via undo
+   */
+  onRestore?: () => {}
 };
 
 type TElementNodeRuntimeHookBag = Pick<

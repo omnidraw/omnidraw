@@ -1,5 +1,5 @@
 import type Konva from "konva";
-import { fnIsCanvasGroupNode } from "./fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "./GUARDS";
 
 export type TArgsFilterSelection = {
   selection: Array<Konva.Node>;
@@ -10,7 +10,7 @@ export function fnFilterSelection(
 ) {
   let subSelection = args.selection.find((node) => {
     const parent = node.getParent();
-    return parent && fnIsCanvasGroupNode(parent);
+    return parent && isCanvasGroupNode(parent);
   });
 
   if (!subSelection) {

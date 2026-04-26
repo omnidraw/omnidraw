@@ -1,16 +1,16 @@
 import type { IService, IStartableService } from "@vibecanvas/runtime";
+import { IServiceContext } from "@vibecanvas/runtime/interface.js";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import { fnCreateOrderedZIndex } from "../../core/fn.create-ordered-z-index";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type { IRuntimeConfig, IRuntimeHooks, TRenderOrderSnapshot } from "../../types";
+import { ContextMenuService } from "../context-menu/ContextMenuService";
 import type { CrdtService } from "../crdt/CrdtService";
 import type { HistoryService } from "../history/HistoryService";
 import type { SceneService } from "../scene/SceneService";
-import { IServiceContext } from "@vibecanvas/runtime/interface.js";
-import { ContextMenuService } from "../context-menu/ContextMenuService";
 
 export type TOrderedNode = Konva.Group | Konva.Shape;
 export type TParentContainer = Konva.Layer | Konva.Group;
@@ -253,7 +253,7 @@ export class RenderOrderService implements IService<Record<string, never>>, ISta
       items: getImmediateOrderedChildren(parent).map((node) => ({
         id: node.id(),
         zIndex: fnGetNodeZIndex({ node }),
-        kind: fnIsCanvasGroupNode(node) ? 'group' : 'element',
+        kind: isCanvasGroupNode(node) ? 'group' : 'element',
       })),
     };
   }
@@ -425,7 +425,7 @@ export class RenderOrderService implements IService<Record<string, never>>, ISta
       const zIndex = fnCreateOrderedZIndex(persistedIndex);
       persistedIndex += 1;
 
-      if (fnIsCanvasGroupNode(node)) {
+      if (isCanvasGroupNode(node)) {
         // Some flows insert runtime nodes before their first CRDT create commit.
         // Persist zIndex only after the group exists in the doc, otherwise
         // builder path patches would throw on a missing entity.

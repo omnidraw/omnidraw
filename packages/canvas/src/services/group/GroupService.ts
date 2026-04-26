@@ -1,36 +1,36 @@
 import { throttle } from "@solid-primitives/scheduled";
-import type { IPlugin, IService, IStartableService } from "@vibecanvas/runtime";
-import type { ThemeService } from "@vibecanvas/service-theme";
+import type { IService, IStartableService } from "@vibecanvas/runtime";
+import { IServiceContext } from "@vibecanvas/runtime/interface.js";
 import type { TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { ThemeService } from "@vibecanvas/service-theme";
+import { SyncHook } from "@vibecanvas/tapable";
 import Konva from "konva";
 import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
+import { fnSortByPriority } from "../../core/fn.sort-by-priority";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type { CameraService } from "../../services/camera/CameraService";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
 import type { ContextMenuService } from "../../services/context-menu/ContextMenuService";
 import type { CrdtService } from "../../services/crdt/CrdtService";
 import type { HistoryService } from "../../services/history/HistoryService";
 import type { LoggingService } from "../../services/logging/LoggingService";
 import type { RenderOrderService } from "../../services/render-order/RenderOrderService";
 import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
+import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
-import { txCreateGroupCloneDrag } from "./tx.create-group-clone-drag";
+import { TCrdtBuilder } from "../crdt/fxBuilder";
+import { ElementService } from "../element/ElementService";
 import { fnIsSceneNode } from "./fn.scene-node";
 import { fnToGroupPatch } from "./fn.to-group-patch";
+import { fxCreateGroupBoundary } from "./fx.create-group-boundary";
+import { txCreateGroupCloneDrag } from "./tx.create-group-clone-drag";
 import { txGroupSelection } from "./tx.group-selection";
 import { txSetupGroupNode } from "./tx.setup-group-node";
 import { txSyncDraggability } from "./tx.sync-draggability";
-import { fxCreateGroupBoundary } from "./fx.create-group-boundary";
 import { txSyncGroupBoundaries, type TGroupBoundary } from "./tx.sync-group-boundaries";
 import { txUngroupSelection } from "./tx.ungroup-selection";
-import { SyncHook } from "@vibecanvas/tapable";
-import { IServiceContext } from "@vibecanvas/runtime/interface.js";
-import { ElementService } from "../element/ElementService";
-import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { TGroupDefinition, TGroupServiceHooks } from "./types";
 
 const CANVAS_GROUP_NODE_KIND = "group";
@@ -197,7 +197,7 @@ export class GroupService implements IService<TGroupServiceHooks>, IStartableSer
 
     this.contextMenu.registerProvider("group", ({ scope, activeSelection }) => {
       const selectedGroups = [...activeSelection].reverse().filter((node): node is Konva.Group => {
-        return fnIsCanvasGroupNode(node);
+        return isCanvasGroupNode(node);
       });
 
       const actions = [] as Array<{
@@ -345,6 +345,15 @@ export class GroupService implements IService<TGroupServiceHooks>, IStartableSer
     }
 
     this.hooks.groupsChange.call();
+  }
+
+  /**
+   * Remove group by id
+   */
+  removeGroupById(id: string, builder: TCrdtBuilder) {
+    console.log('removeGroupById', id)
+
+    return builder;
   }
 
   /**

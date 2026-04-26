@@ -1,11 +1,11 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
+import { isCanvasGroupNode } from "src/core/GUARDS";
 import {
-  fnGetCanvasAncestorGroups,
-  fnGetCanvasNodeKind,
-  fnIsCanvasGroupNode,
+    fnGetCanvasAncestorGroups,
+    fnGetCanvasNodeKind,
 } from "../../core/fn.canvas-node-semantics";
-import type { ElementService, CrdtService, HistoryService, SceneService, SelectionService } from "../../services";
+import type { CrdtService, ElementService, HistoryService, SceneService, SelectionService } from "../../services";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 
 export type TPortalSetupShape2dNode = {
@@ -73,7 +73,7 @@ function serializeSubtreeElements(portal: TPortalSetupShape2dNode, group: Konva.
       return;
     }
 
-    if (kind === "group" && fnIsCanvasGroupNode(child)) {
+    if (kind === "group" && isCanvasGroupNode(child)) {
       elements.push(...serializeSubtreeElements(portal, child));
     }
   });
@@ -88,7 +88,7 @@ function serializeNodeElements(portal: TPortalSetupShape2dNode, node: Konva.Node
     return element ? [structuredClone(element)] : [];
   }
 
-  if (kind === "group" && fnIsCanvasGroupNode(node)) {
+  if (kind === "group" && isCanvasGroupNode(node)) {
     return serializeSubtreeElements(portal, node).map((element) => structuredClone(element));
   }
 

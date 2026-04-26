@@ -3,12 +3,12 @@ import Konva from "konva";
 import { createComponent, createMemo, createSignal } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { CanvasContextMenu } from "../../components/CanvasContextMenu";
-import { fnIsCanvasGroupNode, fnIsCanvasNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode, isCanvasNode } from "../../core/GUARDS";
 import type {
-  ContextMenuService,
-  ElementService, GroupService,
-  SceneService, SelectionService,
-  TContextMenuNode, TContextMenuScope
+    ContextMenuService,
+    ElementService, GroupService,
+    SceneService, SelectionService,
+    TContextMenuNode, TContextMenuScope
 } from "../../services";
 import type { IRuntimeHooks } from "../../types";
 
@@ -20,7 +20,7 @@ function getSelectionPath(
   let current: Konva.Node | null = node;
 
   while (current && current !== scene.staticForegroundLayer) {
-    if (fnIsCanvasNode(current)) {
+    if (isCanvasNode(current)) {
       path.push(current as TContextMenuNode);
     }
 
@@ -38,11 +38,11 @@ function filterSelection(
 
   let subSelection = selection.find((node) => {
     const parent = node.getParent();
-    return parent && fnIsCanvasGroupNode(parent);
+    return parent && isCanvasGroupNode(parent);
   });
   if (!subSelection) {
     return selection.filter((node): node is TContextMenuNode => {
-      return fnIsCanvasNode(node) && node.getStage() !== null;
+      return isCanvasNode(node) && node.getStage() !== null;
     });
   }
 
@@ -58,7 +58,7 @@ function filterSelection(
 
   findDeepestSubSelection();
 
-  if (!fnIsCanvasNode(subSelection)) {
+  if (!isCanvasNode(subSelection)) {
     return [];
   }
 
@@ -72,7 +72,7 @@ function findTargetNode(
   const directHit = scene.stage.getIntersection(pointer);
   let current: Konva.Node | null = directHit;
   while (current) {
-    if (fnIsCanvasNode(current)) {
+    if (isCanvasNode(current)) {
       return current as TContextMenuNode;
     }
 
@@ -80,7 +80,7 @@ function findTargetNode(
   }
 
   const candidates = scene.staticForegroundLayer.find((node: Konva.Node) => {
-    return fnIsCanvasNode(node) && node.isListening();
+    return isCanvasNode(node) && node.isListening();
   }) as TContextMenuNode[];
 
   const fallbackTarget = [...candidates].reverse().find((node) => {
@@ -102,7 +102,7 @@ function resolveSelection(
   target: TContextMenuNode,
 ): TContextMenuNode[] {
   const currentSelection = selection.selection.filter((node): node is TContextMenuNode => {
-    return fnIsCanvasNode(node);
+    return isCanvasNode(node);
   });
   const activeSelection = filterSelection(scene, currentSelection);
   if (activeSelection.includes(target)) {
@@ -114,7 +114,7 @@ function resolveSelection(
   const isFlatMultiSelect = currentSelection.length > 1
     && !currentSelection.some((node) => {
       const parent = node.getParent();
-      return parent && fnIsCanvasGroupNode(parent);
+      return parent && isCanvasGroupNode(parent);
     });
 
   if (isFlatMultiSelect && topLevelNode && currentSelection.includes(topLevelNode)) {
@@ -238,7 +238,7 @@ export function createContextMenuPlugin(): IPlugin<{
           const nextSelection = targetNode
             ? resolveSelection(scene, selection, targetNode)
             : selection.selection.filter((node): node is TContextMenuNode => {
-              return fnIsCanvasNode(node);
+              return isCanvasNode(node);
             });
           const activeSelection = filterSelection(scene, nextSelection);
           const scope = getMenuScope(targetNode, nextSelection);

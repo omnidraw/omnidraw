@@ -2,35 +2,35 @@ import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.ty
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type Konva from "konva";
 import { VC_Z_INDEX_ATTR } from "../../core/CONSTANTS";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import {
-  fnCreateShape2dTextData,
-  fnGetShape2dTextData,
-  fnIsShape2dElementType,
+    fnCreateShape2dTextData,
+    fnGetShape2dTextData,
+    fnIsShape2dElementType,
 } from "../../core/fn.shape2d";
 import type {
-  ElementService,
-  SceneService,
-  SelectionService,
-  SessionService,
+    ElementService,
+    SceneService,
+    SelectionService,
+    SessionService,
 } from "../../services";
 import {
-  DEFAULT_ATTACHED_TEXT_ALIGN,
-  DEFAULT_ATTACHED_TEXT_VERTICAL_ALIGN,
-  DEFAULT_TEXT_LINE_HEIGHT,
-  TEXT_FONT_SIZE_TOKEN_BY_PRESET,
-  VC_ORIGINAL_TEXT_ATTR,
-  VC_TEXT_AUTO_RESIZE_ATTR,
-  VC_USES_THEME_TEXT_COLOR_ATTR,
+    DEFAULT_ATTACHED_TEXT_ALIGN,
+    DEFAULT_ATTACHED_TEXT_VERTICAL_ALIGN,
+    DEFAULT_TEXT_LINE_HEIGHT,
+    TEXT_FONT_SIZE_TOKEN_BY_PRESET,
+    VC_ORIGINAL_TEXT_ATTR,
+    VC_TEXT_AUTO_RESIZE_ATTR,
+    VC_USES_THEME_TEXT_COLOR_ATTR,
 } from "../text/CONSTANTS";
-import { fnGetShapeTextHostBounds } from "./fn.text-host-bounds";
 import {
-  SHAPE2D_INLINE_TEXT_DERIVED_ATTR,
-  SHAPE2D_INLINE_TEXT_HOST_ID_ATTR,
-  SHAPE2D_INLINE_TEXT_ID_SUFFIX,
-  SHAPE2D_INLINE_TEXT_NAME,
+    SHAPE2D_INLINE_TEXT_DERIVED_ATTR,
+    SHAPE2D_INLINE_TEXT_HOST_ID_ATTR,
+    SHAPE2D_INLINE_TEXT_ID_SUFFIX,
+    SHAPE2D_INLINE_TEXT_NAME,
 } from "./CONSTANTS";
+import { fnGetShapeTextHostBounds } from "./fn.text-host-bounds";
 
 export type TPortalGetAttachedTextNode = {
   Konva: typeof Konva;
@@ -153,7 +153,7 @@ export function fxSyncAttachedTextNodeToShape(portal: TPortalSyncAttachedTextNod
 
   const textNode = getOrCreateTextNode(portal, { shapeNode: args.shapeNode, textNode: args.textNode });
   const parentNode = args.shapeNode.getParent();
-  const parent = parentNode && fnIsCanvasGroupNode(parentNode)
+  const parent = parentNode && isCanvasGroupNode(parentNode)
     ? parentNode
     : portal.scene.staticForegroundLayer;
   if (!(parent instanceof portal.Konva.Layer) && !(parent instanceof portal.Konva.Group)) {

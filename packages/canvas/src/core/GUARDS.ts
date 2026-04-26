@@ -1,4 +1,6 @@
 import Konva from 'konva';
+import { fnGetCanvasNodeKind } from './fn.canvas-node-semantics';
+import { TCanvasNode } from './types';
 
 export function isKonvaLayer(node: unknown): node is Konva.Layer {
   return node instanceof Konva.Layer;
@@ -38,4 +40,18 @@ export function isKonvaRect(node: unknown): node is Konva.Rect {
 
 export function isKonvaEllipse(node: unknown): node is Konva.Ellipse {
   return node instanceof Konva.Ellipse;
+}
+
+export function isCanvasNode(
+  node: Konva.Node,
+): node is TCanvasNode {
+  return fnGetCanvasNodeKind(node) !== null;
+}
+
+export function isCanvasGroupNode( node: Konva.Node ): node is Konva.Group {
+  return fnGetCanvasNodeKind(node) === "group";
+}
+
+export function isCanvasElementNode( node: Konva.Node, ): node is TCanvasNode {
+  return fnGetCanvasNodeKind(node) === "element";
 }

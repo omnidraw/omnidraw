@@ -1,19 +1,19 @@
+import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { throttle } from "@solid-primitives/scheduled";
-import type { ElementService, GroupService, SessionService, CanvasRegistryService, TCanvasTransformAnchor } from "../../services";
+import { isCanvasGroupNode } from "../../core/GUARDS";
+import type { ElementService, GroupService, SessionService, TCanvasTransformAnchor } from "../../services";
 import type { CrdtService } from "../../services/crdt/CrdtService";
 import type { HistoryService } from "../../services/history/HistoryService";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeHooks } from "../../types";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
-import { fxGetProxyDragTarget } from "./fx.proxy-drag-target";
 import { fxGetProxyBounds } from "./fx.proxy-bounds";
+import { fxGetProxyDragTarget } from "./fx.proxy-drag-target";
 import { txDispatchSelectionTransformHooks } from "./tx.dispatch-selection-transform-hooks";
 import { txSyncTransformer } from "./tx.sync-transformer";
 
@@ -94,7 +94,7 @@ function normalizeSelectedGroupTransforms(nodes: Konva.Node[]) {
  */
 function refreshSelectedGroups(selection: SelectionService) {
   selection.selection.forEach((node) => {
-    if (fnIsCanvasGroupNode(node)) {
+    if (isCanvasGroupNode(node)) {
       node.fire("transform");
     }
   });

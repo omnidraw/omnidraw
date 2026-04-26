@@ -1,9 +1,9 @@
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import type { CrdtService, HistoryService, SceneService, SelectionService, GroupService, ElementService } from "../../services";
-import { fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { fnGetCanvasNodeKind, isCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import type { CrdtService, ElementService, GroupService, HistoryService, SceneService, SelectionService } from "../../services";
 import { fnGetSelectionBounds } from "./fn.get-selection-bounds";
-import { fnFindSceneNodeById, fnGetGroupChildren, fnGetSelectionGroupParent, fnIsSceneParent, fnIsSceneNode, type TSceneNode } from "./fn.scene-node";
+import { fnFindSceneNodeById, fnGetGroupChildren, fnGetSelectionGroupParent, fnIsSceneNode, fnIsSceneParent, type TSceneNode } from "./fn.scene-node";
 import { fnToGroupPatch } from "./fn.to-group-patch";
 
 export type TPortalGroupSelection = {
@@ -48,7 +48,7 @@ export function txGroupSelection(
   const zIndex = portal.getNodeZIndex(selection[selection.length - 1] ?? selection[0]);
   const groupNode = portal.setupNode(portal.createGroupNode({
     id: groupId,
-    parentGroupId: fnIsCanvasGroupNode(parent) ? parent.id() : null,
+    parentGroupId: isCanvasGroupNode(parent) ? parent.id() : null,
     zIndex,
     locked: false,
     createdAt,
@@ -111,7 +111,7 @@ export function txGroupSelection(
     label: "group",
     undo() {
       const currentGroupNode = fnFindSceneNodeById({ scene: portal.scene, id: groupId });
-      if (currentGroupNode && !fnIsCanvasGroupNode(currentGroupNode)) {
+      if (currentGroupNode && !isCanvasGroupNode(currentGroupNode)) {
         return;
       }
 
@@ -164,7 +164,7 @@ export function txGroupSelection(
 
       const recreated = portal.setupNode(portal.createGroupNode({
         id: groupId,
-        parentGroupId: redoParent && fnIsCanvasGroupNode(redoParent) ? redoParent.id() : null,
+        parentGroupId: redoParent && isCanvasGroupNode(redoParent) ? redoParent.id() : null,
         zIndex,
         locked: false,
         createdAt,

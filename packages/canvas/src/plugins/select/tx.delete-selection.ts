@@ -4,8 +4,8 @@ import type { Layer } from "konva/lib/Layer";
 import type { Node } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
-import { isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
-import { fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode, isKonvaGroup, isKonvaLayer, isKonvaShape } from "../../core/GUARDS";
+import { fnGetCanvasNodeKind, } from "../../core/fn.canvas-node-semantics";
 import type {
   CrdtService, ElementService, GroupService, HistoryService, RenderOrderService,
   SceneService, SelectionService
@@ -109,7 +109,7 @@ function sortSceneTopDown(portal: TPortalDeleteSelection, parent: Group | Layer)
   portal.renderOrder.sortChildren(parent);
 
   parent.getChildren().forEach((child: Node) => {
-    if (!fnIsCanvasGroupNode(child)) {
+    if (!isCanvasGroupNode(child)) {
       return;
     }
 
@@ -140,7 +140,7 @@ function collectDeleteSnapshot(portal: TPortalDeleteSelection, roots: TSceneNode
 
     const kind = fnGetCanvasNodeKind(node);
     if (kind === "group") {
-      if (!fnIsCanvasGroupNode(node)) {
+      if (!isCanvasGroupNode(node)) {
         didFail = true;
         return;
       }
@@ -206,7 +206,7 @@ function collectDeleteSnapshot(portal: TPortalDeleteSelection, roots: TSceneNode
           return false;
         }
 
-        if (!fnIsCanvasGroupNode(candidate)) {
+        if (!isCanvasGroupNode(candidate)) {
           return false;
         }
 
@@ -238,7 +238,7 @@ function restoreDeleteSnapshot(portal: TPortalDeleteSelection, snapshot: TDelete
         group.parentGroupId !== null
         && parentNode
         && !createdGroups.has(group.parentGroupId)
-        && !fnIsCanvasGroupNode(parentNode)
+        && !isCanvasGroupNode(parentNode)
       ) {
         continue;
       }
@@ -365,5 +365,26 @@ function deleteSelectionInternal(portal: TPortalDeleteSelection, args: TArgsDele
 }
 
 export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDeleteSelection) {
-  return deleteSelectionInternal(portal, args);
+  // return deleteSelectionInternal(portal, args);
+
+  const selection = (args.selection ?? portal.selection.selection)
+    .filter((node): node is TSceneNode => isSceneNode(portal, node));
+  const roots = collapseSelectionToDeleteRoots(selection);
+  if (roots.length === 0) {
+    return false;
+  }
+
+  const expandedRoots = collapseSelectionToDeleteRoots(roots.flatMap((root) => {
+    return portal.renderOrder.getOrderBundle(root).filter((candidate): candidate is TSceneNode => {
+      return isSceneNode(portal, candidate);
+    });
+  }));
+
+  console.log(expandedRoots)
+  expandedRoots.forEach(node => {
+    isCanvasGroupNode
+  })
+
+  return true
+
 }

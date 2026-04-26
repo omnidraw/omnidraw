@@ -4,7 +4,7 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
 import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
-import type { TCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
+import type { TCanvasNodeKind } from "../../core/types";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { fnMergeSelectionStyleMenuConfigs } from "./fn-merge-selection-style-menu-configs";
 import type {
@@ -114,8 +114,10 @@ export class ElementService implements IService<TElementServiceHooks> {
    * Remove element by id
    */
   removeElementById(id: string, builder: TCrdtBuilder) {
-    builder.deleteElement('id', 'data', 'type')
+    // builder.deleteElement('id', {})
+    console.log('removeElementById', id)
 
+    return builder
   }
 
   /**

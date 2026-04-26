@@ -1,7 +1,7 @@
 import type { Group } from "konva/lib/Group";
 import type { Node } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import { fnIsCanvasNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasNode } from "../../core/GUARDS";
 import type { SceneService } from "../../services/scene/SceneService";
 
 export type TArgsGetSelectionPath = {
@@ -14,7 +14,7 @@ export function fnGetSelectionPath(args: TArgsGetSelectionPath) {
   let current: Node | null = args.node;
 
   while (current && current !== args.scene.staticForegroundLayer) {
-    if (fnIsCanvasNode(current)) {
+    if (isCanvasNode(current)) {
       path.push(current as Group | Shape<ShapeConfig>);
     }
 

@@ -1,10 +1,11 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type Konva from "konva";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
-import type { CrdtService, ElementService, GroupService, HistoryService, RenderOrderService, SceneService, SelectionService } from "../../services";
-import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
-import { fnGetCanvasAncestorGroups, fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import type Konva from "konva";
+import { isCanvasGroupNode } from "src/core/GUARDS";
+import { fnGetCanvasAncestorGroups, fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
+import type { GroupService } from "../../services";
+import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import type { TShape1dNode } from "./CONSTANTS";
 import { fxToPositionPatch, fxToTElement } from "./fx.node";
 import { txCreatePreviewClone } from "./tx.element";
@@ -78,7 +79,7 @@ function serializeNodeElements(portal: TPortalTxShape1dRuntime, node: Konva.Node
     return element ? [structuredClone(element)] : [];
   }
 
-  if (kind === "group" && fnIsCanvasGroupNode(node)) {
+  if (kind === "group" && isCanvasGroupNode(node)) {
     return serializeSubtreeElements(portal, node as Konva.Group);
   }
 

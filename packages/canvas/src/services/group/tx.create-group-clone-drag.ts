@@ -1,6 +1,7 @@
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import { fnGetCanvasNodeKind, fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { fnGetCanvasNodeKind, } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode } from "../../core/GUARDS";
 import type { CrdtService, ElementService, RenderOrderService, SceneService, SelectionService } from "../../services";
 
 export type TPortalCreateGroupCloneDrag = {
@@ -30,7 +31,7 @@ function refreshCloneSubtree(
   clone.setAttr("vcGroupNodeSetup", false);
 
   clone.getChildren().forEach((node) => {
-    if (fnIsCanvasGroupNode(node)) {
+    if (isCanvasGroupNode(node)) {
       refreshCloneSubtree(portal, node as Konva.Group);
       return;
     }
@@ -78,8 +79,8 @@ function registerSubtree(
     }
 
     if (
-      fnIsCanvasGroupNode(sourceChild)
-      && fnIsCanvasGroupNode(cloneChild)
+      isCanvasGroupNode(sourceChild)
+      && isCanvasGroupNode(cloneChild)
     ) {
       registerSubtree(portal, {
         sourceGroup: sourceChild as Konva.Group,

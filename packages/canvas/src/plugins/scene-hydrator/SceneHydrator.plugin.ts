@@ -1,8 +1,7 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
-import { isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
-import { fnIsCanvasGroupNode } from "../../core/fn.canvas-node-semantics";
+import { isCanvasGroupNode, isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
 import type { CrdtService } from "../../services/crdt/CrdtService";
 import type { ElementService } from "../../services/element/ElementService";
 import type { GroupService } from "../../services/group/GroupService";
@@ -107,7 +106,7 @@ function loadElementsTopDown(args: {
 }) {
   const groupsById = new Map(
     args.scene.staticForegroundLayer.find((candidate: Konva.Node) => {
-      return fnIsCanvasGroupNode(candidate);
+      return isCanvasGroupNode(candidate);
     }).map((candidate) => [candidate.id(), candidate as Konva.Group]),
   );
   const invalidElementIds: string[] = [];
@@ -151,7 +150,7 @@ function sortSceneTopDown(parent: Konva.Layer | Konva.Group) {
     })
     .forEach((child, index) => {
       child.zIndex(index);
-      if (fnIsCanvasGroupNode(child)) {
+      if (isCanvasGroupNode(child)) {
         sortSceneTopDown(child as Konva.Group);
       }
     });
