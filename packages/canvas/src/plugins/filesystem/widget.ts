@@ -10,7 +10,7 @@ import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/sea
 import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightSpecialChars, keymap, lineNumbers } from "@codemirror/view";
 import { html, reactive } from "@arrow-js/core";
-import { getLanguageExtension } from "../../components/file/getLanguageExtension";
+import { getLanguageExtension } from "./getLanguageExtension";
 import type {
   TFilesystemNode,
   TFilesystemReadOutput,

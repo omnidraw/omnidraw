@@ -38,6 +38,7 @@ prefix: `packages/canvas/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../AGENTS.md` |  | Canvas package guidance and active source folder map. |
 | 🤖 | `../package.json` |  | Canvas package manifest; update when adding canvas runtime dependencies. |
 | 🟡 | `automerge.ts` |  | Browser Automerge repo, persisted doc handles, WebSocket sync |
 | 🫠 | `base.css` |  | Global theme tokens, dark mode, baseline element resets |
@@ -45,26 +46,6 @@ prefix: `packages/canvas/src/`
 | ❓ | `components/CanvasContextMenu/index.css` |  | Canvas right-click menu popover styling and item states |
 | ❓ | `components/CanvasContextMenu/index.tsx` |  | Right-click canvas action menu at cursor position |
 | ❓ | `components/CanvasHelp/help.data.ts` |  | Update help shortcuts, sections, and callout copy together |
-| ❓ | `components/file/file.css` |  | File widget layout, centered loading/empty/error state styling |
-| ❓ | `components/file/FileHostedWidget.tsx` |  | Hosted file widget wrapper |
-| ❓ | `components/file/FileWidget.tsx` |  | Hosted file widget: watch, preview, edit, autosize, conflict state |
-| ❓ | `components/file/getLanguageExtension.ts` |  | CodeMirror language loading by file extension |
-| ❓ | `components/file/index.ts` |  | file widgets, hosted rendering, content hooks, shared helpers |
-| ❓ | `components/file/useFileContent.ts` |  | Solid signals for file read/save, dirty/loading/error state |
-| ❓ | `components/file/utils.ts` |  | File previews: infer renderer, basename, binary-to-data URL |
-| ❓ | `components/file/viewers/CodeEditor.css` |  | Code editor layout, surface flexing, truncated banner styling |
-| ❓ | `components/file/viewers/CodeEditor.tsx` |  | Debounced CodeMirror editor, auto-language, truncation locks editing |
-| ❓ | `components/file/viewers/ImageViewer.css` |  | Centered contained image viewer |
-| ❓ | `components/file/viewers/ImageViewer.tsx` |  | Renders image previews |
-| ❓ | `components/file/viewers/PdfViewer.css` |  | PDF viewer layout, header controls, canvas overlay styling |
-| ❓ | `components/file/viewers/PdfViewer.tsx` |  | Responsive PDF canvas viewer |
-| ❓ | `components/file/viewers/PlaceholderViewer.tsx` |  | Missing binary preview |
-| ❓ | `components/file/viewers/shared.css` |  | Shared empty/error viewer state styling across file preview components |
-| ❓ | `components/filetree/createFiletreeContextLogic.ts` |  | Solid filetree state, drag-move, lazy folders, live watch |
-| ❓ | `components/filetree/FiletreeHostedWidget.tsx` |  | Hosted filetree shell |
-| ❓ | `components/filetree/FiletreeWidget.tsx` |  | Interactive filetree panel |
-| ❓ | `components/filetree/path-display.ts` |  | Home-relative path display |
-| ❓ | `components/filetree/PathPickerDialog.tsx` |  | Browse folders and confirm directory selection |
 | ❓ | `components/FloatingCanvasToolbar/RuntimeToolbar.tsx` |  | Floating toolbar UI: sanitize SVG icons, reflect editor tool state |
 | 🤖 | `components/FloatingCanvasToolbar/styles.css` |  | Floating canvas/runtime toolbar visuals, states, tooltips, keycap hints |
 | ❓ | `components/FloatingCanvasToolbar/toolbar.types.ts` |  | Toolbar tool roster and keyboard shortcut mapping source |
@@ -80,12 +61,6 @@ prefix: `packages/canvas/src/`
 | ❓ | `components/SelectionStyleMenu/TextAlignPicker.tsx` |  | Text alignment toggle in selection style controls |
 | ❓ | `components/SelectionStyleMenu/types.ts` |  | Selection toolbar option catalogs and style value unions |
 | ❓ | `components/SelectionStyleMenu/VerticalAlignPicker.tsx` |  | Text box vertical alignment toggle buttons |
-| ❓ | `components/terminal/createTerminalContextLogic.ts` |  | Solid terminal lifecycle: mount, reconnect, resize, persisted PTY state |
-| ❓ | `components/terminal/GhosttyTerminalMount.css` |  | Ghostty terminal container sizing inside flex layouts |
-| ❓ | `components/terminal/GhosttyTerminalMount.tsx` |  | Solid Ghostty terminal mount |
-| ❓ | `components/terminal/TerminalHostedWidget.tsx` |  | Hosted terminal wrapper bridging canvas widget lifecycle hooks |
-| ❓ | `components/terminal/TerminalWidget.css` |  | Terminal widget chrome, header, status, unavailable, and error styling |
-| ❓ | `components/terminal/TerminalWidget.tsx` |  | Embeds hosted terminal, focus/reload wiring, clipboard image upload |
 | 🤖 | `core/CONSTANTS.ts` |  | Image MIME whitelist and canvas node z-index/remove-callback attrs |
 | ✅ | `core/fn.canvas-node-semantics.ts` |  | helper canvas node getter |
 | ✅ | `core/fn.create-ordered-z-index.ts` |  | Stable lexicographic z-order keys from numeric indices |
@@ -117,6 +92,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
 | 🤖 | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
 | ❓ | `plugins/filesystem/RootPathDialog.ts` |  | Arrow root/cwd picker dialog before creating filesystem widgets. |
+| ❓ | `plugins/filesystem/getLanguageExtension.ts` |  | CodeMirror language loading by file extension for filesystem editor tabs. |
 | 🤖 | `plugins/filesystem/typed.ts` |  | Filesystem plugin local widget and API helper types. |
 | 🤖 | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
 | 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with file tree, tabs, and CodeMirror mount. |
@@ -476,11 +452,11 @@ prefix: `packages/canvas-cmds/src/`
 | ❓ | `fn.guard.ts` |  |  |
 | ❓ | `fx.canvas.ts` |  |  |
 | ❓ | `fx.cmd.list.ts` |  |  |
-| ❓ | `fx.cmd.query.ts` |  |  |
+| 🤖 | `fx.cmd.query.ts` |  | Canvas query target filtering, bounds, and output payloads. |
 | ❓ | `tx.cmd.add.ts` |  |  |
 | ❓ | `tx.cmd.delete.ts` |  |  |
 | ❓ | `tx.cmd.group.ts` |  |  |
-| ❓ | `tx.cmd.move.ts` |  |  |
+| 🤖 | `tx.cmd.move.ts` |  | Canvas move target bounds and CRDT position updates. |
 | ❓ | `tx.cmd.patch.ts` |  |  |
 | ❓ | `tx.cmd.reorder.ts` |  |  |
 | ❓ | `tx.cmd.ungroup.ts` |  |  |
@@ -520,8 +496,8 @@ prefix: `packages/service-automerge/src/`
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
 | ❓ | `AutomergeServer.ts` |  |  |
-| ❓ | `canvas-doc.types.ts` |  |  |
-| ❓ | `canvas-doc.zod.ts` |  |  |
+| 🤖 | `types/canvas-doc.types.ts` |  | Canvas document TypeScript model derived from zod schemas. |
+| 🤖 | `types/canvas-doc.zod.ts` |  | Canvas document zod schemas and element data union. |
 | ❓ | `IAutomergeService.ts` |  |  |
 | ❓ | `sqlite.adapter.ts` |  |  |
 | ❓ | `websocket.adapter.ts` |  |  |

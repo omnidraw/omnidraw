@@ -10,17 +10,12 @@ import type {
   zElementData,
   zElementStyle,
   zEllipseData,
-  zFileData,
-  zFiletreeData,
   zGroup,
-  zIframeBrowserData,
-  zIframeBrowserTab,
   zImageData,
   zLineData,
   zPenData,
   zPoint2D,
   zRectData,
-  zTerminalData,
   zTextData,
   zWidgetData,
 } from './canvas-doc.zod';
@@ -37,11 +32,6 @@ export type TArrowData = z.infer<typeof zArrowData>;
 export type TPenData = z.infer<typeof zPenData>;
 export type TTextData = z.infer<typeof zTextData>;
 export type TImageData = z.infer<typeof zImageData>;
-export type TFiletreeData = z.infer<typeof zFiletreeData>;
-export type TTerminalData = z.infer<typeof zTerminalData>;
-export type TFileData = z.infer<typeof zFileData>;
-export type TIframeBrowserTab = z.infer<typeof zIframeBrowserTab>;
-export type TIframeBrowserData = z.infer<typeof zIframeBrowserData>;
 export type TWidgetData = z.infer<typeof zWidgetData>;
 
 
@@ -53,7 +43,3 @@ export type TCanvasDoc = z.infer<typeof zCanvasDoc>;
 
 export type TElementType = TElementData['type'];
 export type TDrawingType = 'rect' | 'ellipse' | 'diamond' | 'arrow' | 'line' | 'pen' | 'text' | 'image';
-/**
- * @deprecated will be part of TWidgetData
- */
-export type TWidgetType = 'filetree' | 'terminal' | 'file' | 'iframe-browser';

@@ -126,70 +126,7 @@ export const zWidgetData = z.object({
   payload: z.record(z.string(), z.any())
 });
 
-/**
- * @deprecated will be replaced with widget
- */
-export const zFiletreeData = z.object({
-  type: z.literal('filetree'),
-  w: z.number(),
-  h: z.number(),
-  isCollapsed: z.boolean(),
-  path: z.string(),
-  id: z.string().optional()
-});
 
-/**
- * @deprecated will be replaced with widget
- */
-export const zTerminalData = z.object({
-  type: z.literal('terminal'),
-  w: z.number(),
-  h: z.number(),
-  isCollapsed: z.boolean(),
-  workingDirectory: z.string(),
-});
-
-/**
- * @deprecated will be replaced with widget
- */
-export const zFileData = z.object({
-  type: z.literal('file'),
-  w: z.number(),
-  h: z.number(),
-  isCollapsed: z.boolean(),
-  path: z.string(),
-  renderer: z.union([
-    z.literal('pdf'),
-    z.literal('image'),
-    z.literal('text'),
-    z.literal('code'),
-    z.literal('markdown'),
-    z.literal('audio'),
-    z.literal('video'),
-    z.literal('unknown'),
-  ]),
-});
-
-/**
- * @deprecated will be replaced with widget
- */
-export const zIframeBrowserTab = z.object({
-  id: z.string(),
-  url: z.string(),
-  title: z.string(),
-});
-
-/**
- * @deprecated will be replaced with widget
- */
-export const zIframeBrowserData = z.object({
-  type: z.literal('iframe-browser'),
-  w: z.number(),
-  h: z.number(),
-  isCollapsed: z.boolean(),
-  tabs: z.array(zIframeBrowserTab),
-  activeTabId: z.string(),
-});
 
 export const zElementData = z.union([
   zRectData,
@@ -200,10 +137,6 @@ export const zElementData = z.union([
   zPenData,
   zTextData,
   zImageData,
-  zFiletreeData,
-  zTerminalData,
-  zFileData,
-  zIframeBrowserData,
   zWidgetData,
 ]);
 

@@ -153,8 +153,12 @@ function getPointBounds(element: TElement, points: Array<[number, number]>): TSc
   return createBounds(minX, minY, maxX - minX, maxY - minY);
 }
 
+function hasWidthHeight(data: TElement['data']): data is TElement['data'] & { w: number; h: number } {
+  return 'w' in data && 'h' in data;
+}
+
 function getElementBounds(element: TElement): TSceneBounds {
-  if (element.data.type === 'rect' || element.data.type === 'diamond' || element.data.type === 'text' || element.data.type === 'image' || element.data.type === 'filetree' || element.data.type === 'terminal' || element.data.type === 'file' || element.data.type === 'iframe-browser') {
+  if (hasWidthHeight(element.data)) {
     return createBounds(element.x, element.y, element.data.w, element.data.h);
   }
 
@@ -436,11 +440,13 @@ function buildQueryPayload(target: TSceneTarget, doc: TCanvasDoc, mode: TSceneOu
 
 const OUTPUT_MODES = new Set<TSceneOutputMode>(['summary', 'focused', 'full']);
 
-export async function fxExecuteCanvasQuery(portal: TPortal, input: TCanvasQueryInput): Promise<TCanvasQuerySuccess> {
-  const selector = normalizeSceneSelector(input.selector);
+type TArgs = TCanvasQueryInput;
+
+export async function fxExecuteCanvasQuery(portal: TPortal, args: TArgs): Promise<TCanvasQuerySuccess> {
+  const selector = normalizeSceneSelector(args.selector);
 
   try {
-    const mode = input.output ?? 'summary';
+    const mode = args.output ?? 'summary';
     if (!OUTPUT_MODES.has(mode)) {
       throw {
         ok: false,
@@ -451,8 +457,8 @@ export async function fxExecuteCanvasQuery(portal: TPortal, input: TCanvasQueryI
         canvasNameQuery: selector.canvasNameQuery,
       } satisfies TCanvasCmdErrorDetails;
     }
-    const omitData = Boolean(input.omitData);
-    const omitStyle = Boolean(input.omitStyle);
+    const omitData = Boolean(args.omitData);
+    const omitStyle = Boolean(args.omitStyle);
     const canvasRows = portal.dbService.canvas.listAll();
     const selectedCanvas = fnResolveCanvasSelection({ rows: canvasRows, selector, command: 'canvas.query', actionLabel: 'Query' });
     const { doc: canvasDoc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);

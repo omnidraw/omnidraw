@@ -108,7 +108,15 @@ describe('canvas CLI query', () => {
     const rect = createRectElement({ id: 'rect-1', x: 10, y: 20, zIndex: 'a0', data: { w: 120, h: 80 } });
     const terminal = {
       ...createRectElement({ id: 'terminal-1', x: 300, y: 400, zIndex: 'a1' }),
-      data: { type: 'terminal', w: 460, h: 300, isCollapsed: false, workingDirectory: '.' },
+      data: {
+        type: 'widget',
+        kind: 'terminal',
+        w: 460,
+        h: 300,
+        expanded: true,
+        window: 'contained',
+        payload: { workingDirectory: '.' },
+      },
     } satisfies TElement;
     const seeded = await context.seedCanvasFixture({ name: 'query-type-canvas', elements: { [rect.id]: rect, [terminal.id]: terminal } });
 

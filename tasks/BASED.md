@@ -114,6 +114,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
 - [ ]: [B26] - investigate if cli respect zIndex - check tmp/script
 - [x]: [B27] - preview does not attach listeners correctly for all elements
+- [ ]: [B28] - group with widget and rect -> delete rect also deletes widget
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -205,6 +206,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
 - [ ]: [S48](s/s48.md) - registerElement options are unclean, e.g. onMove is tranformer move only
 - [ ]: [S49] - TODO [S49]: add onRemove to some callback later
+- [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research
