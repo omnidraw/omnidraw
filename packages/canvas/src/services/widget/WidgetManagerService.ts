@@ -69,6 +69,60 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#widgetPortal.remove()
   }
 
+  #findWidgetNodeById(id: string) {
+    const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
+      return candidate instanceof Konva.Group && candidate.id() === id;
+    });
+
+    return node instanceof Konva.Group ? node : null;
+  }
+
+  #removeWidgetNode(node: Konva.Node, args: { recordHistory: boolean }) {
+    const element = this.#elementService.toElement(node);
+    if (!element || element.data.type !== "widget") {
+      return false;
+    }
+
+    const commitResult = this.#elementService.removeElement(node, this.#crdtService.build()).commit();
+    this.#selectionService.clear();
+    this.#sceneService.staticForegroundLayer.batchDraw();
+
+    if (!args.recordHistory || !this.#historyService) {
+      return true;
+    }
+
+    this.#historyService.record({
+      label: "remove-widget",
+      undo: () => {
+        commitResult.rollback();
+        const restoredNode = this.#elementService.createNodeFromElement(element);
+        if (!(restoredNode instanceof Konva.Group)) {
+          return;
+        }
+
+        this.#sceneService.staticForegroundLayer.add(restoredNode);
+        this.#elementService.updateElement(element);
+        this.#renderOrderService.sortChildren(this.#sceneService.staticForegroundLayer);
+        this.#selectionService.setSelection([restoredNode]);
+        this.#selectionService.setFocusedNode(restoredNode);
+        this.#sceneService.staticForegroundLayer.batchDraw();
+      },
+      redo: () => {
+        const redoNode = this.#findWidgetNodeById(element.id);
+        if (redoNode) {
+          this.#removeWidgetNode(redoNode, { recordHistory: false });
+          return;
+        }
+
+        this.#crdtService.applyOps({ ops: commitResult.redoOps });
+        this.#selectionService.clear();
+        this.#sceneService.staticForegroundLayer.batchDraw();
+      },
+    });
+
+    return true;
+  }
+
   registerWidget(wConfig: IWidgetConfig) {
     if (wConfig.tool) {
       fxRegisterWidgetTool({
@@ -161,6 +215,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               toElement: (candidate) => this.#elementService.toElement(candidate),
               crdtService: this.#crdtService,
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
+              removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
             }, {})
           },
         }, { node });
@@ -207,6 +262,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
         crdtService: this.#crdtService,
         startDragClone: (args) => this.#elementService.createDragClone(args),
+        removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
       }, {})
     })
 

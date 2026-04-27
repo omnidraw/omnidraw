@@ -33,6 +33,7 @@ type TPortal = {
     node: Konva.Node;
     selection: Konva.Node[];
   }) => boolean;
+  removeWidget?: (node: Konva.Group) => boolean;
 }
 type TArgs = {
 }
@@ -46,6 +47,7 @@ function setupButtons(args: {
   Rect: typeof Konva.Rect;
   node: Konva.Group;
   setCursor: (cursor: string) => void;
+  removeWidget?: (node: Konva.Group) => boolean;
   syncExpandedState: (expanded: boolean) => void;
   syncWindowState: (windowMode: typeof WIDGET_WINDOW_CONTAINED | typeof WIDGET_WINDOW_FULLSCREEN) => void;
 }) {
@@ -84,6 +86,10 @@ function setupButtons(args: {
     button.on('pointerclick', (event) => {
       event.cancelBubble = true
       args.setCursor('pointer')
+      if (buttonId === WIDGET_HOST_CLOSE_BUTTON_ID) {
+        args.removeWidget?.(args.node)
+        return
+      }
       if (buttonId === WIDGET_HOST_MINIMIZE_BUTTON_ID) {
         const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
         const nextExpanded = widgetData?.type === 'widget'
@@ -324,6 +330,7 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
     Rect: portal.Rect,
     node: portal.node,
     setCursor,
+    removeWidget: portal.removeWidget,
     syncExpandedState: fnCurry(syncExpandedState)(portal),
     syncWindowState: fnCurry(syncWindowState)(portal),
   })
