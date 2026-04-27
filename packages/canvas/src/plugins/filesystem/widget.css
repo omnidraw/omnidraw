@@ -30,10 +30,15 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+  container-type: size;
   background: var(--vc-filesystem-bg);
   color: var(--vc-filesystem-fg);
   font: 12px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   user-select: none;
+}
+
+.vc-filesystem-widget.has-root-picker {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .vc-filesystem-sidebar {
@@ -64,9 +69,7 @@
   white-space: nowrap;
 }
 
-.vc-filesystem-icon-button,
-.vc-filesystem-dialog-button,
-.vc-filesystem-dialog-close {
+.vc-filesystem-icon-button {
   border: 1px solid var(--vc-filesystem-border);
   border-radius: 6px;
   background: var(--vc-filesystem-panel-2);
@@ -80,9 +83,7 @@
   height: 24px;
 }
 
-.vc-filesystem-icon-button:hover,
-.vc-filesystem-dialog-button:hover,
-.vc-filesystem-dialog-close:hover {
+.vc-filesystem-icon-button:hover {
   background: color-mix(in srgb, var(--vc-filesystem-panel-2) 86%, white);
 }
 
@@ -271,131 +272,389 @@
   color: var(--vc-filesystem-muted-fg);
 }
 
-.vc-filesystem-dialog-mount {
-  position: absolute;
-  inset: 0;
-  z-index: 20000;
-  pointer-events: auto;
-}
-
-.vc-filesystem-dialog-backdrop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
+.vc-filesystem-root-picker {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
-  background: color-mix(in srgb, black 62%, transparent);
-  color: var(--vc-filesystem-fg, #d4d4d4);
+  overflow: hidden;
+  background: var(--vc-filesystem-vscode-bg);
+  color: var(--vc-filesystem-vscode-fg);
   font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.vc-filesystem-dialog {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(140px, 280px) auto auto;
-  width: min(640px, calc(100% - 32px));
-  max-height: min(680px, calc(100% - 32px));
-  border: 1px solid var(--vc-filesystem-border, #2d2d30);
-  border-radius: 14px;
-  overflow: hidden;
-  background: var(--vc-filesystem-panel, #252526);
-  box-shadow: 0 24px 80px color-mix(in srgb, black 45%, transparent);
-}
-
-.vc-filesystem-dialog-header,
-.vc-filesystem-dialog-footer,
-.vc-filesystem-dialog-actions,
-.vc-filesystem-dialog-path-row {
+.vc-filesystem-root-picker-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  min-width: 0;
+  padding: 13px 22px 10px;
+  border-bottom: 1px solid var(--vc-filesystem-vscode-border);
+  background: var(--vc-filesystem-vscode-panel);
 }
 
-.vc-filesystem-dialog-header {
-  justify-content: space-between;
-  border-bottom: 1px solid var(--vc-filesystem-border, #2d2d30);
-}
-
-.vc-filesystem-dialog-header h2 {
+.vc-filesystem-root-picker-header h3 {
   margin: 0;
+  color: var(--vc-filesystem-vscode-fg);
   font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
-.vc-filesystem-dialog-header p {
-  margin: 2px 0 0;
-  color: var(--vc-filesystem-muted-fg, #838383);
+.vc-filesystem-root-picker-header p {
+  margin: 3px 0 0;
+  color: var(--vc-filesystem-vscode-muted-fg);
   font-size: 12px;
 }
 
-.vc-filesystem-dialog-close {
-  width: 28px;
-  height: 28px;
-  font-size: 18px;
+.vc-filesystem-root-picker-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 22px;
+  border-bottom: 1px solid var(--vc-filesystem-vscode-border);
+  background: var(--vc-filesystem-vscode-panel);
 }
 
-.vc-filesystem-dialog-input {
-  flex: 1;
+.vc-filesystem-root-picker-label {
+  color: var(--vc-filesystem-vscode-muted-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vc-filesystem-root-picker-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.vc-filesystem-root-picker-input {
+  width: 100%;
   min-width: 0;
   height: 32px;
-  border: 1px solid var(--vc-filesystem-border, #2d2d30);
-  border-radius: 8px;
-  background: var(--vc-filesystem-bg);
-  color: var(--vc-filesystem-fg, #d4d4d4);
+  box-sizing: border-box;
+  border: 1px solid #3c3c3c;
+  border-radius: 3px;
+  background: #1b1b1b;
+  color: var(--vc-filesystem-vscode-fg);
   font: inherit;
-  padding: 0 10px;
+  padding: 0 30px 0 10px;
 }
 
-.vc-filesystem-dialog-button {
+.vc-filesystem-root-picker-input:focus {
+  border-color: var(--vc-filesystem-vscode-accent);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--vc-filesystem-vscode-accent);
+}
+
+.vc-filesystem-root-picker-input-chev {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  color: var(--vc-filesystem-vscode-muted-fg);
+  pointer-events: none;
+  transform: translateY(-56%);
+}
+
+.vc-filesystem-root-picker-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.vc-filesystem-root-picker-button,
+.vc-filesystem-root-picker-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 32px;
-  padding: 0 12px;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background: #2d2d30;
+  color: var(--vc-filesystem-vscode-fg);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 0 14px;
+  white-space: nowrap;
 }
 
-.vc-filesystem-dialog-button:disabled {
+.vc-filesystem-root-picker-icon-button {
+  width: 34px;
+  padding: 0;
+  font-size: 16px;
+}
+
+.vc-filesystem-root-picker-button:hover,
+.vc-filesystem-root-picker-icon-button:hover {
+  background: #37373d;
+}
+
+.vc-filesystem-root-picker-button:disabled,
+.vc-filesystem-root-picker-icon-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.vc-filesystem-dialog-button.is-primary {
-  border-color: var(--vc-filesystem-accent, #569cd6);
-  background: var(--vc-filesystem-accent, #569cd6);
-  color: var(--vc-filesystem-bg);
+.vc-filesystem-root-picker-button.is-primary {
+  min-width: 138px;
+  border-color: #0e639c;
+  background: #0e639c;
+  color: #ffffff;
+  font-weight: 650;
 }
 
-.vc-filesystem-dialog-actions {
-  padding-top: 0;
-}
-
-.vc-filesystem-dialog-browser {
+.vc-filesystem-root-picker-main {
+  display: grid;
+  grid-template-columns: minmax(138px, 210px) minmax(0, 1fr);
+  min-width: 0;
   min-height: 0;
-  overflow: auto;
-  border-top: 1px solid var(--vc-filesystem-border, #2d2d30);
-  border-bottom: 1px solid var(--vc-filesystem-border, #2d2d30);
 }
 
-.vc-filesystem-dialog-folder {
-  display: flex;
+.vc-filesystem-root-picker-sidebar {
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--vc-filesystem-vscode-border);
+  background: var(--vc-filesystem-vscode-panel);
+  padding: 10px 10px 14px;
+}
+
+.vc-filesystem-root-picker-sidebar-section + .vc-filesystem-root-picker-sidebar-section {
+  margin-top: 18px;
+}
+
+.vc-filesystem-root-picker-sidebar h4 {
+  margin: 0 8px 6px;
+  color: var(--vc-filesystem-vscode-fg);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.vc-filesystem-root-picker-sidebar-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 32px;
+  height: 30px;
   border: 0;
+  border-radius: 3px;
   background: transparent;
-  color: var(--vc-filesystem-fg, #d4d4d4);
+  color: var(--vc-filesystem-vscode-muted-fg);
   cursor: pointer;
   font: inherit;
-  padding: 0 12px;
+  padding: 0 8px;
   text-align: left;
 }
 
-.vc-filesystem-dialog-folder:hover {
+.vc-filesystem-root-picker-sidebar-item span:last-child,
+.vc-filesystem-root-picker-sidebar-empty {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-filesystem-root-picker-sidebar-item:hover,
+.vc-filesystem-root-picker-sidebar-item.is-active {
   background: var(--vc-filesystem-vscode-hover);
+  color: var(--vc-filesystem-vscode-fg);
 }
 
-.vc-filesystem-dialog-error {
-  padding: 8px 12px;
-  color: var(--vc-filesystem-danger, #f44747);
+.vc-filesystem-root-picker-sidebar-empty {
+  padding: 4px 8px;
+  color: var(--vc-filesystem-vscode-muted-fg);
+  font-size: 12px;
 }
 
-.vc-filesystem-dialog-footer {
-  justify-content: flex-end;
+.vc-filesystem-root-picker-browser {
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vc-filesystem-vscode-bg);
+}
+
+.vc-filesystem-root-picker-list-head,
+.vc-filesystem-root-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 220px);
+  align-items: center;
+  min-width: 0;
+}
+
+.vc-filesystem-root-picker-list-head {
+  border-bottom: 1px solid var(--vc-filesystem-vscode-border);
+  color: var(--vc-filesystem-vscode-fg);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 18px;
+}
+
+.vc-filesystem-root-picker-list-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 8px 8px;
+}
+
+.vc-filesystem-root-picker-row {
+  width: 100%;
+  height: 31px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vc-filesystem-vscode-muted-fg);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.vc-filesystem-root-picker-row:hover {
+  background: var(--vc-filesystem-vscode-hover);
+  color: var(--vc-filesystem-vscode-fg);
+}
+
+.vc-filesystem-root-picker-row.is-selected {
+  background: var(--vc-filesystem-vscode-selection);
+  color: var(--vc-filesystem-vscode-fg);
+}
+
+.vc-filesystem-root-picker-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vc-filesystem-root-picker-row-name span:last-child,
+.vc-filesystem-root-picker-row-modified,
+.vc-filesystem-root-picker-selection {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-filesystem-root-picker-row-modified {
+  color: inherit;
+  opacity: 0.86;
+}
+
+.vc-filesystem-root-picker-message,
+.vc-filesystem-root-picker-error {
+  padding: 10px 14px;
+  color: var(--vc-filesystem-vscode-muted-fg);
+}
+
+.vc-filesystem-root-picker-error {
+  border-top: 1px solid color-mix(in srgb, var(--vc-filesystem-vscode-error) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-filesystem-vscode-error) 13%, transparent);
+  color: var(--vc-filesystem-vscode-error);
+}
+
+.vc-filesystem-root-picker-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 26px;
+  border-top: 1px solid var(--vc-filesystem-vscode-border);
+  background: var(--vc-filesystem-vscode-panel);
+}
+
+.vc-filesystem-root-picker-selection {
+  color: var(--vc-filesystem-vscode-muted-fg);
+  font-size: 12px;
+}
+
+.vc-filesystem-root-picker-cancel {
+  min-width: 112px;
+}
+
+@container (max-width: 760px) {
+  .vc-filesystem-root-picker-toolbar {
+    grid-template-columns: auto minmax(100px, 1fr);
+  }
+
+  .vc-filesystem-root-picker-toolbar-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
+  .vc-filesystem-root-picker-main {
+    grid-template-columns: minmax(112px, 160px) minmax(0, 1fr);
+  }
+
+  .vc-filesystem-root-picker-new-folder span {
+    display: none;
+  }
+}
+
+@container (max-width: 560px) {
+  .vc-filesystem-root-picker-header {
+    padding: 10px 12px 8px;
+  }
+
+  .vc-filesystem-root-picker-header p,
+  .vc-filesystem-root-picker-label,
+  .vc-filesystem-root-picker-sidebar,
+  .vc-filesystem-root-picker-row-modified,
+  .vc-filesystem-root-picker-list-head span:last-child,
+  .vc-filesystem-root-picker-selection,
+  .vc-filesystem-root-picker-cancel,
+  .vc-filesystem-root-picker-new-folder {
+    display: none;
+  }
+
+  .vc-filesystem-root-picker-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding: 7px 10px;
+  }
+
+  .vc-filesystem-root-picker-toolbar-actions {
+    grid-column: auto;
+    gap: 6px;
+  }
+
+  .vc-filesystem-root-picker-main,
+  .vc-filesystem-root-picker-list-head,
+  .vc-filesystem-root-picker-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vc-filesystem-root-picker-footer {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .vc-filesystem-root-picker-button.is-primary {
+    width: 100%;
+  }
+}
+
+@container (max-height: 360px) {
+  .vc-filesystem-root-picker-header p,
+  .vc-filesystem-root-picker-sidebar-section + .vc-filesystem-root-picker-sidebar-section,
+  .vc-filesystem-root-picker-selection {
+    display: none;
+  }
+
+  .vc-filesystem-root-picker-header {
+    padding-block: 8px;
+  }
+
+  .vc-filesystem-root-picker-toolbar {
+    padding-block: 6px;
+  }
+
+  .vc-filesystem-root-picker-footer {
+    padding-block: 8px;
+  }
 }

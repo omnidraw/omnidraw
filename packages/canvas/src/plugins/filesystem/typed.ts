@@ -50,10 +50,3 @@ export type TFilesystemWidgetMountArgs = {
   apiService: TOrpcSafeClient;
   onPersist?: (payload: TFilesystemWidgetPayload) => void;
 };
-
-export type TFilesystemRootDialogArgs = {
-  container: HTMLElement;
-  apiService: TOrpcSafeClient;
-};
-
-export type TFilesystemRootDialogResult = string | null;

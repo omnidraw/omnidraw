@@ -91,11 +91,10 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/context-menu/ContextMenu.plugin.ts` |  | Right-click hit-testing, selection resolution, Solid canvas menu mountin |
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
 | 🤖 | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
-| ❓ | `plugins/filesystem/RootPathDialog.ts` |  | Arrow root/cwd picker dialog before creating filesystem widgets. |
 | ❓ | `plugins/filesystem/getLanguageExtension.ts` |  | CodeMirror language loading by file extension for filesystem editor tabs. |
 | 🤖 | `plugins/filesystem/typed.ts` |  | Filesystem plugin local widget and API helper types. |
-| 🤖 | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
-| 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with file tree wheel fallback, tabs, and CodeMirror mount. |
+| 🤖 | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget, embedded root picker, and VS Code dark styling. |
+| 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with embedded root picker, file tree, tabs, and CodeMirror mount. |
 | ✅ | `plugins/grid/fn.math.ts` |  | Grid spacing and line offsets from zoom/pan |
 | ❓ | `plugins/grid/Grid.plugin.ts` |  | Registers toggleable canvas grid overlay reacting to camera theme resize |
 | ❓ | `plugins/grid/tx.draw.ts` |  | Canvas viewport grid rendering: minor/major lines from pan+zoom layout |
