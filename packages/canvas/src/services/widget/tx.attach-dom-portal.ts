@@ -1,4 +1,7 @@
+import { html } from '@arrow-js/core';
+import { sandbox } from '@arrow-js/sandbox';
 import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import type { CameraService, SelectionService, WidgetManagerService } from '..';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
 import {
@@ -9,8 +12,7 @@ import {
   WIDGET_WINDOW_CONTAINED,
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
-import type { CameraService, SelectionService, WidgetManagerService } from '..';
-import type { TWidgetRenderCleanup, TWidgetRenderArgs } from './interface';
+import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
 
 type TPortal = {
   node: unknown;
@@ -19,7 +21,7 @@ type TPortal = {
   widgetPortal: HTMLDivElement;
   cameraService: CameraService;
   selectionService?: SelectionService;
-  renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
+  widgetConfig?: IWidgetConfig;
 };
 
 type TArgs = {
@@ -200,7 +202,16 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
-  cleanupRender = portal.renderDom?.({ root: div, element: args.element });
+  cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
+
+  if(portal.widgetConfig?.sandbox) {
+    html`<section>${
+      sandbox({
+        source: portal.widgetConfig.sandbox.arrowjs,
+      })
+    }</section>`(div)
+  }
+
   if (view) {
     initialRenderTimer = view.setTimeout(syncDiv, 0);
   } else {

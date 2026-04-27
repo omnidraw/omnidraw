@@ -148,7 +148,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           widgetServie: this,
           cameraService: this.#cameraService,
           selectionService: this.#selectionService,
-          renderDom: wConfig.renderDom,
+          widgetConfig: wConfig,
         }, {element})
         if (node && onRemove) {
           const removeDomPortal = (() => {

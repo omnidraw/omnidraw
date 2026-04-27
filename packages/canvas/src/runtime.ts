@@ -32,7 +32,7 @@ import { SessionService } from "./services/session/SessionService";
 import { ToolService } from "./services/tool/ToolService";
 import { WidgetManagerService } from "./services/widget/WidgetManagerService";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
-
+import { createTodoAppPlugin } from "./plugins/widget-example/TodoApp.plugin";
 
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
@@ -161,6 +161,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
+    createTodoAppPlugin(),
   ];
 
   if (config.env.DEV) {

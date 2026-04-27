@@ -126,7 +126,6 @@ export class ElementService implements IService<TElementServiceHooks> {
     return builder.deleteElement(node.id(), {
       onCommit: (args) => {
         const def = this.getElementDefinitions().find(def => isWidget ? def.id === data.kind : def.id === data.type)
-        console.log('def', def, data, this.getElementDefinitions())
         if(!def) return
         def.onDelete?.(args.entity)
         callNodeOnRemove(node)

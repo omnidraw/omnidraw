@@ -45,13 +45,11 @@ export interface IWidgetConfig {
   tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
   initialPayload?: Record<string, any>;
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
+  sandbox?: IWidgetSandboxConfig;
 }
 
 // TODO: WIP
 interface IWidgetSandboxConfig {
-  id: string;
-  tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
-  initialPayload?: Record<string, any>;
   arrowjs: {
     "main.ts": string;
     "main.css"?: string;
