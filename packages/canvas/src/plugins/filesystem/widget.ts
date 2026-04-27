@@ -2,11 +2,10 @@ import { autocompletion, closeBrackets, closeBracketsKeymap } from "@codemirror/
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   bracketMatching,
-  defaultHighlightStyle,
   foldGutter,
   indentOnInput,
-  syntaxHighlighting,
 } from "@codemirror/language";
+import { vsCodeDark } from "@fsegurai/codemirror-theme-vscode-dark";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, highlightSpecialChars, keymap, lineNumbers } from "@codemirror/view";
@@ -134,7 +133,7 @@ function createEditor(args: {
       highlightSelectionMatches(),
       search(),
       keymap.of(editorKeymap),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      vsCodeDark,
       languageCompartment.of([]),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged || args.shouldIgnoreChange()) return;
@@ -145,21 +144,18 @@ function createEditor(args: {
           height: "100%",
           backgroundColor: "var(--vc-filesystem-editor-bg)",
           color: "var(--vc-filesystem-fg)",
-          fontFamily: "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace",
-          fontSize: "13px",
         },
         "&.cm-focused": { outline: "none" },
         ".cm-scroller": { height: "100%", overflow: "auto" },
         ".cm-gutters": {
-          backgroundColor: "var(--vc-filesystem-panel)",
+          backgroundColor: "var(--vc-filesystem-editor-gutter-bg)",
           color: "var(--vc-filesystem-muted-fg)",
           border: "none",
           borderRight: "1px solid var(--vc-filesystem-border)",
         },
-        ".cm-activeLine": { backgroundColor: "rgba(148, 163, 184, 0.12)" },
-        ".cm-activeLineGutter": { backgroundColor: "rgba(148, 163, 184, 0.14)" },
-        ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "rgba(59, 130, 246, 0.35)" },
-        ".cm-cursor": { borderLeftColor: "#60a5fa" },
+        ".cm-activeLine": { backgroundColor: "var(--vc-filesystem-editor-line-highlight)" },
+        ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "var(--vc-filesystem-editor-selection)" },
+        ".cm-cursor": { borderLeftColor: "var(--vc-filesystem-editor-cursor)" },
       }),
     ],
   });

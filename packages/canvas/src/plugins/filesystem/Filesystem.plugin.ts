@@ -1,7 +1,6 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import { createOrpcWebsocketService, type OrpcWebsocketService } from "@vibecanvas/orpc-client";
 import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
@@ -106,7 +105,6 @@ export function createFilesystemPlugin(): IPlugin<{
   renderOrder: RenderOrderService;
   scene: SceneService;
   selection: SelectionService;
-  theme: ThemeService;
   tool: ToolService;
   widgetManager: WidgetManagerService;
 }, IRuntimeHooks, IRuntimeConfig> {

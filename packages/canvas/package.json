@@ -46,6 +46,7 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.41.0",
+    "@fsegurai/codemirror-theme-vscode-dark": "^6.2.6",
     "@kobalte/core": "catalog:",
     "@orpc/contract": "catalog:",
     "@solid-primitives/scheduled": "^1.5.3",
