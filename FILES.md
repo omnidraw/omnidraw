@@ -488,6 +488,14 @@ prefix: `packages/runtime/src/`
 | ✅ | `index.ts` |  |  |
 | ✅ | `interface.ts` |  |  |
 
+## packages/sdk
+prefix: `packages/sdk/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `index.ts` |  | Widget SDK type-only surface for external guest widget authors. |
+| ❓ | `package.json` |  | Widget SDK package metadata and type-only workspace dependencies. |
+
 ## packages/service-automerge
 prefix: `packages/service-automerge/src/`
 
