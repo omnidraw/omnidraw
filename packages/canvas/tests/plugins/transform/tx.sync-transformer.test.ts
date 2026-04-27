@@ -47,6 +47,7 @@ function createTransformerMock() {
   let borderDash: number[] = [];
   let keepRatio = false;
   let flipEnabled = true;
+  let boundBoxFunc: unknown = null;
   let enabledAnchors: string[] = [];
 
   return {
@@ -69,6 +70,10 @@ function createTransformerMock() {
     flipEnabled: vi.fn((next?: boolean) => {
       if (typeof next === "boolean") flipEnabled = next;
       return flipEnabled;
+    }),
+    boundBoxFunc: vi.fn((next?: unknown) => {
+      if (typeof next === "function") boundBoxFunc = next;
+      return boundBoxFunc;
     }),
     enabledAnchors: vi.fn((next?: string[]) => {
       if (next) enabledAnchors = next;

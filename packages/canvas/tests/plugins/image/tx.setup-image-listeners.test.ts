@@ -47,7 +47,7 @@ describe("txSetupImageListeners", () => {
     const startDragClone = vi.fn();
 
     txSetupImageListeners({
-      canvasRegistry: { toElement: vi.fn(() => createImageElement("image-1", 10, 20)), toGroup: vi.fn(() => null) } as never,
+      elementService: { toElement: vi.fn(() => createImageElement("image-1", 10, 20)) } as never,
       crdt: { build: vi.fn() } as never,
       history: { record: vi.fn() } as never,
       render: { staticForegroundLayer: layer } as never,
@@ -107,7 +107,7 @@ describe("txSetupImageListeners", () => {
     const applyElement = vi.fn();
 
     txSetupImageListeners({
-      canvasRegistry: {
+      elementService: {
         toElement: (candidate: Konva.Node) => {
           if (candidate.id() === "shape-2") {
             return createImageElement("shape-2", 45, 75);
@@ -115,7 +115,6 @@ describe("txSetupImageListeners", () => {
 
           return createImageElement(candidate.id(), candidate.x(), candidate.y());
         },
-        toGroup: vi.fn(() => null),
       } as never,
       crdt: {
         build: () => ({ patchElement, commit }),
