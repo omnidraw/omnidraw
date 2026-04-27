@@ -481,6 +481,70 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     cwdPicker.historyIndex = nextHistory.length - 1;
   };
 
+  const updateCwdPickerSelectionClasses = () => {
+    const rows = args.root.querySelectorAll<HTMLButtonElement>(".vc-terminal-plugin-cwd-row");
+    rows.forEach((row) => {
+      row.classList.toggle("is-selected", row.title === cwdPicker.selectedPath);
+    });
+  };
+
+  const renderCwdPickerRows = () => {
+    const listBody = args.root.querySelector<HTMLElement>("[data-terminal-cwd-list-body='true']");
+    if (!listBody) return;
+
+    listBody.replaceChildren();
+
+    if (cwdPicker.loading) {
+      const message = args.root.ownerDocument.createElement("div");
+      message.className = "vc-terminal-plugin-cwd-message";
+      message.textContent = "Loading folders...";
+      listBody.appendChild(message);
+      return;
+    }
+
+    if (cwdPicker.children.length === 0) {
+      const message = args.root.ownerDocument.createElement("div");
+      message.className = "vc-terminal-plugin-cwd-message";
+      message.textContent = "No folders loaded. Type a path or use Home.";
+      listBody.appendChild(message);
+      return;
+    }
+
+    const fragment = args.root.ownerDocument.createDocumentFragment();
+    for (const child of cwdPicker.children) {
+      const row = args.root.ownerDocument.createElement("button");
+      row.type = "button";
+      row.className = `vc-terminal-plugin-cwd-row ${cwdPicker.selectedPath === child.path ? "is-selected" : ""}`;
+      row.title = child.path;
+      row.onclick = () => selectCwdPath(child.path);
+      row.ondblclick = () => {
+        void loadCwdPath(child.path);
+      };
+
+      const name = args.root.ownerDocument.createElement("span");
+      name.className = "vc-terminal-plugin-cwd-row-name";
+
+      const icon = args.root.ownerDocument.createElement("span");
+      icon.className = "vc-terminal-plugin-cwd-folder-icon";
+      icon.textContent = "📁";
+
+      const label = args.root.ownerDocument.createElement("span");
+      label.textContent = child.name;
+
+      const modified = args.root.ownerDocument.createElement("span");
+      modified.className = "vc-terminal-plugin-cwd-row-modified";
+      modified.textContent = "—";
+
+      name.appendChild(icon);
+      name.appendChild(label);
+      row.appendChild(name);
+      row.appendChild(modified);
+      fragment.appendChild(row);
+    }
+
+    listBody.appendChild(fragment);
+  };
+
   const loadCwdPath = async (path: string, options: { remember?: boolean } = {}) => {
     const nextPath = path.trim();
     if (!nextPath) {
@@ -490,6 +554,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
 
     cwdPicker.loading = true;
     cwdPicker.error = null;
+    renderCwdPickerRows();
 
     const [error, result] = await args.apiService.api.filesystem.list({
       query: { path: nextPath, omitFiles: true },
@@ -502,16 +567,19 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       return;
     }
 
-    cwdPicker.path = result.current;
-    cwdPicker.parentPath = result.parent;
-    cwdPicker.selectedPath = null;
-    cwdPicker.children = result.children.map((child) => ({
+    const nextChildren = result.children.map((child) => ({
       name: child.name,
       path: child.path,
       is_dir: child.isDir,
       children: [],
     })).filter((child) => child.is_dir);
+
+    cwdPicker.path = result.current;
+    cwdPicker.parentPath = result.parent;
+    cwdPicker.selectedPath = null;
+    cwdPicker.children = nextChildren;
     cwdPicker.loading = false;
+    renderCwdPickerRows();
 
     if (options.remember !== false) {
       rememberCwdPath(result.current);
@@ -529,6 +597,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
   const selectCwdPath = (path: string) => {
     cwdPicker.selectedPath = path;
     cwdPicker.error = null;
+    updateCwdPickerSelectionClasses();
   };
 
   const loadHomeCwd = async () => {
@@ -1286,27 +1355,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
                     <span>Name</span>
                     <span>Modified ↓</span>
                   </div>
-                  <div class="vc-terminal-plugin-cwd-list-body">
-                    ${() => cwdPicker.loading
-                      ? html`<div class="vc-terminal-plugin-cwd-message">Loading folders...</div>`
-                      : cwdPicker.children.length === 0
-                        ? html`<div class="vc-terminal-plugin-cwd-message">No folders loaded. Type a path or use Home.</div>`
-                        : cwdPicker.children.map((child: TTerminalFolderNode) => html`
-                          <button
-                            type="button"
-                            class="${() => `vc-terminal-plugin-cwd-row ${cwdPicker.selectedPath === child.path ? "is-selected" : ""}`}"
-                            title="${child.path}"
-                            @click="${() => selectCwdPath(child.path)}"
-                            @dblclick="${() => void loadCwdPath(child.path)}"
-                          >
-                            <span class="vc-terminal-plugin-cwd-row-name">
-                              <span class="vc-terminal-plugin-cwd-folder-icon">📁</span>
-                              <span>${child.name}</span>
-                            </span>
-                            <span class="vc-terminal-plugin-cwd-row-modified">—</span>
-                          </button>
-                        `.key(child.path))}
-                  </div>
+                  <div class="vc-terminal-plugin-cwd-list-body" data-terminal-cwd-list-body="true"></div>
                 </div>
               </div>
 

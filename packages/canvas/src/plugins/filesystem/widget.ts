@@ -244,6 +244,70 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
     });
   };
 
+  const updateRootPickerSelectionClasses = () => {
+    const rows = args.root.querySelectorAll<HTMLButtonElement>(".vc-filesystem-root-picker-row");
+    rows.forEach((row) => {
+      row.classList.toggle("is-selected", row.title === rootPicker.selectedPath);
+    });
+  };
+
+  const renderRootPickerRows = () => {
+    const listBody = args.root.querySelector<HTMLElement>("[data-filesystem-root-picker-list-body='true']");
+    if (!listBody) return;
+
+    listBody.replaceChildren();
+
+    if (rootPicker.loading) {
+      const message = args.root.ownerDocument.createElement("div");
+      message.className = "vc-filesystem-root-picker-message";
+      message.textContent = "Loading folders...";
+      listBody.appendChild(message);
+      return;
+    }
+
+    if (rootPicker.children.length === 0) {
+      const message = args.root.ownerDocument.createElement("div");
+      message.className = "vc-filesystem-root-picker-message";
+      message.textContent = "No folders loaded. Type a path or use Home.";
+      listBody.appendChild(message);
+      return;
+    }
+
+    const fragment = args.root.ownerDocument.createDocumentFragment();
+    for (const child of rootPicker.children) {
+      const row = args.root.ownerDocument.createElement("button");
+      row.type = "button";
+      row.className = `vc-filesystem-root-picker-row ${rootPicker.selectedPath === child.path ? "is-selected" : ""}`;
+      row.title = child.path;
+      row.onclick = () => selectRootPickerPath(child.path);
+      row.ondblclick = () => {
+        void loadRootPickerPath(child.path);
+      };
+
+      const name = args.root.ownerDocument.createElement("span");
+      name.className = "vc-filesystem-root-picker-row-name";
+
+      const icon = args.root.ownerDocument.createElement("span");
+      icon.className = "vc-filesystem-root-picker-folder-icon";
+      icon.textContent = "📁";
+
+      const label = args.root.ownerDocument.createElement("span");
+      label.textContent = child.name;
+
+      const modified = args.root.ownerDocument.createElement("span");
+      modified.className = "vc-filesystem-root-picker-row-modified";
+      modified.textContent = "—";
+
+      name.appendChild(icon);
+      name.appendChild(label);
+      row.appendChild(name);
+      row.appendChild(modified);
+      fragment.appendChild(row);
+    }
+
+    listBody.appendChild(fragment);
+  };
+
   const loadRootPickerPath = async (path: string, options: { remember?: boolean } = {}) => {
     const nextPath = path.trim();
     if (!nextPath) {
@@ -253,6 +317,7 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
 
     rootPicker.loading = true;
     rootPicker.error = null;
+    renderRootPickerRows();
 
     const [error, result] = await args.apiService.api.filesystem.list({
       query: { path: nextPath, omitFiles: true },
@@ -265,16 +330,19 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
       return;
     }
 
-    rootPicker.path = result.current;
-    rootPicker.parentPath = result.parent;
-    rootPicker.selectedPath = null;
-    rootPicker.children = result.children.map((child) => ({
+    const nextChildren = result.children.map((child) => ({
       name: child.name,
       path: child.path,
       is_dir: child.isDir,
       children: [],
     })).filter((child) => child.is_dir);
+
+    rootPicker.path = result.current;
+    rootPicker.parentPath = result.parent;
+    rootPicker.selectedPath = null;
+    rootPicker.children = nextChildren;
     rootPicker.loading = false;
+    renderRootPickerRows();
     resetRootPickerScroll();
 
     if (options.remember !== false) {
@@ -293,6 +361,7 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
   const selectRootPickerPath = (path: string) => {
     rootPicker.selectedPath = path;
     rootPicker.error = null;
+    updateRootPickerSelectionClasses();
   };
 
   const loadHomeRootPicker = async () => {
@@ -698,27 +767,7 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
                   <span>Name</span>
                   <span>Modified ↓</span>
                 </div>
-                <div class="vc-filesystem-root-picker-list-body">
-                  ${() => rootPicker.loading
-                    ? html`<div class="vc-filesystem-root-picker-message">Loading folders...</div>`
-                    : rootPicker.children.length === 0
-                      ? html`<div class="vc-filesystem-root-picker-message">No folders loaded. Type a path or use Home.</div>`
-                      : rootPicker.children.map((child: TFilesystemNode) => html`
-                        <button
-                          type="button"
-                          class="${() => `vc-filesystem-root-picker-row ${rootPicker.selectedPath === child.path ? "is-selected" : ""}`}"
-                          title="${child.path}"
-                          @click="${() => selectRootPickerPath(child.path)}"
-                          @dblclick="${() => void loadRootPickerPath(child.path)}"
-                        >
-                          <span class="vc-filesystem-root-picker-row-name">
-                            <span class="vc-filesystem-root-picker-folder-icon">📁</span>
-                            <span>${child.name}</span>
-                          </span>
-                          <span class="vc-filesystem-root-picker-row-modified">—</span>
-                        </button>
-                      `.key(child.path))}
-                </div>
+                <div class="vc-filesystem-root-picker-list-body" data-filesystem-root-picker-list-body="true"></div>
               </div>
             </div>
 
