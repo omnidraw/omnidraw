@@ -4,6 +4,7 @@ import type {
   TPtyImageFormat,
   TPtyLike,
   TTerminalConnectionStatus,
+  TTerminalFolderNode,
   TTerminalTabPayload,
   TTerminalWidgetMountArgs,
   TTerminalWidgetPayload,
@@ -169,6 +170,26 @@ function basename(path: string) {
 function getErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string") {
     return (error as { message: string }).message;
+  }
+
+  return fallback;
+}
+
+function isApiError(value: unknown): value is { type: string; message: string } {
+  return value !== null
+    && typeof value === "object"
+    && "type" in value
+    && "message" in value
+    && typeof (value as { message?: unknown }).message === "string";
+}
+
+function getFilesystemPickerErrorMessage(error: unknown, result: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message;
+  }
+
+  if (isApiError(result)) {
+    return result.message;
   }
 
   return fallback;
@@ -380,7 +401,7 @@ function normalizePayloadTabs(payload: TTerminalWidgetPayload): TTerminalTabPayl
   if (payload.workingDirectory) {
     return [{
       id: crypto.randomUUID(),
-      title: payload.title ?? payload.workingDirectory,
+      title: typeof payload.title === "string" && payload.title.length > 0 ? payload.title : payload.workingDirectory,
       workingDirectory: payload.workingDirectory,
     }];
   }
@@ -414,15 +435,84 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     contextMenu: null as TTerminalContextMenuState,
   });
 
+  const cwdPicker = reactive({
+    path: payload.workingDirectory ?? "",
+    parentPath: null as string | null,
+    children: [] as TTerminalFolderNode[],
+    loading: false,
+    error: null as string | null,
+  });
+
   const sessions = new Map<string, TTerminalSession>();
   let disposed = false;
 
   const getActiveTab = () => state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
 
+  const focusCwdPickerInput = () => {
+    queueMicrotask(() => {
+      args.root.querySelector<HTMLInputElement>("[data-terminal-cwd-input='true']")?.focus({ preventScroll: true });
+    });
+  };
+
+  const loadCwdPath = async (path: string) => {
+    const nextPath = path.trim();
+    if (!nextPath) {
+      cwdPicker.error = "Working directory is required.";
+      return;
+    }
+
+    cwdPicker.loading = true;
+    cwdPicker.error = null;
+
+    const [error, result] = await args.apiService.api.filesystem.list({
+      query: { path: nextPath, omitFiles: true },
+    });
+
+    if (disposed) return;
+    if (error || !result || isApiError(result)) {
+      cwdPicker.loading = false;
+      cwdPicker.error = getFilesystemPickerErrorMessage(error, result, "Failed to list folders");
+      return;
+    }
+
+    cwdPicker.path = result.current;
+    cwdPicker.parentPath = result.parent;
+    cwdPicker.children = result.children.map((child) => ({
+      name: child.name,
+      path: child.path,
+      is_dir: child.isDir,
+      children: [],
+    })).filter((child) => child.is_dir);
+    cwdPicker.loading = false;
+  };
+
+  const loadHomeCwd = async () => {
+    cwdPicker.loading = true;
+    cwdPicker.error = null;
+
+    const [error, result] = await args.apiService.api.filesystem.home();
+    if (disposed) return;
+    if (error || !result || isApiError(result)) {
+      cwdPicker.loading = false;
+      cwdPicker.error = getFilesystemPickerErrorMessage(error, result, "Failed to resolve home directory");
+      return;
+    }
+
+    await loadCwdPath(result.path);
+  };
+
+  const onCwdInput = (event: InputEvent) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    cwdPicker.path = target.value;
+    cwdPicker.error = null;
+  };
+
   const persistTabs = () => {
+    const firstTab = state.tabs[0] ?? null;
     args.onPersist?.({
-      workingDirectory: state.tabs[0]?.workingDirectory ?? payload.workingDirectory,
-      title: state.tabs[0]?.title ?? payload.title,
+      workingDirectory: firstTab?.workingDirectory ?? "",
+      title: firstTab?.title ?? "",
       activeTabId: state.activeTabId,
       tabs: state.tabs.map((tab) => ({
         id: tab.id,
@@ -875,7 +965,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
 
   const addTab = (options?: { workingDirectory?: string; title?: string }) => {
     const referenceTab = getActiveTab() ?? state.tabs[0] ?? null;
-    const workingDirectory = options?.workingDirectory ?? referenceTab?.workingDirectory ?? payload.workingDirectory ?? "";
+    const workingDirectory = (options?.workingDirectory ?? referenceTab?.workingDirectory ?? payload.workingDirectory ?? "").trim();
     if (!workingDirectory) return;
 
     const tab: TTerminalTabState = toTabState({
@@ -890,6 +980,18 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     queueMicrotask(() => {
       void mountSession(tab.id);
     });
+  };
+
+  const createTerminalFromPicker = () => {
+    const workingDirectory = cwdPicker.path.trim();
+    if (!workingDirectory) {
+      cwdPicker.error = "Working directory is required.";
+      focusCwdPickerInput();
+      return;
+    }
+
+    cwdPicker.error = null;
+    addTab({ workingDirectory, title: workingDirectory });
   };
 
   const closeTabs = (tabIds: string[]) => {
@@ -910,7 +1012,13 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     closeContextMenu();
     persistTabs();
     queueMicrotask(() => {
-      if (!state.activeTabId) return;
+      if (!state.activeTabId) {
+        if (!cwdPicker.path.trim()) {
+          void loadHomeCwd();
+        }
+        focusCwdPickerInput();
+        return;
+      }
       const session = sessions.get(state.activeTabId);
       if (session) scheduleResizeSync(session);
     });
@@ -978,19 +1086,27 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
   const view = html`
     <div class="vc-terminal-plugin-widget" data-hosted-widget-focus-root="true" tabindex="-1" @click="${() => {
       closeContextMenu();
+      if (state.tabs.length === 0) {
+        focusCwdPickerInput();
+        return;
+      }
       focusTerminalInputSurface();
     }}">
       <div class="vc-terminal-plugin-tabbar">
         <div class="vc-terminal-plugin-tabs" @click="${(event: Event) => {
           if (event.target !== event.currentTarget) return;
           event.stopPropagation();
+          if (state.tabs.length === 0) {
+            focusCwdPickerInput();
+            return;
+          }
           addTab();
         }}">
           ${() => state.tabs.length === 0
             ? html`<div class="vc-terminal-plugin-empty-tabs" @click="${(event: Event) => {
               event.stopPropagation();
-              addTab();
-            }}">No terminal tabs</div>`
+              focusCwdPickerInput();
+            }}">Choose cwd to start</div>`
             : state.tabs.map((tab: TTerminalTabState) => html`
               <button
                 type="button"
@@ -1019,7 +1135,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
               </button>
             `.key(tab.id))}
         </div>
-        <button type="button" class="vc-terminal-plugin-tab-action" title="New terminal tab" @click="${(event: Event) => {
+        <button type="button" class="vc-terminal-plugin-tab-action" title="New terminal tab" disabled="${() => state.tabs.length === 0}" @click="${(event: Event) => {
           event.stopPropagation();
           addTab();
         }}">+</button>
@@ -1030,22 +1146,82 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       </div>
 
       <div class="vc-terminal-plugin-panes">
-        ${() => state.tabs.map((tab: TTerminalTabState) => html`
-          <div
-            class="${() => `vc-terminal-plugin-pane ${state.activeTabId === tab.id ? "is-active" : ""}`}"
-            data-terminal-pane-id="${tab.id}"
-          >
-            <div class="vc-terminal-plugin-mount" data-ghostty-terminal-host="true">
-              <div class="vc-terminal-plugin-root" data-ghostty-terminal-root="true" tabindex="-1"></div>
+        ${() => state.tabs.length === 0
+          ? html`
+            <div class="vc-terminal-plugin-cwd-picker" @click="${(event: Event) => event.stopPropagation()}">
+              <header class="vc-terminal-plugin-cwd-header">
+                <div>
+                  <h3>Select terminal cwd</h3>
+                  <p>Pick the working directory for this terminal.</p>
+                </div>
+              </header>
+
+              <div class="vc-terminal-plugin-cwd-path-row">
+                <input
+                  class="vc-terminal-plugin-cwd-input"
+                  data-terminal-cwd-input="true"
+                  .value="${() => cwdPicker.path}"
+                  placeholder="/Users/me/project"
+                  @input="${onCwdInput}"
+                  @keydown="${(event: Event) => {
+                    const keyboardEvent = event as KeyboardEvent;
+                    if (keyboardEvent.key === "Enter" && !cwdPicker.loading) createTerminalFromPicker();
+                  }}"
+                />
+                <button type="button" class="vc-terminal-plugin-cwd-button" disabled="${() => cwdPicker.loading}" @click="${() => void loadCwdPath(cwdPicker.path)}">Load</button>
+              </div>
+
+              <div class="vc-terminal-plugin-cwd-actions">
+                <button type="button" class="vc-terminal-plugin-cwd-button" disabled="${() => cwdPicker.loading}" @click="${() => void loadHomeCwd()}">Home</button>
+                <button
+                  type="button"
+                  class="vc-terminal-plugin-cwd-button"
+                  disabled="${() => !cwdPicker.parentPath || cwdPicker.loading}"
+                  @click="${() => cwdPicker.parentPath ? void loadCwdPath(cwdPicker.parentPath) : undefined}"
+                >Up</button>
+              </div>
+
+              <div class="vc-terminal-plugin-cwd-browser">
+                ${() => cwdPicker.loading
+                  ? html`<div class="vc-terminal-plugin-cwd-message">Loading folders...</div>`
+                  : cwdPicker.children.length === 0
+                    ? html`<div class="vc-terminal-plugin-cwd-message">No folders loaded. Type a path or use Home.</div>`
+                    : cwdPicker.children.map((child: TTerminalFolderNode) => html`
+                      <button
+                        type="button"
+                        class="vc-terminal-plugin-cwd-folder"
+                        title="${child.path}"
+                        @click="${() => void loadCwdPath(child.path)}"
+                      >
+                        <span>📁</span>
+                        <span>${child.name}</span>
+                      </button>
+                    `.key(child.path))}
+              </div>
+
+              ${() => cwdPicker.error ? html`<div class="vc-terminal-plugin-cwd-error">${cwdPicker.error}</div>` : null}
+
+              <footer class="vc-terminal-plugin-cwd-footer">
+                <button type="button" class="vc-terminal-plugin-cwd-button is-primary" disabled="${() => cwdPicker.loading}" @click="${createTerminalFromPicker}">Start terminal</button>
+              </footer>
             </div>
-          </div>
-        `.key(tab.id))}
+          `
+          : state.tabs.map((tab: TTerminalTabState) => html`
+            <div
+              class="${() => `vc-terminal-plugin-pane ${state.activeTabId === tab.id ? "is-active" : ""}`}"
+              data-terminal-pane-id="${tab.id}"
+            >
+              <div class="vc-terminal-plugin-mount" data-ghostty-terminal-host="true">
+                <div class="vc-terminal-plugin-root" data-ghostty-terminal-root="true" tabindex="-1"></div>
+              </div>
+            </div>
+          `.key(tab.id))}
       </div>
 
       ${() => {
         const activeTab = getActiveTab();
         if (!activeTab) {
-          return html`<div class="vc-terminal-plugin-message">Create a terminal tab to start a session.</div>`;
+          return html`<div class="vc-terminal-plugin-message">Choose a cwd to start a terminal session.</div>`;
         }
         if (activeTab.error) {
           return html`<div class="vc-terminal-plugin-error">${activeTab.error}</div>`;
@@ -1083,6 +1259,14 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
   view(args.root);
 
   queueMicrotask(() => {
+    if (state.tabs.length === 0) {
+      if (!cwdPicker.path.trim()) {
+        void loadHomeCwd();
+      }
+      focusCwdPickerInput();
+      return;
+    }
+
     state.tabs.forEach((tab) => {
       void mountSession(tab.id);
     });

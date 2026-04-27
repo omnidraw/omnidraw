@@ -21,13 +21,6 @@ export type TTerminalWidgetMountArgs = {
   onPersist?: (payload: TTerminalWidgetPayload) => void;
 };
 
-export type TTerminalCwdDialogArgs = {
-  container: HTMLElement;
-  apiService: TOrpcSafeClient;
-};
-
-export type TTerminalCwdDialogResult = string | null;
-
 export type TTerminalFolderNode = {
   name: string;
   path: string;

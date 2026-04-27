@@ -236,123 +236,104 @@
   cursor: not-allowed;
 }
 
-.vc-terminal-plugin-dialog-mount {
-  position: absolute;
-  inset: 0;
-  z-index: 20000;
-  pointer-events: auto;
-}
-
-.vc-terminal-plugin-dialog-backdrop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
+.vc-terminal-plugin-cwd-picker {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
-  background: rgba(2, 6, 23, 0.62);
-  color: var(--vc-terminal-foreground, #e5e7eb);
+  overflow: hidden;
+  background: var(--vc-terminal-panel);
+  color: var(--vc-terminal-foreground);
   font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.vc-terminal-plugin-dialog {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(140px, 280px) auto auto;
-  width: min(640px, calc(100% - 32px));
-  max-height: min(680px, calc(100% - 32px));
-  overflow: hidden;
-  border: 1px solid var(--vc-terminal-border, #243244);
-  border-radius: 14px;
-  background: var(--vc-terminal-panel-2, #111827);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-}
-
-.vc-terminal-plugin-dialog-header,
-.vc-terminal-plugin-dialog-footer,
-.vc-terminal-plugin-dialog-actions,
-.vc-terminal-plugin-dialog-path-row {
+.vc-terminal-plugin-cwd-header,
+.vc-terminal-plugin-cwd-path-row,
+.vc-terminal-plugin-cwd-actions,
+.vc-terminal-plugin-cwd-footer {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
 }
 
-.vc-terminal-plugin-dialog-header {
-  justify-content: space-between;
-  border-bottom: 1px solid var(--vc-terminal-border, #243244);
+.vc-terminal-plugin-cwd-header {
+  border-bottom: 1px solid var(--vc-terminal-border);
 }
 
-.vc-terminal-plugin-dialog-header h2 {
+.vc-terminal-plugin-cwd-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 
-.vc-terminal-plugin-dialog-header p {
+.vc-terminal-plugin-cwd-header p {
   margin: 2px 0 0;
-  color: var(--vc-terminal-muted-foreground, #94a3b8);
+  color: var(--vc-terminal-muted-foreground);
   font-size: 12px;
 }
 
-.vc-terminal-plugin-dialog-close,
-.vc-terminal-plugin-dialog-button {
-  border: 1px solid var(--vc-terminal-border, #243244);
-  border-radius: 6px;
-  background: #172033;
-  color: var(--vc-terminal-foreground, #e5e7eb);
-  cursor: pointer;
-  font: inherit;
+.vc-terminal-plugin-cwd-path-row {
+  padding-bottom: 8px;
 }
 
-.vc-terminal-plugin-dialog-close {
-  width: 28px;
-  height: 28px;
-  font-size: 18px;
+.vc-terminal-plugin-cwd-actions {
+  padding-top: 0;
 }
 
-.vc-terminal-plugin-dialog-input {
+.vc-terminal-plugin-cwd-input {
   flex: 1;
   min-width: 0;
   height: 32px;
-  border: 1px solid var(--vc-terminal-border, #243244);
+  border: 1px solid var(--vc-terminal-border);
   border-radius: 8px;
   background: #0b1020;
-  color: var(--vc-terminal-foreground, #e5e7eb);
+  color: var(--vc-terminal-foreground);
   font: inherit;
   padding: 0 10px;
 }
 
-.vc-terminal-plugin-dialog-button {
+.vc-terminal-plugin-cwd-input:focus {
+  border-color: var(--vc-terminal-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28);
+}
+
+.vc-terminal-plugin-cwd-button {
   height: 32px;
+  border: 1px solid var(--vc-terminal-border);
+  border-radius: 6px;
+  background: #172033;
+  color: var(--vc-terminal-foreground);
+  cursor: pointer;
+  font: inherit;
   padding: 0 12px;
 }
 
-.vc-terminal-plugin-dialog-button:hover,
-.vc-terminal-plugin-dialog-close:hover {
+.vc-terminal-plugin-cwd-button:hover {
   background: #1f2a44;
 }
 
-.vc-terminal-plugin-dialog-button:disabled {
+.vc-terminal-plugin-cwd-button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.vc-terminal-plugin-dialog-button.is-primary {
-  border-color: var(--vc-terminal-accent, #2563eb);
-  background: var(--vc-terminal-accent, #2563eb);
+.vc-terminal-plugin-cwd-button.is-primary {
+  border-color: var(--vc-terminal-accent);
+  background: var(--vc-terminal-accent);
   color: white;
 }
 
-.vc-terminal-plugin-dialog-actions {
-  padding-top: 0;
-}
-
-.vc-terminal-plugin-dialog-browser {
+.vc-terminal-plugin-cwd-browser {
   min-height: 0;
   overflow: auto;
-  border-top: 1px solid var(--vc-terminal-border, #243244);
-  border-bottom: 1px solid var(--vc-terminal-border, #243244);
+  border-top: 1px solid var(--vc-terminal-border);
+  border-bottom: 1px solid var(--vc-terminal-border);
+  background: var(--vc-terminal-background);
 }
 
-.vc-terminal-plugin-dialog-folder {
+.vc-terminal-plugin-cwd-folder {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -360,27 +341,34 @@
   height: 32px;
   border: 0;
   background: transparent;
-  color: var(--vc-terminal-foreground, #e5e7eb);
+  color: var(--vc-terminal-foreground);
   cursor: pointer;
   font: inherit;
   padding: 0 12px;
   text-align: left;
 }
 
-.vc-terminal-plugin-dialog-folder:hover {
+.vc-terminal-plugin-cwd-folder:hover {
   background: rgba(148, 163, 184, 0.12);
 }
 
-.vc-terminal-plugin-dialog-message,
-.vc-terminal-plugin-dialog-error {
+.vc-terminal-plugin-cwd-folder span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-terminal-plugin-cwd-message,
+.vc-terminal-plugin-cwd-error {
   padding: 8px 12px;
-  color: var(--vc-terminal-muted-foreground, #94a3b8);
+  color: var(--vc-terminal-muted-foreground);
 }
 
-.vc-terminal-plugin-dialog-error {
-  color: var(--vc-terminal-danger, #f87171);
+.vc-terminal-plugin-cwd-error {
+  color: var(--vc-terminal-danger);
 }
 
-.vc-terminal-plugin-dialog-footer {
+.vc-terminal-plugin-cwd-footer {
   justify-content: flex-end;
 }
