@@ -1,17 +1,13 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import type { CanvasRegistryService } from "../../services/canvas-registry/CanvasRegistryService";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import { fnGetCanvasAncestorGroups } from "../../core/fn.canvas-node-semantics";
-import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
+import { CrdtService, ElementService, HistoryService, SceneService, SelectionService } from "../../services";
+import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import type { TPortalUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
+import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
 
 export type TPortalSetupImageListeners = {
-  canvasRegistry: Pick<CanvasRegistryService, "toElement" | "toGroup">;
+  elementService: ElementService;
   crdt: CrdtService;
   history: HistoryService;
   render: SceneService;
@@ -115,7 +111,7 @@ export function txSetupImageListeners(
         return;
       }
 
-      const element = portal.canvasRegistry.toElement(selectedNode);
+      const element = portal.elementService.toElement(selectedNode);
       if (element) {
         passengerOriginalElements.set(selectedNode.id(), [structuredClone(element)]);
       }
@@ -175,7 +171,7 @@ export function txSetupImageListeners(
     const passengerAfterElements = new Map<string, TElement[]>();
 
     passengers.forEach((passenger) => {
-      const element = portal.canvasRegistry.toElement(passenger);
+      const element = portal.elementService.toElement(passenger);
       if (!element) {
         return;
       }

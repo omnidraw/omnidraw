@@ -1,4 +1,5 @@
 import type { DocHandle } from "@automerge/automerge-repo";
+import { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
@@ -9,20 +10,6 @@ import type { Shape, ShapeConfig } from "konva/lib/Shape";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
-export type TUploadImage = (args: {
-  base64: string;
-  format: TImageUploadFormat;
-}) => Promise<{ url: string }>;
-
-export type TCloneImage = (args: {
-  url: string;
-}) => Promise<{ url: string }>;
-
-export type TDeleteImage = (args: {
-  url: string;
-}) => Promise<{ ok: true }>;
-
-
 export interface IRuntimeConfig {
   canvasId: string;
   container: HTMLDivElement;
@@ -30,11 +17,7 @@ export interface IRuntimeConfig {
   onToggleSidebar: () => void;
   env: Pick<ImportMetaEnv, "DEV">;
   themeService: ThemeService;
-  image?: {
-    uploadImage: TUploadImage;
-    cloneImage: TCloneImage;
-    deleteImage: TDeleteImage;
-  };
+  apiService: TOrpcSafeClient;
   notification?: {
     showSuccess(title: string, description?: string): void;
     showError(title: string, description?: string): void;

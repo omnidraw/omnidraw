@@ -15,47 +15,7 @@ const CanvasPage: Component<CanvasPageProps> = (props) => {
   return (
     <Canvas
       canvas={props.canvas}
-      image={{
-        uploadImage: async ({ base64, format }) => {
-          const [error, result] = await orpcWebsocketService.apiService.api.file.put({
-            body: {
-              base64,
-              format,
-            },
-          });
-
-          if (error || !result) {
-            throw new Error(error?.message ?? "Failed to upload image");
-          }
-
-          return result;
-        },
-        cloneImage: async ({ url }) => {
-          const [error, result] = await orpcWebsocketService.apiService.api.file.clone({
-            body: { url },
-          });
-
-          if (error || !result) {
-            throw new Error(error?.message ?? "Failed to clone image file");
-          }
-
-          return result;
-        },
-        deleteImage: async ({ url }) => {
-          const [error, result] = await orpcWebsocketService.apiService.api.file.remove({
-            body: { url },
-          });
-
-          if (error || !result) {
-            throw new Error(error?.message ?? "Failed to delete image file");
-          }
-
-          return result;
-        },
-      }}
-      filetree={{ canvasId: props.canvas.id, apiService: orpcWebsocketService.apiService }}
-      file={{ apiService: orpcWebsocketService.apiService }}
-      terminal={{ apiService: orpcWebsocketService.apiService }}
+      apiService={orpcWebsocketService.apiService}
       notification={{ showError: showErrorToast, showSuccess: showSuccessToast, showInfo: showToast }}
       themeService={themeService}
       store={{ sidebarVisible: () => store.sidebarVisible, onToggleSidebar: () => setStore('sidebarVisible', v => !v) }}

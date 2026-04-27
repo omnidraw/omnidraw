@@ -3,7 +3,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import ImageIcon from "lucide-static/icons/image.svg?raw";
 import Konva from "konva";
-import type { IRuntimeHooks, TCloneImage, TDeleteImage, TUploadImage } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, TCloneImage, TDeleteImage, TUploadImage } from "../../types";
 import {
   fnFileToDataUrl,
   fnGetImageDimensions,
@@ -44,16 +44,6 @@ const ELEMENT_CREATED_AT_ATTR = "vcElementCreatedAt";
 
 const setNodeZIndex = (node: Konva.Group | Konva.Shape, zIndex: string) => txSetNodeZIndex({}, { node, zIndex });
 
-function getImageCapabilities(config: {
-  image?: {
-    uploadImage: TUploadImage;
-    cloneImage: TCloneImage;
-    deleteImage: TDeleteImage;
-  };
-}) {
-  return config.image;
-}
-
 function getNotification(config: {
   notification?: {
     showSuccess(title: string, description?: string): void;
@@ -68,6 +58,16 @@ function getFirstSupportedImageFile(files: Iterable<File> | ArrayLike<File> | nu
   return Array.from(files ?? []).find((candidate) => {
     return fnGetSupportedImageFormat(candidate.type) !== null;
   });
+}
+
+function getFirstSupportedImageClipboardItem(items: DataTransferItemList | null | undefined) {
+  return Array.from(items ?? []).find((candidate) => {
+    return candidate.kind === "file" && fnGetSupportedImageFormat(candidate.type) !== null;
+  })?.getAsFile() ?? null;
+}
+
+function getFirstSupportedClipboardImageFile(data: DataTransfer | null | undefined) {
+  return getFirstSupportedImageFile(data?.files) ?? getFirstSupportedImageClipboardItem(data?.items);
 }
 
 function screenToWorld(render: SceneService, point: { x: number; y: number }) {
@@ -216,7 +216,7 @@ function toElement(node: Konva.Image): TElement {
   });
 }
 
-function createPreviewClone(render: SceneService, node: Konva.Image) {
+function createPreviewClone(node: Konva.Image) {
   const clone = new Konva.Image({
     ...node.getAttrs(),
     id: crypto.randomUUID(),
@@ -265,7 +265,7 @@ export function createImagePlugin(): IPlugin<{
   selection: SelectionService;
   session: SessionService;
   tool: ToolService;
-}, IRuntimeHooks> {
+}, IRuntimeHooks, IRuntimeConfig> {
   let fileInput: HTMLInputElement | null = null;
 
   return {
@@ -293,7 +293,12 @@ export function createImagePlugin(): IPlugin<{
       };
 
       const cloneBackendFileForElementPortal = {
-        cloneImage: getImageCapabilities(ctx.config)?.cloneImage,
+        cloneImage: ({ url }: { url: string }) => ctx.config.apiService.api.file.clone({ body: { url } }).then(([err, res]) => {
+          if (err) {
+            throw err;
+          }
+          return res;
+        }),
         crdt,
         findImageNodeById: (id: string) => {
           const node = render.staticForegroundLayer.findOne((candidate: Konva.Node) => {
@@ -327,10 +332,7 @@ export function createImagePlugin(): IPlugin<{
 
       const setupNode = (node: Konva.Image) => {
         txSetupImageListeners({
-          canvasRegistry: {
-            toElement: (candidate) => elementService.toElement(candidate),
-            toGroup: (candidate) => groupService.toGroup(candidate),
-          },
+          elementService,
           crdt,
           history,
           render,
@@ -377,7 +379,7 @@ export function createImagePlugin(): IPlugin<{
         render,
         renderOrder,
         selection,
-        createPreviewClone: (sourceNode: Konva.Image) => createPreviewClone(render, sourceNode),
+        createPreviewClone: (sourceNode: Konva.Image) => createPreviewClone(sourceNode),
         createImageNode: (element: TElement) => createImageNode(element),
         setupNode,
         toElement,
@@ -395,7 +397,12 @@ export function createImagePlugin(): IPlugin<{
           render,
           renderOrder,
           selection,
-          uploadImage: getImageCapabilities(ctx.config)?.uploadImage,
+          uploadImage: (body) => ctx.config.apiService.api.file.put({ body }).then(([err, res]) => {
+            if (err) {
+              throw err;
+            }
+            return res;
+          }),
           notification: getNotification(ctx.config),
           createId: () => crypto.randomUUID(),
           now: () => Date.now(),
@@ -535,7 +542,7 @@ export function createImagePlugin(): IPlugin<{
             return;
           }
 
-          const file = getFirstSupportedImageFile(event.clipboardData?.files);
+          const file = getFirstSupportedClipboardImageFile(event.clipboardData);
           if (!file) {
             return;
           }

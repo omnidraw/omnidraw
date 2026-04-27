@@ -7,16 +7,13 @@ import { findDocument } from "../automerge";
 import type { IRuntime } from "@vibecanvas/runtime";
 import { buildRuntime } from "../runtime";
 import { TCloneImage, TDeleteImage, TUploadImage } from "../types";
+import { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 
 export type TBackendCanvas = typeof schema.canvas.$inferSelect;
 
 type CanvasPageProps = {
+  apiService: TOrpcSafeClient;
   canvas: TBackendCanvas;
-  image?: {
-    uploadImage: TUploadImage;
-    cloneImage: TCloneImage;
-    deleteImage: TDeleteImage;
-  };
   store: {
     sidebarVisible: () => boolean;
     onToggleSidebar: () => void;
@@ -61,7 +58,7 @@ export function Canvas(props: CanvasPageProps) {
       env: {
         DEV: import.meta.env.DEV,
       },
-      image: props.image,
+      apiService: props.apiService,
       notification: props.notification,
       themeService: props.themeService,
     })
