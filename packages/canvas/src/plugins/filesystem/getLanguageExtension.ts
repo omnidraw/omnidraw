@@ -1,37 +1,14 @@
-export async function getLanguageExtension(path: string) {
-  const extension = path.split(".").pop()?.toLowerCase() ?? "";
+import { LanguageDescription } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
 
-  switch (extension) {
-    case "js":
-    case "jsx":
-      return (await import("@codemirror/lang-javascript")).javascript({ jsx: true });
-    case "ts":
-    case "tsx":
-      return (await import("@codemirror/lang-javascript")).javascript({ jsx: true, typescript: true });
-    case "json":
-      return (await import("@codemirror/lang-json")).json();
-    case "css":
-    case "scss":
-    case "less":
-      return (await import("@codemirror/lang-css")).css();
-    case "html":
-      return (await import("@codemirror/lang-html")).html();
-    case "py":
-      return (await import("@codemirror/lang-python")).python();
-    case "sql":
-      return (await import("@codemirror/lang-sql")).sql();
-    case "rs":
-      return (await import("@codemirror/lang-rust")).rust();
-    case "md":
-    case "mdx":
-      return (await import("@codemirror/lang-markdown")).markdown();
-    case "yaml":
-    case "yml":
-      return (await import("@codemirror/lang-yaml")).yaml();
-    case "xml":
-    case "svg":
-      return (await import("@codemirror/lang-xml")).xml();
-    default:
-      return null;
-  }
+function basename(path: string) {
+  return path.replaceAll("\\", "/").split("/").filter(Boolean).at(-1) ?? path;
+}
+
+export async function getLanguageExtension(path: string) {
+  const filename = basename(path);
+  const language = LanguageDescription.matchFilename(languages, filename)
+    ?? LanguageDescription.matchFilename(languages, path);
+
+  return language ? language.load() : null;
 }
