@@ -2,6 +2,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import { createOrpcWebsocketService, type OrpcWebsocketService } from "@vibecanvas/orpc-client";
 import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
+import FolderCode from "lucide-static/icons/folder-code.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
 import type {
@@ -196,6 +197,7 @@ export function createFilesystemPlugin(): IPlugin<{
       tool.registerTool({
         id: FILESYSTEM_WIDGET_KIND,
         label: "Filesystem",
+        icon: FolderCode,
         shortcuts: ["f"],
         priority: 75,
         behavior: { type: "action" },

@@ -2,6 +2,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import { createOrpcWebsocketService, type OrpcWebsocketService } from "@vibecanvas/orpc-client";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
+import SquareTerminal from "lucide-static/icons/square-terminal.svg?raw";
 import type {
   CameraService,
   CrdtService,
@@ -158,7 +159,8 @@ export function createTerminalPlugin(): IPlugin<{
       tool.registerTool({
         id: TERMINAL_WIDGET_KIND,
         label: "Terminal",
-        shortcuts: ["0"],
+        icon: SquareTerminal,
+        shortcuts: ["j"],
         priority: 76,
         behavior: { type: "action" },
         onSelect: () => {

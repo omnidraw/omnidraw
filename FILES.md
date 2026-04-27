@@ -129,7 +129,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/camera-control/tx.write-camera-state-to-localstorage.ts` |  | Persist per-canvas camera viewport into localStorage safely |
 | ❓ | `plugins/context-menu/ContextMenu.plugin.ts` |  | Right-click hit-testing, selection resolution, Solid canvas menu mountin |
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
-| ❓ | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
+| 🤖 | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
 | ❓ | `plugins/filesystem/RootPathDialog.ts` |  | Arrow root/cwd picker dialog before creating filesystem widgets. |
 | 🤖 | `plugins/filesystem/typed.ts` |  | Filesystem plugin local widget and API helper types. |
 | ❓ | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
