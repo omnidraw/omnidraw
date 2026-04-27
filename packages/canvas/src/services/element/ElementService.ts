@@ -4,17 +4,16 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
 import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
-import type { TCanvasNodeKind, TNodeOnRemove } from "../../core/types";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
+import { isCanvasElementNode } from "../../core/GUARDS";
+import type { TCanvasNodeKind, TNodeOnRemove } from "../../core/types";
+import type { TCrdtBuilder } from "../crdt/fxBuilder";
 import { fnMergeSelectionStyleMenuConfigs } from "./fn-merge-selection-style-menu-configs";
 import type {
   TElementElementDefinition,
   TElementServiceHooks,
   TElementTransformOptions
 } from "./types";
-import type { CrdtService } from "..";
-import type { TCrdtBuilder } from "../crdt/fxBuilder";
-import { isCanvasElementNode } from "../../core/GUARDS";
 export * from "./types";
 
 function callNodeOnRemove(node: Konva.Node) {
@@ -49,11 +48,8 @@ export class ElementService implements IService<TElementServiceHooks> {
   };
 
   readonly #elements: TElementElementDefinition[] = [];
-  readonly #crdtService: CrdtService;
 
-  constructor(crdtService: CrdtService) {
-    this.#crdtService = crdtService;
-  }
+  constructor() { }
 
   registerElement(definition: TElementElementDefinition) {
     this.#elements.push(definition);

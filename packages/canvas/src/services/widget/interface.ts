@@ -5,6 +5,7 @@ import type {
   ContextMenuService,
   CrdtService,
   ElementService,
+  HistoryService,
   LoggingService,
   RenderOrderService,
   SceneService,
@@ -21,6 +22,7 @@ export interface IWidgetManagerServiceHooks {
 export interface IWidgetManagerServiceProps {
   crdtService: CrdtService;
   contextMenuService: ContextMenuService;
+  historyService?: HistoryService;
   loggingService: LoggingService;
   themeService: ThemeService;
   selectionService: SelectionService;

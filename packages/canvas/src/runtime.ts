@@ -80,6 +80,7 @@ function createServices(config: {
   themeService: ThemeService;
 }): IServiceRegistry {
   const services = createServiceRegistry();
+  const crdt = new CrdtService({ docHandle: config.docHandle });
   const element = new ElementService();
   const sessionService = new SessionService();
   const scene = new SceneService({ container: config.container, });
@@ -87,7 +88,6 @@ function createServices(config: {
   const contextMenu = new ContextMenuService();
   const history = new HistoryService();
   const selection = new SelectionService();
-  const crdt = new CrdtService({ docHandle: config.docHandle });
   const tool = new ToolService(scene, element, crdt, selection);
   const logging = new LoggingService();
   const renderOrder = new RenderOrderService({
@@ -99,6 +99,7 @@ function createServices(config: {
   const widgetManager = new WidgetManagerService({
     crdtService: crdt,
     contextMenuService: contextMenu,
+    historyService: history,
     loggingService: logging,
     themeService: config.themeService,
     selectionService: selection,

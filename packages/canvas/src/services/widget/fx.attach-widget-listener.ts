@@ -29,6 +29,10 @@ type TPortal = {
   selection: SelectionService;
   toElement: (node: Konva.Node) => TElement | null;
   crdtService: CrdtService;
+  startDragClone?: (args: {
+    node: Konva.Node;
+    selection: Konva.Node[];
+  }) => boolean;
 }
 type TArgs = {
 }
@@ -260,10 +264,10 @@ function setupSelectable(portal: TPortal) {
 
     if (event.evt?.altKey) {
       safeStopDrag(portal.node);
-      // portal.startDragClone({
-      //   node: portal.node,
-      //   selection: portal.selection.selection,
-      // });
+      portal.startDragClone?.({
+        node: portal.node,
+        selection: portal.selection.selection,
+      });
     }
   });
 

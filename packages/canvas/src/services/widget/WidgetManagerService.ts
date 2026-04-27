@@ -2,7 +2,7 @@ import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
-import type { CameraService, ContextMenuService, CrdtService, ElementService, LoggingService, SceneService, SelectionService, ToolService } from "..";
+import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { fnCreateWidgetNode } from "./fn.create-widget-node";
@@ -14,6 +14,7 @@ import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServicePr
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txAttachDomPortal, type TWidgetDomPortalListener } from "./tx.attach-dom-portal";
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
+import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
 
 type TWidgetDomPortalSync = () => void;
@@ -22,6 +23,7 @@ type TWidgetDomPortalSync = () => void;
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
   #crdtService: CrdtService;
+  #historyService?: HistoryService;
   #loggingService: LoggingService;
   #themeService: ThemeService;
   #selectionService: SelectionService;
@@ -29,6 +31,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #elementService: ElementService;
   #toolService: ToolService;
   #sceneService: SceneService;
+  #renderOrderService: RenderOrderService;
   #cameraService: CameraService;
   #widgetPortal!: HTMLDivElement;
   // TODO: remove, we want to use elementRegistry.onRemove
@@ -38,6 +41,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
   constructor(props: IWidgetManagerServiceProps) {
     this.#crdtService = props.crdtService;
+    this.#historyService = props.historyService;
     this.#loggingService = props.loggingService;
     this.#themeService = props.themeService;
     this.#selectionService = props.selectionService;
@@ -45,6 +49,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#elementService = props.elementService;
     this.#toolService = props.toolService;
     this.#sceneService = props.sceneService;
+    this.#renderOrderService = props.renderOrderService;
     this.#cameraService = props.cameraService;
   }
 
@@ -126,9 +131,39 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           element,
         });
       },
-      createDragClone(args) {
+      createDragClone: ({ node }) => {
+        if (!this.#historyService) {
+          return false;
+        }
 
-        return true
+        return txCreateWidgetCloneDrag({
+          Group: Konva.Group,
+          crdt: this.#crdtService,
+          element: this.#elementService,
+          history: this.#historyService,
+          renderOrder: this.#renderOrderService,
+          scene: this.#sceneService,
+          selection: this.#selectionService,
+          createId: () => crypto.randomUUID(),
+          createNode: (candidateElement) => {
+            const candidateNode = this.#elementService.createNodeFromElement(candidateElement);
+            return candidateNode instanceof Konva.Group ? candidateNode : null;
+          },
+          now: () => Date.now(),
+          setupNode: (candidateNode) => {
+            return fxAttachWidgetListener({
+              node: candidateNode,
+              Circle: Konva.Circle,
+              Group: Konva.Group,
+              Rect: Konva.Rect,
+              hooks: this.runtimeHooks,
+              selection: this.#selectionService,
+              toElement: (candidate) => this.#elementService.toElement(candidate),
+              crdtService: this.#crdtService,
+              startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
+            }, {})
+          },
+        }, { node });
       },
       getTransformOptions(args) {
         return {
@@ -171,6 +206,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         selection: this.#selectionService,
         toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
         crdtService: this.#crdtService,
+        startDragClone: (args) => this.#elementService.createDragClone(args),
       }, {})
     })
 
