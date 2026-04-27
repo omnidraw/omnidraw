@@ -1,15 +1,14 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import { createOrpcWebsocketService, type OrpcWebsocketService } from "@vibecanvas/orpc-client";
 import type { TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import FolderCode from "lucide-static/icons/folder-code.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
 import type {
-  CrdtService,
-  SceneService,
-  ToolService,
-  WidgetManagerService,
+    CrdtService,
+    SceneService,
+    ToolService,
+    WidgetManagerService,
 } from "../../services";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import type { TFilesystemWidgetPayload } from "./typed";
@@ -54,7 +53,6 @@ export function createFilesystemPlugin(): IPlugin<{
   tool: ToolService;
   widgetManager: WidgetManagerService;
 }, IRuntimeHooks, IRuntimeConfig> {
-  let orpcService: OrpcWebsocketService | null = null;
 
   return {
     name: "filesystem",
@@ -63,17 +61,6 @@ export function createFilesystemPlugin(): IPlugin<{
       const scene = ctx.services.require("scene");
       const tool = ctx.services.require("tool");
       const widgetManager = ctx.services.require("widgetManager");
-
-      orpcService = createOrpcWebsocketService({
-        onNotification: (event) => {
-          if (event.type === "error") {
-            ctx.config.notification?.showError(event.title, event.description);
-            return;
-          }
-
-          ctx.config.notification?.showInfo(event.title, event.description);
-        },
-      });
 
       widgetManager.registerWidget({
         id: FILESYSTEM_WIDGET_KIND,
@@ -88,11 +75,10 @@ export function createFilesystemPlugin(): IPlugin<{
           activePath: null,
         } satisfies TFilesystemWidgetPayload,
         renderDom: ({ root, element: widgetElement }) => {
-          if (!orpcService) return;
           return mountFilesystemWidget({
             root,
             element: widgetElement,
-            apiService: orpcService.safeClient,
+            apiService: ctx.config.apiService,
             onPersist: (payload) => persistFilesystemPayload({
               crdt,
               scene,
@@ -105,8 +91,6 @@ export function createFilesystemPlugin(): IPlugin<{
 
       ctx.hooks.destroy.tap(() => {
         tool.unregisterTool(FILESYSTEM_WIDGET_KIND);
-        orpcService?.websocket.close();
-        orpcService = null;
       });
     },
   };
