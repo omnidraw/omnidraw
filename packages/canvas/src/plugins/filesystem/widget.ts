@@ -22,6 +22,7 @@ import type {
 import "./widget.css";
 
 const READ_MAX_BYTES = 512 * 1024;
+const TREE_WHEEL_LISTENER_OPTIONS = { capture: true, passive: false } as const;
 
 type TFilesystemTreeRow = {
   node: TFilesystemNode;
@@ -524,6 +525,24 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
   args.root.replaceChildren();
   view(args.root);
 
+  const onTreeWheel = (event: WheelEvent) => {
+    const tree = event.currentTarget as HTMLElement;
+    const maxTop = Math.max(0, tree.scrollHeight - tree.clientHeight);
+    const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+      ? 16
+      : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+        ? tree.clientHeight
+        : 1;
+    const nextTop = Math.min(maxTop, Math.max(0, tree.scrollTop + event.deltaY * unit));
+
+    if (nextTop !== tree.scrollTop) {
+      event.preventDefault();
+      tree.scrollTop = nextTop;
+    }
+  };
+  const treeElement = args.root.querySelector<HTMLElement>(".vc-filesystem-tree");
+  treeElement?.addEventListener("wheel", onTreeWheel, TREE_WHEEL_LISTENER_OPTIONS);
+
   const editorHost = args.root.querySelector<HTMLElement>("[data-filesystem-editor-host]");
   if (editorHost) {
     editor = createEditor({
@@ -562,6 +581,7 @@ export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
 
   return () => {
     disposed = true;
+    treeElement?.removeEventListener("wheel", onTreeWheel, TREE_WHEEL_LISTENER_OPTIONS);
     editor?.view.destroy();
     editor = null;
     args.root.replaceChildren();

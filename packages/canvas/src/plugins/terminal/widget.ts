@@ -167,6 +167,16 @@ function basename(path: string) {
   return parts.at(-1) ?? path;
 }
 
+function joinPath(basePath: string, childName: string) {
+  const normalizedBase = basePath.replaceAll("\\", "/").replace(/\/+$/, "");
+  if (!normalizedBase || normalizedBase === "/") return `/${childName}`;
+  return `${normalizedBase}/${childName}`;
+}
+
+function toPathLabel(path: string) {
+  return path.replace(/^\/Users\/([^/]+)/, "~");
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string") {
     return (error as { message: string }).message;
@@ -435,10 +445,16 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     contextMenu: null as TTerminalContextMenuState,
   });
 
+  const cwdInputId = `vc-terminal-cwd-input-${args.element.id}`;
+
   const cwdPicker = reactive({
     path: payload.workingDirectory ?? "",
     parentPath: null as string | null,
+    homePath: "",
+    selectedPath: null as string | null,
     children: [] as TTerminalFolderNode[],
+    history: [] as string[],
+    historyIndex: -1,
     loading: false,
     error: null as string | null,
   });
@@ -454,7 +470,18 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     });
   };
 
-  const loadCwdPath = async (path: string) => {
+  const rememberCwdPath = (path: string) => {
+    if (cwdPicker.history[cwdPicker.historyIndex] === path) return;
+
+    const retainedHistory = cwdPicker.historyIndex >= 0
+      ? cwdPicker.history.slice(0, cwdPicker.historyIndex + 1)
+      : [];
+    const nextHistory = [...retainedHistory, path].slice(-30);
+    cwdPicker.history = nextHistory;
+    cwdPicker.historyIndex = nextHistory.length - 1;
+  };
+
+  const loadCwdPath = async (path: string, options: { remember?: boolean } = {}) => {
     const nextPath = path.trim();
     if (!nextPath) {
       cwdPicker.error = "Working directory is required.";
@@ -477,6 +504,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
 
     cwdPicker.path = result.current;
     cwdPicker.parentPath = result.parent;
+    cwdPicker.selectedPath = null;
     cwdPicker.children = result.children.map((child) => ({
       name: child.name,
       path: child.path,
@@ -484,6 +512,23 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       children: [],
     })).filter((child) => child.is_dir);
     cwdPicker.loading = false;
+
+    if (options.remember !== false) {
+      rememberCwdPath(result.current);
+    }
+  };
+
+  const loadCwdHistory = (nextIndex: number) => {
+    const nextPath = cwdPicker.history[nextIndex];
+    if (!nextPath) return;
+
+    cwdPicker.historyIndex = nextIndex;
+    void loadCwdPath(nextPath, { remember: false });
+  };
+
+  const selectCwdPath = (path: string) => {
+    cwdPicker.selectedPath = path;
+    cwdPicker.error = null;
   };
 
   const loadHomeCwd = async () => {
@@ -498,13 +543,33 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       return;
     }
 
+    cwdPicker.homePath = result.path;
     await loadCwdPath(result.path);
+  };
+
+  const quickCwdPaths = () => {
+    if (!cwdPicker.homePath) return [];
+
+    return [
+      { label: basename(cwdPicker.homePath), path: cwdPicker.homePath, icon: "⌂" },
+      { label: "Desktop", path: joinPath(cwdPicker.homePath, "Desktop"), icon: "□" },
+      { label: "Documents", path: joinPath(cwdPicker.homePath, "Documents"), icon: "▤" },
+      { label: "Downloads", path: joinPath(cwdPicker.homePath, "Downloads"), icon: "⇩" },
+    ];
+  };
+
+  const recentCwdPaths = () => {
+    return [...cwdPicker.history]
+      .reverse()
+      .filter((path, index, allPaths) => allPaths.indexOf(path) === index)
+      .slice(0, 6);
   };
 
   const onCwdInput = (event: InputEvent) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     cwdPicker.path = target.value;
+    cwdPicker.selectedPath = null;
     cwdPicker.error = null;
   };
 
@@ -983,7 +1048,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
   };
 
   const createTerminalFromPicker = () => {
-    const workingDirectory = cwdPicker.path.trim();
+    const workingDirectory = (cwdPicker.selectedPath ?? cwdPicker.path).trim();
     if (!workingDirectory) {
       cwdPicker.error = "Working directory is required.";
       focusCwdPickerInput();
@@ -1084,7 +1149,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     : null;
 
   const view = html`
-    <div class="vc-terminal-plugin-widget" data-hosted-widget-focus-root="true" tabindex="-1" @click="${() => {
+    <div class="${() => `vc-terminal-plugin-widget ${state.tabs.length === 0 ? "has-cwd-picker" : ""}`}" data-hosted-widget-focus-root="true" tabindex="-1" @click="${() => {
       closeContextMenu();
       if (state.tabs.length === 0) {
         focusCwdPickerInput();
@@ -1152,56 +1217,107 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
               <header class="vc-terminal-plugin-cwd-header">
                 <div>
                   <h3>Select terminal cwd</h3>
-                  <p>Pick the working directory for this terminal.</p>
+                  <p>Choose the working directory for this terminal session.</p>
                 </div>
               </header>
 
-              <div class="vc-terminal-plugin-cwd-path-row">
-                <input
-                  class="vc-terminal-plugin-cwd-input"
-                  data-terminal-cwd-input="true"
-                  .value="${() => cwdPicker.path}"
-                  placeholder="/Users/me/project"
-                  @input="${onCwdInput}"
-                  @keydown="${(event: Event) => {
-                    const keyboardEvent = event as KeyboardEvent;
-                    if (keyboardEvent.key === "Enter" && !cwdPicker.loading) createTerminalFromPicker();
-                  }}"
-                />
-                <button type="button" class="vc-terminal-plugin-cwd-button" disabled="${() => cwdPicker.loading}" @click="${() => void loadCwdPath(cwdPicker.path)}">Load</button>
+              <div class="vc-terminal-plugin-cwd-toolbar">
+                <label class="vc-terminal-plugin-cwd-label" for="${cwdInputId}">Path</label>
+                <div class="vc-terminal-plugin-cwd-input-wrap">
+                  <input
+                    id="${cwdInputId}"
+                    class="vc-terminal-plugin-cwd-input"
+                    data-terminal-cwd-input="true"
+                    .value="${() => cwdPicker.path}"
+                    placeholder="/Users/me/project"
+                    @input="${onCwdInput}"
+                    @keydown="${(event: Event) => {
+                      const keyboardEvent = event as KeyboardEvent;
+                      if (keyboardEvent.key === "Enter" && !cwdPicker.loading) void loadCwdPath(cwdPicker.path);
+                    }}"
+                  />
+                  <span class="vc-terminal-plugin-cwd-input-chev">⌄</span>
+                </div>
+                <div class="vc-terminal-plugin-cwd-toolbar-actions">
+                  <button type="button" class="vc-terminal-plugin-cwd-icon-button" title="Back" disabled="${() => cwdPicker.loading || cwdPicker.historyIndex <= 0}" @click="${() => loadCwdHistory(cwdPicker.historyIndex - 1)}">←</button>
+                  <button type="button" class="vc-terminal-plugin-cwd-icon-button" title="Forward" disabled="${() => cwdPicker.loading || cwdPicker.historyIndex >= cwdPicker.history.length - 1}" @click="${() => loadCwdHistory(cwdPicker.historyIndex + 1)}">→</button>
+                  <button type="button" class="vc-terminal-plugin-cwd-icon-button" title="Up" disabled="${() => !cwdPicker.parentPath || cwdPicker.loading}" @click="${() => cwdPicker.parentPath ? void loadCwdPath(cwdPicker.parentPath) : undefined}">↑</button>
+                  <button type="button" class="vc-terminal-plugin-cwd-button vc-terminal-plugin-cwd-new-folder" disabled title="Creating folders is not available yet">▣ <span>New Folder</span></button>
+                  <button type="button" class="vc-terminal-plugin-cwd-button" disabled="${() => cwdPicker.loading}" @click="${() => void loadCwdPath(cwdPicker.path)}">Go</button>
+                </div>
               </div>
 
-              <div class="vc-terminal-plugin-cwd-actions">
-                <button type="button" class="vc-terminal-plugin-cwd-button" disabled="${() => cwdPicker.loading}" @click="${() => void loadHomeCwd()}">Home</button>
-                <button
-                  type="button"
-                  class="vc-terminal-plugin-cwd-button"
-                  disabled="${() => !cwdPicker.parentPath || cwdPicker.loading}"
-                  @click="${() => cwdPicker.parentPath ? void loadCwdPath(cwdPicker.parentPath) : undefined}"
-                >Up</button>
-              </div>
-
-              <div class="vc-terminal-plugin-cwd-browser">
-                ${() => cwdPicker.loading
-                  ? html`<div class="vc-terminal-plugin-cwd-message">Loading folders...</div>`
-                  : cwdPicker.children.length === 0
-                    ? html`<div class="vc-terminal-plugin-cwd-message">No folders loaded. Type a path or use Home.</div>`
-                    : cwdPicker.children.map((child: TTerminalFolderNode) => html`
+              <div class="vc-terminal-plugin-cwd-main">
+                <aside class="vc-terminal-plugin-cwd-sidebar" aria-label="Common folders">
+                  <div class="vc-terminal-plugin-cwd-sidebar-section">
+                    <h4>Home</h4>
+                    ${() => quickCwdPaths().map((item) => html`
                       <button
                         type="button"
-                        class="vc-terminal-plugin-cwd-folder"
-                        title="${child.path}"
-                        @click="${() => void loadCwdPath(child.path)}"
+                        class="${() => `vc-terminal-plugin-cwd-sidebar-item ${cwdPicker.path === item.path ? "is-active" : ""}`}"
+                        title="${item.path}"
+                        @click="${() => void loadCwdPath(item.path)}"
                       >
-                        <span>📁</span>
-                        <span>${child.name}</span>
+                        <span>${item.icon}</span>
+                        <span>${item.label}</span>
                       </button>
-                    `.key(child.path))}
+                    `.key(item.path))}
+                  </div>
+                  <div class="vc-terminal-plugin-cwd-sidebar-section">
+                    <h4>Recent</h4>
+                    ${() => recentCwdPaths().length === 0
+                      ? html`<div class="vc-terminal-plugin-cwd-sidebar-empty">No recent folders</div>`
+                      : recentCwdPaths().map((path) => html`
+                        <button
+                          type="button"
+                          class="${() => `vc-terminal-plugin-cwd-sidebar-item ${cwdPicker.path === path ? "is-active" : ""}`}"
+                          title="${path}"
+                          @click="${() => void loadCwdPath(path)}"
+                        >
+                          <span>◷</span>
+                          <span>${toPathLabel(path)}</span>
+                        </button>
+                      `.key(path))}
+                  </div>
+                </aside>
+
+                <div class="vc-terminal-plugin-cwd-browser" role="listbox" aria-label="Folders">
+                  <div class="vc-terminal-plugin-cwd-list-head">
+                    <span>Name</span>
+                    <span>Modified ↓</span>
+                  </div>
+                  <div class="vc-terminal-plugin-cwd-list-body">
+                    ${() => cwdPicker.loading
+                      ? html`<div class="vc-terminal-plugin-cwd-message">Loading folders...</div>`
+                      : cwdPicker.children.length === 0
+                        ? html`<div class="vc-terminal-plugin-cwd-message">No folders loaded. Type a path or use Home.</div>`
+                        : cwdPicker.children.map((child: TTerminalFolderNode) => html`
+                          <button
+                            type="button"
+                            class="${() => `vc-terminal-plugin-cwd-row ${cwdPicker.selectedPath === child.path ? "is-selected" : ""}`}"
+                            title="${child.path}"
+                            @click="${() => selectCwdPath(child.path)}"
+                            @dblclick="${() => void loadCwdPath(child.path)}"
+                          >
+                            <span class="vc-terminal-plugin-cwd-row-name">
+                              <span class="vc-terminal-plugin-cwd-folder-icon">📁</span>
+                              <span>${child.name}</span>
+                            </span>
+                            <span class="vc-terminal-plugin-cwd-row-modified">—</span>
+                          </button>
+                        `.key(child.path))}
+                  </div>
+                </div>
               </div>
 
               ${() => cwdPicker.error ? html`<div class="vc-terminal-plugin-cwd-error">${cwdPicker.error}</div>` : null}
 
               <footer class="vc-terminal-plugin-cwd-footer">
+                <span class="vc-terminal-plugin-cwd-selection">${() => toPathLabel(cwdPicker.selectedPath ?? cwdPicker.path)}</span>
+                <button type="button" class="vc-terminal-plugin-cwd-button vc-terminal-plugin-cwd-cancel" @click="${() => {
+                  cwdPicker.selectedPath = null;
+                  cwdPicker.error = null;
+                }}">Cancel</button>
                 <button type="button" class="vc-terminal-plugin-cwd-button is-primary" disabled="${() => cwdPicker.loading}" @click="${createTerminalFromPicker}">Start terminal</button>
               </footer>
             </div>
@@ -1221,7 +1337,7 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       ${() => {
         const activeTab = getActiveTab();
         if (!activeTab) {
-          return html`<div class="vc-terminal-plugin-message">Choose a cwd to start a terminal session.</div>`;
+          return null;
         }
         if (activeTab.error) {
           return html`<div class="vc-terminal-plugin-error">${activeTab.error}</div>`;

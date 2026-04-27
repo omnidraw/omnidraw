@@ -95,7 +95,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/filesystem/getLanguageExtension.ts` |  | CodeMirror language loading by file extension for filesystem editor tabs. |
 | 🤖 | `plugins/filesystem/typed.ts` |  | Filesystem plugin local widget and API helper types. |
 | 🤖 | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
-| 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with file tree, tabs, and CodeMirror mount. |
+| 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with file tree wheel fallback, tabs, and CodeMirror mount. |
 | ✅ | `plugins/grid/fn.math.ts` |  | Grid spacing and line offsets from zoom/pan |
 | ❓ | `plugins/grid/Grid.plugin.ts` |  | Registers toggleable canvas grid overlay reacting to camera theme resize |
 | ❓ | `plugins/grid/tx.draw.ts` |  | Canvas viewport grid rendering: minor/major lines from pan+zoom layout |
@@ -182,11 +182,10 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/text/tx.enter-edit-mode.ts` |  | Inline textarea editing for canvas text/shape labels |
 | ✅ | `plugins/text/tx.setup-text-node.ts` |  | Text node pointer hooks, drag sync, alt-clone history |
 | 🤖 | `plugins/text/tx.update-text-node-from-element.ts` |  | Existing Konva text node visual sync from text element model |
-| ❓ | `plugins/terminal/CwdDialog.ts` |  | Terminal widget cwd picker using filesystem APIs. |
-| ❓ | `plugins/terminal/Terminal.plugin.ts` |  | Trusted terminal widget plugin registration and creation flow. |
-| ❓ | `plugins/terminal/typed.ts` |  | Terminal plugin local widget, tab, dialog, PTY, and API helper types. |
-| ❓ | `plugins/terminal/widget.css` |  | Trusted terminal tabs, widget, context menu, and cwd picker styling. |
-| ❓ | `plugins/terminal/widget.ts` |  | Arrow multi-tab Ghostty terminal widget backed by CLI PTY APIs. |
+| 🤖 | `plugins/terminal/Terminal.plugin.ts` |  | Trusted terminal widget plugin registration and creation flow. |
+| 🤖 | `plugins/terminal/typed.ts` |  | Terminal plugin local widget, tab, PTY, and API helper types. |
+| 🤖 | `plugins/terminal/widget.css` |  | Trusted terminal tabs, widget, context menu, and cwd picker styling. |
+| 🤖 | `plugins/terminal/widget.ts` |  | Arrow multi-tab Ghostty terminal widget backed by CLI PTY APIs. |
 | 🤖 | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, sidebar toggle, cursor, temporary hand |
 | ❓ | `plugins/transform/fx.proxy-bounds.ts` |  | Transform overlay needs layer-relative rotated shape bounds |
 | ❓ | `plugins/transform/fx.proxy-drag-target.ts` |  | Single selected shape or pen path proxy-drag target |
