@@ -4,6 +4,7 @@ import type {
   TPtyImageFormat,
   TPtyLike,
   TTerminalConnectionStatus,
+  TTerminalTabPayload,
   TTerminalWidgetMountArgs,
   TTerminalWidgetPayload,
 } from "./typed";
@@ -37,7 +38,6 @@ type TGhosttyWasmTerminalLike = {
   getDimensions?: () => { cols: number; rows: number };
   getMode?: (mode: number, isAnsi?: boolean) => boolean;
   hasMouseTracking?: () => boolean;
-  isAlternateScreen?: () => boolean;
 };
 
 type TGhosttyTerminalInstance = {
@@ -81,6 +81,39 @@ type TTerminalBounds = {
 type TTerminalCellCoordinates = {
   col: number;
   row: number;
+};
+
+type TTerminalTabState = TTerminalTabPayload & {
+  status: TTerminalConnectionStatus;
+  error: string | null;
+  ptyID: string | null;
+  rows: number;
+  cols: number;
+};
+
+type TTerminalContextMenuState = {
+  tabId: string;
+  x: number;
+  y: number;
+} | null;
+
+type TTerminalSession = {
+  tabId: string;
+  term: TGhosttyTerminalInstance | null;
+  host: HTMLDivElement | null;
+  root: HTMLDivElement | null;
+  socket: WebSocket | null;
+  resizeObserver: ResizeObserver | null;
+  resizeTimer: ReturnType<typeof setTimeout> | null;
+  sizePushTimer: ReturnType<typeof setTimeout> | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  reconnectAttempt: number;
+  cursor: number;
+  pendingInputBuffer: string;
+  closingSocketIntentionally: boolean;
+  disposed: boolean;
+  pty: TPtyLike | null;
+  cleanupPasteListeners: (() => void) | null;
 };
 
 const DEFAULT_ROWS = 24;
@@ -320,250 +353,145 @@ function asArrayBufferFromBlob(blob: Blob): Promise<ArrayBuffer> {
   return blob.arrayBuffer();
 }
 
+function normalizePayloadTabs(payload: TTerminalWidgetPayload): TTerminalTabPayload[] {
+  const seen = new Set<string>();
+  const validTabs = (payload.tabs ?? [])
+    .filter((tab): tab is TTerminalTabPayload => {
+      return Boolean(tab)
+        && typeof tab.id === "string"
+        && tab.id.length > 0
+        && typeof tab.workingDirectory === "string"
+        && tab.workingDirectory.length > 0
+        && !seen.has(tab.id);
+    })
+    .map((tab) => {
+      seen.add(tab.id);
+      return {
+        id: tab.id,
+        title: typeof tab.title === "string" && tab.title.length > 0 ? tab.title : tab.workingDirectory,
+        workingDirectory: tab.workingDirectory,
+      };
+    });
+
+  if (validTabs.length > 0) {
+    return validTabs;
+  }
+
+  if (payload.workingDirectory) {
+    return [{
+      id: crypto.randomUUID(),
+      title: payload.title ?? payload.workingDirectory,
+      workingDirectory: payload.workingDirectory,
+    }];
+  }
+
+  return [];
+}
+
+function toTabState(tab: TTerminalTabPayload): TTerminalTabState {
+  return {
+    ...tab,
+    status: "idle",
+    error: null,
+    ptyID: null,
+    rows: DEFAULT_ROWS,
+    cols: DEFAULT_COLS,
+  };
+}
+
 export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
   const payload = args.element.data.type === "widget"
     ? args.element.data.payload as TTerminalWidgetPayload
     : {};
-  const workingDirectory = payload.workingDirectory ?? "";
-  const initialTitle = payload.title ?? (workingDirectory ? basename(workingDirectory) : "Terminal");
+  const initialTabs = normalizePayloadTabs(payload).map(toTabState);
+  const initialActiveTabId = initialTabs.some((tab) => tab.id === payload.activeTabId)
+    ? payload.activeTabId ?? initialTabs[0]?.id ?? null
+    : initialTabs[0]?.id ?? null;
+
   const state = reactive({
-    title: initialTitle,
-    workingDirectory,
-    status: "idle" as TTerminalConnectionStatus,
-    error: null as string | null,
-    rows: DEFAULT_ROWS,
-    cols: DEFAULT_COLS,
-    ptyID: null as string | null,
+    tabs: initialTabs,
+    activeTabId: initialActiveTabId,
+    contextMenu: null as TTerminalContextMenuState,
   });
 
+  const sessions = new Map<string, TTerminalSession>();
   let disposed = false;
-  let currentPty: TPtyLike | null = null;
-  let term: TGhosttyTerminalInstance | null = null;
-  let socket: WebSocket | null = null;
-  let resizeObserver: ResizeObserver | null = null;
-  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-  let sizePushTimer: ReturnType<typeof setTimeout> | null = null;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let reconnectAttempt = 0;
-  let cursor = 0;
-  let pendingInputBuffer = "";
-  let closingSocketIntentionally = false;
-  let cleanupPasteListeners: (() => void) | null = null;
 
-  const setStatus = (status: TTerminalConnectionStatus, error: string | null = null) => {
-    state.status = status;
-    state.error = error;
-  };
+  const getActiveTab = () => state.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
 
-  const clearTimers = () => {
-    if (resizeTimer) clearTimeout(resizeTimer);
-    if (sizePushTimer) clearTimeout(sizePushTimer);
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    resizeTimer = null;
-    sizePushTimer = null;
-    reconnectTimer = null;
-  };
-
-  const closeSocket = () => {
-    if (!socket) return;
-    closingSocketIntentionally = true;
-    socket.close(1000, "Terminal widget closed");
-    socket = null;
-  };
-
-  const focusTerminalInputSurface = () => {
-    const textarea = args.root.querySelector<HTMLElement>("[data-ghostty-terminal-textarea='true'], textarea");
-    if (textarea) {
-      textarea.focus({ preventScroll: true });
-      return;
-    }
-
-    const terminalRoot = args.root.querySelector<HTMLElement>("[data-ghostty-terminal-root='true']");
-    terminalRoot?.focus({ preventScroll: true });
-  };
-
-  const flushPendingInput = () => {
-    if (!pendingInputBuffer) return;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(pendingInputBuffer);
-    pendingInputBuffer = "";
-  };
-
-  const sendTerminalInput = (data: string) => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      pendingInputBuffer += data;
-      return;
-    }
-
-    socket.send(data);
-  };
-
-  const writeTerminalOutput = (data: string, byteLength: number) => {
-    term?.write(data);
-    cursor += byteLength;
-  };
-
-  const handleSocketMessage = (event: MessageEvent) => {
-    if (disposed || !term) return;
-
-    if (event.data instanceof ArrayBuffer) {
-      writeTerminalOutput(new TextDecoder().decode(event.data), event.data.byteLength);
-      return;
-    }
-
-    if (event.data instanceof Blob) {
-      void asArrayBufferFromBlob(event.data).then((arrayBuffer) => {
-        if (disposed || !term) return;
-        writeTerminalOutput(new TextDecoder().decode(arrayBuffer), arrayBuffer.byteLength);
-      });
-      return;
-    }
-
-    if (typeof event.data === "string") {
-      writeTerminalOutput(event.data, new TextEncoder().encode(event.data).byteLength);
-    }
-  };
-
-  const getReconnectDelay = () => {
-    const unclampedDelay = RECONNECT_BASE_DELAY_MS * (2 ** Math.max(0, reconnectAttempt));
-    const baseDelay = Math.min(RECONNECT_MAX_DELAY_MS, unclampedDelay);
-    const jitterWindow = Math.floor(baseDelay * RECONNECT_JITTER_RATIO);
-    const jitter = jitterWindow > 0 ? Math.floor(Math.random() * (jitterWindow + 1)) : 0;
-    reconnectAttempt += 1;
-    return Math.max(0, baseDelay + jitter);
-  };
-
-  const connectPtySocket = (ptyID: string) => {
-    if (disposed || !workingDirectory) return;
-    closeSocket();
-    closingSocketIntentionally = false;
-    setStatus("connecting");
-
-    const nextSocket = new WebSocket(getPtyWebsocketUrl({ ptyID, workingDirectory }));
-    nextSocket.binaryType = "arraybuffer";
-    socket = nextSocket;
-
-    nextSocket.onopen = () => {
-      if (disposed || socket !== nextSocket) return;
-      reconnectAttempt = 0;
-      setStatus("connected");
-      flushPendingInput();
-      focusTerminalInputSurface();
-    };
-
-    nextSocket.onmessage = (event) => {
-      if (socket !== nextSocket) return;
-      handleSocketMessage(event);
-    };
-
-    nextSocket.onerror = () => {
-      if (disposed || socket !== nextSocket) return;
-      setStatus("error", "Terminal stream failed.");
-    };
-
-    nextSocket.onclose = (event) => {
-      if (socket && socket !== nextSocket) return;
-      if (socket === nextSocket) {
-        socket = null;
-      }
-      if (disposed || closingSocketIntentionally) return;
-
-      if (event.code === 1000) {
-        setStatus("closed", event.reason || "Terminal session closed.");
-        return;
-      }
-
-      const delayMs = getReconnectDelay();
-      setStatus("connecting", `Terminal disconnected. Reconnecting in ${Math.ceil(delayMs / 1000)}s…`);
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        if (disposed || !currentPty) return;
-        connectPtySocket(currentPty.id);
-      }, delayMs);
-    };
-  };
-
-  const pushSizeToBackend = (rows: number, cols: number) => {
-    if (!currentPty || disposed) return;
-    if (sizePushTimer) clearTimeout(sizePushTimer);
-
-    const ptyID = currentPty.id;
-    sizePushTimer = setTimeout(async () => {
-      if (disposed || !currentPty || currentPty.id !== ptyID) return;
-      await args.apiService.api.pty.update({
-        workingDirectory,
-        path: { ptyID },
-        body: { size: { rows, cols } },
-      });
-    }, 120);
-  };
-
-  const syncFrontendSize = () => {
-    const host = args.root.querySelector<HTMLElement>("[data-ghostty-terminal-host='true']");
-    if (!host || !term || !hasUsableHostSize(host)) return;
-
-    const next = calculateTerminalSize(host, term);
-    if (next.cols === term.cols && next.rows === term.rows) return;
-    term.resize(next.cols, next.rows);
-  };
-
-  const scheduleResizeSync = () => {
-    if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      resizeTimer = null;
-      syncFrontendSize();
-    }, 120);
-  };
-
-  const createPty = async () => {
-    if (disposed || !workingDirectory) return;
-    setStatus("creating");
-
-    const host = args.root.querySelector<HTMLElement>("[data-ghostty-terminal-host='true']");
-    const measuredSize = host && hasUsableHostSize(host)
-      ? calculateTerminalSize(host, term)
-      : { rows: DEFAULT_ROWS, cols: DEFAULT_COLS };
-    state.rows = measuredSize.rows;
-    state.cols = measuredSize.cols;
-
-    const [error, created] = await args.apiService.api.pty.create({
-      workingDirectory,
-      body: {
-        title: initialTitle,
-        size: measuredSize,
-      },
+  const persistTabs = () => {
+    args.onPersist?.({
+      workingDirectory: state.tabs[0]?.workingDirectory ?? payload.workingDirectory,
+      title: state.tabs[0]?.title ?? payload.title,
+      activeTabId: state.activeTabId,
+      tabs: state.tabs.map((tab) => ({
+        id: tab.id,
+        title: tab.title,
+        workingDirectory: tab.workingDirectory,
+      })),
     });
-
-    if (disposed) {
-      if (created) {
-        void args.apiService.api.pty.remove({
-          workingDirectory,
-          path: { ptyID: created.id },
-        });
-      }
-      return;
-    }
-    if (error || !created) {
-      setStatus("error", getErrorMessage(error, "Failed to create terminal session"));
-      return;
-    }
-
-    currentPty = created as TPtyLike;
-    state.ptyID = currentPty.id;
-    state.title = currentPty.title || initialTitle;
-    cursor = 0;
-
-    if (term) {
-      term.resize(measuredSize.cols, measuredSize.rows);
-    }
-
-    connectPtySocket(currentPty.id);
   };
 
-  const removeCurrentPty = async () => {
-    const pty = currentPty;
-    currentPty = null;
-    state.ptyID = null;
+  const updateTab = (tabId: string, patch: Partial<TTerminalTabState>) => {
+    state.tabs = state.tabs.map((tab) => tab.id === tabId ? { ...tab, ...patch } : tab);
+  };
+
+  const closeContextMenu = () => {
+    state.contextMenu = null;
+  };
+
+  const setActiveTab = (tabId: string) => {
+    if (!state.tabs.some((tab) => tab.id === tabId)) return;
+    state.activeTabId = tabId;
+    closeContextMenu();
+    persistTabs();
+    queueMicrotask(() => {
+      const session = sessions.get(tabId);
+      if (!session) return;
+      scheduleResizeSync(session);
+      focusTerminalInputSurface(tabId);
+    });
+  };
+
+  const createSession = (tabId: string): TTerminalSession => ({
+    tabId,
+    term: null,
+    host: null,
+    root: null,
+    socket: null,
+    resizeObserver: null,
+    resizeTimer: null,
+    sizePushTimer: null,
+    reconnectTimer: null,
+    reconnectAttempt: 0,
+    cursor: 0,
+    pendingInputBuffer: "",
+    closingSocketIntentionally: false,
+    disposed: false,
+    pty: null,
+    cleanupPasteListeners: null,
+  });
+
+  const clearSessionTimers = (session: TTerminalSession) => {
+    if (session.resizeTimer) clearTimeout(session.resizeTimer);
+    if (session.sizePushTimer) clearTimeout(session.sizePushTimer);
+    if (session.reconnectTimer) clearTimeout(session.reconnectTimer);
+    session.resizeTimer = null;
+    session.sizePushTimer = null;
+    session.reconnectTimer = null;
+  };
+
+  const closeSocket = (session: TTerminalSession) => {
+    if (!session.socket) return;
+    session.closingSocketIntentionally = true;
+    session.socket.close(1000, "Terminal tab closed");
+    session.socket = null;
+  };
+
+  const removePty = async (session: TTerminalSession, workingDirectory: string) => {
+    const pty = session.pty;
+    session.pty = null;
+    updateTab(session.tabId, { ptyID: null });
     if (!pty) return;
 
     const [error] = await args.apiService.api.pty.remove({
@@ -571,25 +499,232 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       path: { ptyID: pty.id },
     });
 
-    if (error && !disposed) {
-      state.error = getErrorMessage(error, "Failed to remove terminal session");
+    if (error && !disposed && !session.disposed) {
+      updateTab(session.tabId, { error: getErrorMessage(error, "Failed to remove terminal session") });
     }
   };
 
-  const restartPty = async () => {
-    if (disposed || state.status === "creating") return;
-    closeSocket();
-    clearTimers();
-    term?.clear();
-    await removeCurrentPty();
-    if (disposed) return;
-    pendingInputBuffer = "";
-    reconnectAttempt = 0;
-    cursor = 0;
-    await createPty();
+  const cleanupSession = (tabId: string, options: { removePty: boolean } = { removePty: true }) => {
+    const session = sessions.get(tabId);
+    if (!session) return;
+
+    const tab = state.tabs.find((candidate) => candidate.id === tabId);
+    session.disposed = true;
+    closeSocket(session);
+    clearSessionTimers(session);
+    session.resizeObserver?.disconnect();
+    session.resizeObserver = null;
+    session.cleanupPasteListeners?.();
+    session.cleanupPasteListeners = null;
+    session.term?.attachCustomWheelEventHandler?.(undefined);
+    session.term?.dispose();
+    session.term = null;
+    session.root?.replaceChildren();
+    sessions.delete(tabId);
+
+    if (options.removePty && tab) {
+      void removePty(session, tab.workingDirectory);
+    }
   };
 
-  const uploadClipboardImage = async (file: File | Blob) => {
+  const focusTerminalInputSurface = (tabId: string | null = state.activeTabId) => {
+    if (!tabId) return;
+    const pane = args.root.querySelector<HTMLElement>(`[data-terminal-pane-id="${CSS.escape(tabId)}"]`);
+    const textarea = pane?.querySelector<HTMLElement>("[data-ghostty-terminal-textarea='true'], textarea");
+    if (textarea) {
+      textarea.focus({ preventScroll: true });
+      return;
+    }
+
+    pane?.querySelector<HTMLElement>("[data-ghostty-terminal-root='true']")?.focus({ preventScroll: true });
+  };
+
+  const flushPendingInput = (session: TTerminalSession) => {
+    if (!session.pendingInputBuffer) return;
+    if (!session.socket || session.socket.readyState !== WebSocket.OPEN) return;
+    session.socket.send(session.pendingInputBuffer);
+    session.pendingInputBuffer = "";
+  };
+
+  const sendTerminalInput = (session: TTerminalSession, data: string) => {
+    if (!session.socket || session.socket.readyState !== WebSocket.OPEN) {
+      session.pendingInputBuffer += data;
+      return;
+    }
+
+    session.socket.send(data);
+  };
+
+  const writeTerminalOutput = (session: TTerminalSession, data: string, byteLength: number) => {
+    session.term?.write(data);
+    session.cursor += byteLength;
+  };
+
+  const handleSocketMessage = (session: TTerminalSession, event: MessageEvent) => {
+    if (disposed || session.disposed || !session.term) return;
+
+    if (event.data instanceof ArrayBuffer) {
+      writeTerminalOutput(session, new TextDecoder().decode(event.data), event.data.byteLength);
+      return;
+    }
+
+    if (event.data instanceof Blob) {
+      void asArrayBufferFromBlob(event.data).then((arrayBuffer) => {
+        if (disposed || session.disposed || !session.term) return;
+        writeTerminalOutput(session, new TextDecoder().decode(arrayBuffer), arrayBuffer.byteLength);
+      });
+      return;
+    }
+
+    if (typeof event.data === "string") {
+      writeTerminalOutput(session, event.data, new TextEncoder().encode(event.data).byteLength);
+    }
+  };
+
+  const getReconnectDelay = (session: TTerminalSession) => {
+    const unclampedDelay = RECONNECT_BASE_DELAY_MS * (2 ** Math.max(0, session.reconnectAttempt));
+    const baseDelay = Math.min(RECONNECT_MAX_DELAY_MS, unclampedDelay);
+    const jitterWindow = Math.floor(baseDelay * RECONNECT_JITTER_RATIO);
+    const jitter = jitterWindow > 0 ? Math.floor(Math.random() * (jitterWindow + 1)) : 0;
+    session.reconnectAttempt += 1;
+    return Math.max(0, baseDelay + jitter);
+  };
+
+  const connectPtySocket = (session: TTerminalSession, tab: TTerminalTabState, ptyID: string) => {
+    if (disposed || session.disposed) return;
+    closeSocket(session);
+    session.closingSocketIntentionally = false;
+    updateTab(tab.id, { status: "connecting", error: null });
+
+    const nextSocket = new WebSocket(getPtyWebsocketUrl({ ptyID, workingDirectory: tab.workingDirectory }));
+    nextSocket.binaryType = "arraybuffer";
+    session.socket = nextSocket;
+
+    nextSocket.onopen = () => {
+      if (disposed || session.disposed || session.socket !== nextSocket) return;
+      session.reconnectAttempt = 0;
+      updateTab(tab.id, { status: "connected", error: null });
+      flushPendingInput(session);
+      if (state.activeTabId === tab.id) {
+        focusTerminalInputSurface(tab.id);
+      }
+    };
+
+    nextSocket.onmessage = (event) => {
+      if (session.socket !== nextSocket) return;
+      handleSocketMessage(session, event);
+    };
+
+    nextSocket.onerror = () => {
+      if (disposed || session.disposed || session.socket !== nextSocket) return;
+      updateTab(tab.id, { status: "error", error: "Terminal stream failed." });
+    };
+
+    nextSocket.onclose = (event) => {
+      if (session.socket && session.socket !== nextSocket) return;
+      if (session.socket === nextSocket) {
+        session.socket = null;
+      }
+      if (disposed || session.disposed || session.closingSocketIntentionally) return;
+
+      if (event.code === 1000) {
+        updateTab(tab.id, { status: "closed", error: event.reason || "Terminal session closed." });
+        return;
+      }
+
+      const delayMs = getReconnectDelay(session);
+      updateTab(tab.id, {
+        status: "connecting",
+        error: `Terminal disconnected. Reconnecting in ${Math.ceil(delayMs / 1000)}s…`,
+      });
+      session.reconnectTimer = setTimeout(() => {
+        session.reconnectTimer = null;
+        if (disposed || session.disposed || !session.pty) return;
+        connectPtySocket(session, tab, session.pty.id);
+      }, delayMs);
+    };
+  };
+
+  const pushSizeToBackend = (session: TTerminalSession, tab: TTerminalTabState, rows: number, cols: number) => {
+    if (!session.pty || disposed || session.disposed) return;
+    if (session.sizePushTimer) clearTimeout(session.sizePushTimer);
+
+    const ptyID = session.pty.id;
+    session.sizePushTimer = setTimeout(async () => {
+      if (disposed || session.disposed || !session.pty || session.pty.id !== ptyID) return;
+      await args.apiService.api.pty.update({
+        workingDirectory: tab.workingDirectory,
+        path: { ptyID },
+        body: { size: { rows, cols } },
+      });
+    }, 120);
+  };
+
+  const syncFrontendSize = (session: TTerminalSession) => {
+    if (!session.host || !session.term || !hasUsableHostSize(session.host)) return;
+
+    const next = calculateTerminalSize(session.host, session.term);
+    if (next.cols === session.term.cols && next.rows === session.term.rows) return;
+    session.term.resize(next.cols, next.rows);
+  };
+
+  function scheduleResizeSync(session: TTerminalSession) {
+    if (session.resizeTimer) clearTimeout(session.resizeTimer);
+    session.resizeTimer = setTimeout(() => {
+      session.resizeTimer = null;
+      syncFrontendSize(session);
+    }, 120);
+  }
+
+  const createPty = async (session: TTerminalSession, tab: TTerminalTabState) => {
+    if (disposed || session.disposed) return;
+    updateTab(tab.id, { status: "creating", error: null });
+
+    const measuredSize = session.host && hasUsableHostSize(session.host)
+      ? calculateTerminalSize(session.host, session.term)
+      : { rows: DEFAULT_ROWS, cols: DEFAULT_COLS };
+    updateTab(tab.id, { rows: measuredSize.rows, cols: measuredSize.cols });
+
+    const [error, created] = await args.apiService.api.pty.create({
+      workingDirectory: tab.workingDirectory,
+      body: {
+        title: tab.title || basename(tab.workingDirectory),
+        size: measuredSize,
+      },
+    });
+
+    if (disposed || session.disposed) {
+      if (created) {
+        void args.apiService.api.pty.remove({
+          workingDirectory: tab.workingDirectory,
+          path: { ptyID: created.id },
+        });
+      }
+      return;
+    }
+    if (error || !created) {
+      updateTab(tab.id, { status: "error", error: getErrorMessage(error, "Failed to create terminal session") });
+      return;
+    }
+
+    session.pty = created as TPtyLike;
+    session.cursor = 0;
+    updateTab(tab.id, {
+      ptyID: session.pty.id,
+      title: tab.title || session.pty.title || basename(tab.workingDirectory),
+      status: "connecting",
+      rows: measuredSize.rows,
+      cols: measuredSize.cols,
+    });
+
+    if (session.term) {
+      session.term.resize(measuredSize.cols, measuredSize.rows);
+    }
+
+    connectPtySocket(session, tab, session.pty.id);
+  };
+
+  const uploadClipboardImage = async (workingDirectory: string, file: File | Blob) => {
     const format = toPtyImageFormat(file.type);
     if (!format) {
       throw new Error(`Unsupported clipboard image type: ${file.type || "unknown"}`);
@@ -611,25 +746,27 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
     return result.path;
   };
 
-  const pasteText = (text: string) => {
-    if (typeof term?.paste === "function") {
-      term.paste(text);
+  const pasteText = (session: TTerminalSession, text: string) => {
+    if (typeof session.term?.paste === "function") {
+      session.term.paste(text);
       return;
     }
 
-    sendTerminalInput(text);
+    sendTerminalInput(session, text);
   };
 
-  const setupPasteListeners = (host: HTMLDivElement, terminalRoot: HTMLDivElement) => {
+  const setupPasteListeners = (session: TTerminalSession, tab: TTerminalTabState) => {
+    if (!session.host || !session.root) return;
+
     const handlePaste = (event: Event) => {
       const clipboardEvent = asClipboardEventLike(event);
-      if (!term || clipboardEvent.defaultPrevented) return;
+      if (!session.term || clipboardEvent.defaultPrevented) return;
 
       const text = getClipboardText(clipboardEvent.clipboardData);
       if (text) {
         clipboardEvent.preventDefault();
         clipboardEvent.stopPropagation();
-        pasteText(text);
+        pasteText(session, text);
         return;
       }
 
@@ -637,54 +774,62 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
       if (imageFile) {
         clipboardEvent.preventDefault();
         clipboardEvent.stopPropagation();
-        void uploadClipboardImage(imageFile)
+        void uploadClipboardImage(tab.workingDirectory, imageFile)
           .then((path) => {
-            if (disposed || !term) return;
-            pasteText(toShellEscapedPathText(path));
+            if (disposed || session.disposed || !session.term) return;
+            pasteText(session, toShellEscapedPathText(path));
           })
           .catch(() => {
-            sendTerminalInput("\x16");
+            sendTerminalInput(session, "\x16");
           });
       }
     };
 
-    const pasteTargets = [host, terminalRoot, term?.element, term?.textarea].filter((value): value is HTMLDivElement | HTMLTextAreaElement => Boolean(value));
+    const pasteTargets = [session.host, session.root, session.term?.element, session.term?.textarea].filter((value): value is HTMLDivElement | HTMLTextAreaElement => Boolean(value));
     pasteTargets.forEach((target) => target.addEventListener("paste", handlePaste, true));
-    cleanupPasteListeners = () => {
+    session.cleanupPasteListeners = () => {
       pasteTargets.forEach((target) => target.removeEventListener("paste", handlePaste, true));
     };
   };
 
-  const setupWheelForwarding = () => {
-    term?.attachCustomWheelEventHandler?.((event) => {
-      if (!term) return false;
-      const wasmTerm = term.wasmTerm;
+  const setupWheelForwarding = (session: TTerminalSession) => {
+    session.term?.attachCustomWheelEventHandler?.((event) => {
+      if (!session.term) return false;
+      const wasmTerm = session.term.wasmTerm;
       const mouseTracking = wasmTerm?.hasMouseTracking?.() ?? false;
       const sgrMouseMode = wasmTerm?.getMode?.(TERMINAL_MOUSE_SGR_MODE, false) ?? false;
       if (!mouseTracking || !sgrMouseMode) return false;
 
-      const sequence = buildWheelMouseSequence(term, event);
+      const sequence = buildWheelMouseSequence(session.term, event);
       if (!sequence) return false;
 
-      if (typeof term.input === "function") {
-        term.input(sequence, true);
+      if (typeof session.term.input === "function") {
+        session.term.input(sequence, true);
       } else {
-        sendTerminalInput(sequence);
+        sendTerminalInput(session, sequence);
       }
       return true;
     });
   };
 
-  const mountGhostty = async () => {
-    const host = args.root.querySelector<HTMLDivElement>("[data-ghostty-terminal-host='true']");
-    const terminalRoot = args.root.querySelector<HTMLDivElement>("[data-ghostty-terminal-root='true']");
+  const mountSession = async (tabId: string) => {
+    const tab = state.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab || sessions.has(tabId) || disposed) return;
+
+    const host = args.root.querySelector<HTMLDivElement>(`[data-terminal-pane-id="${CSS.escape(tabId)}"] [data-ghostty-terminal-host="true"]`);
+    const terminalRoot = args.root.querySelector<HTMLDivElement>(`[data-terminal-pane-id="${CSS.escape(tabId)}"] [data-ghostty-terminal-root="true"]`);
     if (!host || !terminalRoot) return;
 
+    const session = createSession(tabId);
+    session.host = host;
+    session.root = terminalRoot;
+    sessions.set(tabId, session);
+
     await ensureGhosttyInit();
-    if (disposed) return;
+    if (disposed || session.disposed) return;
 
     const GhosttyTerminalCtor = GhosttyTerminal as unknown as new (options: TGhosttyTerminalOptions) => TGhosttyTerminalInstance;
-    term = new GhosttyTerminalCtor({
+    session.term = new GhosttyTerminalCtor({
       cursorBlink: true,
       cursorStyle: "bar",
       fontFamily: "JetBrains Mono Variable, ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -695,85 +840,257 @@ export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
 
     terminalRoot.style.caretColor = "transparent";
     terminalRoot.style.outline = "none";
-    term.open(terminalRoot);
+    session.term.open(terminalRoot);
 
-    if (term.element) {
-      term.element.style.caretColor = "transparent";
-      term.element.style.outline = "none";
+    if (session.term.element) {
+      session.term.element.style.caretColor = "transparent";
+      session.term.element.style.outline = "none";
     }
 
-    if (term.textarea) {
-      term.textarea.style.caretColor = "transparent";
-      term.textarea.dataset.ghosttyTerminalTextarea = "true";
+    if (session.term.textarea) {
+      session.term.textarea.style.caretColor = "transparent";
+      session.term.textarea.dataset.ghosttyTerminalTextarea = "true";
     }
 
-    term.onData((data) => {
-      sendTerminalInput(data);
+    session.term.onData((data) => {
+      sendTerminalInput(session, data);
     });
 
-    term.onResize((next) => {
-      state.cols = next.cols;
-      state.rows = next.rows;
-      pushSizeToBackend(next.rows, next.cols);
+    session.term.onResize((next) => {
+      updateTab(tabId, { cols: next.cols, rows: next.rows });
+      pushSizeToBackend(session, tab, next.rows, next.cols);
     });
 
-    setupPasteListeners(host, terminalRoot);
-    setupWheelForwarding();
+    setupPasteListeners(session, tab);
+    setupWheelForwarding(session);
 
-    resizeObserver = new ResizeObserver(scheduleResizeSync);
-    resizeObserver.observe(host);
-    scheduleResizeSync();
-    await createPty();
+    session.resizeObserver = new ResizeObserver(() => {
+      if (state.activeTabId !== tabId) return;
+      scheduleResizeSync(session);
+    });
+    session.resizeObserver.observe(host);
+    scheduleResizeSync(session);
+    await createPty(session, tab);
   };
 
+  const addTab = (options?: { workingDirectory?: string; title?: string }) => {
+    const referenceTab = getActiveTab() ?? state.tabs[0] ?? null;
+    const workingDirectory = options?.workingDirectory ?? referenceTab?.workingDirectory ?? payload.workingDirectory ?? "";
+    if (!workingDirectory) return;
+
+    const tab: TTerminalTabState = toTabState({
+      id: crypto.randomUUID(),
+      title: options?.title ?? workingDirectory,
+      workingDirectory,
+    });
+    state.tabs = [...state.tabs, tab];
+    state.activeTabId = tab.id;
+    closeContextMenu();
+    persistTabs();
+    queueMicrotask(() => {
+      void mountSession(tab.id);
+    });
+  };
+
+  const closeTabs = (tabIds: string[]) => {
+    const uniqueIds = [...new Set(tabIds)].filter((tabId) => state.tabs.some((tab) => tab.id === tabId));
+    if (uniqueIds.length === 0) return;
+
+    const activeBefore = state.activeTabId;
+    const activeIndexBefore = state.tabs.findIndex((tab) => tab.id === activeBefore);
+    uniqueIds.forEach((tabId) => cleanupSession(tabId));
+    const uniqueIdSet = new Set(uniqueIds);
+    const nextTabs = state.tabs.filter((tab) => !uniqueIdSet.has(tab.id));
+    state.tabs = nextTabs;
+
+    if (!nextTabs.some((tab) => tab.id === activeBefore)) {
+      state.activeTabId = nextTabs[Math.min(Math.max(activeIndexBefore, 0), Math.max(nextTabs.length - 1, 0))]?.id ?? null;
+    }
+
+    closeContextMenu();
+    persistTabs();
+    queueMicrotask(() => {
+      if (!state.activeTabId) return;
+      const session = sessions.get(state.activeTabId);
+      if (session) scheduleResizeSync(session);
+    });
+  };
+
+  const closeTab = (tabId: string) => {
+    closeTabs([tabId]);
+  };
+
+  const restartActiveTab = async () => {
+    const tab = getActiveTab();
+    if (!tab || tab.status === "creating") return;
+    cleanupSession(tab.id);
+    updateTab(tab.id, { status: "idle", error: null, ptyID: null, rows: DEFAULT_ROWS, cols: DEFAULT_COLS });
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+    await mountSession(tab.id);
+  };
+
+  const renameTab = (tabId: string) => {
+    const tab = state.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+
+    const nextTitle = args.root.ownerDocument.defaultView?.prompt("Rename terminal tab", tab.title)?.trim();
+    if (!nextTitle) {
+      closeContextMenu();
+      return;
+    }
+
+    updateTab(tabId, { title: nextTitle });
+    closeContextMenu();
+    persistTabs();
+  };
+
+  const closeOthers = (tabId: string) => {
+    closeTabs(state.tabs.filter((tab) => tab.id !== tabId).map((tab) => tab.id));
+  };
+
+  const closeRight = (tabId: string) => {
+    const index = state.tabs.findIndex((tab) => tab.id === tabId);
+    if (index < 0) return;
+    closeTabs(state.tabs.slice(index + 1).map((tab) => tab.id));
+  };
+
+  const closeLeft = (tabId: string) => {
+    const index = state.tabs.findIndex((tab) => tab.id === tabId);
+    if (index < 0) return;
+    closeTabs(state.tabs.slice(0, index).map((tab) => tab.id));
+  };
+
+  const openTabContextMenu = (event: MouseEvent, tabId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = args.root.getBoundingClientRect();
+    state.contextMenu = {
+      tabId,
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  };
+
+  const contextMenuTab = () => state.contextMenu
+    ? state.tabs.find((tab) => tab.id === state.contextMenu?.tabId) ?? null
+    : null;
+
   const view = html`
-    <div class="vc-terminal-plugin-widget" data-hosted-widget-focus-root="true" tabindex="-1" @click="${focusTerminalInputSurface}">
-      <div class="vc-terminal-plugin-toolbar">
-        <div class="vc-terminal-plugin-title" title="${() => state.title}">${() => state.title}</div>
-        <div class="vc-terminal-plugin-cwd" title="${() => state.workingDirectory}">${() => state.workingDirectory || "No cwd"}</div>
-        <div class="vc-terminal-plugin-status-text">${() => state.status}${() => state.ptyID ? ` · ${state.cols}×${state.rows}` : ""}</div>
-        <button type="button" class="vc-terminal-plugin-button" title="Restart PTY" disabled="${() => state.status === 'creating'}" @click="${(event: Event) => {
+    <div class="vc-terminal-plugin-widget" data-hosted-widget-focus-root="true" tabindex="-1" @click="${() => {
+      closeContextMenu();
+      focusTerminalInputSurface();
+    }}">
+      <div class="vc-terminal-plugin-tabbar">
+        <div class="vc-terminal-plugin-tabs" @click="${(event: Event) => {
+          if (event.target !== event.currentTarget) return;
           event.stopPropagation();
-          void restartPty();
-        }}">Restart</button>
+          addTab();
+        }}">
+          ${() => state.tabs.length === 0
+            ? html`<div class="vc-terminal-plugin-empty-tabs" @click="${(event: Event) => {
+              event.stopPropagation();
+              addTab();
+            }}">No terminal tabs</div>`
+            : state.tabs.map((tab: TTerminalTabState) => html`
+              <button
+                type="button"
+                class="${() => `vc-terminal-plugin-tab ${state.activeTabId === tab.id ? "is-active" : ""} ${tab.status === "error" ? "has-error" : ""}`}"
+                title="${() => `${tab.title}\n${tab.workingDirectory}\n${tab.status}${tab.error ? `: ${tab.error}` : ""}`}"
+                @click="${(event: Event) => {
+                  event.stopPropagation();
+                  setActiveTab(tab.id);
+                }}"
+                @contextmenu="${(event: Event) => openTabContextMenu(event as MouseEvent, tab.id)}"
+              >
+                <span class="vc-terminal-plugin-tab-icon">▸_</span>
+                <span class="vc-terminal-plugin-tab-title">${() => tab.title}</span>
+                <span class="vc-terminal-plugin-tab-status">${() => tab.status === "connected" ? "" : tab.status}</span>
+                <span
+                  role="button"
+                  tabindex="0"
+                  class="vc-terminal-plugin-tab-close"
+                  title="Close tab"
+                  @click="${(event: Event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeTab(tab.id);
+                  }}"
+                >×</span>
+              </button>
+            `.key(tab.id))}
+        </div>
+        <button type="button" class="vc-terminal-plugin-tab-action" title="New terminal tab" @click="${(event: Event) => {
+          event.stopPropagation();
+          addTab();
+        }}">+</button>
+        <button type="button" class="vc-terminal-plugin-tab-action" title="Restart active tab" disabled="${() => getActiveTab()?.status === 'creating' || state.tabs.length === 0}" @click="${(event: Event) => {
+          event.stopPropagation();
+          void restartActiveTab();
+        }}">↻</button>
       </div>
 
-      <div class="vc-terminal-plugin-mount" data-ghostty-terminal-host="true">
-        <div class="vc-terminal-plugin-root" data-ghostty-terminal-root="true" tabindex="-1"></div>
+      <div class="vc-terminal-plugin-panes">
+        ${() => state.tabs.map((tab: TTerminalTabState) => html`
+          <div
+            class="${() => `vc-terminal-plugin-pane ${state.activeTabId === tab.id ? "is-active" : ""}`}"
+            data-terminal-pane-id="${tab.id}"
+          >
+            <div class="vc-terminal-plugin-mount" data-ghostty-terminal-host="true">
+              <div class="vc-terminal-plugin-root" data-ghostty-terminal-root="true" tabindex="-1"></div>
+            </div>
+          </div>
+        `.key(tab.id))}
       </div>
 
-      ${() => state.error
-        ? html`<div class="vc-terminal-plugin-error">${state.error}</div>`
-        : state.status === "creating" || state.status === "connecting"
-          ? html`<div class="vc-terminal-plugin-message">${state.status === "creating" ? "Creating terminal..." : "Connecting terminal..."}</div>`
-          : null}
+      ${() => {
+        const activeTab = getActiveTab();
+        if (!activeTab) {
+          return html`<div class="vc-terminal-plugin-message">Create a terminal tab to start a session.</div>`;
+        }
+        if (activeTab.error) {
+          return html`<div class="vc-terminal-plugin-error">${activeTab.error}</div>`;
+        }
+        return html`<div class="vc-terminal-plugin-message">${activeTab.workingDirectory} · ${activeTab.status} · ${activeTab.cols}×${activeTab.rows}</div>`;
+      }}
+
+      ${() => {
+        const menu = state.contextMenu;
+        const tab = contextMenuTab();
+        if (!menu || !tab) return null;
+        const index = state.tabs.findIndex((candidate) => candidate.id === tab.id);
+        const hasOthers = state.tabs.length > 1;
+        const hasLeft = index > 0;
+        const hasRight = index >= 0 && index < state.tabs.length - 1;
+        return html`
+          <div
+            class="vc-terminal-plugin-context-menu"
+            style="${() => `left: ${menu.x}px; top: ${menu.y}px;`}"
+            @click="${(event: Event) => event.stopPropagation()}"
+            @contextmenu="${(event: Event) => event.preventDefault()}"
+          >
+            <button type="button" @click="${() => renameTab(tab.id)}">Rename</button>
+            <button type="button" @click="${() => closeTab(tab.id)}">Close</button>
+            <button type="button" disabled="${() => !hasOthers}" @click="${() => closeOthers(tab.id)}">Close others</button>
+            <button type="button" disabled="${() => !hasRight}" @click="${() => closeRight(tab.id)}">Close right</button>
+            <button type="button" disabled="${() => !hasLeft}" @click="${() => closeLeft(tab.id)}">Close left</button>
+          </div>
+        `;
+      }}
     </div>
   `;
 
   args.root.replaceChildren();
   view(args.root);
 
-  if (!workingDirectory) {
-    setStatus("error", "Terminal working directory is missing.");
-  } else {
-    void mountGhostty().catch((error) => {
-      if (disposed) return;
-      setStatus("error", getErrorMessage(error, "Failed to mount terminal"));
+  queueMicrotask(() => {
+    state.tabs.forEach((tab) => {
+      void mountSession(tab.id);
     });
-  }
+  });
 
   return () => {
     disposed = true;
-    closeSocket();
-    clearTimers();
-    resizeObserver?.disconnect();
-    resizeObserver = null;
-    cleanupPasteListeners?.();
-    cleanupPasteListeners = null;
-    term?.attachCustomWheelEventHandler?.(undefined);
-    term?.dispose();
-    term = null;
-    void removeCurrentPty();
+    [...sessions.keys()].forEach((tabId) => cleanupSession(tabId));
     args.root.replaceChildren();
   };
 }

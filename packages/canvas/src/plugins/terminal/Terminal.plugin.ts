@@ -1,7 +1,8 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import { createOrpcWebsocketService, type OrpcWebsocketService } from "@vibecanvas/orpc-client";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
+import Konva from "konva";
 import SquareTerminal from "lucide-static/icons/square-terminal.svg?raw";
 import type {
   CameraService,
@@ -13,6 +14,7 @@ import type {
   ToolService,
   WidgetManagerService,
 } from "../../services";
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { WIDGET_WINDOW_CONTAINED } from "../../services/widget/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { isKonvaGroup } from "../../core/GUARDS";
@@ -26,6 +28,7 @@ const TERMINAL_WIDGET_HEIGHT = 560;
 
 function createWidgetElement(args: {
   id: string;
+  tabId: string;
   workingDirectory: string;
   x: number;
   y: number;
@@ -52,6 +55,12 @@ function createWidgetElement(args: {
       payload: {
         workingDirectory: args.workingDirectory,
         title: "Terminal",
+        activeTabId: args.tabId,
+        tabs: [{
+          id: args.tabId,
+          title: args.workingDirectory,
+          workingDirectory: args.workingDirectory,
+        }],
       } satisfies TTerminalWidgetPayload,
     },
     style: {},
@@ -64,6 +73,37 @@ function getViewportCenter(args: { camera: CameraService; scene: SceneService })
     x: (rect.width / 2 - args.camera.x) / args.camera.zoom - TERMINAL_WIDGET_WIDTH / 2,
     y: (rect.height / 2 - args.camera.y) / args.camera.zoom - TERMINAL_WIDGET_HEIGHT / 2,
   };
+}
+
+function persistTerminalPayload(args: {
+  crdt: CrdtService;
+  scene: SceneService;
+  elementId: string;
+  payload: TTerminalWidgetPayload;
+}) {
+  const currentElement = args.crdt.doc()?.elements[args.elementId];
+  if (!currentElement || currentElement.data.type !== "widget") {
+    return;
+  }
+
+  const nextData: TWidgetData = {
+    ...currentElement.data,
+    payload: {
+      ...currentElement.data.payload,
+      ...args.payload,
+    },
+  };
+
+  const node = args.scene.staticForegroundLayer.findOne((candidate: Konva.Node) => {
+    return isKonvaGroup(candidate) && candidate.id() === args.elementId;
+  });
+  if (isKonvaGroup(node)) {
+    node.setAttr(ELEMENT_DATA_ATTR, nextData);
+  }
+
+  args.crdt.build()
+    .patchElement(args.elementId, "data", nextData)
+    .commit();
 }
 
 export function createTerminalPlugin(): IPlugin<{
@@ -110,6 +150,12 @@ export function createTerminalPlugin(): IPlugin<{
             root,
             element: widgetElement,
             apiService: orpcService.safeClient,
+            onPersist: (payload) => persistTerminalPayload({
+              crdt,
+              scene,
+              elementId: widgetElement.id,
+              payload,
+            }),
           });
         },
       });
@@ -125,8 +171,10 @@ export function createTerminalPlugin(): IPlugin<{
 
         const center = getViewportCenter({ camera, scene });
         const timestamp = Date.now();
+        const widgetId = crypto.randomUUID();
         const widgetElement = createWidgetElement({
-          id: crypto.randomUUID(),
+          id: widgetId,
+          tabId: crypto.randomUUID(),
           workingDirectory,
           x: center.x,
           y: center.y,

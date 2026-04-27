@@ -1,15 +1,24 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
+export type TTerminalTabPayload = {
+  id: string;
+  title: string;
+  workingDirectory: string;
+};
+
 export type TTerminalWidgetPayload = {
   workingDirectory?: string;
   title?: string;
+  activeTabId?: string | null;
+  tabs?: TTerminalTabPayload[];
 };
 
 export type TTerminalWidgetMountArgs = {
   root: HTMLDivElement;
   element: TElement;
   apiService: TOrpcSafeClient;
+  onPersist?: (payload: TTerminalWidgetPayload) => void;
 };
 
 export type TTerminalCwdDialogArgs = {

@@ -9,8 +9,9 @@
   --vc-terminal-danger: #f87171;
   --vc-terminal-cursor: #f59e0b;
   --vc-terminal-selection-background: #374151;
+  position: relative;
   display: grid;
-  grid-template-rows: 32px minmax(0, 1fr) auto;
+  grid-template-rows: 34px minmax(0, 1fr) auto;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -22,56 +23,144 @@
   user-select: none;
 }
 
-.vc-terminal-plugin-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.vc-terminal-plugin-tabbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
   min-width: 0;
-  padding: 0 8px;
+  min-height: 0;
   border-bottom: 1px solid var(--vc-terminal-border);
   background: var(--vc-terminal-panel-2);
 }
 
-.vc-terminal-plugin-title,
-.vc-terminal-plugin-cwd,
-.vc-terminal-plugin-status-text {
+.vc-terminal-plugin-tabs {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.vc-terminal-plugin-empty-tabs {
+  display: flex;
+  align-items: center;
+  height: 33px;
+  padding: 0 10px;
+  color: var(--vc-terminal-muted-foreground);
+  font-size: 11px;
+}
+
+.vc-terminal-plugin-tab {
+  display: grid;
+  grid-template-columns: auto minmax(44px, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 160px;
+  max-width: 280px;
+  height: 33px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--vc-terminal-border);
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--vc-terminal-muted-foreground);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.vc-terminal-plugin-tab:hover {
+  background: rgba(148, 163, 184, 0.10);
+  color: var(--vc-terminal-foreground);
+}
+
+.vc-terminal-plugin-tab.is-active {
+  border-bottom-color: #3b82f6;
+  background: var(--vc-terminal-background);
+  color: var(--vc-terminal-foreground);
+}
+
+.vc-terminal-plugin-tab.has-error {
+  color: #fecaca;
+}
+
+.vc-terminal-plugin-tab-icon {
+  color: var(--vc-terminal-muted-foreground);
+  font-size: 10px;
+}
+
+.vc-terminal-plugin-tab-title,
+.vc-terminal-plugin-tab-status {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vc-terminal-plugin-title {
-  flex: 0 0 auto;
-  font-weight: 700;
-}
-
-.vc-terminal-plugin-cwd {
-  flex: 1 1 0%;
+.vc-terminal-plugin-tab-status {
   color: var(--vc-terminal-muted-foreground);
-  font-size: 11px;
+  font-size: 10px;
 }
 
-.vc-terminal-plugin-status-text {
-  flex: 0 0 auto;
+.vc-terminal-plugin-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
   color: var(--vc-terminal-muted-foreground);
-  font-size: 11px;
+  font-size: 15px;
+  line-height: 1;
 }
 
-.vc-terminal-plugin-button {
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--vc-terminal-border);
-  border-radius: 6px;
-  background: #172033;
+.vc-terminal-plugin-tab-close:hover {
+  background: rgba(148, 163, 184, 0.18);
   color: var(--vc-terminal-foreground);
+}
+
+.vc-terminal-plugin-tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 33px;
+  border: 0;
+  border-left: 1px solid var(--vc-terminal-border);
+  background: transparent;
+  color: var(--vc-terminal-muted-foreground);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: 15px;
 }
 
-.vc-terminal-plugin-button:hover {
-  background: #1f2a44;
+.vc-terminal-plugin-tab-action:hover {
+  background: rgba(148, 163, 184, 0.10);
+  color: var(--vc-terminal-foreground);
+}
+
+.vc-terminal-plugin-tab-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.vc-terminal-plugin-panes {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vc-terminal-background);
+}
+
+.vc-terminal-plugin-pane {
+  position: absolute;
+  inset: 0;
+  display: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+.vc-terminal-plugin-pane.is-active {
+  display: block;
 }
 
 .vc-terminal-plugin-mount {
@@ -94,9 +183,13 @@
 
 .vc-terminal-plugin-message,
 .vc-terminal-plugin-error {
+  min-width: 0;
   border-top: 1px solid var(--vc-terminal-border);
   padding: 4px 8px;
+  overflow: hidden;
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vc-terminal-plugin-message {
@@ -105,6 +198,42 @@
 
 .vc-terminal-plugin-error {
   color: var(--vc-terminal-danger);
+}
+
+.vc-terminal-plugin-context-menu {
+  position: absolute;
+  z-index: 10;
+  display: grid;
+  min-width: 148px;
+  overflow: hidden;
+  border: 1px solid var(--vc-terminal-border);
+  border-radius: 8px;
+  background: #101827;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.42);
+  padding: 4px;
+}
+
+.vc-terminal-plugin-context-menu button {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vc-terminal-foreground);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.vc-terminal-plugin-context-menu button:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.vc-terminal-plugin-context-menu button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .vc-terminal-plugin-dialog-mount {

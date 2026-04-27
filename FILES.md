@@ -16,6 +16,7 @@ Rules:
 - never add clean or minor by yourself
 - entries are grouped by apps/packages
 - no test files
+- only packages/* and apps/* are listed
 
 Legend
  - ❓ unreviewed
@@ -32,27 +33,12 @@ Path rule
 - when a section has no prefix, filepath is already the full repo-relative path
 
 
-## root
-| status | filepath | human comment | oneliner when to use |
-|---|---|---|---|
-| 🤖 | `bun.lock` |  | Workspace dependency lockfile; update when package manifests change. |
-| 🤖 | `package.json` |  | Use this when adding or updating root workspace scripts like the functio |
-| 🤖 | `scripts/sort-filename.ts` |  | Sort FILES.md rows by filepath. |
-| ❓ | `tasks/BASED.md` |  | Based task overview and active work index. |
-| 🤖 | `tasks/a/A39.md` |  | Filesystem IDE canvas plugin implementation task checklist and notes. |
-| ❓ | `tasks/s/S43.md` |  | CloneService clone-drag normalization task plan. |
-| ❓ | `tasks/s/S44.md` |  | Canvas test repair lane for services and transform tests. |
-| ❓ | `tasks/s/S45.md` |  | Canvas test repair lane for text edit and session tests. |
-| ❓ | `tasks/s/S46.md` |  | Canvas test repair lane for element creation and clone tests. |
-| 🤖 | `tasks/s/S42.md` |  | Service refactor progress and canvas test repair integration log. |
-| 🤖 | `tasks/s/S47.md` |  | Canvas test repair lane for stale coverage audit and integration. |
-| 🤖 | `packages/canvas/TESTS.md` |  | Canvas test migration log and focused test run notes. |
-
 ## packages/canvas
 prefix: `packages/canvas/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../package.json` |  | Canvas package manifest; update when adding canvas runtime dependencies. |
 | 🟡 | `automerge.ts` |  | Browser Automerge repo, persisted doc handles, WebSocket sync |
 | 🫠 | `base.css` |  | Global theme tokens, dark mode, baseline element resets |
 | ❓ | `components/Canvas.tsx` |  | Automerge-backed canvas runtime mount, loading, teardown orchestration |
@@ -132,7 +118,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
 | ❓ | `plugins/filesystem/RootPathDialog.ts` |  | Arrow root/cwd picker dialog before creating filesystem widgets. |
 | 🤖 | `plugins/filesystem/typed.ts` |  | Filesystem plugin local widget and API helper types. |
-| ❓ | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
+| 🤖 | `plugins/filesystem/widget.css` |  | Trusted filesystem IDE widget and root picker styling. |
 | 🤖 | `plugins/filesystem/widget.ts` |  | Arrow filesystem IDE widget with file tree, tabs, and CodeMirror mount. |
 | ✅ | `plugins/grid/fn.math.ts` |  | Grid spacing and line offsets from zoom/pan |
 | ❓ | `plugins/grid/Grid.plugin.ts` |  | Registers toggleable canvas grid overlay reacting to camera theme resize |
@@ -220,6 +206,11 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/text/tx.enter-edit-mode.ts` |  | Inline textarea editing for canvas text/shape labels |
 | ✅ | `plugins/text/tx.setup-text-node.ts` |  | Text node pointer hooks, drag sync, alt-clone history |
 | 🤖 | `plugins/text/tx.update-text-node-from-element.ts` |  | Existing Konva text node visual sync from text element model |
+| ❓ | `plugins/terminal/CwdDialog.ts` |  | Terminal widget cwd picker using filesystem APIs. |
+| ❓ | `plugins/terminal/Terminal.plugin.ts` |  | Trusted terminal widget plugin registration and creation flow. |
+| ❓ | `plugins/terminal/typed.ts` |  | Terminal plugin local widget, tab, dialog, PTY, and API helper types. |
+| ❓ | `plugins/terminal/widget.css` |  | Trusted terminal tabs, widget, context menu, and cwd picker styling. |
+| ❓ | `plugins/terminal/widget.ts` |  | Arrow multi-tab Ghostty terminal widget backed by CLI PTY APIs. |
 | 🤖 | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, sidebar toggle, cursor, temporary hand |
 | ❓ | `plugins/transform/fx.proxy-bounds.ts` |  | Transform overlay needs layer-relative rotated shape bounds |
 | ❓ | `plugins/transform/fx.proxy-drag-target.ts` |  | Single selected shape or pen path proxy-drag target |
@@ -228,7 +219,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/transform/tx.dispatch-selection-transform-hooks.ts` |  | Selection-transform hook fanout; aggregate cancel/crdt, track handled no |
 | 🤖 | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
 | ❓ | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node |
-| ✅ | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins and widget history dependency |
+| 🤖 | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins and widget history dependency |
 | ❓ | `services/camera/CameraService.ts` |  | Canvas camera pan/zoom viewport state driving scene layers |
 | ❓ | `services/canvas-registry/CanvasRegistryService.ts` |  | Canvas semantic registry: nodes↔elements/groups, lifecycle hooks, select |
 | 🫠 | `services/canvas-registry/fn-merge-selection-style-menu-configs.ts` | weak merge semantics; convention drift | Combining layered selection-style menu configs across canvas registry |
@@ -254,10 +245,6 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing constants |
-| ❓ | `../tests/services/widget/fx.attach-widget-listener.fullscreen.test.ts` |  | Widget maximize button should fullscreen same mounted DOM body div. |
-| ❓ | `../tests/services/widget/fx.attach-widget-listener.portal-visibility.test.ts` |  | Widget minimize button should hide mounted DOM portal body. |
-| ❓ | `../tests/services/widget/tx.attach-dom-portal.fullscreen.test.ts` |  | Widget DOM portal fullscreen style reuses existing body div. |
-| ❓ | `../tests/services/widget/tx.attach-dom-portal.visibility.test.ts` |  | Widget DOM portal body stays mounted but hidden while collapsed. |
 | 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host body activation, header selection, close/min/max buttons, cursor, drag commit, and alt-clone wiring |
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
@@ -280,7 +267,6 @@ prefix: `apps/cli/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| 🤖 | `../tests/plugins/cli/harness.ts` |  |  |
 | ❓ | `AutomergePlugin.ts` |  |  |
 | ❓ | `bootstrap.ts` |  |  |
 | ❓ | `build-config.ts` |  |  |
@@ -352,7 +338,6 @@ prefix: `apps/frontend/src/`
 | 🤖 | `SidebarItem.module.css` |  | Canvas navigation row styling, selected state, and item menu visuals |
 | 🤖 | `SidebarItem.tsx` |  | Sidebar canvas row with navigation and rename/delete menu actions |
 | ❓ | `store.ts` |  |  |
-| ❓ | `theme.memory.test.ts` |  |  |
 | ❓ | `theme.memory.ts` |  |  |
 | ❓ | `theme.ts` |  |  |
 | ❓ | `Toast.module.css` |  |  |
@@ -429,7 +414,6 @@ prefix: `packages/api-filesystem/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `api.files-filesystem.test.ts` |  |  |
 | ❓ | `api.files-filesystem.ts` |  |  |
 | ❓ | `api.home-filesystem.ts` |  |  |
 | ❓ | `api.inspect-filesystem.ts` |  |  |
@@ -472,7 +456,6 @@ prefix: `packages/api-pty/src/`
 | ❓ | `api.list-pty.ts` |  |  |
 | ❓ | `api.remove-pty.ts` |  |  |
 | ❓ | `api.update-pty.ts` |  |  |
-| ❓ | `api.upload-image.test.ts` |  |  |
 | ❓ | `api.upload-image.ts` |  |  |
 | ❓ | `contract.ts` |  |  |
 | ❓ | `fn.extension-from-pty-image-format.ts` |  |  |
@@ -550,14 +533,12 @@ prefix: `packages/service-db/src/`
 |---|---|---|---|
 | ❓ | `_embedded-migrations.ts` |  |  |
 | ❓ | `fx.get-file.ts` |  |  |
-| ❓ | `fx.migrations.test.ts` |  |  |
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
 | ❓ | `schema.ts` |  |  |
 | ❓ | `tx.create-file.ts` |  |  |
-| ❓ | `tx.migrations.test.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
 
