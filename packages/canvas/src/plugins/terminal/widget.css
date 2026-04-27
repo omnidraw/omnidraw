@@ -1,0 +1,257 @@
+.vc-terminal-plugin-widget {
+  --vc-terminal-background: #111214;
+  --vc-terminal-foreground: #e5e7eb;
+  --vc-terminal-muted-foreground: #94a3b8;
+  --vc-terminal-border: #243244;
+  --vc-terminal-panel: #0b1020;
+  --vc-terminal-panel-2: #111827;
+  --vc-terminal-accent: #2563eb;
+  --vc-terminal-danger: #f87171;
+  --vc-terminal-cursor: #f59e0b;
+  --vc-terminal-selection-background: #374151;
+  display: grid;
+  grid-template-rows: 32px minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vc-terminal-background);
+  color: var(--vc-terminal-foreground);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  user-select: none;
+}
+
+.vc-terminal-plugin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--vc-terminal-border);
+  background: var(--vc-terminal-panel-2);
+}
+
+.vc-terminal-plugin-title,
+.vc-terminal-plugin-cwd,
+.vc-terminal-plugin-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vc-terminal-plugin-title {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.vc-terminal-plugin-cwd {
+  flex: 1 1 0%;
+  color: var(--vc-terminal-muted-foreground);
+  font-size: 11px;
+}
+
+.vc-terminal-plugin-status-text {
+  flex: 0 0 auto;
+  color: var(--vc-terminal-muted-foreground);
+  font-size: 11px;
+}
+
+.vc-terminal-plugin-button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--vc-terminal-border);
+  border-radius: 6px;
+  background: #172033;
+  color: var(--vc-terminal-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.vc-terminal-plugin-button:hover {
+  background: #1f2a44;
+}
+
+.vc-terminal-plugin-mount {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--vc-terminal-background);
+}
+
+.vc-terminal-plugin-root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  outline: none;
+  caret-color: transparent;
+}
+
+.vc-terminal-plugin-message,
+.vc-terminal-plugin-error {
+  border-top: 1px solid var(--vc-terminal-border);
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.vc-terminal-plugin-message {
+  color: var(--vc-terminal-muted-foreground);
+}
+
+.vc-terminal-plugin-error {
+  color: var(--vc-terminal-danger);
+}
+
+.vc-terminal-plugin-dialog-mount {
+  position: absolute;
+  inset: 0;
+  z-index: 20000;
+  pointer-events: auto;
+}
+
+.vc-terminal-plugin-dialog-backdrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: rgba(2, 6, 23, 0.62);
+  color: var(--vc-terminal-foreground, #e5e7eb);
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.vc-terminal-plugin-dialog {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(140px, 280px) auto auto;
+  width: min(640px, calc(100% - 32px));
+  max-height: min(680px, calc(100% - 32px));
+  overflow: hidden;
+  border: 1px solid var(--vc-terminal-border, #243244);
+  border-radius: 14px;
+  background: var(--vc-terminal-panel-2, #111827);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.vc-terminal-plugin-dialog-header,
+.vc-terminal-plugin-dialog-footer,
+.vc-terminal-plugin-dialog-actions,
+.vc-terminal-plugin-dialog-path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.vc-terminal-plugin-dialog-header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--vc-terminal-border, #243244);
+}
+
+.vc-terminal-plugin-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.vc-terminal-plugin-dialog-header p {
+  margin: 2px 0 0;
+  color: var(--vc-terminal-muted-foreground, #94a3b8);
+  font-size: 12px;
+}
+
+.vc-terminal-plugin-dialog-close,
+.vc-terminal-plugin-dialog-button {
+  border: 1px solid var(--vc-terminal-border, #243244);
+  border-radius: 6px;
+  background: #172033;
+  color: var(--vc-terminal-foreground, #e5e7eb);
+  cursor: pointer;
+  font: inherit;
+}
+
+.vc-terminal-plugin-dialog-close {
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+}
+
+.vc-terminal-plugin-dialog-input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--vc-terminal-border, #243244);
+  border-radius: 8px;
+  background: #0b1020;
+  color: var(--vc-terminal-foreground, #e5e7eb);
+  font: inherit;
+  padding: 0 10px;
+}
+
+.vc-terminal-plugin-dialog-button {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.vc-terminal-plugin-dialog-button:hover,
+.vc-terminal-plugin-dialog-close:hover {
+  background: #1f2a44;
+}
+
+.vc-terminal-plugin-dialog-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vc-terminal-plugin-dialog-button.is-primary {
+  border-color: var(--vc-terminal-accent, #2563eb);
+  background: var(--vc-terminal-accent, #2563eb);
+  color: white;
+}
+
+.vc-terminal-plugin-dialog-actions {
+  padding-top: 0;
+}
+
+.vc-terminal-plugin-dialog-browser {
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--vc-terminal-border, #243244);
+  border-bottom: 1px solid var(--vc-terminal-border, #243244);
+}
+
+.vc-terminal-plugin-dialog-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--vc-terminal-foreground, #e5e7eb);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.vc-terminal-plugin-dialog-folder:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.vc-terminal-plugin-dialog-message,
+.vc-terminal-plugin-dialog-error {
+  padding: 8px 12px;
+  color: var(--vc-terminal-muted-foreground, #94a3b8);
+}
+
+.vc-terminal-plugin-dialog-error {
+  color: var(--vc-terminal-danger, #f87171);
+}
+
+.vc-terminal-plugin-dialog-footer {
+  justify-content: flex-end;
+}

@@ -14,6 +14,7 @@ import {
   createSelectPlugin,
   createShape1dPlugin,
   createShape2dPlugin,
+  createTerminalPlugin,
   createTextPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
@@ -156,6 +157,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createTextPlugin(),
     createImagePlugin(),
     createFilesystemPlugin(),
+    createTerminalPlugin(),
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
