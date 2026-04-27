@@ -152,6 +152,10 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
 function syncWindowState(portal: TPortal, windowMode: typeof WIDGET_WINDOW_CONTAINED | typeof WIDGET_WINDOW_FULLSCREEN) {
   if (!(portal.node instanceof portal.Group)) return
 
+  if (windowMode === WIDGET_WINDOW_FULLSCREEN) {
+    activateWidgetBody(portal)
+  }
+
   const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
   if (widgetData?.type === 'widget') {
     portal.node.setAttr(ELEMENT_DATA_ATTR, {
