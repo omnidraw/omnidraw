@@ -17,6 +17,7 @@ import {
 
 type TPortal = {
   Group: typeof Konva.Group;
+  Line?: typeof Konva.Line;
   Rect: typeof Konva.Rect;
 }
 
@@ -26,6 +27,39 @@ type TArgs = {
 }
 
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
+const WIDGET_CONNECTION_BOUNDARY_ID = "widget-connection-boundary";
+
+function txSyncConnectionBoundary(portal: TPortal, args: { node: Konva.Group; width: number; height: number }) {
+  if (!portal.Line) return;
+
+  const boundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
+  if (!(boundary instanceof portal.Line)) return;
+
+  const offset = 10;
+  const radius = 18;
+  const left = -offset;
+  const top = -offset;
+  const right = args.width + offset;
+  const bottom = args.height + offset;
+  const corner = Math.min(radius, (right - left) / 2, (bottom - top) / 2);
+  const segments = 8;
+  const points: number[] = [];
+
+  const addArc = (centerX: number, centerY: number, startAngle: number, endAngle: number) => {
+    for (let index = 0; index <= segments; index += 1) {
+      const amount = index / segments;
+      const angle = startAngle + (endAngle - startAngle) * amount;
+      points.push(centerX + Math.cos(angle) * corner, centerY + Math.sin(angle) * corner);
+    }
+  };
+
+  addArc(right - corner, top + corner, -Math.PI / 2, 0);
+  addArc(right - corner, bottom - corner, 0, Math.PI / 2);
+  addArc(left + corner, bottom - corner, Math.PI / 2, Math.PI);
+  addArc(left + corner, top + corner, Math.PI, Math.PI * 1.5);
+
+  boundary.points(points);
+}
 
 function txApplyWidgetHostSize(portal: TPortal, args: {
   node: Konva.Group;
@@ -50,6 +84,8 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
   args.node.width(width);
   args.node.height(height);
   args.node.scale({ x: 1, y: 1 });
+
+  txSyncConnectionBoundary(portal, { node: args.node, width, height });
 
   const border = args.node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
   if (border instanceof portal.Rect) {

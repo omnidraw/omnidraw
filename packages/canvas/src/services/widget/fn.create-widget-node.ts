@@ -117,6 +117,51 @@ function createBody(konva: typeof Konva, colors: THostThemeColors) {
   return body;
 }
 
+function createConnectionBorder(konva: typeof Konva, colors: THostThemeColors) {
+  const border = new konva.Line({
+    id: 'widget-connection-boundary',
+    points: [],
+    closed: true,
+    stroke: colors.windowStroke,
+    strokeWidth: 2,
+    lineJoin: 'round',
+    lineCap: 'round',
+    fillEnabled: false,
+    listening: false,
+    dash: [6, 5],
+    opacity: 0.8,
+  })
+
+  return border;
+}
+
+function syncConnectionBorder(border: Konva.Line, args: { width: number; height: number }) {
+  const offset = 10
+  const radius = 18
+  const left = -offset
+  const top = -offset
+  const right = args.width + offset
+  const bottom = args.height + offset
+  const corner = Math.min(radius, (right - left) / 2, (bottom - top) / 2)
+  const segments = 8
+  const points: number[] = []
+
+  const addArc = (centerX: number, centerY: number, startAngle: number, endAngle: number) => {
+    for (let index = 0; index <= segments; index += 1) {
+      const amount = index / segments
+      const angle = startAngle + (endAngle - startAngle) * amount
+      points.push(centerX + Math.cos(angle) * corner, centerY + Math.sin(angle) * corner)
+    }
+  }
+
+  addArc(right - corner, top + corner, -Math.PI / 2, 0)
+  addArc(right - corner, bottom - corner, 0, Math.PI / 2)
+  addArc(left + corner, bottom - corner, Math.PI / 2, Math.PI)
+  addArc(left + corner, top + corner, Math.PI, Math.PI * 1.5)
+
+  border.points(points)
+}
+
 export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors, element: TElement) {
   if (element.data.type !== 'widget') return null
 
@@ -133,6 +178,8 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
     width,
     height,
   })
+  const connectionBorder = createConnectionBorder(konva, colors)
+  syncConnectionBorder(connectionBorder, { width, height })
 
   const body = createBody(konva, colors)
   body.width(width)
@@ -162,6 +209,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
     divider.listening(false)
   }
 
+  group.add(connectionBorder)
   group.add(border)
   group.add(header)
   group.add(body)

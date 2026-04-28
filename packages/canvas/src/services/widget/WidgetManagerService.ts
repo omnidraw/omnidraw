@@ -238,6 +238,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
         txResizeWidgetHost({
           Group: Konva.Group,
+          Line: Konva.Line,
           Rect: Konva.Rect,
         }, {
           node,
