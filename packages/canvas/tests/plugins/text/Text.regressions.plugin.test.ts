@@ -144,6 +144,43 @@ describe("new Text plugin regressions", () => {
     await harness.destroy();
   });
 
+  test("Delete key removes hydrated free text without crashing", async () => {
+    const textElement = createTextElement({
+      id: "delete-text-regression",
+      data: {
+        ...createTextElement().data,
+        text: "delete me",
+      },
+    });
+    const docHandle = createMockDocHandle({
+      elements: {
+        [textElement.id]: textElement,
+      },
+    });
+    const harness = await createNewCanvasHarness({ docHandle });
+    const selection = harness.runtime.services.require("selection");
+    const node = harness.staticForegroundLayer.findOne<Konva.Text>(`#${textElement.id}`);
+
+    expect(node).toBeTruthy();
+    selection.setSelection([node!]);
+    selection.setFocusedNode(node!);
+
+    expect(() => {
+      harness.runtime.hooks.keydown.call(new KeyboardEvent("keydown", {
+        key: "Delete",
+        bubbles: true,
+      }));
+    }).not.toThrow();
+
+    await flushCanvasEffects();
+
+    expect(harness.staticForegroundLayer.findOne(`#${textElement.id}`)).toBeUndefined();
+    expect(docHandle.doc().elements[textElement.id]).toBeUndefined();
+    expect(selection.selection).toHaveLength(0);
+
+    await harness.destroy();
+  });
+
   test("throttled drag patch does not patch a new text node before its first CRDT commit", async () => {
     vi.useFakeTimers();
 

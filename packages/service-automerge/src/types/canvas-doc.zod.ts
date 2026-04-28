@@ -129,32 +129,38 @@ export const zWidgetOfficialMachineState = z.enum([
 
 export const zWidgetMachineCurrent = z.object({
   value: z.string(),
-  official: zWidgetOfficialMachineState,
   changedAt: z.number(),
   meta: z.record(z.string(), z.unknown()),
 });
 
-export const zWidgetMachineStateNode = z.object({
-  label: z.string().optional(),
-  official: zWidgetOfficialMachineState,
-  description: z.string().optional(),
+export const zWidgetMachine = zWidgetMachineCurrent;
+
+export const zWidgetPortPath = z.array(z.string().min(1)).min(1);
+
+export const zWidgetConnectionLine = z.object({
+  sourceArc: z.number(),
+  targetArc: z.number(),
+  waypoints: z.array(zPoint2D),
 });
 
-export const zWidgetMachineTransition = z.object({
-  from: z.string(),
-  event: z.string(),
-  to: z.string(),
-  label: z.string().optional(),
+export const zWidgetInputConnection = z.object({
+  id: z.string(),
+  filterPort: zWidgetPortPath.optional(),
+  sourceWidgetId: z.string(),
+  sourceFilterPort: zWidgetPortPath.optional(),
+  line: zWidgetConnectionLine,
 });
 
-export const zWidgetMachineGraph = z.object({
-  states: z.record(z.string(), zWidgetMachineStateNode),
-  transitions: z.array(zWidgetMachineTransition),
+export const zWidgetOutputConnection = z.object({
+  id: z.string(),
+  filterPort: zWidgetPortPath.optional(),
+  targetWidgetId: z.string(),
+  targetFilterPort: zWidgetPortPath.optional(),
 });
 
-export const zWidgetMachine = z.object({
-  current: zWidgetMachineCurrent,
-  graph: zWidgetMachineGraph,
+export const zWidgetConnections = z.object({
+  inputs: z.array(zWidgetInputConnection),
+  outputs: z.array(zWidgetOutputConnection),
 });
 
 export const zWidgetData = z.object({
@@ -166,6 +172,7 @@ export const zWidgetData = z.object({
   window: z.enum(['contained', 'minimized', 'fullscreen']),
   payload: z.record(z.string(), z.any()),
   machine: zWidgetMachine.optional(),
+  connections: zWidgetConnections.optional(),
 });
 
 

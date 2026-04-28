@@ -1,5 +1,5 @@
 import type { TJsonSchema } from "./schema";
-import type { TVibecanvasOfficialMachineState } from "./machine";
+import type { TVibecanvasMachineStateId } from "./machine";
 
 /**
  * Metadata config shape for a Vibecanvas guest widget.
@@ -20,7 +20,7 @@ import type { TVibecanvasOfficialMachineState } from "./machine";
  *     "main.css": "./src/main.css",
  *   },
  *   actor: {
- *     states: ["booting", "idle", "saving", "failed"],
+ *     states: ["booting", "ready.idle", "busy.saving", "error.failed"],
  *     inputs: {
  *       addTodo: {
  *         label: "Add Todo",
@@ -61,10 +61,8 @@ type TVibecanvasWidgetConfig = {
   source: Record<string, string>;
   /** Optional actor metadata used by Vibecanvas to connect widgets together. */
   actor?: {
-    /** Optional list of widget-specific states this actor may enter. */
-    states?: string[];
-    /** Optional host-known official states this actor is expected to use. */
-    officialStates?: TVibecanvasOfficialMachineState[];
+    /** Optional list of states this actor may enter. Use official states or dot-qualified substates like `busy.saving`. */
+    states?: TVibecanvasMachineStateId[];
     /** Input ports this widget can receive messages on. */
     inputs?: Record<string, { label?: string; schema?: TJsonSchema }>;
     /** Output ports this widget can emit messages from. */

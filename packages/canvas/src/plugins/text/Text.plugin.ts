@@ -5,6 +5,7 @@ import type { TElement, TTextData } from "@vibecanvas/service-automerge/types/ca
 import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import Type from "lucide-static/icons/type.svg?raw";
+import { ELEMENT_DATA_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
 import { isKonvaText } from "../../core/GUARDS";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import type {
@@ -90,7 +91,10 @@ function createTextNode(theme: ThemeService, element: TElement) {
   });
 
   applyTextThemeState(node, element);
+  node.setAttr(ELEMENT_DATA_ATTR, structuredClone(element.data));
   node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(element.style));
+  node.setAttr(VC_CREATED_AT_ATTR, element.createdAt);
+  node.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt);
   node.setAttr("vcContainerId", null);
   node.setAttr("vcOriginalText", data.originalText);
   node.setAttr("vcTextAutoResize", data.autoResize);

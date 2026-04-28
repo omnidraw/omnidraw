@@ -6330,8 +6330,9 @@ function getEventType(event) {
 function isOfficialMachineState(value) {
   return VIBECANVAS_OFFICIAL_MACHINE_STATES.includes(value);
 }
-function getOfficialState(config, value) {
-  return config.states?.[value]?.official ?? (isOfficialMachineState(value) ? value : "ready");
+function getVibecanvasMachineStatus(value) {
+  const status = value.split(".", 1)[0] ?? "ready";
+  return isOfficialMachineState(status) ? status : "ready";
 }
 function hasConfiguredState(config, value) {
   if (!config.states)
@@ -6353,7 +6354,6 @@ function resolvePersistence(config) {
 function toSnapshot(state) {
   return {
     value: state.value,
-    official: state.official,
     previous: state.previous,
     event: state.event,
     changedAt: state.changedAt,
@@ -6371,7 +6371,6 @@ function normalizeSnapshot(config, snapshot) {
     return null;
   return {
     value,
-    official: getOfficialState(config, value),
     previous: typeof snapshot.previous === "string" ? snapshot.previous : null,
     event: typeof snapshot.event === "string" ? snapshot.event : null,
     changedAt: typeof snapshot.changedAt === "number" ? snapshot.changedAt : Date.now(),
@@ -6386,7 +6385,6 @@ function machine(config = {}) {
   const persistence = resolvePersistence(config);
   const state = reactive({
     value: initial,
-    official: getOfficialState(config, initial),
     previous: null,
     event: null,
     changedAt: Date.now(),
@@ -6411,7 +6409,6 @@ function machine(config = {}) {
   const applyState = (value, meta, reason, event) => {
     state.previous = state.value;
     state.value = value;
-    state.official = getOfficialState(config, value);
     state.changedAt = Date.now();
     state.meta = meta;
     persist();
@@ -6439,6 +6436,7 @@ function machine(config = {}) {
     applyState(resolveTransitionTarget(transition), typeof transition === "string" ? {} : transition.meta ?? {}, "transition", event);
     return true;
   };
+  const status = () => getVibecanvasMachineStatus(state.value);
   const restore = async () => {
     if (!persistence || restored)
       return;
@@ -6451,7 +6449,6 @@ function machine(config = {}) {
     }
     state.previous = snapshot.previous;
     state.value = snapshot.value;
-    state.official = snapshot.official;
     state.event = snapshot.event;
     state.changedAt = snapshot.changedAt;
     state.meta = snapshot.meta;
@@ -6463,11 +6460,12 @@ function machine(config = {}) {
   } else {
     runEnterHooks("initial", null);
   }
-  return { state, send, set, can };
+  return { state, status, send, set, can };
 }
 export {
   machine,
   getVibecanvasOfficialMachineStates,
+  getVibecanvasMachineStatus,
   defineActor,
   createActorRuntime
 };

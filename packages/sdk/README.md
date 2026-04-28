@@ -50,8 +50,7 @@ export default {
     "main.css": "./src/main.css",
   },
   actor: {
-    states: ["booting", "idle", "saving", "failed"],
-    officialStates: ["booting", "ready", "busy", "error"],
+    states: ["booting", "ready.idle", "busy.saving", "error.failed"],
     inputs: {
       addTodo: {
         label: "Add Todo",
@@ -147,23 +146,19 @@ const flow = machine({
   initial: "booting",
   states: {
     booting: {
-      official: "booting",
-      on: { READY: "idle" },
+      on: { READY: "ready.idle" },
     },
-    idle: {
-      official: "ready",
-      on: { SAVE: "saving" },
+    "ready.idle": {
+      on: { SAVE: "busy.saving" },
     },
-    saving: {
-      official: "busy",
+    "busy.saving": {
       on: {
-        DONE: "idle",
-        FAIL: "failed",
+        DONE: "ready.idle",
+        FAIL: "error.failed",
       },
     },
-    failed: {
-      official: "error",
-      on: { RETRY: "saving" },
+    "error.failed": {
+      on: { RETRY: "busy.saving" },
     },
   },
 });
@@ -171,7 +166,7 @@ const flow = machine({
 watch(() => {
   // flow.state is reactive()
   flow.state.value;
-  flow.state.official;
+  flow.status();
 });
 
 flow.send("READY");
@@ -179,7 +174,7 @@ flow.send("READY");
 export default html`
   <main>
     <p>Widget state: ${() => flow.state.value}</p>
-    <p>Host-known state: ${() => flow.state.official}</p>
+    <p>Host-known state: ${() => flow.status()}</p>
     <button @click="${() => flow.send("SAVE")}">Save</button>
   </main>
 `;
@@ -188,8 +183,8 @@ export default html`
 You can also set state directly for simple widgets:
 
 ```ts
-flow.set("saving", { reason: "user-click" });
-flow.set("idle");
+flow.set("busy.saving", { reason: "user-click" });
+flow.set("ready.idle");
 ```
 
 ## Official host-known states
@@ -200,15 +195,15 @@ Vibecanvas recognizes these states across all widget types:
 "booting" | "ready" | "busy" | "waiting" | "dirty" | "error" | "disabled" | "disposed"
 ```
 
-Use custom widget states for your own workflow, then map each custom state to one official state:
+Use dot-qualified substates for your own workflow. The prefix is the host-known state:
 
 ```ts
 const flow = machine({
   states: {
-    editingTitle: { official: "dirty" },
-    waitingForUser: { official: "waiting" },
-    syncingToServer: { official: "busy" },
-    crashedButRecoverable: { official: "error" },
+    "dirty.editingTitle": {},
+    "waiting.userInput": {},
+    "busy.syncingToServer": {},
+    "error.crashedButRecoverable": {},
   },
 });
 ```
@@ -217,12 +212,12 @@ This gives Vibecanvas stable debugging/inspection across different widgets while
 
 ## Persistent and resumable machine state
 
-Machine snapshots can be persisted per widget instance by passing `persist` with a host/runtime portal. The SDK persists only serializable machine data: `value`, `official`, `previous`, `event`, `changedAt`, and `meta`. Functions, timers, promises, sockets, and handlers are never persisted.
+Machine snapshots can be persisted per widget instance by passing `persist` with a host/runtime portal. The SDK persists only serializable machine data: `value`, `previous`, `event`, `changedAt`, and `meta`. Functions, timers, promises, sockets, and handlers are never persisted.
 
 ```ts
 import { machine, type TVibecanvasMachinePersistencePortal } from "@vibecanvas/sdk";
 
-type TState = "booting" | "idle" | "saving" | "failed";
+type TState = "booting" | "ready.idle" | "busy.saving" | "error.failed";
 
 const portal: TVibecanvasMachinePersistencePortal<TState> = {
   async loadMachineState(id) {
@@ -239,28 +234,24 @@ const flow = machine<TState>({
   persist: { portal },
   states: {
     booting: {
-      official: "booting",
       onEnter: ({ send }) => send("READY"),
-      on: { READY: "idle" },
+      on: { READY: "ready.idle" },
     },
-    idle: {
-      official: "ready",
-      on: { SAVE: "saving" },
+    "ready.idle": {
+      on: { SAVE: "busy.saving" },
     },
-    saving: {
-      official: "busy",
+    "busy.saving": {
       async onRestore({ send }) {
         const status = await checkSaveStatus();
         await send(status.done ? "DONE" : "FAIL");
       },
       on: {
-        DONE: "idle",
-        FAIL: "failed",
+        DONE: "ready.idle",
+        FAIL: "error.failed",
       },
     },
-    failed: {
-      official: "error",
-      on: { RETRY: "saving" },
+    "error.failed": {
+      on: { RETRY: "busy.saving" },
     },
   },
 });

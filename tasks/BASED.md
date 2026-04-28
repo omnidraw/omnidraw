@@ -116,7 +116,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B27] - preview does not attach listeners correctly for all elements
 - [ ]: [B28] - group with widget and rect -> delete rect also deletes widget
 - [ ]: [B29] - shape2d -> edit must show vertical heigt correctly and hide konva.text while editing
-- [ ]: [B30] - can't delete text
+- [x]: [B30] - can't delete text
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
