@@ -55,14 +55,14 @@ export type TVibecanvasActorInputDefinition<TPayload = unknown> = {
 	handle?: (payload: TPayload) => void | Promise<void>;
 };
 /**
- * Describes one output port this widget actor can emit messages from.
+ * Describes one output port this widget actor can send messages from.
  *
  * Use either a JSON Schema directly or an object with a label and schema.
  */
 export type TVibecanvasActorOutputDefinition = TVibecanvasActorSchema | {
 	/** Human-readable label shown in Vibecanvas connection UI. */
 	label?: string;
-	/** JSON Schema for payloads emitted by this output port. */
+	/** JSON Schema for payloads sent by this output port. */
 	schema?: TVibecanvasActorSchema;
 };
 /** Declares this widget instance as a connectable actor. */
@@ -71,33 +71,36 @@ export type TVibecanvasActorDefinition = {
 	name?: string;
 	/** Input ports this widget can receive messages on. */
 	inputs?: Record<string, TVibecanvasActorInputDefinition>;
-	/** Output ports this widget can emit messages from. */
+	/** Output ports this widget can send messages from. */
 	outputs?: Record<string, TVibecanvasActorOutputDefinition>;
 };
 /** Handles a message delivered to an actor input port. */
 export type TVibecanvasActorHandler<TPayload = unknown> = (payload: TPayload) => void | Promise<void>;
-/** Message emitted by a widget actor output port. */
+/** Message sent by a widget actor output port. */
 export type TVibecanvasActorOutputMessage = {
 	/** Output port name. */
 	output: string;
 	/** JSON-serializable payload. */
 	payload?: unknown;
 };
+/** Actor instance returned by defineActor(). */
+export type TVibecanvasActor = {
+	/** Registers an input handler imperatively. */
+	receive<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>): () => void;
+	/** Sends a message from an output port to the Vibecanvas host router. */
+	send(output: string, payload?: unknown): void;
+};
 /** Host callbacks used by Vibecanvas to observe a widget actor. */
 export type TVibecanvasActorRuntimePortal = {
 	/** Called whenever defineActor() updates metadata. */
 	onDefinition?: (definition: TVibecanvasActorDefinition) => void;
-	/** Called whenever emitActor() emits an output message. */
-	onEmit?: (message: TVibecanvasActorOutputMessage) => void;
+	/** Called whenever actor.send() sends an output message. */
+	onSend?: (message: TVibecanvasActorOutputMessage) => void;
 };
 /** Internal runtime wrapper used by the host and tests. */
 export type TVibecanvasActorRuntime = {
-	/** Defines actor metadata and connectable input/output ports. */
-	defineActor(definition: TVibecanvasActorDefinition): void;
-	/** Registers an input handler imperatively. */
-	onActor<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>): () => void;
-	/** Emits a message from an output port. */
-	emitActor(output: string, payload?: unknown): void;
+	/** Defines actor metadata and connectable input/output ports, then returns the actor instance. */
+	defineActor(definition: TVibecanvasActorDefinition): TVibecanvasActor;
 	/** Delivers a host-routed message to an input port. */
 	deliverActor(input: string, payload?: unknown): Promise<number>;
 	/** Returns the current actor definition. */
@@ -105,12 +108,12 @@ export type TVibecanvasActorRuntime = {
 };
 export declare function createActorRuntime(portal?: TVibecanvasActorRuntimePortal): TVibecanvasActorRuntime;
 /**
- * Defines actor metadata and connectable input/output ports.
+ * Defines actor metadata and connectable input/output ports, then returns the actor instance.
  *
  * Call once near the top of your widget `main.ts`.
  *
  * @example
- * defineActor({
+ * const actor = defineActor({
  *   name: "Todo App",
  *   inputs: {
  *     addTodo: {
@@ -132,24 +135,10 @@ export declare function createActorRuntime(portal?: TVibecanvasActorRuntimePorta
  *     },
  *   },
  * });
- */
-export declare function defineActor(definition: TVibecanvasActorDefinition): void;
-/**
- * Registers an input handler imperatively.
  *
- * Prefer `defineActor({ inputs: { ... } })` for static port metadata.
- * Use `onActor()` when registering a handler conditionally.
- *
- * @returns Cleanup function that unregisters the handler.
+ * actor.send("todoCreated", { title: "Ship it" });
  */
-export declare function onActor<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>): () => void;
-/**
- * Emits a message from an output port.
- *
- * Vibecanvas routes this payload to other connected widget actors.
- * The output name should match a key declared under `outputs`.
- */
-export declare function emitActor(output: string, payload?: unknown): void;
+export declare function defineActor(definition: TVibecanvasActorDefinition): TVibecanvasActor;
 declare const VIBECANVAS_OFFICIAL_MACHINE_STATES: readonly [
 	"booting",
 	"ready",

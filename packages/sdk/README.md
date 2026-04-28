@@ -4,11 +4,11 @@ Tiny SDK for Vibecanvas guest widgets.
 
 Guest widgets use it for three things:
 
-- `defineActor`, `emitActor`, `onActor` — declare input/output ports and emit messages.
+- `defineActor` — declare input/output ports and get an actor with `.send()` / `.receive()` methods.
 - `machine` — keep reactive internal state that Vibecanvas can inspect.
 - `TVibecanvasWidgetConfig` — type-check `vibecanvas.config.ts`.
 
-Vibecanvas owns sandboxing, message routing, and JSON Schema validation in the host.
+Vibecanvas owns sandboxing and message routing. The SDK also validates actor payloads with Ajv before handlers/messages run.
 
 ## Install in a local widget
 
@@ -86,11 +86,11 @@ export default {
 
 ```ts
 import { html, reactive } from "@arrow-js/core";
-import { defineActor, emitActor } from "@vibecanvas/sdk";
+import { defineActor } from "@vibecanvas/sdk";
 
 const state = reactive({ todos: [] as string[] });
 
-defineActor({
+const actor = defineActor({
   name: "Todo App",
   inputs: {
     addTodo: {
@@ -106,7 +106,7 @@ defineActor({
       handle(payload) {
         const todo = payload as { title: string };
         state.todos = [...state.todos, todo.title];
-        emitActor("todoCreated", todo);
+        actor.send("todoCreated", todo);
       },
     },
   },
@@ -229,7 +229,12 @@ Actor port `schema` fields are JSON Schema. Prefer simple draft-07-compatible sc
 }
 ```
 
-Vibecanvas validates payloads in the host before routing messages. Guest widgets should not bundle a JSON Schema validator.
+The SDK validates actor payloads with Ajv:
+
+- input payload mismatch: ignored silently; no input handler runs
+- output payload mismatch: `actor.send(...)` throws an error with validation details
+
+The Vibecanvas host may also validate messages before routing.
 
 ## Theme CSS variables
 

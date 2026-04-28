@@ -1,3 +1,4 @@
+import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import type { TJsonSchema } from "./schema";
 
 /** JSON Schema used to validate actor input and output payloads. */
@@ -18,7 +19,7 @@ type TVibecanvasActorInputDefinition<TPayload = unknown> = {
 };
 
 /**
- * Describes one output port this widget actor can emit messages from.
+ * Describes one output port this widget actor can send messages from.
  *
  * Use either a JSON Schema directly or an object with a label and schema.
  */
@@ -27,7 +28,7 @@ type TVibecanvasActorOutputDefinition =
   | {
     /** Human-readable label shown in Vibecanvas connection UI. */
     label?: string;
-    /** JSON Schema for payloads emitted by this output port. */
+    /** JSON Schema for payloads sent by this output port. */
     schema?: TVibecanvasActorSchema;
   };
 
@@ -37,14 +38,14 @@ type TVibecanvasActorDefinition = {
   name?: string;
   /** Input ports this widget can receive messages on. */
   inputs?: Record<string, TVibecanvasActorInputDefinition>;
-  /** Output ports this widget can emit messages from. */
+  /** Output ports this widget can send messages from. */
   outputs?: Record<string, TVibecanvasActorOutputDefinition>;
 };
 
 /** Handles a message delivered to an actor input port. */
 type TVibecanvasActorHandler<TPayload = unknown> = (payload: TPayload) => void | Promise<void>;
 
-/** Message emitted by a widget actor output port. */
+/** Message sent by a widget actor output port. */
 type TVibecanvasActorOutputMessage = {
   /** Output port name. */
   output: string;
@@ -52,45 +53,65 @@ type TVibecanvasActorOutputMessage = {
   payload?: unknown;
 };
 
+/** Actor instance returned by defineActor(). */
+type TVibecanvasActor = {
+  /** Registers an input handler imperatively. */
+  receive<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>): () => void;
+  /** Sends a message from an output port to the Vibecanvas host router. */
+  send(output: string, payload?: unknown): void;
+};
+
 /** Host callbacks used by Vibecanvas to observe a widget actor. */
 type TVibecanvasActorRuntimePortal = {
   /** Called whenever defineActor() updates metadata. */
   onDefinition?: (definition: TVibecanvasActorDefinition) => void;
-  /** Called whenever emitActor() emits an output message. */
-  onEmit?: (message: TVibecanvasActorOutputMessage) => void;
+  /** Called whenever actor.send() sends an output message. */
+  onSend?: (message: TVibecanvasActorOutputMessage) => void;
 };
 
 /** Internal runtime wrapper used by the host and tests. */
 type TVibecanvasActorRuntime = {
-  /** Defines actor metadata and connectable input/output ports. */
-  defineActor(definition: TVibecanvasActorDefinition): void;
-  /** Registers an input handler imperatively. */
-  onActor<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>): () => void;
-  /** Emits a message from an output port. */
-  emitActor(output: string, payload?: unknown): void;
+  /** Defines actor metadata and connectable input/output ports, then returns the actor instance. */
+  defineActor(definition: TVibecanvasActorDefinition): TVibecanvasActor;
   /** Delivers a host-routed message to an input port. */
   deliverActor(input: string, payload?: unknown): Promise<number>;
   /** Returns the current actor definition. */
   getActorDefinition(): TVibecanvasActorDefinition | null;
 };
 
+const ajv = new Ajv({ allErrors: true, strict: false });
+
+function formatValidationErrors(errors: ErrorObject[] | null | undefined) {
+  if (!errors || errors.length === 0) return "payload did not match schema";
+
+  return errors.map((error) => {
+    const path = error.instancePath || "/";
+    return `${path} ${error.message ?? "is invalid"}`;
+  }).join("; ");
+}
+
+function isOutputSchemaObject(value: unknown): value is { schema?: TVibecanvasActorSchema } {
+  return typeof value === "object" && value !== null && "schema" in value;
+}
+
+function compileSchema(schema: TVibecanvasActorSchema | undefined): ValidateFunction | null {
+  if (schema === undefined) return null;
+  return ajv.compile(schema);
+}
+
+function getOutputSchema(definition: TVibecanvasActorOutputDefinition | undefined): TVibecanvasActorSchema | undefined {
+  if (definition === undefined) return undefined;
+  if (isOutputSchemaObject(definition)) return definition.schema;
+  return definition;
+}
+
 function createActorRuntime(portal: TVibecanvasActorRuntimePortal = {}): TVibecanvasActorRuntime {
   let definition: TVibecanvasActorDefinition | null = null;
   const handlers = new Map<string, Set<TVibecanvasActorHandler>>();
+  const inputValidators = new Map<string, ValidateFunction>();
+  const outputValidators = new Map<string, ValidateFunction>();
 
-  function defineActor(nextDefinition: TVibecanvasActorDefinition) {
-    definition = nextDefinition;
-    portal.onDefinition?.(nextDefinition);
-
-    Object.entries(nextDefinition.inputs ?? {}).forEach(([input, inputDefinition]) => {
-      if (!inputDefinition.handle) return;
-      const inputHandlers = handlers.get(input) ?? new Set<TVibecanvasActorHandler>();
-      inputHandlers.add(inputDefinition.handle);
-      handlers.set(input, inputHandlers);
-    });
-  }
-
-  function onActor<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>) {
+  function receive<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>) {
     const inputHandlers = handlers.get(input) ?? new Set<TVibecanvasActorHandler>();
     inputHandlers.add(handler as TVibecanvasActorHandler);
     handlers.set(input, inputHandlers);
@@ -103,11 +124,47 @@ function createActorRuntime(portal: TVibecanvasActorRuntimePortal = {}): TVibeca
     };
   }
 
-  function emitActor(output: string, payload?: unknown) {
-    portal.onEmit?.({ output, payload });
+  function send(output: string, payload?: unknown) {
+    const validate = outputValidators.get(output);
+    if (validate && !validate(payload)) {
+      throw new Error(`Actor output "${output}" schema mismatch: ${formatValidationErrors(validate.errors)}`);
+    }
+
+    portal.onSend?.({ output, payload });
+  }
+
+  const actor: TVibecanvasActor = {
+    receive,
+    send,
+  };
+
+  function defineActor(nextDefinition: TVibecanvasActorDefinition) {
+    definition = nextDefinition;
+    inputValidators.clear();
+    outputValidators.clear();
+    portal.onDefinition?.(nextDefinition);
+
+    Object.entries(nextDefinition.inputs ?? {}).forEach(([input, inputDefinition]) => {
+      const validate = compileSchema(inputDefinition.schema);
+      if (validate) inputValidators.set(input, validate);
+      if (!inputDefinition.handle) return;
+      receive(input, inputDefinition.handle);
+    });
+
+    Object.entries(nextDefinition.outputs ?? {}).forEach(([output, outputDefinition]) => {
+      const validate = compileSchema(getOutputSchema(outputDefinition));
+      if (validate) outputValidators.set(output, validate);
+    });
+
+    return actor;
   }
 
   async function deliverActor(input: string, payload?: unknown) {
+    const validate = inputValidators.get(input);
+    if (validate && !validate(payload)) {
+      return 0;
+    }
+
     const inputHandlers = [...(handlers.get(input) ?? [])];
     await Promise.all(inputHandlers.map((handler) => handler(payload)));
     return inputHandlers.length;
@@ -119,8 +176,6 @@ function createActorRuntime(portal: TVibecanvasActorRuntimePortal = {}): TVibeca
 
   return {
     defineActor,
-    onActor,
-    emitActor,
     deliverActor,
     getActorDefinition,
   };
@@ -129,12 +184,12 @@ function createActorRuntime(portal: TVibecanvasActorRuntimePortal = {}): TVibeca
 const actorRuntime = createActorRuntime();
 
 /**
- * Defines actor metadata and connectable input/output ports.
+ * Defines actor metadata and connectable input/output ports, then returns the actor instance.
  *
  * Call once near the top of your widget `main.ts`.
  *
  * @example
- * defineActor({
+ * const actor = defineActor({
  *   name: "Todo App",
  *   inputs: {
  *     addTodo: {
@@ -156,35 +211,16 @@ const actorRuntime = createActorRuntime();
  *     },
  *   },
  * });
+ *
+ * actor.send("todoCreated", { title: "Ship it" });
  */
 function defineActor(definition: TVibecanvasActorDefinition) {
-  actorRuntime.defineActor(definition);
+  return actorRuntime.defineActor(definition);
 }
 
-/**
- * Registers an input handler imperatively.
- *
- * Prefer `defineActor({ inputs: { ... } })` for static port metadata.
- * Use `onActor()` when registering a handler conditionally.
- *
- * @returns Cleanup function that unregisters the handler.
- */
-function onActor<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>) {
-  return actorRuntime.onActor(input, handler);
-}
-
-/**
- * Emits a message from an output port.
- *
- * Vibecanvas routes this payload to other connected widget actors.
- * The output name should match a key declared under `outputs`.
- */
-function emitActor(output: string, payload?: unknown) {
-  actorRuntime.emitActor(output, payload);
-}
-
-export { createActorRuntime, defineActor, emitActor, onActor };
+export { createActorRuntime, defineActor };
 export type {
+  TVibecanvasActor,
   TVibecanvasActorDefinition,
   TVibecanvasActorHandler,
   TVibecanvasActorInputDefinition,

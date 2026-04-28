@@ -223,7 +223,8 @@ prefix: `packages/canvas/src/`
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and tool config |
-| 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, sandbox SDK import rewriting, active pointer-event routing, glow, and cleanup listener wiring |
+| 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, active pointer-event routing, glow, and cleanup listener wiring |
+| ❓ | `services/widget/tx.mount-arrow-sandbox.ts` |  | Mount Arrow sandbox widget source with SDK import rewriting and base sizing CSS. |
 | 🤖 | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview, DOM cleanup, history, and CRDT commit |
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |

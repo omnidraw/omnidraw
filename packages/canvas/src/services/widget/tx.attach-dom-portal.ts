@@ -1,5 +1,3 @@
-import { html as HTML } from '@arrow-js/core';
-import { sandbox as SANDBOX } from '@arrow-js/sandbox';
 import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { CameraService, SelectionService, WidgetManagerService } from '..';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
@@ -13,7 +11,7 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
 import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
-import SDK_SOURCE from "../../../../sdk/dist/index.js?raw"
+import { txMountArrowSandbox } from './tx.mount-arrow-sandbox';
 
 type TPortal = {
   node: unknown;
@@ -32,20 +30,6 @@ type TArgs = {
 export type TWidgetDomPortalListener = (() => void) & {
   syncDiv: () => void;
 };
-
-const SDK_MODULE_PATH = '/__vibecanvas_sdk.js';
-
-function getSandboxSource(source: Record<string, string | undefined>): Record<string, string> {
-  return {
-    ...Object.fromEntries(
-      Object.entries(source).flatMap(([path, fileSource]) => {
-        if (fileSource === undefined) return [];
-        return [[path, fileSource.replaceAll('@vibecanvas/sdk', SDK_MODULE_PATH)]];
-      }),
-    ),
-    [SDK_MODULE_PATH]: SDK_SOURCE,
-  };
-}
 
 /**
  * For a given widget node. It will attach a dom div to render the widget content.
@@ -214,17 +198,15 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.style.transformOrigin = '0 0';
   div.style.backgroundColor = 'white';
   div.style.pointerEvents = 'none';
+  div.style.overflow = 'hidden';
+  div.style.contain = 'layout paint size';
 
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
   cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
 
-  if(portal.widgetConfig?.sandbox) {
-    HTML`<section>${
-      SANDBOX({
-        source: getSandboxSource(portal.widgetConfig.sandbox.arrowjs),
-      })
-    }</section>`(div)
+  if (portal.widgetConfig?.sandbox) {
+    txMountArrowSandbox({ root: div }, { sandbox: portal.widgetConfig.sandbox });
   }
 
   if (view) {

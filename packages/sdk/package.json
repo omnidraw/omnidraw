@@ -19,5 +19,8 @@
   "scripts": {
     "build": "rm -rf dist && mkdir -p dist && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/index.d.ts src/index.ts && bun build src/index.ts --target=browser --format=esm --external @arrow-js/core --outfile=dist/index.js",
     "test": "bun test"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
   }
 }
