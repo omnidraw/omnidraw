@@ -18,6 +18,12 @@ import type {
   zRectData,
   zTextData,
   zWidgetData,
+  zWidgetMachine,
+  zWidgetMachineCurrent,
+  zWidgetMachineGraph,
+  zWidgetMachineStateNode,
+  zWidgetMachineTransition,
+  zWidgetOfficialMachineState,
 } from './canvas-doc.zod';
 
 export type TPoint2D = z.infer<typeof zPoint2D>;
@@ -32,6 +38,12 @@ export type TArrowData = z.infer<typeof zArrowData>;
 export type TPenData = z.infer<typeof zPenData>;
 export type TTextData = z.infer<typeof zTextData>;
 export type TImageData = z.infer<typeof zImageData>;
+export type TWidgetOfficialMachineState = z.infer<typeof zWidgetOfficialMachineState>;
+export type TWidgetMachineCurrent = z.infer<typeof zWidgetMachineCurrent>;
+export type TWidgetMachineStateNode = z.infer<typeof zWidgetMachineStateNode>;
+export type TWidgetMachineTransition = z.infer<typeof zWidgetMachineTransition>;
+export type TWidgetMachineGraph = z.infer<typeof zWidgetMachineGraph>;
+export type TWidgetMachine = z.infer<typeof zWidgetMachine>;
 export type TWidgetData = z.infer<typeof zWidgetData>;
 
 

@@ -116,6 +116,47 @@ export const zImageData = z.object({
   }),
 });
 
+export const zWidgetOfficialMachineState = z.enum([
+  'booting',
+  'ready',
+  'busy',
+  'waiting',
+  'dirty',
+  'error',
+  'disabled',
+  'disposed',
+]);
+
+export const zWidgetMachineCurrent = z.object({
+  value: z.string(),
+  official: zWidgetOfficialMachineState,
+  changedAt: z.number(),
+  meta: z.record(z.string(), z.unknown()),
+});
+
+export const zWidgetMachineStateNode = z.object({
+  label: z.string().optional(),
+  official: zWidgetOfficialMachineState,
+  description: z.string().optional(),
+});
+
+export const zWidgetMachineTransition = z.object({
+  from: z.string(),
+  event: z.string(),
+  to: z.string(),
+  label: z.string().optional(),
+});
+
+export const zWidgetMachineGraph = z.object({
+  states: z.record(z.string(), zWidgetMachineStateNode),
+  transitions: z.array(zWidgetMachineTransition),
+});
+
+export const zWidgetMachine = z.object({
+  current: zWidgetMachineCurrent,
+  graph: zWidgetMachineGraph,
+});
+
 export const zWidgetData = z.object({
   type: z.literal('widget'),
   kind: z.string(),
@@ -123,7 +164,8 @@ export const zWidgetData = z.object({
   h: z.number(),
   expanded: z.boolean(),
   window: z.enum(['contained', 'minimized', 'fullscreen']),
-  payload: z.record(z.string(), z.any())
+  payload: z.record(z.string(), z.any()),
+  machine: zWidgetMachine.optional(),
 });
 
 

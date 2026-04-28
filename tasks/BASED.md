@@ -227,6 +227,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E18] - replace iframe with bun.webview??
 - [ ]: [E19](e/E19.md) - canvas performance longterm: worker automerge + incremental notifications
 - [x]: [E20](e/E20.md) - improvement crdt updates
+- [ ]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
 
 ## D irections
 - [x]: [D1] - AI can edit the canvas directly

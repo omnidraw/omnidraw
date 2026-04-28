@@ -149,13 +149,17 @@ declare const VIBECANVAS_OFFICIAL_MACHINE_STATES: readonly [
 	"disabled",
 	"disposed"
 ];
-type TVibecanvasOfficialMachineState = typeof VIBECANVAS_OFFICIAL_MACHINE_STATES[number];
-type TVibecanvasMachineStateId = TVibecanvasOfficialMachineState | (string & {});
-type TVibecanvasMachineEvent = string | {
+/** Official actor state names that Vibecanvas can inspect across widget types. */
+export type TVibecanvasOfficialMachineState = typeof VIBECANVAS_OFFICIAL_MACHINE_STATES[number];
+/** Custom machine state name. Official states are also valid custom state names. */
+export type TVibecanvasMachineStateId = TVibecanvasOfficialMachineState | (string & {});
+/** Event sent to a widget machine. */
+export type TVibecanvasMachineEvent = string | {
 	type: string;
 	[key: string]: unknown;
 };
-type TVibecanvasMachineState<TState extends string = string> = {
+/** Reactive machine state exposed to guest widget code. */
+export type TVibecanvasMachineState<TState extends string = string> = {
 	/** Current widget-specific state. */
 	value: TState;
 	/** Host-known official state for cross-widget debugging and inspection. */
@@ -173,25 +177,65 @@ type TVibecanvasMachineTransitionArgs<TState extends string = string> = {
 	state: TVibecanvasMachineState<TState>;
 	event: TVibecanvasMachineEvent;
 };
-type TVibecanvasMachineTransition<TState extends string = string> = TState | {
+export type TVibecanvasMachineEnterReason = "initial" | "restore" | "set" | "transition";
+export type TVibecanvasMachineEnterArgs<TState extends string = string> = {
+	state: TVibecanvasMachineState<TState>;
+	reason: TVibecanvasMachineEnterReason;
+	event: TVibecanvasMachineEvent | null;
+	send: (event: TVibecanvasMachineEvent) => Promise<boolean>;
+	set: (value: TState, meta?: Record<string, unknown>) => void;
+};
+export type TVibecanvasMachineSnapshot<TState extends string = string> = {
+	value: TState;
+	official?: TVibecanvasOfficialMachineState;
+	previous?: TState | null;
+	event?: string | null;
+	changedAt?: number;
+	meta?: Record<string, unknown>;
+};
+export type TVibecanvasMachinePersistencePortal<TState extends string = string> = {
+	loadMachineState: (id: string) => TVibecanvasMachineSnapshot<TState> | null | undefined | Promise<TVibecanvasMachineSnapshot<TState> | null | undefined>;
+	saveMachineState: (id: string, snapshot: TVibecanvasMachineSnapshot<TState>) => void | Promise<void>;
+};
+export type TVibecanvasMachinePersistenceConfig<TState extends string = string> = {
+	/** Stable id scoped by the host to this widget instance. Defaults to machine config id. */
+	id?: string;
+	/** Persistence adapter. Host/runtime should provide one to make persistence durable. */
+	portal?: TVibecanvasMachinePersistencePortal<TState>;
+};
+export type TVibecanvasMachinePersistence<TState extends string = string> = boolean | TVibecanvasMachinePersistenceConfig<TState>;
+export type TVibecanvasMachineTransition<TState extends string = string> = TState | {
 	target: TState;
 	meta?: Record<string, unknown>;
 	guard?: (args: TVibecanvasMachineTransitionArgs<TState>) => boolean;
 	action?: (args: TVibecanvasMachineTransitionArgs<TState>) => void | Promise<void>;
 };
-type TVibecanvasMachineStateDefinition<TState extends string = string> = {
+/** Defines one widget-specific state. */
+export type TVibecanvasMachineStateDefinition<TState extends string = string> = {
 	/** Human-readable state label for debug UI. */
 	label?: string;
 	/** Host-known official state represented by this widget-specific state. */
 	official?: TVibecanvasOfficialMachineState;
+	/** Runs whenever this state becomes active, including restored persisted state. */
+	onEnter?: (args: TVibecanvasMachineEnterArgs<TState>) => void | Promise<void>;
+	/** Runs only when this state was restored from persisted machine state. */
+	onRestore?: (args: TVibecanvasMachineEnterArgs<TState>) => void | Promise<void>;
 	/** Event transitions out of this state. Guest authors define their own transitions. */
 	on?: Record<string, TVibecanvasMachineTransition<TState>>;
 };
-type TVibecanvasMachineConfig<TState extends string = string> = {
+/** Machine configuration. The machine starts in `initial`, defaulting to `booting`. */
+export type TVibecanvasMachineConfig<TState extends string = string> = {
+	/** Stable machine id. Required when persist is enabled without an explicit persist.id. */
+	id?: string;
+	/** Initial state used before restore and as fallback for structurally invalid snapshots. */
+	initial?: TState;
+	/** Persist and restore the machine snapshot per widget instance when a portal is supplied. */
+	persist?: TVibecanvasMachinePersistence<TState>;
 	/** Widget-specific state definitions. Add as many custom states as needed. */
 	states?: Record<TState, TVibecanvasMachineStateDefinition<TState>>;
 };
-type TVibecanvasMachine<TState extends string = string> = {
+/** Widget machine instance. */
+export type TVibecanvasMachine<TState extends string = string> = {
 	/** Reactive state object for Arrow templates, watch(), and local widget logic. */
 	state: TVibecanvasMachineState<TState>;
 	/** Sends an event through the configured transition table. */
@@ -204,8 +248,10 @@ type TVibecanvasMachine<TState extends string = string> = {
 /**
  * Creates a reactive widget state machine.
  *
- * The machine always starts in `booting`. Guest authors define all transitions
- * themselves and may add any custom states they need.
+ * The machine starts in `initial`, defaulting to `booting`. If `persist` is
+ * configured with a host portal, the latest serializable machine snapshot is
+ * restored per widget instance. Restored states run `onRestore` and `onEnter`,
+ * so resumability should be encoded in the state definition.
  *
  * @example
  * const flow = machine({

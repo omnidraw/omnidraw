@@ -6333,28 +6333,92 @@ function isOfficialMachineState(value) {
 function getOfficialState(config, value) {
   return config.states?.[value]?.official ?? (isOfficialMachineState(value) ? value : "ready");
 }
+function hasConfiguredState(config, value) {
+  if (!config.states)
+    return true;
+  return value in config.states;
+}
 function resolveTransitionTarget(transition) {
   return typeof transition === "string" ? transition : transition.target;
+}
+function resolvePersistence(config) {
+  if (!config.persist)
+    return null;
+  const persistConfig = config.persist === true ? {} : config.persist;
+  const id = persistConfig.id ?? config.id;
+  if (!id || !persistConfig.portal)
+    return null;
+  return { id, portal: persistConfig.portal };
+}
+function toSnapshot(state) {
+  return {
+    value: state.value,
+    official: state.official,
+    previous: state.previous,
+    event: state.event,
+    changedAt: state.changedAt,
+    meta: state.meta
+  };
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+function normalizeSnapshot(config, snapshot) {
+  if (!snapshot || !isRecord(snapshot) || typeof snapshot.value !== "string")
+    return null;
+  const value = snapshot.value;
+  if (!hasConfiguredState(config, value))
+    return null;
+  return {
+    value,
+    official: getOfficialState(config, value),
+    previous: typeof snapshot.previous === "string" ? snapshot.previous : null,
+    event: typeof snapshot.event === "string" ? snapshot.event : null,
+    changedAt: typeof snapshot.changedAt === "number" ? snapshot.changedAt : Date.now(),
+    meta: isRecord(snapshot.meta) ? snapshot.meta : {}
+  };
 }
 function getVibecanvasOfficialMachineStates() {
   return [...VIBECANVAS_OFFICIAL_MACHINE_STATES];
 }
 function machine(config = {}) {
-  const booting = "booting";
+  const initial = config.initial ?? "booting";
+  const persistence = resolvePersistence(config);
   const state = reactive({
-    value: booting,
-    official: "booting",
+    value: initial,
+    official: getOfficialState(config, initial),
     previous: null,
     event: null,
     changedAt: Date.now(),
     meta: {}
   });
-  const set = (value, meta = {}) => {
+  let restored = false;
+  const persist = () => {
+    if (!persistence)
+      return;
+    persistence.portal.saveMachineState(persistence.id, toSnapshot(state));
+  };
+  const runEnterHooks = async (reason, event) => {
+    const definition = config.states?.[state.value];
+    if (!definition)
+      return;
+    const args = { state, reason, event, send, set };
+    if (reason === "restore") {
+      await definition.onRestore?.(args);
+    }
+    await definition.onEnter?.(args);
+  };
+  const applyState = (value, meta, reason, event) => {
     state.previous = state.value;
     state.value = value;
     state.official = getOfficialState(config, value);
     state.changedAt = Date.now();
     state.meta = meta;
+    persist();
+    runEnterHooks(reason, event);
+  };
+  const set = (value, meta = {}) => {
+    applyState(value, meta, "set", null);
   };
   const can = (event) => {
     const eventType = getEventType(event);
@@ -6372,9 +6436,33 @@ function machine(config = {}) {
       await transition.action?.(args);
     }
     state.event = eventType;
-    set(resolveTransitionTarget(transition), typeof transition === "string" ? {} : transition.meta ?? {});
+    applyState(resolveTransitionTarget(transition), typeof transition === "string" ? {} : transition.meta ?? {}, "transition", event);
     return true;
   };
+  const restore = async () => {
+    if (!persistence || restored)
+      return;
+    restored = true;
+    const snapshot = normalizeSnapshot(config, await persistence.portal.loadMachineState(persistence.id));
+    if (!snapshot) {
+      persist();
+      await runEnterHooks("initial", null);
+      return;
+    }
+    state.previous = snapshot.previous;
+    state.value = snapshot.value;
+    state.official = snapshot.official;
+    state.event = snapshot.event;
+    state.changedAt = snapshot.changedAt;
+    state.meta = snapshot.meta;
+    persist();
+    await runEnterHooks("restore", null);
+  };
+  if (persistence) {
+    restore();
+  } else {
+    runEnterHooks("initial", null);
+  }
   return { state, send, set, can };
 }
 export {
