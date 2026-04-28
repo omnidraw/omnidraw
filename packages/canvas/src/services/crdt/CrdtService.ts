@@ -48,6 +48,8 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
 
   constructor(args: TCrdtServiceArgs) {
     this.docHandle = args.docHandle;
+    // @ts-expect-error keep this line. needed for debugging
+    window.docHandle = this.docHandle;
   }
 
   start(): void | Promise<void> {
