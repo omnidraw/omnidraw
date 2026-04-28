@@ -103,6 +103,30 @@ function fxSyncTextareaColor(portal: TPortalEnterEditMode, args: {
   ) ?? portal.theme.getTheme().colors.canvasText;
 }
 
+function fxGetVerticalTextareaPadding(args: {
+  alignment: string;
+  remainingHeight: number;
+}) {
+  if (args.alignment === "bottom") {
+    return {
+      top: args.remainingHeight,
+      bottom: 0,
+    };
+  }
+
+  if (args.alignment === "middle") {
+    return {
+      top: args.remainingHeight / 2,
+      bottom: args.remainingHeight / 2,
+    };
+  }
+
+  return {
+    top: 0,
+    bottom: args.remainingHeight,
+  };
+}
+
 export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEditMode) {
   let activeNode = args.node;
   const now = Date.now();
@@ -182,6 +206,7 @@ export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEd
     if (nextHostElement) {
       applyRuntimeElement(portal, { element: nextHostElement });
       activeNode = findCurrentTextNode(portal, activeNode.id()) ?? activeNode;
+      activeNode.visible(false);
     }
 
     const hostBounds = fnGetShapeTextHostBounds({
@@ -205,7 +230,10 @@ export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEd
     const scaledHeight = Math.max(activeNode.height() * absoluteScale.y, initialScaledFontSize);
     const contentHeight = measured.height * absoluteScale.y;
     const remainingHeight = Math.max(0, scaledHeight - contentHeight);
-    const verticalPadding = remainingHeight / 2;
+    const verticalPadding = fxGetVerticalTextareaPadding({
+      alignment: activeNode.verticalAlign(),
+      remainingHeight,
+    });
 
     textarea.style.top = `${absolutePosition.y}px`;
     textarea.style.left = `${absolutePosition.x}px`;
@@ -216,8 +244,8 @@ export function txEnterEditMode(portal: TPortalEnterEditMode, args: TArgsEnterEd
     textarea.style.transform = `rotate(${absoluteRotation}deg)`;
     textarea.style.paddingLeft = "0px";
     textarea.style.paddingRight = "0px";
-    textarea.style.paddingTop = `${verticalPadding}px`;
-    textarea.style.paddingBottom = `${verticalPadding}px`;
+    textarea.style.paddingTop = `${verticalPadding.top}px`;
+    textarea.style.paddingBottom = `${verticalPadding.bottom}px`;
     textarea.style.overflow = "hidden";
   };
 
