@@ -12,6 +12,7 @@ import type {
   zEllipseData,
   zGroup,
   zImageData,
+  zJsonValue,
   zLineData,
   zPenData,
   zPoint2D,
@@ -23,12 +24,14 @@ import type {
   zWidgetInputConnection,
   zWidgetMachine,
   zWidgetMachineCurrent,
+  zWidgetMachineValue,
   zWidgetOfficialMachineState,
   zWidgetOutputConnection,
   zWidgetPortPath,
 } from './canvas-doc.zod';
 
 export type TPoint2D = z.infer<typeof zPoint2D>;
+export type TJsonValue = z.infer<typeof zJsonValue>;
 export type TBinding = z.infer<typeof zBinding>;
 export type TBaseElement = z.infer<typeof zBaseElement>;
 export type TDrawingStyle = z.infer<typeof zDrawingStyle>;
@@ -41,6 +44,7 @@ export type TPenData = z.infer<typeof zPenData>;
 export type TTextData = z.infer<typeof zTextData>;
 export type TImageData = z.infer<typeof zImageData>;
 export type TWidgetOfficialMachineState = z.infer<typeof zWidgetOfficialMachineState>;
+export type TWidgetMachineValue = z.infer<typeof zWidgetMachineValue>;
 export type TWidgetMachineCurrent = z.infer<typeof zWidgetMachineCurrent>;
 export type TWidgetMachine = z.infer<typeof zWidgetMachine>;
 export type TWidgetPortPath = z.infer<typeof zWidgetPortPath>;

@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 export const zPoint2D = z.tuple([z.number(), z.number()]);
 
+export const zJsonValue: z.ZodType<unknown> = z.lazy(() => z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(zJsonValue),
+  z.record(z.string(), zJsonValue),
+]));
+
 export const zBinding = z.object({
   targetId: z.string(),
   anchor: z.object({
@@ -127,10 +136,12 @@ export const zWidgetOfficialMachineState = z.enum([
   'disposed',
 ]);
 
+export const zWidgetMachineValue = z.string().regex(/^(booting|ready|busy|waiting|dirty|error|disabled|disposed)(\..+)?$/);
+
 export const zWidgetMachineCurrent = z.object({
-  value: z.string(),
+  value: zWidgetMachineValue,
   changedAt: z.number(),
-  meta: z.record(z.string(), z.unknown()),
+  meta: z.record(z.string(), zJsonValue),
 });
 
 export const zWidgetMachine = zWidgetMachineCurrent;
@@ -138,8 +149,8 @@ export const zWidgetMachine = zWidgetMachineCurrent;
 export const zWidgetPortPath = z.array(z.string().min(1)).min(1);
 
 export const zWidgetConnectionLine = z.object({
-  sourceArc: z.number(),
-  targetArc: z.number(),
+  sourceArc: z.number().min(0).max(1),
+  targetArc: z.number().min(0).max(1),
   waypoints: z.array(zPoint2D),
 });
 
@@ -170,12 +181,10 @@ export const zWidgetData = z.object({
   h: z.number(),
   expanded: z.boolean(),
   window: z.enum(['contained', 'minimized', 'fullscreen']),
-  payload: z.record(z.string(), z.any()),
+  payload: z.record(z.string(), zJsonValue),
   machine: zWidgetMachine.optional(),
   connections: zWidgetConnections.optional(),
 });
-
-
 
 export const zElementData = z.union([
   zRectData,
