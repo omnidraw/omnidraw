@@ -223,7 +223,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and tool config |
-| 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, active pointer-event routing, glow, and cleanup listener wiring |
+| 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, sandbox SDK import rewriting, active pointer-event routing, glow, and cleanup listener wiring |
 | 🤖 | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview, DOM cleanup, history, and CRDT commit |
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
@@ -493,8 +493,17 @@ prefix: `packages/sdk/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `index.ts` |  | Widget SDK type-only surface for external guest widget authors. |
-| ❓ | `package.json` |  | Widget SDK package metadata and type-only workspace dependencies. |
+| 🤖 | `dist/index.d.ts` | generated | Generated self-contained widget SDK declaration bundle for file-package consumers. |
+| 🤖 | `dist/index.js` | generated | Generated widget SDK runtime bundle exporting actor functions and reactive machine helpers. |
+| 🤖 | `package.json` |  | Widget SDK package metadata, dist exports, peer dependency, and declaration bundle build script. |
+| 🤖 | `README.md` |  | Guest widget SDK usage guide for actor functions, config, machine states, JSON Schema, and theming. |
+| 🤖 | `src/actor.ts` |  | Widget SDK actor function API and lightweight runtime placeholder. |
+| ❓ | `src/arrow-core.d.ts` |  | Local Arrow reactive declaration shim for SDK declaration bundling. |
+| 🤖 | `src/config.ts` |  | Widget SDK config type for vibecanvas.config.ts including actor metadata. |
+| 🤖 | `src/index.ts` |  | Widget SDK barrel exporting actor functions, machine helpers, and config APIs. |
+| 🤖 | `src/machine.ts` |  | Reactive widget state machine with official host-known states. |
+| ❓ | `src/schema.ts` |  | Internal JSON Schema type used by actor port schemas. |
+| ❓ | `tsconfig.json` |  | SDK declaration bundler TypeScript path mapping for monorepo type imports. |
 
 ## packages/service-automerge
 prefix: `packages/service-automerge/src/`

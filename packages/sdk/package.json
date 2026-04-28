@@ -1,13 +1,23 @@
 {
-  "name": "@vibcanvas/sdk",
+  "name": "@vibecanvas/sdk",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "types": "./index.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
-    "index.ts"
-  ]
+    "dist"
+  ],
+  "peerDependencies": {
+    "@arrow-js/core": "^1.0.6"
+  },
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/index.d.ts src/index.ts && bun build src/index.ts --target=browser --format=esm --external @arrow-js/core --outfile=dist/index.js",
+    "test": "bun test"
+  }
 }

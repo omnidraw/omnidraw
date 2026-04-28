@@ -279,6 +279,13 @@
         "@vibecanvas/tapable": "workspace:*",
       },
     },
+    "packages/sdk": {
+      "name": "@vibecanvas/sdk",
+      "version": "0.0.0",
+      "peerDependencies": {
+        "@arrow-js/core": "^1.0.6",
+      },
+    },
     "packages/service-automerge": {
       "name": "@vibecanvas/service-automerge",
       "version": "0.3.1",
@@ -344,34 +351,6 @@
     "packages/tapable": {
       "name": "@vibecanvas/tapable",
       "version": "0.3.1",
-    },
-    "packages/ui": {
-      "name": "@vibecanvas/ui",
-      "version": "0.3.1",
-      "devDependencies": {
-        "typescript": "catalog:",
-      },
-    },
-    "packages/ui-example": {
-      "name": "@vibecanvas/ui-example",
-      "version": "0.3.1",
-      "dependencies": {
-        "@arrow-js/core": "^1.0.6",
-        "@vibecanvas/ui": "workspace:*",
-      },
-    },
-    "packages/widget-filesystem": {
-      "name": "@vibecanvas/widget-filesystem",
-      "version": "0.0.0",
-      "dependencies": {
-        "@arrow-js/core": "^1.0.6",
-        "@codemirror/state": "^6.6.0",
-        "lucide-static": "^1.11.0",
-      },
-      "devDependencies": {
-        "esbuild": "^0.27.7",
-        "typescript": "catalog:",
-      },
     },
   },
   "overrides": {
@@ -1016,6 +995,8 @@
 
     "@vibecanvas/runtime": ["@vibecanvas/runtime@workspace:packages/runtime"],
 
+    "@vibecanvas/sdk": ["@vibecanvas/sdk@workspace:packages/sdk"],
+
     "@vibecanvas/service-automerge": ["@vibecanvas/service-automerge@workspace:packages/service-automerge"],
 
     "@vibecanvas/service-db": ["@vibecanvas/service-db@workspace:packages/service-db"],
@@ -1032,13 +1013,7 @@
 
     "@vibecanvas/tapable": ["@vibecanvas/tapable@workspace:packages/tapable"],
 
-    "@vibecanvas/ui": ["@vibecanvas/ui@workspace:packages/ui"],
-
-    "@vibecanvas/ui-example": ["@vibecanvas/ui-example@workspace:packages/ui-example"],
-
     "@vibecanvas/web": ["@vibecanvas/web@workspace:apps/web"],
-
-    "@vibecanvas/widget-filesystem": ["@vibecanvas/widget-filesystem@workspace:packages/widget-filesystem"],
 
     "@vitest/expect": ["@vitest/expect@4.1.2", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "@types/chai": "^5.2.2", "@vitest/spy": "4.1.2", "@vitest/utils": "4.1.2", "chai": "^6.2.2", "tinyrainbow": "^3.1.0" } }, "sha512-gbu+7B0YgUJ2nkdsRJrFFW6X7NTP44WlhiclHniUhxADQJH5Szt9mZ9hWnJPJ8YwOK5zUOSSlSvyzRf0u1DSBQ=="],
 
