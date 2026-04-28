@@ -179,6 +179,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
         return txUpdateWidgetNodeFromElement({
           Group: Konva.Group,
+          Line: Konva.Line,
           Rect: Konva.Rect,
         }, {
           node,
@@ -209,6 +210,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               node: candidateNode,
               Circle: Konva.Circle,
               Group: Konva.Group,
+              Line: Konva.Line,
               Rect: Konva.Rect,
               hooks: this.runtimeHooks,
               selection: this.#selectionService,
@@ -216,6 +218,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               crdtService: this.#crdtService,
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
               removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
+              createConnectionId: () => crypto.randomUUID(),
             }, {})
           },
         }, { node });
@@ -257,6 +260,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         node,
         Circle: Konva.Circle,
         Group: Konva.Group,
+        Line: Konva.Line,
         Rect: Konva.Rect,
         hooks: this.runtimeHooks,
         selection: this.#selectionService,
@@ -264,6 +268,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         crdtService: this.#crdtService,
         startDragClone: (args) => this.#elementService.createDragClone(args),
         removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
+        createConnectionId: () => crypto.randomUUID(),
       }, {})
     })
 

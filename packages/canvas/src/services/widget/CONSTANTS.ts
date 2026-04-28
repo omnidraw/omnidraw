@@ -23,3 +23,7 @@ export const WIDGET_DOM_PORTAL_SYNC_ATTR = '__widgetDomPortalSync'
 export const WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX = '10000'
 export const WIDGET_WINDOW_CONTAINED = 'contained'
 export const WIDGET_WINDOW_FULLSCREEN = 'fullscreen'
+
+export const WIDGET_CONNECTION_BOUNDARY_ID = 'widget-connection-boundary'
+export const WIDGET_CONNECTION_HANDLE_ID = 'widget-connection-handle'
+export const WIDGET_CONNECTION_BOUNDARY_OFFSET = 10

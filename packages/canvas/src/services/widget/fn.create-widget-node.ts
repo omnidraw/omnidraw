@@ -19,6 +19,9 @@ import {
   WIDGET_HOST_TRAFFIC_LIGHT_Y,
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
+  WIDGET_CONNECTION_BOUNDARY_ID,
+  WIDGET_CONNECTION_BOUNDARY_OFFSET,
+  WIDGET_CONNECTION_HANDLE_ID,
 } from './CONSTANTS';
 import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS"
 import type { THostThemeColors } from "./types";
@@ -119,7 +122,7 @@ function createBody(konva: typeof Konva, colors: THostThemeColors) {
 
 function createConnectionBorder(konva: typeof Konva, colors: THostThemeColors) {
   const border = new konva.Line({
-    id: 'widget-connection-boundary',
+    id: WIDGET_CONNECTION_BOUNDARY_ID,
     points: [],
     closed: true,
     stroke: colors.windowStroke,
@@ -127,7 +130,8 @@ function createConnectionBorder(konva: typeof Konva, colors: THostThemeColors) {
     lineJoin: 'round',
     lineCap: 'round',
     fillEnabled: false,
-    listening: false,
+    listening: true,
+    hitStrokeWidth: 32,
     dash: [6, 5],
     opacity: 0.8,
   })
@@ -135,8 +139,27 @@ function createConnectionBorder(konva: typeof Konva, colors: THostThemeColors) {
   return border;
 }
 
+function createConnectionHandle(konva: typeof Konva) {
+  return new konva.Circle({
+    id: WIDGET_CONNECTION_HANDLE_ID,
+    x: 0,
+    y: 0,
+    radius: 10,
+    fill: '#38bdf8',
+    stroke: '#e0f2fe',
+    strokeWidth: 3,
+    shadowColor: '#38bdf8',
+    shadowBlur: 14,
+    shadowOpacity: 0.65,
+    visible: false,
+    listening: true,
+    hitStrokeWidth: 24,
+    opacity: 0.95,
+  })
+}
+
 function syncConnectionBorder(border: Konva.Line, args: { width: number; height: number }) {
-  const offset = 10
+  const offset = WIDGET_CONNECTION_BOUNDARY_OFFSET
   const radius = 18
   const left = -offset
   const top = -offset
@@ -180,6 +203,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   })
   const connectionBorder = createConnectionBorder(konva, colors)
   syncConnectionBorder(connectionBorder, { width, height })
+  const connectionHandle = createConnectionHandle(konva)
 
   const body = createBody(konva, colors)
   body.width(width)
@@ -210,6 +234,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   }
 
   group.add(connectionBorder)
+  group.add(connectionHandle)
   group.add(border)
   group.add(header)
   group.add(body)

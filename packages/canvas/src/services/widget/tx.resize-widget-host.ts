@@ -3,6 +3,9 @@ import type Konva from "konva";
 import type { TElementTransformAnchor } from "../element/types";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import {
+  WIDGET_CONNECTION_BOUNDARY_ID,
+  WIDGET_CONNECTION_BOUNDARY_OFFSET,
+  WIDGET_CONNECTION_HANDLE_ID,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_DIVIDER_ID,
@@ -27,7 +30,78 @@ type TArgs = {
 }
 
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
-const WIDGET_CONNECTION_BOUNDARY_ID = "widget-connection-boundary";
+
+function txGetConnectionBoundaryPoint(args: { arc: number; width: number; height: number }) {
+  const left = -WIDGET_CONNECTION_BOUNDARY_OFFSET;
+  const top = -WIDGET_CONNECTION_BOUNDARY_OFFSET;
+  const right = args.width + WIDGET_CONNECTION_BOUNDARY_OFFSET;
+  const bottom = args.height + WIDGET_CONNECTION_BOUNDARY_OFFSET;
+  const centerX = args.width / 2;
+  const centerY = args.height / 2;
+  const angle = args.arc * Math.PI * 2;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const tx = dx > 0 ? (right - centerX) / dx : dx < 0 ? (left - centerX) / dx : Number.POSITIVE_INFINITY;
+  const ty = dy > 0 ? (bottom - centerY) / dy : dy < 0 ? (top - centerY) / dy : Number.POSITIVE_INFINITY;
+  const distance = Math.min(tx, ty);
+
+  return { x: centerX + dx * distance, y: centerY + dy * distance };
+}
+
+function txToLayerPoint(layer: Konva.Layer | Konva.FastLayer, point: { x: number; y: number }) {
+  return layer.getAbsoluteTransform().copy().invert().point(point);
+}
+
+function txSyncAllConnectionLines(portal: TPortal, args: { node: Konva.Group }) {
+  const Line = portal.Line;
+  if (!Line) return;
+  const layer = args.node.getLayer();
+  if (!layer) return;
+
+  const widgets = layer.find((node: Konva.Node) => {
+    return node instanceof portal.Group && node.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
+  }).filter((node): node is Konva.Group => node instanceof portal.Group);
+  const widgetById = new Map(widgets.map((widget) => [widget.id(), widget]));
+
+  widgets.forEach((target) => {
+    const targetData = target.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    if (targetData?.type !== "widget") return;
+
+    targetData.connections?.inputs?.forEach((connection) => {
+      const source = widgetById.get(connection.sourceWidgetId);
+      if (!source) return;
+
+      const sourcePoint = txToLayerPoint(layer, source.getAbsoluteTransform().point(txGetConnectionBoundaryPoint({
+        arc: connection.line.sourceArc,
+        width: source.width(),
+        height: source.height(),
+      })));
+      const targetPoint = txToLayerPoint(layer, target.getAbsoluteTransform().point(txGetConnectionBoundaryPoint({
+        arc: connection.line.targetArc,
+        width: target.width(),
+        height: target.height(),
+      })));
+      const lineId = `widget-connection-line-${connection.id}`;
+      const existingLine = layer.findOne(`#${lineId}`);
+      if (existingLine instanceof Line) {
+        existingLine.points([sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y]);
+        existingLine.moveToBottom();
+        return;
+      }
+      const line = new Line({
+        id: lineId,
+        points: [sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y],
+        stroke: "#94a3b8",
+        strokeWidth: 2,
+        lineCap: "round",
+        lineJoin: "round",
+        listening: false,
+      });
+      layer.add(line);
+      line.moveToBottom();
+    });
+  });
+}
 
 function txSyncConnectionBoundary(portal: TPortal, args: { node: Konva.Group; width: number; height: number }) {
   if (!portal.Line) return;
@@ -35,7 +109,7 @@ function txSyncConnectionBoundary(portal: TPortal, args: { node: Konva.Group; wi
   const boundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
   if (!(boundary instanceof portal.Line)) return;
 
-  const offset = 10;
+  const offset = WIDGET_CONNECTION_BOUNDARY_OFFSET;
   const radius = 18;
   const left = -offset;
   const top = -offset;
@@ -59,6 +133,11 @@ function txSyncConnectionBoundary(portal: TPortal, args: { node: Konva.Group; wi
   addArc(left + corner, top + corner, Math.PI, Math.PI * 1.5);
 
   boundary.points(points);
+
+  const handle = args.node.findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`);
+  if (handle) {
+    handle.visible(false);
+  }
 }
 
 function txApplyWidgetHostSize(portal: TPortal, args: {
@@ -130,6 +209,7 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
     } satisfies TWidgetData);
   }
 
+  txSyncAllConnectionLines(portal, { node: args.node });
   args.node.getLayer()?.batchDraw();
 }
 
