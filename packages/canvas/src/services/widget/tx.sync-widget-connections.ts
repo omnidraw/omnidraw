@@ -4,6 +4,7 @@ import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import {
   WIDGET_CONNECTION_BOUNDARY_OFFSET,
   WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX,
+  WIDGET_CONNECTION_LINE_ID_PREFIX,
   WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX,
 } from "./CONSTANTS";
 
@@ -97,7 +98,7 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
   });
   const sourcePoint = toLayerPoint(args.layer, args.source.getAbsoluteTransform().point(sourceLocalPoint));
   const targetPoint = toLayerPoint(args.layer, args.target.getAbsoluteTransform().point(targetLocalPoint));
-  const lineId = `widget-connection-line-${args.id}`;
+  const lineId = `${WIDGET_CONNECTION_LINE_ID_PREFIX}-${args.id}`;
   const existingLine = args.layer.findOne(`#${lineId}`);
 
   if (existingLine instanceof Line) {

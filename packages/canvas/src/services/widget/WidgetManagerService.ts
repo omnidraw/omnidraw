@@ -16,9 +16,17 @@ import { txAttachDomPortal, type TWidgetDomPortalListener } from "./tx.attach-do
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { txSyncWidgetConnections } from "./tx.sync-widget-connections";
-import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
+import {
+  WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX,
+  WIDGET_CONNECTION_LINE_ID_PREFIX,
+  WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX,
+  WIDGET_DOM_PORTAL_SYNC_ATTR,
+  WIDGET_HOST_MIN_HEIGHT,
+  WIDGET_HOST_MIN_WIDTH,
+} from "./CONSTANTS";
 
 type TWidgetDomPortalSync = () => void;
+type TNodeOnRemove = (args: { node: unknown }) => void;
 
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
@@ -68,6 +76,43 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#domPortalCleanups.forEach((cleanup) => cleanup());
     this.#domPortalCleanups.clear();
     this.#widgetPortal.remove()
+  }
+
+  #removeRenderedWidgetConnection(connectionId: string, args: { sourceWidgetId?: string; targetWidgetId?: string }) {
+    this.#sceneService.staticForegroundLayer.findOne(`#${WIDGET_CONNECTION_LINE_ID_PREFIX}-${connectionId}`)?.destroy();
+
+    if (args.sourceWidgetId) {
+      this.#findWidgetNodeById(args.sourceWidgetId)
+        ?.findOne(`#${WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX}-${connectionId}`)
+        ?.destroy();
+    }
+
+    if (args.targetWidgetId) {
+      this.#findWidgetNodeById(args.targetWidgetId)
+        ?.findOne(`#${WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX}-${connectionId}`)
+        ?.destroy();
+    }
+  }
+
+  #removeRenderedWidgetConnections(node: Konva.Group) {
+    const widgetData = node.getAttr(ELEMENT_DATA_ATTR);
+    if (widgetData?.type !== "widget") {
+      return;
+    }
+
+    widgetData.connections?.inputs?.forEach((connection) => {
+      this.#removeRenderedWidgetConnection(connection.id, {
+        sourceWidgetId: connection.sourceWidgetId,
+      });
+    });
+
+    widgetData.connections?.outputs?.forEach((connection) => {
+      this.#removeRenderedWidgetConnection(connection.id, {
+        targetWidgetId: connection.targetWidgetId,
+      });
+    });
+
+    this.#sceneService.staticForegroundLayer.batchDraw();
   }
 
   #findWidgetNodeById(id: string) {
@@ -160,7 +205,10 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
           this.#domPortalCleanups.add(removeDomPortal);
           node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeDomPortal.syncDiv);
-          node.setAttr(VC_ON_REMOVE_ATTR, () => {
+          const existingOnRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
+          node.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
+            existingOnRemove?.(removeArgs);
+            this.#removeRenderedWidgetConnections(node);
             removeDomPortal();
           });
         }

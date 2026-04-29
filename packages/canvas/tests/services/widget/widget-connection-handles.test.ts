@@ -5,23 +5,26 @@ import { ThemeService } from "@vibecanvas/service-theme";
 import { SyncExitHook } from "@vibecanvas/tapable";
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
-import { ELEMENT_DATA_ATTR } from "../../../src/core/CONSTANTS";
+import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../../src/core/CONSTANTS";
 import type { CrdtService, SelectionService } from "../../../src/services";
 import type { IRuntimeHooks } from "../../../src/types";
 import {
   WIDGET_CONNECTION_BOUNDARY_ID,
   WIDGET_CONNECTION_HANDLE_ID,
   WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX,
+  WIDGET_CONNECTION_LINE_ID_PREFIX,
   WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX,
 } from "../../../src/services/widget/CONSTANTS";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
 import { fxAttachWidgetListener } from "../../../src/services/widget/fx.attach-widget-listener";
+import { txSyncWidgetConnections } from "../../../src/services/widget/tx.sync-widget-connections";
 import { txUpdateWidgetNodeFromElement } from "../../../src/services/widget/tx.update-widget-node-from-element";
 import { createStagePointerEvent, createTestContainer, ensureDom } from "../../test-setup";
 
 const INPUT_HANDLE_ID = `${WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX}-connection-1`;
 const OUTPUT_HANDLE_ID = `${WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX}-connection-1`;
+const LINE_ID = `${WIDGET_CONNECTION_LINE_ID_PREFIX}-connection-1`;
 const SCREENSHOT_PATH = resolve("tests/artifacts/widget-connection-handles.png");
 
 function writeStageScreenshot(stage: Konva.Stage) {
@@ -86,6 +89,96 @@ function createWidgetElement(id: string, x: number): TElement {
 }
 
 describe("widget connection handles", () => {
+  test("removes rendered connection UI from the widget onRemove hook", async () => {
+    ensureDom();
+    const { WidgetManagerService } = await import("../../../src/services/widget/WidgetManagerService");
+
+    let registeredDefinition: {
+      createNode?: (element: TElement) => Konva.Node | null;
+    } | null = null;
+
+    const container = createTestContainer({ width: 800, height: 600 });
+    const stage = new Konva.Stage({ container, width: 800, height: 600 });
+    const layer = new Konva.Layer();
+    stage.add(layer);
+
+    const service = new WidgetManagerService({
+      crdtService: {} as never,
+      contextMenuService: {} as never,
+      loggingService: {} as never,
+      themeService: new ThemeService(),
+      selectionService: {
+        focusedId: null,
+        hooks: { change: { tap: () => () => undefined } },
+      } as never,
+      elementService: {
+        registerElement(definition: { createNode?: (element: TElement) => Konva.Node | null }) {
+          registeredDefinition = definition;
+        },
+      } as never,
+      toolService: {} as never,
+      sceneService: {
+        stage,
+        staticForegroundLayer: layer,
+      } as never,
+      renderOrderService: {} as never,
+      cameraService: {
+        hooks: { change: { tap: () => () => undefined } },
+      } as never,
+    });
+
+    service.start({ hooks: createHooks(), config: {} } as never);
+    service.registerWidget({ id: "example" });
+
+    const sourceElement = createWidgetElement("source-widget", 10);
+    const targetElement = createWidgetElement("target-widget", 260);
+    if (sourceElement.data.type !== "widget" || targetElement.data.type !== "widget") {
+      throw new Error("expected widget data");
+    }
+    sourceElement.data.connections = {
+      inputs: [],
+      outputs: [{ id: "connection-1", targetWidgetId: "target-widget" }],
+    };
+    targetElement.data.connections = {
+      inputs: [{
+        id: "connection-1",
+        sourceWidgetId: "source-widget",
+        line: {
+          sourceArc: 0,
+          targetArc: 0.5,
+          waypoints: [],
+        },
+      }],
+      outputs: [],
+    };
+
+    const sourceNode = registeredDefinition?.createNode?.(sourceElement);
+    const targetNode = registeredDefinition?.createNode?.(targetElement);
+    expect(sourceNode).toBeInstanceOf(Konva.Group);
+    expect(targetNode).toBeInstanceOf(Konva.Group);
+
+    layer.add(sourceNode as Konva.Group);
+    layer.add(targetNode as Konva.Group);
+    txSyncWidgetConnections({
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Line: Konva.Line,
+    }, { node: targetNode as Konva.Group });
+
+    expect(layer.findOne(`#${LINE_ID}`)).toBeInstanceOf(Konva.Line);
+    expect((sourceNode as Konva.Group).findOne(`#${OUTPUT_HANDLE_ID}`)).toBeInstanceOf(Konva.Circle);
+
+    const onRemove = (targetNode as Konva.Group).getAttr(VC_ON_REMOVE_ATTR);
+    expect(onRemove).toBeTypeOf("function");
+    onRemove({ node: targetNode });
+
+    expect(layer.findOne(`#${LINE_ID}`)).toBeUndefined();
+    expect((sourceNode as Konva.Group).findOne(`#${OUTPUT_HANDLE_ID}`)).toBeUndefined();
+
+    service.stop();
+    stage.destroy();
+  });
+
   test("keeps the drag preview blue and commits the drag-start widget as the input", () => {
     ensureDom();
 

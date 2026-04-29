@@ -28,4 +28,5 @@ export const WIDGET_CONNECTION_BOUNDARY_ID = 'widget-connection-boundary'
 export const WIDGET_CONNECTION_HANDLE_ID = 'widget-connection-handle'
 export const WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX = 'widget-connection-input-handle'
 export const WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX = 'widget-connection-output-handle'
+export const WIDGET_CONNECTION_LINE_ID_PREFIX = 'widget-connection-line'
 export const WIDGET_CONNECTION_BOUNDARY_OFFSET = 10

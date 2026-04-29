@@ -8,6 +8,7 @@ dist/
 .output/
 *.tsbuildinfo
 
+
 # Bun
 bun.lockb
 
@@ -37,6 +38,7 @@ logs/
 
 # Test coverage
 coverage/
+/tests/artifacts/
 
 # Dev database
 local-volume/
