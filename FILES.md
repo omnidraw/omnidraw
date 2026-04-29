@@ -219,7 +219,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing constants |
-| 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host body activation, fullscreen focus, close/min/max buttons, cursor, drag commit, and alt-clone wiring |
+| 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host body activation, fullscreen focus, close/min/max buttons, cursor, drag preview colors/commit connection direction, and alt-clone wiring |
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and tool config |

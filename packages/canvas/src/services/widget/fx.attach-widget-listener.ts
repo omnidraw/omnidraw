@@ -44,6 +44,10 @@ type TPortal = {
 type TArgs = {
 }
 
+const WIDGET_CONNECTION_DRAG_ACTIVE_ATTR = '__widgetConnectionDragActive'
+const WIDGET_CONNECTION_DRAG_UPDATE_ATTR = '__widgetConnectionDragUpdate'
+
+type TConnectionDragUpdate = () => void
 
 function toHoverFill(fill: string | CanvasGradient) {
   return `${fill}cc`
@@ -431,6 +435,15 @@ function appendWidgetConnection(portal: TPortal, args: {
   return true
 }
 
+function isConnectionDragActive(stage: Konva.Stage | null) {
+  return stage?.getAttr(WIDGET_CONNECTION_DRAG_ACTIVE_ATTR) === true
+}
+
+function updateActiveConnectionDragLine(stage: Konva.Stage | null) {
+  const update = stage?.getAttr(WIDGET_CONNECTION_DRAG_UPDATE_ATTR) as TConnectionDragUpdate | undefined
+  update?.()
+}
+
 function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) => void) {
   if (!(portal.node instanceof portal.Group)) return false
   const widgetNode = portal.node
@@ -482,8 +495,12 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
       width: widgetNode.width(),
       height: widgetNode.height(),
     })
+    const isPendingOutput = isConnectionDragActive(stage) && !isConnecting
 
     handle.position(point)
+    handle.fill(isPendingOutput ? '#94a3b8' : '#38bdf8')
+    handle.stroke(isPendingOutput ? '#e2e8f0' : '#e0f2fe')
+    handle.shadowColor(isPendingOutput ? '#94a3b8' : '#38bdf8')
     handle.setAttr('widgetConnectionArc', arc)
     handle.visible(true)
     handle.getLayer()?.batchDraw()
@@ -495,6 +512,8 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
     tempLine?.destroy()
     tempLine = null
     isConnecting = false
+    stage?.setAttr(WIDGET_CONNECTION_DRAG_ACTIVE_ATTR, false)
+    stage?.setAttr(WIDGET_CONNECTION_DRAG_UPDATE_ATTR, undefined)
     handle.fill('#38bdf8')
     handle.radius(10)
     handle.opacity(0.95)
@@ -518,14 +537,14 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
     isConnecting = true
     setCursor('pointer')
     connectionSourceArc = getArcForPointer(portal, widgetNode, pointer)
-    handle.fill('#94a3b8')
+    handle.fill('#38bdf8')
     handle.visible(true)
 
     const sourcePoint = toLayerPoint(layer, getBoundaryAbsolutePoint(widgetNode, connectionSourceArc))
     const pointerPoint = toLayerPoint(layer, pointer)
     tempLine = new portal.Line({
       points: [sourcePoint.x, sourcePoint.y, pointerPoint.x, pointerPoint.y],
-      stroke: '#94a3b8',
+      stroke: '#38bdf8',
       strokeWidth: 2,
       dash: [8, 6],
       lineCap: 'round',
@@ -535,14 +554,18 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
     layer.add(tempLine)
     layer.batchDraw()
 
-    stage.off('pointermove.widgetConnection pointerup.widgetConnection pointercancel.widgetConnection')
-    stage.on('pointermove.widgetConnection', () => {
+    const updateTempLine = () => {
       const nextPointer = stage.getPointerPosition()
       if (!nextPointer || !tempLine) return
       const nextPointerPoint = toLayerPoint(layer, nextPointer)
       tempLine.points([sourcePoint.x, sourcePoint.y, nextPointerPoint.x, nextPointerPoint.y])
       layer.batchDraw()
-    })
+    }
+
+    stage.setAttr(WIDGET_CONNECTION_DRAG_ACTIVE_ATTR, true)
+    stage.setAttr(WIDGET_CONNECTION_DRAG_UPDATE_ATTR, updateTempLine)
+    stage.off('pointermove.widgetConnection pointerup.widgetConnection pointercancel.widgetConnection')
+    stage.on('pointermove.widgetConnection', updateTempLine)
     stage.on('pointerup.widgetConnection pointercancel.widgetConnection', () => {
       const nextPointer = stage.getPointerPosition()
       if (nextPointer) {
@@ -550,10 +573,10 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
         const target = getWidgetGroupFromNode(portal, hit)
         if (target && target !== widgetNode) {
           appendWidgetConnection(portal, {
-            source: widgetNode,
-            target,
-            sourceArc: connectionSourceArc,
-            targetArc: getArcForPointer(portal, target, nextPointer),
+            source: target,
+            target: widgetNode,
+            sourceArc: getArcForPointer(portal, target, nextPointer),
+            targetArc: connectionSourceArc,
           })
         }
       }
@@ -572,11 +595,13 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
   boundary.on('pointerover', (event) => {
     event.cancelBubble = true
     setCursor('pointer')
+    updateActiveConnectionDragLine(widgetNode.getStage())
     syncHandle()
     startPulse()
   })
   boundary.on('pointermove', (event) => {
     event.cancelBubble = true
+    updateActiveConnectionDragLine(widgetNode.getStage())
     syncHandle()
   })
   boundary.on('pointerdown', startConnectionDrag)
