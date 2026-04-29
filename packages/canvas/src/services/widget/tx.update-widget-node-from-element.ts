@@ -24,8 +24,10 @@ import {
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from "./CONSTANTS";
 import { txSyncWidgetDomPortals } from "./tx.sync-widget-dom-portals";
+import { txSyncWidgetConnections } from "./tx.sync-widget-connections";
 
 export type TPortalUpdateWidgetNodeFromElement = {
+  Circle?: typeof Konva.Circle;
   Group: typeof Konva.Group;
   Line?: typeof Konva.Line;
   Rect: typeof Konva.Rect;
@@ -80,78 +82,6 @@ function syncConnectionBoundary(portal: TPortalUpdateWidgetNodeFromElement, args
 
   const handle = args.node.findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`);
   if (handle) handle.visible(false);
-}
-
-function getConnectionBoundaryPoint(args: { arc: number; width: number; height: number }) {
-  const left = -WIDGET_CONNECTION_BOUNDARY_OFFSET;
-  const top = -WIDGET_CONNECTION_BOUNDARY_OFFSET;
-  const right = args.width + WIDGET_CONNECTION_BOUNDARY_OFFSET;
-  const bottom = args.height + WIDGET_CONNECTION_BOUNDARY_OFFSET;
-  const centerX = args.width / 2;
-  const centerY = args.height / 2;
-  const angle = args.arc * Math.PI * 2;
-  const dx = Math.cos(angle);
-  const dy = Math.sin(angle);
-  const tx = dx > 0 ? (right - centerX) / dx : dx < 0 ? (left - centerX) / dx : Number.POSITIVE_INFINITY;
-  const ty = dy > 0 ? (bottom - centerY) / dy : dy < 0 ? (top - centerY) / dy : Number.POSITIVE_INFINITY;
-  const distance = Math.min(tx, ty);
-
-  return { x: centerX + dx * distance, y: centerY + dy * distance };
-}
-
-function toLayerPoint(layer: Konva.Layer | Konva.FastLayer, point: { x: number; y: number }) {
-  return layer.getAbsoluteTransform().copy().invert().point(point);
-}
-
-function syncAllConnectionLines(portal: TPortalUpdateWidgetNodeFromElement, args: { node: Konva.Group }) {
-  const Line = portal.Line;
-  if (!Line) return;
-  const layer = args.node.getLayer();
-  if (!layer) return;
-
-  const widgets = layer.find((node: Konva.Node) => {
-    return node instanceof portal.Group && node.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
-  }).filter((node): node is Konva.Group => node instanceof portal.Group);
-  const widgetById = new Map(widgets.map((widget) => [widget.id(), widget]));
-
-  widgets.forEach((target) => {
-    const targetData = target.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
-    if (targetData?.type !== "widget") return;
-
-    targetData.connections?.inputs?.forEach((connection) => {
-      const source = widgetById.get(connection.sourceWidgetId);
-      if (!source) return;
-
-      const sourcePoint = toLayerPoint(layer, source.getAbsoluteTransform().point(getConnectionBoundaryPoint({
-        arc: connection.line.sourceArc,
-        width: source.width(),
-        height: source.height(),
-      })));
-      const targetPoint = toLayerPoint(layer, target.getAbsoluteTransform().point(getConnectionBoundaryPoint({
-        arc: connection.line.targetArc,
-        width: target.width(),
-        height: target.height(),
-      })));
-      const lineId = `widget-connection-line-${connection.id}`;
-      const existingLine = layer.findOne(`#${lineId}`);
-      if (existingLine instanceof Line) {
-        existingLine.points([sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y]);
-        existingLine.moveToBottom();
-        return;
-      }
-      const line = new Line({
-        id: lineId,
-        points: [sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y],
-        stroke: "#94a3b8",
-        strokeWidth: 2,
-        lineCap: "round",
-        lineJoin: "round",
-        listening: false,
-      });
-      layer.add(line);
-      line.moveToBottom();
-    });
-  });
 }
 
 function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
@@ -241,7 +171,7 @@ export function txUpdateWidgetNodeFromElement(
   });
   txSetNodeZIndex({}, { node: args.node, zIndex: args.element.zIndex });
   txSyncWidgetDomPortals({}, { node: args.node });
-  syncAllConnectionLines(portal, { node: args.node });
+  txSyncWidgetConnections(portal, { node: args.node });
   args.node.getLayer()?.batchDraw();
 
   return true;

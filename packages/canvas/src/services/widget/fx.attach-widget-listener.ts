@@ -39,6 +39,7 @@ type TPortal = {
   }) => boolean;
   removeWidget?: (node: Konva.Group) => boolean;
   createConnectionId?: () => string;
+  syncConnections?: (node: Konva.Group) => void;
 }
 type TArgs = {
 }
@@ -374,74 +375,6 @@ function toLayerPoint(layer: Konva.Layer | Konva.FastLayer, point: { x: number; 
   return layer.getAbsoluteTransform().copy().invert().point(point)
 }
 
-function syncConnectionLine(portal: TPortal, args: {
-  id: string;
-  source: Konva.Group;
-  target: Konva.Group;
-  sourceArc: number;
-  targetArc: number;
-}) {
-  if (!portal.Line) return
-
-  const layer = args.source.getLayer()
-  if (!layer) return
-
-  const sourcePoint = toLayerPoint(layer, getBoundaryAbsolutePoint(args.source, args.sourceArc))
-  const targetPoint = toLayerPoint(layer, getBoundaryAbsolutePoint(args.target, args.targetArc))
-  const lineId = `widget-connection-line-${args.id}`
-  const existingLine = layer.findOne(`#${lineId}`)
-
-  if (existingLine instanceof portal.Line) {
-    existingLine.points([sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y])
-    existingLine.moveToBottom()
-    layer.batchDraw()
-    return
-  }
-
-  const line = new portal.Line({
-    id: lineId,
-    points: [sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y],
-    stroke: '#94a3b8',
-    strokeWidth: 2,
-    lineCap: 'round',
-    lineJoin: 'round',
-    listening: false,
-  })
-  layer.add(line)
-  line.moveToBottom()
-  layer.batchDraw()
-}
-
-function syncAllConnectionLines(portal: TPortal) {
-  if (!portal.Line || !(portal.node instanceof portal.Group)) return
-
-  const layer = portal.node.getLayer()
-  if (!layer) return
-
-  const widgets = layer.find((node: Konva.Node) => {
-    return node instanceof portal.Group && node.getAttr(ELEMENT_DATA_ATTR)?.type === 'widget'
-  }).filter((node): node is Konva.Group => node instanceof portal.Group)
-  const widgetById = new Map(widgets.map((widget) => [widget.id(), widget]))
-
-  widgets.forEach((target) => {
-    const targetData = target.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
-    if (targetData?.type !== 'widget') return
-
-    targetData.connections?.inputs?.forEach((connection) => {
-      const source = widgetById.get(connection.sourceWidgetId)
-      if (!source) return
-
-      syncConnectionLine(portal, {
-        id: connection.id,
-        source,
-        target,
-        sourceArc: connection.line.sourceArc,
-        targetArc: connection.line.targetArc,
-      })
-    })
-  })
-}
-
 function appendWidgetConnection(portal: TPortal, args: {
   source: Konva.Group;
   target: Konva.Group;
@@ -493,13 +426,7 @@ function appendWidgetConnection(portal: TPortal, args: {
     .patchElement(args.target.id(), 'data', targetData)
     .commit()
 
-  syncConnectionLine(portal, {
-    id,
-    source: args.source,
-    target: args.target,
-    sourceArc: args.sourceArc,
-    targetArc: args.targetArc,
-  })
+  portal.syncConnections?.(args.source)
 
   return true
 }
@@ -574,7 +501,7 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
     handle.visible(false)
     setCursor('pointer')
     widgetNode.draggable(true)
-    syncAllConnectionLines(portal)
+    portal.syncConnections?.(widgetNode)
     widgetNode.getLayer()?.batchDraw()
   }
 
@@ -673,18 +600,19 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
 
 function setupDragListener(portal: TPortal) {
   if (!(portal.node instanceof portal.Group)) return false
+  const widgetNode = portal.node
 
-  portal.node.off('dragend')
-  portal.node.on('dragmove', () => {
-    syncAllConnectionLines(portal)
+  widgetNode.off('dragend')
+  widgetNode.on('dragmove', () => {
+    portal.syncConnections?.(widgetNode)
   })
 
-  portal.node.on('dragend', () => {
+  widgetNode.on('dragend', () => {
     portal.crdtService.build()
-      .patchElement(portal.node.id(), 'x', portal.node.x())
-      .patchElement(portal.node.id(), 'y', portal.node.y())
+      .patchElement(widgetNode.id(), 'x', widgetNode.x())
+      .patchElement(widgetNode.id(), 'y', widgetNode.y())
       .commit()
-    syncAllConnectionLines(portal)
+    portal.syncConnections?.(widgetNode)
   })
 
   return true
@@ -714,7 +642,7 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
   if(header) setupCursor(setCursor, portal.node, header)
   setupConnectionBoundary(portal, setCursor)
   setupDragListener(portal)
-  syncAllConnectionLines(portal)
+  portal.syncConnections?.(portal.node)
 
   return didAttachSelectable
 }

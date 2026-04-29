@@ -15,6 +15,7 @@ import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txAttachDomPortal, type TWidgetDomPortalListener } from "./tx.attach-dom-portal";
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
+import { txSyncWidgetConnections } from "./tx.sync-widget-connections";
 import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_MIN_WIDTH } from "./CONSTANTS";
 
 type TWidgetDomPortalSync = () => void;
@@ -178,6 +179,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         }
 
         return txUpdateWidgetNodeFromElement({
+          Circle: Konva.Circle,
           Group: Konva.Group,
           Line: Konva.Line,
           Rect: Konva.Rect,
@@ -219,6 +221,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
               removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
               createConnectionId: () => crypto.randomUUID(),
+              syncConnections: (connectionNode) => txSyncWidgetConnections({
+                Circle: Konva.Circle,
+                Group: Konva.Group,
+                Line: Konva.Line,
+              }, { node: connectionNode }),
             }, {})
           },
         }, { node });
@@ -240,6 +247,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         if (element.data.type !== "widget") return;
 
         txResizeWidgetHost({
+          Circle: Konva.Circle,
           Group: Konva.Group,
           Line: Konva.Line,
           Rect: Konva.Rect,
@@ -269,6 +277,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         startDragClone: (args) => this.#elementService.createDragClone(args),
         removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
         createConnectionId: () => crypto.randomUUID(),
+        syncConnections: (connectionNode) => txSyncWidgetConnections({
+          Circle: Konva.Circle,
+          Group: Konva.Group,
+          Line: Konva.Line,
+        }, { node: connectionNode }),
       }, {})
     })
 

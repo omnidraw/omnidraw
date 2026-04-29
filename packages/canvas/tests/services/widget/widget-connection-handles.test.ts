@@ -7,14 +7,20 @@ import Konva from "konva";
 import { describe, expect, test } from "vitest";
 import type { CrdtService, SelectionService } from "../../../src/services";
 import type { IRuntimeHooks } from "../../../src/types";
+import {
+  WIDGET_CONNECTION_BOUNDARY_ID,
+  WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX,
+  WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX,
+} from "../../../src/services/widget/CONSTANTS";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
 import { fxAttachWidgetListener } from "../../../src/services/widget/fx.attach-widget-listener";
+import { txUpdateWidgetNodeFromElement } from "../../../src/services/widget/tx.update-widget-node-from-element";
 import { createTestContainer, ensureDom } from "../../test-setup";
 
-const INPUT_HANDLE_ID = "widget-connection-input-handle";
-const OUTPUT_HANDLE_ID = "widget-connection-output-handle";
-const SCREENSHOT_PATH = resolve("test-artifacts/widget-connection-handles.png");
+const INPUT_HANDLE_ID = `${WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX}-connection-1`;
+const OUTPUT_HANDLE_ID = `${WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX}-connection-1`;
+const SCREENSHOT_PATH = resolve("tests/artifacts/widget-connection-handles.png");
 
 function writeStageScreenshot(stage: Konva.Stage) {
   const dataUrl = stage.toDataURL({ pixelRatio: 1 });
@@ -87,10 +93,6 @@ describe("widget connection handles", () => {
 
     expect(sourceNode).toBeInstanceOf(Konva.Group);
     expect(targetNode).toBeInstanceOf(Konva.Group);
-    stage.add(layer);
-    layer.add(sourceNode as Konva.Group);
-    layer.add(targetNode as Konva.Group);
-
     fxAttachWidgetListener({
       node: sourceNode as Konva.Group,
       Circle: Konva.Circle,
@@ -102,6 +104,19 @@ describe("widget connection handles", () => {
       toElement: (node) => node.id() === sourceElement.id ? sourceElement : targetElement,
       crdtService: {} as CrdtService,
     }, {});
+
+    stage.add(layer);
+    layer.add(sourceNode as Konva.Group);
+    layer.add(targetNode as Konva.Group);
+    txUpdateWidgetNodeFromElement({
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Line: Konva.Line,
+      Rect: Konva.Rect,
+    }, {
+      node: targetNode as Konva.Group,
+      element: targetElement,
+    });
 
     layer.draw();
     writeStageScreenshot(stage);
@@ -115,6 +130,12 @@ describe("widget connection handles", () => {
     expect((inputHandle as Konva.Circle).visible()).toBe(true);
     expect((outputHandle as Konva.Circle).fill()).toBe("#94a3b8");
     expect((inputHandle as Konva.Circle).fill()).toBe("#38bdf8");
+    expect((outputHandle as Konva.Circle).zIndex()).toBeGreaterThan(
+      ((sourceNode as Konva.Group).findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`) as Konva.Line).zIndex(),
+    );
+    expect((inputHandle as Konva.Circle).zIndex()).toBeGreaterThan(
+      ((targetNode as Konva.Group).findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`) as Konva.Line).zIndex(),
+    );
 
     stage.destroy();
   });
