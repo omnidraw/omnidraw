@@ -38,8 +38,9 @@ prefix: `packages/canvas/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../.gitignore` |  | Canvas local test artifacts and perf result files ignored from commits. |
 | 🤖 | `../AGENTS.md` |  | Canvas package guidance and active source folder map. |
-| 🤖 | `../package.json` |  | Canvas package manifest; update when adding canvas runtime dependencies. |
+| 🤖 | `../package.json` |  | Canvas package manifest; update when adding canvas runtime dependencies or local test scripts. |
 | 🟡 | `automerge.ts` |  | Browser Automerge repo, persisted doc handles, WebSocket sync |
 | 🫠 | `base.css` |  | Global theme tokens, dark mode, baseline element resets |
 | ❓ | `components/Canvas.tsx` |  | Automerge-backed canvas runtime mount, loading, teardown orchestration |

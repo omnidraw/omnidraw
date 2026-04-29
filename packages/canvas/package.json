@@ -18,7 +18,8 @@
     "solid-devtools": "^0.34.3"
   },
   "scripts": {
-    "test": "vitest --run"
+    "test": "vitest --run --exclude 'tests/perf/**'",
+    "test:perf": "vitest --run tests/perf"
   },
   "dependencies": {
     "@arrow-js/core": "^1.0.6",
