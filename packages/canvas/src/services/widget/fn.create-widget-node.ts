@@ -152,7 +152,7 @@ function createConnectionHandle(konva: typeof Konva) {
     shadowBlur: 14,
     shadowOpacity: 0.65,
     visible: false,
-    listening: true,
+    listening: false,
     hitStrokeWidth: 24,
     opacity: 0.95,
   })
