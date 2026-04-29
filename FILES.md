@@ -78,7 +78,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `core/fx.resolve-selection-style-elements.ts` |  | Resolve style-target elements from selection or focused node |
 | ✅ | `core/fn.resolve-selection-style-text-elements.ts` |  | Selection styling: normalize direct and attached text elements |
 | ✅ | `core/fx.selection-style-element-patch.ts` |  | Selection style edits: clone element, patch text/line/arrow fields |
-| ❓ | `core/GUARDS.ts` |  |  |
+| 🤖 | `core/GUARDS.ts` |  | Shared Konva/canvas node type guards |
 | ✅ | `core/tx.apply-selection-style-change.ts` |  | Selected elements style mutation planning, preview, CRDT commit, undo/re |
 | ❓ | `core/tx.finalize-owned-transform.ts` |  | Finalize owned-node transform, patch CRDT, record undo/redo history |
 | ❓ | `core/tx.set-node-z-index.ts` |  | Persist custom z-layer ordering on Konva nodes |
@@ -193,7 +193,7 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/transform/Transform.plugin.ts` |  | Selection transform, drag-proxy moves, resize/rotate hooks, history |
 | ❓ | `plugins/transform/tx.dispatch-selection-transform-hooks.ts` |  | Selection-transform hook fanout; aggregate cancel/crdt, track handled no |
 | 🤖 | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
-| ❓ | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node |
+| 🤖 | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node/connection id |
 | 🤖 | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins and widget history dependency |
 | ❓ | `services/camera/CameraService.ts` |  | Canvas camera pan/zoom viewport state driving scene layers |
 | ❓ | `services/canvas-registry/CanvasRegistryService.ts` |  | Canvas semantic registry: nodes↔elements/groups, lifecycle hooks, select |
@@ -215,7 +215,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/render-order/RenderOrderService.ts` |  | Bundle-aware sibling z-order |
 | ✅ | `services/scene/SceneService.ts` |  | Konva stage lifecycle, layers, container resize hook |
 | ✅ | `services/scene/SessionService.ts` |  | temporary data, Edit state. |
-| ❓ | `services/selection/SelectionService.ts` |  | canvas selection state, focus, mode, change notifications |
+| 🤖 | `services/selection/SelectionService.ts` |  | canvas node/connection selection state, focus, mode, change notifications |
 | 🤖 | `services/tool/ToolService.ts` |  | Runtime tool registry, active tool switching, and draw-create preview commit |
 | 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
@@ -228,10 +228,10 @@ prefix: `packages/canvas/src/`
 | ❓ | `services/widget/tx.mount-arrow-sandbox.ts` |  | Mount Arrow sandbox widget source with SDK import rewriting and base sizing CSS. |
 | 🤖 | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview, DOM cleanup, history, and CRDT commit |
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
-| 🤖 | `services/widget/tx.sync-widget-connections.ts` |  | Render and resync widget connection lines and established endpoint handles. |
+| 🤖 | `services/widget/tx.sync-widget-connections.ts` |  | Render, select, hit-test, and resync widget connection lines and established endpoint handles. |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
 | 🤖 | `services/widget/tx.update-widget-node-from-element.ts` |  | Replay persisted widget geometry/data onto an existing Konva host and DOM portal. |
-| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, clone-drag, close-delete history, canvas adapters, DOM portals, connection UI cleanup hooks |
+| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, clone-drag, close-delete history, canvas adapters, DOM portals, connection selection/cleanup hooks |
 
 ## .pi/extensions/functional-core
 **SKIP** (internal pi extension tooling; intentionally untracked in this table)

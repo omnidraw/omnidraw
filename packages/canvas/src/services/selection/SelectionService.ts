@@ -9,7 +9,15 @@ export interface TSelectionServiceHooks {
 
 /**
  * Holds selection and tool state.
- * Owns mode, active selection, and focused node id.
+ *
+ * `selection` and `focusedId` are reserved for transformable canvas nodes
+ * such as elements and groups. Widget connections are UI-only edges and must
+ * not be pushed into `selection`, otherwise generic selection consumers like
+ * the transformer would treat them as normal elements.
+ *
+ * `selectedConnectionId` stores the single selected widget connection id.
+ * It is intentionally untangled from node selection: selecting a connection
+ * clears node selection/focus, and selecting nodes clears connection selection.
  */
 export class SelectionService implements IService<TSelectionServiceHooks> {
   readonly name = "selection";
@@ -20,6 +28,7 @@ export class SelectionService implements IService<TSelectionServiceHooks> {
   mode = CanvasMode.SELECT;
   selection: Array<Konva.Node> = [];
   focusedId: string | null = null;
+  selectedConnectionId: string | null = null;
   private suppressSelectionHandlingUntil = 0;
 
   setMode(mode: CanvasMode) {
@@ -33,11 +42,22 @@ export class SelectionService implements IService<TSelectionServiceHooks> {
 
   setSelection(selection: Array<Konva.Node>) {
     this.selection = selection;
+    this.selectedConnectionId = null;
+    this.hooks.change.call();
+  }
+
+  setSelectedConnectionId(connectionId: string | null) {
+    this.selection = [];
+    this.focusedId = null;
+    this.selectedConnectionId = connectionId;
     this.hooks.change.call();
   }
 
   setFocusedId(focusedId: string | null) {
     this.focusedId = focusedId;
+    if (focusedId !== null) {
+      this.selectedConnectionId = null;
+    }
     this.hooks.change.call();
   }
 
@@ -57,6 +77,7 @@ export class SelectionService implements IService<TSelectionServiceHooks> {
   clear() {
     this.selection = [];
     this.focusedId = null;
+    this.selectedConnectionId = null;
     this.hooks.change.call();
   }
 }

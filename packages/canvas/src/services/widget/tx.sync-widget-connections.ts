@@ -1,6 +1,9 @@
 import type { TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
+import { isKonvaLine } from "../../core/GUARDS";
+import { CanvasMode } from "../selection/CONSTANTS";
+import type { SelectionService } from "../selection/SelectionService";
 import {
   WIDGET_CONNECTION_BOUNDARY_OFFSET,
   WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX,
@@ -12,6 +15,7 @@ type TPortalSyncWidgetConnections = {
   Circle?: typeof Konva.Circle;
   Group: typeof Konva.Group;
   Line?: typeof Konva.Line;
+  selection?: SelectionService;
 };
 
 type TArgsSyncWidgetConnections = {
@@ -37,6 +41,11 @@ function getConnectionBoundaryPoint(args: { arc: number; width: number; height: 
 
 function toLayerPoint(layer: Konva.Layer | Konva.FastLayer, point: { x: number; y: number }) {
   return layer.getAbsoluteTransform().copy().invert().point(point);
+}
+
+function getConnectionLineHitStrokeWidth(layer: Konva.Layer | Konva.FastLayer) {
+  const zoom = Math.abs(layer.getAbsoluteScale().x) || 1;
+  return Math.max(32, 32 / zoom);
 }
 
 function syncConnectionHandle(portal: TPortalSyncWidgetConnections, args: {
@@ -99,24 +108,43 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
   const sourcePoint = toLayerPoint(args.layer, args.source.getAbsoluteTransform().point(sourceLocalPoint));
   const targetPoint = toLayerPoint(args.layer, args.target.getAbsoluteTransform().point(targetLocalPoint));
   const lineId = `${WIDGET_CONNECTION_LINE_ID_PREFIX}-${args.id}`;
+  const isSelected = portal.selection?.selectedConnectionId === args.id;
   const existingLine = args.layer.findOne(`#${lineId}`);
+  const connectionLine = isKonvaLine(existingLine) ? existingLine : new Line({ id: lineId });
 
-  if (existingLine instanceof Line) {
-    existingLine.points([sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y]);
-    existingLine.moveToBottom();
-  } else {
-    const line = new Line({
-      id: lineId,
-      points: [sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y],
-      stroke: "#94a3b8",
-      strokeWidth: 2,
-      lineCap: "round",
-      lineJoin: "round",
-      listening: false,
-    });
-    args.layer.add(line);
-    line.moveToBottom();
+  if (!isKonvaLine(existingLine)) {
+    args.layer.add(connectionLine);
   }
+
+  connectionLine.points([sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y]);
+  connectionLine.stroke(isSelected ? "#38bdf8" : "#94a3b8");
+  connectionLine.strokeWidth(isSelected ? 4 : 2);
+  connectionLine.hitStrokeWidth(getConnectionLineHitStrokeWidth(args.layer));
+  connectionLine.listening(true);
+  connectionLine.draggable(false);
+  connectionLine.position({ x: 0, y: 0 });
+  connectionLine.lineCap("round");
+  connectionLine.lineJoin("round");
+  connectionLine.shadowEnabled(isSelected);
+  connectionLine.shadowColor("#38bdf8");
+  connectionLine.shadowBlur(isSelected ? 12 : 0);
+  connectionLine.shadowOpacity(isSelected ? 0.55 : 0);
+  connectionLine.setAttr("vcInteractionOverlay", true);
+  connectionLine.setAttr("widgetConnectionId", args.id);
+  connectionLine.off("pointerdown.widgetConnectionSelection dragstart.widgetConnectionNoDrag dragmove.widgetConnectionNoDrag");
+  connectionLine.on("pointerdown.widgetConnectionSelection", (event) => {
+    if (!portal.selection || portal.selection.mode !== CanvasMode.SELECT) return;
+    if (event.evt.button !== 0) return;
+    event.cancelBubble = true;
+    portal.selection.setSelectedConnectionId(args.id);
+  });
+  connectionLine.on("dragstart.widgetConnectionNoDrag dragmove.widgetConnectionNoDrag", (event) => {
+    event.cancelBubble = true;
+    connectionLine.stopDrag();
+    connectionLine.draggable(false);
+    connectionLine.position({ x: 0, y: 0 });
+  });
+  connectionLine.moveToBottom();
 
   syncConnectionHandle(portal, {
     node: args.source,

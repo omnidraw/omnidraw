@@ -209,6 +209,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S48](s/s48.md) - registerElement options are unclean, e.g. onMove is tranformer move only
 - [ ]: [S49] - TODO [S49]: add onRemove to some callback later
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
+- [ ]: [S50](s/S51.md) - add canvas performance - tested in worktree
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research
@@ -228,7 +229,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E19](e/E19.md) - canvas performance longterm: worker automerge + incremental notifications
 - [x]: [E20](e/E20.md) - improvement crdt updates
 - [ ]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
-- [ ]: [E22](e/E22.md) - canvas performance: widget mesh drag work
+- [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
 
 ## D irections
 - [x]: [D1] - AI can edit the canvas directly

@@ -6,7 +6,7 @@ import maints from "../../../../../local-volume/config/widget/todo-app/src/main.
 export function createTodoAppPlugin(): IPlugin<{
   widgetManager: WidgetManagerService;
 }, IRuntimeHooks, IRuntimeConfig> {
-  console.log('createTodoAppPlugin', maints)
+  // console.log('createTodoAppPlugin', maints)
   return {
     name: "TodoApp",
     apply: async (ctx) => {

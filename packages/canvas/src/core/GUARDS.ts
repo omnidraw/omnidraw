@@ -30,6 +30,10 @@ export function isKonvaImage(node: unknown): node is Konva.Image {
   return node instanceof Konva.Image;
 }
 
+export function isKonvaLine(node: unknown): node is Konva.Line {
+  return node instanceof Konva.Line;
+}
+
 export function isKonvaPath(node: unknown): node is Konva.Path {
   return node instanceof Konva.Path;
 }
