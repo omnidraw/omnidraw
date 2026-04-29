@@ -479,6 +479,88 @@ describe("widget connection handles", () => {
     stage.destroy();
   });
 
+  test("attached sync reuses the rendered connection line without layer findOne lookup", () => {
+    ensureDom();
+
+    const sourceElement = createWidgetElement("source-widget", 10);
+    const targetElement = createWidgetElement("target-widget", 260);
+    if (sourceElement.data.type !== "widget" || targetElement.data.type !== "widget") {
+      throw new Error("expected widget data");
+    }
+
+    sourceElement.data.connections = {
+      inputs: [],
+      outputs: [{ id: "connection-1", targetWidgetId: "target-widget" }],
+    };
+    targetElement.data.connections = {
+      inputs: [{
+        id: "connection-1",
+        sourceWidgetId: "source-widget",
+        line: {
+          sourceArc: 0,
+          targetArc: 0.5,
+          waypoints: [],
+        },
+      }],
+      outputs: [],
+    };
+
+    const container = createTestContainer({ width: 800, height: 600 });
+    const stage = new Konva.Stage({ container, width: 800, height: 600 });
+    const layer = new Konva.Layer();
+    const colors = fnGetHostThemeColors(new ThemeService());
+    const sourceNode = fnCreateWidgetNode(Konva, colors, sourceElement);
+    const targetNode = fnCreateWidgetNode(Konva, colors, targetElement);
+
+    expect(sourceNode).toBeInstanceOf(Konva.Group);
+    expect(targetNode).toBeInstanceOf(Konva.Group);
+
+    stage.add(layer);
+    layer.add(sourceNode as Konva.Group);
+    layer.add(targetNode as Konva.Group);
+
+    txSyncWidgetConnections({
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Line: Konva.Line,
+    }, { node: sourceNode as Konva.Group });
+
+    const attachedLine = layer.findOne(`#${LINE_ID}`);
+    expect(attachedLine).toBeInstanceOf(Konva.Line);
+    if (!(attachedLine instanceof Konva.Line)) {
+      throw new Error("expected rendered connection line");
+    }
+
+    let findOneCalls = 0;
+    let pointWrites = 0;
+    const originalFindOne = layer.findOne.bind(layer);
+    const originalPoints = attachedLine.points.bind(attachedLine);
+    layer.findOne = ((...args: unknown[]) => {
+      findOneCalls += 1;
+      return originalFindOne(...args as [never]);
+    }) as typeof layer.findOne;
+    attachedLine.points = ((points?: number[]) => {
+      if (points !== undefined) pointWrites += 1;
+      return points === undefined ? originalPoints() : originalPoints(points);
+    }) as typeof attachedLine.points;
+
+    (sourceNode as Konva.Group).position({ x: sourceElement.x + 40, y: sourceElement.y + 20 });
+    txSyncWidgetConnections({
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Line: Konva.Line,
+    }, {
+      node: sourceNode as Konva.Group,
+      scope: "attached",
+      syncHandles: false,
+    });
+
+    expect(pointWrites).toBe(1);
+    expect(findOneCalls).toBe(0);
+
+    stage.destroy();
+  });
+
   test("renders blue input and gray output handles for established connections", () => {
     ensureDom();
 

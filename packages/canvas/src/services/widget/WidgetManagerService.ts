@@ -5,6 +5,7 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
+import { CanvasMode } from "../selection/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import {
     WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX,
@@ -29,6 +30,11 @@ import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-elem
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
 
+function isEditableTarget(target: EventTarget | null) {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLElement && target.isContentEditable;
+}
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
@@ -45,6 +51,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #cameraService: CameraService;
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
+  #removeKeydownListener?: () => boolean;
   // TODO: remove, we want to use elementRegistry.onRemove
   #domPortalCleanups = new Set<TWidgetDomPortalListener>();
   private readonly runtimeHooks!: IRuntimeHooks;
@@ -75,11 +82,36 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#removeSelectionChangeListener = this.#selectionService.hooks.change.tap(() => {
       this.#syncRenderedWidgetConnections();
     });
+    this.#removeKeydownListener = ctx.hooks.keydown?.tap((event) => {
+      if (this.#selectionService.mode !== CanvasMode.SELECT) return;
+      if (!this.#selectionService.selectedConnectionId) return;
+      if (event.key !== "Backspace" && event.key !== "Delete") return;
+      if (isEditableTarget(event.target)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.#deleteConnection(this.#selectionService.selectedConnectionId);
+    });
+    this.#contextMenuService.registerProvider?.("widget-connection", ({ scope, connectionId }) => {
+      if (scope !== "connection" || !connectionId) {
+        return [];
+      }
+
+      return [{
+        id: "delete-widget-connection",
+        label: "Delete connection",
+        priority: 250,
+        onSelect: () => this.#deleteConnection(connectionId),
+      }];
+    });
   }
 
   stop(): void | Promise<void> {
     this.#removeSelectionChangeListener?.();
     this.#removeSelectionChangeListener = undefined;
+    this.#removeKeydownListener?.();
+    this.#removeKeydownListener = undefined;
+    this.#contextMenuService.unregisterProvider?.("widget-connection");
     this.#domPortalCleanups.forEach((cleanup) => cleanup());
     this.#domPortalCleanups.clear();
     this.#widgetPortal.remove()
@@ -101,23 +133,66 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     }, { node: widget });
   }
 
-  #removeRenderedWidgetConnection(connectionId: string, args: { sourceWidgetId?: string; targetWidgetId?: string }) {
+  #removeRenderedWidgetConnection(connectionId: string, args?: { sourceWidgetId?: string; targetWidgetId?: string }) {
     this.#sceneService.staticForegroundLayer.findOne(`#${WIDGET_CONNECTION_LINE_ID_PREFIX}-${connectionId}`)?.destroy();
+    this.#sceneService.staticForegroundLayer.findOne(`#${WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX}-${connectionId}`)?.destroy();
+    this.#sceneService.staticForegroundLayer.findOne(`#${WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX}-${connectionId}`)?.destroy();
     if (this.#selectionService.selectedConnectionId === connectionId) {
       this.#selectionService.setSelectedConnectionId(null);
     }
 
-    if (args.sourceWidgetId) {
+    if (args?.sourceWidgetId) {
       this.#findWidgetNodeById(args.sourceWidgetId)
         ?.findOne(`#${WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX}-${connectionId}`)
         ?.destroy();
     }
 
-    if (args.targetWidgetId) {
+    if (args?.targetWidgetId) {
       this.#findWidgetNodeById(args.targetWidgetId)
         ?.findOne(`#${WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX}-${connectionId}`)
         ?.destroy();
     }
+  }
+
+  #deleteConnection(connectionId: string) {
+    const widgets = this.#sceneService.staticForegroundLayer.find((candidate: Konva.Node) => {
+      return candidate instanceof Konva.Group && candidate.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
+    }).filter((node): node is Konva.Group => node instanceof Konva.Group);
+    const builder = this.#crdtService.build();
+    let didChange = false;
+
+    widgets.forEach((widget) => {
+      const widgetData = widget.getAttr(ELEMENT_DATA_ATTR) as TElementData;
+      if (widgetData?.type !== "widget") return;
+
+      const inputs = widgetData.connections?.inputs ?? [];
+      const outputs = widgetData.connections?.outputs ?? [];
+      const nextInputs = inputs.filter((connection) => connection.id !== connectionId);
+      const nextOutputs = outputs.filter((connection) => connection.id !== connectionId);
+      if (nextInputs.length === inputs.length && nextOutputs.length === outputs.length) {
+        return;
+      }
+
+      const nextData = {
+        ...widgetData,
+        connections: {
+          inputs: nextInputs,
+          outputs: nextOutputs,
+        },
+      } satisfies TElementData;
+      widget.setAttr(ELEMENT_DATA_ATTR, nextData);
+      builder.patchElement(widget.id(), "data", nextData);
+      didChange = true;
+    });
+
+    if (!didChange) {
+      return false;
+    }
+
+    builder.commit();
+    this.#removeRenderedWidgetConnection(connectionId);
+    this.#sceneService.staticForegroundLayer.batchDraw();
+    return true;
   }
 
   #removeRenderedWidgetConnections(node: Konva.Group) {

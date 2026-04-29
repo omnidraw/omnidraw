@@ -4,7 +4,7 @@ import { SyncHook } from "@vibecanvas/tapable";
 import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 
-export type TContextMenuScope = "canvas" | "item" | "selection";
+export type TContextMenuScope = "canvas" | "item" | "selection" | "connection";
 export type TContextMenuNode = Group | Shape<ShapeConfig>;
 
 export type TContextMenuAction = {
@@ -23,6 +23,7 @@ export type TContextMenuProviderArgs = {
   targetGroup: TGroup | null;
   selection: TContextMenuNode[];
   activeSelection: TContextMenuNode[];
+  connectionId: string | null;
 };
 
 export type TContextMenuProvider = (args: TContextMenuProviderArgs) => TContextMenuAction[];
