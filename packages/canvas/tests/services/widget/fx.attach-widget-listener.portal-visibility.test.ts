@@ -4,7 +4,8 @@ import { SyncExitHook } from "@vibecanvas/tapable";
 import { SyncHook } from "@vibecanvas/tapable";
 import Konva from "konva";
 import { describe, expect, test } from "vitest";
-import type { CameraService, CrdtService, SelectionService, WidgetManagerService } from "../../../src/services";
+import type { CameraService, CrdtService, WidgetManagerService } from "../../../src/services";
+import { SelectionService } from "../../../src/services/selection/SelectionService";
 import type { IRuntimeHooks } from "../../../src/types";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
@@ -66,6 +67,7 @@ describe("widget button portal visibility", () => {
     const layer = new Konva.Layer();
     const widgetPortal = document.createElement("div");
     const cameraService = createCameraService();
+    const selectionService = new SelectionService();
     const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), element);
 
     expect(node).toBeInstanceOf(Konva.Group);
@@ -79,6 +81,7 @@ describe("widget button portal visibility", () => {
       widgetServie: {} as WidgetManagerService,
       widgetPortal,
       cameraService,
+      selectionService,
     }, { element });
     if (removeListener) {
       (node as Konva.Group).setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeListener.syncDiv);
@@ -91,7 +94,7 @@ describe("widget button portal visibility", () => {
       Group: Konva.Group,
       Rect: Konva.Rect,
       hooks: createHooks(),
-      selection: { mode: "select" } as SelectionService,
+      selection: selectionService,
       toElement: () => element,
       crdtService: {} as CrdtService,
     }, {});

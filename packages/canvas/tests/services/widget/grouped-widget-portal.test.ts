@@ -4,7 +4,8 @@ import { SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import Konva from "konva";
 import { describe, expect, test } from "vitest";
 import { VC_NODE_KIND_ATTR } from "../../../src/core/CONSTANTS";
-import type { CameraService, CrdtService, ElementService, HistoryService, LoggingService, SelectionService, WidgetManagerService } from "../../../src/services";
+import type { CameraService, CrdtService, ElementService, HistoryService, LoggingService, WidgetManagerService } from "../../../src/services";
+import { SelectionService } from "../../../src/services/selection/SelectionService";
 import { txSetupGroupNode } from "../../../src/services/group/tx.setup-group-node";
 import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_HEADER_HEIGHT } from "../../../src/services/widget/CONSTANTS";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
@@ -87,6 +88,7 @@ describe("grouped widget portal regression", () => {
     parentGroup.setAttr(VC_NODE_KIND_ATTR, "group");
     const widgetPortal = document.createElement("div");
     const cameraService = createCameraService();
+    const selectionService = new SelectionService();
     const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), element);
     const patchedElements: TElement[][] = [];
 
@@ -103,6 +105,7 @@ describe("grouped widget portal regression", () => {
       widgetServie: {} as WidgetManagerService,
       widgetPortal,
       cameraService,
+      selectionService,
     }, { element });
     if (removeListener) {
       (widgetNode as Konva.Group).setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeListener.syncDiv);
@@ -115,7 +118,7 @@ describe("grouped widget portal regression", () => {
       } as ElementService,
       history: {} as HistoryService,
       logging: { isEnabled: () => false } as unknown as LoggingService,
-      selection: { mode: "select" } as SelectionService,
+      selection: selectionService,
       hooks: createHooks(),
       Shape: Konva.Shape,
       refreshBoundaries: () => undefined,
@@ -189,6 +192,7 @@ describe("grouped widget portal regression", () => {
     parentGroup.setAttr(VC_NODE_KIND_ATTR, "group");
     const widgetPortal = document.createElement("div");
     const cameraService = createCameraService();
+    const selectionService = new SelectionService();
     const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), element);
 
     expect(widgetNode).toBeInstanceOf(Konva.Group);
@@ -208,6 +212,7 @@ describe("grouped widget portal regression", () => {
       widgetServie: {} as WidgetManagerService,
       widgetPortal,
       cameraService,
+      selectionService,
     }, { element });
     if (removeListener) {
       widgetGroup.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeListener.syncDiv);
