@@ -23,6 +23,11 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS'
 
+type TWidgetConnectionSyncArgs = {
+  scope?: "all" | "attached";
+  syncHandles?: boolean;
+}
+
 type TPortal = {
   Circle: typeof Konva.Circle;
   Group: typeof Konva.Group;
@@ -39,7 +44,7 @@ type TPortal = {
   }) => boolean;
   removeWidget?: (node: Konva.Group) => boolean;
   createConnectionId?: () => string;
-  syncConnections?: (node: Konva.Group) => void;
+  syncConnections?: (node: Konva.Group, args?: TWidgetConnectionSyncArgs) => void;
 }
 type TArgs = {
 }
@@ -629,7 +634,10 @@ function setupDragListener(portal: TPortal) {
 
   widgetNode.off('dragend')
   widgetNode.on('dragmove', () => {
-    portal.syncConnections?.(widgetNode)
+    portal.syncConnections?.(widgetNode, {
+      scope: "attached",
+      syncHandles: false,
+    })
   })
 
   widgetNode.on('dragend', () => {

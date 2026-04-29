@@ -18,8 +18,12 @@ type TPortalSyncWidgetConnections = {
   selection?: SelectionService;
 };
 
+type TWidgetConnectionSyncScope = "all" | "attached";
+
 type TArgsSyncWidgetConnections = {
   node: Konva.Group;
+  scope?: TWidgetConnectionSyncScope;
+  syncHandles?: boolean;
 };
 
 function getConnectionBoundaryPoint(args: { arc: number; width: number; height: number }) {
@@ -91,6 +95,7 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
   target: Konva.Group;
   sourceArc: number;
   targetArc: number;
+  syncHandles: boolean;
 }) {
   const Line = portal.Line;
   if (!Line) return;
@@ -114,6 +119,7 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
 
   if (!isKonvaLine(existingLine)) {
     args.layer.add(connectionLine);
+    connectionLine.moveToBottom();
   }
 
   connectionLine.points([sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y]);
@@ -144,7 +150,8 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
     connectionLine.draggable(false);
     connectionLine.position({ x: 0, y: 0 });
   });
-  connectionLine.moveToBottom();
+
+  if (!args.syncHandles) return;
 
   syncConnectionHandle(portal, {
     node: args.source,
@@ -164,31 +171,137 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
   });
 }
 
+function syncWidgetInputConnections(portal: TPortalSyncWidgetConnections, args: {
+  layer: Konva.Layer | Konva.FastLayer;
+  widgetById: Map<string, Konva.Group>;
+  target: Konva.Group;
+  targetData: TWidgetData;
+  syncHandles: boolean;
+  syncedConnectionIds: Set<string>;
+}) {
+  args.targetData.connections?.inputs?.forEach((connection) => {
+    if (args.syncedConnectionIds.has(connection.id)) return;
+
+    const source = args.widgetById.get(connection.sourceWidgetId);
+    if (!source) return;
+
+    args.syncedConnectionIds.add(connection.id);
+    syncConnectionLine(portal, {
+      id: connection.id,
+      layer: args.layer,
+      source,
+      target: args.target,
+      sourceArc: connection.line.sourceArc,
+      targetArc: connection.line.targetArc,
+      syncHandles: args.syncHandles,
+    });
+  });
+}
+
+function syncAttachedWidgetOutputConnections(portal: TPortalSyncWidgetConnections, args: {
+  layer: Konva.Layer | Konva.FastLayer;
+  widgetById: Map<string, Konva.Group>;
+  source: Konva.Group;
+  sourceData: TWidgetData;
+  syncHandles: boolean;
+  syncedConnectionIds: Set<string>;
+}) {
+  args.sourceData.connections?.outputs?.forEach((connection) => {
+    if (args.syncedConnectionIds.has(connection.id)) return;
+
+    const target = args.widgetById.get(connection.targetWidgetId);
+    const targetData = target?.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    if (!target || targetData?.type !== "widget") return;
+
+    const inputConnection = targetData.connections?.inputs?.find((candidate) => {
+      return candidate.id === connection.id && candidate.sourceWidgetId === args.source.id();
+    });
+    if (!inputConnection) return;
+
+    args.syncedConnectionIds.add(connection.id);
+    syncConnectionLine(portal, {
+      id: inputConnection.id,
+      layer: args.layer,
+      source: args.source,
+      target,
+      sourceArc: inputConnection.line.sourceArc,
+      targetArc: inputConnection.line.targetArc,
+      syncHandles: args.syncHandles,
+    });
+  });
+
+  if ((args.sourceData.connections?.outputs?.length ?? 0) > 0) return;
+
+  args.widgetById.forEach((target) => {
+    const targetData = target.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    if (targetData?.type !== "widget") return;
+
+    targetData.connections?.inputs?.forEach((connection) => {
+      if (connection.sourceWidgetId !== args.source.id()) return;
+      if (args.syncedConnectionIds.has(connection.id)) return;
+
+      args.syncedConnectionIds.add(connection.id);
+      syncConnectionLine(portal, {
+        id: connection.id,
+        layer: args.layer,
+        source: args.source,
+        target,
+        sourceArc: connection.line.sourceArc,
+        targetArc: connection.line.targetArc,
+        syncHandles: args.syncHandles,
+      });
+    });
+  });
+}
+
 export function txSyncWidgetConnections(portal: TPortalSyncWidgetConnections, args: TArgsSyncWidgetConnections) {
   const layer = args.node.getLayer();
   if (!portal.Line || !layer) return false;
 
+  const scope = args.scope ?? "all";
+  const syncHandles = args.syncHandles ?? true;
   const widgets = layer.find((node: Konva.Node) => {
     return node instanceof portal.Group && node.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
   }).filter((node): node is Konva.Group => node instanceof portal.Group);
   const widgetById = new Map(widgets.map((widget) => [widget.id(), widget]));
+  const syncedConnectionIds = new Set<string>();
+
+  if (scope === "attached") {
+    const nodeData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    if (nodeData?.type !== "widget") return false;
+
+    syncWidgetInputConnections(portal, {
+      layer,
+      widgetById,
+      target: args.node,
+      targetData: nodeData,
+      syncHandles,
+      syncedConnectionIds,
+    });
+    syncAttachedWidgetOutputConnections(portal, {
+      layer,
+      widgetById,
+      source: args.node,
+      sourceData: nodeData,
+      syncHandles,
+      syncedConnectionIds,
+    });
+    layer.batchDraw();
+
+    return true;
+  }
 
   widgets.forEach((target) => {
     const targetData = target.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
     if (targetData?.type !== "widget") return;
 
-    targetData.connections?.inputs?.forEach((connection) => {
-      const source = widgetById.get(connection.sourceWidgetId);
-      if (!source) return;
-
-      syncConnectionLine(portal, {
-        id: connection.id,
-        layer,
-        source,
-        target,
-        sourceArc: connection.line.sourceArc,
-        targetArc: connection.line.targetArc,
-      });
+    syncWidgetInputConnections(portal, {
+      layer,
+      widgetById,
+      target,
+      targetData,
+      syncHandles,
+      syncedConnectionIds,
     });
   });
   layer.batchDraw();

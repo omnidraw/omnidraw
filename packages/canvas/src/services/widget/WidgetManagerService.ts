@@ -295,12 +295,12 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
               removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
               createConnectionId: () => crypto.randomUUID(),
-              syncConnections: (connectionNode) => txSyncWidgetConnections({
+              syncConnections: (connectionNode, syncArgs) => txSyncWidgetConnections({
                 Circle: Konva.Circle,
                 Group: Konva.Group,
                 Line: Konva.Line,
                 selection: this.#selectionService,
-              }, { node: connectionNode }),
+              }, { node: connectionNode, ...syncArgs }),
             }, {})
           },
         }, { node });
@@ -352,12 +352,12 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         startDragClone: (args) => this.#elementService.createDragClone(args),
         removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
         createConnectionId: () => crypto.randomUUID(),
-        syncConnections: (connectionNode) => txSyncWidgetConnections({
+        syncConnections: (connectionNode, syncArgs) => txSyncWidgetConnections({
           Circle: Konva.Circle,
           Group: Konva.Group,
           Line: Konva.Line,
           selection: this.#selectionService,
-        }, { node: connectionNode }),
+        }, { node: connectionNode, ...syncArgs }),
       }, {})
     })
 

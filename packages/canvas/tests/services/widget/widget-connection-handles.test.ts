@@ -25,6 +25,7 @@ import { createStagePointerEvent, createTestContainer, ensureDom } from "../../t
 const INPUT_HANDLE_ID = `${WIDGET_CONNECTION_INPUT_HANDLE_ID_PREFIX}-connection-1`;
 const OUTPUT_HANDLE_ID = `${WIDGET_CONNECTION_OUTPUT_HANDLE_ID_PREFIX}-connection-1`;
 const LINE_ID = `${WIDGET_CONNECTION_LINE_ID_PREFIX}-connection-1`;
+const UNRELATED_LINE_ID = `${WIDGET_CONNECTION_LINE_ID_PREFIX}-connection-2`;
 const SCREENSHOT_PATH = resolve("tests/artifacts/widget-connection-handles.png");
 
 function writeStageScreenshot(stage: Konva.Stage) {
@@ -358,6 +359,122 @@ describe("widget connection handles", () => {
     expect(points.slice(2)).toEqual([expectedPointerPoint.x, expectedPointerPoint.y]);
     expect(((outputNode as Konva.Group).findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`) as Konva.Circle).fill()).toBe("#94a3b8");
     expect(((outputNode as Konva.Group).findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`) as Konva.Circle).visible()).toBe(true);
+
+    stage.destroy();
+  });
+
+  test("scoped attached sync updates the moving widget line without rewriting unrelated lines", () => {
+    ensureDom();
+
+    const sourceElement = createWidgetElement("source-widget", 10);
+    const targetElement = createWidgetElement("target-widget", 260);
+    const unrelatedSourceElement = createWidgetElement("unrelated-source-widget", 10);
+    const unrelatedTargetElement = createWidgetElement("unrelated-target-widget", 260);
+    unrelatedSourceElement.y = 220;
+    unrelatedTargetElement.y = 220;
+
+    if (
+      sourceElement.data.type !== "widget"
+      || targetElement.data.type !== "widget"
+      || unrelatedSourceElement.data.type !== "widget"
+      || unrelatedTargetElement.data.type !== "widget"
+    ) {
+      throw new Error("expected widget data");
+    }
+
+    sourceElement.data.connections = {
+      inputs: [],
+      outputs: [{ id: "connection-1", targetWidgetId: "target-widget" }],
+    };
+    targetElement.data.connections = {
+      inputs: [{
+        id: "connection-1",
+        sourceWidgetId: "source-widget",
+        line: {
+          sourceArc: 0,
+          targetArc: 0.5,
+          waypoints: [],
+        },
+      }],
+      outputs: [],
+    };
+    unrelatedSourceElement.data.connections = {
+      inputs: [],
+      outputs: [{ id: "connection-2", targetWidgetId: "unrelated-target-widget" }],
+    };
+    unrelatedTargetElement.data.connections = {
+      inputs: [{
+        id: "connection-2",
+        sourceWidgetId: "unrelated-source-widget",
+        line: {
+          sourceArc: 0,
+          targetArc: 0.5,
+          waypoints: [],
+        },
+      }],
+      outputs: [],
+    };
+
+    const container = createTestContainer({ width: 800, height: 600 });
+    const stage = new Konva.Stage({ container, width: 800, height: 600 });
+    const layer = new Konva.Layer();
+    const colors = fnGetHostThemeColors(new ThemeService());
+    const sourceNode = fnCreateWidgetNode(Konva, colors, sourceElement);
+    const targetNode = fnCreateWidgetNode(Konva, colors, targetElement);
+    const unrelatedSourceNode = fnCreateWidgetNode(Konva, colors, unrelatedSourceElement);
+    const unrelatedTargetNode = fnCreateWidgetNode(Konva, colors, unrelatedTargetElement);
+
+    expect(sourceNode).toBeInstanceOf(Konva.Group);
+    expect(targetNode).toBeInstanceOf(Konva.Group);
+    expect(unrelatedSourceNode).toBeInstanceOf(Konva.Group);
+    expect(unrelatedTargetNode).toBeInstanceOf(Konva.Group);
+
+    stage.add(layer);
+    layer.add(sourceNode as Konva.Group);
+    layer.add(targetNode as Konva.Group);
+    layer.add(unrelatedSourceNode as Konva.Group);
+    layer.add(unrelatedTargetNode as Konva.Group);
+
+    txSyncWidgetConnections({
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Line: Konva.Line,
+    }, { node: sourceNode as Konva.Group });
+
+    const attachedLine = layer.findOne(`#${LINE_ID}`);
+    const unrelatedLine = layer.findOne(`#${UNRELATED_LINE_ID}`);
+    expect(attachedLine).toBeInstanceOf(Konva.Line);
+    expect(unrelatedLine).toBeInstanceOf(Konva.Line);
+    if (!(attachedLine instanceof Konva.Line) || !(unrelatedLine instanceof Konva.Line)) {
+      throw new Error("expected rendered connection lines");
+    }
+
+    let attachedPointWrites = 0;
+    let unrelatedPointWrites = 0;
+    const originalAttachedPoints = attachedLine.points.bind(attachedLine);
+    const originalUnrelatedPoints = unrelatedLine.points.bind(unrelatedLine);
+    attachedLine.points = ((points?: number[]) => {
+      if (points !== undefined) attachedPointWrites += 1;
+      return points === undefined ? originalAttachedPoints() : originalAttachedPoints(points);
+    }) as typeof attachedLine.points;
+    unrelatedLine.points = ((points?: number[]) => {
+      if (points !== undefined) unrelatedPointWrites += 1;
+      return points === undefined ? originalUnrelatedPoints() : originalUnrelatedPoints(points);
+    }) as typeof unrelatedLine.points;
+
+    (sourceNode as Konva.Group).position({ x: sourceElement.x + 40, y: sourceElement.y + 20 });
+    txSyncWidgetConnections({
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Line: Konva.Line,
+    }, {
+      node: sourceNode as Konva.Group,
+      scope: "attached",
+      syncHandles: false,
+    });
+
+    expect(attachedPointWrites).toBe(1);
+    expect(unrelatedPointWrites).toBe(0);
 
     stage.destroy();
   });

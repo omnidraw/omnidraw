@@ -220,7 +220,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing and connection node id constants |
-| 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host body activation, fullscreen focus, close/min/max buttons, cursor, drag preview colors/commit connection direction, and alt-clone wiring |
+| 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host activation/buttons/cursor, connection drag creation, attached-only drag sync, and alt-clone wiring |
 | ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
 | ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and tool config |
@@ -228,10 +228,10 @@ prefix: `packages/canvas/src/`
 | ❓ | `services/widget/tx.mount-arrow-sandbox.ts` |  | Mount Arrow sandbox widget source with SDK import rewriting and base sizing CSS. |
 | 🤖 | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview, DOM cleanup, history, and CRDT commit |
 | 🤖 | `services/widget/tx.resize-widget-host.ts` |  | Widget host transform resize normalization and min-size clamping |
-| 🤖 | `services/widget/tx.sync-widget-connections.ts` |  | Render, select, hit-test, and resync widget connection lines and established endpoint handles. |
+| 🤖 | `services/widget/tx.sync-widget-connections.ts` |  | Render, select, hit-test, full/attached resync for widget connection lines and endpoint handles. |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
 | 🤖 | `services/widget/tx.update-widget-node-from-element.ts` |  | Replay persisted widget geometry/data onto an existing Konva host and DOM portal. |
-| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, clone-drag, close-delete history, canvas adapters, DOM portals, connection selection/cleanup hooks |
+| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, clone-drag, close-delete history, canvas adapters, DOM portals, connection sync/cleanup hooks |
 
 ## .pi/extensions/functional-core
 **SKIP** (internal pi extension tooling; intentionally untracked in this table)
