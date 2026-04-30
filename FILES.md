@@ -231,7 +231,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/widget/tx.sync-widget-connections.ts` |  | Render, select, hit-test, cached full/attached resync for widget connection lines and endpoint handles. |
 | ❓ | `services/widget/tx.sync-widget-dom-portals.ts` |  | Sync mounted widget DOM portals for a node subtree after group movement/transform. |
 | 🤖 | `services/widget/tx.update-widget-node-from-element.ts` |  | Replay persisted widget geometry/data onto an existing Konva host and DOM portal. |
-| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, clone-drag, close-delete history, canvas adapters, DOM portals, connection delete/sync/cleanup hooks |
+| 🤖 | `services/widget/WidgetManagerService.ts` |  | Registers widget tools, clone-drag, close-delete history, canvas adapters, node-owned DOM portal cleanup, connection delete/sync hooks |
 
 ## .pi/extensions/functional-core
 **SKIP** (internal pi extension tooling; intentionally untracked in this table)

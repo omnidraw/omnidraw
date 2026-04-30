@@ -48,7 +48,6 @@ export interface IWidgetConfig {
   sandbox?: IWidgetSandboxConfig;
 }
 
-// TODO: WIP
 interface IWidgetSandboxConfig {
   arrowjs: {
     "main.ts": string;

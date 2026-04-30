@@ -207,9 +207,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S46](s/S46.md) - canvas tests: element creation and clone lane
 - [x]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
 - [ ]: [S48](s/s48.md) - registerElement options are unclean, e.g. onMove is tranformer move only
-- [ ]: [S49] - TODO [S49]: add onRemove to some callback later
+- [x]: [S49] - TODO [S49]: add onRemove to some callback later
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
-- [ ]: [S50](s/S51.md) - add canvas performance - tested in worktree
+- [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research

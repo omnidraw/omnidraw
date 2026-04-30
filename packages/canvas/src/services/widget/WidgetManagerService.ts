@@ -21,7 +21,7 @@ import { fnToWidgetElement } from "./fn.to-widget-element";
 import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
 import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
-import { txAttachDomPortal, type TWidgetDomPortalListener } from "./tx.attach-dom-portal";
+import { txAttachDomPortal } from "./tx.attach-dom-portal";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txSyncWidgetConnections } from "./tx.sync-widget-connections";
@@ -52,8 +52,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #removeKeydownListener?: () => boolean;
-  // TODO: remove, we want to use elementRegistry.onRemove
-  #domPortalCleanups = new Set<TWidgetDomPortalListener>();
   private readonly runtimeHooks!: IRuntimeHooks;
 
 
@@ -112,8 +110,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#removeKeydownListener?.();
     this.#removeKeydownListener = undefined;
     this.#contextMenuService.unregisterProvider?.("widget-connection");
-    this.#domPortalCleanups.forEach((cleanup) => cleanup());
-    this.#domPortalCleanups.clear();
     this.#widgetPortal.remove()
   }
 
@@ -298,19 +294,12 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           widgetConfig: wConfig,
         }, {element})
         if (node && onRemove) {
-          const removeDomPortal = (() => {
-            onRemove();
-            this.#domPortalCleanups.delete(removeDomPortal);
-          }) as TWidgetDomPortalListener;
-          removeDomPortal.syncDiv = onRemove.syncDiv;
-
-          this.#domPortalCleanups.add(removeDomPortal);
-          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeDomPortal.syncDiv);
+          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
           const existingOnRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
           node.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
             existingOnRemove?.(removeArgs);
             this.#removeRenderedWidgetConnections(node);
-            removeDomPortal();
+            onRemove();
           });
         }
         return node
