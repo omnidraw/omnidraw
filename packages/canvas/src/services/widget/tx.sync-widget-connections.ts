@@ -29,8 +29,14 @@ type TArgsSyncWidgetConnections = {
 const CONNECTION_LINE_CACHE = new WeakMap<Konva.Layer | Konva.FastLayer, Map<string, Konva.Line>>();
 
 function getCachedConnectionLine(layer: Konva.Layer | Konva.FastLayer, lineId: string) {
-  const line = CONNECTION_LINE_CACHE.get(layer)?.get(lineId);
-  return line && line.getStage() ? line : null;
+  const cache = CONNECTION_LINE_CACHE.get(layer);
+  const line = cache?.get(lineId);
+  if (!line) return null;
+
+  if (line.getLayer() === layer) return line;
+
+  cache?.delete(lineId);
+  return null;
 }
 
 function setCachedConnectionLine(layer: Konva.Layer | Konva.FastLayer, lineId: string, line: Konva.Line) {
@@ -109,7 +115,6 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
   sourceArc: number;
   targetArc: number;
   syncHandles: boolean;
-  useLayerLookup: boolean;
 }) {
   const Line = portal.Line;
   if (!Line) return;
@@ -129,7 +134,7 @@ function syncConnectionLine(portal: TPortalSyncWidgetConnections, args: {
   const lineId = `${WIDGET_CONNECTION_LINE_ID_PREFIX}-${args.id}`;
   const isSelected = portal.selection?.selectedConnectionId === args.id;
   const cachedLine = getCachedConnectionLine(args.layer, lineId);
-  const foundLine = args.useLayerLookup && !cachedLine ? args.layer.findOne(`#${lineId}`) : null;
+  const foundLine = !cachedLine ? args.layer.findOne(`#${lineId}`) : null;
   const existingLine = cachedLine ?? (isKonvaLine(foundLine) ? foundLine : null);
   const connectionLine = existingLine ?? new Line({ id: lineId });
 
@@ -195,7 +200,6 @@ function syncWidgetInputConnections(portal: TPortalSyncWidgetConnections, args: 
   targetData: TWidgetData;
   syncHandles: boolean;
   syncedConnectionIds: Set<string>;
-  useLayerLookup: boolean;
 }) {
   args.targetData.connections?.inputs?.forEach((connection) => {
     if (args.syncedConnectionIds.has(connection.id)) return;
@@ -212,7 +216,6 @@ function syncWidgetInputConnections(portal: TPortalSyncWidgetConnections, args: 
       sourceArc: connection.line.sourceArc,
       targetArc: connection.line.targetArc,
       syncHandles: args.syncHandles,
-      useLayerLookup: args.useLayerLookup,
     });
   });
 }
@@ -224,7 +227,6 @@ function syncAttachedWidgetOutputConnections(portal: TPortalSyncWidgetConnection
   sourceData: TWidgetData;
   syncHandles: boolean;
   syncedConnectionIds: Set<string>;
-  useLayerLookup: boolean;
 }) {
   args.sourceData.connections?.outputs?.forEach((connection) => {
     if (args.syncedConnectionIds.has(connection.id)) return;
@@ -247,7 +249,6 @@ function syncAttachedWidgetOutputConnections(portal: TPortalSyncWidgetConnection
       sourceArc: inputConnection.line.sourceArc,
       targetArc: inputConnection.line.targetArc,
       syncHandles: args.syncHandles,
-      useLayerLookup: args.useLayerLookup,
     });
   });
 
@@ -270,7 +271,6 @@ function syncAttachedWidgetOutputConnections(portal: TPortalSyncWidgetConnection
         sourceArc: connection.line.sourceArc,
         targetArc: connection.line.targetArc,
         syncHandles: args.syncHandles,
-        useLayerLookup: args.useLayerLookup,
       });
     });
   });
@@ -282,7 +282,6 @@ export function txSyncWidgetConnections(portal: TPortalSyncWidgetConnections, ar
 
   const scope = args.scope ?? "all";
   const syncHandles = args.syncHandles ?? true;
-  const useLayerLookup = scope === "all";
   const widgets = layer.find((node: Konva.Node) => {
     return node instanceof portal.Group && node.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
   }).filter((node): node is Konva.Group => node instanceof portal.Group);
@@ -300,7 +299,6 @@ export function txSyncWidgetConnections(portal: TPortalSyncWidgetConnections, ar
       targetData: nodeData,
       syncHandles,
       syncedConnectionIds,
-      useLayerLookup,
     });
     syncAttachedWidgetOutputConnections(portal, {
       layer,
@@ -309,7 +307,6 @@ export function txSyncWidgetConnections(portal: TPortalSyncWidgetConnections, ar
       sourceData: nodeData,
       syncHandles,
       syncedConnectionIds,
-      useLayerLookup,
     });
     layer.batchDraw();
 
@@ -327,7 +324,6 @@ export function txSyncWidgetConnections(portal: TPortalSyncWidgetConnections, ar
       targetData,
       syncHandles,
       syncedConnectionIds,
-      useLayerLookup,
     });
   });
   layer.batchDraw();
