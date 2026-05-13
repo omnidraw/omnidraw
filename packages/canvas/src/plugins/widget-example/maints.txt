@@ -1,0 +1,5 @@
+import { html, reactive } from '@arrow-js/core'
+const state = reactive({ count: 0 })
+export default html`<button @click="${() => state.count++}">
+Count ${() => state.count}
+</button>`
