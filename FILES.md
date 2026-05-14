@@ -33,6 +33,12 @@ Path rule
 - when a section has no prefix, filepath is already the full repo-relative path
 
 
+## root
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| 🤖 | `tsconfig.json` |  | Root TypeScript defaults shared by package configs; keep source inclusion package-scoped for IDE sanity. |
+
 ## packages/canvas
 prefix: `packages/canvas/src/`
 
@@ -41,6 +47,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `../.gitignore` |  | Canvas local test artifacts and perf result files ignored from commits. |
 | 🤖 | `../AGENTS.md` |  | Canvas package guidance and active source folder map. |
 | 🤖 | `../package.json` |  | Canvas package manifest; update when adding canvas runtime dependencies or local test scripts. |
+| 🤖 | `../tsconfig.json` |  | Canvas TypeScript config for browser canvas source and package tests. |
 | 🟡 | `automerge.ts` |  | Browser Automerge repo, persisted doc handles, WebSocket sync |
 | 🫠 | `base.css` |  | Global theme tokens, dark mode, baseline element resets |
 | ❓ | `components/Canvas.tsx` |  | Automerge-backed canvas runtime mount, loading, teardown orchestration |
@@ -291,6 +298,7 @@ prefix: `apps/frontend/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../tsconfig.json` |  | Frontend TypeScript config for Solid/Vite browser source. |
 | ❓ | `App.module.css` |  |  |
 | 🤖 | `App.tsx` |  | App shell wiring for sidebar visibility and route content |
 | ❓ | `automerge.ts` |  |  |
@@ -506,7 +514,7 @@ prefix: `packages/sdk/`
 | 🤖 | `src/index.ts` |  | Widget SDK barrel exporting actor functions, machine helpers, and config APIs. |
 | 🤖 | `src/machine.ts` |  | Reactive widget state machine with official host-known states. |
 | ❓ | `src/schema.ts` |  | Internal JSON Schema type used by actor port schemas. |
-| ❓ | `tsconfig.json` |  | SDK declaration bundler TypeScript path mapping for monorepo type imports. |
+| 🤖 | `tsconfig.json` |  | SDK declaration bundler TypeScript path mapping for monorepo type imports. |
 
 ## packages/service-automerge
 prefix: `packages/service-automerge/src/`
