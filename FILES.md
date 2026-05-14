@@ -539,6 +539,7 @@ prefix: `packages/service-db/src/`
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
+| ❓ | `schema.auth.ts` |  | Auth boundary schema sketch: local accounts with roles, without Better Auth core tables. |
 | ❓ | `schema.ts` |  |  |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
