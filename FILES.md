@@ -47,6 +47,7 @@ prefix: `packages/canvas/src/`
 |---|---|---|---|
 | 🤖 | `../.gitignore` |  | Canvas local test artifacts and perf result files ignored from commits. |
 | 🤖 | `../AGENTS.md` |  | Canvas package guidance and active source folder map. |
+| ❓ | `../PERFORMANCE.md` |  | Canvas performance KPIs, hot paths, measurement plan, and initial findings. |
 | 🤖 | `../package.json` |  | Canvas package manifest; update when adding canvas runtime dependencies or local test scripts. |
 | 🤖 | `../tsconfig.json` |  | Canvas TypeScript config for browser canvas source and package tests. |
 | 🟡 | `automerge.ts` |  | Browser Automerge repo, persisted doc handles, WebSocket sync |

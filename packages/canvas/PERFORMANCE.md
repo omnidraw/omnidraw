@@ -107,7 +107,10 @@ Known sources of main-thread work:
 
 Existing performance-related code:
 
+- `packages/canvas/tests/perf/canvas-runtime.perf.test.ts` measures runtime boot/hydration, non-local CRDT reload, camera pan/zoom draw scheduling, marquee selection scanning, and CRDT batch patch cost.
 - `packages/canvas/tests/perf/widget-connection-mesh.perf.test.ts` measures work while dragging one widget in a dense connection mesh.
+- Perf tests append local JSON-line results to `tests/perf/*.local.txt`, which are gitignored.
+- Run with `bun --filter @vibecanvas/canvas test:perf`; normal `test` excludes `tests/perf/**`.
 - The widget perf test counts `batchDraw`, layer `find/findOne`, line point writes, and move-to-bottom calls, then appends local results.
 - Group drag has built-in logging metrics behind `LoggingService` for serialize time, boundary time, commit time, move events, descendant count, pen points, and operation kinds.
 
