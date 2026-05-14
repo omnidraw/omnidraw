@@ -1,0 +1,19 @@
+{
+  "name": "@vibecanvas/worker",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/main.ts" },
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "typecheck": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "bun test tests"
+  },
+  "dependencies": {
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-workflow": "workspace:*",
+    "@vibecanvas/shared-functions": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": { "typescript": "catalog:" }
+}

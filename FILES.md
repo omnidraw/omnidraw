@@ -331,6 +331,17 @@ prefix: `apps/frontend/src/`
 | ❓ | `Toast.tsx` |  |  |
 | ❓ | `welcome.tsx` |  |  |
 
+## apps/worker
+prefix: `apps/worker/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `package.json` |  | Workflow worker app package metadata and commands. |
+| ❓ | `tsconfig.json` |  | TypeScript config for Bun workflow worker app. |
+| ❓ | `src/main.ts` |  | Durable workflow worker process with health endpoint and child-process sandbox step execution. |
+| ❓ | `src/schema.ts` |  | Zod request/response schemas for worker step runner IPC. |
+| ❓ | `src/step-runner.ts` |  | Child process step runner that loads workflow functions from module portal specs. |
+
 ## apps/web
 **SKIP**
 
@@ -535,14 +546,20 @@ prefix: `packages/service-db/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../package.json` |  | Service DB package manifest and Drizzle migration scripts. |
 | ❓ | `CONSTANTS.ts` |  | Default OSS account constants for local auth bootstrap. |
 | ❓ | `_embedded-migrations.ts` |  |  |
+| ❓ | `database/migrate.ts` |  | CLI entrypoint for running service DB migrations with Bun SQLite. |
 | ❓ | `fx.get-file.ts` |  |  |
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
+| ❓ | `database/migrate.ts` |  | Standalone database migration runner for local Vibecanvas config paths. |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `schema.ts` |  | Database schema including OSS accounts plus canvas/filesystem membership permission tables. |
+| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, and durable workflow/sandbox run tables. |
+| 🤖 | `../database-migrations/0013_jazzy_sir_ram.sql` | generated | Drizzle migration creating workflow run, workflow step, and sandbox run tables. |
+| 🤖 | `../database-migrations/meta/0013_snapshot.json` | generated | Drizzle schema snapshot for workflow table migration. |
+| 🤖 | `../database-migrations/meta/_journal.json` | generated | Drizzle migration journal including workflow table migration. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
@@ -554,6 +571,20 @@ prefix: `packages/service-event-publisher/src/`
 |---|---|---|---|
 | ❓ | `EventPublisherService.ts` |  |  |
 | ❓ | `IEventPublisherService.ts` |  |  |
+
+## packages/service-workflow
+prefix: `packages/service-workflow/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `package.json` |  | Durable workflow service package metadata and dependencies. |
+| ❓ | `tsconfig.json` |  | TypeScript config for workflow service source/tests. |
+| ❓ | `src/fn.workflow.ts` |  | Pure workflow validation, status, fingerprint, result, and error helpers. |
+| ❓ | `src/index.ts` |  | Workflow service package barrel exports. |
+| ❓ | `src/SqliteWorkflowDb.ts` |  | Drizzle/SQLite durable workflow database adapter independent of accounts. |
+| ❓ | `src/types.ts` |  | Durable workflow row, definition, DB, and sandbox executor contracts. |
+| ❓ | `src/WorkflowSuperviserService.ts` |  | System-managed workflow creation, retry, cancel, and status supervision. |
+| ❓ | `src/WorkflowWorkerService.ts` |  | Leased durable workflow worker that executes each step through a sandbox executor. |
 
 ## packages/service-filesystem
 prefix: `packages/service-filesystem/src/`

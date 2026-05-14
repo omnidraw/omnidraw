@@ -111,6 +111,19 @@
         "solid-js": "catalog:",
       },
     },
+    "apps/worker": {
+      "name": "@vibecanvas/worker",
+      "version": "0.3.1",
+      "dependencies": {
+        "@vibecanvas/service-db": "workspace:*",
+        "@vibecanvas/service-workflow": "workspace:*",
+        "@vibecanvas/shared-functions": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
     "packages/api-canvas": {
       "name": "@vibecanvas/api-canvas",
       "version": "0.3.1",
@@ -346,6 +359,18 @@
       "dependencies": {
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/tapable": "workspace:*",
+      },
+    },
+    "packages/service-workflow": {
+      "name": "@vibecanvas/service-workflow",
+      "version": "0.3.1",
+      "dependencies": {
+        "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-db": "workspace:*",
+        "drizzle-orm": "catalog:",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
       },
     },
     "packages/shared-functions": {
@@ -1013,11 +1038,15 @@
 
     "@vibecanvas/service-theme": ["@vibecanvas/service-theme@workspace:packages/service-theme"],
 
+    "@vibecanvas/service-workflow": ["@vibecanvas/service-workflow@workspace:packages/service-workflow"],
+
     "@vibecanvas/shared-functions": ["@vibecanvas/shared-functions@workspace:packages/shared-functions"],
 
     "@vibecanvas/tapable": ["@vibecanvas/tapable@workspace:packages/tapable"],
 
     "@vibecanvas/web": ["@vibecanvas/web@workspace:apps/web"],
+
+    "@vibecanvas/worker": ["@vibecanvas/worker@workspace:apps/worker"],
 
     "@vitest/expect": ["@vitest/expect@4.1.2", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "@types/chai": "^5.2.2", "@vitest/spy": "4.1.2", "@vitest/utils": "4.1.2", "chai": "^6.2.2", "tinyrainbow": "^3.1.0" } }, "sha512-gbu+7B0YgUJ2nkdsRJrFFW6X7NTP44WlhiclHniUhxADQJH5Szt9mZ9hWnJPJ8YwOK5zUOSSlSvyzRf0u1DSBQ=="],
 

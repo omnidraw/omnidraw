@@ -98,6 +98,74 @@ export const files = sqliteTable('files', {
 
 export const ZFilesSelect = createSelectSchema(files);
 
+export const workflow_runs = sqliteTable('workflow_runs', {
+  id: text('id').primaryKey(),
+  workspace_id: text('workspace_id'),
+  canvas_id: text('canvas_id').references(() => canvas.id, { onDelete: 'set null' }),
+  run_id: text('run_id').notNull().unique(),
+  workflow_kind: text('workflow_kind').notNull(),
+  subject_id: text('subject_id'),
+  trigger_id: text('trigger_id'),
+  correlation_id: text('correlation_id').notNull(),
+  causation_id: text('causation_id'),
+  current_step_index: integer('current_step_index').notNull().default(0),
+  step_count: integer('step_count').notNull(),
+  status: text('status', { enum: ['starting', 'running', 'suspended', 'completed', 'failed', 'cancelled'] }).notNull().default('starting'),
+  started_at: integer('started_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  last_heartbeat_at: integer('last_heartbeat_at', { mode: 'timestamp' }),
+  completed_at: integer('completed_at', { mode: 'timestamp' }),
+  error: text('error', { mode: 'json' }),
+}, (table) => [
+  index('workflow_runs_status_idx').on(table.status),
+  index('workflow_runs_kind_idx').on(table.workflow_kind),
+]);
+
+export const workflow_steps = sqliteTable('workflow_steps', {
+  id: text('id').primaryKey(),
+  workflow_run_id: text('workflow_run_id').notNull().references(() => workflow_runs.id, { onDelete: 'cascade' }),
+  sandbox_run_id: text('sandbox_run_id'),
+  step_key: text('step_key').notNull(),
+  step_index: integer('step_index').notNull(),
+  phase: text('phase'),
+  function_kind: text('function_kind', { enum: ['fn', 'fx', 'tx'] }).notNull(),
+  function_name: text('function_name').notNull(),
+  idempotency_key: text('idempotency_key').notNull(),
+  portal_spec: text('portal_spec', { mode: 'json' }).notNull().default(sql`'null'`),
+  args: text('args', { mode: 'json' }).notNull().default(sql`'null'`),
+  status: text('status', { enum: ['pending', 'claimed', 'running', 'succeeded', 'failed', 'skipped'] }).notNull().default('pending'),
+  result: text('result', { mode: 'json' }),
+  error: text('error', { mode: 'json' }),
+  claimed_by_run_id: text('claimed_by_run_id'),
+  claimed_at: integer('claimed_at', { mode: 'timestamp' }),
+  lease_expires_at: integer('lease_expires_at', { mode: 'timestamp' }),
+  attempt: integer('attempt').notNull().default(0),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  started_at: integer('started_at', { mode: 'timestamp' }),
+  completed_at: integer('completed_at', { mode: 'timestamp' }),
+}, (table) => [
+  index('workflow_steps_run_index_idx').on(table.workflow_run_id, table.step_index),
+  index('workflow_steps_tx_idempotency_idx').on(table.function_kind, table.idempotency_key),
+]);
+
+export const sandbox_runs = sqliteTable('sandbox_runs', {
+  id: text('id').primaryKey(),
+  workflow_run_id: text('workflow_run_id').references(() => workflow_runs.id, { onDelete: 'set null' }),
+  workflow_step_id: text('workflow_step_id').references(() => workflow_steps.id, { onDelete: 'set null' }),
+  portal_kind: text('portal_kind', { enum: ['fn', 'fx', 'tx'] }).notNull(),
+  function_name: text('function_name').notNull(),
+  idempotency_key: text('idempotency_key'),
+  portal_spec: text('portal_spec', { mode: 'json' }).notNull().default(sql`'null'`),
+  input: text('input', { mode: 'json' }).notNull().default(sql`'null'`),
+  sandbox_name: text('sandbox_name').notNull(),
+  status: text('status', { enum: ['started', 'succeeded', 'failed', 'timedOut', 'killed'] }).notNull(),
+  started_at: integer('started_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  completed_at: integer('completed_at', { mode: 'timestamp' }),
+  stdout_file_id: text('stdout_file_id').references(() => files.id, { onDelete: 'set null' }),
+  stderr_file_id: text('stderr_file_id').references(() => files.id, { onDelete: 'set null' }),
+}, (table) => [
+  index('sandbox_runs_step_idx').on(table.workflow_step_id),
+]);
+
 export const automerge_repo_data = sqliteTable('automerge_repo_data', {
   key: text('key').notNull().primaryKey(),
   updated_at: text('updated_at').notNull().default(sql`(datetime())`),
