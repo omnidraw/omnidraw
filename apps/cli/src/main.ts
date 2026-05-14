@@ -4,6 +4,7 @@ import { buildCliConfig } from './build-config';
 import type { ICliConfig } from './config';
 import { bootCliRuntime, createCliHooks, shutdownCliRuntime } from './hooks';
 import { CliArgvError, parseCliArgv } from './parse-argv';
+import { createAuthPlugin } from './plugins/auth/AuthPlugin';
 import { createAutomergePlugin } from './plugins/automerge/AutomergePlugin';
 import { createCliPlugin } from './plugins/cli/CliPlugin';
 import { fnPrintCommandError } from './plugins/cli/core/fn.print-command-result';
@@ -45,7 +46,7 @@ if (config.command === 'canvas') {
 const { services } = setupServices(config);
 
 const runtime = createRuntime<any, ICliConfig>({
-  plugins: [createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
+  plugins: [createAuthPlugin(), createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
   services,
   hooks: createCliHooks(),
   config,

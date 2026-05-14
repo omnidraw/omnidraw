@@ -37,6 +37,7 @@ Path rule
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| ❓ | `log-auth-permissions-task.txt` |  | Progress log for auth permissions schema/service/plugin migration task. |
 | 🤖 | `tsconfig.json` |  | Root TypeScript defaults shared by package configs; keep source inclusion package-scoped for IDE sanity. |
 
 ## packages/canvas
@@ -252,6 +253,7 @@ prefix: `apps/cli/src/`
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
 | ❓ | `AutomergePlugin.ts` |  |  |
+| ❓ | `plugins/auth/AuthPlugin.ts` |  | OSS auth bootstrap plugin that ensures a default owner account and fake session identity. |
 | ❓ | `bootstrap.ts` |  |  |
 | ❓ | `build-config.ts` |  |  |
 | ❓ | `canvas-command.docs.ts` |  |  |
@@ -281,9 +283,9 @@ prefix: `apps/cli/src/`
 | ❓ | `fx.dispatch-canvas-command.ts` |  |  |
 | ❓ | `hooks.ts` |  |  |
 | ❓ | `http.ts` |  |  |
-| ❓ | `main.ts` |  |  |
+| 🤖 | `main.ts` |  | Registers OSS auth bootstrap plugin before other runtime plugins. |
 | ❓ | `orpc.base.ts` |  |  |
-| ❓ | `OrpcPlugin.ts` |  |  |
+| 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
@@ -337,15 +339,15 @@ prefix: `packages/api-canvas/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `api.create-canvas.ts` |  |  |
-| ❓ | `api.get-canvas.ts` |  |  |
-| ❓ | `api.list-canvas.ts` |  |  |
-| ❓ | `api.remove-canvas.ts` |  |  |
-| ❓ | `api.update-canvas.ts` |  |  |
+| 🤖 | `api.create-canvas.ts` |  | Creates canvases through account-aware DB membership ownership. |
+| 🤖 | `api.get-canvas.ts` |  | Fetches canvases through account-aware permission checks. |
+| 🤖 | `api.list-canvas.ts` |  | Lists canvases visible to the request account. |
+| 🤖 | `api.remove-canvas.ts` |  | Deletes canvases through owner membership checks. |
+| 🤖 | `api.update-canvas.ts` |  | Renames/fetches canvases through account-aware permission checks. |
 | ❓ | `contract.ts` |  |  |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |
-| ❓ | `types.ts` |  |  |
+| 🤖 | `types.ts` |  | Canvas API context includes optional account id for authz. |
 
 ## packages/api-canvas-cmd
 prefix: `packages/api-canvas-cmd/src/`
@@ -399,26 +401,26 @@ prefix: `packages/api-filesystem/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `api.files-filesystem.ts` |  |  |
-| ❓ | `api.home-filesystem.ts` |  |  |
-| ❓ | `api.inspect-filesystem.ts` |  |  |
-| ❓ | `api.keepalive-watch-filesystem.ts` |  |  |
-| ❓ | `api.list-filesystem.ts` |  |  |
-| ❓ | `api.list-registered-filesystems.ts` |  |  |
-| ❓ | `api.move-filesystem.ts` |  |  |
-| ❓ | `api.read-filesystem.ts` |  |  |
-| ❓ | `api.unwatch-filesystem.ts` |  |  |
-| ❓ | `api.watch-filesystem.ts` |  |  |
-| ❓ | `api.write-filesystem.ts` |  |  |
+| 🤖 | `api.files-filesystem.ts` |  | Resolves filesystem scope with account-aware DB membership filtering. |
+| 🤖 | `api.home-filesystem.ts` |  | Resolves filesystem home with account-aware DB membership filtering. |
+| 🤖 | `api.inspect-filesystem.ts` |  | Resolves filesystem inspect scope with account-aware DB membership filtering. |
+| 🤖 | `api.keepalive-watch-filesystem.ts` |  | Resolves filesystem watch scope with account-aware DB membership filtering. |
+| 🤖 | `api.list-filesystem.ts` |  | Resolves filesystem listing scope with account-aware DB membership filtering. |
+| 🤖 | `api.list-registered-filesystems.ts` |  | Lists filesystems visible to the request account. |
+| 🤖 | `api.move-filesystem.ts` |  | Resolves filesystem move scope with account-aware DB membership filtering. |
+| 🤖 | `api.read-filesystem.ts` |  | Resolves filesystem read scope with account-aware DB membership filtering. |
+| 🤖 | `api.unwatch-filesystem.ts` |  | Resolves filesystem unwatch scope with account-aware DB membership filtering. |
+| 🤖 | `api.watch-filesystem.ts` |  | Resolves filesystem watch scope with account-aware DB membership filtering. |
+| 🤖 | `api.write-filesystem.ts` |  | Resolves filesystem write scope with account-aware DB membership filtering. |
 | ❓ | `contract.ts` |  |  |
 | ❓ | `fn.create-filesystem-error.ts` |  |  |
 | ❓ | `fn.detect-file-kind.ts` |  |  |
 | ❓ | `fn.detect-mime.ts` |  |  |
 | ❓ | `fn.to-api-filesystem-error.ts` |  |  |
-| ❓ | `fx.resolve-filesystem-id.ts` |  |  |
+| 🤖 | `fx.resolve-filesystem-id.ts` |  | Resolves default local filesystem from account-visible memberships. |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |
-| ❓ | `types.ts` |  |  |
+| 🤖 | `types.ts` |  | Filesystem API context includes optional account id for authz. |
 
 ## packages/api-notification
 prefix: `packages/api-notification/src/`
@@ -436,18 +438,18 @@ prefix: `packages/api-pty/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `api.create-pty.ts` |  |  |
-| ❓ | `api.get-pty.ts` |  |  |
-| ❓ | `api.list-pty.ts` |  |  |
-| ❓ | `api.remove-pty.ts` |  |  |
-| ❓ | `api.update-pty.ts` |  |  |
-| ❓ | `api.upload-image.ts` |  |  |
+| 🤖 | `api.create-pty.ts` |  | Resolves PTY filesystem scope with account-aware DB membership filtering. |
+| 🤖 | `api.get-pty.ts` |  | Resolves PTY filesystem scope with account-aware DB membership filtering. |
+| 🤖 | `api.list-pty.ts` |  | Resolves PTY filesystem scope with account-aware DB membership filtering. |
+| 🤖 | `api.remove-pty.ts` |  | Resolves PTY filesystem scope with account-aware DB membership filtering. |
+| 🤖 | `api.update-pty.ts` |  | Resolves PTY filesystem scope with account-aware DB membership filtering. |
+| 🤖 | `api.upload-image.ts` |  | Resolves PTY upload filesystem scope with account-aware DB membership filtering. |
 | ❓ | `contract.ts` |  |  |
 | ❓ | `fn.extension-from-pty-image-format.ts` |  |  |
-| ❓ | `fx.resolve-filesystem-id.ts` |  |  |
+| 🤖 | `fx.resolve-filesystem-id.ts` |  | Resolves default local filesystem from account-visible memberships for PTY APIs. |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |
-| ❓ | `types.ts` |  |  |
+| 🤖 | `types.ts` |  | PTY API context includes optional account id for authz. |
 
 ## packages/canvas-cmds
 prefix: `packages/canvas-cmds/src/`
@@ -533,14 +535,14 @@ prefix: `packages/service-db/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| ❓ | `CONSTANTS.ts` |  | Default OSS account constants for local auth bootstrap. |
 | ❓ | `_embedded-migrations.ts` |  |  |
 | ❓ | `fx.get-file.ts` |  |  |
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
-| ❓ | `schema.auth.ts` |  | Auth boundary schema sketch: local accounts with roles, without Better Auth core tables. |
-| ❓ | `schema.ts` |  |  |
+| 🤖 | `schema.ts` |  | Database schema including OSS accounts plus canvas/filesystem membership permission tables. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |

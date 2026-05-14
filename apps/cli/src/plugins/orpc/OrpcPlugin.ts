@@ -8,6 +8,7 @@ import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesys
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import type { IPlugin } from '@vibecanvas/runtime';
 import { baseCanvasCmdOs, canvasCmdHandlers } from '@vibecanvas/api-canvas-cmd/handlers';
+import { OSS_FAKE_SESSION } from '../auth/AuthPlugin';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import { baseOs } from './orpc.base';
@@ -63,6 +64,7 @@ function createOrpcPlugin(): IPlugin<{ automerge: IAutomergeService; db: IDbServ
           prefix: '/rpc',
           context: {
             automerge,
+            accountId: OSS_FAKE_SESSION.accountId,
             db,
             requestId: crypto.randomUUID(),
           },
@@ -78,6 +80,7 @@ function createOrpcPlugin(): IPlugin<{ automerge: IAutomergeService; db: IDbServ
 
         void handler.message(ws as never, message, {
           context: {
+            accountId: OSS_FAKE_SESSION.accountId,
             automerge,
             db,
             eventPublisher,

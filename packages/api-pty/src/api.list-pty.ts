@@ -3,7 +3,7 @@ import { fxResolveFilesystemId } from './core/fx.resolve-filesystem-id';
 import { basePtyOs } from './orpc';
 
 const apiListPty = basePtyOs.list.handler(async ({ input, context }) => {
-  const filesystemId = fxResolveFilesystemId({ db: context.db }, { filesystemId: input.filesystemId });
+  const filesystemId = fxResolveFilesystemId({ accountId: context.accountId, db: context.db }, { filesystemId: input.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
   return context.pty.list(filesystemId, input.workingDirectory);
 });

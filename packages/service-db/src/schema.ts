@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, blob, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, blob, index, primaryKey } from 'drizzle-orm/sqlite-core';
 import { createSelectSchema } from 'drizzle-zod';
 import { sql } from 'drizzle-orm';
 
@@ -19,6 +19,8 @@ import { sql } from 'drizzle-orm';
  */
 
 export type TAccountRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type TCanvasMemberRole = 'owner' | 'editor' | 'viewer';
+export type TFilesystemMemberRole = 'owner' | 'writer' | 'reader';
 
 /**
  * Vibecanvas auth boundary tables.
@@ -51,12 +53,36 @@ export const filesystems = sqliteTable('filesystems', {
   index('filesystems_machine_id_idx').on(table.machine_id),
 ]);
 
+export const filesystem_members = sqliteTable('filesystem_members', {
+  filesystem_id: text('filesystem_id').notNull().references(() => filesystems.id, { onDelete: 'cascade' }),
+  account_id: text('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['owner', 'writer', 'reader'] }).$type<TFilesystemMemberRole>().notNull().default('reader'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  primaryKey({ columns: [table.filesystem_id, table.account_id] }),
+  index('filesystem_members_account_id_idx').on(table.account_id),
+  index('filesystem_members_role_idx').on(table.role),
+]);
+
 export const canvas = sqliteTable('canvas', {
   id: text('id').primaryKey(),
   name: text('name').notNull().unique(),
   automerge_url: text('automerge_url').notNull(),
   created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 });
+
+export const canvas_members = sqliteTable('canvas_members', {
+  canvas_id: text('canvas_id').notNull().references(() => canvas.id, { onDelete: 'cascade' }),
+  account_id: text('account_id').notNull().references(() => accounts.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['owner', 'editor', 'viewer'] }).$type<TCanvasMemberRole>().notNull().default('viewer'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  primaryKey({ columns: [table.canvas_id, table.account_id] }),
+  index('canvas_members_account_id_idx').on(table.account_id),
+  index('canvas_members_role_idx').on(table.role),
+]);
 
 export const ZCanvasSelect = createSelectSchema(canvas);
 

@@ -7,7 +7,7 @@ import { fnToApiFilesystemError } from './core/fn.to-api-filesystem-error';
 import { baseFilesystemOs } from './orpc';
 
 const apiFilesFilesystem = baseFilesystemOs.files.handler(async ({ input, context }) => {
-  const filesystemId = fxResolveFilesystemId({ db: context.db }, { filesystemId: input.query.filesystemId });
+  const filesystemId = fxResolveFilesystemId({ accountId: context.accountId, db: context.db }, { filesystemId: input.query.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
   const root = resolve(input.query.path || context.filesystem.homeDir(filesystemId));
   const maxDepth = input.query.max_depth ?? Number.POSITIVE_INFINITY;

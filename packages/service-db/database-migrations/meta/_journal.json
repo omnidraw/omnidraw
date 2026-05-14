@@ -85,6 +85,13 @@
       "when": 1775891692446,
       "tag": "0011_demonic_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1778752295442,
+      "tag": "0012_clear_black_knight",
+      "breakpoints": true
     }
   ]
 }

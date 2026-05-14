@@ -35,7 +35,7 @@ async function uploadPtyImageToTemp(args: { requestId?: string; base64: string; 
 }
 
 const apiUploadPtyImage = basePtyOs.uploadImage.handler(async ({ input, context }) => {
-  const filesystemId = fxResolveFilesystemId({ db: context.db }, { filesystemId: input.filesystemId });
+  const filesystemId = fxResolveFilesystemId({ accountId: context.accountId, db: context.db }, { filesystemId: input.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
   return uploadPtyImageToTemp({
     requestId: context.requestId,
