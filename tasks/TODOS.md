@@ -1,12 +1,11 @@
 # Temporary Todos - do not touch
 
-- [x] update crdt to add callbacks
-- [ ] add onRemove to register element
-- [ ] add onRemove to group service
-- [ ] remove packages/canvas/src/plugins/select/tx.delete-selection.ts:344
-- [ ] move use element and group remove
-- [ ] add onRemove to widget registry
-- [ ] wire both together
-- [ ] onRemove make sure dom is cleaned up
-- [ ] add sandbox render option
-- [ ] remove global cleanup from service
+[ ] copy minimal schema for auth so that we can extend it later for betterauth
+[ ] add permission system
+[ ] update datamodel for canvas
+[ ] update datamodel for workflow and actors
+[ ] add workflow package
+[ ] add worker package
+[ ] add actor package
+[ ] add visualizer package
+[ ] add wire in with canvas
