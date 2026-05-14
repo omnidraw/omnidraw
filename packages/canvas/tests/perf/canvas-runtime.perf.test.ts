@@ -223,7 +223,7 @@ describe("perf: canvas runtime", () => {
     expect(result.foregroundNodeCount).toBeGreaterThan(0);
   });
 
-  test("measures non-local CRDT change full reload cost", async () => {
+  test("measures non-local CRDT change incremental apply cost", async () => {
     const doc = createPerfDoc(DEFAULT_SCENE_SIZE);
     const docHandle = createMockDocHandle(doc) as ReturnType<typeof createMockDocHandle> & { __emitChange(): void };
     activeHarness = await createNewCanvasHarness({
@@ -238,7 +238,7 @@ describe("perf: canvas runtime", () => {
       docHandle.__emitChange();
     });
     const result: TPerfResult = {
-      scenario: "non-local-crdt-change-full-scene-reload",
+      scenario: "non-local-crdt-change-incremental-apply",
       elementCountBefore: DEFAULT_SCENE_SIZE,
       elementCountAfter: DEFAULT_SCENE_SIZE + 1,
       foregroundNodeCount: countSceneNodes(activeHarness.staticForegroundLayer),

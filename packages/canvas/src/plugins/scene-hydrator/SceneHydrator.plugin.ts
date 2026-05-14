@@ -2,7 +2,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import { isCanvasGroupNode, isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
-import type { CrdtService } from "../../services/crdt/CrdtService";
+import type { CrdtService, TCrdtChangeSummary } from "../../services/crdt/CrdtService";
 import type { ElementService } from "../../services/element/ElementService";
 import type { GroupService } from "../../services/group/GroupService";
 import type { SceneService } from "../../services/scene/SceneService";
@@ -45,6 +45,39 @@ function findSceneNodeById(scene: SceneService, id: string | null): TSceneNode |
   }
 
   return node;
+}
+
+function findGroupById(scene: SceneService, id: string | null): Konva.Group | null {
+  if (!id) {
+    return null;
+  }
+
+  const node = scene.staticForegroundLayer.findOne((candidate: Konva.Node) => {
+    return isCanvasGroupNode(candidate) && candidate.id() === id;
+  });
+
+  return isKonvaGroup(node) ? node : null;
+}
+
+function resolveElementParent(scene: SceneService, element: TElement) {
+  if (!element.parentGroupId) {
+    return scene.staticForegroundLayer;
+  }
+
+  return findGroupById(scene, element.parentGroupId);
+}
+
+function hasGroupChanges(change: TCrdtChangeSummary) {
+  return change.groups.added.length > 0
+    || change.groups.updated.length > 0
+    || change.groups.deleted.length > 0;
+}
+
+function getChangedElementIds(change: TCrdtChangeSummary) {
+  return [...new Set([
+    ...change.elements.added,
+    ...change.elements.updated,
+  ])];
 }
 
 function restoreSceneState(scene: SceneService, selection: SelectionService, snapshot: TSceneStateSnapshot) {
@@ -179,6 +212,77 @@ function loadCanvas(args: {
   args.scene.stage.batchDraw();
 }
 
+function applyIncrementalElementChange(args: {
+  crdt: CrdtService;
+  element: ElementService;
+  scene: SceneService;
+  selection: SelectionService;
+  change: TCrdtChangeSummary;
+}) {
+  if (args.change.fullReload || hasGroupChanges(args.change)) {
+    return false;
+  }
+
+  const doc = args.crdt.doc();
+  const affectedParents = new Set<Konva.Layer | Konva.Group>();
+  const snapshot = captureSceneState(args.selection);
+
+  args.change.elements.deleted.forEach((id) => {
+    const node = findSceneNodeById(args.scene, id);
+    const parent = node?.getParent();
+    if (parent instanceof Konva.Layer || parent instanceof Konva.Group) {
+      affectedParents.add(parent);
+    }
+    node?.destroy();
+  });
+
+  for (const id of getChangedElementIds(args.change)) {
+    const changedElement = doc.elements[id];
+    if (!changedElement?.data) {
+      return false;
+    }
+
+    const parent = resolveElementParent(args.scene, changedElement);
+    if (!parent) {
+      return false;
+    }
+
+    const existingNode = findSceneNodeById(args.scene, id);
+    if (!existingNode) {
+      const node = args.element.createNodeFromElement(changedElement);
+      if (!node) {
+        return false;
+      }
+
+      parent.add(node);
+      args.element.updateElement(changedElement);
+      affectedParents.add(parent);
+      continue;
+    }
+
+    const previousParent = existingNode.getParent();
+    if (previousParent !== parent) {
+      if (previousParent instanceof Konva.Layer || previousParent instanceof Konva.Group) {
+        affectedParents.add(previousParent);
+      }
+      existingNode.moveTo(parent);
+    }
+
+    const didUpdate = args.element.updateElement(changedElement);
+    if (!didUpdate) {
+      return false;
+    }
+    affectedParents.add(parent);
+  }
+
+  affectedParents.forEach((parent) => {
+    sortSceneTopDown(parent);
+  });
+  restoreSceneState(args.scene, args.selection, snapshot);
+  args.scene.stage.batchDraw();
+  return true;
+}
+
 /**
  * Rebuilds runtime scene from CRDT document for migrated groups and elements.
  */
@@ -229,13 +333,24 @@ export function createSceneHydratorPlugin(): IPlugin<{
         }
       };
 
-      crdt.hooks.change.tap(() => {
+      crdt.hooks.change.tap((change) => {
         if (destroyed) {
           return;
         }
 
         const consumedLocalChange = crdt.consumePendingLocalChangeEvent();
         if (consumedLocalChange) {
+          return;
+        }
+
+        const didApplyIncrementally = applyIncrementalElementChange({
+          crdt,
+          element,
+          scene,
+          selection,
+          change,
+        });
+        if (didApplyIncrementally) {
           return;
         }
 

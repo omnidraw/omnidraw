@@ -1,6 +1,6 @@
 import type { DocHandle, DocHandleChangePayload, DocHandleDeletePayload, DocHandleEphemeralMessagePayload } from "@automerge/automerge-repo";
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TCanvasDoc, TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { SyncHook } from "@vibecanvas/tapable";
 import { fxCreateCrdtBuilder, type TCrdtBuilder, type TCrdtRecordedOp } from "./fxBuilder";
 import { txApplyCrdtOps } from "./tx.apply-ops";
@@ -9,12 +9,127 @@ export type TCrdtServiceArgs = {
   docHandle: DocHandle<TCanvasDoc>;
 };
 
+export type TCrdtEntityChangeSet = {
+  added: string[];
+  updated: string[];
+  deleted: string[];
+};
+
+export type TCrdtChangeSummary = {
+  fullReload: boolean;
+  elements: TCrdtEntityChangeSet;
+  groups: TCrdtEntityChangeSet;
+};
+
 export interface TCrdtServiceHooks {
-  change: SyncHook<[]>;
+  change: SyncHook<[TCrdtChangeSummary]>;
   write: SyncHook<[TCrdtRecordedOp[]]>;
 }
 
 export type TCrdtCommitResult = ReturnType<TCrdtBuilder["commit"]>;
+
+type TEntitySnapshot = {
+  hash: string;
+};
+
+type TDocSnapshot = {
+  elements: Map<string, TEntitySnapshot>;
+  groups: Map<string, TEntitySnapshot>;
+};
+
+function createEmptyEntityChangeSet(): TCrdtEntityChangeSet {
+  return {
+    added: [],
+    updated: [],
+    deleted: [],
+  };
+}
+
+function createFullReloadChangeSummary(): TCrdtChangeSummary {
+  return {
+    fullReload: true,
+    elements: createEmptyEntityChangeSet(),
+    groups: createEmptyEntityChangeSet(),
+  };
+}
+
+function hashEntity(entity: TElement | TGroup) {
+  return JSON.stringify(entity);
+}
+
+function snapshotEntities<TEntity extends TElement | TGroup>(entities: Record<string, TEntity>) {
+  return new Map(Object.entries(entities).map(([id, entity]) => {
+    return [id, { hash: hashEntity(entity) } satisfies TEntitySnapshot];
+  }));
+}
+
+function snapshotDoc(doc: TCanvasDoc | undefined | null): TDocSnapshot {
+  return {
+    elements: snapshotEntities(doc?.elements ?? {}),
+    groups: snapshotEntities(doc?.groups ?? {}),
+  };
+}
+
+function diffEntitySnapshots<TEntity extends TElement | TGroup>(args: {
+  previous: Map<string, TEntitySnapshot>;
+  nextEntities: Record<string, TEntity>;
+}) {
+  const next = snapshotEntities(args.nextEntities);
+  const changeSet = createEmptyEntityChangeSet();
+
+  next.forEach((snapshot, id) => {
+    const previousSnapshot = args.previous.get(id);
+    if (!previousSnapshot) {
+      changeSet.added.push(id);
+      return;
+    }
+
+    if (previousSnapshot.hash !== snapshot.hash) {
+      changeSet.updated.push(id);
+    }
+  });
+
+  args.previous.forEach((_snapshot, id) => {
+    if (!next.has(id)) {
+      changeSet.deleted.push(id);
+    }
+  });
+
+  return { changeSet, next };
+}
+
+function diffDocSnapshots(args: {
+  previous: TDocSnapshot;
+  nextDoc: TCanvasDoc | undefined | null;
+}): { summary: TCrdtChangeSummary; snapshot: TDocSnapshot } {
+  if (!args.nextDoc) {
+    return {
+      summary: createFullReloadChangeSummary(),
+      snapshot: snapshotDoc(args.nextDoc),
+    };
+  }
+
+  const elements = diffEntitySnapshots({
+    previous: args.previous.elements,
+    nextEntities: args.nextDoc.elements,
+  });
+  const groups = diffEntitySnapshots({
+    previous: args.previous.groups,
+    nextEntities: args.nextDoc.groups,
+  });
+
+  return {
+    summary: {
+      fullReload: false,
+      elements: elements.changeSet,
+      groups: groups.changeSet,
+    },
+    snapshot: {
+      elements: elements.next,
+      groups: groups.next,
+    },
+  };
+}
 
 /**
  * Thin runtime facade around the canvas CRDT document.
@@ -31,23 +146,32 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
   readonly name = "crdt";
   readonly docHandle: DocHandle<TCanvasDoc>;
   readonly hooks: TCrdtServiceHooks = {
-    change: new SyncHook(),
-    write: new SyncHook(),
+    change: new SyncHook<[TCrdtChangeSummary]>(),
+    write: new SyncHook<[TCrdtRecordedOp[]]>(),
   };
 
   started = false;
 
   #pendingLocalChangeEvents = 0;
+  #docSnapshot: TDocSnapshot;
   #onDocChange = (_payload: DocHandleChangePayload<TCanvasDoc>) => {
-    this.hooks.change.call();
+    const nextDoc = this.docHandle.doc();
+    const { summary, snapshot } = diffDocSnapshots({
+      previous: this.#docSnapshot,
+      nextDoc,
+    });
+    this.#docSnapshot = snapshot;
+    this.hooks.change.call(summary);
   };
   #onDocDelete = (_payload: DocHandleDeletePayload<TCanvasDoc>) => {
-    this.hooks.change.call();
+    this.#docSnapshot = snapshotDoc(null);
+    this.hooks.change.call(createFullReloadChangeSummary());
   };
   #onDocEphemeralMessage = (_payload: DocHandleEphemeralMessagePayload<TCanvasDoc>) => {};
 
   constructor(args: TCrdtServiceArgs) {
     this.docHandle = args.docHandle;
+    this.#docSnapshot = snapshotDoc(this.docHandle.doc());
     // @ts-expect-error keep this line. needed for debugging
     window.docHandle = this.docHandle;
   }
@@ -57,6 +181,7 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
       return;
     }
 
+    this.#docSnapshot = snapshotDoc(this.docHandle.doc());
     this.docHandle.on("change", this.#onDocChange as (payload: DocHandleChangePayload<unknown>) => void);
     this.docHandle.on("delete", this.#onDocDelete as (payload: DocHandleDeletePayload<unknown>) => void);
     this.docHandle.on("ephemeral-message", this.#onDocEphemeralMessage as (payload: DocHandleEphemeralMessagePayload<unknown>) => void);

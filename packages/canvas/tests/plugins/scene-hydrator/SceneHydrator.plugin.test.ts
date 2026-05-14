@@ -35,6 +35,41 @@ function createTextElement(overrides?: Partial<TElement>): TElement {
 }
 
 describe("new SceneHydrator plugin", () => {
+  test("applies remote element updates without recreating the scene node", async () => {
+    const element = createTextElement({ id: "text-live" });
+    if (element.data.type === "text") {
+      element.data.text = "before";
+      element.data.originalText = "before";
+    }
+    const docHandle = createMockDocHandle({
+      elements: {
+        [element.id]: element,
+      },
+    }) as DocHandle<TCanvasDoc> & { __emitChange: () => void };
+
+    const harness = await createNewCanvasHarness({ docHandle });
+    const node = harness.staticForegroundLayer.findOne<Konva.Text>("#text-live");
+    if (!node) {
+      throw new Error("missing text node");
+    }
+
+    docHandle.change((doc) => {
+      const nextElement = doc.elements[element.id];
+      if (nextElement?.data.type === "text") {
+        nextElement.data.text = "after";
+        nextElement.data.originalText = "after";
+      }
+    });
+    docHandle.__emitChange();
+    await flushCanvasEffects();
+
+    const updatedNode = harness.staticForegroundLayer.findOne<Konva.Text>("#text-live");
+    expect(updatedNode).toBe(node);
+    expect(updatedNode?.text()).toBe("after");
+
+    await harness.destroy();
+  });
+
   test("rehydrates scene on doc change and keeps selection on surviving nodes", async () => {
     const selectedElement = createTextElement({ id: "text-selected" });
     const remoteElement = createTextElement({ id: "text-live", x: 200 });
@@ -68,6 +103,7 @@ describe("new SceneHydrator plugin", () => {
 
     expect(hydratedSelectedNode).toBeTruthy();
     expect(hydratedRemoteNode).toBeTruthy();
+    expect(hydratedSelectedNode).toBe(selectedNode);
     expect(selection.selection[0]).toBe(hydratedSelectedNode);
     expect(selection.focusedId).toBe("text-selected");
 

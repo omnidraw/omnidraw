@@ -212,7 +212,7 @@ prefix: `packages/canvas/src/`
 | 🫠 | `services/canvas-registry/fn-merge-selection-style-menu-configs.ts` | weak merge semantics; convention drift | Combining layered selection-style menu configs across canvas registry |
 | ✅ | `services/canvas-registry/fn.sort-by-priority.ts` |  | Deterministic registry ordering: ascending priority, stable id tiebreak |
 | 🤖 | `services/context-menu/ContextMenuService.ts` |  | Right-click canvas/item/selection/connection menus from plugin-provided actions |
-| ✅ | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
+| 🤖 | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
 | ✅ | `services/crdt/fxBuilder.ts` |  | Batch canvas CRDT patches/deletes into commit+rollback ops/effects |
 | ✅ | `services/crdt/tx.apply-ops.ts` |  | Replay recorded CRDT entity ops into Automerge |
 | 🤖 | `services/element/types.ts` |  | Element registry lifecycle and transform option typings |

@@ -107,7 +107,7 @@ Known sources of main-thread work:
 
 Existing performance-related code:
 
-- `packages/canvas/tests/perf/canvas-runtime.perf.test.ts` measures runtime boot/hydration, non-local CRDT reload, camera pan/zoom draw scheduling, marquee selection scanning, and CRDT batch patch cost.
+- `packages/canvas/tests/perf/canvas-runtime.perf.test.ts` measures runtime boot/hydration, non-local CRDT incremental apply, camera pan/zoom draw scheduling, marquee selection scanning, and CRDT batch patch cost.
 - `packages/canvas/tests/perf/widget-connection-mesh.perf.test.ts` measures work while dragging one widget in a dense connection mesh.
 - Perf tests append local JSON-line results to `tests/perf/*.local.txt`, which are gitignored.
 - Run with `bun --filter @vibecanvas/canvas test:perf`; normal `test` excludes `tests/perf/**`.
@@ -125,7 +125,7 @@ Recommended next measurement additions:
 
 Prioritize measurement before code changes, but these are likely pressure points:
 
-1. Full remote reloads: small remote CRDT changes currently rebuild the whole foreground layer scene.
+1. Remote element changes now have an incremental apply path; keep measuring fallback full reloads for group/unknown structural changes.
 2. Foreground-layer invalidation: pan/zoom and many element edits redraw the large content layer; measure actual layer draw time, not just React/Solid time.
 3. Duplicate draw scheduling: camera movement redraws foreground/dynamic and also triggers grid redraw; other plugins can add more draws for the same event.
 4. Hit/listening overhead: many interactive nodes increase Konva event hit work; static/overlay-only nodes should be measured for `listening(false)` opportunities.
