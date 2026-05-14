@@ -303,6 +303,20 @@
         "@arrow-js/core": "^1.0.6",
       },
     },
+    "packages/service-actor": {
+      "name": "@vibecanvas/service-actor",
+      "version": "0.3.1",
+      "dependencies": {
+        "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-db": "workspace:*",
+        "@vibecanvas/service-workflow": "workspace:*",
+        "drizzle-orm": "catalog:",
+        "microsandbox": "^0.4.5",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
     "packages/service-automerge": {
       "name": "@vibecanvas/service-automerge",
       "version": "0.3.1",
@@ -922,6 +936,12 @@
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
+    "@superradcompany/microsandbox-darwin-arm64": ["@superradcompany/microsandbox-darwin-arm64@0.4.6", "", { "os": "darwin", "cpu": "arm64" }, "sha512-/TC09DAubzS73B1Lo6uY35ybwpZQQueE7kdAmd3CCmdk9Yl4V31A+8vnLSYk409oaK1URKaa3V5UTnGSYWwtXA=="],
+
+    "@superradcompany/microsandbox-linux-arm64-gnu": ["@superradcompany/microsandbox-linux-arm64-gnu@0.4.6", "", { "os": "linux", "cpu": "arm64" }, "sha512-IaS21OrfxYIzlc6Coxp/eY+SYh9qer4zYX9pvp3jAq7+qpG0aKWzL+GyO4HNeDEKkiZpa1iE6OghhvHmMIt1vA=="],
+
+    "@superradcompany/microsandbox-linux-x64-gnu": ["@superradcompany/microsandbox-linux-x64-gnu@0.4.6", "", { "os": "linux", "cpu": "x64" }, "sha512-UqLB/sPfXCwQI8o8pyA31J2q3IvZXYMl3Wo9xDn+C2keIkamGydQiPvroUcJasKfrNH9MUpTZOPKETpFG5qS0Q=="],
+
     "@swc/core": ["@swc/core@1.15.24", "", { "dependencies": { "@swc/counter": "^0.1.3", "@swc/types": "^0.1.26" }, "optionalDependencies": { "@swc/core-darwin-arm64": "1.15.24", "@swc/core-darwin-x64": "1.15.24", "@swc/core-linux-arm-gnueabihf": "1.15.24", "@swc/core-linux-arm64-gnu": "1.15.24", "@swc/core-linux-arm64-musl": "1.15.24", "@swc/core-linux-ppc64-gnu": "1.15.24", "@swc/core-linux-s390x-gnu": "1.15.24", "@swc/core-linux-x64-gnu": "1.15.24", "@swc/core-linux-x64-musl": "1.15.24", "@swc/core-win32-arm64-msvc": "1.15.24", "@swc/core-win32-ia32-msvc": "1.15.24", "@swc/core-win32-x64-msvc": "1.15.24" }, "peerDependencies": { "@swc/helpers": ">=0.5.17" }, "optionalPeers": ["@swc/helpers"] }, "sha512-5Hj8aNasue7yusUt8LGCUe/AjM7RMAce8ZoyDyiFwx7Al+GbYKL+yE7g4sJk8vEr1dKIkTRARkNIJENc4CjkBQ=="],
 
     "@swc/core-darwin-arm64": ["@swc/core-darwin-arm64@1.15.24", "", { "os": "darwin", "cpu": "arm64" }, "sha512-uM5ZGfFXjtvtJ+fe448PVBEbn/CSxS3UAyLj3O9xOqKIWy3S6hPTXSPbszxkSsGDYKi+YFhzAsR4r/eXLxEQ0g=="],
@@ -1025,6 +1045,8 @@
     "@vibecanvas/runtime": ["@vibecanvas/runtime@workspace:packages/runtime"],
 
     "@vibecanvas/sdk": ["@vibecanvas/sdk@workspace:packages/sdk"],
+
+    "@vibecanvas/service-actor": ["@vibecanvas/service-actor@workspace:packages/service-actor"],
 
     "@vibecanvas/service-automerge": ["@vibecanvas/service-automerge@workspace:packages/service-automerge"],
 
@@ -1577,6 +1599,8 @@
     "micromark-util-symbol": ["micromark-util-symbol@2.0.1", "", {}, "sha512-vs5t8Apaud9N28kgCrRUdEed4UJ+wWNvicHLPxCa9ENlYuAY31M0ETy5y1vA33YoNPDFTghEbnh6efaE8h4x0Q=="],
 
     "micromark-util-types": ["micromark-util-types@2.0.2", "", {}, "sha512-Yw0ECSpJoViF1qTU4DC6NwtC4aWGt1EkzaQB8KPPyCRR8z9TWeV0HbEFGTO+ZY1wB22zmxnJqhPyTpOVCpeHTA=="],
+
+    "microsandbox": ["microsandbox@0.4.6", "", { "optionalDependencies": { "@superradcompany/microsandbox-darwin-arm64": "0.4.6", "@superradcompany/microsandbox-linux-arm64-gnu": "0.4.6", "@superradcompany/microsandbox-linux-x64-gnu": "0.4.6" }, "bin": { "microsandbox": "bin/microsandbox.cjs", "msb": "bin/microsandbox.cjs" } }, "sha512-6uS+pF8E2gJjiI9MIXKjclRqQEJXZSWzXJs+ejLcO1zEn7/Vzrzv5G0q4p/w73XFyyFFEVhmndI+Uws7ysR18Q=="],
 
     "mimic-response": ["mimic-response@3.1.0", "", {}, "sha512-z0yWI+4FDrrweS8Zmt4Ej5HdJmky15+L2e6Wgn3+iK5fWzb6T3fhNFq2+MeTRb064c6Wr4N/wv0DzQTjNzHNGQ=="],
 

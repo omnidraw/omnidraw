@@ -98,6 +98,125 @@ export const files = sqliteTable('files', {
 
 export const ZFilesSelect = createSelectSchema(files);
 
+export const actor_definitions = sqliteTable('actor_definitions', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description'),
+  current_revision_id: text('current_revision_id'),
+  created_by_system_id: text('created_by_system_id').notNull().default('system'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('actor_definitions_slug_idx').on(table.slug),
+]);
+
+export const actor_revisions = sqliteTable('actor_revisions', {
+  id: text('id').primaryKey(),
+  actor_definition_id: text('actor_definition_id').notNull().references(() => actor_definitions.id, { onDelete: 'cascade' }),
+  version: text('version').notNull(),
+  revision_hash: text('revision_hash').notNull(),
+  parent_revision_id: text('parent_revision_id'),
+  machine_schema: text('machine_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
+  machine_config: text('machine_config', { mode: 'json' }).notNull().default(sql`'{}'`),
+  contract_schema: text('contract_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
+  output_schema: text('output_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
+  server_manifest: text('server_manifest', { mode: 'json' }).notNull().default(sql`'{}'`),
+  ui_manifest: text('ui_manifest', { mode: 'json' }).notNull().default(sql`'{}'`),
+  server_bundle_file_id: text('server_bundle_file_id').references(() => files.id, { onDelete: 'set null' }),
+  ui_bundle_file_id: text('ui_bundle_file_id').references(() => files.id, { onDelete: 'set null' }),
+  source_archive_file_id: text('source_archive_file_id').references(() => files.id, { onDelete: 'set null' }),
+  created_by_system_id: text('created_by_system_id').notNull().default('system'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('actor_revisions_definition_idx').on(table.actor_definition_id),
+  index('actor_revisions_hash_idx').on(table.revision_hash),
+]);
+
+export const actor_instances = sqliteTable('actor_instances', {
+  id: text('id').primaryKey(),
+  workspace_id: text('workspace_id'),
+  canvas_id: text('canvas_id').notNull().references(() => canvas.id, { onDelete: 'cascade' }),
+  element_id: text('element_id').notNull(),
+  actor_definition_id: text('actor_definition_id').notNull().references(() => actor_definitions.id, { onDelete: 'cascade' }),
+  actor_revision_id: text('actor_revision_id').notNull().references(() => actor_revisions.id, { onDelete: 'cascade' }),
+  display_name: text('display_name').notNull(),
+  status: text('status', { enum: ['created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked'] }).notNull().default('created'),
+  machine_state: text('machine_state').notNull(),
+  machine_context: text('machine_context', { mode: 'json' }).notNull().default(sql`'{}'`),
+  workflow_run_id: text('workflow_run_id').references(() => workflow_runs.id, { onDelete: 'set null' }),
+  created_by_system_id: text('created_by_system_id').notNull().default('system'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('actor_instances_canvas_idx').on(table.canvas_id),
+  index('actor_instances_status_idx').on(table.status),
+]);
+
+export const actor_connections = sqliteTable('actor_connections', {
+  id: text('id').primaryKey(),
+  canvas_id: text('canvas_id').notNull().references(() => canvas.id, { onDelete: 'cascade' }),
+  source_element_id: text('source_element_id').notNull(),
+  source_actor_instance_id: text('source_actor_instance_id').notNull().references(() => actor_instances.id, { onDelete: 'cascade' }),
+  target_element_id: text('target_element_id').notNull(),
+  target_actor_instance_id: text('target_actor_instance_id').notNull().references(() => actor_instances.id, { onDelete: 'cascade' }),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  label: text('label'),
+  event_name_whitelist: text('event_name_whitelist', { mode: 'json' }),
+  style: text('style', { mode: 'json' }).notNull().default(sql`'{}'`),
+  created_by_system_id: text('created_by_system_id').notNull().default('system'),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('actor_connections_source_idx').on(table.source_actor_instance_id),
+  index('actor_connections_target_idx').on(table.target_actor_instance_id),
+]);
+
+export const actor_inbox = sqliteTable('actor_inbox', {
+  id: text('id').primaryKey(),
+  workspace_id: text('workspace_id'),
+  canvas_id: text('canvas_id').notNull().references(() => canvas.id, { onDelete: 'cascade' }),
+  actor_instance_id: text('actor_instance_id').notNull().references(() => actor_instances.id, { onDelete: 'cascade' }),
+  seq: integer('seq').notNull(),
+  message_id: text('message_id').notNull().unique(),
+  correlation_id: text('correlation_id').notNull(),
+  causation_id: text('causation_id'),
+  idempotency_key: text('idempotency_key').notNull().unique(),
+  source_actor_instance_id: text('source_actor_instance_id').references(() => actor_instances.id, { onDelete: 'set null' }),
+  source_output_id: text('source_output_id'),
+  connection_id: text('connection_id').references(() => actor_connections.id, { onDelete: 'set null' }),
+  event_name: text('event_name').notNull(),
+  params: text('params', { mode: 'json' }).notNull().default(sql`'{}'`),
+  status: text('status', { enum: ['queued', 'claimed', 'processed', 'rejected', 'deadLettered'] }).notNull().default('queued'),
+  claimed_by_run_id: text('claimed_by_run_id'),
+  attempt: integer('attempt').notNull().default(0),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  processed_at: integer('processed_at', { mode: 'timestamp' }),
+  error: text('error', { mode: 'json' }),
+}, (table) => [
+  index('actor_inbox_queue_idx').on(table.status, table.created_at),
+  index('actor_inbox_actor_seq_idx').on(table.actor_instance_id, table.seq),
+]);
+
+export const actor_outputs = sqliteTable('actor_outputs', {
+  id: text('id').primaryKey(),
+  workspace_id: text('workspace_id'),
+  canvas_id: text('canvas_id').notNull().references(() => canvas.id, { onDelete: 'cascade' }),
+  actor_instance_id: text('actor_instance_id').notNull().references(() => actor_instances.id, { onDelete: 'cascade' }),
+  seq: integer('seq').notNull(),
+  output_id: text('output_id').notNull().unique(),
+  message_id: text('message_id').notNull(),
+  correlation_id: text('correlation_id').notNull(),
+  causation_id: text('causation_id'),
+  output_name: text('output_name').notNull(),
+  payload: text('payload', { mode: 'json' }).notNull().default(sql`'{}'`),
+  machine_state: text('machine_state').notNull(),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  workflow_run_id: text('workflow_run_id').references(() => workflow_runs.id, { onDelete: 'set null' }),
+  workflow_step_id: text('workflow_step_id').references(() => workflow_steps.id, { onDelete: 'set null' }),
+  commit_status: text('commit_status', { enum: ['staged', 'committed', 'discarded'] }).notNull().default('committed'),
+}, (table) => [
+  index('actor_outputs_actor_seq_idx').on(table.actor_instance_id, table.seq),
+  index('actor_outputs_message_idx').on(table.message_id),
+]);
+
 export const workflow_runs = sqliteTable('workflow_runs', {
   id: text('id').primaryKey(),
   workspace_id: text('workspace_id'),

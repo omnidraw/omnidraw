@@ -1,4 +1,4 @@
-import type { IService, IServiceContext, IStartableService, IStoppableService } from '@vibecanvas/runtime';
+import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import { fnAssertJsonSerializable, fnIsCompletedStep, fnIsTerminalRunStatus, fnPreviousResults, fnToWorkflowError } from './fn.workflow';
 import type { TWorkflowDb, TWorkflowJson, TWorkflowRunRow, TWorkflowSandboxExecutor, TWorkflowStepRow } from './types';
 
@@ -15,6 +15,7 @@ export type TWorkflowWorkerDrainResult = { readonly completedSteps: number; read
 export type TWorkflowWorkerStatus = { readonly polling: boolean; readonly lastError: string | null };
 export type TWorkflowWorkerHooks = object;
 export type TWorkflowWorkerRuntimeConfig = { readonly workflowWorker?: { readonly autoStart?: boolean } };
+type TServiceContext<TConfig extends object> = { readonly config: TConfig }; 
 
 export class WorkflowWorkerService implements IService<TWorkflowWorkerHooks>, IStartableService<TWorkflowWorkerHooks, TWorkflowWorkerRuntimeConfig>, IStoppableService {
   readonly name = 'workflowWorker';
@@ -36,7 +37,7 @@ export class WorkflowWorkerService implements IService<TWorkflowWorkerHooks>, IS
     this.pollIntervalMs = config.pollIntervalMs ?? 1_000;
   }
 
-  start(ctx: IServiceContext<TWorkflowWorkerHooks, TWorkflowWorkerRuntimeConfig>): void {
+  start(ctx: TServiceContext<TWorkflowWorkerRuntimeConfig>): void {
     if (ctx.config.workflowWorker?.autoStart === false) return;
     this.startPolling();
   }

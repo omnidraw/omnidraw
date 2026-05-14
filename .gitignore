@@ -35,6 +35,8 @@ tmp./
 # Logs
 *.log
 logs/
+log*
+!log-actor-model-task.txt
 
 # Test coverage
 coverage/

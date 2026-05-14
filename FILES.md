@@ -37,7 +37,10 @@ Path rule
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| ❓ | `.gitignore` |  | Root ignored files, including tracked task log exceptions. |
+| 🤖 | `bun.lock` | generated | Bun workspace lockfile updated when adding workspace package dependencies. |
 | ❓ | `log-auth-permissions-task.txt` |  | Progress log for auth permissions schema/service/plugin migration task. |
+| ❓ | `log-actor-model-task.txt` |  | Progress log for durable actor model and sandbox worker integration task. |
 | 🤖 | `tsconfig.json` |  | Root TypeScript defaults shared by package configs; keep source inclusion package-scoped for IDE sanity. |
 
 ## packages/canvas
@@ -555,12 +558,13 @@ prefix: `packages/service-db/src/`
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
-| ❓ | `database/migrate.ts` |  | Standalone database migration runner for local Vibecanvas config paths. |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, and durable workflow/sandbox run tables. |
+| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, and system-managed actor tables. |
 | 🤖 | `../database-migrations/0013_jazzy_sir_ram.sql` | generated | Drizzle migration creating workflow run, workflow step, and sandbox run tables. |
+| 🤖 | `../database-migrations/0014_lowly_the_phantom.sql` | generated | Drizzle migration creating actor definition, revision, instance, inbox, output, and connection tables. |
 | 🤖 | `../database-migrations/meta/0013_snapshot.json` | generated | Drizzle schema snapshot for workflow table migration. |
-| 🤖 | `../database-migrations/meta/_journal.json` | generated | Drizzle migration journal including workflow table migration. |
+| 🤖 | `../database-migrations/meta/0014_snapshot.json` | generated | Drizzle schema snapshot for actor table migration. |
+| 🤖 | `../database-migrations/meta/_journal.json` | generated | Drizzle migration journal including workflow and actor table migrations. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
@@ -572,6 +576,23 @@ prefix: `packages/service-event-publisher/src/`
 |---|---|---|---|
 | ❓ | `EventPublisherService.ts` |  |  |
 | ❓ | `IEventPublisherService.ts` |  |  |
+
+## packages/service-actor
+prefix: `packages/service-actor/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `package.json` |  | Actor service package metadata and Microsandbox dependency. |
+| ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
+| ❓ | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker. |
+| ❓ | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows, reconciles results, commits outputs, and routes messages. |
+| ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
+| ❓ | `src/core/fn.machine.ts` |  | Pure actor machine transition, boot message, processability, and effect result merge helpers. |
+| ❓ | `src/core/fn.workflow-definition.ts` |  | Pure actor inbox/revision transition plan to durable workflow definition mapping. |
+| ❓ | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for instances, inbox queues, connections, and sequence numbers. |
+| ❓ | `src/core/tx.actor-db.ts` |  | Actor DB write helpers for claiming inbox, patching actors, and inserting messages/outputs. |
+| ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
+| ❓ | `src/index.ts` |  | Actor service package barrel exports. |
 
 ## packages/service-workflow
 prefix: `packages/service-workflow/`
