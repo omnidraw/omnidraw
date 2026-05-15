@@ -600,6 +600,7 @@ prefix: `packages/service-actor/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| ❓ | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
 | ❓ | `package.json` |  | Actor service package metadata and Microsandbox dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
 | ❓ | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker. |

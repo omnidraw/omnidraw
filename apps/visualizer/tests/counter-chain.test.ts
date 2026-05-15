@@ -60,6 +60,12 @@ describe('counter-chain visualizer scenario', () => {
 
     expect(source.inbox.map((row: any) => row.status)).toEqual(['processed', 'processed']);
     expect(sink.inbox.map((row: any) => row.status)).toEqual(['processed', 'processed']);
+    const routedInput = sink.inbox[1];
+    expect(routedInput.event_name).toBe('msg.in.incremented');
+    expect(routedInput.connection_id).toBe('conn-source-sink');
+    expect(routedInput.source_actor_instance_id).toBe('actor-source');
+    expect(routedInput.source_output_id).toBe(source.outputs[0].id);
+    expect(routedInput.params).toEqual({ total: 3, by: 3, increments: 1 });
     expect(snapshot.global.workflowSteps.map((step: any) => `${step.function_kind}:${step.function_name}:${step.status}`)).toEqual([
       'tx:tx.increment:succeeded',
       'fn:fn.emitIncremented:succeeded',

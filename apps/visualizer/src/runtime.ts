@@ -138,7 +138,13 @@ export class VisualizerRuntime {
     const actors = db.select().from(schema.actor_instances).all().map((instance) => {
       const seed = this.scenario.actors.find((actor) => actor.id === instance.id);
       const workflowRun = instance.workflow_run_id ? db.query.workflow_runs.findFirst({ where: eq(schema.workflow_runs.id, instance.workflow_run_id) }).sync() : null;
-      const workflowSteps = workflowRun ? db.select().from(schema.workflow_steps).all().filter((step) => step.workflow_run_id === workflowRun.id).sort((a, b) => a.step_index - b.step_index) : [];
+      const workflowRuns = db.select().from(schema.workflow_runs).all()
+        .filter((run) => run.subject_id === instance.id)
+        .sort((a, b) => a.started_at.getTime() - b.started_at.getTime());
+      const workflowRunIds = new Set(workflowRuns.map((run) => run.id));
+      const workflowSteps = db.select().from(schema.workflow_steps).all()
+        .filter((step) => workflowRunIds.has(step.workflow_run_id))
+        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.step_index - b.step_index);
       return {
         ...instance,
         x: seed?.x ?? 0,
@@ -146,6 +152,7 @@ export class VisualizerRuntime {
         inbox: db.select().from(schema.actor_inbox).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
         outputs: db.select().from(schema.actor_outputs).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
         workflowRun,
+        workflowRuns,
         workflowSteps,
       };
     });
