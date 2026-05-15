@@ -346,6 +346,24 @@ prefix: `apps/worker/`
 | ❓ | `src/schema.ts` |  | Zod request/response schemas for worker step runner IPC. |
 | ❓ | `src/step-runner.ts` |  | Child process step runner that loads workflow functions from module portal specs. |
 
+## apps/visualizer
+prefix: `apps/visualizer/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `package.json` |  | Standalone actor visualizer app manifest with dev/start/test/typecheck scripts. |
+| ❓ | `tsconfig.json` |  | TypeScript config for the React/Bun visualizer app. |
+| ❓ | `src/App.tsx` |  | React visualizer UI showing actor network, state inspector, queues, and message sender. |
+| ❓ | `src/assets.d.ts` |  | CSS text import declaration for the Bun visualizer server. |
+| ❓ | `src/client.tsx` |  | Browser hydration entry for the visualizer React UI. |
+| ❓ | `src/runtime.ts` |  | In-memory SQLite actor/workflow simulation runtime and scenario control API. |
+| ❓ | `src/server.tsx` |  | Bun SSR server, REST API, and SSE events for the actor visualizer on port 34532. |
+| ❓ | `src/style.css` |  | Visualizer network, inspector, actor cards, and DB stack styling. |
+| ❓ | `src/types.ts` |  | Scenario, actor seed, connection seed, and effect result typings. |
+| ❓ | `src/scenarios/counter-chain.ts` |  | Counter-to-ledger actor simulation scenario. |
+| ❓ | `src/scenarios/index.ts` |  | Scenario registry and resolver for the visualizer. |
+| ❓ | `src/scenarios/ping-pong.ts` |  | Ping-to-pong actor message routing simulation scenario. |
+
 ## apps/web
 **SKIP**
 
