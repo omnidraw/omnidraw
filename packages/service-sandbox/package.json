@@ -15,7 +15,7 @@
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "drizzle-orm": "catalog:",
-    "microsandbox": "0.4.6"
+    "microsandbox": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:"

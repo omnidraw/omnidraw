@@ -604,10 +604,10 @@ prefix: `packages/service-actor/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
-| ❓ | `package.json` |  | Actor service package metadata and Microsandbox dependency. |
+| 🤖 | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
+| 🤖 | `package.json` |  | Actor service package metadata and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
-| ❓ | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker. |
+| 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker through service-sandbox. |
 | ❓ | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows, reconciles results, commits outputs, and routes messages. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
 | ❓ | `src/core/fn.machine.ts` |  | Pure actor machine transition, boot message, processability, and effect result merge helpers. |
@@ -655,9 +655,9 @@ prefix: `packages/service-sandbox/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `package.json` |  | Microsandbox-backed sandbox service package metadata and scripts. |
+| 🤖 | `package.json` |  | Microsandbox-backed sandbox service package metadata and scripts. |
 | ❓ | `tsconfig.json` |  | TypeScript config for sandbox service source/tests. |
-| ❓ | `src/ServiceSandbox.ts` |  | Microsandbox service that prepares tagged reusable volumes, starts pinned Bun sandboxes, and copies worker files. |
+| 🤖 | `src/ServiceSandbox.ts` |  | Microsandbox service that prepares tagged reusable volumes, starts pinned Bun sandboxes, copies worker files, and exposes sandbox shell execution. |
 | ❓ | `src/index.ts` |  | Sandbox service package barrel exports. |
 
 ## packages/service-theme

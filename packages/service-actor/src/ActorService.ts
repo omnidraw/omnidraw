@@ -1,8 +1,8 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import { ServiceSandbox } from '@vibecanvas/service-sandbox';
 import { SqliteWorkflowDb, type TWorkflowDb } from '@vibecanvas/service-workflow';
 import { existsSync } from 'fs';
-import { readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { ActorSupervisor } from './ActorSupervisor';
 import { ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT, DEFAULT_ACTOR_LEASE_MS, DEFAULT_ACTOR_POLL_INTERVAL_MS, DEFAULT_ACTOR_SANDBOX_NAME, DEFAULT_ACTOR_WORKER_ID, SANDBOX_WORKER_DIR, SANDBOX_WORKER_FILE } from './core/CONSTANTS';
@@ -91,7 +91,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
     this.workerEnv = config.workerEnv ?? {};
     this.autoStart = config.autoStart ?? true;
     this.startSandboxByDefault = config.startSandbox ?? true;
-    this.sandboxRunner = config.sandboxRunner ?? createMicrosandboxRunner();
+    this.sandboxRunner = config.sandboxRunner ?? createServiceSandboxRunner(this.db);
     this.supervisor = new ActorSupervisor({ db: this.db, workflowDb: this.workflowDb, workerId: this.workerId, pollIntervalMs: this.pollIntervalMs });
   }
 
@@ -161,33 +161,27 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 }
 
-function createMicrosandboxRunner(): TActorSandboxRunner {
+function createServiceSandboxRunner(db: TDrizzleDb): TActorSandboxRunner {
   return {
     start: async (args) => {
-      const workerSource = await readFile(args.workerDistPath, 'utf8');
-      const microsandbox = await import('microsandbox') as Record<string, any>;
-      const sandbox = await microsandbox.Sandbox.create({
-        name: args.sandboxName,
-        image: 'oven/bun',
+      const sandbox = new ServiceSandbox({
+        db,
+        namespace: 'actor',
+        sandboxName: args.sandboxName,
         workdir: SANDBOX_WORKER_DIR,
+        workerFiles: [{ hostPath: args.workerDistPath, sandboxPath: SANDBOX_WORKER_FILE, kind: 'file' }],
+        startCommand: { cmd: 'bun', args: [SANDBOX_WORKER_FILE], cwd: SANDBOX_WORKER_DIR },
         env: args.workerEnv,
-        patches: [
-          microsandbox.Patch.mkdir('/home/vibecanvas'),
-          microsandbox.Patch.mkdir(SANDBOX_WORKER_DIR),
-          microsandbox.Patch.text(SANDBOX_WORKER_FILE, workerSource),
-        ],
-        network: microsandbox.NetworkPolicy.publicOnly(),
-        replace: true,
+        replaceSandbox: true,
       });
-      const processHandle = await sandbox.execStream('bun', [SANDBOX_WORKER_FILE]);
+      await sandbox.start();
       return {
         isHealthy: async () => {
-          const output = await sandbox.exec('bun', ['-e', `const r = await fetch("http://127.0.0.1:${args.controlPort}/health").catch(() => null); if (!r?.ok) process.exit(1); const b = await r.json().catch(() => null); if (!b?.ok) process.exit(1);`]).catch(() => null);
+          const output = await sandbox.shell(`bun -e ${JSON.stringify(`const r = await fetch("http://127.0.0.1:${args.controlPort}/health").catch(() => null); if (!r?.ok) process.exit(1); const b = await r.json().catch(() => null); if (!b?.ok) process.exit(1);`)}`).catch(() => null);
           return Boolean(output?.success);
         },
         stop: async () => {
-          await processHandle?.kill?.().catch(() => undefined);
-          await sandbox.stopAndWait?.().catch(() => sandbox.kill?.().catch(() => undefined));
+          await sandbox.stop();
         },
       };
     },

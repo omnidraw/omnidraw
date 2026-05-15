@@ -24,7 +24,8 @@
     "zod": "4.3.6",
     "@kobalte/core": "^0.13.11",
     "lucide-solid": "^1.7.0",
-    "solid-js": "^1.9.12"
+    "solid-js": "^1.9.12",
+    "microsandbox": "0.4.6"
   },
   "scripts": {
     "postinstall": "node scripts/patch-automerge-repo-throttle.mjs",

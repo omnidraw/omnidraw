@@ -7,7 +7,7 @@ Host-side actor runtime for Vibecanvas.
 `ActorService` is the safe host entrypoint. It owns:
 
 - an `ActorSupervisor` running in the host process
-- a generic durable workflow worker running inside a sandbox
+- a generic durable workflow worker running inside `@vibecanvas/service-sandbox`
 - actor lifecycle polling, workflow scheduling, and result reconciliation
 
 Important boundary:
@@ -76,7 +76,7 @@ await actorService.stop();
 
 ## Testing/development
 
-Use `startSandbox: false` and `autoStart: false` when testing host orchestration without starting Microsandbox:
+Use `startSandbox: false` and `autoStart: false` when testing host orchestration without starting `@vibecanvas/service-sandbox`:
 
 ```ts
 const service = new ActorService({

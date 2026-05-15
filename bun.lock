@@ -327,9 +327,9 @@
       "dependencies": {
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
+        "@vibecanvas/service-sandbox": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
         "drizzle-orm": "catalog:",
-        "microsandbox": "^0.4.5",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -392,7 +392,7 @@
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "drizzle-orm": "catalog:",
-        "microsandbox": "0.4.6",
+        "microsandbox": "catalog:",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -446,6 +446,7 @@
     "drizzle-orm": "0.45.2",
     "drizzle-zod": "0.8.3",
     "lucide-solid": "^1.7.0",
+    "microsandbox": "0.4.6",
     "solid-js": "^1.9.12",
     "typescript": "5.9.3",
     "zod": "4.3.6",

@@ -145,6 +145,11 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
     };
   }
 
+  async shell(command: string): Promise<TMicrosandboxOutput> {
+    if (!this.#sandbox) throw new Error(`ServiceSandbox sandbox ${this.#config.sandboxName} is not started`);
+    return await this.#sandbox.shell(command);
+  }
+
   async #setup(): Promise<void> {
     this.#microsandbox = await (this.#config.loadMicrosandbox ?? loadMicrosandbox)();
     const instance = await this.#ensureInstance();
