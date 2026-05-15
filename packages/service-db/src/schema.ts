@@ -21,6 +21,8 @@ import { sql } from 'drizzle-orm';
 export type TAccountRole = 'owner' | 'admin' | 'member' | 'viewer';
 export type TCanvasMemberRole = 'owner' | 'editor' | 'viewer';
 export type TFilesystemMemberRole = 'owner' | 'writer' | 'reader';
+export type TSandboxInstanceStatus = 'creating' | 'running' | 'stopped' | 'missing' | 'failed' | 'obsolete';
+export type TSandboxVolumeStatus = 'creating' | 'ready' | 'missing' | 'failed' | 'obsolete';
 
 /**
  * Vibecanvas auth boundary tables.
@@ -283,6 +285,43 @@ export const sandbox_runs = sqliteTable('sandbox_runs', {
   stderr_file_id: text('stderr_file_id').references(() => files.id, { onDelete: 'set null' }),
 }, (table) => [
   index('sandbox_runs_step_idx').on(table.workflow_step_id),
+]);
+
+export const sandbox_instances = sqliteTable('sandbox_instances', {
+  id: text('id').primaryKey(),
+  namespace: text('namespace').notNull().default('default'),
+  sandbox_name: text('sandbox_name').notNull().unique(),
+  sandbox_tag: text('sandbox_tag').notNull(),
+  image: text('image').notNull(),
+  setup_hash: text('setup_hash').notNull(),
+  status: text('status', { enum: ['creating', 'running', 'stopped', 'missing', 'failed', 'obsolete'] }).$type<TSandboxInstanceStatus>().notNull().default('creating'),
+  metadata: text('metadata', { mode: 'json' }).notNull().default(sql`'{}'`),
+  last_error: text('last_error'),
+  host_checked_at: integer('host_checked_at', { mode: 'timestamp' }),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('sandbox_instances_tag_idx').on(table.namespace, table.sandbox_tag, table.status),
+  index('sandbox_instances_image_idx').on(table.image),
+]);
+
+export const sandbox_volumes = sqliteTable('sandbox_volumes', {
+  id: text('id').primaryKey(),
+  sandbox_instance_id: text('sandbox_instance_id').notNull().references(() => sandbox_instances.id, { onDelete: 'cascade' }),
+  namespace: text('namespace').notNull().default('default'),
+  volume_name: text('volume_name').notNull().unique(),
+  volume_tag: text('volume_tag').notNull(),
+  setup_hash: text('setup_hash').notNull(),
+  status: text('status', { enum: ['creating', 'ready', 'missing', 'failed', 'obsolete'] }).$type<TSandboxVolumeStatus>().notNull().default('creating'),
+  reusable: integer('reusable', { mode: 'boolean' }).notNull().default(false),
+  metadata: text('metadata', { mode: 'json' }).notNull().default(sql`'{}'`),
+  last_error: text('last_error'),
+  host_checked_at: integer('host_checked_at', { mode: 'timestamp' }),
+  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+}, (table) => [
+  index('sandbox_volumes_instance_idx').on(table.sandbox_instance_id),
+  index('sandbox_volumes_tag_idx').on(table.namespace, table.volume_tag, table.status),
 ]);
 
 export const automerge_repo_data = sqliteTable('automerge_repo_data', {

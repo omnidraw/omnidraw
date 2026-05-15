@@ -37,10 +37,12 @@ Path rule
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `.gitignore` |  | Root ignored files, including tracked task log exceptions. |
+| 🤖 | `.gitignore` |  | Root ignored files, including tracked task log exceptions. |
 | 🤖 | `bun.lock` | generated | Bun workspace lockfile updated when adding workspace package dependencies. |
+| 🤖 | `package.json` |  | Root workspace scripts and package manager metadata. |
 | ❓ | `log-auth-permissions-task.txt` |  | Progress log for auth permissions schema/service/plugin migration task. |
 | ❓ | `log-actor-model-task.txt` |  | Progress log for durable actor model and sandbox worker integration task. |
+| ❓ | `log-service-sandbox-task.txt` |  | Progress log for creating the Microsandbox-backed sandbox service. |
 | 🤖 | `tsconfig.json` |  | Root TypeScript defaults shared by package configs; keep source inclusion package-scoped for IDE sanity. |
 
 ## packages/canvas
@@ -577,12 +579,14 @@ prefix: `packages/service-db/src/`
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, and system-managed actor tables. |
+| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, sandbox instances/volumes, and system-managed actor tables. |
 | 🤖 | `../database-migrations/0013_jazzy_sir_ram.sql` | generated | Drizzle migration creating workflow run, workflow step, and sandbox run tables. |
 | 🤖 | `../database-migrations/0014_lowly_the_phantom.sql` | generated | Drizzle migration creating actor definition, revision, instance, inbox, output, and connection tables. |
+| 🤖 | `../database-migrations/0015_lowly_emma_frost.sql` | generated | Drizzle migration creating sandbox instance and volume tracking tables with cascade linkage. |
 | 🤖 | `../database-migrations/meta/0013_snapshot.json` | generated | Drizzle schema snapshot for workflow table migration. |
 | 🤖 | `../database-migrations/meta/0014_snapshot.json` | generated | Drizzle schema snapshot for actor table migration. |
-| 🤖 | `../database-migrations/meta/_journal.json` | generated | Drizzle migration journal including workflow and actor table migrations. |
+| 🤖 | `../database-migrations/meta/0015_snapshot.json` | generated | Drizzle schema snapshot for sandbox instance and volume tracking table migration. |
+| 🤖 | `../database-migrations/meta/_journal.json` | generated | Drizzle migration journal including workflow, actor, and sandbox table migrations. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
@@ -645,6 +649,16 @@ prefix: `packages/service-pty/src/`
 | ❓ | `IPtyService.ts` |  |  |
 | ❓ | `PtyServiceBunPty.ts` |  |  |
 | ❓ | `types.ts` |  |  |
+
+## packages/service-sandbox
+prefix: `packages/service-sandbox/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `package.json` |  | Microsandbox-backed sandbox service package metadata and scripts. |
+| ❓ | `tsconfig.json` |  | TypeScript config for sandbox service source/tests. |
+| ❓ | `src/ServiceSandbox.ts` |  | Microsandbox service that prepares tagged reusable volumes, starts pinned Bun sandboxes, and copies worker files. |
+| ❓ | `src/index.ts` |  | Sandbox service package barrel exports. |
 
 ## packages/service-theme
 prefix: `packages/service-theme/src/`

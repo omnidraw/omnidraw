@@ -37,6 +37,7 @@ tmp./
 logs/
 log*
 !log-actor-model-task.txt
+!log-service-sandbox-task.txt
 
 # Test coverage
 coverage/

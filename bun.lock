@@ -385,6 +385,19 @@
         "bun-pty": "^0.4.8",
       },
     },
+    "packages/service-sandbox": {
+      "name": "@vibecanvas/service-sandbox",
+      "version": "0.3.1",
+      "dependencies": {
+        "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-db": "workspace:*",
+        "drizzle-orm": "catalog:",
+        "microsandbox": "0.4.6",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
     "packages/service-theme": {
       "name": "@vibecanvas/service-theme",
       "version": "0.3.1",
@@ -1091,6 +1104,8 @@
     "@vibecanvas/service-filesystem": ["@vibecanvas/service-filesystem@workspace:packages/service-filesystem"],
 
     "@vibecanvas/service-pty": ["@vibecanvas/service-pty@workspace:packages/service-pty"],
+
+    "@vibecanvas/service-sandbox": ["@vibecanvas/service-sandbox@workspace:packages/service-sandbox"],
 
     "@vibecanvas/service-theme": ["@vibecanvas/service-theme@workspace:packages/service-theme"],
 
