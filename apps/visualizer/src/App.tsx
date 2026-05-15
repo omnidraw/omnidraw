@@ -7,6 +7,7 @@ import {
   MarkerType,
   Position,
   ReactFlow,
+  useNodesState,
   type Edge,
   type Node,
   type NodeProps,
@@ -103,6 +104,7 @@ function RichTextBlock(props: { readonly block: any }) {
 function ExplainerNode(props: NodeProps<Node<TExplainerNodeData, 'explainer'>>) {
   const explainer = props.data.explainer;
   return <article className="explainerNode">
+    <div className="dragGrip nodeDragHandle" title="Drag explainer">⋮⋮</div>
     <header><span>Explainer</span><strong>{explainer.title}</strong></header>
     <section>{explainer.blocks.map((block: any, index: number) => <RichTextBlock key={index} block={block} />)}</section>
   </article>;
@@ -117,6 +119,7 @@ function ActorNode(props: NodeProps<Node<TActorNodeData, 'actor'>>) {
 
   return <article className={`actorNode ${props.data.selected ? 'selected' : ''}`}>
     <Handle type="target" position={Position.Left} className="flowHandle target" />
+    <div className="dragGrip nodeDragHandle" title="Drag actor">⋮⋮</div>
     <header className="actorNodeHeader">
       <div>
         <strong>{actor.display_name}</strong>
@@ -198,6 +201,7 @@ export function App({ initialSnapshot }: TAppProps) {
   const [eventName, setEventName] = useState(getDefaultEventName(initialSnapshot));
   const [payload, setPayload] = useState(getDefaultPayload(initialSnapshot));
   const [selectedTab, setSelectedTab] = useState<'state' | 'ctx' | 'queue' | 'events' | 'send'>('state');
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const actors = snapshot?.actors ?? [];
   const selectedActor = actors.find((actor: any) => actor.id === selectedActorId) ?? actors[0];
 
@@ -223,22 +227,32 @@ export function App({ initialSnapshot }: TAppProps) {
     setPayload(getDefaultPayload(snapshot));
   }, [snapshot?.scenario?.id]);
 
-  const nodes = useMemo<Node[]>(() => [
-    ...actors.map((actor: any) => ({
-      id: actor.id,
-      type: 'actor',
-      position: { x: actor.x, y: actor.y },
-      data: { actor, selected: actor.id === selectedActor?.id, displayMessageName },
-    })),
-    {
-      id: `explainer:${snapshot.scenario.id}`,
-      type: 'explainer',
-      position: { x: snapshot.scenario.explainer.x, y: snapshot.scenario.explainer.y },
-      data: { explainer: snapshot.scenario.explainer },
-      selectable: false,
-      draggable: false,
-    },
-  ], [actors, selectedActor?.id, displayMessageName, snapshot.scenario]);
+  React.useEffect(() => {
+    setNodes((currentNodes) => {
+      const currentById = new Map(currentNodes.map((node) => [node.id, node]));
+      return [
+        ...actors.map((actor: any) => {
+          const existing = currentById.get(actor.id);
+          return {
+            id: actor.id,
+            type: 'actor',
+            position: existing?.position ?? { x: actor.x, y: actor.y },
+            data: { actor, selected: actor.id === selectedActor?.id, displayMessageName },
+            dragHandle: '.nodeDragHandle',
+          } satisfies Node;
+        }),
+        {
+          id: `explainer:${snapshot.scenario.id}`,
+          type: 'explainer',
+          position: currentById.get(`explainer:${snapshot.scenario.id}`)?.position ?? { x: snapshot.scenario.explainer.x, y: snapshot.scenario.explainer.y },
+          data: { explainer: snapshot.scenario.explainer },
+          dragHandle: '.nodeDragHandle',
+          selectable: true,
+          draggable: true,
+        } satisfies Node,
+      ];
+    });
+  }, [actors, selectedActor?.id, displayMessageName, snapshot.scenario, setNodes]);
 
   const edges = useMemo<Edge[]>(() => (snapshot?.connections ?? []).map((connection: any) => ({
     id: connection.id,
@@ -303,7 +317,8 @@ export function App({ initialSnapshot }: TAppProps) {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        nodesDraggable={false}
+        nodesDraggable
+        onNodesChange={onNodesChange}
         nodesConnectable={false}
         elementsSelectable
         fitView
