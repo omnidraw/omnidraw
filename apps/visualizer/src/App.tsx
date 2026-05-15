@@ -20,6 +20,10 @@ type TActorNodeData = {
   readonly displayMessageName: (row: any) => string;
 };
 
+type TExplainerNodeData = {
+  readonly explainer: any;
+};
+
 type TTimelineEvent = {
   readonly id: string;
   readonly time: string;
@@ -36,7 +40,7 @@ type TTimelineEvent = {
 
 const ACTOR_NODE_WIDTH = 310;
 const ACTOR_NODE_HEIGHT = 250;
-const nodeTypes = { actor: ActorNode };
+const nodeTypes = { actor: ActorNode, explainer: ExplainerNode };
 
 function getDefaultEventName(snapshot: any) {
   if (snapshot?.scenario?.id === 'counter-chain') return 'msg.in.increment';
@@ -80,6 +84,28 @@ function MessageRow(props: { readonly name: string; readonly seq: number; readon
     <span>{props.name}</span>
     <b>{props.seq}</b>
   </div>;
+}
+
+function RichInline(props: { readonly inline: any }) {
+  if (props.inline.kind === 'code') return <code>{props.inline.text}</code>;
+  if (props.inline.kind === 'strong') return <strong>{props.inline.text}</strong>;
+  return <React.Fragment>{props.inline.text}</React.Fragment>;
+}
+
+function RichTextBlock(props: { readonly block: any }) {
+  if (props.block.kind === 'heading') return <h4>{props.block.text}</h4>;
+  if (props.block.kind === 'list') {
+    return <ul>{props.block.items.map((item: any[], index: number) => <li key={index}>{item.map((inline, inlineIndex) => <RichInline key={inlineIndex} inline={inline} />)}</li>)}</ul>;
+  }
+  return <p>{props.block.children.map((inline: any, index: number) => <RichInline key={index} inline={inline} />)}</p>;
+}
+
+function ExplainerNode(props: NodeProps<Node<TExplainerNodeData, 'explainer'>>) {
+  const explainer = props.data.explainer;
+  return <article className="explainerNode">
+    <header><span>Explainer</span><strong>{explainer.title}</strong></header>
+    <section>{explainer.blocks.map((block: any, index: number) => <RichTextBlock key={index} block={block} />)}</section>
+  </article>;
 }
 
 function ActorNode(props: NodeProps<Node<TActorNodeData, 'actor'>>) {
@@ -197,12 +223,22 @@ export function App({ initialSnapshot }: TAppProps) {
     setPayload(getDefaultPayload(snapshot));
   }, [snapshot?.scenario?.id]);
 
-  const nodes = useMemo<Node<TActorNodeData, 'actor'>[]>(() => actors.map((actor: any) => ({
-    id: actor.id,
-    type: 'actor',
-    position: { x: actor.x, y: actor.y },
-    data: { actor, selected: actor.id === selectedActor?.id, displayMessageName },
-  })), [actors, selectedActor?.id, displayMessageName]);
+  const nodes = useMemo<Node[]>(() => [
+    ...actors.map((actor: any) => ({
+      id: actor.id,
+      type: 'actor',
+      position: { x: actor.x, y: actor.y },
+      data: { actor, selected: actor.id === selectedActor?.id, displayMessageName },
+    })),
+    {
+      id: `explainer:${snapshot.scenario.id}`,
+      type: 'explainer',
+      position: { x: snapshot.scenario.explainer.x, y: snapshot.scenario.explainer.y },
+      data: { explainer: snapshot.scenario.explainer },
+      selectable: false,
+      draggable: false,
+    },
+  ], [actors, selectedActor?.id, displayMessageName, snapshot.scenario]);
 
   const edges = useMemo<Edge[]>(() => (snapshot?.connections ?? []).map((connection: any) => ({
     id: connection.id,

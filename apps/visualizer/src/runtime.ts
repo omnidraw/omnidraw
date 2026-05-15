@@ -157,7 +157,7 @@ export class VisualizerRuntime {
       };
     });
     const data = {
-      scenario: { id: this.scenario.id, name: this.scenario.name, description: this.scenario.description },
+      scenario: { id: this.scenario.id, name: this.scenario.name, description: this.scenario.description, explainer: this.scenario.explainer },
       scenarioOptions: VISUALIZER_SCENARIOS.map((scenario) => ({ id: scenario.id, name: scenario.name, description: scenario.description })),
       status: { actorService: this.actorService?.getStatus(), workflowWorker: this.workflowWorker?.getStatus() },
       actors,

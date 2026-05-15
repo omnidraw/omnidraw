@@ -17,6 +17,8 @@ describe('counter-chain visualizer scenario', () => {
   test('declares the source, sink, connection, and required effects', () => {
     expect(counterChainScenario.id).toBe('counter-chain');
     expect(counterChainScenario.actors.map((actor) => actor.id)).toEqual(['actor-source', 'actor-sink']);
+    expect(counterChainScenario.explainer.title).toBe('How Counter chain works');
+    expect(counterChainScenario.explainer.blocks.length).toBeGreaterThan(0);
     expect(counterChainScenario.connections).toEqual([
       {
         id: 'conn-source-sink',

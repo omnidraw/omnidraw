@@ -1,14 +1,42 @@
-import type { TVisualizerScenario } from '../types';
+import type { TVisualizerExplainer, TVisualizerScenario } from '../types';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
+
+export const counterChainExplainer: TVisualizerExplainer = {
+  title: 'How Counter chain works',
+  x: 420,
+  y: 610,
+  blocks: [
+    { kind: 'heading', text: 'Message flow' },
+    {
+      kind: 'paragraph',
+      children: [
+        { kind: 'text', text: 'Send ' },
+        { kind: 'code', text: 'msg.in.increment' },
+        { kind: 'text', text: ' to Source Counter. The source actor updates its local context, then emits ' },
+        { kind: 'code', text: 'msg.out.incremented' },
+        { kind: 'text', text: '.' },
+      ],
+    },
+    {
+      kind: 'list',
+      items: [
+        [{ kind: 'strong', text: 'Source ctx' }, { kind: 'text', text: ' stores total, increment count, and the last increment amount.' }],
+        [{ kind: 'strong', text: 'Connection' }, { kind: 'text', text: ' maps ' }, { kind: 'code', text: 'msg.out.incremented' }, { kind: 'text', text: ' into Sink Ledger as ' }, { kind: 'code', text: 'msg.in.incremented' }, { kind: 'text', text: '.' }],
+        [{ kind: 'strong', text: 'Sink ctx' }, { kind: 'text', text: ' records each payload and keeps the latest total visible.' }],
+      ],
+    },
+  ],
+};
 
 export const counterChainScenario: TVisualizerScenario = {
   id: 'counter-chain',
   name: 'Counter chain',
   description: 'A source actor increments a running total, emits msg.out.incremented, and a sink actor keeps a ledger plus the latest full counter total.',
   canvasId: 'canvas-counter-chain',
+  explainer: counterChainExplainer,
   actors: [
     {
       id: 'actor-source',
