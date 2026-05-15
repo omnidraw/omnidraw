@@ -18,6 +18,7 @@ import {
   createTextPlugin,
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
+import { ActorConnectionService } from "./services/actor-connection/ActorConnectionService";
 import { CameraService } from "./services/camera/CameraService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
@@ -36,6 +37,7 @@ import { createTodoAppPlugin } from "./plugins/widget-example/TodoApp.plugin";
 
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
+    actorConnection: ActorConnectionService;
     camera: CameraService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;
@@ -75,11 +77,7 @@ function createHooks(): IRuntimeHooks {
   };
 }
 
-function createServices(config: {
-  container: HTMLDivElement;
-  docHandle: DocHandle<TCanvasDoc>;
-  themeService: ThemeService;
-}): IServiceRegistry {
+function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" | "container" | "docHandle" | "notification" | "themeService">): IServiceRegistry {
   const services = createServiceRegistry();
   const crdt = new CrdtService({ docHandle: config.docHandle });
   const element = new ElementService();
@@ -91,6 +89,14 @@ function createServices(config: {
   const selection = new SelectionService();
   const tool = new ToolService(scene, element, crdt, selection);
   const logging = new LoggingService();
+  const actorConnection = new ActorConnectionService({
+    apiService: config.apiService,
+    canvasId: config.canvasId,
+    contextMenu,
+    scene,
+    selection,
+    notifyError: config.notification?.showError,
+  });
   const renderOrder = new RenderOrderService({
     crdt,
     history,
@@ -109,6 +115,7 @@ function createServices(config: {
     sceneService: scene,
     renderOrderService: renderOrder,
     cameraService: camera,
+    actorConnectionService: actorConnection,
   });
   const group = new GroupService(
     camera,
@@ -130,6 +137,7 @@ function createServices(config: {
   services.provide("contextMenu", 40, contextMenu);
   services.provide("history", 50, history);
   services.provide("selection", 60, selection);
+  services.provide("actorConnection", 65, actorConnection);
   services.provide("crdt", 70, crdt);
   services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);

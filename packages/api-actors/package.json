@@ -1,0 +1,20 @@
+{
+  "name": "@vibecanvas/api-actors",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test --pass-with-no-tests"
+  },
+  "dependencies": {
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "zod": "catalog:"
+  }
+}

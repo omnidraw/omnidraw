@@ -1,5 +1,6 @@
 import { oc, populateContractRouterPaths } from '@orpc/contract';
 import { implement, onError } from '@orpc/server';
+import { actorsContract } from '@vibecanvas/api-actors/contract';
 import { canvasContract } from '@vibecanvas/api-canvas/contract';
 import { dbContract } from '@vibecanvas/api-db/contract';
 import { fileContract } from '@vibecanvas/api-file/contract';
@@ -13,6 +14,7 @@ import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesys
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 
 const contract = oc.router({
+  actors: actorsContract,
   canvas: canvasContract,
   db: dbContract,
   file: fileContract,
@@ -26,7 +28,7 @@ const apiContract = populateContractRouterPaths(
 );
 
 const baseOs = implement(apiContract)
-  .$context<{ automerge: IAutomergeService; db: IDbService; eventPublisher: IEventPublisherService; filesystem: IFilesystemService; pty: IPtyService; requestId?: string }>()
+  .$context<{ accountId?: string; automerge: IAutomergeService; db: IDbService; eventPublisher: IEventPublisherService; filesystem: IFilesystemService; pty: IPtyService; requestId?: string }>()
   .use(onError((error) => {
     console.error(error);
   }));

@@ -9,10 +9,18 @@ export type TFilesystemEvent = {
   eventType: 'rename' | 'change';
   fileName: string;
 };
+export type TActorEvent = {
+  type: string;
+  canvasId?: string;
+  [key: string]: unknown;
+};
 
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
+
+  publishActorEvent(canvasId: string, event: TActorEvent): void;
+  subscribeActorEvents(canvasId: string): AsyncIterable<TActorEvent>;
 
   publishFilesystemEvent(path: string, event: TFilesystemEvent): void;
   subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent>;

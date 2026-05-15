@@ -1,6 +1,7 @@
 import { createORPCClient, createSafeClient, type SafeClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import { oc, populateContractRouterPaths, type ContractRouterClient } from "@orpc/contract";
+import { actorsContract } from "@vibecanvas/api-actors/contract";
 import { canvasContract } from "@vibecanvas/api-canvas/contract";
 import { dbContract } from "@vibecanvas/api-db/contract";
 import { fileContract } from "@vibecanvas/api-file/contract";
@@ -10,6 +11,7 @@ import { ptyContract, type TPtyImageFormat } from "@vibecanvas/api-pty/contract"
 import { WebSocket as PartySocketWebSocket } from "partysocket";
 
 const contract = oc.router({
+  actors: actorsContract,
   canvas: canvasContract,
   db: dbContract,
   file: fileContract,

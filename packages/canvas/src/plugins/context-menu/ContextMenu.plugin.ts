@@ -71,6 +71,11 @@ function findTargetConnectionId(
 ) {
   let current: Konva.Node | null = scene.stage.getIntersection(pointer);
   while (current) {
+    const actorConnectionId = current.getAttr("actorConnectionId");
+    if (typeof actorConnectionId === "string") {
+      return actorConnectionId;
+    }
+
     const connectionId = current.getAttr("widgetConnectionId");
     if (typeof connectionId === "string") {
       return connectionId;

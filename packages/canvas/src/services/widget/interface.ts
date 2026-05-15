@@ -13,6 +13,7 @@ import type {
   TTool,
   ToolService,
 } from "..";
+import type { ActorConnectionService } from "../actor-connection/ActorConnectionService";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
 export interface IWidgetManagerServiceHooks {
@@ -31,6 +32,7 @@ export interface IWidgetManagerServiceProps {
   sceneService: SceneService;
   renderOrderService: RenderOrderService;
   cameraService: CameraService;
+  actorConnectionService?: ActorConnectionService;
 }
 
 export type TWidgetRenderArgs = {

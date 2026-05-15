@@ -53,6 +53,7 @@
     "@kobalte/core": "catalog:",
     "@orpc/contract": "catalog:",
     "@solid-primitives/scheduled": "^1.5.3",
+    "@vibecanvas/api-actors": "workspace:*",
     "@vibecanvas/orpc-client": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-automerge": "workspace:*",

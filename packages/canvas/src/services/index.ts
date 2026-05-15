@@ -1,3 +1,4 @@
+export * from "./actor-connection/ActorConnectionService";
 export * from "./widget/WidgetManagerService";
 export * from "./camera/CameraService";
 export * from "./context-menu/ContextMenuService";

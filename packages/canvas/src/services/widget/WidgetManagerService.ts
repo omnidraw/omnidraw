@@ -4,6 +4,7 @@ import type { TElementData } from "@vibecanvas/service-automerge/types/canvas-do
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
+import type { ActorConnectionService } from "../actor-connection/ActorConnectionService";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { CanvasMode } from "../selection/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
@@ -49,6 +50,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #sceneService: SceneService;
   #renderOrderService: RenderOrderService;
   #cameraService: CameraService;
+  #actorConnectionService?: ActorConnectionService;
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #removeKeydownListener?: () => boolean;
@@ -67,6 +69,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService = props.sceneService;
     this.#renderOrderService = props.renderOrderService;
     this.#cameraService = props.cameraService;
+    this.#actorConnectionService = props.actorConnectionService;
   }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
@@ -77,31 +80,37 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService.stage.container().appendChild(this.#widgetPortal);
     // this.#domPortal.style =
     this.#widgetPortal.id = "widget-portal";
-    this.#removeSelectionChangeListener = this.#selectionService.hooks.change.tap(() => {
-      this.#syncRenderedWidgetConnections();
-    });
-    this.#removeKeydownListener = ctx.hooks.keydown?.tap((event) => {
-      if (this.#selectionService.mode !== CanvasMode.SELECT) return;
-      if (!this.#selectionService.selectedConnectionId) return;
-      if (event.key !== "Backspace" && event.key !== "Delete") return;
-      if (isEditableTarget(event.target)) return;
+    if (!this.#actorConnectionService) {
+      this.#removeSelectionChangeListener = this.#selectionService.hooks.change.tap(() => {
+        this.#syncRenderedWidgetConnections();
+      });
+      this.#removeKeydownListener = ctx.hooks.keydown?.tap((event) => {
+        if (this.#selectionService.mode !== CanvasMode.SELECT) return;
+        if (!this.#selectionService.selectedConnectionId) return;
+        if (event.key !== "Backspace" && event.key !== "Delete") return;
+        if (isEditableTarget(event.target)) return;
 
-      event.preventDefault();
-      event.stopPropagation();
-      this.#deleteConnection(this.#selectionService.selectedConnectionId);
-    });
-    this.#contextMenuService.registerProvider?.("widget-connection", ({ scope, connectionId }) => {
-      if (scope !== "connection" || !connectionId) {
-        return [];
-      }
+        event.preventDefault();
+        event.stopPropagation();
+        this.#deleteConnection(this.#selectionService.selectedConnectionId);
+      });
+    }
+    if (!this.#actorConnectionService) {
+      this.#contextMenuService.registerProvider?.("widget-connection", ({ scope, connectionId }) => {
+        if (scope !== "connection" || !connectionId) {
+          return [];
+        }
 
-      return [{
-        id: "delete-widget-connection",
-        label: "Delete connection",
-        priority: 250,
-        onSelect: () => this.#deleteConnection(connectionId),
-      }];
-    });
+        return [{
+          id: "delete-widget-connection",
+          label: "Delete connection",
+          priority: 250,
+          onSelect: () => {
+            this.#deleteConnection(connectionId);
+          },
+        }];
+      });
+    }
   }
 
   stop(): void | Promise<void> {
@@ -114,6 +123,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
   #syncRenderedWidgetConnections() {
+    if (this.#actorConnectionService) {
+      this.#actorConnectionService.syncAllLines();
+      return true;
+    }
+
     const widget = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
       return candidate instanceof Konva.Group && candidate.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
     });
@@ -151,6 +165,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
   #deleteConnection(connectionId: string) {
+    if (this.#actorConnectionService) {
+      void this.#actorConnectionService.deleteConnection(connectionId);
+      return true;
+    }
+
     const widgets = this.#sceneService.staticForegroundLayer.find((candidate: Konva.Node) => {
       return candidate instanceof Konva.Group && candidate.getAttr(ELEMENT_DATA_ATTR)?.type === "widget";
     }).filter((node): node is Konva.Group => node instanceof Konva.Group);
@@ -192,6 +211,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
   #removeRenderedWidgetConnections(node: Konva.Group) {
+    if (this.#actorConnectionService) {
+      this.#actorConnectionService.syncAllLines();
+      return;
+    }
+
     const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TElementData;
     if (widgetData?.type !== "widget") {
       return;
@@ -316,7 +340,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           return false;
         }
 
-        return txUpdateWidgetNodeFromElement({
+        const didUpdate = txUpdateWidgetNodeFromElement({
           Circle: Konva.Circle,
           Group: Konva.Group,
           Line: Konva.Line,
@@ -325,6 +349,10 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           node,
           element,
         });
+        if (didUpdate) {
+          this.#actorConnectionService?.syncAttachedNode(node);
+        }
+        return didUpdate;
       },
       createDragClone: ({ node }) => {
         if (!this.#historyService) {
@@ -359,12 +387,15 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
               removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
               createConnectionId: () => crypto.randomUUID(),
-              syncConnections: (connectionNode, syncArgs) => txSyncWidgetConnections({
-                Circle: Konva.Circle,
-                Group: Konva.Group,
-                Line: Konva.Line,
-                selection: this.#selectionService,
-              }, { node: connectionNode, ...syncArgs }),
+              createConnection: (connectionArgs) => this.#actorConnectionService?.createConnection(connectionArgs),
+              syncConnections: (connectionNode, syncArgs) => this.#actorConnectionService
+                ? this.#actorConnectionService.syncAttachedNode(connectionNode, syncArgs)
+                : txSyncWidgetConnections({
+                  Circle: Konva.Circle,
+                  Group: Konva.Group,
+                  Line: Konva.Line,
+                  selection: this.#selectionService,
+                }, { node: connectionNode, ...syncArgs }),
             }, {})
           },
         }, { node });
@@ -416,12 +447,15 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         startDragClone: (args) => this.#elementService.createDragClone(args),
         removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
         createConnectionId: () => crypto.randomUUID(),
-        syncConnections: (connectionNode, syncArgs) => txSyncWidgetConnections({
-          Circle: Konva.Circle,
-          Group: Konva.Group,
-          Line: Konva.Line,
-          selection: this.#selectionService,
-        }, { node: connectionNode, ...syncArgs }),
+        createConnection: (connectionArgs) => this.#actorConnectionService?.createConnection(connectionArgs),
+        syncConnections: (connectionNode, syncArgs) => this.#actorConnectionService
+          ? this.#actorConnectionService.syncAttachedNode(connectionNode, syncArgs)
+          : txSyncWidgetConnections({
+            Circle: Konva.Circle,
+            Group: Konva.Group,
+            Line: Konva.Line,
+            selection: this.#selectionService,
+          }, { node: connectionNode, ...syncArgs }),
       }, {})
     })
 

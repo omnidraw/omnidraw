@@ -209,6 +209,11 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
 | 🤖 | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node/connection id |
 | 🤖 | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins and widget history dependency |
+| ❓ | `services/actor-connection/ActorConnectionService.ts` |  | Canvas-side actor connection state, event subscription, API mutations, and context actions. |
+| ❓ | `services/actor-connection/CONSTANTS.ts` |  | Actor connection renderer ids and boundary offsets. |
+| ❓ | `services/actor-connection/fn.geometry.ts` |  | Pure actor connection line boundary and style parsing helpers. |
+| ❓ | `services/actor-connection/tx.sync-lines.ts` |  | Draws, updates, selects, and removes DB-backed actor connection Konva lines. |
+| 🤖 | `services/index.ts` |  | Services barrel exporting canvas runtime services including actor connections. |
 | ❓ | `services/camera/CameraService.ts` |  | Canvas camera pan/zoom viewport state driving scene layers |
 | ❓ | `services/canvas-registry/CanvasRegistryService.ts` |  | Canvas semantic registry: nodes↔elements/groups, lifecycle hooks, select |
 | 🫠 | `services/canvas-registry/fn-merge-selection-style-menu-configs.ts` | weak merge semantics; convention drift | Combining layered selection-style menu configs across canvas registry |
@@ -258,6 +263,7 @@ prefix: `apps/cli/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `../package.json` |  | CLI package dependencies including actor API package. |
 | ❓ | `AutomergePlugin.ts` |  |  |
 | ❓ | `plugins/auth/AuthPlugin.ts` |  | OSS auth bootstrap plugin that ensures a default owner account and fake session identity. |
 | ❓ | `bootstrap.ts` |  |  |
@@ -290,12 +296,12 @@ prefix: `apps/cli/src/`
 | ❓ | `hooks.ts` |  |  |
 | ❓ | `http.ts` |  |  |
 | 🤖 | `main.ts` |  | Registers OSS auth bootstrap plugin before other runtime plugins. |
-| ❓ | `orpc.base.ts` |  |  |
+| 🤖 | `orpc.base.ts` |  | Root ORPC contract now includes actor APIs. |
 | 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
-| ❓ | `router.ts` |  |  |
+| 🤖 | `router.ts` |  | Server ORPC router registers actor API handlers. |
 | ❓ | `ServerPlugin.ts` |  |  |
 | 🤖 | `setup-services.ts` |  |  |
 | ❓ | `setup-signals.ts` |  |  |
@@ -368,6 +374,33 @@ prefix: `apps/visualizer/`
 
 ## apps/web
 **SKIP**
+
+## packages/api-actors
+prefix: `packages/api-actors/src/`
+
+| status | filepath | human comment | oneliner when to use |
+|---|---|---|---|
+| ❓ | `../package.json` |  | Actor API package manifest and workspace dependencies. |
+| ❓ | `../tsconfig.json` |  | TypeScript config for actor API package source. |
+| ❓ | `api.actor-events.ts` |  | Snapshot-first actor event stream for canvas actor state. |
+| ❓ | `api.create-actor-connection.ts` |  | Creates DB-backed actor connections through actor instance endpoint validation. |
+| ❓ | `api.create-actor-instance.ts` |  | Creates canvas-bound actor instances from registered revisions. |
+| ❓ | `api.get-actor-instance.ts` |  | Fetches one actor instance with canvas view authorization. |
+| ❓ | `api.get-actor-revision.ts` |  | Fetches one actor revision for privileged actor registrars. |
+| ❓ | `api.list-actor-connections.ts` |  | Lists canonical DB actor connections for a canvas. |
+| ❓ | `api.list-actor-instances.ts` |  | Lists actor instances for a canvas. |
+| ❓ | `api.list-actor-revisions.ts` |  | Lists actor revisions globally or for one definition. |
+| ❓ | `api.register-actor-revision.ts` |  | Registers actor definitions and revisions and advances current revision. |
+| ❓ | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
+| ❓ | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
+| ❓ | `contract.ts` |  | Actor ORPC contract, row schemas, mutation inputs, and event union. |
+| ❓ | `db.ts` |  | Resolves the concrete Drizzle DB from the generic DB service for actor APIs. |
+| ❓ | `fn.actor-input.ts` |  | Pure actor input normalization and DB JSON row shaping helpers. |
+| ❓ | `fx.actor-db.ts` |  | Actor DB read helpers and account-aware canvas/registration authorization checks. |
+| ❓ | `handlers.ts` |  | Actor API handler tree for instances, revisions, connections, and events. |
+| ❓ | `orpc.ts` |  | Actor API ORPC implementer with typed context. |
+| ❓ | `tx.actor-db.ts` |  | Actor DB writes and actor event publication for revisions, instances, and connections. |
+| ❓ | `types.ts` |  | Actor API context and Drizzle-backed DB service typing. |
 
 ## packages/api-canvas
 prefix: `packages/api-canvas/src/`
@@ -525,7 +558,8 @@ prefix: `packages/orpc-client/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `index.ts` |  |  |
+| 🤖 | `../package.json` |  | ORPC client package dependencies including actor API contract package. |
+| 🤖 | `index.ts` |  | ORPC client contract and websocket service including actor API routes. |
 
 ## packages/runtime
 prefix: `packages/runtime/src/`
@@ -596,8 +630,8 @@ prefix: `packages/service-event-publisher/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `EventPublisherService.ts` |  |  |
-| ❓ | `IEventPublisherService.ts` |  |  |
+| 🤖 | `EventPublisherService.ts` |  | In-memory DB/filesystem/notification plus canvas-scoped actor event fanout. |
+| 🤖 | `IEventPublisherService.ts` |  | Event publisher contract including typed actor event methods. |
 
 ## packages/service-actor
 prefix: `packages/service-actor/`

@@ -44,6 +44,12 @@ type TPortal = {
   }) => boolean;
   removeWidget?: (node: Konva.Group) => boolean;
   createConnectionId?: () => string;
+  createConnection?: (args: {
+    id?: string;
+    sourceElementId: string;
+    targetElementId: string;
+    style?: Record<string, unknown>;
+  }) => unknown;
   syncConnections?: (node: Konva.Group, args?: TWidgetConnectionSyncArgs) => void;
 }
 type TArgs = {
@@ -396,6 +402,22 @@ function appendWidgetConnection(portal: TPortal, args: {
   if (!targetElement || targetElement.data.type !== 'widget') return false
 
   const id = portal.createConnectionId?.() ?? `${args.source.id()}-${args.target.id()}-${args.sourceArc}-${args.targetArc}`
+  if (portal.createConnection) {
+    portal.createConnection({
+      id,
+      sourceElementId: args.source.id(),
+      targetElementId: args.target.id(),
+      style: {
+        sourceArc: args.sourceArc,
+        targetArc: args.targetArc,
+        waypoints: [],
+      },
+    })
+    portal.syncConnections?.(args.source)
+    portal.syncConnections?.(args.target)
+    return true
+  }
+
   const sourceData: TWidgetData = {
     ...sourceElement.data,
     connections: {
