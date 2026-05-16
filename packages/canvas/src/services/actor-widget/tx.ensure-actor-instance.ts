@@ -21,9 +21,6 @@ export async function txEnsureActorInstance(portal: TPortalEnsureActorInstance, 
     canvasId: args.canvasId,
     elementId: args.element.id,
     actorDefinitionId: args.element.data.actorDefinitionId,
-    actorRevisionId: args.element.data.actorRevisionId,
-    displayName: args.element.data.actorName,
-    machineContext: args.element.data.initialActorInput ?? {},
   });
   if (error || !instance) return null;
 

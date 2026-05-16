@@ -159,14 +159,6 @@ function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TElemen
       h: WIDGET_HOST_MIN_HEIGHT,
       w: WIDGET_HOST_MIN_WIDTH,
       actorDefinitionId: actor.actorDefinitionId,
-      actorRevisionId: actor.actorRevisionId,
-      actorSlug: actor.actorSlug,
-      actorName: actor.actorName,
-      actorVersion: actor.actorVersion,
-      uiKind: actor.uiKind ?? args.widgetConfig.id,
-      uiBundleFileId: actor.uiBundleFileId,
-      uiManifest: actor.uiManifest,
-      initialActorInput: actor.initialActorInput,
       uiProps: actor.uiProps,
     }
   }

@@ -105,8 +105,8 @@ const zCreateActorInstanceInput = z.object({
   canvasId: z.string(),
   elementId: z.string(),
   actorDefinitionId: z.string(),
-  actorRevisionId: z.string(),
-  displayName: z.string(),
+  actorRevisionId: z.string().optional(),
+  displayName: z.string().optional(),
   machineState: z.string().optional(),
   machineContext: zJsonRecord.optional(),
 });

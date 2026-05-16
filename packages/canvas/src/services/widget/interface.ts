@@ -49,14 +49,6 @@ export interface IWidgetConfig {
   initialPayload?: Record<string, any>;
   actor?: {
     actorDefinitionId: string;
-    actorRevisionId: string;
-    actorSlug: string;
-    actorName: string;
-    actorVersion: string;
-    uiKind?: string;
-    uiBundleFileId?: string | null;
-    uiManifest?: Record<string, TJsonValue>;
-    initialActorInput?: Record<string, TJsonValue>;
     uiProps?: Record<string, TJsonValue>;
   };
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;

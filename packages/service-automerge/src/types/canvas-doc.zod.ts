@@ -135,15 +135,7 @@ export const zWidgetData = z.object({
   expanded: z.boolean(),
   window: zWidgetWindow,
   actorDefinitionId: z.string(),
-  actorRevisionId: z.string(),
   actorInstanceId: z.string().optional(),
-  actorSlug: z.string(),
-  actorName: z.string(),
-  actorVersion: z.string(),
-  uiKind: z.string(),
-  uiBundleFileId: z.string().nullable().optional(),
-  uiManifest: z.record(z.string(), zJsonValue).optional(),
-  initialActorInput: z.record(z.string(), zJsonValue).optional(),
   uiProps: z.record(z.string(), zJsonValue).optional(),
 }).strict();
 

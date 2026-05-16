@@ -102,16 +102,22 @@ export function txRegisterActorRevision(portal: TPortalActorDbWrite, args: TArgs
 }
 
 export function txCreateActorInstance(portal: TPortalActorDbWrite, args: TArgsCreateActorInstance) {
-  const revision = fxGetActorRevision({ db: portal.db }, { id: args.input.actorRevisionId });
-  if (!revision) return null;
+  const definition = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, args.input.actorDefinitionId) }).sync();
+  if (!definition) return null;
+
+  const actorRevisionId = args.input.actorRevisionId ?? definition.current_revision_id;
+  if (!actorRevisionId) return null;
+
+  const revision = fxGetActorRevision({ db: portal.db }, { id: actorRevisionId });
+  if (!revision || revision.actor_definition_id !== definition.id) return null;
 
   const instanceRow = portal.db.insert(SCHEMA.actor_instances).values({
     id: portal.createId(),
     canvas_id: args.input.canvasId,
     element_id: args.input.elementId,
-    actor_definition_id: args.input.actorDefinitionId,
-    actor_revision_id: args.input.actorRevisionId,
-    display_name: args.input.displayName,
+    actor_definition_id: definition.id,
+    actor_revision_id: revision.id,
+    display_name: args.input.displayName ?? definition.name,
     machine_state: fnGetInitialMachineState({ input: args.input, revision }),
     machine_context: fnGetInitialMachineContext({ input: args.input, revision }),
     created_by_system_id: args.accountId ?? 'system',

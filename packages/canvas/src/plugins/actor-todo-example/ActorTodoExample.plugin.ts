@@ -41,13 +41,6 @@ export function createActorTodoExamplePlugin(): IPlugin<{
         },
         actor: {
           actorDefinitionId: revision.actor_definition_id,
-          actorRevisionId: revision.id,
-          actorSlug: ACTOR_TODO_SLUG,
-          actorName: ACTOR_TODO_REVISION.name,
-          actorVersion: ACTOR_TODO_REVISION.version,
-          uiKind: "todo",
-          uiManifest: ACTOR_TODO_REVISION.uiManifest,
-          initialActorInput: { items: [] },
         },
         renderDom: ({ root, element }) => mountTodoWidget({
           root,
