@@ -23,6 +23,12 @@ export type TServiceSandboxStartCommand = {
   readonly env?: Record<string, string>;
 };
 
+export type TServiceSandboxBindMount = {
+  readonly hostPath: string;
+  readonly guestPath: string;
+  readonly readonly?: boolean;
+};
+
 export type TServiceSandboxDb = BunSQLiteDatabase<typeof dbSchema>;
 
 export type TServiceSandboxConfig = {
@@ -42,6 +48,7 @@ export type TServiceSandboxConfig = {
   readonly workdir?: string;
   readonly markerPath?: string;
   readonly workerFiles?: readonly TServiceSandboxWorkerFile[];
+  readonly bindMounts?: readonly TServiceSandboxBindMount[];
   readonly startCommand?: TServiceSandboxStartCommand;
   readonly env?: Record<string, string | undefined>;
   readonly replaceSandbox?: boolean;
@@ -52,7 +59,7 @@ export type TServiceSandboxConfig = {
 };
 
 export type TServiceSandboxRuntimeConfig = {
-  readonly sandbox?: Partial<Pick<TServiceSandboxConfig, 'namespace' | 'volumeName' | 'volumeTag' | 'sandboxName' | 'forceSetup' | 'replaceSandbox' | 'workerFiles' | 'startCommand' | 'env'>>;
+  readonly sandbox?: Partial<Pick<TServiceSandboxConfig, 'namespace' | 'volumeName' | 'volumeTag' | 'sandboxName' | 'forceSetup' | 'replaceSandbox' | 'workerFiles' | 'bindMounts' | 'startCommand' | 'env'>>;
 };
 
 export type TServiceSandboxStatus = {
@@ -73,7 +80,7 @@ export type TMicrosandboxFs = {
   copyFromHost(hostPath: string, sandboxPath: string): Promise<void>;
 };
 export type TMicrosandboxSandbox = {
-  run(name: string): Promise<TMicrosandboxOutput>;
+  run?(name: string): Promise<TMicrosandboxOutput>;
   shell(command: string): Promise<TMicrosandboxOutput>;
   execStream(cmd: string, args?: readonly string[]): Promise<TMicrosandboxProcessHandle>;
   fs(): TMicrosandboxFs;
@@ -84,20 +91,55 @@ export type TMicrosandboxSandbox = {
 export type TMicrosandboxProcessHandle = { kill?(): Promise<unknown>; wait?(): Promise<unknown> };
 export type TMicrosandboxModule = {
   Sandbox: {
-    create(config: Record<string, unknown>): Promise<TMicrosandboxSandbox>;
+    create?(config: Record<string, unknown>): Promise<TMicrosandboxSandbox>;
+    builder?(name: string): TMicrosandboxSandboxBuilder;
     start(name: string): Promise<TMicrosandboxSandbox>;
     list(): Promise<readonly Record<string, unknown>[]>;
   };
   Volume: {
-    create(config: { name: string; quotaMib?: number }): Promise<unknown>;
+    create?(config: { name: string; quotaMib?: number }): Promise<unknown>;
+    builder?(name: string): TMicrosandboxVolumeBuilder;
     list(): Promise<readonly Record<string, unknown>[]>;
   };
-  Mount: { named(name: string, options?: { readonly?: boolean }): unknown };
-  NetworkPolicy: { publicOnly(): unknown };
+  Mount?: {
+    named(name: string, options?: { readonly?: boolean }): unknown;
+    bind?(hostPath: string, options?: { readonly?: boolean }): unknown;
+  };
+  NetworkPolicy?: { publicOnly(): unknown };
+};
+
+type TMicrosandboxSandboxBuilder = {
+  image(value: string): TMicrosandboxSandboxBuilder;
+  workdir(value: string): TMicrosandboxSandboxBuilder;
+  shell(value: string): TMicrosandboxSandboxBuilder;
+  envs(value: Record<string, string>): TMicrosandboxSandboxBuilder;
+  volume(path: string, configure: (builder: TMicrosandboxMountBuilder) => TMicrosandboxMountBuilder): TMicrosandboxSandboxBuilder;
+  scripts(value: Record<string, string>): TMicrosandboxSandboxBuilder;
+  network(configure: (builder: TMicrosandboxNetworkPolicyBuilder) => TMicrosandboxNetworkPolicyBuilder): TMicrosandboxSandboxBuilder;
+  replace(): TMicrosandboxSandboxBuilder;
+  pullPolicy(value: string): TMicrosandboxSandboxBuilder;
+  label?(key: string, value: string): TMicrosandboxSandboxBuilder;
+  create(): Promise<TMicrosandboxSandbox>;
+};
+
+type TMicrosandboxVolumeBuilder = {
+  quota(value: number): TMicrosandboxVolumeBuilder;
+  create(): Promise<unknown>;
+};
+
+type TMicrosandboxMountBuilder = {
+  named(name: string): TMicrosandboxMountBuilder;
+  readonly(): TMicrosandboxMountBuilder;
+  bind(hostPath: string): TMicrosandboxMountBuilder;
+};
+
+type TMicrosandboxNetworkPolicyBuilder = {
+  defaultEgress(action: string): TMicrosandboxNetworkPolicyBuilder;
+  defaultIngress(action: string): TMicrosandboxNetworkPolicyBuilder;
 };
 
 type TResolvedSandboxConfig = Required<Pick<TServiceSandboxConfig,
-  'namespace' | 'image' | 'bunVersion' | 'setupGeneration' | 'volumeTag' | 'volumePrefix' | 'sandboxName' | 'setupPackages' | 'runAptUpgrade' | 'volumeMountPath' | 'workdir' | 'markerPath' | 'workerFiles' | 'replaceSandbox' | 'verifyHostVolume' | 'forceSetup'
+  'namespace' | 'image' | 'bunVersion' | 'setupGeneration' | 'volumeTag' | 'volumePrefix' | 'sandboxName' | 'setupPackages' | 'runAptUpgrade' | 'volumeMountPath' | 'workdir' | 'markerPath' | 'workerFiles' | 'bindMounts' | 'replaceSandbox' | 'verifyHostVolume' | 'forceSetup'
 >> & Pick<TServiceSandboxConfig, 'db' | 'volumeName' | 'volumeQuotaMib' | 'startCommand' | 'pullPolicy' | 'loadMicrosandbox'> & { readonly env: Record<string, string> };
 
 export class ServiceSandbox implements IService, IStartableService<object, TServiceSandboxRuntimeConfig>, IStoppableService {
@@ -168,15 +210,17 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
       await this.#markInstanceMissing(instance.id, 'Sandbox row exists but host sandbox could not be started');
     }
 
-    this.#sandbox = await this.#microsandbox.Sandbox.create({
+    const setupScript = this.#setupScript(volume.volume_name);
+    this.#sandbox = await createMicrosandbox(this.#microsandbox, {
       name: this.#config.sandboxName,
       image: this.#config.image,
-      workdir: this.#config.workdir,
+      workdir: this.#config.volumeMountPath,
       shell: '/bin/bash',
       env: this.#config.env,
-      volumes: { [this.#config.volumeMountPath]: this.#microsandbox.Mount.named(volume.volume_name) },
-      scripts: { setup: this.#setupScript(volume.volume_name) },
-      network: this.#microsandbox.NetworkPolicy.publicOnly(),
+      volumeMountPath: this.#config.volumeMountPath,
+      volumeName: volume.volume_name,
+      bindMounts: this.#config.bindMounts,
+      scripts: { setup: setupScript },
       replace: true,
       pullPolicy: this.#config.pullPolicy ?? 'if-missing',
       labels: {
@@ -186,7 +230,7 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
       },
     });
 
-    const output = await this.#sandbox.run('setup');
+    const output = await runMicrosandboxSetup(this.#sandbox, setupScript);
     if (output.success === false || (typeof output.code === 'number' && output.code !== 0)) {
       const stderr = output.stderr?.() ?? '';
       await this.#markInstanceFailed(instance.id, stderr || `setup exited with code ${output.code}`);
@@ -266,7 +310,7 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
 
   async #createHostVolumeIfNeeded(volumeName: string): Promise<void> {
     if (await this.#hostVolumeExists(volumeName)) return;
-    await this.#microsandbox!.Volume.create({ name: volumeName, quotaMib: this.#config.volumeQuotaMib });
+    await createMicrosandboxVolume(this.#microsandbox!, volumeName, this.#config.volumeQuotaMib);
   }
 
   async #hostVolumeExists(volumeName: string): Promise<boolean> {
@@ -416,6 +460,83 @@ async function loadMicrosandbox(): Promise<TMicrosandboxModule> {
   return await import('microsandbox') as unknown as TMicrosandboxModule;
 }
 
+type TCreateMicrosandboxArgs = {
+  readonly name: string;
+  readonly image: string;
+  readonly workdir: string;
+  readonly shell: string;
+  readonly env: Record<string, string>;
+  readonly volumeMountPath: string;
+  readonly volumeName: string;
+  readonly bindMounts: readonly TServiceSandboxBindMount[];
+  readonly scripts: Record<string, string>;
+  readonly replace: boolean;
+  readonly pullPolicy: string;
+  readonly labels: Record<string, string>;
+};
+
+async function runMicrosandboxSetup(sandbox: TMicrosandboxSandbox, setupScript: string): Promise<TMicrosandboxOutput> {
+  if (sandbox.run) return await sandbox.run('setup');
+  return await sandbox.shell(setupScript);
+}
+
+function createLegacyMicrosandboxVolumes(module: TMicrosandboxModule, args: TCreateMicrosandboxArgs): Record<string, unknown> {
+  const volumes: Record<string, unknown> = { [args.volumeMountPath]: module.Mount?.named(args.volumeName) };
+  for (const mount of args.bindMounts) {
+    if (!module.Mount?.bind) throw new Error('Unsupported microsandbox module: missing Mount.bind');
+    volumes[mount.guestPath] = module.Mount.bind(mount.hostPath, { readonly: mount.readonly });
+  }
+  return volumes;
+}
+
+async function createMicrosandbox(module: TMicrosandboxModule, args: TCreateMicrosandboxArgs): Promise<TMicrosandboxSandbox> {
+  if (module.Sandbox.create) {
+    return await module.Sandbox.create({
+      name: args.name,
+      image: args.image,
+      workdir: args.workdir,
+      shell: args.shell,
+      env: args.env,
+      volumes: createLegacyMicrosandboxVolumes(module, args),
+      scripts: args.scripts,
+      network: module.NetworkPolicy?.publicOnly(),
+      replace: args.replace,
+      pullPolicy: args.pullPolicy,
+      labels: args.labels,
+    });
+  }
+
+  if (!module.Sandbox.builder) throw new Error('Unsupported microsandbox module: missing Sandbox.builder');
+  let builder = module.Sandbox.builder(args.name)
+    .image(args.image)
+    .workdir(args.workdir)
+    .shell(args.shell)
+    .envs(args.env)
+    .volume(args.volumeMountPath, (mount) => mount.named(args.volumeName))
+    .scripts(args.scripts)
+    .pullPolicy(args.pullPolicy);
+  for (const mount of args.bindMounts) {
+    builder = builder.volume(mount.guestPath, (mountBuilder) => {
+      const bound = mountBuilder.bind(mount.hostPath);
+      return mount.readonly ? bound.readonly() : bound;
+    });
+  }
+  if (args.replace) builder = builder.replace();
+  for (const [key, value] of Object.entries(args.labels)) builder = builder.label?.(key, value) ?? builder;
+  return await builder.create();
+}
+
+async function createMicrosandboxVolume(module: TMicrosandboxModule, volumeName: string, quotaMib: number | undefined): Promise<void> {
+  if (module.Volume.create) {
+    await module.Volume.create({ name: volumeName, quotaMib });
+    return;
+  }
+  if (!module.Volume.builder) throw new Error('Unsupported microsandbox module: missing Volume.builder');
+  let builder = module.Volume.builder(volumeName);
+  if (typeof quotaMib === 'number') builder = builder.quota(quotaMib);
+  await builder.create();
+}
+
 function resolveConfig(base: TServiceSandboxConfig, override: NonNullable<TServiceSandboxRuntimeConfig['sandbox']>): TResolvedSandboxConfig {
   const bunVersion = overrideValue(base.bunVersion, undefined, SERVICE_SANDBOX_BUN_VERSION);
   const image = overrideValue(base.image, undefined, `oven/bun:${bunVersion}`);
@@ -444,6 +565,7 @@ function resolveConfig(base: TServiceSandboxConfig, override: NonNullable<TServi
     workdir,
     markerPath: base.markerPath ?? `${volumeMountPath}/.vibecanvas/sandbox-volume.json`,
     workerFiles: override.workerFiles ?? base.workerFiles ?? [],
+    bindMounts: override.bindMounts ?? base.bindMounts ?? [],
     startCommand: override.startCommand ?? base.startCommand,
     env,
     replaceSandbox: override.replaceSandbox ?? base.replaceSandbox ?? false,
@@ -478,6 +600,7 @@ function instanceMetadata(config: TResolvedSandboxConfig): Record<string, unknow
     volumeMountPath: config.volumeMountPath,
     workdir: config.workdir,
     markerPath: config.markerPath,
+    bindMounts: config.bindMounts.map((mount) => ({ guestPath: mount.guestPath, readonly: mount.readonly ?? false })),
   };
 }
 

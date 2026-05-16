@@ -1,6 +1,8 @@
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import { Database } from 'bun:sqlite';
+import { drizzle } from 'drizzle-orm/bun-sqlite';
+import * as schema from '@vibecanvas/service-db/schema';
 import { SqliteWorkflowDb, WorkflowWorkerService, type TWorkflowJson, type TWorkflowSandboxExecutor } from '@vibecanvas/service-workflow';
 import { fnXdgPaths } from '@vibecanvas/shared-functions/vibecanvas-config/fn.xdg-paths';
 import { runStepRunner } from './step-runner';
@@ -41,23 +43,31 @@ function createRunStepInChild(): TWorkflowSandboxExecutor {
   };
 }
 
-async function createWorkflowWorker(): Promise<{ readonly worker: WorkflowWorkerService; readonly db: DbServiceBunSqlite }> {
-  const [paths, pathError] = fnXdgPaths({ env: process.env });
-  if (pathError) throw new Error(pathError.internalMessage);
-  const dataDir = env('VIBECANVAS_DATA_DIR', paths.dataDir);
-  const databasePath = env('VIBECANVAS_DB_PATH', paths.databasePath);
+async function createWorkflowWorker(): Promise<{ readonly worker: WorkflowWorkerService; readonly closeDb: () => void }> {
+  const databasePath = process.env.VIBECANVAS_DB_PATH;
+  if (!databasePath) {
+    const [paths, pathError] = fnXdgPaths({ env: process.env });
+    if (pathError) throw new Error(pathError.internalMessage);
+    return await createWorkflowWorkerForDatabase(paths.databasePath);
+  }
+  return await createWorkflowWorkerForDatabase(databasePath);
+}
+
+async function createWorkflowWorkerForDatabase(databasePath: string): Promise<{ readonly worker: WorkflowWorkerService; readonly closeDb: () => void }> {
   mkdirSync(dirname(databasePath), { recursive: true });
-  mkdirSync(paths.cacheDir, { recursive: true });
-  const db = new DbServiceBunSqlite({ databasePath, dataDir, cacheDir: paths.cacheDir, silentMigrations: process.env.VIBECANVAS_MIGRATIONS_SILENT !== '0' });
-  await db.start();
-  return { db, worker: new WorkflowWorkerService({ db: new SqliteWorkflowDb({ db: db.drizzle }), workerId: env('VIBECANVAS_WORKER_ID', `worker-${crypto.randomUUID()}`), sandboxName: env('VIBECANVAS_WORKER_SANDBOX_NAME', 'local-process'), leaseMs: Number(process.env.VIBECANVAS_WORKER_LEASE_MS ?? '30000'), pollIntervalMs: Number(process.env.VIBECANVAS_WORKER_POLL_INTERVAL_MS ?? '1000'), runStepInSandbox: createRunStepInChild() }) };
+  const sqlite = new Database(databasePath);
+  sqlite.run('PRAGMA foreign_keys = ON');
+  sqlite.run('PRAGMA journal_mode = WAL');
+  sqlite.run('PRAGMA busy_timeout = 5000');
+  const db = drizzle({ client: sqlite, schema });
+  return { closeDb: () => sqlite.close(), worker: new WorkflowWorkerService({ db: new SqliteWorkflowDb({ db }), workerId: env('VIBECANVAS_WORKER_ID', `worker-${crypto.randomUUID()}`), sandboxName: env('VIBECANVAS_WORKER_SANDBOX_NAME', 'local-process'), leaseMs: Number(process.env.VIBECANVAS_WORKER_LEASE_MS ?? '30000'), pollIntervalMs: Number(process.env.VIBECANVAS_WORKER_POLL_INTERVAL_MS ?? '1000'), runStepInSandbox: createRunStepInChild() }) };
 }
 
 async function main(): Promise<void> {
   if (process.env.VIBECANVAS_WORKER_MODE === 'step') { await runStepRunner(); return; }
-  const { worker, db } = await createWorkflowWorker();
+  const { worker, closeDb } = await createWorkflowWorker();
   const server = Bun.serve({ hostname: env('VIBECANVAS_WORKER_CONTROL_HOST', '127.0.0.1'), port: Number(process.env.VIBECANVAS_WORKER_CONTROL_PORT ?? '8787'), fetch(request) { if (new URL(request.url).pathname === '/health') { const status = worker.getStatus(); return Response.json({ ok: status.lastError === null, ...status }, { status: status.lastError === null ? 200 : 503 }); } return Response.json({ error: 'not found' }, { status: 404 }); } });
-  async function stop(): Promise<void> { worker.stop(); for (const child of children) child.kill('SIGTERM'); await Promise.allSettled(Array.from(children).map((child) => child.exited)); server.stop(true); await db.stop(); process.exit(0); }
+  async function stop(): Promise<void> { worker.stop(); for (const child of children) child.kill('SIGTERM'); await Promise.allSettled(Array.from(children).map((child) => child.exited)); server.stop(true); closeDb(); process.exit(0); }
   process.on('SIGINT', () => void stop()); process.on('SIGTERM', () => void stop());
   if (process.env.VIBECANVAS_WORKER_ONCE === '1') { await worker.drain(); await stop(); return; }
   worker.startPolling();

@@ -358,9 +358,9 @@ prefix: `apps/worker/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `package.json` |  | Workflow worker app package metadata and commands. |
+| 🤖 | `package.json` |  | Workflow worker app package metadata and commands. |
 | ❓ | `tsconfig.json` |  | TypeScript config for Bun workflow worker app. |
-| ❓ | `src/main.ts` |  | Durable workflow worker process with health endpoint and child-process sandbox step execution. |
+| 🤖 | `src/main.ts` |  | Durable workflow worker process with health endpoint and child-process sandbox step execution. |
 | ❓ | `src/schema.ts` |  | Zod request/response schemas for worker step runner IPC. |
 | ❓ | `src/step-runner.ts` |  | Child process step runner that loads workflow functions from module portal specs. |
 
@@ -371,11 +371,11 @@ prefix: `apps/visualizer/`
 |---|---|---|---|
 | ❓ | `package.json` |  | Standalone actor visualizer app manifest with dev/start/test/typecheck scripts. |
 | ❓ | `tsconfig.json` |  | TypeScript config for the React/Bun visualizer app. |
-| ❓ | `src/App.tsx` |  | React visualizer UI showing actor network, state inspector, queues, and message sender. |
+| 🤖 | `src/App.tsx` |  | React visualizer UI showing actor network, source selector, state inspector, queues, and message sender. |
 | ❓ | `src/assets.d.ts` |  | CSS text import declaration for the Bun visualizer server. |
 | ❓ | `src/client.tsx` |  | Browser hydration entry for the visualizer React UI. |
-| ❓ | `src/runtime.ts` |  | In-memory SQLite actor/workflow simulation runtime and scenario control API. |
-| ❓ | `src/server.tsx` |  | Bun SSR server, REST API, and SSE events for the actor visualizer on port 34532. |
+| 🤖 | `src/runtime.ts` |  | Actor visualizer runtime for in-memory scenarios and live dev DB actor snapshots. |
+| 🤖 | `src/server.tsx` |  | Bun SSR server, source-switching REST API, and SSE events for the actor visualizer on port 34532. |
 | ❓ | `src/style.css` |  | Visualizer network, inspector, actor cards, and DB stack styling. |
 | ❓ | `src/types.ts` |  | Scenario, actor seed, connection seed, and effect result typings. |
 | ❓ | `src/scenarios/counter-chain.ts` |  | Counter-to-ledger actor simulation scenario. |

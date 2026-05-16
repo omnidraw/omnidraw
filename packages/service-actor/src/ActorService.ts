@@ -1,11 +1,10 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import { ServiceSandbox } from '@vibecanvas/service-sandbox';
 import { SqliteWorkflowDb, type TWorkflowDb } from '@vibecanvas/service-workflow';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { ActorSupervisor } from './ActorSupervisor';
-import { ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT, DEFAULT_ACTOR_LEASE_MS, DEFAULT_ACTOR_POLL_INTERVAL_MS, DEFAULT_ACTOR_SANDBOX_NAME, DEFAULT_ACTOR_WORKER_ID, SANDBOX_WORKER_DIR, SANDBOX_WORKER_FILE } from './core/CONSTANTS';
+import { ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT, DEFAULT_ACTOR_LEASE_MS, DEFAULT_ACTOR_POLL_INTERVAL_MS, DEFAULT_ACTOR_SANDBOX_NAME, DEFAULT_ACTOR_WORKER_ID } from './core/CONSTANTS';
 
 export type TActorServiceWorkerEnv = Record<string, string | undefined>;
 
@@ -91,7 +90,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
     this.workerEnv = config.workerEnv ?? {};
     this.autoStart = config.autoStart ?? true;
     this.startSandboxByDefault = config.startSandbox ?? true;
-    this.sandboxRunner = config.sandboxRunner ?? createServiceSandboxRunner(this.db);
+    this.sandboxRunner = config.sandboxRunner ?? createMissingSandboxRunner();
     this.supervisor = new ActorSupervisor({ db: this.db, workflowDb: this.workflowDb, workerId: this.workerId, pollIntervalMs: this.pollIntervalMs });
   }
 
@@ -161,29 +160,10 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 }
 
-function createServiceSandboxRunner(db: TDrizzleDb): TActorSandboxRunner {
+function createMissingSandboxRunner(): TActorSandboxRunner {
   return {
-    start: async (args) => {
-      const sandbox = new ServiceSandbox({
-        db,
-        namespace: 'actor',
-        sandboxName: args.sandboxName,
-        workdir: SANDBOX_WORKER_DIR,
-        workerFiles: [{ hostPath: args.workerDistPath, sandboxPath: SANDBOX_WORKER_FILE, kind: 'file' }],
-        startCommand: { cmd: 'bun', args: [SANDBOX_WORKER_FILE], cwd: SANDBOX_WORKER_DIR },
-        env: args.workerEnv,
-        replaceSandbox: true,
-      });
-      await sandbox.start();
-      return {
-        isHealthy: async () => {
-          const output = await sandbox.shell(`bun -e ${JSON.stringify(`const r = await fetch("http://127.0.0.1:${args.controlPort}/health").catch(() => null); if (!r?.ok) process.exit(1); const b = await r.json().catch(() => null); if (!b?.ok) process.exit(1);`)}`).catch(() => null);
-          return Boolean(output?.success);
-        },
-        stop: async () => {
-          await sandbox.stop();
-        },
-      };
+    start: async () => {
+      throw new Error('ActorService requires an injected sandboxRunner when startSandbox is enabled');
     },
   };
 }

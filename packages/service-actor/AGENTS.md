@@ -7,8 +7,9 @@ Host-side actor runtime for Vibecanvas.
 `ActorService` is the safe host entrypoint. It owns:
 
 - an `ActorSupervisor` running in the host process
-- a generic durable workflow worker running inside `@vibecanvas/service-sandbox`
 - actor lifecycle polling, workflow scheduling, and result reconciliation
+
+`ActorService` does not own or construct `@vibecanvas/service-sandbox`. A host application must inject a sandbox runner that starts the generic durable workflow worker in the background.
 
 Important boundary:
 
@@ -43,6 +44,7 @@ await dbService.start();
 
 const actorService = new ActorService({
   db: dbService.drizzle,
+  sandboxRunner: hostProvidedSandboxRunner,
   // optional in tests/dev:
   // startSandbox: false,
   // autoStart: false,
@@ -54,7 +56,7 @@ await actorService.start();
 In production, `ActorService.start()` should:
 
 1. start/load the host supervisor
-2. start the sandboxed worker
+2. start the injected sandbox runner
 3. let the worker poll durable workflow jobs
 4. let the supervisor poll actor inbox/reconciliation work
 
