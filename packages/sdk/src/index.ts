@@ -1,6 +1,21 @@
-export { createActorRuntime, defineActor } from "./actor";
+export { createActorRuntime, defineActor, normalizeActorHandlerResult } from "./actor";
 export { getVibecanvasMachineStatus, getVibecanvasOfficialMachineStates, machine } from "./machine";
-export type { TVibecanvasWidgetConfig } from "./config";
+export { getVibecanvasBridge, installVibecanvasBridge } from "./bridge";
+export { defineWidget, useActor } from "./widget";
+export { defineVibecanvasConfig } from "./config";
+export type {
+  TActorJson,
+  TVibecanvasActorDefinition,
+  TVibecanvasActorHandler,
+  TVibecanvasActorHandlerArgs,
+  TVibecanvasActorHandlerResult,
+  TVibecanvasActorOutputMessage,
+  TVibecanvasActorRuntimePortal,
+  TVibecanvasDefinedActor,
+} from "./actor";
+export type { TVibecanvasActorSnapshot, TVibecanvasWidgetBridge } from "./bridge";
+export type { TVibecanvasConfig, TVibecanvasWidgetBundleConfig, TVibecanvasWidgetConfig } from "./config";
+export type { TVibecanvasWidget, TVibecanvasWidgetCleanup, TVibecanvasWidgetMountArgs } from "./widget";
 export type {
   TVibecanvasMachine,
   TVibecanvasMachineConfig,
@@ -17,14 +32,3 @@ export type {
   TVibecanvasMachineTransition,
   TVibecanvasOfficialMachineState,
 } from "./machine";
-export type {
-  TVibecanvasActor,
-  TVibecanvasActorDefinition,
-  TVibecanvasActorHandler,
-  TVibecanvasActorInputDefinition,
-  TVibecanvasActorOutputDefinition,
-  TVibecanvasActorOutputMessage,
-  TVibecanvasActorRuntime,
-  TVibecanvasActorRuntimePortal,
-  TVibecanvasActorSchema,
-} from "./actor";

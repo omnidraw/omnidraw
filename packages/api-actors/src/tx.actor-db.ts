@@ -6,6 +6,7 @@ import type {
   TCreateActorConnectionInput,
   TCreateActorInstanceInput,
   TRegisterActorRevisionInput,
+  TSendActorMessageInput,
   TUpdateActorConnectionInput,
 } from './contract';
 import { fnGetInitialMachineContext, fnGetInitialMachineState, fnNormalizeRegisterActorRevisionInput, fnToActorConnection, fnToActorInstance, fnToActorRevision } from './fn.actor-input';
@@ -38,6 +39,10 @@ export type TArgsUpdateActorConnection = {
 
 export type TArgsRemoveActorConnection = {
   id: string;
+};
+
+export type TArgsSendActorMessage = {
+  input: TSendActorMessageInput;
 };
 
 export function txRegisterActorRevision(portal: TPortalActorDbWrite, args: TArgsRegisterActorRevision) {
@@ -197,4 +202,74 @@ export function txRemoveActorConnection(portal: TPortalActorDbWrite, args: TArgs
     connectionId: connection.id,
   });
   return connection;
+}
+
+function createTodoContext(portal: TPortalActorDbWrite, args: { context: Record<string, unknown>; eventName: string; params: Record<string, unknown> }) {
+  const items = Array.isArray(args.context.items) ? args.context.items : [];
+  if (args.eventName === 'todo.add') {
+    const title = typeof args.params.title === 'string' ? args.params.title.trim() : '';
+    if (!title) return args.context;
+    return {
+      ...args.context,
+      items: [...items, { id: portal.createId(), title, completed: false }],
+    };
+  }
+
+  if (args.eventName === 'todo.toggle') {
+    const id = typeof args.params.id === 'string' ? args.params.id : '';
+    return {
+      ...args.context,
+      items: items.map((item) => {
+        if (typeof item !== 'object' || item === null || (item as { id?: unknown }).id !== id) return item;
+        return { ...item, completed: !(item as { completed?: unknown }).completed };
+      }),
+    };
+  }
+
+  if (args.eventName === 'todo.remove') {
+    const id = typeof args.params.id === 'string' ? args.params.id : '';
+    return {
+      ...args.context,
+      items: items.filter((item) => typeof item !== 'object' || item === null || (item as { id?: unknown }).id !== id),
+    };
+  }
+
+  if (args.eventName === 'todo.clearCompleted') {
+    return {
+      ...args.context,
+      items: items.filter((item) => typeof item !== 'object' || item === null || (item as { completed?: unknown }).completed !== true),
+    };
+  }
+
+  return args.context;
+}
+
+export function txSendActorMessage(portal: TPortalActorDbWrite, args: TArgsSendActorMessage) {
+  const instanceRow = portal.db.query.actor_instances.findFirst({ where: EQ(SCHEMA.actor_instances.id, args.input.actorInstanceId) }).sync();
+  if (!instanceRow) return null;
+
+  const definitionRow = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, instanceRow.actor_definition_id) }).sync();
+  const currentContext = instanceRow.machine_context as Record<string, unknown>;
+  const nextContext = definitionRow?.slug === 'todo'
+    ? createTodoContext(portal, { context: currentContext, eventName: args.input.eventName, params: args.input.params ?? {} })
+    : currentContext;
+
+  const updatedRow = portal.db.update(SCHEMA.actor_instances)
+    .set({
+      status: 'running',
+      machine_state: 'ready',
+      machine_context: nextContext,
+    })
+    .where(EQ(SCHEMA.actor_instances.id, args.input.actorInstanceId))
+    .returning()
+    .all()[0]!;
+  const instance = fnToActorInstance(updatedRow);
+
+  portal.eventPublisher.publishActorEvent(instance.canvas_id, {
+    type: 'actor.instance.updated',
+    canvasId: instance.canvas_id,
+    instance,
+  });
+
+  return instance;
 }

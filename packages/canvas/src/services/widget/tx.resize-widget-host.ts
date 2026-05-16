@@ -1,4 +1,4 @@
-import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TElementTransformAnchor } from "../element/types";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
@@ -17,7 +17,6 @@ import {
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from "./CONSTANTS";
-import { txSyncWidgetConnections } from "./tx.sync-widget-connections";
 
 type TPortal = {
   Circle?: typeof Konva.Circle;
@@ -81,7 +80,7 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.width);
 
   const beforeElement = args.node.getAttr(TRANSFORM_BEFORE_ELEMENT_ATTR) as TElement | undefined;
-  if (beforeElement?.data.type === "widget") {
+  if (beforeElement?.data.type === "widget" || beforeElement?.data.type === "ui-widget") {
     if (args.anchors?.some((anchor) => anchor.endsWith("left"))) {
       args.node.x(beforeElement.x + beforeElement.data.w - width);
     }
@@ -95,6 +94,13 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
   args.node.scale({ x: 1, y: 1 });
 
   txSyncConnectionBoundary(portal, { node: args.node, width, height });
+  const connectionBoundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
+  if (connectionBoundary) {
+    const hostData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+    const connectable = hostData?.type === "widget";
+    connectionBoundary.visible(connectable);
+    connectionBoundary.listening(connectable);
+  }
 
   const border = args.node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
   if (border instanceof portal.Rect) {
@@ -129,17 +135,15 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
     body.listening(true);
   }
 
-  const data = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
-  if (data?.type === "widget") {
+  const data = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+  if (data?.type === "widget" || data?.type === "ui-widget") {
     args.node.setAttr(ELEMENT_DATA_ATTR, {
       ...data,
       w: width,
       h: height,
       expanded: true,
-    } satisfies TWidgetData);
+    });
   }
-
-  txSyncWidgetConnections(portal, { node: args.node });
   args.node.getLayer()?.batchDraw();
 }
 

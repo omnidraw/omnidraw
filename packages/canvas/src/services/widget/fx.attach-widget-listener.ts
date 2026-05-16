@@ -1,4 +1,4 @@
-import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
+import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import { fnCurry } from '@vibecanvas/shared-functions/functional/fn.curry'
 import type Konva from 'konva'
 import type { CrdtService } from '..'
@@ -51,6 +51,8 @@ type TPortal = {
     style?: Record<string, unknown>;
   }) => unknown;
   syncConnections?: (node: Konva.Group, args?: TWidgetConnectionSyncArgs) => void;
+  setTimer?: (callback: () => void, timeout: number) => unknown;
+  clearTimer?: (timer: unknown) => void;
 }
 type TArgs = {
 }
@@ -113,15 +115,15 @@ function setupButtons(args: {
         return
       }
       if (buttonId === WIDGET_HOST_MINIMIZE_BUTTON_ID) {
-        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
-        const nextExpanded = widgetData?.type === 'widget'
+        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
+        const nextExpanded = widgetData?.type === 'widget' || widgetData?.type === 'ui-widget'
           ? widgetData.expanded === false
           : false
         args.syncExpandedState(nextExpanded)
       }
       if (buttonId === WIDGET_HOST_MAXIMIZE_BUTTON_ID) {
-        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
-        const nextWindowMode = widgetData?.type === 'widget' && widgetData.window === WIDGET_WINDOW_FULLSCREEN
+        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
+        const nextWindowMode = (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') && widgetData.window === WIDGET_WINDOW_FULLSCREEN
           ? WIDGET_WINDOW_CONTAINED
           : WIDGET_WINDOW_FULLSCREEN
         args.syncWindowState(nextWindowMode)
@@ -159,12 +161,12 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
     header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0])
   }
 
-  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
-  if (widgetData?.type === 'widget') {
+  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
+  if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
     portal.node.setAttr(ELEMENT_DATA_ATTR, {
       ...widgetData,
       expanded,
-    } satisfies TWidgetData)
+    })
   }
 
   syncWidgetDomPortal(portal)
@@ -178,12 +180,12 @@ function syncWindowState(portal: TPortal, windowMode: typeof WIDGET_WINDOW_CONTA
     activateWidgetBody(portal)
   }
 
-  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
-  if (widgetData?.type === 'widget') {
+  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
+  if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
     portal.node.setAttr(ELEMENT_DATA_ATTR, {
       ...widgetData,
       window: windowMode,
-    } satisfies TWidgetData)
+    })
   }
 
   syncWidgetDomPortal(portal)
@@ -402,63 +404,18 @@ function appendWidgetConnection(portal: TPortal, args: {
   if (!targetElement || targetElement.data.type !== 'widget') return false
 
   const id = portal.createConnectionId?.() ?? `${args.source.id()}-${args.target.id()}-${args.sourceArc}-${args.targetArc}`
-  if (portal.createConnection) {
-    portal.createConnection({
-      id,
-      sourceElementId: args.source.id(),
-      targetElementId: args.target.id(),
-      style: {
-        sourceArc: args.sourceArc,
-        targetArc: args.targetArc,
-        waypoints: [],
-      },
-    })
-    portal.syncConnections?.(args.source)
-    portal.syncConnections?.(args.target)
-    return true
-  }
-
-  const sourceData: TWidgetData = {
-    ...sourceElement.data,
-    connections: {
-      inputs: sourceElement.data.connections?.inputs ?? [],
-      outputs: [
-        ...(sourceElement.data.connections?.outputs ?? []),
-        {
-          id,
-          targetWidgetId: args.target.id(),
-        },
-      ],
+  portal.createConnection?.({
+    id,
+    sourceElementId: args.source.id(),
+    targetElementId: args.target.id(),
+    style: {
+      sourceArc: args.sourceArc,
+      targetArc: args.targetArc,
+      waypoints: [],
     },
-  }
-  const targetData: TWidgetData = {
-    ...targetElement.data,
-    connections: {
-      inputs: [
-        ...(targetElement.data.connections?.inputs ?? []),
-        {
-          id,
-          sourceWidgetId: args.source.id(),
-          line: {
-            sourceArc: args.sourceArc,
-            targetArc: args.targetArc,
-            waypoints: [],
-          },
-        },
-      ],
-      outputs: targetElement.data.connections?.outputs ?? [],
-    },
-  }
-
-  args.source.setAttr(ELEMENT_DATA_ATTR, sourceData)
-  args.target.setAttr(ELEMENT_DATA_ATTR, targetData)
-  portal.crdtService.build()
-    .patchElement(args.source.id(), 'data', sourceData)
-    .patchElement(args.target.id(), 'data', targetData)
-    .commit()
-
+  })
   portal.syncConnections?.(args.source)
-
+  portal.syncConnections?.(args.target)
   return true
 }
 
@@ -473,13 +430,14 @@ function updateActiveConnectionDragLine(stage: Konva.Stage | null) {
 
 function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) => void) {
   if (!(portal.node instanceof portal.Group)) return false
+  if (portal.node.getAttr(ELEMENT_DATA_ATTR)?.type !== 'widget') return false
   const widgetNode = portal.node
 
   const boundary = widgetNode.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`)
   const handle = widgetNode.findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`)
   if (!(handle instanceof portal.Circle) || !boundary) return false
 
-  let pulseTimer: ReturnType<typeof setInterval> | null = null
+  let pulseTimer: unknown | null = null
   let pulseAmount = 0
   let tempLine: Konva.Line | null = null
   let isConnecting = false
@@ -487,7 +445,7 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
 
   const stopPulse = () => {
     if (pulseTimer) {
-      clearInterval(pulseTimer)
+      portal.clearTimer?.(pulseTimer)
       pulseTimer = null
     }
     pulseAmount = 0
@@ -501,9 +459,9 @@ function setupConnectionBoundary(portal: TPortal, setCursor: (cursor: string) =>
   }
 
   const startPulse = () => {
-    if (pulseTimer || isConnecting) return
+    if (pulseTimer || isConnecting || !portal.setTimer) return
     handle.visible(true)
-    pulseTimer = setInterval(() => {
+    pulseTimer = portal.setTimer(() => {
       pulseAmount += 0.25
       handle.radius(10 + Math.sin(pulseAmount) * 2.75)
       handle.opacity(0.78 + Math.cos(pulseAmount) * 0.17)

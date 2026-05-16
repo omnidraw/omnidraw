@@ -186,7 +186,7 @@ function syncConnectionBorder(border: Konva.Line, args: { width: number; height:
 }
 
 export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors, element: TElement) {
-  if (element.data.type !== 'widget') return null
+  if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return null
 
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, element.data.w)
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, element.data.h)
@@ -203,6 +203,10 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   })
   const connectionBorder = createConnectionBorder(konva, colors)
   syncConnectionBorder(connectionBorder, { width, height })
+  if (element.data.type === 'ui-widget') {
+    connectionBorder.visible(false)
+    connectionBorder.listening(false)
+  }
   const connectionHandle = createConnectionHandle(konva)
 
   const body = createBody(konva, colors)

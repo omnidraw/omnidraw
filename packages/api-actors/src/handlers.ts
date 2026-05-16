@@ -5,10 +5,12 @@ import { apiGetActorInstance } from './api.get-actor-instance';
 import { apiGetActorRevision } from './api.get-actor-revision';
 import { apiListActorConnections } from './api.list-actor-connections';
 import { apiListActorInstances } from './api.list-actor-instances';
+import { apiListActorOutputs } from './api.list-actor-outputs';
 import { apiListActorRevisions } from './api.list-actor-revisions';
 import { apiRegisterActorRevision } from './api.register-actor-revision';
 import { apiRemoveActorConnection } from './api.remove-actor-connection';
 import { apiUpdateActorConnection } from './api.update-actor-connection';
+import { apiSendActorMessage } from './api.send-actor-message';
 import { baseActorsOs } from './orpc';
 
 const actorsHandlers = {
@@ -27,6 +29,12 @@ const actorsHandlers = {
     create: apiCreateActorConnection,
     update: apiUpdateActorConnection,
     remove: apiRemoveActorConnection,
+  },
+  messages: {
+    send: apiSendActorMessage,
+  },
+  outputs: {
+    list: apiListActorOutputs,
   },
   events: apiActorEvents,
 };

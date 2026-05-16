@@ -17,6 +17,7 @@ type TPortal = {
   createNode: (element: TElement) => Konva.Group | null;
   now: () => number;
   setupNode: (node: Konva.Group) => boolean;
+  clone: <T>(value: T) => T;
 }
 
 type TArgs = {
@@ -35,9 +36,15 @@ function stopDragSafely(node: Konva.Node) {
 
 function createClonedElement(portal: TPortal, sourceElement: TElement) {
   const timestamp = portal.now();
+  const clone = portal.clone(sourceElement);
+  if (clone.data.type === 'widget') {
+    const { actorInstanceId, ...dataWithoutInstance } = clone.data;
+    void actorInstanceId;
+    clone.data = dataWithoutInstance;
+  }
 
   return {
-    ...structuredClone(sourceElement),
+    ...clone,
     id: portal.createId(),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -65,7 +72,7 @@ function removeWidgetNode(node: Konva.Group) {
 
 export function txCreateWidgetCloneDrag(portal: TPortal, args: TArgs) {
   const sourceElement = portal.element.toElement(args.node);
-  if (!sourceElement || sourceElement.data.type !== "widget") {
+  if (!sourceElement || (sourceElement.data.type !== "widget" && sourceElement.data.type !== "ui-widget")) {
     return false;
   }
 

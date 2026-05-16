@@ -29,7 +29,7 @@ export function fxRegisterWidgetTool(portal: TPortalRegisterWidgetTool, args: TA
     drawCreate: {
       startDraft(localArgs) {
         return fxDrawHost({ konva: portal.konva, themeService: portal.themeService, crypto: portal.crypto },
-          { ...localArgs, kind: args.widgetConfig.id, initialPayload: args.widgetConfig.initialPayload ?? {} })
+          { ...localArgs, widgetConfig: args.widgetConfig })
       },
       updateDraft(previewNode, localArgs) {
         if (!(previewNode instanceof portal.konva.Group)) return

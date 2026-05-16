@@ -180,7 +180,7 @@ function createEditor(args: {
 }
 
 export function mountFilesystemWidget(args: TFilesystemWidgetMountArgs) {
-  const payload = args.element.data.type === "widget"
+  const payload = args.element.data.type === "ui-widget"
     ? args.element.data.payload as TFilesystemWidgetPayload
     : {};
   const rootPath = payload.rootPath ?? "";

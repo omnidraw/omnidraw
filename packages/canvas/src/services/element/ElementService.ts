@@ -122,17 +122,17 @@ export class ElementService implements IService<TElementServiceHooks> {
   removeElement(node: unknown, builder: TCrdtBuilder) {
     if(!isCanvasElementNode(node)) return builder
     const data = node.getAttr('vcElementData') as TElementData
-    const isWidget = data.type === 'widget'
+    const isWidgetHost = data.type === 'widget' || data.type === 'ui-widget'
     return builder.deleteElement(node.id(), {
       onCommit: (args) => {
-        const def = this.getElementDefinitions().find(def => isWidget ? def.id === data.kind : def.id === data.type)
+        const def = this.getElementDefinitions().find(def => isWidgetHost ? def.id === data.kind : def.id === data.type)
         if(!def) return
         def.onDelete?.(args.entity)
         callNodeOnRemove(node)
         node.destroy()
       },
       onRollback: (args) => {
-        const def = this.getElementDefinitions().find(def => isWidget ? def.id === data.kind : def.id === data.type)
+        const def = this.getElementDefinitions().find(def => isWidgetHost ? def.id === data.kind : def.id === data.type)
         if(!def) return
         def.onRestore?.(args.entity)
       }

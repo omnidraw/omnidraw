@@ -1,3 +1,4 @@
+export * from "./actor-todo-example/ActorTodoExample.plugin";
 export * from "./camera-control/CameraControl.plugin";
 export * from "./context-menu/ContextMenu.plugin";
 export * from "./event-listener/EventListener.plugin";

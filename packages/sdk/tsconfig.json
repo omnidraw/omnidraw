@@ -8,7 +8,7 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@vibecanvas/canvas/*": ["../canvas/src/*"],
       "@vibecanvas/service-automerge/*": ["../service-automerge/src/*"]

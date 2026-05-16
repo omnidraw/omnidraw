@@ -1,4 +1,4 @@
-import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { CameraService, SelectionService, WidgetManagerService } from '..';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
@@ -54,9 +54,10 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (!isKonvaGroup(portal.node)) return
 
     const matrix = body.getAbsoluteTransform().getMatrix();
-    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
-    const isCollapsed = widgetData?.type === 'widget' && widgetData.expanded === false;
-    const isFullscreen = widgetData?.type === 'widget' && widgetData.window === WIDGET_WINDOW_FULLSCREEN;
+    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+    const isWidgetHost = widgetData?.type === 'widget' || widgetData?.type === 'ui-widget';
+    const isCollapsed = isWidgetHost && widgetData.expanded === false;
+    const isFullscreen = isWidgetHost && widgetData.window === WIDGET_WINDOW_FULLSCREEN;
     const isActive = portal.selectionService?.focusedId === args.element.id;
 
     div.style.display = isCollapsed ? 'none' : '';
@@ -179,12 +180,12 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenWindowButton.onclick = () => {
     if (!isKonvaGroup(portal.node)) return;
 
-    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
-    if (widgetData?.type === 'widget') {
+    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+    if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
       portal.node.setAttr(ELEMENT_DATA_ATTR, {
         ...widgetData,
         window: WIDGET_WINDOW_CONTAINED,
-      } satisfies TWidgetData);
+      });
     }
     syncDiv();
   };

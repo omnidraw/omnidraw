@@ -19,6 +19,7 @@ import {
   createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import { ActorConnectionService } from "./services/actor-connection/ActorConnectionService";
+import { ActorWidgetBindingService } from "./services/actor-widget/ActorWidgetBindingService";
 import { CameraService } from "./services/camera/CameraService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
@@ -33,11 +34,12 @@ import { SessionService } from "./services/session/SessionService";
 import { ToolService } from "./services/tool/ToolService";
 import { WidgetManagerService } from "./services/widget/WidgetManagerService";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
-import { createTodoAppPlugin } from "./plugins/widget-example/TodoApp.plugin";
+import { createActorTodoExamplePlugin } from "./plugins/actor-todo-example/ActorTodoExample.plugin";
 
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
     actorConnection: ActorConnectionService;
+    actorWidgetBinding: ActorWidgetBindingService;
     camera: CameraService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;
@@ -103,6 +105,12 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
     scene,
     contextMenu,
   });
+  const actorWidgetBinding = new ActorWidgetBindingService({
+    apiService: config.apiService,
+    canvasId: config.canvasId,
+    crdt,
+    actorConnection,
+  });
   const widgetManager = new WidgetManagerService({
     crdtService: crdt,
     contextMenuService: contextMenu,
@@ -138,6 +146,7 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
   services.provide("history", 50, history);
   services.provide("selection", 60, selection);
   services.provide("actorConnection", 65, actorConnection);
+  services.provide("actorWidgetBinding", 66, actorWidgetBinding);
   services.provide("crdt", 70, crdt);
   services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);
@@ -169,7 +178,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
-    createTodoAppPlugin(),
+    createActorTodoExamplePlugin(),
   ];
 
   if (config.env.DEV) {

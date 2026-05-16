@@ -125,54 +125,7 @@ export const zImageData = z.object({
   }),
 });
 
-export const zWidgetOfficialMachineState = z.enum([
-  'booting',
-  'ready',
-  'busy',
-  'waiting',
-  'dirty',
-  'error',
-  'disabled',
-  'disposed',
-]);
-
-export const zWidgetMachineValue = z.string().regex(/^(booting|ready|busy|waiting|dirty|error|disabled|disposed)(\..+)?$/);
-
-export const zWidgetMachineCurrent = z.object({
-  value: zWidgetMachineValue,
-  changedAt: z.number(),
-  meta: z.record(z.string(), zJsonValue),
-});
-
-export const zWidgetMachine = zWidgetMachineCurrent;
-
-export const zWidgetPortPath = z.array(z.string().min(1)).min(1);
-
-export const zWidgetConnectionLine = z.object({
-  sourceArc: z.number().min(0).max(1),
-  targetArc: z.number().min(0).max(1),
-  waypoints: z.array(zPoint2D),
-});
-
-export const zWidgetInputConnection = z.object({
-  id: z.string(),
-  filterPort: zWidgetPortPath.optional(),
-  sourceWidgetId: z.string(),
-  sourceFilterPort: zWidgetPortPath.optional(),
-  line: zWidgetConnectionLine,
-});
-
-export const zWidgetOutputConnection = z.object({
-  id: z.string(),
-  filterPort: zWidgetPortPath.optional(),
-  targetWidgetId: z.string(),
-  targetFilterPort: zWidgetPortPath.optional(),
-});
-
-export const zWidgetConnections = z.object({
-  inputs: z.array(zWidgetInputConnection),
-  outputs: z.array(zWidgetOutputConnection),
-});
+export const zWidgetWindow = z.enum(['contained', 'minimized', 'fullscreen']);
 
 export const zWidgetData = z.object({
   type: z.literal('widget'),
@@ -180,11 +133,30 @@ export const zWidgetData = z.object({
   w: z.number(),
   h: z.number(),
   expanded: z.boolean(),
-  window: z.enum(['contained', 'minimized', 'fullscreen']),
-  payload: z.record(z.string(), zJsonValue),
-  machine: zWidgetMachine.optional(),
-  connections: zWidgetConnections.optional(),
-});
+  window: zWidgetWindow,
+  actorDefinitionId: z.string(),
+  actorRevisionId: z.string(),
+  actorInstanceId: z.string().optional(),
+  actorSlug: z.string(),
+  actorName: z.string(),
+  actorVersion: z.string(),
+  uiKind: z.string(),
+  uiBundleFileId: z.string().nullable().optional(),
+  uiManifest: z.record(z.string(), zJsonValue).optional(),
+  initialActorInput: z.record(z.string(), zJsonValue).optional(),
+  uiProps: z.record(z.string(), zJsonValue).optional(),
+}).strict();
+
+export const zUiWidgetData = z.object({
+  type: z.literal('ui-widget'),
+  kind: z.string(),
+  w: z.number(),
+  h: z.number(),
+  expanded: z.boolean(),
+  window: zWidgetWindow,
+  payload: z.record(z.string(), zJsonValue).optional(),
+  uiProps: z.record(z.string(), zJsonValue).optional(),
+}).strict();
 
 export const zElementData = z.union([
   zRectData,
@@ -196,6 +168,7 @@ export const zElementData = z.union([
   zTextData,
   zImageData,
   zWidgetData,
+  zUiWidgetData,
 ]);
 
 export const zElementStyle = z.object({

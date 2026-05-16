@@ -1,5 +1,5 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import SquareTerminal from "lucide-static/icons/square-terminal.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
@@ -23,14 +23,14 @@ function persistTerminalPayload(args: {
   payload: TTerminalWidgetPayload;
 }) {
   const currentElement = args.crdt.doc()?.elements[args.elementId];
-  if (!currentElement || currentElement.data.type !== "widget") {
+  if (!currentElement || currentElement.data.type !== "ui-widget") {
     return;
   }
 
-  const nextData: TWidgetData = {
+  const nextData: TUiWidgetData = {
     ...currentElement.data,
     payload: {
-      ...currentElement.data.payload,
+      ...(currentElement.data.payload ?? {}),
       ...args.payload,
     },
   };
@@ -64,6 +64,7 @@ export function createTerminalPlugin(): IPlugin<{
 
       widgetManager.registerWidget({
         id: TERMINAL_WIDGET_KIND,
+        dataType: "ui-widget",
         tool: {
           label: "Terminal",
           icon: SquareTerminal,

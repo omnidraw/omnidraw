@@ -1,9 +1,10 @@
-import { and as AND, asc as ASC, eq as EQ, inArray as IN_ARRAY } from 'drizzle-orm';
+import { and as AND, asc as ASC, eq as EQ, gt as GT, inArray as IN_ARRAY } from 'drizzle-orm';
 import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
 import * as SCHEMA from '@vibecanvas/service-db/schema';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { TCanvasMemberRole } from '@vibecanvas/service-db/schema';
 import { fnToActorConnection, fnToActorInstance, fnToActorRevision } from './fn.actor-input';
+import type { TActorOutput } from './contract';
 
 export type TPortalActorDb = {
   db: TDrizzleDb;
@@ -32,6 +33,12 @@ export type TArgsActorRevisionById = {
 
 export type TArgsActorRevisionList = {
   definitionId?: string;
+  slug?: string;
+};
+
+export type TArgsActorOutputList = {
+  actorInstanceId: string;
+  afterSeq?: number;
 };
 
 export type TArgsActorConnectionById = {
@@ -88,12 +95,18 @@ export function fxGetActorInstanceByElement(portal: TPortalActorDb, args: TArgsA
 }
 
 export function fxListActorRevisions(portal: TPortalActorDb, args: TArgsActorRevisionList) {
-  if (!args.definitionId) {
+  const definitionId = args.definitionId ?? (args.slug
+    ? portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.slug, args.slug) }).sync()?.id
+    : undefined);
+
+  if (args.slug && !definitionId) return [];
+
+  if (!definitionId) {
     return portal.db.query.actor_revisions.findMany({ orderBy: [ASC(SCHEMA.actor_revisions.created_at), ASC(SCHEMA.actor_revisions.id)] }).sync().map(fnToActorRevision);
   }
 
   return portal.db.query.actor_revisions.findMany({
-    where: EQ(SCHEMA.actor_revisions.actor_definition_id, args.definitionId),
+    where: EQ(SCHEMA.actor_revisions.actor_definition_id, definitionId),
     orderBy: [ASC(SCHEMA.actor_revisions.created_at), ASC(SCHEMA.actor_revisions.id)],
   }).sync().map(fnToActorRevision);
 }
@@ -113,4 +126,32 @@ export function fxListActorConnections(portal: TPortalActorDb, args: TArgsCanvas
 export function fxGetActorConnection(portal: TPortalActorDb, args: TArgsActorConnectionById) {
   const row = portal.db.query.actor_connections.findFirst({ where: EQ(SCHEMA.actor_connections.id, args.id) }).sync();
   return row ? fnToActorConnection(row) : null;
+}
+
+export function fxListActorOutputs(portal: TPortalActorDb, args: TArgsActorOutputList): TActorOutput[] {
+  const where = args.afterSeq === undefined
+    ? EQ(SCHEMA.actor_outputs.actor_instance_id, args.actorInstanceId)
+    : AND(EQ(SCHEMA.actor_outputs.actor_instance_id, args.actorInstanceId), GT(SCHEMA.actor_outputs.seq, args.afterSeq));
+
+  return portal.db.query.actor_outputs.findMany({
+    where,
+    orderBy: [ASC(SCHEMA.actor_outputs.seq), ASC(SCHEMA.actor_outputs.id)],
+  }).sync().map((row) => ({
+    id: row.id,
+    workspace_id: row.workspace_id,
+    canvas_id: row.canvas_id,
+    actor_instance_id: row.actor_instance_id,
+    seq: row.seq,
+    output_id: row.output_id,
+    message_id: row.message_id,
+    correlation_id: row.correlation_id,
+    causation_id: row.causation_id,
+    output_name: row.output_name,
+    payload: row.payload,
+    machine_state: row.machine_state,
+    created_at: row.created_at,
+    workflow_run_id: row.workflow_run_id,
+    workflow_step_id: row.workflow_step_id,
+    commit_status: row.commit_status,
+  }));
 }

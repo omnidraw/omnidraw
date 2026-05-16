@@ -14,7 +14,7 @@ import type {
   ToolService,
 } from "..";
 import type { ActorConnectionService } from "../actor-connection/ActorConnectionService";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TJsonValue } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
 export interface IWidgetManagerServiceHooks {
   widgetChange: SyncHook<[]>;
@@ -44,8 +44,21 @@ export type TWidgetRenderCleanup = () => void;
 
 export interface IWidgetConfig {
   id: string;
+  dataType?: "widget" | "ui-widget";
   tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
   initialPayload?: Record<string, any>;
+  actor?: {
+    actorDefinitionId: string;
+    actorRevisionId: string;
+    actorSlug: string;
+    actorName: string;
+    actorVersion: string;
+    uiKind?: string;
+    uiBundleFileId?: string | null;
+    uiManifest?: Record<string, TJsonValue>;
+    initialActorInput?: Record<string, TJsonValue>;
+    uiProps?: Record<string, TJsonValue>;
+  };
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
   sandbox?: IWidgetSandboxConfig;
 }

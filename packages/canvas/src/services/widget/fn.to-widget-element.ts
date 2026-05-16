@@ -1,4 +1,4 @@
-import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
 import { fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
@@ -7,8 +7,8 @@ import { isKonvaGroup } from "../../core/GUARDS";
 
 export function fnToWidgetElement(node: unknown) {
   if(!isKonvaGroup(node)) return null
-  const data: TWidgetData = node.getAttr(ELEMENT_DATA_ATTR)
-  if(!data) return null
+  const data: TUiWidgetData | TWidgetData = node.getAttr(ELEMENT_DATA_ATTR)
+  if(data?.type !== 'widget' && data?.type !== 'ui-widget') return null
 
   const worldPosition = fnGetWorldPosition({
     absolutePosition: node.absolutePosition(),

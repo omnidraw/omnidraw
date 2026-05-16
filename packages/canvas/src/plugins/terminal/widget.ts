@@ -431,7 +431,7 @@ function toTabState(tab: TTerminalTabPayload): TTerminalTabState {
 }
 
 export function mountTerminalWidget(args: TTerminalWidgetMountArgs) {
-  const payload = args.element.data.type === "widget"
+  const payload = args.element.data.type === "ui-widget"
     ? args.element.data.payload as TTerminalWidgetPayload
     : {};
   const initialTabs = normalizePayloadTabs(payload).map(toTabState);

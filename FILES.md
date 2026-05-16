@@ -104,6 +104,11 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/camera-control/tx.sync-hand-layer.ts` |  | Hand-overlay visibility, hit-testing, cursor synchronization during pann |
 | ❓ | `plugins/camera-control/tx.write-camera-state-to-localstorage.ts` |  | Persist per-canvas camera viewport into localStorage safely |
 | 🤖 | `plugins/context-menu/ContextMenu.plugin.ts` |  | Right-click hit-testing, selection/connection resolution, Solid canvas menu mounting |
+| ❓ | `plugins/actor-todo-example/ActorTodoExample.plugin.ts` |  | Built-in actor-backed Todo widget registration and UI binding. |
+| ❓ | `plugins/actor-todo-example/actor.todo-definition.ts` |  | Built-in Todo actor revision metadata and message schemas. |
+| ❓ | `plugins/actor-todo-example/CONSTANTS.ts` |  | Built-in Todo actor/widget ids and version constants. |
+| ❓ | `plugins/actor-todo-example/widget.todo-ui.ts` |  | Host-rendered Todo widget UI that sends actor messages and reads actor snapshots. |
+| 🤖 | `plugins/widget-example/TodoApp.plugin.ts` |  | Backwards alias to the actor-backed Todo example plugin. |
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
 | 🤖 | `plugins/filesystem/Filesystem.plugin.ts` |  | Trusted filesystem IDE widget plugin registration and creation flow. |
 | ❓ | `plugins/filesystem/getLanguageExtension.ts` |  | CodeMirror language loading by file extension for filesystem editor tabs. |
@@ -213,6 +218,9 @@ prefix: `packages/canvas/src/`
 | ❓ | `services/actor-connection/CONSTANTS.ts` |  | Actor connection renderer ids and boundary offsets. |
 | ❓ | `services/actor-connection/fn.geometry.ts` |  | Pure actor connection line boundary and style parsing helpers. |
 | ❓ | `services/actor-connection/tx.sync-lines.ts` |  | Draws, updates, selects, and removes DB-backed actor connection Konva lines. |
+| ❓ | `services/actor-widget/ActorWidgetBindingService.ts` |  | Creates and binds actor widget instances without writing actor state to Automerge. |
+| ❓ | `services/actor-widget/fn.widget-actor.ts` |  | Pure actor widget element detection and pending-key helpers. |
+| ❓ | `services/actor-widget/tx.ensure-actor-instance.ts` |  | Ensures missing actor instances and patches only actorInstanceId into widget data. |
 | 🤖 | `services/index.ts` |  | Services barrel exporting canvas runtime services including actor connections. |
 | ❓ | `services/camera/CameraService.ts` |  | Canvas camera pan/zoom viewport state driving scene layers |
 | ❓ | `services/canvas-registry/CanvasRegistryService.ts` |  | Canvas semantic registry: nodes↔elements/groups, lifecycle hooks, select |
@@ -222,6 +230,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
 | ✅ | `services/crdt/fxBuilder.ts` |  | Batch canvas CRDT patches/deletes into commit+rollback ops/effects |
 | ✅ | `services/crdt/tx.apply-ops.ts` |  | Replay recorded CRDT entity ops into Automerge |
+| 🤖 | `services/element/ElementService.ts` |  | Element registry runtime with host widget removal support for actor and UI widgets. |
 | 🤖 | `services/element/types.ts` |  | Element registry lifecycle and transform option typings |
 | ✅ | `services/editor/EditorService.ts` |  | Editor tool state, draft previews, CRDT commits |
 | ✅ | `services/editor/fx.get-canvas-point.ts` |  | Editor tool pointer events → canvas point + pressure |
@@ -237,11 +246,12 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/selection/SelectionService.ts` |  | canvas node/connection selection state, focus, mode, change notifications |
 | 🤖 | `services/tool/ToolService.ts` |  | Runtime tool registry, active tool switching, and draw-create preview commit |
 | 🤖 | `services/widget/fn.create-widget-node.ts` |  | Widget host scene node creation and collapsed/expanded frame rendering |
+| 🤖 | `services/widget/fn.to-widget-element.ts` |  | Serializes actor and UI widget host nodes back to canvas elements. |
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing and connection node id constants |
 | 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host activation/buttons/cursor, connection drag creation, attached-only drag sync, and alt-clone wiring |
-| ✅ | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
-| ✅ | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
+| 🤖 | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
+| 🤖 | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
 | 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and tool config |
 | 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, active pointer-event routing, glow, and cleanup listener wiring |
 | ❓ | `services/widget/tx.mount-arrow-sandbox.ts` |  | Mount Arrow sandbox widget source with SDK import rewriting and base sizing CSS. |
@@ -389,9 +399,11 @@ prefix: `packages/api-actors/src/`
 | ❓ | `api.get-actor-revision.ts` |  | Fetches one actor revision for privileged actor registrars. |
 | ❓ | `api.list-actor-connections.ts` |  | Lists canonical DB actor connections for a canvas. |
 | ❓ | `api.list-actor-instances.ts` |  | Lists actor instances for a canvas. |
+| ❓ | `api.list-actor-outputs.ts` |  | Lists actor output rows for widget state synchronization. |
 | ❓ | `api.list-actor-revisions.ts` |  | Lists actor revisions globally or for one definition. |
 | ❓ | `api.register-actor-revision.ts` |  | Registers actor definitions and revisions and advances current revision. |
 | ❓ | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
+| ❓ | `api.send-actor-message.ts` |  | Sends actor messages and publishes updated actor instance state. |
 | ❓ | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
 | ❓ | `contract.ts` |  | Actor ORPC contract, row schemas, mutation inputs, and event union. |
 | ❓ | `db.ts` |  | Resolves the concrete Drizzle DB from the generic DB service for actor APIs. |
@@ -575,16 +587,24 @@ prefix: `packages/sdk/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
+| 🤖 | `dist/actor.d.ts` | generated | Generated actor-side SDK declaration bundle. |
+| 🤖 | `dist/actor.js` | generated | Generated actor-side SDK runtime bundle. |
+| 🤖 | `dist/bridge.d.ts` | generated | Generated host bridge SDK declaration bundle. |
+| 🤖 | `dist/bridge.js` | generated | Generated host bridge SDK runtime bundle. |
 | 🤖 | `dist/index.d.ts` | generated | Generated self-contained widget SDK declaration bundle for file-package consumers. |
 | 🤖 | `dist/index.js` | generated | Generated widget SDK runtime bundle exporting actor functions and reactive machine helpers. |
+| 🤖 | `dist/widget.d.ts` | generated | Generated widget-side SDK declaration bundle. |
+| 🤖 | `dist/widget.js` | generated | Generated widget-side SDK runtime bundle. |
 | 🤖 | `package.json` |  | Widget SDK package metadata, dist exports, peer dependency, and declaration bundle build script. |
 | 🤖 | `README.md` |  | Guest widget SDK usage guide for actor functions, config, machine states, JSON Schema, and theming. |
 | 🤖 | `src/actor.ts` |  | Widget SDK actor function API and lightweight runtime placeholder. |
 | ❓ | `src/arrow-core.d.ts` |  | Local Arrow reactive declaration shim for SDK declaration bundling. |
+| ❓ | `src/bridge.ts` |  | Widget host bridge installation and access helpers. |
 | 🤖 | `src/config.ts` |  | Widget SDK config type for vibecanvas.config.ts including actor metadata. |
 | 🤖 | `src/index.ts` |  | Widget SDK barrel exporting actor functions, machine helpers, and config APIs. |
 | 🤖 | `src/machine.ts` |  | Reactive widget state machine with official host-known states. |
 | ❓ | `src/schema.ts` |  | Internal JSON Schema type used by actor port schemas. |
+| ❓ | `src/widget.ts` |  | Widget UI helper entry point using the injected host bridge. |
 | 🤖 | `tsconfig.json` |  | SDK declaration bundler TypeScript path mapping for monorepo type imports. |
 
 ## packages/service-automerge

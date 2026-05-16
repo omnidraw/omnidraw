@@ -39,106 +39,73 @@ type TJsonSchema = boolean | {
 	allOf?: TJsonSchema[];
 	not?: TJsonSchema;
 };
-/** JSON Schema used to validate actor input and output payloads. */
-export type TVibecanvasActorSchema = TJsonSchema;
-/**
- * Describes one input port that this widget actor can receive messages on.
- *
- * @template TPayload Payload type expected by the input handler.
- */
-export type TVibecanvasActorInputDefinition<TPayload = unknown> = {
-	/** Human-readable label shown in Vibecanvas connection UI. */
-	label?: string;
-	/** JSON Schema for payloads accepted by this input port. */
-	schema?: TVibecanvasActorSchema;
-	/** Called when another widget sends a message to this input port. */
-	handle?: (payload: TPayload) => void | Promise<void>;
+export type TActorJson = null | boolean | number | string | TActorJson[] | {
+	[key: string]: TActorJson;
 };
-/**
- * Describes one output port this widget actor can send messages from.
- *
- * Use either a JSON Schema directly or an object with a label and schema.
- */
-export type TVibecanvasActorOutputDefinition = TVibecanvasActorSchema | {
-	/** Human-readable label shown in Vibecanvas connection UI. */
-	label?: string;
-	/** JSON Schema for payloads sent by this output port. */
-	schema?: TVibecanvasActorSchema;
+export type TVibecanvasActorHandlerArgs<TContext = Record<string, TActorJson>, TInput = Record<string, TActorJson>> = {
+	state: string;
+	context: TContext;
+	input: TInput;
 };
-/** Declares this widget instance as a connectable actor. */
-export type TVibecanvasActorDefinition = {
-	/** Human-readable actor name shown in development/debug UI. */
-	name?: string;
-	/** Input ports this widget can receive messages on. */
-	inputs?: Record<string, TVibecanvasActorInputDefinition>;
-	/** Output ports this widget can send messages from. */
-	outputs?: Record<string, TVibecanvasActorOutputDefinition>;
+export type TVibecanvasActorHandlerResult<TContext = Record<string, TActorJson>> = {
+	state?: string;
+	context?: TContext;
+	outputs?: Array<{
+		name: string;
+		payload?: TActorJson;
+	}>;
 };
-/** Handles a message delivered to an actor input port. */
-export type TVibecanvasActorHandler<TPayload = unknown> = (payload: TPayload) => void | Promise<void>;
-/** Message sent by a widget actor output port. */
+export type TVibecanvasActorHandler<TContext = Record<string, TActorJson>, TInput = Record<string, TActorJson>> = (args: TVibecanvasActorHandlerArgs<TContext, TInput>) => TVibecanvasActorHandlerResult<TContext> | Promise<TVibecanvasActorHandlerResult<TContext>>;
 export type TVibecanvasActorOutputMessage = {
-	/** Output port name. */
 	output: string;
-	/** JSON-serializable payload. */
 	payload?: unknown;
 };
-/** Actor instance returned by defineActor(). */
-export type TVibecanvasActor = {
-	/** Registers an input handler imperatively. */
-	receive<TPayload = unknown>(input: string, handler: TVibecanvasActorHandler<TPayload>): () => void;
-	/** Sends a message from an output port to the Vibecanvas host router. */
-	send(output: string, payload?: unknown): void;
-};
-/** Host callbacks used by Vibecanvas to observe a widget actor. */
 export type TVibecanvasActorRuntimePortal = {
-	/** Called whenever defineActor() updates metadata. */
-	onDefinition?: (definition: TVibecanvasActorDefinition) => void;
-	/** Called whenever actor.send() sends an output message. */
+	onDefinition?: (definition: unknown) => void;
 	onSend?: (message: TVibecanvasActorOutputMessage) => void;
 };
-/** Internal runtime wrapper used by the host and tests. */
-export type TVibecanvasActorRuntime = {
-	/** Defines actor metadata and connectable input/output ports, then returns the actor instance. */
-	defineActor(definition: TVibecanvasActorDefinition): TVibecanvasActor;
-	/** Delivers a host-routed message to an input port. */
-	deliverActor(input: string, payload?: unknown): Promise<number>;
-	/** Returns the current actor definition. */
-	getActorDefinition(): TVibecanvasActorDefinition | null;
+export type TVibecanvasActorDefinition<TContext = Record<string, TActorJson>> = {
+	slug: string;
+	name: string;
+	version: string;
+	description?: string;
+	initialState: string;
+	initialContext: TContext;
+	inputSchema?: Record<string, TJsonSchema>;
+	outputSchema?: Record<string, TJsonSchema>;
+	on: Record<string, TVibecanvasActorHandler<TContext, Record<string, TActorJson>>>;
 };
-export declare function createActorRuntime(portal?: TVibecanvasActorRuntimePortal): TVibecanvasActorRuntime;
-/**
- * Defines actor metadata and connectable input/output ports, then returns the actor instance.
- *
- * Call once near the top of your widget `main.ts`.
- *
- * @example
- * const actor = defineActor({
- *   name: "Todo App",
- *   inputs: {
- *     addTodo: {
- *       schema: {
- *         type: "object",
- *         properties: { title: { type: "string" } },
- *         required: ["title"],
- *         additionalProperties: false,
- *       },
- *       handle(payload) {
- *         // update widget state
- *       },
- *     },
- *   },
- *   outputs: {
- *     todoCreated: {
- *       label: "Todo Created",
- *       schema: { type: "object" },
- *     },
- *   },
- * });
- *
- * actor.send("todoCreated", { title: "Ship it" });
- */
-export declare function defineActor(definition: TVibecanvasActorDefinition): TVibecanvasActor;
+export type TVibecanvasDefinedActor<TContext = Record<string, TActorJson>> = TVibecanvasActorDefinition<TContext> & {
+	manifest: {
+		slug: string;
+		name: string;
+		version: string;
+		description?: string;
+		inputSchema: Record<string, TJsonSchema>;
+		outputSchema: Record<string, TJsonSchema>;
+	};
+};
+export declare function createActorRuntime(portal?: TVibecanvasActorRuntimePortal): {
+	defineActor: (nextDefinition: any) => {
+		receive: (input: string, handler: (payload?: unknown) => void | Promise<void>) => () => void;
+		send: (output: string, payload?: unknown) => void;
+	};
+	deliverActor: (input: string, payload?: unknown) => Promise<number>;
+	getActorDefinition: () => any;
+};
+export declare function defineActor<TContext = Record<string, TActorJson>>(definition: TVibecanvasActorDefinition<TContext>): TVibecanvasDefinedActor<TContext>;
+export declare function normalizeActorHandlerResult<TContext>(args: {
+	previousState: string;
+	previousContext: TContext;
+	result: TVibecanvasActorHandlerResult<TContext> | null | undefined;
+}): {
+	state: string;
+	context: TContext;
+	outputs: {
+		name: string;
+		payload?: TActorJson;
+	}[];
+};
 declare const VIBECANVAS_OFFICIAL_MACHINE_STATES: readonly [
 	"booting",
 	"ready",
@@ -251,79 +218,51 @@ export declare function getVibecanvasMachineStatus(value: string): TVibecanvasOf
  */
 export declare function getVibecanvasOfficialMachineStates(): ("booting" | "ready" | "busy" | "waiting" | "dirty" | "error" | "disabled" | "disposed")[];
 export declare function machine<TState extends TVibecanvasMachineStateId = TVibecanvasMachineStateId>(config?: TVibecanvasMachineConfig<TState>): TVibecanvasMachine<TState>;
-/**
- * Metadata config shape for a Vibecanvas guest widget.
- *
- * Use this type in `vibecanvas.config.ts` with `satisfies`.
- *
- * @example
- * import type { TVibecanvasWidgetConfig } from "@vibecanvas/sdk";
- *
- * export default {
- *   schemaVersion: 1,
- *   id: "todo-app",
- *   label: "Todo App",
- *   permissions: [],
- *   defaultSize: { width: 400, height: 600 },
- *   source: {
- *     "main.ts": "./src/main.ts",
- *     "main.css": "./src/main.css",
- *   },
- *   actor: {
- *     states: ["booting", "ready.idle", "busy.saving", "error.failed"],
- *     inputs: {
- *       addTodo: {
- *         label: "Add Todo",
- *         schema: {
- *           type: "object",
- *           properties: { title: { type: "string" } },
- *           required: ["title"],
- *           additionalProperties: false,
- *         },
- *       },
- *     },
- *     outputs: {
- *       todoCreated: {
- *         label: "Todo Created",
- *         schema: { type: "object" },
- *       },
- *     },
- *   },
- * } satisfies TVibecanvasWidgetConfig;
- */
-export type TVibecanvasWidgetConfig = {
-	/** Version of the Vibecanvas widget config format. Use `1` for now. */
-	schemaVersion: 1;
-	/** Stable widget kind id. Prefer lowercase kebab-case, e.g. `todo-app`. */
+export type TVibecanvasActorSnapshot = {
 	id: string;
-	/** Human-readable widget name shown in menus and connection UI. */
-	label: string;
-	/** Requested host permissions. Keep empty unless Vibecanvas documents one. */
-	permissions: string[];
-	/** Default widget size when created from the toolbar. */
+	state: string;
+	context: Record<string, unknown>;
+};
+export type TVibecanvasWidgetBridge = {
+	getActorSnapshot(): TVibecanvasActorSnapshot | null | Promise<TVibecanvasActorSnapshot | null>;
+	sendActorMessage(eventName: string, params?: Record<string, unknown>, correlationId?: string): void | Promise<void>;
+	onActorSnapshot(callback: (snapshot: TVibecanvasActorSnapshot) => void): () => void;
+	requestHostUpdate?(patch: {
+		width?: number;
+		height?: number;
+		window?: "contained" | "minimized" | "fullscreen";
+	}): void | Promise<void>;
+};
+export declare function installVibecanvasBridge(nextBridge: TVibecanvasWidgetBridge): () => void;
+export declare function getVibecanvasBridge(): TVibecanvasWidgetBridge;
+export type TVibecanvasWidgetMountArgs = {
+	root: HTMLElement;
+};
+export type TVibecanvasWidgetCleanup = () => void;
+export type TVibecanvasWidget = (args: TVibecanvasWidgetMountArgs) => void | TVibecanvasWidgetCleanup;
+export declare function defineWidget(widget: TVibecanvasWidget): TVibecanvasWidget;
+export declare function useActor(): {
+	snapshot(): Promise<TVibecanvasActorSnapshot | null>;
+	state(): TVibecanvasActorSnapshot | null;
+	send(eventName: string, params?: Record<string, unknown>, correlationId?: string): void | Promise<void>;
+	onState(callback: (snapshot: TVibecanvasActorSnapshot) => void): () => void;
+};
+export type TVibecanvasWidgetBundleConfig = {
+	slug: string;
+	name: string;
+	version: string;
+	source: Record<string, string>;
 	defaultSize?: {
-		/** Default width in canvas pixels. */
 		width: number;
-		/** Default height in canvas pixels. */
 		height: number;
 	};
-	/** Source file map or config-relative source paths. Must include one `main.ts` or `main.js`. */
-	source: Record<string, string>;
-	/** Optional actor metadata used by Vibecanvas to connect widgets together. */
-	actor?: {
-		/** Optional list of states this actor may enter. Use official states or dot-qualified substates like `busy.saving`. */
-		states?: TVibecanvasMachineStateId[];
-		/** Input ports this widget can receive messages on. */
-		inputs?: Record<string, {
-			label?: string;
-			schema?: TJsonSchema;
-		}>;
-		/** Output ports this widget can emit messages from. */
-		outputs?: Record<string, {
-			label?: string;
-			schema?: TJsonSchema;
-		}>;
-	};
+	uiManifest?: Record<string, unknown>;
 };
+export type TVibecanvasConfig = {
+	actors?: TVibecanvasDefinedActor[];
+	widgets?: TVibecanvasWidgetBundleConfig[];
+};
+export declare function defineVibecanvasConfig(config: TVibecanvasConfig): TVibecanvasConfig;
+export type TVibecanvasWidgetConfig = TVibecanvasWidgetBundleConfig;
 
 export {};

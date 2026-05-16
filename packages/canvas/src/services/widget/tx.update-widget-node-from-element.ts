@@ -1,4 +1,4 @@
-import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import {
   ELEMENT_DATA_ATTR,
@@ -24,7 +24,6 @@ import {
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from "./CONSTANTS";
 import { txSyncWidgetDomPortals } from "./tx.sync-widget-dom-portals";
-import { txSyncWidgetConnections } from "./tx.sync-widget-connections";
 
 export type TPortalUpdateWidgetNodeFromElement = {
   Circle?: typeof Konva.Circle;
@@ -41,7 +40,7 @@ export type TArgsUpdateWidgetNodeFromElement = {
 function syncWidgetMetadata(args: {
   node: Konva.Group;
   element: TElement;
-  data: TWidgetData;
+  data: TUiWidgetData | TWidgetData;
 }) {
   args.node.setAttr(ELEMENT_DATA_ATTR, args.data);
   args.node.setAttr(ELEMENT_STYLE_ATTR, args.element.style ?? {});
@@ -89,6 +88,7 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
   width: number;
   height: number;
   expanded: boolean;
+  connectable: boolean;
 }) {
   const bodyHeight = Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, args.height - WIDGET_HOST_HEADER_HEIGHT);
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_HEADER_HEIGHT + bodyHeight);
@@ -99,6 +99,11 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
   args.node.scale({ x: 1, y: 1 });
 
   syncConnectionBoundary(portal, { node: args.node, width, height });
+  const connectionBoundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
+  if (connectionBoundary) {
+    connectionBoundary.visible(args.connectable);
+    connectionBoundary.listening(args.connectable);
+  }
 
   const border = args.node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
   if (border instanceof portal.Rect) {
@@ -138,7 +143,7 @@ export function txUpdateWidgetNodeFromElement(
   portal: TPortalUpdateWidgetNodeFromElement,
   args: TArgsUpdateWidgetNodeFromElement,
 ) {
-  if (!(args.node instanceof portal.Group) || args.element.data.type !== "widget") {
+  if (!(args.node instanceof portal.Group) || (args.element.data.type !== "widget" && args.element.data.type !== "ui-widget")) {
     return false;
   }
 
@@ -158,6 +163,7 @@ export function txUpdateWidgetNodeFromElement(
     width,
     height,
     expanded,
+    connectable: args.element.data.type === "widget",
   });
   syncWidgetMetadata({
     node: args.node,
@@ -171,7 +177,6 @@ export function txUpdateWidgetNodeFromElement(
   });
   txSetNodeZIndex({}, { node: args.node, zIndex: args.element.zIndex });
   txSyncWidgetDomPortals({}, { node: args.node });
-  txSyncWidgetConnections(portal, { node: args.node });
   args.node.getLayer()?.batchDraw();
 
   return true;

@@ -1,4 +1,4 @@
-import type { TElement, TElementData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
+import type { TElement, TElementData, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import type { ThemeService } from '@vibecanvas/service-theme'
 import type Konva from 'konva'
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS"
@@ -20,6 +20,7 @@ import {
 
 import { fnCreateWidgetNode } from './fn.create-widget-node'
 import type { TToolCanvasPoint, TToolDrawCreateStartDraftArgs } from '../tool/types'
+import type { IWidgetConfig } from './interface'
 
 type THostThemeColors = {
   headerFill: string;
@@ -109,8 +110,8 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   body.visible(true)
   body.listening(true)
 
-  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined
-  if (widgetData?.type === 'widget') {
+  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
+  if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
     widgetData.w = width
     widgetData.h = WIDGET_HOST_HEADER_HEIGHT + bodyHeight
     widgetData.expanded = true
@@ -139,20 +140,52 @@ type TPortalCreateHost = {
   crypto: typeof crypto;
 }
 
-type TArgsCreateHost = { kind: string, initialPayload: Record<string, any> } & TToolDrawCreateStartDraftArgs
+type TArgsCreateHost = { widgetConfig: IWidgetConfig } & TToolDrawCreateStartDraftArgs
+
+function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TElementData {
+  const widgetType = args.widgetConfig.dataType ?? 'ui-widget'
+
+  if (widgetType === 'widget') {
+    const actor = args.widgetConfig.actor
+    if (!actor) {
+      throw new Error('Actor widget config requires actor metadata')
+    }
+
+    return {
+      type: 'widget',
+      expanded: true,
+      kind: args.widgetConfig.id,
+      window: 'contained',
+      h: WIDGET_HOST_MIN_HEIGHT,
+      w: WIDGET_HOST_MIN_WIDTH,
+      actorDefinitionId: actor.actorDefinitionId,
+      actorRevisionId: actor.actorRevisionId,
+      actorSlug: actor.actorSlug,
+      actorName: actor.actorName,
+      actorVersion: actor.actorVersion,
+      uiKind: actor.uiKind ?? args.widgetConfig.id,
+      uiBundleFileId: actor.uiBundleFileId,
+      uiManifest: actor.uiManifest,
+      initialActorInput: actor.initialActorInput,
+      uiProps: actor.uiProps,
+    }
+  }
+
+  return {
+    type: 'ui-widget',
+    expanded: true,
+    kind: args.widgetConfig.id,
+    window: 'contained',
+    h: WIDGET_HOST_MIN_HEIGHT,
+    w: WIDGET_HOST_MIN_WIDTH,
+    payload: args.widgetConfig.initialPayload ?? {},
+  }
+}
 
 export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
   const hostThemeColors = getHostThemeColors(portal.themeService)
 
-  const elementData: TElementData = {
-    type: 'widget',
-    expanded: true,
-    kind: args.kind,
-    window: 'contained',
-    h: WIDGET_HOST_MIN_HEIGHT,
-    w: WIDGET_HOST_MIN_WIDTH,
-    payload: args.initialPayload
-  }
+  const elementData = createWidgetElementData({ widgetConfig: args.widgetConfig })
 
   const element: TElement = {
     id: portal.crypto.randomUUID(),
