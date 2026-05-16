@@ -84,6 +84,17 @@ const server = Bun.serve({
       if (request.method === 'GET' && url.pathname === '/api/events') return events();
       if (request.method === 'GET' && url.pathname === '/api/state') return json({ snapshot: runtime.snapshot() });
       if (request.method === 'GET' && url.pathname === '/api/scenarios') return json({ scenarios: (runtime.snapshot() as any).scenarioOptions });
+      if (request.method === 'POST' && url.pathname === '/api/source') {
+        const body = await readJson(request);
+        if (body.mode === 'db') await runtime.loadDbState(body.canvasId ? String(body.canvasId) : null);
+        else await runtime.loadScenario(String(body.scenarioId ?? runtime.scenario.id));
+        return json({ snapshot: runtime.snapshot() });
+      }
+      if (request.method === 'POST' && url.pathname === '/api/canvas') {
+        const body = await readJson(request);
+        await runtime.selectDbCanvas(body.canvasId ? String(body.canvasId) : null);
+        return json({ snapshot: runtime.snapshot() });
+      }
       if (request.method === 'POST' && url.pathname === '/api/scenario') {
         const body = await readJson(request);
         await runtime.loadScenario(String(body.scenarioId ?? ''));

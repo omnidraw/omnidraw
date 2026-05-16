@@ -1,4 +1,6 @@
 import { eq } from 'drizzle-orm';
+import { existsSync, mkdirSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { ActorService } from '@vibecanvas/service-actor';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import * as schema from '@vibecanvas/service-db/schema';
@@ -7,6 +9,9 @@ import { getScenario, VISUALIZER_SCENARIOS } from './scenarios';
 import type { TVisualizerEffectResult, TVisualizerScenario } from './types';
 
 type TSubscriber = (snapshot: unknown) => void;
+type TSourceMode = 'scenario' | 'db';
+
+type TActorPosition = { readonly x: number; readonly y: number };
 
 function id(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -26,25 +31,80 @@ function serialize(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value, (_key, item) => item instanceof Date ? item.toISOString() : item));
 }
 
+function findMonorepoRoot(startDir: string): string | null {
+  let current = startDir;
+  while (current !== dirname(current)) {
+    if (existsSync(join(current, 'bun.lock'))) return current;
+    current = dirname(current);
+  }
+  if (existsSync(join(current, 'bun.lock'))) return current;
+  return null;
+}
+
+function resolveDevDbConfig() {
+  const dbOverride = process.env.VIBECANVAS_DB;
+  if (dbOverride) {
+    const databasePath = resolve(process.cwd(), dbOverride);
+    const baseDir = dirname(databasePath);
+    mkdirSync(baseDir, { recursive: true });
+    return { databasePath, dataDir: baseDir, cacheDir: baseDir };
+  }
+
+  const configOverride = process.env.VIBECANVAS_CONFIG;
+  if (configOverride) {
+    mkdirSync(configOverride, { recursive: true });
+    return { databasePath: join(configOverride, 'vibecanvas.sqlite'), dataDir: configOverride, cacheDir: configOverride };
+  }
+
+  const monorepoRoot = findMonorepoRoot(process.cwd());
+  if (!monorepoRoot) throw new Error(`Could not locate bun.lock from ${process.cwd()}`);
+  const localVolume = join(monorepoRoot, 'local-volume');
+  const dataDir = join(localVolume, 'data');
+  const cacheDir = join(localVolume, 'cache');
+  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(cacheDir, { recursive: true });
+  return { databasePath: join(dataDir, 'vibecanvas.sqlite'), dataDir, cacheDir };
+}
+
+function positionFromManifest(value: unknown): TActorPosition | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as { readonly x?: unknown; readonly y?: unknown };
+  if (typeof record.x !== 'number' || typeof record.y !== 'number') return null;
+  return { x: record.x, y: record.y };
+}
+
+function fallbackPosition(index: number): TActorPosition {
+  const columns = 4;
+  return { x: 80 + (index % columns) * 390, y: 120 + Math.floor(index / columns) * 330 };
+}
+
 export class VisualizerRuntime {
   scenario: TVisualizerScenario;
+  sourceMode: TSourceMode = 'scenario';
+  selectedCanvasId: string | null = null;
+  dbPath: string | null = null;
   dbService: DbServiceBunSqlite | null = null;
   workflowDb: SqliteWorkflowDb | null = null;
   workflowSuperviser: WorkflowSuperviserService | null = null;
   workflowWorker: WorkflowWorkerService | null = null;
   actorService: ActorService | null = null;
   subscribers = new Set<TSubscriber>();
+  refreshTimer: Timer | null = null;
 
   constructor(initialScenarioId?: string) {
     this.scenario = getScenario(initialScenarioId);
   }
 
   async start(): Promise<void> {
-    await this.loadScenario(this.scenario.id);
+    if (process.env.VIBECANVAS_VISUALIZER_SOURCE === 'db') await this.loadDbState();
+    else await this.loadScenario(this.scenario.id);
   }
 
   async loadScenario(scenarioId: string): Promise<void> {
     await this.stopServices();
+    this.sourceMode = 'scenario';
+    this.selectedCanvasId = null;
+    this.dbPath = null;
     this.scenario = getScenario(scenarioId);
     this.dbService = new DbServiceBunSqlite({ databasePath: ':memory:', dataDir: '/tmp/vibecanvas-visualizer', cacheDir: '/tmp/vibecanvas-visualizer-cache', silentMigrations: true });
     await this.dbService.start();
@@ -71,7 +131,28 @@ export class VisualizerRuntime {
     this.publish();
   }
 
+  async loadDbState(canvasId?: string | null): Promise<void> {
+    await this.stopServices();
+    const config = resolveDevDbConfig();
+    this.sourceMode = 'db';
+    this.dbPath = config.databasePath;
+    this.selectedCanvasId = canvasId ?? null;
+    this.dbService = new DbServiceBunSqlite({ ...config, silentMigrations: true });
+    await this.dbService.start();
+    this.dbService.account.ensureDefaultOwner();
+    this.refreshTimer = setInterval(() => this.publish(), 1_500);
+    this.publish();
+  }
+
+  async selectDbCanvas(canvasId: string | null): Promise<void> {
+    if (this.sourceMode !== 'db') return;
+    this.selectedCanvasId = canvasId;
+    this.publish();
+  }
+
   async stopServices(): Promise<void> {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    this.refreshTimer = null;
     this.workflowWorker?.stop();
     await this.actorService?.stop().catch(() => undefined);
     await this.dbService?.stop().catch(() => undefined);
@@ -111,6 +192,10 @@ export class VisualizerRuntime {
   }
 
   async tick(): Promise<unknown> {
+    if (this.sourceMode === 'db') {
+      this.publish();
+      return serialize({ status: 'refreshed' });
+    }
     const actorResultA = await this.actorService?.supervisor.runOnce();
     const workerResult = await this.workflowWorker?.runOnce();
     const actorResultB = await this.actorService?.supervisor.runOnce();
@@ -120,6 +205,10 @@ export class VisualizerRuntime {
   }
 
   async drain(limit = 50): Promise<unknown> {
+    if (this.sourceMode === 'db') {
+      this.publish();
+      return serialize({ status: 'refreshed' });
+    }
     const steps: unknown[] = [];
     for (let i = 0; i < limit; i += 1) {
       const actorResultA = await this.actorService?.supervisor.runOnce();
@@ -134,43 +223,7 @@ export class VisualizerRuntime {
   }
 
   snapshot(): unknown {
-    const db = this.requireDb();
-    const actors = db.select().from(schema.actor_instances).all().map((instance) => {
-      const seed = this.scenario.actors.find((actor) => actor.id === instance.id);
-      const workflowRun = instance.workflow_run_id ? db.query.workflow_runs.findFirst({ where: eq(schema.workflow_runs.id, instance.workflow_run_id) }).sync() : null;
-      const workflowRuns = db.select().from(schema.workflow_runs).all()
-        .filter((run) => run.subject_id === instance.id)
-        .sort((a, b) => a.started_at.getTime() - b.started_at.getTime());
-      const workflowRunIds = new Set(workflowRuns.map((run) => run.id));
-      const workflowSteps = db.select().from(schema.workflow_steps).all()
-        .filter((step) => workflowRunIds.has(step.workflow_run_id))
-        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.step_index - b.step_index);
-      return {
-        ...instance,
-        x: seed?.x ?? 0,
-        y: seed?.y ?? 0,
-        inbox: db.select().from(schema.actor_inbox).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
-        outputs: db.select().from(schema.actor_outputs).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
-        workflowRun,
-        workflowRuns,
-        workflowSteps,
-      };
-    });
-    const data = {
-      scenario: { id: this.scenario.id, name: this.scenario.name, description: this.scenario.description, explainer: this.scenario.explainer },
-      scenarioOptions: VISUALIZER_SCENARIOS.map((scenario) => ({ id: scenario.id, name: scenario.name, description: scenario.description })),
-      status: { actorService: this.actorService?.getStatus(), workflowWorker: this.workflowWorker?.getStatus() },
-      actors,
-      connections: db.select().from(schema.actor_connections).all(),
-      global: {
-        workflowRuns: db.select().from(schema.workflow_runs).all(),
-        workflowSteps: db.select().from(schema.workflow_steps).all(),
-        sandboxRuns: db.select().from(schema.sandbox_runs).all(),
-        inbox: db.select().from(schema.actor_inbox).all(),
-        outputs: db.select().from(schema.actor_outputs).all(),
-      },
-    };
-    return serialize(data);
+    return this.sourceMode === 'db' ? this.dbSnapshot() : this.scenarioSnapshot();
   }
 
   subscribe(fn: TSubscriber): () => void {
@@ -181,6 +234,105 @@ export class VisualizerRuntime {
   publish(): void {
     const snapshot = this.snapshot();
     for (const subscriber of this.subscribers) subscriber(snapshot);
+  }
+
+  private scenarioSnapshot(): unknown {
+    const data = this.buildDbBackedSnapshot({
+      title: this.scenario.name,
+      description: this.scenario.description,
+      explainer: this.scenario.explainer,
+      actorPosition: (instance, index) => {
+        const seed = this.scenario.actors.find((actor) => actor.id === instance.id);
+        return seed ? { x: seed.x, y: seed.y } : fallbackPosition(index);
+      },
+    });
+    return serialize({
+      ...data,
+      scenario: { id: this.scenario.id, name: this.scenario.name, description: this.scenario.description, explainer: this.scenario.explainer },
+      scenarioOptions: VISUALIZER_SCENARIOS.map((scenario) => ({ id: scenario.id, name: scenario.name, description: scenario.description })),
+      source: { mode: this.sourceMode, dbPath: null, canvasId: null },
+      canvasOptions: [],
+      status: { actorService: this.actorService?.getStatus(), workflowWorker: this.workflowWorker?.getStatus() },
+    });
+  }
+
+  private dbSnapshot(): unknown {
+    const db = this.requireDb();
+    const canvases = db.select().from(schema.canvas).all();
+    const selectedCanvas = canvases.find((canvas) => canvas.id === this.selectedCanvasId) ?? null;
+    const title = selectedCanvas ? `DB: ${selectedCanvas.name}` : 'DB: all canvases';
+    const data = this.buildDbBackedSnapshot({
+      title,
+      description: this.dbPath ? `Live actor rows from ${this.dbPath}` : 'Live actor rows from the Vibecanvas database',
+      explainer: null,
+      actorPosition: (instance, index) => {
+        const revision = db.query.actor_revisions.findFirst({ where: eq(schema.actor_revisions.id, instance.actor_revision_id) }).sync();
+        return positionFromManifest(revision?.ui_manifest) ?? fallbackPosition(index);
+      },
+    });
+    return serialize({
+      ...data,
+      scenario: { id: 'db', name: title, description: this.dbPath ?? '', explainer: null },
+      scenarioOptions: VISUALIZER_SCENARIOS.map((scenario) => ({ id: scenario.id, name: scenario.name, description: scenario.description })),
+      source: { mode: this.sourceMode, dbPath: this.dbPath, canvasId: this.selectedCanvasId },
+      canvasOptions: [
+        { id: '', name: 'All canvases', actorCount: db.select().from(schema.actor_instances).all().length },
+        ...canvases.map((canvas) => ({ id: canvas.id, name: canvas.name, actorCount: this.countActorsForCanvas(canvas.id) })),
+      ],
+      status: { actorService: null, workflowWorker: null },
+    });
+  }
+
+  private buildDbBackedSnapshot(args: {
+    readonly title: string;
+    readonly description: string;
+    readonly explainer: unknown;
+    readonly actorPosition: (instance: typeof schema.actor_instances.$inferSelect, index: number) => TActorPosition;
+  }) {
+    const db = this.requireDb();
+    const canvasId = this.sourceMode === 'db' ? this.selectedCanvasId : this.scenario.canvasId;
+    const filterByCanvas = <T extends { readonly canvas_id?: string | null }>(rows: T[]) => canvasId ? rows.filter((row) => row.canvas_id === canvasId) : rows;
+    const instances = filterByCanvas(db.select().from(schema.actor_instances).all());
+    const actorIds = new Set(instances.map((instance) => instance.id));
+    const actors = instances.map((instance, index) => {
+      const workflowRun = instance.workflow_run_id ? db.query.workflow_runs.findFirst({ where: eq(schema.workflow_runs.id, instance.workflow_run_id) }).sync() : null;
+      const workflowRuns = db.select().from(schema.workflow_runs).all()
+        .filter((run) => run.subject_id === instance.id)
+        .sort((a, b) => a.started_at.getTime() - b.started_at.getTime());
+      const workflowRunIds = new Set(workflowRuns.map((run) => run.id));
+      const workflowSteps = db.select().from(schema.workflow_steps).all()
+        .filter((step) => workflowRunIds.has(step.workflow_run_id))
+        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.step_index - b.step_index);
+      return {
+        ...instance,
+        ...args.actorPosition(instance, index),
+        inbox: db.select().from(schema.actor_inbox).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
+        outputs: db.select().from(schema.actor_outputs).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
+        workflowRun,
+        workflowRuns,
+        workflowSteps,
+      };
+    });
+
+    return {
+      title: args.title,
+      description: args.description,
+      explainer: args.explainer,
+      actors,
+      connections: filterByCanvas(db.select().from(schema.actor_connections).all()).filter((connection) => actorIds.has(connection.source_actor_instance_id) && actorIds.has(connection.target_actor_instance_id)),
+      global: {
+        workflowRuns: filterByCanvas(db.select().from(schema.workflow_runs).all()),
+        workflowSteps: db.select().from(schema.workflow_steps).all(),
+        sandboxRuns: db.select().from(schema.sandbox_runs).all(),
+        inbox: filterByCanvas(db.select().from(schema.actor_inbox).all()),
+        outputs: filterByCanvas(db.select().from(schema.actor_outputs).all()),
+      },
+    };
+  }
+
+  private countActorsForCanvas(canvasId: string): number {
+    const db = this.requireDb();
+    return db.select().from(schema.actor_instances).all().filter((row) => row.canvas_id === canvasId).length;
   }
 
   private seedScenario(scenarioToSeed: TVisualizerScenario): void {

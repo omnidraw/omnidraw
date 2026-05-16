@@ -48,6 +48,10 @@ function getDefaultEventName(snapshot: any) {
   return 'msg.in.ping';
 }
 
+function isDbSource(snapshot: any) {
+  return snapshot?.source?.mode === 'db';
+}
+
 function getDefaultPayload(snapshot: any) {
   return '{"by":1}';
 }
@@ -230,8 +234,8 @@ export function App({ initialSnapshot }: TAppProps) {
   React.useEffect(() => {
     setNodes((currentNodes) => {
       const currentById = new Map(currentNodes.map((node) => [node.id, node]));
-      return [
-        ...actors.map((actor: any) => {
+      const explainer = snapshot.scenario?.explainer;
+      const actorNodes = actors.map((actor: any) => {
           const existing = currentById.get(actor.id);
           return {
             id: actor.id,
@@ -240,12 +244,15 @@ export function App({ initialSnapshot }: TAppProps) {
             data: { actor, selected: actor.id === selectedActor?.id, displayMessageName },
             dragHandle: '.nodeDragHandle',
           } satisfies Node;
-        }),
+        });
+      if (!explainer) return actorNodes;
+      return [
+        ...actorNodes,
         {
           id: `explainer:${snapshot.scenario.id}`,
           type: 'explainer',
-          position: currentById.get(`explainer:${snapshot.scenario.id}`)?.position ?? { x: snapshot.scenario.explainer.x, y: snapshot.scenario.explainer.y },
-          data: { explainer: snapshot.scenario.explainer },
+          position: currentById.get(`explainer:${snapshot.scenario.id}`)?.position ?? { x: explainer.x, y: explainer.y },
+          data: { explainer },
           dragHandle: '.nodeDragHandle',
           selectable: true,
           draggable: true,
@@ -253,6 +260,8 @@ export function App({ initialSnapshot }: TAppProps) {
       ];
     });
   }, [actors, selectedActor?.id, displayMessageName, snapshot.scenario, setNodes]);
+
+  const dbSource = isDbSource(snapshot);
 
   const edges = useMemo<Edge[]>(() => (snapshot?.connections ?? []).map((connection: any) => ({
     id: connection.id,
@@ -285,15 +294,27 @@ export function App({ initialSnapshot }: TAppProps) {
   return <main className="shell">
     <header className="topbar">
       <div className="topBrand"><span>VC</span><b>Actor Visualizer</b><em>{snapshot.scenario.name}</em></div>
-      <div className="topMode"><strong>Live topology</strong><i>● Live</i></div>
-      <div className="topStats"><span>{actors.length} actors</span><span>{edges.length} connection</span><button onClick={() => post('/api/tick')}>Run one tick</button><button className="primary" onClick={() => post('/api/drain')}>Drain queue</button></div>
+      <div className="topMode"><strong>{dbSource ? 'Database topology' : 'Scenario topology'}</strong><i>● Live</i></div>
+      <div className="topStats"><span>{actors.length} actors</span><span>{edges.length} connections</span><button onClick={() => post('/api/tick')}>{dbSource ? 'Refresh' : 'Run one tick'}</button><button className="primary" onClick={() => post('/api/drain')}>{dbSource ? 'Refresh DB' : 'Drain queue'}</button></div>
     </header>
 
     <aside className="sidebar panel">
-      <label>Scenario</label>
-      <select value={snapshot.scenario.id} onChange={(event) => post('/api/scenario', { scenarioId: event.currentTarget.value })}>
-        {(snapshot.scenarioOptions ?? []).map((scenario: any) => <option key={scenario.id} value={scenario.id}>{scenario.name}</option>)}
+      <label>Source</label>
+      <select value={dbSource ? 'db' : 'scenario'} onChange={(event) => post('/api/source', { mode: event.currentTarget.value })}>
+        <option value="scenario">Example scenario</option>
+        <option value="db">Current dev DB</option>
       </select>
+      {dbSource ? <React.Fragment>
+        <label>Canvas</label>
+        <select value={snapshot.source?.canvasId ?? ''} onChange={(event) => post('/api/canvas', { canvasId: event.currentTarget.value || null })}>
+          {(snapshot.canvasOptions ?? []).map((canvas: any) => <option key={canvas.id || 'all'} value={canvas.id}>{canvas.name} ({canvas.actorCount})</option>)}
+        </select>
+      </React.Fragment> : <React.Fragment>
+        <label>Scenario</label>
+        <select value={snapshot.scenario.id} onChange={(event) => post('/api/scenario', { scenarioId: event.currentTarget.value })}>
+          {(snapshot.scenarioOptions ?? []).map((scenario: any) => <option key={scenario.id} value={scenario.id}>{scenario.name}</option>)}
+        </select>
+      </React.Fragment>}
       <p className="description">{snapshot.scenario.description}</p>
       <section className="dbStack">
         <h3>Runtime</h3>
