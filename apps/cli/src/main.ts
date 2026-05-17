@@ -12,6 +12,7 @@ import { createFilesystemPlugin } from './plugins/filesystem/FilesystemPlugin';
 import { createOrpcPlugin } from './plugins/orpc/OrpcPlugin';
 import { createPtyPlugin } from './plugins/pty/PtyPlugin';
 import { createServerPlugin } from './plugins/server/ServerPlugin';
+import { createWidgetPlugin } from './plugins/widget/WidgetPlugin';
 import { setupServices } from './setup-services';
 import { setupSignals } from './setup-signals';
 
@@ -46,7 +47,7 @@ if (config.command === 'canvas') {
 const { services } = setupServices(config);
 
 const runtime = createRuntime<any, ICliConfig>({
-  plugins: [createAuthPlugin(), createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
+  plugins: [createAuthPlugin(), createFilesystemPlugin(), createWidgetPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
   services,
   hooks: createCliHooks(),
   config,

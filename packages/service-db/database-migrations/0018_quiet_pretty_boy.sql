@@ -34,5 +34,6 @@ ALTER TABLE `actor_definitions` ADD `contract_schema` text DEFAULT '{}' NOT NULL
 ALTER TABLE `actor_definitions` ADD `output_schema` text DEFAULT '{}' NOT NULL;--> statement-breakpoint
 ALTER TABLE `actor_definitions` ADD `server_manifest` text DEFAULT '{}' NOT NULL;--> statement-breakpoint
 ALTER TABLE `actor_definitions` ADD `ui_manifest` text DEFAULT '{}' NOT NULL;--> statement-breakpoint
-ALTER TABLE `actor_definitions` ADD `updated_at` integer DEFAULT (unixepoch()) NOT NULL;--> statement-breakpoint
+ALTER TABLE `actor_definitions` ADD `updated_at` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+UPDATE `actor_definitions` SET `updated_at` = unixepoch() WHERE `updated_at` = 0;--> statement-breakpoint
 CREATE INDEX `actor_definitions_widget_id_idx` ON `actor_definitions` (`widget_id`);

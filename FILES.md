@@ -304,11 +304,12 @@ prefix: `apps/cli/src/`
 | ❓ | `fx.dispatch-canvas-command.ts` |  |  |
 | ❓ | `hooks.ts` |  |  |
 | ❓ | `http.ts` |  |  |
-| 🤖 | `main.ts` |  | Registers OSS auth bootstrap plugin before other runtime plugins. |
+| 🤖 | `main.ts` |  | Registers CLI runtime plugins including auth, filesystem, widget sourcing, ORPC, PTY, Automerge, and server. |
 | 🤖 | `orpc.base.ts` |  | Root ORPC contract now includes actor APIs. |
 | 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
 | 🤖 | `plugins/orpc/orpc.base.ts` |  | Root ORPC contract context includes optional actor runtime services. |
 | 🤖 | `plugins/orpc/OrpcPlugin.ts` |  | Injects actor runtime services into websocket ORPC contexts when available. |
+| ❓ | `plugins/widget/WidgetPlugin.ts` |  | Sources data-folder widget addons on CLI startup and upserts actor definitions from widget.json and actor/actor.json. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
