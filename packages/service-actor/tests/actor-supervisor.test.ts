@@ -78,7 +78,7 @@ describe('ActorSupervisor', () => {
     expect(finalSink?.machine_context).toEqual({ lastPayload: { value: 1 } });
   });
 
-  test('processes trusted built-in todo actor messages without API mutations', async () => {
+  test('schedules todo actor messages through workflow without built-in host execution', async () => {
     const { db, workflowDb, canvasId, cleanup: cleanupDb } = await createActorTestDb();
     cleanup.push(cleanupDb);
     db.insert(schema.actor_definitions).values({ id: 'definition-todo', name: 'Todo', slug: 'todo' }).run();
@@ -102,7 +102,7 @@ describe('ActorSupervisor', () => {
       machine_schema: {},
       contract_schema: {},
       output_schema: {},
-      server_manifest: { kind: 'builtin', handler: 'todo' },
+      server_manifest: {},
       ui_manifest: {},
     }).run();
     db.insert(schema.actor_instances).values({
@@ -139,9 +139,12 @@ describe('ActorSupervisor', () => {
       created_at: new Date(11),
     }).run();
 
-    expect((await supervisor.runOnce()).status).toBe('processed');
-    const context = db.select().from(schema.actor_instances).all().find((row) => row.id === 'instance-todo')?.machine_context;
-    expect(context).toEqual({ items: [{ id: 'Ship bridge:1', title: 'Ship bridge', completed: false }] });
+    expect((await supervisor.runOnce()).status).toBe('scheduled');
+    const instance = db.select().from(schema.actor_instances).all().find((row) => row.id === 'instance-todo');
+    if (!instance?.workflow_run_id) throw new Error('todo workflow was not scheduled');
+    const steps = await workflowDb.getStepsForRun(instance.workflow_run_id);
+    expect(steps.map((step) => step.functionName)).toEqual(['tx.todo.add']);
+    expect(instance.machine_context).toEqual({ items: [] });
   });
 
   test('loadActors queues boot messages for created actors without accounts', async () => {

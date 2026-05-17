@@ -104,9 +104,8 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/camera-control/tx.sync-hand-layer.ts` |  | Hand-overlay visibility, hit-testing, cursor synchronization during pann |
 | ❓ | `plugins/camera-control/tx.write-camera-state-to-localstorage.ts` |  | Persist per-canvas camera viewport into localStorage safely |
 | 🤖 | `plugins/context-menu/ContextMenu.plugin.ts` |  | Right-click hit-testing, selection/connection resolution, Solid canvas menu mounting |
-| 🤖 | `plugins/actor-todo-example/ActorTodoExample.plugin.ts` |  | Built-in actor-backed Todo widget registration and UI binding. |
-| 🤖 | `plugins/actor-todo-example/actor.todo-definition.ts` |  | Built-in Todo actor revision metadata, machine config, and message schemas. |
-| 🤖 | `plugins/actor-todo-example/CONSTANTS.ts` |  | Built-in Todo actor/widget ids and version constants. |
+| 🤖 | `plugins/actor-todo-example/ActorTodoExample.plugin.ts` |  | Actor-backed Todo widget registration from DB revisions and UI binding. |
+| 🤖 | `plugins/actor-todo-example/CONSTANTS.ts` |  | Todo actor/widget ids. |
 | ❓ | `plugins/actor-todo-example/widget.todo-ui.ts` |  | Host-rendered Todo widget UI that sends actor messages and reads actor snapshots. |
 | 🤖 | `plugins/widget-example/TodoApp.plugin.ts` |  | Backwards alias to the actor-backed Todo example plugin. |
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
@@ -659,9 +658,8 @@ prefix: `packages/service-actor/`
 | 🤖 | `package.json` |  | Actor service package metadata and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
 | 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker through service-sandbox. |
-| 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows, reconciles results, commits outputs, routes messages, and publishes runtime events. |
+| 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows without built-in actor exceptions, reconciles results, commits outputs, routes messages, and publishes runtime events. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
-| ❓ | `src/core/fn.builtin-effects.ts` |  | Trusted built-in actor effect reducer for bundled host-owned demo actors. |
 | ❓ | `src/core/fn.machine.ts` |  | Pure actor machine transition, boot message, processability, and effect result merge helpers. |
 | ❓ | `src/core/fn.workflow-definition.ts` |  | Pure actor inbox/revision transition plan to durable workflow definition mapping. |
 | ❓ | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for instances, inbox queues, connections, and sequence numbers. |

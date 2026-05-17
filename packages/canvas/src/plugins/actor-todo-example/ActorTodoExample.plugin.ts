@@ -1,7 +1,6 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { ActorConnectionService, CrdtService, ToolService, WidgetManagerService } from "../../services";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
-import { ACTOR_TODO_REVISION } from "./actor.todo-definition";
 import { ACTOR_TODO_SLUG, ACTOR_TODO_WIDGET_KIND } from "./CONSTANTS";
 import { mountTodoWidget } from "./widget.todo-ui";
 
@@ -20,14 +19,14 @@ export function createActorTodoExamplePlugin(): IPlugin<{
       const widgetManager = ctx.services.require("widgetManager");
 
       const [listError, revisions] = await ctx.config.apiService.api.actors.revisions.list({ slug: ACTOR_TODO_SLUG });
-      const existingRevision = listError ? null : revisions?.find((revision) => revision.version === ACTOR_TODO_REVISION.version) ?? null;
-      const ensured = existingRevision
-        ? { definition: null, revision: existingRevision }
-        : (await ctx.config.apiService.api.actors.revisions.register(ACTOR_TODO_REVISION))[1];
+      if (listError) {
+        ctx.config.notification?.showError("Could not load Todo actor revisions");
+        return;
+      }
 
-      const revision = ensured?.revision;
+      const revision = revisions.toSorted((left, right) => right.version - left.version)[0] ?? null;
       if (!revision) {
-        ctx.config.notification?.showError("Could not register Todo actor");
+        ctx.config.notification?.showError("Todo actor is not registered in the database");
         return;
       }
 

@@ -3,7 +3,6 @@ import * as schema from '@vibecanvas/service-db/schema';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WorkflowSuperviserService, type TWorkflowDb } from '@vibecanvas/service-workflow';
 import { ACTOR_BOOT_MESSAGE_NAME, DEFAULT_ACTOR_POLL_INTERVAL_MS } from './core/CONSTANTS';
-import { fnApplyBuiltinActorEffects } from './core/fn.builtin-effects';
 import { fnCanProcessMessage, fnCreateBootMessage, fnCreateTransitionPlan, fnMergeEffectResults } from './core/fn.machine';
 import { fnActorWorkflowRunId, fnCreateActorWorkflowDefinition } from './core/fn.workflow-definition';
 import { fxGetActorRows, fxListActorInstances, fxListClaimedInbox, fxListOutputConnections, fxNextActorInboxSeq, fxNextActorOutputSeq, fxNextQueuedInbox } from './core/fx.actor-db';
@@ -152,15 +151,6 @@ export class ActorSupervisor {
     if (plan.effects.length === 0) {
       const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', machine_state: plan.targetState, workflow_run_id: null } });
       this.publishActorInstanceUpdated(updated);
-      const processed = txPatchInbox(portal, { inboxId: claimed.id, patch: { status: 'processed', processed_at: this.now() } });
-      return { status: 'processed', inbox: processed };
-    }
-
-    const builtin = fnApplyBuiltinActorEffects({ manifest: rows.revision.server_manifest, context: rows.instance.machine_context as never, message, effects: plan.effects });
-    if (builtin.handled) {
-      const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', machine_state: plan.targetState, machine_context: builtin.context, workflow_run_id: null } });
-      this.publishActorInstanceUpdated(updated);
-      for (const output of builtin.outputs) await this.commitOutput(updated, claimed, output, `builtin:${claimed.id}`);
       const processed = txPatchInbox(portal, { inboxId: claimed.id, patch: { status: 'processed', processed_at: this.now() } });
       return { status: 'processed', inbox: processed };
     }
