@@ -183,6 +183,17 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         }
         return node
       },
+      onDelete: (element) => {
+        if (element.data.type !== "widget" || element.data.kind !== wConfig.id) {
+          return {};
+        }
+
+        void this.#actorConnectionService?.deleteInstanceForElement({
+          elementId: element.id,
+          actorInstanceId: element.data.actorInstanceId,
+        });
+        return {};
+      },
       updateElement: (element) => {
         if ((element.data.type !== "widget" && element.data.type !== "ui-widget") || element.data.kind !== wConfig.id) {
           return false;

@@ -9,6 +9,7 @@ import { apiListActorOutputs } from './api.list-actor-outputs';
 import { apiListActorRevisions } from './api.list-actor-revisions';
 import { apiRegisterActorRevision } from './api.register-actor-revision';
 import { apiRemoveActorConnection } from './api.remove-actor-connection';
+import { apiRemoveActorInstance } from './api.remove-actor-instance';
 import { apiUpdateActorConnection } from './api.update-actor-connection';
 import { apiSendActorMessage } from './api.send-actor-message';
 import { baseActorsOs } from './orpc';
@@ -18,6 +19,7 @@ const actorsHandlers = {
     list: apiListActorInstances,
     get: apiGetActorInstance,
     create: apiCreateActorInstance,
+    remove: apiRemoveActorInstance,
   },
   revisions: {
     register: apiRegisterActorRevision,

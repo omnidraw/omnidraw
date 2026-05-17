@@ -1,4 +1,4 @@
-import { eq as EQ } from 'drizzle-orm';
+import { eq as EQ, or as OR } from 'drizzle-orm';
 import * as SCHEMA from '@vibecanvas/service-db/schema';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -38,6 +38,10 @@ export type TArgsUpdateActorConnection = {
 };
 
 export type TArgsRemoveActorConnection = {
+  id: string;
+};
+
+export type TArgsRemoveActorInstance = {
   id: string;
 };
 
@@ -208,6 +212,42 @@ export function txRemoveActorConnection(portal: TPortalActorDbWrite, args: TArgs
     connectionId: connection.id,
   });
   return connection;
+}
+
+export function txRemoveActorInstance(portal: TPortalActorDbWrite, args: TArgsRemoveActorInstance) {
+  const existing = portal.db.query.actor_instances.findFirst({ where: EQ(SCHEMA.actor_instances.id, args.id) }).sync();
+  if (!existing) return null;
+
+  const connectionRows = portal.db.delete(SCHEMA.actor_connections)
+    .where(OR(
+      EQ(SCHEMA.actor_connections.source_actor_instance_id, existing.id),
+      EQ(SCHEMA.actor_connections.target_actor_instance_id, existing.id),
+    ))
+    .returning()
+    .all();
+  const connections = connectionRows.map(fnToActorConnection);
+
+  const instanceRow = portal.db.delete(SCHEMA.actor_instances)
+    .where(EQ(SCHEMA.actor_instances.id, args.id))
+    .returning()
+    .all()[0] ?? null;
+
+  if (!instanceRow) return null;
+  const instance = fnToActorInstance(instanceRow);
+
+  connections.forEach((connection) => {
+    portal.eventPublisher.publishActorEvent(connection.canvas_id, {
+      type: 'actor.connection.deleted',
+      canvasId: connection.canvas_id,
+      connectionId: connection.id,
+    });
+  });
+  portal.eventPublisher.publishActorEvent(instance.canvas_id, {
+    type: 'actor.instance.deleted',
+    canvasId: instance.canvas_id,
+    instanceId: instance.id,
+  });
+  return instance;
 }
 
 function createTodoContext(portal: TPortalActorDbWrite, args: { context: Record<string, unknown>; eventName: string; params: Record<string, unknown> }) {

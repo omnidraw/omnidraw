@@ -189,6 +189,7 @@ const actorsContract = oc.router({
     list: oc.input(z.object({ canvasId: z.string() })).output(z.array(zActorInstance)),
     get: oc.input(z.object({ id: z.string() })).output(zActorInstance.nullable()),
     create: oc.input(zCreateActorInstanceInput).output(zActorInstance),
+    remove: oc.input(z.object({ id: z.string() })).output(zActorInstance),
   }),
   revisions: oc.router({
     register: oc.input(zRegisterActorRevisionInput).output(z.object({ definition: zActorDefinition, revision: zActorRevision })),

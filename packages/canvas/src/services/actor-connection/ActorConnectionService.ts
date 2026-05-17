@@ -137,6 +137,30 @@ export class ActorConnectionService implements IService<IActorConnectionServiceH
     this.hooks.change.call();
   }
 
+  removeInstance(id: string) {
+    this.#instances.delete(id);
+    this.getConnections()
+      .filter((connection) => connection.source_actor_instance_id === id || connection.target_actor_instance_id === id)
+      .forEach((connection) => this.removeConnection(connection.id));
+    this.hooks.change.call();
+  }
+
+  async deleteInstanceForElement(args: { elementId: string; actorInstanceId?: string | null }) {
+    const actorInstanceId = args.actorInstanceId
+      ?? this.getInstances().find((instance) => instance.element_id === args.elementId)?.id
+      ?? null;
+    if (!actorInstanceId) return null;
+
+    const [error, instance] = await this.#apiService.api.actors.instances.remove({ id: actorInstanceId });
+    if (error || !instance) {
+      this.#notifyError?.('Could not delete actor instance', error instanceof Error ? error.message : undefined);
+      return null;
+    }
+
+    this.removeInstance(instance.id);
+    return instance;
+  }
+
   async createConnection(input: TActorConnectionCreateArgs) {
     const [error, connection] = await this.#apiService.api.actors.connections.create({
       ...input,
@@ -225,8 +249,7 @@ export class ActorConnectionService implements IService<IActorConnectionServiceH
     }
 
     if (event.type === 'actor.instance.deleted') {
-      this.#instances.delete(event.instanceId);
-      this.hooks.change.call();
+      this.removeInstance(event.instanceId);
       return;
     }
 

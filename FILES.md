@@ -403,6 +403,7 @@ prefix: `packages/api-actors/src/`
 | ❓ | `api.list-actor-revisions.ts` |  | Lists actor revisions globally or for one definition. |
 | ❓ | `api.register-actor-revision.ts` |  | Registers actor definitions and revisions and advances current revision. |
 | ❓ | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
+| ❓ | `api.remove-actor-instance.ts` |  | Deletes DB-backed actor instances for removed actor widgets and publishes actor events. |
 | ❓ | `api.send-actor-message.ts` |  | Sends actor messages and publishes updated actor instance state. |
 | ❓ | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
 | ❓ | `contract.ts` |  | Actor ORPC contract, row schemas, mutation inputs, and event union. |
