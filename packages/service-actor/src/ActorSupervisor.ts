@@ -1,12 +1,14 @@
 import { eq } from 'drizzle-orm';
 import * as schema from '@vibecanvas/service-db/schema';
+import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WorkflowSuperviserService, type TWorkflowDb } from '@vibecanvas/service-workflow';
 import { ACTOR_BOOT_MESSAGE_NAME, DEFAULT_ACTOR_POLL_INTERVAL_MS } from './core/CONSTANTS';
+import { fnApplyBuiltinActorEffects } from './core/fn.builtin-effects';
 import { fnCanProcessMessage, fnCreateBootMessage, fnCreateTransitionPlan, fnMergeEffectResults } from './core/fn.machine';
 import { fnActorWorkflowRunId, fnCreateActorWorkflowDefinition } from './core/fn.workflow-definition';
 import { fxGetActorRows, fxListActorInstances, fxListClaimedInbox, fxListOutputConnections, fxNextActorInboxSeq, fxNextActorOutputSeq, fxNextQueuedInbox } from './core/fx.actor-db';
 import { txClaimInbox, txInsertInbox, txInsertOutput, txPatchActorInstance, txPatchInbox } from './core/tx.actor-db';
-import type { TActorDb, TActorInboxRow, TActorMessage, TActorOutput, TActorSupervisorStatus } from './core/types';
+import type { TActorDb, TActorInboxRow, TActorInstanceRow, TActorMessage, TActorOutput, TActorSupervisorStatus } from './core/types';
 
 function toMillis(value: number | Date): number {
   return typeof value === 'number' ? value : value.getTime();
@@ -15,6 +17,7 @@ function toMillis(value: number | Date): number {
 export type TActorSupervisorConfig = {
   readonly db: TActorDb;
   readonly workflowDb: TWorkflowDb;
+  readonly eventPublisher?: IEventPublisherService;
   readonly workerId?: string;
   readonly pollIntervalMs?: number;
   readonly idFactory?: () => string;
@@ -44,6 +47,7 @@ export class ActorSupervisor {
   readonly db: TActorDb;
   readonly workflowDb: TWorkflowDb;
   readonly workflowSuperviser: WorkflowSuperviserService;
+  readonly eventPublisher?: IEventPublisherService;
   readonly workerId: string;
   readonly pollIntervalMs: number;
   readonly idFactory: () => string;
@@ -54,6 +58,7 @@ export class ActorSupervisor {
   constructor(config: TActorSupervisorConfig) {
     this.db = config.db;
     this.workflowDb = config.workflowDb;
+    this.eventPublisher = config.eventPublisher;
     this.workflowSuperviser = new WorkflowSuperviserService({ db: config.workflowDb });
     this.workerId = config.workerId ?? 'actor-supervisor';
     this.pollIntervalMs = config.pollIntervalMs ?? DEFAULT_ACTOR_POLL_INTERVAL_MS;
@@ -98,7 +103,8 @@ export class ActorSupervisor {
         message: fnCreateBootMessage({ correlationId: `boot:${actor.id}` }),
         createdAt: this.now(),
       });
-      await txPatchActorInstance(portal, { actorInstanceId: actor.id, patch: { status: 'starting' } });
+      const updated = await txPatchActorInstance(portal, { actorInstanceId: actor.id, patch: { status: 'starting' } });
+      this.publishActorInstanceUpdated(updated);
     }
   }
 
@@ -144,7 +150,17 @@ export class ActorSupervisor {
       return { status: 'failed', inbox: rejected };
     }
     if (plan.effects.length === 0) {
-      await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', machine_state: plan.targetState, workflow_run_id: null } });
+      const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', machine_state: plan.targetState, workflow_run_id: null } });
+      this.publishActorInstanceUpdated(updated);
+      const processed = txPatchInbox(portal, { inboxId: claimed.id, patch: { status: 'processed', processed_at: this.now() } });
+      return { status: 'processed', inbox: processed };
+    }
+
+    const builtin = fnApplyBuiltinActorEffects({ manifest: rows.revision.server_manifest, context: rows.instance.machine_context as never, message, effects: plan.effects });
+    if (builtin.handled) {
+      const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', machine_state: plan.targetState, machine_context: builtin.context, workflow_run_id: null } });
+      this.publishActorInstanceUpdated(updated);
+      for (const output of builtin.outputs) await this.commitOutput(updated, claimed, output, `builtin:${claimed.id}`);
       const processed = txPatchInbox(portal, { inboxId: claimed.id, patch: { status: 'processed', processed_at: this.now() } });
       return { status: 'processed', inbox: processed };
     }
@@ -159,7 +175,8 @@ export class ActorSupervisor {
       correlationId: claimed.correlation_id,
       causationId: claimed.causation_id ?? undefined,
     });
-    await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', workflow_run_id: run.id } });
+    const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', workflow_run_id: run.id } });
+    this.publishActorInstanceUpdated(updated);
     return { status: 'scheduled', inbox: claimed };
   }
 
@@ -172,7 +189,8 @@ export class ActorSupervisor {
       const run = await this.workflowDb.getRun(rows.instance.workflow_run_id);
       if (run.status !== 'completed' && run.status !== 'failed' && run.status !== 'cancelled') continue;
       if (run.status !== 'completed') {
-        await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'error', workflow_run_id: null } });
+        const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'error', workflow_run_id: null } });
+        this.publishActorInstanceUpdated(updated);
         const failed = txPatchInbox(portal, { inboxId: inbox.id, patch: { status: 'deadLettered', processed_at: this.now(), error: run.error ?? { message: `Actor workflow ${run.status}` } } });
         return { status: 'failed', inbox: failed };
       }
@@ -182,6 +200,7 @@ export class ActorSupervisor {
       const steps = await this.workflowDb.getStepsForRun(run.id);
       const merged = fnMergeEffectResults({ initialContext: rows.instance.machine_context as never, results: steps.map((step) => step.result) });
       const updated = await txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'running', machine_state: plan.targetState, machine_context: merged.context, workflow_run_id: null } });
+      this.publishActorInstanceUpdated(updated);
 
       for (const output of merged.outputs) {
         await this.commitOutput(updated, inbox, output, run.id);
@@ -207,6 +226,8 @@ export class ActorSupervisor {
       workflowRunId,
       createdAt: this.now(),
     });
+
+    this.eventPublisher?.publishActorEvent(persisted.canvas_id, { type: 'actor.output.committed', canvasId: persisted.canvas_id, output: persisted });
 
     for (const connection of fxListOutputConnections(portal, { actorInstanceId: instance.id, outputName: output.name })) {
       txInsertInbox(portal, {
@@ -245,5 +266,9 @@ export class ActorSupervisor {
 
   private portal(): TDbPortal {
     return { db: this.db, tables: schema, idFactory: this.idFactory, eq };
+  }
+
+  private publishActorInstanceUpdated(instance: TActorInstanceRow): void {
+    this.eventPublisher?.publishActorEvent(instance.canvas_id, { type: 'actor.instance.updated', canvasId: instance.canvas_id, instance });
   }
 }

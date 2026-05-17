@@ -78,6 +78,73 @@ describe('ActorSupervisor', () => {
     expect(finalSink?.machine_context).toEqual({ lastPayload: { value: 1 } });
   });
 
+  test('processes trusted built-in todo actor messages without API mutations', async () => {
+    const { db, workflowDb, canvasId, cleanup: cleanupDb } = await createActorTestDb();
+    cleanup.push(cleanupDb);
+    db.insert(schema.actor_definitions).values({ id: 'definition-todo', name: 'Todo', slug: 'todo', current_revision_id: 'revision-todo' }).run();
+    db.insert(schema.actor_revisions).values({
+      id: 'revision-todo',
+      actor_definition_id: 'definition-todo',
+      version: '0.2.0',
+      revision_hash: 'builtin:todo:0.2.0',
+      machine_config: {
+        initialState: 'ready',
+        initialContext: { items: [] },
+        states: {
+          ready: {
+            on: {
+              'msg.in.booting': { target: 'ready', actions: [] },
+              'todo.add': { target: 'ready', actions: ['tx.todo.add'] },
+              'todo.toggle': { target: 'ready', actions: ['tx.todo.toggle'] },
+            },
+          },
+        },
+      },
+      machine_schema: {},
+      contract_schema: {},
+      output_schema: {},
+      server_manifest: { kind: 'builtin', handler: 'todo' },
+      ui_manifest: {},
+    }).run();
+    db.insert(schema.actor_instances).values({
+      id: 'instance-todo',
+      workspace_id: null,
+      canvas_id: canvasId,
+      element_id: 'element-todo',
+      actor_definition_id: 'definition-todo',
+      actor_revision_id: 'revision-todo',
+      display_name: 'Todo',
+      status: 'created',
+      machine_state: 'ready',
+      machine_context: { items: [] },
+    }).run();
+    const supervisor = new ActorSupervisor({ db, workflowDb, idFactory: () => 'id-todo', now: () => new Date(10) });
+
+    await supervisor.loadActors();
+    expect((await supervisor.runOnce()).status).toBe('processed');
+    expect(db.select().from(schema.actor_instances).all().find((row) => row.id === 'instance-todo')?.status).toBe('running');
+
+    db.insert(schema.actor_inbox).values({
+      id: 'inbox-todo-add',
+      workspace_id: null,
+      canvas_id: canvasId,
+      actor_instance_id: 'instance-todo',
+      seq: 2,
+      message_id: 'message-todo-add',
+      correlation_id: 'message-todo-add',
+      idempotency_key: 'message-todo-add',
+      event_name: 'todo.add',
+      params: { title: 'Ship bridge' },
+      status: 'queued',
+      attempt: 0,
+      created_at: new Date(11),
+    }).run();
+
+    expect((await supervisor.runOnce()).status).toBe('processed');
+    const context = db.select().from(schema.actor_instances).all().find((row) => row.id === 'instance-todo')?.machine_context;
+    expect(context).toEqual({ items: [{ id: 'Ship bridge:1', title: 'Ship bridge', completed: false }] });
+  });
+
   test('loadActors queues boot messages for created actors without accounts', async () => {
     const { db, workflowDb, canvasId, cleanup: cleanupDb } = await createActorTestDb();
     cleanup.push(cleanupDb);

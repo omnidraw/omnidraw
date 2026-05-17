@@ -130,6 +130,15 @@ const zSendActorMessageInput = z.object({
   correlationId: z.string().optional(),
 });
 
+const zActorMessageSendResult = z.object({
+  accepted: z.literal(true),
+  inboxId: z.string(),
+  messageId: z.string(),
+  correlationId: z.string(),
+  actorInstanceId: z.string(),
+  canvasId: z.string(),
+});
+
 const zUpdateActorConnectionInput = z.object({
   id: z.string(),
   patch: z.object({
@@ -161,6 +170,11 @@ const zActorEvent = z.discriminatedUnion('type', [
     type: z.literal('actor.instance.deleted'),
     canvasId: z.string(),
     instanceId: z.string(),
+  }),
+  z.object({
+    type: z.literal('actor.output.committed'),
+    canvasId: z.string(),
+    output: zActorOutput,
   }),
   z.object({
     type: z.literal('actor.revision.registered'),
@@ -203,7 +217,7 @@ const actorsContract = oc.router({
     remove: oc.input(z.object({ id: z.string() })).output(zActorConnection),
   }),
   messages: oc.router({
-    send: oc.input(zSendActorMessageInput).output(zActorInstance),
+    send: oc.input(zSendActorMessageInput).output(zActorMessageSendResult),
   }),
   outputs: oc.router({
     list: oc.input(z.object({ actorInstanceId: z.string(), afterSeq: z.number().optional() })).output(z.array(zActorOutput)),
@@ -216,6 +230,7 @@ type TActorRevision = z.infer<typeof zActorRevision>;
 type TActorInstance = z.infer<typeof zActorInstance>;
 type TActorOutput = z.infer<typeof zActorOutput>;
 type TActorConnection = z.infer<typeof zActorConnection>;
+type TActorMessageSendResult = z.infer<typeof zActorMessageSendResult>;
 type TActorEvent = z.infer<typeof zActorEvent>;
 type TRegisterActorRevisionInput = z.infer<typeof zRegisterActorRevisionInput>;
 type TCreateActorInstanceInput = z.infer<typeof zCreateActorInstanceInput>;
@@ -229,6 +244,7 @@ export {
   zActorDefinition,
   zActorEvent,
   zActorInstance,
+  zActorMessageSendResult,
   zActorOutput,
   zActorRevision,
   zCreateActorConnectionInput,
@@ -242,6 +258,7 @@ export type {
   TActorDefinition,
   TActorEvent,
   TActorInstance,
+  TActorMessageSendResult,
   TActorOutput,
   TActorRevision,
   TCreateActorConnectionInput,

@@ -78,6 +78,7 @@ function setupServices(config: ICliConfig) {
     const actorService = new ActorService({
       db: dbService.drizzle,
       workflowDb,
+      eventPublisher,
       workerDistPath: ACTOR_WORKER_DIST_PATH,
       sandboxRunner: createActorSandboxRunner(config, dbService.drizzle),
       workerEnv: {

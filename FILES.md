@@ -104,9 +104,9 @@ prefix: `packages/canvas/src/`
 | ❓ | `plugins/camera-control/tx.sync-hand-layer.ts` |  | Hand-overlay visibility, hit-testing, cursor synchronization during pann |
 | ❓ | `plugins/camera-control/tx.write-camera-state-to-localstorage.ts` |  | Persist per-canvas camera viewport into localStorage safely |
 | 🤖 | `plugins/context-menu/ContextMenu.plugin.ts` |  | Right-click hit-testing, selection/connection resolution, Solid canvas menu mounting |
-| ❓ | `plugins/actor-todo-example/ActorTodoExample.plugin.ts` |  | Built-in actor-backed Todo widget registration and UI binding. |
-| ❓ | `plugins/actor-todo-example/actor.todo-definition.ts` |  | Built-in Todo actor revision metadata and message schemas. |
-| ❓ | `plugins/actor-todo-example/CONSTANTS.ts` |  | Built-in Todo actor/widget ids and version constants. |
+| 🤖 | `plugins/actor-todo-example/ActorTodoExample.plugin.ts` |  | Built-in actor-backed Todo widget registration and UI binding. |
+| 🤖 | `plugins/actor-todo-example/actor.todo-definition.ts` |  | Built-in Todo actor revision metadata, machine config, and message schemas. |
+| 🤖 | `plugins/actor-todo-example/CONSTANTS.ts` |  | Built-in Todo actor/widget ids and version constants. |
 | ❓ | `plugins/actor-todo-example/widget.todo-ui.ts` |  | Host-rendered Todo widget UI that sends actor messages and reads actor snapshots. |
 | 🤖 | `plugins/widget-example/TodoApp.plugin.ts` |  | Backwards alias to the actor-backed Todo example plugin. |
 | ❓ | `plugins/event-listener/EventListener.plugin.ts` |  | Bridge Konva stage and DOM input into runtime hooks |
@@ -308,6 +308,8 @@ prefix: `apps/cli/src/`
 | 🤖 | `main.ts` |  | Registers OSS auth bootstrap plugin before other runtime plugins. |
 | 🤖 | `orpc.base.ts` |  | Root ORPC contract now includes actor APIs. |
 | 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
+| 🤖 | `plugins/orpc/orpc.base.ts` |  | Root ORPC contract context includes optional actor runtime services. |
+| 🤖 | `plugins/orpc/OrpcPlugin.ts` |  | Injects actor runtime services into websocket ORPC contexts when available. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
@@ -390,11 +392,11 @@ prefix: `packages/api-actors/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `../package.json` |  | Actor API package manifest and workspace dependencies. |
+| 🤖 | `../package.json` |  | Actor API package manifest and workspace dependencies. |
 | ❓ | `../tsconfig.json` |  | TypeScript config for actor API package source. |
 | ❓ | `api.actor-events.ts` |  | Snapshot-first actor event stream for canvas actor state. |
 | ❓ | `api.create-actor-connection.ts` |  | Creates DB-backed actor connections through actor instance endpoint validation. |
-| ❓ | `api.create-actor-instance.ts` |  | Creates canvas-bound actor instances from registered revisions. |
+| 🤖 | `api.create-actor-instance.ts` |  | Creates canvas-bound actor instances and boots them through actor runtime when available. |
 | ❓ | `api.get-actor-instance.ts` |  | Fetches one actor instance with canvas view authorization. |
 | ❓ | `api.get-actor-revision.ts` |  | Fetches one actor revision for privileged actor registrars. |
 | ❓ | `api.list-actor-connections.ts` |  | Lists canonical DB actor connections for a canvas. |
@@ -404,16 +406,17 @@ prefix: `packages/api-actors/src/`
 | ❓ | `api.register-actor-revision.ts` |  | Registers actor definitions and revisions and advances current revision. |
 | ❓ | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
 | ❓ | `api.remove-actor-instance.ts` |  | Deletes DB-backed actor instances for removed actor widgets and publishes actor events. |
-| ❓ | `api.send-actor-message.ts` |  | Sends actor messages and publishes updated actor instance state. |
+| 🤖 | `api.send-actor-message.ts` |  | Authorizes actor messages and delegates enqueueing to ActorService runtime. |
 | ❓ | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
-| ❓ | `contract.ts` |  | Actor ORPC contract, row schemas, mutation inputs, and event union. |
+| 🤖 | `contract.ts` |  | Actor ORPC contract, row schemas, mutation inputs, async send ack, and event union. |
+| ❓ | `CONSTANTS.ts` |  | Actor API system principal and event channel constants. |
 | ❓ | `db.ts` |  | Resolves the concrete Drizzle DB from the generic DB service for actor APIs. |
 | ❓ | `fn.actor-input.ts` |  | Pure actor input normalization and DB JSON row shaping helpers. |
 | ❓ | `fx.actor-db.ts` |  | Actor DB read helpers and account-aware canvas/registration authorization checks. |
 | ❓ | `handlers.ts` |  | Actor API handler tree for instances, revisions, connections, and events. |
 | ❓ | `orpc.ts` |  | Actor API ORPC implementer with typed context. |
-| ❓ | `tx.actor-db.ts` |  | Actor DB writes and actor event publication for revisions, instances, and connections. |
-| ❓ | `types.ts` |  | Actor API context and Drizzle-backed DB service typing. |
+| 🤖 | `tx.actor-db.ts` |  | Actor DB writes and actor event publication for revisions, instances, and connections. |
+| 🤖 | `types.ts` |  | Actor API context with optional ActorService runtime and Drizzle-backed DB service typing. |
 
 ## packages/api-canvas
 prefix: `packages/api-canvas/src/`
@@ -613,7 +616,7 @@ prefix: `packages/service-automerge/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `AutomergeServer.ts` |  |  |
+| 🤖 | `AutomergeServer.ts` |  | Captures image element deletions from watched Automerge canvas handles. |
 | 🤖 | `types/canvas-doc.types.ts` |  | Canvas document TypeScript model derived from zod schemas. |
 | 🤖 | `types/canvas-doc.zod.ts` |  | Canvas document zod schemas and element data union. |
 | ❓ | `IAutomergeService.ts` |  |  |
@@ -656,14 +659,15 @@ prefix: `packages/service-actor/`
 | 🤖 | `package.json` |  | Actor service package metadata and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
 | 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker through service-sandbox. |
-| ❓ | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows, reconciles results, commits outputs, and routes messages. |
+| 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows, reconciles results, commits outputs, routes messages, and publishes runtime events. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
+| ❓ | `src/core/fn.builtin-effects.ts` |  | Trusted built-in actor effect reducer for bundled host-owned demo actors. |
 | ❓ | `src/core/fn.machine.ts` |  | Pure actor machine transition, boot message, processability, and effect result merge helpers. |
 | ❓ | `src/core/fn.workflow-definition.ts` |  | Pure actor inbox/revision transition plan to durable workflow definition mapping. |
 | ❓ | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for instances, inbox queues, connections, and sequence numbers. |
 | ❓ | `src/core/tx.actor-db.ts` |  | Actor DB write helpers for claiming inbox, patching actors, and inserting messages/outputs. |
 | ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
-| ❓ | `src/index.ts` |  | Actor service package barrel exports. |
+| 🤖 | `src/index.ts` |  | Actor service package barrel exports including runtime send result types. |
 
 ## packages/service-workflow
 prefix: `packages/service-workflow/`

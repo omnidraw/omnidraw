@@ -9,11 +9,16 @@ export const ACTOR_TODO_REVISION = {
   machineConfig: {
     initialState: "ready",
     initialContext: { items: [] },
-    on: {
-      "todo.add": {},
-      "todo.toggle": {},
-      "todo.remove": {},
-      "todo.clearCompleted": {},
+    states: {
+      ready: {
+        on: {
+          "msg.in.booting": { target: "ready", actions: [] },
+          "todo.add": { target: "ready", actions: ["tx.todo.add"] },
+          "todo.toggle": { target: "ready", actions: ["tx.todo.toggle"] },
+          "todo.remove": { target: "ready", actions: ["tx.todo.remove"] },
+          "todo.clearCompleted": { target: "ready", actions: ["tx.todo.clearCompleted"] },
+        },
+      },
     },
   },
   contractSchema: {

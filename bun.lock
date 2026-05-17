@@ -153,6 +153,7 @@
       "dependencies": {
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
+        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
         "drizzle-orm": "catalog:",
@@ -346,6 +347,7 @@
       "dependencies": {
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
+        "@vibecanvas/service-event-publisher": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
         "drizzle-orm": "catalog:",
       },

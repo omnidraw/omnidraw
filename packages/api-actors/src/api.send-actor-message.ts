@@ -2,7 +2,6 @@ import { ORPCError } from '@orpc/server';
 import { getActorsDrizzleDb } from './db';
 import { fxCanEditCanvas, fxGetActorInstance } from './fx.actor-db';
 import { baseActorsOs } from './orpc';
-import { txSendActorMessage } from './tx.actor-db';
 
 const apiSendActorMessage = baseActorsOs.messages.send.handler(async ({ input, context }) => {
   const db = getActorsDrizzleDb(context.db);
@@ -13,14 +12,16 @@ const apiSendActorMessage = baseActorsOs.messages.send.handler(async ({ input, c
     throw new ORPCError('FORBIDDEN', { message: 'Cannot send actor message on this canvas' });
   }
 
-  const updated = txSendActorMessage({
-    db,
-    eventPublisher: context.eventPublisher,
-    createId: () => crypto.randomUUID(),
-  }, { input });
+  if (!context.actor) {
+    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: 'Actor runtime is not available' });
+  }
 
-  if (!updated) throw new ORPCError('NOT_FOUND', { message: 'Actor instance not found' });
-  return updated;
+  return await context.actor.sendMessage({
+    actorInstanceId: input.actorInstanceId,
+    eventName: input.eventName,
+    params: input.params ?? {},
+    correlationId: input.correlationId,
+  });
 });
 
 export { apiSendActorMessage };

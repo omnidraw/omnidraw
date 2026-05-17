@@ -1,10 +1,16 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { SqliteWorkflowDb, type TWorkflowDb } from '@vibecanvas/service-workflow';
+import { eq } from 'drizzle-orm';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import * as schema from '@vibecanvas/service-db/schema';
 import { ActorSupervisor } from './ActorSupervisor';
-import { ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT, DEFAULT_ACTOR_LEASE_MS, DEFAULT_ACTOR_POLL_INTERVAL_MS, DEFAULT_ACTOR_SANDBOX_NAME, DEFAULT_ACTOR_WORKER_ID } from './core/CONSTANTS';
+import { ACTOR_BOOT_MESSAGE_NAME, ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT, DEFAULT_ACTOR_LEASE_MS, DEFAULT_ACTOR_POLL_INTERVAL_MS, DEFAULT_ACTOR_SANDBOX_NAME, DEFAULT_ACTOR_WORKER_ID } from './core/CONSTANTS';
+import { fnCreateBootMessage } from './core/fn.machine';
+import { fxGetActorRows, fxNextActorInboxSeq } from './core/fx.actor-db';
+import { txInsertInbox, txPatchActorInstance } from './core/tx.actor-db';
 
 export type TActorServiceWorkerEnv = Record<string, string | undefined>;
 
@@ -27,6 +33,7 @@ export type TActorSandboxRunner = {
 export type TActorServiceConfig = {
   readonly db: TDrizzleDb;
   readonly workflowDb?: TWorkflowDb;
+  readonly eventPublisher?: IEventPublisherService;
   readonly workerEnv?: TActorServiceWorkerEnv;
   readonly sandboxName?: string;
   readonly workerId?: string;
@@ -52,6 +59,26 @@ export type TActorServiceStatus = {
   readonly supervisor: ReturnType<ActorSupervisor['getStatus']>;
 };
 
+export type TActorServiceSendMessageArgs = {
+  readonly actorInstanceId: string;
+  readonly eventName: string;
+  readonly params?: Record<string, unknown>;
+  readonly correlationId?: string;
+  readonly causationId?: string;
+  readonly sourceActorInstanceId?: string;
+  readonly sourceOutputId?: string;
+  readonly connectionId?: string;
+};
+
+export type TActorServiceSendMessageResult = {
+  readonly accepted: true;
+  readonly inboxId: string;
+  readonly messageId: string;
+  readonly correlationId: string;
+  readonly actorInstanceId: string;
+  readonly canvasId: string;
+};
+
 type TServiceContext<TConfig extends object> = {
   readonly config: TConfig;
 };
@@ -64,6 +91,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   readonly name = ACTOR_SERVICE_NAME;
   readonly db: TDrizzleDb;
   readonly workflowDb: TWorkflowDb;
+  readonly eventPublisher?: IEventPublisherService;
   readonly supervisor: ActorSupervisor;
   readonly sandboxName: string;
   readonly workerId: string;
@@ -81,6 +109,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   constructor(config: TActorServiceConfig) {
     this.db = config.db;
     this.workflowDb = config.workflowDb ?? new SqliteWorkflowDb({ db: config.db });
+    this.eventPublisher = config.eventPublisher;
     this.sandboxName = config.sandboxName ?? DEFAULT_ACTOR_SANDBOX_NAME;
     this.workerId = config.workerId ?? DEFAULT_ACTOR_WORKER_ID;
     this.workerDistPath = config.workerDistPath ?? resolve(process.cwd(), 'apps/worker/dist/worker.mjs');
@@ -91,7 +120,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
     this.autoStart = config.autoStart ?? true;
     this.startSandboxByDefault = config.startSandbox ?? true;
     this.sandboxRunner = config.sandboxRunner ?? createMissingSandboxRunner();
-    this.supervisor = new ActorSupervisor({ db: this.db, workflowDb: this.workflowDb, workerId: this.workerId, pollIntervalMs: this.pollIntervalMs });
+    this.supervisor = new ActorSupervisor({ db: this.db, workflowDb: this.workflowDb, eventPublisher: this.eventPublisher, workerId: this.workerId, pollIntervalMs: this.pollIntervalMs });
   }
 
   async start(ctx?: TServiceContext<TActorServiceRuntimeConfig>): Promise<void> {
@@ -115,6 +144,65 @@ export class ActorService implements IService, IStartableService<object, TActorS
 
   getStatus(): TActorServiceStatus {
     return { sandboxStarted: Boolean(this.#handle), workerStarted: Boolean(this.#handle), supervisor: this.supervisor.getStatus() };
+  }
+
+  async sendMessage(args: TActorServiceSendMessageArgs): Promise<TActorServiceSendMessageResult> {
+    const portal = this.portal();
+    const rows = fxGetActorRows(portal, { actorInstanceId: args.actorInstanceId });
+    const messageId = args.correlationId ? `${args.correlationId}:message:${this.supervisor.idFactory()}` : this.supervisor.idFactory();
+    const correlationId = args.correlationId ?? messageId;
+    const inbox = txInsertInbox(portal, {
+      workspaceId: rows.instance.workspace_id,
+      canvasId: rows.instance.canvas_id,
+      actorInstanceId: rows.instance.id,
+      seq: fxNextActorInboxSeq(portal, { actorInstanceId: rows.instance.id }),
+      messageId,
+      correlationId,
+      causationId: args.causationId,
+      idempotencyKey: `api:${rows.instance.id}:message:${messageId}`,
+      sourceActorInstanceId: args.sourceActorInstanceId,
+      sourceOutputId: args.sourceOutputId,
+      connectionId: args.connectionId,
+      message: { name: args.eventName, payload: (args.params ?? {}) as never },
+      createdAt: new Date(),
+    });
+
+    await this.nudgeSupervisor();
+
+    return {
+      accepted: true,
+      inboxId: inbox.id,
+      messageId,
+      correlationId,
+      actorInstanceId: rows.instance.id,
+      canvasId: rows.instance.canvas_id,
+    };
+  }
+
+  async bootInstance(args: { readonly actorInstanceId: string }): Promise<void> {
+    const portal = this.portal();
+    const rows = fxGetActorRows(portal, { actorInstanceId: args.actorInstanceId });
+    if (rows.instance.status !== 'created') return;
+
+    const bootExists = this.db.select().from(schema.actor_inbox).all()
+      .some((row) => row.actor_instance_id === rows.instance.id && row.event_name === ACTOR_BOOT_MESSAGE_NAME);
+    if (bootExists) return;
+
+    const correlationId = `boot:${rows.instance.id}`;
+    txInsertInbox(portal, {
+      workspaceId: rows.instance.workspace_id,
+      canvasId: rows.instance.canvas_id,
+      actorInstanceId: rows.instance.id,
+      seq: fxNextActorInboxSeq(portal, { actorInstanceId: rows.instance.id }),
+      messageId: correlationId,
+      correlationId,
+      idempotencyKey: correlationId,
+      message: fnCreateBootMessage({ correlationId }),
+      createdAt: new Date(),
+    });
+    txPatchActorInstance(portal, { actorInstanceId: rows.instance.id, patch: { status: 'starting' } });
+    this.publishActorInstanceUpdated(rows.instance.canvas_id, args.actorInstanceId);
+    await this.nudgeSupervisor();
   }
 
   private async startSandboxWorker(): Promise<void> {
@@ -157,6 +245,20 @@ export class ActorService implements IService, IStartableService<object, TActorS
     this.supervisor.stop();
     await this.#handle?.stop().catch(() => undefined);
     this.#handle = undefined;
+  }
+
+  private portal() {
+    return { db: this.db, tables: schema, idFactory: this.supervisor.idFactory, eq };
+  }
+
+  private async nudgeSupervisor(): Promise<void> {
+    await this.supervisor.runOnce().catch(() => undefined);
+  }
+
+  private publishActorInstanceUpdated(canvasId: string, actorInstanceId: string): void {
+    const instance = this.db.select().from(schema.actor_instances).all().find((actor) => actor.id === actorInstanceId);
+    if (!instance) return;
+    this.eventPublisher?.publishActorEvent(canvasId, { type: 'actor.instance.updated', canvasId, instance });
   }
 }
 
