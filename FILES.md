@@ -1,5 +1,5 @@
 # FILE LIST
-Every file must be added here.
+Every src file must be added here. Ignore test/migration/doc files.
 This is an important book keeping files.
 We need to document if file is slopfree.
 Some files are more important than others.
@@ -635,13 +635,6 @@ prefix: `packages/service-db/src/`
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
 | 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, sandbox instances/volumes, and system-managed actor tables. |
-| 🤖 | `../database-migrations/0013_jazzy_sir_ram.sql` | generated | Drizzle migration creating workflow run, workflow step, and sandbox run tables. |
-| 🤖 | `../database-migrations/0014_lowly_the_phantom.sql` | generated | Drizzle migration creating actor definition, revision, instance, inbox, output, and connection tables. |
-| 🤖 | `../database-migrations/0015_lowly_emma_frost.sql` | generated | Drizzle migration creating sandbox instance and volume tracking tables with cascade linkage. |
-| 🤖 | `../database-migrations/meta/0013_snapshot.json` | generated | Drizzle schema snapshot for workflow table migration. |
-| 🤖 | `../database-migrations/meta/0014_snapshot.json` | generated | Drizzle schema snapshot for actor table migration. |
-| 🤖 | `../database-migrations/meta/0015_snapshot.json` | generated | Drizzle schema snapshot for sandbox instance and volume tracking table migration. |
-| 🤖 | `../database-migrations/meta/_journal.json` | generated | Drizzle migration journal including workflow, actor, and sandbox table migrations. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
