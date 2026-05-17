@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, blob, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, blob, index, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { createSelectSchema } from 'drizzle-zod';
 import { sql } from 'drizzle-orm';
 
@@ -105,7 +105,6 @@ export const actor_definitions = sqliteTable('actor_definitions', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   description: text('description'),
-  current_revision_id: text('current_revision_id'),
   created_by_system_id: text('created_by_system_id').notNull().default('system'),
   created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => [
@@ -115,9 +114,7 @@ export const actor_definitions = sqliteTable('actor_definitions', {
 export const actor_revisions = sqliteTable('actor_revisions', {
   id: text('id').primaryKey(),
   actor_definition_id: text('actor_definition_id').notNull().references(() => actor_definitions.id, { onDelete: 'cascade' }),
-  version: text('version').notNull(),
-  revision_hash: text('revision_hash').notNull(),
-  parent_revision_id: text('parent_revision_id'),
+  version: integer('version').notNull(),
   machine_schema: text('machine_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   machine_config: text('machine_config', { mode: 'json' }).notNull().default(sql`'{}'`),
   contract_schema: text('contract_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
@@ -130,8 +127,7 @@ export const actor_revisions = sqliteTable('actor_revisions', {
   created_by_system_id: text('created_by_system_id').notNull().default('system'),
   created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => [
-  index('actor_revisions_definition_idx').on(table.actor_definition_id),
-  index('actor_revisions_hash_idx').on(table.revision_hash),
+  uniqueIndex('actor_revisions_definition_version_idx').on(table.actor_definition_id, table.version),
 ]);
 
 export const actor_instances = sqliteTable('actor_instances', {

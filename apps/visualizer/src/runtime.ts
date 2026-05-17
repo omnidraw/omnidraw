@@ -339,12 +339,11 @@ export class VisualizerRuntime {
     const db = this.requireDb();
     db.insert(schema.canvas).values({ id: scenarioToSeed.canvasId, name: scenarioToSeed.name, automerge_url: `visualizer://${scenarioToSeed.id}`, created_at: new Date() }).run();
     for (const actor of scenarioToSeed.actors) {
-      db.insert(schema.actor_definitions).values({ id: actor.definitionId, name: actor.displayName, slug: actor.definitionId, description: `Visualizer actor ${actor.displayName}`, current_revision_id: actor.revisionId, created_at: new Date() }).run();
+      db.insert(schema.actor_definitions).values({ id: actor.definitionId, name: actor.displayName, slug: actor.definitionId, description: `Visualizer actor ${actor.displayName}`, created_at: new Date() }).run();
       db.insert(schema.actor_revisions).values({
         id: actor.revisionId,
         actor_definition_id: actor.definitionId,
-        version: 'visualizer',
-        revision_hash: `${scenarioToSeed.id}:${actor.id}`,
+        version: 1,
         machine_schema: {},
         machine_config: actor.machineConfig,
         contract_schema: {},

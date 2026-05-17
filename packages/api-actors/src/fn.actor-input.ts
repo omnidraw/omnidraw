@@ -76,7 +76,6 @@ export function fnNormalizeRegisterActorRevisionInput(input: TRegisterActorRevis
   return {
     ...input,
     description: input.description ?? null,
-    parentRevisionId: input.parentRevisionId ?? null,
     machineSchema: fnNormalizeJsonRecord(input.machineSchema),
     contractSchema: fnNormalizeJsonRecord(input.contractSchema),
     outputSchema: fnNormalizeJsonRecord(input.outputSchema),

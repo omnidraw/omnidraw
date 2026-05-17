@@ -10,7 +10,7 @@ import type {
 } from './contract';
 import { ACTOR_EVENT_GLOBAL_CHANNEL, SYSTEM_ACTOR_PRINCIPAL_ID } from './CONSTANTS';
 import { fnGetInitialMachineContext, fnGetInitialMachineState, fnNormalizeRegisterActorRevisionInput, fnToActorConnection, fnToActorInstance, fnToActorRevision } from './fn.actor-input';
-import { fxGetActorInstanceByElement, fxGetActorRevision } from './fx.actor-db';
+import { fxGetActorInstanceByElement, fxGetActorRevision, fxGetLatestActorRevision } from './fx.actor-db';
 
 export type TPortalActorDbWrite = {
   db: TDrizzleDb;
@@ -65,8 +65,6 @@ export function txRegisterActorRevision(portal: TPortalActorDbWrite, args: TArgs
       id: revisionId,
       actor_definition_id: nextDefinition.id,
       version: input.version,
-      revision_hash: input.revisionHash ?? revisionId,
-      parent_revision_id: input.parentRevisionId,
       machine_schema: input.machineSchema,
       machine_config: input.machineConfig,
       contract_schema: input.contractSchema,
@@ -84,7 +82,6 @@ export function txRegisterActorRevision(portal: TPortalActorDbWrite, args: TArgs
       .set({
         name: input.name,
         description: input.description,
-        current_revision_id: revision.id,
       })
       .where(EQ(SCHEMA.actor_definitions.id, nextDefinition.id))
       .returning()
@@ -105,10 +102,9 @@ export function txCreateActorInstance(portal: TPortalActorDbWrite, args: TArgsCr
   const definition = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, args.input.actorDefinitionId) }).sync();
   if (!definition) return null;
 
-  const actorRevisionId = args.input.actorRevisionId ?? definition.current_revision_id;
-  if (!actorRevisionId) return null;
-
-  const revision = fxGetActorRevision({ db: portal.db }, { id: actorRevisionId });
+  const revision = args.input.actorRevisionId
+    ? fxGetActorRevision({ db: portal.db }, { id: args.input.actorRevisionId })
+    : fxGetLatestActorRevision({ db: portal.db }, { definitionId: definition.id });
   if (!revision || revision.actor_definition_id !== definition.id) return null;
 
   const instanceRow = portal.db.insert(SCHEMA.actor_instances).values({

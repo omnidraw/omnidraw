@@ -120,6 +120,13 @@
       "when": 1779003765111,
       "tag": "0016_giant_wrecker",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1779008135096,
+      "tag": "0017_light_prowler",
+      "breakpoints": true
     }
   ]
 }

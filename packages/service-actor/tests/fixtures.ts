@@ -64,12 +64,11 @@ export function seedActor(
   const actorId = `instance-${args.actorId}`;
   const elementId = `element-${args.actorId}`;
 
-  db.insert(schema.actor_definitions).values({ id: definitionId, name: args.actorId, slug: args.actorId, current_revision_id: revisionId }).run();
+  db.insert(schema.actor_definitions).values({ id: definitionId, name: args.actorId, slug: args.actorId }).run();
   db.insert(schema.actor_revisions).values({
     id: revisionId,
     actor_definition_id: definitionId,
-    version: '0.0.1',
-    revision_hash: `sha256:${args.actorId}`,
+    version: 1,
     machine_schema: {},
     machine_config: createMachineConfig(args.inputName, args.actions),
     contract_schema: { 'msg.in.booting': { public: false, schema: {} } },

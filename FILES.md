@@ -411,8 +411,8 @@ prefix: `packages/api-actors/src/`
 | 🤖 | `contract.ts` |  | Actor ORPC contract, row schemas, mutation inputs, async send ack, and event union. |
 | ❓ | `CONSTANTS.ts` |  | Actor API system principal and event channel constants. |
 | ❓ | `db.ts` |  | Resolves the concrete Drizzle DB from the generic DB service for actor APIs. |
-| ❓ | `fn.actor-input.ts` |  | Pure actor input normalization and DB JSON row shaping helpers. |
-| ❓ | `fx.actor-db.ts` |  | Actor DB read helpers and account-aware canvas/registration authorization checks. |
+| 🤖 | `fn.actor-input.ts` |  | Pure actor input normalization and DB JSON row shaping helpers. |
+| 🤖 | `fx.actor-db.ts` |  | Actor DB read helpers and account-aware canvas/registration authorization checks. |
 | ❓ | `handlers.ts` |  | Actor API handler tree for instances, revisions, connections, and events. |
 | ❓ | `orpc.ts` |  | Actor API ORPC implementer with typed context. |
 | 🤖 | `tx.actor-db.ts` |  | Actor DB writes and actor event publication for revisions, instances, and connections. |

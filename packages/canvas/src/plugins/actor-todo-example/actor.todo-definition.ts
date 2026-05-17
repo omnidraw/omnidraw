@@ -5,7 +5,6 @@ export const ACTOR_TODO_REVISION = {
   slug: ACTOR_TODO_SLUG,
   description: "Built-in actor-backed Todo example.",
   version: ACTOR_TODO_VERSION,
-  revisionHash: `builtin:${ACTOR_TODO_SLUG}:${ACTOR_TODO_VERSION}`,
   machineConfig: {
     initialState: "ready",
     initialContext: { items: [] },

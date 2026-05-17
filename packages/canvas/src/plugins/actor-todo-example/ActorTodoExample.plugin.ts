@@ -20,7 +20,7 @@ export function createActorTodoExamplePlugin(): IPlugin<{
       const widgetManager = ctx.services.require("widgetManager");
 
       const [listError, revisions] = await ctx.config.apiService.api.actors.revisions.list({ slug: ACTOR_TODO_SLUG });
-      const existingRevision = listError ? null : revisions?.find((revision) => revision.revision_hash === ACTOR_TODO_REVISION.revisionHash) ?? null;
+      const existingRevision = listError ? null : revisions?.find((revision) => revision.version === ACTOR_TODO_REVISION.version) ?? null;
       const ensured = existingRevision
         ? { definition: null, revision: existingRevision }
         : (await ctx.config.apiService.api.actors.revisions.register(ACTOR_TODO_REVISION))[1];

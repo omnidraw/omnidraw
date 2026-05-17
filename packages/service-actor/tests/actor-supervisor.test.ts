@@ -81,12 +81,11 @@ describe('ActorSupervisor', () => {
   test('processes trusted built-in todo actor messages without API mutations', async () => {
     const { db, workflowDb, canvasId, cleanup: cleanupDb } = await createActorTestDb();
     cleanup.push(cleanupDb);
-    db.insert(schema.actor_definitions).values({ id: 'definition-todo', name: 'Todo', slug: 'todo', current_revision_id: 'revision-todo' }).run();
+    db.insert(schema.actor_definitions).values({ id: 'definition-todo', name: 'Todo', slug: 'todo' }).run();
     db.insert(schema.actor_revisions).values({
       id: 'revision-todo',
       actor_definition_id: 'definition-todo',
-      version: '0.2.0',
-      revision_hash: 'builtin:todo:0.2.0',
+      version: 1,
       machine_config: {
         initialState: 'ready',
         initialContext: { items: [] },
@@ -148,12 +147,11 @@ describe('ActorSupervisor', () => {
   test('loadActors queues boot messages for created actors without accounts', async () => {
     const { db, workflowDb, canvasId, cleanup: cleanupDb } = await createActorTestDb();
     cleanup.push(cleanupDb);
-    db.insert(schema.actor_definitions).values({ id: 'definition-created', name: 'created', slug: 'created', current_revision_id: 'revision-created' }).run();
+    db.insert(schema.actor_definitions).values({ id: 'definition-created', name: 'created', slug: 'created' }).run();
     db.insert(schema.actor_revisions).values({
       id: 'revision-created',
       actor_definition_id: 'definition-created',
-      version: '0.0.1',
-      revision_hash: 'sha256:created',
+      version: 1,
       machine_config: { states: { booting: { on: { 'msg.in.booting': { target: 'booting', actions: [] } } } } },
       machine_schema: {},
       contract_schema: {},

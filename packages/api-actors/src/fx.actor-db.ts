@@ -1,4 +1,4 @@
-import { and as AND, asc as ASC, eq as EQ, gt as GT, inArray as IN_ARRAY } from 'drizzle-orm';
+import { and as AND, asc as ASC, desc as DESC, eq as EQ, gt as GT, inArray as IN_ARRAY } from 'drizzle-orm';
 import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
 import * as SCHEMA from '@vibecanvas/service-db/schema';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
@@ -29,6 +29,10 @@ export type TArgsActorInstanceByElement = {
 
 export type TArgsActorRevisionById = {
   id: string;
+};
+
+export type TArgsLatestActorRevision = {
+  definitionId: string;
 };
 
 export type TArgsActorRevisionList = {
@@ -107,8 +111,16 @@ export function fxListActorRevisions(portal: TPortalActorDb, args: TArgsActorRev
 
   return portal.db.query.actor_revisions.findMany({
     where: EQ(SCHEMA.actor_revisions.actor_definition_id, definitionId),
-    orderBy: [ASC(SCHEMA.actor_revisions.created_at), ASC(SCHEMA.actor_revisions.id)],
+    orderBy: [ASC(SCHEMA.actor_revisions.version), ASC(SCHEMA.actor_revisions.id)],
   }).sync().map(fnToActorRevision);
+}
+
+export function fxGetLatestActorRevision(portal: TPortalActorDb, args: TArgsLatestActorRevision) {
+  const row = portal.db.query.actor_revisions.findFirst({
+    where: EQ(SCHEMA.actor_revisions.actor_definition_id, args.definitionId),
+    orderBy: [DESC(SCHEMA.actor_revisions.version), DESC(SCHEMA.actor_revisions.created_at), DESC(SCHEMA.actor_revisions.id)],
+  }).sync();
+  return row ? fnToActorRevision(row) : null;
 }
 
 export function fxGetActorRevision(portal: TPortalActorDb, args: TArgsActorRevisionById) {
