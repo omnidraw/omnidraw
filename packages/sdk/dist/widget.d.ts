@@ -16,6 +16,11 @@ export declare function useActor(): {
 	state(): TVibecanvasActorSnapshot | null;
 	send(eventName: string, params?: Record<string, unknown>, correlationId?: string): void | Promise<void>;
 	onState(callback: (snapshot: TVibecanvasActorSnapshot) => void): () => void;
+	requestHostUpdate(patch: {
+		width?: number;
+		height?: number;
+		window?: "contained" | "minimized" | "fullscreen";
+	}): void | Promise<void> | undefined;
 };
 
 export {};

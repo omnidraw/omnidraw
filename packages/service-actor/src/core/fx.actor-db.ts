@@ -17,10 +17,10 @@ export function fxGetActorRows(portal: TPortal, args: TArgsActor): TActorRows {
   const instance = portal.db.select().from(portal.tables.actor_instances).all().find((row) => row.id === args.actorInstanceId);
   if (!instance) throw new Error(`Unknown actor instance "${args.actorInstanceId}"`);
 
-  const revision = portal.db.select().from(portal.tables.actor_revisions).all().find((row) => row.id === instance.actor_revision_id);
-  if (!revision) throw new Error(`Unknown actor revision "${instance.actor_revision_id}"`);
+  const definition = portal.db.select().from(portal.tables.actor_definitions).all().find((row) => row.id === instance.actor_definition_id);
+  if (!definition) throw new Error(`Unknown actor definition "${instance.actor_definition_id}"`);
 
-  return { instance, revision };
+  return { instance, definition };
 }
 
 type TArgsEmpty = Record<string, never>;

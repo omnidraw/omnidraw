@@ -1,49 +1,59 @@
-var __create = Object.create;
-var __getProtoOf = Object.getPrototypeOf;
-var __defProp = Object.defineProperty;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
-var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
-  target = mod != null ? __create(__getProtoOf(mod)) : {};
-  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
-  for (let key of __getOwnPropNames(mod))
-    if (!__hasOwnProp.call(to, key))
-      __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
-        enumerable: true
-      });
-  if (canCache)
-    cache.set(mod, to);
-  return to;
-};
-var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-
 // src/bridge.ts
 var bridge = null;
+var snapshotListeners = new Set;
+function getWidgetGlobal() {
+  return globalThis;
+}
+function emitToHost(message) {
+  const output = getWidgetGlobal().output;
+  if (typeof output !== "function")
+    return;
+  output(message);
+}
+function receiveFromHost(message) {
+  if (message.type !== "vibecanvas.actor.snapshot")
+    return;
+  getWidgetGlobal().__vibecanvasSnapshot = message.snapshot;
+  if (!message.snapshot)
+    return;
+  for (const listener of snapshotListeners)
+    listener(message.snapshot);
+}
+function createSandboxBridge() {
+  getWidgetGlobal().__vibecanvasReceive = receiveFromHost;
+  return {
+    getActorSnapshot() {
+      emitToHost({ type: "vibecanvas.actor.subscribe" });
+      return getWidgetGlobal().__vibecanvasSnapshot ?? null;
+    },
+    sendActorMessage(eventName, params = {}, correlationId) {
+      emitToHost({ type: "vibecanvas.actor.send", eventName, params, correlationId });
+    },
+    onActorSnapshot(callback) {
+      snapshotListeners.add(callback);
+      emitToHost({ type: "vibecanvas.actor.subscribe" });
+      const snapshot = getWidgetGlobal().__vibecanvasSnapshot;
+      if (snapshot)
+        callback(snapshot);
+      return () => snapshotListeners.delete(callback);
+    },
+    requestHostUpdate(patch) {
+      emitToHost({ type: "vibecanvas.host.update", patch });
+    }
+  };
+}
 function installVibecanvasBridge(nextBridge) {
   bridge = nextBridge;
+  getWidgetGlobal().__vibecanvasBridge = nextBridge;
   return () => {
     if (bridge === nextBridge)
       bridge = null;
+    if (getWidgetGlobal().__vibecanvasBridge === nextBridge)
+      delete getWidgetGlobal().__vibecanvasBridge;
   };
 }
 function getVibecanvasBridge() {
-  if (!bridge) {
-    throw new Error("Vibecanvas widget bridge is not installed");
-  }
-  return bridge;
+  return bridge ?? getWidgetGlobal().__vibecanvasBridge ?? createSandboxBridge();
 }
 // src/widget.ts
 function defineWidget(widget) {
@@ -64,6 +74,9 @@ function useActor() {
     },
     onState(callback) {
       return bridge2.onActorSnapshot(callback);
+    },
+    requestHostUpdate(patch) {
+      return bridge2.requestHostUpdate?.(patch);
     }
   };
 }

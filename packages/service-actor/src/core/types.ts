@@ -31,6 +31,7 @@ export type TActorMachineConfig = {
 export type TActorBundleManifest = {
   readonly entrypoint?: string;
   readonly modulePath?: string;
+  readonly functionsPath?: string;
   readonly functions?: {
     readonly fns?: readonly string[];
     readonly fxs?: readonly string[];
@@ -47,7 +48,6 @@ export type TActorError = {
 };
 
 export type TActorDefinitionRow = typeof schema.actor_definitions.$inferSelect;
-export type TActorRevisionRow = typeof schema.actor_revisions.$inferSelect;
 export type TActorInstanceRow = typeof schema.actor_instances.$inferSelect;
 export type TActorConnectionRow = typeof schema.actor_connections.$inferSelect;
 export type TActorInboxRow = typeof schema.actor_inbox.$inferSelect;
@@ -79,7 +79,7 @@ export type TActorTransitionPlan = {
 
 export type TActorRows = {
   readonly instance: TActorInstanceRow;
-  readonly revision: TActorRevisionRow;
+  readonly definition: TActorDefinitionRow;
 };
 
 export type TActorSupervisorStatus = {

@@ -600,14 +600,14 @@ prefix: `packages/sdk/`
 | 🤖 | `dist/widget.js` | generated | Generated widget-side SDK runtime bundle. |
 | 🤖 | `package.json` |  | Widget SDK package metadata, dist exports, peer dependency, and declaration bundle build script. |
 | 🤖 | `README.md` |  | Guest widget SDK usage guide for actor functions, config, machine states, JSON Schema, and theming. |
-| 🤖 | `src/actor.ts` |  | Widget SDK actor function API and lightweight runtime placeholder. |
+| 🤖 | `src/actor.ts` |  | Widget SDK actor JSON definition and actor/functions.ts effect table helper types. |
 | ❓ | `src/arrow-core.d.ts` |  | Local Arrow reactive declaration shim for SDK declaration bundling. |
-| ❓ | `src/bridge.ts` |  | Widget host bridge installation and access helpers. |
-| 🤖 | `src/config.ts` |  | Widget SDK config type for vibecanvas.config.ts including actor metadata. |
-| 🤖 | `src/index.ts` |  | Widget SDK barrel exporting actor functions, machine helpers, and config APIs. |
+| 🤖 | `src/bridge.ts` |  | Widget SDK bridge protocol for sandbox output messages, host snapshots, and trusted bridge injection. |
+| 🤖 | `src/config.ts` |  | Widget SDK config helpers for filesystem addon widget.json shape, actor JSON paths, and frontend tool metadata. |
+| 🤖 | `src/index.ts` |  | Widget SDK barrel exporting actor JSON/effect helpers, sandbox bridge APIs, widget helpers, and machine/config APIs. |
 | 🤖 | `src/machine.ts` |  | Reactive widget state machine with official host-known states. |
 | ❓ | `src/schema.ts` |  | Internal JSON Schema type used by actor port schemas. |
-| ❓ | `src/widget.ts` |  | Widget UI helper entry point using the injected host bridge. |
+| 🤖 | `src/widget.ts` |  | Widget UI helper entry point using the SDK bridge for actor snapshot/send/update messages. |
 | 🤖 | `tsconfig.json` |  | SDK declaration bundler TypeScript path mapping for monorepo type imports. |
 
 ## packages/service-automerge
@@ -636,7 +636,7 @@ prefix: `packages/service-db/src/`
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, sandbox instances/volumes, and system-managed actor tables. |
+| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, sandbox resources, and data-folder actor definitions without revision rows. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
@@ -660,9 +660,9 @@ prefix: `packages/service-actor/`
 | 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker through service-sandbox. |
 | 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows without built-in actor exceptions, reconciles results, commits outputs, routes messages, and publishes runtime events. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
-| ❓ | `src/core/fn.machine.ts` |  | Pure actor machine transition, boot message, processability, and effect result merge helpers. |
-| ❓ | `src/core/fn.workflow-definition.ts` |  | Pure actor inbox/revision transition plan to durable workflow definition mapping. |
-| ❓ | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for instances, inbox queues, connections, and sequence numbers. |
+| 🤖 | `src/core/fn.machine.ts` |  | Pure actor machine transition from data-folder actor definitions, boot message, processability, and effect result merge helpers. |
+| 🤖 | `src/core/fn.workflow-definition.ts` |  | Pure actor inbox/definition transition plan to durable workflow definition mapping for actor/functions.ts. |
+| 🤖 | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for definition-backed instances, inbox queues, connections, and sequence numbers. |
 | ❓ | `src/core/tx.actor-db.ts` |  | Actor DB write helpers for claiming inbox, patching actors, and inserting messages/outputs. |
 | ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
 | 🤖 | `src/index.ts` |  | Actor service package barrel exports including runtime send result types. |

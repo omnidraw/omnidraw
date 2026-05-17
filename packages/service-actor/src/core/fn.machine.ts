@@ -46,7 +46,7 @@ export type TArgsCreateTransitionPlan = {
 
 export function fnCreateTransitionPlan(args: TArgsCreateTransitionPlan): TActorTransitionPlan {
   const state = args.rows.instance.machine_state;
-  const machineConfig = fnActorMachineConfig({ value: args.rows.revision.machine_config });
+  const machineConfig = fnActorMachineConfig({ value: args.rows.definition.machine_config });
   const stateConfig = machineConfig.states[state];
   const transition = stateConfig?.on?.[args.message.name];
   const effectArgs = {

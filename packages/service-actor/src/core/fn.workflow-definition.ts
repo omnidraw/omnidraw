@@ -1,6 +1,6 @@
 import type { TWorkflowDefinition, TWorkflowFunctionKind, TWorkflowJson } from '@vibecanvas/service-workflow';
 import { ACTOR_WORKFLOW_KIND } from './CONSTANTS';
-import type { TActorBundleManifest, TActorInboxRow, TActorRevisionRow, TActorTransitionPlan } from './types';
+import type { TActorBundleManifest, TActorDefinitionRow, TActorInboxRow, TActorTransitionPlan } from './types';
 
 export type TArgsEffectKind = {
   readonly name: string;
@@ -13,16 +13,16 @@ export function fnEffectKind(args: TArgsEffectKind): TWorkflowFunctionKind {
 }
 
 export type TArgsActorPortalSpec = {
-  readonly revision: TActorRevisionRow;
+  readonly definition: TActorDefinitionRow;
 };
 
 export function fnActorPortalSpec(args: TArgsActorPortalSpec): TWorkflowJson {
-  const manifest = (args.revision.server_manifest ?? {}) as TActorBundleManifest;
-  const entrypoint = manifest.entrypoint ?? manifest.modulePath ?? 'bundle.mjs';
+  const manifest = (args.definition.server_manifest ?? {}) as TActorBundleManifest;
+  const entrypoint = manifest.entrypoint ?? manifest.modulePath ?? args.definition.functions_path;
   return {
-    modulePath: manifest.modulePath ?? entrypoint,
+    modulePath: manifest.modulePath ?? manifest.functionsPath ?? args.definition.functions_path,
     entrypoint,
-    files: args.revision.server_bundle_file_id ? [{ path: entrypoint, fileId: args.revision.server_bundle_file_id }] : (manifest.files ?? []),
+    files: manifest.files ?? [],
   };
 }
 
@@ -36,7 +36,7 @@ export function fnActorWorkflowRunId(args: TArgsActorWorkflowRunId): string {
 
 export type TArgsCreateActorWorkflowDefinition = {
   readonly inbox: TActorInboxRow;
-  readonly revision: TActorRevisionRow;
+  readonly definition: TActorDefinitionRow;
   readonly plan: TActorTransitionPlan;
 };
 
@@ -52,7 +52,7 @@ export function fnCreateActorWorkflowDefinition(args: TArgsCreateActorWorkflowDe
         functionKind,
         functionName: effect,
         idempotencyKey: `actor:${args.inbox.actor_instance_id}:message:${args.inbox.message_id}:effect:${index}:${effect}`,
-        portalSpec: fnActorPortalSpec({ revision: args.revision }),
+        portalSpec: fnActorPortalSpec({ definition: args.definition }),
         args: {
           state: args.plan.effectArgs.state,
           context: args.plan.effectArgs.context,

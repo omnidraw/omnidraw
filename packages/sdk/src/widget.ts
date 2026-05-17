@@ -30,6 +30,9 @@ function useActor() {
     onState(callback: (snapshot: TVibecanvasActorSnapshot) => void) {
       return bridge.onActorSnapshot(callback);
     },
+    requestHostUpdate(patch: { width?: number; height?: number; window?: "contained" | "minimized" | "fullscreen" }) {
+      return bridge.requestHostUpdate?.(patch);
+    },
   };
 }
 

@@ -1,22 +1,20 @@
-import type { DocHandle } from "@automerge/automerge-repo";
 import { createRuntime, createServiceRegistry, IServiceRegistry } from "@vibecanvas/runtime";
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
-  createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createFilesystemPlugin, createGridPlugin,
-  createHistoryControlPlugin,
-  createImagePlugin,
-  createPenPlugin,
-  createRecorderPlugin,
-  createSceneHydratorPlugin,
-  createSelectionStyleMenuPlugin,
-  createSelectPlugin,
-  createShape1dPlugin,
-  createShape2dPlugin,
-  createTerminalPlugin,
-  createTextPlugin,
-  createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
+    createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createFilesystemPlugin, createGridPlugin,
+    createHistoryControlPlugin,
+    createImagePlugin,
+    createPenPlugin,
+    createRecorderPlugin,
+    createSceneHydratorPlugin,
+    createSelectionStyleMenuPlugin,
+    createSelectPlugin,
+    createShape1dPlugin,
+    createShape2dPlugin,
+    createTerminalPlugin,
+    createTextPlugin,
+    createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import { ActorConnectionService } from "./services/actor-connection/ActorConnectionService";
 import { ActorWidgetBindingService } from "./services/actor-widget/ActorWidgetBindingService";
@@ -34,7 +32,6 @@ import { SessionService } from "./services/session/SessionService";
 import { ToolService } from "./services/tool/ToolService";
 import { WidgetManagerService } from "./services/widget/WidgetManagerService";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
-import { createActorTodoExamplePlugin } from "./plugins/actor-todo-example/ActorTodoExample.plugin";
 
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
@@ -178,7 +175,6 @@ export function buildRuntime(config: IRuntimeConfig) {
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
-    createActorTodoExamplePlugin(),
   ];
 
   if (config.env.DEV) {

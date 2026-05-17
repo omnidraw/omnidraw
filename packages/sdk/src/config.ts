@@ -1,27 +1,83 @@
-import type { TVibecanvasDefinedActor } from "./actor";
+import type { TVibecanvasActorJson } from "./actor";
 
-type TVibecanvasWidgetBundleConfig = {
+type TVibecanvasWidgetToolConfig = {
+  id: string;
+  label: string;
+  icon?: string;
+  group?: string;
+  priority?: number;
+  shortcuts?: string[];
+  behavior?: {
+    type: "mode";
+    mode: "draw-create" | "click-create";
+  };
+  render?: {
+    defaultWidth?: number;
+    defaultHeight?: number;
+    minWidth?: number;
+    minHeight?: number;
+    title?: string;
+  };
+};
+
+type TVibecanvasWidgetAddonConfig = {
+  id: string;
   slug: string;
   name: string;
-  version: string;
-  source: Record<string, string>;
-  defaultSize?: {
-    width: number;
-    height: number;
+  version?: string;
+  description?: string;
+  actor?: {
+    definition: string;
+    functions: string;
   };
-  uiManifest?: Record<string, unknown>;
+  widget: {
+    runtime: "arrowjs-sandbox";
+    sourceDir: string;
+    entry: "main.ts" | "main.js";
+    stylesheet?: "main.css";
+    defaultSize?: {
+      width: number;
+      height: number;
+    };
+  };
+  frontend?: {
+    element?: {
+      kind?: string;
+      dataType?: "widget" | "ui-widget";
+      initialPayload?: Record<string, unknown>;
+      actor?: {
+        actorSlug: string;
+        uiProps?: Record<string, unknown>;
+      };
+    };
+    tool?: TVibecanvasWidgetToolConfig;
+  };
+  messages?: {
+    inputs?: string[];
+    outputs?: string[];
+    connectionRouting?: {
+      outputPrefix?: string;
+      targetInputPrefix?: string;
+    };
+  };
 };
 
 type TVibecanvasConfig = {
-  actors?: TVibecanvasDefinedActor[];
-  widgets?: TVibecanvasWidgetBundleConfig[];
+  actor?: TVibecanvasActorJson;
+  addon?: TVibecanvasWidgetAddonConfig;
 };
 
 function defineVibecanvasConfig(config: TVibecanvasConfig) {
   return config;
 }
 
-type TVibecanvasWidgetConfig = TVibecanvasWidgetBundleConfig;
+function defineWidgetAddon<TConfig extends TVibecanvasWidgetAddonConfig>(config: TConfig): TConfig {
+  return config;
+}
 
-export { defineVibecanvasConfig };
-export type { TVibecanvasConfig, TVibecanvasWidgetBundleConfig, TVibecanvasWidgetConfig };
+type TVibecanvasWidgetConfig = TVibecanvasWidgetAddonConfig;
+
+type TVibecanvasWidgetBundleConfig = TVibecanvasWidgetAddonConfig;
+
+export { defineVibecanvasConfig, defineWidgetAddon };
+export type { TVibecanvasConfig, TVibecanvasWidgetAddonConfig, TVibecanvasWidgetBundleConfig, TVibecanvasWidgetConfig, TVibecanvasWidgetToolConfig };

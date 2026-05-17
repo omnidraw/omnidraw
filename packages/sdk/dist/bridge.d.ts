@@ -5,6 +5,28 @@ export type TVibecanvasActorSnapshot = {
 	state: string;
 	context: Record<string, unknown>;
 };
+export type TVibecanvasWidgetToHostMessage = {
+	type: "vibecanvas.actor.send";
+	eventName: string;
+	params: Record<string, unknown>;
+	correlationId?: string;
+} | {
+	type: "vibecanvas.actor.subscribe";
+} | {
+	type: "vibecanvas.host.update";
+	patch: {
+		width?: number;
+		height?: number;
+		window?: "contained" | "minimized" | "fullscreen";
+	};
+};
+export type TVibecanvasHostToWidgetMessage = {
+	type: "vibecanvas.actor.snapshot";
+	snapshot: TVibecanvasActorSnapshot | null;
+} | {
+	type: "vibecanvas.actor.error";
+	message: string;
+};
 export type TVibecanvasWidgetBridge = {
 	getActorSnapshot(): TVibecanvasActorSnapshot | null | Promise<TVibecanvasActorSnapshot | null>;
 	sendActorMessage(eventName: string, params?: Record<string, unknown>, correlationId?: string): void | Promise<void>;

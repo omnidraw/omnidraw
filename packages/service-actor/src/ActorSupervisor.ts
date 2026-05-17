@@ -156,7 +156,7 @@ export class ActorSupervisor {
     }
 
     const run = await this.workflowSuperviser.ensureRun({
-      definition: fnCreateActorWorkflowDefinition({ inbox: claimed, revision: rows.revision, plan }),
+      definition: fnCreateActorWorkflowDefinition({ inbox: claimed, definition: rows.definition, plan }),
       runId: fnActorWorkflowRunId({ inbox: claimed }),
       workspaceId: claimed.workspace_id ?? undefined,
       canvasId: claimed.canvas_id,

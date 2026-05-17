@@ -42,70 +42,61 @@ type TJsonSchema = boolean | {
 export type TActorJson = null | boolean | number | string | TActorJson[] | {
 	[key: string]: TActorJson;
 };
-export type TVibecanvasActorHandlerArgs<TContext = Record<string, TActorJson>, TInput = Record<string, TActorJson>> = {
-	state: string;
-	context: TContext;
-	input: TInput;
+export type TVibecanvasActorTransition = {
+	target: string;
+	guard?: string;
+	actions?: string[];
 };
-export type TVibecanvasActorHandlerResult<TContext = Record<string, TActorJson>> = {
-	state?: string;
-	context?: TContext;
-	outputs?: Array<{
-		name: string;
-		payload?: TActorJson;
-	}>;
+export type TVibecanvasActorStateConfig = {
+	entry?: string[];
+	exit?: string[];
+	on?: Record<string, TVibecanvasActorTransition>;
 };
-export type TVibecanvasActorHandler<TContext = Record<string, TActorJson>, TInput = Record<string, TActorJson>> = (args: TVibecanvasActorHandlerArgs<TContext, TInput>) => TVibecanvasActorHandlerResult<TContext> | Promise<TVibecanvasActorHandlerResult<TContext>>;
-export type TVibecanvasActorOutputMessage = {
-	output: string;
-	payload?: unknown;
-};
-export type TVibecanvasActorRuntimePortal = {
-	onDefinition?: (definition: unknown) => void;
-	onSend?: (message: TVibecanvasActorOutputMessage) => void;
-};
-export type TVibecanvasActorDefinition<TContext = Record<string, TActorJson>> = {
+export type TVibecanvasActorJson = {
 	slug: string;
 	name: string;
-	version: string;
+	version?: string;
 	description?: string;
 	initialState: string;
-	initialContext: TContext;
+	initialContext?: TActorJson;
+	states: Record<string, TVibecanvasActorStateConfig>;
 	inputSchema?: Record<string, TJsonSchema>;
 	outputSchema?: Record<string, TJsonSchema>;
-	on: Record<string, TVibecanvasActorHandler<TContext, Record<string, TActorJson>>>;
 };
-export type TVibecanvasDefinedActor<TContext = Record<string, TActorJson>> = TVibecanvasActorDefinition<TContext> & {
-	manifest: {
-		slug: string;
-		name: string;
-		version: string;
-		description?: string;
-		inputSchema: Record<string, TJsonSchema>;
-		outputSchema: Record<string, TJsonSchema>;
-	};
+export type TVibecanvasActorMessage = {
+	name: string;
+	payload: TActorJson;
 };
-export declare function createActorRuntime(portal?: TVibecanvasActorRuntimePortal): {
-	defineActor: (nextDefinition: any) => {
-		receive: (input: string, handler: (payload?: unknown) => void | Promise<void>) => () => void;
-		send: (output: string, payload?: unknown) => void;
-	};
-	deliverActor: (input: string, payload?: unknown) => Promise<number>;
-	getActorDefinition: () => any;
-};
-export declare function defineActor<TContext = Record<string, TActorJson>>(definition: TVibecanvasActorDefinition<TContext>): TVibecanvasDefinedActor<TContext>;
-export declare function normalizeActorHandlerResult<TContext>(args: {
-	previousState: string;
-	previousContext: TContext;
-	result: TVibecanvasActorHandlerResult<TContext> | null | undefined;
-}): {
+export type TVibecanvasActorEffectArgs<TContext extends TActorJson = TActorJson> = {
 	state: string;
 	context: TContext;
-	outputs: {
-		name: string;
-		payload?: TActorJson;
-	}[];
+	message: TVibecanvasActorMessage;
 };
+export type TVibecanvasActorOutput = {
+	name: string;
+	payload?: TActorJson;
+};
+export type TVibecanvasActorEffectResult<TContext extends TActorJson = TActorJson> = {
+	context?: TContext;
+	outputs?: TVibecanvasActorOutput[];
+};
+export type TVibecanvasActorEffectPortal = {
+	env: Record<string, string | undefined>;
+	now: () => string;
+	idempotencyKey?: string;
+	workflowRunId: string;
+	workflowStepId: string;
+	previousResults: readonly unknown[];
+};
+export type TVibecanvasActorEffect<TContext extends TActorJson = TActorJson> = (portal: TVibecanvasActorEffectPortal, args: TVibecanvasActorEffectArgs<TContext>) => TVibecanvasActorEffectResult<TContext> | Promise<TVibecanvasActorEffectResult<TContext>>;
+export type TVibecanvasActorFunctions = {
+	fns?: Record<string, TVibecanvasActorEffect>;
+	fxs?: Record<string, TVibecanvasActorEffect>;
+	txs?: Record<string, TVibecanvasActorEffect>;
+};
+export declare function defineActorJson<TDefinition extends TVibecanvasActorJson>(definition: TDefinition): TDefinition;
+export declare function defineActorFunctions<TFunctions extends TVibecanvasActorFunctions>(functions: TFunctions): TFunctions;
+export declare const defineActor: typeof defineActorJson;
 declare const VIBECANVAS_OFFICIAL_MACHINE_STATES: readonly [
 	"booting",
 	"ready",
@@ -223,6 +214,28 @@ export type TVibecanvasActorSnapshot = {
 	state: string;
 	context: Record<string, unknown>;
 };
+export type TVibecanvasWidgetToHostMessage = {
+	type: "vibecanvas.actor.send";
+	eventName: string;
+	params: Record<string, unknown>;
+	correlationId?: string;
+} | {
+	type: "vibecanvas.actor.subscribe";
+} | {
+	type: "vibecanvas.host.update";
+	patch: {
+		width?: number;
+		height?: number;
+		window?: "contained" | "minimized" | "fullscreen";
+	};
+};
+export type TVibecanvasHostToWidgetMessage = {
+	type: "vibecanvas.actor.snapshot";
+	snapshot: TVibecanvasActorSnapshot | null;
+} | {
+	type: "vibecanvas.actor.error";
+	message: string;
+};
 export type TVibecanvasWidgetBridge = {
 	getActorSnapshot(): TVibecanvasActorSnapshot | null | Promise<TVibecanvasActorSnapshot | null>;
 	sendActorMessage(eventName: string, params?: Record<string, unknown>, correlationId?: string): void | Promise<void>;
@@ -246,23 +259,79 @@ export declare function useActor(): {
 	state(): TVibecanvasActorSnapshot | null;
 	send(eventName: string, params?: Record<string, unknown>, correlationId?: string): void | Promise<void>;
 	onState(callback: (snapshot: TVibecanvasActorSnapshot) => void): () => void;
+	requestHostUpdate(patch: {
+		width?: number;
+		height?: number;
+		window?: "contained" | "minimized" | "fullscreen";
+	}): void | Promise<void> | undefined;
 };
-export type TVibecanvasWidgetBundleConfig = {
+export type TVibecanvasWidgetToolConfig = {
+	id: string;
+	label: string;
+	icon?: string;
+	group?: string;
+	priority?: number;
+	shortcuts?: string[];
+	behavior?: {
+		type: "mode";
+		mode: "draw-create" | "click-create";
+	};
+	render?: {
+		defaultWidth?: number;
+		defaultHeight?: number;
+		minWidth?: number;
+		minHeight?: number;
+		title?: string;
+	};
+};
+export type TVibecanvasWidgetAddonConfig = {
+	id: string;
 	slug: string;
 	name: string;
-	version: string;
-	source: Record<string, string>;
-	defaultSize?: {
-		width: number;
-		height: number;
+	version?: string;
+	description?: string;
+	actor?: {
+		definition: string;
+		functions: string;
 	};
-	uiManifest?: Record<string, unknown>;
+	widget: {
+		runtime: "arrowjs-sandbox";
+		sourceDir: string;
+		entry: "main.ts" | "main.js";
+		stylesheet?: "main.css";
+		defaultSize?: {
+			width: number;
+			height: number;
+		};
+	};
+	frontend?: {
+		element?: {
+			kind?: string;
+			dataType?: "widget" | "ui-widget";
+			initialPayload?: Record<string, unknown>;
+			actor?: {
+				actorSlug: string;
+				uiProps?: Record<string, unknown>;
+			};
+		};
+		tool?: TVibecanvasWidgetToolConfig;
+	};
+	messages?: {
+		inputs?: string[];
+		outputs?: string[];
+		connectionRouting?: {
+			outputPrefix?: string;
+			targetInputPrefix?: string;
+		};
+	};
 };
 export type TVibecanvasConfig = {
-	actors?: TVibecanvasDefinedActor[];
-	widgets?: TVibecanvasWidgetBundleConfig[];
+	actor?: TVibecanvasActorJson;
+	addon?: TVibecanvasWidgetAddonConfig;
 };
 export declare function defineVibecanvasConfig(config: TVibecanvasConfig): TVibecanvasConfig;
-export type TVibecanvasWidgetConfig = TVibecanvasWidgetBundleConfig;
+export declare function defineWidgetAddon<TConfig extends TVibecanvasWidgetAddonConfig>(config: TConfig): TConfig;
+export type TVibecanvasWidgetConfig = TVibecanvasWidgetAddonConfig;
+export type TVibecanvasWidgetBundleConfig = TVibecanvasWidgetAddonConfig;
 
 export {};

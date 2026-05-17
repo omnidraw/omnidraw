@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, blob, index, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, blob, index, primaryKey } from 'drizzle-orm/sqlite-core';
 import { createSelectSchema } from 'drizzle-zod';
 import { sql } from 'drizzle-orm';
 
@@ -105,29 +105,22 @@ export const actor_definitions = sqliteTable('actor_definitions', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   description: text('description'),
-  created_by_system_id: text('created_by_system_id').notNull().default('system'),
-  created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-}, (table) => [
-  index('actor_definitions_slug_idx').on(table.slug),
-]);
-
-export const actor_revisions = sqliteTable('actor_revisions', {
-  id: text('id').primaryKey(),
-  actor_definition_id: text('actor_definition_id').notNull().references(() => actor_definitions.id, { onDelete: 'cascade' }),
-  version: integer('version').notNull(),
+  widget_id: text('widget_id').notNull().default(''),
+  widget_dir: text('widget_dir').notNull().default(''),
+  actor_json_path: text('actor_json_path').notNull().default('actor/actor.json'),
+  functions_path: text('functions_path').notNull().default('actor/functions.ts'),
   machine_schema: text('machine_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   machine_config: text('machine_config', { mode: 'json' }).notNull().default(sql`'{}'`),
   contract_schema: text('contract_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   output_schema: text('output_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   server_manifest: text('server_manifest', { mode: 'json' }).notNull().default(sql`'{}'`),
   ui_manifest: text('ui_manifest', { mode: 'json' }).notNull().default(sql`'{}'`),
-  server_bundle_file_id: text('server_bundle_file_id').references(() => files.id, { onDelete: 'set null' }),
-  ui_bundle_file_id: text('ui_bundle_file_id').references(() => files.id, { onDelete: 'set null' }),
-  source_archive_file_id: text('source_archive_file_id').references(() => files.id, { onDelete: 'set null' }),
   created_by_system_id: text('created_by_system_id').notNull().default('system'),
   created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => [
-  uniqueIndex('actor_revisions_definition_version_idx').on(table.actor_definition_id, table.version),
+  index('actor_definitions_slug_idx').on(table.slug),
+  index('actor_definitions_widget_id_idx').on(table.widget_id),
 ]);
 
 export const actor_instances = sqliteTable('actor_instances', {
@@ -136,7 +129,6 @@ export const actor_instances = sqliteTable('actor_instances', {
   canvas_id: text('canvas_id').notNull().references(() => canvas.id, { onDelete: 'cascade' }),
   element_id: text('element_id').notNull(),
   actor_definition_id: text('actor_definition_id').notNull().references(() => actor_definitions.id, { onDelete: 'cascade' }),
-  actor_revision_id: text('actor_revision_id').notNull().references(() => actor_revisions.id, { onDelete: 'cascade' }),
   display_name: text('display_name').notNull(),
   status: text('status', { enum: ['created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked'] }).notNull().default('created'),
   machine_state: text('machine_state').notNull(),
