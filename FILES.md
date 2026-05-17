@@ -309,7 +309,7 @@ prefix: `apps/cli/src/`
 | 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
 | 🤖 | `plugins/orpc/orpc.base.ts` |  | Root ORPC contract context includes optional actor runtime services. |
 | 🤖 | `plugins/orpc/OrpcPlugin.ts` |  | Injects actor runtime services into websocket ORPC contexts when available. |
-| ❓ | `plugins/widget/WidgetPlugin.ts` |  | Sources data-folder widget addons on CLI startup and upserts actor definitions from unified vibecanvas.json plus actor/functions.ts. |
+| 🤖 | `plugins/widget/WidgetPlugin.ts` |  | Sources data-folder widget addons on CLI startup, upserts actor definitions, and seeds ActorService in-memory widget code. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
@@ -658,7 +658,7 @@ prefix: `packages/service-actor/`
 | 🤖 | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
 | 🤖 | `package.json` |  | Actor service package metadata and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
-| 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service that starts supervisor and sandboxed generic worker through service-sandbox. |
+| 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service, in-memory widget/actor source registry, supervisor startup, and sandboxed generic worker integration. |
 | 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows without built-in actor exceptions, reconciles results, commits outputs, routes messages, and publishes runtime events. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
 | 🤖 | `src/core/fn.machine.ts` |  | Pure actor machine transition from data-folder actor definitions, boot message, processability, and effect result merge helpers. |

@@ -79,6 +79,25 @@ export type TActorServiceSendMessageResult = {
   readonly canvasId: string;
 };
 
+export type TActorServiceWidgetSource = {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly widgetDir: string;
+  readonly vibecanvasJsonPath: string;
+  readonly vibecanvasJson: unknown;
+  readonly actor: {
+    readonly functionsPath: string;
+    readonly functionsGuestPath: string;
+    readonly functionsSource: string;
+  };
+  readonly widget: {
+    readonly sourceDir: string;
+    readonly files: Readonly<Record<string, string>>;
+  };
+  readonly loadedAt: string;
+};
+
 type TServiceContext<TConfig extends object> = {
   readonly config: TConfig;
 };
@@ -103,6 +122,8 @@ export class ActorService implements IService, IStartableService<object, TActorS
   readonly autoStart: boolean;
   readonly startSandboxByDefault: boolean;
   readonly sandboxRunner: TActorSandboxRunner;
+  readonly #widgetSourcesBySlug = new Map<string, TActorServiceWidgetSource>();
+  readonly #widgetSourcesById = new Map<string, TActorServiceWidgetSource>();
   #handle?: TActorSandboxHandle;
   #stopPromise?: Promise<void>;
 
@@ -144,6 +165,24 @@ export class ActorService implements IService, IStartableService<object, TActorS
 
   getStatus(): TActorServiceStatus {
     return { sandboxStarted: Boolean(this.#handle), workerStarted: Boolean(this.#handle), supervisor: this.supervisor.getStatus() };
+  }
+
+  upsertWidgetSource(source: TActorServiceWidgetSource): void {
+    this.#widgetSourcesBySlug.set(source.slug, source);
+    this.#widgetSourcesById.set(source.id, source);
+  }
+
+  getWidgetSource(idOrSlug: string): TActorServiceWidgetSource | null {
+    return this.#widgetSourcesBySlug.get(idOrSlug) ?? this.#widgetSourcesById.get(idOrSlug) ?? null;
+  }
+
+  listWidgetSources(): TActorServiceWidgetSource[] {
+    return [...this.#widgetSourcesBySlug.values()].sort((left, right) => left.name.localeCompare(right.name) || left.slug.localeCompare(right.slug));
+  }
+
+  clearWidgetSources(): void {
+    this.#widgetSourcesBySlug.clear();
+    this.#widgetSourcesById.clear();
   }
 
   async sendMessage(args: TActorServiceSendMessageArgs): Promise<TActorServiceSendMessageResult> {

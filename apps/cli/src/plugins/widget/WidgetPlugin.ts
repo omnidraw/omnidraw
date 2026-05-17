@@ -1,10 +1,10 @@
 import type { IPlugin } from '@vibecanvas/runtime';
-import type { ActorService } from '@vibecanvas/service-actor';
+import type { ActorService, TActorServiceWidgetSource } from '@vibecanvas/service-actor';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import * as schema from '@vibecanvas/service-db/schema';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 
@@ -63,18 +63,42 @@ function guestDataPath(config: ICliConfig, hostPath: string): string {
   return `${ACTOR_SANDBOX_HOST_DATA_DIR}${hostPath.slice(config.dataPath.length)}`;
 }
 
+function readSourceFiles(dir: string): Record<string, string> {
+  if (!existsSync(dir)) return {};
+
+  const files: Record<string, string> = {};
+  const visit = (currentDir: string) => {
+    for (const entry of readdirSync(currentDir)) {
+      const path = join(currentDir, entry);
+      const stat = statSync(path);
+      if (stat.isDirectory()) {
+        visit(path);
+        continue;
+      }
+      if (!stat.isFile()) continue;
+
+      files[relative(dir, path).replaceAll('\\', '/')] = readFileSync(path, 'utf8');
+    }
+  };
+
+  visit(dir);
+  return files;
+}
+
 function upsertWidgetActor(args: {
   db: TDrizzleDb;
   cliConfig: ICliConfig;
   widgetDir: string;
   vibecanvasJsonPath: string;
   widgetConfig: TVibecanvasJson;
-}) {
+}): TActorServiceWidgetSource | null {
   const actor = args.widgetConfig.actor ?? {};
+  const widget = asRecord(args.widgetConfig.widget);
   const functionsRelativePath = asString(actor.functions, 'actor/functions.ts');
   const functionsHostPath = join(args.widgetDir, functionsRelativePath);
+  const widgetSourceDir = join(args.widgetDir, asString(widget.sourceDir, './widget'));
 
-  if (!existsSync(functionsHostPath)) return false;
+  if (!existsSync(functionsHostPath)) return null;
 
   const fallbackSlug = asString(args.widgetConfig.slug, basename(args.widgetDir));
   const slug = asString(actor.slug, fallbackSlug);
@@ -83,7 +107,9 @@ function upsertWidgetActor(args: {
   const description = typeof actor.description === 'string'
     ? actor.description
     : typeof args.widgetConfig.description === 'string' ? args.widgetConfig.description : null;
+  const functionsSource = readFileSync(functionsHostPath, 'utf8');
   const functionsGuestPath = guestDataPath(args.cliConfig, functionsHostPath);
+  const widgetFiles = readSourceFiles(widgetSourceDir);
   const machineConfig = {
     initialState: asString(actor.initialState, 'ready'),
     initialContext: actor.initialContext ?? {},
@@ -136,12 +162,31 @@ function upsertWidgetActor(args: {
     },
   }).run();
 
-  return true;
+  return {
+    id: widgetId,
+    slug,
+    name,
+    widgetDir: args.widgetDir,
+    vibecanvasJsonPath: args.vibecanvasJsonPath,
+    vibecanvasJson: args.widgetConfig,
+    actor: {
+      functionsPath: functionsHostPath,
+      functionsGuestPath: functionsGuestPath,
+      functionsSource,
+    },
+    widget: {
+      sourceDir: widgetSourceDir,
+      files: widgetFiles,
+    },
+    loadedAt: new Date().toISOString(),
+  };
 }
 
-function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig }) {
+function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig; actorService?: ActorService }) {
   const widgetsDir = join(args.config.dataPath, 'widgets');
   if (!existsSync(widgetsDir)) return 0;
+
+  args.actorService?.clearWidgetSources();
 
   let count = 0;
   for (const entry of readdirSync(widgetsDir)) {
@@ -152,9 +197,11 @@ function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig }) {
     if (!existsSync(vibecanvasJsonPath)) continue;
 
     const widgetConfig = readJsonFile(vibecanvasJsonPath) as TVibecanvasJson;
-    if (upsertWidgetActor({ db: args.db, cliConfig: args.config, widgetDir, vibecanvasJsonPath, widgetConfig })) {
-      count += 1;
-    }
+    const source = upsertWidgetActor({ db: args.db, cliConfig: args.config, widgetDir, vibecanvasJsonPath, widgetConfig });
+    if (!source) continue;
+
+    args.actorService?.upsertWidgetSource(source);
+    count += 1;
   }
 
   return count;
@@ -173,9 +220,9 @@ function createWidgetPlugin(): IPlugin<{ db: IDbService; actor?: ActorService },
         const db = getDrizzle(dbService);
         if (!db) return;
 
-        sourceWidgets({ db, config: ctx.config });
-
         const actorService = ctx.services.get('actor');
+        sourceWidgets({ db, config: ctx.config, actorService });
+
         await actorService?.supervisor.loadActors();
       });
     },
