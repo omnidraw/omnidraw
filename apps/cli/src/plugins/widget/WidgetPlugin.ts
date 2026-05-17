@@ -12,28 +12,26 @@ const ACTOR_SANDBOX_HOST_DATA_DIR = '/home/vibecanvas/host-data';
 
 type TJsonRecord = Record<string, unknown>;
 
-type TWidgetJson = {
-  id?: unknown;
-  slug?: unknown;
-  name?: unknown;
-  description?: unknown;
-  actor?: {
-    definition?: unknown;
-    functions?: unknown;
-  };
-  frontend?: unknown;
-  messages?: unknown;
-};
-
 type TActorJson = {
   slug?: unknown;
   name?: unknown;
   description?: unknown;
+  functions?: unknown;
   initialState?: unknown;
   initialContext?: unknown;
   states?: unknown;
   inputSchema?: unknown;
   outputSchema?: unknown;
+};
+
+type TVibecanvasJson = {
+  id?: unknown;
+  slug?: unknown;
+  name?: unknown;
+  description?: unknown;
+  actor?: TActorJson;
+  widget?: unknown;
+  frontend?: unknown;
 };
 
 type TDbBackedService = IDbService & {
@@ -67,28 +65,41 @@ function guestDataPath(config: ICliConfig, hostPath: string): string {
 
 function upsertWidgetActor(args: {
   db: TDrizzleDb;
-  config: ICliConfig;
+  cliConfig: ICliConfig;
   widgetDir: string;
-  widgetJsonPath: string;
-  widget: TWidgetJson;
+  vibecanvasJsonPath: string;
+  widgetConfig: TVibecanvasJson;
 }) {
-  const actorRef = isRecord(args.widget.actor) ? args.widget.actor : {};
-  const actorJsonRelativePath = asString(actorRef.definition, 'actor/actor.json');
-  const functionsRelativePath = asString(actorRef.functions, 'actor/functions.ts');
-  const actorJsonHostPath = join(args.widgetDir, actorJsonRelativePath);
+  const actor = args.widgetConfig.actor ?? {};
+  const functionsRelativePath = asString(actor.functions, 'actor/functions.ts');
   const functionsHostPath = join(args.widgetDir, functionsRelativePath);
 
-  if (!existsSync(actorJsonHostPath) || !existsSync(functionsHostPath)) return false;
+  if (!existsSync(functionsHostPath)) return false;
 
-  const actor = readJsonFile(actorJsonHostPath) as TActorJson;
-  const fallbackSlug = asString(args.widget.slug, basename(args.widgetDir));
+  const fallbackSlug = asString(args.widgetConfig.slug, basename(args.widgetDir));
   const slug = asString(actor.slug, fallbackSlug);
-  const widgetId = asString(args.widget.id, fallbackSlug);
-  const name = asString(actor.name, asString(args.widget.name, slug));
+  const widgetId = asString(args.widgetConfig.id, fallbackSlug);
+  const name = asString(actor.name, asString(args.widgetConfig.name, slug));
   const description = typeof actor.description === 'string'
     ? actor.description
-    : typeof args.widget.description === 'string' ? args.widget.description : null;
-  const functionsGuestPath = guestDataPath(args.config, functionsHostPath);
+    : typeof args.widgetConfig.description === 'string' ? args.widgetConfig.description : null;
+  const functionsGuestPath = guestDataPath(args.cliConfig, functionsHostPath);
+  const machineConfig = {
+    initialState: asString(actor.initialState, 'ready'),
+    initialContext: actor.initialContext ?? {},
+    states: asRecord(actor.states),
+  };
+  const serverManifest = {
+    modulePath: functionsGuestPath,
+    entrypoint: functionsGuestPath,
+    functionsPath: functionsGuestPath,
+  };
+  const uiManifest = {
+    vibecanvasJsonPath: args.vibecanvasJsonPath,
+    widgetDir: args.widgetDir,
+    widget: args.widgetConfig.widget ?? {},
+    frontend: args.widgetConfig.frontend ?? {},
+  };
 
   args.db.insert(schema.actor_definitions).values({
     id: `widget:${slug}`,
@@ -97,27 +108,14 @@ function upsertWidgetActor(args: {
     description,
     widget_id: widgetId,
     widget_dir: args.widgetDir,
-    actor_json_path: actorJsonHostPath,
+    actor_json_path: args.vibecanvasJsonPath,
     functions_path: functionsGuestPath,
     machine_schema: {},
-    machine_config: {
-      initialState: asString(actor.initialState, 'ready'),
-      initialContext: actor.initialContext ?? {},
-      states: asRecord(actor.states),
-    },
+    machine_config: machineConfig,
     contract_schema: asRecord(actor.inputSchema),
     output_schema: asRecord(actor.outputSchema),
-    server_manifest: {
-      modulePath: functionsGuestPath,
-      entrypoint: functionsGuestPath,
-      functionsPath: functionsGuestPath,
-    },
-    ui_manifest: {
-      widgetJsonPath: args.widgetJsonPath,
-      widgetDir: args.widgetDir,
-      frontend: args.widget.frontend ?? {},
-      messages: args.widget.messages ?? {},
-    },
+    server_manifest: serverManifest,
+    ui_manifest: uiManifest,
     updated_at: new Date(),
   }).onConflictDoUpdate({
     target: schema.actor_definitions.slug,
@@ -126,27 +124,14 @@ function upsertWidgetActor(args: {
       description,
       widget_id: widgetId,
       widget_dir: args.widgetDir,
-      actor_json_path: actorJsonHostPath,
+      actor_json_path: args.vibecanvasJsonPath,
       functions_path: functionsGuestPath,
       machine_schema: {},
-      machine_config: {
-        initialState: asString(actor.initialState, 'ready'),
-        initialContext: actor.initialContext ?? {},
-        states: asRecord(actor.states),
-      },
+      machine_config: machineConfig,
       contract_schema: asRecord(actor.inputSchema),
       output_schema: asRecord(actor.outputSchema),
-      server_manifest: {
-        modulePath: functionsGuestPath,
-        entrypoint: functionsGuestPath,
-        functionsPath: functionsGuestPath,
-      },
-      ui_manifest: {
-        widgetJsonPath: args.widgetJsonPath,
-        widgetDir: args.widgetDir,
-        frontend: args.widget.frontend ?? {},
-        messages: args.widget.messages ?? {},
-      },
+      server_manifest: serverManifest,
+      ui_manifest: uiManifest,
       updated_at: new Date(),
     },
   }).run();
@@ -163,11 +148,11 @@ function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig }) {
     const widgetDir = join(widgetsDir, entry);
     if (!statSync(widgetDir).isDirectory()) continue;
 
-    const widgetJsonPath = join(widgetDir, 'widget.json');
-    if (!existsSync(widgetJsonPath)) continue;
+    const vibecanvasJsonPath = join(widgetDir, 'vibecanvas.json');
+    if (!existsSync(vibecanvasJsonPath)) continue;
 
-    const widget = readJsonFile(widgetJsonPath) as TWidgetJson;
-    if (upsertWidgetActor({ db: args.db, config: args.config, widgetDir, widgetJsonPath, widget })) {
+    const widgetConfig = readJsonFile(vibecanvasJsonPath) as TVibecanvasJson;
+    if (upsertWidgetActor({ db: args.db, cliConfig: args.config, widgetDir, vibecanvasJsonPath, widgetConfig })) {
       count += 1;
     }
   }

@@ -309,7 +309,7 @@ prefix: `apps/cli/src/`
 | 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
 | 🤖 | `plugins/orpc/orpc.base.ts` |  | Root ORPC contract context includes optional actor runtime services. |
 | 🤖 | `plugins/orpc/OrpcPlugin.ts` |  | Injects actor runtime services into websocket ORPC contexts when available. |
-| ❓ | `plugins/widget/WidgetPlugin.ts` |  | Sources data-folder widget addons on CLI startup and upserts actor definitions from widget.json and actor/actor.json. |
+| ❓ | `plugins/widget/WidgetPlugin.ts` |  | Sources data-folder widget addons on CLI startup and upserts actor definitions from unified vibecanvas.json plus actor/functions.ts. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
@@ -604,7 +604,7 @@ prefix: `packages/sdk/`
 | 🤖 | `src/actor.ts` |  | Widget SDK actor JSON definition and actor/functions.ts effect table helper types. |
 | ❓ | `src/arrow-core.d.ts` |  | Local Arrow reactive declaration shim for SDK declaration bundling. |
 | 🤖 | `src/bridge.ts` |  | Widget SDK bridge protocol for sandbox output messages, host snapshots, and trusted bridge injection. |
-| 🤖 | `src/config.ts` |  | Widget SDK config helpers for filesystem addon widget.json shape, actor JSON paths, and frontend tool metadata. |
+| 🤖 | `src/config.ts` |  | Widget SDK config helpers for unified filesystem addon vibecanvas.json with actor and widget fields. |
 | 🤖 | `src/index.ts` |  | Widget SDK barrel exporting actor JSON/effect helpers, sandbox bridge APIs, widget helpers, and machine/config APIs. |
 | 🤖 | `src/machine.ts` |  | Reactive widget state machine with official host-known states. |
 | ❓ | `src/schema.ts` |  | Internal JSON Schema type used by actor port schemas. |

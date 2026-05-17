@@ -17,7 +17,7 @@ export type {
   TVibecanvasActorTransition,
 } from "./actor";
 export type { TVibecanvasActorSnapshot, TVibecanvasHostToWidgetMessage, TVibecanvasWidgetBridge, TVibecanvasWidgetToHostMessage } from "./bridge";
-export type { TVibecanvasConfig, TVibecanvasWidgetAddonConfig, TVibecanvasWidgetBundleConfig, TVibecanvasWidgetConfig, TVibecanvasWidgetToolConfig } from "./config";
+export type { TVibecanvasAddonActorConfig, TVibecanvasAddonFrontendConfig, TVibecanvasAddonWidgetConfig, TVibecanvasConfig, TVibecanvasWidgetAddonConfig, TVibecanvasWidgetBundleConfig, TVibecanvasWidgetConfig } from "./config";
 export type { TVibecanvasWidget, TVibecanvasWidgetCleanup, TVibecanvasWidgetMountArgs } from "./widget";
 export type {
   TVibecanvasMachine,
