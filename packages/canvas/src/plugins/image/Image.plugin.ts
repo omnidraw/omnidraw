@@ -24,7 +24,7 @@ import type {
   ToolService,
 } from "../../services";
 import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
-import { VC_NODE_KIND_ATTR } from "../../core/CONSTANTS";
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { fnGetWorldPosition } from "../../core/fn.world-position";
@@ -115,6 +115,10 @@ function shouldIgnoreClipboardEvent(session: Pick<SessionService, "editingId">, 
 
 function syncNodeMetadata(node: Konva.Image, element: TElement) {
   const data = element.data as TImageData;
+  node.setAttr(ELEMENT_DATA_ATTR, structuredClone(element.data));
+  node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(element.style));
+  node.setAttr(VC_CREATED_AT_ATTR, element.createdAt);
+  node.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt);
   node.setAttr(IMAGE_URL_ATTR, data.url);
   node.setAttr(IMAGE_BASE64_ATTR, data.base64);
   node.setAttr(IMAGE_CROP_ATTR, structuredClone(data.crop));
@@ -590,14 +594,14 @@ export function createImagePlugin(): IPlugin<{
           void insertImage({ file, point });
         };
 
-        render.stage.container().addEventListener("paste", onPaste);
+        document.addEventListener("paste", onPaste);
         render.stage.container().addEventListener("dragover", onDragOver);
         render.stage.container().addEventListener("dragenter", onDragEnter);
         render.stage.container().addEventListener("dragleave", onDragLeave);
         render.stage.container().addEventListener("drop", onDrop);
 
         ctx.hooks.destroy.tap(() => {
-          render.stage.container().removeEventListener("paste", onPaste);
+          document.removeEventListener("paste", onPaste);
           render.stage.container().removeEventListener("dragover", onDragOver);
           render.stage.container().removeEventListener("dragenter", onDragEnter);
           render.stage.container().removeEventListener("dragleave", onDragLeave);

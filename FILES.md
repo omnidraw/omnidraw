@@ -137,7 +137,7 @@ prefix: `packages/canvas/src/`
 | ✅ | `plugins/image/fn.create-image-element.ts` |  | Center-placed image element creation from dimensions and source metadata |
 | ✅ | `plugins/image/fn.fit-image-to-viewport.ts` |  | Initial viewport image fit sizing capped to half smaller viewport dimens |
 | ✅ | `plugins/image/fn.to-image-element.ts` |  | Image payload → canonical canvas element |
-| 🤖 | `plugins/image/Image.plugin.ts` |  | Image import, paste/drop, node sync, clone-drag orchestration |
+| 🤖 | `plugins/image/Image.plugin.ts` |  | Image import, document paste/drop, node metadata sync, clone-drag orchestration |
 | ❓ | `plugins/image/tx.clone-backend-file-for-element.ts` |  | Duplicate backend image asset, update node and CRDT URL |
 | ❓ | `plugins/image/tx.create-image-clone-drag.ts` |  | Image clone drag finalizes preview, persistence, undo/redo, selection |
 | 🤖 | `plugins/image/tx.insert-image.ts` |  | Image upload insertion |
@@ -230,7 +230,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `services/crdt/CrdtService.ts` |  | Canvas CRDT service |
 | ✅ | `services/crdt/fxBuilder.ts` |  | Batch canvas CRDT patches/deletes into commit+rollback ops/effects |
 | ✅ | `services/crdt/tx.apply-ops.ts` |  | Replay recorded CRDT entity ops into Automerge |
-| 🤖 | `services/element/ElementService.ts` |  | Element registry runtime with host widget removal support for actor and UI widgets. |
+| 🤖 | `services/element/ElementService.ts` |  | Element registry runtime, defensive removal, and host widget removal hooks. |
 | 🤖 | `services/element/types.ts` |  | Element registry lifecycle and transform option typings |
 | ✅ | `services/editor/EditorService.ts` |  | Editor tool state, draft previews, CRDT commits |
 | ✅ | `services/editor/fx.get-canvas-point.ts` |  | Editor tool pointer events → canvas point + pressure |

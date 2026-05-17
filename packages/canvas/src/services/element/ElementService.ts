@@ -3,7 +3,7 @@ import type { TElement, TElementData } from "@vibecanvas/service-automerge/types
 import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
-import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
+import { ELEMENT_DATA_ATTR, VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { isCanvasElementNode } from "../../core/GUARDS";
 import type { TCanvasNodeKind, TNodeOnRemove } from "../../core/types";
@@ -120,23 +120,32 @@ export class ElementService implements IService<TElementServiceHooks> {
    * Remove element
    */
   removeElement(node: unknown, builder: TCrdtBuilder) {
-    if(!isCanvasElementNode(node)) return builder
-    const data = node.getAttr('vcElementData') as TElementData
-    const isWidgetHost = data.type === 'widget' || data.type === 'ui-widget'
+    if (!isCanvasElementNode(node)) return builder;
+
+    const element = this.toElement(node);
+    const data = (node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined) ?? element?.data;
+    const definitionId = data
+      ? data.type === "widget" || data.type === "ui-widget"
+        ? data.kind
+        : data.type
+      : null;
+
     return builder.deleteElement(node.id(), {
       onCommit: (args) => {
-        const def = this.getElementDefinitions().find(def => isWidgetHost ? def.id === data.kind : def.id === data.type)
-        if(!def) return
-        def.onDelete?.(args.entity)
-        callNodeOnRemove(node)
-        node.destroy()
+        const def = definitionId
+          ? this.getElementDefinitions().find((candidate) => candidate.id === definitionId)
+          : null;
+        def?.onDelete?.(args.entity);
+        callNodeOnRemove(node);
+        node.destroy();
       },
       onRollback: (args) => {
-        const def = this.getElementDefinitions().find(def => isWidgetHost ? def.id === data.kind : def.id === data.type)
-        if(!def) return
-        def.onRestore?.(args.entity)
-      }
-    })
+        const def = definitionId
+          ? this.getElementDefinitions().find((candidate) => candidate.id === definitionId)
+          : null;
+        def?.onRestore?.(args.entity);
+      },
+    });
   }
 
   /**
