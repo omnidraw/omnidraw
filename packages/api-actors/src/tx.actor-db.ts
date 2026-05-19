@@ -5,22 +5,16 @@ import type { IEventPublisherService } from '@vibecanvas/service-event-publisher
 import type {
   TCreateActorConnectionInput,
   TCreateActorInstanceInput,
-  TRegisterActorRevisionInput,
   TUpdateActorConnectionInput,
 } from './contract';
-import { ACTOR_EVENT_GLOBAL_CHANNEL, SYSTEM_ACTOR_PRINCIPAL_ID } from './CONSTANTS';
-import { fnGetInitialMachineContext, fnGetInitialMachineState, fnNormalizeRegisterActorRevisionInput, fnToActorConnection, fnToActorInstance, fnToActorRevision } from './fn.actor-input';
-import { fxGetActorInstanceByElement, fxGetActorRevision, fxGetLatestActorRevision } from './fx.actor-db';
+import { SYSTEM_ACTOR_PRINCIPAL_ID } from './CONSTANTS';
+import { fnGetInitialMachineContext, fnGetInitialMachineState, fnToActorConnection, fnToActorDefinition, fnToActorInstance } from './fn.actor-input';
+import { fxGetActorInstanceByElement } from './fx.actor-db';
 
 export type TPortalActorDbWrite = {
   db: TDrizzleDb;
   eventPublisher: IEventPublisherService;
   createId: () => string;
-};
-
-export type TArgsRegisterActorRevision = {
-  input: TRegisterActorRevisionInput;
-  accountId?: string;
 };
 
 export type TArgsCreateActorInstance = {
@@ -45,77 +39,19 @@ export type TArgsRemoveActorInstance = {
   id: string;
 };
 
-export function txRegisterActorRevision(portal: TPortalActorDbWrite, args: TArgsRegisterActorRevision) {
-  const input = fnNormalizeRegisterActorRevisionInput(args.input);
-  const actorId = args.accountId ?? SYSTEM_ACTOR_PRINCIPAL_ID;
-  const revisionId = portal.createId();
-  const definition = portal.db.transaction((tx) => {
-    const existingDefinition = input.definitionId
-      ? tx.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, input.definitionId) }).sync()
-      : tx.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.slug, input.slug) }).sync();
-    const nextDefinition = existingDefinition ?? tx.insert(SCHEMA.actor_definitions).values({
-      id: input.definitionId ?? portal.createId(),
-      name: input.name,
-      slug: input.slug,
-      description: input.description,
-      created_by_system_id: actorId,
-    }).returning().all()[0]!;
-
-    const revisionRow = tx.insert(SCHEMA.actor_revisions).values({
-      id: revisionId,
-      actor_definition_id: nextDefinition.id,
-      version: input.version,
-      machine_schema: input.machineSchema,
-      machine_config: input.machineConfig,
-      contract_schema: input.contractSchema,
-      output_schema: input.outputSchema,
-      server_manifest: input.serverManifest,
-      ui_manifest: input.uiManifest,
-      server_bundle_file_id: input.serverBundleFileId,
-      ui_bundle_file_id: input.uiBundleFileId,
-      source_archive_file_id: input.sourceArchiveFileId,
-      created_by_system_id: actorId,
-    }).returning().all()[0]!;
-    const revision = fnToActorRevision(revisionRow);
-
-    const updatedDefinition = tx.update(SCHEMA.actor_definitions)
-      .set({
-        name: input.name,
-        description: input.description,
-      })
-      .where(EQ(SCHEMA.actor_definitions.id, nextDefinition.id))
-      .returning()
-      .all()[0]!;
-
-    return { definition: updatedDefinition, revision };
-  });
-
-  portal.eventPublisher.publishActorEvent(ACTOR_EVENT_GLOBAL_CHANNEL, {
-    type: 'actor.revision.registered',
-    definition: definition.definition,
-    revision: definition.revision,
-  });
-  return definition;
-}
-
 export function txCreateActorInstance(portal: TPortalActorDbWrite, args: TArgsCreateActorInstance) {
-  const definition = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, args.input.actorDefinitionId) }).sync();
-  if (!definition) return null;
-
-  const revision = args.input.actorRevisionId
-    ? fxGetActorRevision({ db: portal.db }, { id: args.input.actorRevisionId })
-    : fxGetLatestActorRevision({ db: portal.db }, { definitionId: definition.id });
-  if (!revision || revision.actor_definition_id !== definition.id) return null;
+  const definitionRow = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, args.input.actorDefinitionId) }).sync();
+  if (!definitionRow) return null;
+  const definition = fnToActorDefinition(definitionRow);
 
   const instanceRow = portal.db.insert(SCHEMA.actor_instances).values({
     id: portal.createId(),
     canvas_id: args.input.canvasId,
     element_id: args.input.elementId,
     actor_definition_id: definition.id,
-    actor_revision_id: revision.id,
     display_name: args.input.displayName ?? definition.name,
-    machine_state: fnGetInitialMachineState({ input: args.input, revision }),
-    machine_context: fnGetInitialMachineContext({ input: args.input, revision }),
+    machine_state: fnGetInitialMachineState({ input: args.input, definition }),
+    machine_context: fnGetInitialMachineContext({ input: args.input, definition }),
     created_by_system_id: args.accountId ?? SYSTEM_ACTOR_PRINCIPAL_ID,
   }).returning().all()[0]!;
   const instance = fnToActorInstance(instanceRow);

@@ -15,7 +15,7 @@ const apiCreateActorInstance = baseActorsOs.instances.create.handler(async ({ in
     createId: () => crypto.randomUUID(),
   }, { input, accountId: context.accountId });
 
-  if (!instance) throw new ORPCError('NOT_FOUND', { message: 'Actor revision not found' });
+  if (!instance) throw new ORPCError('NOT_FOUND', { message: 'Actor definition not found' });
   await context.actor?.bootInstance({ actorInstanceId: instance.id });
   return instance;
 });

@@ -43,6 +43,7 @@ export type TActorServiceConfig = {
   readonly leaseMs?: number;
   readonly autoStart?: boolean;
   readonly startSandbox?: boolean;
+  readonly startSandboxInBackground?: boolean;
   readonly sandboxRunner?: TActorSandboxRunner;
 };
 
@@ -50,12 +51,14 @@ export type TActorServiceRuntimeConfig = {
   readonly actorService?: {
     readonly autoStart?: boolean;
     readonly startSandbox?: boolean;
+    readonly startSandboxInBackground?: boolean;
   };
 };
 
 export type TActorServiceStatus = {
   readonly sandboxStarted: boolean;
   readonly workerStarted: boolean;
+  readonly backgroundSandboxError: string | null;
   readonly supervisor: ReturnType<ActorSupervisor['getStatus']>;
 };
 
@@ -121,6 +124,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   readonly workerEnv: TActorServiceWorkerEnv;
   readonly autoStart: boolean;
   readonly startSandboxByDefault: boolean;
+  readonly startSandboxInBackgroundByDefault: boolean;
   readonly sandboxRunner: TActorSandboxRunner;
   readonly #widgetSourcesBySlug = new Map<string, TActorServiceWidgetSource>();
   readonly #widgetSourcesById = new Map<string, TActorServiceWidgetSource>();
@@ -140,16 +144,19 @@ export class ActorService implements IService, IStartableService<object, TActorS
     this.workerEnv = config.workerEnv ?? {};
     this.autoStart = config.autoStart ?? true;
     this.startSandboxByDefault = config.startSandbox ?? true;
+    this.startSandboxInBackgroundByDefault = config.startSandboxInBackground ?? false;
     this.sandboxRunner = config.sandboxRunner ?? createMissingSandboxRunner();
     this.supervisor = new ActorSupervisor({ db: this.db, workflowDb: this.workflowDb, eventPublisher: this.eventPublisher, workerId: this.workerId, pollIntervalMs: this.pollIntervalMs });
   }
 
   async start(ctx?: TServiceContext<TActorServiceRuntimeConfig>): Promise<void> {
     const shouldStartSandbox = ctx?.config.actorService?.startSandbox ?? this.startSandboxByDefault;
+    const shouldStartSandboxInBackground = ctx?.config.actorService?.startSandboxInBackground ?? this.startSandboxInBackgroundByDefault;
     const shouldAutoStart = ctx?.config.actorService?.autoStart ?? this.autoStart;
 
     try {
-      if (shouldStartSandbox) await this.startSandboxWorker();
+      if (shouldStartSandbox && shouldStartSandboxInBackground) this.startSandboxWorkerInBackground();
+      else if (shouldStartSandbox) await this.startSandboxWorker();
       if (shouldAutoStart) await this.supervisor.start();
       else await this.supervisor.loadActors();
     } catch (error) {
@@ -164,7 +171,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 
   getStatus(): TActorServiceStatus {
-    return { sandboxStarted: Boolean(this.#handle), workerStarted: Boolean(this.#handle), supervisor: this.supervisor.getStatus() };
+    return { sandboxStarted: Boolean(this.#handle), workerStarted: Boolean(this.#handle), backgroundSandboxError: this.#lastBackgroundSandboxError, supervisor: this.supervisor.getStatus() };
   }
 
   upsertWidgetSource(source: TActorServiceWidgetSource): void {
@@ -243,6 +250,15 @@ export class ActorService implements IService, IStartableService<object, TActorS
     this.publishActorInstanceUpdated(rows.instance.canvas_id, args.actorInstanceId);
     await this.nudgeSupervisor();
   }
+
+  private startSandboxWorkerInBackground(): void {
+    void this.startSandboxWorker().catch((error) => {
+      this.#lastBackgroundSandboxError = error instanceof Error ? error.message : String(error);
+      console.error(`[ActorService] Background sandbox worker start failed: ${this.#lastBackgroundSandboxError}`);
+    });
+  }
+
+  #lastBackgroundSandboxError: string | null = null;
 
   private async startSandboxWorker(): Promise<void> {
     if (!existsSync(this.workerDistPath)) {

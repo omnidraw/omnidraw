@@ -10,6 +10,7 @@ import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesys
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
 import { ActorService, type TActorSandboxRunner } from '@vibecanvas/service-actor';
+import { createWidgetSourceService } from './plugins/widget/WidgetPlugin';
 import { SANDBOX_WORKER_DIR, SANDBOX_WORKER_FILE } from '@vibecanvas/service-actor/core/CONSTANTS';
 import { ServiceSandbox } from '@vibecanvas/service-sandbox';
 import { SqliteWorkflowDb, WorkflowSuperviserService } from '@vibecanvas/service-workflow';
@@ -33,6 +34,7 @@ declare module '@vibecanvas/runtime' {
     pty: IPtyService;
     workflowSuperviser: WorkflowSuperviserService;
     actor: ActorService;
+    widgetSource: ReturnType<typeof createWidgetSourceService>;
   }
 }
 
@@ -71,6 +73,10 @@ function setupServices(config: ICliConfig) {
   const automergeService = new AutomergeService(dbService.sqlite as Database);
   services.provide('automerge', 50, automergeService);
 
+  if (config.command !== 'serve') {
+    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.drizzle }));
+  }
+
   if (config.command === 'serve') {
     ensureActorWorkerBundle(config);
     const workflowDb = new SqliteWorkflowDb({ db: dbService.drizzle });
@@ -81,6 +87,7 @@ function setupServices(config: ICliConfig) {
       eventPublisher,
       workerDistPath: ACTOR_WORKER_DIST_PATH,
       sandboxRunner: createActorSandboxRunner(config, dbService.drizzle),
+      startSandboxInBackground: config.dev,
       workerEnv: {
         VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
         VIBECANVAS_DB_PATH: `${ACTOR_SANDBOX_HOST_DATA_DIR}/${basename(config.dbPath)}`,
@@ -88,6 +95,7 @@ function setupServices(config: ICliConfig) {
         VIBECANVAS_MIGRATIONS_SILENT: '1',
       },
     });
+    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.drizzle, actorService }));
     services.provide('workflowSuperviser', 55, workflowSuperviserService);
     services.provide('actor', 60, actorService);
   }

@@ -3,30 +3,34 @@ import { z } from 'zod';
 
 const zJsonRecord = z.record(z.string(), z.unknown());
 
+const zActorDefinitionWidgetInfo = z.object({
+  widgetId: z.string(),
+  widgetDir: z.string(),
+  sourceDir: z.string().optional(),
+  frontend: zJsonRecord.optional(),
+  initialPayload: zJsonRecord.optional(),
+  actorUiProps: zJsonRecord.optional(),
+});
+
 const zActorDefinition = z.object({
   id: z.string(),
   name: z.string(),
   slug: z.string(),
   description: z.string().nullable(),
-  created_by_system_id: z.string(),
-  created_at: z.date(),
-});
-
-const zActorRevision = z.object({
-  id: z.string(),
-  actor_definition_id: z.string(),
-  version: z.number().int(),
+  widget_id: z.string(),
+  widget_dir: z.string(),
+  actor_json_path: z.string(),
+  functions_path: z.string(),
   machine_schema: zJsonRecord,
   machine_config: zJsonRecord,
   contract_schema: zJsonRecord,
   output_schema: zJsonRecord,
   server_manifest: zJsonRecord,
   ui_manifest: zJsonRecord,
-  server_bundle_file_id: z.string().nullable(),
-  ui_bundle_file_id: z.string().nullable(),
-  source_archive_file_id: z.string().nullable(),
+  widget: zActorDefinitionWidgetInfo,
   created_by_system_id: z.string(),
   created_at: z.date(),
+  updated_at: z.date(),
 });
 
 const zActorInstance = z.object({
@@ -35,7 +39,6 @@ const zActorInstance = z.object({
   canvas_id: z.string(),
   element_id: z.string(),
   actor_definition_id: z.string(),
-  actor_revision_id: z.string(),
   display_name: z.string(),
   status: z.enum(['created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked']),
   machine_state: z.string(),
@@ -79,28 +82,10 @@ const zActorConnection = z.object({
   created_at: z.date(),
 });
 
-const zRegisterActorRevisionInput = z.object({
-  definitionId: z.string().optional(),
-  name: z.string(),
-  slug: z.string(),
-  description: z.string().nullable().optional(),
-  version: z.number().int(),
-  machineSchema: zJsonRecord.optional(),
-  machineConfig: zJsonRecord,
-  contractSchema: zJsonRecord.optional(),
-  outputSchema: zJsonRecord.optional(),
-  serverManifest: zJsonRecord.optional(),
-  uiManifest: zJsonRecord.optional(),
-  serverBundleFileId: z.string().nullable().optional(),
-  uiBundleFileId: z.string().nullable().optional(),
-  sourceArchiveFileId: z.string().nullable().optional(),
-});
-
 const zCreateActorInstanceInput = z.object({
   canvasId: z.string(),
   elementId: z.string(),
   actorDefinitionId: z.string(),
-  actorRevisionId: z.string().optional(),
   displayName: z.string().optional(),
   machineState: z.string().optional(),
   machineContext: zJsonRecord.optional(),
@@ -172,9 +157,8 @@ const zActorEvent = z.discriminatedUnion('type', [
     output: zActorOutput,
   }),
   z.object({
-    type: z.literal('actor.revision.registered'),
+    type: z.literal('actor.definition.updated'),
     definition: zActorDefinition,
-    revision: zActorRevision,
   }),
   z.object({
     type: z.literal('actor.connection.created'),
@@ -194,16 +178,15 @@ const zActorEvent = z.discriminatedUnion('type', [
 ]);
 
 const actorsContract = oc.router({
+  definitions: oc.router({
+    list: oc.input(z.object({ slug: z.string().optional() }).optional()).output(z.array(zActorDefinition)),
+    get: oc.input(z.object({ id: z.string() })).output(zActorDefinition.nullable()),
+  }),
   instances: oc.router({
     list: oc.input(z.object({ canvasId: z.string() })).output(z.array(zActorInstance)),
     get: oc.input(z.object({ id: z.string() })).output(zActorInstance.nullable()),
     create: oc.input(zCreateActorInstanceInput).output(zActorInstance),
     remove: oc.input(z.object({ id: z.string() })).output(zActorInstance),
-  }),
-  revisions: oc.router({
-    register: oc.input(zRegisterActorRevisionInput).output(z.object({ definition: zActorDefinition, revision: zActorRevision })),
-    list: oc.input(z.object({ definitionId: z.string().optional(), slug: z.string().optional() })).output(z.array(zActorRevision)),
-    get: oc.input(z.object({ id: z.string() })).output(zActorRevision.nullable()),
   }),
   connections: oc.router({
     list: oc.input(z.object({ canvasId: z.string() })).output(z.array(zActorConnection)),
@@ -220,14 +203,13 @@ const actorsContract = oc.router({
   events: oc.input(z.object({ canvasId: z.string() })).route({ method: 'GET' }).output(eventIterator(zActorEvent)),
 });
 
+type TActorDefinitionWidgetInfo = z.infer<typeof zActorDefinitionWidgetInfo>;
 type TActorDefinition = z.infer<typeof zActorDefinition>;
-type TActorRevision = z.infer<typeof zActorRevision>;
 type TActorInstance = z.infer<typeof zActorInstance>;
 type TActorOutput = z.infer<typeof zActorOutput>;
 type TActorConnection = z.infer<typeof zActorConnection>;
 type TActorMessageSendResult = z.infer<typeof zActorMessageSendResult>;
 type TActorEvent = z.infer<typeof zActorEvent>;
-type TRegisterActorRevisionInput = z.infer<typeof zRegisterActorRevisionInput>;
 type TCreateActorInstanceInput = z.infer<typeof zCreateActorInstanceInput>;
 type TCreateActorConnectionInput = z.infer<typeof zCreateActorConnectionInput>;
 type TSendActorMessageInput = z.infer<typeof zSendActorMessageInput>;
@@ -237,28 +219,26 @@ export {
   actorsContract,
   zActorConnection,
   zActorDefinition,
+  zActorDefinitionWidgetInfo,
   zActorEvent,
   zActorInstance,
   zActorMessageSendResult,
   zActorOutput,
-  zActorRevision,
   zCreateActorConnectionInput,
   zCreateActorInstanceInput,
-  zRegisterActorRevisionInput,
   zSendActorMessageInput,
   zUpdateActorConnectionInput,
 };
 export type {
   TActorConnection,
   TActorDefinition,
+  TActorDefinitionWidgetInfo,
   TActorEvent,
   TActorInstance,
   TActorMessageSendResult,
   TActorOutput,
-  TActorRevision,
   TCreateActorConnectionInput,
   TCreateActorInstanceInput,
-  TRegisterActorRevisionInput,
   TSendActorMessageInput,
   TUpdateActorConnectionInput,
 };

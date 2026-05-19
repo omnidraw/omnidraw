@@ -1,4 +1,4 @@
-import type { IPlugin } from '@vibecanvas/runtime';
+import type { IPlugin, IService, IStartableService } from '@vibecanvas/runtime';
 import type { ActorService, TActorServiceWidgetSource } from '@vibecanvas/service-actor';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
@@ -207,26 +207,35 @@ function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig; actorService?
   return count;
 }
 
+class WidgetSourceService implements IService, IStartableService<ICliHooks, ICliConfig> {
+  readonly name = 'widget-source';
+
+  constructor(private readonly args: { db: TDrizzleDb; actorService?: ActorService }) {}
+
+  start(ctx: { config: ICliConfig }): void {
+    if (ctx.config.helpRequested || ctx.config.versionRequested) return;
+
+    const widgetsDir = join(ctx.config.dataPath, 'widgets');
+    const count = sourceWidgets({ db: this.args.db, config: ctx.config, actorService: this.args.actorService });
+    console.log(`[Widgets] Sourced ${count} widget actor(s) from ${widgetsDir}`);
+  }
+}
+
+function createWidgetSourceService(args: { db: TDrizzleDb; actorService?: ActorService }) {
+  return new WidgetSourceService(args);
+}
+
 function createWidgetPlugin(): IPlugin<{ db: IDbService; actor?: ActorService }, ICliHooks, ICliConfig> {
   return {
     name: 'widget',
     apply(ctx) {
       ctx.hooks.boot.tapPromise(async () => {
-        if (ctx.config.helpRequested || ctx.config.versionRequested) return;
-
-        const dbService = ctx.services.get('db');
-        if (!dbService) return;
-
-        const db = getDrizzle(dbService);
-        if (!db) return;
-
         const actorService = ctx.services.get('actor');
-        sourceWidgets({ db, config: ctx.config, actorService });
-
         await actorService?.supervisor.loadActors();
       });
     },
   };
 }
 
-export { createWidgetPlugin, sourceWidgets };
+export { createWidgetPlugin, createWidgetSourceService, sourceWidgets };
+

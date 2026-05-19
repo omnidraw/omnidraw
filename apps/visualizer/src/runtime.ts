@@ -266,8 +266,8 @@ export class VisualizerRuntime {
       description: this.dbPath ? `Live actor rows from ${this.dbPath}` : 'Live actor rows from the Vibecanvas database',
       explainer: null,
       actorPosition: (instance, index) => {
-        const revision = db.query.actor_revisions.findFirst({ where: eq(schema.actor_revisions.id, instance.actor_revision_id) }).sync();
-        return positionFromManifest(revision?.ui_manifest) ?? fallbackPosition(index);
+        const definition = db.query.actor_definitions.findFirst({ where: eq(schema.actor_definitions.id, instance.actor_definition_id) }).sync();
+        return positionFromManifest(definition?.ui_manifest) ?? fallbackPosition(index);
       },
     });
     return serialize({
@@ -339,11 +339,15 @@ export class VisualizerRuntime {
     const db = this.requireDb();
     db.insert(schema.canvas).values({ id: scenarioToSeed.canvasId, name: scenarioToSeed.name, automerge_url: `visualizer://${scenarioToSeed.id}`, created_at: new Date() }).run();
     for (const actor of scenarioToSeed.actors) {
-      db.insert(schema.actor_definitions).values({ id: actor.definitionId, name: actor.displayName, slug: actor.definitionId, description: `Visualizer actor ${actor.displayName}`, created_at: new Date() }).run();
-      db.insert(schema.actor_revisions).values({
-        id: actor.revisionId,
-        actor_definition_id: actor.definitionId,
-        version: 1,
+      db.insert(schema.actor_definitions).values({
+        id: actor.definitionId,
+        name: actor.displayName,
+        slug: actor.definitionId,
+        description: `Visualizer actor ${actor.displayName}`,
+        widget_id: actor.definitionId,
+        widget_dir: 'visualizer://scenario',
+        actor_json_path: 'visualizer://scenario/actor.json',
+        functions_path: 'visualizer-scenario.ts',
         machine_schema: {},
         machine_config: actor.machineConfig,
         contract_schema: {},
@@ -351,13 +355,13 @@ export class VisualizerRuntime {
         server_manifest: actor.serverManifest ?? { entrypoint: 'visualizer-scenario.ts', functions: { fns: Object.keys(scenarioToSeed.effects).filter((name) => name.startsWith('fn.')), fxs: Object.keys(scenarioToSeed.effects).filter((name) => name.startsWith('fx.')), txs: Object.keys(scenarioToSeed.effects).filter((name) => name.startsWith('tx.')) } },
         ui_manifest: { x: actor.x, y: actor.y },
         created_at: new Date(),
+        updated_at: new Date(),
       }).run();
       db.insert(schema.actor_instances).values({
         id: actor.id,
         canvas_id: scenarioToSeed.canvasId,
         element_id: actor.elementId,
         actor_definition_id: actor.definitionId,
-        actor_revision_id: actor.revisionId,
         display_name: actor.displayName,
         status: 'created',
         machine_state: actor.initialState,

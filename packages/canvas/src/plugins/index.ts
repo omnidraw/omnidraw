@@ -16,4 +16,5 @@ export * from "./terminal/Terminal.plugin";
 export * from "./text/Text.plugin";
 export * from "./toolbar/Toolbar.plugin";
 export * from "./transform/Transform.plugin";
+export * from "./widget/Widget.plugin";
 export * from "./visual-debug/VisualDebug.plugin";

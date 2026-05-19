@@ -14,7 +14,8 @@ import {
     createShape2dPlugin,
     createTerminalPlugin,
     createTextPlugin,
-    createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
+    createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin,
+    createWidgetPlugin
 } from "./plugins";
 import { ActorConnectionService } from "./services/actor-connection/ActorConnectionService";
 import { ActorWidgetBindingService } from "./services/actor-widget/ActorWidgetBindingService";
@@ -175,6 +176,7 @@ export function buildRuntime(config: IRuntimeConfig) {
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
+    createWidgetPlugin(),
   ];
 
   if (config.env.DEV) {

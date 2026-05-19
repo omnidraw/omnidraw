@@ -1,9 +1,9 @@
-import { and as AND, asc as ASC, desc as DESC, eq as EQ, gt as GT, inArray as IN_ARRAY } from 'drizzle-orm';
+import { and as AND, asc as ASC, eq as EQ, gt as GT, inArray as IN_ARRAY } from 'drizzle-orm';
 import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
 import * as SCHEMA from '@vibecanvas/service-db/schema';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { TCanvasMemberRole } from '@vibecanvas/service-db/schema';
-import { fnToActorConnection, fnToActorInstance, fnToActorRevision } from './fn.actor-input';
+import { fnToActorConnection, fnToActorDefinition, fnToActorInstance } from './fn.actor-input';
 import type { TActorOutput } from './contract';
 
 export type TPortalActorDb = {
@@ -27,16 +27,15 @@ export type TArgsActorInstanceByElement = {
   elementId: string;
 };
 
-export type TArgsActorRevisionById = {
+export type TArgsActorDefinitionById = {
   id: string;
 };
 
-export type TArgsLatestActorRevision = {
-  definitionId: string;
+export type TArgsActorDefinitionBySlug = {
+  slug: string;
 };
 
-export type TArgsActorRevisionList = {
-  definitionId?: string;
+export type TArgsActorDefinitionList = {
   slug?: string;
 };
 
@@ -71,9 +70,27 @@ export function fxCanEditCanvas(portal: TPortalActorDb, args: TArgsCanvasAccess)
   return fxHasCanvasRole(portal, { ...args, roles: ['owner', 'editor'] });
 }
 
-export function fxCanRegisterActorRevision(portal: TPortalActorDb, args: TArgsAccount): boolean {
+export function fxCanListActorDefinitions(portal: TPortalActorDb, args: TArgsAccount): boolean {
   const account = portal.db.query.accounts.findFirst({ where: EQ(SCHEMA.accounts.id, fxAccountId(args)) }).sync();
-  return account?.role === 'owner' || account?.role === 'admin';
+  return account !== undefined;
+}
+
+export function fxListActorDefinitions(portal: TPortalActorDb, args: TArgsActorDefinitionList = {}) {
+  const rows = portal.db.query.actor_definitions.findMany({
+    where: args.slug ? EQ(SCHEMA.actor_definitions.slug, args.slug) : undefined,
+    orderBy: [ASC(SCHEMA.actor_definitions.name), ASC(SCHEMA.actor_definitions.slug), ASC(SCHEMA.actor_definitions.id)],
+  }).sync();
+  return rows.map(fnToActorDefinition);
+}
+
+export function fxGetActorDefinition(portal: TPortalActorDb, args: TArgsActorDefinitionById) {
+  const row = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.id, args.id) }).sync();
+  return row ? fnToActorDefinition(row) : null;
+}
+
+export function fxGetActorDefinitionBySlug(portal: TPortalActorDb, args: TArgsActorDefinitionBySlug) {
+  const row = portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.slug, args.slug) }).sync();
+  return row ? fnToActorDefinition(row) : null;
 }
 
 export function fxListActorInstances(portal: TPortalActorDb, args: TArgsCanvasAccess) {
@@ -96,36 +113,6 @@ export function fxGetActorInstanceByElement(portal: TPortalActorDb, args: TArgsA
     ),
   }).sync();
   return row ? fnToActorInstance(row) : null;
-}
-
-export function fxListActorRevisions(portal: TPortalActorDb, args: TArgsActorRevisionList) {
-  const definitionId = args.definitionId ?? (args.slug
-    ? portal.db.query.actor_definitions.findFirst({ where: EQ(SCHEMA.actor_definitions.slug, args.slug) }).sync()?.id
-    : undefined);
-
-  if (args.slug && !definitionId) return [];
-
-  if (!definitionId) {
-    return portal.db.query.actor_revisions.findMany({ orderBy: [ASC(SCHEMA.actor_revisions.created_at), ASC(SCHEMA.actor_revisions.id)] }).sync().map(fnToActorRevision);
-  }
-
-  return portal.db.query.actor_revisions.findMany({
-    where: EQ(SCHEMA.actor_revisions.actor_definition_id, definitionId),
-    orderBy: [ASC(SCHEMA.actor_revisions.version), ASC(SCHEMA.actor_revisions.id)],
-  }).sync().map(fnToActorRevision);
-}
-
-export function fxGetLatestActorRevision(portal: TPortalActorDb, args: TArgsLatestActorRevision) {
-  const row = portal.db.query.actor_revisions.findFirst({
-    where: EQ(SCHEMA.actor_revisions.actor_definition_id, args.definitionId),
-    orderBy: [DESC(SCHEMA.actor_revisions.version), DESC(SCHEMA.actor_revisions.created_at), DESC(SCHEMA.actor_revisions.id)],
-  }).sync();
-  return row ? fnToActorRevision(row) : null;
-}
-
-export function fxGetActorRevision(portal: TPortalActorDb, args: TArgsActorRevisionById) {
-  const row = portal.db.query.actor_revisions.findFirst({ where: EQ(SCHEMA.actor_revisions.id, args.id) }).sync();
-  return row ? fnToActorRevision(row) : null;
 }
 
 export function fxListActorConnections(portal: TPortalActorDb, args: TArgsCanvasAccess) {
