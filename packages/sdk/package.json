@@ -20,10 +20,12 @@
     "./bridge": {
       "types": "./dist/bridge.d.ts",
       "default": "./dist/bridge.js"
-    }
+    },
+    "./vibecanvas.schema.json": "./vibecanvas.schema.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "vibecanvas.schema.json"
   ],
   "peerDependencies": {
     "@arrow-js/core": "^1.0.6"

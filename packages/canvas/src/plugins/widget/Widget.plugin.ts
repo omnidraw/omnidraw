@@ -25,11 +25,11 @@ export function createWidgetPlugin(): IPlugin<{
           return
         }
         actors.forEach(actor => {
-          widgetMangerService.registerWidget({
-            id: 'test',
-            dataType: 'widget',
-            tool: actor.widget.
-          })
+          // widgetMangerService.registerWidget({
+          //   id: 'test',
+          //   dataType: 'widget',
+          //   tool: actor.widget.
+          // })
         })
         // todo: register actors with widget manager
       })

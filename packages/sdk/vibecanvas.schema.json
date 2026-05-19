@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibecanvas.dev/schemas/vibecanvas.schema.json",
+  "title": "Vibecanvas widget addon config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "slug", "name", "version", "description", "actor", "widget"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema URI for editor support."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shared widget/actor id. Used as the widget kind and the stable addon identity."
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable unique addon slug."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "description": {
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/actor"
+    },
+    "widget": {
+      "$ref": "#/$defs/widget"
+    }
+  },
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      ]
+    },
+    "jsonSchema": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "actorTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target"],
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guard": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "actorState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exit": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "on": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/actorTransition" }
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["functionsPath", "initialState", "states"],
+      "properties": {
+        "functionsPath": {
+          "type": "string",
+          "minLength": 1,
+          "default": "./actor/functions.ts",
+          "description": "Path to actor effect functions, relative to vibecanvas.json."
+        },
+        "initialState": {
+          "type": "string",
+          "minLength": 1
+        },
+        "initialContext": {
+          "$ref": "#/$defs/jsonValue"
+        },
+        "states": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/actorState" }
+        },
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonSchema" }
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonSchema" }
+        }
+      }
+    },
+    "toolBehavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["mode", "action", "modal"]
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["draw-create", "click-create", "select", "hand"]
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "behavior"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "type": "string",
+          "description": "Toolbar icon as inline SVG markup or a named Lucide icon id such as list-todo."
+        },
+        "shortcuts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "group": {
+          "type": "string",
+          "description": "Optional toolbar group."
+        },
+        "priority": {
+          "type": "number"
+        },
+        "behavior": {
+          "$ref": "#/$defs/toolBehavior"
+        }
+      }
+    },
+    "widget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool"],
+      "properties": {
+        "sourceDir": {
+          "type": "string",
+          "minLength": 1,
+          "default": "./widget",
+          "description": "Directory containing widget source files such as main.ts and main.css, relative to vibecanvas.json."
+        },
+        "tool": {
+          "$ref": "#/$defs/tool"
+        }
+      }
+    }
+  }
+}

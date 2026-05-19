@@ -609,6 +609,7 @@ prefix: `packages/sdk/`
 | ❓ | `src/schema.ts` |  | Internal JSON Schema type used by actor port schemas. |
 | 🤖 | `src/widget.ts` |  | Widget UI helper entry point using the SDK bridge for actor snapshot/send/update messages. |
 | 🤖 | `tsconfig.json` |  | SDK declaration bundler TypeScript path mapping for monorepo type imports. |
+| ❓ | `vibecanvas.schema.json` |  | JSON Schema for data-dir widget addon vibecanvas.json IDE support. |
 
 ## packages/service-automerge
 prefix: `packages/service-automerge/src/`

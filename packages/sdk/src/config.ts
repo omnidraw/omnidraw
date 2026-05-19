@@ -10,7 +10,22 @@ type TVibecanvasAddonWidgetConfig = {
   sourceDir?: string;
 };
 
+type TVibecanvasAddonToolBehavior =
+  | { type: "mode"; mode: "draw-create" | "click-create" | "select" | "hand" }
+  | { type: "action" }
+  | { type: "modal" };
+
+type TVibecanvasAddonToolConfig = {
+  label?: string;
+  icon?: string;
+  shortcuts?: string[];
+  group?: string;
+  priority?: number;
+  behavior?: TVibecanvasAddonToolBehavior;
+};
+
 type TVibecanvasAddonFrontendConfig = {
+  tool?: TVibecanvasAddonToolConfig;
   element?: {
     initialPayload?: Record<string, unknown>;
     actor?: {
@@ -48,6 +63,8 @@ export { defineVibecanvasConfig, defineWidgetAddon };
 export type {
   TVibecanvasAddonActorConfig,
   TVibecanvasAddonFrontendConfig,
+  TVibecanvasAddonToolBehavior,
+  TVibecanvasAddonToolConfig,
   TVibecanvasAddonWidgetConfig,
   TVibecanvasConfig,
   TVibecanvasWidgetAddonConfig,
