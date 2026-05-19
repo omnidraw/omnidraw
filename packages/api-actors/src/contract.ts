@@ -2,33 +2,71 @@ import { eventIterator, oc } from '@orpc/contract';
 import { z } from 'zod';
 
 const zJsonRecord = z.record(z.string(), z.unknown());
+const zJsonValue: z.ZodType<unknown> = z.lazy(() => z.union([
+  z.null(),
+  z.boolean(),
+  z.number(),
+  z.string(),
+  z.array(zJsonValue),
+  z.record(z.string(), zJsonValue),
+]));
 
-const zActorDefinitionWidgetInfo = z.object({
-  widgetId: z.string(),
-  widgetDir: z.string(),
-  sourceDir: z.string().optional(),
-  frontend: zJsonRecord.optional(),
-  initialPayload: zJsonRecord.optional(),
-  actorUiProps: zJsonRecord.optional(),
+const zActorDefinitionTransition = z.object({
+  target: z.string(),
+  guard: z.string().optional(),
+  actions: z.array(z.string()).optional(),
+});
+
+const zActorDefinitionState = z.object({
+  entry: z.array(z.string()).optional(),
+  exit: z.array(z.string()).optional(),
+  on: z.record(z.string(), zActorDefinitionTransition).optional(),
+});
+
+const zActorDefinitionActorInfo = z.object({
+  functionsPath: z.string(),
+  initialState: z.string(),
+  initialContext: zJsonValue.optional(),
+  states: z.record(z.string(), zActorDefinitionState),
+  inputSchema: z.record(z.string(), zJsonRecord),
+  outputSchema: z.record(z.string(), zJsonRecord),
+});
+
+const zActorDefinitionToolBehavior = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('mode'), mode: z.enum(['draw-create', 'click-create', 'select', 'hand']) }),
+  z.object({ type: z.literal('action') }),
+  z.object({ type: z.literal('modal') }),
+]);
+
+const zActorDefinitionTool = z.object({
+  label: z.string(),
+  icon: z.string().optional(),
+  shortcuts: z.array(z.string()).optional(),
+  group: z.string().optional(),
+  priority: z.number().optional(),
+  behavior: zActorDefinitionToolBehavior,
+});
+
+const zActorListItem = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  version: z.number().int().nonnegative(),
+  description: z.string().nullable(),
+  tool: zActorDefinitionTool
 });
 
 const zActorDefinition = z.object({
   id: z.string(),
-  name: z.string(),
-  slug: z.string(),
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  version: z.number().int().nonnegative(),
   description: z.string().nullable(),
-  widget_id: z.string(),
-  widget_dir: z.string(),
-  actor_json_path: z.string(),
-  functions_path: z.string(),
-  machine_schema: zJsonRecord,
-  machine_config: zJsonRecord,
-  contract_schema: zJsonRecord,
-  output_schema: zJsonRecord,
-  server_manifest: zJsonRecord,
-  ui_manifest: zJsonRecord,
-  widget: zActorDefinitionWidgetInfo,
-  created_by_system_id: z.string(),
+  actor: zActorDefinitionActorInfo,
+  widget: z.object({
+    tool: zActorDefinitionTool,
+    sourceFiles: z.record(z.string(), z.string()),
+  }),
   created_at: z.date(),
   updated_at: z.date(),
 });
@@ -179,7 +217,7 @@ const zActorEvent = z.discriminatedUnion('type', [
 
 const actorsContract = oc.router({
   definitions: oc.router({
-    list: oc.input(z.object({ slug: z.string().optional() }).optional()).output(z.array(zActorDefinition)),
+    list: oc.input(z.object({ slug: z.string().optional() }).optional()).output(z.array(zActorListItem)),
     get: oc.input(z.object({ id: z.string() })).output(zActorDefinition.nullable()),
   }),
   instances: oc.router({
@@ -203,7 +241,6 @@ const actorsContract = oc.router({
   events: oc.input(z.object({ canvasId: z.string() })).route({ method: 'GET' }).output(eventIterator(zActorEvent)),
 });
 
-type TActorDefinitionWidgetInfo = z.infer<typeof zActorDefinitionWidgetInfo>;
 type TActorDefinition = z.infer<typeof zActorDefinition>;
 type TActorInstance = z.infer<typeof zActorInstance>;
 type TActorOutput = z.infer<typeof zActorOutput>;
@@ -214,12 +251,12 @@ type TCreateActorInstanceInput = z.infer<typeof zCreateActorInstanceInput>;
 type TCreateActorConnectionInput = z.infer<typeof zCreateActorConnectionInput>;
 type TSendActorMessageInput = z.infer<typeof zSendActorMessageInput>;
 type TUpdateActorConnectionInput = z.infer<typeof zUpdateActorConnectionInput>;
+type TActorListItem = z.infer<typeof zActorListItem>
 
 export {
   actorsContract,
   zActorConnection,
   zActorDefinition,
-  zActorDefinitionWidgetInfo,
   zActorEvent,
   zActorInstance,
   zActorMessageSendResult,
@@ -228,11 +265,11 @@ export {
   zCreateActorInstanceInput,
   zSendActorMessageInput,
   zUpdateActorConnectionInput,
+  zActorListItem,
 };
 export type {
   TActorConnection,
   TActorDefinition,
-  TActorDefinitionWidgetInfo,
   TActorEvent,
   TActorInstance,
   TActorMessageSendResult,
@@ -241,4 +278,5 @@ export type {
   TCreateActorInstanceInput,
   TSendActorMessageInput,
   TUpdateActorConnectionInput,
+  TActorListItem,
 };
