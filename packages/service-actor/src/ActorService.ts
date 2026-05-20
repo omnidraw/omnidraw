@@ -2,7 +2,7 @@ import type { IService, IStartableService, IStoppableService } from '@vibecanvas
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { SqliteWorkflowDb, type TWorkflowDb } from '@vibecanvas/service-workflow';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import * as schema from '@vibecanvas/service-db/schema';
@@ -11,6 +11,7 @@ import { ACTOR_BOOT_MESSAGE_NAME, ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT
 import { fnCreateBootMessage } from './core/fn.machine';
 import { fxGetActorRows, fxNextActorInboxSeq } from './core/fx.actor-db';
 import { txInsertInbox, txPatchActorInstance } from './core/tx.actor-db';
+import type { TActorConnectionRow, TActorInstanceRow } from './core/types';
 
 export type TActorServiceWorkerEnv = Record<string, string | undefined>;
 
@@ -80,6 +81,11 @@ export type TActorServiceSendMessageResult = {
   readonly correlationId: string;
   readonly actorInstanceId: string;
   readonly canvasId: string;
+};
+
+export type TActorServiceRemoveInstanceArgs = {
+  readonly actorInstanceId: string;
+  readonly reason?: string;
 };
 
 export type TActorServiceWidgetSource = {
@@ -251,6 +257,37 @@ export class ActorService implements IService, IStartableService<object, TActorS
     await this.nudgeSupervisor();
   }
 
+  async removeInstance(args: TActorServiceRemoveInstanceArgs): Promise<TActorInstanceRow | null> {
+    const existing = this.db.select().from(schema.actor_instances).all().find((actor) => actor.id === args.actorInstanceId);
+    if (!existing) return null;
+
+    const stopping = txPatchActorInstance(this.portal(), {
+      actorInstanceId: existing.id,
+      patch: { status: 'stopping' },
+    });
+    this.publishActorInstanceUpdated(stopping.canvas_id, stopping.id);
+
+    if (existing.workflow_run_id) {
+      await this.supervisor.workflowSuperviser.cancelRun({ runId: existing.workflow_run_id }).catch(() => undefined);
+    }
+
+    const deletedConnections = this.deleteActorConnections(existing.id);
+    this.deleteActorInbox(existing.id);
+
+    const deleted = this.db.delete(schema.actor_instances)
+      .where(eq(schema.actor_instances.id, existing.id))
+      .returning()
+      .all()[0] ?? null;
+
+    if (!deleted) return null;
+
+    for (const connection of deletedConnections) {
+      this.publishActorConnectionDeleted(connection);
+    }
+    this.publishActorInstanceDeleted(deleted, args.reason);
+    return deleted;
+  }
+
   private startSandboxWorkerInBackground(): void {
     void this.startSandboxWorker().catch((error) => {
       this.#lastBackgroundSandboxError = error instanceof Error ? error.message : String(error);
@@ -310,10 +347,46 @@ export class ActorService implements IService, IStartableService<object, TActorS
     await this.supervisor.runOnce().catch(() => undefined);
   }
 
+  private deleteActorConnections(actorInstanceId: string): TActorConnectionRow[] {
+    return this.db.delete(schema.actor_connections)
+      .where(or(
+        eq(schema.actor_connections.source_actor_instance_id, actorInstanceId),
+        eq(schema.actor_connections.target_actor_instance_id, actorInstanceId),
+      ))
+      .returning()
+      .all();
+  }
+
+  private deleteActorInbox(actorInstanceId: string): void {
+    this.db.delete(schema.actor_inbox)
+      .where(or(
+        eq(schema.actor_inbox.actor_instance_id, actorInstanceId),
+        eq(schema.actor_inbox.source_actor_instance_id, actorInstanceId),
+      ))
+      .run();
+  }
+
+  private publishActorConnectionDeleted(connection: TActorConnectionRow): void {
+    this.eventPublisher?.publishActorEvent(connection.canvas_id, {
+      type: 'actor.connection.deleted',
+      canvasId: connection.canvas_id,
+      connectionId: connection.id,
+    });
+  }
+
   private publishActorInstanceUpdated(canvasId: string, actorInstanceId: string): void {
     const instance = this.db.select().from(schema.actor_instances).all().find((actor) => actor.id === actorInstanceId);
     if (!instance) return;
     this.eventPublisher?.publishActorEvent(canvasId, { type: 'actor.instance.updated', canvasId, instance });
+  }
+
+  private publishActorInstanceDeleted(instance: TActorInstanceRow, reason: string | undefined): void {
+    this.eventPublisher?.publishActorEvent(instance.canvas_id, {
+      type: 'actor.instance.deleted',
+      canvasId: instance.canvas_id,
+      instanceId: instance.id,
+      reason,
+    });
   }
 }
 

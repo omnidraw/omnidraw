@@ -616,10 +616,10 @@ prefix: `packages/service-automerge/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| 🤖 | `AutomergeServer.ts` |  | Captures image element deletions from watched Automerge canvas handles. |
+| 🤖 | `AutomergeServer.ts` |  | Automerge repo service with optional element-delete callback for watched canvas handles. |
 | 🤖 | `types/canvas-doc.types.ts` |  | Canvas document TypeScript model derived from zod schemas. |
 | 🤖 | `types/canvas-doc.zod.ts` |  | Canvas document zod schemas and element data union. |
-| ❓ | `IAutomergeService.ts` |  |  |
+| 🤖 | `IAutomergeService.ts` |  | Automerge service contract, including server-side element delete handler registration. |
 | ❓ | `sqlite.adapter.ts` |  |  |
 | ❓ | `websocket.adapter.ts` |  |  |
 
@@ -658,7 +658,7 @@ prefix: `packages/service-actor/`
 | 🤖 | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
 | 🤖 | `package.json` |  | Actor service package metadata and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
-| 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service, in-memory widget/actor source registry, supervisor startup, and non-blocking dev sandbox worker integration. |
+| 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service, widget/actor source registry, supervisor/sandbox startup, and authoritative actor instance removal. |
 | 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows without built-in actor exceptions, reconciles results, commits outputs, routes messages, and publishes runtime events. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
 | 🤖 | `src/core/fn.machine.ts` |  | Pure actor machine transition from data-folder actor definitions, boot message, processability, and effect result merge helpers. |

@@ -70,7 +70,11 @@ function setupServices(config: ICliConfig) {
   services.provide('filesystem', 30, filesystemService);
   services.provide('pty', 40, ptyService);
 
-  const automergeService = new AutomergeService(dbService.sqlite as Database);
+  const automergeService = new AutomergeService(dbService.sqlite as Database, (canvasId, element) => {
+    if (element.data.type === 'widget' && element.data.actorInstanceId) {
+      services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
+    }
+  });
   services.provide('automerge', 50, automergeService);
 
   if (config.command !== 'serve') {

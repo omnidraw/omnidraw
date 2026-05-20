@@ -3,20 +3,51 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AutomergeService } from '../src/AutomergeServer';
 import { DbServiceBunSqlite } from '../../service-db/src/DbServiceBunSqlite/index';
-import type { TCanvasDoc } from '../src/types/canvas-doc';
+import type { TCanvasDoc, TElement } from '../src/types/canvas-doc.types';
 
-async function waitForPersistedDoc(args: { dbService: DbServiceBunSqlite; automergeUrl: string; timeoutMs?: number }): Promise<void> {
+async function waitFor(args: { predicate: () => boolean; message: string; timeoutMs?: number }): Promise<void> {
   const startedAt = Date.now();
-  const prefix = `${args.automergeUrl.replace('automerge:', '')}*`;
   const timeoutMs = args.timeoutMs ?? 2000;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const row = args.dbService.sqlite.prepare('select count(*) as n from automerge_repo_data where key glob ?').get(prefix) as { n: number };
-    if (row.n > 0) return;
+    if (args.predicate()) return;
     await Bun.sleep(25);
   }
 
-  throw new Error(`Timed out waiting for persisted Automerge data for ${args.automergeUrl}`);
+  throw new Error(args.message);
+}
+
+async function waitForPersistedDoc(args: { dbService: DbServiceBunSqlite; automergeUrl: string; timeoutMs?: number }): Promise<void> {
+  const prefix = `${args.automergeUrl.replace('automerge:', '')}*`;
+  await waitFor({
+    timeoutMs: args.timeoutMs,
+    message: `Timed out waiting for persisted Automerge data for ${args.automergeUrl}`,
+    predicate: () => {
+      const row = args.dbService.sqlite.prepare('select count(*) as n from automerge_repo_data where key glob ?').get(prefix) as { n: number };
+      return row.n > 0;
+    },
+  });
+}
+
+function createTestElement(id: string): TElement {
+  return {
+    id,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    zIndex: 'a0',
+    parentGroupId: null,
+    bindings: [],
+    locked: false,
+    createdAt: 1,
+    updatedAt: 1,
+    data: {
+      type: 'rect',
+      w: 10,
+      h: 10,
+    },
+    style: {},
+  };
 }
 
 const previousSilentAutomergeLogs = process.env.VIBECANVAS_SILENT_AUTOMERGE_LOGS;
@@ -90,5 +121,37 @@ describe('AutomergeService', () => {
     expect(sharedDoc).not.toBeNull();
     expect(sharedDoc?.id).toBe('canvas-1');
     expect(sharedDoc?.name).toBe('hello');
+  });
+
+  test('notifies when an element is deleted from a watched canvas document', async () => {
+    const deletedElements: Array<{ canvasId: string; element: TElement }> = [];
+    const service = new AutomergeService(databasePath, (canvasId, element) => {
+      deletedElements.push({ canvasId, element });
+    });
+    services.push(service);
+
+    const element = createTestElement('element-1');
+    const handle = service.repo.create<TCanvasDoc>({
+      id: 'canvas-delete-test',
+      name: 'delete test',
+      elements: {
+        [element.id]: element,
+      },
+      groups: {},
+    });
+    await handle.whenReady();
+
+    await Bun.sleep(1100);
+
+    handle.change((doc) => {
+      delete doc.elements[element.id];
+    });
+
+    await waitFor({
+      message: 'Timed out waiting for element delete notification',
+      predicate: () => deletedElements.length === 1,
+    });
+
+    expect(deletedElements).toEqual([{ canvasId: 'canvas-delete-test', element }]);
   });
 });

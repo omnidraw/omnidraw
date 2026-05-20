@@ -157,6 +157,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A38](a/A38.md) - widgets: fullscreen DOM window mode
 - [x]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
 - [x]: [A40](a/A40.md) - canvas: non-sandboxed terminal widget plugin
+- [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port

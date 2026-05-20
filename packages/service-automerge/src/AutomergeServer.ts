@@ -11,8 +11,9 @@ export class AutomergeService implements IAutomergeService {
   readonly wsAdapter: BunWSServerAdapter;
   #elementDeleteWatchedDocumentIds = new Set<string>();
   #elementDeleteScanInterval: ReturnType<typeof setInterval> | null = null;
+  #onElementDelete: (canvasId: string, element: TElement) => void;
 
-  constructor(database: Database | string) {
+  constructor(database: Database | string, onElementDelete: (canvasId: string, element: TElement) => void) {
     this.wsAdapter = new BunWSServerAdapter();
     const storage = typeof database === 'string'
       ? new BunSqliteStorageAdapter(database)
@@ -25,6 +26,7 @@ export class AutomergeService implements IAutomergeService {
     });
 
     this.wsAdapter.connect(this.repo.peerId!);
+    this.#onElementDelete = onElementDelete;
     this.#startElementDeleteWatcher();
   }
 
@@ -60,22 +62,11 @@ export class AutomergeService implements IAutomergeService {
           continue;
         }
 
-        if (element.data.type !== 'image') {
-          continue;
-        }
-
-        this.onElementDelete(canvasId, element);
+        this.#onElementDelete(canvasId, element);
       }
     });
   }
 
-  private onElementDelete(canvasId: string, element: TElement): void {
-    console.log('Automerge image element deleted', {
-      canvasId,
-      elementId: element.id,
-      element,
-    });
-  }
 
   stop(): void {
     if (this.#elementDeleteScanInterval !== null) {
