@@ -210,6 +210,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S49] - TODO [S49]: add onRemove to some callback later
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
 - [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
+- [ ]: [S52] - remove drizzle use turso + raw sqlite
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research

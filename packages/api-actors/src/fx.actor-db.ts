@@ -3,7 +3,7 @@ import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
 import * as SCHEMA from '@vibecanvas/service-db/schema';
 import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { TCanvasMemberRole } from '@vibecanvas/service-db/schema';
-import { fnToActorConnection, fnToActorDefinition, fnToActorInstance } from './fn.actor-input';
+import { fnToActorConnection, fnToActorDefinition, fnToActorInstance, fnToActorListItem } from './fn.actor-input';
 import type { TActorOutput } from './contract';
 
 export type TPortalActorDb = {
@@ -80,7 +80,7 @@ export function fxListActorDefinitions(portal: TPortalActorDb, args: TArgsActorD
     where: args.slug ? EQ(SCHEMA.actor_definitions.slug, args.slug) : undefined,
     orderBy: [ASC(SCHEMA.actor_definitions.name), ASC(SCHEMA.actor_definitions.slug), ASC(SCHEMA.actor_definitions.id)],
   }).sync();
-  return rows.map(fnToActorDefinition);
+  return rows.map(fnToActorListItem);
 }
 
 export function fxGetActorDefinition(portal: TPortalActorDb, args: TArgsActorDefinitionById) {

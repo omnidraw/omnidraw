@@ -104,23 +104,18 @@ export const actor_definitions = sqliteTable('actor_definitions', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  version: integer('version').notNull().default(0),
   description: text('description'),
-  widget_id: text('widget_id').notNull().default(''),
-  widget_dir: text('widget_dir').notNull().default(''),
-  actor_json_path: text('actor_json_path').notNull().default('actor/actor.json'),
   functions_path: text('functions_path').notNull().default('actor/functions.ts'),
-  machine_schema: text('machine_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   machine_config: text('machine_config', { mode: 'json' }).notNull().default(sql`'{}'`),
-  contract_schema: text('contract_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
+  input_schema: text('input_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   output_schema: text('output_schema', { mode: 'json' }).notNull().default(sql`'{}'`),
   server_manifest: text('server_manifest', { mode: 'json' }).notNull().default(sql`'{}'`),
-  ui_manifest: text('ui_manifest', { mode: 'json' }).notNull().default(sql`'{}'`),
-  created_by_system_id: text('created_by_system_id').notNull().default('system'),
+  widget_config: text('widget_config', { mode: 'json' }).notNull().default(sql`'{}'`),
   created_at: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   updated_at: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
 }, (table) => [
   index('actor_definitions_slug_idx').on(table.slug),
-  index('actor_definitions_widget_id_idx').on(table.widget_id),
 ]);
 
 export const actor_instances = sqliteTable('actor_instances', {

@@ -53,7 +53,7 @@ const zActorListItem = z.object({
   slug: z.string().min(1),
   version: z.number().int().nonnegative(),
   description: z.string().nullable(),
-  tool: zActorDefinitionTool
+  tool: zActorDefinitionTool,
 });
 
 const zActorDefinition = z.object({
@@ -251,7 +251,7 @@ type TCreateActorInstanceInput = z.infer<typeof zCreateActorInstanceInput>;
 type TCreateActorConnectionInput = z.infer<typeof zCreateActorConnectionInput>;
 type TSendActorMessageInput = z.infer<typeof zSendActorMessageInput>;
 type TUpdateActorConnectionInput = z.infer<typeof zUpdateActorConnectionInput>;
-type TActorListItem = z.infer<typeof zActorListItem>
+type TActorListItem = z.infer<typeof zActorListItem>;
 
 export {
   actorsContract,

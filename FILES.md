@@ -249,9 +249,9 @@ prefix: `packages/canvas/src/`
 | 🫠 | `services/widget/fn.to-element.ts` | empty file |  |
 | 🤖 | `services/widget/CONSTANTS.ts` |  | Widget host frame sizing and connection node id constants |
 | 🤖 | `services/widget/fx.attach-widget-listener.ts` |  | Widget host activation/buttons/cursor, connection drag creation, attached-only drag sync, and alt-clone wiring |
-| 🤖 | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing |
+| 🤖 | `services/widget/fx.draw-host.ts` |  | Editor draw-tool host draft creation and drag resizing without actor UI props. |
 | 🤖 | `services/widget/fx.register-tool.ts` |  | Editor tool registration for drawable widget configs |
-| 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and tool config |
+| 🤖 | `services/widget/interface.ts` |  | Widget manager service contracts: hooks, dependencies, history, and actor/widget tool config. |
 | 🤖 | `services/widget/tx.attach-dom-portal.ts` |  | Widget DOM portal positioning, active pointer-event routing, glow, and cleanup listener wiring |
 | ❓ | `services/widget/tx.mount-arrow-sandbox.ts` |  | Mount Arrow sandbox widget source with SDK import rewriting and base sizing CSS. |
 | 🤖 | `services/widget/tx.create-widget-clone-drag.ts` |  | Widget host alt-drag clone preview, DOM cleanup, history, and CRDT commit |
@@ -309,7 +309,7 @@ prefix: `apps/cli/src/`
 | 🤖 | `OrpcPlugin.ts` |  | Injects OSS fake session account id into ORPC contexts. |
 | 🤖 | `plugins/orpc/orpc.base.ts` |  | Root ORPC contract context includes optional actor runtime services. |
 | 🤖 | `plugins/orpc/OrpcPlugin.ts` |  | Injects actor runtime services into websocket ORPC contexts when available. |
-| 🤖 | `plugins/widget/WidgetPlugin.ts` |  | Provides widget-source service for pre-actor startup sourcing plus plugin hook to load actor supervisor after sourcing. |
+| 🤖 | `plugins/widget/WidgetPlugin.ts` |  | Sources vibecanvas.json actor/widget definitions, caches widget files, and upserts simplified actor definition rows. |
 | ❓ | `parse-argv.ts` |  |  |
 | ❓ | `PtyPlugin.ts` |  |  |
 | ❓ | `resolve-paths.ts` |  |  |
@@ -376,7 +376,7 @@ prefix: `apps/visualizer/`
 | 🤖 | `src/App.tsx` |  | React visualizer UI showing actor network, source selector, state inspector, queues, and message sender. |
 | ❓ | `src/assets.d.ts` |  | CSS text import declaration for the Bun visualizer server. |
 | ❓ | `src/client.tsx` |  | Browser hydration entry for the visualizer React UI. |
-| 🤖 | `src/runtime.ts` |  | Actor visualizer runtime for in-memory scenarios and live dev DB actor snapshots. |
+| 🤖 | `src/runtime.ts` |  | Actor visualizer runtime for in-memory scenarios and live dev DB actor snapshots using simplified actor definition rows. |
 | 🤖 | `src/server.tsx` |  | Bun SSR server, source-switching REST API, and SSE events for the actor visualizer on port 34532. |
 | ❓ | `src/style.css` |  | Visualizer network, inspector, actor cards, and DB stack styling. |
 | ❓ | `src/types.ts` |  | Scenario, actor seed, connection seed, and effect result typings. |
@@ -397,21 +397,21 @@ prefix: `packages/api-actors/src/`
 | ❓ | `api.actor-events.ts` |  | Snapshot-first actor event stream for canvas actor state. |
 | ❓ | `api.create-actor-connection.ts` |  | Creates DB-backed actor connections through actor instance endpoint validation. |
 | 🤖 | `api.create-actor-instance.ts` |  | Creates canvas-bound actor instances and boots them through actor runtime when available. |
-| 🤖 | `api.get-actor-definition.ts` |  | Fetches one data-dir-backed actor/widget definition for frontend tool hydration. |
+| 🤖 | `api.get-actor-definition.ts` |  | Fetches one data-dir-backed actor/widget definition and attaches cached widget source files for frontend hydration. |
 | ❓ | `api.get-actor-instance.ts` |  | Fetches one actor instance with canvas view authorization. |
 | ❓ | `api.list-actor-connections.ts` |  | Lists canonical DB actor connections for a canvas. |
-| 🤖 | `api.list-actor-definitions.ts` |  | Lists data-dir-backed actor/widget definitions with normalized widget metadata. |
+| 🤖 | `api.list-actor-definitions.ts` |  | Lists lightweight data-dir-backed actor/widget definition tool metadata. |
 | ❓ | `api.list-actor-instances.ts` |  | Lists actor instances for a canvas. |
 | ❓ | `api.list-actor-outputs.ts` |  | Lists actor output rows for widget state synchronization. |
 | ❓ | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
 | ❓ | `api.remove-actor-instance.ts` |  | Deletes DB-backed actor instances for removed actor widgets and publishes actor events. |
 | 🤖 | `api.send-actor-message.ts` |  | Authorizes actor messages and delegates enqueueing to ActorService runtime. |
 | ❓ | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
-| 🤖 | `contract.ts` |  | Actor ORPC contract for definitions, instances, connections, messages, outputs, and events without revisions. |
+| 🤖 | `contract.ts` |  | Actor ORPC contract with addon-shaped definitions plus instances, connections, messages, outputs, and events. |
 | ❓ | `CONSTANTS.ts` |  | Actor API system principal and event channel constants. |
 | ❓ | `db.ts` |  | Resolves the concrete Drizzle DB from the generic DB service for actor APIs. |
-| 🤖 | `fn.actor-input.ts` |  | Pure actor definition/instance input normalization and DB JSON row shaping helpers. |
-| 🤖 | `fx.actor-db.ts` |  | Actor DB read helpers for data-dir definitions plus account-aware canvas checks. |
+| 🤖 | `fn.actor-input.ts` |  | Pure actor definition/list item shaping, source-file attachment, and instance/connection JSON normalization helpers. |
+| 🤖 | `fx.actor-db.ts` |  | Actor DB read helpers for lightweight/full data-dir definitions plus account-aware canvas checks. |
 | 🤖 | `handlers.ts` |  | Actor API handler tree for definitions, instances, connections, messages, outputs, and events. |
 | ❓ | `orpc.ts` |  | Actor API ORPC implementer with typed context. |
 | 🤖 | `tx.actor-db.ts` |  | Actor DB writes and actor event publication for definition-backed instances and connections. |
@@ -637,7 +637,7 @@ prefix: `packages/service-db/src/`
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox run tables, sandbox resources, and data-folder actor definitions without revision rows. |
+| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox tables, and simplified vibecanvas.json-backed actor definitions. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |

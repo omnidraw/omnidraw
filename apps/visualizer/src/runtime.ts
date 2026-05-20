@@ -267,7 +267,7 @@ export class VisualizerRuntime {
       explainer: null,
       actorPosition: (instance, index) => {
         const definition = db.query.actor_definitions.findFirst({ where: eq(schema.actor_definitions.id, instance.actor_definition_id) }).sync();
-        return positionFromManifest(definition?.ui_manifest) ?? fallbackPosition(index);
+        return positionFromManifest(definition?.widget_config) ?? fallbackPosition(index);
       },
     });
     return serialize({
@@ -343,17 +343,14 @@ export class VisualizerRuntime {
         id: actor.definitionId,
         name: actor.displayName,
         slug: actor.definitionId,
+        version: 0,
         description: `Visualizer actor ${actor.displayName}`,
-        widget_id: actor.definitionId,
-        widget_dir: 'visualizer://scenario',
-        actor_json_path: 'visualizer://scenario/actor.json',
         functions_path: 'visualizer-scenario.ts',
-        machine_schema: {},
         machine_config: actor.machineConfig,
-        contract_schema: {},
+        input_schema: {},
         output_schema: {},
         server_manifest: actor.serverManifest ?? { entrypoint: 'visualizer-scenario.ts', functions: { fns: Object.keys(scenarioToSeed.effects).filter((name) => name.startsWith('fn.')), fxs: Object.keys(scenarioToSeed.effects).filter((name) => name.startsWith('fx.')), txs: Object.keys(scenarioToSeed.effects).filter((name) => name.startsWith('tx.')) } },
-        ui_manifest: { x: actor.x, y: actor.y },
+        widget_config: { x: actor.x, y: actor.y, tool: { label: actor.displayName, behavior: { type: 'mode', mode: 'draw-create' } } },
         created_at: new Date(),
         updated_at: new Date(),
       }).run();
