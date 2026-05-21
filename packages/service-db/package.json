@@ -13,6 +13,7 @@
   "dependencies": {
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
+    "@vibecanvas/service-workflow": "workspace:*",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",
     "drizzle-kit": "catalog:",

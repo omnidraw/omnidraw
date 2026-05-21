@@ -1,5 +1,3 @@
-import { eq } from 'drizzle-orm';
-import * as schema from '@vibecanvas/service-db/schema';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WorkflowSuperviserService, type TWorkflowDb } from '@vibecanvas/service-workflow';
 import { ACTOR_BOOT_MESSAGE_NAME, DEFAULT_ACTOR_POLL_INTERVAL_MS } from './core/CONSTANTS';
@@ -37,9 +35,7 @@ export type TActorSupervisorDrainResult = {
 
 type TDbPortal = {
   readonly db: TActorDb;
-  readonly tables: typeof schema;
   readonly idFactory: () => string;
-  readonly eq: typeof eq;
 };
 
 export class ActorSupervisor {
@@ -88,8 +84,7 @@ export class ActorSupervisor {
     const portal = this.portal();
     for (const actor of fxListActorInstances(portal, {})) {
       if (actor.status !== 'created') continue;
-      const bootExists = this.db.select().from(schema.actor_inbox).all()
-        .some((row) => row.actor_instance_id === actor.id && row.event_name === ACTOR_BOOT_MESSAGE_NAME);
+      const bootExists = this.db.hasBootInbox(actor.id, ACTOR_BOOT_MESSAGE_NAME);
       if (bootExists) continue;
       await txInsertInbox(portal, {
         workspaceId: actor.workspace_id,
@@ -255,7 +250,7 @@ export class ActorSupervisor {
   }
 
   private portal(): TDbPortal {
-    return { db: this.db, tables: schema, idFactory: this.idFactory, eq };
+    return { db: this.db, idFactory: this.idFactory };
   }
 
   private publishActorInstanceUpdated(instance: TActorInstanceRow): void {

@@ -628,7 +628,8 @@ prefix: `packages/service-db/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| 🤖 | `../package.json` |  | Service DB package manifest and Drizzle migration scripts. |
+| 🤖 | `../package.json` |  | Service DB package manifest, Drizzle migration scripts, and workflow adapter dependency. |
+| ❓ | `ActorDb.ts` |  | Drizzle-backed actor/canvas workflow-facing repository hiding query-builder access from consumers. |
 | ❓ | `CONSTANTS.ts` |  | Default OSS account constants for local auth bootstrap. |
 | ❓ | `_embedded-migrations.ts` |  |  |
 | ❓ | `database/migrate.ts` |  | CLI entrypoint for running service DB migrations with Bun SQLite. |
@@ -637,7 +638,10 @@ prefix: `packages/service-db/src/`
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `schema.ts` |  | Database schema including OSS accounts, memberships, durable workflow/sandbox tables, and simplified vibecanvas.json-backed actor definitions. |
+| ❓ | `model.ts` |  | Public Zod data model and inferred types for DB-backed domain objects without Drizzle table details. |
+| ❓ | `SandboxDb.ts` |  | Drizzle-backed sandbox persistence adapter exposed as a small non-Drizzle interface. |
+| 🤖 | `schema.ts` |  | Internal Drizzle database schema including OSS accounts, memberships, durable workflow/sandbox tables, and actor definitions. |
+| ❓ | `SqliteWorkflowDb.ts` |  | Drizzle-backed durable workflow DB adapter owned by service-db. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |
 | ❓ | `tx.update-canvas.ts` |  |  |
@@ -677,7 +681,7 @@ prefix: `packages/service-workflow/`
 | ❓ | `tsconfig.json` |  | TypeScript config for workflow service source/tests. |
 | ❓ | `src/fn.workflow.ts` |  | Pure workflow validation, status, fingerprint, result, and error helpers. |
 | ❓ | `src/index.ts` |  | Workflow service package barrel exports. |
-| ❓ | `src/SqliteWorkflowDb.ts` |  | Drizzle/SQLite durable workflow database adapter independent of accounts. |
+| 🤖 | `src/SqliteWorkflowDb.ts` | moved to service-db | Deprecated stub; workflow SQLite adapter now lives in service-db so Drizzle stays hidden. |
 | ❓ | `src/types.ts` |  | Durable workflow row, definition, DB, and sandbox executor contracts. |
 | ❓ | `src/WorkflowSuperviserService.ts` |  | System-managed workflow creation, retry, cancel, and status supervision. |
 | ❓ | `src/WorkflowWorkerService.ts` |  | Leased durable workflow worker that executes each step through a sandbox executor. |

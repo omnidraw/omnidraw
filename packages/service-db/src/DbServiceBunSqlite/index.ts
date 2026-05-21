@@ -22,6 +22,9 @@ import { DEFAULT_OSS_ACCOUNT_DISPLAY_NAME, DEFAULT_OSS_ACCOUNT_ID } from '../CON
 import * as schema from '../schema';
 import { fxGetFile } from './fx.get-file';
 import { txCreateFile } from './tx.create-file';
+import { ActorDb } from '../ActorDb';
+import { SandboxDb } from '../SandboxDb';
+import { SqliteWorkflowDb } from '../SqliteWorkflowDb';
 
 export type TDbSchema = typeof schema;
 export type TDrizzleDb = BunSQLiteDatabase<TDbSchema>;
@@ -40,6 +43,9 @@ export class DbServiceBunSqlite implements IDbService {
   readonly name = 'db' as const;
   readonly sqlite: Database;
   readonly drizzle: TDrizzleDb;
+  readonly actor: ActorDb;
+  readonly sandbox: SandboxDb;
+  readonly workflow: SqliteWorkflowDb;
   #startPromise: Promise<void> | null = null;
   #stopped = false;
 
@@ -48,6 +54,9 @@ export class DbServiceBunSqlite implements IDbService {
     configureSqlite(this.sqlite);
 
     this.drizzle = drizzle({ client: this.sqlite, schema });
+    this.actor = new ActorDb(this.drizzle);
+    this.sandbox = new SandboxDb(this.drizzle);
+    this.workflow = new SqliteWorkflowDb({ db: this.drizzle });
   }
 
   start(): Promise<void> {

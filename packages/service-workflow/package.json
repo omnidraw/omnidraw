@@ -12,9 +12,7 @@
     "test": "bun test tests"
   },
   "dependencies": {
-    "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/service-db": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "@vibecanvas/runtime": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:"

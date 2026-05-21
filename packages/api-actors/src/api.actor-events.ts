@@ -1,19 +1,19 @@
 import { ORPCError } from '@orpc/server';
-import { getActorsDrizzleDb } from './db';
+import { getActorsDb } from './db';
 import { fxCanViewCanvas, fxListActorConnections, fxListActorInstances } from './fx.actor-db';
 import { baseActorsOs } from './orpc';
 import type { TActorEvent } from './contract';
 
 const apiActorEvents = baseActorsOs.events.handler(async function* ({ input, context }) {
-  if (!fxCanViewCanvas({ db: getActorsDrizzleDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId })) {
+  if (!fxCanViewCanvas({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId })) {
     throw new ORPCError('FORBIDDEN', { message: 'No access to canvas actor events' });
   }
 
   yield {
     type: 'actor.snapshot' as const,
     canvasId: input.canvasId,
-    instances: fxListActorInstances({ db: getActorsDrizzleDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId }),
-    connections: fxListActorConnections({ db: getActorsDrizzleDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId }),
+    instances: fxListActorInstances({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId }),
+    connections: fxListActorConnections({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId }),
   };
 
   for await (const event of context.eventPublisher.subscribeActorEvents(input.canvasId)) {

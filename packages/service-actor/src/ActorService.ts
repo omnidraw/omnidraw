@@ -1,11 +1,9 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import type { ActorDb } from '@vibecanvas/service-db/ActorDb';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { SqliteWorkflowDb, type TWorkflowDb } from '@vibecanvas/service-workflow';
-import { eq, or } from 'drizzle-orm';
+import type { TWorkflowDb } from '@vibecanvas/service-workflow';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
-import * as schema from '@vibecanvas/service-db/schema';
 import { ActorSupervisor } from './ActorSupervisor';
 import { ACTOR_BOOT_MESSAGE_NAME, ACTOR_SERVICE_NAME, DEFAULT_ACTOR_CONTROL_PORT, DEFAULT_ACTOR_LEASE_MS, DEFAULT_ACTOR_POLL_INTERVAL_MS, DEFAULT_ACTOR_SANDBOX_NAME, DEFAULT_ACTOR_WORKER_ID } from './core/CONSTANTS';
 import { fnCreateBootMessage } from './core/fn.machine';
@@ -32,7 +30,7 @@ export type TActorSandboxRunner = {
 };
 
 export type TActorServiceConfig = {
-  readonly db: TDrizzleDb;
+  readonly db: ActorDb;
   readonly workflowDb?: TWorkflowDb;
   readonly eventPublisher?: IEventPublisherService;
   readonly workerEnv?: TActorServiceWorkerEnv;
@@ -117,7 +115,7 @@ function wait(ms: number): Promise<void> {
 
 export class ActorService implements IService, IStartableService<object, TActorServiceRuntimeConfig>, IStoppableService {
   readonly name = ACTOR_SERVICE_NAME;
-  readonly db: TDrizzleDb;
+  readonly db: ActorDb;
   readonly workflowDb: TWorkflowDb;
   readonly eventPublisher?: IEventPublisherService;
   readonly supervisor: ActorSupervisor;
@@ -139,7 +137,8 @@ export class ActorService implements IService, IStartableService<object, TActorS
 
   constructor(config: TActorServiceConfig) {
     this.db = config.db;
-    this.workflowDb = config.workflowDb ?? new SqliteWorkflowDb({ db: config.db });
+    if (!config.workflowDb) throw new Error('ActorService requires workflowDb when Drizzle is hidden behind service-db');
+    this.workflowDb = config.workflowDb;
     this.eventPublisher = config.eventPublisher;
     this.sandboxName = config.sandboxName ?? DEFAULT_ACTOR_SANDBOX_NAME;
     this.workerId = config.workerId ?? DEFAULT_ACTOR_WORKER_ID;
@@ -236,8 +235,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
     const rows = fxGetActorRows(portal, { actorInstanceId: args.actorInstanceId });
     if (rows.instance.status !== 'created') return;
 
-    const bootExists = this.db.select().from(schema.actor_inbox).all()
-      .some((row) => row.actor_instance_id === rows.instance.id && row.event_name === ACTOR_BOOT_MESSAGE_NAME);
+    const bootExists = this.db.hasBootInbox(rows.instance.id, ACTOR_BOOT_MESSAGE_NAME);
     if (bootExists) return;
 
     const correlationId = `boot:${rows.instance.id}`;
@@ -258,7 +256,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 
   async removeInstance(args: TActorServiceRemoveInstanceArgs): Promise<TActorInstanceRow | null> {
-    const existing = this.db.select().from(schema.actor_instances).all().find((actor) => actor.id === args.actorInstanceId);
+    const existing = this.db.getActorInstance(args.actorInstanceId);
     if (!existing) return null;
 
     const stopping = txPatchActorInstance(this.portal(), {
@@ -274,10 +272,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
     const deletedConnections = this.deleteActorConnections(existing.id);
     this.deleteActorInbox(existing.id);
 
-    const deleted = this.db.delete(schema.actor_instances)
-      .where(eq(schema.actor_instances.id, existing.id))
-      .returning()
-      .all()[0] ?? null;
+    const deleted = this.db.deleteActorInstance(existing.id);
 
     if (!deleted) return null;
 
@@ -340,7 +335,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 
   private portal() {
-    return { db: this.db, tables: schema, idFactory: this.supervisor.idFactory, eq };
+    return { db: this.db, idFactory: this.supervisor.idFactory };
   }
 
   private async nudgeSupervisor(): Promise<void> {
@@ -348,22 +343,11 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 
   private deleteActorConnections(actorInstanceId: string): TActorConnectionRow[] {
-    return this.db.delete(schema.actor_connections)
-      .where(or(
-        eq(schema.actor_connections.source_actor_instance_id, actorInstanceId),
-        eq(schema.actor_connections.target_actor_instance_id, actorInstanceId),
-      ))
-      .returning()
-      .all();
+    return this.db.deleteActorConnectionsForInstance(actorInstanceId);
   }
 
   private deleteActorInbox(actorInstanceId: string): void {
-    this.db.delete(schema.actor_inbox)
-      .where(or(
-        eq(schema.actor_inbox.actor_instance_id, actorInstanceId),
-        eq(schema.actor_inbox.source_actor_instance_id, actorInstanceId),
-      ))
-      .run();
+    this.db.deleteActorInboxForInstance(actorInstanceId);
   }
 
   private publishActorConnectionDeleted(connection: TActorConnectionRow): void {
@@ -375,7 +359,7 @@ export class ActorService implements IService, IStartableService<object, TActorS
   }
 
   private publishActorInstanceUpdated(canvasId: string, actorInstanceId: string): void {
-    const instance = this.db.select().from(schema.actor_instances).all().find((actor) => actor.id === actorInstanceId);
+    const instance = this.db.getActorInstance(actorInstanceId);
     if (!instance) return;
     this.eventPublisher?.publishActorEvent(canvasId, { type: 'actor.instance.updated', canvasId, instance });
   }

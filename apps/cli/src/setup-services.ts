@@ -1,7 +1,7 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeServer';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
-import { DbServiceBunSqlite, type TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -13,7 +13,7 @@ import { ActorService, type TActorSandboxRunner } from '@vibecanvas/service-acto
 import { createWidgetSourceService } from './plugins/widget/WidgetPlugin';
 import { SANDBOX_WORKER_DIR, SANDBOX_WORKER_FILE } from '@vibecanvas/service-actor/core/CONSTANTS';
 import { ServiceSandbox } from '@vibecanvas/service-sandbox';
-import { SqliteWorkflowDb, WorkflowSuperviserService } from '@vibecanvas/service-workflow';
+import { WorkflowSuperviserService } from '@vibecanvas/service-workflow';
 import type { Database } from 'bun:sqlite';
 import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
@@ -78,19 +78,19 @@ function setupServices(config: ICliConfig) {
   services.provide('automerge', 50, automergeService);
 
   if (config.command !== 'serve') {
-    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.drizzle }));
+    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor }));
   }
 
   if (config.command === 'serve') {
     ensureActorWorkerBundle(config);
-    const workflowDb = new SqliteWorkflowDb({ db: dbService.drizzle });
+    const workflowDb = dbService.workflow;
     const workflowSuperviserService = new WorkflowSuperviserService({ db: workflowDb });
     const actorService = new ActorService({
-      db: dbService.drizzle,
+      db: dbService.actor,
       workflowDb,
       eventPublisher,
       workerDistPath: ACTOR_WORKER_DIST_PATH,
-      sandboxRunner: createActorSandboxRunner(config, dbService.drizzle),
+      sandboxRunner: createActorSandboxRunner(config, dbService.sandbox),
       startSandboxInBackground: config.dev,
       workerEnv: {
         VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
@@ -99,7 +99,7 @@ function setupServices(config: ICliConfig) {
         VIBECANVAS_MIGRATIONS_SILENT: '1',
       },
     });
-    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.drizzle, actorService }));
+    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor, actorService }));
     services.provide('workflowSuperviser', 55, workflowSuperviserService);
     services.provide('actor', 60, actorService);
   }
@@ -115,11 +115,11 @@ function ensureActorWorkerBundle(config: ICliConfig): void {
   if (result.status !== 0) throw new Error('Failed to build actor worker bundle');
 }
 
-function createActorSandboxRunner(config: ICliConfig, db: TDrizzleDb): TActorSandboxRunner {
+function createActorSandboxRunner(config: ICliConfig, db: DbServiceBunSqlite['sandbox']): TActorSandboxRunner {
   return createServiceSandboxActorWorkerRunner(config, db);
 }
 
-function createServiceSandboxActorWorkerRunner(config: ICliConfig, db: TDrizzleDb): TActorSandboxRunner {
+function createServiceSandboxActorWorkerRunner(config: ICliConfig, db: DbServiceBunSqlite['sandbox']): TActorSandboxRunner {
   return {
     start: async (args) => {
       const sandbox = new ServiceSandbox({

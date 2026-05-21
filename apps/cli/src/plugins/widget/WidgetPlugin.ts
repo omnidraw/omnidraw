@@ -1,8 +1,7 @@
 import type { IPlugin, IService, IStartableService } from '@vibecanvas/runtime';
 import type { ActorService, TActorServiceWidgetSource } from '@vibecanvas/service-actor';
+import type { ActorDb } from '@vibecanvas/service-db/ActorDb';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
-import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import * as schema from '@vibecanvas/service-db/schema';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import type { ICliConfig } from '../../config';
@@ -31,10 +30,6 @@ type TVibecanvasJson = {
   widget?: unknown;
 };
 
-type TDbBackedService = IDbService & {
-  drizzle?: TDrizzleDb;
-};
-
 function isRecord(value: unknown): value is TJsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -53,10 +48,6 @@ function asString(value: unknown, fallback: string): string {
 
 function asVersion(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
-}
-
-function getDrizzle(db: IDbService): TDrizzleDb | null {
-  return (db as TDbBackedService).drizzle ?? null;
 }
 
 function guestDataPath(config: ICliConfig, hostPath: string): string {
@@ -87,7 +78,7 @@ function readSourceFiles(dir: string): Record<string, string> {
 }
 
 function upsertWidgetActor(args: {
-  db: TDrizzleDb;
+  db: ActorDb;
   cliConfig: ICliConfig;
   widgetDir: string;
   vibecanvasJsonPath: string;
@@ -120,34 +111,19 @@ function upsertWidgetActor(args: {
     entrypoint: functionsGuestPath,
     functionsPath: functionsGuestPath,
   };
-  args.db.insert(schema.actor_definitions).values({
+  args.db.upsertActorDefinition({
     id: widgetId,
     name,
     slug,
     version,
     description,
-    functions_path: functionsGuestPath,
-    machine_config: machineConfig,
-    input_schema: asRecord(actor.inputSchema),
-    output_schema: asRecord(actor.outputSchema),
-    server_manifest: serverManifest,
-    widget_config: widget,
-    updated_at: new Date(),
-  }).onConflictDoUpdate({
-    target: schema.actor_definitions.slug,
-    set: {
-      name,
-      version,
-      description,
-      functions_path: functionsGuestPath,
-      machine_config: machineConfig,
-      input_schema: asRecord(actor.inputSchema),
-      output_schema: asRecord(actor.outputSchema),
-      server_manifest: serverManifest,
-      widget_config: widget,
-      updated_at: new Date(),
-    },
-  }).run();
+    functionsPath: functionsGuestPath,
+    machineConfig,
+    inputSchema: asRecord(actor.inputSchema),
+    outputSchema: asRecord(actor.outputSchema),
+    serverManifest,
+    widgetConfig: widget,
+  });
 
   return {
     id: widgetId,
@@ -169,7 +145,7 @@ function upsertWidgetActor(args: {
   };
 }
 
-function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig; actorService?: ActorService }) {
+function sourceWidgets(args: { db: ActorDb; config: ICliConfig; actorService?: ActorService }) {
   const widgetsDir = join(args.config.dataPath, 'widgets');
   if (!existsSync(widgetsDir)) return 0;
 
@@ -197,7 +173,7 @@ function sourceWidgets(args: { db: TDrizzleDb; config: ICliConfig; actorService?
 class WidgetSourceService implements IService, IStartableService<ICliHooks, ICliConfig> {
   readonly name = 'widget-source';
 
-  constructor(private readonly args: { db: TDrizzleDb; actorService?: ActorService }) {}
+  constructor(private readonly args: { db: ActorDb; actorService?: ActorService }) {}
 
   start(ctx: { config: ICliConfig }): void {
     if (ctx.config.helpRequested || ctx.config.versionRequested) return;
@@ -208,7 +184,7 @@ class WidgetSourceService implements IService, IStartableService<ICliHooks, ICli
   }
 }
 
-function createWidgetSourceService(args: { db: TDrizzleDb; actorService?: ActorService }) {
+function createWidgetSourceService(args: { db: ActorDb; actorService?: ActorService }) {
   return new WidgetSourceService(args);
 }
 

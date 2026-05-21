@@ -15,7 +15,6 @@
     "@vibecanvas/service-actor": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",
-    "drizzle-orm": "catalog:",
     "zod": "catalog:"
   }
 }

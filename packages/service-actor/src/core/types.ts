@@ -1,9 +1,8 @@
-import type { TDrizzleDb } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import type * as schema from '@vibecanvas/service-db/schema';
+import type { ActorDb } from '@vibecanvas/service-db/ActorDb';
+import type { TActorConnection, TActorDefinition, TActorInbox, TActorInstance, TActorOutput as TActorOutputRow } from '@vibecanvas/service-db/model';
 import type { TWorkflowJson } from '@vibecanvas/service-workflow';
 
-export type TActorDb = TDrizzleDb;
-export type TActorTables = typeof schema;
+export type TActorDb = ActorDb;
 
 export type TActorJson = TWorkflowJson;
 export type TActorMessageName = string;
@@ -47,11 +46,11 @@ export type TActorError = {
   readonly details?: Record<string, TActorJson>;
 };
 
-export type TActorDefinitionRow = typeof schema.actor_definitions.$inferSelect;
-export type TActorInstanceRow = typeof schema.actor_instances.$inferSelect;
-export type TActorConnectionRow = typeof schema.actor_connections.$inferSelect;
-export type TActorInboxRow = typeof schema.actor_inbox.$inferSelect;
-export type TActorOutputRow = typeof schema.actor_outputs.$inferSelect;
+export type TActorDefinitionRow = TActorDefinition;
+export type TActorInstanceRow = TActorInstance;
+export type TActorConnectionRow = TActorConnection;
+export type TActorInboxRow = TActorInbox;
+export type { TActorOutputRow };
 
 export type TActorMessage = {
   readonly name: TActorMessageName;

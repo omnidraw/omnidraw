@@ -1,9 +1,9 @@
 import { oc } from '@orpc/contract';
-import { ZCanvasSelect } from '@vibecanvas/service-db/schema';
+import { ZCanvas } from '@vibecanvas/service-db/model';
 import { z } from 'zod';
 
 const getCanvasByIdResponseSchema = z.object({
-  canvas: ZCanvasSelect.array(),
+  canvas: ZCanvas.array(),
 });
 
 const createCanvasInputSchema = z.object({
@@ -15,7 +15,7 @@ const updateCanvasInputSchema = z.object({
 });
 
 const canvasContract = oc.router({
-  list: oc.output(ZCanvasSelect.array()),
+  list: oc.output(ZCanvas.array()),
 
   get: oc
     .input(z.object({ params: z.object({ id: z.string() }) }))
@@ -23,15 +23,15 @@ const canvasContract = oc.router({
 
   create: oc
     .input(createCanvasInputSchema)
-    .output(ZCanvasSelect),
+    .output(ZCanvas),
 
   update: oc
     .input(z.object({ params: z.object({ id: z.string() }), body: updateCanvasInputSchema }))
-    .output(ZCanvasSelect),
+    .output(ZCanvas),
 
   remove: oc
     .input(z.object({ params: z.object({ id: z.string() }) }))
-    .output(ZCanvasSelect),
+    .output(ZCanvas),
 });
 
 export { canvasContract };

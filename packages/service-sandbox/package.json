@@ -14,7 +14,6 @@
   "dependencies": {
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
-    "drizzle-orm": "catalog:",
     "microsandbox": "catalog:"
   },
   "devDependencies": {

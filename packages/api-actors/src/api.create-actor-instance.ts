@@ -1,16 +1,16 @@
 import { ORPCError } from '@orpc/server';
-import { getActorsDrizzleDb } from './db';
+import { getActorsDb } from './db';
 import { fxCanEditCanvas } from './fx.actor-db';
 import { baseActorsOs } from './orpc';
 import { txCreateActorInstance } from './tx.actor-db';
 
 const apiCreateActorInstance = baseActorsOs.instances.create.handler(async ({ input, context }) => {
-  if (!fxCanEditCanvas({ db: getActorsDrizzleDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId })) {
+  if (!fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId })) {
     throw new ORPCError('FORBIDDEN', { message: 'Cannot create actor instance on this canvas' });
   }
 
   const instance = txCreateActorInstance({
-    db: getActorsDrizzleDb(context.db),
+    db: getActorsDb(context.db),
     eventPublisher: context.eventPublisher,
     createId: () => crypto.randomUUID(),
   }, { input, accountId: context.accountId });

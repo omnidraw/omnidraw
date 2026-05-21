@@ -1,10 +1,10 @@
-import { eq } from 'drizzle-orm';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { ActorService } from '@vibecanvas/service-actor';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import * as schema from '@vibecanvas/service-db/schema';
-import { SqliteWorkflowDb, WorkflowSuperviserService, WorkflowWorkerService, type TWorkflowJson } from '@vibecanvas/service-workflow';
+import { WorkflowSuperviserService, WorkflowWorkerService, type TWorkflowJson } from '@vibecanvas/service-workflow';
+import type { ActorDb } from '@vibecanvas/service-db/ActorDb';
+import { SqliteWorkflowDb } from '@vibecanvas/service-db/SqliteWorkflowDb';
 import { getScenario, VISUALIZER_SCENARIOS } from './scenarios';
 import type { TVisualizerEffectResult, TVisualizerScenario } from './types';
 
@@ -109,7 +109,7 @@ export class VisualizerRuntime {
     this.dbService = new DbServiceBunSqlite({ databasePath: ':memory:', dataDir: '/tmp/vibecanvas-visualizer', cacheDir: '/tmp/vibecanvas-visualizer-cache', silentMigrations: true });
     await this.dbService.start();
     this.dbService.account.ensureDefaultOwner();
-    this.workflowDb = new SqliteWorkflowDb({ db: this.dbService.drizzle, randomId: () => id('workflow') });
+    this.workflowDb = this.dbService.workflow;
     this.workflowSuperviser = new WorkflowSuperviserService({ db: this.workflowDb });
     this.workflowWorker = new WorkflowWorkerService({
       db: this.workflowDb,
@@ -125,7 +125,7 @@ export class VisualizerRuntime {
       leaseMs: 30_000,
       pollIntervalMs: 500,
     });
-    this.actorService = new ActorService({ db: this.dbService.drizzle, workflowDb: this.workflowDb, autoStart: false, startSandbox: false, workerId: 'visualizer-actor-supervisor', pollIntervalMs: 500 });
+    this.actorService = new ActorService({ db: this.dbService.actor, workflowDb: this.workflowDb, autoStart: false, startSandbox: false, workerId: 'visualizer-actor-supervisor', pollIntervalMs: 500 });
     this.seedScenario(this.scenario);
     await this.actorService.start({ config: { actorService: { autoStart: false, startSandbox: false } } });
     this.publish();
@@ -165,29 +165,11 @@ export class VisualizerRuntime {
 
   async sendMessage(actorInstanceId: string, eventName: string, payload: TWorkflowJson): Promise<void> {
     const db = this.requireDb();
-    const actor = db.query.actor_instances.findFirst({ where: eq(schema.actor_instances.id, actorInstanceId) }).sync();
+    const actor = db.getActorInstance(actorInstanceId);
     if (!actor) throw new Error(`Unknown actor ${actorInstanceId}`);
-    const rows = db.select().from(schema.actor_inbox).all().filter((row) => row.actor_instance_id === actorInstanceId);
-    const seq = rows.reduce((max, row) => Math.max(max, row.seq), 0) + 1;
+    const seq = db.nextActorInboxSeq(actorInstanceId);
     const messageId = id('message');
-    db.insert(schema.actor_inbox).values({
-      id: id('inbox'),
-      workspace_id: actor.workspace_id,
-      canvas_id: actor.canvas_id,
-      actor_instance_id: actor.id,
-      seq,
-      message_id: messageId,
-      correlation_id: messageId,
-      causation_id: null,
-      idempotency_key: `manual:${messageId}`,
-      source_actor_instance_id: null,
-      source_output_id: null,
-      connection_id: null,
-      event_name: eventName,
-      params: payload,
-      status: 'queued',
-      created_at: new Date(),
-    }).run();
+    db.insertInbox({ workspaceId: actor.workspace_id, canvasId: actor.canvas_id, actorInstanceId: actor.id, seq, messageId, correlationId: messageId, idempotencyKey: `manual:${messageId}`, message: { name: eventName, payload }, createdAt: new Date() });
     this.publish();
   }
 
@@ -258,7 +240,7 @@ export class VisualizerRuntime {
 
   private dbSnapshot(): unknown {
     const db = this.requireDb();
-    const canvases = db.select().from(schema.canvas).all();
+    const canvases = db.listCanvases();
     const selectedCanvas = canvases.find((canvas) => canvas.id === this.selectedCanvasId) ?? null;
     const title = selectedCanvas ? `DB: ${selectedCanvas.name}` : 'DB: all canvases';
     const data = this.buildDbBackedSnapshot({
@@ -266,7 +248,7 @@ export class VisualizerRuntime {
       description: this.dbPath ? `Live actor rows from ${this.dbPath}` : 'Live actor rows from the Vibecanvas database',
       explainer: null,
       actorPosition: (instance, index) => {
-        const definition = db.query.actor_definitions.findFirst({ where: eq(schema.actor_definitions.id, instance.actor_definition_id) }).sync();
+        const definition = db.getActorDefinition(instance.actor_definition_id);
         return positionFromManifest(definition?.widget_config) ?? fallbackPosition(index);
       },
     });
@@ -276,7 +258,7 @@ export class VisualizerRuntime {
       scenarioOptions: VISUALIZER_SCENARIOS.map((scenario) => ({ id: scenario.id, name: scenario.name, description: scenario.description })),
       source: { mode: this.sourceMode, dbPath: this.dbPath, canvasId: this.selectedCanvasId },
       canvasOptions: [
-        { id: '', name: 'All canvases', actorCount: db.select().from(schema.actor_instances).all().length },
+        { id: '', name: 'All canvases', actorCount: db.listActorInstances().length },
         ...canvases.map((canvas) => ({ id: canvas.id, name: canvas.name, actorCount: this.countActorsForCanvas(canvas.id) })),
       ],
       status: { actorService: null, workflowWorker: null },
@@ -287,27 +269,25 @@ export class VisualizerRuntime {
     readonly title: string;
     readonly description: string;
     readonly explainer: unknown;
-    readonly actorPosition: (instance: typeof schema.actor_instances.$inferSelect, index: number) => TActorPosition;
+    readonly actorPosition: (instance: ReturnType<ActorDb['listActorInstances']>[number], index: number) => TActorPosition;
   }) {
     const db = this.requireDb();
     const canvasId = this.sourceMode === 'db' ? this.selectedCanvasId : this.scenario.canvasId;
     const filterByCanvas = <T extends { readonly canvas_id?: string | null }>(rows: T[]) => canvasId ? rows.filter((row) => row.canvas_id === canvasId) : rows;
-    const instances = filterByCanvas(db.select().from(schema.actor_instances).all());
+    const instances = filterByCanvas(db.listActorInstances());
     const actorIds = new Set(instances.map((instance) => instance.id));
     const actors = instances.map((instance, index) => {
-      const workflowRun = instance.workflow_run_id ? db.query.workflow_runs.findFirst({ where: eq(schema.workflow_runs.id, instance.workflow_run_id) }).sync() : null;
-      const workflowRuns = db.select().from(schema.workflow_runs).all()
-        .filter((run) => run.subject_id === instance.id)
-        .sort((a, b) => a.started_at.getTime() - b.started_at.getTime());
+      const allWorkflowRuns = db.listWorkflowRuns() as Array<{ id: string; subject_id: string | null; started_at: Date }>;
+      const allWorkflowSteps = db.listWorkflowSteps() as Array<{ workflow_run_id: string; created_at: Date; step_index: number }>;
+      const workflowRun = instance.workflow_run_id ? allWorkflowRuns.find((run) => run.id === instance.workflow_run_id) ?? null : null;
+      const workflowRuns = allWorkflowRuns.filter((run) => run.subject_id === instance.id).sort((a, b) => a.started_at.getTime() - b.started_at.getTime());
       const workflowRunIds = new Set(workflowRuns.map((run) => run.id));
-      const workflowSteps = db.select().from(schema.workflow_steps).all()
-        .filter((step) => workflowRunIds.has(step.workflow_run_id))
-        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.step_index - b.step_index);
+      const workflowSteps = allWorkflowSteps.filter((step) => workflowRunIds.has(step.workflow_run_id)).sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || a.step_index - b.step_index);
       return {
         ...instance,
         ...args.actorPosition(instance, index),
-        inbox: db.select().from(schema.actor_inbox).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
-        outputs: db.select().from(schema.actor_outputs).all().filter((row) => row.actor_instance_id === instance.id).sort((a, b) => a.seq - b.seq),
+        inbox: db.listInboxForActor(instance.id).sort((a, b) => a.seq - b.seq),
+        outputs: db.listActorOutputs({ actorInstanceId: instance.id }).sort((a, b) => a.seq - b.seq),
         workflowRun,
         workflowRuns,
         workflowSteps,
@@ -319,27 +299,27 @@ export class VisualizerRuntime {
       description: args.description,
       explainer: args.explainer,
       actors,
-      connections: filterByCanvas(db.select().from(schema.actor_connections).all()).filter((connection) => actorIds.has(connection.source_actor_instance_id) && actorIds.has(connection.target_actor_instance_id)),
+      connections: filterByCanvas(db.listActorConnections()).filter((connection) => actorIds.has(connection.source_actor_instance_id) && actorIds.has(connection.target_actor_instance_id)),
       global: {
-        workflowRuns: filterByCanvas(db.select().from(schema.workflow_runs).all()),
-        workflowSteps: db.select().from(schema.workflow_steps).all(),
-        sandboxRuns: db.select().from(schema.sandbox_runs).all(),
-        inbox: filterByCanvas(db.select().from(schema.actor_inbox).all()),
-        outputs: filterByCanvas(db.select().from(schema.actor_outputs).all()),
+        workflowRuns: filterByCanvas(db.listWorkflowRuns() as Array<{ canvas_id?: string | null }>),
+        workflowSteps: db.listWorkflowSteps(),
+        sandboxRuns: db.listSandboxRuns(),
+        inbox: filterByCanvas(db.listActorInstances().flatMap((actor) => db.listInboxForActor(actor.id))),
+        outputs: filterByCanvas(db.listActorInstances().flatMap((actor) => db.listActorOutputs({ actorInstanceId: actor.id }))),
       },
     };
   }
 
   private countActorsForCanvas(canvasId: string): number {
     const db = this.requireDb();
-    return db.select().from(schema.actor_instances).all().filter((row) => row.canvas_id === canvasId).length;
+    return db.listActorInstances().filter((row) => row.canvas_id === canvasId).length;
   }
 
   private seedScenario(scenarioToSeed: TVisualizerScenario): void {
     const db = this.requireDb();
-    db.insert(schema.canvas).values({ id: scenarioToSeed.canvasId, name: scenarioToSeed.name, automerge_url: `visualizer://${scenarioToSeed.id}`, created_at: new Date() }).run();
+    db.insertCanvas({ id: scenarioToSeed.canvasId, name: scenarioToSeed.name, automerge_url: `visualizer://${scenarioToSeed.id}`, created_at: new Date() });
     for (const actor of scenarioToSeed.actors) {
-      db.insert(schema.actor_definitions).values({
+      db.insertActorDefinitionRow({
         id: actor.definitionId,
         name: actor.displayName,
         slug: actor.definitionId,
@@ -353,8 +333,8 @@ export class VisualizerRuntime {
         widget_config: { x: actor.x, y: actor.y, tool: { label: actor.displayName, behavior: { type: 'mode', mode: 'draw-create' } } },
         created_at: new Date(),
         updated_at: new Date(),
-      }).run();
-      db.insert(schema.actor_instances).values({
+      });
+      db.insertActorInstanceRow({
         id: actor.id,
         canvas_id: scenarioToSeed.canvasId,
         element_id: actor.elementId,
@@ -364,10 +344,10 @@ export class VisualizerRuntime {
         machine_state: actor.initialState,
         machine_context: actor.initialContext,
         created_at: new Date(),
-      }).run();
+      });
     }
     for (const connection of scenarioToSeed.connections) {
-      db.insert(schema.actor_connections).values({
+      db.insertActorConnectionRow({
         id: connection.id,
         canvas_id: scenarioToSeed.canvasId,
         source_element_id: scenarioToSeed.actors.find((actor) => actor.id === connection.sourceActorId)?.elementId ?? connection.sourceActorId,
@@ -379,12 +359,12 @@ export class VisualizerRuntime {
         event_name_whitelist: connection.outputName ? [connection.outputName] : null,
         style: {},
         created_at: new Date(),
-      }).run();
+      });
     }
   }
 
   private requireDb() {
     if (!this.dbService) throw new Error('Visualizer runtime has not started');
-    return this.dbService.drizzle;
+    return this.dbService.actor;
   }
 }

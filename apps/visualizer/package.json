@@ -17,7 +17,6 @@
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-workflow": "workspace:*",
     "@xyflow/react": "^12.10.2",
-    "drizzle-orm": "catalog:",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

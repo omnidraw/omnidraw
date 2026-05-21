@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import { SqliteWorkflowDb } from '../src/index';
+import type { SqliteWorkflowDb } from '@vibecanvas/service-db/SqliteWorkflowDb';
 import type { TWorkflowDefinition, TWorkflowJson, TWorkflowSandboxExecutor, TWorkflowStepDefinition, TWorkflowStepRow } from '../src/index';
 
 export type TWorkflowTestDb = {
@@ -23,7 +23,7 @@ export async function createWorkflowTestDb(): Promise<TWorkflowTestDb> {
 
   return {
     dbService,
-    workflowDb: new SqliteWorkflowDb({ db: dbService.drizzle }),
+    workflowDb: dbService.workflow,
     cleanup: async () => {
       await dbService.stop();
       rmSync(root, { recursive: true, force: true });

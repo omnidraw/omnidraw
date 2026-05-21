@@ -1,9 +1,7 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import * as dbSchema from '@vibecanvas/service-db/schema';
-import { sandbox_instances, sandbox_volumes } from '@vibecanvas/service-db/schema';
-import { and, desc, eq } from 'drizzle-orm';
-import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
-import { createHash, randomUUID } from 'crypto';
+import type { ISandboxDb } from '@vibecanvas/service-db/SandboxDb';
+import type { TSandboxInstance, TSandboxInstanceStatus, TSandboxVolume, TSandboxVolumeStatus } from '@vibecanvas/service-db/model';
+import { createHash } from 'crypto';
 
 export const SERVICE_SANDBOX_NAME = 'sandbox' as const;
 export const SERVICE_SANDBOX_BUN_VERSION = '1.3.14' as const;
@@ -29,7 +27,7 @@ export type TServiceSandboxBindMount = {
   readonly readonly?: boolean;
 };
 
-export type TServiceSandboxDb = BunSQLiteDatabase<typeof dbSchema>;
+export type TServiceSandboxDb = ISandboxDb;
 
 export type TServiceSandboxConfig = {
   readonly db?: TServiceSandboxDb;
@@ -72,8 +70,8 @@ export type TServiceSandboxStatus = {
 };
 
 type TServiceContext<TConfig extends object> = { readonly config: TConfig };
-type TSandboxInstanceRow = typeof sandbox_instances.$inferSelect;
-type TSandboxVolumeRow = typeof sandbox_volumes.$inferSelect;
+type TSandboxInstanceRow = TSandboxInstance;
+type TSandboxVolumeRow = TSandboxVolume;
 export type TMicrosandboxOutput = { readonly success?: boolean; readonly code?: number; stdout?: () => string; stderr?: () => string };
 export type TMicrosandboxFs = {
   write(path: string, content: Uint8Array): Promise<void>;
@@ -261,15 +259,13 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
 
   async #ensureInstance(): Promise<TSandboxInstanceRow | { readonly id: string; readonly sandbox_name: string; readonly sandbox_tag: string }> {
     if (!this.#config.db) return { id: this.#config.sandboxName, sandbox_name: this.#config.sandboxName, sandbox_tag: this.#config.volumeTag };
-    const existing = this.#config.db.query.sandbox_instances.findFirst({
-      where: and(
-        eq(sandbox_instances.namespace, this.#config.namespace),
-        eq(sandbox_instances.sandbox_name, this.#config.sandboxName),
-        eq(sandbox_instances.sandbox_tag, this.#config.volumeTag),
-        eq(sandbox_instances.image, this.#config.image),
-        eq(sandbox_instances.setup_hash, setupHash(this.#config)),
-      ),
-    }).sync();
+    const existing = this.#config.db.findInstance({
+      namespace: this.#config.namespace,
+      sandboxName: this.#config.sandboxName,
+      sandboxTag: this.#config.volumeTag,
+      image: this.#config.image,
+      setupHash: setupHash(this.#config),
+    });
     if (existing) return existing;
     return await this.#upsertInstance(this.#config.sandboxName, 'creating', null);
   }
@@ -286,17 +282,12 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
 
   async #findReusableVolume(instanceId: string): Promise<TSandboxVolumeRow | null> {
     if (!this.#config.db) return null;
-    const rows = this.#config.db.query.sandbox_volumes.findMany({
-      where: and(
-        eq(sandbox_volumes.sandbox_instance_id, instanceId),
-        eq(sandbox_volumes.namespace, this.#config.namespace),
-        eq(sandbox_volumes.volume_tag, this.#config.volumeTag),
-        eq(sandbox_volumes.setup_hash, setupHash(this.#config)),
-        eq(sandbox_volumes.status, 'ready'),
-        eq(sandbox_volumes.reusable, true),
-      ),
-      orderBy: [desc(sandbox_volumes.updated_at)],
-    }).sync();
+    const rows = this.#config.db.findReusableVolumes({
+      instanceId,
+      namespace: this.#config.namespace,
+      volumeTag: this.#config.volumeTag,
+      setupHash: setupHash(this.#config),
+    });
 
     for (const row of rows) {
       if (await this.#hostVolumeExists(row.volume_name)) {
@@ -330,64 +321,33 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
 
   async #upsertInstance(sandboxName: string, status: TSandboxInstanceRow['status'], lastError: string | null): Promise<TSandboxInstanceRow> {
     const now = new Date();
-    return this.#config.db!.insert(sandbox_instances).values({
-      id: randomUUID(),
+    void now;
+    return this.#config.db!.upsertInstance({
       namespace: this.#config.namespace,
-      sandbox_name: sandboxName,
-      sandbox_tag: this.#config.volumeTag,
+      sandboxName,
+      sandboxTag: this.#config.volumeTag,
       image: this.#config.image,
-      setup_hash: setupHash(this.#config),
+      setupHash: setupHash(this.#config),
       status,
       metadata: instanceMetadata(this.#config),
-      last_error: lastError,
-      host_checked_at: now,
-      updated_at: now,
-    }).onConflictDoUpdate({
-      target: sandbox_instances.sandbox_name,
-      set: {
-        namespace: this.#config.namespace,
-        sandbox_tag: this.#config.volumeTag,
-        image: this.#config.image,
-        setup_hash: setupHash(this.#config),
-        status,
-        metadata: instanceMetadata(this.#config),
-        last_error: lastError,
-        host_checked_at: now,
-        updated_at: now,
-      },
-    }).returning().all()[0]!;
+      lastError,
+    });
   }
 
   async #upsertVolume(instanceId: string, volumeName: string, status: TSandboxVolumeRow['status'], reusable: boolean, lastError: string | null): Promise<TSandboxVolumeRow> {
     const now = new Date();
-    return this.#config.db!.insert(sandbox_volumes).values({
-      id: randomUUID(),
-      sandbox_instance_id: instanceId,
+    void now;
+    return this.#config.db!.upsertVolume({
+      instanceId,
       namespace: this.#config.namespace,
-      volume_name: volumeName,
-      volume_tag: this.#config.volumeTag,
-      setup_hash: setupHash(this.#config),
+      volumeName,
+      volumeTag: this.#config.volumeTag,
+      setupHash: setupHash(this.#config),
       status,
       reusable,
       metadata: volumeMetadata(this.#config),
-      last_error: lastError,
-      host_checked_at: now,
-      updated_at: now,
-    }).onConflictDoUpdate({
-      target: sandbox_volumes.volume_name,
-      set: {
-        sandbox_instance_id: instanceId,
-        namespace: this.#config.namespace,
-        volume_tag: this.#config.volumeTag,
-        setup_hash: setupHash(this.#config),
-        status,
-        reusable,
-        metadata: volumeMetadata(this.#config),
-        last_error: lastError,
-        host_checked_at: now,
-        updated_at: now,
-      },
-    }).returning().all()[0]!;
+      lastError,
+    });
   }
 
   async #markInstanceRunning(instanceId: string): Promise<void> {
@@ -404,7 +364,8 @@ export class ServiceSandbox implements IService, IStartableService<object, TServ
 
   async #upsertInstanceById(instanceId: string, status: TSandboxInstanceRow['status'], lastError: string | null): Promise<void> {
     const now = new Date();
-    await this.#config.db!.update(sandbox_instances).set({ status, last_error: lastError, host_checked_at: now, updated_at: now }).where(eq(sandbox_instances.id, instanceId)).run();
+    void now;
+    this.#config.db!.updateInstanceStatus({ id: instanceId, status, lastError });
   }
 
   async #markVolumeReady(volumeName: string): Promise<void> {

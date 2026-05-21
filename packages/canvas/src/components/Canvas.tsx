@@ -2,13 +2,13 @@ import { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { IRuntime } from "@vibecanvas/runtime";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type * as schema from "@vibecanvas/service-db/schema";
+import type { TCanvas } from "@vibecanvas/service-db/model";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import { createEffect, createResource, Match, onCleanup, Switch } from "solid-js";
 import { findDocument } from "../automerge";
 import { buildRuntime } from "../runtime";
 
-export type TBackendCanvas = typeof schema.canvas.$inferSelect;
+export type TBackendCanvas = TCanvas;
 
 type CanvasPageProps = {
   apiService: TOrpcSafeClient;
