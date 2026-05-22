@@ -67,7 +67,7 @@ function fnXdgPaths(args: TXdgPathsArgs = {}): TErrTuple<TVibecanvasPaths> {
       configDir: envOverride,
       stateDir: envOverride,
       cacheDir: envOverride,
-      databasePath: join(envOverride, 'vibecanvas.sqlite'),
+      databasePath: join(envOverride, 'vibecanvas.turso'),
     }, null];
   }
 
@@ -88,7 +88,7 @@ function fnXdgPaths(args: TXdgPathsArgs = {}): TErrTuple<TVibecanvasPaths> {
       configDir: join(localVolume, 'config'),
       stateDir: join(localVolume, 'state'),
       cacheDir: join(localVolume, 'cache'),
-      databasePath: join(localVolume, 'data', 'vibecanvas.sqlite'),
+      databasePath: join(localVolume, 'data', 'vibecanvas.turso'),
     }, null];
   }
 
@@ -102,7 +102,7 @@ function fnXdgPaths(args: TXdgPathsArgs = {}): TErrTuple<TVibecanvasPaths> {
     configDir,
     stateDir,
     cacheDir,
-    databasePath: join(dataDir, 'vibecanvas.sqlite'),
+    databasePath: join(dataDir, 'vibecanvas.turso'),
   }, null];
 }
 

@@ -63,7 +63,7 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
   const dataDir = join(tempRoot, 'data');
   const cacheDir = join(tempRoot, 'cache');
   const configDir = join(tempRoot, 'config');
-  const dbPath = join(dataDir, 'vibecanvas.sqlite');
+  const dbPath = join(dataDir, 'vibecanvas.turso');
 
   await Promise.all([
     mkdir(dataDir, { recursive: true }),

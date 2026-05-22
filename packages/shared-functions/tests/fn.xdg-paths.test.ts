@@ -54,7 +54,7 @@ describe('fnXdgPaths', () => {
       expect(paths!.configDir).toBe('/custom/path');
       expect(paths!.stateDir).toBe('/custom/path');
       expect(paths!.cacheDir).toBe('/custom/path');
-      expect(paths!.databasePath).toBe('/custom/path/vibecanvas.sqlite');
+      expect(paths!.databasePath).toBe('/custom/path/vibecanvas.turso');
     });
 
     test('override works in dev mode too', () => {
@@ -87,7 +87,7 @@ describe('fnXdgPaths', () => {
       expect(paths!.configDir).toBe(join(lv, 'config'));
       expect(paths!.stateDir).toBe(join(lv, 'state'));
       expect(paths!.cacheDir).toBe(join(lv, 'cache'));
-      expect(paths!.databasePath).toBe(join(lv, 'data', 'vibecanvas.sqlite'));
+      expect(paths!.databasePath).toBe(join(lv, 'data', 'vibecanvas.turso'));
     });
 
     test('returns error when monorepo root not found', () => {
@@ -114,7 +114,7 @@ describe('fnXdgPaths', () => {
       expect(paths!.configDir).toBe(join(FAKE_HOME, '.config', 'vibecanvas'));
       expect(paths!.stateDir).toBe(join(FAKE_HOME, '.local', 'state', 'vibecanvas'));
       expect(paths!.cacheDir).toBe(join(FAKE_HOME, '.cache', 'vibecanvas'));
-      expect(paths!.databasePath).toBe(join(FAKE_HOME, '.local', 'share', 'vibecanvas', 'vibecanvas.sqlite'));
+      expect(paths!.databasePath).toBe(join(FAKE_HOME, '.local', 'share', 'vibecanvas', 'vibecanvas.turso'));
     });
 
     test('respects XDG_DATA_HOME', () => {
@@ -126,7 +126,7 @@ describe('fnXdgPaths', () => {
 
       expect(err).toBeNull();
       expect(paths!.dataDir).toBe('/custom/data/vibecanvas');
-      expect(paths!.databasePath).toBe('/custom/data/vibecanvas/vibecanvas.sqlite');
+      expect(paths!.databasePath).toBe('/custom/data/vibecanvas/vibecanvas.turso');
       expect(paths!.configDir).toBe(join(FAKE_HOME, '.config', 'vibecanvas'));
     });
 

@@ -100,11 +100,11 @@ Also remove any PATH line you added for `~/.vibecanvas/bin` in your shell profil
 
 ## Database
 
-- Default installed/compiled SQLite DB path: `~/.local/share/vibecanvas/vibecanvas.sqlite`
-- Respects `XDG_DATA_HOME` on Linux/macOS-style XDG setups, so effective path is `"$XDG_DATA_HOME"/vibecanvas/vibecanvas.sqlite` when set
-- `VIBECANVAS_CONFIG=/some/dir` changes DB path to `/some/dir/vibecanvas.sqlite`
-- `VIBECANVAS_DB=/some/file.sqlite` sets an explicit SQLite file path
-- Dev monorepo default DB path: `./local-volume/data/vibecanvas.sqlite`
+- Default installed/compiled Turso DB path: `~/.local/share/vibecanvas/vibecanvas.turso`
+- Respects `XDG_DATA_HOME` on Linux/macOS-style XDG setups, so effective path is `"$XDG_DATA_HOME"/vibecanvas/vibecanvas.turso` when set
+- `VIBECANVAS_CONFIG=/some/dir` changes DB path to `/some/dir/vibecanvas.turso`
+- `VIBECANVAS_DB=/some/file.turso` sets an explicit Turso file path
+- Dev monorepo default DB path: `./local-volume/data/vibecanvas.turso`
 - Schema source: `packages/service-db/src/schema.ts`
 
 ## Debugging the live app

@@ -26,7 +26,7 @@ function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
     argv: [],
     port: 3000,
     dataPath: '/tmp/vibecanvas-data',
-    dbPath: '/tmp/vibecanvas.sqlite',
+    dbPath: '/tmp/vibecanvas.turso'  ,
     configPath: '/tmp/vibecanvas.json',
     cachePath: '/tmp/vibecanvas-cache',
     helpRequested: false,

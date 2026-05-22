@@ -315,7 +315,7 @@ async function main() {
     env: {
       VIBECANVAS_CONFIG: tempConfigDir,
     },
-    expectedDbPath: path.join(tempConfigDir, "vibecanvas.sqlite"),
+    expectedDbPath: path.join(tempConfigDir, "vibecanvas.turso"),
     cleanupPaths: [tempConfigDir],
   })
 
@@ -330,7 +330,7 @@ async function main() {
       XDG_CACHE_HOME: path.join(xdgRoot, "cache"),
     },
     expectedDbPath: explicitDbPath,
-    expectedAbsentPaths: [path.join(xdgRoot, "data", "vibecanvas", "vibecanvas.sqlite")],
+    expectedAbsentPaths: [path.join(xdgRoot, "data", "vibecanvas", "vibecanvas.turso")],
     cleanupPaths: [tempDbDir, xdgRoot],
   })
 
@@ -344,7 +344,7 @@ async function main() {
       env: {
         VIBECANVAS_CONFIG: tempCompiledConfigDir,
       },
-      expectedDbPath: path.join(tempCompiledConfigDir, "vibecanvas.sqlite"),
+      expectedDbPath: path.join(tempCompiledConfigDir, "vibecanvas.turso"),
       cleanupPaths: [tempCompiledConfigDir],
     })
   } finally {

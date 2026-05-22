@@ -60,7 +60,7 @@ describe('canvas CLI --db bootstrap', () => {
 
     const explicitStat = await stat(explicitDbPath);
     expect(explicitStat.isFile()).toBe(true);
-    expect(stat(path.join(configDir, 'vibecanvas.sqlite'))).rejects.toThrow();
+    expect(stat(path.join(configDir, 'vibecanvas.turso'))).rejects.toThrow();
   });
 
   test('missing --db value fails before stateful imports and returns json error', async () => {
@@ -79,8 +79,8 @@ describe('canvas CLI --db bootstrap', () => {
       command: null,
       code: 'DB_FLAG_MISSING_VALUE',
       hint: 'Pass one SQLite file path right after --db.',
-      next: 'Try: vibecanvas canvas list --db ./tmp/vibecanvas.sqlite --json',
+      next: 'Try: vibecanvas canvas list --db ./tmp/vibecanvas.turso --json',
     });
-    expect(stat(path.join(configDir, 'vibecanvas.sqlite'))).rejects.toThrow();
+    expect(stat(path.join(configDir, 'vibecanvas.turso'))).rejects.toThrow();
   });
 });

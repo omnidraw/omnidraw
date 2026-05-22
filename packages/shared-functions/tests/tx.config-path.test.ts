@@ -50,13 +50,13 @@ describe('txConfigPath', () => {
     expect(rollbacks).toEqual([]);
     expect(result!.created).toBe(true);
     expect(result!.configDir).toBe('/custom/config');
-    expect(result!.databasePath).toBe('/custom/config/vibecanvas.sqlite');
+    expect(result!.databasePath).toBe('/custom/config/vibecanvas.turso');
     expect(result!.paths).toEqual({
       dataDir: '/custom/config',
       configDir: '/custom/config',
       stateDir: '/custom/config',
       cacheDir: '/custom/config',
-      databasePath: '/custom/config/vibecanvas.sqlite',
+      databasePath: '/custom/config/vibecanvas.turso',
     });
     expect(createdDirs).toEqual(['/custom/config']);
   });
@@ -78,20 +78,20 @@ describe('txConfigPath', () => {
     };
 
     const [result, err] = txConfigPath(portal as any, {
-      env: { VIBECANVAS_DB: '/custom/db/vibecanvas.sqlite' },
+      env: { VIBECANVAS_DB: '/custom/db/vibecanvas.turso' },
       isCompiled: true,
     });
 
     expect(err).toBeNull();
     expect(result!.created).toBe(true);
     expect(result!.configDir).toBe('/custom/db');
-    expect(result!.databasePath).toBe('/custom/db/vibecanvas.sqlite');
+    expect(result!.databasePath).toBe('/custom/db/vibecanvas.turso');
     expect(result!.paths).toEqual({
       dataDir: '/custom/db',
       configDir: '/custom/db',
       stateDir: '/custom/db',
       cacheDir: '/custom/db',
-      databasePath: '/custom/db/vibecanvas.sqlite',
+      databasePath: '/custom/db/vibecanvas.turso',
     });
     expect(createdDirs).toEqual(['/custom/db']);
   });

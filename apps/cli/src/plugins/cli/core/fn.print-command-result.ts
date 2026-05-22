@@ -139,7 +139,7 @@ function fnNormalizeCommandError(error: unknown): TCliErrorPayload {
 
   if (!normalized.hint && normalized.code === 'DB_FLAG_MISSING_VALUE') {
     normalized.hint = 'Pass one SQLite file path right after --db.';
-    normalized.next = 'Try: vibecanvas canvas list --db ./tmp/vibecanvas.sqlite --json';
+    normalized.next = 'Try: vibecanvas canvas list --db ./tmp/vibecanvas.turso --json';
   }
 
   return normalized;

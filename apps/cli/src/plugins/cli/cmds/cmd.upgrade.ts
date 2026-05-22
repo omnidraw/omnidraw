@@ -467,7 +467,7 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
   const checksumPath = join(tempRoot, releaseAsset.checksumName);
   const extractDir = join(tempRoot, 'extract');
   const tempConfigDir = join(tempRoot, 'config');
-  const tempDbPath = join(tempRoot, 'db', 'vibecanvas.sqlite');
+  const tempDbPath = join(tempRoot, 'db', 'vibecanvas.turso');
   const releaseTag = `v${args.version.replace(/^v/i, '')}`;
 
   try {

@@ -53,7 +53,7 @@ function resolveDevDbConfig() {
   const configOverride = process.env.VIBECANVAS_CONFIG;
   if (configOverride) {
     mkdirSync(configOverride, { recursive: true });
-    return { databasePath: join(configOverride, 'vibecanvas.sqlite'), dataDir: configOverride, cacheDir: configOverride };
+    return { databasePath: join(configOverride, 'vibecanvas.turso'), dataDir: configOverride, cacheDir: configOverride };
   }
 
   const monorepoRoot = findMonorepoRoot(process.cwd());
@@ -63,7 +63,7 @@ function resolveDevDbConfig() {
   const cacheDir = join(localVolume, 'cache');
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(cacheDir, { recursive: true });
-  return { databasePath: join(dataDir, 'vibecanvas.sqlite'), dataDir, cacheDir };
+  return { databasePath: join(dataDir, 'vibecanvas.turso'), dataDir, cacheDir };
 }
 
 function positionFromManifest(value: unknown): TActorPosition | null {
