@@ -7,16 +7,18 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
+    "test": "bun test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/database/migrate.ts"
   },
   "dependencies": {
+    "@tursodatabase/database": "^0.6.0",
     "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/shared-functions": "workspace:*",
     "@vibecanvas/service-workflow": "workspace:*",
+    "@vibecanvas/shared-functions": "workspace:*",
+    "drizzle-kit": "catalog:",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "catalog:",
-    "drizzle-kit": "catalog:",
     "zod": "catalog:"
   }
 }

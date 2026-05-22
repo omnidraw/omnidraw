@@ -630,6 +630,7 @@ prefix: `packages/service-db/src/`
 |---|---|---|---|
 | 🤖 | `../package.json` |  | Service DB package manifest, Drizzle migration scripts, and workflow adapter dependency. |
 | ❓ | `ActorDb.ts` |  | Drizzle-backed actor/canvas workflow-facing repository hiding query-builder access from consumers. |
+| ❓ | `assets.d.ts` |  | Package-local ambient asset module declarations for embedded SQL migration imports. |
 | ❓ | `CONSTANTS.ts` |  | Default OSS account constants for local auth bootstrap. |
 | ❓ | `_embedded-migrations.ts` |  |  |
 | ❓ | `database/migrate.ts` |  | CLI entrypoint for running service DB migrations with Bun SQLite. |
@@ -637,10 +638,11 @@ prefix: `packages/service-db/src/`
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
+| 🤖 | `DbServiceTurso/list-migration-files.ts` |  | Embedded Turso SQL migration file registry in execution order. |
 | ❓ | `interface.ts` |  |  |
 | ❓ | `model.ts` |  | Public Zod data model and inferred types for DB-backed domain objects without Drizzle table details. |
 | ❓ | `SandboxDb.ts` |  | Drizzle-backed sandbox persistence adapter exposed as a small non-Drizzle interface. |
-| 🤖 | `schema.ts` |  | Internal Drizzle database schema including OSS accounts, memberships, durable workflow/sandbox tables, and actor definitions. |
+| 🤖 | `schema.ts` |  | Internal Drizzle database schema including OSS accounts, account_kind domain, memberships, durable workflow/sandbox tables, and actor definitions. |
 | ❓ | `SqliteWorkflowDb.ts` |  | Drizzle-backed durable workflow DB adapter owned by service-db. |
 | ❓ | `tx.create-file.ts` |  |  |
 | ❓ | `tx.migrations.ts` |  |  |

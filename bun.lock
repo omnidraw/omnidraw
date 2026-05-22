@@ -113,7 +113,6 @@
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
         "@xyflow/react": "^12.10.2",
-        "drizzle-orm": "catalog:",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
       },
@@ -140,7 +139,6 @@
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
-        "drizzle-orm": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -156,7 +154,6 @@
         "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
-        "drizzle-orm": "catalog:",
         "zod": "catalog:",
       },
     },
@@ -349,7 +346,6 @@
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
-        "drizzle-orm": "catalog:",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -370,7 +366,9 @@
       "name": "@vibecanvas/service-db",
       "version": "0.3.1",
       "dependencies": {
+        "@tursodatabase/database": "^0.6.0",
         "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-workflow": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
         "drizzle-kit": "catalog:",
         "drizzle-orm": "catalog:",
@@ -411,7 +409,6 @@
       "dependencies": {
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
-        "drizzle-orm": "catalog:",
         "microsandbox": "catalog:",
       },
       "devDependencies": {
@@ -431,8 +428,6 @@
       "version": "0.3.1",
       "dependencies": {
         "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "drizzle-orm": "catalog:",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -1027,6 +1022,18 @@
     "@swc/types": ["@swc/types@0.1.26", "", { "dependencies": { "@swc/counter": "^0.1.3" } }, "sha512-lyMwd7WGgG79RS7EERZV3T8wMdmPq3xwyg+1nmAM64kIhx5yl+juO2PYIHb7vTiPgPCj8LYjsNV2T5wiQHUEaw=="],
 
     "@swc/wasm": ["@swc/wasm@1.15.24", "", {}, "sha512-vFjzOE8dhJcfeTbM4+HO9Qy58IINV0ysqStAgw81uds+KqCeUDM9huN+SZ5lWZ6U+5nf8VcZoEw5N81xMtAidg=="],
+
+    "@tursodatabase/database": ["@tursodatabase/database@0.6.0", "", { "dependencies": { "@tursodatabase/database-common": "^0.6.0" }, "optionalDependencies": { "@tursodatabase/database-darwin-arm64": "0.6.0", "@tursodatabase/database-linux-arm64-gnu": "0.6.0", "@tursodatabase/database-linux-x64-gnu": "0.6.0", "@tursodatabase/database-win32-x64-msvc": "0.6.0" } }, "sha512-EXHy76WVq+faYbt1qjuF7XDujgc5eZ8u9Wq+1EGVBLcPjJ3fVfvXplzNkgMUGDcS65UAWRrbs1vD4aNvx42Erw=="],
+
+    "@tursodatabase/database-common": ["@tursodatabase/database-common@0.6.0", "", {}, "sha512-5Dkv2r+H5Ir9cNTp+0QyesuQ/89WrEi8IKCppczDOqBeDrGskw1v82bnEQXAyxslt6xGexDznxqxcLtf83zn7A=="],
+
+    "@tursodatabase/database-darwin-arm64": ["@tursodatabase/database-darwin-arm64@0.6.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-nnrJrO3T+u9r62snDHktMV7pRMG3AiXEOqhSwX4idkWvW7Fp8/AO+PYbsGsC25wdr/AtFHZ+ZD3g3WkwuaTGgQ=="],
+
+    "@tursodatabase/database-linux-arm64-gnu": ["@tursodatabase/database-linux-arm64-gnu@0.6.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-/WazziVg9QCcZaNan1gHEZMbC6K89MDkpgjUKV57GkcxTnZkSxrGpfVxqZwRTs4Yg+xjrf1bEGDDhm8Naez3tw=="],
+
+    "@tursodatabase/database-linux-x64-gnu": ["@tursodatabase/database-linux-x64-gnu@0.6.0", "", { "os": "linux", "cpu": "x64" }, "sha512-l4RDTG6elovdYsDy+Zq7WqK4x/V7HT6P7G2RlujwgPkpUAmyaL10FtSyTuohcCNUheQBsbMl0044yHzQVLEeTw=="],
+
+    "@tursodatabase/database-win32-x64-msvc": ["@tursodatabase/database-win32-x64-msvc@0.6.0", "", { "os": "win32", "cpu": "x64" }, "sha512-tlNYO0FJQLvB2P21Vh2y4VBlDKse5OZS7pBssiOez9aukm8urSh2Ec/9GWMqcJ2CXMa3Lmz0AhDDl6nBkZ9fOQ=="],
 
     "@types/babel__core": ["@types/babel__core@7.20.5", "", { "dependencies": { "@babel/parser": "^7.20.7", "@babel/types": "^7.20.7", "@types/babel__generator": "*", "@types/babel__template": "*", "@types/babel__traverse": "*" } }, "sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA=="],
 
