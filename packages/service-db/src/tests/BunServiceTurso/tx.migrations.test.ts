@@ -1,6 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { connect, Database } from "@tursodatabase/database";
+import { listMigrationFiles } from "../../../src/DbServiceTurso/list-migration-files";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
+import path from "node:path"
 
 async function inMemoryDb() {
   // @ts-expect-error custom_types not typed yet
@@ -32,7 +34,7 @@ describe("tx.migrations", () => {
   });
 
   test("test tables are present", async () => {
-    await txRunMigrations({ db, Bun }, {});
+    await txRunMigrations({ db, Bun, path }, {});
 
     const stmt = await db.prepare("select name from sqlite_master where type = 'table' order by name");
     const tables = await stmt.all();
@@ -49,10 +51,24 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("durable_calls");
     expect(tNames).toContain("sandbox_instances");
     expect(tNames).toContain("sandbox_volumes");
+    expect(tNames).toContain("migrations");
+
+    const migrationStmt = await db.prepare("select name, hash_hex, applied_at from migrations order by name");
+    const migrations = await migrationStmt.all();
+    const migrationFiles = listMigrationFiles();
+    expect(migrations).toHaveLength(migrationFiles.length);
+    expect(migrations.map((migration) => migration.name)).toEqual(
+      migrationFiles.map((file) => path.basename(file.path)).sort(),
+    );
+    for (const migration of migrations) {
+      expect(migration.hash_hex).toEqual(expect.any(String));
+      expect(migration.hash_hex).not.toBe("");
+      expect(migration.applied_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    }
   });
 
   test("accounts table", async () => {
-    await txRunMigrations({ db, Bun }, {});
+    await txRunMigrations({ db, Bun, path }, {});
 
     const insertAccount = await db.prepare("insert into accounts (id, display_name) values (?, ?)");
     await insertAccount.run("account-1", "Test Account");
@@ -84,7 +100,7 @@ describe("tx.migrations", () => {
   });
 
   test("canvas tables", async () => {
-    await txRunMigrations({ db, Bun }, {});
+    await txRunMigrations({ db, Bun, path }, {});
 
     const insertAccount = await db.prepare("insert into accounts (id, display_name) values (?, ?)");
     await insertAccount.run("account-1", "Test Account");
@@ -121,7 +137,7 @@ describe("tx.migrations", () => {
   });
 
   test("actor tables accept connected data and enforce constraints", async () => {
-    await txRunMigrations({ db, Bun }, {});
+    await txRunMigrations({ db, Bun, path }, {});
 
     const insertCanvas = await db.prepare("insert into canvas (id, name, automerge_url) values (?, ?, ?)");
     await insertCanvas.run("canvas-actor", "Actor Canvas", "automerge:actor");
@@ -171,7 +187,7 @@ describe("tx.migrations", () => {
   });
 
   test("durable calls accept actor effects and enforce constraints", async () => {
-    await txRunMigrations({ db, Bun }, {});
+    await txRunMigrations({ db, Bun, path }, {});
 
     const insertCanvas = await db.prepare("insert into canvas (id, name, automerge_url) values (?, ?, ?)");
     await insertCanvas.run("canvas-durable", "Durable Canvas", "automerge:durable");
@@ -232,7 +248,7 @@ describe("tx.migrations", () => {
   });
 
   test("sandbox tables accept reusable resources and enforce constraints", async () => {
-    await txRunMigrations({ db, Bun }, {});
+    await txRunMigrations({ db, Bun, path }, {});
 
     const insertInstance = await db.prepare("insert into sandbox_instances (id, namespace, sandbox_name, sandbox_tag, image, setup_hash, status, metadata, last_error, host_checked_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     await insertInstance.run("sandbox-instance-1", "actors", "vc-actor-worker", "actor-worker", "oven/bun:1", "setup-hash-1", "running", '{"pid":123}', null, "2030-01-01 00:00:00");
