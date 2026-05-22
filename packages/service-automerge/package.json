@@ -14,6 +14,7 @@
     "@automerge/automerge-repo-network-websocket": "catalog:",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
+    "@tursodatabase/database": "catalog:",
     "zod": "catalog:"
   }
 }

@@ -1,9 +1,18 @@
 import type { Database } from 'bun:sqlite';
-import { Repo, type DocHandle, type PeerId } from '@automerge/automerge-repo';
+import { Repo, type DocHandle, type PeerId, type StorageAdapterInterface } from '@automerge/automerge-repo';
+import type { Database as TursoDatabase } from '@tursodatabase/database';
 import { BunSqliteStorageAdapter } from './adapters/sqlite.adapter';
+import { TursoStorageAdapter } from './adapters/turso.adapter';
 import { BunWSServerAdapter } from './adapters/websocket.adapter';
 import type { IAutomergeService } from './IAutomergeService';
 import type { TCanvasDoc, TElement } from './types/canvas-doc.types';
+
+export type TAutomergeStorageConfig =
+  | string
+  | Database
+  | TursoDatabase
+  | { type: 'sqlite'; database: string | Database }
+  | { type: 'turso'; database: TursoDatabase };
 
 export class AutomergeService implements IAutomergeService {
   readonly name = 'automerge' as const;
@@ -13,11 +22,12 @@ export class AutomergeService implements IAutomergeService {
   #elementDeleteScanInterval: ReturnType<typeof setInterval> | null = null;
   #onElementDelete: (canvasId: string, element: TElement) => void;
 
-  constructor(database: Database | string, onElementDelete: (canvasId: string, element: TElement) => void) {
+  constructor(
+    database: TAutomergeStorageConfig,
+    onElementDelete: (canvasId: string, element: TElement) => void = () => {},
+  ) {
     this.wsAdapter = new BunWSServerAdapter();
-    const storage = typeof database === 'string'
-      ? new BunSqliteStorageAdapter(database)
-      : new BunSqliteStorageAdapter(database);
+    const storage = this.#createStorageAdapter(database);
 
     this.repo = new Repo({
       storage,
@@ -28,6 +38,34 @@ export class AutomergeService implements IAutomergeService {
     this.wsAdapter.connect(this.repo.peerId!);
     this.#onElementDelete = onElementDelete;
     this.#startElementDeleteWatcher();
+  }
+
+  #createStorageAdapter(database: TAutomergeStorageConfig): StorageAdapterInterface {
+    if (typeof database === 'string') {
+      return new BunSqliteStorageAdapter(database);
+    }
+
+    if (this.#isTursoDatabase(database)) {
+      return new TursoStorageAdapter(database);
+    }
+
+    if ('type' in database) {
+      if (database.type === 'turso') {
+        return new TursoStorageAdapter(database.database);
+      }
+
+      if (typeof database.database === 'string') {
+        return new BunSqliteStorageAdapter(database.database);
+      }
+
+      return new BunSqliteStorageAdapter(database.database);
+    }
+
+    return new BunSqliteStorageAdapter(database);
+  }
+
+  #isTursoDatabase(database: Exclude<TAutomergeStorageConfig, string>): database is TursoDatabase {
+    return 'connect' in database && 'exec' in database && 'prepare' in database;
   }
 
   #startElementDeleteWatcher(): void {
