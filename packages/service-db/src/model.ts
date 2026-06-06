@@ -19,10 +19,6 @@ export const ZCanvasMemberRole = z.enum(['owner', 'editor', 'viewer']);
 export const ZFileFormat = z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 export const ZActorStatus = z.enum(['created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked']);
 export const ZActorInboxStatus = z.enum(['queued', 'processing', 'processed', 'failed']);
-export const ZDurableCallKind = z.enum(['fn', 'fx', 'tx']);
-export const ZDurableCallStatus = z.enum(['queued', 'claimed', 'running', 'succeeded', 'failed', 'cancelled']);
-export const ZSandboxInstanceStatus = z.enum(['creating', 'running', 'stopped', 'missing', 'failed', 'obsolete']);
-export const ZSandboxVolumeStatus = z.enum(['creating', 'ready', 'missing', 'failed', 'obsolete']);
 
 export const ZAutomergeRepoData = z.object({
   key: z.string(),
@@ -61,6 +57,16 @@ export const ZFile = z.object({
   format: ZFileFormat,
   base64: z.string(),
   created_at: ZTimestamp,
+});
+
+export const ZFilesystem = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  path: z.string(),
+  description: z.string().nullable(),
+  created_at: ZTimestamp,
+  updated_at: ZTimestamp,
 });
 
 export const ZActorDefinition = z.object({
@@ -112,59 +118,6 @@ export const ZActorConnection = z.object({
   created_at: ZTimestamp,
 });
 
-export const ZDurableCall = z.object({
-  id: z.string(),
-  actor_inbox_id: z.string(),
-  effect_index: z.number().int().nonnegative(),
-  idempotency_key: z.string(),
-  function_kind: ZDurableCallKind,
-  function_name: z.string(),
-  input: ZJson,
-  status: ZDurableCallStatus,
-  result: ZJson.nullable(),
-  error: ZJson.nullable(),
-  claimed_by_worker_id: z.string().nullable(),
-  lease_expires_at: ZTimestamp.nullable(),
-  last_heartbeat_at: ZTimestamp.nullable(),
-  run_timeout_at: ZTimestamp.nullable(),
-  attempt: z.number().int().nonnegative(),
-  created_at: ZTimestamp,
-  started_at: ZTimestamp.nullable(),
-  completed_at: ZTimestamp.nullable(),
-  updated_at: ZTimestamp,
-});
-
-export const ZSandboxInstance = z.object({
-  id: z.string(),
-  namespace: z.string(),
-  sandbox_name: z.string(),
-  sandbox_tag: z.string(),
-  image: z.string(),
-  setup_hash: z.string(),
-  status: ZSandboxInstanceStatus,
-  metadata: ZJson,
-  last_error: z.string().nullable(),
-  host_checked_at: ZTimestamp.nullable(),
-  created_at: ZTimestamp,
-  updated_at: ZTimestamp,
-});
-
-export const ZSandboxVolume = z.object({
-  id: z.string(),
-  sandbox_instance_id: z.string(),
-  namespace: z.string(),
-  volume_name: z.string(),
-  volume_tag: z.string(),
-  setup_hash: z.string(),
-  status: ZSandboxVolumeStatus,
-  reusable: ZSqlBoolean,
-  metadata: ZJson,
-  last_error: z.string().nullable(),
-  host_checked_at: ZTimestamp.nullable(),
-  created_at: ZTimestamp,
-  updated_at: ZTimestamp,
-});
-
 export type TJson = z.infer<typeof ZJson>;
 export type TTimestamp = z.infer<typeof ZTimestamp>;
 export type TBlob = z.infer<typeof ZBlob>;
@@ -175,19 +128,13 @@ export type TCanvasMemberRole = z.infer<typeof ZCanvasMemberRole>;
 export type TFileFormat = z.infer<typeof ZFileFormat>;
 export type TActorStatus = z.infer<typeof ZActorStatus>;
 export type TActorInboxStatus = z.infer<typeof ZActorInboxStatus>;
-export type TDurableCallKind = z.infer<typeof ZDurableCallKind>;
-export type TDurableCallStatus = z.infer<typeof ZDurableCallStatus>;
-export type TSandboxInstanceStatus = z.infer<typeof ZSandboxInstanceStatus>;
-export type TSandboxVolumeStatus = z.infer<typeof ZSandboxVolumeStatus>;
 export type TAutomergeRepoData = z.infer<typeof ZAutomergeRepoData>;
 export type TAccount = z.infer<typeof ZAccount>;
 export type TCanvas = z.infer<typeof ZCanvas>;
 export type TCanvasMember = z.infer<typeof ZCanvasMember>;
 export type TFile = z.infer<typeof ZFile>;
+export type TFilesystem = z.infer<typeof ZFilesystem>;
 export type TActorDefinition = z.infer<typeof ZActorDefinition>;
 export type TActorInstance = z.infer<typeof ZActorInstance>;
 export type TActorInbox = z.infer<typeof ZActorInbox>;
 export type TActorConnection = z.infer<typeof ZActorConnection>;
-export type TDurableCall = z.infer<typeof ZDurableCall>;
-export type TSandboxInstance = z.infer<typeof ZSandboxInstance>;
-export type TSandboxVolume = z.infer<typeof ZSandboxVolume>;
