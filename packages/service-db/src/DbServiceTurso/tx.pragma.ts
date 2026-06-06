@@ -8,7 +8,7 @@ type TArgs = { };
 export async function txDefaultRunPragmas(portal: TPortal, args: TArgs) {
   portal.db.exec(`
 PRAGMA foreign_keys = ON;
--- PRAGMA journal_mode = WAL;
+PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 PRAGMA synchronous = FULL;
 PRAGMA cache_size = 10000;

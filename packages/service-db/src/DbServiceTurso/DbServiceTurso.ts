@@ -11,8 +11,8 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
 
   constructor(private config: IDbConfig) {
     this.db = new Database(this.config.databasePath, {
-      // @ts-expect-error custom_types not typed in turso yet
-      experimental: ["custom_types", "triggers", "index_method"],
+      // @ts-expect-error experimental feature list is ahead of package typings
+      experimental: ["custom_types", "triggers", "index_method", "multiprocess_wal"],
     })
   }
   async start(): Promise<void> {

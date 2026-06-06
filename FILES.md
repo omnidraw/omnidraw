@@ -639,7 +639,9 @@ prefix: `packages/service-db/src/`
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
+| 🤖 | `DbServiceTurso/DbServiceTurso.ts` |  | Turso database service startup, experimental feature flags, pragmas, and migrations. |
 | 🤖 | `DbServiceTurso/list-migration-files.ts` |  | Embedded Turso SQL migration file registry in execution order. |
+| 🤖 | `DbServiceTurso/tx.pragma.ts` |  | Turso startup PRAGMAs including multi-process WAL journal mode. |
 | ❓ | `interface.ts` |  |  |
 | 🤖 | `model.ts` |  | Public Zod data model and inferred types for Turso DB-backed domain objects without Drizzle table details. |
 | ❓ | `SandboxDb.ts` |  | Drizzle-backed sandbox persistence adapter exposed as a small non-Drizzle interface. |
