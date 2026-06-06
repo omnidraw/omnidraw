@@ -1,6 +1,6 @@
 # functional-core extension
 
-Merged project-local pi extension for functional core file rules.
+Project-local functional-core rules with a reusable core and a thin Pi adapter.
 
 ## What it does
 
@@ -9,8 +9,37 @@ This extension enforces the shared rules for:
 - `fx.*.ts`
 - `tx.*.ts`
 
-It blocks invalid `write` and `edit` tool calls before they hit disk.
+The Pi adapter blocks invalid `write` and `edit` tool calls before they hit disk.
 It also allows shared `CONSTANTS.ts` and `GUARDS.ts` runtime imports inside functional-core files.
+
+The reusable core has no Pi dependency. Use it from CLI tools, Codex hooks, or future adapters when you need:
+- file detection for `fn.*.ts`, `fx.*.ts`, and `tx.*.ts`
+- rule text and system-prompt snippets
+- content validators and violation report formatting
+- edit-preview helpers for applying proposed edits before validation
+- lint path collection and report formatting
+
+## Adapter/core boundary
+
+Reusable modules live in `core/`:
+- `core/checks.ts`: rules, path matching, validator functions, prompt snippets, and block report formatting
+- `core/lint.ts`: repo path traversal, lint result objects, and lint report formatting
+- `core/edit-preview.ts`: shared edit-preview builder used before validating edits
+- `core/runtime-global-usage.ts`: direct runtime-global detection
+- `core/text.ts`: parser/text masking helpers
+
+Pi-specific behavior lives outside `core/`:
+- `index.ts`: Pi extension entrypoint
+- `pi-adapter.ts`: `ExtensionAPI` event registration, UI notifications, and tool-call blocking
+- `lib/blocked-tool-log.ts`: `.pi/logs/functional-core-blocked-tool-calls.jsonl` logging
+
+Compatibility entrypoints remain:
+- `fn-check.ts`
+- `fx-check.ts`
+- `tx-check.ts`
+- `functional-core-lint.ts`
+
+These files keep the old exports while delegating reusable behavior to `core/`.
 
 ## Included checks
 
@@ -95,11 +124,21 @@ The allowed binding-name pattern is `^[A-Z0-9_]+$`.
 └── functional-core/
     ├── README.md
     ├── index.ts
+    ├── pi-adapter.ts
     ├── fn-check.ts
     ├── fx-check.ts
     ├── tx-check.ts
+    ├── functional-core-lint.ts
+    ├── core/
+    │   ├── checks.ts
+    │   ├── edit-preview.ts
+    │   ├── lint.ts
+    │   ├── runtime-global-usage.ts
+    │   └── text.ts
     ├── lib/
+    │   ├── blocked-tool-log.ts
+    │   ├── edit-preview.ts
     │   └── runtime-global-usage.ts
     └── tests/
-        └── runtime-global-usage.test.ts
+        └── *.test.ts
 ```

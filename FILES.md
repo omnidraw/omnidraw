@@ -40,6 +40,21 @@ Path rule
 | 🤖 | `.gitignore` |  | Root ignored files, including tracked task log exceptions. |
 | 🤖 | `bun.lock` | generated | Bun workspace lockfile updated when adding workspace package dependencies. |
 | 🤖 | `package.json` |  | Root workspace scripts and package manager metadata. |
+| ❓ | `.codex/hooks.json` |  | Project-local Codex hook config for functional-core rule context and post-edit validation. |
+| ❓ | `.codex/hooks/functional-core-post-tool-use.ts` |  | Codex PostToolUse hook validating exposed edited fn/fx/tx paths with the shared functional-core core. |
+| ❓ | `.codex/hooks/functional-core-session-start.ts` |  | Codex SessionStart hook emitting shared functional-core rule context. |
+| ❓ | `.pi/extensions/functional-core/core/checks.ts` |  | Shared functional-core rules, path matching, prompt snippets, validators, and violation formatting. |
+| ❓ | `.pi/extensions/functional-core/core/edit-preview.ts` |  | Shared edit preview builder for functional-core adapters. |
+| ❓ | `.pi/extensions/functional-core/core/lint.ts` |  | Shared functional-core lint path traversal and report formatting. |
+| ❓ | `.pi/extensions/functional-core/core/runtime-global-usage.ts` |  | Shared direct runtime-global validation for functional-core files. |
+| ❓ | `.pi/extensions/functional-core/core/text.ts` |  | Shared parser and masking helpers for functional-core validation. |
+| ❓ | `.pi/extensions/functional-core/fn-check.ts` |  | Compatibility entrypoint for fn-check exports and Pi hook registration. |
+| ❓ | `.pi/extensions/functional-core/functional-core-lint.ts` |  | Executable functional-core lint wrapper around the shared lint core. |
+| ❓ | `.pi/extensions/functional-core/fx-check.ts` |  | Compatibility entrypoint for fx-check exports and Pi hook registration. |
+| ❓ | `.pi/extensions/functional-core/lib/edit-preview.ts` |  | Backwards-compatible edit preview re-export for existing tests/imports. |
+| ❓ | `.pi/extensions/functional-core/lib/runtime-global-usage.ts` |  | Backwards-compatible runtime-global validator re-export for existing tests/imports. |
+| ❓ | `.pi/extensions/functional-core/pi-adapter.ts` |  | Pi-specific hook adapter delegating functional-core validation to shared core. |
+| ❓ | `.pi/extensions/functional-core/tx-check.ts` |  | Compatibility entrypoint for tx-check exports and Pi hook registration. |
 | ❓ | `log-auth-permissions-task.txt` |  | Progress log for auth permissions schema/service/plugin migration task. |
 | ❓ | `log-actor-model-task.txt` |  | Progress log for durable actor model and sandbox worker integration task. |
 | ❓ | `log-service-sandbox-task.txt` |  | Progress log for creating the Microsandbox-backed sandbox service. |
