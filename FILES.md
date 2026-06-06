@@ -370,17 +370,6 @@ prefix: `apps/frontend/src/`
 | ❓ | `Toast.tsx` |  |  |
 | ❓ | `welcome.tsx` |  |  |
 
-## apps/worker
-prefix: `apps/worker/`
-
-| status | filepath | human comment | oneliner when to use |
-|---|---|---|---|
-| 🤖 | `package.json` |  | Workflow worker app package metadata and commands. |
-| ❓ | `tsconfig.json` |  | TypeScript config for Bun workflow worker app. |
-| 🤖 | `src/main.ts` |  | Durable workflow worker process with health endpoint and child-process sandbox step execution. |
-| ❓ | `src/schema.ts` |  | Zod request/response schemas for worker step runner IPC. |
-| ❓ | `src/step-runner.ts` |  | Child process step runner that loads workflow functions from module portal specs. |
-
 ## apps/visualizer
 prefix: `apps/visualizer/`
 
@@ -724,16 +713,6 @@ prefix: `packages/service-pty/src/`
 | ❓ | `IPtyService.ts` |  |  |
 | ❓ | `PtyServiceBunPty.ts` |  |  |
 | ❓ | `types.ts` |  |  |
-
-## packages/service-sandbox
-prefix: `packages/service-sandbox/`
-
-| status | filepath | human comment | oneliner when to use |
-|---|---|---|---|
-| 🤖 | `package.json` |  | Microsandbox-backed sandbox service package metadata and scripts. |
-| ❓ | `tsconfig.json` |  | TypeScript config for sandbox service source/tests. |
-| 🤖 | `src/ServiceSandbox.ts` |  | Microsandbox service that prepares tagged reusable volumes, starts pinned Bun sandboxes, copies worker files, and exposes sandbox shell execution. |
-| ❓ | `src/index.ts` |  | Sandbox service package barrel exports. |
 
 ## packages/service-theme
 prefix: `packages/service-theme/src/`

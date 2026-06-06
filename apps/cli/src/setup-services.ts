@@ -12,7 +12,6 @@ import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
 import { ActorService, type TActorSandboxRunner } from '@vibecanvas/service-actor';
 import { createWidgetSourceService } from './plugins/widget/WidgetPlugin';
 import { SANDBOX_WORKER_DIR, SANDBOX_WORKER_FILE } from '@vibecanvas/service-actor/core/CONSTANTS';
-import { ServiceSandbox } from '@vibecanvas/service-sandbox';
 import { WorkflowSuperviserService } from '@vibecanvas/service-workflow';
 import type { Database } from 'bun:sqlite';
 import { spawnSync } from 'child_process';
@@ -117,39 +116,6 @@ function ensureActorWorkerBundle(config: ICliConfig): void {
 
   const result = spawnSync('bun', ['--filter', '@vibecanvas/worker', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' });
   if (result.status !== 0) throw new Error('Failed to build actor worker bundle');
-}
-
-function createActorSandboxRunner(config: ICliConfig, db: DbServiceBunSqlite['sandbox']): TActorSandboxRunner {
-  return createServiceSandboxActorWorkerRunner(config, db);
-}
-
-function createServiceSandboxActorWorkerRunner(config: ICliConfig, db: DbServiceBunSqlite['sandbox']): TActorSandboxRunner {
-  return {
-    start: async (args) => {
-      const sandbox = new ServiceSandbox({
-        db,
-        namespace: 'actor',
-        sandboxName: args.sandboxName,
-        workdir: SANDBOX_WORKER_DIR,
-        workerFiles: [{ hostPath: args.workerDistPath, sandboxPath: SANDBOX_WORKER_FILE, kind: 'file' }],
-        bindMounts: [{ hostPath: config.dataPath, guestPath: ACTOR_SANDBOX_HOST_DATA_DIR }],
-        startCommand: { cmd: 'bun', args: [SANDBOX_WORKER_FILE], cwd: SANDBOX_WORKER_DIR },
-        env: args.workerEnv,
-        replaceSandbox: true,
-      });
-      await sandbox.start();
-      return {
-        isHealthy: async () => {
-          const script = `const r = await fetch("http://127.0.0.1:${args.controlPort}/health").catch(() => null); if (!r?.ok) process.exit(1); const b = await r.json().catch(() => null); if (!b?.ok) process.exit(1);`;
-          const output = await sandbox.shell(`bun -e ${JSON.stringify(script)}`).catch(() => null);
-          return Boolean(output?.success);
-        },
-        stop: async () => {
-          await sandbox.stop();
-        },
-      };
-    },
-  };
 }
 
 export { setupServices };

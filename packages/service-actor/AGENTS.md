@@ -9,7 +9,7 @@ Host-side actor runtime for Vibecanvas.
 - an `ActorSupervisor` running in the host process
 - actor lifecycle polling, workflow scheduling, and result reconciliation
 
-`ActorService` does not own or construct `@vibecanvas/service-sandbox`. A host application must inject a sandbox runner that starts the generic durable workflow worker in the background.
+A host application must inject a sandbox runner that starts the generic durable workflow worker in the background.
 
 Important boundary:
 
@@ -77,8 +77,6 @@ await actorService.stop();
 7. Supervisor commits `actor_outputs` and routes connected outputs into target actor inboxes.
 
 ## Testing/development
-
-Use `startSandbox: false` and `autoStart: false` when testing host orchestration without starting `@vibecanvas/service-sandbox`:
 
 ```ts
 const service = new ActorService({

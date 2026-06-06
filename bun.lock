@@ -37,7 +37,6 @@
         "@vibecanvas/service-event-publisher": "workspace:*",
         "@vibecanvas/service-filesystem": "workspace:*",
         "@vibecanvas/service-pty": "workspace:*",
-        "@vibecanvas/service-sandbox": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
         "@vibecanvas/tapable": "workspace:*",
