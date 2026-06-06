@@ -1,7 +1,7 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeServer';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
-import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
+import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -25,17 +25,19 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const ACTOR_WORKER_DIST_PATH = resolve(REPO_ROOT, 'apps/worker/dist/worker.mjs');
 const ACTOR_SANDBOX_HOST_DATA_DIR = '/home/vibecanvas/host-data';
 
+export interface IRuntimeServices {
+  automerge: IAutomergeService;
+  db: DbServiceTurso;
+  eventPublisher: IEventPublisherService;
+  filesystem: IFilesystemService;
+  pty: IPtyService;
+  workflowSuperviser: WorkflowSuperviserService;
+  actor: ActorService;
+  widgetSource: ReturnType<typeof createWidgetSourceService>;
+}
+
 declare module '@vibecanvas/runtime' {
-  interface IServiceMap {
-    automerge: IAutomergeService;
-    db: IDbService;
-    eventPublisher: IEventPublisherService;
-    filesystem: IFilesystemService;
-    pty: IPtyService;
-    workflowSuperviser: WorkflowSuperviserService;
-    actor: ActorService;
-    widgetSource: ReturnType<typeof createWidgetSourceService>;
-  }
+  interface IServiceMap extends IRuntimeServices {}
 }
 
 function isCanvasSchemaOnlyRequest(config: ICliConfig): boolean {
@@ -57,7 +59,7 @@ function setupServices(config: ICliConfig) {
     return { services, eventPublisher };
   }
 
-  const dbService = new DbServiceBunSqlite({
+  const dbService = new DbServiceTurso({
     databasePath: config.dbPath,
     dataDir: config.dataPath,
     cacheDir: config.cachePath,
@@ -70,7 +72,7 @@ function setupServices(config: ICliConfig) {
   services.provide('filesystem', 30, filesystemService);
   services.provide('pty', 40, ptyService);
 
-  const automergeService = new AutomergeService(dbService.sqlite as Database, (canvasId, element) => {
+  const automergeService = new AutomergeService(dbService.db, (canvasId, element) => {
     if (element.data.type === 'widget' && element.data.actorInstanceId) {
       services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
     }
@@ -78,30 +80,32 @@ function setupServices(config: ICliConfig) {
   services.provide('automerge', 50, automergeService);
 
   if (config.command !== 'serve') {
-    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor }));
+    // TODO
+    // services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor }));
   }
 
   if (config.command === 'serve') {
-    ensureActorWorkerBundle(config);
-    const workflowDb = dbService.workflow;
-    const workflowSuperviserService = new WorkflowSuperviserService({ db: workflowDb });
-    const actorService = new ActorService({
-      db: dbService.actor,
-      workflowDb,
-      eventPublisher,
-      workerDistPath: ACTOR_WORKER_DIST_PATH,
-      sandboxRunner: createActorSandboxRunner(config, dbService.sandbox),
-      startSandboxInBackground: config.dev,
-      workerEnv: {
-        VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
-        VIBECANVAS_DB_PATH: `${ACTOR_SANDBOX_HOST_DATA_DIR}/${basename(config.dbPath)}`,
-        VIBECANVAS_CACHE_DIR: `${ACTOR_SANDBOX_HOST_DATA_DIR}/cache`,
-        VIBECANVAS_MIGRATIONS_SILENT: '1',
-      },
-    });
-    services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor, actorService }));
-    services.provide('workflowSuperviser', 55, workflowSuperviserService);
-    services.provide('actor', 60, actorService);
+    // TODO
+    // ensureActorWorkerBundle(config);
+    // const workflowDb = dbService.workflow;
+    // const workflowSuperviserService = new WorkflowSuperviserService({ db: workflowDb });
+    // const actorService = new ActorService({
+    //   db: dbService.actor,
+    //   workflowDb,
+    //   eventPublisher,
+    //   workerDistPath: ACTOR_WORKER_DIST_PATH,
+    //   sandboxRunner: createActorSandboxRunner(config, dbService.sandbox),
+    //   startSandboxInBackground: config.dev,
+    //   workerEnv: {
+    //     VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
+    //     VIBECANVAS_DB_PATH: `${ACTOR_SANDBOX_HOST_DATA_DIR}/${basename(config.dbPath)}`,
+    //     VIBECANVAS_CACHE_DIR: `${ACTOR_SANDBOX_HOST_DATA_DIR}/cache`,
+    //     VIBECANVAS_MIGRATIONS_SILENT: '1',
+    //   },
+    // });
+    // services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor, actorService }));
+    // services.provide('workflowSuperviser', 55, workflowSuperviserService);
+    // services.provide('actor', 60, actorService);
   }
 
   return { services, automergeService, dbService, eventPublisher, filesystemService, ptyService };

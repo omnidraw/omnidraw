@@ -12,7 +12,7 @@
     "db:migrate": "bun src/database/migrate.ts"
   },
   "dependencies": {
-    "@tursodatabase/database": "^0.6.0",
+    "@tursodatabase/database": "catalog:",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-workflow": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",

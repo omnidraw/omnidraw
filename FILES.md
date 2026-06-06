@@ -620,8 +620,9 @@ prefix: `packages/service-automerge/src/`
 | 🤖 | `types/canvas-doc.types.ts` |  | Canvas document TypeScript model derived from zod schemas. |
 | 🤖 | `types/canvas-doc.zod.ts` |  | Canvas document zod schemas and element data union. |
 | 🤖 | `IAutomergeService.ts` |  | Automerge service contract, including server-side element delete handler registration. |
-| ❓ | `sqlite.adapter.ts` |  |  |
-| ❓ | `websocket.adapter.ts` |  |  |
+| ❓ | `adapters/sqlite.adapter.ts` |  | Bun SQLite Automerge storage adapter using automerge_repo_data chunks. |
+| ❓ | `adapters/turso.adapter.ts` |  | Turso Automerge storage adapter using async database statements over automerge_repo_data chunks. |
+| ❓ | `adapters/websocket.adapter.ts` |  | Bun websocket network adapter for Automerge repo sync. |
 
 ## packages/service-db
 prefix: `packages/service-db/src/`

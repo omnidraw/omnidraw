@@ -158,6 +158,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
 - [x]: [A40](a/A40.md) - canvas: non-sandboxed terminal widget plugin
 - [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
+- [ ]: [A42](a/A42.md) - codex hooks: reuse functional-core checks
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -212,6 +213,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
 - [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
 - [ ]: [S52] - remove drizzle use turso + raw sqlite
+- [ ]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 
 ## E xplorations
 - [ ]: [E1](e/E1.md) - Tauri Research

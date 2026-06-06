@@ -357,6 +357,7 @@
       "dependencies": {
         "@automerge/automerge-repo": "catalog:",
         "@automerge/automerge-repo-network-websocket": "catalog:",
+        "@tursodatabase/database": "catalog:",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
         "zod": "catalog:",
@@ -366,7 +367,7 @@
       "name": "@vibecanvas/service-db",
       "version": "0.3.1",
       "dependencies": {
-        "@tursodatabase/database": "^0.6.0",
+        "@tursodatabase/database": "catalog:",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-workflow": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
@@ -457,6 +458,7 @@
     "@orpc/client": "1.13.13",
     "@orpc/contract": "1.13.13",
     "@orpc/server": "1.13.13",
+    "@tursodatabase/database": "0.6.0",
     "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2",
     "drizzle-zod": "0.8.3",
