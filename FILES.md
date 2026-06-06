@@ -658,7 +658,7 @@ prefix: `packages/service-db/src/`
 | 🤖 | `DbServiceTurso/list-migration-files.ts` |  | Embedded Turso SQL migration file registry in execution order. |
 | 🤖 | `DbServiceTurso/tx.pragma.ts` |  | Turso startup PRAGMAs including multi-process WAL journal mode. |
 | ❓ | `interface.ts` |  |  |
-| 🤖 | `model.ts` |  | Public Zod data model and inferred types for Turso DB-backed domain objects without Drizzle table details. |
+| 🤖 | `model.ts` |  | Public Zod data model and inferred types for Turso DB-backed app domain objects, including filesystem rows, without Drizzle table details. |
 | ❓ | `SandboxDb.ts` |  | Drizzle-backed sandbox persistence adapter exposed as a small non-Drizzle interface. |
 | 🤖 | `schema.ts` |  | Internal Drizzle database schema including OSS accounts, account_kind domain, memberships, durable workflow/sandbox tables, and actor definitions. |
 | ❓ | `SqliteWorkflowDb.ts` |  | Drizzle-backed durable workflow DB adapter owned by service-db. |
