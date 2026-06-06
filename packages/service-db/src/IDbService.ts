@@ -66,7 +66,6 @@ export interface IDbService extends IService, IStartableService, IStoppableServi
     updateById(args: { id: string; label?: string; kind?: 'local' | 'remote'; home_path?: string | null; accountId?: string }): TFilesystemRecord | null;
     listMembers(args: { filesystemId: string }): TFilesystemMemberRecord[];
   };
-  getFullCanvas(id: string, args?: { accountId?: string }): TGetFullCanvasResult | null;
 }
 
 export type {

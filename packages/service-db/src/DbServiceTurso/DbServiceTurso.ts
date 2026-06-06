@@ -3,9 +3,43 @@ import { Database } from "@tursodatabase/database"
 import type { IDbConfig } from "../interface";
 import { txRunMigrations } from "./tx.migrations"
 import { txDefaultRunPragmas } from "./tx.pragma";
+import { fxAccountGetDefaultOwner } from "./fx.account"
+import type { TAccount, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import path from "node:path";
+import { txAccountEnsureDefaultOwner } from "./tx.account";
 
-export class DbServiceTurso implements IService, IStartableService, IStoppableService {
+type TCanvasCreateArgs = Pick<TCanvas, "automerge_url" | "id" | "name">;
+type TFileCreateArgs = Pick<TFile, "id" | "hash" | "mime_type" | "base64">;
+type TFilesystemCreateArgs = Pick<TFilesystem, "id" | "name">;
+
+
+interface IPublicMethods {
+  account: {
+    getDefaultOwner(): Promise<TAccount | null>;
+    ensureDefaultOwner(): Promise<void>;
+  };
+  canvas: {
+    listAll(accountId?: string): Promise<TCanvas[]>;
+    findByName(args: { name: string }, accountId?: string): Promise<TCanvas | null>;
+    create(args: TCanvasCreateArgs, accountId?: string): Promise<TCanvas>;
+    renameById(args: { id: string, name: string}, accountId?: string): Promise<TCanvas | null>;
+    deleteById(args: { id: string }, accountId?: string): Promise<TCanvas[]>;
+    listMembers(args: { canvasId: string }, accountId?: string): Promise<TCanvasMember[]>;
+  };
+  file: {
+    listAll(): Promise<TFile[]>;
+    create(args: TFileCreateArgs): Promise<TFile>;
+    getById(args: { id: string }): Promise<TFile | null>;
+    deleteById(args: { id: string }): Promise<void>;
+  };
+  filesystem: {
+    listAll(): Promise<TFilesystem[]>;
+    findById(id: string): Promise<TFilesystem | null>;
+    create(args: TFilesystemCreateArgs): Promise<TFilesystem>;
+  };
+}
+
+export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'DbServiceTurso'
   db: Database
 
@@ -25,4 +59,9 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   async stop(): Promise<void> {
     console.log('DbServiceTurso stopped')
   }
+
+  account = {
+    getDefaultOwner: () => fxAccountGetDefaultOwner(this, {}),
+    ensureDefaultOwner: () => txAccountEnsureDefaultOwner(this, {}),
+  };
 }
