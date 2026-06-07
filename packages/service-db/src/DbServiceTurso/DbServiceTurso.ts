@@ -9,17 +9,21 @@ import path from "node:path";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
+import { fxFileGetById, fxFileListAll } from "./fx.file";
+import { txFileCreate, txFileDeleteById } from "./tx.file";
+import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
+import { txFilesystemCreate } from "./tx.filesystem";
 
 type TCanvasCreateArgs = Pick<TCanvas, "automerge_url" | "id" | "name">;
 type TFileCreateArgs = Pick<TFile, "id" | "hash" | "mime_type" | "base64">;
 type TFilesystemCreateArgs = Pick<TFilesystem, "id" | "name">;
 
-
+/**
+ * Interface follows same pattern.
+ * args, accountId?
+ * If no accountId -> no authz check -> auto pass
+ */
 interface IPublicMethods {
-  account: {
-    getDefaultOwner(): Promise<TAccount | null>;
-    ensureDefaultOwner(): Promise<void>;
-  };
   canvas: {
     listAll(accountId?: string): Promise<TCanvas[]>;
     findByName(args: { name: string }, accountId?: string): Promise<TCanvas | null>;
@@ -74,5 +78,18 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     renameById: (args: { id: string, name: string }, accountId?: string) => txCanvasRenameById(this, { ...args, accountId }),
     deleteById: (args: { id: string }, accountId?: string) => txCanvasDeleteById(this, { ...args, accountId }),
     listMembers: (args: { canvasId: string }) => fxCanvasListMembers(this, args),
+  };
+
+  file = {
+    listAll: () => fxFileListAll(this, {}),
+    create: (args: TFileCreateArgs) => txFileCreate(this, args),
+    getById: (args: { id: string }) => fxFileGetById(this, args),
+    deleteById: (args: { id: string }) => txFileDeleteById(this, args),
+  };
+
+  filesystem = {
+    listAll: () => fxFilesystemListAll(this, {}),
+    findById: (id: string) => fxFilesystemFindById(this, { id }),
+    create: (args: TFilesystemCreateArgs) => txFilesystemCreate(this, args),
   };
 }

@@ -643,10 +643,14 @@ prefix: `packages/service-db/src/`
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
-| 🤖 | `DbServiceTurso/DbServiceTurso.ts` |  | Turso database service startup, experimental feature flags, pragmas, migrations, and public account/canvas query surface. |
+| 🤖 | `DbServiceTurso/DbServiceTurso.ts` |  | Turso database service startup, experimental feature flags, pragmas, migrations, and public account/canvas/file/filesystem query surface. |
 | ❓ | `DbServiceTurso/fx.canvas.ts` |  | Turso canvas read helpers for unscoped or account-scoped list/find/member/permission queries. |
+| ❓ | `DbServiceTurso/fx.file.ts` |  | Turso file read helpers for listing and id lookup without authz. |
+| ❓ | `DbServiceTurso/fx.filesystem.ts` |  | Turso filesystem read helpers for listing and id lookup without authz. |
 | 🤖 | `DbServiceTurso/list-migration-files.ts` |  | Embedded Turso SQL migration file registry in execution order. |
 | ❓ | `DbServiceTurso/tx.canvas.ts` |  | Turso canvas write helpers for create, rename, and owner-gated delete. |
+| ❓ | `DbServiceTurso/tx.file.ts` |  | Turso file write helpers for create and delete without authz. |
+| ❓ | `DbServiceTurso/tx.filesystem.ts` |  | Turso filesystem write helper for create without authz. |
 | 🤖 | `DbServiceTurso/tx.pragma.ts` |  | Turso startup PRAGMAs including multi-process WAL journal mode. |
 | ❓ | `interface.ts` |  |  |
 | 🤖 | `model.ts` |  | Public Zod data model and inferred types for Turso DB-backed app domain objects, including filesystem rows, without Drizzle table details. |
