@@ -89,8 +89,6 @@ Never put leaf notes, lane breakdowns, execution history, or detailed task plans
 Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 
 ## B ugs
-- [ ]: [B16](b/B16.md) - ci: `@vibecanvas/canvas` tests load Konva node entry and require native `canvas` - only fails in ci
-- [ ]: [B28] - group with widget and rect -> delete rect must also deletes widget
 - [x]: [B1](b/B1.md) - text: edit jumping
 - [x]: [B2](b/B2.md) - text: long, on select, box too small
 - [x]: [B3](b/B3.md) - version update not showing
@@ -104,11 +102,12 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B13](b/B13.md) - canvas CLI: top-level alias docs lie; `vibecanvas query ...` is rejected
 - [x]: [B14](b/B14.md) - canvas CLI: `canvas group --help` falls back to global help
 - [x]: [B15](b/B15.md) - canvas CLI: `--json` output is not real JSON
-- [x]: [B21](b/B21.md) - filesystem: recursive filetree scan dies on EPERM/EACCES folders like `~/.Trash`
+- [ ]: [B16](b/B16.md) - ci: `@vibecanvas/canvas` tests load Konva node entry and require native `canvas` - only fails in ci
 - [x]: [B17](b/B17.md) - canvas CLI: `add --schema rect` still requires an element source instead of printing schema
 - [x]: [B18](b/B18.md) - terminal image paste not working in deploy version
 - [x]: [B19](b/B19.md) - cli usage -> no realtime updates via automerge
 - [x]: [B20](b/B20.md) - pen tool: after stroke commit, stay in pen mode instead of switching to selection
+- [x]: [B21](b/B21.md) - filesystem: recursive filetree scan dies on EPERM/EACCES folders like `~/.Trash`
 - [x]: [B21] - can't do 1d edits
 - [x]: [B22] - style color pallet breaks layout
 - [x]: [B23] - bug: pan/zoom on textedit -> text box moves with 
@@ -116,16 +115,14 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
 - [-]: [B26] - investigate if cli respect zIndex - check tmp/script
 - [x]: [B27] - preview does not attach listeners correctly for all elements
+- [ ]: [B28] - group with widget and rect -> delete rect must also deletes widget
 - [x]: [B29] - shape2d -> edit must show vertical heigt correctly and hide konva.text while editing
 - [x]: [B30] - can't delete text
 
 ## A dditions
-- [ ]: [A3] - copy paste elements/groups
-- [ ]: [A33] - deeplink to canvas object
-- [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
-- [ ]: [A43](a/A43.md) - db: add authz for public DB methods
 - [x]: [A1] - file: support common CodeMirror languages
 - [x]: [A2] - add inline text support to diamond and ellipse
+- [ ]: [A3] - copy paste elements/groups
 - [x]: [A4](a/A4.md) - terminal: use PartySocket for resilient PTY connection
 - [x]: [A5](a/A5.md) - canvas CLI: explicit --db path override
 - [x]: [A6](a/A6.md) - canvas CLI: end-to-end test harness
@@ -153,6 +150,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A30](a/A30.md) - theme: remove Tailwind from @vibecanvas/canvas and ship package CSS
 - [x]: [A31](a/A31.md) - theme: remove Tailwind from frontend and stop scanning canvas sources
 - [-]: [A32](a/A32.md) - hosted components: sandboxed Arrow runtime + per-component official packages
+- [ ]: [A33] - deeplink to canvas object
 - [x]: [A34](a/A34.md) - canvas: scene hydrator incremental reconcile instead of full reload on change
 - [-]: [A35] - multiselect => clone drag
 - [x]: [A36](a/A36.md) - theme: centralize canvas style ownership in ThemeService
@@ -160,7 +158,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A38](a/A38.md) - widgets: fullscreen DOM window mode
 - [x]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
 - [x]: [A40](a/A40.md) - canvas: non-sandboxed terminal widget plugin
+- [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
 - [x]: [A42](a/A42.md) - codex hooks: reuse functional-core checks
+- [ ]: [A43](a/A43.md) - db: add authz for public DB methods
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -218,25 +218,25 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 
 ## E xplorations
-- [ ]: [E9] - tmux for persistant pty sessions
-- [ ]: [E10] - headless chrome to stream to canvas
-- [ ]: [E11] - https://github.com/cr0hn/dockerscan
-- [ ]: [E12] - https://github.com/superradcompany/microsandbox
-- [ ]: [E23](e/E23.md) - actor output log pruning compatibility
-- [?]: [E18] - replace iframe with bun.webview??
-- [?]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
 - [-]: [E1](e/E1.md) - Tauri Research
 - [x]: [E5](e/E5.md) - how to implement state machine system?
 - [-]: [E6](e/E6.md) - should we include a task management
 - [x]: [E8](e/E8.md) - canvas CLI: query/edit surface exploration
+- [ ]: [E9] - tmux for persistant pty sessions
+- [ ]: [E10] - headless chrome to stream to canvas
+- [ ]: [E11] - https://github.com/cr0hn/dockerscan
+- [ ]: [E12] - https://github.com/superradcompany/microsandbox
 - [x]: [E13](e/E13.md) - Research Pluginsystem for server
 - [x]: [E14] - do we need packages/functional-core
 - [x]: [E15](e/E15.md) - canvas UI extensions: sideloadable community widgets and ArrowJS exploration
 - [x]: [E16] - filewatch performance. -> on big folders are slow
 - [x]: [E17](e/E17.md) - automerge authority: optimistic local writes with server validation/reject path
+- [?]: [E18] - replace iframe with bun.webview??
 - [-]: [E19](e/E19.md) - canvas performance longterm: worker automerge + incremental notifications
 - [x]: [E20](e/E20.md) - improvement crdt updates
+- [?]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
 - [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
+- [ ]: [E23](e/E23.md) - actor output log pruning compatibility
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
