@@ -643,11 +643,13 @@ prefix: `packages/service-db/src/`
 | ❓ | `fx.migrations.ts` |  |  |
 | 🤖 | `IDbService.ts` |  |  |
 | 🤖 | `DbServiceBunSqlite/index.ts` |  |  |
-| 🤖 | `DbServiceTurso/DbServiceTurso.ts` |  | Turso database service startup, experimental feature flags, pragmas, migrations, and public account/canvas/file/filesystem query surface. |
+| 🤖 | `DbServiceTurso/DbServiceTurso.ts` |  | Turso database service startup, experimental feature flags, pragmas, migrations, and public account/canvas/file/filesystem/actor query surface. |
+| ❓ | `DbServiceTurso/fx.actor.ts` |  | Turso actor read helpers for listing definitions, instances, and connections. |
 | ❓ | `DbServiceTurso/fx.canvas.ts` |  | Turso canvas read helpers for unscoped or account-scoped list/find/member/permission queries. |
 | ❓ | `DbServiceTurso/fx.file.ts` |  | Turso file read helpers for listing and id lookup without authz. |
 | ❓ | `DbServiceTurso/fx.filesystem.ts` |  | Turso filesystem read helpers for listing and id lookup without authz. |
 | 🤖 | `DbServiceTurso/list-migration-files.ts` |  | Embedded Turso SQL migration file registry in execution order. |
+| ❓ | `DbServiceTurso/tx.actor.ts` |  | Turso actor write helpers for definitions, instances, connections, and reload noop. |
 | ❓ | `DbServiceTurso/tx.canvas.ts` |  | Turso canvas write helpers for create, rename, and owner-gated delete. |
 | ❓ | `DbServiceTurso/tx.file.ts` |  | Turso file write helpers for create and delete without authz. |
 | ❓ | `DbServiceTurso/tx.filesystem.ts` |  | Turso filesystem write helper for create without authz. |

@@ -4,10 +4,12 @@ import path from "node:path";
 import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
+import { fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
+import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
@@ -116,5 +118,24 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     listAll: () => fxFilesystemListAll(this, {}),
     findById: (id: string) => fxFilesystemFindById(this, { id }),
     create: (args: TFilesystemCreateArgs) => txFilesystemCreate(this, args),
+  };
+
+  actor = {
+    listDefinitions: () => fxActorListDefinitions(this),
+    insertDefinition: (def: TActorDefinitionCreateArgs) => txActorInsertDefinition(this, def),
+    deleteDefinition: (id: string) => txActorDeleteDefinition(this, { id }),
+    updateDefinition: (def: TActorDefinitionUpdateArgs) => txActorUpdateDefinition(this, def),
+    reload: async () => {
+      // TODO
+    },
+    listInstances: (filter?: { canvasId?: string }) => fxActorListInstances(this, { canvasId: filter?.canvasId }),
+    insertInstance: (instance: TActorInstanceCreateArgs) => txActorInsertInstance(this, instance),
+    updateInstanceStatus: (instance: TActorInstanceUpdateStatusArgs) => txActorUpdateInstanceStatus(this, instance),
+    updateInstanceMachine: (instance: TActorInstanceUpdateMachineArgs) => txActorUpdateInstanceMachine(this, instance),
+    deleteInstance: (id: string) => txActorDeleteInstance(this, { id }),
+    listConnections: () => fxActorListConnections(this),
+    insertConnection: (connection: TActorConnectionCreateArgs) => txActorInsertConnection(this, connection),
+    deleteConnectionById: (id: string) => txActorDeleteConnectionById(this, { id }),
+    deleteConnectionBySource: (actorId: string) => txActorDeleteConnectionBySource(this, { actorId }),
   };
 }
