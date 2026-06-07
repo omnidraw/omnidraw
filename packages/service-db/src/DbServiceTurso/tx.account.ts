@@ -13,6 +13,6 @@ export async function txAccountEnsureDefaultOwner(portal: TPortal, args: TArgs) 
   `)
   await portal.db.exec(`
     INSERT OR IGNORE INTO canvas_members (canvas_id, account_id, role, created_at, updated_at)
-    SELECT id, '${DEFAULT_OSS_ACCOUNT_ID}', 'owner', unixepoch(), unixepoch() FROM canvas
+    SELECT id, '${DEFAULT_OSS_ACCOUNT_ID}', 'owner', datetime('now'), datetime('now') FROM canvas
   `);
 }

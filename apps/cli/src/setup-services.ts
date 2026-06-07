@@ -27,7 +27,7 @@ export interface IRuntimeServices {
   filesystem: IFilesystemService;
   pty: IPtyService;
   workflowSuperviser: WorkflowSuperviserService;
-  actor: ActorService;
+  // actor: ActorService;
   widgetSource: ReturnType<typeof createWidgetSourceService>;
 }
 
@@ -69,7 +69,8 @@ function setupServices(config: ICliConfig) {
 
   const automergeService = new AutomergeService(dbService.db, (canvasId, element) => {
     if (element.data.type === 'widget' && element.data.actorInstanceId) {
-      services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
+      // TODO: [S52] - remove drizzle use turso + raw sqlite
+      // services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
     }
   });
   services.provide('automerge', 50, automergeService);
