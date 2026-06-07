@@ -1,28 +1,24 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
+import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeServer';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { FilesystemServiceNode } from '@vibecanvas/service-filesystem/FilesystemServiceNode';
 import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
-import { ActorService, type TActorSandboxRunner } from '@vibecanvas/service-actor';
-import { createWidgetSourceService } from './plugins/widget/WidgetPlugin';
-import { SANDBOX_WORKER_DIR, SANDBOX_WORKER_FILE } from '@vibecanvas/service-actor/core/CONSTANTS';
 import { WorkflowSuperviserService } from '@vibecanvas/service-workflow';
-import type { Database } from 'bun:sqlite';
 import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
-import { basename, dirname, resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import type { ICliConfig } from './config';
+import { createWidgetSourceService } from './plugins/widget/WidgetPlugin';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const ACTOR_WORKER_DIST_PATH = resolve(REPO_ROOT, 'apps/worker/dist/worker.mjs');
-const ACTOR_SANDBOX_HOST_DATA_DIR = '/home/vibecanvas/host-data';
 
 export interface IRuntimeServices {
   automerge: IAutomergeService;

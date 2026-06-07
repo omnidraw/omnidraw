@@ -1,15 +1,15 @@
-import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import type { IPlugin } from '@vibecanvas/runtime';
+import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
+import type { IRuntimeServices } from '../../setup-services';
 
 type TOssFakeSession = {
   accountId: string;
   mode: 'oss-default-owner';
 };
 
-function createAuthPlugin(): IPlugin<{ db: IDbService }, ICliHooks, ICliConfig> {
+function createAuthPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
     name: 'auth',
     apply(ctx) {
