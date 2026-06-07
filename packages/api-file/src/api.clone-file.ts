@@ -7,10 +7,7 @@ const apiCloneFile = baseFileOs.clone.handler(async ({ input, context }) => {
     throw new Error('Invalid file url');
   }
 
-  const record = context.db.file.get({
-    id: fileMeta.id,
-    format: fileMeta.format,
-  });
+  const record = context.db.file.get({ id: fileMeta.id, format: fileMeta.format });
 
   if (!record) {
     throw new Error('File not found');

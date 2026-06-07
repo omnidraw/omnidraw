@@ -473,7 +473,7 @@ prefix: `packages/api-file/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| ❓ | `api.clone-file.ts` |  |  |
+| 🤖 | `api.clone-file.ts` |  | Clones stored image files through the abstract DB file interface and public file URLs. |
 | ❓ | `api.put-file.ts` |  |  |
 | ❓ | `api.remove-file.ts` |  |  |
 | ❓ | `contract.ts` |  |  |
@@ -481,7 +481,7 @@ prefix: `packages/api-file/src/`
 | ❓ | `fx.file-tree.ts` |  |  |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |
-| ❓ | `types.ts` |  |  |
+| 🤖 | `types.ts` |  | File API context depends on the abstract DB service interface. |
 
 ## packages/api-filesystem
 prefix: `packages/api-filesystem/src/`
