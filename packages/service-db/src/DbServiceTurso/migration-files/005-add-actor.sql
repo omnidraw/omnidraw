@@ -23,7 +23,7 @@ BEGIN
 	WHERE `id` = OLD.`id`;
 END;
 --
-CREATE DOMAIN IF NOT EXISTS ACTOR_SYSTEM_STATUS AS text
+CREATE DOMAIN IF NOT EXISTS ACTOR_SYSTEM_STATUS AS TEXT
 	DEFAULT 'created'
 	NOT NULL
 	CONSTRAINT actor_system_status_allowed CHECK (value IN ('created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked'));
@@ -57,7 +57,7 @@ BEGIN
 END;
 --
 CREATE TABLE IF NOT EXISTS `actor_inbox` (
-  `id` text PRIMARY KEY NOT NULL,
+  `id` TEXT PRIMARY KEY NOT NULL,
   `actor_instance_id` TEXT NOT NULL REFERENCES `actor_instances`(`id`) ON DELETE CASCADE,
   `seq` INTEGER NOT NULL CHECK (seq >= 0),
   `msg_name` TEXT NOT NULL,

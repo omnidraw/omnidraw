@@ -1,5 +1,5 @@
 -- MIME type values sourced from https://mime-type.com/mime-types
-CREATE DOMAIN IF NOT EXISTS MIME_TYPE AS text
+CREATE DOMAIN IF NOT EXISTS MIME_TYPE AS TEXT
 	DEFAULT 'application/octet-stream'
 	NOT NULL
 	CONSTRAINT mime_type_allowed CHECK (value IN (
@@ -2147,10 +2147,10 @@ CREATE DOMAIN IF NOT EXISTS MIME_TYPE AS text
 --> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS `files` (
-	`id` text PRIMARY KEY NOT NULL,
-	`hash` text NOT NULL,
+	`id` TEXT PRIMARY KEY NOT NULL,
+	`hash` TEXT NOT NULL,
 	`mime_type` MIME_TYPE DEFAULT 'application/octet-stream' NOT NULL,
-	`base64` text NOT NULL,
+	`base64` TEXT NOT NULL,
 	`created_at` TIMESTAMP DEFAULT (datetime('now')) NOT NULL
 ) STRICT;
 
