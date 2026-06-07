@@ -228,6 +228,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/transform/tx.sync-transformer.ts` |  | Selection or edit-mode changes sync transformer state |
 | 🤖 | `plugins/visual-debug/VisualDebug.plugin.ts` |  | On-canvas debug overlay: camera, selection, focused node/connection id |
 | 🤖 | `runtime.ts` |  | Canvas editor startup wiring services hooks plugins and widget history dependency |
+| 🤖 | `types.ts` |  | Canvas runtime config, hooks, pointer aliases, and image file API helper types. |
 | ❓ | `services/actor-connection/ActorConnectionService.ts` |  | Canvas-side actor connection state, event subscription, API mutations, and context actions. |
 | ❓ | `services/actor-connection/CONSTANTS.ts` |  | Actor connection renderer ids and boundary offsets. |
 | ❓ | `services/actor-connection/fn.geometry.ts` |  | Pure actor connection line boundary and style parsing helpers. |
@@ -474,10 +475,10 @@ prefix: `packages/api-file/src/`
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
 | 🤖 | `api.clone-file.ts` |  | Clones stored image files through the abstract DB file interface and public file URLs. |
-| ❓ | `api.put-file.ts` |  |  |
-| ❓ | `api.remove-file.ts` |  |  |
-| ❓ | `contract.ts` |  |  |
-| ❓ | `fn.file-storage.ts` |  |  |
+| 🤖 | `api.put-file.ts` |  | Stores uploaded file payloads from base64 plus MIME type and returns public URL. |
+| 🤖 | `api.remove-file.ts` |  | Removes stored files resolved from public file URLs. |
+| 🤖 | `contract.ts` |  | File API contract for put/clone/remove using MIME type upload bodies. |
+| 🤖 | `fn.file-storage.ts` |  | File URL parsing and MIME-type-to-extension mapping aligned with DB MIME types. |
 | ❓ | `fx.file-tree.ts` |  |  |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |

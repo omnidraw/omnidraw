@@ -3,7 +3,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import ImageIcon from "lucide-static/icons/image.svg?raw";
 import Konva from "konva";
-import type { IRuntimeConfig, IRuntimeHooks, TCloneImage, TDeleteImage, TUploadImage } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import {
   fnFileToDataUrl,
   fnGetImageDimensions,

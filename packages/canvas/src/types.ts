@@ -1,5 +1,5 @@
 import type { DocHandle } from "@automerge/automerge-repo";
-import { TOrpcSafeClient } from "@vibecanvas/orpc-client";
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
@@ -9,6 +9,8 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+export type TUploadImage = (body: { base64: string; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
+export type TCloneImage = (body: { url: string }) => Promise<{ url: string }>;
 
 export interface IRuntimeConfig {
   canvasId: string;

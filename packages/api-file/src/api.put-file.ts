@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { extensionFromFormat, toPublicFileUrl } from './core/fn.file-storage';
+import { fnExtensionFromFormat, fnToPublicFileUrl } from './core/fn.file-storage';
 import { baseFileOs } from './orpc';
 
 function getBase64Payload(base64OrDataUrl: string): string {
@@ -16,19 +16,24 @@ const apiPutFile = baseFileOs.put.handler(async ({ input, context }) => {
     throw new Error('Invalid or empty image payload');
   }
 
+  const extension = fnExtensionFromFormat(input.body.mime_type);
+  if (!extension) {
+    throw new Error('Unsupported image MIME type');
+  }
+
   const hash = createHash('sha256').update(bytes).digest('hex');
   const id = crypto.randomUUID();
-  const fileName = `${id}.${extensionFromFormat(input.body.format)}`;
+  const fileName = `${id}.${extension}`;
 
-  context.db.file.create({
+  await context.db.file.create({
     id,
     hash,
-    format: input.body.format,
+    mime_type: input.body.mime_type,
     base64: base64Payload,
   });
 
   return {
-    url: toPublicFileUrl(fileName),
+    url: fnToPublicFileUrl(fileName),
   };
 });
 

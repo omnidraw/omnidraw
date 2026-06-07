@@ -55,7 +55,7 @@ export async function txInsertImage(
     const naturalSize = await portal.getImageDimensions(dataUrl);
     const { url } = await portal.uploadImage({
       base64: parsed.base64,
-      format: parsed.format,
+      mime_type: parsed.format,
     });
 
     const center = args.point ?? portal.getViewportCenter();
