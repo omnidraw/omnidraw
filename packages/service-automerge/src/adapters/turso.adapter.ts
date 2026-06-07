@@ -69,7 +69,10 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
   }
 
   private setup(): Promise<PreparedStatements> {
-    this.setupPromise ??= this.setupStatements();
+    this.setupPromise ??= this.setupStatements().catch((error) => {
+      this.setupPromise = null;
+      throw error;
+    });
     return this.setupPromise;
   }
 
