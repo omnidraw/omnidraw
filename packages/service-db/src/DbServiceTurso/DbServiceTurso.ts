@@ -7,6 +7,8 @@ import { fxAccountGetDefaultOwner } from "./fx.account"
 import type { TAccount, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import path from "node:path";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
+import { fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
+import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 
 type TCanvasCreateArgs = Pick<TCanvas, "automerge_url" | "id" | "name">;
 type TFileCreateArgs = Pick<TFile, "id" | "hash" | "mime_type" | "base64">;
@@ -63,5 +65,14 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   account = {
     getDefaultOwner: () => fxAccountGetDefaultOwner(this, {}),
     ensureDefaultOwner: () => txAccountEnsureDefaultOwner(this, {}),
+  };
+
+  canvas = {
+    listAll: (accountId?: string) => fxCanvasListAll(this, { accountId }),
+    findByName: (args: { name: string }, accountId?: string) => fxCanvasFindByName(this, { ...args, accountId }),
+    create: (args: TCanvasCreateArgs, accountId?: string) => txCanvasCreate(this, { ...args, accountId }),
+    renameById: (args: { id: string, name: string }, accountId?: string) => txCanvasRenameById(this, { ...args, accountId }),
+    deleteById: (args: { id: string }, accountId?: string) => txCanvasDeleteById(this, { ...args, accountId }),
+    listMembers: (args: { canvasId: string }) => fxCanvasListMembers(this, args),
   };
 }
