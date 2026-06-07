@@ -7,13 +7,12 @@ import { fileContract } from '@vibecanvas/api-file/contract';
 import { filesystemContract } from '@vibecanvas/api-filesystem/contract';
 import { notificationContract } from '@vibecanvas/api-notification/contract';
 import { ptyContract } from '@vibecanvas/api-pty/contract';
-import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { ActorService } from '@vibecanvas/service-actor';
+import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
-import type { WorkflowSuperviserService } from '@vibecanvas/service-workflow';
 
 const contract = oc.router({
   actors: actorsContract,
@@ -30,7 +29,7 @@ const apiContract = populateContractRouterPaths(
 );
 
 const baseOs = implement(apiContract)
-  .$context<{ accountId?: string; automerge: IAutomergeService; db: IDbService; eventPublisher: IEventPublisherService; filesystem: IFilesystemService; pty: IPtyService; actor?: ActorService; workflowSuperviser?: WorkflowSuperviserService; requestId?: string }>()
+  .$context<{ accountId?: string; automerge: IAutomergeService; db: IDbService; eventPublisher: IEventPublisherService; filesystem: IFilesystemService; pty: IPtyService; actor?: ActorService; requestId?: string }>()
   .use(onError((error) => {
     console.error(error);
   }));

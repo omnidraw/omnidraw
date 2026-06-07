@@ -687,20 +687,6 @@ prefix: `packages/service-actor/`
 | ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
 | 🤖 | `src/index.ts` |  | Actor service package barrel exports including runtime send result types. |
 
-## packages/service-workflow
-prefix: `packages/service-workflow/`
-
-| status | filepath | human comment | oneliner when to use |
-|---|---|---|---|
-| ❓ | `package.json` |  | Durable workflow service package metadata and dependencies. |
-| ❓ | `tsconfig.json` |  | TypeScript config for workflow service source/tests. |
-| ❓ | `src/fn.workflow.ts` |  | Pure workflow validation, status, fingerprint, result, and error helpers. |
-| ❓ | `src/index.ts` |  | Workflow service package barrel exports. |
-| 🤖 | `src/SqliteWorkflowDb.ts` | moved to service-db | Deprecated stub; workflow SQLite adapter now lives in service-db so Drizzle stays hidden. |
-| ❓ | `src/types.ts` |  | Durable workflow row, definition, DB, and sandbox executor contracts. |
-| ❓ | `src/WorkflowSuperviserService.ts` |  | System-managed workflow creation, retry, cancel, and status supervision. |
-| ❓ | `src/WorkflowWorkerService.ts` |  | Leased durable workflow worker that executes each step through a sandbox executor. |
-
 ## packages/service-filesystem
 prefix: `packages/service-filesystem/src/`
 

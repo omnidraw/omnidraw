@@ -2,7 +2,7 @@ import { Database } from "@tursodatabase/database";
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
+import type { TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
@@ -14,9 +14,10 @@ import { txFilesystemCreate } from "./tx.filesystem";
 import { txRunMigrations } from "./tx.migrations";
 import { txDefaultRunPragmas } from "./tx.pragma";
 
-type TCanvasCreateArgs = Pick<TCanvas, "automerge_url" | "id" | "name">;
-type TFileCreateArgs = Pick<TFile, "id" | "hash" | "mime_type" | "base64">;
-type TFilesystemCreateArgs = Pick<TFilesystem, "id" | "name">;
+type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
+type TFileCreateArgs = Omit<TFile, "created_at">
+type TFilesystemCreateArgs = Omit<TFilesystem, "created_at" | "updated_at">;
+type TActorDefinitionCreateArgs = Omit<TActorDefinition, "created_at" | "updated_at">;
 
 /**
  * Interface follows same pattern.
@@ -44,6 +45,13 @@ interface IPublicMethods {
     findById(id: string): Promise<TFilesystem | null>;
     create(args: TFilesystemCreateArgs): Promise<TFilesystem>;
   };
+  actor: {
+    listDefinitions(): Promise<TActorDefinition[]>;
+    insertDefinition(def: TActorDefinitionCreateArgs): Promise<TActorDefinition>;
+    deleteDefinition(id: string): Promise<void>;
+    reload(): Promise<void>;
+    listInstances(filter?: { canvasId?: string }): Promise<TActorInstance[]>;
+  }
 }
 
 export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {

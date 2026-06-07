@@ -1,18 +1,12 @@
 import { onError } from '@orpc/server';
-import { RPCHandler as FetchRPCHandler } from '@orpc/server/fetch';
 import { RPCHandler } from '@orpc/server/bun-ws';
-import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
-import type { ActorService } from '@vibecanvas/service-actor';
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
-import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
-import type { WorkflowSuperviserService } from '@vibecanvas/service-workflow';
-import type { IPlugin } from '@vibecanvas/runtime';
+import { RPCHandler as FetchRPCHandler } from '@orpc/server/fetch';
 import { baseCanvasCmdOs, canvasCmdHandlers } from '@vibecanvas/api-canvas-cmd/handlers';
-import { OSS_FAKE_SESSION } from '../auth/AuthPlugin';
+import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
+import type { IPlugin } from '@vibecanvas/runtime';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
+import { OSS_FAKE_SESSION } from '../auth/AuthPlugin';
 import { baseOs } from './orpc.base';
 import { router } from './router';
 
@@ -22,7 +16,7 @@ type TOrpcWebSocketData = {
   requestId: string;
 };
 
-function createOrpcPlugin(): IPlugin<{ automerge: IAutomergeService; db: IDbService; eventPublisher: IEventPublisherService; filesystem: IFilesystemService; pty: IPtyService; actor?: ActorService; workflowSuperviser?: WorkflowSuperviserService }, ICliHooks, ICliConfig> {
+function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
     name: 'orpc',
     apply(ctx) {
@@ -36,7 +30,6 @@ function createOrpcPlugin(): IPlugin<{ automerge: IAutomergeService; db: IDbServ
       const filesystem = ctx.services.require('filesystem');
       const pty = ctx.services.require('pty');
       const actor = ctx.services.get('actor');
-      const workflowSuperviser = ctx.services.get('workflowSuperviser');
       const handler = new RPCHandler(baseOs.router(router), {
         interceptors: [
           onError((error) => {
@@ -91,7 +84,6 @@ function createOrpcPlugin(): IPlugin<{ automerge: IAutomergeService; db: IDbServ
             filesystem,
             pty,
             actor,
-            workflowSuperviser,
             requestId: socket.data.requestId,
           },
         }).catch((error) => {
