@@ -1,9 +1,9 @@
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
+import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 
 type TPtyApiContext = {
   accountId?: string;
-  db: IDbService;
+  db: DbServiceTurso;
   pty: IPtyService;
   requestId?: string;
 };
