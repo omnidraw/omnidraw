@@ -2,7 +2,7 @@ import { ORPCError } from '@orpc/contract';
 import { baseCanvasOs } from './orpc';
 
 const apiCreateCanvas = baseCanvasOs.create.handler(async ({ context, input }) => {
-  const existingCanvas = context.db.canvas.findByName(input.name, { accountId: context.accountId });
+  const existingCanvas = await context.db.canvas.findByName({ name: input.name }, { accountId: context.accountId });
   if (existingCanvas)
     throw new ORPCError('ALREADY_EXISTS', { message: 'Canvas already exists' });
 
@@ -15,7 +15,7 @@ const apiCreateCanvas = baseCanvasOs.create.handler(async ({ context, input }) =
   })
 
   const canvas = { id: crypto.randomUUID(), name: input.name, created_at: new Date(), automerge_url: handle.url };
-  const result = context.db.canvas.create({ ...canvas, accountId: context.accountId });
+  const result = await context.db.canvas.create(canvas, { accountId: context.accountId });
   return result;
 });
 

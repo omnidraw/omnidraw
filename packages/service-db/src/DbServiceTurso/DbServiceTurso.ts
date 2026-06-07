@@ -4,7 +4,7 @@ import path from "node:path";
 import type { IDbConfig } from "../interface";
 import type { TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
-import { fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
+import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
@@ -25,11 +25,12 @@ type TFilesystemCreateArgs = Pick<TFilesystem, "id" | "name">;
  */
 interface IPublicMethods {
   canvas: {
-    listAll(accountId?: string): Promise<TCanvas[]>;
-    findByName(args: { name: string }, accountId?: string): Promise<TCanvas | null>;
-    create(args: TCanvasCreateArgs, accountId?: string): Promise<TCanvas>;
-    renameById(args: { id: string, name: string}, accountId?: string): Promise<TCanvas | null>;
-    deleteById(args: { id: string }, accountId?: string): Promise<TCanvas[]>;
+    listAll(args?: { accountId?: string }): Promise<TCanvas[]>;
+    findByName(args: { name: string }, scope?: { accountId?: string }): Promise<TCanvas | null>;
+    findById(args: { id: string }, scope?: { accountId?: string }): Promise<TCanvas | null>;
+    create(args: TCanvasCreateArgs, scope?: { accountId?: string }): Promise<TCanvas>;
+    renameById(args: { id: string, name: string}, scope?: { accountId?: string }): Promise<TCanvas | null>;
+    deleteById(args: { id: string }, scope?: { accountId?: string }): Promise<TCanvas[]>;
     listMembers(args: { canvasId: string }, accountId?: string): Promise<TCanvasMember[]>;
   };
   file: {
@@ -72,11 +73,12 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   };
 
   canvas = {
-    listAll: (accountId?: string) => fxCanvasListAll(this, { accountId }),
-    findByName: (args: { name: string }, accountId?: string) => fxCanvasFindByName(this, { ...args, accountId }),
-    create: (args: TCanvasCreateArgs, accountId?: string) => txCanvasCreate(this, { ...args, accountId }),
-    renameById: (args: { id: string, name: string }, accountId?: string) => txCanvasRenameById(this, { ...args, accountId }),
-    deleteById: (args: { id: string }, accountId?: string) => txCanvasDeleteById(this, { ...args, accountId }),
+    listAll: (args?: { accountId?: string }) => fxCanvasListAll(this, { accountId: args?.accountId }),
+    findByName: (args: { name: string }, scope?: { accountId?: string }) => fxCanvasFindByName(this, { ...args, accountId: scope?.accountId }),
+    findById: (args: { id: string }, scope?: { accountId?: string }) => fxCanvasFindById(this, { ...args, accountId: scope?.accountId }),
+    create: (args: TCanvasCreateArgs, scope?: { accountId?: string }) => txCanvasCreate(this, { ...args, accountId: scope?.accountId }),
+    renameById: (args: { id: string, name: string }, scope?: { accountId?: string }) => txCanvasRenameById(this, { ...args, accountId: scope?.accountId }),
+    deleteById: (args: { id: string }, scope?: { accountId?: string }) => txCanvasDeleteById(this, { ...args, accountId: scope?.accountId }),
     listMembers: (args: { canvasId: string }) => fxCanvasListMembers(this, args),
   };
 
