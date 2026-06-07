@@ -23,61 +23,61 @@ export type TArgsActorDefinitionList = { slug?: string };
 export type TArgsActorOutputList = { actorInstanceId: string; afterSeq?: number };
 export type TArgsActorConnectionById = { id: string };
 
-export function fxHasCanvasRole(portal: TPortalActorDb, args: TArgsCanvasAccess & { roles: TCanvasMemberRole[] }): boolean {
-  return portal.db.hasCanvasRole(args);
+export async function fxHasCanvasRole(portal: TPortalActorDb, args: TArgsCanvasAccess & { roles: TCanvasMemberRole[] }): Promise<boolean> {
+  return await portal.db.hasCanvasRole(args);
 }
 
-export function fxCanViewCanvas(portal: TPortalActorDb, args: TArgsCanvasAccess): boolean {
-  return portal.db.canViewCanvas(args);
+export async function fxCanViewCanvas(portal: TPortalActorDb, args: TArgsCanvasAccess): Promise<boolean> {
+  return await portal.db.canViewCanvas(args);
 }
 
-export function fxCanEditCanvas(portal: TPortalActorDb, args: TArgsCanvasAccess): boolean {
-  return portal.db.canEditCanvas(args);
+export async function fxCanEditCanvas(portal: TPortalActorDb, args: TArgsCanvasAccess): Promise<boolean> {
+  return await portal.db.canEditCanvas(args);
 }
 
-export function fxCanListActorDefinitions(portal: TPortalActorDb, args: TArgsAccount): boolean {
-  return portal.db.canListActorDefinitions(args);
+export async function fxCanListActorDefinitions(portal: TPortalActorDb, args: TArgsAccount): Promise<boolean> {
+  return await portal.db.canListActorDefinitions(args);
 }
 
-export function fxListActorDefinitions(portal: TPortalActorDb, args: TArgsActorDefinitionList = {}) {
-  return portal.db.listActorDefinitions(args).map(fnToActorListItem);
+export async function fxListActorDefinitions(portal: TPortalActorDb, args: TArgsActorDefinitionList = {}) {
+  return (await portal.db.listActorDefinitions(args)).map(fnToActorListItem);
 }
 
-export function fxGetActorDefinition(portal: TPortalActorDb, args: TArgsActorDefinitionById) {
-  const row = portal.db.getActorDefinition(args.id);
+export async function fxGetActorDefinition(portal: TPortalActorDb, args: TArgsActorDefinitionById) {
+  const row = await portal.db.getActorDefinition(args.id);
   return row ? fnToActorDefinition(row) : null;
 }
 
-export function fxGetActorDefinitionBySlug(portal: TPortalActorDb, args: TArgsActorDefinitionBySlug) {
-  const row = portal.db.getActorDefinitionBySlug(args.slug);
+export async function fxGetActorDefinitionBySlug(portal: TPortalActorDb, args: TArgsActorDefinitionBySlug) {
+  const row = await portal.db.getActorDefinitionBySlug(args.slug);
   return row ? fnToActorDefinition(row) : null;
 }
 
-export function fxListActorInstances(portal: TPortalActorDb, args: TArgsCanvasAccess) {
-  return portal.db.listActorInstances({ canvasId: args.canvasId }).map(fnToActorInstance);
+export async function fxListActorInstances(portal: TPortalActorDb, args: TArgsCanvasAccess) {
+  return (await portal.db.listActorInstances({ canvasId: args.canvasId })).map(fnToActorInstance);
 }
 
-export function fxGetActorInstance(portal: TPortalActorDb, args: TArgsActorInstanceById) {
-  const row = portal.db.getActorInstance(args.id);
+export async function fxGetActorInstance(portal: TPortalActorDb, args: TArgsActorInstanceById) {
+  const row = await portal.db.getActorInstance(args.id);
   return row ? fnToActorInstance(row) : null;
 }
 
-export function fxGetActorInstanceByElement(portal: TPortalActorDb, args: TArgsActorInstanceByElement) {
-  const row = portal.db.getActorInstanceByElement(args);
+export async function fxGetActorInstanceByElement(portal: TPortalActorDb, args: TArgsActorInstanceByElement) {
+  const row = await portal.db.getActorInstanceByElement(args);
   return row ? fnToActorInstance(row) : null;
 }
 
-export function fxListActorConnections(portal: TPortalActorDb, args: TArgsCanvasAccess) {
-  return portal.db.listActorConnections({ canvasId: args.canvasId }).map(fnToActorConnection);
+export async function fxListActorConnections(portal: TPortalActorDb, args: TArgsCanvasAccess) {
+  return (await portal.db.listActorConnections({ canvasId: args.canvasId })).map(fnToActorConnection);
 }
 
-export function fxGetActorConnection(portal: TPortalActorDb, args: TArgsActorConnectionById) {
-  const row = portal.db.getActorConnection(args.id);
+export async function fxGetActorConnection(portal: TPortalActorDb, args: TArgsActorConnectionById) {
+  const row = await portal.db.getActorConnection(args.id);
   return row ? fnToActorConnection(row) : null;
 }
 
-export function fxListActorOutputs(portal: TPortalActorDb, args: TArgsActorOutputList): TActorOutput[] {
-  return portal.db.listActorOutputs(args).map((row) => ({
+export async function fxListActorOutputs(portal: TPortalActorDb, args: TArgsActorOutputList): Promise<TActorOutput[]> {
+  return (await portal.db.listActorOutputs(args)).map((row) => ({
     id: row.id,
     workspace_id: row.workspace_id,
     canvas_id: row.canvas_id,

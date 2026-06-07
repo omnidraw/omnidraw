@@ -5,11 +5,11 @@ import { baseActorsOs } from './orpc';
 import { txCreateActorConnection } from './tx.actor-db';
 
 const apiCreateActorConnection = baseActorsOs.connections.create.handler(async ({ input, context }) => {
-  if (!fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId })) {
+  if (!(await fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId }))) {
     throw new ORPCError('FORBIDDEN', { message: 'Cannot create actor connection on this canvas' });
   }
 
-  const connection = txCreateActorConnection({
+  const connection = await txCreateActorConnection({
     db: getActorsDb(context.db),
     eventPublisher: context.eventPublisher,
     createId: () => crypto.randomUUID(),

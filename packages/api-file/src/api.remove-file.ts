@@ -13,7 +13,7 @@ const apiRemoveFile = baseFileOs.remove.handler(async ({ input, context }) => {
     return { ok: true as const };
   }
 
-  context.db.file.deleteById({ id: record.id });
+  await context.db.file.deleteById({ id: record.id });
 
   return { ok: true as const };
 });

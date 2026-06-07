@@ -5,10 +5,10 @@ import { baseActorsOs } from './orpc';
 
 const apiSendActorMessage = baseActorsOs.messages.send.handler(async ({ input, context }) => {
   const db = getActorsDb(context.db);
-  const instance = fxGetActorInstance({ db }, { id: input.actorInstanceId });
+  const instance = await fxGetActorInstance({ db }, { id: input.actorInstanceId });
   if (!instance) throw new ORPCError('NOT_FOUND', { message: 'Actor instance not found' });
 
-  if (!fxCanEditCanvas({ db }, { canvasId: instance.canvas_id, accountId: context.accountId })) {
+  if (!(await fxCanEditCanvas({ db }, { canvasId: instance.canvas_id, accountId: context.accountId }))) {
     throw new ORPCError('FORBIDDEN', { message: 'Cannot send actor message on this canvas' });
   }
 

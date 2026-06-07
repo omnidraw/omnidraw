@@ -5,11 +5,11 @@ import { baseActorsOs } from './orpc';
 import { txCreateActorInstance } from './tx.actor-db';
 
 const apiCreateActorInstance = baseActorsOs.instances.create.handler(async ({ input, context }) => {
-  if (!fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId })) {
+  if (!(await fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: input.canvasId, accountId: context.accountId }))) {
     throw new ORPCError('FORBIDDEN', { message: 'Cannot create actor instance on this canvas' });
   }
 
-  const instance = txCreateActorInstance({
+  const instance = await txCreateActorInstance({
     db: getActorsDb(context.db),
     eventPublisher: context.eventPublisher,
     createId: () => crypto.randomUUID(),

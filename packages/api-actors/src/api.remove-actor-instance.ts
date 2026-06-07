@@ -5,14 +5,14 @@ import { baseActorsOs } from './orpc';
 import { txRemoveActorInstance } from './tx.actor-db';
 
 const apiRemoveActorInstance = baseActorsOs.instances.remove.handler(async ({ input, context }) => {
-  const existing = fxGetActorInstance({ db: getActorsDb(context.db) }, { id: input.id });
+  const existing = await fxGetActorInstance({ db: getActorsDb(context.db) }, { id: input.id });
   if (!existing) throw new ORPCError('NOT_FOUND', { message: 'Actor instance not found' });
 
-  if (!fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: existing.canvas_id, accountId: context.accountId })) {
+  if (!(await fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: existing.canvas_id, accountId: context.accountId }))) {
     throw new ORPCError('FORBIDDEN', { message: 'Cannot remove actor instance on this canvas' });
   }
 
-  const instance = txRemoveActorInstance({
+  const instance = await txRemoveActorInstance({
     db: getActorsDb(context.db),
     eventPublisher: context.eventPublisher,
     createId: () => crypto.randomUUID(),

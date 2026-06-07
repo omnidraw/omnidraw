@@ -5,14 +5,14 @@ import { baseActorsOs } from './orpc';
 import { txUpdateActorConnection } from './tx.actor-db';
 
 const apiUpdateActorConnection = baseActorsOs.connections.update.handler(async ({ input, context }) => {
-  const existing = fxGetActorConnection({ db: getActorsDb(context.db) }, { id: input.id });
+  const existing = await fxGetActorConnection({ db: getActorsDb(context.db) }, { id: input.id });
   if (!existing) throw new ORPCError('NOT_FOUND', { message: 'Actor connection not found' });
 
-  if (!fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: existing.canvas_id, accountId: context.accountId })) {
+  if (!(await fxCanEditCanvas({ db: getActorsDb(context.db) }, { canvasId: existing.canvas_id, accountId: context.accountId }))) {
     throw new ORPCError('FORBIDDEN', { message: 'Cannot update actor connection on this canvas' });
   }
 
-  const connection = txUpdateActorConnection({
+  const connection = await txUpdateActorConnection({
     db: getActorsDb(context.db),
     eventPublisher: context.eventPublisher,
     createId: () => crypto.randomUUID(),

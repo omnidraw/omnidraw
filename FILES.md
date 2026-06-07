@@ -399,19 +399,19 @@ prefix: `packages/api-actors/src/`
 |---|---|---|---|
 | 🤖 | `../package.json` |  | Actor API package manifest and workspace dependencies. |
 | ❓ | `../tsconfig.json` |  | TypeScript config for actor API package source. |
-| ❓ | `api.actor-events.ts` |  | Snapshot-first actor event stream for canvas actor state. |
-| ❓ | `api.create-actor-connection.ts` |  | Creates DB-backed actor connections through actor instance endpoint validation. |
+| 🤖 | `api.actor-events.ts` |  | Snapshot-first actor event stream for canvas actor state. |
+| 🤖 | `api.create-actor-connection.ts` |  | Creates DB-backed actor connections through actor instance endpoint validation. |
 | 🤖 | `api.create-actor-instance.ts` |  | Creates canvas-bound actor instances and boots them through actor runtime when available. |
 | 🤖 | `api.get-actor-definition.ts` |  | Fetches one data-dir-backed actor/widget definition and attaches cached widget source files for frontend hydration. |
-| ❓ | `api.get-actor-instance.ts` |  | Fetches one actor instance with canvas view authorization. |
-| ❓ | `api.list-actor-connections.ts` |  | Lists canonical DB actor connections for a canvas. |
+| 🤖 | `api.get-actor-instance.ts` |  | Fetches one actor instance with canvas view authorization. |
+| 🤖 | `api.list-actor-connections.ts` |  | Lists canonical DB actor connections for a canvas. |
 | 🤖 | `api.list-actor-definitions.ts` |  | Lists lightweight data-dir-backed actor/widget definition tool metadata. |
-| ❓ | `api.list-actor-instances.ts` |  | Lists actor instances for a canvas. |
-| ❓ | `api.list-actor-outputs.ts` |  | Lists actor output rows for widget state synchronization. |
-| ❓ | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
-| ❓ | `api.remove-actor-instance.ts` |  | Deletes DB-backed actor instances for removed actor widgets and publishes actor events. |
+| 🤖 | `api.list-actor-instances.ts` |  | Lists actor instances for a canvas. |
+| 🤖 | `api.list-actor-outputs.ts` |  | Lists actor output rows for widget state synchronization. |
+| 🤖 | `api.remove-actor-connection.ts` |  | Deletes DB-backed actor connections and publishes actor events. |
+| 🤖 | `api.remove-actor-instance.ts` |  | Deletes DB-backed actor instances for removed actor widgets and publishes actor events. |
 | 🤖 | `api.send-actor-message.ts` |  | Authorizes actor messages and delegates enqueueing to ActorService runtime. |
-| ❓ | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
+| 🤖 | `api.update-actor-connection.ts` |  | Updates DB-backed actor connection enabled/label/whitelist/style fields. |
 | 🤖 | `contract.ts` |  | Actor ORPC contract with addon-shaped definitions plus instances, connections, messages, outputs, and events. |
 | ❓ | `CONSTANTS.ts` |  | Actor API system principal and event channel constants. |
 | ❓ | `db.ts` |  | Resolves the concrete Drizzle DB from the generic DB service for actor APIs. |
@@ -505,7 +505,7 @@ prefix: `packages/api-filesystem/src/`
 | ❓ | `fn.detect-file-kind.ts` |  |  |
 | ❓ | `fn.detect-mime.ts` |  |  |
 | ❓ | `fn.to-api-filesystem-error.ts` |  |  |
-| 🤖 | `fx.resolve-filesystem-id.ts` |  | Resolves default local filesystem from account-visible memberships. |
+| 🤖 | `core/fx.resolve-filesystem-id.ts` |  | Resolves default local filesystem from account-visible memberships. |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |
 | 🤖 | `types.ts` |  | Filesystem API context includes optional account id for authz. |
@@ -534,7 +534,7 @@ prefix: `packages/api-pty/src/`
 | 🤖 | `api.upload-image.ts` |  | Resolves PTY upload filesystem scope with account-aware DB membership filtering. |
 | ❓ | `contract.ts` |  |  |
 | ❓ | `fn.extension-from-pty-image-format.ts` |  |  |
-| 🤖 | `fx.resolve-filesystem-id.ts` |  | Resolves default local filesystem from account-visible memberships for PTY APIs. |
+| 🤖 | `core/fx.resolve-filesystem-id.ts` |  | Resolves default local filesystem from account-visible memberships for PTY APIs. |
 | ❓ | `handlers.ts` |  |  |
 | ❓ | `orpc.ts` |  |  |
 | 🤖 | `types.ts` |  | PTY API context includes optional account id for authz. |

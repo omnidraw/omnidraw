@@ -15,11 +15,11 @@ export type TArgsUpdateActorConnection = { input: TUpdateActorConnectionInput };
 export type TArgsRemoveActorConnection = { id: string };
 export type TArgsRemoveActorInstance = { id: string };
 
-export function txCreateActorInstance(portal: TPortalActorDbWrite, args: TArgsCreateActorInstance) {
-  const definitionRow = portal.db.getActorDefinition(args.input.actorDefinitionId);
+export async function txCreateActorInstance(portal: TPortalActorDbWrite, args: TArgsCreateActorInstance) {
+  const definitionRow = await portal.db.getActorDefinition(args.input.actorDefinitionId);
   if (!definitionRow) return null;
   const definition = fnToActorDefinition(definitionRow);
-  const instanceRow = portal.db.createActorInstance({
+  const instanceRow = await portal.db.createActorInstance({
     input: args.input,
     accountId: args.accountId,
     machineState: fnGetInitialMachineState({ input: args.input, definition }),
@@ -31,35 +31,35 @@ export function txCreateActorInstance(portal: TPortalActorDbWrite, args: TArgsCr
   return instance;
 }
 
-export function txCreateActorConnection(portal: TPortalActorDbWrite, args: TArgsCreateActorConnection) {
-  const connectionRow = portal.db.createActorConnection({ input: args.input, accountId: args.accountId });
+export async function txCreateActorConnection(portal: TPortalActorDbWrite, args: TArgsCreateActorConnection) {
+  const connectionRow = await portal.db.createActorConnection({ input: args.input, accountId: args.accountId });
   if (!connectionRow) return null;
   const connection = fnToActorConnection(connectionRow);
   portal.eventPublisher.publishActorEvent(connection.canvas_id, { type: 'actor.connection.created', canvasId: connection.canvas_id, connection });
   return connection;
 }
 
-export function txUpdateActorConnection(portal: TPortalActorDbWrite, args: TArgsUpdateActorConnection) {
-  const connectionRow = portal.db.updateActorConnection({ id: args.input.id, patch: args.input.patch });
+export async function txUpdateActorConnection(portal: TPortalActorDbWrite, args: TArgsUpdateActorConnection) {
+  const connectionRow = await portal.db.updateActorConnection({ id: args.input.id, patch: args.input.patch });
   if (!connectionRow) return null;
   const connection = fnToActorConnection(connectionRow);
   portal.eventPublisher.publishActorEvent(connection.canvas_id, { type: 'actor.connection.updated', canvasId: connection.canvas_id, connection });
   return connection;
 }
 
-export function txRemoveActorConnection(portal: TPortalActorDbWrite, args: TArgsRemoveActorConnection) {
-  const connectionRow = portal.db.removeActorConnection(args.id);
+export async function txRemoveActorConnection(portal: TPortalActorDbWrite, args: TArgsRemoveActorConnection) {
+  const connectionRow = await portal.db.removeActorConnection(args.id);
   if (!connectionRow) return null;
   const connection = fnToActorConnection(connectionRow);
   portal.eventPublisher.publishActorEvent(connection.canvas_id, { type: 'actor.connection.deleted', canvasId: connection.canvas_id, connectionId: connection.id });
   return connection;
 }
 
-export function txRemoveActorInstance(portal: TPortalActorDbWrite, args: TArgsRemoveActorInstance) {
-  const existing = portal.db.getActorInstance(args.id);
+export async function txRemoveActorInstance(portal: TPortalActorDbWrite, args: TArgsRemoveActorInstance) {
+  const existing = await portal.db.getActorInstance(args.id);
   if (!existing) return null;
-  const connections = portal.db.deleteActorConnectionsForInstance(existing.id).map(fnToActorConnection);
-  const instanceRow = portal.db.deleteActorInstance(args.id);
+  const connections = (await portal.db.deleteActorConnectionsForInstance(existing.id)).map(fnToActorConnection);
+  const instanceRow = await portal.db.deleteActorInstance(args.id);
   if (!instanceRow) return null;
   const instance = fnToActorInstance(instanceRow);
   connections.forEach((connection) => {
