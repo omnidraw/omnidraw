@@ -2,7 +2,7 @@ import { Database } from "@tursodatabase/database";
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
@@ -18,6 +18,12 @@ type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
 type TFileCreateArgs = Omit<TFile, "created_at">
 type TFilesystemCreateArgs = Omit<TFilesystem, "created_at" | "updated_at">;
 type TActorDefinitionCreateArgs = Omit<TActorDefinition, "created_at" | "updated_at">;
+type TActorDefinitionUpdateArgs = Omit<TActorDefinition, "id" | "created_at" | "updated_at">;
+type TActorInstanceCreateArgs = Omit<TActorInstance, "created_at" | "updated_at">;
+type TActorInstanceUpdateStatusArgs = Pick<TActorInstance, "id" | "status">;
+type TActorInstanceUpdateMachineArgs = Pick<TActorInstance, "id" | "machine_context" | "machine_state">;
+type TActorConnectionCreateArgs = Omit<TActorConnection, "created_at" | "updated_at">;
+
 
 /**
  * Interface follows same pattern.
@@ -49,8 +55,17 @@ interface IPublicMethods {
     listDefinitions(): Promise<TActorDefinition[]>;
     insertDefinition(def: TActorDefinitionCreateArgs): Promise<TActorDefinition>;
     deleteDefinition(id: string): Promise<void>;
+    updateDefinition(def: TActorDefinitionUpdateArgs): Promise<TActorDefinition>;
     reload(): Promise<void>;
     listInstances(filter?: { canvasId?: string }): Promise<TActorInstance[]>;
+    insertInstance(instance: TActorInstanceCreateArgs): Promise<TActorInstance>;
+    updateInstanceStatus(instance: TActorInstanceUpdateStatusArgs): Promise<TActorInstance>;
+    updateInstanceMachine(instance: TActorInstanceUpdateMachineArgs): Promise<TActorInstance>;
+    deleteInstance(id: string): Promise<void>;
+    listConnections(): Promise<TActorConnection[]>;
+    insertConnection(connection: TActorConnectionCreateArgs): Promise<TActorConnection>;
+    deleteConnectionById(id: string): Promise<void>;
+    deleteConnectionBySource(actorId: string): Promise<void>;
   }
 }
 

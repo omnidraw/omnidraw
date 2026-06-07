@@ -2226,6 +2226,7 @@ export const ZActorInstance = z.object({
   canvas_id: z.string(),
   element_id: z.string(),
   actor_definition_id: z.string(),
+  filesystem_id: z.string().nullable(),
   display_name: z.string(),
   status: ZActorStatus,
   machine_state: z.string(),
