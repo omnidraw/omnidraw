@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS `actor_definitions` (
 	`slug` TEXT NOT NULL,
 	`url` TEXT,
 	`description` TEXT,
-	`manifest_path` JSON NOT NULL,
+	`manifest_path` TEXT NOT NULL CHECK (manifest_path LIKE '/%'),
 	`created_at` TIMESTAMP DEFAULT (datetime('now')) NOT NULL,
 	`updated_at` TIMESTAMP DEFAULT (datetime('now')) NOT NULL
 ) STRICT;

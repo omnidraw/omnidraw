@@ -143,7 +143,7 @@ describe("tx.migrations", () => {
     await insertCanvas.run("canvas-actor", "Actor Canvas", "automerge:actor");
 
     const insertDefinition = await db.prepare("insert into actor_definitions (id, name, slug, manifest_path) values (?, ?, ?, ?)");
-    await insertDefinition.run("definition-1", "Counter", "counter", '"/actors/counter/vibecanvas.json"');
+    await insertDefinition.run("definition-1", "Counter", "counter", "/actors/counter/vibecanvas.json");
 
     await expectSqlConstraintFailure(() => insertDefinition.run("definition-duplicate", "Counter Copy", "counter", '"/actors/counter-copy/vibecanvas.json"'));
 
@@ -193,7 +193,7 @@ describe("tx.migrations", () => {
     await insertCanvas.run("canvas-durable", "Durable Canvas", "automerge:durable");
 
     const insertDefinition = await db.prepare("insert into actor_definitions (id, name, slug, manifest_path) values (?, ?, ?, ?)");
-    await insertDefinition.run("definition-durable", "Durable Actor", "durable-actor", '"/actors/durable/vibecanvas.json"');
+    await insertDefinition.run("definition-durable", "Durable Actor", "durable-actor", "/actors/durable/vibecanvas.json");
 
     const insertInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_id, display_name, status, machine_state) values (?, ?, ?, ?, ?, ?, ?)");
     await insertInstance.run("actor-durable", "canvas-durable", "element-durable", "definition-durable", "Durable A", "created", "idle");
