@@ -1,4 +1,3 @@
-import type { TWorkflowDefinition, TWorkflowFunctionKind, TWorkflowJson } from '@vibecanvas/service-workflow';
 import { ACTOR_WORKFLOW_KIND } from './CONSTANTS';
 import type { TActorBundleManifest, TActorDefinitionRow, TActorInboxRow, TActorTransitionPlan } from './types';
 

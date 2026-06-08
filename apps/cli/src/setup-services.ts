@@ -9,7 +9,6 @@ import { FilesystemServiceNode } from '@vibecanvas/service-filesystem/Filesystem
 import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
-import { WorkflowSuperviserService } from '@vibecanvas/service-workflow';
 import { spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
@@ -26,7 +25,6 @@ export interface IRuntimeServices {
   eventPublisher: IEventPublisherService;
   filesystem: IFilesystemService;
   pty: IPtyService;
-  workflowSuperviser: WorkflowSuperviserService;
   // actor: ActorService;
   widgetSource: ReturnType<typeof createWidgetSourceService>;
 }

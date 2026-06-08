@@ -1,5 +1,4 @@
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { WorkflowSuperviserService, type TWorkflowDb } from '@vibecanvas/service-workflow';
 import { ACTOR_BOOT_MESSAGE_NAME, DEFAULT_ACTOR_POLL_INTERVAL_MS } from './core/CONSTANTS';
 import { fnCanProcessMessage, fnCreateBootMessage, fnCreateTransitionPlan, fnMergeEffectResults } from './core/fn.machine';
 import { fnActorWorkflowRunId, fnCreateActorWorkflowDefinition } from './core/fn.workflow-definition';

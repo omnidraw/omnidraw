@@ -11,13 +11,6 @@ Host-side actor runtime for Vibecanvas.
 
 A host application must inject a sandbox runner that starts the generic durable workflow worker in the background.
 
-Important boundary:
-
-- `packages/service-workflow` must not know about actors
-- `apps/worker` must not know about actors
-- actor-specific planning/reconciliation lives in `packages/service-actor`
-- untrusted guest `fn.*`, `fx.*`, and `tx.*` actor functions must run only inside the sandboxed worker path
-
 ## DB model
 
 Actor state is stored in `@vibecanvas/service-db` tables:

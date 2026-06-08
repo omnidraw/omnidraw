@@ -1,7 +1,6 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { ActorDb } from '@vibecanvas/service-db/ActorDb';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { TWorkflowDb } from '@vibecanvas/service-workflow';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { ActorSupervisor } from './ActorSupervisor';
