@@ -1,87 +1,76 @@
-import type { ActorDb } from '@vibecanvas/service-db/ActorDb';
-import type { TActorConnection, TActorDefinition, TActorInbox, TActorInstance, TActorOutput as TActorOutputRow } from '@vibecanvas/service-db/model';
-import type { TWorkflowJson } from '@vibecanvas/service-workflow';
+export type TActorState =
+  'booting' | `booting.${string}` |
+  'ready' | `ready.${string}` |
+  'busy' | `busy.${string}` |
+  'waiting' | `waiting.${string}` |
+  'error' | `error.${string}`
 
-export type TActorDb = ActorDb;
+export type TInputMessage = `in.${string}`
+export type TOutputMessage = `out.${string}`
 
-export type TActorJson = TWorkflowJson;
-export type TActorMessageName = string;
-export type TActorEffectName = string;
-export type TActorMachineState = string;
+export type TFunctionName = `fn.${string}` | `fx.${string}` | `tx.${string}`
 
-export type TActorTransitionConfig = {
-  readonly target: string;
-  readonly guard?: string;
-  readonly actions?: readonly string[];
+export type TTransition = {
+  func: TFunctionName[];
+  allowedTargets: TActorState[];
+}
+
+export type TActorJson = {
+  readonly slug: string;
+  readonly name: string;
+  readonly version?: string;
+  readonly description?: string;
+  readonly initialState: TActorState;
+  readonly initialData: Record<string, any>;
+  readonly states: Record<TActorState, TTransition>;
+  readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
+  readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
 };
 
-export type TActorStateConfig = {
-  readonly entry?: readonly string[];
-  readonly exit?: readonly string[];
-  readonly on?: Record<string, TActorTransitionConfig>;
-};
+/** JSON Schema primitive type names supported by Vibecanvas actor ports. */
+export type TJsonSchemaPrimitiveType = "null" | "boolean" | "object" | "array" | "number" | "string" | "integer";
 
-export type TActorMachineConfig = {
-  readonly initialState?: string;
-  readonly initialContext?: TActorJson;
-  readonly states: Record<string, TActorStateConfig>;
-};
-
-export type TActorBundleManifest = {
-  readonly entrypoint?: string;
-  readonly modulePath?: string;
-  readonly functionsPath?: string;
-  readonly functions?: {
-    readonly fns?: readonly string[];
-    readonly fxs?: readonly string[];
-    readonly txs?: readonly string[];
-  };
-  readonly files?: readonly { readonly path: string; readonly hash?: string; readonly fileId?: string }[];
-};
-
-export type TActorError = {
-  readonly message: string;
-  readonly code?: string;
-  readonly stack?: string;
-  readonly details?: Record<string, TActorJson>;
-};
-
-export type TActorDefinitionRow = TActorDefinition;
-export type TActorInstanceRow = TActorInstance;
-export type TActorConnectionRow = TActorConnection;
-export type TActorInboxRow = TActorInbox;
-export type { TActorOutputRow };
-
-export type TActorMessage = {
-  readonly name: TActorMessageName;
-  readonly payload: TActorJson;
-};
-
-export type TActorOutput = {
-  readonly name: TActorMessageName;
-  readonly payload: TActorJson;
-};
-
-export type TActorEffectArgs = {
-  readonly state: TActorMachineState;
-  readonly context: TActorJson;
-  readonly message: TActorMessage;
-};
-
-export type TActorTransitionPlan = {
-  readonly changed: boolean;
-  readonly targetState: TActorMachineState;
-  readonly effectArgs: TActorEffectArgs;
-  readonly guard?: TActorEffectName;
-  readonly effects: readonly TActorEffectName[];
-};
-
-export type TActorRows = {
-  readonly instance: TActorInstanceRow;
-  readonly definition: TActorDefinitionRow;
-};
-
-export type TActorSupervisorStatus = {
-  readonly polling: boolean;
-  readonly lastError: string | null;
+/**
+ * JSON Schema used for widget actor input/output payloads.
+ *
+ * Vibecanvas validates messages in the host before delivery. Guest widgets only
+ * declare schemas; they do not need to bundle a validator.
+ */
+export type TJsonSchema = boolean | {
+  $id?: string;
+  $schema?: string;
+  $ref?: string;
+  /** Prefer `definitions` for draft-07 compatibility; `$defs` is allowed for newer drafts. */
+  $defs?: Record<string, TJsonSchema>;
+  /** Draft-07 reusable schema definitions. */
+  definitions?: Record<string, TJsonSchema>;
+  title?: string;
+  description?: string;
+  type?: TJsonSchemaPrimitiveType | TJsonSchemaPrimitiveType[];
+  enum?: unknown[];
+  const?: unknown;
+  default?: unknown;
+  examples?: unknown[];
+  properties?: Record<string, TJsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean | TJsonSchema;
+  items?: TJsonSchema | TJsonSchema[];
+  additionalItems?: boolean | TJsonSchema;
+  prefixItems?: TJsonSchema[];
+  minItems?: number;
+  maxItems?: number;
+  uniqueItems?: boolean;
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
+  multipleOf?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  format?: string;
+  anyOf?: TJsonSchema[];
+  oneOf?: TJsonSchema[];
+  allOf?: TJsonSchema[];
+  not?: TJsonSchema;
 };
