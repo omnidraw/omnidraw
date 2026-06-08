@@ -15,17 +15,50 @@ export type TTransition = {
   allowedTargets: TActorState[];
 }
 
-export type TActorJson = {
+export type TVibecanvasActor = {
+  readonly functionPath: string;
+  readonly initialState: TActorState;
+  readonly initialData: Record<string, any>;
+  readonly dataSchema?: TJsonSchema;
+  readonly states: Record<TActorState, TTransition>;
+  readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
+  readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
+}
+
+export type TVibecanvasActorWidget = {
+  readonly widgetDir: string;
+  readonly tool: {
+    readonly label: string;
+    readonly icon?: string;
+    readonly group?: string;
+    readonly priority?: number;
+    readonly behavior: {
+      readonly type: "mode",
+      readonly mode: "draw-create" | "click-create" | "select" | "hand"
+    } | {
+      readonly type: "action",
+    } | {
+      readonly type: "modal",
+    }
+  }
+}
+
+export type TVibecanvasJson = {
+  readonly id: string;
   readonly slug: string;
   readonly name: string;
   readonly version?: string;
   readonly description?: string;
-  readonly initialState: TActorState;
-  readonly initialData: Record<string, any>;
-  readonly states: Record<TActorState, TTransition>;
-  readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
-  readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
+  readonly actor: TVibecanvasActor;
+  readonly widget: TVibecanvasActorWidget;
 };
+
+export type TFnPortal = {}
+export type TFnArgs = {}
+export type TFxPortal = {}
+export type TFxArgs = {}
+export type TTxPortal = {}
+export type TTxArgs = {}
 
 /** JSON Schema primitive type names supported by Vibecanvas actor ports. */
 export type TJsonSchemaPrimitiveType = "null" | "boolean" | "object" | "array" | "number" | "string" | "integer";
