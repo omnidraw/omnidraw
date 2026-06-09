@@ -9,12 +9,9 @@ import { FilesystemServiceNode } from '@vibecanvas/service-filesystem/Filesystem
 import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
-import { spawnSync } from 'child_process';
-import { existsSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import type { ICliConfig } from './config';
-import { createWidgetSourceService } from './plugins/widget/WidgetPlugin';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const ACTOR_WORKER_DIST_PATH = resolve(REPO_ROOT, 'apps/worker/dist/worker.mjs');
@@ -25,8 +22,7 @@ export interface IRuntimeServices {
   eventPublisher: IEventPublisherService;
   filesystem: IFilesystemService;
   pty: IPtyService;
-  // actor: ActorService;
-  widgetSource: ReturnType<typeof createWidgetSourceService>;
+  actor: ActorService;
 }
 
 declare module '@vibecanvas/runtime' {
@@ -79,11 +75,8 @@ function setupServices(config: ICliConfig) {
   }
 
   if (config.command === 'serve') {
-    // TODO
-    // ensureActorWorkerBundle(config);
-    // const workflowDb = dbService.workflow;
-    // const workflowSuperviserService = new WorkflowSuperviserService({ db: workflowDb });
-    // const actorService = new ActorService({
+    const actorService = new ActorService(
+    //   {
     //   db: dbService.actor,
     //   workflowDb,
     //   eventPublisher,
@@ -96,21 +89,12 @@ function setupServices(config: ICliConfig) {
     //     VIBECANVAS_CACHE_DIR: `${ACTOR_SANDBOX_HOST_DATA_DIR}/cache`,
     //     VIBECANVAS_MIGRATIONS_SILENT: '1',
     //   },
-    // });
-    // services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor, actorService }));
-    // services.provide('workflowSuperviser', 55, workflowSuperviserService);
-    // services.provide('actor', 60, actorService);
+    // }
+  );
+    services.provide('actor', 60, actorService);
   }
 
   return { services, automergeService, dbService, eventPublisher, filesystemService, ptyService };
-}
-
-function ensureActorWorkerBundle(config: ICliConfig): void {
-  if (existsSync(ACTOR_WORKER_DIST_PATH)) return;
-  if (!config.dev || config.compiled) return;
-
-  const result = spawnSync('bun', ['--filter', '@vibecanvas/worker', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' });
-  if (result.status !== 0) throw new Error('Failed to build actor worker bundle');
 }
 
 export { setupServices };

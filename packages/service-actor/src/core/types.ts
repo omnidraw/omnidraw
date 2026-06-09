@@ -54,11 +54,14 @@ export type TVibecanvasJson = {
 };
 
 export type TFnPortal = {}
-export type TFnArgs = {}
+export type TFnArgs<D = any, M = any> = {
+  data: D;
+  msg: M;
+}
 export type TFxPortal = {}
-export type TFxArgs = {}
+export type TFxArgs<D = any, M = any> = TFnArgs<D, M>
 export type TTxPortal = {}
-export type TTxArgs = {}
+export type TTxArgs<D = any, M = any> = TFnArgs<D, M>
 
 /** JSON Schema primitive type names supported by Vibecanvas actor ports. */
 export type TJsonSchemaPrimitiveType = "null" | "boolean" | "object" | "array" | "number" | "string" | "integer";
