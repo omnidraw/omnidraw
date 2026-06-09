@@ -11,22 +11,21 @@ const findRootNull = () => null;
 describe('fnXdgPaths', () => {
   describe('VIBECANVAS_DB override (priority 1)', () => {
     test('uses the explicit database file and collapses dirs to its parent', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { VIBECANVAS_DB: '/custom/dbs/isolated.sqlite' },
         isCompiled: true,
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.dataDir).toBe('/custom/dbs');
-      expect(paths!.configDir).toBe('/custom/dbs');
-      expect(paths!.stateDir).toBe('/custom/dbs');
-      expect(paths!.cacheDir).toBe('/custom/dbs');
-      expect(paths!.databasePath).toBe('/custom/dbs/isolated.sqlite');
+      expect(paths.dataDir).toBe('/custom/dbs');
+      expect(paths.configDir).toBe('/custom/dbs');
+      expect(paths.stateDir).toBe('/custom/dbs');
+      expect(paths.cacheDir).toBe('/custom/dbs');
+      expect(paths.databasePath).toBe('/custom/dbs/isolated.sqlite');
     });
 
     test('wins over VIBECANVAS_CONFIG', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: {
           VIBECANVAS_DB: '/custom/dbs/isolated.sqlite',
           VIBECANVAS_CONFIG: '/custom/config',
@@ -35,30 +34,28 @@ describe('fnXdgPaths', () => {
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.databasePath).toBe('/custom/dbs/isolated.sqlite');
-      expect(paths!.dataDir).toBe('/custom/dbs');
+      expect(paths.databasePath).toBe('/custom/dbs/isolated.sqlite');
+      expect(paths.dataDir).toBe('/custom/dbs');
     });
   });
 
   describe('VIBECANVAS_CONFIG override (priority 2)', () => {
     test('all dirs point to the override path', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { VIBECANVAS_CONFIG: '/custom/path' },
         isCompiled: true,
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.dataDir).toBe('/custom/path');
-      expect(paths!.configDir).toBe('/custom/path');
-      expect(paths!.stateDir).toBe('/custom/path');
-      expect(paths!.cacheDir).toBe('/custom/path');
-      expect(paths!.databasePath).toBe('/custom/path/vibecanvas.turso');
+      expect(paths.dataDir).toBe('/custom/path');
+      expect(paths.configDir).toBe('/custom/path');
+      expect(paths.stateDir).toBe('/custom/path');
+      expect(paths.cacheDir).toBe('/custom/path');
+      expect(paths.databasePath).toBe('/custom/path/vibecanvas.turso');
     });
 
     test('override works in dev mode too', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { VIBECANVAS_CONFIG: '/override' },
         isCompiled: false,
         homedir: FAKE_HOME,
@@ -66,14 +63,13 @@ describe('fnXdgPaths', () => {
         findMonorepoRoot: findRoot,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.dataDir).toBe('/override');
+      expect(paths.dataDir).toBe('/override');
     });
   });
 
   describe('dev mode (priority 3)', () => {
     test('uses local-volume subdirectories under monorepo root', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: {},
         isCompiled: false,
         homedir: FAKE_HOME,
@@ -81,90 +77,82 @@ describe('fnXdgPaths', () => {
         findMonorepoRoot: findRoot,
       });
 
-      expect(err).toBeNull();
       const lv = join(FAKE_MONOREPO, 'local-volume');
-      expect(paths!.dataDir).toBe(join(lv, 'data'));
-      expect(paths!.configDir).toBe(join(lv, 'config'));
-      expect(paths!.stateDir).toBe(join(lv, 'state'));
-      expect(paths!.cacheDir).toBe(join(lv, 'cache'));
-      expect(paths!.databasePath).toBe(join(lv, 'data', 'vibecanvas.turso'));
+      expect(paths.dataDir).toBe(join(lv, 'data'));
+      expect(paths.configDir).toBe(join(lv, 'config'));
+      expect(paths.stateDir).toBe(join(lv, 'state'));
+      expect(paths.cacheDir).toBe(join(lv, 'cache'));
+      expect(paths.databasePath).toBe(join(lv, 'data', 'vibecanvas.turso'));
     });
 
-    test('returns error when monorepo root not found', () => {
-      const [paths, err] = fnXdgPaths({
-        env: {},
-        isCompiled: false,
-        homedir: FAKE_HOME,
-        cwd: '/some/random/dir',
-        findMonorepoRoot: findRootNull,
-      });
-
-      expect(paths).toBeNull();
-      expect(err).not.toBeNull();
-      expect(err!.code).toBe('FN.CONFIG.XDG_PATHS.MONOREPO_NOT_FOUND');
+    test('throws when monorepo root not found', () => {
+      expect(() =>
+        fnXdgPaths({
+          env: {},
+          isCompiled: false,
+          homedir: FAKE_HOME,
+          cwd: '/some/random/dir',
+          findMonorepoRoot: findRootNull,
+        }),
+      ).toThrow('Failed to find monorepo root. Could not locate bun.lock from /some/random/dir');
     });
   });
 
   describe('production mode - XDG defaults (priority 4)', () => {
     test('uses XDG defaults when no env vars set', () => {
-      const [paths, err] = fnXdgPaths({ env: {}, isCompiled: true, homedir: FAKE_HOME });
+      const paths = fnXdgPaths({ env: {}, isCompiled: true, homedir: FAKE_HOME });
 
-      expect(err).toBeNull();
-      expect(paths!.dataDir).toBe(join(FAKE_HOME, '.local', 'share', 'vibecanvas'));
-      expect(paths!.configDir).toBe(join(FAKE_HOME, '.config', 'vibecanvas'));
-      expect(paths!.stateDir).toBe(join(FAKE_HOME, '.local', 'state', 'vibecanvas'));
-      expect(paths!.cacheDir).toBe(join(FAKE_HOME, '.cache', 'vibecanvas'));
-      expect(paths!.databasePath).toBe(join(FAKE_HOME, '.local', 'share', 'vibecanvas', 'vibecanvas.turso'));
+      expect(paths.dataDir).toBe(join(FAKE_HOME, '.local', 'share', 'vibecanvas'));
+      expect(paths.configDir).toBe(join(FAKE_HOME, '.config', 'vibecanvas'));
+      expect(paths.stateDir).toBe(join(FAKE_HOME, '.local', 'state', 'vibecanvas'));
+      expect(paths.cacheDir).toBe(join(FAKE_HOME, '.cache', 'vibecanvas'));
+      expect(paths.databasePath).toBe(join(FAKE_HOME, '.local', 'share', 'vibecanvas', 'vibecanvas.turso'));
     });
 
     test('respects XDG_DATA_HOME', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { XDG_DATA_HOME: '/custom/data' },
         isCompiled: true,
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.dataDir).toBe('/custom/data/vibecanvas');
-      expect(paths!.databasePath).toBe('/custom/data/vibecanvas/vibecanvas.turso');
-      expect(paths!.configDir).toBe(join(FAKE_HOME, '.config', 'vibecanvas'));
+      expect(paths.dataDir).toBe('/custom/data/vibecanvas');
+      expect(paths.databasePath).toBe('/custom/data/vibecanvas/vibecanvas.turso');
+      expect(paths.configDir).toBe(join(FAKE_HOME, '.config', 'vibecanvas'));
     });
 
     test('respects XDG_CONFIG_HOME', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { XDG_CONFIG_HOME: '/custom/config' },
         isCompiled: true,
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.configDir).toBe('/custom/config/vibecanvas');
+      expect(paths.configDir).toBe('/custom/config/vibecanvas');
     });
 
     test('respects XDG_STATE_HOME', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { XDG_STATE_HOME: '/custom/state' },
         isCompiled: true,
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.stateDir).toBe('/custom/state/vibecanvas');
+      expect(paths.stateDir).toBe('/custom/state/vibecanvas');
     });
 
     test('respects XDG_CACHE_HOME', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: { XDG_CACHE_HOME: '/custom/cache' },
         isCompiled: true,
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.cacheDir).toBe('/custom/cache/vibecanvas');
+      expect(paths.cacheDir).toBe('/custom/cache/vibecanvas');
     });
 
     test('respects all XDG vars simultaneously', () => {
-      const [paths, err] = fnXdgPaths({
+      const paths = fnXdgPaths({
         env: {
           XDG_DATA_HOME: '/xdg/data',
           XDG_CONFIG_HOME: '/xdg/config',
@@ -175,11 +163,10 @@ describe('fnXdgPaths', () => {
         homedir: FAKE_HOME,
       });
 
-      expect(err).toBeNull();
-      expect(paths!.dataDir).toBe('/xdg/data/vibecanvas');
-      expect(paths!.configDir).toBe('/xdg/config/vibecanvas');
-      expect(paths!.stateDir).toBe('/xdg/state/vibecanvas');
-      expect(paths!.cacheDir).toBe('/xdg/cache/vibecanvas');
+      expect(paths.dataDir).toBe('/xdg/data/vibecanvas');
+      expect(paths.configDir).toBe('/xdg/config/vibecanvas');
+      expect(paths.stateDir).toBe('/xdg/state/vibecanvas');
+      expect(paths.cacheDir).toBe('/xdg/cache/vibecanvas');
     });
   });
 });

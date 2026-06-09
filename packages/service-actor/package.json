@@ -14,7 +14,7 @@
   "dependencies": {
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
-    "@vibecanvas/service-event-publisher": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:"

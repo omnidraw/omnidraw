@@ -50,8 +50,8 @@ function setupServices(config: ICliConfig) {
 
   const dbService = new DbServiceTurso({
     databasePath: config.dbPath,
-    dataDir: config.dataPath,
-    cacheDir: config.cachePath,
+    dataDir: config.xdgPaths.dataDirPath,
+    cacheDir: config.xdgPaths.cacheDirPath,
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
   const filesystemService = new FilesystemServiceNode(eventPublisher);
@@ -75,7 +75,10 @@ function setupServices(config: ICliConfig) {
   }
 
   if (config.command === 'serve') {
-    const actorService = new ActorService(
+    const actorService = new ActorService({
+      db: dbService,
+      configPath: config.xdgPaths.configDirPath
+    }
     //   {
     //   db: dbService.actor,
     //   workflowDb,

@@ -10,10 +10,13 @@ export interface ICliConfig {
   rawArgv: string[];
   argv: string[];
   port: number;
-  dataPath: string;
   dbPath: string;
-  configPath: string;
-  cachePath: string;
+  xdgPaths: {
+    configDirPath: string;
+    dataDirPath: string;
+    cacheDirPath: string;
+    stateDirPath: string;
+  };
   helpRequested: boolean;
   versionRequested: boolean;
   upgradeTarget?: string;

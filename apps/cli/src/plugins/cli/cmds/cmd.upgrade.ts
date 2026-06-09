@@ -1,12 +1,11 @@
+import { createHash } from 'crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { parseArgs } from 'util';
-import { createHash } from 'crypto';
 import type { ICliConfig } from '../../../config';
 import fnCliUpdateResolvePolicy from '../core/fn.resolve-policy';
 import fnCliUpdateShouldUpgrade from '../core/fn.should-upgrade';
-import { resolveCliPaths } from '../../../resolve-paths';
 
 type TInstallMethod = 'curl' | 'npm' | 'unknown';
 
@@ -129,8 +128,7 @@ function detectInstallMethod(): TInstallMethod {
 }
 
 function readConfigAutoupdate(config: ICliConfig): boolean | 'notify' | undefined {
-  const { configDir } = resolveCliPaths(config);
-  const configFilePath = join(configDir, 'config.json');
+  const configFilePath = join(config.xdgPaths.configDirPath, 'config.json');
   if (!existsSync(configFilePath)) return undefined;
 
   try {
