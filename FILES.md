@@ -677,7 +677,7 @@ prefix: `packages/service-actor/`
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
 | 🤖 | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
-| 🤖 | `package.json` |  | Actor service package metadata and sandbox service dependency. |
+| 🤖 | `package.json` |  | Actor service package metadata, zod parser dependency, and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
 | 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service, widget/actor source registry, supervisor/sandbox startup, and authoritative actor instance removal. |
 | 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows without built-in actor exceptions, reconciles results, commits outputs, routes messages, and publishes runtime events. |
@@ -685,8 +685,10 @@ prefix: `packages/service-actor/`
 | 🤖 | `src/core/fn.machine.ts` |  | Pure actor machine transition from data-folder actor definitions, boot message, processability, and effect result merge helpers. |
 | 🤖 | `src/core/fn.workflow-definition.ts` |  | Pure actor inbox/definition transition plan to durable workflow definition mapping for actor/functions.ts. |
 | 🤖 | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for definition-backed instances, inbox queues, connections, and sequence numbers. |
+| 🤖 | `src/core/fx.vibecanvas-actors.ts` |  | Reads widget repo directories, resolves vibecanvas.json paths, and validates manifests with Zod. |
 | ❓ | `src/core/tx.actor-db.ts` |  | Actor DB write helpers for claiming inbox, patching actors, and inserting messages/outputs. |
 | ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
+| ❓ | `src/core/vibecanvasjson.zod.ts` |  | Zod parser for vibecanvas.json actor/widget addon manifests. |
 | 🤖 | `src/index.ts` |  | Actor service package barrel exports including runtime send result types. |
 
 ## packages/service-filesystem
