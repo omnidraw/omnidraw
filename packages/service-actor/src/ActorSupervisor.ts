@@ -4,6 +4,8 @@ import { readdir, exists } from "node:fs/promises"
 import { join } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
+import type { TVibecanvasJson } from "./core/types";
+import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 
 interface IPublicMethods {
   init(): Promise<void>;
@@ -23,6 +25,7 @@ export class ActorSupervisor {
 
   #widgetDir: string;
   #config: IActorSupervisorConfig
+  #vibecanvasDefMap: {[id: string]: TVibecanvasJson & {manifest_path: string}} = {}
 
   constructor(config: IActorSupervisorConfig) {
     this.#config = config
@@ -37,10 +40,58 @@ export class ActorSupervisor {
     // boot instances from db
 
     const defs = await fxListVibecanvasJsons({Bun, readdir, join, exists}, {widgetDir: this.#widgetDir})
+    defs.forEach(def => {
+      if(def.error !== null) {
+        // TODO: show error to user
+        return
+      }
+
+      this.#vibecanvasDefMap[def.vibecanvasJson.id] = {...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath}
+    })
+
+    await txSyncDbActorDefinitions({crypto, db: this.#config.db}, {defs: Object.values(this.#vibecanvasDefMap)})
+
     console.log('defs', defs, this.#config.configPath)
   }
 
-  async loadActorDefFromFilesystem() {}
+  async syncDbActorDefinitions(args: {defs: {vibecanvasJson: TVibecanvasJson, vibecanvasJsonPath: string}[]}) {
+    const definitionsInDb = await this.#config.db.actor.listDefinitions()
+    const defsToInsert: Set<{vibecanvasJson: TVibecanvasJson, vibecanvasJsonPath: string}> = new Set()
+    const defsToUpdate: Set<{vibecanvasJson: TVibecanvasJson, vibecanvasJsonPath: string}> = new Set()
+    args.defs.forEach(def => {
+      if(definitionsInDb.map(d => d.manifest_path).includes(def.vibecanvasJsonPath))
+        defsToUpdate.add(def)
+      else defsToUpdate.add(def)
+    })
+
+    // now we need to do db operations
+    const promises: Promise<any>[] = []
+    defsToUpdate.forEach(def => {
+      const dbDef = definitionsInDb.find(d => d.manifest_path === def.vibecanvasJsonPath)!
+      // def.vibecanvasJson.
+      const p = this.#config.db.actor.updateDefinition({
+        manifest_path: def.vibecanvasJsonPath,
+        name: def.vibecanvasJson.name,
+        slug: def.vibecanvasJson.slug,
+        description: def.vibecanvasJson.description ?? null,
+        url: def.vibecanvasJson.url ?? null
+      })
+      promises.push(p)
+    })
+    defsToInsert.forEach(def => {
+      const p = this.#config.db.actor.insertDefinition({
+        id: crypto.randomUUID(),
+        description: def.vibecanvasJson.description ?? null,
+        manifest_path: def.vibecanvasJsonPath,
+        name: def.vibecanvasJson.name,
+        slug: def.vibecanvasJson.slug,
+        url: def.vibecanvasJson.url ?? null
+      })
+      promises.push(p)
+    })
+    await Promise.all(promises)
+
+  }
 
 
 }

@@ -98,6 +98,7 @@ export const ZVibecanvasJson = z.object({
   id: z.string(),
   slug: z.string(),
   name: z.string(),
+  url: z.url().optional(),
   version: z.string().optional(),
   description: z.string().optional(),
   actor: ZVibecanvasActor,

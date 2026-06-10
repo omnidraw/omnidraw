@@ -687,6 +687,7 @@ prefix: `packages/service-actor/`
 | 🤖 | `src/core/fx.actor-db.ts` |  | Actor DB read helpers for definition-backed instances, inbox queues, connections, and sequence numbers. |
 | 🤖 | `src/core/fx.vibecanvas-actors.ts` |  | Reads widget repo directories, resolves vibecanvas.json paths, and validates manifests with Zod. |
 | ❓ | `src/core/tx.actor-db.ts` |  | Actor DB write helpers for claiming inbox, patching actors, and inserting messages/outputs. |
+| ❓ | `src/core/tx.actor-definitions.ts` |  | Syncs filesystem vibecanvas actor definitions into the actor definition DB table. |
 | ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
 | ❓ | `src/core/vibecanvasjson.zod.ts` |  | Zod parser for vibecanvas.json actor/widget addon manifests. |
 | 🤖 | `src/index.ts` |  | Actor service package barrel exports including runtime send result types. |

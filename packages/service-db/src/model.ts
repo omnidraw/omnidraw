@@ -2216,7 +2216,7 @@ export const ZActorDefinition = z.object({
   slug: z.string(),
   url: z.string().nullable(),
   description: z.string().nullable(),
-  manifest_path: z.string().startsWith("/").nullable(),
+  manifest_path: z.string().startsWith("/"),
   created_at: ZTimestamp,
   updated_at: ZTimestamp,
 });
