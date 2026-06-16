@@ -95,7 +95,6 @@ export const ZVibecanvasActorWidget = z.object({
 });
 
 export const ZVibecanvasJson = z.object({
-  id: z.string(),
   slug: z.string(),
   name: z.string(),
   url: z.url().optional(),

@@ -1,8 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS `actor_definitions` (
-	`id` TEXT PRIMARY KEY NOT NULL,
-	`name` TEXT NOT NULL,
-	`slug` TEXT NOT NULL,
+	`name` TEXT PRIMARY KEY NOT NULL,
+	`slug` TEXT NOT NULL UNIQUE,
 	`url` TEXT,
 	`description` TEXT,
 	`manifest_path` TEXT NOT NULL CHECK (manifest_path LIKE '/%'),
@@ -10,7 +9,6 @@ CREATE TABLE IF NOT EXISTS `actor_definitions` (
 	`updated_at` TIMESTAMP DEFAULT (datetime('now')) NOT NULL
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS `actor_definitions_slug_unique` ON `actor_definitions` (`slug`);
 CREATE INDEX IF NOT EXISTS `actor_definitions_slug_idx` ON `actor_definitions` (`slug`);
 
 CREATE TRIGGER IF NOT EXISTS `actor_updated_at_after_update`
@@ -20,7 +18,7 @@ WHEN NEW.`updated_at` = OLD.`updated_at`
 BEGIN
 	UPDATE `actor_definitions`
 	SET `updated_at` = datetime('now')
-	WHERE `id` = OLD.`id`;
+	WHERE `name` = OLD.`name`;
 END;
 --
 CREATE DOMAIN IF NOT EXISTS ACTOR_SYSTEM_STATUS AS TEXT
@@ -32,7 +30,7 @@ CREATE TABLE IF NOT EXISTS `actor_instances` (
 	`id` TEXT PRIMARY KEY NOT NULL,
 	`canvas_id` TEXT NOT NULL REFERENCES `canvas`(`id`) ON UPDATE no action ON DELETE cascade,
 	`element_id` TEXT NOT NULL, -- canvas element
-	`actor_definition_id` TEXT NOT NULL REFERENCES `actor_definitions`(`id`) ON UPDATE no action ON DELETE cascade,
+	`actor_definition_name` TEXT NOT NULL REFERENCES `actor_definitions`(`name`) ON UPDATE no action ON DELETE cascade,
 	`filesystem_id` TEXT REFERENCES `file_systems`(`id`) ON UPDATE no action ON DELETE SET NULL,
 	`display_name` TEXT NOT NULL,
 	`status` ACTOR_SYSTEM_STATUS,

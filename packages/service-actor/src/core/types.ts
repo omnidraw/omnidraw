@@ -44,7 +44,6 @@ export type TVibecanvasActorWidget = {
 }
 
 export type TVibecanvasJson = {
-  readonly id: string;
   readonly slug: string;
   readonly name: string;
   readonly url?: string;

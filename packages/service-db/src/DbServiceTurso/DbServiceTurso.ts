@@ -4,7 +4,7 @@ import path from "node:path";
 import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
-import { fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
+import { fxActorGetDefinition, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
@@ -123,7 +123,8 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   actor = {
     listDefinitions: () => fxActorListDefinitions(this),
     insertDefinition: (def: TActorDefinitionCreateArgs) => txActorInsertDefinition(this, def),
-    deleteDefinition: (id: string) => txActorDeleteDefinition(this, { id }),
+    deleteDefinition: (name: string) => txActorDeleteDefinition(this, { name }),
+    getDefinition: (name: string) => fxActorGetDefinition(this, {name}),
     updateDefinition: (def: TActorDefinitionUpdateArgs) => txActorUpdateDefinition(this, def),
     reload: async () => {
       // TODO

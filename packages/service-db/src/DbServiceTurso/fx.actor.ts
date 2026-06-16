@@ -9,14 +9,28 @@ type TArgsListInstances = {
   canvasId?: string
 }
 
+type TArgsGetDefinition = {
+  name: string
+}
+
 export async function fxActorListDefinitions(portal: TPortal): Promise<TActorDefinition[]> {
   const stmt = await portal.db.prepare(`
     SELECT *
     FROM actor_definitions
-    ORDER BY name ASC, slug ASC, id ASC
+    ORDER BY name ASC, slug ASC
   `)
   const rows = await stmt.all()
   return rows as TActorDefinition[]
+}
+
+export async function fxActorGetDefinition(portal: TPortal, args: TArgsGetDefinition): Promise<TActorDefinition | null> {
+  const stmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_definitions
+    WHERE name = ?
+  `)
+  const rows = await stmt.get(args.name)
+  return rows as TActorDefinition
 }
 
 export async function fxActorListInstances(portal: TPortal, args: TArgsListInstances): Promise<TActorInstance[]> {

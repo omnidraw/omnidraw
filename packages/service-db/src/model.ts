@@ -71,7 +71,6 @@ export const ZFilesystem = z.object({
 });
 
 export const ZActorDefinition = z.object({
-  id: z.string(),
   name: z.string(),
   slug: z.string(),
   url: z.string().nullable(),
@@ -85,7 +84,7 @@ export const ZActorInstance = z.object({
   id: z.string(),
   canvas_id: z.string(),
   element_id: z.string(),
-  actor_definition_id: z.string(),
+  actor_definition_name: z.string(),
   filesystem_id: z.string().nullable(),
   display_name: z.string(),
   status: ZActorStatus,

@@ -6,8 +6,8 @@ type TPortal = {
 }
 
 type TArgsDefinitionCreate = Omit<TActorDefinition, "created_at" | "updated_at">
-type TArgsDefinitionDelete = { id: string }
-type TArgsDefinitionUpdate = Omit<TActorDefinition, "id" | "created_at" | "updated_at">
+type TArgsDefinitionDelete = { name: string }
+type TArgsDefinitionUpdate = Omit<TActorDefinition, "created_at" | "updated_at">
 type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at">
 type TArgsInstanceUpdateStatus = Pick<TActorInstance, "id" | "status">
 type TArgsInstanceUpdateMachine = Pick<TActorInstance, "id" | "machine_context" | "machine_state">
@@ -18,11 +18,11 @@ type TArgsConnectionDeleteBySource = { actorId: string }
 
 export async function txActorInsertDefinition(portal: TPortal, args: TArgsDefinitionCreate): Promise<TActorDefinition> {
   const stmt = await portal.db.prepare(`
-    INSERT INTO actor_definitions (id, name, slug, url, description, manifest_path)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO actor_definitions (name, slug, url, description, manifest_path)
+    VALUES (?, ?, ?, ?, ?)
     RETURNING *
   `)
-  const row = await stmt.get(args.id, args.name, args.slug, args.url, args.description, args.manifest_path)
+  const row = await stmt.get(args.name, args.slug, args.url, args.description, args.manifest_path)
   if (!row) throw new Error("Failed to insert actor definition")
   return row as TActorDefinition
 }
@@ -30,9 +30,9 @@ export async function txActorInsertDefinition(portal: TPortal, args: TArgsDefini
 export async function txActorDeleteDefinition(portal: TPortal, args: TArgsDefinitionDelete): Promise<void> {
   const stmt = await portal.db.prepare(`
     DELETE FROM actor_definitions
-    WHERE id = ?
+    WHERE name = ?
   `)
-  await stmt.run(args.id)
+  await stmt.run(args.name)
 }
 
 export async function txActorUpdateDefinition(portal: TPortal, args: TArgsDefinitionUpdate): Promise<TActorDefinition> {
