@@ -241,6 +241,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [?]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
 - [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
 - [ ]: [E23](e/E23.md) - actor output log pruning compatibility
+- [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
