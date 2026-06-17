@@ -33,6 +33,13 @@ async function waitForPersistedTursoDoc(args: { database: TursoDatabase; automer
   });
 }
 
+function createNoopAutomergeCallbacks(): { onElementDelete: (canvasId: string, element: TElement) => void; onElementCreate: (canvasId: string, element: TElement) => void } {
+  return {
+    onElementDelete: () => {},
+    onElementCreate: () => {},
+  };
+}
+
 function createTestElement(id: string): TElement {
   return {
     id,
@@ -86,7 +93,7 @@ describe('AutomergeService', () => {
     const turso = await connect(':memory:');
     tursoDatabases.push(turso);
 
-    const creator = new AutomergeService(turso, {});
+    const creator = new AutomergeService(turso, createNoopAutomergeCallbacks());
     creator.start();
     services.push(creator);
 
@@ -100,7 +107,7 @@ describe('AutomergeService', () => {
 
     await waitForPersistedTursoDoc({ database: turso, automergeUrl: createdHandle.url });
 
-    const reader = new AutomergeService({ type: 'turso', database: turso }, {});
+    const reader = new AutomergeService({ type: 'turso', database: turso }, createNoopAutomergeCallbacks());
     reader.start();
     services.push(reader);
     const handle = await reader.repo.find<TCanvasDoc>(createdHandle.url as never);
@@ -118,6 +125,7 @@ describe('AutomergeService', () => {
     tursoDatabases.push(turso);
 
     const service = new AutomergeService(turso, {
+      ...createNoopAutomergeCallbacks(),
       onElementDelete: (canvasId, element) => {
         deletedElements.push({ canvasId, element });
       },
@@ -156,6 +164,7 @@ describe('AutomergeService', () => {
     tursoDatabases.push(turso);
 
     const service = new AutomergeService(turso, {
+      ...createNoopAutomergeCallbacks(),
       onElementCreate: (canvasId, element) => {
         createdElements.push({ canvasId, element });
       },

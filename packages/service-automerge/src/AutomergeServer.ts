@@ -7,8 +7,8 @@ import type { TCanvasDoc, TElement } from './types/canvas-doc.types';
 
 export type TAutomergeStorageConfig = TursoDatabase | { type: 'turso'; database: TursoDatabase };
 export type TAutomergeCallbacks = {
-  onElementDelete?: (canvasId: string, element: TElement) => void;
-  onElementCreate?: (canvasId: string, element: TElement) => void;
+  onElementDelete: (canvasId: string, element: TElement) => void;
+  onElementCreate: (canvasId: string, element: TElement) => void;
 };
 
 export class AutomergeService implements IAutomergeService {
@@ -22,17 +22,11 @@ export class AutomergeService implements IAutomergeService {
 
   constructor(
     private readonly database: TAutomergeStorageConfig,
-    cb: TAutomergeCallbacks | ((canvasId: string, element: TElement) => void) = {},
+    cb: TAutomergeCallbacks,
   ) {
     this.wsAdapter = new BunWSServerAdapter();
-    if (typeof cb === 'function') {
-      this.#onElementDelete = cb;
-      this.#onElementCreate = () => {};
-      return;
-    }
-
-    this.#onElementDelete = cb.onElementDelete ?? (() => {});
-    this.#onElementCreate = cb.onElementCreate ?? (() => {});
+    this.#onElementDelete = cb.onElementDelete;
+    this.#onElementCreate = cb.onElementCreate;
   }
 
   get repo(): Repo {
