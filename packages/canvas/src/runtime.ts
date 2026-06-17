@@ -104,12 +104,6 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
     scene,
     contextMenu,
   });
-  const actorWidgetBinding = new ActorWidgetBindingService({
-    apiService: config.apiService,
-    canvasId: config.canvasId,
-    crdt,
-    actorConnection,
-  });
   const widgetManager = new WidgetManagerService({
     crdtService: crdt,
     contextMenuService: contextMenu,
@@ -145,7 +139,6 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
   services.provide("history", 50, history);
   services.provide("selection", 60, selection);
   services.provide("actorConnection", 65, actorConnection);
-  services.provide("actorWidgetBinding", 66, actorWidgetBinding);
   services.provide("crdt", 70, crdt);
   services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);
