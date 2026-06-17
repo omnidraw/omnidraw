@@ -26,7 +26,7 @@ export interface IRuntimeServices {
 }
 
 declare module '@vibecanvas/runtime' {
-  interface IServiceMap extends IRuntimeServices {}
+  interface IServiceMap extends IRuntimeServices { }
 }
 
 function isCanvasSchemaOnlyRequest(config: ICliConfig): boolean {
@@ -61,12 +61,21 @@ function setupServices(config: ICliConfig) {
   services.provide('filesystem', 30, filesystemService);
   services.provide('pty', 40, ptyService);
 
-  const automergeService = new AutomergeService(dbService.db, (canvasId, element) => {
-    if (element.data.type === 'widget' && element.data.actorInstanceId) {
-      // TODO: [S52] - remove drizzle use turso + raw sqlite
-      // services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
-    }
-  });
+  const automergeService = new AutomergeService(dbService.db, {
+    onElementCreate(canvasId, element) {
+      console.log('create element', canvasId, element)
+      if (element.data.type === 'widget' && element.data.actorDefinitionName) {
+        services.require('actor').createInstance(element.data.actorDefinitionName)
+        // TODO: [S52] - remove drizzle use turso + raw sqlite
+        // services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
+      }
+    },
+    onElementDelete(canvasId, element) {
+      console.log('delete element', canvasId, element)
+
+    },
+  },
+  );
   services.provide('automerge', 50, automergeService);
 
   if (config.command !== 'serve') {
@@ -79,21 +88,21 @@ function setupServices(config: ICliConfig) {
       db: dbService,
       configPath: config.xdgPaths.configDirPath
     }
-    //   {
-    //   db: dbService.actor,
-    //   workflowDb,
-    //   eventPublisher,
-    //   workerDistPath: ACTOR_WORKER_DIST_PATH,
-    //   sandboxRunner: createActorSandboxRunner(config, dbService.sandbox),
-    //   startSandboxInBackground: config.dev,
-    //   workerEnv: {
-    //     VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
-    //     VIBECANVAS_DB_PATH: `${ACTOR_SANDBOX_HOST_DATA_DIR}/${basename(config.dbPath)}`,
-    //     VIBECANVAS_CACHE_DIR: `${ACTOR_SANDBOX_HOST_DATA_DIR}/cache`,
-    //     VIBECANVAS_MIGRATIONS_SILENT: '1',
-    //   },
-    // }
-  );
+      //   {
+      //   db: dbService.actor,
+      //   workflowDb,
+      //   eventPublisher,
+      //   workerDistPath: ACTOR_WORKER_DIST_PATH,
+      //   sandboxRunner: createActorSandboxRunner(config, dbService.sandbox),
+      //   startSandboxInBackground: config.dev,
+      //   workerEnv: {
+      //     VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
+      //     VIBECANVAS_DB_PATH: `${ACTOR_SANDBOX_HOST_DATA_DIR}/${basename(config.dbPath)}`,
+      //     VIBECANVAS_CACHE_DIR: `${ACTOR_SANDBOX_HOST_DATA_DIR}/cache`,
+      //     VIBECANVAS_MIGRATIONS_SILENT: '1',
+      //   },
+      // }
+    );
     services.provide('actor', 60, actorService);
   }
 

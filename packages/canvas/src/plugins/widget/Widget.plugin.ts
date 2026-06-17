@@ -39,7 +39,7 @@ export function createWidgetPlugin(): IPlugin<{
             dataType: 'widget',
             tool: actor.def.widget.tool,
             actor: {
-              actorDefinitionId: actor.def.name,
+              actorDefinitionName: actor.def.name,
             },
             sandbox: {
               // @ts-expect-error asumes that main.ts and main.css exists

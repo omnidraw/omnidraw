@@ -48,7 +48,7 @@ export interface IWidgetConfig {
   tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
   initialPayload?: Record<string, any>;
   actor?: {
-    actorDefinitionId: string;
+    actorDefinitionName: string;
   };
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
   sandbox?: IWidgetSandboxConfig;

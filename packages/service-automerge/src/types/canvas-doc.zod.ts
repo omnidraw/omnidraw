@@ -134,7 +134,7 @@ export const zWidgetData = z.object({
   h: z.number(),
   expanded: z.boolean(),
   window: zWidgetWindow,
-  actorDefinitionId: z.string(),
+  actorDefinitionName: z.string(),
   actorInstanceId: z.string().optional(),
   uiProps: z.record(z.string(), zJsonValue).optional(),
 }).strict();

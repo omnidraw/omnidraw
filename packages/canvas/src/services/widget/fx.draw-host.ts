@@ -158,7 +158,7 @@ function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TElemen
       window: 'contained',
       h: WIDGET_HOST_MIN_HEIGHT,
       w: WIDGET_HOST_MIN_WIDTH,
-      actorDefinitionId: actor.actorDefinitionId,
+      actorDefinitionName: actor.actorDefinitionName,
     }
   }
 

@@ -6,6 +6,10 @@ import type { IAutomergeService } from './IAutomergeService';
 import type { TCanvasDoc, TElement } from './types/canvas-doc.types';
 
 export type TAutomergeStorageConfig = TursoDatabase | { type: 'turso'; database: TursoDatabase };
+export type TAutomergeCallbacks = {
+  onElementDelete?: (canvasId: string, element: TElement) => void;
+  onElementCreate?: (canvasId: string, element: TElement) => void;
+};
 
 export class AutomergeService implements IAutomergeService {
   readonly name = 'automerge' as const;
@@ -14,13 +18,21 @@ export class AutomergeService implements IAutomergeService {
   #elementDeleteWatchedDocumentIds = new Set<string>();
   #elementDeleteScanInterval: ReturnType<typeof setInterval> | null = null;
   #onElementDelete: (canvasId: string, element: TElement) => void;
+  #onElementCreate: (canvasId: string, element: TElement) => void;
 
   constructor(
     private readonly database: TAutomergeStorageConfig,
-    onElementDelete: (canvasId: string, element: TElement) => void = () => {},
+    cb: TAutomergeCallbacks | ((canvasId: string, element: TElement) => void) = {},
   ) {
     this.wsAdapter = new BunWSServerAdapter();
-    this.#onElementDelete = onElementDelete;
+    if (typeof cb === 'function') {
+      this.#onElementDelete = cb;
+      this.#onElementCreate = () => {};
+      return;
+    }
+
+    this.#onElementDelete = cb.onElementDelete ?? (() => {});
+    this.#onElementCreate = cb.onElementCreate ?? (() => {});
   }
 
   get repo(): Repo {
@@ -89,6 +101,14 @@ export class AutomergeService implements IAutomergeService {
         }
 
         this.#onElementDelete(canvasId, element);
+      }
+
+      for (const [elementId, element] of Object.entries(afterElements)) {
+        if (elementId in beforeElements) {
+          continue;
+        }
+
+        this.#onElementCreate(canvasId, element);
       }
     });
   }
