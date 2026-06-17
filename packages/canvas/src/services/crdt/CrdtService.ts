@@ -186,6 +186,7 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
     this.docHandle.on("delete", this.#onDocDelete as (payload: DocHandleDeletePayload<unknown>) => void);
     this.docHandle.on("ephemeral-message", this.#onDocEphemeralMessage as (payload: DocHandleEphemeralMessagePayload<unknown>) => void);
     this.started = true;
+    console.log(this.docHandle.doc())
   }
 
   stop(): void | Promise<void> {

@@ -3,7 +3,6 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import type { CameraService, ElementService, GroupService, SceneService, SelectionService, WidgetManagerService } from "../../services";
 import type { IRuntimeHooks, IRuntimeConfig } from "../../types";
 
-
 export function createWidgetPlugin(): IPlugin<{
   camera: CameraService;
   element: ElementService;
@@ -16,7 +15,6 @@ export function createWidgetPlugin(): IPlugin<{
   return {
     name: "widget-plugin",
     apply(ctx) {
-      console.log('widget', ctx)
       const widgetMangerService = ctx.services.require('widgetManager')
       ctx.hooks.initAsync.tapPromise(async () => {
         const [error, actorDefs] = await ctx.config.apiService.api.actors.definitions.list();
@@ -35,8 +33,6 @@ export function createWidgetPlugin(): IPlugin<{
             p[c.path] = c.content
             return p
           }, {} as {[path: string]: string})
-
-          console.log('arrowjs', arrowjs)
 
           widgetMangerService.registerWidget({
             id: actor.def.name,

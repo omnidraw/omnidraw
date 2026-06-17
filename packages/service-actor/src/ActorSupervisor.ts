@@ -25,7 +25,7 @@ export class ActorSupervisor {
 
   #widgetDir: string;
   #config: IActorSupervisorConfig
-  vibecanvasDefMap: {[id: string]: TVibecanvasJson & {manifest_path: string}} = {}
+  vibecanvasDefMap: {[name: string]: TVibecanvasJson & {manifest_path: string}} = {}
 
   constructor(config: IActorSupervisorConfig) {
     this.#config = config
@@ -80,7 +80,6 @@ export class ActorSupervisor {
     })
     defsToInsert.forEach(def => {
       const p = this.#config.db.actor.insertDefinition({
-        id: crypto.randomUUID(),
         description: def.vibecanvasJson.description ?? null,
         manifest_path: def.vibecanvasJsonPath,
         name: def.vibecanvasJson.name,
