@@ -19,41 +19,39 @@ export function createWidgetPlugin(): IPlugin<{
       console.log('widget', ctx)
       const widgetMangerService = ctx.services.require('widgetManager')
       ctx.hooks.initAsync.tapPromise(async () => {
-        const [error, actors] = await ctx.config.apiService.api.actors.definitions.list();
-        if(error) {
+        const [error, actorDefs] = await ctx.config.apiService.api.actors.definitions.list();
+        if (error) {
           console.error(error)
           return
         }
-        console.log(actors)
-        const promises = actors.map(actor => {
-          return ctx.config.apiService.api.actors.definitions.get({ id: actor.id }).then(([err, res]) => {
-            if (err || !res) {
-              console.error(err)
-              return
+        const promises = actorDefs.map(async actorDef => {
+          const [error, actor] = await ctx.config.apiService.api.actors.definitions.get({ name: actorDef.name })
+          if(error) {
+
+            return
+          }
+
+          const arrowjs =  actor.widgetCode.reduce((p, c) => {
+            p[c.path] = c.content
+            return p
+          }, {} as {[path: string]: string})
+
+          console.log('arrowjs', arrowjs)
+
+          widgetMangerService.registerWidget({
+            id: actor.def.name,
+            dataType: 'widget',
+            tool: actor.def.widget.tool,
+            actor: {
+              actorDefinitionId: actor.def.name,
+            },
+            sandbox: {
+              // @ts-expect-error asumes that main.ts and main.css exists
+              arrowjs
             }
-            widgetMangerService.registerWidget({
-              id: actor.id,
-              dataType: 'widget',
-              tool: actor.tool,
-              actor: {
-                actorDefinitionId: actor.id,
-              },
-              sandbox: {
-                // @ts-expect-error TODO: must fix sourceFiles to require main.ts
-                arrowjs: res.widget.sourceFiles
-              }
-            })
           })
         })
         await Promise.all(promises)
-        actors.forEach(actor => {
-          // widgetMangerService.registerWidget({
-          //   id: 'test',
-          //   dataType: 'widget',
-          //   tool: actor.widget.
-          // })
-        })
-        // todo: register actors with widget manager
       })
 
     }

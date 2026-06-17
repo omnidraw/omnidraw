@@ -1,5 +1,7 @@
 import type { DbServiceTurso } from "packages/service-db/src/DbServiceTurso/DbServiceTurso";
 import type { TVibecanvasJson } from "./types";
+import type { readdir as _readdir } from 'node:fs/promises';
+import type { join as _join, relative as _relative } from 'node:path';
 
 type TVibecanvasDefinition = TVibecanvasJson & {
   readonly manifest_path: string,
@@ -13,6 +15,41 @@ type TPortalSyncDbActorDefinitions = {
 
 type TArgsSyncDbActorDefinitions = {
   defs: TVibecanvasDefinition[],
+}
+
+type TPortalReadWidgetCode = {
+  Bun: Pick<typeof Bun, 'file'>,
+  readdir: typeof _readdir,
+  join: typeof _join,
+  relative: typeof _relative,
+}
+
+type TArgsReadWidgetCode = {
+  widgetDir: string,
+}
+
+export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgsReadWidgetCode): Promise<{content: string, path: string}[]> {
+  const collectFiles = async (dir: string): Promise<{content: string, path: string}[]> => {
+    console.log('-----', dir)
+    const items = await portal.readdir(dir, {withFileTypes: true})
+    const groups = await Promise.all(items.map(async (item) => {
+      const childPath = portal.join(dir, item.name)
+      if (item.isDirectory()) {
+        return collectFiles(childPath)
+      }
+      if (!item.isFile()) {
+        return []
+      }
+
+      const content = await portal.Bun.file(childPath).text()
+      const relPath = portal.relative(args.widgetDir, childPath)
+      return [{content, path: relPath}]
+    }))
+
+    return groups.flat()
+  }
+
+  return collectFiles(args.widgetDir)
 }
 
 export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinitions, args: TArgsSyncDbActorDefinitions) {
@@ -42,7 +79,6 @@ export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinit
 
   defsToInsert.forEach(def => {
     const p = portal.db.actor.insertDefinition({
-      id: portal.crypto.randomUUID(),
       description: def.description ?? null,
       manifest_path: def.manifest_path,
       name: def.name,

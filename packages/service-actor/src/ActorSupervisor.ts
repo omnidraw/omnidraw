@@ -25,7 +25,7 @@ export class ActorSupervisor {
 
   #widgetDir: string;
   #config: IActorSupervisorConfig
-  #vibecanvasDefMap: {[id: string]: TVibecanvasJson & {manifest_path: string}} = {}
+  vibecanvasDefMap: {[id: string]: TVibecanvasJson & {manifest_path: string}} = {}
 
   constructor(config: IActorSupervisorConfig) {
     this.#config = config
@@ -46,12 +46,12 @@ export class ActorSupervisor {
         return
       }
 
-      this.#vibecanvasDefMap[def.vibecanvasJson.id] = {...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath}
+      this.vibecanvasDefMap[def.vibecanvasJson.name] = {...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath}
     })
 
-    await txSyncDbActorDefinitions({crypto, db: this.#config.db}, {defs: Object.values(this.#vibecanvasDefMap)})
+    await txSyncDbActorDefinitions({crypto, db: this.#config.db}, {defs: Object.values(this.vibecanvasDefMap)})
 
-    console.log('defs', defs, this.#config.configPath)
+    // console.log('defs', defs, this.#config.configPath)
   }
 
   async syncDbActorDefinitions(args: {defs: {vibecanvasJson: TVibecanvasJson, vibecanvasJsonPath: string}[]}) {

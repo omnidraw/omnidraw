@@ -8,7 +8,7 @@ export type TActorsDbService = DbServiceTurso & { actor: ActorDb };
 export type TActorsApiContext = {
   db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
-  actor?: ActorService;
+  actor: ActorService;
   accountId?: string;
   requestId?: string;
 };
