@@ -143,6 +143,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
   registerWidget(wConfig: IWidgetConfig) {
+    this.#toolService.unregisterTool(wConfig.id);
+    this.#elementService.unregisterElement(wConfig.id);
+
     if (wConfig.tool) {
       fxRegisterWidgetTool({
         toolService: this.#toolService,

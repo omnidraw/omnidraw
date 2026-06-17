@@ -46,6 +46,7 @@ export function createWidgetPlugin(): IPlugin<{
               arrowjs
             }
           })
+          ctx.hooks.widgetRegister.call({ kind: actor.def.name })
         })
         await Promise.all(promises)
       })

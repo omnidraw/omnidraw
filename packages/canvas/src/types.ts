@@ -43,6 +43,10 @@ export type TWheelEvent = Konva.KonvaEventObject<WheelEvent>;
 
 export type TElementPointerEvent = KonvaEventObject<PointerEvent, Shape<ShapeConfig> | Group>;
 
+export type TWidgetRegistryEvent = {
+  kind: string;
+};
+
 export interface IRuntimeHooks {
   /**
    * Called at the initialization stage.
@@ -67,6 +71,7 @@ export interface IRuntimeHooks {
   keyup: SyncHook<[KeyboardEvent]>;
   gridVisible: SyncHook<[boolean]>;
   toolSelect: SyncHook<[string]>;
+  widgetRegister: SyncHook<[TWidgetRegistryEvent]>;
   elementPointerClick: SyncExitHook<[TElementPointerEvent]>;
   elementPointerDown: SyncExitHook<[TElementPointerEvent]>;
   elementPointerDoubleClick: SyncExitHook<[TElementPointerEvent]>;

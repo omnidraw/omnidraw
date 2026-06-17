@@ -220,6 +220,7 @@ prefix: `packages/canvas/src/`
 | 🤖 | `plugins/terminal/widget.css` |  | Trusted terminal tabs, widget, context menu, and cwd picker styling. |
 | 🤖 | `plugins/terminal/widget.ts` |  | Arrow multi-tab Ghostty terminal widget backed by CLI PTY APIs. |
 | 🤖 | `plugins/toolbar/Toolbar.plugin.ts` |  | Runtime toolbar bootstrap: tools, hotkeys, sidebar toggle, cursor, temporary hand |
+| 🤖 | `plugins/widget/Widget.plugin.ts` |  | Dynamic actor widget tool registration and widget-register hook emission after loading widget code. |
 | ❓ | `plugins/transform/fx.proxy-bounds.ts` |  | Transform overlay needs layer-relative rotated shape bounds |
 | ❓ | `plugins/transform/fx.proxy-drag-target.ts` |  | Single selected shape or pen path proxy-drag target |
 | 🤖 | `plugins/transform/fx.selection-transform-options.ts` |  | Selection transformer anchors ratio border flip resolution |

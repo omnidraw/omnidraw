@@ -71,6 +71,7 @@ function createHooks(): IRuntimeHooks {
     keyup: new SyncHook(),
     gridVisible: new SyncHook(),
     toolSelect: new SyncHook(),
+    widgetRegister: new SyncHook(),
     elementPointerClick: new SyncExitHook(),
     elementPointerDown: new SyncExitHook(),
     elementPointerDoubleClick: new SyncExitHook(),

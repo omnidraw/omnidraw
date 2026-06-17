@@ -171,6 +171,48 @@ function loadElementsTopDown(args: {
   return invalidElementIds;
 }
 
+function reloadElementsByWidgetKind(args: {
+  crdt: CrdtService;
+  element: ElementService;
+  scene: SceneService;
+  selection: SelectionService;
+  kind: string;
+}) {
+  const doc = args.crdt.doc();
+  const affectedParents = new Set<Konva.Layer | Konva.Group>();
+  const snapshot = captureSceneState(args.selection);
+
+  Object.values(doc.elements)
+    .filter((element) => {
+      return (element.data.type === "widget" || element.data.type === "ui-widget")
+        && element.data.kind === args.kind;
+    })
+    .sort(compareByPersistedOrder)
+    .forEach((widgetElement) => {
+      const existingNode = findSceneNodeById(args.scene, widgetElement.id);
+      const parent = resolveElementParent(args.scene, widgetElement) ?? existingNode?.getParent();
+      if (!(parent instanceof Konva.Layer) && !(parent instanceof Konva.Group)) {
+        return;
+      }
+
+      existingNode?.destroy();
+      const nextNode = args.element.createNodeFromElement(widgetElement);
+      if (!isKonvaGroup(nextNode) && !isKonvaShape(nextNode)) {
+        return;
+      }
+
+      parent.add(nextNode);
+      args.element.updateElement(widgetElement);
+      affectedParents.add(parent);
+    });
+
+  affectedParents.forEach((parent) => {
+    sortSceneTopDown(parent);
+  });
+  restoreSceneState(args.scene, args.selection, snapshot);
+  args.scene.stage.batchDraw();
+}
+
 function sortSceneTopDown(parent: Konva.Layer | Konva.Group) {
   parent.getChildren()
     .filter((candidate): candidate is TSceneNode => isKonvaGroup(candidate) || isKonvaShape(candidate))
@@ -250,7 +292,7 @@ function applyIncrementalElementChange(args: {
     const existingNode = findSceneNodeById(args.scene, id);
     if (!existingNode) {
       const node = args.element.createNodeFromElement(changedElement);
-      if (!node) {
+      if (!isKonvaGroup(node) && !isKonvaShape(node)) {
         return false;
       }
 
@@ -359,6 +401,16 @@ export function createSceneHydratorPlugin(): IPlugin<{
 
       ctx.hooks.initAsync.tapPromise(async () => {
         loadCanvas({ crdt, element, group, scene });
+      });
+
+      ctx.hooks.widgetRegister.tap((event) => {
+        reloadElementsByWidgetKind({
+          crdt,
+          element,
+          scene,
+          selection,
+          kind: event.kind,
+        });
       });
 
       ctx.hooks.destroy.tap(() => {
