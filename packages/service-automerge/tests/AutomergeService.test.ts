@@ -2,7 +2,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { connect, type Database as TursoDatabase } from '@tursodatabase/database';
-import { AutomergeService } from '../src/AutomergeServer';
+import { AutomergeService } from '../src/AutomergeService';
 import type { TCanvasDoc, TElement } from '../src/types/canvas-doc.types';
 
 function sleep(ms: number): Promise<void> {

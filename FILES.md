@@ -622,7 +622,7 @@ prefix: `packages/service-automerge/src/`
 
 | status | filepath | human comment | oneliner when to use |
 |---|---|---|---|
-| 🤖 | `AutomergeServer.ts` |  | Automerge repo service with optional element-delete callback for watched canvas handles. |
+| 🤖 | `AutomergeService.ts` |  | Automerge repo service with optional element-delete callback for watched canvas handles. |
 | 🤖 | `types/canvas-doc.types.ts` |  | Canvas document TypeScript model derived from zod schemas. |
 | 🤖 | `types/canvas-doc.zod.ts` |  | Canvas document zod schemas and element data union. |
 | 🤖 | `IAutomergeService.ts` |  | Automerge service contract, including server-side element delete handler registration. |

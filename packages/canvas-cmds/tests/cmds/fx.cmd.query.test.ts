@@ -1,4 +1,4 @@
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeServer';
+import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import type { TCanvasDoc, TElement, TGroup } from 'packages/imperative-shell/src/automerge/index';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';

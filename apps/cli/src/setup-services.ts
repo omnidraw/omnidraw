@@ -1,6 +1,6 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { ActorService } from '@vibecanvas/service-actor';
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeServer';
+import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
@@ -65,14 +65,13 @@ function setupServices(config: ICliConfig) {
     onElementCreate(canvasId, element) {
       console.log('create element', canvasId, element)
       if (element.data.type === 'widget' && element.data.actorDefinitionName) {
-        services.require('actor').createInstance(element.data.actorDefinitionName)
-        // TODO: [S52] - remove drizzle use turso + raw sqlite
-        // services.require('actor').removeInstance({actorInstanceId: element.data.actorInstanceId})
+        await services.require('actor').createInstance(element.data.actorDefinitionName)
       }
     },
     onElementDelete(canvasId, element) {
-      console.log('delete element', canvasId, element)
-
+      if (element.data.type === 'widget' && element.data.actorDefinitionName) {
+        // await services.require('actor').removeInstance(element.data.actorDefinitionName)
+      }
     },
   },
   );
