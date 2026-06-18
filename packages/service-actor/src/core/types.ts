@@ -53,14 +53,18 @@ export type TVibecanvasJson = {
   readonly widget: TVibecanvasActorWidget;
 };
 
-export type TFnPortal = {}
+export type TFnPortal = {
+  next: Promise<void>,
+  setData: (data: any) => Promise<any>,
+  emitMessage: (msg: any) => Promise<any>
+}
 export type TFnArgs<D = any, M = any> = {
   data: D;
   msg: M;
 }
-export type TFxPortal = {}
+export type TFxPortal = TFnPortal & {}
 export type TFxArgs<D = any, M = any> = TFnArgs<D, M>
-export type TTxPortal = {}
+export type TTxPortal = TFxPortal & {}
 export type TTxArgs<D = any, M = any> = TFnArgs<D, M>
 
 /** JSON Schema primitive type names supported by Vibecanvas actor ports. */

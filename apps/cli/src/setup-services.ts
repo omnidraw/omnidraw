@@ -62,15 +62,14 @@ function setupServices(config: ICliConfig) {
   services.provide('pty', 40, ptyService);
 
   const automergeService = new AutomergeService(dbService.db, {
-    onElementCreate(canvasId, element) {
-      console.log('create element', canvasId, element)
+    async onElementCreate(canvasId, element) {
       if (element.data.type === 'widget' && element.data.actorDefinitionName) {
-        await services.require('actor').createInstance(element.data.actorDefinitionName)
+        await services.require('actor').createInstance(element.data.actorDefinitionName, canvasId)
       }
     },
-    onElementDelete(canvasId, element) {
-      if (element.data.type === 'widget' && element.data.actorDefinitionName) {
-        // await services.require('actor').removeInstance(element.data.actorDefinitionName)
+    async onElementDelete(canvasId, element) {
+      if (element.data.type === 'widget' && element.data.actorInstanceId) {
+        await services.require('actor').removeInstance(element.data.actorInstanceId)
       }
     },
   },

@@ -30,7 +30,6 @@ type TArgsReadWidgetCode = {
 
 export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgsReadWidgetCode): Promise<{content: string, path: string}[]> {
   const collectFiles = async (dir: string): Promise<{content: string, path: string}[]> => {
-    console.log('-----', dir)
     const items = await portal.readdir(dir, {withFileTypes: true})
     const groups = await Promise.all(items.map(async (item) => {
       const childPath = portal.join(dir, item.name)

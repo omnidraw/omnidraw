@@ -9,7 +9,7 @@ import { dirname, join, relative as relativePath } from 'node:path';
 
 interface IPublicMethods {
   sendMessage(msg: any): Promise<void>
-  createInstance(defId: string): Promise<void>
+  createInstance(defId: string, canvasId: string): Promise<void>
   removeInstance(instanceId: string): Promise<void>
   getVibecanvasJson(defId: string): TVibecanvasJson | null;
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
@@ -39,7 +39,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async createInstance(defId: string): Promise<void> {
+  async createInstance(defName: string, canvasId: string): Promise<void> {
+      const def = this.getVibecanvasJson(defName)
+      if(def === null) return
+      def.actor
       throw "TODO: implement"
   }
 
