@@ -16,8 +16,5 @@
   "scripts": {
     "build": "rm -rf dist && mkdir -p dist && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/index.d.ts src/index.ts && bun build src/index.ts --target=browser --format=esm --outdir=dist",
     "test": "bun test"
-  },
-  "dependencies": {
-    "@vibecanvas/service-actor": "workspace:*"
   }
 }
