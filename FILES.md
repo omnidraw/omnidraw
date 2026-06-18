@@ -604,7 +604,7 @@ prefix: `packages/sdk/`
 | 🤖 | `dist/index.js` | generated | Generated widget SDK runtime bundle exporting actor functions and reactive machine helpers. |
 | 🤖 | `dist/widget.d.ts` | generated | Generated widget-side SDK declaration bundle. |
 | 🤖 | `dist/widget.js` | generated | Generated widget-side SDK runtime bundle. |
-| 🤖 | `package.json` |  | Widget SDK package metadata, dist exports, peer dependency, and declaration bundle build script. |
+| 🤖 | `package.json` |  | Simple SDK package metadata with single index export and build script. |
 | 🤖 | `README.md` |  | Guest widget SDK usage guide for actor functions, config, machine states, JSON Schema, and theming. |
 | 🤖 | `src/actor.ts` |  | Widget SDK actor JSON definition and actor/functions.ts effect table helper types. |
 | ❓ | `src/arrow-core.d.ts` |  | Local Arrow reactive declaration shim for SDK declaration bundling. |

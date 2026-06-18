@@ -8,34 +8,16 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./actor": {
-      "types": "./dist/actor.d.ts",
-      "default": "./dist/actor.js"
-    },
-    "./widget": {
-      "types": "./dist/widget.d.ts",
-      "default": "./dist/widget.js"
-    },
-    "./bridge": {
-      "types": "./dist/bridge.d.ts",
-      "default": "./dist/bridge.js"
-    },
-    "./vibecanvas.schema.json": "./vibecanvas.schema.json"
+    }
   },
   "files": [
-    "dist",
-    "vibecanvas.schema.json"
+    "dist"
   ],
-  "peerDependencies": {
-    "@arrow-js/core": "^1.0.6"
-  },
   "scripts": {
-    "build": "rm -rf dist && mkdir -p dist && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/index.d.ts src/index.ts && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/actor.d.ts src/actor.ts && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/widget.d.ts src/widget.ts && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/bridge.d.ts src/bridge.ts && bun build src/index.ts src/actor.ts src/widget.ts src/bridge.ts --target=browser --format=esm --external @arrow-js/core --outdir=dist",
+    "build": "rm -rf dist && mkdir -p dist && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/index.d.ts src/index.ts && bun build src/index.ts --target=browser --format=esm --outdir=dist",
     "test": "bun test"
   },
   "dependencies": {
-    "ajv": "^8.20.0",
     "@vibecanvas/service-actor": "workspace:*"
   }
 }
