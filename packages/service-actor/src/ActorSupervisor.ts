@@ -6,6 +6,7 @@ import { join, dirname } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
 import type { TActorState, TVibecanvasJson } from "./core/types";
+import { fnToActorData } from "./core/fn.actor-data";
 import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor } from "./Actor";
 
@@ -25,13 +26,6 @@ interface IActorSupervisorConfig {
   absWidgetDir: string
   eventPublisherService: IEventPublisherService
 }
-
-function toActorData(value: unknown): Record<string, any> | undefined {
-  if(!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-
-  return value as Record<string, any>
-}
-
 
 export class ActorSupervisor {
 
@@ -75,7 +69,7 @@ export class ActorSupervisor {
         vsJson: def,
         rootDir: dirname(def.manifest_path),
         state: actorInst.machine_state as TActorState,
-        data: toActorData(actorInst.machine_context),
+        data: fnToActorData(actorInst.machine_context),
       })
 
       this.actorMap[actor.getId()] = actor
