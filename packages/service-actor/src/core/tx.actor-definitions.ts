@@ -1,4 +1,4 @@
-import type { DbServiceTurso } from "packages/service-db/src/DbServiceTurso/DbServiceTurso";
+import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import type { TVibecanvasJson } from "./types";
 import type { readdir as _readdir } from 'node:fs/promises';
 import type { join as _join, relative as _relative } from 'node:path';

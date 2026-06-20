@@ -9,8 +9,9 @@ import { join } from "node:path";
 import type { TActorState, TInputMessage, TTransition, TJsonSchema, TVibecanvasJson } from "./core/types";
 
 interface IActorConfig {
-    vsJson: TVibecanvasJson
-    rootDir: string
+    readonly id: string
+    readonly vsJson: TVibecanvasJson
+    readonly rootDir: string
 }
 
 type TInboxQueueItem = {
@@ -45,10 +46,11 @@ export function compileJsonSchema(schema: TJsonSchema) {
  * In memory state. Receives msgs and does state transitions
  */
 export class Actor {
+    readonly #id: string;
     #state: TActorState;
-    #functionPath: string;
-    #rootDir: string;
-    #vsJson: TVibecanvasJson
+    readonly #functionPath: string;
+    readonly #rootDir: string;
+    readonly #vsJson: TVibecanvasJson
     #inputMessage: Record<string, ValidateFunction<unknown>> = {}
     #outputMessage: Record<string, ValidateFunction<unknown>> = {}
     #data: Record<string, any>
@@ -60,6 +62,7 @@ export class Actor {
     #listeners = new Set<(msgName: string, msgPayload: any) => void>();
 
     constructor(config: IActorConfig) {
+        this.#id = config.id
         this.#state = config.vsJson.actor.initialState
         this.#vsJson = config.vsJson
         this.#data = config.vsJson.actor.initialData
@@ -98,6 +101,10 @@ export class Actor {
                 process.stderr.write(chunk)
             },
         }))
+    }
+
+    getId() {
+        return this.#id
     }
 
     getState() {
@@ -252,7 +259,7 @@ export class Actor {
         this.emitMessage(msg.type, msg.payload)
     }
 
-    private emitMessage(msgName: string, msgPayload: any) {
+    private emitMessage(msgName: string, msgPayload: any): Error | undefined {
         if (msgName === 'error') {
             const msg = `Error in Actor: ${this.#vsJson.name}\n${JSON.stringify(msgPayload)}`
             console.error(msg)

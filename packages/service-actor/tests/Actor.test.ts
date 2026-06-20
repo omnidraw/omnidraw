@@ -12,12 +12,14 @@ const bookkeeperActorConfig = bookkeeperActorConfigJson as TVibecanvasJson;
 describe("Actor", () => {
     test("runs guest functions in child process and updates data", async () => {
         const actor = new Actor({
+            id: "fund-actor-1",
             rootDir,
             vsJson: testActorConfig
         })
 
         await actor.inbox('add-funds', {accountId: '1', amount: 100})
 
+        expect(actor.getId()).toBe("fund-actor-1")
         expect(actor.getData()).toEqual({ balance: 100 })
 
         actor.close()
@@ -25,6 +27,7 @@ describe("Actor", () => {
 
     test("queues inbox messages and processes one message at a time", async () => {
         const actor = new Actor({
+            id: "fund-actor-queue",
             rootDir,
             vsJson: testActorConfig
         })
@@ -42,6 +45,7 @@ describe("Actor", () => {
 
     test("returns next function result over ipc and emits messages", async () => {
         const actor = new Actor({
+            id: "fund-actor-next-return",
             rootDir,
             vsJson: testActorConfig
         })
@@ -73,6 +77,7 @@ describe("Actor", () => {
 
     test("emits validation error for invalid output payload but still acks guest", async () => {
         const actor = new Actor({
+            id: "fund-actor-invalid-output",
             rootDir,
             vsJson: testActorConfig
         })
@@ -91,10 +96,12 @@ describe("Actor", () => {
 
     test("bookkeeper actor persists funds-added messages emitted by fund actor", async () => {
         const fundActor = new Actor({
+            id: "fund-actor-connected-source",
             rootDir,
             vsJson: testActorConfig
         })
         const bookkeeperActor = new Actor({
+            id: "bookkeeper-actor-connected-target",
             rootDir: bookkeeperRootDir,
             vsJson: bookkeeperActorConfig
         })

@@ -49,11 +49,11 @@ export async function txActorUpdateDefinition(portal: TPortal, args: TArgsDefini
 
 export async function txActorInsertInstance(portal: TPortal, args: TArgsInstanceCreate): Promise<TActorInstance> {
   const stmt = await portal.db.prepare(`
-    INSERT INTO actor_instances (id, canvas_id, element_id, actor_definition_id, filesystem_id, display_name, status, machine_state, machine_context)
+    INSERT INTO actor_instances (id, canvas_id, element_id, actor_definition_name, filesystem_id, display_name, status, machine_state, machine_context)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `)
-  const row = await stmt.get(args.id, args.canvas_id, args.element_id, args.actor_definition_id, args.filesystem_id, args.display_name, args.status, args.machine_state, args.machine_context)
+  const row = await stmt.get(args.id, args.canvas_id, args.element_id, args.actor_definition_name, args.filesystem_id, args.display_name, args.status, args.machine_state, args.machine_context)
   if (!row) throw new Error("Failed to insert actor instance")
   return row as TActorInstance
 }
