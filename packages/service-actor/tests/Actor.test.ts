@@ -1,4 +1,4 @@
-import { describe, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { dirname } from "node:path"
 import type { TVibecanvasJson } from "../src/core/types";
 import { Actor } from "../src/Actor";
@@ -61,21 +61,35 @@ export const testActorConfig = {
 } satisfies TVibecanvasJson;
 
 
-
 describe("Actor", () => {
-    test("", () => {
+    test("runs guest functions in child process and updates data", async () => {
         const actor = new Actor({
             rootDir,
             vsJson: testActorConfig
         })
 
-        actor.inbox('in.add-funds', {accountId: '1', amount: 100})
-        Bun.sleep(1000)
-        const data = actor.getData()
+        await actor.inbox('in.add-funds', {accountId: '1', amount: 100})
 
-        // check data
+        expect(actor.getData()).toEqual({ balance: 100 })
 
+        actor.close()
+    })
 
+    test("queues inbox messages and processes one message at a time", async () => {
+        const actor = new Actor({
+            rootDir,
+            vsJson: testActorConfig
+        })
+
+        await Promise.all([
+            actor.inbox('in.add-funds', {accountId: '1', amount: 100}),
+            actor.inbox('in.sub-funds', {accountId: '1', amount: 30}),
+            actor.inbox('in.add-funds', {accountId: '1', amount: 5}),
+        ])
+
+        expect(actor.getData()).toEqual({ balance: 75 })
+
+        actor.close()
     })
     // Test actor config and actor-function folder are prepared above.
 });

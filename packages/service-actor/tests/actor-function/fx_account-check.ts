@@ -9,12 +9,14 @@ export type TArgsAccountCheck = TFxArgs<
   { amount: number; accountId: string }
 >;
 
-export async function fxAccountCheck(portal: TFxPortal, args: TArgsAccountCheck) {
+export type TPortalAccountCheck = TFxPortal;
+
+export async function fxAccountCheck(portal: TPortalAccountCheck, args: TArgsAccountCheck) {
   const status = await readAccountStatus(args.msg.accountId);
 
   if (status !== "open") {
     throw { code: "account_closed", message: "Account must be open" };
   }
 
-  return portal.next;
+  return portal.next();
 }

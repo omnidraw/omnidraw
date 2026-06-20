@@ -1,7 +1,7 @@
-import { fnCheckFunds } from "./fn.check-funds";
-import { fxAccountCheck } from "./fx.account-check";
-import { txAddFunds } from "./tx.add-funds";
-import { txSubFunds } from "./tx.sub-funds";
+import { fnCheckFunds } from "./fn_check-funds";
+import { fxAccountCheck } from "./fx_account-check";
+import { txAddFunds } from "./tx_add-funds";
+import { txSubFunds } from "./tx_sub-funds";
 
 export default {
   fn: {
