@@ -28,7 +28,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   constructor(config: IActorServiceConfig) {
     this.#config = config
     this.#supervisor = new ActorSupervisor({
-      ablWidgetDir: join(config.configPath, 'widgets'),
+      absWidgetDir: join(config.configPath, 'widgets'),
       db: config.db
     })
   }

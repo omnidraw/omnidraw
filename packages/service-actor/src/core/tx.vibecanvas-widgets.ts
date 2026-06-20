@@ -6,11 +6,11 @@ type TPortalEnsureWidgetFolder = {
 }
 
 type TArgsEnsureWidgetFolder = {
-    ablWidgetDir: string
+    absWidgetDir: string
 }
 
 export function txEnsureWidgetFolder(portal: TPortalEnsureWidgetFolder, args: TArgsEnsureWidgetFolder) {
-    if (!portal.existsSync(args.ablWidgetDir)) {
-      portal.mkdirSync(args.ablWidgetDir);
+    if (!portal.existsSync(args.absWidgetDir)) {
+      portal.mkdirSync(args.absWidgetDir);
     }
 }
