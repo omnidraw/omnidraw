@@ -36,7 +36,7 @@ function toActorData(value: unknown): Record<string, any> | undefined {
 export class ActorSupervisor {
 
   #config: IActorSupervisorConfig
-  #actorMap: Record<string, Actor> = {}
+  actorMap: Record<string, Actor> = {}
   vibecanvasDefMap: {[name: string]: TVibecanvasJson & {manifest_path: string}} = {}
 
 
@@ -78,15 +78,13 @@ export class ActorSupervisor {
         data: toActorData(actorInst.machine_context),
       })
 
-      this.#actorMap[actor.getId()] = actor
+      this.actorMap[actor.getId()] = actor
     })
   }
 
-
-
   closeActors() {
-    Object.values(this.#actorMap).forEach(actor => actor.close())
-    this.#actorMap = {}
+    Object.values(this.actorMap).forEach(actor => actor.close())
+    this.actorMap = {}
   }
 
   public async createInstance(defId: string, canvasId: string): Promise<void> {
