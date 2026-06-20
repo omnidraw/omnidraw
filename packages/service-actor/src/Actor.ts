@@ -12,6 +12,8 @@ interface IActorConfig {
     readonly id: string
     readonly vsJson: TVibecanvasJson
     readonly rootDir: string
+    readonly state?: TActorState
+    readonly data?: Record<string, any>
 }
 
 type TInboxQueueItem = {
@@ -63,9 +65,9 @@ export class Actor {
 
     constructor(config: IActorConfig) {
         this.#id = config.id
-        this.#state = config.vsJson.actor.initialState
+        this.#state = config.state ?? config.vsJson.actor.initialState
         this.#vsJson = config.vsJson
-        this.#data = config.vsJson.actor.initialData
+        this.#data = config.data ?? config.vsJson.actor.initialData
         Object.entries(config.vsJson.actor.inputMsgSchema ?? {}).forEach(([name, schema]) => {
             this.#inputMessage[name] = compileJsonSchema(schema)
         })

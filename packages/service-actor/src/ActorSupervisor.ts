@@ -5,7 +5,7 @@ import { readdir, exists } from "node:fs/promises"
 import { join, dirname } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
-import type { TVibecanvasJson } from "./core/types";
+import type { TActorState, TVibecanvasJson } from "./core/types";
 import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor } from "./Actor";
 
@@ -26,6 +26,12 @@ interface IActorSupervisorConfig {
   eventPublisherService: IEventPublisherService
 }
 
+function toActorData(value: unknown): Record<string, any> | undefined {
+  if(!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+
+  return value as Record<string, any>
+}
+
 
 export class ActorSupervisor {
 
@@ -40,6 +46,8 @@ export class ActorSupervisor {
   }
 
   async init() {
+    this.closeActors()
+    this.vibecanvasDefMap = {}
 
     // load defs from fs
     // update db, no remove from old defs
@@ -65,7 +73,9 @@ export class ActorSupervisor {
       const actor = new Actor({
         id: actorInst.id,
         vsJson: def,
-        rootDir: dirname(def.manifest_path)
+        rootDir: dirname(def.manifest_path),
+        state: actorInst.machine_state as TActorState,
+        data: toActorData(actorInst.machine_context),
       })
 
       this.#actorMap[actor.getId()] = actor
@@ -73,6 +83,11 @@ export class ActorSupervisor {
   }
 
 
+
+  closeActors() {
+    Object.values(this.#actorMap).forEach(actor => actor.close())
+    this.#actorMap = {}
+  }
 
   public async createInstance(defId: string, canvasId: string): Promise<void> {
 
