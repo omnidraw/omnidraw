@@ -110,4 +110,4 @@ Do not guess. Use these rules.
 - tx may runtime-import `fn.*`, `fx.*`, `tx.*`, and `CONSTANTS`
 
 ## IMPORTANT
-Always read `@FILES.md`
+All files are indexed in `@FILES.md`. Read if you need overview.
