@@ -680,6 +680,7 @@ prefix: `packages/service-actor/`
 | 🤖 | `AGENTS.md` |  | High-level service usage, actor/workflow boundaries, and safety notes for actor service work. |
 | 🤖 | `package.json` |  | Actor service package metadata, zod parser dependency, and sandbox service dependency. |
 | ❓ | `tsconfig.json` |  | TypeScript config for actor service source/tests. |
+| 🤖 | `src/Actor.ts` |  | In-memory actor instance skeleton with JSON-schema input/output validators and state access. |
 | 🤖 | `src/ActorService.ts` |  | Host-safe actor runtime service, widget/actor source registry, supervisor/sandbox startup, and authoritative actor instance removal. |
 | 🤖 | `src/ActorSupervisor.ts` |  | Host actor orchestrator that plans workflows without built-in actor exceptions, reconciles results, commits outputs, routes messages, and publishes runtime events. |
 | ❓ | `src/core/CONSTANTS.ts` |  | Actor service names, workflow kind, boot event, polling, lease, and sandbox paths. |
@@ -689,7 +690,7 @@ prefix: `packages/service-actor/`
 | 🤖 | `src/core/fx.vibecanvas-actors.ts` |  | Reads widget repo directories, resolves vibecanvas.json paths, and validates manifests with Zod. |
 | ❓ | `src/core/tx.actor-db.ts` |  | Actor DB write helpers for claiming inbox, patching actors, and inserting messages/outputs. |
 | ❓ | `src/core/tx.actor-definitions.ts` |  | Syncs filesystem vibecanvas actor definitions into the actor definition DB table. |
-| ❓ | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
+| 🤖 | `src/core/types.ts` |  | Actor row, machine, message, transition, manifest, and supervisor status types. |
 | ❓ | `src/core/vibecanvasjson.zod.ts` |  | Zod parser for vibecanvas.json actor/widget addon manifests. |
 | 🤖 | `src/index.ts` |  | Actor service package barrel exports including runtime send result types. |
 

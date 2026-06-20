@@ -20,7 +20,7 @@ export type TVibecanvasActor = {
   readonly initialState: TActorState;
   readonly initialData: Record<string, any>;
   readonly dataSchema?: TJsonSchema;
-  readonly states: Record<TActorState, TTransition>;
+  readonly states: Partial<Record<TActorState, TTransition>>;
   readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
   readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
 }
@@ -54,15 +54,16 @@ export type TVibecanvasJson = {
 };
 
 export type TFnPortal = {
-  next: Promise<void>,
-  setData: (data: any) => Promise<any>,
+  next: () => Promise<void>,
   emitMessage: (msg: any) => Promise<any>
 }
 export type TFnArgs<D = any, M = any> = {
   data: D;
   msg: M;
 }
-export type TFxPortal = TFnPortal & {}
+export type TFxPortal = TFnPortal & {
+  setData: (data: any) => Promise<any>,
+}
 export type TFxArgs<D = any, M = any> = TFnArgs<D, M>
 export type TTxPortal = TFxPortal & {}
 export type TTxArgs<D = any, M = any> = TFnArgs<D, M>

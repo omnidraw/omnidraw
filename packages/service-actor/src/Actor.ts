@@ -29,13 +29,13 @@ export class Actor {
     #vsJson: TVibecanvasJson
     #inputMessage: Record<string, ValidateFunction<unknown>> = {}
     #outputMessage: Record<string, ValidateFunction<unknown>> = {}
+    #functions: Record<string, any> = {}
     #data: Record<string, any>
 
     constructor(config: IActorConfig) {
         this.#state = config.vsJson.actor.initialState
         this.#vsJson = config.vsJson
         this.#data = config.vsJson.actor.initialData
-        config.vsJson.actor.states.booting.func
         Object.entries(config.vsJson.actor.inputMsgSchema ?? {}).forEach(([name, schema]) => {
             this.#inputMessage[name] = compileJsonSchema(schema)
         })
