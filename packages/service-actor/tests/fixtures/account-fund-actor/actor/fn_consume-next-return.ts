@@ -13,15 +13,19 @@ export type TArgsConsumeNextReturn = TFnArgs<
 export async function fnConsumeNextReturn(portal: TPortalConsumeNextReturn, args: TArgsConsumeNextReturn) {
   await portal.emitMessage({
     type: "before-next",
-    amount: args.msg.amount,
-    balance: args.data.balance,
+    payload: {
+      amount: args.msg.amount,
+      balance: args.data.balance,
+    },
   });
 
   const nextResult = await portal.next();
 
   await portal.emitMessage({
     type: "after-next",
-    balance: nextResult.balance,
+    payload: {
+      balance: nextResult.balance,
+    },
   });
 
   return nextResult;

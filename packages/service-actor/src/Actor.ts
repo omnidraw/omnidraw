@@ -196,7 +196,7 @@ export class Actor {
         }
 
         if (message.type === "emitMessage") {
-            this.emitMessage("out", message.msg)
+            this.#emitGuestMessage(message.msg)
             this.#proc?.send({ type: "ack", id: message.id, action: "emitMessage" })
             return;
         }
@@ -234,11 +234,47 @@ export class Actor {
         pending.reject(error);
     }
 
+    #emitGuestMessage(msg: any) {
+        if (!msg || typeof msg !== "object" || typeof msg.type !== "string" || !("payload" in msg)) {
+            this.emitMessage("error", {
+                code: "INVALID_OUTPUT_MESSAGE_SHAPE",
+                message: "Output message must be an object with { type, payload }.",
+                value: msg,
+            })
+            return;
+        }
+
+        this.emitMessage(msg.type, msg.payload)
+    }
+
     private emitMessage(msgName: string, msgPayload: any) {
         if (msgName === 'error') {
             const msg = `Error in Actor: ${this.#vsJson.name}\n${JSON.stringify(msgPayload)}`
             console.error(msg)
+            for (const listener of this.#listeners) {
+                listener(msgName, msgPayload)
+            }
             return new Error(msg)
+        }
+
+        const validFn = this.#outputMessage[msgName]
+        if (!validFn) {
+            return this.emitMessage("error", {
+                code: "UNKNOWN_OUTPUT_MESSAGE",
+                message: `Unknown output message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#outputMessage))}`,
+                outputMessageName: msgName,
+                payload: msgPayload,
+            })
+        }
+
+        if (!validFn(msgPayload)) {
+            return this.emitMessage("error", {
+                code: "INVALID_OUTPUT_MESSAGE_PAYLOAD",
+                message: `Invalid output message payload for ${msgName}.`,
+                outputMessageName: msgName,
+                payload: msgPayload,
+                validationErrors: validFn.errors,
+            })
         }
 
         for (const listener of this.#listeners) {

@@ -5,8 +5,8 @@ export type TActorState =
   'waiting' | `waiting.${string}` |
   'error' | `error.${string}`
 
-export type TInputMessage = `in.${string}`
-export type TOutputMessage = `out.${string}`
+export type TInputMessage = string
+export type TOutputMessage = string
 
 export type TFunctionName = `fn.${string}` | `fx.${string}` | `tx.${string}`
 

@@ -14,6 +14,14 @@ export async function txAddFunds(portal: TPortalAddFunds, args: TArgsAddFunds) {
   };
 
   await portal.setData(data);
+  await portal.emitMessage({
+    type: "funds-added",
+    payload: {
+      accountId: args.msg.accountId,
+      amount: args.msg.amount,
+      balance: data.balance,
+    },
+  });
 
   return data;
 }

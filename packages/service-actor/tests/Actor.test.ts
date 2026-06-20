@@ -13,7 +13,7 @@ describe("Actor", () => {
             vsJson: testActorConfig
         })
 
-        await actor.inbox('in.add-funds', {accountId: '1', amount: 100})
+        await actor.inbox('add-funds', {accountId: '1', amount: 100})
 
         expect(actor.getData()).toEqual({ balance: 100 })
 
@@ -27,9 +27,9 @@ describe("Actor", () => {
         })
 
         await Promise.all([
-            actor.inbox('in.add-funds', {accountId: '1', amount: 100}),
-            actor.inbox('in.sub-funds', {accountId: '1', amount: 30}),
-            actor.inbox('in.add-funds', {accountId: '1', amount: 5}),
+            actor.inbox('add-funds', {accountId: '1', amount: 100}),
+            actor.inbox('sub-funds', {accountId: '1', amount: 30}),
+            actor.inbox('add-funds', {accountId: '1', amount: 5}),
         ])
 
         expect(actor.getData()).toEqual({ balance: 75 })
@@ -47,19 +47,41 @@ describe("Actor", () => {
             messages.push({ msgName, msgPayload })
         })
 
-        await actor.inbox('in.add-funds-with-next-return', {accountId: '1', amount: 42})
+        await actor.inbox('add-funds-with-next-return', {accountId: '1', amount: 42})
 
         expect(actor.getData()).toEqual({ balance: 42 })
         expect(messages).toEqual([
             {
-                msgName: "out",
-                msgPayload: { type: "before-next", amount: 42, balance: 0 },
+                msgName: "before-next",
+                msgPayload: { amount: 42, balance: 0 },
             },
             {
-                msgName: "out",
-                msgPayload: { type: "after-next", balance: 42 },
+                msgName: "funds-added",
+                msgPayload: { accountId: "1", amount: 42, balance: 42 },
+            },
+            {
+                msgName: "after-next",
+                msgPayload: { balance: 42 },
             },
         ])
+
+        actor.close()
+    })
+
+    test("emits validation error for invalid output payload but still acks guest", async () => {
+        const actor = new Actor({
+            rootDir,
+            vsJson: testActorConfig
+        })
+        const messages: any[] = []
+        actor.listen((msgName, msgPayload) => {
+            messages.push({ msgName, msgPayload })
+        })
+
+        await actor.inbox('emit-invalid-output', {})
+
+        expect(messages[0].msgName).toBe("error")
+        expect(messages[0].msgPayload.code).toBe("INVALID_OUTPUT_MESSAGE_PAYLOAD")
 
         actor.close()
     })

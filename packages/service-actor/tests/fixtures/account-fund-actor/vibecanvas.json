@@ -10,47 +10,148 @@
     "states": {
       "ready": {
         "on": {
-          "in.add-funds": {
-            "func": ["fn.checkFunds", "fx.accountCheck", "tx.addFunds"],
-            "allowedTargetStates": ["ready"]
+          "add-funds": {
+            "func": [
+              "fn.checkFunds",
+              "fx.accountCheck",
+              "tx.addFunds"
+            ],
+            "allowedTargetStates": [
+              "ready"
+            ]
           },
-          "in.sub-funds": {
-            "func": ["fn.checkFunds", "fx.accountCheck", "tx.subFunds"],
-            "allowedTargetStates": ["ready"]
+          "sub-funds": {
+            "func": [
+              "fn.checkFunds",
+              "fx.accountCheck",
+              "tx.subFunds"
+            ],
+            "allowedTargetStates": [
+              "ready"
+            ]
           },
-          "in.add-funds-with-next-return": {
-            "func": ["fn.consumeNextReturn", "tx.addFunds"],
-            "allowedTargetStates": ["ready"]
+          "add-funds-with-next-return": {
+            "func": [
+              "fn.consumeNextReturn",
+              "tx.addFunds"
+            ],
+            "allowedTargetStates": [
+              "ready"
+            ]
+          },
+          "emit-invalid-output": {
+            "func": [
+              "fn.emitInvalidOutput"
+            ],
+            "allowedTargetStates": [
+              "ready"
+            ]
           }
         }
       }
     },
     "inputMsgSchema": {
-      "in.add-funds": {
+      "add-funds": {
         "type": "object",
         "properties": {
-          "accountId": { "type": "string" },
-          "amount": { "type": "number" }
+          "accountId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
         },
-        "required": ["accountId", "amount"],
+        "required": [
+          "accountId",
+          "amount"
+        ],
         "additionalProperties": false
       },
-      "in.sub-funds": {
+      "sub-funds": {
         "type": "object",
         "properties": {
-          "accountId": { "type": "string" },
-          "amount": { "type": "number" }
+          "accountId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
         },
-        "required": ["accountId", "amount"],
+        "required": [
+          "accountId",
+          "amount"
+        ],
         "additionalProperties": false
       },
-      "in.add-funds-with-next-return": {
+      "add-funds-with-next-return": {
         "type": "object",
         "properties": {
-          "accountId": { "type": "string" },
-          "amount": { "type": "number" }
+          "accountId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          }
         },
-        "required": ["accountId", "amount"],
+        "required": [
+          "accountId",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "emit-invalid-output": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "outputMsgSchema": {
+      "before-next": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "balance": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "amount",
+          "balance"
+        ],
+        "additionalProperties": false
+      },
+      "after-next": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "balance"
+        ],
+        "additionalProperties": false
+      },
+      "funds-added": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "balance": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "accountId",
+          "amount",
+          "balance"
+        ],
         "additionalProperties": false
       }
     }

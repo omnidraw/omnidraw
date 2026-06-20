@@ -53,8 +53,8 @@ export const ZJsonSchema: z.ZodType<TJsonSchema> = z.lazy(() => z.union([
 ]));
 
 export const ZActorState = z.string().regex(/^(booting|ready|busy|waiting|error)(\..*)?$/);
-export const ZInputMessage = z.string().regex(/^in\..*$/);
-export const ZOutputMessage = z.string().regex(/^out\..*$/);
+export const ZInputMessage = z.string().min(1);
+export const ZOutputMessage = z.string().min(1);
 export const ZFunctionName = z.string().regex(/^(fn|fx|tx)\..*$/);
 
 export const ZActorNonErrorState = z.string().regex(/^(booting|ready|busy|waiting)(\..*)?$/);
