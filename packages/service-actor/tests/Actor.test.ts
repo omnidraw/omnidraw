@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { TVibecanvasJson } from "../src/core/types";
 import { Actor } from "../src/Actor";
 import testActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
+import bookkeeperActorConfigJson from "./fixtures/account-bookkeeper-actor/vibecanvas.json";
 
 const rootDir = new URL("./fixtures/account-fund-actor", import.meta.url).pathname;
+const bookkeeperRootDir = new URL("./fixtures/account-bookkeeper-actor", import.meta.url).pathname;
 const testActorConfig = testActorConfigJson as TVibecanvasJson;
+const bookkeeperActorConfig = bookkeeperActorConfigJson as TVibecanvasJson;
 
 describe("Actor", () => {
     test("runs guest functions in child process and updates data", async () => {
@@ -84,5 +87,39 @@ describe("Actor", () => {
         expect(messages[0].msgPayload.code).toBe("INVALID_OUTPUT_MESSAGE_PAYLOAD")
 
         actor.close()
+    })
+
+    test("bookkeeper actor persists funds-added messages emitted by fund actor", async () => {
+        const fundActor = new Actor({
+            rootDir,
+            vsJson: testActorConfig
+        })
+        const bookkeeperActor = new Actor({
+            rootDir: bookkeeperRootDir,
+            vsJson: bookkeeperActorConfig
+        })
+
+        const routedMessages: Promise<void>[] = []
+        fundActor.listen((msgName, msgPayload) => {
+            if (msgName === "funds-added") {
+                routedMessages.push(bookkeeperActor.inbox(msgName, msgPayload))
+            }
+        })
+
+        await fundActor.inbox('add-funds', {accountId: '1', amount: 100})
+        await Promise.all(routedMessages)
+
+        expect(bookkeeperActor.getData()).toEqual({
+            entries: [
+                {
+                    accountId: "1",
+                    amount: 100,
+                    balance: 100,
+                },
+            ],
+        })
+
+        fundActor.close()
+        bookkeeperActor.close()
     })
 });
