@@ -574,8 +574,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
 | [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
 | [packages/service-actor/src/core/tx.vibecanvas-widgets.ts](packages/service-actor/src/core/tx.vibecanvas-widgets.ts) |  |
-| [packages/service-actor/src/core/types.ts](packages/service-actor/src/core/types.ts) |  |
-| [packages/service-actor/src/core/vibecanvasjson.zod.ts](packages/service-actor/src/core/vibecanvasjson.zod.ts) |  |
+| [packages/service-actor/src/core/types.ts](packages/service-actor/src/core/types.ts) | Actor manifest types including state/message transition maps and function portal contracts. |
+| [packages/service-actor/src/core/vibecanvasjson.zod.ts](packages/service-actor/src/core/vibecanvasjson.zod.ts) | Zod parser for vibecanvas.json actor/widget manifests, including state/message transition maps. |
 | [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
