@@ -1,4 +1,4 @@
-import type { TFxArgs, TFxPortal } from "../../src/core/types";
+import type { TFxArgs, TFxPortal } from "../../../src/core/types";
 
 async function readAccountStatus(accountId: string): Promise<"open" | "close"> {
   return 'open'

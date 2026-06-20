@@ -8,7 +8,7 @@ export const testActorConfig = {
     slug: "account-funds-test",
     name: "Account Funds Test",
     actor: {
-        relFunctionPath: "./actor-function/functions.ts",
+        relFunctionPath: "./fixtures/fx_account-funds/functions.ts",
         initialState: "ready",
         initialData: {
             balance: 0,
@@ -22,6 +22,10 @@ export const testActorConfig = {
                     },
                     "in.sub-funds": {
                         func: ["fn.checkFunds", "fx.accountCheck", "tx.subFunds"],
+                        allowedTargetStates: ["ready"],
+                    },
+                    "in.add-funds-with-next-return": {
+                        func: ["fn.consumeNextReturn", "tx.addFunds"],
                         allowedTargetStates: ["ready"],
                     },
                 },
@@ -38,6 +42,15 @@ export const testActorConfig = {
                 additionalProperties: false,
             },
             "in.sub-funds": {
+                type: "object",
+                properties: {
+                    accountId: { type: "string" },
+                    amount: { type: "number" },
+                },
+                required: ["accountId", "amount"],
+                additionalProperties: false,
+            },
+            "in.add-funds-with-next-return": {
                 type: "object",
                 properties: {
                     accountId: { type: "string" },
@@ -91,5 +104,32 @@ describe("Actor", () => {
 
         actor.close()
     })
-    // Test actor config and actor-function folder are prepared above.
+
+    test("returns next function result over ipc and emits messages", async () => {
+        const actor = new Actor({
+            rootDir,
+            vsJson: testActorConfig
+        })
+        const messages: any[] = []
+        actor.listen((msgName, msgPayload) => {
+            messages.push({ msgName, msgPayload })
+        })
+
+        await actor.inbox('in.add-funds-with-next-return', {accountId: '1', amount: 42})
+
+        expect(actor.getData()).toEqual({ balance: 42 })
+        expect(messages).toEqual([
+            {
+                msgName: "out",
+                msgPayload: { type: "before-next", amount: 42, balance: 0 },
+            },
+            {
+                msgName: "out",
+                msgPayload: { type: "after-next", balance: 42 },
+            },
+        ])
+
+        actor.close()
+    })
+    // Test actor config and fixtures/fx_account-funds folder are prepared above.
 });

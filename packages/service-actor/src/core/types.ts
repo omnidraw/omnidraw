@@ -60,7 +60,7 @@ export type TVibecanvasJson = {
 };
 
 export type TFnPortal = {
-  next: () => Promise<void>,
+  next: () => Promise<any>,
   emitMessage: (msg: any) => Promise<any>
 }
 export type TFnArgs<D = any, M = any> = {
