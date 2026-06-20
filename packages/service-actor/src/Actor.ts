@@ -88,6 +88,10 @@ export class Actor {
         return this.#state
     }
 
+    getData() {
+        return this.#data
+    }
+
     inbox(msgName: string, msgPayload: any) {
         const validFn = this.#inputMessage[msgName]
         if (!validFn)
