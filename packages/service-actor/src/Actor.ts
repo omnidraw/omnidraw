@@ -1,8 +1,7 @@
-import type { TActorState, TJsonSchema, TVibecanvasJson } from "./core/types";
-import * as z from "zod"
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { join } from "node:path";
+import type { TActorState, TJsonSchema, TVibecanvasJson } from "./core/types";
 
 interface IPublicMethods {
     inbox(msg: any): Promise<void>;
@@ -35,6 +34,8 @@ export class Actor {
     #outputMessage: Record<string, ValidateFunction<unknown>> = {}
     #functions: Record<string, any> = {}
     #data: Record<string, any>
+    #proc: Bun.Subprocess | null = null;
+
 
     constructor(config: IActorConfig) {
         this.#state = config.vsJson.actor.initialState
@@ -54,16 +55,31 @@ export class Actor {
     private actorFuncions() {
         const icpClientPath = new URL('icp-client.ts', import.meta.url).pathname
         console.log(this.#rootDir, icpClientPath)
-        const proc = Bun.spawn(["bun", "run", icpClientPath], {
+        const proc = Bun.spawn(["bun", "run", icpClientPath, "--functionPath", this.#functionPath], {
             cwd: this.#rootDir, // specify a working directory
-            env: { ...process.env, FOO: "bar" }, // specify environment variables
+            env: { ...process.env }, // specify environment variables
+            stdout: "pipe",
+            stderr: "pipe",
             onExit(proc, exitCode, signalCode, error) {
                 // exit handler
             },
             ipc(message, subprocess) {
-                console.log(message, subprocess)
+                console.log(message)
             },
         });
+        this.#proc = proc;
+
+        proc.stdout?.pipeTo(new WritableStream({
+            write(chunk) {
+                process.stdout.write(chunk)
+            },
+        }))
+
+        proc.stderr?.pipeTo(new WritableStream({
+            write(chunk) {
+                process.stderr.write(chunk)
+            },
+        }))
 
         console.log(proc.pid)
     }

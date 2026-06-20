@@ -15,8 +15,16 @@ export const testActorConfig = {
     },
     states: {
       ready: {
-        func: ["fn.checkFunds", "fx.accountCheck", "tx.addFunds"],
-        allowedTargets: ["ready", "error"],
+        on: {
+          "in.add-funds": {
+            func: ["fn.checkFunds", "fx.accountCheck", "tx.addFunds"],
+            allowedTargetStates: ["ready"],
+          },
+          "in.sub-funds": {
+            func: ["fn.checkFunds", "fx.accountCheck", "tx.subFunds"],
+            allowedTargetStates: ["ready"],
+          },
+        },
       },
     },
     inputMsgSchema: {
