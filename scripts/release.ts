@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Package current dist artifacts and upload them to a GitHub release.
+ * @file Packages current dist artifacts and uploads them to a GitHub release.
  *
  * Default behavior:
  * - Reads dist/release-manifest.json

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Distribution build script for vibecanvas
+ * @file Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests.
  *
  * Creates standalone executables for all platforms:
  * - macOS (arm64, x64)

@@ -1,3 +1,7 @@
+/**
+ * @file Updates root, app, and package package.json versions to a validated release version.
+ */
+
 import { join } from "path";
 import { readdirSync, existsSync, statSync } from "fs";
 

@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+/**
+ * @file Verifies a built vibecanvas binary serves assets, websockets, and expected database paths.
+ */
+
 import path from "path"
 import net from "node:net"
 import { Glob } from "bun"

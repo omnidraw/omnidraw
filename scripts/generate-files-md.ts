@@ -135,12 +135,14 @@ function getFileJsdocSummary(text: string): string {
   const withoutShebang = withoutBom.replace(/^#![^\n]*(?:\n|$)/, "")
   const leadingTrimmed = withoutShebang.trimStart()
   const blockMatch = leadingTrimmed.match(/^\/\*\*([\s\S]*?)\*\//)
+  const hashBlockMatch = leadingTrimmed.match(/^#\s*\/\*\*([\s\S]*?)^#\s*\*\//m)
 
-  if (blockMatch === null) {
+  if (blockMatch === null && hashBlockMatch === null) {
     return ""
   }
 
-  const lines = blockMatch[1]
+  const blockText = blockMatch?.[1] ?? hashBlockMatch?.[1].replace(/^\s*#\s?/gm, "") ?? ""
+  const lines = blockText
     .split("\n")
     .map((line) => line.replace(/^\s*\*\s?/, "").trimEnd())
   const summaryLines: string[] = []
