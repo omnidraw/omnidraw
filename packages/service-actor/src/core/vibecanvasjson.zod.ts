@@ -57,9 +57,15 @@ export const ZInputMessage = z.string().regex(/^in\..*$/);
 export const ZOutputMessage = z.string().regex(/^out\..*$/);
 export const ZFunctionName = z.string().regex(/^(fn|fx|tx)\..*$/);
 
+export const ZActorNonErrorState = z.string().regex(/^(booting|ready|busy|waiting)(\..*)?$/);
+
 export const ZTransition = z.object({
   func: z.array(ZFunctionName),
-  allowedTargets: z.array(ZActorState),
+  allowedTargetStates: z.array(ZActorNonErrorState),
+});
+
+export const ZActorStateConfig = z.object({
+  on: z.record(ZInputMessage, ZTransition),
 });
 
 export const ZVibecanvasActor = z.object({
@@ -67,7 +73,7 @@ export const ZVibecanvasActor = z.object({
   initialState: ZActorState,
   initialData: z.record(z.string(), z.any()),
   dataSchema: ZJsonSchema.optional(),
-  states: z.record(ZActorState, ZTransition),
+  states: z.record(ZActorState, ZActorStateConfig),
   inputMsgSchema: z.record(ZInputMessage, ZJsonSchema).optional(),
   outputMsgSchema: z.record(ZOutputMessage, ZJsonSchema).optional(),
 });

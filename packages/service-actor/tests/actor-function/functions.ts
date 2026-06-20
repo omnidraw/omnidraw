@@ -1,6 +1,7 @@
 import { fnCheckFunds } from "./fn.check-funds";
 import { fxAccountCheck } from "./fx.account-check";
 import { txAddFunds } from "./tx.add-funds";
+import { txSubFunds } from "./tx.sub-funds";
 
 export default {
   fn: {
@@ -11,5 +12,6 @@ export default {
   },
   tx: {
     "tx.addFunds": txAddFunds,
+    "tx.subFunds": txSubFunds,
   },
 };

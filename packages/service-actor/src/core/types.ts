@@ -10,9 +10,15 @@ export type TOutputMessage = `out.${string}`
 
 export type TFunctionName = `fn.${string}` | `fx.${string}` | `tx.${string}`
 
+export type TActorNonErrorState = Exclude<TActorState, 'error' | `error.${string}`>
+
 export type TTransition = {
   func: TFunctionName[];
-  allowedTargets: TActorState[];
+  allowedTargetStates: TActorNonErrorState[];
+}
+
+export type TActorStateConfig = {
+  on: Partial<Record<TInputMessage, TTransition>>;
 }
 
 export type TVibecanvasActor = {
@@ -20,7 +26,7 @@ export type TVibecanvasActor = {
   readonly initialState: TActorState;
   readonly initialData: Record<string, any>;
   readonly dataSchema?: TJsonSchema;
-  readonly states: Partial<Record<TActorState, TTransition>>;
+  readonly states: Partial<Record<TActorState, TActorStateConfig>>;
   readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
   readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
 }
@@ -61,12 +67,17 @@ export type TFnArgs<D = any, M = any> = {
   data: D;
   msg: M;
 }
+export type TFnFunc<D = any, M = any> = (portal: TFnPortal, args: TFnArgs<D, M>) => Promise<any>
+
 export type TFxPortal = TFnPortal & {
   setData: (data: any) => Promise<any>,
 }
 export type TFxArgs<D = any, M = any> = TFnArgs<D, M>
+export type TFxFunc<D = any, M = any> = (portal: TFxPortal, args: TFxArgs<D, M>) => Promise<any>
+
 export type TTxPortal = TFxPortal & {}
 export type TTxArgs<D = any, M = any> = TFnArgs<D, M>
+export type TTxFunc<D = any, M = any> = (portal: TTxPortal, args: TTxArgs<D, M>) => Promise<any>
 
 /** JSON Schema primitive type names supported by Vibecanvas actor ports. */
 export type TJsonSchemaPrimitiveType = "null" | "boolean" | "object" | "array" | "number" | "string" | "integer";
