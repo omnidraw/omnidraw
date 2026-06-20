@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# /**
+#  * @file Installs the latest or selected vibecanvas binary release on the local machine.
+#  */
+
 set -euo pipefail
 
 APP=vibecanvas

@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+/**
+ * @file Sorts legacy FILES.md filepath table rows by path.
+ */
+
 const FILES_PATH = new URL("../FILES.md", import.meta.url)
 
 function sortTableRows(tableRows: string[]): string[] {
