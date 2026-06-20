@@ -3,7 +3,7 @@ import { dirname } from "node:path"
 import type { TVibecanvasJson } from "../src/core/types";
 import { Actor } from "../src/Actor";
 
-const rootDir = dirname(import.meta.url)
+const rootDir = dirname(new URL(import.meta.url).pathname)
 export const testActorConfig = {
   slug: "account-funds-test",
   name: "Account Funds Test",
@@ -54,10 +54,11 @@ export const testActorConfig = {
 
 
 
-describe("Actor", () => {
+describe("Actor", async () => {
     const actor = new Actor({
         rootDir,
         vsJson: testActorConfig
     })
+    await Bun.sleep(1000)
   // Test actor config and actor-function folder are prepared above.
 });

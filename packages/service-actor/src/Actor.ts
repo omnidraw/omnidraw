@@ -2,6 +2,7 @@ import type { TActorState, TJsonSchema, TVibecanvasJson } from "./core/types";
 import * as z from "zod"
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
+import { join } from "node:path";
 
 interface IPublicMethods {
     inbox(msg: any): Promise<void>;
@@ -27,6 +28,8 @@ export function compileJsonSchema(schema: TJsonSchema) {
  */
 export class Actor {
     #state: TActorState;
+    #functionPath: string;
+    #rootDir: string;
     #vsJson: TVibecanvasJson
     #inputMessage: Record<string, ValidateFunction<unknown>> = {}
     #outputMessage: Record<string, ValidateFunction<unknown>> = {}
@@ -43,6 +46,26 @@ export class Actor {
         Object.entries(config.vsJson.actor.outputMsgSchema ?? {}).forEach(([name, schema]) => {
             this.#outputMessage[name] = compileJsonSchema(schema)
         })
+        this.#rootDir = config.rootDir
+        this.#functionPath = join(config.rootDir, this.#vsJson.actor.relFunctionPath)
+        this.actorFuncions()
+    }
+
+    private actorFuncions() {
+        const icpClientPath = new URL('icp-client.ts', import.meta.url).pathname
+        console.log(this.#rootDir, icpClientPath)
+        const proc = Bun.spawn(["bun", "run", icpClientPath], {
+            cwd: this.#rootDir, // specify a working directory
+            env: { ...process.env, FOO: "bar" }, // specify environment variables
+            onExit(proc, exitCode, signalCode, error) {
+                // exit handler
+            },
+            ipc(message, subprocess) {
+                console.log(message, subprocess)
+            },
+        });
+
+        console.log(proc.pid)
     }
 
     getState() {
@@ -51,9 +74,9 @@ export class Actor {
 
     inbox(msgName: string, msgPayload: any) {
         const validFn = this.#inputMessage[msgName]
-        if(!validFn)
+        if (!validFn)
             return this.emitMessage('error', `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}`)
-        if(!validFn(msgPayload))
+        if (!validFn(msgPayload))
             return this.emitMessage('error', `Invalid message payload.`)
 
         //
@@ -61,7 +84,7 @@ export class Actor {
     }
 
     private emitMessage(msgName: string, msgPayload: any) {
-        if(msgName === 'error') {
+        if (msgName === 'error') {
             // allow
             const msg = `Error in Actor: ${this.#vsJson.name}\n${JSON.stringify(msgPayload)}`
             console.error(msg)
