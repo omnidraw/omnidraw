@@ -11,6 +11,7 @@ interface IPublicMethods {
 
 interface IActorConfig {
     vsJson: TVibecanvasJson
+    rootDir: string
 }
 
 const ajv = new Ajv({ allErrors: true });

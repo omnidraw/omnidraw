@@ -16,7 +16,7 @@ export type TTransition = {
 }
 
 export type TVibecanvasActor = {
-  readonly functionPath: string;
+  readonly relFunctionPath: string;
   readonly initialState: TActorState;
   readonly initialData: Record<string, any>;
   readonly dataSchema?: TJsonSchema;
@@ -26,7 +26,7 @@ export type TVibecanvasActor = {
 }
 
 export type TVibecanvasActorWidget = {
-  readonly widgetDir: string;
+  readonly relWidgetDir: string;
   readonly tool: {
     readonly label: string;
     readonly icon?: string;

@@ -17,20 +17,18 @@ interface IPublicMethods {
 
 interface IActorSupervisorConfig {
   db: DbServiceTurso
-  configPath: string
+  ablWidgetDir: string
 }
 
 
 export class ActorSupervisor {
 
-  #widgetDir: string;
   #config: IActorSupervisorConfig
   vibecanvasDefMap: {[name: string]: TVibecanvasJson & {manifest_path: string}} = {}
 
   constructor(config: IActorSupervisorConfig) {
     this.#config = config
-    this.#widgetDir = join(config.configPath, 'widgets')
-    txEnsureWidgetFolder({existsSync, mkdirSync}, {widgetDir: this.#widgetDir})
+    txEnsureWidgetFolder({existsSync, mkdirSync}, {ablWidgetDir: this.#config.ablWidgetDir})
   }
 
   async init() {
@@ -39,7 +37,7 @@ export class ActorSupervisor {
     // update db, no remove from old defs
     // boot instances from db
 
-    const defs = await fxListVibecanvasJsons({Bun, readdir, join, exists}, {widgetDir: this.#widgetDir})
+    const defs = await fxListVibecanvasJsons({Bun, readdir, join, exists}, {widgetDir: this.#config.ablWidgetDir})
     defs.forEach(def => {
       if(def.error !== null) {
         // TODO: show error to user

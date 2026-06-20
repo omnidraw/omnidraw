@@ -25,7 +25,7 @@ type TPortalReadWidgetCode = {
 }
 
 type TArgsReadWidgetCode = {
-  widgetDir: string,
+  absWidgetDir: string,
 }
 
 export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgsReadWidgetCode): Promise<{content: string, path: string}[]> {
@@ -41,14 +41,14 @@ export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgs
       }
 
       const content = await portal.Bun.file(childPath).text()
-      const relPath = portal.relative(args.widgetDir, childPath)
+      const relPath = portal.relative(args.absWidgetDir, childPath)
       return [{content, path: relPath}]
     }))
 
     return groups.flat()
   }
 
-  return collectFiles(args.widgetDir)
+  return collectFiles(args.absWidgetDir)
 }
 
 export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinitions, args: TArgsSyncDbActorDefinitions) {

@@ -1,14 +1,14 @@
 import { describe } from "bun:test";
-
+import { dirname } from "node:path"
 import type { TVibecanvasJson } from "../src/core/types";
+import { Actor } from "../src/Actor";
 
-const actorFunctionPath = new URL("./actor-function/functions.ts", import.meta.url).pathname;
-
+const rootDir = dirname(import.meta.url)
 export const testActorConfig = {
   slug: "account-funds-test",
   name: "Account Funds Test",
   actor: {
-    functionPath: actorFunctionPath,
+    relFunctionPath: "./actor-function/functions.ts",
     initialState: "ready",
     initialData: {
       balance: 0,
@@ -41,7 +41,7 @@ export const testActorConfig = {
     },
   },
   widget: {
-    widgetDir: "./widget",
+    relWidgetDir: "./widget",
     tool: {
       label: "Account Funds Test",
       behavior: {
@@ -52,6 +52,12 @@ export const testActorConfig = {
   },
 } satisfies TVibecanvasJson;
 
+
+
 describe("Actor", () => {
+    const actor = new Actor({
+        rootDir,
+        vsJson: testActorConfig
+    })
   // Test actor config and actor-function folder are prepared above.
 });

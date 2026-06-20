@@ -27,7 +27,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
-    this.#supervisor = new ActorSupervisor(config)
+    this.#supervisor = new ActorSupervisor({
+      ablWidgetDir: join(config.configPath, 'widgets'),
+      db: config.db
+    })
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
@@ -61,9 +64,9 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   async getWidgetCode(defName: string): Promise<{ content: string; path: string; }[] | null> {
     const vcJson = this.getVibecanvasJson(defName)
     if (vcJson === null) return null
-    const widgetDir = join(dirname(vcJson.manifest_path), vcJson.widget.widgetDir)
+    const absWidgetDir = join(dirname(vcJson.manifest_path), vcJson.widget.relWidgetDir)
 
-    return txGetWidgetCode({Bun, readdir, join, relative: relativePath}, {widgetDir})
+    return txGetWidgetCode({Bun, readdir, join, relative: relativePath}, {absWidgetDir})
   }
 
 }

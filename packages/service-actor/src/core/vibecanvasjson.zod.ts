@@ -63,7 +63,7 @@ export const ZTransition = z.object({
 });
 
 export const ZVibecanvasActor = z.object({
-  functionPath: z.string(),
+  relFunctionPath: z.string(),
   initialState: ZActorState,
   initialData: z.record(z.string(), z.any()),
   dataSchema: ZJsonSchema.optional(),
@@ -73,7 +73,7 @@ export const ZVibecanvasActor = z.object({
 });
 
 export const ZVibecanvasActorWidget = z.object({
-  widgetDir: z.string(),
+  relWidgetDir: z.string(),
   tool: z.object({
     label: z.string(),
     icon: z.string().optional(),
