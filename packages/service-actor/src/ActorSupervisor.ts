@@ -1,4 +1,5 @@
-import type { DbServiceTurso } from "packages/service-db/src/DbServiceTurso/DbServiceTurso";
+import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
+import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
 import { readdir, exists } from "node:fs/promises"
 import { join } from "node:path";
@@ -21,6 +22,7 @@ interface IPublicMethods { // not in use yet
 interface IActorSupervisorConfig {
   db: DbServiceTurso
   absWidgetDir: string
+  eventPublisherService: IEventPublisherService
 }
 
 

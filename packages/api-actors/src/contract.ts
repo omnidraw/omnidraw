@@ -12,12 +12,21 @@ const ZActorDefResponse = z.object({
   }).array()
 });
 
+export const ZActorEvent = z.object({
+  actorId: z.string(),
+  type: z.literal('error'),
+  message: z.string()
+})
+
 const actorsContract = oc.router({
   definitions: {
     list: oc.output(ZActorDefinition.array()),
     get: oc.input(z.object({ name: z.string() }))
-           .output(ZActorDefResponse)
-
+      .output(ZActorDefResponse),
+    events: oc
+      .input(z.object({}))
+      .route({ method: 'GET' })
+      .output(eventIterator(ZActorEvent)),
 
   }
 });

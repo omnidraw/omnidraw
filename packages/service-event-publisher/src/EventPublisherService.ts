@@ -1,24 +1,6 @@
 import { EventPublisher } from '@orpc/server';
 import type { IEventPublisherService, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from './IEventPublisherService';
 
-async function* mergeAsyncIterables<T>(iterables: AsyncIterable<T>[]): AsyncIterable<T> {
-  const iterators = iterables.map((iterable) => iterable[Symbol.asyncIterator]());
-  const never = new Promise<{ index: number; result: IteratorResult<T> }>(() => {});
-  const next = (index: number) => iterators[index]!.next().then((result) => ({ index, result }));
-  const pending = iterators.map((_, index) => next(index));
-
-  while (pending.some((promise) => promise !== never)) {
-    const { index, result } = await Promise.race(pending);
-    if (result.done) {
-      pending[index] = never;
-      continue;
-    }
-
-    pending[index] = next(index);
-    yield result.value;
-  }
-}
-
 export class EventPublisherService implements IEventPublisherService {
   readonly name = 'eventPublisher';
 
@@ -36,15 +18,12 @@ export class EventPublisherService implements IEventPublisherService {
     return this.#db.subscribe(canvasId);
   }
 
-  publishActorEvent(canvasId: string, event: TActorEvent): void {
-    this.#actor.publish(canvasId, event);
+  publishActorEvent(event: TActorEvent): void {
+    this.#actor.publish('global', event);
   }
 
-  subscribeActorEvents(canvasId: string): AsyncIterable<TActorEvent> {
-    return mergeAsyncIterables([
-      this.#actor.subscribe(canvasId),
-      this.#actor.subscribe('global'),
-    ]);
+  subscribeActorEvents(): AsyncIterable<TActorEvent> {
+    return this.#actor.subscribe('global')
   }
 
   publishFilesystemEvent(path: string, event: TFilesystemEvent): void {

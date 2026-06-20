@@ -84,7 +84,8 @@ function setupServices(config: ICliConfig) {
   if (config.command === 'serve') {
     const actorService = new ActorService({
       db: dbService,
-      configPath: config.xdgPaths.configDirPath
+      configPath: config.xdgPaths.configDirPath,
+      eventPublisherService: eventPublisher
     }
       //   {
       //   db: dbService.actor,

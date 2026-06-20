@@ -12,7 +12,6 @@
   "dependencies": {
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
-    "@vibecanvas/service-actor": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",
     "zod": "catalog:"

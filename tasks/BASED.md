@@ -110,7 +110,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B21](b/B21.md) - filesystem: recursive filetree scan dies on EPERM/EACCES folders like `~/.Trash`
 - [x]: [B21] - can't do 1d edits
 - [x]: [B22] - style color pallet breaks layout
-- [x]: [B23] - bug: pan/zoom on textedit -> text box moves with 
+- [x]: [B23] - bug: pan/zoom on textedit -> text box moves with
 - [x]: [B24] - bug: handtool not working -> drag
 - [x]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
 - [-]: [B26] - investigate if cli respect zIndex - check tmp/script
@@ -220,6 +220,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [~]: [S54](s/S54.md) - simplify widget system
 - [ ]: [S55] - store images as blob not base64
 - [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
+- [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

@@ -119,7 +119,6 @@
       "dependencies": {
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
-        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
         "zod": "catalog:",
@@ -301,13 +300,6 @@
     "packages/sdk": {
       "name": "@vibecanvas/sdk",
       "version": "0.0.0",
-      "dependencies": {
-        "@vibecanvas/service-actor": "workspace:*",
-        "ajv": "^8.20.0",
-      },
-      "peerDependencies": {
-        "@arrow-js/core": "^1.0.6",
-      },
     },
     "packages/service-actor": {
       "name": "@vibecanvas/service-actor",
@@ -354,6 +346,7 @@
       "version": "0.3.1",
       "dependencies": {
         "@orpc/server": "catalog:",
+        "@vibecanvas/api-actors": "workspace:*",
         "@vibecanvas/api-db": "workspace:*",
         "@vibecanvas/api-notification": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",

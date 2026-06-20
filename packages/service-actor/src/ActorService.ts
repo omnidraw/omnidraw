@@ -1,11 +1,12 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { ActorSupervisor } from './ActorSupervisor';
-import type { TVibecanvasJson } from './core/types';
-import { txGetWidgetCode } from './core/tx.actor-definitions';
+import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
+import { ActorSupervisor } from './ActorSupervisor';
+import { txGetWidgetCode } from './core/tx.actor-definitions';
+import type { TVibecanvasJson } from './core/types';
 
 interface IPublicMethods {
   sendMessage(msg: any): Promise<void>
@@ -18,6 +19,7 @@ interface IPublicMethods {
 interface IActorServiceConfig {
   db: DbServiceTurso;
   configPath: string;
+  eventPublisherService: IEventPublisherService
 }
 
 export class ActorService implements IService, IStartableService, IStoppableService, IPublicMethods {
@@ -29,7 +31,8 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     this.#config = config
     this.#supervisor = new ActorSupervisor({
       absWidgetDir: join(config.configPath, 'widgets'),
-      db: config.db
+      db: config.db,
+      eventPublisherService: config.eventPublisherService
     })
   }
 
