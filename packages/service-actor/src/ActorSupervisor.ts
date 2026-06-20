@@ -7,12 +7,15 @@ import { existsSync, mkdirSync } from 'fs';
 import type { TVibecanvasJson } from "./core/types";
 import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 
-interface IPublicMethods {
+interface IPublicMethods { // not in use yet
   init(): Promise<void>;
   sendMessages(msg: any): Promise<void>;
   claimMessage(): Promise<void>;
   processedMessage(): Promise<void>;
   failedMessage(): Promise<void>;
+  createInstance(defId: string, canvasId: string): Promise<void>
+  removeInstance(instanceId: string): Promise<void>
+
 }
 
 interface IActorSupervisorConfig {

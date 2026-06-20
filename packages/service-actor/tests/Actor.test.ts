@@ -1,78 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { dirname } from "node:path"
 import type { TVibecanvasJson } from "../src/core/types";
 import { Actor } from "../src/Actor";
+import testActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
 
-const rootDir = dirname(new URL(import.meta.url).pathname)
-export const testActorConfig = {
-    slug: "account-funds-test",
-    name: "Account Funds Test",
-    actor: {
-        relFunctionPath: "./fixtures/fx_account-funds/functions.ts",
-        initialState: "ready",
-        initialData: {
-            balance: 0,
-        },
-        states: {
-            ready: {
-                on: {
-                    "in.add-funds": {
-                        func: ["fn.checkFunds", "fx.accountCheck", "tx.addFunds"],
-                        allowedTargetStates: ["ready"],
-                    },
-                    "in.sub-funds": {
-                        func: ["fn.checkFunds", "fx.accountCheck", "tx.subFunds"],
-                        allowedTargetStates: ["ready"],
-                    },
-                    "in.add-funds-with-next-return": {
-                        func: ["fn.consumeNextReturn", "tx.addFunds"],
-                        allowedTargetStates: ["ready"],
-                    },
-                },
-            },
-        },
-        inputMsgSchema: {
-            "in.add-funds": {
-                type: "object",
-                properties: {
-                    accountId: { type: "string" },
-                    amount: { type: "number" },
-                },
-                required: ["accountId", "amount"],
-                additionalProperties: false,
-            },
-            "in.sub-funds": {
-                type: "object",
-                properties: {
-                    accountId: { type: "string" },
-                    amount: { type: "number" },
-                },
-                required: ["accountId", "amount"],
-                additionalProperties: false,
-            },
-            "in.add-funds-with-next-return": {
-                type: "object",
-                properties: {
-                    accountId: { type: "string" },
-                    amount: { type: "number" },
-                },
-                required: ["accountId", "amount"],
-                additionalProperties: false,
-            },
-        },
-    },
-    widget: {
-        relWidgetDir: "./widget",
-        tool: {
-            label: "Account Funds Test",
-            behavior: {
-                type: "mode",
-                mode: "click-create",
-            },
-        },
-    },
-} satisfies TVibecanvasJson;
-
+const rootDir = new URL("./fixtures/account-fund-actor", import.meta.url).pathname;
+const testActorConfig = testActorConfigJson as TVibecanvasJson;
 
 describe("Actor", () => {
     test("runs guest functions in child process and updates data", async () => {
@@ -131,5 +63,4 @@ describe("Actor", () => {
 
         actor.close()
     })
-    // Test actor config and fixtures/fx_account-funds folder are prepared above.
 });

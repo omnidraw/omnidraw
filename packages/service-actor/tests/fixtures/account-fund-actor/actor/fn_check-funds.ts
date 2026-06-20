@@ -1,4 +1,4 @@
-import type { TFnArgs } from "../../../src/core/types";
+import type { TFnArgs } from "../../../../src/core/types";
 
 export type TPortalCheckFunds = {
   readonly next: () => Promise<unknown>;

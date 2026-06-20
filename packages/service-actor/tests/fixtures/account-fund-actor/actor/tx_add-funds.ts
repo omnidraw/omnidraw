@@ -1,4 +1,4 @@
-import type { TTxArgs, TTxPortal } from "../../../src/core/types";
+import type { TTxArgs, TTxPortal } from "../../../../src/core/types";
 
 export type TPortalAddFunds = TTxPortal;
 

@@ -1,4 +1,4 @@
-import type { TFnArgs } from "../../../src/core/types";
+import type { TFnArgs } from "../../../../src/core/types";
 
 export type TPortalConsumeNextReturn = {
   readonly next: () => Promise<{ balance: number }>;

@@ -1,0 +1,68 @@
+{
+  "slug": "account-funds-test",
+  "name": "Account Funds Test",
+  "actor": {
+    "relFunctionPath": "./actor/functions.ts",
+    "initialState": "ready",
+    "initialData": {
+      "balance": 0
+    },
+    "states": {
+      "ready": {
+        "on": {
+          "in.add-funds": {
+            "func": ["fn.checkFunds", "fx.accountCheck", "tx.addFunds"],
+            "allowedTargetStates": ["ready"]
+          },
+          "in.sub-funds": {
+            "func": ["fn.checkFunds", "fx.accountCheck", "tx.subFunds"],
+            "allowedTargetStates": ["ready"]
+          },
+          "in.add-funds-with-next-return": {
+            "func": ["fn.consumeNextReturn", "tx.addFunds"],
+            "allowedTargetStates": ["ready"]
+          }
+        }
+      }
+    },
+    "inputMsgSchema": {
+      "in.add-funds": {
+        "type": "object",
+        "properties": {
+          "accountId": { "type": "string" },
+          "amount": { "type": "number" }
+        },
+        "required": ["accountId", "amount"],
+        "additionalProperties": false
+      },
+      "in.sub-funds": {
+        "type": "object",
+        "properties": {
+          "accountId": { "type": "string" },
+          "amount": { "type": "number" }
+        },
+        "required": ["accountId", "amount"],
+        "additionalProperties": false
+      },
+      "in.add-funds-with-next-return": {
+        "type": "object",
+        "properties": {
+          "accountId": { "type": "string" },
+          "amount": { "type": "number" }
+        },
+        "required": ["accountId", "amount"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "widget": {
+    "relWidgetDir": "./widget",
+    "tool": {
+      "label": "Account Funds Test",
+      "behavior": {
+        "type": "mode",
+        "mode": "click-create"
+      }
+    }
+  }
+}
