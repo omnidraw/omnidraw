@@ -1,3 +1,8 @@
+/**
+ * @file Runs one in-memory widget actor instance through a Bun child process, validating inbox and output messages around guest transitions.
+ * @remarks Actor is the per-instance runtime used by the supervisor; it owns current state/data, serializes inbox processing, and communicates with `icp-client.ts` over IPC instead of importing guest functions directly.
+ */
+
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { join } from "node:path";
