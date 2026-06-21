@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import type { TActorConnection, TActorDefinition, TActorInstance } from "../model"
+import type { TActorConnection, TActorDefinition, TActorInstance, TJson } from "../model"
 
 type TPortal = {
   db: Database
@@ -11,6 +11,28 @@ type TArgsListInstances = {
 
 type TArgsGetDefinition = {
   name: string
+}
+
+function parseJson(value: unknown): TJson {
+  if (typeof value !== "string") return value as TJson
+
+  return JSON.parse(value) as TJson
+}
+
+function parseActorInstance(row: unknown): TActorInstance {
+  const instance = row as TActorInstance
+  return {
+    ...instance,
+    machine_context: parseJson(instance.machine_context),
+  }
+}
+
+function parseActorConnection(row: unknown): TActorConnection {
+  const connection = row as TActorConnection
+  return {
+    ...connection,
+    style: parseJson(connection.style),
+  }
 }
 
 export async function fxActorListDefinitions(portal: TPortal): Promise<TActorDefinition[]> {
@@ -41,7 +63,7 @@ export async function fxActorListInstances(portal: TPortal, args: TArgsListInsta
       ORDER BY created_at ASC, id ASC
     `)
     const rows = await stmt.all()
-    return rows as TActorInstance[]
+    return rows.map(parseActorInstance)
   }
 
   const stmt = await portal.db.prepare(`
@@ -51,7 +73,7 @@ export async function fxActorListInstances(portal: TPortal, args: TArgsListInsta
     ORDER BY created_at ASC, id ASC
   `)
   const rows = await stmt.all(args.canvasId)
-  return rows as TActorInstance[]
+  return rows.map(parseActorInstance)
 }
 
 export async function fxActorListConnections(portal: TPortal): Promise<TActorConnection[]> {
@@ -61,5 +83,5 @@ export async function fxActorListConnections(portal: TPortal): Promise<TActorCon
     ORDER BY created_at ASC, id ASC
   `)
   const rows = await stmt.all()
-  return rows as TActorConnection[]
+  return rows.map(parseActorConnection)
 }

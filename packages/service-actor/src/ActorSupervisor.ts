@@ -120,6 +120,7 @@ export class ActorSupervisor {
   }
 
   public async createInstance(defName: string, canvasId: string, elementId: string): Promise<void> {
+    console.log('createInstance', defName, canvasId, elementId)
     const def = this.vibecanvasDefMap[defName]
     if (!def) {
       this.#config.eventPublisherService.publishNotification({

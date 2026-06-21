@@ -6,14 +6,14 @@
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { join } from "node:path";
-import type { TActorState, TInputMessage, TTransition, TJsonSchema, TVibecanvasJson } from "./core/types";
+import type { TActorData, TActorState, TInputMessage, TTransition, TJsonSchema, TVibecanvasJson } from "./core/types";
 
 interface IActorConfig {
     readonly id: string
     readonly vsJson: TVibecanvasJson
     readonly rootDir: string
     readonly state?: TActorState
-    readonly data?: Record<string, any>
+    readonly data?: TActorData
 }
 
 type TInboxQueueItem = {
@@ -25,7 +25,7 @@ type TInboxQueueItem = {
 
 type TActorChildMessage =
     | { type: "next"; id: number }
-    | { type: "setData"; id: number; data: Record<string, any> }
+    | { type: "setData"; id: number; data: TActorData }
     | { type: "emitMessage"; id: number; msg: any }
     | { type: "done"; id: number }
     | { type: "error"; id?: number; msg: any }
@@ -55,7 +55,7 @@ export class Actor {
     readonly #vsJson: TVibecanvasJson
     #inputMessage: Record<string, ValidateFunction<unknown>> = {}
     #outputMessage: Record<string, ValidateFunction<unknown>> = {}
-    #data: Record<string, any>
+    #data: TActorData
     #proc: Bun.Subprocess | null = null;
     #queue: TInboxQueueItem[] = [];
     #isProcessing = false;

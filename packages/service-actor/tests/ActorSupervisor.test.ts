@@ -97,7 +97,7 @@ describe("ActorSupervisor", () => {
       display_name: "Fund Ready",
       status: "running",
       machine_state: "ready",
-      machine_context: JSON.stringify({ balance: 125 }),
+      machine_context: { balance: 125 },
     });
     await db.actor.insertInstance({
       id: "fund-instance-busy",
@@ -108,7 +108,7 @@ describe("ActorSupervisor", () => {
       display_name: "Fund Busy",
       status: "paused",
       machine_state: "busy.counting",
-      machine_context: JSON.stringify({ balance: 55 }),
+      machine_context: { balance: 55 },
     });
     await db.actor.insertInstance({
       id: "bookkeeper-instance-ready",
@@ -119,7 +119,7 @@ describe("ActorSupervisor", () => {
       display_name: "Bookkeeper Ready",
       status: "running",
       machine_state: "ready",
-      machine_context: JSON.stringify({
+      machine_context: {
         entries: [
           {
             accountId: "1",
@@ -127,7 +127,7 @@ describe("ActorSupervisor", () => {
             balance: 25,
           },
         ],
-      }),
+      },
     });
 
     const supervisor = createSupervisor(db, notifications);
@@ -188,7 +188,7 @@ describe("ActorSupervisor", () => {
       display_name: "Fund Source",
       status: "running",
       machine_state: "ready",
-      machine_context: JSON.stringify({ balance: 0 }),
+      machine_context: { balance: 0 },
     });
     await db.actor.insertInstance({
       id: "bookkeeper-target",
@@ -199,7 +199,7 @@ describe("ActorSupervisor", () => {
       display_name: "Bookkeeper Target",
       status: "running",
       machine_state: "ready",
-      machine_context: JSON.stringify({ entries: [] }),
+      machine_context: { entries: [] },
     });
 
     await db.actor.insertConnection({
@@ -210,7 +210,7 @@ describe("ActorSupervisor", () => {
       enabled: true,
       label: null,
       msg_name_whitelist: JSON.stringify(["funds-added"]),
-      style: JSON.stringify({}),
+      style: {},
     });
 
     const supervisor = createSupervisor(db, notifications);

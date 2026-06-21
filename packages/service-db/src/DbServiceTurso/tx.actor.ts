@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import type { TActorConnection, TActorDefinition, TActorInstance } from "../model"
+import type { TActorConnection, TActorDefinition, TActorInstance, TJson } from "../model"
 
 type TPortal = {
   db: Database
@@ -8,13 +8,39 @@ type TPortal = {
 type TArgsDefinitionCreate = Omit<TActorDefinition, "created_at" | "updated_at">
 type TArgsDefinitionDelete = { name: string }
 type TArgsDefinitionUpdate = Omit<TActorDefinition, "created_at" | "updated_at">
-type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at">
+type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context"> & { machine_context: TJson }
 type TArgsInstanceUpdateStatus = Pick<TActorInstance, "id" | "status">
-type TArgsInstanceUpdateMachine = Pick<TActorInstance, "id" | "machine_context" | "machine_state">
+type TArgsInstanceUpdateMachine = Pick<TActorInstance, "id" | "machine_state"> & { machine_context: TJson }
 type TArgsInstanceDelete = { id: string }
-type TArgsConnectionCreate = Omit<TActorConnection, "created_at" | "updated_at">
+type TArgsConnectionCreate = Omit<TActorConnection, "created_at" | "updated_at" | "style"> & { style: TJson }
 type TArgsConnectionDeleteById = { id: string }
 type TArgsConnectionDeleteBySource = { actorId: string }
+
+function parseJson(value: unknown): TJson {
+  if (typeof value !== "string") return value as TJson
+
+  return JSON.parse(value) as TJson
+}
+
+function serializeJson(value: TJson): string {
+  return JSON.stringify(value)
+}
+
+function parseActorInstance(row: unknown): TActorInstance {
+  const instance = row as TActorInstance
+  return {
+    ...instance,
+    machine_context: parseJson(instance.machine_context),
+  }
+}
+
+function parseActorConnection(row: unknown): TActorConnection {
+  const connection = row as TActorConnection
+  return {
+    ...connection,
+    style: parseJson(connection.style),
+  }
+}
 
 export async function txActorInsertDefinition(portal: TPortal, args: TArgsDefinitionCreate): Promise<TActorDefinition> {
   const stmt = await portal.db.prepare(`
@@ -53,9 +79,9 @@ export async function txActorInsertInstance(portal: TPortal, args: TArgsInstance
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `)
-  const row = await stmt.get(args.id, args.canvas_id, args.element_id, args.actor_definition_name, args.filesystem_id, args.display_name, args.status, args.machine_state, args.machine_context)
+  const row = await stmt.get(args.id, args.canvas_id, args.element_id, args.actor_definition_name, args.filesystem_id, args.display_name, args.status, args.machine_state, serializeJson(args.machine_context))
   if (!row) throw new Error("Failed to insert actor instance")
-  return row as TActorInstance
+  return parseActorInstance(row)
 }
 
 export async function txActorUpdateInstanceStatus(portal: TPortal, args: TArgsInstanceUpdateStatus): Promise<TActorInstance> {
@@ -67,7 +93,7 @@ export async function txActorUpdateInstanceStatus(portal: TPortal, args: TArgsIn
   `)
   const row = await stmt.get(args.status, args.id)
   if (!row) throw new Error(`Unknown actor instance "${args.id}"`)
-  return row as TActorInstance
+  return parseActorInstance(row)
 }
 
 export async function txActorUpdateInstanceMachine(portal: TPortal, args: TArgsInstanceUpdateMachine): Promise<TActorInstance> {
@@ -77,9 +103,9 @@ export async function txActorUpdateInstanceMachine(portal: TPortal, args: TArgsI
     WHERE id = ?
     RETURNING *
   `)
-  const row = await stmt.get(args.machine_state, args.machine_context, args.id)
+  const row = await stmt.get(args.machine_state, serializeJson(args.machine_context), args.id)
   if (!row) throw new Error(`Unknown actor instance "${args.id}"`)
-  return row as TActorInstance
+  return parseActorInstance(row)
 }
 
 export async function txActorDeleteInstance(portal: TPortal, args: TArgsInstanceDelete): Promise<void> {
@@ -96,9 +122,9 @@ export async function txActorInsertConnection(portal: TPortal, args: TArgsConnec
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `)
-  const row = await stmt.get(args.id, args.canvas_id, args.source_actor_instance_id, args.target_actor_instance_id, args.enabled, args.label, args.msg_name_whitelist, args.style)
+  const row = await stmt.get(args.id, args.canvas_id, args.source_actor_instance_id, args.target_actor_instance_id, args.enabled, args.label, args.msg_name_whitelist, serializeJson(args.style))
   if (!row) throw new Error("Failed to insert actor connection")
-  return row as TActorConnection
+  return parseActorConnection(row)
 }
 
 export async function txActorDeleteConnectionById(portal: TPortal, args: TArgsConnectionDeleteById): Promise<void> {

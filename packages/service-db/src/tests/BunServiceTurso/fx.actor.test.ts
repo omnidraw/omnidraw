@@ -54,15 +54,15 @@ describe("fx.actor", () => {
     await db.close();
   });
 
-  test("lists actor instances with machine_context returned as raw JSON text", async () => {
+  test("lists actor instances with machine_context decoded from JSON column", async () => {
     const instances = await fxActorListInstances({ db }, {});
 
     const objectContext = instances.find(instance => instance.id === "actor-object-context");
     const stringContext = instances.find(instance => instance.id === "actor-string-context");
 
-    expect(objectContext?.machine_context).toBe(JSON.stringify({ count: 7, nested: { ok: true } }));
-    expect(typeof objectContext?.machine_context).toBe("string");
-    expect(stringContext?.machine_context).toBe(JSON.stringify("valid-json-string"));
+    expect(objectContext?.machine_context).toEqual({ count: 7, nested: { ok: true } });
+    expect(typeof objectContext?.machine_context).toBe("object");
+    expect(stringContext?.machine_context).toBe("valid-json-string");
     expect(typeof stringContext?.machine_context).toBe("string");
   });
 });

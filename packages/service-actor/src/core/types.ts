@@ -1,3 +1,5 @@
+export type TActorData = string | number | boolean | null | TActorData[] | { [key: string]: TActorData | undefined };
+
 export type TActorState =
   'booting' | `booting.${string}` |
   'ready' | `ready.${string}` |
@@ -24,7 +26,7 @@ export type TActorStateConfig = {
 export type TVibecanvasActor = {
   readonly relFunctionPath: string;
   readonly initialState: TActorState;
-  readonly initialData: Record<string, any>;
+  readonly initialData: TActorData;
   readonly dataSchema?: TJsonSchema;
   readonly states: Partial<Record<TActorState, TActorStateConfig>>;
   readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;

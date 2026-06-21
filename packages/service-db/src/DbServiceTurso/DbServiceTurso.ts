@@ -2,7 +2,7 @@ import { Database } from "@tursodatabase/database";
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem, TJson } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
@@ -21,10 +21,10 @@ type TFileCreateArgs = Omit<TFile, "created_at">
 type TFilesystemCreateArgs = Omit<TFilesystem, "created_at" | "updated_at">;
 type TActorDefinitionCreateArgs = Omit<TActorDefinition, "created_at" | "updated_at">;
 type TActorDefinitionUpdateArgs = Omit<TActorDefinition, "id" | "created_at" | "updated_at">;
-type TActorInstanceCreateArgs = Omit<TActorInstance, "created_at" | "updated_at">;
+type TActorInstanceCreateArgs = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context"> & { machine_context: TJson };
 type TActorInstanceUpdateStatusArgs = Pick<TActorInstance, "id" | "status">;
-type TActorInstanceUpdateMachineArgs = Pick<TActorInstance, "id" | "machine_context" | "machine_state">;
-type TActorConnectionCreateArgs = Omit<TActorConnection, "created_at" | "updated_at">;
+type TActorInstanceUpdateMachineArgs = Pick<TActorInstance, "id" | "machine_state"> & { machine_context: TJson };
+type TActorConnectionCreateArgs = Omit<TActorConnection, "created_at" | "updated_at" | "style"> & { style: TJson };
 
 
 /**
