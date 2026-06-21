@@ -156,4 +156,82 @@ describe("ActorSupervisor", () => {
 
     supervisor.closeActors();
   });
+
+  test("routes emitted actor messages to connected target actors", async () => {
+    await db.canvas.create({
+      id: "canvas-connection",
+      name: "Actor Connection Test Canvas",
+      automerge_url: "automerge:actor-connection-test",
+    });
+
+    await db.actor.insertDefinition({
+      name: "Account Funds Test",
+      slug: "account-funds-test",
+      url: null,
+      description: null,
+      manifest_path: fundActorManifestPath,
+    });
+    await db.actor.insertDefinition({
+      name: "Account Bookkeeper Test",
+      slug: "account-bookkeeper-test",
+      url: null,
+      description: null,
+      manifest_path: bookkeeperActorManifestPath,
+    });
+
+    await db.actor.insertInstance({
+      id: "fund-source",
+      canvas_id: "canvas-connection",
+      element_id: "element-fund-source",
+      actor_definition_name: "Account Funds Test",
+      filesystem_id: null,
+      display_name: "Fund Source",
+      status: "running",
+      machine_state: "ready",
+      machine_context: JSON.stringify({ balance: 0 }),
+    });
+    await db.actor.insertInstance({
+      id: "bookkeeper-target",
+      canvas_id: "canvas-connection",
+      element_id: "element-bookkeeper-target",
+      actor_definition_name: "Account Bookkeeper Test",
+      filesystem_id: null,
+      display_name: "Bookkeeper Target",
+      status: "running",
+      machine_state: "ready",
+      machine_context: JSON.stringify({ entries: [] }),
+    });
+
+    await db.actor.insertConnection({
+      id: "connection-fund-to-bookkeeper",
+      canvas_id: "canvas-connection",
+      source_actor_instance_id: "fund-source",
+      target_actor_instance_id: "bookkeeper-target",
+      enabled: true,
+      label: null,
+      msg_name_whitelist: JSON.stringify(["funds-added"]),
+      style: JSON.stringify({}),
+    });
+
+    const supervisor = createSupervisor(db, notifications);
+
+    await supervisor.init();
+    await supervisor.actorMap["fund-source"].inbox("add-funds", {accountId: "1", amount: 42});
+    await Bun.sleep(10);
+
+    expect(supervisor.connectionMap["fund-source"].map(connection => connection.id)).toEqual([
+      "connection-fund-to-bookkeeper",
+    ]);
+    expect(supervisor.actorMap["bookkeeper-target"].getData()).toEqual({
+      entries: [
+        {
+          accountId: "1",
+          amount: 42,
+          balance: 42,
+        },
+      ],
+    });
+
+    supervisor.closeActors();
+  });
 });

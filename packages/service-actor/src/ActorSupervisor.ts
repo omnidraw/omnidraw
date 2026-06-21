@@ -1,4 +1,5 @@
 import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
+import type { TActorConnection } from "@vibecanvas/service-db/model";
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
 import { readdir, exists } from "node:fs/promises"
@@ -6,6 +7,7 @@ import { join, dirname } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
 import type { TActorState, TVibecanvasJson } from "./core/types";
+import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./core/fn.actor-connections";
 import { fnToActorData } from "./core/fn.actor-data";
 import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor } from "./Actor";
@@ -31,6 +33,7 @@ export class ActorSupervisor {
 
   #config: IActorSupervisorConfig
   actorMap: Record<string, Actor> = {}
+  connectionMap: Record<string, TActorConnection[]> = {}
   vibecanvasDefMap: {[name: string]: TVibecanvasJson & {manifest_path: string}} = {}
 
 
@@ -41,6 +44,7 @@ export class ActorSupervisor {
 
   async init() {
     this.closeActors()
+    this.connectionMap = {}
     this.vibecanvasDefMap = {}
 
     // load defs from fs
@@ -73,12 +77,46 @@ export class ActorSupervisor {
       })
 
       this.actorMap[actor.getId()] = actor
+      this.listenToActor(actor)
     })
+
+    const connections = await this.#config.db.actor.listConnections()
+    connections.forEach(connection => {
+      if(!this.connectionMap[connection.source_actor_instance_id]) {
+        this.connectionMap[connection.source_actor_instance_id] = []
+      }
+
+      this.connectionMap[connection.source_actor_instance_id].push(connection)
+    })
+  }
+
+  listenToActor(actor: Actor) {
+    actor.listen((msgName, msgPayload) => {
+      void this.routeActorOutput({
+        sourceActorInstanceId: actor.getId(),
+        msgName,
+        msgPayload,
+      })
+    })
+  }
+
+  async routeActorOutput(args: {sourceActorInstanceId: string, msgName: string, msgPayload: any}) {
+    const connections = this.connectionMap[args.sourceActorInstanceId] ?? []
+    await Promise.allSettled(connections.map(connection => {
+      if(!fnIsActorConnectionEnabled(connection)) return Promise.resolve()
+      if(!fnCanRouteActorConnectionMessage(connection, args.msgName)) return Promise.resolve()
+
+      const targetActor = this.actorMap[connection.target_actor_instance_id]
+      if(!targetActor) return Promise.resolve()
+
+      return targetActor.inbox(args.msgName, args.msgPayload)
+    }))
   }
 
   closeActors() {
     Object.values(this.actorMap).forEach(actor => actor.close())
     this.actorMap = {}
+    this.connectionMap = {}
   }
 
   public async createInstance(defId: string, canvasId: string): Promise<void> {
