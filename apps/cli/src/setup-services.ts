@@ -64,7 +64,7 @@ function setupServices(config: ICliConfig) {
   const automergeService = new AutomergeService(dbService.db, {
     async onElementCreate(canvasId, element) {
       if (element.data.type === 'widget' && element.data.actorDefinitionName) {
-        await services.require('actor').createInstance(element.data.actorDefinitionName, canvasId)
+        await services.require('actor').createInstance(element.data.actorDefinitionName, canvasId, element.id)
       }
     },
     async onElementDelete(canvasId, element) {
