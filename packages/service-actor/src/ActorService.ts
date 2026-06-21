@@ -9,8 +9,8 @@ import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
 
 interface IPublicMethods {
-  sendMessage(msg: any): Promise<void>
-  createInstance(defId: string, canvasId: string): Promise<void>
+  sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<void>
+  createInstance(defId: string, canvasId: string, elementId: string): Promise<void>
   removeInstance(instanceId: string): Promise<void>
   getVibecanvasJson(defId: string): TVibecanvasJson | null;
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
@@ -45,18 +45,15 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async createInstance(defName: string, canvasId: string): Promise<void> {
-      const def = this.getVibecanvasJson(defName)
-      if(def === null) return
-      def.actor
-      throw "TODO: implement"
+  async createInstance(defName: string, canvasId: string, elementId: string): Promise<void> {
+    return this.#supervisor.createInstance(defName, canvasId, elementId)
   }
 
   async removeInstance(instanceId: string): Promise<void> {
-      throw "TODO: implement"
+    return this.#supervisor.removeInstance(instanceId)
   }
 
-  async sendMessage(msg: any): Promise<void> {
+  async sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<void> {
       throw "TODO: implement"
   }
 
