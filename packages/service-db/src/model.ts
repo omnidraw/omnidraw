@@ -94,19 +94,6 @@ export const ZActorInstance = z.object({
   updated_at: ZTimestamp,
 });
 
-export const ZActorInbox = z.object({
-  id: z.string(),
-  actor_instance_id: z.string(),
-  seq: z.number().int().nonnegative(),
-  msg_name: z.string(),
-  payload: ZJson.nullable(),
-  idempotency_key: z.string(),
-  status: ZActorInboxStatus,
-  created_at: ZTimestamp,
-  processed_at: ZTimestamp.nullable(),
-  error: z.string().nullable(),
-});
-
 export const ZActorConnection = z.object({
   id: z.string(),
   canvas_id: z.string(),
@@ -137,5 +124,4 @@ export type TFile = z.infer<typeof ZFile>;
 export type TFilesystem = z.infer<typeof ZFilesystem>;
 export type TActorDefinition = z.infer<typeof ZActorDefinition>;
 export type TActorInstance = z.infer<typeof ZActorInstance>;
-export type TActorInbox = z.infer<typeof ZActorInbox>;
 export type TActorConnection = z.infer<typeof ZActorConnection>;

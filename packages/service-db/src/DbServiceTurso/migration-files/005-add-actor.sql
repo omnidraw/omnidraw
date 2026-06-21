@@ -53,21 +53,7 @@ BEGIN
 	SET `updated_at` = datetime('now')
 	WHERE `id` = OLD.`id`;
 END;
---
-CREATE TABLE IF NOT EXISTS `actor_inbox` (
-  `id` TEXT PRIMARY KEY NOT NULL,
-  `actor_instance_id` TEXT NOT NULL REFERENCES `actor_instances`(`id`) ON DELETE CASCADE,
-  `seq` INTEGER NOT NULL CHECK (seq >= 0),
-  `msg_name` TEXT NOT NULL,
-  `payload` JSON,
-  `idempotency_key` UUID NOT NULL,
-  `status` TEXT DEFAULT 'queued' NOT NULL CHECK (status IN ('queued', 'processing', 'processed', 'failed')),
-  `created_at` TIMESTAMP DEFAULT (datetime('now')) NOT NULL,
-  `processed_at` TIMESTAMP,
-  `error` TEXT
-) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS `actor_inbox_actor_seq_idx` ON `actor_inbox` (`actor_instance_id`, `seq`);
 --
 CREATE TABLE IF NOT EXISTS `actor_connections` (
 	`id` TEXT PRIMARY KEY NOT NULL,
