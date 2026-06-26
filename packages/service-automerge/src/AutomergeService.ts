@@ -6,9 +6,15 @@ import type { IAutomergeService } from './IAutomergeService';
 import type { TCanvasDoc, TElement } from './types/canvas-doc.types';
 
 export type TAutomergeStorageConfig = TursoDatabase | { type: 'turso'; database: TursoDatabase };
+export type TAutomergeElementEvent = {
+  canvasDocId: string;
+  automergeUrl: string;
+  element: TElement;
+};
+
 export type TAutomergeCallbacks = {
-  onElementDelete: (canvasId: string, element: TElement) => void;
-  onElementCreate: (canvasId: string, element: TElement) => void;
+  onElementDelete: (event: TAutomergeElementEvent) => void;
+  onElementCreate: (event: TAutomergeElementEvent) => void;
 };
 
 export class AutomergeService implements IAutomergeService {
@@ -17,8 +23,8 @@ export class AutomergeService implements IAutomergeService {
   readonly wsAdapter: BunWSServerAdapter;
   #elementDeleteWatchedDocumentIds = new Set<string>();
   #elementDeleteScanInterval: ReturnType<typeof setInterval> | null = null;
-  #onElementDelete: (canvasId: string, element: TElement) => void;
-  #onElementCreate: (canvasId: string, element: TElement) => void;
+  #onElementDelete: (event: TAutomergeElementEvent) => void;
+  #onElementCreate: (event: TAutomergeElementEvent) => void;
 
   constructor(
     private readonly database: TAutomergeStorageConfig,
@@ -85,7 +91,7 @@ export class AutomergeService implements IAutomergeService {
     handle.on('change', ({ patchInfo }) => {
       const before = patchInfo.before as TCanvasDoc | undefined;
       const after = patchInfo.after as TCanvasDoc | undefined;
-      const canvasId = after?.id ?? before?.id ?? handle.documentId;
+      const canvasDocId = after?.id ?? before?.id ?? handle.documentId;
       const beforeElements = before?.elements ?? {};
       const afterElements = after?.elements ?? {};
 
@@ -94,7 +100,11 @@ export class AutomergeService implements IAutomergeService {
           continue;
         }
 
-        this.#onElementDelete(canvasId, element);
+        this.#onElementDelete({
+          canvasDocId,
+          automergeUrl: handle.url,
+          element,
+        });
       }
 
       for (const [elementId, element] of Object.entries(afterElements)) {
@@ -102,7 +112,11 @@ export class AutomergeService implements IAutomergeService {
           continue;
         }
 
-        this.#onElementCreate(canvasId, element);
+        this.#onElementCreate({
+          canvasDocId,
+          automergeUrl: handle.url,
+          element,
+        });
       }
     });
   }

@@ -33,7 +33,7 @@ async function waitForPersistedTursoDoc(args: { database: TursoDatabase; automer
   });
 }
 
-function createNoopAutomergeCallbacks(): { onElementDelete: (canvasId: string, element: TElement) => void; onElementCreate: (canvasId: string, element: TElement) => void } {
+function createNoopAutomergeCallbacks(): ConstructorParameters<typeof AutomergeService>[1] {
   return {
     onElementDelete: () => {},
     onElementCreate: () => {},
@@ -120,14 +120,14 @@ describe('AutomergeService', () => {
   });
 
   test('notifies when an element is deleted from a watched canvas document', async () => {
-    const deletedElements: Array<{ canvasId: string; element: TElement }> = [];
+    const deletedElements: Array<{ canvasDocId: string; automergeUrl: string; element: TElement }> = [];
     const turso = await connect(':memory:');
     tursoDatabases.push(turso);
 
     const service = new AutomergeService(turso, {
       ...createNoopAutomergeCallbacks(),
-      onElementDelete: (canvasId, element) => {
-        deletedElements.push({ canvasId, element });
+      onElementDelete: (event) => {
+        deletedElements.push(event);
       },
     });
     service.start();
@@ -155,18 +155,18 @@ describe('AutomergeService', () => {
       predicate: () => deletedElements.length === 1,
     });
 
-    expect(deletedElements).toEqual([{ canvasId: 'canvas-delete-test', element }]);
+    expect(deletedElements).toEqual([{ canvasDocId: 'canvas-delete-test', automergeUrl: handle.url, element }]);
   });
 
   test('notifies when an element is created in a watched canvas document', async () => {
-    const createdElements: Array<{ canvasId: string; element: TElement }> = [];
+    const createdElements: Array<{ canvasDocId: string; automergeUrl: string; element: TElement }> = [];
     const turso = await connect(':memory:');
     tursoDatabases.push(turso);
 
     const service = new AutomergeService(turso, {
       ...createNoopAutomergeCallbacks(),
-      onElementCreate: (canvasId, element) => {
-        createdElements.push({ canvasId, element });
+      onElementCreate: (event) => {
+        createdElements.push(event);
       },
     });
     service.start();
@@ -192,6 +192,6 @@ describe('AutomergeService', () => {
       predicate: () => createdElements.length === 1,
     });
 
-    expect(createdElements).toEqual([{ canvasId: 'canvas-create-test', element }]);
+    expect(createdElements).toEqual([{ canvasDocId: 'canvas-create-test', automergeUrl: handle.url, element }]);
   });
 });

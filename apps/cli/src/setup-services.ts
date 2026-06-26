@@ -62,12 +62,18 @@ function setupServices(config: ICliConfig) {
   services.provide('pty', 40, ptyService);
 
   const automergeService = new AutomergeService(dbService.db, {
-    async onElementCreate(canvasId, element) {
-      if (element.data.type === 'widget' && element.data.actorDefinitionName) {
-        await services.require('actor').createInstance(element.data.actorDefinitionName, canvasId, element.id)
-      }
+    async onElementCreate(event) {
+      const element = event.element;
+      if (element.data.type !== 'widget' || !element.data.actorDefinitionName) return;
+
+      const canvases = await dbService.canvas.listAll();
+      const canvas = canvases.find(row => row.automerge_url === event.automergeUrl);
+      if (!canvas) return;
+
+      await services.require('actor').createInstance(element.data.actorDefinitionName, canvas.id, element.id)
     },
-    async onElementDelete(canvasId, element) {
+    async onElementDelete(event) {
+      const element = event.element;
       if (element.data.type === 'widget' && element.data.actorInstanceId) {
         await services.require('actor').removeInstance(element.data.actorInstanceId)
       }
