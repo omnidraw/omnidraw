@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { TJsonSchema, TVibecanvasJson } from './types';
+import type { TActorData, TJsonSchema, TVibecanvasJson } from './types';
 
 export const ZJsonSchemaPrimitiveType = z.enum([
   'null',
@@ -11,6 +11,15 @@ export const ZJsonSchemaPrimitiveType = z.enum([
   'string',
   'integer',
 ]);
+
+export const ZActorData: z.ZodType<TActorData> = z.lazy(() => z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(ZActorData),
+  z.record(z.string(), ZActorData.optional()),
+]));
 
 export const ZJsonSchema: z.ZodType<TJsonSchema> = z.lazy(() => z.union([
   z.boolean(),
@@ -65,15 +74,15 @@ export const ZTransition = z.object({
 });
 
 export const ZActorStateConfig = z.object({
-  on: z.record(ZInputMessage, ZTransition),
+  on: z.partialRecord(ZInputMessage, ZTransition),
 });
 
 export const ZVibecanvasActor = z.object({
   relFunctionPath: z.string(),
   initialState: ZActorState,
-  initialData: z.record(z.string(), z.any()),
+  initialData: ZActorData,
   dataSchema: ZJsonSchema.optional(),
-  states: z.record(ZActorState, ZActorStateConfig),
+  states: z.partialRecord(ZActorState, ZActorStateConfig),
   inputMsgSchema: z.record(ZInputMessage, ZJsonSchema).optional(),
   outputMsgSchema: z.record(ZOutputMessage, ZJsonSchema).optional(),
 });
