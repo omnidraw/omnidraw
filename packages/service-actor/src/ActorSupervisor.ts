@@ -120,7 +120,6 @@ export class ActorSupervisor {
   }
 
   public async createInstance(defName: string, canvasId: string, elementId: string): Promise<void> {
-    console.log('createInstance', defName, canvasId, elementId)
     const def = this.vibecanvasDefMap[defName]
     if (!def) {
       this.#config.eventPublisherService.publishNotification({
@@ -150,10 +149,29 @@ export class ActorSupervisor {
     })
 
     this.actorMap[actor.getId()] = actor
+    this.listenToActor(actor)
 
   }
 
   public async removeInstance(instanceId: string): Promise<void> {
+    const actor = this.actorMap[instanceId]
+    if (actor) {
+      actor.close()
+      delete this.actorMap[instanceId]
+    }
+
+    delete this.connectionMap[instanceId]
+    for (const [sourceActorInstanceId, connections] of Object.entries(this.connectionMap)) {
+      const remainingConnections = connections.filter(connection => connection.target_actor_instance_id !== instanceId)
+      if (remainingConnections.length === 0) {
+        delete this.connectionMap[sourceActorInstanceId]
+        continue
+      }
+
+      this.connectionMap[sourceActorInstanceId] = remainingConnections
+    }
+
+    await this.#config.db.actor.deleteInstance(instanceId)
   }
 
 

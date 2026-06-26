@@ -74,8 +74,11 @@ function setupServices(config: ICliConfig) {
     },
     async onElementDelete(event) {
       const element = event.element;
-      if (element.data.type === 'widget' && element.data.actorInstanceId) {
-        await services.require('actor').removeInstance(element.data.actorInstanceId)
+      if (element.data.type === 'widget') {
+        const instance = await dbService.actor.getInstanceByElementId(event.element.id)
+        console.log(event.element.id, instance)
+        if(!instance) return
+        await services.require('actor').removeInstance(instance.id)
       }
     },
   },

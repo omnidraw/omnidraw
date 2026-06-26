@@ -264,7 +264,6 @@ export class Actor {
     private emitMessage(msgName: string, msgPayload: any): Error | undefined {
         if (msgName === 'error') {
             const msg = `Error in Actor: ${this.#vsJson.name}\n${JSON.stringify(msgPayload)}`
-            console.error(msg)
             for (const listener of this.#listeners) {
                 listener(msgName, msgPayload)
             }

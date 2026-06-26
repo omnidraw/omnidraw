@@ -95,5 +95,5 @@ export async function fxActorGetInstanceByElementId(portal: TPortal, args: TArgs
     FROM actor_instances
     WHERE element_id = ?
   `)
-  return await stmt.get()
+  return await stmt.get(args.elementId)
 }
