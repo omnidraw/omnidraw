@@ -7,6 +7,7 @@ import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import { join } from "node:path";
 import type { TActorData, TActorState, TInputMessage, TTransition, TJsonSchema, TVibecanvasJson } from "./core/types";
+import type { TActorStatus } from "@vibecanvas/service-db/model";
 
 interface IActorConfig {
     readonly id: string
@@ -14,6 +15,7 @@ interface IActorConfig {
     readonly rootDir: string
     readonly state?: TActorState
     readonly data?: TActorData
+    // updateDbStatus: (status: TActorStatus) => Promise<void>
 }
 
 type TInboxQueueItem = {

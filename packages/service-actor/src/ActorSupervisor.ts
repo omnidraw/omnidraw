@@ -64,7 +64,7 @@ export class ActorSupervisor {
     await txSyncDbActorDefinitions({ crypto, db: this.#config.db }, { defs: Object.values(this.vibecanvasDefMap) })
 
     const instances = await this.#config.db.actor.listInstances()
-    instances.forEach(actorInst => {
+    instances.forEach(async actorInst => {
       const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
       if (!def) return
 
@@ -78,6 +78,7 @@ export class ActorSupervisor {
 
       this.actorMap[actor.getId()] = actor
       this.listenToActor(actor)
+      await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
     })
 
     const connections = await this.#config.db.actor.listConnections()
@@ -150,13 +151,15 @@ export class ActorSupervisor {
 
     this.actorMap[actor.getId()] = actor
     this.listenToActor(actor)
-
+    await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
   }
 
   public async removeInstance(instanceId: string): Promise<void> {
     const actor = this.actorMap[instanceId]
     if (actor) {
+      await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'stopping'})
       actor.close()
+      await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'stopped'})
       delete this.actorMap[instanceId]
     }
 

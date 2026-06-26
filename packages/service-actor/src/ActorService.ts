@@ -7,6 +7,7 @@ import { dirname, join, relative as relativePath } from 'node:path';
 import { ActorSupervisor } from './ActorSupervisor';
 import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
+import type { TActorStatus } from '@vibecanvas/service-db/model';
 
 interface IPublicMethods {
   sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<void>
@@ -19,7 +20,7 @@ interface IPublicMethods {
 interface IActorServiceConfig {
   db: DbServiceTurso;
   configPath: string;
-  eventPublisherService: IEventPublisherService
+  eventPublisherService: IEventPublisherService,
 }
 
 export class ActorService implements IService, IStartableService, IStoppableService, IPublicMethods {
