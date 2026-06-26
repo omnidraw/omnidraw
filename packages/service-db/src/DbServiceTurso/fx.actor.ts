@@ -97,3 +97,14 @@ export async function fxActorGetInstanceByElementId(portal: TPortal, args: TArgs
   `)
   return await stmt.get(args.elementId)
 }
+type TArgsGetInstanceById = {
+  instanceId: string
+}
+export async function fxActorGetInstanceById(portal: TPortal, args: TArgsGetInstanceById): Promise<TActorInstance | null> {
+  const stmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_instances
+    WHERE id = ?
+  `)
+  return await stmt.get(args.instanceId)
+}

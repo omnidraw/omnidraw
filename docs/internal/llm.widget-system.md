@@ -214,18 +214,32 @@ The current Todo widget is purely local Arrow state. It demonstrates rendering b
 
 ## Current SDK surface
 
-`packages/sdk/src/index.ts` currently only re-exports actor function types:
+The SDK is now split by runtime. There is intentionally no bare `@vibecanvas/sdk` public entrypoint. Guest code must import a runtime-specific subpath:
 
-```ts
-export type { TFnArgs, TFnPortal, TFxArgs, TFxPortal, TTxArgs, TTxPortal } from "@vibecanvas/service-actor/core/types"
-```
+- `@vibecanvas/sdk/widget` for browser/Arrow sandbox widget code.
+- `@vibecanvas/sdk/actor` for Bun-side actor function code.
 
-That means:
+Current package source files:
 
-- Actor authors can type their `portal` and `args`.
-- Widget authors do not yet have a useful runtime SDK.
-- The sandbox import rewriting exists, but the SDK module source is not actually injected yet.
-- UI-to-actor send/subscribe is not wired because `ActorService.sendMessage()` is not implemented and no client API exists for it.
+- `packages/sdk/src/widget.ts`
+  - Small author-facing widget API.
+  - Exposes `defineWidget`, `TWidgetSdk`, `TWidgetActor`.
+  - The actor object only exposes reactive `state`, reactive `status`, reactive `context`, and `sendMessage()`.
+- `packages/sdk/src/widget-bridge.ts`
+  - Host bridge implementation details.
+  - Exposes `createWidgetSdk`, `createWidgetSdkFromPortal`, and `IWidgetHostPortal`.
+  - Contains TODO markers for host bridge functions that still need real integration.
+- `packages/sdk/src/actor.ts`
+  - Actor-side types and helpers.
+  - Exposes `defineActorFunctions`, `defineFn`, `defineFx`, `defineTx`.
+  - Exposes compatibility actor types: `TFnPortal`, `TFxPortal`, `TTxPortal`, `TFnArgs`, `TFxArgs`, `TTxArgs`.
+
+Current status:
+
+- Actor authors can import types from `@vibecanvas/sdk/actor`.
+- Widget authors have a small intended API from `@vibecanvas/sdk/widget`.
+- The widget bridge shape exists, but host integration still needs to be wired.
+- UI-to-actor send/subscribe is not fully wired because `ActorService.sendMessage()` is not implemented and no client API exists for it yet.
 
 ## Key architectural gap
 
@@ -243,51 +257,73 @@ The public SDK should be split by runtime.
 
 ### `@vibecanvas/sdk/widget`
 
-For Arrow sandbox code. It should expose high-level widget APIs, not ORPC, Automerge, IPC, or actor internals.
+For Arrow sandbox code. The widget entrypoint should stay intentionally small. Widget authors should see only what they need to render and talk to their own actor.
 
-Suggested primitives:
+Current intended primitives:
 
 ```ts
-import { defineWidget, useActor, useCanvasElement } from '@vibecanvas/sdk/widget'
+import { html } from '@arrow-js/core'
+import { defineWidget } from '@vibecanvas/sdk/widget'
 
 export default defineWidget(({ actor }) => {
-  const state = actor.reactiveState()
-
   return html`
-    <button @click="${() => actor.send('in.addTodo', { title: 'New' })}">
+    <header>
+      <span>${() => actor.status.value}</span>
+      <span>${() => actor.state.value}</span>
+    </header>
+
+    <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>
+
+    <button @click="${() => actor.sendMessage('in.addTodo', { title: 'New' })}">
       Add
     </button>
-    <pre>${() => JSON.stringify(state.data)}</pre>
   `
 })
 ```
 
-Minimum capabilities:
+Current minimum capabilities:
 
-- `actor.id`, `actor.definitionName`, `actor.elementId`.
-- `actor.send(name, payload)` with manifest-schema validation feedback.
-- `actor.snapshot()` or `actor.reactiveState()` for current data/status.
-- `actor.onOutput(name, handler)` for actor outputs intended for UI.
-- `widget.element` metadata: size, window mode, focused/selected state if needed.
-- `widget.setUiProps()` for canvas-persisted UI preferences.
-- `output(payload)` wrapper if sandbox output remains useful.
+- `actor.state.value`
+  - Arrow-reactive actor machine state, e.g. `ready`, `busy.saving`, `error.validation`.
+- `actor.status.value`
+  - Arrow-reactive actor system status, e.g. `running`, `paused`, `error`.
+- `actor.context.value`
+  - Arrow-reactive actor context/data from the owning actor instance.
+- `actor.sendMessage(name, payload)`
+  - Sends an input message to this widget's own actor instance.
+
+Deliberately not in the small widget file yet:
+
+- Canvas element/window APIs.
+- Output subscriptions.
+- UI props.
+- Raw actor ids/definition ids.
+- ORPC, Automerge, IPC, DB, Bun, or browser-global escape hatches.
+
+Those can be added later when there is a clear use case, but should not make `widget.ts` hard to read. Integration details belong in `widget-bridge.ts`.
 
 Implementation direction:
 
 - Use `@arrow-js/sandbox` hostBridge to expose a virtual host module.
+- The bridge should supply the initial actor snapshot and push subsequent snapshots.
 - Keep all messages JSON-serializable.
 - Hide ORPC and canvas services from guest code.
-- Generate or provide types from `vibecanvas.json` so `send()` and outputs are typed.
+- Generate or provide types from `vibecanvas.json` so `sendMessage()` is typed.
 
 ### `@vibecanvas/sdk/actor`
 
 For Bun-side actor guest code. It should preserve the function split but make the API clearer.
 
-Suggested exports:
+Current exports:
 
 - `defineActorFunctions({ fn, fx, tx })`
 - `defineFn()`, `defineFx()`, `defineTx()` helpers for typing.
-- `ActorPortal` types with capability-specific APIs.
+- `TActorFn`, `TActorFx`, `TActorTx` function types.
+- `TFnPortal`, `TFxPortal`, `TTxPortal` compatibility portal types.
+- `TFnArgs`, `TFxArgs`, `TTxArgs` compatibility arg types.
+
+Potential later exports:
+
 - `emit(type, payload)` helper to enforce output shape.
 - `setData(nextData)` / `patchData(patch)` helpers.
 - Type utilities generated from manifest schemas.
@@ -316,7 +352,7 @@ This should be generated from:
 The generated API lets widget code call:
 
 ```ts
-actor.send('in.addTodo', { title: '...' })
+actor.sendMessage('in.addTodo', { title: '...' })
 ```
 
 and actor code emit:
@@ -348,11 +384,11 @@ Important boundaries:
 
 1. Implement `ActorService.sendMessage(instanceId, msgName, msgPayload)` by delegating to the supervisor/actor map.
 2. Add an ORPC endpoint for sending messages to the current widget actor instance.
-3. Add an event stream or subscription mechanism for actor outputs/data snapshots scoped to an actor instance.
-4. Persist actor machine data/state after `portal.setData()` or after each transition completes.
-5. Inject a real widget SDK module into `@arrow-js/sandbox` via `hostBridge` or source injection.
-6. Replace raw `@vibecanvas/sdk` imports in widget code with a stable browser-safe subpath.
-7. Keep the existing actor type exports, but move them to an actor-specific SDK subpath.
+3. Implement the `widget-bridge.ts` TODOs using the Arrow sandbox host bridge.
+4. Add an event stream or subscription mechanism for actor context/status/state snapshots scoped to an actor instance.
+5. Persist actor machine data/state after `portal.setData()` or after each transition completes.
+6. Inject the real `@vibecanvas/sdk/widget` module into `@arrow-js/sandbox` via `hostBridge` or source injection.
+7. Ensure guest code imports only `@vibecanvas/sdk/widget` or `@vibecanvas/sdk/actor`; do not use bare `@vibecanvas/sdk`.
 8. Generate TypeScript types from `vibecanvas.json` schemas for guest projects.
 
 ## Design principle

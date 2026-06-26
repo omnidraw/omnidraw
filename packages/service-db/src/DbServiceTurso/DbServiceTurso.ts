@@ -4,7 +4,7 @@ import path from "node:path";
 import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem, TJson } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
-import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
+import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
@@ -138,6 +138,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     updateInstanceStatus: (instance: TActorInstanceUpdateStatusArgs) => txActorUpdateInstanceStatus(this, instance),
     updateInstanceMachine: (instance: TActorInstanceUpdateMachineArgs) => txActorUpdateInstanceMachine(this, instance),
     getInstanceByElementId: (elementId: string) => fxActorGetInstanceByElementId(this, {elementId}),
+    getInstanceById: (instanceId: string) => fxActorGetInstanceById(this, {instanceId}),
     deleteInstance: (id: string) => txActorDeleteInstance(this, { id }),
     listConnections: () => fxActorListConnections(this),
     insertConnection: (connection: TActorConnectionCreateArgs) => txActorInsertConnection(this, connection),

@@ -1,7 +1,7 @@
 import { eventIterator, oc } from '@orpc/contract';
 import { z } from 'zod';
 import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.zod"
-import { ZActorDefinition } from "@vibecanvas/service-db/model"
+import { ZActorDefinition, ZJson } from "@vibecanvas/service-db/model"
 
 const ZActorDefListItem = ZVibecanvasJson.extend(ZActorDefinition.shape)
 const ZActorDefResponse = z.object({
@@ -11,6 +11,11 @@ const ZActorDefResponse = z.object({
     path: z.string()
   }).array()
 });
+
+const ZActorSnapshot = z.object({
+  state: z.string(),
+  context: ZJson
+})
 
 export const ZActorEvent = z.object({
   actorId: z.string(),
@@ -27,7 +32,11 @@ const actorsContract = oc.router({
       .input(z.object({}))
       .route({ method: 'GET' })
       .output(eventIterator(ZActorEvent)),
-
+  },
+  instances: {
+    snapshot: oc
+      .input(z.object({ instanceId: z.string() }))
+      .output(ZActorSnapshot)
   }
 });
 

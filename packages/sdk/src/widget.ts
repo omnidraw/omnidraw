@@ -1,4 +1,4 @@
-import type { TActorRuntimeState, TActorSystemStatus, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
+import type { TActorRuntimeState, TMessageMap, TVibecanvasJsonValue } from './shared';
 export { createWidgetSdk, createWidgetSdkFromPortal } from './widget-bridge';
 export type { IWidgetHostPortal, TActorSendOptions, TActorSendResult, TActorSnapshot } from './widget-bridge';
 
@@ -8,9 +8,6 @@ export type TWidgetActor<
 > = {
   /** Arrow-reactive actor machine state. Use as `${() => actor.state.value}`. */
   readonly state: { value: TActorRuntimeState };
-
-  /** Arrow-reactive actor system status. Use as `${() => actor.status.value}`. */
-  readonly status: { value: TActorSystemStatus };
 
   /** Arrow-reactive actor context/data. Use as `${() => actor.context.value}`. */
   readonly context: { value: TContext };
@@ -40,4 +37,4 @@ export function defineWidget<
   return factory;
 }
 
-export type { TActorRuntimeState, TActorSystemStatus, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
+export type { TActorRuntimeState, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';

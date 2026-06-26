@@ -1,6 +1,6 @@
 import { reactive } from '@arrow-js/core';
 
-import type { TActorRuntimeState, TActorSystemStatus, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
+import type { TActorRuntimeState, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
 import type { TWidgetSdk } from './widget';
 
 export type TActorSendOptions = {
@@ -21,7 +21,6 @@ export type TActorSendResult = {
 
 export type TActorSnapshot<TContext = TVibecanvasJsonValue> = {
   state: TActorRuntimeState;
-  status: TActorSystemStatus;
   context: TContext;
 };
 
@@ -50,7 +49,6 @@ export interface IWidgetHostPortal<
 
 function applySnapshot<TContext>(target: TActorSnapshot<TContext>, snapshot: TActorSnapshot<TContext>): void {
   target.state = snapshot.state;
-  target.status = snapshot.status;
   target.context = snapshot.context;
 }
 
@@ -68,13 +66,11 @@ export function createWidgetSdk<
 ): TWidgetSdk<TContext, TInput> {
   const snapshot = reactive({ ...initial } as TActorSnapshot<TContext>) as unknown as TActorSnapshot<TContext>;
   const state = reactive({ value: snapshot.state }) as unknown as { value: TActorRuntimeState };
-  const status = reactive({ value: snapshot.status }) as unknown as { value: TActorSystemStatus };
   const context = reactive({ value: snapshot.context }) as unknown as { value: TContext };
 
   const update = (nextSnapshot: TActorSnapshot<TContext>) => {
     applySnapshot(snapshot, nextSnapshot);
     state.value = nextSnapshot.state;
-    status.value = nextSnapshot.status;
     context.value = nextSnapshot.context;
   };
 
@@ -88,7 +84,6 @@ export function createWidgetSdk<
   return {
     actor: {
       state,
-      status,
       context,
       async sendMessage(name, payload) {
         const result = await portal.sendActorMessage({ name, payload });
