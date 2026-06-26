@@ -42,7 +42,7 @@ function getSandboxSource(source: Record<string, string | undefined>): Record<st
     ...Object.fromEntries(
       Object.entries(source).flatMap(([path, fileSource]) => {
         if (fileSource === undefined) return [];
-        return [[path, fileSource.replaceAll('@vibecanvas/sdk', SDK_MODULE_PATH)]];
+        return [[path, fileSource.replaceAll('@vibecanvas/sdk/widget', SDK_MODULE_PATH)]];
       }),
     ),
     // TODO: [S54]

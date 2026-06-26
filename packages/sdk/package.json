@@ -3,18 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    "./widget": {
+      "types": "./dist/widget.d.ts",
+      "default": "./dist/widget.js"
+    },
+    "./actor": {
+      "types": "./dist/actor.d.ts",
+      "default": "./dist/actor.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && mkdir -p dist && bunx dts-bundle-generator --project tsconfig.json --no-check --export-referenced-types false -o dist/index.d.ts src/index.ts && bun build src/index.ts --target=browser --format=esm --outdir=dist",
+    "build": "rm -rf dist && node ../node_modules/typescript/lib/tsc.js -p tsconfig.build.json && bun build src/widget.ts src/actor.ts --target=browser --format=esm --outdir=dist",
     "test": "bun test"
+  },
+  "dependencies": {
+    "@arrow-js/core": "^1.0.6"
   }
 }

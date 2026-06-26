@@ -8,6 +8,8 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "paths": {
+      "@vibecanvas/sdk/widget": ["./src/widget.ts"],
+      "@vibecanvas/sdk/actor": ["./src/actor.ts"],
       "@vibecanvas/canvas/*": ["../canvas/src/*"],
       "@vibecanvas/service-automerge/*": ["../service-automerge/src/*"]
     }
