@@ -120,7 +120,7 @@ export class ActorSupervisor {
     this.connectionMap = {}
   }
 
-  public async createInstance(defName: string, canvasId: string, elementId: string): Promise<void> {
+  public async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {
     const def = this.vibecanvasDefMap[defName]
     if (!def) {
       this.#config.eventPublisherService.publishNotification({
@@ -128,7 +128,7 @@ export class ActorSupervisor {
         title: 'Widget not found',
         description: defName
       })
-      return
+      return null
     }
 
     const actorDb = await this.#config.db.actor.insertInstance({
@@ -152,6 +152,7 @@ export class ActorSupervisor {
     this.actorMap[actor.getId()] = actor
     this.listenToActor(actor)
     await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
+    return actor;
   }
 
   public async removeInstance(instanceId: string): Promise<void> {

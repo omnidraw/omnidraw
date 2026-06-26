@@ -13,8 +13,8 @@ export type TAutomergeElementEvent = {
 };
 
 export type TAutomergeCallbacks = {
-  onElementDelete: (event: TAutomergeElementEvent) => void;
-  onElementCreate: (event: TAutomergeElementEvent) => void;
+  onElementDelete: (event: TAutomergeElementEvent, handle: DocHandle<TCanvasDoc>) => void;
+  onElementCreate: (event: TAutomergeElementEvent, handle: DocHandle<TCanvasDoc>) => void;
 };
 
 export class AutomergeService implements IAutomergeService {
@@ -104,7 +104,7 @@ export class AutomergeService implements IAutomergeService {
           canvasDocId,
           automergeUrl: handle.url,
           element,
-        });
+        }, handle);
       }
 
       for (const [elementId, element] of Object.entries(afterElements)) {
@@ -116,7 +116,7 @@ export class AutomergeService implements IAutomergeService {
           canvasDocId,
           automergeUrl: handle.url,
           element,
-        });
+        }, handle);
       }
     });
   }

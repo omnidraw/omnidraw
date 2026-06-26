@@ -62,7 +62,7 @@ function setupServices(config: ICliConfig) {
   services.provide('pty', 40, ptyService);
 
   const automergeService = new AutomergeService(dbService.db, {
-    async onElementCreate(event) {
+    async onElementCreate(event, handle) {
       const element = event.element;
       if (element.data.type !== 'widget' || !element.data.actorDefinitionName) return;
 
@@ -70,14 +70,24 @@ function setupServices(config: ICliConfig) {
       const canvas = canvases.find(row => row.automerge_url === event.automergeUrl);
       if (!canvas) return;
 
-      await services.require('actor').createInstance(element.data.actorDefinitionName, canvas.id, element.id)
+      const actor = await services.require('actor').createInstance(element.data.actorDefinitionName, canvas.id, element.id)
+      if (actor === null) return
+
+      handle.change((doc) => {
+        const currentElement = doc.elements[element.id];
+        if (!currentElement) return;
+        if (currentElement.data.type !== 'widget') return;
+
+        currentElement.data.actorInstanceId = actor.getId();
+        currentElement.updatedAt = Date.now();
+      });
     },
-    async onElementDelete(event) {
+    async onElementDelete(event, handle) {
       const element = event.element;
       if (element.data.type === 'widget') {
         const instance = await dbService.actor.getInstanceByElementId(event.element.id)
         console.log(event.element.id, instance)
-        if(!instance) return
+        if (!instance) return
         await services.require('actor').removeInstance(instance.id)
       }
     },

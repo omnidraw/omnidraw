@@ -8,10 +8,11 @@ import { ActorSupervisor } from './ActorSupervisor';
 import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
 import type { TActorStatus } from '@vibecanvas/service-db/model';
+import type { Actor } from './Actor';
 
 interface IPublicMethods {
   sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<void>
-  createInstance(defId: string, canvasId: string, elementId: string): Promise<void>
+  createInstance(defId: string, canvasId: string, elementId: string): Promise<Actor | null>
   removeInstance(instanceId: string): Promise<void>
   getVibecanvasJson(defId: string): TVibecanvasJson | null;
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
@@ -46,7 +47,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async createInstance(defName: string, canvasId: string, elementId: string): Promise<void> {
+  async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {
     return this.#supervisor.createInstance(defName, canvasId, elementId)
   }
 
