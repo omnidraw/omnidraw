@@ -85,3 +85,15 @@ export async function fxActorListConnections(portal: TPortal): Promise<TActorCon
   const rows = await stmt.all()
   return rows.map(parseActorConnection)
 }
+
+type TArgsGetInstanceByElementId = {
+  elementId: string
+}
+export async function fxActorGetInstanceByElementId(portal: TPortal, args: TArgsGetInstanceByElementId): Promise<TActorInstance | null> {
+  const stmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_instances
+    WHERE element_id = ?
+  `)
+  return await stmt.get()
+}
