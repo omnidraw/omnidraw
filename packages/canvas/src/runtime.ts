@@ -18,7 +18,6 @@ import {
     createWidgetPlugin
 } from "./plugins";
 import { ActorConnectionService } from "./services/actor-connection/ActorConnectionService";
-import { ActorWidgetBindingService } from "./services/actor-widget/ActorWidgetBindingService";
 import { CameraService } from "./services/camera/CameraService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
@@ -37,7 +36,6 @@ import { IRuntimeConfig, IRuntimeHooks } from "./types";
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
     actorConnection: ActorConnectionService;
-    actorWidgetBinding: ActorWidgetBindingService;
     camera: CameraService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;

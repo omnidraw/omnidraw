@@ -47,7 +47,6 @@ export const view = (() => {
       <header>
         <strong>Actor Todo</strong>
         <span>${() => todoActor.state.value}</span>
-        <span>${() => todoActor.status.value}</span>
       </header>
 
       <form @submit="${addTodo}">

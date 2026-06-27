@@ -1,5 +1,5 @@
 import { __setActorSnapshot, __setSendMessage } from './widget';
-import type { TActorRuntimeState, TActorSystemStatus, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
+import type { TActorRuntimeState, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
 
 export type TActorSendOptions = {
   readonly messageId?: string;
@@ -19,14 +19,18 @@ export type TActorSendResult = {
 
 export type TActorSnapshot<TContext = TVibecanvasJsonValue> = {
   state: TActorRuntimeState;
-  status: TActorSystemStatus;
   context: TContext;
 };
 
 export type TWidgetHostActorEvent<TContext = TVibecanvasJsonValue> = {
+  readonly cursor?: string;
   readonly type: 'snapshot';
   readonly snapshot: TActorSnapshot<TContext>;
 };
+
+export type TWidgetHostActorEventResult<TContext = TVibecanvasJsonValue> =
+  | TWidgetHostActorEvent<TContext>
+  | { readonly cursor?: string; readonly type: 'noop' };
 
 export interface IWidgetHostPortal<
   TContext = TVibecanvasJsonValue,
@@ -42,8 +46,11 @@ export interface IWidgetHostPortal<
     options?: TActorSendOptions;
   }): Promise<TActorSendResult>;
 
-  // TODO: implement with a scoped host subscription so actor updates push into Arrow reactivity.
+  // Optional in-process subscription for non-sandbox tests and future host integrations.
   subscribeActor?(handler: (event: TWidgetHostActorEvent<TContext>) => void): TUnsubscribe;
+
+  // Sandbox-safe long-poll contract. Host resolves when the actor snapshot changes.
+  nextActorEvent?(args: { cursor?: string }): Promise<TWidgetHostActorEventResult<TContext>>;
 }
 
 function throwSendError(result: TActorSendResult): void {
@@ -54,18 +61,39 @@ function throwSendError(result: TActorSendResult): void {
 export function connectWidgetBridge<
   TContext = TVibecanvasJsonValue,
   TInput extends TMessageMap = TMessageMap,
->(portal: IWidgetHostPortal<TContext, TInput>): void {
+>(portal: IWidgetHostPortal<TContext, TInput>): TUnsubscribe {
+  let disposed = false;
+  let cursor: string | undefined;
+
   __setSendMessage(async (name, payload) => {
     const result = await portal.sendActorMessage({ name, payload: payload as TInput[keyof TInput & string] });
     throwSendError(result);
   });
 
-  portal.subscribeActor?.((event) => {
+  const subscriptionUnsubscribe = portal.subscribeActor?.((event) => {
+    if (event.cursor !== undefined) cursor = event.cursor;
     if (event.type === 'snapshot') __setActorSnapshot(event.snapshot as TActorSnapshot);
   });
 
-  // TODO: remove this pull once the host bridge always pushes the initial snapshot before widget code runs.
   void Promise.resolve(portal.getActorSnapshot()).then((snapshot) => {
-    __setActorSnapshot(snapshot as TActorSnapshot);
+    if (!disposed) __setActorSnapshot(snapshot as TActorSnapshot);
   });
+
+  if (portal.nextActorEvent) {
+    const poll = async (): Promise<void> => {
+      while (!disposed) {
+        const event = await portal.nextActorEvent?.({ cursor });
+        if (!event || disposed) continue;
+        if (event.cursor !== undefined) cursor = event.cursor;
+        if (event.type === 'snapshot') __setActorSnapshot(event.snapshot as TActorSnapshot);
+      }
+    };
+
+    void poll();
+  }
+
+  return () => {
+    disposed = true;
+    subscriptionUnsubscribe?.();
+  };
 }

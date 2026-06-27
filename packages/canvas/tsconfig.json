@@ -11,7 +11,6 @@
     "experimentalDecorators": true,
     "noEmit": true,
     "rootDir": ".",
-    "baseUrl": ".",
     "paths": {},
     "strict": true,
     "skipLibCheck": true,

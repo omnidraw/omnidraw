@@ -221,6 +221,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S55] - store images as blob not base64
 - [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
 - [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
+- [~]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

@@ -11,7 +11,7 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
 import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
-import { txMountArrowSandbox } from './tx.mount-arrow-sandbox';
+import { mountArrowSandbox } from './mount-arrow-sandbox';
 
 type TPortal = {
   node: unknown;
@@ -207,7 +207,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
 
   if (portal.widgetConfig?.sandbox) {
-    txMountArrowSandbox({ root: div }, { sandbox: portal.widgetConfig.sandbox });
+    mountArrowSandbox({ root: div }, { sandbox: portal.widgetConfig.sandbox });
   }
 
   if (view) {

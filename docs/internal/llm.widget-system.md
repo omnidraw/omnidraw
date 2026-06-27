@@ -224,7 +224,7 @@ Current package source files:
 - `packages/sdk/src/widget.ts`
   - Small author-facing widget API.
   - Exposes `defineWidget`, `TWidgetSdk`, `TWidgetActor`.
-  - The actor object only exposes reactive `state`, reactive `status`, reactive `context`, and `sendMessage()`.
+  - The actor object only exposes reactive `state`, reactive `context`, and `sendMessage()`.
 - `packages/sdk/src/widget-bridge.ts`
   - Host bridge implementation details.
   - Exposes `createWidgetSdk`, `createWidgetSdkFromPortal`, and `IWidgetHostPortal`.
@@ -268,7 +268,6 @@ import { defineWidget } from '@vibecanvas/sdk/widget'
 export default defineWidget(({ actor }) => {
   return html`
     <header>
-      <span>${() => actor.status.value}</span>
       <span>${() => actor.state.value}</span>
     </header>
 
@@ -285,8 +284,6 @@ Current minimum capabilities:
 
 - `actor.state.value`
   - Arrow-reactive actor machine state, e.g. `ready`, `busy.saving`, `error.validation`.
-- `actor.status.value`
-  - Arrow-reactive actor system status, e.g. `running`, `paused`, `error`.
 - `actor.context.value`
   - Arrow-reactive actor context/data from the owning actor instance.
 - `actor.sendMessage(name, payload)`
@@ -385,7 +382,7 @@ Important boundaries:
 1. Implement `ActorService.sendMessage(instanceId, msgName, msgPayload)` by delegating to the supervisor/actor map.
 2. Add an ORPC endpoint for sending messages to the current widget actor instance.
 3. Implement the `widget-bridge.ts` TODOs using the Arrow sandbox host bridge.
-4. Add an event stream or subscription mechanism for actor context/status/state snapshots scoped to an actor instance.
+4. Add an event stream or subscription mechanism for actor context/state snapshots scoped to an actor instance.
 5. Persist actor machine data/state after `portal.setData()` or after each transition completes.
 6. Inject the real `@vibecanvas/sdk/widget` module into `@arrow-js/sandbox` via `hostBridge` or source injection.
 7. Ensure guest code imports only `@vibecanvas/sdk/widget` or `@vibecanvas/sdk/actor`; do not use bare `@vibecanvas/sdk`.
