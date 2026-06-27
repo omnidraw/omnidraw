@@ -15,6 +15,7 @@ import type {
 } from "..";
 import type { ActorConnectionService } from "../actor-connection/ActorConnectionService";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 
 export interface IWidgetManagerServiceHooks {
   widgetChange: SyncHook<[]>;
@@ -33,6 +34,7 @@ export interface IWidgetManagerServiceProps {
   renderOrderService: RenderOrderService;
   cameraService: CameraService;
   actorConnectionService?: ActorConnectionService;
+  apiService: TOrpcSafeClient
 }
 
 export type TWidgetRenderArgs = {

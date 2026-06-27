@@ -2,18 +2,15 @@ import { html as HTML } from '@arrow-js/core';
 import { sandbox as SANDBOX } from '@arrow-js/sandbox';
 import SDK_WIDGET_SOURCE from '../../../../sdk/dist/widget.js?raw';
 import type { IWidgetConfig } from './interface';
+import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 
 type TPortal = {
   root: HTMLElement;
+  apiService: TOrpcSafeClient
 };
 
 type TArgs = {
   sandbox: NonNullable<IWidgetConfig['sandbox']>;
-};
-
-type TMockActorSnapshot = {
-  state: string;
-  context: unknown;
 };
 
 function getCursorFromBridgeArgs(args: unknown): string | undefined {
@@ -97,10 +94,6 @@ function getSandboxSource(source: Record<string, string | undefined>): Record<st
 
 export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let messageIndex = 0;
-  let snapshot: TMockActorSnapshot = {
-    state: 'booting',
-    context: null,
-  };
   let cursor = '0';
 
   HTML`<section class="vc-widget-sandbox-shell">
@@ -116,41 +109,44 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
       }
     </style>
     ${SANDBOX({
-      source: getSandboxSource(args.sandbox.arrowjs),
-    }, {
-      output(payload) {
-          console.log(payload)
+    source: getSandboxSource(args.sandbox.arrowjs),
+  }, {
+    output(payload) {
+      console.log(payload)
+    },
+  }, {
+    [SDK_HOST_BRIDGE_MODULE]: {
+      getActorSnapshot() {
+        console.log('getActorSnapshot')
+        return portal.apiService.api.actors.instances.snapshot
       },
-    }, {
-      [SDK_HOST_BRIDGE_MODULE]: {
-        getActorSnapshot() {
-          return snapshot;
-        },
-        sendActorMessage() {
-          messageIndex += 1;
-          return { ok: true, messageId: `mock-widget-message-${messageIndex}` };
-        },
-        nextActorEvent(args: unknown) {
-          const requestedCursor = getCursorFromBridgeArgs(args);
-          if (requestedCursor !== cursor) {
-            return { type: 'snapshot', cursor, snapshot };
-          }
+      sendActorMessage() {
+        messageIndex += 1;
+        return { ok: true, messageId: `mock-widget-message-${messageIndex}` };
+      },
+      nextActorEvent(args: unknown) {
+        console.log('nextActorEvent', args)
+        const snapshot = {
+          state: 'ready',
+          context: {
+            message: 'mock actor context updated after 3s',
+            updatedAt: new Date().toISOString(),
+          },
+        };
+        const requestedCursor = getCursorFromBridgeArgs(args);
+        if (requestedCursor !== cursor) {
+          return { type: 'snapshot', cursor, snapshot };
+        }
 
-          return new Promise((resolve) => {
-            setTimeout(() => {
-              snapshot = {
-                state: 'ready',
-                context: {
-                  message: 'mock actor context updated after 3s',
-                  updatedAt: new Date().toISOString(),
-                },
-              };
-              cursor = String(Number(cursor) + 1);
-              resolve({ type: 'snapshot', cursor, snapshot });
-            }, 3000);
-          });
-        },
+        return new Promise((resolve) => {
+          setTimeout(() => {
+
+            cursor = String(Number(cursor) + 1);
+            resolve({ type: 'snapshot', cursor, snapshot });
+          }, 3000);
+        });
       },
-    })}
+    },
+  })}
   </section>`(portal.root);
 }

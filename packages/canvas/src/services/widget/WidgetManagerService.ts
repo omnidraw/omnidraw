@@ -22,6 +22,7 @@ import { txAttachDomPortal } from "./tx.attach-dom-portal";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
@@ -42,6 +43,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #actorConnectionService?: ActorConnectionService;
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
+  #apiService: TOrpcSafeClient;
+
   private readonly runtimeHooks!: IRuntimeHooks;
 
 
@@ -58,6 +61,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#renderOrderService = props.renderOrderService;
     this.#cameraService = props.cameraService;
     this.#actorConnectionService = props.actorConnectionService;
+    this.#apiService = props.apiService
   }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
@@ -174,6 +178,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           cameraService: this.#cameraService,
           selectionService: this.#selectionService,
           widgetConfig: wConfig,
+          apiService: this.#apiService
         }, {element})
         if (node && onRemove) {
           node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);

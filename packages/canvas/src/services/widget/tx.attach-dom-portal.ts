@@ -1,3 +1,4 @@
+import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { CameraService, SelectionService, WidgetManagerService } from '..';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
@@ -21,6 +22,7 @@ type TPortal = {
   cameraService: CameraService;
   selectionService?: SelectionService;
   widgetConfig?: IWidgetConfig;
+  apiService: TOrpcSafeClient
 };
 
 type TArgs = {
@@ -207,7 +209,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
 
   if (portal.widgetConfig?.sandbox) {
-    mountArrowSandbox({ root: div }, { sandbox: portal.widgetConfig.sandbox });
+    mountArrowSandbox({ root: div, apiService: portal.apiService }, { sandbox: portal.widgetConfig.sandbox });
   }
 
   if (view) {

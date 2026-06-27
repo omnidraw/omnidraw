@@ -115,6 +115,7 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
     renderOrderService: renderOrder,
     cameraService: camera,
     actorConnectionService: actorConnection,
+    apiService: config.apiService
   });
   const group = new GroupService(
     camera,
