@@ -1,7 +1,5 @@
-import { reactive } from '@arrow-js/core';
-
-import type { TActorRuntimeState, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
-import type { TWidgetSdk } from './widget';
+import { __setActorSnapshot, __setSendMessage } from './widget';
+import type { TActorRuntimeState, TActorSystemStatus, TMessageMap, TUnsubscribe, TVibecanvasJsonValue } from './shared';
 
 export type TActorSendOptions = {
   readonly messageId?: string;
@@ -21,6 +19,7 @@ export type TActorSendResult = {
 
 export type TActorSnapshot<TContext = TVibecanvasJsonValue> = {
   state: TActorRuntimeState;
+  status: TActorSystemStatus;
   context: TContext;
 };
 
@@ -47,57 +46,26 @@ export interface IWidgetHostPortal<
   subscribeActor?(handler: (event: TWidgetHostActorEvent<TContext>) => void): TUnsubscribe;
 }
 
-function applySnapshot<TContext>(target: TActorSnapshot<TContext>, snapshot: TActorSnapshot<TContext>): void {
-  target.state = snapshot.state;
-  target.context = snapshot.context;
-}
-
 function throwSendError(result: TActorSendResult): void {
   if (result.ok) return;
   throw new Error(result.message);
 }
 
-export function createWidgetSdk<
+export function connectWidgetBridge<
   TContext = TVibecanvasJsonValue,
   TInput extends TMessageMap = TMessageMap,
->(
-  portal: IWidgetHostPortal<TContext, TInput>,
-  initial: TActorSnapshot<TContext>,
-): TWidgetSdk<TContext, TInput> {
-  const snapshot = reactive({ ...initial } as TActorSnapshot<TContext>) as unknown as TActorSnapshot<TContext>;
-  const state = reactive({ value: snapshot.state }) as unknown as { value: TActorRuntimeState };
-  const context = reactive({ value: snapshot.context }) as unknown as { value: TContext };
-
-  const update = (nextSnapshot: TActorSnapshot<TContext>) => {
-    applySnapshot(snapshot, nextSnapshot);
-    state.value = nextSnapshot.state;
-    context.value = nextSnapshot.context;
-  };
-
-  portal.subscribeActor?.((event) => {
-    if (event.type === 'snapshot') update(event.snapshot);
+>(portal: IWidgetHostPortal<TContext, TInput>): void {
+  __setSendMessage(async (name, payload) => {
+    const result = await portal.sendActorMessage({ name, payload: payload as TInput[keyof TInput & string] });
+    throwSendError(result);
   });
 
-  // TODO: remove this pull once the host bridge always provides an initial snapshot synchronously.
-  void Promise.resolve(portal.getActorSnapshot()).then(update);
+  portal.subscribeActor?.((event) => {
+    if (event.type === 'snapshot') __setActorSnapshot(event.snapshot as TActorSnapshot);
+  });
 
-  return {
-    actor: {
-      state,
-      context,
-      async sendMessage(name, payload) {
-        const result = await portal.sendActorMessage({ name, payload });
-        throwSendError(result);
-      },
-    },
-  };
-}
-
-export async function createWidgetSdkFromPortal<
-  TContext = TVibecanvasJsonValue,
-  TInput extends TMessageMap = TMessageMap,
->(portal: IWidgetHostPortal<TContext, TInput>): Promise<TWidgetSdk<TContext, TInput>> {
-  // TODO: decide whether widgets should await SDK creation or receive a synchronous stub first.
-  const initial = await portal.getActorSnapshot();
-  return createWidgetSdk(portal, initial);
+  // TODO: remove this pull once the host bridge always pushes the initial snapshot before widget code runs.
+  void Promise.resolve(portal.getActorSnapshot()).then((snapshot) => {
+    __setActorSnapshot(snapshot as TActorSnapshot);
+  });
 }

@@ -1,6 +1,6 @@
 import { html as HTML } from '@arrow-js/core';
 import { sandbox as SANDBOX } from '@arrow-js/sandbox';
-// import SDK_SOURCE from '../../../../sdk/dist/index.js?raw';
+import SDK_WIDGET_SOURCE from '../../../../sdk/dist/widget.js?raw';
 import type { IWidgetConfig } from './interface';
 
 type TPortal = {
@@ -45,8 +45,7 @@ function getSandboxSource(source: Record<string, string | undefined>): Record<st
         return [[path, fileSource.replaceAll('@vibecanvas/sdk/widget', SDK_MODULE_PATH)]];
       }),
     ),
-    // TODO: [S54]
-    // [SDK_MODULE_PATH]: SDK_SOURCE,
+    [SDK_MODULE_PATH]: SDK_WIDGET_SOURCE,
   };
 
   nextSource['main.css'] = `${SANDBOX_BASE_CSS}\n${nextSource['main.css'] ?? ''}`;
@@ -69,6 +68,10 @@ export function txMountArrowSandbox(portal: TPortal, args: TArgs) {
     </style>
     ${SANDBOX({
       source: getSandboxSource(args.sandbox.arrowjs),
+    }, {
+      output(payload) {
+          console.log(payload)
+      },
     })}
   </section>`(portal.root);
 }

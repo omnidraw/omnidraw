@@ -1,7 +1,6 @@
 import { html } from '@arrow-js/core';
 
-import type { TWidgetSdk } from '@vibecanvas/sdk/widget';
-import { defineWidget } from '@vibecanvas/sdk/widget';
+import { actor, type TWidgetActor } from '@vibecanvas/sdk/widget';
 import { defineActorFunctions, defineTx, type TActorTx } from '@vibecanvas/sdk/actor';
 
 type TTodoItem = {
@@ -29,18 +28,9 @@ type TTodoInput = {
   'in.setFilter': { filter: 'all' | 'open' | 'done' };
 };
 
-type TTodoOutput = {
-  'out.todosChanged': { total: number; open: number; done: number; highPriorityOpen: number; revision: number };
-  'out.error': { code: string; message: string };
-};
+const todoActor = actor as TWidgetActor<TTodoContext, TTodoInput>;
 
-type TTodoUiProps = {
-  compact?: boolean;
-};
-
-export type TTodoWidgetSdk = TWidgetSdk<TTodoContext, TTodoInput>;
-
-export default defineWidget((sdk: TTodoWidgetSdk) => {
+export const view = (() => {
   const addTodo = (event: Event) => {
     event.preventDefault();
     const input = event.currentTarget instanceof HTMLFormElement
@@ -48,7 +38,7 @@ export default defineWidget((sdk: TTodoWidgetSdk) => {
       : null;
     if (!(input instanceof HTMLInputElement)) return;
 
-    void sdk.actor.sendMessage('in.addTodo', { title: input.value });
+    void todoActor.sendMessage('in.addTodo', { title: input.value });
     input.value = '';
   };
 
@@ -56,8 +46,8 @@ export default defineWidget((sdk: TTodoWidgetSdk) => {
     <section>
       <header>
         <strong>Actor Todo</strong>
-        <span>${() => sdk.actor.state.value}</span>
-        <span>${() => sdk.actor.status.value}</span>
+        <span>${() => todoActor.state.value}</span>
+        <span>${() => todoActor.status.value}</span>
       </header>
 
       <form @submit="${addTodo}">
@@ -66,7 +56,7 @@ export default defineWidget((sdk: TTodoWidgetSdk) => {
       </form>
 
       <ul>
-        ${() => sdk.actor.context.value.todos.map((todo) => html`
+        ${() => todoActor.context.value.todos.map((todo) => html`
           <li class="${() => todo.completed ? 'done' : ''}">
             <label>
               <input
@@ -74,7 +64,7 @@ export default defineWidget((sdk: TTodoWidgetSdk) => {
                 checked="${() => todo.completed}"
                 @change="${(event: Event) => {
                   const checked = event.currentTarget instanceof HTMLInputElement && event.currentTarget.checked;
-                  void sdk.actor.sendMessage('in.toggleTodo', { id: todo.id, completed: checked });
+                  void todoActor.sendMessage('in.toggleTodo', { id: todo.id, completed: checked });
                 }}"
               />
               ${todo.title}
@@ -84,12 +74,14 @@ export default defineWidget((sdk: TTodoWidgetSdk) => {
       </ul>
 
       <footer>
-        ${() => `${sdk.actor.context.value.todos.length} total`}
+        ${() => `${todoActor.context.value.todos.length} total`}
 
       </footer>
     </section>
   `;
-});
+})();
+
+export default view;
 
 export const txExampleAddTodo: TActorTx<TTodoContext, TTodoInput['in.addTodo']> = defineTx(async (portal, args) => {
   const title = args.msg.title.trim();
