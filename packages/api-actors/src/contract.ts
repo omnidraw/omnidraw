@@ -36,7 +36,9 @@ const actorsContract = oc.router({
   instances: {
     snapshot: oc
       .input(z.object({ instanceId: z.string() }))
-      .output(ZActorSnapshot)
+      .output(ZActorSnapshot),
+    sendMessage: oc
+      .input(z.object({ name: z.string(), payload: z.unknown(), instanceId: z.string()}))
   }
 });
 

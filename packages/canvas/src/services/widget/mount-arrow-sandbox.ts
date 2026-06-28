@@ -111,7 +111,7 @@ async function getInitialActorSnapshot(portal: TPortal, args: TArgs): Promise<TA
   if (!actorInstanceId) return { state: 'booting', context: null };
 
   const [error, snapshot] = await portal.apiService.api.actors.instances.snapshot({ instanceId: actorInstanceId });
-  if (error) return { state: 'error', context: { message: String(error) } };
+  if (error) return { state: 'error ', context: { message: String(error) } };
 
   return snapshot;
 }
@@ -145,7 +145,9 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
         currentSnapshot = await getInitialActorSnapshot(portal, args);
         return currentSnapshot;
       },
-      sendActorMessage() {
+      sendActorMessage(_message: unknown) {
+        const message = _message as {name: string, payload: unknown}
+        console.log('sendActorMessage', message)
         messageIndex += 1;
         return { ok: true, messageId: `mock-widget-message-${messageIndex}` };
       },
