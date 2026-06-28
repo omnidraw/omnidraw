@@ -9,6 +9,14 @@ const bookkeeperRootDir = new URL("./fixtures/account-bookkeeper-actor", import.
 const testActorConfig = testActorConfigJson as TVibecanvasJson;
 const bookkeeperActorConfig = bookkeeperActorConfigJson as TVibecanvasJson;
 
+async function waitForIdle(actor: Actor) {
+    for (let index = 0; index < 100; index += 1) {
+        if (actor.isIdle()) return
+        await Bun.sleep(10)
+    }
+    throw new Error("Timed out waiting for actor to become idle")
+}
+
 describe("Actor", () => {
     test("runs guest functions in child process and updates data", async () => {
         const actor = new Actor({
@@ -17,8 +25,11 @@ describe("Actor", () => {
             vsJson: testActorConfig
         })
 
-        await actor.inbox('add-funds', {accountId: '1', amount: 100})
+        actor.start()
+        const messageId = actor.inbox('add-funds', {accountId: '1', amount: 100})
+        await waitForIdle(actor)
 
+        expect(messageId).toBeString()
         expect(actor.getId()).toBe("fund-actor-1")
         expect(actor.getData()).toEqual({ balance: 100 })
 
@@ -32,12 +43,15 @@ describe("Actor", () => {
             vsJson: testActorConfig
         })
 
-        await Promise.all([
+        actor.start()
+        const messageIds = [
             actor.inbox('add-funds', {accountId: '1', amount: 100}),
             actor.inbox('sub-funds', {accountId: '1', amount: 30}),
             actor.inbox('add-funds', {accountId: '1', amount: 5}),
-        ])
+        ]
+        await waitForIdle(actor)
 
+        expect(new Set(messageIds).size).toBe(3)
         expect(actor.getData()).toEqual({ balance: 75 })
 
         actor.close()
@@ -54,7 +68,9 @@ describe("Actor", () => {
             messages.push({ msgName, msgPayload })
         })
 
-        await actor.inbox('add-funds-with-next-return', {accountId: '1', amount: 42})
+        actor.start()
+        actor.inbox('add-funds-with-next-return', {accountId: '1', amount: 42})
+        await waitForIdle(actor)
 
         expect(actor.getData()).toEqual({ balance: 42 })
         expect(messages).toEqual([
@@ -86,7 +102,9 @@ describe("Actor", () => {
             messages.push({ msgName, msgPayload })
         })
 
-        await actor.inbox('emit-invalid-output', {})
+        actor.start()
+        actor.inbox('emit-invalid-output', {})
+        await waitForIdle(actor)
 
         expect(messages[0].msgName).toBe("error")
         expect(messages[0].msgPayload.code).toBe("INVALID_OUTPUT_MESSAGE_PAYLOAD")
@@ -106,15 +124,19 @@ describe("Actor", () => {
             vsJson: bookkeeperActorConfig
         })
 
-        const routedMessages: Promise<void>[] = []
+        fundActor.start()
+        bookkeeperActor.start()
+
+        const routedMessages: string[] = []
         fundActor.listen((msgName, msgPayload) => {
             if (msgName === "funds-added") {
                 routedMessages.push(bookkeeperActor.inbox(msgName, msgPayload))
             }
         })
 
-        await fundActor.inbox('add-funds', {accountId: '1', amount: 100})
-        await Promise.all(routedMessages)
+        fundActor.inbox('add-funds', {accountId: '1', amount: 100})
+        await waitForIdle(fundActor)
+        await waitForIdle(bookkeeperActor)
 
         expect(bookkeeperActor.getData()).toEqual({
             entries: [

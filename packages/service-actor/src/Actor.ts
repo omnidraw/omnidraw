@@ -19,10 +19,9 @@ interface IActorConfig {
 }
 
 type TInboxQueueItem = {
+    readonly messageId: string;
     readonly msgName: TInputMessage;
     readonly msgPayload: any;
-    readonly resolve: () => void;
-    readonly reject: (error: unknown) => void;
 }
 
 type TActorChildMessage =
@@ -78,7 +77,12 @@ export class Actor {
         })
         this.#rootDir = config.rootDir
         this.#functionPath = join(config.rootDir, this.#vsJson.actor.relFunctionPath)
+    }
+
+    start() {
+        if (this.#proc) return;
         this.actorFuncions()
+        this.#processQueue()
     }
 
     private actorFuncions() {
@@ -119,27 +123,30 @@ export class Actor {
         return this.#data
     }
 
-    inbox(msgName: string, msgPayload: any): Promise<void> {
+    isIdle() {
+        return !this.#isProcessing && this.#queue.length === 0 && this.#pendingRuns.size === 0
+    }
+
+    inbox(msgName: string, msgPayload: any): string {
         const validFn = this.#inputMessage[msgName]
         if (!validFn)
-            return Promise.reject(this.emitMessage('error', `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}`))
+            throw this.emitMessage('error', `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}`)
         if (!validFn(msgPayload))
-            return Promise.reject(this.emitMessage('error', `Invalid message payload.`))
+            throw this.emitMessage('error', `Invalid message payload.`)
 
         const transition = this.#getTransition(msgName as TInputMessage);
         if (!transition) {
-            return Promise.reject(this.emitMessage('error', `No transition for message ${msgName} in state ${this.#state}`))
+            throw this.emitMessage('error', `No transition for message ${msgName} in state ${this.#state}`)
         }
 
-        return new Promise((resolve, reject) => {
-            this.#queue.push({
-                msgName: msgName as TInputMessage,
-                msgPayload,
-                resolve,
-                reject,
-            })
-            this.#processQueue()
+        const messageId = crypto.randomUUID();
+        this.#queue.push({
+            messageId,
+            msgName: msgName as TInputMessage,
+            msgPayload,
         })
+        this.#processQueue()
+        return messageId
     }
 
     listen(cb: (msgName: string, msgPayload: any) => void) {
@@ -168,9 +175,12 @@ export class Actor {
                 throw new Error(`No transition for message ${item.msgName} in state ${this.#state}`)
             }
             await this.#runTransition(transition, item.msgPayload)
-            item.resolve()
         } catch (error) {
-            item.reject(error)
+            this.emitMessage('error', {
+                code: 'ACTOR_TRANSITION_FAILED',
+                messageId: item.messageId,
+                message: error instanceof Error ? error.message : String(error),
+            })
         } finally {
             this.#isProcessing = false;
             this.#processQueue()

@@ -28,6 +28,14 @@ function createSupervisor(db: DbServiceTurso, notifications: TNotification[]) {
   });
 }
 
+async function waitForIdle(actor: { isIdle(): boolean }) {
+  for (let index = 0; index < 100; index += 1) {
+    if (actor.isIdle()) return;
+    await Bun.sleep(10);
+  }
+  throw new Error("Timed out waiting for actor to become idle");
+}
+
 describe("ActorSupervisor", () => {
   let db!: DbServiceTurso;
   let notifications!: TNotification[];
@@ -216,8 +224,11 @@ describe("ActorSupervisor", () => {
     const supervisor = createSupervisor(db, notifications);
 
     await supervisor.init();
-    await supervisor.actorMap["fund-source"].inbox("add-funds", {accountId: "1", amount: 42});
-    await Bun.sleep(10);
+    const messageId = supervisor.actorMap["fund-source"].inbox("add-funds", {accountId: "1", amount: 42});
+    await waitForIdle(supervisor.actorMap["fund-source"]);
+    await waitForIdle(supervisor.actorMap["bookkeeper-target"]);
+
+    expect(messageId).toBeString();
 
     expect(supervisor.connectionMap["fund-source"].map(connection => connection.id)).toEqual([
       "connection-fund-to-bookkeeper",

@@ -76,6 +76,7 @@ export class ActorSupervisor {
         data: fnToActorData(actorInst.machine_context),
       })
 
+      actor.start()
       this.actorMap[actor.getId()] = actor
       this.listenToActor(actor)
       await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
@@ -103,15 +104,15 @@ export class ActorSupervisor {
 
   async routeActorOutput(args: { sourceActorInstanceId: string, msgName: string, msgPayload: any }) {
     const connections = this.connectionMap[args.sourceActorInstanceId] ?? []
-    await Promise.allSettled(connections.map(connection => {
-      if (!fnIsActorConnectionEnabled(connection)) return Promise.resolve()
-      if (!fnCanRouteActorConnectionMessage(connection, args.msgName)) return Promise.resolve()
+    connections.forEach(connection => {
+      if (!fnIsActorConnectionEnabled(connection)) return
+      if (!fnCanRouteActorConnectionMessage(connection, args.msgName)) return
 
       const targetActor = this.actorMap[connection.target_actor_instance_id]
-      if (!targetActor) return Promise.resolve()
+      if (!targetActor) return
 
-      return targetActor.inbox(args.msgName, args.msgPayload)
-    }))
+      targetActor.inbox(args.msgName, args.msgPayload)
+    })
   }
 
   closeActors() {
@@ -149,6 +150,7 @@ export class ActorSupervisor {
       rootDir: dirname(def.manifest_path),
     })
 
+    actor.start()
     this.actorMap[actor.getId()] = actor
     this.listenToActor(actor)
     await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
