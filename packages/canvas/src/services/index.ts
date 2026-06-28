@@ -1,4 +1,3 @@
-export * from "./actor-connection/ActorConnectionService";
 export * from "./actor-widget/ActorWidgetBindingService";
 export * from "./widget/WidgetManagerService";
 export * from "./camera/CameraService";

@@ -65,28 +65,6 @@ function filterSelection(
   return subSelection.getStage() !== null ? [subSelection as TContextMenuNode] : [];
 }
 
-function findTargetConnectionId(
-  scene: SceneService,
-  pointer: { x: number; y: number },
-) {
-  let current: Konva.Node | null = scene.stage.getIntersection(pointer);
-  while (current) {
-    const actorConnectionId = current.getAttr("actorConnectionId");
-    if (typeof actorConnectionId === "string") {
-      return actorConnectionId;
-    }
-
-    const connectionId = current.getAttr("widgetConnectionId");
-    if (typeof connectionId === "string") {
-      return connectionId;
-    }
-
-    current = current.getParent();
-  }
-
-  return null;
-}
-
 function findTargetNode(
   scene: SceneService,
   pointer: { x: number; y: number },
@@ -256,25 +234,6 @@ export function createContextMenuPlugin(): IPlugin<{
 
           scene.stage.setPointersPositions(event);
           const pointer = scene.stage.getPointerPosition();
-          const connectionId = pointer ? findTargetConnectionId(scene, pointer) : null;
-          if (connectionId) {
-            selection.setSelectedConnectionId(connectionId);
-            contextMenu.openAt({
-              x: event.clientX,
-              y: event.clientY,
-              context: {
-                scope: "connection",
-                targetNode: null,
-                targetElement: null,
-                targetGroup: null,
-                selection: [],
-                activeSelection: [],
-                connectionId,
-              },
-            });
-            return;
-          }
-
           const targetNode = pointer ? findTargetNode(scene, pointer) : null;
           const nextSelection = targetNode
             ? resolveSelection(scene, selection, targetNode)

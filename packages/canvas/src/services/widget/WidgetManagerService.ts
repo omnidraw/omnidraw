@@ -4,7 +4,6 @@ import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/int
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
-import type { ActorConnectionService } from "../actor-connection/ActorConnectionService";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import {
@@ -40,7 +39,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #sceneService: SceneService;
   #renderOrderService: RenderOrderService;
   #cameraService: CameraService;
-  #actorConnectionService?: ActorConnectionService;
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #apiService: TOrpcSafeClient;
@@ -60,7 +58,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService = props.sceneService;
     this.#renderOrderService = props.renderOrderService;
     this.#cameraService = props.cameraService;
-    this.#actorConnectionService = props.actorConnectionService;
     this.#apiService = props.apiService
   }
 
@@ -72,9 +69,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService.stage.container().appendChild(this.#widgetPortal);
     // this.#domPortal.style =
     this.#widgetPortal.id = "widget-portal";
-    this.#removeSelectionChangeListener = this.#selectionService.hooks.change.tap(() => {
-      this.#syncRenderedWidgetConnections();
-    });
   }
 
   stop(): void | Promise<void> {
@@ -83,14 +77,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#widgetPortal.remove()
   }
 
-  #syncRenderedWidgetConnections() {
-    this.#actorConnectionService?.syncAllLines();
-    return true;
-  }
-
-  #removeRenderedWidgetConnections(_node: Konva.Group) {
-    this.#actorConnectionService?.syncAllLines();
-  }
 
   #findWidgetNodeById(id: string) {
     const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
@@ -185,7 +171,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           const existingOnRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
           node.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
             existingOnRemove?.(removeArgs);
-            this.#removeRenderedWidgetConnections(node);
             onRemove();
           });
         }
@@ -196,10 +181,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           return {};
         }
 
-        void this.#actorConnectionService?.deleteInstanceForElement({
-          elementId: element.id,
-          actorInstanceId: element.data.actorInstanceId,
-        });
         return {};
       },
       updateElement: (element) => {
@@ -223,9 +204,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           node,
           element,
         });
-        if (didUpdate) {
-          this.#actorConnectionService?.syncAttachedNode(node);
-        }
         return didUpdate;
       },
       createDragClone: ({ node }) => {
@@ -261,9 +239,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               crdtService: this.#crdtService,
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
               removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-              createConnectionId: () => crypto.randomUUID(),
-              createConnection: (connectionArgs) => this.#actorConnectionService?.createConnection(connectionArgs),
-              syncConnections: (connectionNode, syncArgs) => this.#actorConnectionService?.syncAttachedNode(connectionNode, syncArgs),
               setTimer: (callback, timeout) => window.setInterval(callback, timeout),
               clearTimer: (timer) => window.clearInterval(timer as ReturnType<typeof window.setInterval>),
             }, {})
@@ -316,9 +291,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         crdtService: this.#crdtService,
         startDragClone: (args) => this.#elementService.createDragClone(args),
         removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-        createConnectionId: () => crypto.randomUUID(),
-        createConnection: (connectionArgs) => this.#actorConnectionService?.createConnection(connectionArgs),
-        syncConnections: (connectionNode, syncArgs) => this.#actorConnectionService?.syncAttachedNode(connectionNode, syncArgs),
         setTimer: (callback, timeout) => window.setInterval(callback, timeout),
         clearTimer: (timer) => window.clearInterval(timer as ReturnType<typeof window.setInterval>),
       }, {})

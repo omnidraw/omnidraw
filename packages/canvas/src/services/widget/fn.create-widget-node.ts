@@ -19,9 +19,6 @@ import {
   WIDGET_HOST_TRAFFIC_LIGHT_Y,
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
-  WIDGET_CONNECTION_BOUNDARY_ID,
-  WIDGET_CONNECTION_BOUNDARY_OFFSET,
-  WIDGET_CONNECTION_HANDLE_ID,
 } from './CONSTANTS';
 import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS"
 import type { THostThemeColors } from "./types";
@@ -120,71 +117,6 @@ function createBody(konva: typeof Konva, colors: THostThemeColors) {
   return body;
 }
 
-function createConnectionBorder(konva: typeof Konva, colors: THostThemeColors) {
-  const border = new konva.Line({
-    id: WIDGET_CONNECTION_BOUNDARY_ID,
-    points: [],
-    closed: true,
-    stroke: colors.windowStroke,
-    strokeWidth: 2,
-    lineJoin: 'round',
-    lineCap: 'round',
-    fillEnabled: false,
-    listening: true,
-    hitStrokeWidth: 32,
-    dash: [6, 5],
-    opacity: 0.8,
-  })
-
-  return border;
-}
-
-function createConnectionHandle(konva: typeof Konva) {
-  return new konva.Circle({
-    id: WIDGET_CONNECTION_HANDLE_ID,
-    x: 0,
-    y: 0,
-    radius: 10,
-    fill: '#38bdf8',
-    stroke: '#e0f2fe',
-    strokeWidth: 3,
-    shadowColor: '#38bdf8',
-    shadowBlur: 14,
-    shadowOpacity: 0.65,
-    visible: false,
-    listening: false,
-    hitStrokeWidth: 24,
-    opacity: 0.95,
-  })
-}
-
-function syncConnectionBorder(border: Konva.Line, args: { width: number; height: number }) {
-  const offset = WIDGET_CONNECTION_BOUNDARY_OFFSET
-  const radius = 18
-  const left = -offset
-  const top = -offset
-  const right = args.width + offset
-  const bottom = args.height + offset
-  const corner = Math.min(radius, (right - left) / 2, (bottom - top) / 2)
-  const segments = 8
-  const points: number[] = []
-
-  const addArc = (centerX: number, centerY: number, startAngle: number, endAngle: number) => {
-    for (let index = 0; index <= segments; index += 1) {
-      const amount = index / segments
-      const angle = startAngle + (endAngle - startAngle) * amount
-      points.push(centerX + Math.cos(angle) * corner, centerY + Math.sin(angle) * corner)
-    }
-  }
-
-  addArc(right - corner, top + corner, -Math.PI / 2, 0)
-  addArc(right - corner, bottom - corner, 0, Math.PI / 2)
-  addArc(left + corner, bottom - corner, Math.PI / 2, Math.PI)
-  addArc(left + corner, top + corner, Math.PI, Math.PI * 1.5)
-
-  border.points(points)
-}
-
 export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors, element: TElement) {
   if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return null
 
@@ -201,14 +133,6 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
     width,
     height,
   })
-  const connectionBorder = createConnectionBorder(konva, colors)
-  syncConnectionBorder(connectionBorder, { width, height })
-  if (element.data.type === 'ui-widget') {
-    connectionBorder.visible(false)
-    connectionBorder.listening(false)
-  }
-  const connectionHandle = createConnectionHandle(konva)
-
   const body = createBody(konva, colors)
   body.width(width)
   body.height(Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, bodyHeight))
@@ -237,8 +161,6 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
     divider.listening(false)
   }
 
-  group.add(connectionBorder)
-  group.add(connectionHandle)
   group.add(border)
   group.add(header)
   group.add(body)

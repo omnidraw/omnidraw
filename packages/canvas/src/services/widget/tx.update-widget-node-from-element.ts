@@ -9,9 +9,6 @@ import {
 import { fnGetAbsolutePositionFromWorldPosition } from "../../core/fn.world-position";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import {
-  WIDGET_CONNECTION_BOUNDARY_ID,
-  WIDGET_CONNECTION_BOUNDARY_OFFSET,
-  WIDGET_CONNECTION_HANDLE_ID,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_DIVIDER_ID,
@@ -48,47 +45,11 @@ function syncWidgetMetadata(args: {
   args.node.setAttr(VC_UPDATED_AT_ATTR, args.element.updatedAt);
 }
 
-function syncConnectionBoundary(portal: TPortalUpdateWidgetNodeFromElement, args: { node: Konva.Group; width: number; height: number }) {
-  if (!portal.Line) return;
-
-  const boundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
-  if (!(boundary instanceof portal.Line)) return;
-
-  const offset = WIDGET_CONNECTION_BOUNDARY_OFFSET;
-  const radius = 18;
-  const left = -offset;
-  const top = -offset;
-  const right = args.width + offset;
-  const bottom = args.height + offset;
-  const corner = Math.min(radius, (right - left) / 2, (bottom - top) / 2);
-  const segments = 8;
-  const points: number[] = [];
-
-  const addArc = (centerX: number, centerY: number, startAngle: number, endAngle: number) => {
-    for (let index = 0; index <= segments; index += 1) {
-      const amount = index / segments;
-      const angle = startAngle + (endAngle - startAngle) * amount;
-      points.push(centerX + Math.cos(angle) * corner, centerY + Math.sin(angle) * corner);
-    }
-  };
-
-  addArc(right - corner, top + corner, -Math.PI / 2, 0);
-  addArc(right - corner, bottom - corner, 0, Math.PI / 2);
-  addArc(left + corner, bottom - corner, Math.PI / 2, Math.PI);
-  addArc(left + corner, top + corner, Math.PI, Math.PI * 1.5);
-
-  boundary.points(points);
-
-  const handle = args.node.findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`);
-  if (handle) handle.visible(false);
-}
-
 function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
   node: Konva.Group;
   width: number;
   height: number;
   expanded: boolean;
-  connectable: boolean;
 }) {
   const bodyHeight = Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, args.height - WIDGET_HOST_HEADER_HEIGHT);
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_HEADER_HEIGHT + bodyHeight);
@@ -97,13 +58,6 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
   args.node.width(width);
   args.node.height(height);
   args.node.scale({ x: 1, y: 1 });
-
-  syncConnectionBoundary(portal, { node: args.node, width, height });
-  const connectionBoundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
-  if (connectionBoundary) {
-    connectionBoundary.visible(args.connectable);
-    connectionBoundary.listening(args.connectable);
-  }
 
   const border = args.node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
   if (border instanceof portal.Rect) {
@@ -163,7 +117,6 @@ export function txUpdateWidgetNodeFromElement(
     width,
     height,
     expanded,
-    connectable: args.element.data.type === "widget",
   });
   syncWidgetMetadata({
     node: args.node,

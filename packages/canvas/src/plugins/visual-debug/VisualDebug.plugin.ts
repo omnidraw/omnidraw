@@ -32,7 +32,7 @@ function formatSelectionInfo(selection: SelectionService) {
   }
 
   if (SHOULD_RENDER_FOCUSED_ID) {
-    lines.push(`focusedId ${selection.focusedId ?? "null"} connectionId ${selection.selectedConnectionId ?? "null"}`);
+    lines.push(`focusedId ${selection.focusedId ?? "null"}`);
   }
 
   return lines.join("\n");

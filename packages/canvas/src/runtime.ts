@@ -17,7 +17,6 @@ import {
     createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin,
     createWidgetPlugin
 } from "./plugins";
-import { ActorConnectionService } from "./services/actor-connection/ActorConnectionService";
 import { CameraService } from "./services/camera/CameraService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
@@ -35,7 +34,6 @@ import { IRuntimeConfig, IRuntimeHooks } from "./types";
 
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
-    actorConnection: ActorConnectionService;
     camera: CameraService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;
@@ -88,14 +86,6 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
   const selection = new SelectionService();
   const tool = new ToolService(scene, element, crdt, selection);
   const logging = new LoggingService();
-  const actorConnection = new ActorConnectionService({
-    apiService: config.apiService,
-    canvasId: config.canvasId,
-    contextMenu,
-    scene,
-    selection,
-    notifyError: config.notification?.showError,
-  });
   const renderOrder = new RenderOrderService({
     crdt,
     history,
@@ -114,7 +104,6 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
     sceneService: scene,
     renderOrderService: renderOrder,
     cameraService: camera,
-    actorConnectionService: actorConnection,
     apiService: config.apiService
   });
   const group = new GroupService(
@@ -137,7 +126,6 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
   services.provide("contextMenu", 40, contextMenu);
   services.provide("history", 50, history);
   services.provide("selection", 60, selection);
-  services.provide("actorConnection", 65, actorConnection);
   services.provide("crdt", 70, crdt);
   services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);

@@ -3,9 +3,6 @@ import type Konva from "konva";
 import type { TElementTransformAnchor } from "../element/types";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import {
-  WIDGET_CONNECTION_BOUNDARY_ID,
-  WIDGET_CONNECTION_BOUNDARY_OFFSET,
-  WIDGET_CONNECTION_HANDLE_ID,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_DIVIDER_ID,
@@ -32,43 +29,6 @@ type TArgs = {
 
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
 
-function txSyncConnectionBoundary(portal: TPortal, args: { node: Konva.Group; width: number; height: number }) {
-  if (!portal.Line) return;
-
-  const boundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
-  if (!(boundary instanceof portal.Line)) return;
-
-  const offset = WIDGET_CONNECTION_BOUNDARY_OFFSET;
-  const radius = 18;
-  const left = -offset;
-  const top = -offset;
-  const right = args.width + offset;
-  const bottom = args.height + offset;
-  const corner = Math.min(radius, (right - left) / 2, (bottom - top) / 2);
-  const segments = 8;
-  const points: number[] = [];
-
-  const addArc = (centerX: number, centerY: number, startAngle: number, endAngle: number) => {
-    for (let index = 0; index <= segments; index += 1) {
-      const amount = index / segments;
-      const angle = startAngle + (endAngle - startAngle) * amount;
-      points.push(centerX + Math.cos(angle) * corner, centerY + Math.sin(angle) * corner);
-    }
-  };
-
-  addArc(right - corner, top + corner, -Math.PI / 2, 0);
-  addArc(right - corner, bottom - corner, 0, Math.PI / 2);
-  addArc(left + corner, bottom - corner, Math.PI / 2, Math.PI);
-  addArc(left + corner, top + corner, Math.PI, Math.PI * 1.5);
-
-  boundary.points(points);
-
-  const handle = args.node.findOne(`#${WIDGET_CONNECTION_HANDLE_ID}`);
-  if (handle) {
-    handle.visible(false);
-  }
-}
-
 function txApplyWidgetHostSize(portal: TPortal, args: {
   node: Konva.Group;
   width: number;
@@ -92,15 +52,6 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
   args.node.width(width);
   args.node.height(height);
   args.node.scale({ x: 1, y: 1 });
-
-  txSyncConnectionBoundary(portal, { node: args.node, width, height });
-  const connectionBoundary = args.node.findOne(`#${WIDGET_CONNECTION_BOUNDARY_ID}`);
-  if (connectionBoundary) {
-    const hostData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
-    const connectable = hostData?.type === "widget";
-    connectionBoundary.visible(connectable);
-    connectionBoundary.listening(connectable);
-  }
 
   const border = args.node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
   if (border instanceof portal.Rect) {

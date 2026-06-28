@@ -13,7 +13,6 @@ import type {
   TTool,
   ToolService,
 } from "..";
-import type { ActorConnectionService } from "../actor-connection/ActorConnectionService";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 
@@ -33,7 +32,6 @@ export interface IWidgetManagerServiceProps {
   sceneService: SceneService;
   renderOrderService: RenderOrderService;
   cameraService: CameraService;
-  actorConnectionService?: ActorConnectionService;
   apiService: TOrpcSafeClient
 }
 
