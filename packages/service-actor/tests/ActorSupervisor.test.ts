@@ -64,10 +64,12 @@ describe("ActorSupervisor", () => {
     expect(Object.keys(supervisor.vibecanvasDefMap).sort()).toEqual([
       "Account Bookkeeper Test",
       "Account Funds Test",
+      "Ping Pong Test",
     ]);
     expect(definitions.map(def => def.name).sort()).toEqual([
       "Account Bookkeeper Test",
       "Account Funds Test",
+      "Ping Pong Test",
     ]);
     expect(notifications).toEqual([]);
 

@@ -175,6 +175,7 @@ export class Actor {
                 throw new Error(`No transition for message ${item.msgName} in state ${this.#state}`)
             }
             await this.#runTransition(transition, item.msgPayload)
+            this.#applyTransitionTargetState(transition)
         } catch (error) {
             this.emitMessage('error', {
                 code: 'ACTOR_TRANSITION_FAILED',
@@ -185,6 +186,11 @@ export class Actor {
             this.#isProcessing = false;
             this.#processQueue()
         }
+    }
+
+    #applyTransitionTargetState(transition: TTransition) {
+        if (transition.allowedTargetStates.length !== 1) return;
+        this.#state = transition.allowedTargetStates[0];
     }
 
     #runTransition(transition: TTransition, msgPayload: any): Promise<void> {

@@ -1,0 +1,55 @@
+{
+  "slug": "ping-pong-test",
+  "name": "Ping Pong Test",
+  "actor": {
+    "relFunctionPath": "./actor/functions.ts",
+    "initialState": "ready.ping",
+    "initialData": {
+      "count": 0
+    },
+    "states": {
+      "ready.ping": {
+        "on": {
+          "hit": {
+            "func": [
+              "tx.increment"
+            ],
+            "allowedTargetStates": [
+              "ready.pong"
+            ]
+          }
+        }
+      },
+      "ready.pong": {
+        "on": {
+          "hit": {
+            "func": [
+              "tx.increment"
+            ],
+            "allowedTargetStates": [
+              "ready.ping"
+            ]
+          }
+        }
+      }
+    },
+    "inputMsgSchema": {
+      "hit": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    "outputMsgSchema": {}
+  },
+  "widget": {
+    "relWidgetDir": "./widget",
+    "tool": {
+      "label": "Ping Pong Test",
+      "behavior": {
+        "type": "mode",
+        "mode": "click-create"
+      }
+    }
+  }
+}

@@ -3,11 +3,14 @@ import type { TVibecanvasJson } from "../src/core/types";
 import { Actor } from "../src/Actor";
 import testActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
 import bookkeeperActorConfigJson from "./fixtures/account-bookkeeper-actor/vibecanvas.json";
+import pingPongActorConfigJson from "./fixtures/ping-pong-actor/vibecanvas.json";
 
 const rootDir = new URL("./fixtures/account-fund-actor", import.meta.url).pathname;
 const bookkeeperRootDir = new URL("./fixtures/account-bookkeeper-actor", import.meta.url).pathname;
+const pingPongRootDir = new URL("./fixtures/ping-pong-actor", import.meta.url).pathname;
 const testActorConfig = testActorConfigJson as TVibecanvasJson;
 const bookkeeperActorConfig = bookkeeperActorConfigJson as TVibecanvasJson;
+const pingPongActorConfig = pingPongActorConfigJson as TVibecanvasJson;
 
 async function waitForIdle(actor: Actor) {
     for (let index = 0; index < 100; index += 1) {
@@ -108,6 +111,31 @@ describe("Actor", () => {
 
         expect(messages[0].msgName).toBe("error")
         expect(messages[0].msgPayload.code).toBe("INVALID_OUTPUT_MESSAGE_PAYLOAD")
+
+        actor.close()
+    })
+
+    test("applies valid target state changes after transitions", async () => {
+        const actor = new Actor({
+            id: "ping-pong-actor",
+            rootDir: pingPongRootDir,
+            vsJson: pingPongActorConfig
+        })
+
+        expect(actor.getState()).toBe("ready.ping")
+
+        actor.start()
+        actor.inbox("hit", {})
+        await waitForIdle(actor)
+
+        expect(actor.getState()).toBe("ready.pong")
+        expect(actor.getData()).toEqual({ count: 1 })
+
+        actor.inbox("hit", {})
+        await waitForIdle(actor)
+
+        expect(actor.getState()).toBe("ready.ping")
+        expect(actor.getData()).toEqual({ count: 2 })
 
         actor.close()
     })
