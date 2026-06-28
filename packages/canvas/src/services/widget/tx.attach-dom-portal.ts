@@ -12,6 +12,7 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
 import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
+// @ts-ignore keep this way as rules should not applied for this import
 import { mountArrowSandbox } from './mount-arrow-sandbox';
 
 type TPortal = {
@@ -209,7 +210,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
 
   if (portal.widgetConfig?.sandbox) {
-    mountArrowSandbox({ root: div, apiService: portal.apiService }, { sandbox: portal.widgetConfig.sandbox });
+    mountArrowSandbox({ root: div, apiService: portal.apiService }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
   }
 
   if (view) {

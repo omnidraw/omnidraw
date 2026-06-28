@@ -1,15 +1,23 @@
+// NOTE: do not rename to tx.* this file is exception as string import code breaks rules
 import { html as HTML } from '@arrow-js/core';
 import { sandbox as SANDBOX } from '@arrow-js/sandbox';
 import SDK_WIDGET_SOURCE from '../../../../sdk/dist/widget.js?raw';
-import type { IWidgetConfig } from './interface';
+import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
+import type { IWidgetConfig } from './interface';
+
+type TActorSnapshot = {
+  state: string;
+  context: unknown;
+};
 
 type TPortal = {
   root: HTMLElement;
-  apiService: TOrpcSafeClient
+  apiService: TOrpcSafeClient;
 };
 
 type TArgs = {
+  element: TElement;
   sandbox: NonNullable<IWidgetConfig['sandbox']>;
 };
 
@@ -92,9 +100,26 @@ function getSandboxSource(source: Record<string, string | undefined>): Record<st
   return nextSource;
 }
 
+function getActorInstanceId(element: TElement): string | null {
+  const data = element.data;
+  if (data.type !== 'widget') return null;
+  return (data as TWidgetData).actorInstanceId ?? null;
+}
+
+async function getInitialActorSnapshot(portal: TPortal, args: TArgs): Promise<TActorSnapshot> {
+  const actorInstanceId = getActorInstanceId(args.element);
+  if (!actorInstanceId) return { state: 'booting', context: null };
+
+  const [error, snapshot] = await portal.apiService.api.actors.instances.snapshot({ instanceId: actorInstanceId });
+  if (error) return { state: 'error', context: { message: String(error) } };
+
+  return snapshot;
+}
+
 export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let messageIndex = 0;
   let cursor = '0';
+  let currentSnapshot: TActorSnapshot | null = null;
 
   HTML`<section class="vc-widget-sandbox-shell">
     <style>
@@ -116,33 +141,31 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
     },
   }, {
     [SDK_HOST_BRIDGE_MODULE]: {
-      getActorSnapshot() {
-        console.log('getActorSnapshot')
-        return portal.apiService.api.actors.instances.snapshot
+      async getActorSnapshot() {
+        currentSnapshot = await getInitialActorSnapshot(portal, args);
+        return currentSnapshot;
       },
       sendActorMessage() {
         messageIndex += 1;
         return { ok: true, messageId: `mock-widget-message-${messageIndex}` };
       },
       nextActorEvent(args: unknown) {
-        console.log('nextActorEvent', args)
-        const snapshot = {
-          state: 'ready',
-          context: {
-            message: 'mock actor context updated after 3s',
-            updatedAt: new Date().toISOString(),
-          },
-        };
         const requestedCursor = getCursorFromBridgeArgs(args);
-        if (requestedCursor !== cursor) {
-          return { type: 'snapshot', cursor, snapshot };
+        if (requestedCursor !== cursor && currentSnapshot) {
+          return { type: 'snapshot', cursor, snapshot: currentSnapshot };
         }
 
         return new Promise((resolve) => {
           setTimeout(() => {
-
+            currentSnapshot = {
+              state: 'ready',
+              context: {
+                message: 'mock actor context updated after 3s',
+                updatedAt: new Date().toISOString(),
+              },
+            };
             cursor = String(Number(cursor) + 1);
-            resolve({ type: 'snapshot', cursor, snapshot });
+            resolve({ type: 'snapshot', cursor, snapshot: currentSnapshot });
           }, 3000);
         });
       },
