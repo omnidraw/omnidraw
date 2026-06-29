@@ -95,6 +95,12 @@ export class ActorSupervisor {
   listenToActor(actor: Actor) {
     actor.listen((event) => {
       this.#config.eventPublisherService.publishActorEvent(event as any)
+
+      if (event.kind === "system" && event.type === "ack") {
+        void this.persistActorMachineSnapshot(actor)
+        return
+      }
+
       if (event.kind !== "actor") return
 
       void this.routeActorOutput({
@@ -103,6 +109,22 @@ export class ActorSupervisor {
         msgPayload: event.payload,
       })
     })
+  }
+
+  private async persistActorMachineSnapshot(actor: Actor) {
+    try {
+      await this.#config.db.actor.updateInstanceMachine({
+        id: actor.getId(),
+        machine_state: actor.getState(),
+        machine_context: actor.getData(),
+      })
+    } catch (error) {
+      this.#config.eventPublisherService.publishNotification({
+        type: 'error',
+        title: 'Failed to persist actor instance',
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   listenToActorEvents(actorId: string, cb: (event: TActorEvent) => void) {

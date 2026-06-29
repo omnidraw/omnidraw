@@ -40,6 +40,19 @@ async function waitForIdle(actor: { isIdle(): boolean }) {
   throw new Error("Timed out waiting for actor to become idle");
 }
 
+async function waitForPersistedContext(db: DbServiceTurso, instanceId: string, expectedContext: unknown) {
+  for (let index = 0; index < 100; index += 1) {
+    const instance = await db.actor.getInstanceById(instanceId);
+    const context = typeof instance?.machine_context === "string"
+      ? JSON.parse(instance.machine_context)
+      : instance?.machine_context;
+
+    if (JSON.stringify(context) === JSON.stringify(expectedContext)) return;
+    await Bun.sleep(10);
+  }
+  throw new Error("Timed out waiting for actor context to persist");
+}
+
 describe("ActorSupervisor", () => {
   let db!: DbServiceTurso;
   let notifications!: TNotification[];
@@ -192,6 +205,46 @@ describe("ActorSupervisor", () => {
       from: null,
       to: "running",
     });
+
+    supervisor.closeActors();
+  });
+
+  test("persists actor machine data after successful inbox processing", async () => {
+    await db.canvas.create({
+      id: "canvas-persist-machine",
+      name: "Actor Persistence Test Canvas",
+      automerge_url: "automerge:actor-persistence-test",
+    });
+
+    await db.actor.insertDefinition({
+      name: "Account Funds Test",
+      slug: "account-funds-test",
+      url: null,
+      description: null,
+      manifest_path: fundActorManifestPath,
+    });
+
+    await db.actor.insertInstance({
+      id: "fund-persist",
+      canvas_id: "canvas-persist-machine",
+      element_id: "element-fund-persist",
+      actor_definition_name: "Account Funds Test",
+      filesystem_id: null,
+      display_name: "Fund Persist",
+      status: "running",
+      machine_state: "ready",
+      machine_context: { balance: 0 },
+    });
+
+    const supervisor = createSupervisor(db, notifications);
+
+    await supervisor.init();
+    supervisor.actorMap["fund-persist"].inbox("add-funds", {accountId: "1", amount: 42});
+    await waitForIdle(supervisor.actorMap["fund-persist"]);
+    await waitForPersistedContext(db, "fund-persist", { balance: 42 });
+
+    const instance = await db.actor.getInstanceById("fund-persist");
+    expect(instance?.machine_state).toBe("ready");
 
     supervisor.closeActors();
   });
