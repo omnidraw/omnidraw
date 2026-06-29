@@ -247,6 +247,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E23](e/E23.md) - actor output log pruning compatibility
 - [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
 - [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
+- [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
