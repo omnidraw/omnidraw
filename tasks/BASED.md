@@ -118,6 +118,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [B28] - group with widget and rect -> delete rect must also deletes widget
 - [x]: [B29] - shape2d -> edit must show vertical heigt correctly and hide konva.text while editing
 - [x]: [B30] - can't delete text
+- [ ]: [B31](b/B31.md) - binary: compiled app cannot find Turso native binding
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
