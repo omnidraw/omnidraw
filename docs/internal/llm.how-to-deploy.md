@@ -38,8 +38,6 @@ Publishes only `@vibecanvas/sdk`.
 1. Update `packages/sdk/package.json` to the desired version.
 2. Commit and merge the version change.
 3. Create and push an explicit tag: `git tag sdk-v0.1.0 && git push origin sdk-v0.1.0`.
-4. GitHub Actions verifies `@vibecanvas/sdk@0.1.0` does not already exist on npm, then publishes the SDK and creates a GitHub release in `vibecanvas/sdk`.
-
-SDK GitHub releases require a repository secret named `SDK_RELEASE_GITHUB_TOKEN` with `contents:write` access to `vibecanvas/sdk`. Vibecanvas CLI/binary releases stay in the root `vibecanvas/vibecanvas` repository.
+4. GitHub Actions verifies `@vibecanvas/sdk@0.1.0` does not already exist on npm, then publishes the SDK to npm. No GitHub release is created for SDK for now.
 
 If npm already contains the exact package version, the workflow fails before publishing. Bump the package version or remove that version from npm first.

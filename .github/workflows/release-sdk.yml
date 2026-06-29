@@ -132,8 +132,6 @@ jobs:
       - test-and-build
     environment:
       name: production
-    env:
-      GH_TOKEN: ${{ secrets.SDK_RELEASE_GITHUB_TOKEN }}
     permissions:
       contents: read
       id-token: write
@@ -182,22 +180,6 @@ jobs:
           set -euo pipefail
           npm publish --access public --tag "$NPM_TAG" --dry-run
           npm publish --access public --tag "$NPM_TAG" --provenance
-
-      - name: Publish GitHub release
-        env:
-          TAG: ${{ needs.check-version.outputs.tag }}
-          VERSION: ${{ needs.check-version.outputs.version }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "Missing SDK_RELEASE_GITHUB_TOKEN secret. It must have contents:write access to vibecanvas/sdk." >&2
-            exit 1
-          fi
-          ARGS=("gh" "release" "create" "$TAG" "--repo" "vibecanvas/sdk" "--title" "$TAG" "--generate-notes")
-          if [[ "$VERSION" == *-* ]]; then
-            ARGS+=("--prerelease")
-          fi
-          "${ARGS[@]}"
 
       - name: Print release summary
         env:
