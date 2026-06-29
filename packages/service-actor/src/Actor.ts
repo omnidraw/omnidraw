@@ -108,6 +108,7 @@ export class Actor {
         if (this.#proc) return;
         this.actorFuncions()
         this.#emitSystemEvent({ type: "status.changed", from: null, to: "running" })
+        this.#emitSystemEvent({ type: "state.changed", from: 'booting', to: this.#state })
         this.#processQueue()
     }
 

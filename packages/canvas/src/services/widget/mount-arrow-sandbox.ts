@@ -20,6 +20,7 @@ type TPortal = {
   root: HTMLElement;
   apiService: TOrpcSafeClient;
   subscribeActorInstanceEvents: (actorInstanceId: string, handler: (event: TWidgetActorEvent) => void) => () => void;
+  getActorInstanceId: () => string | null;
 };
 
 type TArgs = {
@@ -128,8 +129,33 @@ function getActorInstanceId(element: TElement): string | null {
   return (data as TWidgetData).actorInstanceId ?? null;
 }
 
-async function getInitialActorSnapshot(portal: TPortal, args: TArgs): Promise<TActorSnapshot> {
-  const actorInstanceId = getActorInstanceId(args.element);
+function sleep(portal: TPortal, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const view = portal.root.ownerDocument.defaultView;
+    if (view) {
+      view.setTimeout(resolve, ms);
+      return;
+    }
+
+    setTimeout(resolve, ms);
+  });
+}
+
+async function waitForActorInstanceId(portal: TPortal): Promise<string | null> {
+  let delay = 5;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const actorInstanceId = portal.getActorInstanceId();
+    if (actorInstanceId) return actorInstanceId;
+
+    await sleep(portal, delay);
+    delay = Math.min(delay * 2, 250);
+  }
+
+  return null;
+}
+
+async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string | null): Promise<TActorSnapshot> {
   if (!actorInstanceId) return { state: 'booting', context: null };
 
   const [error, snapshot] = await portal.apiService.api.actors.instances.snapshot({ instanceId: actorInstanceId });
@@ -170,7 +196,8 @@ function getSnapshotFromActorEvent(snapshot: TActorSnapshot | null, event: TWidg
 }
 
 export function mountArrowSandbox(portal: TPortal, args: TArgs) {
-  const actorInstanceId = getActorInstanceId(args.element);
+  let actorInstanceId = portal.getActorInstanceId() ?? getActorInstanceId(args.element);
+  let unsubscribeActorEvents: (() => void) | undefined;
   let disposed = false;
   let cursor = 0;
   let currentSnapshot: TActorSnapshot | null = null;
@@ -201,9 +228,27 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
     pushSnapshot(snapshot);
   }
 
-  const unsubscribeActorEvents = actorInstanceId
-    ? portal.subscribeActorInstanceEvents(actorInstanceId, handleActorEvent)
-    : undefined;
+  function subscribeActorEvents(nextActorInstanceId: string) {
+    if (unsubscribeActorEvents || disposed) return;
+    actorInstanceId = nextActorInstanceId;
+    unsubscribeActorEvents = portal.subscribeActorInstanceEvents(nextActorInstanceId, handleActorEvent);
+  }
+
+  async function ensureActorInstanceId(): Promise<string | null> {
+    if (actorInstanceId) {
+      subscribeActorEvents(actorInstanceId);
+      return actorInstanceId;
+    }
+
+    const nextActorInstanceId = await waitForActorInstanceId(portal);
+    if (!nextActorInstanceId) return null;
+    subscribeActorEvents(nextActorInstanceId);
+    return nextActorInstanceId;
+  }
+
+  if (actorInstanceId) {
+    subscribeActorEvents(actorInstanceId);
+  }
 
   HTML`<section class="vc-widget-sandbox-shell">
     <style>
@@ -226,7 +271,8 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   }, {
     [SDK_HOST_BRIDGE_MODULE]: {
       async getActorSnapshot() {
-        currentSnapshot = await getInitialActorSnapshot(portal, args);
+        const readyActorInstanceId = await ensureActorInstanceId();
+        currentSnapshot = await getInitialActorSnapshot(portal, readyActorInstanceId);
         return currentSnapshot;
       },
       async sendActorMessage(args: unknown) {
@@ -239,7 +285,8 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
           };
         }
 
-        if (!actorInstanceId) {
+        const readyActorInstanceId = await ensureActorInstanceId();
+        if (!readyActorInstanceId) {
           return {
             ok: false,
             code: 'ACTOR_INSTANCE_NOT_READY',
@@ -248,7 +295,7 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
         }
 
         const [error, result] = await portal.apiService.api.actors.instances.sendMessage({
-          instanceId: actorInstanceId,
+          instanceId: readyActorInstanceId,
           name: message.name,
           payload: message.payload,
         });

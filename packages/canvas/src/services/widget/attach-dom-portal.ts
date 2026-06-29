@@ -219,6 +219,11 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       subscribeActorInstanceEvents: (actorInstanceId: string, handler: TWidgetActorEventHandler) => {
         return portal.widgetServie.subscribeActorInstanceEvents(actorInstanceId, handler);
       },
+      getActorInstanceId: () => {
+        if (!isKonvaGroup(portal.node)) return null;
+        const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+        return widgetData?.type === 'widget' ? widgetData.actorInstanceId ?? null : null;
+      },
     }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
     const cleanupDomRender = cleanupRender;
     cleanupRender = () => {
