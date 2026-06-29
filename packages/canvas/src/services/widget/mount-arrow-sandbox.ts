@@ -53,7 +53,20 @@ function getActorMessageFromBridgeArgs(args: unknown): TWidgetActorMessageAction
 const SDK_MODULE_PATH = '/__vibecanvas_sdk.js';
 const SDK_BOOTSTRAP_MODULE_PATH = '/__vibecanvas_sdk_bootstrap.js';
 const SDK_HOST_BRIDGE_MODULE = 'host-bridge:vibecanvas-widget';
+const SANDBOX_EVENT_COMPAT_SOURCE = `
+(() => {
+  const noop = () => undefined;
+  for (const name of ['preventDefault', 'stopPropagation', 'stopImmediatePropagation', 'reset']) {
+    if (name in Object.prototype) continue;
+    Object.defineProperty(Object.prototype, name, {
+      configurable: true,
+      value: noop,
+    });
+  }
+})();
+`;
 const SDK_BOOTSTRAP_SOURCE = `
+${SANDBOX_EVENT_COMPAT_SOURCE}
 import { __setActorSnapshot, __setSendMessage } from '${SDK_MODULE_PATH}';
 import { getActorSnapshot, sendActorMessage, nextActorEvent } from '${SDK_HOST_BRIDGE_MODULE}';
 
@@ -111,7 +124,11 @@ function getSandboxSource(source: Record<string, string | undefined>): Record<st
     ...Object.fromEntries(
       Object.entries(source).flatMap(([path, fileSource]) => {
         if (fileSource === undefined) return [];
-        return [[path, fileSource.replaceAll('@vibecanvas/sdk/widget', SDK_BOOTSTRAP_MODULE_PATH)]];
+        const sourceWithSdkBootstrap = fileSource.replaceAll('@vibecanvas/sdk/widget', SDK_BOOTSTRAP_MODULE_PATH);
+        const nextFileSource = path === 'main.ts' || path === 'main.js'
+          ? `${SANDBOX_EVENT_COMPAT_SOURCE}\n${sourceWithSdkBootstrap}`
+          : sourceWithSdkBootstrap;
+        return [[path, nextFileSource]];
       }),
     ),
     [SDK_MODULE_PATH]: SDK_WIDGET_SOURCE,
@@ -127,6 +144,39 @@ function getActorInstanceId(element: TElement): string | null {
   const data = element.data;
   if (data.type !== 'widget') return null;
   return (data as TWidgetData).actorInstanceId ?? null;
+}
+
+function preventDefault(event: Event) {
+  event.preventDefault();
+}
+
+function bindSandboxFormSubmitGuards(root: HTMLElement): () => void {
+  const cleanups: Array<() => void> = [];
+  const sandboxHosts = Array.from(root.querySelectorAll('arrow-sandbox'));
+
+  for (const sandboxHost of sandboxHosts) {
+    let cleanupSubmitGuard: (() => void) | null = null;
+
+    const bindSubmitGuard = () => {
+      cleanupSubmitGuard?.();
+
+      const target = sandboxHost.shadowRoot ?? sandboxHost;
+      target.addEventListener('submit', preventDefault, { capture: true });
+      cleanupSubmitGuard = () => target.removeEventListener('submit', preventDefault, { capture: true });
+    };
+
+    sandboxHost.addEventListener('sandbox-ready', bindSubmitGuard);
+    bindSubmitGuard();
+
+    cleanups.push(() => {
+      sandboxHost.removeEventListener('sandbox-ready', bindSubmitGuard);
+      cleanupSubmitGuard?.();
+    });
+  }
+
+  return () => {
+    for (const cleanup of cleanups) cleanup();
+  };
 }
 
 function sleep(portal: TPortal, ms: number): Promise<void> {
@@ -201,6 +251,7 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let disposed = false;
   let cursor = 0;
   let currentSnapshot: TActorSnapshot | null = null;
+  let unbindSandboxFormSubmitGuards: (() => void) | undefined;
   const queuedEvents: TWidgetHostActorEventResult[] = [];
   const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = [];
 
@@ -326,8 +377,11 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   })}
   </section>`(portal.root);
 
+  unbindSandboxFormSubmitGuards = bindSandboxFormSubmitGuards(portal.root);
+
   return () => {
     disposed = true;
+    unbindSandboxFormSubmitGuards?.();
     unsubscribeActorEvents?.();
 
     while (pendingResolvers.length > 0) {
