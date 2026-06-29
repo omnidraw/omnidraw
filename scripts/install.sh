@@ -165,7 +165,10 @@ else
     case "$raw_os" in
         Darwin*) os="darwin" ;;
         Linux*) os="linux" ;;
-        MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+        MINGW*|MSYS*|CYGWIN*)
+            echo -e "${RED}Unsupported OS: Windows builds are not published for Vibecanvas.${NC}"
+            exit 1
+            ;;
         *)
             echo -e "${RED}Unsupported OS: $raw_os${NC}"
             exit 1
@@ -230,43 +233,42 @@ else
 
     # Archive format
     archive_ext=".tar.gz"
-    if [[ "$os" == "windows" ]]; then
-        archive_ext=".zip"
-    fi
 
     package_name="$APP-$target"
     filename="$package_name$archive_ext"
 
     # Get version
     if [[ -z "$requested_version" ]]; then
+        releases_json=$(curl -s "https://api.github.com/repos/$REPO/releases?per_page=50")
         if [[ "$channel" == "stable" ]]; then
             echo -e "${MUTED}Fetching latest stable version...${NC}"
-            specific_version=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+            release_tag=$(printf '%s' "$releases_json" | grep -Eo '"tag_name":"vibecanvas-v[0-9]+\.[0-9]+\.[0-9]+"' | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
         else
             echo -e "${MUTED}Fetching latest ${channel} version...${NC}"
-            releases_json=$(curl -s "https://api.github.com/repos/$REPO/releases?per_page=50")
-            specific_version=$(printf '%s' "$releases_json" | grep -o "\"tag_name\":\"v[^\"]*${channel}[^\"]*\"" | sed -n '1s/.*"v\([^"]*\)"/\1/p')
+            release_tag=$(printf '%s' "$releases_json" | grep -o "\"tag_name\":\"vibecanvas-v[^\"]*${channel}[^\"]*\"" | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
         fi
 
-        if [[ -z "$specific_version" ]]; then
+        if [[ -z "${release_tag:-}" ]]; then
             echo -e "${RED}Failed to fetch latest ${channel} version${NC}"
             echo -e "${MUTED}Check: https://github.com/$REPO/releases${NC}"
             exit 1
         fi
-        url="https://github.com/$REPO/releases/download/v${specific_version}/$filename"
+        specific_version="${release_tag#vibecanvas-v}"
+        url="https://github.com/$REPO/releases/download/${release_tag}/$filename"
     else
-        # Strip leading 'v' if present
+        requested_version="${requested_version#vibecanvas-v}"
         requested_version="${requested_version#v}"
         specific_version="$requested_version"
+        release_tag="vibecanvas-v${requested_version}"
 
         # Verify release exists
-        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/$REPO/releases/tag/v${requested_version}")
+        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/$REPO/releases/tag/${release_tag}")
         if [[ "$http_status" == "404" ]]; then
-            echo -e "${RED}Error: Release v${requested_version} not found${NC}"
+            echo -e "${RED}Error: Release ${release_tag} not found${NC}"
             echo -e "${MUTED}Available releases: https://github.com/$REPO/releases${NC}"
             exit 1
         fi
-        url="https://github.com/$REPO/releases/download/v${requested_version}/$filename"
+        url="https://github.com/$REPO/releases/download/${release_tag}/$filename"
     fi
 
     # Check if already installed with same version
@@ -301,11 +303,7 @@ else
     fi
 
     echo -e "${MUTED}Extracting...${NC}"
-    if [[ "$os" == "linux" ]] || [[ "$os" == "darwin" ]]; then
-        tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
-    else
-        unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
-    fi
+    tar -xzf "$tmp_dir/$filename" -C "$tmp_dir"
 
     # Find the binary (might be in root or in bin/)
     binary_candidate=""

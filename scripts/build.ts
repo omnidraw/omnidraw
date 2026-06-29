@@ -2,10 +2,9 @@
 /**
  * @file Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests.
  *
- * Creates standalone executables for all platforms:
+ * Creates standalone executables for supported platforms:
  * - macOS (arm64, x64)
  * - Linux (arm64, x64, musl variants, baseline)
- * - Windows (x64, baseline)
  *
  * Usage:
  *   bun scripts/build.ts              # Build all platforms
@@ -49,8 +48,6 @@ const targets = [
   { os: "linux", arch: "x64", avx2: false },
   { os: "linux", arch: "arm64", abi: "musl" },
   { os: "linux", arch: "x64", abi: "musl" },
-  { os: "win32", arch: "x64" },
-  { os: "win32", arch: "x64", avx2: false },
 ] as const
 
 type Target = (typeof targets)[number]
@@ -74,7 +71,7 @@ type ReleaseManifestTarget = {
 function buildPackageName(target: Target): string {
   return [
     "vibecanvas",
-    target.os === "win32" ? "windows" : target.os,
+    target.os,
     target.arch,
     "avx2" in target && !target.avx2 ? "baseline" : undefined,
     "abi" in target ? target.abi : undefined,
@@ -344,7 +341,7 @@ async function main() {
     const bunTarget = buildBunTarget(target)
 
     try {
-      const outputPath = `${distDir}/bin/vibecanvas${target.os === "win32" ? ".exe" : ""}`
+      const outputPath = `${distDir}/bin/vibecanvas`
 
       // Compile cli with Bun using build-time constants via --define
       const result = await Bun.build({
@@ -388,7 +385,7 @@ async function main() {
             os: [target.os],
             cpu: [target.arch],
             bin: {
-              vibecanvas: `./bin/vibecanvas${target.os === "win32" ? ".exe" : ""}`,
+              vibecanvas: "./bin/vibecanvas",
             },
             description: `${description} (${target.os} ${target.arch})`,
             author: "Omar Ezzat",

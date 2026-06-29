@@ -1,7 +1,6 @@
 {
   "name": "@vibecanvas/sdk",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "exports": {
     "./widget": {
@@ -17,10 +16,13 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist && node ../node_modules/typescript/lib/tsc.js -p tsconfig.build.json && bun build src/widget.ts src/actor.ts --target=browser --format=esm --external @arrow-js/core --outdir=dist",
-    "test": "bun test"
+    "build": "bun scripts/build.ts",
+    "test": "bun test --pass-with-no-tests"
   },
   "dependencies": {
     "@arrow-js/core": "^1.0.6"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
   }
 }

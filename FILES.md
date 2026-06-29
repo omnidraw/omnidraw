@@ -556,6 +556,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/sdk/.gitignore](packages/sdk/.gitignore) |  |
 | [packages/sdk/package.json](packages/sdk/package.json) |  |
+| [packages/sdk/scripts/build.ts](packages/sdk/scripts/build.ts) |  |
 | [packages/sdk/src/actor.ts](packages/sdk/src/actor.ts) |  |
 | [packages/sdk/src/example-interface.ts](packages/sdk/src/example-interface.ts) |  |
 | [packages/sdk/src/shared.ts](packages/sdk/src/shared.ts) |  |

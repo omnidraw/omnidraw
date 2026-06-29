@@ -1,16 +1,21 @@
-name: Publish Release
+name: Release Vibecanvas
 
 on:
   push:
-    branches:
-      - 'release/v*'
+    tags:
+      - 'vibecanvas-v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release, e.g. vibecanvas-v0.3.2'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -20,62 +25,66 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
       release_notes: ${{ steps.version.outputs.release_notes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.10"
 
-      - name: Validate release branch, version, tag, and changelog
+      - name: Validate vibecanvas tag, app version, and npm availability
         id: version
         env:
-          BRANCH_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
 
-          ROOT_VERSION=$(bun -e 'const pkg = await Bun.file("package.json").json(); process.stdout.write(pkg.version)')
-          APP_VERSION=$(bun -e 'const pkg = await Bun.file("apps/vibecanvas/package.json").json(); process.stdout.write(pkg.version)')
-
-          if [ -z "$ROOT_VERSION" ]; then
-            echo "Failed to read version from package.json" >&2
+          if [[ "$TAG_NAME" != vibecanvas-v* ]]; then
+            echo "Invalid vibecanvas release tag: '$TAG_NAME'. Expected format: vibecanvas-vX.Y.Z" >&2
             exit 1
           fi
+
+          TAG_VERSION="${TAG_NAME#vibecanvas-v}"
+          APP_VERSION=$(bun -e 'const pkg = await Bun.file("apps/vibecanvas/package.json").json(); process.stdout.write(pkg.version ?? "")')
 
           if [ -z "$APP_VERSION" ]; then
             echo "Failed to read version from apps/vibecanvas/package.json" >&2
             exit 1
           fi
 
-          if [ "$ROOT_VERSION" != "$APP_VERSION" ]; then
-            echo "Version mismatch: package.json is $ROOT_VERSION but apps/vibecanvas/package.json is $APP_VERSION. Align both versions before publishing." >&2
+          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+            echo "Version mismatch: tag is '$TAG_NAME' but apps/vibecanvas/package.json is '$APP_VERSION'." >&2
             exit 1
           fi
 
-          if [[ "$BRANCH_NAME" != release/v* ]]; then
-            echo "Invalid release branch: '$BRANCH_NAME'. Expected format: release/v$ROOT_VERSION" >&2
-            exit 1
-          fi
+          PACKAGES=(
+            "vibecanvas"
+            "vibecanvas-darwin-arm64"
+            "vibecanvas-darwin-x64"
+            "vibecanvas-linux-arm64"
+            "vibecanvas-linux-x64"
+            "vibecanvas-linux-x64-baseline"
+            "vibecanvas-linux-arm64-musl"
+            "vibecanvas-linux-x64-musl"
+          )
 
-          BRANCH_VERSION="${BRANCH_NAME#release/v}"
-          if [ "$BRANCH_VERSION" != "$ROOT_VERSION" ]; then
-            echo "Release branch version mismatch: branch is '$BRANCH_NAME' but package.json version is '$ROOT_VERSION'. Expected branch: release/v$ROOT_VERSION" >&2
-            exit 1
-          fi
-
-          TAG="v$ROOT_VERSION"
-          if git rev-parse "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Refusing to publish: git tag '$TAG' already exists." >&2
-            exit 1
-          fi
+          for PACKAGE in "${PACKAGES[@]}"; do
+            if bun pm view "$PACKAGE@$APP_VERSION" version >/dev/null 2>&1; then
+              echo "npm package already exists: $PACKAGE@$APP_VERSION" >&2
+              echo "Refusing to publish. Bump apps/vibecanvas/package.json version or remove the package version from npm first." >&2
+              exit 1
+            fi
+          done
 
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
-          VERSION="$ROOT_VERSION" NOTES_FILE="$NOTES_FILE" bun run - <<'EOF'
+          VERSION="$APP_VERSION" NOTES_FILE="$NOTES_FILE" bun run - <<'EOF'
           const version = process.env.VERSION
           const notesFile = process.env.NOTES_FILE
 
@@ -110,14 +119,14 @@ jobs:
           await Bun.write(notesFile, `${section}\n`)
           EOF
 
-          echo "version=$ROOT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
           {
             echo "release_notes<<EOF"
             cat "$NOTES_FILE"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-
-          echo "Validated release version $ROOT_VERSION"
+          echo "Validated vibecanvas release $TAG_NAME"
 
   test:
     runs-on: ubuntu-latest
@@ -126,6 +135,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -146,6 +157,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -170,9 +183,12 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build-release-artifacts
+      - check-version
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -207,6 +223,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.tag }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -219,11 +237,6 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Verify Node and npm versions
-        run: |
-          node --version
-          npm --version
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -233,32 +246,42 @@ jobs:
           name: release-dist
           path: dist
 
-      - name: Publish npm packages
-        run: bun run scripts/publish-npm.ts
-
-      - name: Create and push git tag
+      - name: Re-check npm availability before publishing
         env:
           VERSION: ${{ needs.check-version.outputs.version }}
         run: |
           set -euo pipefail
-          TAG="v$VERSION"
-          if git rev-parse "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Refusing to push tag: '$TAG' already exists." >&2
-            exit 1
-          fi
-          git tag "$TAG"
-          git push origin "$TAG"
+          PACKAGES=(
+            "vibecanvas"
+            "vibecanvas-darwin-arm64"
+            "vibecanvas-darwin-x64"
+            "vibecanvas-linux-arm64"
+            "vibecanvas-linux-x64"
+            "vibecanvas-linux-x64-baseline"
+            "vibecanvas-linux-arm64-musl"
+            "vibecanvas-linux-x64-musl"
+          )
+          for PACKAGE in "${PACKAGES[@]}"; do
+            if bun pm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
+              echo "npm package already exists: $PACKAGE@$VERSION" >&2
+              echo "Refusing to publish. Bump apps/vibecanvas/package.json version or remove the package version from npm first." >&2
+              exit 1
+            fi
+          done
+
+      - name: Publish npm packages
+        run: bun run scripts/publish-npm.ts
 
       - name: Publish GitHub release
         env:
-          VERSION: ${{ needs.check-version.outputs.version }}
+          TAG: ${{ needs.check-version.outputs.tag }}
           RELEASE_NOTES: ${{ needs.check-version.outputs.release_notes }}
         run: |
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           printf '%s\n' "$RELEASE_NOTES" > "$NOTES_FILE"
-          bun run scripts/release.ts --tag "v$VERSION" --notes-file "$NOTES_FILE" --fail-if-exists
+          bun run scripts/release.ts --tag "$TAG" --notes-file "$NOTES_FILE" --fail-if-exists
 
       - name: Print release summary
         env:
-          VERSION: ${{ needs.check-version.outputs.version }}
-        run: echo "Published release v$VERSION"
+          TAG: ${{ needs.check-version.outputs.tag }}
+        run: echo "Published release $TAG"

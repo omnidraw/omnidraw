@@ -1,24 +1,45 @@
 # How to release Vibecanvas
 
 Reference only:
-- `.github/workflows/publish.yml`
+- `.github/workflows/release-vibecanvas.yml`
+- `.github/workflows/release-sdk.yml`
 - `.github/workflows/test.yml`
 - `.github/workflows/deploy-web.yml`
 
-## Stable
-1. `bun run version:update -- 0.3.0`
-2. Add `## 0.3.0` to `CHANGELOG.md`
-3. Commit and push branch `release/v0.3.0`
-4. GitHub Actions publishes npm `latest` and a normal GitHub release
+Merging to `main` does not publish npm packages. Package releases are tag-driven.
 
-## Beta
-1. `bun run version:update -- 0.3.0-beta.1`
-2. Add `## 0.3.0-beta.1` to `CHANGELOG.md`
-3. Commit and push branch `release/v0.3.0-beta.1`
-4. GitHub Actions publishes npm `beta` and a GitHub prerelease
+## Vibecanvas CLI and binary packages
 
-## Nightly
-1. `bun run version:update -- 0.3.0-nightly.20260409`
-2. Add `## 0.3.0-nightly.20260409` to `CHANGELOG.md`
-3. Commit and push branch `release/v0.3.0-nightly.20260409`
-4. GitHub Actions publishes npm `nightly` and a GitHub prerelease
+Publishes `vibecanvas` and generated macOS/Linux `vibecanvas-*` platform packages. Windows builds are not published.
+
+### Stable
+1. Update `apps/vibecanvas/package.json` to `0.3.0`.
+2. Add `## 0.3.0` to `CHANGELOG.md` if release notes need to be curated.
+3. Commit and merge the version change.
+4. Create and push an explicit tag: `git tag vibecanvas-v0.3.0 && git push origin vibecanvas-v0.3.0`.
+5. GitHub Actions verifies no `vibecanvas@0.3.0` / `vibecanvas-*@0.3.0` package already exists on npm, then publishes npm `latest` and a normal GitHub release.
+
+### Beta
+1. Update `apps/vibecanvas/package.json` to `0.3.0-beta.1`.
+2. Commit and merge the version change.
+3. Create and push an explicit tag: `git tag vibecanvas-v0.3.0-beta.1 && git push origin vibecanvas-v0.3.0-beta.1`.
+4. GitHub Actions publishes npm `beta` and a GitHub prerelease.
+
+### Nightly
+1. Update `apps/vibecanvas/package.json` to `0.3.0-nightly.20260409`.
+2. Commit and merge the version change.
+3. Create and push an explicit tag: `git tag vibecanvas-v0.3.0-nightly.20260409 && git push origin vibecanvas-v0.3.0-nightly.20260409`.
+4. GitHub Actions publishes npm `nightly` and a GitHub prerelease.
+
+## SDK package
+
+Publishes only `@vibecanvas/sdk`.
+
+1. Update `packages/sdk/package.json` to the desired version.
+2. Commit and merge the version change.
+3. Create and push an explicit tag: `git tag sdk-v0.1.0 && git push origin sdk-v0.1.0`.
+4. GitHub Actions verifies `@vibecanvas/sdk@0.1.0` does not already exist on npm, then publishes the SDK and creates a GitHub release in `vibecanvas/sdk`.
+
+SDK GitHub releases require a repository secret named `SDK_RELEASE_GITHUB_TOKEN` with `contents:write` access to `vibecanvas/sdk`. Vibecanvas CLI/binary releases stay in the root `vibecanvas/vibecanvas` repository.
+
+If npm already contains the exact package version, the workflow fails before publishing. Bump the package version or remove that version from npm first.

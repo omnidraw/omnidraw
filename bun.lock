@@ -101,8 +101,6 @@
         "vibecanvas-linux-x64": "0.0.1",
         "vibecanvas-linux-x64-baseline": "0.0.1",
         "vibecanvas-linux-x64-musl": "0.0.1",
-        "vibecanvas-windows-x64": "0.0.1",
-        "vibecanvas-windows-x64-baseline": "0.0.1",
       },
     },
     "apps/web": {
@@ -304,6 +302,9 @@
       "version": "0.0.0",
       "dependencies": {
         "@arrow-js/core": "^1.0.6",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
       },
     },
     "packages/service-actor": {

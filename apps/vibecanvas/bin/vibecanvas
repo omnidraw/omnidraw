@@ -5,7 +5,13 @@ const { arch, platform } = require("os");
 
 const os = platform();
 const cpu = arch();
-const pkgBase = ["vibecanvas", os === "win32" ? "windows" : os, cpu].join("-");
+
+if (os === "win32") {
+  console.error("vibecanvas: Windows builds are not currently published.");
+  process.exit(1);
+}
+
+const pkgBase = ["vibecanvas", os, cpu].join("-");
 const attempts = [pkgBase, `${pkgBase}-baseline`, `${pkgBase}-musl`];
 
 let binaryPath;
