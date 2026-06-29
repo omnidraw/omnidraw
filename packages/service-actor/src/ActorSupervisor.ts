@@ -76,9 +76,9 @@ export class ActorSupervisor {
         data: fnToActorData(actorInst.machine_context),
       })
 
-      actor.start()
       this.actorMap[actor.getId()] = actor
       this.listenToActor(actor)
+      actor.start()
       await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
     })
 
@@ -159,9 +159,9 @@ export class ActorSupervisor {
       rootDir: dirname(def.manifest_path),
     })
 
-    actor.start()
     this.actorMap[actor.getId()] = actor
     this.listenToActor(actor)
+    actor.start()
     await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
     return actor;
   }

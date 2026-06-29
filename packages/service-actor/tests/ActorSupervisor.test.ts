@@ -171,6 +171,31 @@ describe("ActorSupervisor", () => {
     supervisor.closeActors();
   });
 
+  test("publishes running status event when actor instance is created", async () => {
+    await db.canvas.create({
+      id: "canvas-create-instance",
+      name: "Actor Create Instance Test Canvas",
+      automerge_url: "automerge:actor-create-instance-test",
+    });
+
+    const publishedActorEvents: TActorEvent[] = [];
+    const supervisor = createSupervisor(db, notifications, publishedActorEvents);
+
+    await supervisor.init();
+    const actor = await supervisor.createInstance("Account Funds Test", "canvas-create-instance", "element-created-fund");
+
+    expect(actor?.getId()).toBeString();
+    expect(publishedActorEvents).toContainEqual({
+      kind: "system",
+      actorId: actor?.getId(),
+      type: "status.changed",
+      from: null,
+      to: "running",
+    });
+
+    supervisor.closeActors();
+  });
+
   test("routes emitted actor messages to connected target actors", async () => {
     await db.canvas.create({
       id: "canvas-connection",
