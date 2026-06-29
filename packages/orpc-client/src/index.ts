@@ -1,12 +1,12 @@
 import { createORPCClient, createSafeClient, type SafeClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import { oc, populateContractRouterPaths, type ContractRouterClient } from "@orpc/contract";
-import { actorsContract } from "@vibecanvas/api-actors/contract";
+import { actorsContract, type TActorEvent } from "@vibecanvas/api-actors/contract";
 import { canvasContract } from "@vibecanvas/api-canvas/contract";
 import { dbContract } from "@vibecanvas/api-db/contract";
 import { fileContract } from "@vibecanvas/api-file/contract";
 import { filesystemContract } from "@vibecanvas/api-filesystem/contract";
-import { notificationContract } from "@vibecanvas/api-notification/contract";
+import { notificationContract, type TNotificationEvent } from "@vibecanvas/api-notification/contract";
 import { ptyContract, type TPtyImageFormat } from "@vibecanvas/api-pty/contract";
 import { WebSocket as PartySocketWebSocket } from "partysocket";
 
@@ -26,17 +26,9 @@ const apiContract = populateContractRouterPaths(
 
 type TOrpcClient = ContractRouterClient<typeof apiContract>;
 type TOrpcSafeClient = SafeClient<TOrpcClient>;
-type TNotificationEvent = {
-  type: string;
-  title: string;
-  description?: string;
-};
-
-type TOrpcNotificationHandler = (event: TNotificationEvent) => void;
 
 type TCreateOrpcWebsocketServiceArgs = {
   websocketUrl?: string;
-  onNotification?: TOrpcNotificationHandler;
 };
 
 function getRpcWebsocketUrl(): string {
@@ -73,24 +65,22 @@ class OrpcWebsocketService {
   readonly client: TOrpcClient;
   readonly apiService: TOrpcSafeClient;
   readonly websocket: PartySocketWebSocket;
-  readonly #onNotification?: TOrpcNotificationHandler;
 
   get safeClient() {
     return this.apiService;
   }
 
   constructor(args: TCreateOrpcWebsocketServiceArgs = {}) {
-    this.#onNotification = args.onNotification;
     this.websocket = new PartySocketWebSocket(args.websocketUrl ?? getRpcWebsocketUrl());
 
     const link = new RPCLink({
+      // @ts-expect-error weak typing from orpc
       websocket: this.websocket,
     });
 
     this.client = createORPCClient(link);
     this.apiService = createSafeClient(this.client);
 
-    this.setupNotifications();
   }
 
   async uploadClipboardImageToPtyTemp(args: { workingDirectory: string; file: File | Blob }) {
@@ -112,21 +102,7 @@ class OrpcWebsocketService {
       return [error, null] as const;
     }
   }
-
-  private setupNotifications() {
-    this.apiService.api.notification.events({})
-      .then(async ([err, it]) => {
-        if (err || !it || !this.#onNotification) return;
-        for await (const event of it) {
-          this.#onNotification(event);
-        }
-      });
-  }
 }
 
-function createOrpcWebsocketService(args?: TCreateOrpcWebsocketServiceArgs) {
-  return new OrpcWebsocketService(args);
-}
-
-export { apiContract, contract, createOrpcWebsocketService, getRpcWebsocketUrl, OrpcWebsocketService };
-export type { TCreateOrpcWebsocketServiceArgs, TNotificationEvent, TOrpcClient, TOrpcNotificationHandler, TOrpcSafeClient, TPtyImageFormat };
+export { apiContract, contract, getRpcWebsocketUrl, OrpcWebsocketService };
+export type { TCreateOrpcWebsocketServiceArgs, TNotificationEvent, TOrpcClient, TOrpcSafeClient, TPtyImageFormat };

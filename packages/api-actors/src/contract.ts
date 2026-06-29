@@ -75,7 +75,9 @@ export const ZActorEvent = z.union([
   ZActorMessageEvent,
 ]);
 
-const actorsContract = oc.router({
+export type TActorEvent = z.infer<typeof ZActorEvent>
+
+export const actorsContract = oc.router({
   definitions: {
     list: oc.output(ZActorDefinition.array()),
     get: oc.input(z.object({ name: z.string() }))
@@ -94,8 +96,3 @@ const actorsContract = oc.router({
       .output(ZActorSendMessageResult)
   }
 });
-
-
-export {
-  actorsContract,
-};

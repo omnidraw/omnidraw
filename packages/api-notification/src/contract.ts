@@ -7,6 +7,8 @@ export const ZNotificationEvent = z.object({
   description: z.string().optional(),
 });
 
+export type TNotificationEvent = z.infer<typeof ZNotificationEvent>
+
 const notificationContract = oc.router({
   events: oc
     .input(z.object({}))
