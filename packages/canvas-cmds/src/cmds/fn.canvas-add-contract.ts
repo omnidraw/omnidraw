@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/export-shape -- legacy canvas command contract builders keep public build* names */
 import type { TArrowData, TDiamondData, TEllipseData, TElementData, TElementStyle, TLineData, TRectData, TTextData } from '@vibecanvas/service-automerge/types/canvas-doc';
 import type { TAddPrimitiveType, TCanvasAddElementInput } from './tx.cmd.add';
 

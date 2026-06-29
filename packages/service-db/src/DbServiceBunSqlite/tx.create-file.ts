@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy db write helper uses schema runtime imports */
 import type { TCreateFileArgs, TFileRecord } from '../IDbService';
 import * as schema from '../schema';
 import type { TDrizzleDb } from './index';

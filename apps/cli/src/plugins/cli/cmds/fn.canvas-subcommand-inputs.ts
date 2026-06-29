@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/export-shape -- legacy CLI contract builder names predate the fn prefix policy */
 import type { TCanvasSubcommandOptions } from '../../../parse-argv';
 import type { TCanvasAddElementInput, TCanvasAddInput } from '@vibecanvas/canvas-cmds/cmds/tx.cmd.add';
 import type { TCanvasMoveInput } from '@vibecanvas/canvas-cmds/cmds/tx.cmd.move';

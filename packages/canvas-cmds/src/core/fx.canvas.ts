@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/fx-tx-params -- legacy fx helper takes selected canvas directly as its second parameter */
 import type { DocHandle } from '@automerge/automerge-repo';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { TCanvasDoc } from '@vibecanvas/service-automerge/types/canvas-doc';

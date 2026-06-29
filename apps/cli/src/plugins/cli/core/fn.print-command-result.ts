@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/no-runtime-globals -- legacy CLI printer writes directly to process streams */
 import { CANVAS_SUBCOMMANDS } from './constants';
 
 type TCliErrorPayload = {

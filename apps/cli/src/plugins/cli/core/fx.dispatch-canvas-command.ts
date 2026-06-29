@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/fx-tx-params, functional-core/no-runtime-globals -- legacy fx command dispatcher reads Bun runtime directly */
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { ICliConfig } from '@vibecanvas/cli/config';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';

@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy db write helper uses drizzle/schema runtime imports */
 import { eq } from 'drizzle-orm';
 import type { TCanvasRecord, TUpdateCanvasArgs } from '../IDbService';
 import * as schema from '../schema';

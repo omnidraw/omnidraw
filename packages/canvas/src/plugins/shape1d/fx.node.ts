@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/fx-tx-params -- legacy type guard overloads support direct args calls */
 import type { TElement, TElementStyle } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
 import type Konva from "konva";

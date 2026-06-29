@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/export-shape, functional-core/no-runtime-globals -- legacy fx file exports error constants and uses Response for stream decoding */
 import type { join } from "path";
 
 export const ErrorCodes = {

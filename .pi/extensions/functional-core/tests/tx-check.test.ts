@@ -40,7 +40,7 @@ describe("tx-check", () => {
     ].join("\n");
 
     expect(validateTxFileContent("tx.do-thing.ts", content)).toEqual([
-      "tx.do-thing.ts: line 2: txDoThing first param must be named portal and typed as TPortal*",
+      "tx.do-thing.ts: line 2: txDoThing first parameter must be named portal and typed as TPortal*",
     ]);
   });
 });

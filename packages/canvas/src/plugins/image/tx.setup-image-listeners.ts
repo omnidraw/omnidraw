@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy tx setup function imports service classes as runtime-capable portal types */
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import { fnGetCanvasAncestorGroups } from "../../core/fn.canvas-node-semantics";
