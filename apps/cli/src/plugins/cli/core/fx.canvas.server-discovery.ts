@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/fx-tx-params -- legacy fx API uses inline portal and args shapes */
 import type { ICliConfig } from '@vibecanvas/cli/config';
 
 export type TCanvasServerHealth = {

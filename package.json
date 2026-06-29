@@ -39,7 +39,8 @@
     "publish:npm": "bun run scripts/publish-npm.ts",
     "release:github": "bun run scripts/release.ts",
     "version:update": "bun run scripts/update-version.ts",
-    "lint:functional-core": "bun run .pi/extensions/functional-core/functional-core-lint.ts",
+    "lint:functional-core": "eslint \"**/src/**/{fn,fx,tx}.*.ts\"",
+    "lint:functional-core:agent": "bun run .codex/hooks/functional-core-eslint.ts",
     "generate:files": "bun run scripts/generate-files-md.ts",
     "dev": "bun run --parallel --filter '*' dev",
     "client:dev": "cd apps/frontend && bun run dev",
@@ -49,7 +50,9 @@
   "keywords": [],
   "license": "MIT",
   "devDependencies": {
-    "bun-types": "^1.3.11"
+    "@typescript-eslint/parser": "^8.62.0",
+    "bun-types": "^1.3.11",
+    "eslint": "^10.6.0"
   },
   "overrides": {
     "@codemirror/language": "6.12.3",

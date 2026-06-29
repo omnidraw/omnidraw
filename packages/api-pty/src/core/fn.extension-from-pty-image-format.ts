@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/export-shape -- legacy public helper name is part of the API contract */
 const ptyImageFormatToExtension = {
   'image/jpeg': 'jpg',
   'image/png': 'png',

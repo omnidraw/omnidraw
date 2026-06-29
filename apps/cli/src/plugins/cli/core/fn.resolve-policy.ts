@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/export-shape -- legacy default export kept for existing CLI update tests */
 type TInstallMethod = 'curl' | 'npm' | 'unknown';
 
 type TArgs = {

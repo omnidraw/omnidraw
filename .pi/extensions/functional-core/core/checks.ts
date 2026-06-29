@@ -41,6 +41,7 @@ export const FN_CHECK_RULES = [
   "UPPER_CASE runtime value imports like THEME_STROKE_WIDTH_VALUE_MAP are allowed from any module",
   "no direct use of runtime globals like window, fetch, Bun, process, console, globalThis",
   "do not export classes or other runtime values; only functions and types",
+  "portal and args params are optional in fn.*.ts files",
 ] as const;
 
 export const FX_CHECK_RULES = [
@@ -53,7 +54,7 @@ export const FX_CHECK_RULES = [
   "do not export classes or other runtime values; only functions and types",
   "every fx* function must have 1 or 2 params: required portal, optional args",
   "first param must be named portal and typed as TPortal*",
-  "second param is optional; when present, it must be named args and typed as TArgs*",
+  "second param is optional; when present, it must be named args and typed; inline arg types are allowed",
   "TPortal may hold side effects and mutable services objects",
   "TArgs is usually serializable payload data",
   "fx is for impure reads; use brain and prefer tx for impure writes",
@@ -69,7 +70,7 @@ export const TX_CHECK_RULES = [
   "do not export classes or other runtime values; only functions and types",
   "every tx* function must have 1 or 2 params: required portal, optional args",
   "first param must be named portal and typed as TPortal*",
-  "second param is optional; when present, it must be named args and typed as TArgs*",
+  "second param is optional; when present, it must be named args and typed; inline arg types are allowed",
   "TPortal may hold side effects and mutable services objects",
   "TArgs is usually serializable payload data",
   "tx is for impure writes; use brain and prefer tx when code changes external world state",
@@ -472,7 +473,7 @@ function validateFunctionParams(definition: TCheckDefinition, content: string): 
   for (const signature of signatures) {
     const params = splitTopLevelParams(signature.params);
     if (params.length === 0 || params.length > 2) {
-      errors.push(`line ${signature.line}: ${signature.name} must have 1 or 2 params: required portal, optional args`);
+      errors.push(`line ${signature.line}: ${signature.name} must take portal first and optional args second`);
       continue;
     }
 
@@ -480,21 +481,19 @@ function validateFunctionParams(definition: TCheckDefinition, content: string): 
     const portalMatch = portalParam?.match(/^portal\s*:\s*([A-Za-z_$][\w$]*)/);
 
     if (!portalMatch) {
-      errors.push(`line ${signature.line}: ${signature.name} first param must be named portal and typed as TPortal*`);
+      errors.push(`line ${signature.line}: ${signature.name} first parameter must be named portal and typed as TPortal*`);
     } else if (!portalMatch[1].startsWith("TPortal")) {
-      errors.push(`line ${signature.line}: ${signature.name} first param type must start with TPortal`);
+      errors.push(`line ${signature.line}: ${signature.name} portal type must start with TPortal`);
     }
 
     if (!argsParam) {
       continue;
     }
 
-    const argsMatch = argsParam.match(/^args\??\s*:\s*([A-Za-z_$][\w$]*)/);
+    const argsMatch = argsParam.match(/^args\??\s*:\s*.+/);
 
     if (!argsMatch) {
-      errors.push(`line ${signature.line}: ${signature.name} second param must be named args and typed as TArgs*`);
-    } else if (!argsMatch[1].startsWith("TArgs")) {
-      errors.push(`line ${signature.line}: ${signature.name} second param type must start with TArgs`);
+      errors.push(`line ${signature.line}: ${signature.name} second parameter must be named args and have a type`);
     }
   }
 

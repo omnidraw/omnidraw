@@ -40,7 +40,7 @@ describe("fx-check", () => {
     ].join("\n");
 
     expect(validateFxFileContent("fx.do-thing.ts", content)).toEqual([
-      "fx.do-thing.ts: line 2: fxDoThing first param must be named portal and typed as TPortal*",
+      "fx.do-thing.ts: line 2: fxDoThing first parameter must be named portal and typed as TPortal*",
     ]);
   });
 });

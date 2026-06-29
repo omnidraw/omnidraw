@@ -23,10 +23,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -124,13 +122,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -143,8 +134,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -166,9 +155,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/api-actors/package.json](packages/api-actors/package.json) |  |
+| [packages/api-actors/src/api.actor-snapshot.ts](packages/api-actors/src/api.actor-snapshot.ts) |  |
 | [packages/api-actors/src/api.def-get.ts](packages/api-actors/src/api.def-get.ts) |  |
 | [packages/api-actors/src/api.def-list.ts](packages/api-actors/src/api.def-list.ts) |  |
 | [packages/api-actors/src/api.events.ts](packages/api-actors/src/api.events.ts) |  |
+| [packages/api-actors/src/api.instance-send-message.ts](packages/api-actors/src/api.instance-send-message.ts) |  |
 | [packages/api-actors/src/CONSTANTS.ts](packages/api-actors/src/CONSTANTS.ts) |  |
 | [packages/api-actors/src/contract.ts](packages/api-actors/src/contract.ts) |  |
 | [packages/api-actors/src/handlers.ts](packages/api-actors/src/handlers.ts) |  |
@@ -487,10 +478,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/visual-debug/VisualDebug.plugin.ts](packages/canvas/src/plugins/visual-debug/VisualDebug.plugin.ts) |  |
 | [packages/canvas/src/plugins/widget/Widget.plugin.ts](packages/canvas/src/plugins/widget/Widget.plugin.ts) |  |
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
-| [packages/canvas/src/services/actor-connection/ActorConnectionService.ts](packages/canvas/src/services/actor-connection/ActorConnectionService.ts) |  |
-| [packages/canvas/src/services/actor-connection/CONSTANTS.ts](packages/canvas/src/services/actor-connection/CONSTANTS.ts) |  |
-| [packages/canvas/src/services/actor-connection/fn.geometry.ts](packages/canvas/src/services/actor-connection/fn.geometry.ts) |  |
-| [packages/canvas/src/services/actor-connection/tx.sync-lines.ts](packages/canvas/src/services/actor-connection/tx.sync-lines.ts) |  |
 | [packages/canvas/src/services/camera/CameraService.ts](packages/canvas/src/services/camera/CameraService.ts) |  |
 | [packages/canvas/src/services/clone/CloneService.ts](packages/canvas/src/services/clone/CloneService.ts) |  |
 | [packages/canvas/src/services/context-menu/ContextMenuService.ts](packages/canvas/src/services/context-menu/ContextMenuService.ts) |  |
@@ -524,6 +511,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/tool/fx.get-canvas-point.ts](packages/canvas/src/services/tool/fx.get-canvas-point.ts) |  |
 | [packages/canvas/src/services/tool/ToolService.ts](packages/canvas/src/services/tool/ToolService.ts) |  |
 | [packages/canvas/src/services/tool/types.ts](packages/canvas/src/services/tool/types.ts) |  |
+| [packages/canvas/src/services/widget/attach-dom-portal.ts](packages/canvas/src/services/widget/attach-dom-portal.ts) |  |
 | [packages/canvas/src/services/widget/CONSTANTS.ts](packages/canvas/src/services/widget/CONSTANTS.ts) |  |
 | [packages/canvas/src/services/widget/fn.create-widget-node.ts](packages/canvas/src/services/widget/fn.create-widget-node.ts) |  |
 | [packages/canvas/src/services/widget/fn.get-host-theme-colors.ts](packages/canvas/src/services/widget/fn.get-host-theme-colors.ts) |  |
@@ -532,11 +520,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/widget/fx.draw-host.ts](packages/canvas/src/services/widget/fx.draw-host.ts) |  |
 | [packages/canvas/src/services/widget/fx.register-tool.ts](packages/canvas/src/services/widget/fx.register-tool.ts) |  |
 | [packages/canvas/src/services/widget/interface.ts](packages/canvas/src/services/widget/interface.ts) |  |
-| [packages/canvas/src/services/widget/tx.attach-dom-portal.ts](packages/canvas/src/services/widget/tx.attach-dom-portal.ts) |  |
+| [packages/canvas/src/services/widget/mount-arrow-sandbox.ts](packages/canvas/src/services/widget/mount-arrow-sandbox.ts) |  |
 | [packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts](packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts) |  |
-| [packages/canvas/src/services/widget/tx.mount-arrow-sandbox.ts](packages/canvas/src/services/widget/tx.mount-arrow-sandbox.ts) |  |
 | [packages/canvas/src/services/widget/tx.resize-widget-host.ts](packages/canvas/src/services/widget/tx.resize-widget-host.ts) |  |
-| [packages/canvas/src/services/widget/tx.sync-widget-connections.ts](packages/canvas/src/services/widget/tx.sync-widget-connections.ts) |  |
 | [packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts](packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts) |  |
 | [packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts](packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts) |  |
 | [packages/canvas/src/services/widget/types.ts](packages/canvas/src/services/widget/types.ts) |  |
@@ -570,7 +556,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/sdk/.gitignore](packages/sdk/.gitignore) |  |
 | [packages/sdk/package.json](packages/sdk/package.json) |  |
-| [packages/sdk/src/index.ts](packages/sdk/src/index.ts) |  |
+| [packages/sdk/src/actor.ts](packages/sdk/src/actor.ts) |  |
+| [packages/sdk/src/example-interface.ts](packages/sdk/src/example-interface.ts) |  |
+| [packages/sdk/src/shared.ts](packages/sdk/src/shared.ts) |  |
+| [packages/sdk/src/types.ts](packages/sdk/src/types.ts) |  |
+| [packages/sdk/src/widget-bridge.ts](packages/sdk/src/widget-bridge.ts) |  |
+| [packages/sdk/src/widget.ts](packages/sdk/src/widget.ts) |  |
+| [packages/sdk/tsconfig.build.json](packages/sdk/tsconfig.build.json) |  |
 | [packages/sdk/tsconfig.json](packages/sdk/tsconfig.json) |  |
 | [packages/sdk/vibecanvas.schema.json](packages/sdk/vibecanvas.schema.json) |  |
 
@@ -583,6 +575,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process, validating inbox and output messages around guest transitions. |
 | [packages/service-actor/src/ActorService.ts](packages/service-actor/src/ActorService.ts) |  |
 | [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
+| [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
+| [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
 | [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
 | [packages/service-actor/src/core/tx.vibecanvas-widgets.ts](packages/service-actor/src/core/tx.vibecanvas-widgets.ts) |  |
@@ -684,7 +678,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/IDbService.ts](packages/service-db/src/IDbService.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
@@ -774,6 +767,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
+| [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [scripts/patch-automerge-repo-throttle.mjs](scripts/patch-automerge-repo-throttle.mjs) | Patches installed Automerge Repo throttle helpers to clamp negative timeout delays. |

@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy db read helper uses drizzle runtime imports */
 import { and, eq } from 'drizzle-orm';
 import type { TFileRecord, TGetFileArgs } from '../IDbService';
 import type { TDrizzleDb } from './index';

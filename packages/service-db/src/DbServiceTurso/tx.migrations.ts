@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy migration tx imports filesystem migration discovery helper */
 import { listMigrationFiles } from "./list-migration-files"
 import type { Database } from "@tursodatabase/database"
 import type path from "node:path"

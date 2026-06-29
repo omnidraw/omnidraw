@@ -1,6 +1,6 @@
 # functional-core extension
 
-Project-local functional-core rules with a reusable core and a thin Pi adapter.
+Project-local functional-core guidance plus post-turn ESLint repair hooks.
 
 ## What it does
 
@@ -9,8 +9,9 @@ This extension enforces the shared rules for:
 - `fx.*.ts`
 - `tx.*.ts`
 
-The Pi adapter blocks invalid `write` and `edit` tool calls before they hit disk.
-It also allows shared `CONSTANTS.ts` and `GUARDS.ts` runtime imports inside functional-core files.
+ESLint is the source of truth for enforcement. The Pi adapter no longer blocks invalid `write` and `edit` tool calls before they hit disk. Instead, it adds optional prompt guidance and runs the canonical ESLint command after an agent turn finishes. If lint fails, Pi sends a follow-up repair message with concise ESLint output.
+
+Shared `CONSTANTS.ts` and `GUARDS.ts` runtime imports stay allowed inside functional-core files. Normal ESLint disable comments are the escape hatch for intentionally dirty legacy code.
 
 The reusable core has no Pi dependency. Use it from CLI tools, Codex hooks, or future adapters when you need:
 - file detection for `fn.*.ts`, `fx.*.ts`, and `tx.*.ts`
@@ -23,6 +24,7 @@ The reusable core has no Pi dependency. Use it from CLI tools, Codex hooks, or f
 
 Reusable modules live in `core/`:
 - `core/checks.ts`: rules, path matching, validator functions, prompt snippets, and block report formatting
+- `core/eslint.ts`: shared post-turn ESLint runner and agent-friendly report formatting
 - `core/lint.ts`: repo path traversal, lint result objects, and lint report formatting
 - `core/edit-preview.ts`: shared edit-preview builder used before validating edits
 - `core/runtime-global-usage.ts`: direct runtime-global detection
@@ -30,8 +32,8 @@ Reusable modules live in `core/`:
 
 Pi-specific behavior lives outside `core/`:
 - `index.ts`: Pi extension entrypoint
-- `pi-adapter.ts`: `ExtensionAPI` event registration, UI notifications, and tool-call blocking
-- `lib/blocked-tool-log.ts`: `.pi/logs/functional-core-blocked-tool-calls.jsonl` logging
+- `pi-adapter.ts`: `ExtensionAPI` event registration, prompt guidance, post-turn ESLint, and loop guard
+- `lib/blocked-tool-log.ts`: legacy blocked-call logging retained for compatibility with old tests and imports
 
 Compatibility entrypoints remain:
 - `fn-check.ts`
@@ -39,7 +41,7 @@ Compatibility entrypoints remain:
 - `tx-check.ts`
 - `functional-core-lint.ts`
 
-These files keep the old exports while delegating reusable behavior to `core/`.
+These files keep the old exports while delegating Pi registration to the post-turn adapter.
 
 ## Included checks
 
@@ -51,6 +53,7 @@ These files keep the old exports while delegating reusable behavior to `core/`.
 - UPPER_CASE runtime value imports like `THEME_STROKE_WIDTH_VALUE_MAP` are allowed from any module
 - no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
 - do not export classes or other runtime values; only functions and types
+- `portal` and `args` params are optional in `fn.*.ts` files; pure helpers may take direct domain args
 
 ### fx.*.ts
 - ignore `fx.*.test.ts` files
@@ -62,7 +65,7 @@ These files keep the old exports while delegating reusable behavior to `core/`.
 - do not export classes or other runtime values; only functions and types
 - exported `fx*` functions must have 1 or 2 params: required `portal`, optional `args`
 - exported `fx*` functions: first param must be named `portal` and typed as `TPortal*`
-- exported `fx*` functions: second param is optional; when present, it must be named `args` and typed as `TArgs*`
+- exported `fx*` functions: second param is optional; when present, it must be named `args` and typed; inline arg types are allowed
 
 ### tx.*.ts
 - ignore `tx.*.test.ts` files
@@ -74,7 +77,7 @@ These files keep the old exports while delegating reusable behavior to `core/`.
 - do not export classes or other runtime values; only functions and types
 - exported `tx*` functions must have 1 or 2 params: required `portal`, optional `args`
 - exported `tx*` functions: first param must be named `portal` and typed as `TPortal*`
-- exported `tx*` functions: second param is optional; when present, it must be named `args` and typed as `TArgs*`
+- exported `tx*` functions: second param is optional; when present, it must be named `args` and typed; inline arg types are allowed
 - `tx.*.ts` may runtime-import `fn.*`, `fx.*`, `tx.*`, `CONSTANTS`, and `GUARDS`
 
 ## CONSTANTS, GUARDS, and UPPER_CASE import exceptions

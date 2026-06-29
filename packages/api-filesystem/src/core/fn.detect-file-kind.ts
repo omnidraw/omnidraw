@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy pure helper depends on node path parsing */
 import { extname } from 'path';
 import type { TFilesystemFileKind } from '@vibecanvas/service-filesystem/types';
 

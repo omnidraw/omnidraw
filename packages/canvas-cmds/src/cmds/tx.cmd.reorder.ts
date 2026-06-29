@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/fx-tx-params -- legacy command executor takes command input directly as its second parameter */
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';

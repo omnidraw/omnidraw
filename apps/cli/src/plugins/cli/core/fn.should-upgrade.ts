@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/export-shape -- legacy default export kept for existing CLI update tests */
 const CliUpdateErr = {
   VERSION_COMPARE_INVALID_INPUT: 'FN.CLI_UPDATE.VERSION_COMPARE.INVALID_INPUT',
 } as const satisfies Record<string, TErrorCode>;

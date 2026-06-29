@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy fn file builds runtime ORPC clients */
 import { createORPCClient, createSafeClient, type SafeClient } from '@orpc/client';
 import { RPCLink } from '@orpc/client/fetch';
 import type { ContractRouterClient } from '@orpc/contract';

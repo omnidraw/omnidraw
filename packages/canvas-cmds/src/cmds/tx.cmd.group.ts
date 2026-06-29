@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/fx-tx-params, functional-core/no-runtime-globals -- legacy command executor takes input directly and still creates ids through crypto */
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';

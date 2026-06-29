@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary, functional-core/no-runtime-globals -- legacy xdg helper reads node path/os and environment directly */
 import { homedir } from 'os';
 import { dirname, join, resolve } from 'path';
 

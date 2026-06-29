@@ -1,3 +1,4 @@
+/* eslint-disable functional-core/import-boundary -- legacy pure helper depends on node path parsing */
 import { extname } from 'path';
 
 const MIME_BY_EXTENSION: Record<string, string> = {
