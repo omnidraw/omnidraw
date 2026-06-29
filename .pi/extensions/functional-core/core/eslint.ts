@@ -1,3 +1,6 @@
+import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
+
 export type TEslintAgentReport = {
   ok: boolean;
   exitCode: number;
@@ -75,22 +78,34 @@ function formatRawReport(command: string, stdout: string, stderr: string): strin
   ].join("\n");
 }
 
-async function readProcessText(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+async function readProcessText(stream: Readable | null): Promise<string> {
   if (!stream) return "";
-  return await new Response(stream).text();
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function waitForExit(child: ReturnType<typeof spawn>): Promise<number> {
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => resolve(code ?? 1));
+  });
 }
 
 export async function runFunctionalCoreEslint(rootDir: string): Promise<TEslintAgentReport> {
   const command = "bun run lint:functional-core";
-  const process = Bun.spawn(["bun", "run", "lint:functional-core", "--", "--format", "json"], {
+  const child = spawn("bun", ["run", "lint:functional-core", "--", "--format", "json"], {
     cwd: rootDir,
-    stdout: "pipe",
-    stderr: "pipe",
+    stdio: ["ignore", "pipe", "pipe"],
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    readProcessText(process.stdout),
-    readProcessText(process.stderr),
-    process.exited,
+    readProcessText(child.stdout),
+    readProcessText(child.stderr),
+    waitForExit(child),
   ]);
 
   if (exitCode === 0) {
