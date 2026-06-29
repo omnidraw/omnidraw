@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import { ActorSupervisor } from "../src/ActorSupervisor";
+import type { TActorEvent } from "../src/Actor";
 
 const widgetDir = new URL("./fixtures", import.meta.url).pathname;
 const fundActorManifestPath = new URL("./fixtures/account-fund-actor/vibecanvas.json", import.meta.url).pathname;
@@ -12,19 +13,22 @@ type TNotification = {
   readonly description: string;
 };
 
-function createEventPublisherService(notifications: TNotification[]) {
+function createEventPublisherService(notifications: TNotification[], actorEvents: TActorEvent[]) {
   return {
     publishNotification: (notification: TNotification) => {
       notifications.push(notification);
     },
+    publishActorEvent: (event: TActorEvent) => {
+      actorEvents.push(event);
+    },
   };
 }
 
-function createSupervisor(db: DbServiceTurso, notifications: TNotification[]) {
+function createSupervisor(db: DbServiceTurso, notifications: TNotification[], actorEvents: TActorEvent[] = []) {
   return new ActorSupervisor({
     absWidgetDir: widgetDir,
     db,
-    eventPublisherService: createEventPublisherService(notifications) as any,
+    eventPublisherService: createEventPublisherService(notifications, actorEvents) as any,
   });
 }
 
@@ -223,14 +227,51 @@ describe("ActorSupervisor", () => {
       style: {},
     });
 
-    const supervisor = createSupervisor(db, notifications);
+    const publishedActorEvents: TActorEvent[] = [];
+    const supervisor = createSupervisor(db, notifications, publishedActorEvents);
 
     await supervisor.init();
+    const sourceEvents: TActorEvent[] = [];
+    const targetEvents: TActorEvent[] = [];
+    supervisor.listenToActorEvents("fund-source", event => sourceEvents.push(event));
+    supervisor.listenToActorEvents("bookkeeper-target", event => targetEvents.push(event));
+
     const messageId = supervisor.actorMap["fund-source"].inbox("add-funds", {accountId: "1", amount: 42});
     await waitForIdle(supervisor.actorMap["fund-source"]);
     await waitForIdle(supervisor.actorMap["bookkeeper-target"]);
 
     expect(messageId).toBeString();
+    expect(sourceEvents).toContainEqual({
+      kind: "system",
+      actorId: "fund-source",
+      type: "data.changed",
+      data: { balance: 42 },
+      messageId,
+    });
+    expect(sourceEvents).toContainEqual({
+      kind: "actor",
+      actorId: "fund-source",
+      name: "funds-added",
+      payload: { accountId: "1", amount: 42, balance: 42 },
+      messageId,
+    });
+    expect(sourceEvents).toContainEqual({
+      kind: "system",
+      actorId: "fund-source",
+      type: "ack",
+      inputName: "add-funds",
+      messageId,
+    });
+    expect(targetEvents.some(event => event.kind === "system" && event.type === "data.changed")).toBe(true);
+    expect(targetEvents.some(event => event.kind === "system" && event.type === "ack")).toBe(true);
+    expect(publishedActorEvents).toContainEqual({
+      kind: "actor",
+      actorId: "fund-source",
+      name: "funds-added",
+      payload: { accountId: "1", amount: 42, balance: 42 },
+      messageId,
+    });
+    expect(publishedActorEvents.some(event => event.kind === "system" && event.type === "data.changed")).toBe(true);
 
     expect(supervisor.connectionMap["fund-source"].map(connection => connection.id)).toEqual([
       "connection-fund-to-bookkeeper",

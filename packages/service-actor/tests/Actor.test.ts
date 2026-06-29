@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TVibecanvasJson } from "../src/core/types";
-import { Actor } from "../src/Actor";
+import { Actor, type TActorEvent } from "../src/Actor";
 import testActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
 import bookkeeperActorConfigJson from "./fixtures/account-bookkeeper-actor/vibecanvas.json";
 import pingPongActorConfigJson from "./fixtures/ping-pong-actor/vibecanvas.json";
@@ -66,9 +66,9 @@ describe("Actor", () => {
             rootDir,
             vsJson: testActorConfig
         })
-        const messages: any[] = []
-        actor.listen((msgName, msgPayload) => {
-            messages.push({ msgName, msgPayload })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
         })
 
         actor.start()
@@ -76,20 +76,25 @@ describe("Actor", () => {
         await waitForIdle(actor)
 
         expect(actor.getData()).toEqual({ balance: 42 })
-        expect(messages).toEqual([
+        expect(messages.filter(event => event.kind === "actor").map(event => ({
+            name: event.name,
+            payload: event.payload,
+        }))).toEqual([
             {
-                msgName: "before-next",
-                msgPayload: { amount: 42, balance: 0 },
+                name: "before-next",
+                payload: { amount: 42, balance: 0 },
             },
             {
-                msgName: "funds-added",
-                msgPayload: { accountId: "1", amount: 42, balance: 42 },
+                name: "funds-added",
+                payload: { accountId: "1", amount: 42, balance: 42 },
             },
             {
-                msgName: "after-next",
-                msgPayload: { balance: 42 },
+                name: "after-next",
+                payload: { balance: 42 },
             },
         ])
+        expect(messages.some(event => event.kind === "system" && event.type === "data.changed")).toBe(true)
+        expect(messages.some(event => event.kind === "system" && event.type === "ack")).toBe(true)
 
         actor.close()
     })
@@ -100,17 +105,19 @@ describe("Actor", () => {
             rootDir,
             vsJson: testActorConfig
         })
-        const messages: any[] = []
-        actor.listen((msgName, msgPayload) => {
-            messages.push({ msgName, msgPayload })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
         })
 
         actor.start()
         actor.inbox('emit-invalid-output', {})
         await waitForIdle(actor)
 
-        expect(messages[0].msgName).toBe("error")
-        expect(messages[0].msgPayload.code).toBe("INVALID_OUTPUT_MESSAGE_PAYLOAD")
+        const errorEvent = messages.find(event => event.kind === "system" && event.type === "error")
+        expect(errorEvent?.kind).toBe("system")
+        expect(errorEvent?.type).toBe("error")
+        expect(errorEvent?.code).toBe("INVALID_OUTPUT_MESSAGE_PAYLOAD")
 
         actor.close()
     })
@@ -156,9 +163,9 @@ describe("Actor", () => {
         bookkeeperActor.start()
 
         const routedMessages: string[] = []
-        fundActor.listen((msgName, msgPayload) => {
-            if (msgName === "funds-added") {
-                routedMessages.push(bookkeeperActor.inbox(msgName, msgPayload))
+        fundActor.listen((event) => {
+            if (event.kind === "actor" && event.name === "funds-added") {
+                routedMessages.push(bookkeeperActor.inbox(event.name, event.payload))
             }
         })
 

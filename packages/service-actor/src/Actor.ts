@@ -9,13 +9,36 @@ import { join } from "node:path";
 import type { TActorData, TActorState, TInputMessage, TTransition, TJsonSchema, TVibecanvasJson } from "./core/types";
 import type { TActorStatus } from "@vibecanvas/service-db/model";
 
+export type TActorSystemEvent =
+    | { readonly kind: "system"; readonly actorId: string; readonly type: "ack"; readonly messageId: string; readonly inputName: string }
+    | { readonly kind: "system"; readonly actorId: string; readonly type: "state.changed"; readonly from: TActorState; readonly to: TActorState; readonly messageId?: string }
+    | { readonly kind: "system"; readonly actorId: string; readonly type: "status.changed"; readonly from: TActorStatus | null; readonly to: TActorStatus }
+    | { readonly kind: "system"; readonly actorId: string; readonly type: "data.changed"; readonly data: TActorData; readonly messageId?: string }
+    | { readonly kind: "system"; readonly actorId: string; readonly type: "error"; readonly code: string; readonly message: string; readonly details?: unknown; readonly messageId?: string };
+
+export type TActorMessageEvent = {
+    readonly kind: "actor";
+    readonly actorId: string;
+    readonly name: string;
+    readonly payload: unknown;
+    readonly messageId?: string;
+};
+
+export type TActorEvent = TActorSystemEvent | TActorMessageEvent;
+
+type TActorSystemEventInput =
+    | Omit<Extract<TActorSystemEvent, { type: "ack" }>, "kind" | "actorId">
+    | Omit<Extract<TActorSystemEvent, { type: "state.changed" }>, "kind" | "actorId">
+    | Omit<Extract<TActorSystemEvent, { type: "status.changed" }>, "kind" | "actorId">
+    | Omit<Extract<TActorSystemEvent, { type: "data.changed" }>, "kind" | "actorId">
+    | Omit<Extract<TActorSystemEvent, { type: "error" }>, "kind" | "actorId">;
+
 interface IActorConfig {
     readonly id: string
     readonly vsJson: TVibecanvasJson
     readonly rootDir: string
     readonly state?: TActorState
     readonly data?: TActorData
-    // updateDbStatus: (status: TActorStatus) => Promise<void>
 }
 
 type TInboxQueueItem = {
@@ -30,9 +53,11 @@ type TActorChildMessage =
     | { type: "emitMessage"; id: number; msg: any }
     | { type: "done"; id: number }
     | { type: "error"; id?: number; msg: any }
-    | { error: boolean; msg: any };
+    | { error: boolean; id?: number; msg: any };
 
 type TPendingRun = {
+    readonly messageId: string;
+    readonly inputName: string;
     readonly resolve: () => void;
     readonly reject: (error: unknown) => void;
 }
@@ -62,7 +87,7 @@ export class Actor {
     #isProcessing = false;
     #nextRunId = 1;
     #pendingRuns = new Map<number, TPendingRun>();
-    #listeners = new Set<(msgName: string, msgPayload: any) => void>();
+    #listeners = new Set<(event: TActorEvent) => void>();
 
     constructor(config: IActorConfig) {
         this.#id = config.id
@@ -82,6 +107,7 @@ export class Actor {
     start() {
         if (this.#proc) return;
         this.actorFuncions()
+        this.#emitSystemEvent({ type: "status.changed", from: null, to: "running" })
         this.#processQueue()
     }
 
@@ -130,13 +156,13 @@ export class Actor {
     inbox(msgName: string, msgPayload: any): string {
         const validFn = this.#inputMessage[msgName]
         if (!validFn)
-            throw this.emitMessage('error', `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}`)
+            throw this.#emitError({ code: "UNKNOWN_INPUT_MESSAGE", message: `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}` })
         if (!validFn(msgPayload))
-            throw this.emitMessage('error', `Invalid message payload.`)
+            throw this.#emitError({ code: "INVALID_INPUT_MESSAGE_PAYLOAD", message: `Invalid message payload.`, details: validFn.errors })
 
         const transition = this.#getTransition(msgName as TInputMessage);
         if (!transition) {
-            throw this.emitMessage('error', `No transition for message ${msgName} in state ${this.#state}`)
+            throw this.#emitError({ code: "NO_STATE_TRANSITION", message: `No transition for message ${msgName} in state ${this.#state}` })
         }
 
         const messageId = crypto.randomUUID();
@@ -149,14 +175,16 @@ export class Actor {
         return messageId
     }
 
-    listen(cb: (msgName: string, msgPayload: any) => void) {
+    listen(cb: (event: TActorEvent) => void) {
         this.#listeners.add(cb)
         return () => this.#listeners.delete(cb)
     }
 
     close() {
+        const wasRunning = this.#proc !== null
         this.#proc?.kill()
         this.#proc = null
+        if (wasRunning) this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" })
     }
 
     #getTransition(msgName: TInputMessage): TTransition | null {
@@ -174,10 +202,11 @@ export class Actor {
             if (!transition) {
                 throw new Error(`No transition for message ${item.msgName} in state ${this.#state}`)
             }
-            await this.#runTransition(transition, item.msgPayload)
-            this.#applyTransitionTargetState(transition)
+            await this.#runTransition(transition, item)
+            this.#applyTransitionTargetState(transition, item.messageId)
+            this.#emitSystemEvent({ type: "ack", messageId: item.messageId, inputName: item.msgName })
         } catch (error) {
-            this.emitMessage('error', {
+            this.#emitError({
                 code: 'ACTOR_TRANSITION_FAILED',
                 messageId: item.messageId,
                 message: error instanceof Error ? error.message : String(error),
@@ -188,23 +217,27 @@ export class Actor {
         }
     }
 
-    #applyTransitionTargetState(transition: TTransition) {
+    #applyTransitionTargetState(transition: TTransition, messageId: string) {
         if (transition.allowedTargetStates.length !== 1) return;
-        this.#state = transition.allowedTargetStates[0];
+        const nextState = transition.allowedTargetStates[0];
+        if (nextState === this.#state) return;
+        const prevState = this.#state;
+        this.#state = nextState;
+        this.#emitSystemEvent({ type: "state.changed", from: prevState, to: nextState, messageId })
     }
 
-    #runTransition(transition: TTransition, msgPayload: any): Promise<void> {
+    #runTransition(transition: TTransition, item: TInboxQueueItem): Promise<void> {
         const proc = this.#proc;
         if (!proc) return Promise.reject(new Error("Actor child process is not running"));
 
         const id = this.#nextRunId++;
         return new Promise((resolve, reject) => {
-            this.#pendingRuns.set(id, { resolve, reject })
+            this.#pendingRuns.set(id, { messageId: item.messageId, inputName: item.msgName, resolve, reject })
             proc.send({
                 type: "run",
                 id,
                 func: transition.func,
-                payload: msgPayload,
+                payload: item.msgPayload,
                 data: this.#data,
             })
         })
@@ -223,12 +256,14 @@ export class Actor {
 
         if (message.type === "setData") {
             this.#data = message.data;
+            const pending = this.#pendingRuns.get(message.id);
+            this.#emitSystemEvent({ type: "data.changed", data: this.#data, messageId: pending?.messageId })
             this.#proc?.send({ type: "ack", id: message.id, action: "setData" })
             return;
         }
 
         if (message.type === "emitMessage") {
-            this.#emitGuestMessage(message.msg)
+            this.#emitActorMessageFromChild(message.msg, message.id)
             this.#proc?.send({ type: "ack", id: message.id, action: "emitMessage" })
             return;
         }
@@ -266,50 +301,56 @@ export class Actor {
         pending.reject(error);
     }
 
-    #emitGuestMessage(msg: any) {
+    #emitActorMessageFromChild(msg: any, runId: number) {
+        const pending = this.#pendingRuns.get(runId);
         if (!msg || typeof msg !== "object" || typeof msg.type !== "string" || !("payload" in msg)) {
-            this.emitMessage("error", {
+            this.#emitError({
                 code: "INVALID_OUTPUT_MESSAGE_SHAPE",
                 message: "Output message must be an object with { type, payload }.",
-                value: msg,
+                details: { value: msg },
+                messageId: pending?.messageId,
             })
             return;
         }
 
-        this.emitMessage(msg.type, msg.payload)
+        this.#emitActorMessage(msg.type, msg.payload, pending?.messageId)
     }
 
-    private emitMessage(msgName: string, msgPayload: any): Error | undefined {
-        if (msgName === 'error') {
-            const msg = `Error in Actor: ${this.#vsJson.name}\n${JSON.stringify(msgPayload)}`
-            for (const listener of this.#listeners) {
-                listener(msgName, msgPayload)
-            }
-            return new Error(msg)
-        }
-
+    #emitActorMessage(msgName: string, msgPayload: any, messageId: string | undefined): Error | undefined {
         const validFn = this.#outputMessage[msgName]
         if (!validFn) {
-            return this.emitMessage("error", {
+            return this.#emitError({
                 code: "UNKNOWN_OUTPUT_MESSAGE",
                 message: `Unknown output message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#outputMessage))}`,
-                outputMessageName: msgName,
-                payload: msgPayload,
+                details: { outputMessageName: msgName, payload: msgPayload },
+                messageId,
             })
         }
 
         if (!validFn(msgPayload)) {
-            return this.emitMessage("error", {
+            return this.#emitError({
                 code: "INVALID_OUTPUT_MESSAGE_PAYLOAD",
                 message: `Invalid output message payload for ${msgName}.`,
-                outputMessageName: msgName,
-                payload: msgPayload,
-                validationErrors: validFn.errors,
+                details: { outputMessageName: msgName, payload: msgPayload, validationErrors: validFn.errors },
+                messageId,
             })
         }
 
+        this.#emitEvent({ kind: "actor", actorId: this.#id, name: msgName, payload: msgPayload, messageId })
+    }
+
+    #emitError(args: { code: string; message: string; details?: unknown; messageId?: string }): Error {
+        this.#emitSystemEvent({ type: "error", ...args })
+        return new Error(`Error in Actor: ${this.#vsJson.name}\n${JSON.stringify(args)}`)
+    }
+
+    #emitSystemEvent(event: TActorSystemEventInput) {
+        this.#emitEvent({ kind: "system", actorId: this.#id, ...event } as TActorSystemEvent)
+    }
+
+    #emitEvent(event: TActorEvent) {
         for (const listener of this.#listeners) {
-            listener(msgName, msgPayload)
+            listener(event)
         }
     }
 

@@ -8,10 +8,11 @@ import { ActorSupervisor } from './ActorSupervisor';
 import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
 import type { TActorStatus } from '@vibecanvas/service-db/model';
-import type { Actor } from './Actor';
+import type { Actor, TActorEvent } from './Actor';
 
 interface IPublicMethods {
-  sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<void>
+  sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<string>
+  listenToActorEvents(instanceId: string, cb: (event: TActorEvent) => void): (() => void) | null
   createInstance(defId: string, canvasId: string, elementId: string): Promise<Actor | null>
   removeInstance(instanceId: string): Promise<void>
   getVibecanvasJson(defId: string): TVibecanvasJson | null;
@@ -55,8 +56,14 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#supervisor.removeInstance(instanceId)
   }
 
-  async sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<void> {
-      throw "TODO: implement"
+  async sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<string> {
+    const actor = this.#supervisor.actorMap[instanceId]
+    if (!actor) throw new Error(`Actor instance not found: ${instanceId}`)
+    return actor.inbox(msgName, msgPayload)
+  }
+
+  listenToActorEvents(instanceId: string, cb: (event: TActorEvent) => void): (() => void) | null {
+    return this.#supervisor.listenToActorEvents(instanceId, cb)
   }
 
   getVibecanvasJson(defName: string) {

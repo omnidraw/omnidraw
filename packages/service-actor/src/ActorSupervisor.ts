@@ -10,7 +10,7 @@ import type { TActorState, TVibecanvasJson } from "./core/types";
 import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./core/fn.actor-connections";
 import { fnToActorData } from "./core/fn.actor-data";
 import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
-import { Actor } from "./Actor";
+import { Actor, type TActorEvent } from "./Actor";
 
 interface IPublicMethods { // not in use yet
   init(): Promise<void>;
@@ -93,13 +93,22 @@ export class ActorSupervisor {
   }
 
   listenToActor(actor: Actor) {
-    actor.listen((msgName, msgPayload) => {
+    actor.listen((event) => {
+      this.#config.eventPublisherService.publishActorEvent(event as any)
+      if (event.kind !== "actor") return
+
       void this.routeActorOutput({
         sourceActorInstanceId: actor.getId(),
-        msgName,
-        msgPayload,
+        msgName: event.name,
+        msgPayload: event.payload,
       })
     })
+  }
+
+  listenToActorEvents(actorId: string, cb: (event: TActorEvent) => void) {
+    const actor = this.actorMap[actorId]
+    if (!actor) return null
+    return actor.listen(cb)
   }
 
   async routeActorOutput(args: { sourceActorInstanceId: string, msgName: string, msgPayload: any }) {
