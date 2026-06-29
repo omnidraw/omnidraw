@@ -5,15 +5,21 @@ import SDK_WIDGET_SOURCE from '../../../../sdk/dist/widget.js?raw';
 import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 import type { IWidgetConfig } from './interface';
+import type { TWidgetActorEvent } from './WidgetManagerService';
 
 type TActorSnapshot = {
   state: string;
   context: unknown;
 };
 
+type TWidgetHostActorEventResult =
+  | { readonly cursor?: string; readonly type: 'snapshot'; readonly snapshot: TActorSnapshot }
+  | { readonly cursor?: string; readonly type: 'noop' };
+
 type TPortal = {
   root: HTMLElement;
   apiService: TOrpcSafeClient;
+  subscribeActorInstanceEvents: (actorInstanceId: string, handler: (event: TWidgetActorEvent) => void) => () => void;
 };
 
 type TArgs = {
@@ -21,10 +27,26 @@ type TArgs = {
   sandbox: NonNullable<IWidgetConfig['sandbox']>;
 };
 
+type TWidgetActorMessageAction = {
+  name: string;
+  payload: unknown;
+};
+
 function getCursorFromBridgeArgs(args: unknown): string | undefined {
   if (!args || typeof args !== 'object') return undefined;
   if (!('cursor' in args)) return undefined;
   return typeof args.cursor === 'string' ? args.cursor : undefined;
+}
+
+function getActorMessageFromBridgeArgs(args: unknown): TWidgetActorMessageAction | null {
+  if (!args || typeof args !== 'object') return null;
+  if (!('name' in args) || typeof args.name !== 'string') return null;
+  if (!('payload' in args)) return null;
+
+  return {
+    name: args.name,
+    payload: args.payload,
+  };
 }
 
 const SDK_MODULE_PATH = '/__vibecanvas_sdk.js';
@@ -111,15 +133,77 @@ async function getInitialActorSnapshot(portal: TPortal, args: TArgs): Promise<TA
   if (!actorInstanceId) return { state: 'booting', context: null };
 
   const [error, snapshot] = await portal.apiService.api.actors.instances.snapshot({ instanceId: actorInstanceId });
-  if (error) return { state: 'error ', context: { message: String(error) } };
+  if (error) return { state: 'error', context: { message: String(error) } };
 
   return snapshot;
 }
 
+function getSnapshotFromActorEvent(snapshot: TActorSnapshot | null, event: TWidgetActorEvent): TActorSnapshot | null {
+  if (event.kind !== 'system') return null;
+
+  if (event.type === 'state.changed') {
+    return {
+      state: event.to,
+      context: snapshot?.context ?? null,
+    };
+  }
+
+  if (event.type === 'data.changed') {
+    return {
+      state: snapshot?.state ?? 'booting',
+      context: event.data,
+    };
+  }
+
+  if (event.type === 'error') {
+    return {
+      state: 'error',
+      context: {
+        code: event.code,
+        message: event.message,
+        details: event.details,
+      },
+    };
+  }
+
+  return null;
+}
+
 export function mountArrowSandbox(portal: TPortal, args: TArgs) {
-  let messageIndex = 0;
-  let cursor = '0';
+  const actorInstanceId = getActorInstanceId(args.element);
+  let disposed = false;
+  let cursor = 0;
   let currentSnapshot: TActorSnapshot | null = null;
+  const queuedEvents: TWidgetHostActorEventResult[] = [];
+  const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = [];
+
+  function pushActorEvent(event: TWidgetHostActorEventResult) {
+    if (disposed) return;
+
+    const resolve = pendingResolvers.shift();
+    if (resolve) {
+      resolve(event);
+      return;
+    }
+
+    queuedEvents.push(event);
+  }
+
+  function pushSnapshot(snapshot: TActorSnapshot) {
+    currentSnapshot = snapshot;
+    cursor += 1;
+    pushActorEvent({ type: 'snapshot', cursor: String(cursor), snapshot });
+  }
+
+  function handleActorEvent(event: TWidgetActorEvent) {
+    const snapshot = getSnapshotFromActorEvent(currentSnapshot, event);
+    if (!snapshot) return;
+    pushSnapshot(snapshot);
+  }
+
+  const unsubscribeActorEvents = actorInstanceId
+    ? portal.subscribeActorInstanceEvents(actorInstanceId, handleActorEvent)
+    : undefined;
 
   HTML`<section class="vc-widget-sandbox-shell">
     <style>
@@ -145,33 +229,64 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
         currentSnapshot = await getInitialActorSnapshot(portal, args);
         return currentSnapshot;
       },
-      sendActorMessage(_message: unknown) {
-        const message = _message as {name: string, payload: unknown}
-        console.log('sendActorMessage', message)
-        messageIndex += 1;
-        return { ok: true, messageId: `mock-widget-message-${messageIndex}` };
-      },
-      nextActorEvent(args: unknown) {
-        const requestedCursor = getCursorFromBridgeArgs(args);
-        if (requestedCursor !== cursor && currentSnapshot) {
-          return { type: 'snapshot', cursor, snapshot: currentSnapshot };
+      async sendActorMessage(args: unknown) {
+        const message = getActorMessageFromBridgeArgs(args);
+        if (!message) {
+          return {
+            ok: false,
+            code: 'INVALID_WIDGET_MESSAGE',
+            message: 'Widget actor message must be { name: string, payload: unknown }',
+          };
         }
 
-        return new Promise((resolve) => {
-          setTimeout(() => {
-            currentSnapshot = {
-              state: 'ready',
-              context: {
-                message: 'mock actor context updated after 3s',
-                updatedAt: new Date().toISOString(),
-              },
-            };
-            cursor = String(Number(cursor) + 1);
-            resolve({ type: 'snapshot', cursor, snapshot: currentSnapshot });
-          }, 3000);
+        if (!actorInstanceId) {
+          return {
+            ok: false,
+            code: 'ACTOR_INSTANCE_NOT_READY',
+            message: 'Widget actor instance is not ready yet.',
+          };
+        }
+
+        const [error, result] = await portal.apiService.api.actors.instances.sendMessage({
+          instanceId: actorInstanceId,
+          name: message.name,
+          payload: message.payload,
+        });
+
+        if (error) {
+          return {
+            ok: false,
+            code: 'ACTOR_SEND_MESSAGE_FAILED',
+            message: String(error),
+          };
+        }
+
+        return { ok: true, messageId: result.messageId };
+      },
+      nextActorEvent(args: unknown) {
+        if (disposed) return { type: 'noop', cursor: String(cursor) };
+
+        const requestedCursor = getCursorFromBridgeArgs(args);
+        const queuedEvent = queuedEvents.shift();
+        if (queuedEvent && queuedEvent.cursor !== requestedCursor) return queuedEvent;
+        if (queuedEvent) queuedEvents.unshift(queuedEvent);
+
+        return new Promise<TWidgetHostActorEventResult>((resolve) => {
+          pendingResolvers.push(resolve);
         });
       },
     },
   })}
   </section>`(portal.root);
+
+  return () => {
+    disposed = true;
+    unsubscribeActorEvents?.();
+
+    while (pendingResolvers.length > 0) {
+      pendingResolvers.shift()?.({ type: 'noop', cursor: String(cursor) });
+    }
+
+    queuedEvents.length = 0;
+  };
 }

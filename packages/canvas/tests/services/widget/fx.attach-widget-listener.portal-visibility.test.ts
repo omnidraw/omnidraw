@@ -11,7 +11,7 @@ import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widge
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
 import { fxAttachWidgetListener } from "../../../src/services/widget/fx.attach-widget-listener";
 import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_MINIMIZE_BUTTON_ID } from "../../../src/services/widget/CONSTANTS";
-import { txAttachDomPortal } from "../../../src/services/widget/tx.attach-dom-portal";
+import { txAttachDomPortal } from "../../../src/services/widget/attach-dom-portal";
 import { createTestContainer, ensureDom } from "../../test-setup";
 
 function createWidgetElement(): TElement {

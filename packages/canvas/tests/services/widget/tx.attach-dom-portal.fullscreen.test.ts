@@ -11,7 +11,7 @@ import {
 } from "../../../src/services/widget/CONSTANTS";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
-import { txAttachDomPortal } from "../../../src/services/widget/tx.attach-dom-portal";
+import { txAttachDomPortal } from "../../../src/services/widget/attach-dom-portal";
 import { createTestContainer, ensureDom } from "../../test-setup";
 
 function createWidgetElement(): TElement {

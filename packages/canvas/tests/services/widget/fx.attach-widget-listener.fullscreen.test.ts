@@ -16,7 +16,7 @@ import {
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
 import { fxAttachWidgetListener } from "../../../src/services/widget/fx.attach-widget-listener";
-import { txAttachDomPortal } from "../../../src/services/widget/tx.attach-dom-portal";
+import { txAttachDomPortal } from "../../../src/services/widget/attach-dom-portal";
 import { createTestContainer, ensureDom } from "../../test-setup";
 
 function createWidgetElement(): TElement {

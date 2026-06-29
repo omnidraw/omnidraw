@@ -1,6 +1,5 @@
 import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
-
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
@@ -17,14 +16,19 @@ import { fnToWidgetElement } from "./fn.to-widget-element";
 import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
 import { fxRegisterWidgetTool } from "./fx.register-tool";
 import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
-import { txAttachDomPortal } from "./tx.attach-dom-portal";
+import { txAttachDomPortal } from "./attach-dom-portal";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
+import type { TActorEvent } from "@vibecanvas/api-actors/contract";
 
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
+
+export type TWidgetActorEvent = TActorEvent;
+
+type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
@@ -42,6 +46,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #apiService: TOrpcSafeClient;
+  #actorEventSubscribers = new Map<string, Set<TWidgetActorEventHandler>>();
+  #isActorEventListenerRunning = false;
 
   private readonly runtimeHooks!: IRuntimeHooks;
 
@@ -69,14 +75,56 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService.stage.container().appendChild(this.#widgetPortal);
     // this.#domPortal.style =
     this.#widgetPortal.id = "widget-portal";
+
+    this.#isActorEventListenerRunning = true;
+    void this.#listenToActorEvents();
   }
 
   stop(): void | Promise<void> {
+    this.#isActorEventListenerRunning = false;
+    this.#actorEventSubscribers.clear();
     this.#removeSelectionChangeListener?.();
     this.#removeSelectionChangeListener = undefined;
     this.#widgetPortal.remove()
   }
 
+
+  async #listenToActorEvents() {
+    const [err, it] = await this.#apiService.api.actors.events({});
+    if (err) {
+      console.error(err);
+      return;
+    }
+
+    for await (const event of it) {
+      if (!this.#isActorEventListenerRunning) break;
+      this.#routeActorEvent(event as TWidgetActorEvent);
+    }
+  }
+
+  #routeActorEvent(event: TWidgetActorEvent) {
+    const subscribers = this.#actorEventSubscribers.get(event.actorId);
+    if (!subscribers) return;
+
+    subscribers.forEach((handler) => handler(event));
+  }
+
+  subscribeActorInstanceEvents(actorInstanceId: string, handler: TWidgetActorEventHandler) {
+    let subscribers = this.#actorEventSubscribers.get(actorInstanceId);
+    if (!subscribers) {
+      subscribers = new Set();
+      this.#actorEventSubscribers.set(actorInstanceId, subscribers);
+    }
+
+    subscribers.add(handler);
+
+    return () => {
+      subscribers.delete(handler);
+      if (subscribers.size === 0) {
+        this.#actorEventSubscribers.delete(actorInstanceId);
+      }
+    };
+  }
 
   #findWidgetNodeById(id: string) {
     const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {

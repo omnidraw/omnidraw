@@ -11,7 +11,7 @@ import { WIDGET_DOM_PORTAL_SYNC_ATTR, WIDGET_HOST_HEADER_HEIGHT } from "../../..
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
 import { fnToWidgetElement } from "../../../src/services/widget/fn.to-widget-element";
-import { txAttachDomPortal } from "../../../src/services/widget/tx.attach-dom-portal";
+import { txAttachDomPortal } from "../../../src/services/widget/attach-dom-portal";
 import { txUpdateWidgetNodeFromElement } from "../../../src/services/widget/tx.update-widget-node-from-element";
 import type { IRuntimeHooks } from "../../../src/types";
 import { createTestContainer, ensureDom } from "../../test-setup";

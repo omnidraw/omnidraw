@@ -7,7 +7,7 @@ import type { CameraService, WidgetManagerService } from "../../../src/services"
 import { WIDGET_HOST_HEADER_HEIGHT } from "../../../src/services/widget/CONSTANTS";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
-import { txAttachDomPortal } from "../../../src/services/widget/tx.attach-dom-portal";
+import { txAttachDomPortal } from "../../../src/services/widget/attach-dom-portal";
 import { txResizeWidgetHost } from "../../../src/services/widget/tx.resize-widget-host";
 import { createTestContainer, ensureDom } from "../../test-setup";
 

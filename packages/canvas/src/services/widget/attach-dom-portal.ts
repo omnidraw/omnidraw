@@ -1,6 +1,7 @@
+// NOTE: do not rename to tx.* this file is exception to rule because of './mount-arrow-sandbox' import
 import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
-import type { CameraService, SelectionService, WidgetManagerService } from '..';
+import type { CameraService, SelectionService, WidgetManagerService, TWidgetActorEvent } from '..';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
 import {
@@ -29,6 +30,8 @@ type TPortal = {
 type TArgs = {
   element: TElement;
 };
+
+type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
 
 export type TWidgetDomPortalListener = (() => void) & {
   syncDiv: () => void;
@@ -210,7 +213,18 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
 
   if (portal.widgetConfig?.sandbox) {
-    mountArrowSandbox({ root: div, apiService: portal.apiService }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
+    const cleanupSandbox = mountArrowSandbox({
+      root: div,
+      apiService: portal.apiService,
+      subscribeActorInstanceEvents: (actorInstanceId: string, handler: TWidgetActorEventHandler) => {
+        return portal.widgetServie.subscribeActorInstanceEvents(actorInstanceId, handler);
+      },
+    }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
+    const cleanupDomRender = cleanupRender;
+    cleanupRender = () => {
+      cleanupDomRender?.();
+      cleanupSandbox();
+    };
   }
 
   if (view) {
