@@ -1,5 +1,3 @@
-/* eslint-disable functional-core/import-boundary -- legacy pure helper depends on node path parsing */
-import { extname } from 'path';
 import type { TFilesystemFileKind } from '@vibecanvas/service-filesystem/types';
 
 const TEXT_EXTENSIONS = new Set([
@@ -9,8 +7,14 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bm
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']);
 const PDF_EXTENSIONS = new Set(['.pdf']);
 
+function fnExtensionFromPath(path: string): string {
+  const fileName = path.split(/[\\/]/).pop() ?? "";
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+}
+
 function fnDetectFileKind(path: string): TFilesystemFileKind {
-  const extension = extname(path).toLowerCase();
+  const extension = fnExtensionFromPath(path);
 
   if (PDF_EXTENSIONS.has(extension)) return 'pdf';
   if (IMAGE_EXTENSIONS.has(extension)) return 'image';

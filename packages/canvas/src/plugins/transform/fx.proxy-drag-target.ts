@@ -37,7 +37,7 @@ export function fxGetProxyDragTarget(portal: TPortalFxGetProxyDragTarget, args: 
     return null;
   }
 
-  if (fxIsShape1dNode( { node: rawNode })) {
+  if (fxIsShape1dNode({}, { node: rawNode })) {
     return rawNode as Shape<ShapeConfig>;
   }
 

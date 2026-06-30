@@ -2,7 +2,7 @@ import { ORPCError } from '@orpc/server';
 import { mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { fxExtensionFromPtyImageFormat } from './core/fn.extension-from-pty-image-format';
+import { fnExtensionFromPtyImageFormat } from './core/fn.extension-from-pty-image-format';
 import { fxResolveFilesystemId } from './core/fx.resolve-filesystem-id';
 import { basePtyOs } from './orpc';
 
@@ -16,7 +16,7 @@ function getRequestTempDirectory(requestId?: string) {
   return join(tmpdir(), 'vibecanvas', 'pty-clipboard', requestId ?? 'anonymous');
 }
 
-async function uploadPtyImageToTemp(args: { requestId?: string; base64: string; format: Parameters<typeof fxExtensionFromPtyImageFormat>[0] }) {
+async function uploadPtyImageToTemp(args: { requestId?: string; base64: string; format: Parameters<typeof fnExtensionFromPtyImageFormat>[0] }) {
   const base64Payload = getBase64Payload(args.base64).trim();
   const bytes = Buffer.from(base64Payload, 'base64');
 
@@ -27,7 +27,7 @@ async function uploadPtyImageToTemp(args: { requestId?: string; base64: string; 
   const directoryPath = getRequestTempDirectory(args.requestId);
   await mkdir(directoryPath, { recursive: true });
 
-  const fileName = `clipboard-${Date.now()}-${crypto.randomUUID()}.${fxExtensionFromPtyImageFormat(args.format)}`;
+  const fileName = `clipboard-${Date.now()}-${crypto.randomUUID()}.${fnExtensionFromPtyImageFormat(args.format)}`;
   const filePath = join(directoryPath, fileName);
   await writeFile(filePath, bytes);
 
