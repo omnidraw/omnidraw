@@ -5,10 +5,10 @@
  * These represent the source of truth from the server.
  */
 
-import type * as schema from "@vibecanvas/service-db/schema";
+import type { TCanvas } from "@vibecanvas/service-db/model";
 
 // Canvas ID type used throughout the app
 export type TCanvasId = string;
 
 // Canvas table schema
-export type TBackendCanvas = typeof schema.canvas.$inferSelect;
+export type TBackendCanvas = TCanvas;

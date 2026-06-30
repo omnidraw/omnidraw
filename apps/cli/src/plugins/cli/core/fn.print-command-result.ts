@@ -1,4 +1,4 @@
-import { CANVAS_SUBCOMMANDS } from './constants';
+/* eslint-disable functional-core/no-runtime-globals -- legacy CLI printer writes directly to process streams */
 
 type TCliErrorPayload = {
   ok: false;
@@ -10,6 +10,8 @@ type TCliErrorPayload = {
   suggestions?: string[];
   [key: string]: unknown;
 };
+
+const ROOT_COMMANDS = ['serve', 'upgrade'] as const;
 
 function fnLevenshteinDistance(left: string, right: string): number {
   const a = left.toLowerCase();
@@ -46,31 +48,17 @@ function fnFindClosestSuggestion(input: string | undefined, candidates: readonly
   return bestDistance <= threshold ? bestCandidate : undefined;
 }
 
-function fnBuildPatchHint(message: string): Pick<TCliErrorPayload, 'hint' | 'next'> {
-  if (message.startsWith('Unknown patch branch')) {
-    return {
-      hint: 'Patch payload must use one top-level envelope: {"element":{...}} for elements or {"group":{...}} for groups.',
-      next: 'Try: vibecanvas patch --canvas <canvas-id> --id <target-id> --patch \'{"element":{"x":10}}\' --json',
-    };
-  }
-
-  return {
-    hint: 'Patch payload must be valid JSON using {"element":{...}} or {"group":{...}}.',
-    next: 'Examples: {"element":{"x":10,"style":{"backgroundColor":"#ff0000"}}} or {"group":{"locked":true}}',
-  };
-}
-
-export function fnBuildUnknownCommandError(scope: 'root' | 'canvas', input: string | undefined): TCliErrorPayload {
-  const candidates = scope === 'canvas' ? [...CANVAS_SUBCOMMANDS] : ['serve', 'upgrade', 'canvas', ...CANVAS_SUBCOMMANDS];
+export function fnBuildUnknownCommandError(scope: 'root', input: string | undefined): TCliErrorPayload {
+  const candidates = [...ROOT_COMMANDS];
   const suggestion = fnFindClosestSuggestion(input, candidates);
 
   return {
     ok: false,
-    command: scope === 'canvas' ? 'canvas' : 'cli',
-    code: scope === 'canvas' ? 'CANVAS_SUBCOMMAND_UNKNOWN' : 'CLI_COMMAND_UNKNOWN',
-    message: scope === 'canvas' ? `Unknown canvas command '${input ?? ''}'.` : `Unknown command '${input ?? ''}'.`,
-    hint: suggestion ? `Did you mean '${suggestion}'?` : `Available ${scope === 'canvas' ? 'canvas subcommands' : 'commands'}: ${candidates.join(', ')}.`,
-    next: suggestion ? `Try: vibecanvas ${suggestion} --help` : scope === 'canvas' ? 'Try: vibecanvas canvas --help' : 'Try: vibecanvas --help',
+    command: 'cli',
+    code: 'CLI_COMMAND_UNKNOWN',
+    message: `Unknown command '${input ?? ''}'.`,
+    hint: suggestion ? `Did you mean '${suggestion}'?` : `Available commands: ${candidates.join(', ')}.`,
+    next: suggestion ? `Try: vibecanvas ${suggestion} --help` : 'Try: vibecanvas --help',
     suggestions: suggestion ? [suggestion] : [],
   };
 }
@@ -83,63 +71,14 @@ function fnNormalizeCommandError(error: unknown): TCliErrorPayload {
   const normalized: TCliErrorPayload = {
     ...payload,
     ok: false,
-    command: typeof payload.command === 'string' || payload.command === null ? payload.command as string | null : 'canvas',
+    command: typeof payload.command === 'string' || payload.command === null ? payload.command as string | null : 'cli',
     code: typeof payload.code === 'string' ? payload.code : 'CLI_COMMAND_FAILED',
     message: typeof payload.message === 'string' ? payload.message : 'Command failed.',
   };
 
-  if (!normalized.hint && normalized.command === 'canvas.patch' && normalized.code === 'CANVAS_PATCH_PAYLOAD_INVALID') {
-    Object.assign(normalized, fnBuildPatchHint(normalized.message));
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.add' && normalized.code === 'CANVAS_ADD_SOURCE_REQUIRED') {
-    normalized.hint = 'Pass exactly one element source: --element, --elements-file, --elements-stdin, or shorthand flags.';
-    normalized.next = 'Try: vibecanvas add --canvas <canvas-id> --rect 10,20,120,80 --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.add' && normalized.code === 'CANVAS_ADD_SOURCE_CONFLICT') {
-    normalized.hint = 'Choose one add payload source only.';
-    normalized.next = 'Do not mix shorthand flags with --element/--elements-file/--elements-stdin.';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.add' && normalized.code === 'CANVAS_ADD_PAYLOAD_INVALID') {
-    normalized.hint = 'Add payloads must be valid JSON objects, or a JSON array when using file/stdin.';
-    normalized.next = 'Try: vibecanvas add --canvas <canvas-id> --element \'{"type":"rect"}\' --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.add' && normalized.code === 'CANVAS_ADD_SHORTHAND_INVALID') {
-    normalized.hint = 'Use strict shorthand grammar only: rect x,y,w,h; ellipse x,y,rx,ry; diamond x,y,w,h; text x,y,text; line/arrow x,y,x2,y2.';
-    normalized.next = 'Try: vibecanvas add --canvas <canvas-id> --text 40,20,hello --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.query' && normalized.code === 'CANVAS_QUERY_SELECTOR_CONFLICT') {
-    normalized.hint = 'Use exactly one selector style: structured flags, --where, or --query.';
-    normalized.next = 'Try: vibecanvas query --canvas <canvas-id> --id <target-id> --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.query' && normalized.code === 'CANVAS_QUERY_OUTPUT_INVALID') {
-    normalized.hint = 'Use one of the documented output modes only.';
-    normalized.next = 'Try: vibecanvas query --canvas <canvas-id> --output summary --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.query' && normalized.code === 'CANVAS_QUERY_JSON_INVALID') {
-    normalized.hint = '--query must be a JSON object with known selector fields.';
-    normalized.next = 'Try: vibecanvas query --canvas <canvas-id> --query \'{"ids":["target-id"]}\' --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.patch' && normalized.code === 'CANVAS_PATCH_SOURCE_REQUIRED') {
-    normalized.hint = 'Pass exactly one patch source: --patch, --patch-file, or --patch-stdin.';
-    normalized.next = 'Try: vibecanvas patch --canvas <canvas-id> --id <target-id> --patch \'{"element":{"x":10}}\' --json';
-  }
-
-  if (!normalized.hint && normalized.command === 'canvas.patch' && normalized.code === 'CANVAS_PATCH_SOURCE_CONFLICT') {
-    normalized.hint = 'Choose one patch source only.';
-    normalized.next = 'Remove extra patch source flags and retry.';
-  }
-
   if (!normalized.hint && normalized.code === 'DB_FLAG_MISSING_VALUE') {
     normalized.hint = 'Pass one SQLite file path right after --db.';
-    normalized.next = 'Try: vibecanvas canvas list --db ./tmp/vibecanvas.sqlite --json';
+    normalized.next = 'Try: vibecanvas serve --db ./tmp/vibecanvas.turso';
   }
 
   return normalized;
@@ -155,9 +94,6 @@ export function fnPrintCommandResult(result: unknown, wantsJson: boolean, extraF
     return;
   }
 
-  if (typeof result === 'object' && result !== null && 'dryRun' in result && result.dryRun === true) {
-    process.stdout.write(`[dry-run] no mutation applied\n`);
-  }
   console.log(result);
   process.exitCode = 0;
 }

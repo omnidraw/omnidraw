@@ -7,6 +7,6 @@ const ptyImageFormatToExtension = {
 
 export type TPtyImageFormat = keyof typeof ptyImageFormatToExtension;
 
-export function fxExtensionFromPtyImageFormat(format: TPtyImageFormat): string {
+export function fnExtensionFromPtyImageFormat(format: TPtyImageFormat): string {
   return ptyImageFormatToExtension[format];
 }

@@ -1,7 +1,7 @@
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
+import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 
 type TFileApiContext = {
-  db: IDbService;
+  db: DbServiceTurso;
   requestId?: string;
 };
 

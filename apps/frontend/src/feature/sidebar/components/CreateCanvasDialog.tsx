@@ -1,7 +1,7 @@
-import type { Component } from "solid-js";
-import { createSignal } from "solid-js";
-import { Dialog } from "@kobalte/core/dialog";
 import { Button } from "@kobalte/core/button";
+import { Dialog } from "@kobalte/core/dialog";
+import { createSignal, type Component } from "solid-js";
+import styles from "./SidebarDialog.module.css";
 
 export type CreateCanvasDialogProps = {
   open: boolean;
@@ -11,6 +11,10 @@ export type CreateCanvasDialogProps = {
 
 export const CreateCanvasDialog: Component<CreateCanvasDialogProps> = (props) => {
   const [title, setTitle] = createSignal("");
+
+  const contentClass = `${styles.content} ${styles.contentLarge}`;
+  const actionsClass = `${styles.actions} ${styles.actionsSingle}`;
+  const primaryButtonClass = `${styles.button} ${styles.primaryButton}`;
 
   const handleCreate = () => {
     const finalTitle = title().trim() || "Untitled Canvas";
@@ -24,20 +28,15 @@ export const CreateCanvasDialog: Component<CreateCanvasDialogProps> = (props) =>
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 bg-black/50 z-40" />
-        <Dialog.Content class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover text-popover-foreground border border-border shadow-md p-6 z-50 w-120 max-w-[90vw]">
-          <Dialog.Title class="font-display text-base text-foreground mb-1">
-            Create Your Canvas
-          </Dialog.Title>
-          <Dialog.Description class="text-xs text-muted-foreground mb-4">
+        <Dialog.Overlay class={styles.overlay} />
+        <Dialog.Content class={contentClass}>
+          <Dialog.Title class={styles.title}>Create Your Canvas</Dialog.Title>
+          <Dialog.Description class={styles.description}>
             Give your canvas a title.
           </Dialog.Description>
 
-          <div class="mb-6">
-            <label
-              for="canvas-title"
-              class="block text-xs font-medium text-foreground mb-1.5"
-            >
+          <div class={styles.field}>
+            <label for="canvas-title" class={styles.label}>
               Canvas Title
             </label>
             <input
@@ -46,14 +45,14 @@ export const CreateCanvasDialog: Component<CreateCanvasDialogProps> = (props) =>
               placeholder="Untitled Canvas"
               value={title()}
               onInput={(e) => setTitle(e.currentTarget.value)}
-              class="w-full px-3 py-2 text-sm bg-background border border-input text-foreground outline-none focus:ring-2 focus:ring-ring transition-colors placeholder:text-muted-foreground"
+              class={styles.input}
               autofocus
             />
           </div>
 
-          <div class="flex justify-end">
+          <div class={actionsClass}>
             <Button
-              class="px-4 py-2 text-xs font-medium bg-primary text-primary-foreground hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class={primaryButtonClass}
               onClick={handleCreate}
               disabled={!isValid()}
             >

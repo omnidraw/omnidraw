@@ -1,8 +1,9 @@
 import type { RouteSectionProps } from "@solidjs/router";
-import { Toaster, showToast } from "./components/ui/Toast";
 import { onMount } from "solid-js";
+import { Toaster } from "./components/ui/Toast";
 import { Sidebar } from "./feature/sidebar";
-import { store } from "./store";
+import { setStore, store } from "./store";
+import styles from "./App.module.css";
 
 const App = (props: RouteSectionProps) => {
   onMount(() => {
@@ -14,18 +15,13 @@ const App = (props: RouteSectionProps) => {
   });
 
   return (
-    <div class="flex h-screen bg-background">
+    <div class={styles.shell}>
       <Sidebar
         visible={store.sidebarVisible}
-        onSettingsClick={() => showToast("Settings", "Coming soon...")}
+        onToggleSidebar={() => setStore("sidebarVisible", (visible) => !visible)}
       />
-      {/* Main content area - routed pages render here */}
-      <main id="main" class="flex-1 relative overflow-hidden">
+      <main id="main" class={styles.main}>
         {props.children}
-        <div
-          id="canvas-overlay-entrypoint"
-          class="absolute inset-0 pointer-events-none overflow-hidden"
-        />
       </main>
       <Toaster />
     </div>

@@ -14,7 +14,7 @@ export type THelpSection = {
 const TOOL_LABELS: Record<TTool, string> = {
   hand: "Hand",
   select: "Select",
-  rectangle: "Rectangle",
+  rect: "Rectangle",
   diamond: "Diamond",
   ellipse: "Ellipse",
   arrow: "Arrow",

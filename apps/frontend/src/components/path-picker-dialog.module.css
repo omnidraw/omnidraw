@@ -1,0 +1,210 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 0.5);
+}
+
+.content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: min(36rem, 92vw);
+  max-height: 85vh;
+  padding: 1.25rem;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.title {
+  margin: 0 0 0.25rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1.5rem;
+  color: var(--foreground);
+}
+
+.description {
+  margin: 0 0 0.75rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.pathRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.secondaryButton {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.primaryButton {
+  border-color: transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, black);
+}
+
+.buttonContent {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pathInput {
+  flex: 1 1 auto;
+  height: 2rem;
+  min-width: 0;
+  padding: 0 0.5rem;
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.pathInput::placeholder {
+  color: var(--muted-foreground);
+}
+
+.pathInput:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.listArea {
+  flex: 1 1 0%;
+  min-height: 0;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.listViewport {
+  height: 100%;
+}
+
+.listContent {
+  padding: 0.25rem;
+}
+
+.stateText {
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--muted-foreground);
+}
+
+.errorText {
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--destructive);
+}
+
+.folderButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.folderButton:last-child {
+  margin-bottom: 0;
+}
+
+.folderButton:hover {
+  background: var(--accent);
+}
+
+.folderButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.folderInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.folderIcon,
+.folderArrow {
+  flex-shrink: 0;
+}
+
+.folderArrow {
+  color: var(--muted-foreground);
+}
+
+.folderName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}

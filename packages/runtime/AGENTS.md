@@ -131,7 +131,7 @@ This makes plugin authoring much nicer.
 
 ```ts
 type ICliPlugin<TRequired = {}> = IPlugin<TRequired, ICliHooks>
-type ICliPluginContext<TRequired = {}> = IPluginContext<TRequired, ICliHooks>
+type IClIPluginContext<TRequired = {}> = IPluginContext<TRequired, ICliHooks>
 ```
 
 ### 3. Extend `IServiceMap` with declaration merging
@@ -139,7 +139,7 @@ type ICliPluginContext<TRequired = {}> = IPluginContext<TRequired, ICliHooks>
 ```ts
 declare module '@vibecanvas/runtime' {
   interface IServiceMap {
-    db: IDbService
+    db: DbServiceTurso
     api: IApiService
   }
 }
@@ -191,3 +191,74 @@ after: ['notification?']
 
 - `@vibecanvas/service-db` uses this package for service capability typing.
 - `apps/cli` uses this package for generic runtime assembly and keeps CLI hooks local.
+
+## Refactor note
+
+We are currently in a refactor.
+
+Canvas is moving from an old plugin-context model to a service-first runtime model.
+Old canvas code had one big local context bag with things like:
+- stage
+- camera
+- state
+- capabilities
+- app integrations
+- hook bag
+
+This is being split into small services and new runtime plugins.
+Old code is still kept as reference during migration.
+Do not assume old and new canvas systems are both final.
+
+### New direction
+
+Use this pattern:
+- runtime hooks = broad lifecycle/app wiring
+- service hooks = domain-specific events owned by a service
+- services = effectful stateful interfaces
+- plugins = logic and composition that call services
+
+Examples:
+- runtime hooks: `init`, `initAsync`, `destroy`
+- service hooks: `camera.hooks.change`, `konva.hooks.resize`
+
+### Principles for next agents
+
+1. Prefer services as the main effectful interface.
+2. Prefer small focused services over one giant state service.
+3. Prefer service-local hooks over global app hooks when event is service-specific.
+4. Keep `@vibecanvas/runtime` generic. No canvas-specific hook bags here.
+5. It is okay for `IService` to support optional typed hooks at interface level.
+6. Runtime plugins should depend on services, not on one giant mutable context object.
+7. During migration, read old canvas plugins/services for behavior, then translate behavior into the new service-first shape.
+
+### Canvas migration shape
+
+Current emerging canvas service split looks like:
+- `konva` = stage, layers, resize
+- `camera` = x/y/zoom, pan/zoom ops, camera change hook
+- `theme` = theme state
+- `selection` = mode, selection, focused id
+- `editor` = transient editing state
+
+More services will likely follow:
+- `history`
+- `crdt`
+- `renderOrder`
+- `hostedWidgets`
+- `shapeRegistry`
+- `groupRegistry`
+- app integration services like `notification`, `image`, `file`, `terminal`
+
+### Important migration warning
+
+If you see both:
+- old global runtime hook usage like `cameraChange`
+- new service-local hook usage like `camera.hooks.change`
+
+prefer the new service-local direction unless there is a strong reason not to.
+
+Goal is boring shape:
+- generic runtime here
+- concrete service logic in app/package
+- plugins thin
+- services clear

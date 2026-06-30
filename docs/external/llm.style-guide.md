@@ -1,150 +1,234 @@
 # Vibecanvas Style Guide
 
-Terminal-like design system using Tailwind CSS v4 with Stone base and Amber accents.
+Terminal-like design system. No Tailwind.
 
-## Architecture
+Use plain CSS. Prefer local `*.module.css` files next to components.
 
-```
-@theme { }           ← Custom fonts, radius reset
-:root { }            ← Semantic tokens (light mode)
-.dark { }            ← Semantic tokens (dark mode)
-@theme inline { }    ← Maps semantic tokens → utilities
-```
+## Source of truth
 
-## Color System
+Theme tokens come from `@vibecanvas/service-theme`.
 
-Uses Tailwind's built-in **stone** and **amber** palettes. No custom colors defined.
+Main files:
+- `packages/service-theme/src/ThemeService.ts`
+- `packages/service-theme/src/dom.ts`
+- `apps/frontend/src/services/theme.ts`
 
-### Semantic Tokens
+`ThemeService` owns theme registry and active theme.
+Frontend calls `txApplyThemeToElement(document.documentElement, theme)`.
+That writes CSS variables on `:root`, sets:
+- `data-theme-id`
+- `data-theme-appearance`
+- `.dark` when appearance is dark
 
-Theme-aware colors that auto-switch with `.dark` class:
+Do not invent parallel theme systems.
+Use the CSS variables already emitted by `ThemeService`.
 
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `background` | stone-50 | stone-950 | Page |
-| `foreground` | stone-900 | stone-50 | Main text |
-| `card` | stone-100 | stone-900 | Surfaces |
-| `card-foreground` | stone-900 | stone-50 | Card text |
-| `muted` | stone-200 | stone-800 | Subtle bg |
-| `muted-foreground` | stone-600 | stone-400 | Secondary text |
-| `primary` | amber-500 | amber-500 | Actions |
-| `primary-foreground` | stone-950 | stone-950 | Button text |
-| `secondary` | stone-200 | stone-800 | Alt actions |
-| `accent` | amber-100 | stone-700 | Highlights |
-| `destructive` | red-600 | red-500 | Danger |
-| `success` | green-600 | green-500 | Success |
-| `warning` | amber-600 | amber-400 | Warning |
-| `border` | stone-300 | stone-800 | Borders |
-| `input` | stone-300 | stone-800 | Form borders |
-| `ring` | amber-500 | amber-500 | Focus ring |
+## Built-in themes
 
-## Usage
+Current built-ins:
+- `light`
+- `dark`
+- `sepia`
+- `graphite`
 
-### Semantic Colors (Recommended)
+`light` is default.
 
-```tsx
-// Auto light/dark switching
-<div class="bg-background text-foreground" />
-<div class="bg-card text-card-foreground" />
-<button class="bg-primary text-primary-foreground" />
-```
+## Theme tokens
 
-### Raw Tailwind Colors
+UI CSS should read semantic variables, not hardcoded palette classes.
 
-```tsx
-// Direct palette access (no auto-switching)
-<div class="bg-stone-800 text-stone-100" />
-<span class="text-amber-500" />
-```
+Core tokens:
+- `--background`
+- `--foreground`
+- `--card`
+- `--card-foreground`
+- `--popover`
+- `--popover-foreground`
+- `--muted`
+- `--muted-foreground`
+- `--primary`
+- `--primary-foreground`
+- `--secondary`
+- `--secondary-foreground`
+- `--accent`
+- `--accent-foreground`
+- `--destructive`
+- `--destructive-foreground`
+- `--success`
+- `--success-foreground`
+- `--warning`
+- `--warning-foreground`
+- `--border`
+- `--input`
+- `--ring`
 
-## Components
+Canvas and terminal tokens also come from `ThemeService`:
+- `--vc-canvas-*`
+- `--vc-terminal-*`
 
-### Primary Button
+Read `packages/service-theme/src/dom.ts` for full mapping.
 
-```tsx
-<button class="bg-primary text-primary-foreground px-4 py-2 hover:bg-amber-600">
-  Submit
-</button>
-```
+## Styling rules
 
-### Secondary Button
+### 1. No Tailwind utility strings
 
-```tsx
-<button class="bg-secondary text-secondary-foreground px-4 py-2 hover:bg-stone-300 dark:hover:bg-stone-700">
-  Cancel
-</button>
-```
-
-### Ghost Button
+Bad:
 
 ```tsx
-<button class="text-foreground px-4 py-2 hover:bg-accent hover:text-accent-foreground">
-  Options
-</button>
+<button class="bg-primary text-primary-foreground px-4 py-2" />
 ```
 
-### Card
+Good:
 
 ```tsx
-<div class="bg-card text-card-foreground border border-border p-4">
-  <h3 class="font-medium">Title</h3>
-  <p class="text-muted-foreground text-sm">Description</p>
-</div>
+import styles from "./Button.module.css";
+
+<button class={styles.primaryButton} />
 ```
 
-### Input
-
-```tsx
-<input
-  class="bg-background border border-input text-foreground px-3 py-2
-         placeholder:text-muted-foreground
-         focus:outline-none focus:ring-2 focus:ring-ring"
-  placeholder="Enter value..."
-/>
+```css
+.primaryButton {
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
 ```
 
-### Badge
+### 2. Keep CSS local
 
-```tsx
-<span class="bg-muted text-muted-foreground px-2 py-0.5 text-xs">Default</span>
-<span class="bg-primary text-primary-foreground px-2 py-0.5 text-xs">New</span>
+Prefer component-local CSS modules:
+- `Sidebar.tsx` + `Sidebar.module.css`
+- `Toast.tsx` + `Toast.module.css`
+- dialog component + dialog css module
+
+Only keep global CSS in `apps/frontend/src/index.css` for:
+- resets
+- font vars
+- fallback theme vars before ThemeService runs
+
+### 3. Use semantic tokens
+
+Good:
+
+```css
+.panel {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+}
 ```
 
-### Menu Item (Kobalte)
+Avoid raw light/dark conditionals when a token already exists.
 
-```tsx
-<DropdownMenu.Item
-  class="px-3 py-2 text-foreground cursor-pointer
-         data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
->
-  Item
-</DropdownMenu.Item>
+### 4. Style Kobalte with local selectors
+
+Kobalte is unstyled.
+Style parts directly.
+Use state attributes in CSS.
+
+Example:
+
+```css
+.menuItem[data-highlighted] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.toggle[data-pressed] {
+  background: color-mix(in srgb, var(--primary) 15%, var(--secondary));
+}
 ```
 
-## Typography
+Useful Kobalte attrs:
+- `data-expanded`
+- `data-highlighted`
+- `data-pressed`
+- `data-disabled`
+- `data-selected`
+- `data-invalid`
 
-| Utility | Font |
-|---------|------|
-| `font-mono` | JetBrains Mono Variable |
+### 5. Focus is visible
 
-## Border Radius
+Interactive elements must show focus.
+Use `--ring` for focus styling.
 
-All radii are **0px** (terminal aesthetic). `rounded-*` classes have no effect.
-
-## Dark Mode
-
-```tsx
-document.documentElement.classList.toggle('dark');
+```css
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
 ```
 
-## Best Practices
+### 6. Radius stays square
 
-**DO:**
-- Use semantic tokens (`bg-primary`) for UI
-- Pair foregrounds (`bg-card text-card-foreground`)
-- Use raw palette for data visualization
+Terminal look stays sharp.
+Do not add rounded corners unless design changes on purpose.
 
-**DON'T:**
-- Hardcode dark variants - let tokens handle it
-- Use colors outside stone/amber palette
-- Add border-radius
+## Current visual language
+
+- monospace display and body text
+- stone/amber-like terminal palette, but exposed through semantic variables
+- bordered flat surfaces
+- square corners
+- strong focus ring
+- subtle motion only
+
+## Kobalte notes
+
+- Prefer subpath imports like `@kobalte/core/dialog`
+- Compose parts explicitly
+- Use `Portal` for overlays when component expects it
+- For menu and dialog state styling, target `data-*` attrs in CSS
+- Avoid modal behavior for small anchored menus unless needed
+
+## Quick recipes
+
+### Primary button
+
+```css
+.primaryButton {
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, black);
+}
+```
+
+### Secondary button
+
+```css
+.secondaryButton {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--accent);
+}
+```
+
+### Dialog shell
+
+```css
+.content {
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+```
+
+### Selected sidebar item
+
+```css
+.selected {
+  background: color-mix(in srgb, var(--foreground) 12%, var(--card));
+}
+```

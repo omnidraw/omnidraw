@@ -1,3 +1,7 @@
+/**
+ * @file Patches installed Automerge Repo throttle helpers to clamp negative timeout delays.
+ */
+
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";

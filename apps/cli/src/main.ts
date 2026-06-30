@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-import type { IService, IStoppableService } from '@vibecanvas/runtime';
 import { createRuntime } from '@vibecanvas/runtime';
 import { buildCliConfig } from './build-config';
 import type { ICliConfig } from './config';
 import { bootCliRuntime, createCliHooks, shutdownCliRuntime } from './hooks';
 import { CliArgvError, parseCliArgv } from './parse-argv';
+import { createAuthPlugin } from './plugins/auth/AuthPlugin';
 import { createAutomergePlugin } from './plugins/automerge/AutomergePlugin';
 import { createCliPlugin } from './plugins/cli/CliPlugin';
 import { fnPrintCommandError } from './plugins/cli/core/fn.print-command-result';
@@ -14,10 +14,6 @@ import { createPtyPlugin } from './plugins/pty/PtyPlugin';
 import { createServerPlugin } from './plugins/server/ServerPlugin';
 import { setupServices } from './setup-services';
 import { setupSignals } from './setup-signals';
-
-function isStoppableService(service: IService): service is IService & IStoppableService {
-  return 'stop' in service && typeof service.stop === 'function';
-}
 
 
 
@@ -42,26 +38,16 @@ try {
   throw error
 }
 
-if (config.command === 'canvas') {
-  process.env.VIBECANVAS_SILENT_DB_MIGRATIONS = '1'
-  process.env.VIBECANVAS_SILENT_AUTOMERGE_LOGS = '1'
-}
-
 const { services } = setupServices(config);
 
 const runtime = createRuntime<any, ICliConfig>({
-  plugins: [createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
+  plugins: [createAuthPlugin(), createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
   services,
   hooks: createCliHooks(),
   config,
   boot: bootCliRuntime,
   shutdown: async (ctx) => {
     await shutdownCliRuntime(ctx);
-    for (const service of services.getStore().values()) {
-      if (isStoppableService(service)) {
-        await service.stop();
-      }
-    }
   },
 });
 

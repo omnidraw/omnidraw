@@ -1,13 +1,12 @@
 import type { Component } from "solid-js";
+import styles from "../styles/route-state.module.css";
 
 const WelcomePage: Component = () => {
   return (
-    <div class="flex items-center justify-center h-full">
-      <div class="text-center max-w-md space-y-4">
-        <h2 class="text-2xl font-display tracking-wide text-foreground">
-          Welcome to Vibecanvas
-        </h2>
-        <p class="text-sm text-muted-foreground leading-relaxed">
+    <div class={styles.root}>
+      <div class={styles.panel}>
+        <h2 class={styles.title}>Welcome to Vibecanvas</h2>
+        <p class={styles.body}>
           Select a canvas from the sidebar or create a new one to get started.
         </p>
       </div>

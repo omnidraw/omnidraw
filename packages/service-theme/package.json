@@ -1,0 +1,17 @@
+{
+  "name": "@vibecanvas/service-theme",
+  "version": "0.3.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@vibecanvas/runtime": "workspace:*",
+    "@vibecanvas/tapable": "workspace:*"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@vibecanvas/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./widget": {
+      "types": "./dist/widget.d.ts",
+      "default": "./dist/widget.js"
+    },
+    "./actor": {
+      "types": "./dist/actor.d.ts",
+      "default": "./dist/actor.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "test": "bun test --pass-with-no-tests"
+  },
+  "dependencies": {
+    "@arrow-js/core": "^1.0.6"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

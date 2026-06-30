@@ -10,6 +10,8 @@
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
     "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-automerge": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*",
     "zod": "catalog:"
   }
 }

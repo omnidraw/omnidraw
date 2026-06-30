@@ -1,0 +1,180 @@
+.vc-canvas-recorder-anchor {
+  position: absolute;
+  right: 4rem;
+  bottom: 0.75rem;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.vc-canvas-recorder-stack {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.vc-canvas-recorder-panel {
+  min-width: 220px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 95%, transparent);
+  color: var(--foreground);
+  padding: 0.75rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.vc-canvas-recorder-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.vc-canvas-recorder-title {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.vc-canvas-recorder-state {
+  margin-top: 0.25rem;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.vc-canvas-recorder-status-shell {
+  display: flex;
+  width: 0.75rem;
+  height: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.vc-canvas-recorder-status-dot,
+.vc-canvas-recorder-toggle-dot {
+  border-radius: 9999px;
+}
+
+.vc-canvas-recorder-status-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  background: var(--stone-300);
+}
+
+.vc-canvas-recorder-status-dot--recording,
+.vc-canvas-recorder-toggle-dot--recording {
+  background: var(--red-500);
+}
+
+.vc-canvas-recorder-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  margin-top: 0.5rem;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.vc-canvas-recorder-metric-value {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--foreground);
+}
+
+.vc-canvas-recorder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.vc-canvas-recorder-action {
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--foreground);
+  transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+
+.vc-canvas-recorder-action:hover,
+.vc-canvas-recorder-toggle:hover {
+  background: var(--stone-200);
+}
+
+.dark .vc-canvas-recorder-action:hover,
+.dark .vc-canvas-recorder-toggle:hover {
+  background: var(--stone-800);
+}
+
+.vc-canvas-recorder-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vc-canvas-recorder-action--danger {
+  background: var(--red-500);
+  color: var(--white);
+}
+
+.vc-canvas-recorder-action--danger:hover {
+  background: var(--red-600);
+  color: var(--white);
+}
+
+.vc-canvas-recorder-checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.vc-canvas-recorder-checkbox {
+  width: 0.875rem;
+  height: 0.875rem;
+  accent-color: var(--foreground);
+}
+
+.vc-canvas-recorder-toggle {
+  display: flex;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0 0.75rem;
+  color: var(--foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.vc-canvas-recorder-toggle-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 1px solid var(--border);
+  background: var(--stone-300);
+}
+
+.vc-canvas-recorder-toggle-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1;
+}

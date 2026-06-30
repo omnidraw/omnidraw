@@ -1,12 +1,13 @@
 import { Button } from "@kobalte/core/button";
 import { Dialog } from "@kobalte/core/dialog";
-import { orpcWebsocketService } from "@/services/orpc-websocket";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import ArrowUp from "lucide-solid/icons/arrow-up";
 import ChevronRight from "lucide-solid/icons/chevron-right";
 import Folder from "lucide-solid/icons/folder";
 import House from "lucide-solid/icons/house";
-import ArrowUp from "lucide-solid/icons/arrow-up";
 import { For, Show, createEffect, createSignal } from "solid-js";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { orpcWebsocketService } from "@/services/orpc-websocket";
+import styles from "./path-picker-dialog.module.css";
 
 type TDirChild = {
   name: string;
@@ -29,6 +30,9 @@ export function PathPickerDialog(props: TPathPickerDialogProps) {
   const [pathInput, setPathInput] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
+
+  const secondaryButtonClass = `${styles.button} ${styles.secondaryButton}`;
+  const primaryButtonClass = `${styles.button} ${styles.primaryButton}`;
 
   const loadDirectory = async (path: string) => {
     setIsLoading(true);
@@ -85,36 +89,36 @@ export function PathPickerDialog(props: TPathPickerDialogProps) {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 bg-black/50 z-40" />
+        <Dialog.Overlay class={styles.overlay} />
         <Dialog.Content
-          class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover text-popover-foreground border border-border shadow-md z-50 w-xl max-w-[92vw] max-h-[85vh] p-5 flex flex-col"
+          class={styles.content}
           onWheel={(e: WheelEvent) => {
             e.stopPropagation();
             if (e.ctrlKey) e.preventDefault();
           }}
           style={{ "overscroll-behavior": "contain" }}
         >
-          <Dialog.Title class="font-display text-base text-foreground mb-1 shrink-0">{props.title}</Dialog.Title>
+          <Dialog.Title class={styles.title}>{props.title}</Dialog.Title>
           <Show when={props.description}>
-            <Dialog.Description class="text-xs text-muted-foreground bg-secondary border border-border px-2 py-1.5 mb-3 shrink-0">
+            <Dialog.Description class={styles.description}>
               {props.description}
             </Dialog.Description>
           </Show>
 
-          <div class="flex items-center gap-2 mb-2 shrink-0">
+          <div class={styles.toolbar}>
             <Button
-              class="px-2 py-1 text-xs bg-secondary text-secondary-foreground border border-border hover:bg-accent disabled:opacity-50"
+              class={secondaryButtonClass}
               disabled={isLoading()}
               onClick={() => void loadHomeDirectory()}
               title="Go to home"
             >
-              <div class="flex items-center gap-1">
+              <div class={styles.buttonContent}>
                 <House size={12} />
                 Home
               </div>
             </Button>
             <Button
-              class="px-2 py-1 text-xs bg-secondary text-secondary-foreground border border-border hover:bg-accent disabled:opacity-50"
+              class={secondaryButtonClass}
               disabled={isLoading() || !parentPath()}
               onClick={() => {
                 const parent = parentPath();
@@ -122,16 +126,16 @@ export function PathPickerDialog(props: TPathPickerDialogProps) {
               }}
               title="Go up"
             >
-              <div class="flex items-center gap-1">
+              <div class={styles.buttonContent}>
                 <ArrowUp size={12} />
                 Up
               </div>
             </Button>
           </div>
 
-          <div class="mb-2 flex items-center gap-2 shrink-0">
+          <div class={styles.pathRow}>
             <input
-              class="flex-1 h-8 px-2 border border-border bg-background text-xs"
+              class={styles.pathInput}
               value={pathInput()}
               onInput={(event) => setPathInput(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -143,7 +147,7 @@ export function PathPickerDialog(props: TPathPickerDialogProps) {
               placeholder="Paste full path"
             />
             <Button
-              class="h-8 px-2 text-xs bg-secondary text-secondary-foreground border border-border hover:bg-accent disabled:opacity-50"
+              class={secondaryButtonClass}
               disabled={isLoading() || !pathInput().trim()}
               onClick={() => {
                 const nextPath = pathInput().trim();
@@ -155,23 +159,23 @@ export function PathPickerDialog(props: TPathPickerDialogProps) {
             </Button>
           </div>
 
-          <ScrollArea class="flex-1 min-h-0 border border-border bg-background" viewportClass="h-full">
-            <div class="p-1">
-              <Show when={!isLoading()} fallback={<div class="p-3 text-xs text-muted-foreground">Loading folders...</div>}>
-                <Show when={!errorMessage()} fallback={<div class="p-3 text-xs text-destructive">{errorMessage()}</div>}>
-                  <Show when={children().length > 0} fallback={<div class="p-3 text-xs text-muted-foreground">No subfolders</div>}>
+          <ScrollArea class={styles.listArea} viewportClass={styles.listViewport}>
+            <div class={styles.listContent}>
+              <Show when={!isLoading()} fallback={<div class={styles.stateText}>Loading folders...</div>}>
+                <Show when={!errorMessage()} fallback={<div class={styles.errorText}>{errorMessage()}</div>}>
+                  <Show when={children().length > 0} fallback={<div class={styles.stateText}>No subfolders</div>}>
                     <For each={children()}>
                       {(child) => (
                         <button
                           type="button"
-                          class="w-full text-left px-2 py-1.5 border border-border mb-1 last:mb-0 hover:bg-accent text-foreground text-xs flex items-center justify-between"
+                          class={styles.folderButton}
                           onClick={() => void loadDirectory(child.path)}
                         >
-                          <div class="flex items-center gap-1 min-w-0">
-                            <Folder size={12} class="shrink-0" />
-                            <span class="truncate">{child.name}</span>
+                          <div class={styles.folderInfo}>
+                            <Folder size={12} class={styles.folderIcon} />
+                            <span class={styles.folderName}>{child.name}</span>
                           </div>
-                          <ChevronRight size={12} class="text-muted-foreground shrink-0" />
+                          <ChevronRight size={12} class={styles.folderArrow} />
                         </button>
                       )}
                     </For>
@@ -181,15 +185,15 @@ export function PathPickerDialog(props: TPathPickerDialogProps) {
             </div>
           </ScrollArea>
 
-          <div class="flex justify-end gap-2 mt-3 shrink-0">
+          <div class={styles.actions}>
             <Button
-              class="px-3 py-1.5 text-xs bg-secondary text-secondary-foreground border border-border hover:bg-accent"
+              class={secondaryButtonClass}
               onClick={() => props.onOpenChange(false)}
             >
               Cancel
             </Button>
             <Button
-              class="px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-amber-600 disabled:opacity-50"
+              class={primaryButtonClass}
               disabled={isLoading() || !currentPath()}
               onClick={() => void props.onPathSelected(currentPath())}
             >

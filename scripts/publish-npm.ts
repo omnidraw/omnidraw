@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Publish all built dist packages to npm using npm CLI.
+ * @file Publishes built vibecanvas platform packages and the wrapper package to npm.
  *
  * Behavior:
  * - Auth supports either:

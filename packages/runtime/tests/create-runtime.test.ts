@@ -53,7 +53,7 @@ describe('createServiceRegistry', () => {
     const registry = createServiceRegistry();
     const service = { name: 'logger' } as any;
 
-    registry.provide('logger' as never, service);
+    registry.provide('logger' as never, 10, service);
 
     expect(registry.getStore().get('logger')).toBe(service);
     expect(registry.get('logger' as never)).toBe(service);
@@ -82,7 +82,7 @@ describe('createRuntime', () => {
           calls.push(`plugin:${this.name}`);
           expect(ctx.hooks).toBe(hooks);
           expect(ctx.config).toBe(config);
-          ctx.services.provide('db' as never, { name: 'db-service' } as never);
+          ctx.services.provide('db' as never, 10, { name: 'db-service' } as never);
         },
       },
       {
@@ -125,7 +125,7 @@ describe('createRuntime', () => {
         {
           name: 'provider',
           apply(ctx) {
-            ctx.services.provide('custom' as never, { name: 'custom-service' } as never);
+            ctx.services.provide('custom' as never, 10, { name: 'custom-service' } as never);
           },
         },
       ],
@@ -144,5 +144,60 @@ describe('createRuntime', () => {
     await runtime.shutdown();
 
     expect(calls).toEqual(['shutdown']);
+  });
+
+  test('runs shutdown callback before stopping services', async () => {
+    const services = createServiceRegistry();
+    const calls: string[] = [];
+
+    services.provide('custom' as never, 10, {
+      name: 'custom-service',
+      async stop() {
+        calls.push('stop');
+      },
+    } as never);
+
+    const runtime = createRuntime({
+      plugins: [],
+      hooks: {},
+      config: {},
+      services,
+      shutdown: async () => {
+        calls.push('shutdown');
+      },
+    });
+
+    await runtime.boot();
+    await runtime.shutdown();
+
+    expect(calls).toEqual(['shutdown', 'stop']);
+  });
+
+  test('still stops services if shutdown callback throws', async () => {
+    const services = createServiceRegistry();
+    const calls: string[] = [];
+
+    services.provide('custom' as never, 10, {
+      name: 'custom-service',
+      async stop() {
+        calls.push('stop');
+      },
+    } as never);
+
+    const runtime = createRuntime({
+      plugins: [],
+      hooks: {},
+      config: {},
+      services,
+      shutdown: async () => {
+        calls.push('shutdown');
+        throw new Error('shutdown failed');
+      },
+    });
+
+    await runtime.boot();
+    await expect(runtime.shutdown()).rejects.toThrow('shutdown failed');
+
+    expect(calls).toEqual(['shutdown', 'stop']);
   });
 });

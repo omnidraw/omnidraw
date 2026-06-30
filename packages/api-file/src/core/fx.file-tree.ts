@@ -1,6 +1,6 @@
 import type { join } from "path";
 
-export const ErrorCodes = {
+const ERROR_CODES = {
   FILE_TREE_PATH_NOT_FOUND: "FX.PROJECT_FS.FILE_TREE.PATH_NOT_FOUND",
   FILE_TREE_EXEC_FAILED: "FX.PROJECT_FS.FILE_TREE.EXEC_FAILED",
 } as const satisfies Record<string, TErrorCode>;
@@ -9,6 +9,7 @@ export type TPortal = {
   bun: {
     spawn: typeof Bun.spawn;
   };
+  Response: typeof Response;
   fs: {
     exists: (path: string) => Promise<boolean>;
     join: typeof join;
@@ -25,12 +26,13 @@ type TFileTree = {
 };
 
 async function runCommand(
+  ResponseCtor: typeof Response,
   spawn: typeof Bun.spawn,
   cmd: string[],
   cwd: string
 ): Promise<{ stdout: string; exitCode: number }> {
   const proc = spawn(cmd, { cwd, stdout: "pipe" });
-  const stdout = await new Response(proc.stdout).text();
+  const stdout = await new ResponseCtor(proc.stdout).text();
   await proc.exited;
   return { stdout, exitCode: proc.exitCode ?? 0 };
 }
@@ -47,7 +49,7 @@ export async function fxProjectFsFileTree(
     return [
       null,
       {
-        code: ErrorCodes.FILE_TREE_PATH_NOT_FOUND,
+        code: ERROR_CODES.FILE_TREE_PATH_NOT_FOUND,
         statusCode: 404,
         externalMessage: { en: "Project root path not found" },
       },
@@ -63,8 +65,9 @@ export async function fxProjectFsFileTree(
   if (isGitRepo) {
     // Use git ls-files for git repos (respects .gitignore)
     const [trackedResult, untrackedResult] = await Promise.all([
-      runCommand(portal.bun.spawn, ["git", "ls-files"], projectRoot),
+      runCommand(portal.Response, portal.bun.spawn, ["git", "ls-files"], projectRoot),
       runCommand(
+        portal.Response,
         portal.bun.spawn,
         ["git", "ls-files", "--others", "--exclude-standard"],
         projectRoot
@@ -75,7 +78,7 @@ export async function fxProjectFsFileTree(
       return [
         null,
         {
-          code: ErrorCodes.FILE_TREE_EXEC_FAILED,
+          code: ERROR_CODES.FILE_TREE_EXEC_FAILED,
           statusCode: 500,
           externalMessage: { en: "Failed to execute git ls-files" },
         },
@@ -93,6 +96,7 @@ export async function fxProjectFsFileTree(
   } else {
     // Fallback: use find for non-git repos
     const findResult = await runCommand(
+      portal.Response,
       portal.bun.spawn,
       [
         "find",
@@ -113,7 +117,7 @@ export async function fxProjectFsFileTree(
       return [
         null,
         {
-          code: ErrorCodes.FILE_TREE_EXEC_FAILED,
+          code: ERROR_CODES.FILE_TREE_EXEC_FAILED,
           statusCode: 500,
           externalMessage: { en: "Failed to execute find command" },
         },

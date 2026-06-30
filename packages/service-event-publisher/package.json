@@ -10,6 +10,7 @@
     "@orpc/server": "catalog:",
     "@vibecanvas/api-db": "workspace:*",
     "@vibecanvas/api-notification": "workspace:*",
+    "@vibecanvas/api-actors": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "zod": "catalog:"
   }

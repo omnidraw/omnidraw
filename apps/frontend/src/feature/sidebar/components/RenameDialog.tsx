@@ -1,7 +1,7 @@
-import type { Component } from "solid-js";
-import { createSignal, createEffect } from "solid-js";
-import { Dialog } from "@kobalte/core/dialog";
 import { Button } from "@kobalte/core/button";
+import { Dialog } from "@kobalte/core/dialog";
+import { createEffect, createSignal, type Component } from "solid-js";
+import styles from "./SidebarDialog.module.css";
 
 export type RenameDialogProps = {
   open: boolean;
@@ -13,7 +13,9 @@ export type RenameDialogProps = {
 export const RenameDialog: Component<RenameDialogProps> = (props) => {
   const [name, setName] = createSignal(props.currentName);
 
-  // Reset name when dialog opens with new currentName
+  const secondaryButtonClass = `${styles.button} ${styles.secondaryButton}`;
+  const primaryButtonClass = `${styles.button} ${styles.primaryButton}`;
+
   createEffect(() => {
     if (props.open) {
       setName(props.currentName);
@@ -38,20 +40,15 @@ export const RenameDialog: Component<RenameDialogProps> = (props) => {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay class="fixed inset-0 bg-black/50 z-40" />
-        <Dialog.Content class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover text-popover-foreground border border-border shadow-md p-6 z-50 w-100 max-w-[90vw]">
-          <Dialog.Title class="font-display text-base text-foreground mb-1">
-            Rename Canvas
-          </Dialog.Title>
-          <Dialog.Description class="text-xs text-muted-foreground mb-4">
+        <Dialog.Overlay class={styles.overlay} />
+        <Dialog.Content class={styles.content}>
+          <Dialog.Title class={styles.title}>Rename Canvas</Dialog.Title>
+          <Dialog.Description class={styles.description}>
             Enter a new name for this canvas.
           </Dialog.Description>
 
-          <div class="mb-6">
-            <label
-              for="canvas-name"
-              class="block text-xs font-medium text-foreground mb-1.5"
-            >
+          <div class={styles.field}>
+            <label for="canvas-name" class={styles.label}>
               Canvas Name
             </label>
             <input
@@ -60,20 +57,20 @@ export const RenameDialog: Component<RenameDialogProps> = (props) => {
               value={name()}
               onInput={(e) => setName(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
-              class="w-full px-3 py-2 text-sm bg-background border border-input text-foreground outline-none focus:ring-2 focus:ring-ring transition-colors"
+              class={styles.input}
               autofocus
             />
           </div>
 
-          <div class="flex justify-end gap-2">
+          <div class={styles.actions}>
             <Button
-              class="px-4 py-2 text-xs font-medium bg-secondary text-secondary-foreground border border-border hover:bg-stone-300 dark:hover:bg-stone-700 transition-colors"
+              class={secondaryButtonClass}
               onClick={() => props.onOpenChange(false)}
             >
               Cancel
             </Button>
             <Button
-              class="px-4 py-2 text-xs font-medium bg-primary text-primary-foreground hover:bg-amber-600 transition-colors"
+              class={primaryButtonClass}
               onClick={handleRename}
             >
               Rename

@@ -1,21 +1,61 @@
 import Konva from "konva";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { JSDOM } from "jsdom";
 import type { DocHandle } from "@automerge/automerge-repo";
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc";
+import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { createRoot } from "solid-js";
 import { vi } from "vitest";
-import type { IPlugin, IPluginContext } from "../src/plugins";
-import { CanvasService } from "../src/services/canvas/Canvas.service";
+import type { IPlugin, IPluginContext, IServiceMap } from "@vibecanvas/runtime";
+
+type TLegacyCanvasService = {
+  initialized: Promise<void>;
+  destroy(): void;
+};
 
 type TCanvasTestHarness = {
-  service: CanvasService;
+  service: TLegacyCanvasService;
   stage: Konva.Stage;
   staticBackgroundLayer: Konva.Layer;
   staticForegroundLayer: Konva.Layer;
   dynamicLayer: Konva.Layer;
   destroy: () => void;
 };
+
+export function ensureDom() {
+  if (typeof document !== "undefined" && typeof window !== "undefined") {
+    return;
+  }
+
+  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  vi.stubGlobal?.("window", dom.window);
+  vi.stubGlobal?.("document", dom.window.document);
+  vi.stubGlobal?.("navigator", dom.window.navigator);
+  vi.stubGlobal?.("HTMLElement", dom.window.HTMLElement);
+  vi.stubGlobal?.("HTMLInputElement", dom.window.HTMLInputElement);
+  vi.stubGlobal?.("HTMLTextAreaElement", dom.window.HTMLTextAreaElement);
+  vi.stubGlobal?.("MouseEvent", dom.window.MouseEvent);
+  vi.stubGlobal?.("KeyboardEvent", dom.window.KeyboardEvent);
+  vi.stubGlobal?.("Event", dom.window.Event);
+  vi.stubGlobal?.("Range", dom.window.Range);
+  vi.stubGlobal?.("DOMRect", dom.window.DOMRect);
+
+  if (typeof window === "undefined") {
+    Object.assign(globalThis, {
+      window: dom.window,
+      document: dom.window.document,
+      navigator: dom.window.navigator,
+      HTMLElement: dom.window.HTMLElement,
+      HTMLInputElement: dom.window.HTMLInputElement,
+      HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+      MouseEvent: dom.window.MouseEvent,
+      KeyboardEvent: dom.window.KeyboardEvent,
+      Event: dom.window.Event,
+      Range: dom.window.Range,
+      DOMRect: dom.window.DOMRect,
+    });
+  }
+}
 
 export function ensureResizeObserver() {
   if (typeof ResizeObserver !== "undefined") {
@@ -27,7 +67,10 @@ export function ensureResizeObserver() {
     disconnect() { }
   }
 
-  vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  vi.stubGlobal?.("ResizeObserver", MockResizeObserver);
+  if (typeof ResizeObserver === "undefined") {
+    Object.assign(globalThis, { ResizeObserver: MockResizeObserver });
+  }
 }
 
 function createEmptyDomRect(): DOMRect {
@@ -115,7 +158,7 @@ export function createMockDocHandle(overrides?: Partial<TCanvasDoc>): DocHandle<
     __emitChange: emitChange,
   };
 
-  return docHandle as DocHandle<TCanvasDoc>;
+  return docHandle as unknown as DocHandle<TCanvasDoc>;
 }
 
 export function createTestContainer(args?: { width?: number; height?: number }) {
@@ -131,14 +174,25 @@ export function createTestContainer(args?: { width?: number; height?: number }) 
   return container;
 }
 
+type TLegacyAppCapabilities = {
+  uploadImage?: unknown;
+  cloneImage?: unknown;
+  deleteImage?: unknown;
+  notification?: unknown;
+  terminal?: unknown;
+  filetree?: unknown;
+  file?: unknown;
+};
+
 export async function createCanvasTestHarness(args: {
   plugins: IPlugin[];
-  initializeScene?: (context: IPluginContext) => void;
+  initializeScene?: (context: IPluginContext<IServiceMap, object, object>) => void;
   docHandle?: DocHandle<TCanvasDoc>;
   width?: number;
   height?: number;
-  appCapabilities?: Pick<IPluginContext["capabilities"], "uploadImage" | "cloneImage" | "deleteImage" | "notification" | "terminal" | "filetree" | "file">;
+  appCapabilities?: TLegacyAppCapabilities;
 }): Promise<TCanvasTestHarness> {
+  ensureDom();
   ensureResizeObserver();
   ensureRangeGeometryMocks();
 
@@ -146,26 +200,42 @@ export async function createCanvasTestHarness(args: {
   const docHandle = args.docHandle ?? createMockDocHandle();
 
   let disposeRoot: (() => void) | undefined;
-  let service: CanvasService | undefined;
+  let service: TLegacyCanvasService | undefined;
 
   createRoot((dispose) => {
     disposeRoot = dispose;
-    service = new CanvasService(
-      container,
-      docHandle,
-      [
-        ...args.plugins,
-        {
-          apply(context) {
-            args.initializeScene?.(context);
-          },
-        },
-      ],
-      args.appCapabilities,
-    );
   });
 
-  await service!.initialized;
+  const legacyCanvasServicePath = "../src/services/canvas/Canvas.service";
+  const legacyModule = await import(/* @vite-ignore */ legacyCanvasServicePath).catch(() => null) as null | {
+    CanvasService: new (
+      container: HTMLDivElement,
+      docHandle: DocHandle<TCanvasDoc>,
+      plugins: IPlugin[],
+      appCapabilities?: TLegacyAppCapabilities,
+    ) => TLegacyCanvasService;
+  };
+
+  if (!legacyModule) {
+    throw new Error("Legacy CanvasService is not available in this rewrite-aware test harness");
+  }
+
+  service = new legacyModule.CanvasService(
+    container,
+    docHandle,
+    [
+      ...args.plugins,
+      {
+        name: "test-initialize-scene",
+        apply(context) {
+          args.initializeScene?.(context as IPluginContext<IServiceMap, object, object>);
+        },
+      },
+    ],
+    args.appCapabilities,
+  );
+
+  await service.initialized;
 
   const stage = (window as typeof window & { stage?: Konva.Stage }).stage ?? null;
   if (!stage) {

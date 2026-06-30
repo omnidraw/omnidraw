@@ -30,15 +30,33 @@ Goal:
 - make code easier to test, move, and reuse
 
 Folder rule:
-- agent should try to maintain a `/core` folder in every package
-- put functions and logic-first code in that `/core` folder
+- use `/core` within a package for shared functions and shared logic-first code
+- do not move everything into `/core` by default
+- when logic is local to one feature or plugin, prefer sibling `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files next to the orchestrating file
 - if package structure needs it, `/core` may live inside a subfolder instead
 - only do nested `/core` folders when complexity is high and locality is better
+- use one `CONSTANTS.md` file per folder when needed.
+- use one `typed.ts` and or `interface.ts` file per folder only for reusable typings
+- `CONSTANTS.ts` is allowed to be imported by local `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files
+- `types.ts` and `interface.ts` are allowed to be imported by local `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files
+- always put local TPortal* TArgs* types locally
+- always omit suffix in TPortal* TArgs* if you have only one function to export
+
+Local split rule:
+- keep orchestration-heavy files as the main local file when that shape fits the feature, for example plugin files like `Grid.plugin.ts`
+- move pure local logic into sibling `fn.*.ts` files
+- move impure read helpers into sibling `fx.*.ts` files
+- move impure write helpers into sibling `tx.*.ts` files
+- use `CONSTANTS.ts` for local shared constants that are not themselves function files
+- prefer local sibling split over creating a shared `/core` module when the logic is only used by that folder
+- example: `Grid.plugin.ts` may orchestrate behavior while `fn.math.ts`, `tx.draw.ts`, and `CONSTANTS.ts` hold outsourced local pieces by role
 
 Bias:
-- prefer moving logic into `/core` instead of leaving it mixed with UI, services, transport, or stateful code
+- prefer extracting logic out of UI, services, transport, and stateful orchestration files
+- prefer local sibling `fn/fx/tx` files for feature-local logic
+- prefer `/core` only when logic is shared across features or packages
 - prefer simple functions over classes and hidden state
-- if unsure, choose simpler split: state outside, logic inside `/core`
+- if unsure, choose simpler split: orchestration in the local file, logic in typed function files
 
 ## File Type Rules
 
@@ -47,8 +65,9 @@ Do not guess. Use these rules.
 
 ### fn.*.ts
 - ignore `fn.*.test.ts` files
-- exported functions must start with `fx`
-- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, or `tx.`
+- exported functions must start with `fn`
+- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, `tx.`, or is exactly `CONSTANTS`
+- `CONSTANTS.ts` imports are allowed for shared local constants
 - no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
 - do not export classes or other runtime values; only functions and types
 - fn is for pure functions
@@ -64,7 +83,8 @@ Do not guess. Use these rules.
 ### fx.*.ts
 - ignore `fx.*.test.ts` files
 - exported functions must start with `fx`
-- imports must be type-only unless imported module leaf starts with `fn.` or `fx.`
+- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, or is exactly `CONSTANTS`
+- `CONSTANTS.ts` imports are allowed for shared local constants
 - no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
 - do not export classes or other runtime values; only functions and types
 - every `fx*` function must have exactly 2 params
@@ -77,7 +97,8 @@ Do not guess. Use these rules.
 ### tx.*.ts
 - ignore `tx.*.test.ts` files
 - exported functions must start with `tx`
-- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, or `tx.`
+- imports must be type-only unless imported module leaf starts with `fn.`, `fx.`, `tx.`, or is exactly `CONSTANTS`
+- `CONSTANTS.ts` imports are allowed for shared local constants
 - no direct use of runtime globals like `window`, `fetch`, `Bun`, `process`, `console`, `globalThis`
 - do not export classes or other runtime values; only functions and types
 - every `tx*` function must have exactly 2 params
@@ -86,4 +107,7 @@ Do not guess. Use these rules.
 - `TPortal` may hold side effects and mutable services objects
 - `TArgs` is usually serializable payload data
 - tx is for impure writes; use brain and prefer tx when code changes external world state
-- tx may runtime-import `fn.*`, `fx.*`, and `tx.*` helpers
+- tx may runtime-import `fn.*`, `fx.*`, `tx.*`, and `CONSTANTS`
+
+## IMPORTANT
+All files are indexed in `@FILES.md`. Read if you need overview.

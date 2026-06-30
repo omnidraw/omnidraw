@@ -1,4 +1,4 @@
-import type { TCanvasDoc, TElement, TElementStyle, TGroup, TRectData } from '@vibecanvas/service-automerge/types/canvas-doc';
+import type { TCanvasDoc, TElement, TElementStyle, TGroup, TRectData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import * as schema from '@vibecanvas/service-db/schema';
 import { expect } from 'bun:test';
 import { spawn } from 'node:child_process';
@@ -9,8 +9,6 @@ import { fileURLToPath } from 'node:url';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(TEST_DIR, '../../../../..');
-const EXPECTED_MIGRATIONS_DIR = resolve(REPO_ROOT, 'packages/service-db/database-migrations');
-
 type TCanvasRow = typeof schema.canvas.$inferSelect;
 
 export type TProcessResult = {
@@ -63,7 +61,7 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
   const dataDir = join(tempRoot, 'data');
   const cacheDir = join(tempRoot, 'cache');
   const configDir = join(tempRoot, 'config');
-  const dbPath = join(dataDir, 'vibecanvas.sqlite');
+  const dbPath = join(dataDir, 'vibecanvas.turso');
 
   await Promise.all([
     mkdir(dataDir, { recursive: true }),
@@ -124,20 +122,6 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
     if (result.exitCode !== 0) throw new Error(`Harness worker failed for ${command}: ${result.stderr || result.stdout}`);
     return result.stdout.trim() ? JSON.parse(result.stdout) as TResult : (undefined as TResult);
   };
-
-  const dbServiceEntry = resolve(REPO_ROOT, 'packages/service-db/src/DbServiceBunSqlite/index.ts');
-  const migrateResult = await runProcess({
-    cmd: [
-      'bun',
-      '-e',
-      `import { createSqliteDb } from ${JSON.stringify(dbServiceEntry)}; const db = createSqliteDb({ databasePath: process.env.VIBECANVAS_DB, dataDir: process.env.VIBECANVAS_DATA_DIR, cacheDir: process.env.VIBECANVAS_CACHE_DIR, silentMigrations: false }); db.stop();`,
-    ],
-    cwd: REPO_ROOT,
-    env: { ...process.env, VIBECANVAS_DB: dbPath, VIBECANVAS_DATA_DIR: dataDir, VIBECANVAS_CACHE_DIR: cacheDir, VIBECANVAS_CONFIG: configDir },
-  });
-
-  if (migrateResult.exitCode !== 0) throw new Error(`Failed to initialize CLI test database: ${migrateResult.stderr || migrateResult.stdout}`);
-  if (!migrateResult.stdout.includes(`[DB] Applying migrations from ${EXPECTED_MIGRATIONS_DIR}`)) throw new Error(`CLI test harness must bootstrap from ${EXPECTED_MIGRATIONS_DIR}. Received stdout: ${migrateResult.stdout}`);
 
   return {
     tempRoot,

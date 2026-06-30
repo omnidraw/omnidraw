@@ -3,8 +3,11 @@ node_modules/
 
 # Build outputs
 dist/
+!packages/sdk/dist/
+!packages/sdk/dist/**
 .output/
 *.tsbuildinfo
+
 
 # Bun
 bun.lockb
@@ -26,13 +29,19 @@ Thumbs.db
 
 # Tmp
 .tmp*
+tmp/
+tmp./
 
 # Logs
 *.log
 logs/
+log*
+!log-actor-model-task.txt
+!log-service-sandbox-task.txt
 
 # Test coverage
 coverage/
+/tests/artifacts/
 
 # Dev database
 local-volume/

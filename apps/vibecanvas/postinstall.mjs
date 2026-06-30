@@ -7,7 +7,12 @@ const require = createRequire(import.meta.url)
 
 const os = platform()
 const cpu = arch()
-const baseName = ["vibecanvas", os === "win32" ? "windows" : os, cpu].join("-")
+
+if (os === "win32") {
+  console.warn("vibecanvas: Windows builds are not currently published.")
+}
+
+const baseName = ["vibecanvas", os, cpu].join("-")
 
 // Try to find the platform binary
 const attempts = [baseName, `${baseName}-baseline`, `${baseName}-musl`]

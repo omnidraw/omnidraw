@@ -1,5 +1,3 @@
-import { extname } from 'path';
-
 const MIME_BY_EXTENSION: Record<string, string> = {
   '.txt': 'text/plain',
   '.md': 'text/markdown',
@@ -31,8 +29,14 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   '.avi': 'video/x-msvideo',
 };
 
+function fnExtensionFromPath(path: string): string {
+  const fileName = path.split(/[\\/]/).pop() ?? "";
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+}
+
 function fnDetectMime(path: string): string | null {
-  const extension = extname(path).toLowerCase();
+  const extension = fnExtensionFromPath(path);
   return MIME_BY_EXTENSION[extension] ?? null;
 }
 

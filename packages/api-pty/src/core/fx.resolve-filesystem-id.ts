@@ -1,6 +1,7 @@
 import type { TPtyApiContext } from '../types';
 
 type TPortalFilesystemId = {
+  accountId?: TPtyApiContext['accountId'];
   db: TPtyApiContext['db'];
 };
 
@@ -8,11 +9,8 @@ type TArgsFilesystemId = {
   filesystemId?: string;
 };
 
-export function fxResolveFilesystemId(portal: TPortalFilesystemId, args: TArgsFilesystemId): string | null {
+export async function fxResolveFilesystemId(portal: TPortalFilesystemId, args: TArgsFilesystemId): Promise<string | null> {
   if (args.filesystemId) return args.filesystemId;
 
-  const local = portal.db.filesystem.listAll().find((entry) => entry.kind === 'local');
-  if (local) return local.id;
-
-  return null;
+  return 'TODO: currently filesystem id should be not used and ignored. So even this string will work.';
 }

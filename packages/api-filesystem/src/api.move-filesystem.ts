@@ -6,7 +6,7 @@ import { fnToApiFilesystemError } from './core/fn.to-api-filesystem-error';
 import { baseFilesystemOs } from './orpc';
 
 const apiMoveFilesystem = baseFilesystemOs.move.handler(async ({ input, context }) => {
-  const filesystemId = fxResolveFilesystemId({ db: context.db }, { filesystemId: input.body.filesystemId });
+  const filesystemId = await fxResolveFilesystemId({ accountId: context.accountId, db: context.db }, { filesystemId: input.body.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
   const sourcePath = resolve(input.body.source_path);
   const destinationDirPath = resolve(input.body.destination_dir_path);

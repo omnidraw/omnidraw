@@ -1,4 +1,5 @@
 import { ContextMenu } from "@kobalte/core/context-menu";
+import "./index.css";
 import { For, Show, createEffect, type Accessor } from "solid-js";
 
 export type TCanvasContextMenuItem = {
@@ -58,15 +59,13 @@ export function CanvasContextMenu(props: {
           }}
         />
         <ContextMenu.Portal>
-          <ContextMenu.Content
-            class="min-w-[180px] border border-black bg-white shadow-md py-1 z-[9999]"
-          >
+          <ContextMenu.Content class="vc-context-menu">
             <For each={props.items()}>
               {(item) => (
                 <ContextMenu.Item
                   disabled={item.disabled}
                   onSelect={() => item.onSelect()}
-                  class="cursor-pointer px-3 py-2 text-sm outline-none data-[highlighted]:bg-stone-200 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50"
+                  class="vc-context-menu-item"
                 >
                   <ContextMenu.ItemLabel>{item.label}</ContextMenu.ItemLabel>
                 </ContextMenu.Item>

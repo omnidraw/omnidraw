@@ -1,2 +1,3 @@
 /tests/artifacts
 /tests/recordings
+/tests/perf/*.local.txt

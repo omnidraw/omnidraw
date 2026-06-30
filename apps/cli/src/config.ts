@@ -1,21 +1,24 @@
-import type { TCanvasSubcommandOptions } from './parse-argv';
+import type { TCliSubcommandOptions } from './parse-argv';
 
 export interface ICliConfig {
   cwd: string;
   dev: boolean;
   compiled: boolean;
   version: string;
-  command: 'serve' | 'canvas' | 'upgrade' | 'unknown';
+  command: 'serve' | 'upgrade' | 'unknown';
   subcommand?: string;
   rawArgv: string[];
   argv: string[];
   port: number;
-  dataPath: string;
   dbPath: string;
-  configPath: string;
-  cachePath: string;
+  xdgPaths: {
+    configDirPath: string;
+    dataDirPath: string;
+    cacheDirPath: string;
+    stateDirPath: string;
+  };
   helpRequested: boolean;
   versionRequested: boolean;
   upgradeTarget?: string;
-  subcommandOptions?: TCanvasSubcommandOptions;
+  subcommandOptions?: TCliSubcommandOptions;
 }

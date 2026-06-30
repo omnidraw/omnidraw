@@ -3,18 +3,18 @@ import { baseCanvasOs } from './orpc';
 
 const apiUpdateCanvas = baseCanvasOs.update.handler(async ({ input, context }) => {
   if (input.body.name === undefined) {
-    const full = context.db.getFullCanvas(input.params.id);
-    if (!full) {
+    const canvas = await context.db.canvas.findById({ id: input.params.id }, { accountId: context.accountId });
+    if (!canvas) {
       throw new ORPCError('NOT_FOUND', { message: 'Canvas not found' });
     }
 
-    return full.canvas;
+    return canvas;
   }
 
-  const canvas = context.db.canvas.renameById({
+  const canvas = await context.db.canvas.renameById({
     id: input.params.id,
     name: input.body.name,
-  });
+  }, { accountId: context.accountId });
 
   if (!canvas) {
     throw new ORPCError('NOT_FOUND', { message: 'Canvas not found' });

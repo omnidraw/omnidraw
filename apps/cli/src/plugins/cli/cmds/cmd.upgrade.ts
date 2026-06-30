@@ -1,12 +1,11 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import { dirname, join } from 'path';
-import { parseArgs } from 'util';
 import { createHash } from 'crypto';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { parseArgs } from 'util';
 import type { ICliConfig } from '../../../config';
-import fnCliUpdateResolvePolicy from '../core/fn.resolve-policy';
-import fnCliUpdateShouldUpgrade from '../core/fn.should-upgrade';
-import { resolveCliPaths } from '../../../resolve-paths';
+import { fnCliUpdateResolvePolicy } from '../core/fn.resolve-policy';
+import { fnCliUpdateShouldUpgrade } from '../core/fn.should-upgrade';
 
 type TInstallMethod = 'curl' | 'npm' | 'unknown';
 
@@ -89,7 +88,7 @@ function printUpgradeHelp(): void {
 
 Options:
   --check              Check for updates without installing
-  --dry-run            Download candidate build and validate startup + DB migration on a temp copy
+  --dry-run            Download candidate build and validate startup on a temp copy
   --method <method>    Override install method (curl, npm, unknown)
   --target-version <v> Target specific version (leading "v" optional)
   --help, -h           Show this help message
@@ -129,8 +128,7 @@ function detectInstallMethod(): TInstallMethod {
 }
 
 function readConfigAutoupdate(config: ICliConfig): boolean | 'notify' | undefined {
-  const { configDir } = resolveCliPaths(config);
-  const configFilePath = join(configDir, 'config.json');
+  const configFilePath = join(config.xdgPaths.configDirPath, 'config.json');
   if (!existsSync(configFilePath)) return undefined;
 
   try {
@@ -420,24 +418,9 @@ function findExtractedBinary(extractDir: string, binaryName: string): string {
   throw new Error(`Could not find ${binaryName} in extracted archive`);
 }
 
-function copyIfExists(sourcePath: string, destinationPath: string): void {
-  if (!existsSync(sourcePath)) return;
-  mkdirSync(dirname(destinationPath), { recursive: true });
-  copyFileSync(sourcePath, destinationPath);
-}
-
-function copyDatabaseForDryRun(sourceDbPath: string, tempDbPath: string): void {
-  mkdirSync(dirname(tempDbPath), { recursive: true });
-  if (existsSync(sourceDbPath)) {
-    copyFileSync(sourceDbPath, tempDbPath);
-  }
-  copyIfExists(`${sourceDbPath}-wal`, `${tempDbPath}-wal`);
-  copyIfExists(`${sourceDbPath}-shm`, `${tempDbPath}-shm`);
-}
-
-async function executeCandidateBinary(binaryPath: string, tempDbPath: string, tempConfigDir: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+async function executeCandidateBinary(binaryPath: string, tempConfigDir: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn({
-    cmd: [binaryPath, 'canvas', 'list', '--json', '--db', tempDbPath],
+    cmd: [binaryPath, '--version'],
     stdout: 'pipe',
     stderr: 'pipe',
     env: {
@@ -467,7 +450,6 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
   const checksumPath = join(tempRoot, releaseAsset.checksumName);
   const extractDir = join(tempRoot, 'extract');
   const tempConfigDir = join(tempRoot, 'config');
-  const tempDbPath = join(tempRoot, 'db', 'vibecanvas.sqlite');
   const releaseTag = `v${args.version.replace(/^v/i, '')}`;
 
   try {
@@ -488,24 +470,19 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
       chmodSync(binaryPath, 0o755);
     }
 
-    args.onProgress?.({ percent: 90, label: 'Preparing temporary database' });
-    copyDatabaseForDryRun(args.config.dbPath, tempDbPath);
+    args.onProgress?.({ percent: 90, label: 'Preparing temporary config' });
     mkdirSync(tempConfigDir, { recursive: true });
 
-    args.onProgress?.({ percent: 95, label: 'Running startup + migration dry-run' });
-    const result = await executeCandidateBinary(binaryPath, tempDbPath, tempConfigDir);
+    args.onProgress?.({ percent: 95, label: 'Running startup dry-run' });
+    const result = await executeCandidateBinary(binaryPath, tempConfigDir);
     if (result.exitCode !== 0) {
       const details = (result.stderr || result.stdout).trim() || 'candidate binary exited with non-zero status';
       return { ok: false, message: `Dry-run failed: ${details}` };
     }
 
-    if (!existsSync(tempDbPath)) {
-      return { ok: false, message: 'Dry-run failed: candidate binary did not create or open the temporary database' };
-    }
-
     return {
       ok: true,
-      message: `Dry-run passed for ${releaseAsset.packageName}@${args.version}. Download, checksum, startup, and temp DB migration all succeeded.`,
+      message: `Dry-run passed for ${releaseAsset.packageName}@${args.version}. Download, checksum, and startup all succeeded.`,
     };
   } catch (error) {
     return {

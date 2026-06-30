@@ -4,6 +4,7 @@
  */
 
 import type { JSX } from "solid-js";
+import "./styles.css";
 
 interface ToolButtonProps {
   icon: JSX.Element;
@@ -14,35 +15,38 @@ interface ToolButtonProps {
 }
 
 export function ToolButton(props: ToolButtonProps) {
+  const hasWideShortcut = () => Boolean(props.shortcut && props.shortcut.length > 3);
+
   return (
     <button
       type="button"
       onClick={props.onClick}
-      class={`relative flex h-7 w-full items-center justify-center transition-colors ${
-        props.isActive
-          ? "bg-amber-500/20 text-amber-700 dark:text-amber-400"
-          : "text-muted-foreground hover:bg-stone-200 dark:hover:bg-stone-800"
-      }`}
+      class="vc-toolbar-button"
+      classList={{
+        "vc-toolbar-button--active": props.isActive,
+        "vc-toolbar-button--has-wide-shortcut": hasWideShortcut(),
+      }}
     >
       {props.icon}
       {props.letterShortcut && (
         <span
-          class={`absolute bottom-0 left-px text-[7px] font-mono font-medium ${
-            props.isActive
-              ? "text-amber-600 dark:text-amber-500"
-              : "text-stone-400 dark:text-stone-500"
-          }`}
+          class="vc-toolbar-button__shortcut vc-toolbar-button__shortcut--left"
+          classList={{
+            "vc-toolbar-button__shortcut--active": props.isActive,
+            "vc-toolbar-button__shortcut--muted": !props.isActive,
+          }}
         >
           {props.letterShortcut}
         </span>
       )}
       {props.shortcut && (
         <span
-          class={`absolute bottom-0 right-px text-[7px] font-mono font-medium ${
-            props.isActive
-              ? "text-amber-600 dark:text-amber-500"
-              : "text-stone-400 dark:text-stone-500"
-          }`}
+          class="vc-toolbar-button__shortcut vc-toolbar-button__shortcut--right"
+          classList={{
+            "vc-toolbar-button__shortcut--active": props.isActive,
+            "vc-toolbar-button__shortcut--muted": !props.isActive,
+            "vc-toolbar-button__shortcut--wide": hasWideShortcut(),
+          }}
         >
           {props.shortcut}
         </span>

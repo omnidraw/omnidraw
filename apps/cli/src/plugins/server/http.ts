@@ -1,4 +1,5 @@
-import type { IDbService, TFileFormat } from '@vibecanvas/service-db/IDbService';
+import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { TFileFormat } from '@vibecanvas/service-db/model';
 import type { ICliConfig } from '../../config';
 
 type TEmbeddedAssetsModule = {
@@ -84,11 +85,11 @@ function fileMetaFromPathname(pathname: string): { id: string; format: TFileForm
   return { id: match[1], format };
 }
 
-function createFileResponse(req: Request, db: IDbService): Response {
+async function createFileResponse(req: Request, db: DbServiceTurso): Promise<Response> {
   const fileMeta = fileMetaFromPathname(new URL(req.url).pathname);
   if (!fileMeta) return new Response('Not Found', { status: 404 });
 
-  const record = db.file.get(fileMeta);
+  const record = await db.file.getById({ id: fileMeta.id });
   if (!record) return new Response('Not Found', { status: 404 });
 
   const etag = `"${record.id}:${record.hash}"`;
@@ -102,16 +103,20 @@ function createFileResponse(req: Request, db: IDbService): Response {
     });
   }
 
-  return new Response(Buffer.from(record.base64, 'base64'), {
+  const data = record.data instanceof ArrayBuffer
+    ? new Uint8Array(record.data)
+    : record.data;
+
+  return new Response(data, {
     headers: {
-      'Content-Type': record.format,
+      'Content-Type': record.mime_type,
       'Cache-Control': 'public, max-age=31536000, immutable',
       ETag: etag,
     },
   });
 }
 
-async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compiled' | 'version'>, db: IDbService, importMetaDir: string): Promise<Response> {
+async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compiled' | 'version'>, db: DbServiceTurso, importMetaDir: string): Promise<Response> {
   const url = new URL(req.url);
 
   if (req.method === 'GET' && url.pathname === '/health') {
@@ -124,7 +129,7 @@ async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compile
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
-    return createFileResponse(req, db);
+    return await createFileResponse(req, db);
   }
 
   const assets = await createHttpAssetResolver(importMetaDir);

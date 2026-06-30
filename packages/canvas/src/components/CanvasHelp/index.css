@@ -1,0 +1,171 @@
+.vc-canvas-help-trigger {
+  pointer-events: auto;
+  display: flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.vc-canvas-help-trigger:hover,
+.vc-canvas-help-close:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.vc-canvas-help-trigger-label {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.vc-canvas-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.vc-canvas-help-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 50;
+  width: min(960px, calc(100vw - 24px));
+  max-height: 85vh;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.vc-canvas-help-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+}
+
+.vc-canvas-help-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  line-height: 2rem;
+  color: var(--foreground);
+}
+
+.vc-canvas-help-description {
+  margin-top: 0.25rem;
+  max-width: 42rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.vc-canvas-help-close {
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.vc-canvas-help-close-label {
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.vc-canvas-help-grid {
+  display: grid;
+  gap: 1rem;
+  max-height: calc(85vh - 96px);
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.vc-canvas-help-section {
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+
+.vc-canvas-help-section-header {
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+
+.vc-canvas-help-section-title {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  color: var(--foreground);
+}
+
+.vc-canvas-help-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 3.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+
+.vc-canvas-help-item:last-child {
+  border-bottom: 0;
+}
+
+.vc-canvas-help-item-label {
+  font-size: 0.875rem;
+  color: var(--foreground);
+}
+
+.vc-canvas-help-item-note {
+  margin-top: 0.25rem;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.vc-canvas-help-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.vc-keycap {
+  display: inline-flex;
+  min-width: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+@media (min-width: 768px) {
+  .vc-canvas-help-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .vc-canvas-help-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

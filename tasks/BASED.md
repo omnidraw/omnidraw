@@ -19,11 +19,12 @@ B ugs: Something is not working as expected.
 A dditions: New features or improvements.
 S ubtractions: Removing or simplifing parts of the codebase.
 E xplorations: Researching new technologies or ideas.
-D irections: Highlevel ideas for where to go and what to do next.
+D eployable: Important changes that are ready to be deployed.
 
 The status are tagged:
 - [ ]: open
 - [x]: closed
+- [-]: dropped
 - [?]: unsure
 - [!]: urgent
 - [~]: in progress
@@ -40,7 +41,7 @@ Based now lives at the repository root in `tasks/`.
 - `tasks/a/`: addition files.
 - `tasks/s/`: subtraction files.
 - `tasks/e/`: exploration files.
-- `tasks/d/`: direction files.
+- `tasks/d/`: deployable files.
 
 Each line in the overview stays short and links to one dedicated file.
 Each dedicated file stores the task context, TODOs, notes, and logs.
@@ -83,6 +84,9 @@ Leaf files use this format:
 
 Use the overview for scanning.
 Use the leaf files for execution history and local context.
+Never put detailed plan in this file
+Never put leaf notes, lane breakdowns, execution history, or detailed task plans in this file.
+Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 
 ## B ugs
 - [x]: [B1](b/B1.md) - text: edit jumping
@@ -99,15 +103,27 @@ Use the leaf files for execution history and local context.
 - [x]: [B14](b/B14.md) - canvas CLI: `canvas group --help` falls back to global help
 - [x]: [B15](b/B15.md) - canvas CLI: `--json` output is not real JSON
 - [ ]: [B16](b/B16.md) - ci: `@vibecanvas/canvas` tests load Konva node entry and require native `canvas` - only fails in ci
-- [x]: [B21](b/B21.md) - filesystem: recursive filetree scan dies on EPERM/EACCES folders like `~/.Trash`
 - [x]: [B17](b/B17.md) - canvas CLI: `add --schema rect` still requires an element source instead of printing schema
 - [x]: [B18](b/B18.md) - terminal image paste not working in deploy version
 - [x]: [B19](b/B19.md) - cli usage -> no realtime updates via automerge
 - [x]: [B20](b/B20.md) - pen tool: after stroke commit, stay in pen mode instead of switching to selection
+- [x]: [B21](b/B21.md) - filesystem: recursive filetree scan dies on EPERM/EACCES folders like `~/.Trash`
+- [x]: [B21] - can't do 1d edits
+- [x]: [B22] - style color pallet breaks layout
+- [x]: [B23] - bug: pan/zoom on textedit -> text box moves with
+- [x]: [B24] - bug: handtool not working -> drag
+- [x]: [B25](b/B25.md) - onload -> camera can't move for first 4 sec (perf problem)
+- [-]: [B26] - investigate if cli respect zIndex - check tmp/script
+- [x]: [B27] - preview does not attach listeners correctly for all elements
+- [ ]: [B28] - group with widget and rect -> delete rect must also deletes widget
+- [x]: [B29] - shape2d -> edit must show vertical heigt correctly and hide konva.text while editing
+- [x]: [B30] - can't delete text
+- [x]: [B31](b/B31.md) - binary: compiled app cannot find Turso native binding
+- [x]: [B32](b/B32.md) - binary: bundle Turso native addon beside compiled executable
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
-- [ ]: [A2] - add inline text support to diamond and ellipse
+- [x]: [A2] - add inline text support to diamond and ellipse
 - [ ]: [A3] - copy paste elements/groups
 - [x]: [A4](a/A4.md) - terminal: use PartySocket for resilient PTY connection
 - [x]: [A5](a/A5.md) - canvas CLI: explicit --db path override
@@ -126,10 +142,30 @@ Use the leaf files for execution history and local context.
 - [x]: [A19](a/A19.md) - canvas CLI: `add` command
 - [x]: [A20](a/A20.md) - canvas CLI: agent-friendly help, discovery, and forgiving errors
 - [x]: [A21](a/A21.md) - canvas CLI: add `--dry-run` for add/patch/move/group/ungroup/delete
-- [ ]: [A22](a/A22.md) - canvas CLI: allow JSON array payloads for multi-element add and multi-target patch
+- [-]: [A22](a/A22.md) - canvas CLI: allow JSON array payloads for multi-element add and multi-target patch
 - [x]: [A23](a/A23.md) - canvas CLI: document minimal required add args per element type and default optional fields
 - [x]: [A24](a/A24.md) - filetree: double click file opens preview beside tree inside camera view
 - [x]: [A25](a/A25.md) - canvas: react to live Automerge doc changes without page refresh
+- [x]: [A26](a/A26.md) - remember canvas position for each canvas locally
+- [x]: [A27](a/A27.md) - theme: make canvas overlays and terminal fully theme-aware
+- [x]: [A29](a/A29.md) - theme: remember last light and dark theme choices when toggling
+- [x]: [A30](a/A30.md) - theme: remove Tailwind from @vibecanvas/canvas and ship package CSS
+- [x]: [A31](a/A31.md) - theme: remove Tailwind from frontend and stop scanning canvas sources
+- [-]: [A32](a/A32.md) - hosted components: sandboxed Arrow runtime + per-component official packages
+- [ ]: [A33] - deeplink to canvas object
+- [x]: [A34](a/A34.md) - canvas: scene hydrator incremental reconcile instead of full reload on change
+- [-]: [A35] - multiselect => clone drag
+- [x]: [A36](a/A36.md) - theme: centralize canvas style ownership in ThemeService
+- [-]: [A37] - shape1d binding -> must safe them to TElementData
+- [x]: [A38](a/A38.md) - widgets: fullscreen DOM window mode
+- [x]: [A39](a/A39.md) - canvas: non-sandboxed filesystem IDE plugin
+- [x]: [A40](a/A40.md) - canvas: non-sandboxed terminal widget plugin
+- [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
+- [x]: [A42](a/A42.md) - codex hooks: reuse functional-core checks
+- [ ]: [A43](a/A43.md) - db: add authz for public DB methods
+- [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
+- [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
+- [ ]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -144,7 +180,7 @@ Use the leaf files for execution history and local context.
 - [x]: [S12](s/S12.md) - refactor: konvajs
 - [x]: [S13](s/S13.md) - canvas plugins: folder-per-plugin refactor plan
 - [x]: [S14](s/S14.md) - canvas: keep recorder plugin in development only
-- [ ]: [S15] - inline text support -> fix position (use pretext lib?)
+- [x]: [S15] - inline text support -> fix position (use pretext lib?)
 - [x]: [S16](s/S16.md) - canvas: fix broken TypeScript typings in packages/canvas
 - [x]: [S17](s/S17.md) - extract apps/server into apps/cli + shared packages
 - [x]: [S18](s/S18.md) - cli server: migrate http file/static/spa serving from apps/server
@@ -155,15 +191,51 @@ Use the leaf files for execution history and local context.
 - [x]: [S23] Use global costs for dev and prod ports
 - [x]: [S24] rename @vibecanvas/service-db -> @vibecanvas/service.db and co
 - [x]: [S25](s/S25.md) - db: remove filetrees table/schema; canvas-doc fully owns filetree state
-- [~]: [S26](s/S26.md) - db: add filesystems db table for local/remote machine identity
+- [x]: [S26](s/S26.md) - db: add filesystems db table for local/remote machine identity
 - [x]: [S27](s/S27.md) - canvas CLI: remove unimplemented `render` command and help traces
-- [ ]: [S28](s/S28.md) - use runtime package in canvas, like cli does
+- [x]: [S28](s/S28.md) - use runtime package in canvas, like cli does
+- [x]: [S29](s/S29.md) - canvas: add debug config via localstorage for each plugin and service
+- [x]: [S30](s/S30.md) - canvas: remove remaining Tailwind-style classes from component TSX
+- [x]: [S31](s/S31.md) - frontend: remove remaining Tailwind-pattern source from app UI
+- [x]: [S31] - how to deal with /Users/omarezzat/Workspace/vibecanvas/vibecanvas/packages/canvas/src/core/pretext.ts
+- [x]: [S32] - show stylemenu already in create mode when tool like rect,pen is pressed. ux -> user knows where to draw
+- [x]: [S33] - canvas architecture: rename SceneService -> SceneService and split EditorService so editor keeps only edit/transform state while scene registries/mapping move to SceneService
+- [x]: [S34] - test canvas/core if all fn fx file function are correct
+- [x]: [S35](s/S35.md) - canvas/core: align fn fx tx file boundaries, injected portals, and callers
+- [x]: [S36](s/S36.md) - transform ownership: plugin only renders/dispatches; element plugins own drag + crdt
+- [x]: [S37](s/S37.md) - Refactor canvas service/plugin --> simplification written by hand
+- [x]: [S38] - make fn,fx,tx files extension also lint script
+- [x]: [S39] - add TGroup and TElement types for canvas (human leaf file)
+- [x]: [S40](s/S40.md) - canvas: move inline shape text ownership into shape2d
+- [x]: [S41](s/S41.md) - canvas: introduce CloneService and centralize clone lifecycle
+- [x]: [S41] - remove fnCreateLegacyShape2dInlineTextMigrationPlan in next version
+- [x]: [S42] - service refactor
+- [x]: [S43](s/S43.md) - canvas: normalize clone-drag through CloneService
+- [x]: [S44](s/S44.md) - canvas tests: services and transform lane
+- [x]: [S45](s/S45.md) - canvas tests: text edit/session lane
+- [x]: [S46](s/S46.md) - canvas tests: element creation and clone lane
+- [x]: [S47](s/S47.md) - canvas tests: stale coverage audit and integration lane
+- [ ]: [S48](s/s48.md) - registerElement options are unclean, e.g. onMove is tranformer move only
+- [x]: [S49] - TODO [S49]: add onRemove to some callback later
+- [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
+- [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
+- [~]: [S52] - remove drizzle use turso + raw sqlite
+- [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
+- [x]: [S54](s/S54.md) - simplify widget system
+- [x]: [S55](s/S55.md) - store images as blob not base64
+- [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
+- [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
+- [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
+- [x]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
+- [x]: [S60](s/S60.md) - remove terminal widget (comment out only)
+- [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
+- [ ]: [S62](s/S62.md) - reimplement terminal widget API path
+- [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
 
 ## E xplorations
-- [ ]: [E1](e/E1.md) - Tauri Research
-- [ ]: [E5](e/E5.md) - how to implement state machine system?
-- [ ]: [E6](e/E6.md) - should we include a task management
-- [ ]: [E7] - should we include agent
+- [-]: [E1](e/E1.md) - Tauri Research
+- [x]: [E5](e/E5.md) - how to implement state machine system?
+- [-]: [E6](e/E6.md) - should we include a task management
 - [x]: [E8](e/E8.md) - canvas CLI: query/edit surface exploration
 - [ ]: [E9] - tmux for persistant pty sessions
 - [ ]: [E10] - headless chrome to stream to canvas
@@ -171,14 +243,24 @@ Use the leaf files for execution history and local context.
 - [ ]: [E12] - https://github.com/superradcompany/microsandbox
 - [x]: [E13](e/E13.md) - Research Pluginsystem for server
 - [x]: [E14] - do we need packages/functional-core
-- [ ]: [E15](e/E15.md) - canvas UI extensions: sideloadable community widgets and ArrowJS exploration
+- [x]: [E15](e/E15.md) - canvas UI extensions: sideloadable community widgets and ArrowJS exploration
 - [x]: [E16] - filewatch performance. -> on big folders are slow
-- [ ]: [E17](e/E17.md) - automerge authority: optimistic local writes with server validation/reject path
+- [x]: [E17](e/E17.md) - automerge authority: optimistic local writes with server validation/reject path
+- [?]: [E18] - replace iframe with bun.webview??
+- [-]: [E19](e/E19.md) - canvas performance longterm: worker automerge + incremental notifications
+- [x]: [E20](e/E20.md) - improvement crdt updates
+- [?]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
+- [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
+- [ ]: [E23](e/E23.md) - actor output log pruning compatibility
+- [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
+- [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
+- [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
+- [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 
-## D irections
-- [x]: [D1] - AI can edit the canvas directly
-- [x]: [D2] - Server plugin system
-- [x]: [D3] - Support pluggable filsystem architecture
+## D eployable
+- [ ]: [D1] - Generative UI with AI assits
+- [ ]: [D2] - Actor system is attachable
+- [ ]: [D3] - Support pluggable filsystem architecture
 - [ ]: [D4] - Support sideloadable ui elements
 - [ ]: [D5] - AI Canvas Element, attachable to other elements
 - [ ]: [D6] - Gateway support

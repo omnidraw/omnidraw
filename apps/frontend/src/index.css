@@ -1,144 +1,96 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-
-@source "../../../packages/canvas/src";
-
-@custom-variant dark (&:is(.dark *));
-
-/* ============================================
-   VIBECANVAS DESIGN SYSTEM
-   Terminal-like, rough, no border radius
-   Base: Stone | Primary: Amber
-   ============================================ */
-
-@theme {
-
-  /* Border Radius - Terminal aesthetic (none) */
-  --radius-*: initial;
-  --radius-none: 0px;
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-2xl: 0px;
-  --radius-full: 0px;
-}
-
-/* ========================================
-   SEMANTIC TOKENS
-   Light/dark mode switching
-   ======================================== */
 :root {
-  --background: var(--color-stone-50);
-  --foreground: var(--color-stone-900);
+  color-scheme: light;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-display: var(--font-mono);
 
-  --card: var(--color-stone-100);
-  --card-foreground: var(--color-stone-900);
-
-  --popover: white;
-  --popover-foreground: var(--color-stone-900);
-
-  --muted: var(--color-stone-200);
-  --muted-foreground: var(--color-stone-600);
-
-  --primary: var(--color-amber-500);
-  --primary-foreground: var(--color-stone-950);
-
-  --secondary: var(--color-stone-200);
-  --secondary-foreground: var(--color-stone-900);
-
-  --accent: var(--color-amber-100);
-  --accent-foreground: var(--color-amber-900);
-
-  --destructive: var(--color-red-600);
-  --destructive-foreground: var(--color-stone-50);
-
-  --success: var(--color-green-600);
-  --success-foreground: var(--color-stone-50);
-
-  --warning: var(--color-amber-600);
-  --warning-foreground: var(--color-stone-950);
-
-  --border: var(--color-stone-300);
-  --input: var(--color-stone-300);
-  --ring: var(--color-amber-500);
+  /* Fallback theme. ThemeService overwrites these at runtime. */
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --card: #f5f5f4;
+  --card-foreground: #1c1917;
+  --popover: #ffffff;
+  --popover-foreground: #1c1917;
+  --muted: #e7e5e4;
+  --muted-foreground: #57534e;
+  --primary: #f59e0b;
+  --primary-foreground: #0c0a09;
+  --secondary: #e7e5e4;
+  --secondary-foreground: #1c1917;
+  --accent: #fef3c7;
+  --accent-foreground: #78350f;
+  --destructive: #dc2626;
+  --destructive-foreground: #fafaf9;
+  --success: #16a34a;
+  --success-foreground: #fafaf9;
+  --warning: #d97706;
+  --warning-foreground: #0c0a09;
+  --border: #d6d3d1;
+  --input: #d6d3d1;
+  --ring: #f59e0b;
+  --vc-canvas-background: rgba(168, 162, 158, 0.1);
+  --vc-canvas-grid-minor: rgba(71, 85, 105, 0.16);
+  --vc-canvas-grid-major: rgba(71, 85, 105, 0.28);
+  --vc-canvas-selection-fill: rgba(59, 130, 246, 0.12);
+  --vc-canvas-selection-stroke: #3b82f6;
+  --vc-canvas-group-boundary: #1e1e1e;
+  --vc-canvas-debug-text: rgba(71, 85, 105, 0.8);
+  --vc-canvas-text: #000000;
+  --vc-canvas-text-editor-outline: #3b82f6;
+  --vc-terminal-background: #111214;
+  --vc-terminal-foreground: #e5e7eb;
+  --vc-terminal-cursor: #f59e0b;
+  --vc-terminal-selection-background: #374151;
+  --vc-terminal-error-foreground: #fecaca;
 }
 
 .dark {
-  --background: var(--color-stone-950);
-  --foreground: var(--color-stone-50);
-
-  --card: var(--color-stone-900);
-  --card-foreground: var(--color-stone-50);
-
-  --popover: var(--color-stone-900);
-  --popover-foreground: var(--color-stone-50);
-
-  --muted: var(--color-stone-800);
-  --muted-foreground: var(--color-stone-400);
-
-  --primary: var(--color-amber-500);
-  --primary-foreground: var(--color-stone-950);
-
-  --secondary: var(--color-stone-800);
-  --secondary-foreground: var(--color-stone-50);
-
-  --accent: var(--color-stone-700);
-  --accent-foreground: var(--color-amber-300);
-
-  --destructive: var(--color-red-500);
-  --destructive-foreground: var(--color-stone-50);
-
-  --success: var(--color-green-500);
-  --success-foreground: var(--color-stone-950);
-
-  --warning: var(--color-amber-400);
-  --warning-foreground: var(--color-stone-950);
-
-  --border: var(--color-stone-800);
-  --input: var(--color-stone-800);
-  --ring: var(--color-amber-500);
+  color-scheme: dark;
+  --background: #0c0a09;
+  --foreground: #fafaf9;
+  --card: #1c1917;
+  --card-foreground: #fafaf9;
+  --popover: #1c1917;
+  --popover-foreground: #fafaf9;
+  --muted: #292524;
+  --muted-foreground: #a8a29e;
+  --secondary: #292524;
+  --secondary-foreground: #fafaf9;
+  --accent: #44403c;
+  --accent-foreground: #fcd34d;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafaf9;
+  --success: #22c55e;
+  --success-foreground: #0c0a09;
+  --warning: #fbbf24;
+  --warning-foreground: #0c0a09;
+  --border: #292524;
+  --input: #292524;
+  --vc-canvas-background: rgba(12, 10, 9, 0.92);
+  --vc-canvas-grid-minor: rgba(148, 163, 184, 0.16);
+  --vc-canvas-grid-major: rgba(148, 163, 184, 0.28);
+  --vc-canvas-selection-fill: rgba(96, 165, 250, 0.18);
+  --vc-canvas-selection-stroke: #60a5fa;
+  --vc-canvas-group-boundary: #e7e5e4;
+  --vc-canvas-debug-text: rgba(214, 211, 209, 0.72);
+  --vc-canvas-text: #fafaf9;
+  --vc-canvas-text-editor-outline: #60a5fa;
 }
 
-/* ========================================
-   SEMANTIC UTILITIES
-   Maps CSS variables → Tailwind classes
-   ======================================== */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+html {
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
 }
 
-/* ========================================
-   BASE STYLES
-   ======================================== */
-* {
-  touch-action: none;
-  overscroll-behavior: none;
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
+  margin: 0;
+  line-height: inherit;
   font-family: var(--font-mono);
   background-color: var(--background);
   color: var(--foreground);
@@ -146,8 +98,97 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-@layer base {
-  * {
-    border-color: var(--border);
-  }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-color: var(--border);
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+textarea,
+select {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button,
+[type="button"],
+[type="reset"],
+[type="submit"] {
+  appearance: button;
+  -webkit-appearance: button;
+  padding: 0;
+  border: 0 solid transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+button:not(:disabled),
+[type="button"]:not(:disabled),
+[type="reset"]:not(:disabled),
+[type="submit"]:not(:disabled) {
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  border: 0 solid transparent;
+  border-radius: 0;
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+select {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd,
+pre {
+  margin: 0;
+}
+
+ol,
+ul,
+menu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+fieldset,
+legend {
+  margin: 0;
+  padding: 0;
+}
+
+img,
+picture,
+video,
+canvas,
+svg,
+iframe {
+  display: block;
+  vertical-align: middle;
+}
+
+[hidden]:where(:not([hidden="until-found"])) {
+  display: none !important;
 }

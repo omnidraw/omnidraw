@@ -1,0 +1,11 @@
+.shell {
+  display: flex;
+  height: 100vh;
+  background: var(--background);
+}
+
+.main {
+  position: relative;
+  flex: 1 1 0%;
+  overflow: hidden;
+}

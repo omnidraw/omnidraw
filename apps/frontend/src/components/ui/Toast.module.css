@@ -1,0 +1,124 @@
+.list {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 20rem;
+}
+
+.toast {
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  color: var(--foreground);
+  animation: toast-enter 200ms ease-out;
+}
+
+.default {
+  background: var(--card);
+}
+
+.error {
+  background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  border-color: var(--destructive);
+}
+
+.success {
+  background: color-mix(in srgb, var(--success) 10%, var(--card));
+  border-color: var(--success);
+}
+
+.contentRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+
+.titleDefault,
+.titleSuccess {
+  color: var(--foreground);
+}
+
+.titleError {
+  color: var(--destructive);
+}
+
+.description {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--muted-foreground);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.25rem;
+  color: var(--muted-foreground);
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.closeButton:hover {
+  background: var(--accent);
+}
+
+.closeButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.closeIcon {
+  color: var(--muted-foreground);
+}
+
+.progressTrack {
+  height: 0.125rem;
+  margin-top: 0.5rem;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.progressFill {
+  height: 100%;
+}
+
+.progressDefault {
+  background: var(--muted-foreground);
+}
+
+.progressError {
+  background: var(--destructive);
+}
+
+.progressSuccess {
+  background: var(--success);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

@@ -1,0 +1,25 @@
+.vc-context-menu {
+  min-width: 180px;
+  z-index: 9999;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.25rem 0;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.vc-context-menu-item {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.vc-context-menu-item[data-highlighted] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.vc-context-menu-item[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

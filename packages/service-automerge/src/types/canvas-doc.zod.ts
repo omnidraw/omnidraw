@@ -2,6 +2,15 @@ import { z } from 'zod';
 
 export const zPoint2D = z.tuple([z.number(), z.number()]);
 
+export const zJsonValue: z.ZodType<unknown> = z.lazy(() => z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(zJsonValue),
+  z.record(z.string(), zJsonValue),
+]));
+
 export const zBinding = z.object({
   targetId: z.string(),
   anchor: z.object({
@@ -15,6 +24,8 @@ export const zBaseElement = z.object({
   x: z.number(),
   y: z.number(),
   rotation: z.number(),
+  scaleX: z.number().optional(),
+  scaleY: z.number().optional(),
   zIndex: z.string(),
   parentGroupId: z.string().nullable(),
   bindings: z.array(zBinding),
@@ -23,12 +34,31 @@ export const zBaseElement = z.object({
   updatedAt: z.number(),
 });
 
+const zTextAlign = z.union([z.literal('left'), z.literal('center'), z.literal('right')]);
+const zVerticalAlign = z.union([z.literal('top'), z.literal('middle'), z.literal('bottom')]);
+
 export const zDrawingStyle = z.object({
   backgroundColor: z.string().optional(),
   strokeColor: z.string().optional(),
-  strokeWidth: z.number().optional(),
+  strokeWidth: z.string().optional(),
   opacity: z.number().optional(),
-  cornerRadius: z.number().optional(),
+  cornerRadius: z.string().optional(),
+  strokeStyle: z.union([z.literal('solid'), z.literal('dashed'), z.literal('dotted')]).optional(),
+  fontSize: z.string().optional(),
+  textAlign: zTextAlign.optional(),
+  verticalAlign: zVerticalAlign.optional(),
+});
+
+export const zTextData = z.object({
+  type: z.literal('text'),
+  w: z.number(),
+  h: z.number(),
+  text: z.string(),
+  originalText: z.string(),
+  fontFamily: z.string(),
+  link: z.string().nullable(),
+  containerId: z.string().nullable(),
+  autoResize: z.boolean(),
 });
 
 export const zRectData = z.object({
@@ -36,12 +66,14 @@ export const zRectData = z.object({
   w: z.number(),
   h: z.number(),
   radius: z.number().optional(),
+  text: zTextData.optional()
 });
 
 export const zEllipseData = z.object({
   type: z.literal('ellipse'),
   rx: z.number(),
   ry: z.number(),
+  text: zTextData.optional()
 });
 
 export const zDiamondData = z.object({
@@ -49,6 +81,7 @@ export const zDiamondData = z.object({
   w: z.number(),
   h: z.number(),
   radius: z.number().optional(),
+  text: zTextData.optional()
 });
 
 export const zLineData = z.object({
@@ -76,22 +109,6 @@ export const zPenData = z.object({
   simulatePressure: z.boolean(),
 });
 
-export const zTextData = z.object({
-  type: z.literal('text'),
-  w: z.number(),
-  h: z.number(),
-  text: z.string(),
-  originalText: z.string(),
-  fontSize: z.number(),
-  fontFamily: z.string(),
-  textAlign: z.union([z.literal('left'), z.literal('center'), z.literal('right')]),
-  verticalAlign: z.union([z.literal('top'), z.literal('middle'), z.literal('bottom')]),
-  lineHeight: z.number(),
-  link: z.string().nullable(),
-  containerId: z.string().nullable(),
-  autoResize: z.boolean(),
-});
-
 export const zImageData = z.object({
   type: z.literal('image'),
   url: z.string().nullable(),
@@ -108,55 +125,30 @@ export const zImageData = z.object({
   }),
 });
 
-export const zFiletreeData = z.object({
-  type: z.literal('filetree'),
+export const zWidgetWindow = z.enum(['contained', 'minimized', 'fullscreen']);
+
+export const zWidgetData = z.object({
+  type: z.literal('widget'),
+  kind: z.string(),
   w: z.number(),
   h: z.number(),
-  isCollapsed: z.boolean(),
-  path: z.string(),
-  id: z.string().optional()
-});
+  expanded: z.boolean(),
+  window: zWidgetWindow,
+  actorDefinitionName: z.string(),
+  actorInstanceId: z.string().optional(),
+  uiProps: z.record(z.string(), zJsonValue).optional(),
+}).strict();
 
-export const zTerminalData = z.object({
-  type: z.literal('terminal'),
+export const zUiWidgetData = z.object({
+  type: z.literal('ui-widget'),
+  kind: z.string(),
   w: z.number(),
   h: z.number(),
-  isCollapsed: z.boolean(),
-  workingDirectory: z.string(),
-});
-
-export const zFileData = z.object({
-  type: z.literal('file'),
-  w: z.number(),
-  h: z.number(),
-  isCollapsed: z.boolean(),
-  path: z.string(),
-  renderer: z.union([
-    z.literal('pdf'),
-    z.literal('image'),
-    z.literal('text'),
-    z.literal('code'),
-    z.literal('markdown'),
-    z.literal('audio'),
-    z.literal('video'),
-    z.literal('unknown'),
-  ]),
-});
-
-export const zIframeBrowserTab = z.object({
-  id: z.string(),
-  url: z.string(),
-  title: z.string(),
-});
-
-export const zIframeBrowserData = z.object({
-  type: z.literal('iframe-browser'),
-  w: z.number(),
-  h: z.number(),
-  isCollapsed: z.boolean(),
-  tabs: z.array(zIframeBrowserTab),
-  activeTabId: z.string(),
-});
+  expanded: z.boolean(),
+  window: zWidgetWindow,
+  payload: z.record(z.string(), zJsonValue).optional(),
+  uiProps: z.record(z.string(), zJsonValue).optional(),
+}).strict();
 
 export const zElementData = z.union([
   zRectData,
@@ -167,20 +159,20 @@ export const zElementData = z.union([
   zPenData,
   zTextData,
   zImageData,
-  zFiletreeData,
-  zTerminalData,
-  zFileData,
-  zIframeBrowserData,
+  zWidgetData,
+  zUiWidgetData,
 ]);
 
 export const zElementStyle = z.object({
   backgroundColor: z.string().optional(),
   strokeColor: z.string().optional(),
-  strokeWidth: z.number().optional(),
+  strokeWidth: z.string().optional(),
   opacity: z.number().optional(),
-  cornerRadius: z.number().optional(),
-  borderColor: z.string().optional(),
-  headerColor: z.string().optional(),
+  cornerRadius: z.string().optional(),
+  strokeStyle: z.union([z.literal('solid'), z.literal('dashed'), z.literal('dotted')]).optional(),
+  fontSize: z.string().optional(),
+  textAlign: zTextAlign.optional(),
+  verticalAlign: zVerticalAlign.optional(),
 });
 
 export const zElement = zBaseElement.extend({

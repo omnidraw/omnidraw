@@ -9,7 +9,7 @@ import { orpcWebsocketService } from "@/services/orpc-websocket"
 import { Repo, type AutomergeUrl, type DocHandle, type PeerId } from "@automerge/automerge-repo"
 import { BrowserWebSocketClientAdapter } from "@automerge/automerge-repo-network-websocket"
 import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb"
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc"
+import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types"
 
 // LocalStorage key for persisting document URLs
 const DOCS_STORAGE_KEY = "vibecanvas-automerge-docs"

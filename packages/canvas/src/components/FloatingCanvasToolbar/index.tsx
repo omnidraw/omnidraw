@@ -20,6 +20,7 @@ import Globe from "lucide-solid/icons/globe";
 import Grid2x2 from "lucide-solid/icons/grid-2x2";
 import PanelLeft from "lucide-solid/icons/panel-left";
 import { Tooltip } from "@kobalte/core/tooltip";
+import "./styles.css";
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { JSX } from "solid-js";
 import { ToolButton } from "./ToolButton";
@@ -37,7 +38,7 @@ interface IFloatingCanvasToolbarProps {
 const TOOL_ICONS: Record<TTool, () => JSX.Element> = {
   hand: () => <Hand size={14} />,
   select: () => <MousePointer2 size={14} />,
-  rectangle: () => <Square size={14} />,
+  rect: () => <Square size={14} />,
   diamond: () => <Diamond size={14} />,
   ellipse: () => <Circle size={14} />,
   arrow: () => <ArrowRight size={14} />,
@@ -64,21 +65,21 @@ export function FloatingCanvasToolbar(props: IFloatingCanvasToolbarProps) {
   };
 
   return (
-    <div class="absolute top-3 right-3 pointer-events-none z-50 flex flex-row-reverse items-start gap-1.5">
+    <div class="vc-canvas-toolbar-anchor">
       {/* Main toolbar */}
-      <div class="pointer-events-auto flex flex-col bg-card shadow-md border border-border overflow-hidden">
+      <div class="vc-canvas-toolbar-panel">
         {/* Terminal header - clickable toggle */}
         <Tooltip openDelay={400} closeDelay={0} placement="left">
           <Tooltip.Trigger
             as="button"
             type="button"
             onClick={toggleCollapsed}
-            class="w-9 px-1 py-0.5 font-display text-[10px] text-muted-foreground tracking-wide text-center cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors"
+            class="vc-canvas-toolbar-collapse"
           >
             TOOLS
           </Tooltip.Trigger>
           <Tooltip.Portal>
-            <Tooltip.Content class="z-50 px-2 py-1 bg-stone-800 dark:bg-stone-200 text-stone-100 dark:text-stone-800 text-xs font-mono shadow-md">
+            <Tooltip.Content class="vc-canvas-toolbar-tooltip">
               {isCollapsed() ? "Expand tools" : "Collapse tools"}
             </Tooltip.Content>
           </Tooltip.Portal>
@@ -86,7 +87,7 @@ export function FloatingCanvasToolbar(props: IFloatingCanvasToolbarProps) {
 
         {/* Tool buttons - hidden when collapsed */}
         <Show when={!isCollapsed()}>
-          <div class="flex flex-col">
+          <div class="vc-canvas-toolbar-list">
             <For each={TOOLS}>
               {({ tool, shortcut, letterShortcut }) => (
                 <ToolButton
@@ -111,15 +112,16 @@ export function FloatingCanvasToolbar(props: IFloatingCanvasToolbarProps) {
         <button
           type="button"
           onClick={props.onToggleSidebar}
-          class="relative flex h-7 w-full items-center justify-center text-muted-foreground hover:bg-stone-200 dark:hover:bg-stone-800 transition-colors"
-          classList={{ "bg-amber-500/20 text-amber-700 dark:text-amber-400": !isSidebarVisible() }}
+          class="vc-canvas-toolbar-sidebar-toggle"
+          classList={{ "vc-canvas-toolbar-sidebar-toggle--alert": !isSidebarVisible() }}
         >
           <PanelLeft size={14} />
           <span
-            class={`absolute bottom-0 left-px text-[7px] font-mono font-medium ${!isSidebarVisible()
-              ? "text-amber-600 dark:text-amber-500"
-              : "text-stone-400 dark:text-stone-500"
-              }`}
+            class="vc-canvas-toolbar-sidebar-shortcut"
+            classList={{
+              "vc-canvas-toolbar-sidebar-shortcut--alert": !isSidebarVisible(),
+              "vc-canvas-toolbar-sidebar-shortcut--muted": isSidebarVisible(),
+            }}
           >
             {isMac ? "⌘b" : "^b"}
           </span>
@@ -127,13 +129,13 @@ export function FloatingCanvasToolbar(props: IFloatingCanvasToolbarProps) {
       </div>
 
       {/* Help text for panning */}
-      <div class="opacity-50 flex flex-col gap-0.5 text-[9px] text-muted-foreground font-mono pt-0.5">
-        <div class="flex items-center gap-1">
-          <kbd class="w-10 px-1 py-0.5 bg-card border border-border text-[8px] text-center">Middle</kbd>
+      <div class="vc-canvas-toolbar-hints">
+        <div class="vc-canvas-toolbar-hint">
+          <kbd class="vc-canvas-toolbar-keycap">Middle</kbd>
           <span>Pan</span>
         </div>
-        <div class="flex items-center gap-1">
-          <kbd class="w-10 px-1 py-0.5 bg-card border border-border text-[8px] text-center">Space</kbd>
+        <div class="vc-canvas-toolbar-hint">
+          <kbd class="vc-canvas-toolbar-keycap">Space</kbd>
           <span>Drag</span>
         </div>
       </div>

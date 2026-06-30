@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+/**
+ * @file Infers release channels and npm dist-tags from package versions.
+ */
+
 import path from "path"
 
 export type TReleaseChannel = "stable" | "beta" | "nightly"

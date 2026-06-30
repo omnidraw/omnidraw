@@ -1,9 +1,10 @@
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
+import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
 type TCanvasApiContext = {
-  db: IDbService;
+  accountId?: string;
+  db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
   automerge: IAutomergeService;
   requestId?: string;

@@ -1,3 +1,4 @@
+import { actorsHandlers } from '@vibecanvas/api-actors/handlers';
 import { canvasHandlers } from '@vibecanvas/api-canvas/handlers';
 import { dbHandlers } from '@vibecanvas/api-db/handlers';
 import { fileHandlers } from '@vibecanvas/api-file/handlers';
@@ -7,6 +8,7 @@ import { ptyHandlers } from '@vibecanvas/api-pty/handlers';
 
 const router = {
   api: {
+    actors: actorsHandlers,
     canvas: canvasHandlers,
     db: dbHandlers,
     file: fileHandlers,

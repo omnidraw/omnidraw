@@ -5,5 +5,5 @@
     "outDir": "dist",
     "composite": true
   },
-  "include": ["src", "../../global.d.ts"]
+  "include": ["src", "../../global.d.ts", "tests/fn.xdg-paths.test.ts"]
 }

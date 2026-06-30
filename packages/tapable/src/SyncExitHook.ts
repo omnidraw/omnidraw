@@ -1,4 +1,5 @@
 import type { TAsArray } from './interfaces';
+
 /**
  * List of callbacks that can be called in a loop.
  * The loop will be exited if any of the callbacks return true.
@@ -8,6 +9,16 @@ export class SyncExitHook<T> {
 
   tap(fn: (...args: TAsArray<T>) => boolean) {
     this.#callbacks.push(fn);
+
+    return () => {
+      const index = this.#callbacks.indexOf(fn);
+      if (index === -1) {
+        return false;
+      }
+
+      this.#callbacks.splice(index, 1);
+      return true;
+    };
   }
 
   call(...argsArr: TAsArray<T>): boolean {

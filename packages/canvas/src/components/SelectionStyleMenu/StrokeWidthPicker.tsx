@@ -1,24 +1,30 @@
 import { For } from "solid-js";
-import { STROKE_WIDTHS } from "./types";
+import type { TStrokeWidthOption } from "./types";
 
 export function StrokeWidthPicker(props: {
-  value: number;
-  onChange: (width: number) => void;
+  options: TStrokeWidthOption[];
+  value: string | undefined;
+  onChange: (width: string) => void;
 }) {
   return (
-    <div class="flex gap-0.5">
-      <For each={STROKE_WIDTHS}>
+    <div style={{ display: "flex", gap: "0.25rem", "flex-wrap": "wrap" }}>
+      <For each={props.options}>
         {(option) => (
           <button
             type="button"
-            class="w-6 h-5 flex items-center justify-center border border-border hover:bg-stone-200 transition-colors"
-            classList={{
-              "bg-amber-500/20 text-amber-700 border-amber-500": props.value === option.value,
+            style={{
+              height: "1.875rem",
+              padding: "0 0.75rem",
+              border: `1px solid ${props.value === option.value ? "var(--primary)" : "var(--border)"}`,
+              background: props.value === option.value ? "var(--accent)" : "var(--background)",
+              color: "var(--foreground)",
+              "font-size": "0.6875rem",
+              "font-family": "var(--font-mono)",
             }}
             title={option.name}
             onClick={() => props.onChange(option.value)}
           >
-            <div class="bg-current" style={{ width: "12px", height: `${option.value}px` }} />
+            {option.name}
           </button>
         )}
       </For>

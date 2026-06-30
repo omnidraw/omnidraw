@@ -6,14 +6,23 @@ export function FontFamilyPicker(props: {
   onChange: (family: TFontFamily) => void;
 }) {
   return (
-    <div class="grid grid-cols-3 gap-0.5">
+    <div
+      style={{
+        display: "grid",
+        "grid-template-columns": "repeat(3, minmax(0, 1fr))",
+        gap: "0.25rem",
+      }}
+    >
       <For each={FONT_FAMILIES}>
         {(option) => (
           <button
             type="button"
-            class="h-6 min-w-[3.5rem] border border-border px-1 text-[9px] transition-colors hover:bg-stone-200"
-            classList={{
-              "bg-amber-500/20 text-amber-700 border-amber-500": props.value === option.value,
+            style={{
+              height: "1.875rem",
+              border: `1px solid ${props.value === option.value ? "var(--primary)" : "var(--border)"}`,
+              background: props.value === option.value ? "var(--accent)" : "var(--background)",
+              color: "var(--foreground)",
+              "font-size": "0.6875rem",
             }}
             title={option.name}
             onClick={() => props.onChange(option.value)}

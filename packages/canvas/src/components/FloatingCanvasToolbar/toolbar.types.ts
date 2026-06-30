@@ -6,7 +6,7 @@
 export type TTool =
   | "hand"
   | "select"
-  | "rectangle"
+  | "rect"
   | "diamond"
   | "ellipse"
   | "arrow"
@@ -28,7 +28,7 @@ export interface IToolDefinition {
 export const TOOL_SHORTCUTS: Record<string, TTool> = {
   // Number shortcuts
   "1": "select",
-  "2": "rectangle",
+  "2": "rect",
   "3": "diamond",
   "4": "ellipse",
   "5": "arrow",
@@ -38,15 +38,17 @@ export const TOOL_SHORTCUTS: Record<string, TTool> = {
   "9": "image",
   // Letter shortcuts
   "h": "hand",
-  "r": "rectangle",
+  "r": "rect",
   "d": "diamond",
   "o": "ellipse",
   "a": "arrow",
   "l": "line",
   "p": "pen",
   "t": "text",
-  "f": "filesystem",
-  "j": "terminal",
+  // S61: Filesystem widget shortcut disabled while the widget surface is removed.
+  // "f": "filesystem",
+  // S60: Terminal widget shortcut disabled while the widget surface is removed.
+  // "j": "terminal",
   "w": "browser",
   "Escape": "select",
 } as const;
@@ -55,7 +57,7 @@ export const TOOL_SHORTCUTS: Record<string, TTool> = {
 export const TOOLS: IToolDefinition[] = [
   { tool: "hand", letterShortcut: "h" },
   { tool: "select", shortcut: "1", letterShortcut: "esc" },
-  { tool: "rectangle", shortcut: "2", letterShortcut: "r" },
+  { tool: "rect", shortcut: "2", letterShortcut: "r" },
   { tool: "diamond", shortcut: "3", letterShortcut: "d" },
   { tool: "ellipse", shortcut: "4", letterShortcut: "o" },
   { tool: "arrow", shortcut: "5", letterShortcut: "a" },
@@ -63,7 +65,9 @@ export const TOOLS: IToolDefinition[] = [
   { tool: "pen", shortcut: "7", letterShortcut: "p" },
   { tool: "text", shortcut: "8", letterShortcut: "t" },
   { tool: "image", shortcut: "9" },
-  { tool: "filesystem", letterShortcut: "f" },
-  { tool: "terminal", letterShortcut: "j" },
+  // S61: Filesystem widget toolbar entry disabled while the widget surface is removed.
+  // { tool: "filesystem", letterShortcut: "f" },
+  // S60: Terminal widget toolbar entry disabled while the widget surface is removed.
+  // { tool: "terminal", letterShortcut: "j" },
   { tool: "browser", letterShortcut: "w" },
 ];

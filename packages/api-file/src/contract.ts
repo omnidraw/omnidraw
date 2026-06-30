@@ -10,8 +10,8 @@ const fileFormatSchema = z.union([
 
 const putFileInputSchema = z.object({
   body: z.object({
-    base64: z.string(),
-    format: fileFormatSchema,
+    data: z.union([z.instanceof(Blob), z.instanceof(Uint8Array)]),
+    mime_type: fileFormatSchema,
   }),
 });
 

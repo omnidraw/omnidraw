@@ -1,4 +1,4 @@
-import type { IPlugin, IPluginContext, IService, IServiceMap, IServiceRegistry } from './interface';
+import type { IPlugin, IPluginContext, IService, IServiceContext, IServiceMap, IServiceRegistration, IServiceRegistry } from './interface';
 
 type TSortable = { name: string; after?: string[] };
 
@@ -37,13 +37,24 @@ export function topoSort<T extends TSortable>(items: T[]): T[] {
 
 export function createServiceRegistry(): IServiceRegistry {
   const store = new Map<string, IService>();
+  const registrations = new Map<string, IServiceRegistration>();
 
   return {
     getStore() {
       return store;
     },
-    provide<K extends keyof IServiceMap>(name: K, impl: IServiceMap[K]) {
+    getRegistrations() {
+      return [...registrations.values()];
+    },
+    provide<K extends keyof IServiceMap>(name: K, startOrder: number, impl: IServiceMap[K]) {
+      const registration: IServiceRegistration = {
+        name: name as string,
+        startOrder,
+        service: impl as IService,
+      };
+
       store.set(name as string, impl as IService);
+      registrations.set(name as string, registration);
     },
     get<K extends keyof IServiceMap>(name: K): IServiceMap[K] | undefined {
       return store.get(name as string) as IServiceMap[K] | undefined;
@@ -85,11 +96,42 @@ export function createRuntime<THooks extends object, TConfig extends object>({
 
   return {
     async boot() {
+      const registrations = this.services
+        .getRegistrations()
+        .sort((a, b) => a.startOrder - b.startOrder || a.name.localeCompare(b.name));
+
+      for (const { service } of registrations) {
+        if (service && 'start' in service) {
+          await (service.start as (ctx: IServiceContext<THooks, TConfig>) => Promise<void>)({ config, hooks });
+        }
+      }
       for (const plugin of sorted) await plugin.apply(ctx);
       await boot?.(ctx);
     },
     async shutdown() {
-      await shutdown?.(ctx);
+      const registrations = this.services
+        .getRegistrations()
+        .sort((a, b) => b.startOrder - a.startOrder || a.name.localeCompare(b.name));
+
+      let shutdownError: unknown;
+
+      try {
+        await shutdown?.(ctx);
+      } catch (error) {
+        shutdownError = error;
+      }
+
+      try {
+        for (const { service } of registrations) {
+          if (service && 'stop' in service) {
+            await (service.stop as () => Promise<void>)();
+          }
+        }
+      } catch (error) {
+        throw shutdownError ?? error;
+      }
+
+      if (shutdownError) throw shutdownError;
     },
     services,
     hooks,

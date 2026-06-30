@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 
 /**
- * Package current dist artifacts and upload them to a GitHub release.
+ * @file Packages current dist artifacts and uploads them to a GitHub release.
  *
  * Default behavior:
  * - Reads dist/release-manifest.json
- * - Creates platform archives in dist/ (*.tar.gz and *.zip)
+ * - Creates platform archives in dist/ (*.tar.gz)
  * - Copies per-platform checksum files into dist/checksums/*.sha256
  * - Creates release if missing; otherwise uploads assets to existing release
  * - Generates release notes via API and strips author attribution
@@ -87,7 +87,7 @@ function collectAssetFiles(distDir: string): string[] {
   const files: string[] = []
 
   for (const name of entries) {
-    if (name.endsWith(".tar.gz") || name.endsWith(".zip")) {
+    if (name.endsWith(".tar.gz")) {
       files.push(path.join(distDir, name))
     }
   }
@@ -111,7 +111,7 @@ function collectAssetFiles(distDir: string): string[] {
 
 function removeOldArchiveAssets(distDir: string): void {
   for (const name of readdirSync(distDir)) {
-    if (name.endsWith(".tar.gz") || name.endsWith(".zip")) {
+    if (name.endsWith(".tar.gz")) {
       rmSync(path.join(distDir, name), { force: true })
     }
   }
@@ -129,22 +129,11 @@ async function packDist(rootDir: string, manifest: TReleaseManifest): Promise<vo
       throw new Error(`Missing package directory: ${packageDir}`)
     }
 
-    const isWindows = target.os === "win32"
-
-    if (isWindows) {
-      const zipName = `${target.packageName}.zip`
-      console.log(`[release] Packing ${zipName}`)
-      const result = await runCommand(["zip", "-rq", zipName, target.packageName], distDir)
-      if (result.exitCode !== 0) {
-        throw new Error(`Failed to zip ${target.packageName}: ${result.stderr || result.stdout}`)
-      }
-    } else {
-      const tarName = `${target.packageName}.tar.gz`
-      console.log(`[release] Packing ${tarName}`)
-      const result = await runCommand(["tar", "-czf", tarName, "-C", `${target.packageName}/bin`, "vibecanvas"], distDir)
-      if (result.exitCode !== 0) {
-        throw new Error(`Failed to tar ${target.packageName}: ${result.stderr || result.stdout}`)
-      }
+    const tarName = `${target.packageName}.tar.gz`
+    console.log(`[release] Packing ${tarName}`)
+    const result = await runCommand(["tar", "-czf", tarName, "-C", `${target.packageName}/bin`, "vibecanvas"], distDir)
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to tar ${target.packageName}: ${result.stderr || result.stdout}`)
     }
   }
 

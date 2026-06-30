@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import fnCliUpdateShouldUpgrade from '../../../../src/plugins/cli/core/fn.should-upgrade';
+import { fnCliUpdateShouldUpgrade } from '../../../../src/plugins/cli/core/fn.should-upgrade';
 
 describe('fnCliUpdateShouldUpgrade', () => {
   test('returns true when latest version is newer', () => {

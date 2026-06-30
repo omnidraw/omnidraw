@@ -3,6 +3,8 @@ import { setupServices } from '../src/setup-services';
 import type { ICliConfig } from '../src/config';
 
 function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
+  const root = `/tmp/vibecanvas-test-${crypto.randomUUID()}`;
+
   return {
     cwd: process.cwd(),
     dev: true,
@@ -12,10 +14,13 @@ function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
     rawArgv: ['bun', 'run'],
     argv: [],
     port: 3000,
-    dataPath: `/tmp/vibecanvas-test-${crypto.randomUUID()}`,
     dbPath: `/tmp/vibecanvas-test-${crypto.randomUUID()}.sqlite`,
-    configPath: `/tmp/vibecanvas-test-${crypto.randomUUID()}.json`,
-    cachePath: `/tmp/vibecanvas-test-${crypto.randomUUID()}`,
+    xdgPaths: {
+      cacheDirPath: `${root}/cache`,
+      configDirPath: `${root}/config`,
+      dataDirPath: `${root}/data`,
+      stateDirPath: `${root}/state`,
+    },
     helpRequested: false,
     versionRequested: false,
     ...overrides,
@@ -33,13 +38,10 @@ describe('setupServices PTY wiring', () => {
     await services.get('db')?.stop?.();
   });
 
-  test('provides pty service outside serve mode too', async () => {
-    const { services } = setupServices(createConfig({ command: 'canvas' }));
+  test('does not provide pty service outside serve mode', async () => {
+    const { services } = setupServices(createConfig({ command: 'upgrade' }));
     const pty = services.get('pty');
 
-    expect(pty?.name).toBe('pty');
-
-    await pty?.stop?.();
-    await services.get('db')?.stop?.();
+    expect(pty).toBeUndefined();
   });
 });
