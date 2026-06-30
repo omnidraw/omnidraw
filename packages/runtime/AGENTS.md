@@ -139,7 +139,7 @@ type IClIPluginContext<TRequired = {}> = IPluginContext<TRequired, ICliHooks>
 ```ts
 declare module '@vibecanvas/runtime' {
   interface IServiceMap {
-    db: IDbService
+    db: DbServiceTurso
     api: IApiService
   }
 }

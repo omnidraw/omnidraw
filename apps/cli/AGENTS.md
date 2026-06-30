@@ -54,26 +54,6 @@ Examples:
 - automerge service
 - event publisher service
 
-## Dependency direction
-
-Preferred:
-
-```text
-plugin -> service contract -> concrete service implementation
-```
-
-Avoid:
-
-```text
-plugin -> concrete implementation details
-```
-
-Good:
-- plugin depends on `IDbService`
-
-Bad:
-- plugin depends on Bun SQLite internals directly
-
 ## Runtime ownership
 
 `@vibecanvas/runtime` is generic.

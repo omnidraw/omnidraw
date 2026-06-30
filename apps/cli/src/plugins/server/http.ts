@@ -1,4 +1,4 @@
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
+import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { TFileFormat } from '@vibecanvas/service-db/model';
 import type { ICliConfig } from '../../config';
 
@@ -85,7 +85,7 @@ function fileMetaFromPathname(pathname: string): { id: string; format: TFileForm
   return { id: match[1], format };
 }
 
-async function createFileResponse(req: Request, db: IDbService): Promise<Response> {
+async function createFileResponse(req: Request, db: DbServiceTurso): Promise<Response> {
   const fileMeta = fileMetaFromPathname(new URL(req.url).pathname);
   if (!fileMeta) return new Response('Not Found', { status: 404 });
 
@@ -116,7 +116,7 @@ async function createFileResponse(req: Request, db: IDbService): Promise<Respons
   });
 }
 
-async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compiled' | 'version'>, db: IDbService, importMetaDir: string): Promise<Response> {
+async function handleHttpRequest(req: Request, config: Pick<ICliConfig, 'compiled' | 'version'>, db: DbServiceTurso, importMetaDir: string): Promise<Response> {
   const url = new URL(req.url);
 
   if (req.method === 'GET' && url.pathname === '/health') {

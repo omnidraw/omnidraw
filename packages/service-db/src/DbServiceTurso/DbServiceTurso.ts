@@ -85,7 +85,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       experimental,
     })
   }
-  async start(): Promise<void> {
+  async start(_ctx?: Parameters<IStartableService["start"]>[0]): Promise<void> {
     await this.db.connect()
     await txDefaultRunPragmas({ db: this.db }, {})
     await txRunMigrations({ db: this.db, Bun, path }, {})
