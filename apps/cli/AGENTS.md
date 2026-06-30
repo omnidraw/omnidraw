@@ -49,7 +49,6 @@ Services:
 - expose methods to plugins
 
 Examples:
-- `IDbService`
 - filesystem service
 - PTY service
 - automerge service
