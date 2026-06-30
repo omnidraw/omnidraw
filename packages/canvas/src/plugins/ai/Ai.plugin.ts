@@ -2,6 +2,9 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ToolService, WidgetManagerService } from "../../services";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
+import { render } from "solid-js/web";
+import { AiWizzard } from "../../components/AiWizzard";
+import { createStore } from "solid-js/store";
 
 const AI_WIDGET_KIND = "ai";
 
@@ -19,40 +22,7 @@ const AI_WIDGET_ICON = `
 function mountAiWidget(args: { root: HTMLDivElement; element: TElement }) {
   args.root.replaceChildren();
 
-  const shell = document.createElement("div");
-  shell.style.display = "flex";
-  shell.style.flexDirection = "column";
-  shell.style.gap = "12px";
-  shell.style.height = "100%";
-  shell.style.boxSizing = "border-box";
-  shell.style.padding = "16px";
-  shell.style.background = "#111827";
-  shell.style.color = "#f9fafb";
-  shell.style.fontFamily = "Inter, ui-sans-serif, system-ui, sans-serif";
-
-  const title = document.createElement("div");
-  title.textContent = "AI Chat";
-  title.style.fontSize = "16px";
-  title.style.fontWeight = "700";
-
-  const message = document.createElement("div");
-  message.textContent = `Hello world from AI widget (${args.element.id})`;
-  message.style.padding = "12px";
-  message.style.border = "1px solid #374151";
-  message.style.borderRadius = "10px";
-  message.style.background = "#1f2937";
-
-  const input = document.createElement("input");
-  input.placeholder = "Example input only — no real chat yet";
-  input.style.marginTop = "auto";
-  input.style.padding = "10px 12px";
-  input.style.border = "1px solid #4b5563";
-  input.style.borderRadius = "8px";
-  input.style.background = "#030712";
-  input.style.color = "#f9fafb";
-
-  shell.append(title, message, input);
-  args.root.appendChild(shell);
+  render(() => AiWizzard({}), args.root)
 
   return () => {
     args.root.replaceChildren();
@@ -73,7 +43,7 @@ export function createAiPlugin(): IPlugin<{
         id: AI_WIDGET_KIND,
         dataType: "ui-widget",
         tool: {
-          label: "AI Chat",
+          label: "Widget AI Wizzard",
           icon: AI_WIDGET_ICON,
           shortcuts: ["8"],
           priority: 77,
