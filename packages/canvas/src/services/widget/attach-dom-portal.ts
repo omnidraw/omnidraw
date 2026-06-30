@@ -48,8 +48,11 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   const div = portal.document.createElement('div');
   const fullscreenHeader = portal.document.createElement('div');
+  const fullscreenTitle = portal.document.createElement('div');
   const fullscreenWindowButton = portal.document.createElement('button');
   const view = portal.document.defaultView;
+  const widgetLabel = portal.widgetConfig?.tool?.label
+    ?? (args.element.data.type === 'widget' || args.element.data.type === 'ui-widget' ? args.element.data.kind : 'Widget');
 
   let disposed = false;
   let initialRenderTimer: number | null = null;
@@ -146,12 +149,21 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenHeader.style.top = '0';
   fullscreenHeader.style.display = 'none';
   fullscreenHeader.style.alignItems = 'center';
-  fullscreenHeader.style.justifyContent = 'flex-end';
+  fullscreenHeader.style.justifyContent = 'space-between';
   fullscreenHeader.style.boxSizing = 'border-box';
   fullscreenHeader.style.padding = '0 10px';
   fullscreenHeader.style.backgroundColor = '#111827';
   fullscreenHeader.style.borderBottom = '1px solid #374151';
   fullscreenHeader.style.pointerEvents = 'auto';
+
+  fullscreenTitle.textContent = widgetLabel;
+  fullscreenTitle.style.minWidth = '0';
+  fullscreenTitle.style.overflow = 'hidden';
+  fullscreenTitle.style.textOverflow = 'ellipsis';
+  fullscreenTitle.style.whiteSpace = 'nowrap';
+  fullscreenTitle.style.color = '#f9fafb';
+  fullscreenTitle.style.fontSize = '12px';
+  fullscreenTitle.style.fontWeight = '600';
 
   const windowIcon = portal.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   windowIcon.setAttribute('viewBox', '0 0 24 24');
@@ -195,6 +207,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     }
     syncDiv();
   };
+  fullscreenHeader.appendChild(fullscreenTitle);
   fullscreenHeader.appendChild(fullscreenWindowButton);
 
   div.dataset.widgetElementId = args.element.id;

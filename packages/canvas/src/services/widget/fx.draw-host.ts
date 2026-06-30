@@ -24,6 +24,7 @@ import type { IWidgetConfig } from './interface'
 
 type THostThemeColors = {
   headerFill: string;
+  headerTitleFill: string;
   bodyFill: string;
   dividerFill: string;
   windowStroke: string;
@@ -38,6 +39,7 @@ function getHostThemeColors(themeService: ThemeService): THostThemeColors {
 
   return {
     headerFill: colors.muted,
+    headerTitleFill: colors.mutedForeground,
     bodyFill: colors.card,
     dividerFill: colors.border,
     windowStroke: colors.border,
@@ -193,7 +195,7 @@ export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
     style: {}
   }
 
-  const group = fnCreateWidgetNode(portal.konva, hostThemeColors, element)
+  const group = fnCreateWidgetNode(portal.konva, hostThemeColors, element, { label: args.widgetConfig.tool?.label })
 
   return group
 }

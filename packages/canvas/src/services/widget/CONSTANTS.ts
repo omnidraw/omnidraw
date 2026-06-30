@@ -1,5 +1,6 @@
 export const WIDGET_HOST_BORDER_ID = 'border'
 export const WIDGET_HOST_HEADER_ID = 'header'
+export const WIDGET_HOST_TITLE_ID = 'title'
 export const WIDGET_HOST_BODY_ID = 'body'
 export const WIDGET_HOST_DIVIDER_ID = 'divider'
 export const WIDGET_HOST_CLOSE_BUTTON_ID = 'traffic-light-close'

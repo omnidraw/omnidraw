@@ -7,6 +7,7 @@ export function fnGetHostThemeColors(themeService: ThemeService): THostThemeColo
 
   return {
     headerFill: colors.muted,
+    headerTitleFill: colors.mutedForeground,
     bodyFill: colors.card,
     dividerFill: colors.border,
     windowStroke: colors.border,

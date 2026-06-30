@@ -203,7 +203,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       matchesElement: (element) => (element.data.type === "widget" || element.data.type === "ui-widget") && element.data.kind === wConfig.id,
       createNode: (element) => {
         const colors = fnGetHostThemeColors(this.#themeService)
-        const node = fnCreateWidgetNode(Konva, colors, element)
+        const node = fnCreateWidgetNode(Konva, colors, element, { label: wConfig.tool?.label })
         const onRemove = txAttachDomPortal({
           node,
           widgetPortal: this.#widgetPortal,
@@ -243,14 +243,18 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           return false;
         }
 
+        const colors = fnGetHostThemeColors(this.#themeService);
         const didUpdate = txUpdateWidgetNodeFromElement({
           Circle: Konva.Circle,
           Group: Konva.Group,
           Line: Konva.Line,
           Rect: Konva.Rect,
+          Text: Konva.Text,
         }, {
           node,
           element,
+          label: wConfig.tool?.label,
+          labelFill: colors.headerTitleFill,
         });
         return didUpdate;
       },
@@ -314,6 +318,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           Group: Konva.Group,
           Line: Konva.Line,
           Rect: Konva.Rect,
+          Text: Konva.Text,
         }, {
           node,
           anchors,

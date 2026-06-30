@@ -8,6 +8,7 @@ import {
   WIDGET_HOST_DIVIDER_ID,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
+  WIDGET_HOST_TITLE_ID,
   WIDGET_HOST_MIN_BODY_HEIGHT,
   WIDGET_HOST_MIN_HEIGHT,
   WIDGET_HOST_MIN_WIDTH,
@@ -20,6 +21,7 @@ type TPortal = {
   Group: typeof Konva.Group;
   Line?: typeof Konva.Line;
   Rect: typeof Konva.Rect;
+  Text?: typeof Konva.Text;
 }
 
 type TArgs = {
@@ -67,6 +69,11 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
     if (headerBackground instanceof portal.Rect) {
       headerBackground.width(width);
       headerBackground.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0]);
+    }
+
+    const title = header.findOne(`#${WIDGET_HOST_TITLE_ID}`);
+    if (portal.Text && title instanceof portal.Text) {
+      title.width(Math.max(0, width - title.x() - 8));
     }
   }
 
