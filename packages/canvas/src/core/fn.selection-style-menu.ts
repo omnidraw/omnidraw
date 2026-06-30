@@ -59,7 +59,7 @@ function getSectionKeyForProperty(property: TSelectionStyleProperty): keyof TSel
   }
 }
 
-function getMergedSections(configs: TCanvasRegistrySelectionStyleConfig[]) {
+function getMergedSections(configs: TElementSelectionStyleConfig[]) {
   return configs.reduce((sections, config) => {
     const next = config.sections;
     if (!next) {
