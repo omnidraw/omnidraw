@@ -1,41 +1,33 @@
 import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import ImageIcon from "lucide-static/icons/image.svg?raw";
 import Konva from "konva";
-import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
+import ImageIcon from "lucide-static/icons/image.svg?raw";
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
+import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
+import { fnFilterSelection } from "../../core/fn.filter-selection";
+import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import {
-  fnFileToDataUrl,
   fnFileToBytes,
+  fnFileToDataUrl,
   fnGetImageDimensions,
   fnGetImageSource,
   fnGetSupportedImageFormat,
   fnParseDataUrl,
 } from "../../core/fn.image-utils";
-import type {
-  ContextMenuService,
-  CrdtService,
-  ElementService,
-  GroupService,
-  HistoryService,
-  RenderOrderService,
-  SceneService,
-  SelectionService,
-  SessionService,
-  ToolService,
-} from "../../services";
-import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
-import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
-import { fnFilterSelection } from "../../core/fn.filter-selection";
-import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import { fnGetWorldPosition } from "../../core/fn.world-position";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
+import type {
+  SceneService,
+  SessionService
+} from "../../services";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
+import { txDeleteSelection } from "../select/tx.delete-selection";
 import { fnToImageElement } from "./fn.to-image-element";
 import { txCreateImageCloneDrag } from "./tx.create-image-clone-drag";
 import { txInsertImage } from "./tx.insert-image";
 import { txSetupImageListeners } from "./tx.setup-image-listeners";
 import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
-import { txDeleteSelection } from "../select/tx.delete-selection";
 
 const IMAGE_URL_ATTR = "vcImageUrl";
 const IMAGE_BASE64_ATTR = "vcImageBase64";
@@ -259,18 +251,7 @@ function filterSelection(selection: Konva.Node[]) {
  * Handles image insertion and image node runtime wiring.
  * Supports picker, paste, drop, drag, and serialization hooks.
  */
-export function createImagePlugin(): IPlugin<{
-  contextMenu: ContextMenuService;
-  crdt: CrdtService;
-  element: ElementService;
-  group: GroupService;
-  history: HistoryService;
-  scene: SceneService;
-  renderOrder: RenderOrderService;
-  selection: SelectionService;
-  session: SessionService;
-  tool: ToolService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let fileInput: HTMLInputElement | null = null;
 
   return {

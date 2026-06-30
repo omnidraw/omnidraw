@@ -1,10 +1,8 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { ToolService, WidgetManagerService } from "../../services";
-import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import { render } from "solid-js/web";
 import { AiWizzard } from "../../components/AiWizzard";
-import { createStore } from "solid-js/store";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 const AI_WIDGET_KIND = "ai";
 
@@ -29,10 +27,7 @@ function mountAiWidget(args: { root: HTMLDivElement; element: TElement }) {
   };
 }
 
-export function createAiPlugin(): IPlugin<{
-  tool: ToolService;
-  widgetManager: WidgetManagerService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "ai",
     apply(ctx) {

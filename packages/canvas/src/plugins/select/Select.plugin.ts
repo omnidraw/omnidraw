@@ -1,13 +1,12 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { Node } from "konva/lib/Node";
 import type {
-  ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, RenderOrderService, SceneService
+  SceneService
 } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { txDeleteSelection } from "./tx.delete-selection";
 import { txHandleElementPointerDoubleClick } from "./tx.handle-element-pointer-double-click";
 import { txHandleElementPointerDown } from "./tx.handle-element-pointer-down";
@@ -75,17 +74,7 @@ function txHandleStagePointerDown(args: {
  * Owns selection rules for click, drill-down, and marquee selection.
  * Uses SelectionService as the shared runtime state.
  */
-export function createSelectPlugin(): IPlugin<{
-  contextMenu: ContextMenuService;
-  crdt: CrdtService;
-  history: HistoryService;
-  scene: SceneService;
-  renderOrder: RenderOrderService;
-  selection: SelectionService;
-  theme: ThemeService;
-  element: ElementService;
-  group: GroupService;
-}, IRuntimeHooks> {
+export function createSelectPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "select",
     apply(ctx) {

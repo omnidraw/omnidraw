@@ -1,29 +1,19 @@
+import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import ArrowRight from "lucide-static/icons/arrow-right.svg?raw";
-import Konva from "konva";
-import Minus from "lucide-static/icons/minus.svg?raw";
-import { throttle } from "@solid-primitives/scheduled";
 import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
+import Konva from "konva";
+import ArrowRight from "lucide-static/icons/arrow-right.svg?raw";
+import Minus from "lucide-static/icons/minus.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
-import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
-import type { IRuntimeHooks } from "../../types";
+import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type {
-  CameraService,
-  ContextMenuService,
-  CrdtService,
-  ElementService,
-  GroupService,
-  HistoryService,
-  RenderOrderService,
   SceneService,
-  SelectionService,
-  SessionService,
-  ToolService,
-  TToolCanvasPoint,
+  TToolCanvasPoint
 } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { txDeleteSelection } from "../select/tx.delete-selection";
 import { type THandleDragSnapshot, type TPoint, type TShape1dNode } from "./CONSTANTS";
 import { fnCreateDraftElement } from "./fn.draft";
@@ -47,12 +37,12 @@ import { txUpdateShapeFromElement } from "./tx.element";
 import { type TPortalTxRecordShape1dHistory } from "./tx.history";
 import { txRegisterShape1dElement } from "./tx.register-shape1d-element";
 import { txAttachShapeRuntime, txCreateShapeFromElement } from "./tx.render";
+import { txCreateCloneDrag, txSetupShapeListeners } from "./tx.runtime";
 import {
   txEnsureShape1dMove,
   txFinalizeShape1dMove,
   txPatchShape1dMove,
 } from "./tx.shape-move";
-import { txCreateCloneDrag, txSetupShapeListeners } from "./tx.runtime";
 import type { TShape1dPluginState } from "./typed";
 
 const TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR = "vcTransformMoveBeforeElement";
@@ -136,20 +126,7 @@ function txUpdateShape1dDraftNode(args: {
  * Owns line/arrow registration, create flow, edit handles, clone-drag,
  * transform ownership, and element integration for 1d shapes.
  */
-export function createShape1dPlugin(): IPlugin<{
-  camera: CameraService;
-  contextMenu: ContextMenuService;
-  crdt: CrdtService;
-  element: ElementService;
-  group: GroupService;
-  history: HistoryService;
-  scene: SceneService;
-  renderOrder: RenderOrderService;
-  selection: SelectionService;
-  session: SessionService;
-  theme: ThemeService;
-  tool: ToolService;
-}, IRuntimeHooks> {
+export function createShape1dPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   const state: TShape1dPluginState = {
     previewShape: null,
     draftElementId: null,

@@ -1,9 +1,8 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import { fnGetCanvasNodeKind } from "../../core/fn.canvas-node-semantics";
-import type { CameraService, ElementService, GroupService, SceneService, SelectionService } from "../../services";
-import type { IRuntimeHooks } from "../../types";
+import type { SelectionService } from "../../services";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 const SHOULD_RENDER_SELECTION = true;
 const SHOULD_RENDER_FOCUSED_ID = true;
@@ -38,14 +37,7 @@ function formatSelectionInfo(selection: SelectionService) {
   return lines.join("\n");
 }
 
-export function createVisualDebugPlugin(): IPlugin<{
-  camera: CameraService;
-  element: ElementService;
-  scene: SceneService;
-  selection: SelectionService;
-  theme: ThemeService;
-  group: GroupService;
-}, IRuntimeHooks> {
+export function createVisualDebugPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "visual-debug",
     apply(ctx) {

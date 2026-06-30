@@ -7,7 +7,7 @@ import type { ElementService } from "../../services/element/ElementService";
 import type { GroupService } from "../../services/group/GroupService";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 type TSceneNode = Konva.Group | Konva.Shape;
 type TSceneStateSnapshot = {
@@ -328,13 +328,7 @@ function applyIncrementalElementChange(args: {
 /**
  * Rebuilds runtime scene from CRDT document for migrated groups and elements.
  */
-export function createSceneHydratorPlugin(): IPlugin<{
-  crdt: CrdtService;
-  element: ElementService;
-  group: GroupService;
-  scene: SceneService;
-  selection: SelectionService;
-}, IRuntimeHooks> {
+export function createSceneHydratorPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "scene-hydrator",
     apply(ctx) {

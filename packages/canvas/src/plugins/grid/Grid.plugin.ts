@@ -1,19 +1,10 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import Grid2x2 from "lucide-static/icons/grid-2x2.svg?raw";
-import type { ToolService } from "src/services";
-import type { CameraService } from "../../services/camera/CameraService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { txDrawGrid } from "./tx.draw";
 
-export function createGridPlugin(): IPlugin<{
-  camera: CameraService;
-  tool: ToolService;
-  scene: SceneService;
-  theme: ThemeService;
-}, IRuntimeHooks> {
+export function createGridPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let visible = true;
 
   return {

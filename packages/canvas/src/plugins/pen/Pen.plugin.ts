@@ -9,11 +9,14 @@ import { PEN_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
 import { isKonvaPath } from "../../core/GUARDS";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import type {
-  TCanvasTransformAnchor, CrdtService, HistoryService,
-  RenderOrderService, SceneService, SelectionService, ElementService, TToolCanvasPoint, ToolService,
-  GroupService
+  CrdtService,
+  GroupService,
+  HistoryService,
+  SceneService,
+  TCanvasTransformAnchor,
+  TToolCanvasPoint
 } from "../../services";
-import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices, TElementPointerEvent } from "../../types";
 import { DEFAULT_OPACITY, DEFAULT_STROKE_WIDTH_TOKEN } from "./CONSTANTS";
 import { fnCreatePenDataFromStrokePoints } from "./fn.math";
 import { fxCreatePenNode } from "./fx.create-node";
@@ -281,17 +284,7 @@ function txCommitPenTransform(args: {
  * Owns pen draw-create flow, pen node hydration, drag, and clone wiring.
  * Keeps pen tool state in EditorService and scene behavior in SelectionService.
  */
-export function createPenPlugin(): IPlugin<{
-  crdt: CrdtService;
-  element: ElementService;
-  tool: ToolService;
-  history: HistoryService;
-  renderOrder: RenderOrderService;
-  scene: SceneService;
-  selection: SelectionService;
-  theme: ThemeService;
-  group: GroupService;
-}, IRuntimeHooks> {
+export function createPenPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "pen",
     apply(ctx) {

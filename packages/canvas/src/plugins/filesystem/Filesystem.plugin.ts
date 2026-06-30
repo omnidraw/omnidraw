@@ -4,13 +4,8 @@ import Konva from "konva";
 import FolderCode from "lucide-static/icons/folder-code.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
-import type {
-    CrdtService,
-    SceneService,
-    ToolService,
-    WidgetManagerService,
-} from "../../services";
-import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
+import type { CrdtService, SceneService } from "../../services";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import type { TFilesystemWidgetPayload } from "./typed";
 import { mountFilesystemWidget } from "./widget";
 
@@ -47,12 +42,7 @@ function persistFilesystemPayload(args: {
     .commit();
 }
 
-export function createFilesystemPlugin(): IPlugin<{
-  crdt: CrdtService;
-  scene: SceneService;
-  tool: ToolService;
-  widgetManager: WidgetManagerService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createFilesystemPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
 
   return {
     name: "filesystem",

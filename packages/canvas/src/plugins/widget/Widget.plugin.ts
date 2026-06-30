@@ -1,17 +1,7 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { ThemeService } from "@vibecanvas/service-theme";
-import type { CameraService, ElementService, GroupService, SceneService, SelectionService, WidgetManagerService } from "../../services";
-import type { IRuntimeHooks, IRuntimeConfig } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
-export function createWidgetPlugin(): IPlugin<{
-  camera: CameraService;
-  element: ElementService;
-  scene: SceneService;
-  selection: SelectionService;
-  theme: ThemeService;
-  group: GroupService;
-  widgetManager: WidgetManagerService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "widget-plugin",
     apply(ctx) {

@@ -1,14 +1,11 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { HistoryService } from "../../services/history/HistoryService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 /**
  * Handles keyboard shortcuts for undo and redo.
  * Mirrors old cmd/ctrl+z and cmd/ctrl+shift+z behavior.
  */
-export function createHistoryControlPlugin(): IPlugin<{
-  history: HistoryService;
-}, IRuntimeHooks> {
+export function createHistoryControlPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "history-control",
     apply(ctx) {
