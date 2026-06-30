@@ -1,4 +1,3 @@
-/* eslint-disable functional-core/fx-tx-params -- legacy type guard overloads support direct args calls */
 import type { TElement, TElementStyle } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TThemeDefinition } from "@vibecanvas/service-theme";
 import type Konva from "konva";
@@ -31,25 +30,23 @@ export function fxIsSupportedElementType(portal: TPortalFxIsSupportedElementType
 
 export type TPortalFxIsShape1dNode = {};
 export type TArgsFxIsShape1dNode = { node: Konva.Node | null | undefined };
-export function fxIsShape1dNode(portal: TPortalFxIsShape1dNode | TArgsFxIsShape1dNode, args?: TArgsFxIsShape1dNode): args is TArgsFxIsShape1dNode & { node: TShape1dNode } {
+export function fxIsShape1dNode(portal: TPortalFxIsShape1dNode, args: TArgsFxIsShape1dNode): args is TArgsFxIsShape1dNode & { node: TShape1dNode } {
   void portal;
-  const resolvedArgs = args ?? (portal as TArgsFxIsShape1dNode);
-  if (!isKonvaShape(resolvedArgs.node)) {
+  if (!isKonvaShape(args.node)) {
     return false;
   }
 
-  const data = resolvedArgs.node.getAttr(ELEMENT_DATA_ATTR) as TShape1dData | undefined;
+  const data = args.node.getAttr(ELEMENT_DATA_ATTR) as TShape1dData | undefined;
   return Boolean(data && fxIsSupportedElementType({}, { type: data.type }));
 }
 
 export type TPortalFxHasRenderableRuntime = {};
 export type TArgsFxHasRenderableRuntime = TArgsFxIsShape1dNode;
-export function fxHasRenderableRuntime(portal: TPortalFxHasRenderableRuntime | TArgsFxHasRenderableRuntime, args?: TArgsFxHasRenderableRuntime): args is TArgsFxHasRenderableRuntime & { node: TShape1dNode } {
+export function fxHasRenderableRuntime(portal: TPortalFxHasRenderableRuntime, args: TArgsFxHasRenderableRuntime): args is TArgsFxHasRenderableRuntime & { node: TShape1dNode } {
   void portal;
-  const resolvedArgs = args ?? (portal as TArgsFxHasRenderableRuntime);
-  return fxIsShape1dNode({}, resolvedArgs)
-    && typeof resolvedArgs.node.getSelfRect === "function"
-    && typeof resolvedArgs.node.sceneFunc?.() === "function";
+  return fxIsShape1dNode({}, args)
+    && typeof args.node.getSelfRect === "function"
+    && typeof args.node.sceneFunc?.() === "function";
 }
 
 export type TPortalFxFindShape1dNodeById = { Shape: typeof Konva.Shape; render: SceneService };

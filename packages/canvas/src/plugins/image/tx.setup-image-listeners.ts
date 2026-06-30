@@ -1,8 +1,7 @@
-/* eslint-disable functional-core/import-boundary -- legacy tx setup function imports service classes as runtime-capable portal types */
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import { fnGetCanvasAncestorGroups } from "../../core/fn.canvas-node-semantics";
-import { CrdtService, ElementService, HistoryService, SceneService, SelectionService } from "../../services";
+import type { CrdtService, ElementService, HistoryService, SceneService, SelectionService } from "../../services";
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import type { TPortalUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
 import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
