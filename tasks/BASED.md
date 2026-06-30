@@ -222,7 +222,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [~]: [S52] - remove drizzle use turso + raw sqlite
 - [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 - [x]: [S54](s/S54.md) - simplify widget system
-- [ ]: [S55] - store images as blob not base64
+- [ ]: [S55](s/S55.md) - store images as blob not base64
 - [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
 - [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
@@ -253,6 +253,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
 - [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
 - [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
+- [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
