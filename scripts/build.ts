@@ -18,10 +18,11 @@
  */
 
 import path from "path"
-import { chmodSync, existsSync, rmSync } from "fs"
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, rmSync } from "fs"
 import { Glob } from "bun"
 import { createHash } from "crypto"
 import { inferReleaseChannelFromVersion, readWrapperVersion, type TReleaseChannel } from "./release-channel"
+import { tmpdir } from "os"
 
 // ============================================================
 // Configuration
@@ -34,7 +35,7 @@ const frontendDir = path.join(rootDir, "apps/frontend")
 const sdkDir = path.join(rootDir, "packages/sdk")
 const wrapperDir = path.join(rootDir, "apps/vibecanvas")
 const wrapperBinPath = path.join(wrapperDir, "bin/vibecanvas")
-const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/database-migrations")
+const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/DbServiceTurso/migration-files")
 const forbiddenBinaryMarkers = [
   "wasm_bindgen_output/nodejs/automerge_wasm_bg.wasm",
 ] as const
@@ -43,12 +44,9 @@ const suspiciousBinaryMarkers = ["/home/runner/work/"] as const
 // Platform targets
 const targets = [
   { os: "darwin", arch: "arm64" },
-  { os: "darwin", arch: "x64" },
   { os: "linux", arch: "arm64" },
   { os: "linux", arch: "x64" },
   { os: "linux", arch: "x64", avx2: false },
-  { os: "linux", arch: "arm64", abi: "musl" },
-  { os: "linux", arch: "x64", abi: "musl" },
 ] as const
 
 type Target = (typeof targets)[number]
@@ -64,6 +62,27 @@ type ReleaseManifestTarget = {
   checksumPath: string
   checksumSha256: string
 }
+
+type TNativeAddonConfig = {
+  packageName: string
+  fileName: string
+}
+
+const tursoNativeAddons = {
+  "darwin-arm64": {
+    packageName: "@tursodatabase/database-darwin-arm64",
+    fileName: "turso.darwin-arm64.node",
+  },
+  "linux-arm64": {
+    packageName: "@tursodatabase/database-linux-arm64-gnu",
+    fileName: "turso.linux-arm64-gnu.node",
+  },
+  "linux-x64": {
+    packageName: "@tursodatabase/database-linux-x64-gnu",
+    fileName: "turso.linux-x64-gnu.node",
+  },
+} as const satisfies Record<string, TNativeAddonConfig>
+const tursoNativeAddonVersion = "0.6.0"
 
 // ============================================================
 // Helper Functions
@@ -91,6 +110,73 @@ function buildBunTarget(target: Target): string {
   ]
     .filter(Boolean)
     .join("-")
+}
+
+function getTursoNativeAddon(target: Target): TNativeAddonConfig {
+  const key = `${target.os}-${target.arch}` as keyof typeof tursoNativeAddons
+  const addon = tursoNativeAddons[key]
+  if (!addon) {
+    throw new Error(`No Turso native addon is available for ${buildPackageName(target)}`)
+  }
+  return addon
+}
+
+function resolveTursoNativeAddonSource(addon: TNativeAddonConfig): string {
+  try {
+    return Bun.resolveSync(addon.packageName, path.join(rootDir, "package.json"))
+  } catch {
+    return ""
+  }
+}
+
+async function fetchTursoNativeAddonSource(addon: TNativeAddonConfig): Promise<{ sourcePath: string; cleanupPath: string }> {
+  const cleanupPath = mkdtempSync(path.join(tmpdir(), "vibecanvas-turso-native-"))
+  const packResult = await Bun.$`npm pack ${addon.packageName}@${tursoNativeAddonVersion} --json --pack-destination ${cleanupPath}`.quiet()
+  if (packResult.exitCode !== 0) {
+    rmSync(cleanupPath, { recursive: true, force: true })
+    throw new Error(`Failed to fetch ${addon.packageName}@${tursoNativeAddonVersion}: ${packResult.stderr.toString()}`)
+  }
+
+  const packEntries = JSON.parse(packResult.stdout.toString()) as Array<{ filename: string }>
+  const tarballPath = path.join(cleanupPath, packEntries[0]?.filename ?? "")
+  if (!existsSync(tarballPath)) {
+    rmSync(cleanupPath, { recursive: true, force: true })
+    throw new Error(`npm pack did not create a tarball for ${addon.packageName}`)
+  }
+
+  await Bun.$`tar -xzf ${tarballPath} -C ${cleanupPath}`.quiet()
+  const sourcePath = path.join(cleanupPath, "package", addon.fileName)
+  if (!existsSync(sourcePath)) {
+    rmSync(cleanupPath, { recursive: true, force: true })
+    throw new Error(`Fetched ${addon.packageName} did not contain ${addon.fileName}`)
+  }
+
+  return { sourcePath, cleanupPath }
+}
+
+async function copyTursoNativeAddon(target: Target, distDir: string): Promise<string> {
+  const addon = getTursoNativeAddon(target)
+  let sourcePath = resolveTursoNativeAddonSource(addon)
+  let cleanupPath: string | null = null
+  if (!sourcePath) {
+    const fetched = await fetchTursoNativeAddonSource(addon)
+    sourcePath = fetched.sourcePath
+    cleanupPath = fetched.cleanupPath
+  }
+
+  const nativeDir = path.join(distDir, "native")
+  const outputPath = path.join(nativeDir, addon.fileName)
+
+  try {
+    await Bun.$`mkdir -p ${nativeDir}`
+    copyFileSync(sourcePath, outputPath)
+  } finally {
+    if (cleanupPath) {
+      rmSync(cleanupPath, { recursive: true, force: true })
+    }
+  }
+
+  return outputPath
 }
 
 function parseChannelArg(argv: string[], fallback: TReleaseChannel): TReleaseChannel {
@@ -255,7 +341,7 @@ async function collectMigrationFiles(): Promise<string[]> {
 
 async function generateEmbeddedMigrations(migrationFiles: string[]): Promise<void> {
   const imports = migrationFiles
-    .map((f, i) => `import migration${i} from '../database-migrations/${f}' with { type: "file" };`)
+    .map((f, i) => `import migration${i} from './DbServiceTurso/migration-files/${f}' with { type: "file" };`)
     .join("\n");
 
   const embeddedMigrationsCode = `// Auto-generated file - do not edit
@@ -392,6 +478,7 @@ async function main() {
       }
 
       await assertPortableBinary(outputPath)
+      const nativeAddonPath = await copyTursoNativeAddon(target, distDir)
 
       // Create platform package.json
       await Bun.write(
@@ -433,7 +520,7 @@ async function main() {
         checksumSha256,
       }
 
-      console.log(`   ✓ ${name}`)
+      console.log(`   ✓ ${name} (${path.relative(distDir, nativeAddonPath)})`)
     } catch (error) {
       console.error(`   ✗ ${name}:`, error)
     }
