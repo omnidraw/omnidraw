@@ -207,7 +207,6 @@
 - [Remix + Turso](https://docs.turso.tech/sdk/ts/guides/remix.md): Set up Turso in your Remix project in minutes
 - [SvelteKit + Turso](https://docs.turso.tech/sdk/ts/guides/sveltekit.md): Set up Turso in your SvelteKit project in minutes
 - [Sentry](https://docs.turso.tech/sdk/ts/integrations/sentry.md): Trace slow queries and capture SQL errors with Sentry.
-- [Drizzle + Turso](https://docs.turso.tech/sdk/ts/orm/drizzle.md): Configure Drizzle to work with Turso
 - [Prisma + Turso](https://docs.turso.tech/sdk/ts/orm/prisma.md): Configure Prisma to work with your Turso database
 - [Turso Quickstart (TypeScript)](https://docs.turso.tech/sdk/ts/quickstart.md): Get started with Turso and TypeScript in a few simple steps.
 - [Reference](https://docs.turso.tech/sdk/ts/reference.md): TypeScript Reference for Turso
