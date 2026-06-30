@@ -2,6 +2,7 @@ import { createRuntime, createServiceRegistry, IServiceRegistry } from "@vibecan
 import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
+    createAiPlugin,
     createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
     createHistoryControlPlugin,
     createImagePlugin,
@@ -140,6 +141,7 @@ export function buildRuntime(config: IRuntimeConfig) {
   const plugins: Array<import("@vibecanvas/runtime").IPlugin<any, IRuntimeHooks, IRuntimeConfig>> = [
     createEventListenerPlugin(),
     createGridPlugin(),
+    createAiPlugin(),
     createToolbarPlugin(),
     createSelectionStyleMenuPlugin(),
     createContextMenuPlugin(),
