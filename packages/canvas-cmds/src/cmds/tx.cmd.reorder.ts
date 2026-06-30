@@ -107,7 +107,7 @@ export async function txExecuteCanvasReorder(portal: TPortal, input: TCanvasReor
   try {
     const matchedIds = fnParseReorderIds(input);
     const action = fnParseReorderAction(input);
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: input, command: 'canvas.reorder', actionLabel: 'Reorder' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: input, command: 'canvas.reorder', actionLabel: 'Reorder' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     const matchedTargets = fnResolveTargetsByIds(doc, matchedIds, selectedCanvas.id, input.canvasNameQuery ?? null);
     const parentGroupId = fnEnsureSameParentGroupId(matchedTargets, selectedCanvas.id, input.canvasNameQuery ?? null);

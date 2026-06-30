@@ -1,10 +1,10 @@
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
+import { createStartedAutomergeService, stopStartedAutomergeService, type TStartedAutomergeService } from './fixture.automerge';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc';
+import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { txExecuteCanvasPatch } from 'packages/canvas-cmds/src/cmds/tx.cmd.patch';
+import { txExecuteCanvasPatch } from '@vibecanvas/canvas-cmds/cmds/tx.cmd.patch';
 
 function createRectElement(overrides?: Partial<TElement>): TElement {
   return {
@@ -65,7 +65,7 @@ function createGroup(overrides?: Partial<TGroup>): TGroup {
 
 describe('patch canvas command', () => {
   let dbService!: DbServiceBunSqlite;
-  let automergeService!: AutomergeService;
+  let automergeService!: TStartedAutomergeService;
   let databasePath!: string;
 
   beforeEach(async () => {
@@ -77,11 +77,11 @@ describe('patch canvas command', () => {
       silentMigrations: true,
     });
     await dbService.start();
-    automergeService = new AutomergeService(databasePath);
+    automergeService = await createStartedAutomergeService();
   });
 
   afterEach(async () => {
-    automergeService.stop();
+    await stopStartedAutomergeService(automergeService);
     await dbService.stop();
   });
 

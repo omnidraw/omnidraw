@@ -31,6 +31,7 @@ const __dirname = path.dirname(new URL(import.meta.url).pathname)
 const rootDir = path.join(__dirname, "..")
 const cliDir = path.join(rootDir, "apps/cli")
 const frontendDir = path.join(rootDir, "apps/frontend")
+const sdkDir = path.join(rootDir, "packages/sdk")
 const wrapperDir = path.join(rootDir, "apps/vibecanvas")
 const wrapperBinPath = path.join(wrapperDir, "bin/vibecanvas")
 const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/database-migrations")
@@ -149,6 +150,22 @@ async function assertPortableBinary(binaryPath: string): Promise<void> {
 // ============================================================
 // SPA Bundling
 // ============================================================
+
+async function buildSdkPackage(): Promise<void> {
+  console.log("   Running SDK build...")
+  const sdkBuild = await Bun.$`bun run --filter @vibecanvas/sdk build`.quiet()
+  if (sdkBuild.exitCode !== 0) {
+    console.error("SDK build failed:")
+    console.error(sdkBuild.stderr.toString())
+    console.error(sdkBuild.stdout.toString())
+    process.exit(1)
+  }
+
+  const widgetBundlePath = path.join(sdkDir, "dist/widget.js")
+  if (!existsSync(widgetBundlePath)) {
+    throw new Error(`SDK widget bundle not found after build: ${widgetBundlePath}`)
+  }
+}
 
 async function bundleSpaAssets(): Promise<string[]> {
   const frontendDistDir = path.join(frontendDir, "dist")
@@ -314,8 +331,9 @@ async function main() {
   await Bun.$`rm -rf ${rootDir}/dist`
   await Bun.$`mkdir -p ${rootDir}/dist`
 
-  // Phase 1: Bundle SPA assets
+  // Phase 1: Build SDK package consumed by widget sandbox and bundle SPA assets
   console.log("[1/4] Bundling SPA assets...")
+  await buildSdkPackage()
   const bundledFiles = await bundleSpaAssets()
 
   // Phase 2: Generate embedded assets module

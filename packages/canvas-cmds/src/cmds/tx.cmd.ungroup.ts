@@ -90,7 +90,7 @@ export async function txExecuteCanvasUngroup(portal: TPortal, input: TCanvasUngr
   try {
     const dryRun = input.dryRun === true;
     const ids = parseUngroupIds(input);
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: input, command: 'canvas.ungroup', actionLabel: 'Ungroup' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: input, command: 'canvas.ungroup', actionLabel: 'Ungroup' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     const matchedGroups = resolveGroupsByIds(doc, ids, selectedCanvas.id, input.canvasNameQuery ?? null);
     const removedGroupIds = fnSortIds(matchedGroups.map((group) => group.id));

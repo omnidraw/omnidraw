@@ -1,4 +1,4 @@
-import type { TCanvasDoc, TElement, TElementStyle, TGroup, TRectData } from '@vibecanvas/service-automerge/types/canvas-doc';
+import type { TCanvasDoc, TElement, TElementStyle, TGroup, TRectData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import * as schema from '@vibecanvas/service-db/schema';
 import { expect } from 'bun:test';
 import { spawn } from 'node:child_process';

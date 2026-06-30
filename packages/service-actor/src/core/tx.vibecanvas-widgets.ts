@@ -11,6 +11,6 @@ type TArgsEnsureWidgetFolder = {
 
 export function txEnsureWidgetFolder(portal: TPortalEnsureWidgetFolder, args: TArgsEnsureWidgetFolder) {
     if (!portal.existsSync(args.absWidgetDir)) {
-      portal.mkdirSync(args.absWidgetDir);
+      portal.mkdirSync(args.absWidgetDir, { recursive: true });
     }
 }

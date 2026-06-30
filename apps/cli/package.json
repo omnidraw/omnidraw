@@ -15,6 +15,7 @@
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
+    "@tursodatabase/database": "catalog:",
     "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/api-actors": "workspace:*",
     "@vibecanvas/api-canvas": "workspace:*",

@@ -46,11 +46,7 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("files");
     expect(tNames).toContain("actor_definitions");
     expect(tNames).toContain("actor_instances");
-    expect(tNames).toContain("actor_inbox");
     expect(tNames).toContain("actor_connections");
-    expect(tNames).toContain("durable_calls");
-    expect(tNames).toContain("sandbox_instances");
-    expect(tNames).toContain("sandbox_volumes");
     expect(tNames).toContain("migrations");
 
     const migrationStmt = await db.prepare("select name, hash_hex, applied_at from migrations order by name");
@@ -142,33 +138,28 @@ describe("tx.migrations", () => {
     const insertCanvas = await db.prepare("insert into canvas (id, name, automerge_url) values (?, ?, ?)");
     await insertCanvas.run("canvas-actor", "Actor Canvas", "automerge:actor");
 
-    const insertDefinition = await db.prepare("insert into actor_definitions (id, name, slug, manifest_path) values (?, ?, ?, ?)");
-    await insertDefinition.run("definition-1", "Counter", "counter", "/actors/counter/vibecanvas.json");
+    const insertDefinition = await db.prepare("insert into actor_definitions (name, slug, manifest_path) values (?, ?, ?)");
+    await insertDefinition.run("Counter", "counter", "/actors/counter/vibecanvas.json");
 
-    await expectSqlConstraintFailure(() => insertDefinition.run("definition-duplicate", "Counter Copy", "counter", '"/actors/counter-copy/vibecanvas.json"'));
+    await expectSqlConstraintFailure(() => insertDefinition.run("Counter Copy", "counter", '"/actors/counter-copy/vibecanvas.json"'));
 
-    const insertInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_id, display_name, status, machine_state, machine_context) values (?, ?, ?, ?, ?, ?, ?, ?)");
-    await insertInstance.run("actor-1", "canvas-actor", "element-1", "definition-1", "Counter A", "created", "idle", '{"count":0}');
-    await insertInstance.run("actor-2", "canvas-actor", "element-2", "definition-1", "Counter B", "running", "idle", '{"count":10}');
+    const insertInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_name, display_name, status, machine_state, machine_context) values (?, ?, ?, ?, ?, ?, ?, ?)");
+    await insertInstance.run("actor-1", "canvas-actor", "element-1", "Counter", "Counter A", "created", "idle", '{"count":0}');
+    await insertInstance.run("actor-2", "canvas-actor", "element-2", "Counter", "Counter B", "running", "idle", '{"count":10}');
 
-    const selectInstance = await db.prepare("select id, canvas_id, actor_definition_id, display_name, status, machine_context from actor_instances where id = ?");
+    const selectInstance = await db.prepare("select id, canvas_id, actor_definition_name, display_name, status, machine_context from actor_instances where id = ?");
     const instance = await selectInstance.get("actor-1");
     expect(instance).toEqual({
       id: "actor-1",
       canvas_id: "canvas-actor",
-      actor_definition_id: "definition-1",
+      actor_definition_name: "Counter",
       display_name: "Counter A",
       status: "created",
       machine_context: '{"count":0}',
     });
 
-    const insertInvalidInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_id, display_name, status, machine_state) values (?, ?, ?, ?, ?, ?, ?)");
-    await expectSqlConstraintFailure(() => insertInvalidInstance.run("actor-bad", "canvas-actor", "element-bad", "definition-1", "Broken", "not-a-status", "idle"));
-
-    const insertInbox = await db.prepare("insert into actor_inbox (id, actor_instance_id, seq, msg_name, payload, idempotency_key) values (?, ?, ?, ?, ?, ?)");
-    await insertInbox.run("inbox-1", "actor-1", 0, "increment", '{"by":1}', "00000000-0000-4000-8000-000000000001");
-    await expectSqlConstraintFailure(() => insertInbox.run("inbox-dup-seq", "actor-1", 0, "increment", '{"by":2}', "00000000-0000-4000-8000-000000000002"));
-    await expectSqlConstraintFailure(() => insertInbox.run("inbox-bad-seq", "actor-1", -1, "increment", '{"by":3}', "00000000-0000-4000-8000-000000000003"));
+    const insertInvalidInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_name, display_name, status, machine_state) values (?, ?, ?, ?, ?, ?, ?)");
+    await expectSqlConstraintFailure(() => insertInvalidInstance.run("actor-bad", "canvas-actor", "element-bad", "Counter", "Broken", "not-a-status", "idle"));
 
     const insertConnection = await db.prepare("insert into actor_connections (id, canvas_id, source_actor_instance_id, target_actor_instance_id, label, msg_name_whitelist, style) values (?, ?, ?, ?, ?, ?, ?)");
     await insertConnection.run("connection-1", "canvas-actor", "actor-1", "actor-2", "A to B", '["increment"]', '{"stroke":"blue"}');
@@ -184,118 +175,5 @@ describe("tx.migrations", () => {
     });
 
     await expectSqlConstraintFailure(() => insertConnection.run("connection-bad", "canvas-actor", "missing-source", "actor-2", null, null, "{}"));
-  });
-
-  test("durable calls accept actor effects and enforce constraints", async () => {
-    await txRunMigrations({ db, Bun, path }, {});
-
-    const insertCanvas = await db.prepare("insert into canvas (id, name, automerge_url) values (?, ?, ?)");
-    await insertCanvas.run("canvas-durable", "Durable Canvas", "automerge:durable");
-
-    const insertDefinition = await db.prepare("insert into actor_definitions (id, name, slug, manifest_path) values (?, ?, ?, ?)");
-    await insertDefinition.run("definition-durable", "Durable Actor", "durable-actor", "/actors/durable/vibecanvas.json");
-
-    const insertInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_id, display_name, status, machine_state) values (?, ?, ?, ?, ?, ?, ?)");
-    await insertInstance.run("actor-durable", "canvas-durable", "element-durable", "definition-durable", "Durable A", "created", "idle");
-
-    const insertInbox = await db.prepare("insert into actor_inbox (id, actor_instance_id, seq, msg_name, payload, idempotency_key) values (?, ?, ?, ?, ?, ?)");
-    await insertInbox.run("inbox-durable", "actor-durable", 0, "submit", '{"value":1}', "00000000-0000-4000-8000-000000000010");
-
-    const insertCall = await db.prepare("insert into durable_calls (id, actor_inbox_id, effect_index, idempotency_key, function_kind, function_name, input, status, lease_expires_at, last_heartbeat_at, run_timeout_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    await insertCall.run("call-0", "inbox-durable", 0, "durable:inbox-durable:0", "tx", "tx.save", '{"phase":"exit"}', "queued", "2030-01-01 00:00:00", "2029-12-31 23:59:30", "2030-01-01 01:00:00");
-    await insertCall.run("call-1", "inbox-durable", 1, "durable:inbox-durable:1", "tx", "tx.save", '{"phase":"action"}', "running", "2030-01-01 00:00:00", "2029-12-31 23:59:30", "2030-01-01 01:00:00");
-
-    const selectCalls = await db.prepare("select id, actor_inbox_id, effect_index, function_kind, function_name, input, status, attempt, lease_expires_at, last_heartbeat_at, run_timeout_at, created_at, updated_at from durable_calls where actor_inbox_id = ? order by effect_index");
-    const calls = await selectCalls.all("inbox-durable");
-    expect(calls).toEqual([
-      {
-        id: "call-0",
-        actor_inbox_id: "inbox-durable",
-        effect_index: 0,
-        function_kind: "tx",
-        function_name: "tx.save",
-        input: '{"phase":"exit"}',
-        status: "queued",
-        attempt: 0,
-        lease_expires_at: "2030-01-01 00:00:00",
-        last_heartbeat_at: "2029-12-31 23:59:30",
-        run_timeout_at: "2030-01-01 01:00:00",
-        created_at: expect.any(String),
-        updated_at: expect.any(String),
-      },
-      {
-        id: "call-1",
-        actor_inbox_id: "inbox-durable",
-        effect_index: 1,
-        function_kind: "tx",
-        function_name: "tx.save",
-        input: '{"phase":"action"}',
-        status: "running",
-        attempt: 0,
-        lease_expires_at: "2030-01-01 00:00:00",
-        last_heartbeat_at: "2029-12-31 23:59:30",
-        run_timeout_at: "2030-01-01 01:00:00",
-        created_at: expect.any(String),
-        updated_at: expect.any(String),
-      },
-    ]);
-
-    await expectSqlConstraintFailure(() => insertCall.run("call-duplicate-index", "inbox-durable", 1, "durable:inbox-durable:duplicate-index", "tx", "tx.other", "null", "queued", null, null, null));
-    await expectSqlConstraintFailure(() => insertCall.run("call-duplicate-idempotency", "inbox-durable", 2, "durable:inbox-durable:1", "tx", "tx.other", "null", "queued", null, null, null));
-    await expectSqlConstraintFailure(() => insertCall.run("call-bad-kind", "inbox-durable", 2, "durable:inbox-durable:bad-kind", "write", "tx.other", "null", "queued", null, null, null));
-    await expectSqlConstraintFailure(() => insertCall.run("call-bad-status", "inbox-durable", 2, "durable:inbox-durable:bad-status", "tx", "tx.other", "null", "pending", null, null, null));
-    await expectSqlConstraintFailure(() => insertCall.run("call-bad-inbox", "missing-inbox", 0, "durable:missing:0", "tx", "tx.other", "null", "queued", null, null, null));
-  });
-
-  test("sandbox tables accept reusable resources and enforce constraints", async () => {
-    await txRunMigrations({ db, Bun, path }, {});
-
-    const insertInstance = await db.prepare("insert into sandbox_instances (id, namespace, sandbox_name, sandbox_tag, image, setup_hash, status, metadata, last_error, host_checked_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    await insertInstance.run("sandbox-instance-1", "actors", "vc-actor-worker", "actor-worker", "oven/bun:1", "setup-hash-1", "running", '{"pid":123}', null, "2030-01-01 00:00:00");
-
-    const selectInstance = await db.prepare("select id, namespace, sandbox_name, sandbox_tag, image, setup_hash, status, metadata, last_error, host_checked_at, created_at, updated_at from sandbox_instances where id = ?");
-    const instance = await selectInstance.get("sandbox-instance-1");
-    expect(instance).toEqual({
-      id: "sandbox-instance-1",
-      namespace: "actors",
-      sandbox_name: "vc-actor-worker",
-      sandbox_tag: "actor-worker",
-      image: "oven/bun:1",
-      setup_hash: "setup-hash-1",
-      status: "running",
-      metadata: '{"pid":123}',
-      last_error: null,
-      host_checked_at: "2030-01-01 00:00:00",
-      created_at: expect.any(String),
-      updated_at: expect.any(String),
-    });
-
-    await expectSqlConstraintFailure(() => insertInstance.run("sandbox-instance-duplicate", "actors", "vc-actor-worker", "actor-worker", "oven/bun:1", "setup-hash-1", "running", '{}', null, null));
-    await expectSqlConstraintFailure(() => insertInstance.run("sandbox-instance-bad-status", "actors", "vc-bad-status", "actor-worker", "oven/bun:1", "setup-hash-1", "booting", '{}', null, null));
-
-    const insertVolume = await db.prepare("insert into sandbox_volumes (id, sandbox_instance_id, namespace, volume_name, volume_tag, setup_hash, status, reusable, metadata, last_error, host_checked_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    await insertVolume.run("sandbox-volume-1", "sandbox-instance-1", "actors", "vc-actor-worker-volume", "actor-cache", "setup-hash-1", "ready", 1, '{"mount":"/workspace"}', null, "2030-01-01 00:00:01");
-
-    const selectVolume = await db.prepare("select id, sandbox_instance_id, namespace, volume_name, volume_tag, setup_hash, status, reusable, metadata, last_error, host_checked_at, created_at, updated_at from sandbox_volumes where id = ?");
-    const volume = await selectVolume.get("sandbox-volume-1");
-    expect(volume).toEqual({
-      id: "sandbox-volume-1",
-      sandbox_instance_id: "sandbox-instance-1",
-      namespace: "actors",
-      volume_name: "vc-actor-worker-volume",
-      volume_tag: "actor-cache",
-      setup_hash: "setup-hash-1",
-      status: "ready",
-      reusable: 1,
-      metadata: '{"mount":"/workspace"}',
-      last_error: null,
-      host_checked_at: "2030-01-01 00:00:01",
-      created_at: expect.any(String),
-      updated_at: expect.any(String),
-    });
-
-    await expectSqlConstraintFailure(() => insertVolume.run("sandbox-volume-duplicate", "sandbox-instance-1", "actors", "vc-actor-worker-volume", "actor-cache", "setup-hash-1", "ready", 1, '{}', null, null));
-    await expectSqlConstraintFailure(() => insertVolume.run("sandbox-volume-bad-status", "sandbox-instance-1", "actors", "vc-bad-volume-status", "actor-cache", "setup-hash-1", "mounted", 1, '{}', null, null));
-    await expectSqlConstraintFailure(() => insertVolume.run("sandbox-volume-bad-instance", "missing-sandbox-instance", "actors", "vc-missing-instance-volume", "actor-cache", "setup-hash-1", "ready", 1, '{}', null, null));
   });
 });

@@ -23,6 +23,7 @@
         "@orpc/client": "catalog:",
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
+        "@tursodatabase/database": "catalog:",
         "@vibecanvas/api-actors": "workspace:*",
         "@vibecanvas/api-canvas": "workspace:*",
         "@vibecanvas/api-canvas-cmd": "workspace:*",
@@ -119,6 +120,7 @@
       "dependencies": {
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
+        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
         "zod": "catalog:",
@@ -270,6 +272,7 @@
       "version": "0.3.1",
       "dependencies": {
         "@automerge/automerge-repo": "catalog:",
+        "@tursodatabase/database": "catalog:",
         "@vibecanvas/service-automerge": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
       },
@@ -299,7 +302,7 @@
     },
     "packages/sdk": {
       "name": "@vibecanvas/sdk",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@arrow-js/core": "^1.0.6",
       },
