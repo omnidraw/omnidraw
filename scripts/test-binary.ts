@@ -74,6 +74,21 @@ async function resolveBinaryPath(inputPath?: string): Promise<string> {
   throw new Error("Could not auto-detect built binary. Pass --binary <path>.")
 }
 
+function getExpectedNativeAddonPath(binaryPath: string): string {
+  const fileNameByPlatform: Record<string, string> = {
+    "darwin-arm64": "turso.darwin-arm64.node",
+    "linux-arm64": "turso.linux-arm64-gnu.node",
+    "linux-x64": "turso.linux-x64-gnu.node",
+  }
+  const key = `${process.platform}-${process.arch}`
+  const fileName = fileNameByPlatform[key]
+  if (!fileName) {
+    throw new Error(`No Turso native binary test expectation for ${key}`)
+  }
+
+  return path.join(path.dirname(binaryPath), "..", "native", fileName)
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
@@ -186,7 +201,7 @@ async function createPortBlocker(port: number): Promise<{ close: () => Promise<v
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
-    server.listen(port, "127.0.0.1", () => {
+    server.listen(port, () => {
       server.off("error", reject)
       resolve()
     })
@@ -302,6 +317,7 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
 async function main() {
   const args = parseArgs()
   const binaryPath = await resolveBinaryPath(args.binaryPath)
+  const expectedNativeAddonPath = getExpectedNativeAddonPath(binaryPath)
   const tempRoot = path.join(process.cwd(), `.tmp-binary-test-${Date.now()}`)
   const tempConfigDir = path.join(tempRoot, "config-mode")
   const tempCompiledConfigDir = path.join(tempRoot, "compiled-config-mode")
@@ -310,6 +326,8 @@ async function main() {
   const xdgRoot = path.join(tempRoot, "xdg-root")
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
+  await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
+  console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
 
   await runBinaryScenario(binaryPath, args, {

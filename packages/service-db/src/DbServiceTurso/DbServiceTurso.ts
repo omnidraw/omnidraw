@@ -1,4 +1,3 @@
-import { Database } from "@tursodatabase/database";
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
@@ -15,6 +14,7 @@ import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
 import { txRunMigrations } from "./tx.migrations";
 import { txDefaultRunPragmas } from "./tx.pragma";
+import { Database } from "./turso-native";
 
 type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
 type TFileCreateArgs = Omit<TFile, "created_at">

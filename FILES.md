@@ -106,13 +106,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -125,8 +118,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -570,6 +561,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/003-add-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-files.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
+| [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
