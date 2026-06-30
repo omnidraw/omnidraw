@@ -19,7 +19,6 @@ export class SyncHook<T, R = void> {
 
   call(...argsArr: TAsArray<T>): R[] {
     return this.#callbacks.map(function (callback) {
-      /* eslint-disable-next-line prefer-spread */
       return callback.apply(void 0, argsArr);
     });
   }

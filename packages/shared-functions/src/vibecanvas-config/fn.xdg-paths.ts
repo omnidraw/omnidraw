@@ -1,16 +1,15 @@
-/* eslint-disable functional-core/import-boundary, functional-core/no-runtime-globals -- legacy xdg helper reads node path/os and environment directly */
-import { homedir } from 'os';
-import { dirname, join, resolve } from 'path';
+import type { dirname, join, resolve } from 'path';
+import { fnCurry } from '../functional/fn.curry';
 
 declare const VIBECANVAS_COMPILED: boolean;
 
 const APP_NAME = 'vibecanvas';
 
 export type TArgsXdgPaths = {
-  env?: NodeJS.ProcessEnv;
+  env: NodeJS.ProcessEnv;
   isCompiled?: boolean;
-  cwd?: string;
-  homedir?: string;
+  cwd: string;
+  homedir: string;
   findMonorepoRoot?: (startDir: string) => string | null;
 };
 
@@ -22,7 +21,7 @@ export type TVibecanvasPaths = {
   databasePath: string;
 };
 
-function defaultFindMonorepoRoot(startDir: string): string | null {
+function defaultFindMonorepoRoot(portal: TPortal, startDir: string): string | null {
   let existsSync: (path: string) => boolean;
   try {
     existsSync = require('fs').existsSync;
@@ -31,26 +30,33 @@ function defaultFindMonorepoRoot(startDir: string): string | null {
   }
 
   let current = startDir;
-  while (current !== dirname(current)) {
-    if (existsSync(join(current, 'bun.lock'))) return current;
-    current = dirname(current);
+  while (current !== portal.dirname(current)) {
+    if (existsSync(portal.join(current, 'bun.lock'))) return current;
+    current = portal.dirname(current);
   }
 
-  if (existsSync(join(current, 'bun.lock'))) return current;
+  if (existsSync(portal.join(current, 'bun.lock'))) return current;
   return null;
 }
 
-export function fnXdgPaths(args: TArgsXdgPaths): TVibecanvasPaths {
-  const env = args.env ?? process.env;
-  const home = args.homedir ?? homedir();
+type TPortal = {
+  resolve: typeof resolve,
+  dirname: typeof dirname
+  join: typeof join
+}
+
+export function fnXdgPaths(portal: TPortal, args: TArgsXdgPaths): TVibecanvasPaths {
+  const env = args.env;
+  const home = args.homedir;
   const isCompiled = args.isCompiled ?? (typeof VIBECANVAS_COMPILED !== 'undefined' && VIBECANVAS_COMPILED);
-  const cwd = args.cwd ?? process.cwd();
-  const findRoot = args.findMonorepoRoot ?? defaultFindMonorepoRoot;
+  const cwd = args.cwd;
+  const join = portal.join;
+  const findRoot = args.findMonorepoRoot ?? fnCurry(defaultFindMonorepoRoot)(portal);
 
   const dbOverride = env.VIBECANVAS_DB;
   if (dbOverride) {
-    const databasePath = resolve(cwd, dbOverride);
-    const baseDir = dirname(databasePath);
+    const databasePath = portal.resolve(cwd, dbOverride);
+    const baseDir = portal.dirname(databasePath);
     return {
       dataDir: baseDir,
       configDir: baseDir,
@@ -72,7 +78,7 @@ export function fnXdgPaths(args: TArgsXdgPaths): TVibecanvasPaths {
   }
 
   if (!isCompiled) {
-    const monorepoRoot = findRoot(cwd);
+    const monorepoRoot = findRoot(cwd) as string | null;
     if (!monorepoRoot) {
       throw `Failed to find monorepo root. Could not locate bun.lock from ${cwd}`
     }

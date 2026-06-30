@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface IServiceMap { }
 
 export interface IService<THooks extends object = object> {

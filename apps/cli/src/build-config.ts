@@ -1,8 +1,9 @@
 import { txEnsureXdgPaths } from '@vibecanvas/shared-functions/vibecanvas-config/tx.xdg-paths';
 import { existsSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
 import type { ICliConfig } from './config';
 import type { TCliParsedArgv } from './parse-argv';
+import { dirname, join, resolve } from 'path';
+import { homedir } from 'os';
 
 function getDefaultPort(compiled: boolean): number {
   return compiled ? 7496 : 3000;
@@ -17,7 +18,7 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
     (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION) ||
     process.env.VIBECANVAS_VERSION ||
     '0.0.0';
-  const resolved = txEnsureXdgPaths({ fs: { existsSync, mkdirSync } }, { isCompiled: compiled });
+  const resolved = txEnsureXdgPaths({ fs: { existsSync, mkdirSync }, dirname, join, resolve, process }, { isCompiled: compiled, homedir:homedir() });
 
   const dbPath = parsed.dbPath ?? resolved.databasePath;
   mkdirSync(dirname(dbPath), { recursive: true });

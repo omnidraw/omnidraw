@@ -226,7 +226,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
 - [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
-- [ ]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
+- [x]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
 - [x]: [S60](s/S60.md) - remove terminal widget (comment out only)
 - [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
 - [ ]: [S62](s/S62.md) - reimplement terminal widget API path
