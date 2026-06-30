@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import fnCliUpdateResolvePolicy from '../../../../src/plugins/cli/core/fn.resolve-policy';
+import { fnCliUpdateResolvePolicy } from '../../../../src/plugins/cli/core/fn.resolve-policy';
 
 describe('fnCliUpdateResolvePolicy', () => {
   test('env disable overrides all other inputs', () => {

@@ -23,8 +23,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -33,29 +35,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/parse-argv.ts](apps/cli/src/parse-argv.ts) |  |
 | [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
 | [apps/cli/src/plugins/automerge/AutomergePlugin.ts](apps/cli/src/plugins/automerge/AutomergePlugin.ts) |  |
-| [apps/cli/src/plugins/cli/bootstrap.ts](apps/cli/src/plugins/cli/bootstrap.ts) |  |
-| [apps/cli/src/plugins/cli/canvas-command.examples.ts](apps/cli/src/plugins/cli/canvas-command.examples.ts) |  |
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.add.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.add.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.delete.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.delete.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.group.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.group.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.list.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.list.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.move.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.move.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.patch.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.patch.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.query.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.query.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.reorder.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.reorder.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/cmd.canvas.ungroup.ts](apps/cli/src/plugins/cli/cmds/cmd.canvas.ungroup.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts](apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts) |  |
-| [apps/cli/src/plugins/cli/cmds/fn.canvas-subcommand-inputs.ts](apps/cli/src/plugins/cli/cmds/fn.canvas-subcommand-inputs.ts) |  |
-| [apps/cli/src/plugins/cli/core/canvas-command.docs.ts](apps/cli/src/plugins/cli/core/canvas-command.docs.ts) |  |
-| [apps/cli/src/plugins/cli/core/constants.ts](apps/cli/src/plugins/cli/core/constants.ts) |  |
-| [apps/cli/src/plugins/cli/core/fn.build-rpc-link.ts](apps/cli/src/plugins/cli/core/fn.build-rpc-link.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.print-command-result.ts](apps/cli/src/plugins/cli/core/fn.print-command-result.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.resolve-policy.ts](apps/cli/src/plugins/cli/core/fn.resolve-policy.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
-| [apps/cli/src/plugins/cli/core/fx.canvas.server-discovery.ts](apps/cli/src/plugins/cli/core/fx.canvas.server-discovery.ts) |  |
-| [apps/cli/src/plugins/cli/core/fx.dispatch-canvas-command.ts](apps/cli/src/plugins/cli/core/fx.dispatch-canvas-command.ts) |  |
 | [apps/cli/src/plugins/filesystem/FilesystemPlugin.ts](apps/cli/src/plugins/filesystem/FilesystemPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/orpc.base.ts](apps/cli/src/plugins/orpc/orpc.base.ts) |  |
 | [apps/cli/src/plugins/orpc/OrpcPlugin.ts](apps/cli/src/plugins/orpc/OrpcPlugin.ts) |  |
@@ -122,6 +106,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
+| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
+| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
+| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
+| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -134,6 +125,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -166,27 +159,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-actors/src/orpc.ts](packages/api-actors/src/orpc.ts) |  |
 | [packages/api-actors/src/types.ts](packages/api-actors/src/types.ts) |  |
 | [packages/api-actors/tsconfig.json](packages/api-actors/tsconfig.json) |  |
-
-## packages/api-canvas-cmd
-
-| path | jsdocs |
-|---|---|
-| [packages/api-canvas-cmd/package.json](packages/api-canvas-cmd/package.json) |  |
-| [packages/api-canvas-cmd/src/api.cmd.add.ts](packages/api-canvas-cmd/src/api.cmd.add.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.delete.ts](packages/api-canvas-cmd/src/api.cmd.delete.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.group.ts](packages/api-canvas-cmd/src/api.cmd.group.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.list.ts](packages/api-canvas-cmd/src/api.cmd.list.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.move.ts](packages/api-canvas-cmd/src/api.cmd.move.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.patch.ts](packages/api-canvas-cmd/src/api.cmd.patch.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.query.ts](packages/api-canvas-cmd/src/api.cmd.query.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.reorder.ts](packages/api-canvas-cmd/src/api.cmd.reorder.ts) |  |
-| [packages/api-canvas-cmd/src/api.cmd.ungroup.ts](packages/api-canvas-cmd/src/api.cmd.ungroup.ts) |  |
-| [packages/api-canvas-cmd/src/cmd.context.ts](packages/api-canvas-cmd/src/cmd.context.ts) |  |
-| [packages/api-canvas-cmd/src/cmd.error.ts](packages/api-canvas-cmd/src/cmd.error.ts) |  |
-| [packages/api-canvas-cmd/src/contract.ts](packages/api-canvas-cmd/src/contract.ts) |  |
-| [packages/api-canvas-cmd/src/handlers.ts](packages/api-canvas-cmd/src/handlers.ts) |  |
-| [packages/api-canvas-cmd/src/orpc.ts](packages/api-canvas-cmd/src/orpc.ts) |  |
-| [packages/api-canvas-cmd/src/types.ts](packages/api-canvas-cmd/src/types.ts) |  |
 
 ## packages/api-canvas
 
@@ -289,30 +261,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-pty/src/orpc.ts](packages/api-pty/src/orpc.ts) |  |
 | [packages/api-pty/src/types.ts](packages/api-pty/src/types.ts) |  |
 | [packages/api-pty/tsconfig.json](packages/api-pty/tsconfig.json) |  |
-
-## packages/canvas-cmds
-
-| path | jsdocs |
-|---|---|
-| [packages/canvas-cmds/AGENTS.md](packages/canvas-cmds/AGENTS.md) |  |
-| [packages/canvas-cmds/package.json](packages/canvas-cmds/package.json) |  |
-| [packages/canvas-cmds/src/cmds/fn.canvas-add-contract.ts](packages/canvas-cmds/src/cmds/fn.canvas-add-contract.ts) |  |
-| [packages/canvas-cmds/src/cmds/fx.cmd.list.ts](packages/canvas-cmds/src/cmds/fx.cmd.list.ts) |  |
-| [packages/canvas-cmds/src/cmds/fx.cmd.query.ts](packages/canvas-cmds/src/cmds/fx.cmd.query.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.add.ts](packages/canvas-cmds/src/cmds/tx.cmd.add.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.delete.ts](packages/canvas-cmds/src/cmds/tx.cmd.delete.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.group.ts](packages/canvas-cmds/src/cmds/tx.cmd.group.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.move.ts](packages/canvas-cmds/src/cmds/tx.cmd.move.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.patch.ts](packages/canvas-cmds/src/cmds/tx.cmd.patch.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.reorder.ts](packages/canvas-cmds/src/cmds/tx.cmd.reorder.ts) |  |
-| [packages/canvas-cmds/src/cmds/tx.cmd.ungroup.ts](packages/canvas-cmds/src/cmds/tx.cmd.ungroup.ts) |  |
-| [packages/canvas-cmds/src/core/fn.canvas.ts](packages/canvas-cmds/src/core/fn.canvas.ts) |  |
-| [packages/canvas-cmds/src/core/fn.conversion.ts](packages/canvas-cmds/src/core/fn.conversion.ts) |  |
-| [packages/canvas-cmds/src/core/fn.group.ts](packages/canvas-cmds/src/core/fn.group.ts) |  |
-| [packages/canvas-cmds/src/core/fn.guard.ts](packages/canvas-cmds/src/core/fn.guard.ts) |  |
-| [packages/canvas-cmds/src/core/fx.canvas.ts](packages/canvas-cmds/src/core/fx.canvas.ts) |  |
-| [packages/canvas-cmds/src/types.ts](packages/canvas-cmds/src/types.ts) |  |
-| [packages/canvas-cmds/tsconfig.json](packages/canvas-cmds/tsconfig.json) |  |
 
 ## packages/canvas
 
@@ -605,60 +553,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/service-db/.gitignore](packages/service-db/.gitignore) |  |
-| [packages/service-db/AGENTS.md](packages/service-db/AGENTS.md) |  |
-| [packages/service-db/database-migrations/0000_burly_william_stryker.sql](packages/service-db/database-migrations/0000_burly_william_stryker.sql) |  |
-| [packages/service-db/database-migrations/0001_dashing_wraith.sql](packages/service-db/database-migrations/0001_dashing_wraith.sql) |  |
-| [packages/service-db/database-migrations/0002_tiresome_silhouette.sql](packages/service-db/database-migrations/0002_tiresome_silhouette.sql) |  |
-| [packages/service-db/database-migrations/0003_lovely_moon_knight.sql](packages/service-db/database-migrations/0003_lovely_moon_knight.sql) |  |
-| [packages/service-db/database-migrations/0004_watery_komodo.sql](packages/service-db/database-migrations/0004_watery_komodo.sql) |  |
-| [packages/service-db/database-migrations/0005_puzzling_jubilee.sql](packages/service-db/database-migrations/0005_puzzling_jubilee.sql) |  |
-| [packages/service-db/database-migrations/0006_opposite_puck.sql](packages/service-db/database-migrations/0006_opposite_puck.sql) |  |
-| [packages/service-db/database-migrations/0007_certain_talos.sql](packages/service-db/database-migrations/0007_certain_talos.sql) |  |
-| [packages/service-db/database-migrations/0008_rainy_puppet_master.sql](packages/service-db/database-migrations/0008_rainy_puppet_master.sql) |  |
-| [packages/service-db/database-migrations/0009_graceful_the_phantom.sql](packages/service-db/database-migrations/0009_graceful_the_phantom.sql) |  |
-| [packages/service-db/database-migrations/0010_swift_adam_destine.sql](packages/service-db/database-migrations/0010_swift_adam_destine.sql) |  |
-| [packages/service-db/database-migrations/0011_demonic_shape.sql](packages/service-db/database-migrations/0011_demonic_shape.sql) |  |
-| [packages/service-db/database-migrations/0012_clear_black_knight.sql](packages/service-db/database-migrations/0012_clear_black_knight.sql) |  |
-| [packages/service-db/database-migrations/0013_jazzy_sir_ram.sql](packages/service-db/database-migrations/0013_jazzy_sir_ram.sql) |  |
-| [packages/service-db/database-migrations/0014_lowly_the_phantom.sql](packages/service-db/database-migrations/0014_lowly_the_phantom.sql) |  |
-| [packages/service-db/database-migrations/0015_lowly_emma_frost.sql](packages/service-db/database-migrations/0015_lowly_emma_frost.sql) |  |
-| [packages/service-db/database-migrations/0016_giant_wrecker.sql](packages/service-db/database-migrations/0016_giant_wrecker.sql) |  |
-| [packages/service-db/database-migrations/0017_light_prowler.sql](packages/service-db/database-migrations/0017_light_prowler.sql) |  |
-| [packages/service-db/database-migrations/0018_quiet_pretty_boy.sql](packages/service-db/database-migrations/0018_quiet_pretty_boy.sql) |  |
-| [packages/service-db/database-migrations/0019_flowery_red_shift.sql](packages/service-db/database-migrations/0019_flowery_red_shift.sql) |  |
-| [packages/service-db/database-migrations/meta/_journal.json](packages/service-db/database-migrations/meta/_journal.json) |  |
-| [packages/service-db/database-migrations/meta/0000_snapshot.json](packages/service-db/database-migrations/meta/0000_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0001_snapshot.json](packages/service-db/database-migrations/meta/0001_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0002_snapshot.json](packages/service-db/database-migrations/meta/0002_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0003_snapshot.json](packages/service-db/database-migrations/meta/0003_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0004_snapshot.json](packages/service-db/database-migrations/meta/0004_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0005_snapshot.json](packages/service-db/database-migrations/meta/0005_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0006_snapshot.json](packages/service-db/database-migrations/meta/0006_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0007_snapshot.json](packages/service-db/database-migrations/meta/0007_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0008_snapshot.json](packages/service-db/database-migrations/meta/0008_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0009_snapshot.json](packages/service-db/database-migrations/meta/0009_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0010_snapshot.json](packages/service-db/database-migrations/meta/0010_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0011_snapshot.json](packages/service-db/database-migrations/meta/0011_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0012_snapshot.json](packages/service-db/database-migrations/meta/0012_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0013_snapshot.json](packages/service-db/database-migrations/meta/0013_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0014_snapshot.json](packages/service-db/database-migrations/meta/0014_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0015_snapshot.json](packages/service-db/database-migrations/meta/0015_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0016_snapshot.json](packages/service-db/database-migrations/meta/0016_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0017_snapshot.json](packages/service-db/database-migrations/meta/0017_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0018_snapshot.json](packages/service-db/database-migrations/meta/0018_snapshot.json) |  |
-| [packages/service-db/database-migrations/meta/0019_snapshot.json](packages/service-db/database-migrations/meta/0019_snapshot.json) |  |
-| [packages/service-db/drizzle.config.ts](packages/service-db/drizzle.config.ts) |  |
 | [packages/service-db/package.json](packages/service-db/package.json) |  |
 | [packages/service-db/src/_embedded-migrations.ts](packages/service-db/src/_embedded-migrations.ts) |  |
 | [packages/service-db/src/assets.d.ts](packages/service-db/src/assets.d.ts) |  |
 | [packages/service-db/src/CONSTANTS.ts](packages/service-db/src/CONSTANTS.ts) |  |
-| [packages/service-db/src/core/fx.migrations.ts](packages/service-db/src/core/fx.migrations.ts) |  |
-| [packages/service-db/src/core/tx.migrations.ts](packages/service-db/src/core/tx.migrations.ts) |  |
-| [packages/service-db/src/database/migrate.ts](packages/service-db/src/database/migrate.ts) |  |
-| [packages/service-db/src/DbServiceBunSqlite/fx.get-file.ts](packages/service-db/src/DbServiceBunSqlite/fx.get-file.ts) |  |
-| [packages/service-db/src/DbServiceBunSqlite/index.ts](packages/service-db/src/DbServiceBunSqlite/index.ts) |  |
-| [packages/service-db/src/DbServiceBunSqlite/tx.create-file.ts](packages/service-db/src/DbServiceBunSqlite/tx.create-file.ts) |  |
-| [packages/service-db/src/DbServiceBunSqlite/tx.update-canvas.ts](packages/service-db/src/DbServiceBunSqlite/tx.update-canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
@@ -679,12 +577,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/IDbService.ts](packages/service-db/src/IDbService.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
-| [packages/service-db/src/SandboxDb.ts](packages/service-db/src/SandboxDb.ts) |  |
-| [packages/service-db/src/schema.ts](packages/service-db/src/schema.ts) |  |
-| [packages/service-db/src/SqliteWorkflowDb.ts](packages/service-db/src/SqliteWorkflowDb.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
 
 ## packages/service-event-publisher

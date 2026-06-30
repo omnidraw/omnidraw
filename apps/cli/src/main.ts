@@ -38,11 +38,6 @@ try {
   throw error
 }
 
-if (config.command === 'canvas') {
-  process.env.VIBECANVAS_SILENT_DB_MIGRATIONS = '1'
-  process.env.VIBECANVAS_SILENT_AUTOMERGE_LOGS = '1'
-}
-
 const { services } = setupServices(config);
 
 const runtime = createRuntime<any, ICliConfig>({

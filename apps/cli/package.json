@@ -19,8 +19,6 @@
     "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/api-actors": "workspace:*",
     "@vibecanvas/api-canvas": "workspace:*",
-    "@vibecanvas/api-canvas-cmd": "workspace:*",
-    "@vibecanvas/canvas-cmds": "workspace:*",
     "@vibecanvas/api-db": "workspace:*",
     "@vibecanvas/api-file": "workspace:*",
     "@vibecanvas/api-filesystem": "workspace:*",

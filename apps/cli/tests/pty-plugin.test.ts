@@ -134,7 +134,7 @@ describe('createPtyPlugin', () => {
 
     await plugin.apply({
       hooks,
-      config: createConfig({ command: 'canvas' }),
+      config: createConfig({ command: 'upgrade' }),
       services: { require: requirePty },
     } as any);
 

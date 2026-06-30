@@ -1,4 +1,3 @@
-/* eslint-disable functional-core/export-shape -- legacy default export kept for existing CLI update tests */
 const CliUpdateErr = {
   VERSION_COMPARE_INVALID_INPUT: 'FN.CLI_UPDATE.VERSION_COMPARE.INVALID_INPUT',
 } as const satisfies Record<string, TErrorCode>;
@@ -46,7 +45,7 @@ function compareVersion(a: string, b: string): number {
   return 0;
 }
 
-function fnCliUpdateShouldUpgrade(args: TArgs): TErrTuple<TDecision> {
+export function fnCliUpdateShouldUpgrade(args: TArgs): TErrTuple<TDecision> {
   if (!args.currentVersion || !args.latestVersion) {
     return [
       null,
@@ -61,5 +60,4 @@ function fnCliUpdateShouldUpgrade(args: TArgs): TErrTuple<TDecision> {
   return [{ shouldUpgrade: compareVersion(args.latestVersion, args.currentVersion) > 0 }, null];
 }
 
-export default fnCliUpdateShouldUpgrade;
 export type { TArgs, TDecision };

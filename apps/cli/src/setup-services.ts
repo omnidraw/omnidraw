@@ -29,12 +29,6 @@ declare module '@vibecanvas/runtime' {
   interface IServiceMap extends IRuntimeServices { }
 }
 
-function isCanvasSchemaOnlyRequest(config: ICliConfig): boolean {
-  return config.command === 'canvas'
-    && Boolean(config.subcommandOptions?.schema)
-    && (config.subcommand === 'add' || config.subcommand === 'patch');
-}
-
 function setupServices(config: ICliConfig) {
   const services = createServiceRegistry();
   const eventPublisher = new EventPublisherService();
@@ -42,7 +36,7 @@ function setupServices(config: ICliConfig) {
 
   const shouldSetupStatefulServices = !config.helpRequested
     && !config.versionRequested
-    && (config.command === 'serve' || (config.command === 'canvas' && !isCanvasSchemaOnlyRequest(config)));
+    && config.command === 'serve';
 
   if (!shouldSetupStatefulServices) {
     return { services, eventPublisher };

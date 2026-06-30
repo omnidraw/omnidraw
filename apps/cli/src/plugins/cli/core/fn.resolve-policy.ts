@@ -1,4 +1,3 @@
-/* eslint-disable functional-core/export-shape -- legacy default export kept for existing CLI update tests */
 type TInstallMethod = 'curl' | 'npm' | 'unknown';
 
 type TArgs = {
@@ -12,7 +11,7 @@ type TResolvedPolicy = {
   reason: 'env' | 'config' | 'method' | 'default';
 };
 
-function fnCliUpdateResolvePolicy(args: TArgs): TErrTuple<TResolvedPolicy> {
+export function fnCliUpdateResolvePolicy(args: TArgs): TErrTuple<TResolvedPolicy> {
   if (args.envDisable === '1') {
     return [{ mode: 'disabled', reason: 'env' }, null];
   }
@@ -32,5 +31,4 @@ function fnCliUpdateResolvePolicy(args: TArgs): TErrTuple<TResolvedPolicy> {
   return [{ mode: 'install', reason: 'default' }, null];
 }
 
-export default fnCliUpdateResolvePolicy;
 export type { TArgs, TResolvedPolicy, TInstallMethod };

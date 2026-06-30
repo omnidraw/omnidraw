@@ -19,20 +19,15 @@ describe('parseCliArgv command resolution', () => {
     expect(parsed.port).toBe(4123);
   });
 
-  test('resolves known commands and canvas leaf subcommands', () => {
+  test('resolves known commands', () => {
     expect(parseCliArgv(['bun', 'run', 'serve'])).toMatchObject({ command: 'serve', subcommand: undefined });
-    expect(parseCliArgv(['bun', 'run', 'canvas'])).toMatchObject({ command: 'canvas', subcommand: undefined });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'query'])).toMatchObject({ command: 'canvas', subcommand: 'query' });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'move'])).toMatchObject({ command: 'canvas', subcommand: 'move' });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'patch'])).toMatchObject({ command: 'canvas', subcommand: 'patch' });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'delete'])).toMatchObject({ command: 'canvas', subcommand: 'delete' });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'reorder'])).toMatchObject({ command: 'canvas', subcommand: 'reorder' });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'group'])).toMatchObject({ command: 'canvas', subcommand: 'group' });
-    expect(parseCliArgv(['bun', 'run', 'canvas', 'ungroup'])).toMatchObject({ command: 'canvas', subcommand: 'ungroup' });
-    expect(parseCliArgv(['bun', 'run', 'query'])).toMatchObject({ command: 'canvas', subcommand: 'query' });
-    expect(parseCliArgv(['bun', 'run', 'move'])).toMatchObject({ command: 'canvas', subcommand: 'move' });
-    expect(parseCliArgv(['bun', 'run', 'list'])).toMatchObject({ command: 'canvas', subcommand: 'list' });
     expect(parseCliArgv(['bun', 'run', 'upgrade'])).toMatchObject({ command: 'upgrade', subcommand: undefined });
+  });
+
+  test('treats removed canvas commands as unknown', () => {
+    expect(parseCliArgv(['bun', 'run', 'canvas'])).toMatchObject({ command: 'unknown', subcommand: 'canvas' });
+    expect(parseCliArgv(['bun', 'run', 'query'])).toMatchObject({ command: 'unknown', subcommand: 'query' });
+    expect(parseCliArgv(['bun', 'run', 'list'])).toMatchObject({ command: 'unknown', subcommand: 'list' });
   });
 
   test('treats leading flag as serve command', () => {
@@ -50,42 +45,15 @@ describe('parseCliArgv command resolution', () => {
     expect(parsed.subcommand).toBe('deploy');
   });
 
-  test('keeps parsing the canvas leaf subcommand when flags appear between command tokens', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'canvas', '--db', './tmp/dev.sqlite', 'query', '--canvas-name', 'ok']);
-
-    expect(parsed.command).toBe('canvas');
-    expect(parsed.subcommand).toBe('query');
-    expect(parsed.dbPath).toBe('./tmp/dev.sqlite');
-    expect(parsed.subcommandOptions).toMatchObject({
-      canvasNameQuery: 'ok',
-    });
-  });
-
-  test('keeps parsing the correct canvas leaf subcommand when unrelated flags and values appear before it', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'canvas', '--port', '3900', '--db', './tmp/dev.sqlite', 'move', '--canvas-name', 'ok', '--x', '1', '--y', '2']);
-
-    expect(parsed.command).toBe('canvas');
-    expect(parsed.subcommand).toBe('move');
-    expect(parsed.port).toBe(3900);
-    expect(parsed.dbPath).toBe('./tmp/dev.sqlite');
-    expect(parsed.subcommandOptions).toMatchObject({
-      canvasNameQuery: 'ok',
-      x: '1',
-      y: '2',
-    });
-  });
-
-  test('carries parsed subcommandOptions into buildCliConfig', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'canvas', 'query', '--canvas-name', 'ok', '--id', 'a,b', '--output', 'focused', '--omitdata']);
+  test('carries parsed options into buildCliConfig', () => {
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--db', './tmp/dev.sqlite', '--json']);
     const config = buildCliConfig(parsed);
 
-    expect(config.command).toBe('canvas');
-    expect(config.subcommand).toBe('query');
+    expect(config.command).toBe('serve');
+    expect(config.subcommand).toBeUndefined();
+    expect(config.dbPath).toBe('./tmp/dev.sqlite');
     expect(config.subcommandOptions).toMatchObject({
-      canvasNameQuery: 'ok',
-      ids: ['a', 'b'],
-      output: 'focused',
-      omitData: true,
+      json: true,
     });
   });
 

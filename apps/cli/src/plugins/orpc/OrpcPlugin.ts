@@ -1,7 +1,5 @@
 import { onError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/bun-ws';
-import { RPCHandler as FetchRPCHandler } from '@orpc/server/fetch';
-import { baseCanvasCmdOs, canvasCmdHandlers } from '@vibecanvas/api-canvas-cmd/handlers';
 import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
 import type { IPlugin } from '@vibecanvas/runtime';
 import type { ICliConfig } from '../../config';
@@ -37,38 +35,10 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
           }),
         ],
       });
-      const httpHandler = new FetchRPCHandler(baseCanvasCmdOs.router(canvasCmdHandlers), {
-        interceptors: [
-          onError((error) => {
-            console.error(error);
-          }),
-        ],
-      });
-
       ctx.hooks.wsUpgrade.tap((req) => {
         const url = new URL(req.url);
         const wantsWebSocket = req.headers.get('upgrade')?.toLowerCase() === 'websocket';
         return wantsWebSocket && url.pathname === '/api';
-      });
-
-      ctx.hooks.httpRequest.tapPromise(async (payload) => {
-        if (payload.response) return payload;
-
-        const url = new URL(payload.request.url);
-        if (!url.pathname.startsWith('/rpc/')) return payload;
-
-        const result = await httpHandler.handle(payload.request, {
-          prefix: '/rpc',
-          context: {
-            automerge,
-            accountId: OSS_FAKE_SESSION.accountId,
-            db,
-            requestId: crypto.randomUUID(),
-          },
-        });
-
-        if (!result.matched) return payload;
-        return { request: payload.request, response: result.response };
       });
 
       ctx.hooks.wsMessage.tap((ws, message) => {

@@ -1,13 +1,8 @@
-import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
-import type { IDbService } from '@vibecanvas/service-db/IDbService';
+import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
 import type { IPlugin } from '@vibecanvas/runtime';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
-import { runCanvasCommand, printCanvasCommandHelp, printCanvasHelp } from './cmds/cmd.canvas';
-import { printCanvasAddSchema } from './cmds/cmd.canvas.add';
-import { printCanvasPatchSchema } from './cmds/cmd.canvas.patch';
 import { txCmdUpgrade } from './cmds/cmd.upgrade';
-import { CANVAS_SUBCOMMAND_SET } from './core/constants';
 import { fnBuildUnknownCommandError, fnPrintCommandError } from './core/fn.print-command-result';
 
 export function printHelp(): void {
@@ -19,7 +14,6 @@ Usage:
 Commands:
   serve     Start the vibecanvas runtime (default when no command given)
   upgrade   Check for and install updates
-  canvas    Canvas command surface
 
 Options:
   --port <number>      Port for server/runtime (default: 3000 dev, 7496 compiled)
@@ -32,44 +26,14 @@ Examples:
   vibecanvas
   vibecanvas serve --port 3001
   vibecanvas serve --db ./tmp/dev.sqlite
-  vibecanvas canvas --help
-  vibecanvas query --help
   vibecanvas upgrade
   vibecanvas upgrade --check
   vibecanvas --version
-
-Canvas subcommands:
-  list      List canvases in the selected database
-  query     Run structured readonly canvas queries
-  add       Add primitive elements to one canvas
-  move      Move explicit element/group ids deterministically
-  patch     Patch explicit element/group ids with structured field updates
-  group     Group matching elements
-  ungroup   Ungroup a group
-  delete    Permanently delete element/group ids (cascades groups to descendants)
-  reorder   Change stacking order (front/back/forward/backward)
-
-Help ladder:
-  1. vibecanvas --help
-  2. vibecanvas canvas --help
-  3. vibecanvas <subcommand> --help
-  4. run the command; errors include a short hint and next step
-
-Subcommand help:
-  Any subcommand accepts --help for command-specific usage.
-  Canvas subcommands also work as top-level aliases, so both
-  'vibecanvas canvas query --help' and 'vibecanvas query --help'
-  show the same command help.
+  vibecanvas --help
 `);
 }
 
-function isCanvasSchemaOnlyRequest(config: ICliConfig): boolean {
-  return config.command === 'canvas'
-    && Boolean(config.subcommandOptions?.schema)
-    && (config.subcommand === 'add' || config.subcommand === 'patch');
-}
-
-function createCliPlugin(): IPlugin<{ db: IDbService, automerge: IAutomergeService }, ICliHooks, ICliConfig> {
+function createCliPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
     name: 'cli',
     apply(ctx) {
@@ -95,55 +59,9 @@ function createCliPlugin(): IPlugin<{ db: IDbService, automerge: IAutomergeServi
           return;
         }
 
-        if (ctx.config.helpRequested && ctx.config.command !== 'canvas') {
+        if (ctx.config.helpRequested) {
           printHelp();
           process.exitCode = 0;
-          return;
-        }
-
-        if (ctx.config.command === 'canvas' && ctx.config.helpRequested) {
-          if (!ctx.config.subcommand) {
-            printCanvasHelp();
-            process.exitCode = 0;
-            return;
-          }
-
-          if (!CANVAS_SUBCOMMAND_SET.has(ctx.config.subcommand)) {
-            fnPrintCommandError(fnBuildUnknownCommandError('canvas', ctx.config.subcommand), wantsJson);
-            if (!wantsJson) printCanvasHelp();
-            process.exitCode = 1;
-            return;
-          }
-
-          printCanvasCommandHelp(ctx.config.subcommand, { schema: ctx.config.subcommandOptions?.schema });
-          process.exitCode = 0;
-          return;
-        }
-
-        if (ctx.config.command === 'canvas' && ctx.config.subcommand && !CANVAS_SUBCOMMAND_SET.has(ctx.config.subcommand)) {
-          fnPrintCommandError(fnBuildUnknownCommandError('canvas', ctx.config.subcommand), wantsJson);
-          if (!wantsJson) printCanvasHelp();
-          process.exitCode = 1;
-          return;
-        }
-
-        if (isCanvasSchemaOnlyRequest(ctx.config)) {
-          if (ctx.config.subcommand === 'add') {
-            printCanvasAddSchema({ schema: ctx.config.subcommandOptions?.schema });
-            process.exitCode = 0;
-            return;
-          }
-
-          if (ctx.config.subcommand === 'patch') {
-            printCanvasPatchSchema({ schema: ctx.config.subcommandOptions?.schema });
-            process.exitCode = 0;
-            return;
-          }
-        }
-
-        if (ctx.config.command === 'canvas') {
-          await runCanvasCommand({ db: ctx.services.require('db'), automerge: ctx.services.require('automerge') }, ctx.config);
-          return;
         }
       });
     },

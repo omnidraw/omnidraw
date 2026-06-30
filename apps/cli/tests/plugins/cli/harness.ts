@@ -9,8 +9,6 @@ import { fileURLToPath } from 'node:url';
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(TEST_DIR, '../../../../..');
-const EXPECTED_MIGRATIONS_DIR = resolve(REPO_ROOT, 'packages/service-db/database-migrations');
-
 type TCanvasRow = typeof schema.canvas.$inferSelect;
 
 export type TProcessResult = {
@@ -124,20 +122,6 @@ export async function createCliTestContext(): Promise<TCliTestContext> {
     if (result.exitCode !== 0) throw new Error(`Harness worker failed for ${command}: ${result.stderr || result.stdout}`);
     return result.stdout.trim() ? JSON.parse(result.stdout) as TResult : (undefined as TResult);
   };
-
-  const dbServiceEntry = resolve(REPO_ROOT, 'packages/service-db/src/DbServiceBunSqlite/index.ts');
-  const migrateResult = await runProcess({
-    cmd: [
-      'bun',
-      '-e',
-      `import { createSqliteDb } from ${JSON.stringify(dbServiceEntry)}; const db = await createSqliteDb({ databasePath: process.env.VIBECANVAS_DB, dataDir: process.env.VIBECANVAS_DATA_DIR, cacheDir: process.env.VIBECANVAS_CACHE_DIR, silentMigrations: false }); await db.stop();`,
-    ],
-    cwd: REPO_ROOT,
-    env: { ...process.env, VIBECANVAS_DB: dbPath, VIBECANVAS_DATA_DIR: dataDir, VIBECANVAS_CACHE_DIR: cacheDir, VIBECANVAS_CONFIG: configDir },
-  });
-
-  if (migrateResult.exitCode !== 0) throw new Error(`Failed to initialize CLI test database: ${migrateResult.stderr || migrateResult.stdout}`);
-  if (!migrateResult.stdout.includes(`[DB] Applying migrations from ${EXPECTED_MIGRATIONS_DIR}`)) throw new Error(`CLI test harness must bootstrap from ${EXPECTED_MIGRATIONS_DIR}. Received stdout: ${migrateResult.stdout}`);
 
   return {
     tempRoot,
