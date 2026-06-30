@@ -222,7 +222,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [~]: [S52] - remove drizzle use turso + raw sqlite
 - [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 - [x]: [S54](s/S54.md) - simplify widget system
-- [ ]: [S55](s/S55.md) - store images as blob not base64
+- [x]: [S55](s/S55.md) - store images as blob not base64
 - [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
 - [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy

@@ -402,7 +402,12 @@ export function createImagePlugin(): IPlugin<{
           render,
           renderOrder,
           selection,
-          uploadImage: (body) => ctx.config.apiService.api.file.put({ body }).then(([err, res]) => {
+          uploadImage: (body) => ctx.config.apiService.api.file.put({
+            body: {
+              data: new Blob([body.data], { type: body.mime_type }),
+              mime_type: body.mime_type,
+            },
+          }).then(([err, res]) => {
             if (err) {
               throw err;
             }

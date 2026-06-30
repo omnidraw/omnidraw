@@ -2,8 +2,16 @@ import { createHash } from 'crypto';
 import { fnExtensionFromFormat, fnToPublicFileUrl } from './core/fn.file-storage';
 import { baseFileOs } from './orpc';
 
+async function toBytes(data: Blob | Uint8Array) {
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+
+  return new Uint8Array(await data.arrayBuffer());
+}
+
 const apiPutFile = baseFileOs.put.handler(async ({ input, context }) => {
-  const bytes = input.body.data;
+  const bytes = await toBytes(input.body.data);
 
   if (bytes.length === 0) {
     throw new Error('Invalid or empty image payload');
