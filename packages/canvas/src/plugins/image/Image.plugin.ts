@@ -6,6 +6,7 @@ import Konva from "konva";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import {
   fnFileToDataUrl,
+  fnFileToBytes,
   fnGetImageDimensions,
   fnGetImageSource,
   fnGetSupportedImageFormat,
@@ -411,6 +412,11 @@ export function createImagePlugin(): IPlugin<{
           createId: () => crypto.randomUUID(),
           now: () => Date.now(),
           fileToDataUrl: (file) => fnFileToDataUrl({
+            createFileReader: () => new FileReader(),
+          }, {
+            file,
+          }),
+          fileToBytes: (file) => fnFileToBytes({
             createFileReader: () => new FileReader(),
           }, {
             file,

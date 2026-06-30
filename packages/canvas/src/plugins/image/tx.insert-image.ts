@@ -22,6 +22,7 @@ export type TPortalInsertImage = {
   createId: () => string;
   now: () => number;
   fileToDataUrl: (file: File) => Promise<string>;
+  fileToBytes: (file: File) => Promise<Uint8Array>;
   parseDataUrl: (dataUrl: string) => { format: TImageUploadFormat; base64: string } | null;
   getImageDimensions: (source: string) => Promise<{ width: number; height: number }>;
   getViewportCenter: () => { x: number; y: number };
@@ -53,8 +54,9 @@ export async function txInsertImage(
     }
 
     const naturalSize = await portal.getImageDimensions(dataUrl);
+    const bytes = await portal.fileToBytes(args.file);
     const { url } = await portal.uploadImage({
-      base64: parsed.base64,
+      data: bytes,
       mime_type: parsed.format,
     });
 

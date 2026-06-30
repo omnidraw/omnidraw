@@ -9,7 +9,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-export type TUploadImage = (body: { base64: string; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
+export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
 export type TCloneImage = (body: { url: string }) => Promise<{ url: string }>;
 
 export interface IRuntimeConfig {

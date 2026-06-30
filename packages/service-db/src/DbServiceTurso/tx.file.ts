@@ -1,30 +1,30 @@
 import type { Database } from "@tursodatabase/database"
-import type { TFile } from "../model"
+import type { TMediaFile } from "../model"
 import { fxFileGetById } from "./fx.file"
 
 type TPortal = {
   db: Database
 }
 
-type TArgsCreate = Pick<TFile, "id" | "hash" | "mime_type" | "base64">
+type TArgsCreate = Pick<TMediaFile, "id" | "hash" | "mime_type" | "data">
 
 type TArgsDeleteById = {
   id: string
 }
 
-export async function txFileCreate(portal: TPortal, args: TArgsCreate): Promise<TFile> {
+export async function txFileCreate(portal: TPortal, args: TArgsCreate): Promise<TMediaFile> {
   const stmt = await portal.db.prepare(`
-    INSERT INTO files (id, hash, mime_type, base64)
+    INSERT INTO media_files (id, hash, mime_type, data)
     VALUES (?, ?, ?, ?)
     RETURNING *
   `)
-  const row = await stmt.get(args.id, args.hash, args.mime_type, args.base64)
+  const row = await stmt.get(args.id, args.hash, args.mime_type, args.data)
 
   if (!row) {
-    throw new Error("Failed to create file record")
+    throw new Error("Failed to create media file record")
   }
 
-  return row as TFile
+  return row as TMediaFile
 }
 
 export async function txFileDeleteById(portal: TPortal, args: TArgsDeleteById): Promise<void> {
@@ -35,7 +35,7 @@ export async function txFileDeleteById(portal: TPortal, args: TArgsDeleteById): 
   }
 
   const stmt = await portal.db.prepare(`
-    DELETE FROM files
+    DELETE FROM media_files
     WHERE id = ?
   `)
   await stmt.run(args.id)

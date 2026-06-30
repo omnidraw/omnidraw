@@ -43,7 +43,7 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("accounts");
     expect(tNames).toContain("canvas");
     expect(tNames).toContain("canvas_members");
-    expect(tNames).toContain("files");
+    expect(tNames).toContain("media_files");
     expect(tNames).toContain("actor_definitions");
     expect(tNames).toContain("actor_instances");
     expect(tNames).toContain("actor_connections");
@@ -175,5 +175,25 @@ describe("tx.migrations", () => {
     });
 
     await expectSqlConstraintFailure(() => insertConnection.run("connection-bad", "canvas-actor", "missing-source", "actor-2", null, null, "{}"));
+  });
+
+  test("media files table stores image bytes as blobs", async () => {
+    await txRunMigrations({ db, Bun, path }, {});
+
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const insertFile = await db.prepare("insert into media_files (id, hash, mime_type, data) values (?, ?, ?, ?)");
+    await insertFile.run("media-1", "hash-1", "image/png", bytes);
+
+    const selectFile = await db.prepare("select id, hash, mime_type, data, typeof(data) as data_type, created_at from media_files where id = ?");
+    const file = await selectFile.get("media-1");
+
+    expect(file).toEqual({
+      id: "media-1",
+      hash: "hash-1",
+      mime_type: "image/png",
+      data: bytes,
+      data_type: "blob",
+      created_at: expect.any(String),
+    });
   });
 });

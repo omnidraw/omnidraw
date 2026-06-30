@@ -2,9 +2,9 @@ import { describe, expect, mock, test } from 'bun:test';
 import { createFileResponse, createPublicAssetLookup } from '../src/plugins/server/http';
 import type { IDbService } from '@vibecanvas/service-db/IDbService';
 
-type TMockDb = Pick<IDbService['file'], 'get'>;
+type TMockDb = Pick<IDbService['file'], 'getById'>;
 
-function createDb(getFile: TMockDb['get']): IDbService {
+function createDb(getFile: TMockDb['getById']): IDbService {
   return {
     name: 'db',
     stop() {},
@@ -23,10 +23,10 @@ function createDb(getFile: TMockDb['get']): IDbService {
       deleteById() { return false; },
     },
     file: {
-      listAll() { return []; },
+      async listAll() { return []; },
       create() { throw new Error('not implemented'); },
-      get: getFile,
-      deleteById() {},
+      getById: getFile,
+      async deleteById() {},
     },
     getFullCanvas() { return null; },
   } as IDbService;
@@ -37,11 +37,11 @@ describe('server http helpers', () => {
     const db = createDb(mock(() => ({
       id: '123e4567-e89b-12d3-a456-426614174000',
       hash: 'abc123',
-      format: 'image/png',
-      base64: Buffer.from('hello').toString('base64'),
+      mime_type: 'image/png',
+      data: new Uint8Array(Buffer.from('hello')),
     } as any)));
 
-    const response = createFileResponse(
+    const response = await createFileResponse(
       new Request('http://localhost/files/123e4567-e89b-12d3-a456-426614174000.png'),
       db,
     );
@@ -53,15 +53,15 @@ describe('server http helpers', () => {
     expect(await response.text()).toBe('hello');
   });
 
-  test('returns 304 when file etag matches', () => {
+  test('returns 304 when file etag matches', async () => {
     const db = createDb(mock(() => ({
       id: '123e4567-e89b-12d3-a456-426614174000',
       hash: 'abc123',
-      format: 'image/png',
-      base64: Buffer.from('hello').toString('base64'),
+      mime_type: 'image/png',
+      data: new Uint8Array(Buffer.from('hello')),
     } as any)));
 
-    const response = createFileResponse(
+    const response = await createFileResponse(
       new Request('http://localhost/files/123e4567-e89b-12d3-a456-426614174000.png', {
         headers: { 'if-none-match': '"123e4567-e89b-12d3-a456-426614174000:abc123"' },
       }),
@@ -72,15 +72,15 @@ describe('server http helpers', () => {
     expect(response.headers.get('etag')).toBe('"123e4567-e89b-12d3-a456-426614174000:abc123"');
   });
 
-  test('returns 404 for invalid or missing file records', () => {
+  test('returns 404 for invalid or missing file records', async () => {
     const missingDb = createDb(mock(() => null));
 
-    expect(createFileResponse(new Request('http://localhost/files/not-a-file'), missingDb).status).toBe(404);
+    expect((await createFileResponse(new Request('http://localhost/files/not-a-file'), missingDb)).status).toBe(404);
     expect(
-      createFileResponse(
+      (await createFileResponse(
         new Request('http://localhost/files/123e4567-e89b-12d3-a456-426614174000.png'),
         missingDb,
-      ).status,
+      )).status,
     ).toBe(404);
   });
 

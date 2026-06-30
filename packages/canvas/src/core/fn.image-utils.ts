@@ -9,6 +9,10 @@ export type TPortalFileToDataUrl = {
   createFileReader: () => FileReader;
 };
 
+export type TPortalFileToBytes = {
+  createFileReader: () => FileReader;
+};
+
 export type TArgsGetImageDimensions = {
   src: string;
 };
@@ -32,6 +36,24 @@ export function fnFileToDataUrl(
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = () => reject(reader.error ?? new Error("Failed to read image file"));
     reader.readAsDataURL(args.file);
+  });
+}
+
+export function fnFileToBytes(
+  portal: TPortalFileToBytes,
+  args: TArgsFileToDataUrl,
+): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = portal.createFileReader();
+    reader.onload = () => {
+      if (!(reader.result instanceof ArrayBuffer)) {
+        reject(new Error("Failed to read image bytes"));
+        return;
+      }
+      resolve(new Uint8Array(reader.result));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read image bytes"));
+    reader.readAsArrayBuffer(args.file);
   });
 }
 

@@ -2146,12 +2146,12 @@ CREATE DOMAIN IF NOT EXISTS MIME_TYPE AS TEXT
 	));
 --> statement-breakpoint
 
-CREATE TABLE IF NOT EXISTS `files` (
+CREATE TABLE IF NOT EXISTS `media_files` (
 	`id` TEXT PRIMARY KEY NOT NULL,
 	`hash` TEXT NOT NULL,
 	`mime_type` MIME_TYPE DEFAULT 'application/octet-stream' NOT NULL,
-	`base64` TEXT NOT NULL,
+	`data` BLOB NOT NULL,
 	`created_at` TIMESTAMP DEFAULT (datetime('now')) NOT NULL
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS `files_hash_idx` ON `files` (`hash`);
+CREATE INDEX IF NOT EXISTS `media_files_hash_idx` ON `media_files` (`hash`);

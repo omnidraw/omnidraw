@@ -558,7 +558,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql](packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql](packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/002-add-canvas.sql](packages/service-db/src/DbServiceTurso/migration-files/002-add-canvas.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/003-add-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-files.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
