@@ -2,7 +2,7 @@ import { createRuntime, createServiceRegistry, IServiceRegistry } from "@vibecan
 import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
-    createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createFilesystemPlugin, createGridPlugin,
+    createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
     createHistoryControlPlugin,
     createImagePlugin,
     createPenPlugin,
@@ -12,7 +12,6 @@ import {
     createSelectPlugin,
     createShape1dPlugin,
     createShape2dPlugin,
-    createTerminalPlugin,
     createTextPlugin,
     createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin,
     createWidgetPlugin
@@ -152,8 +151,10 @@ export function buildRuntime(config: IRuntimeConfig) {
     createPenPlugin(),
     createTextPlugin(),
     createImagePlugin(),
-    createFilesystemPlugin(),
-    createTerminalPlugin(),
+    // S61: Filesystem widget surface is temporarily disabled; implementation remains under plugins/filesystem.
+    // createFilesystemPlugin(),
+    // S60: Terminal widget surface is temporarily disabled; implementation remains under plugins/terminal.
+    // createTerminalPlugin(),
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),

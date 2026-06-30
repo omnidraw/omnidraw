@@ -227,8 +227,10 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
 - [ ]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
-- [ ]: [S60](s/S60.md) - remove terminal widget (comment out only)
-- [ ]: [S61](s/S61.md) - remove filesystem widget (comment out only)
+- [x]: [S60](s/S60.md) - remove terminal widget (comment out only)
+- [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
+- [ ]: [S62](s/S62.md) - reimplement terminal widget API path
+- [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
