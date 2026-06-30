@@ -1,15 +1,20 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
-import type * as schema from './schema';
+import type { TAccount, TCanvas, TCanvasMember, TFileFormat, TFilesystem, TMediaFile } from './model';
 
-type TAccountRecord = typeof schema.accounts.$inferSelect;
-type TCanvasRecord = typeof schema.canvas.$inferSelect;
-type TCanvasInsertArgs = typeof schema.canvas.$inferInsert;
-type TCanvasMemberRecord = typeof schema.canvas_members.$inferSelect;
-type TFileRecord = typeof schema.files.$inferSelect;
-type TFileFormat = typeof schema.files.$inferSelect['format'];
-type TFilesystemRecord = typeof schema.filesystems.$inferSelect;
-type TFilesystemInsertArgs = typeof schema.filesystems.$inferInsert;
-type TFilesystemMemberRecord = typeof schema.filesystem_members.$inferSelect;
+type TAccountRecord = TAccount;
+type TCanvasRecord = TCanvas;
+type TCanvasInsertArgs = Omit<TCanvas, 'created_at'>;
+type TCanvasMemberRecord = TCanvasMember;
+type TFileRecord = TMediaFile;
+type TFilesystemRecord = TFilesystem;
+type TFilesystemInsertArgs = Omit<TFilesystem, 'created_at' | 'updated_at'>;
+type TFilesystemMemberRecord = {
+  filesystem_id: string;
+  account_id: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
+};
 
 type TGetFullCanvasResult = {
   canvas: TCanvasRecord;
@@ -23,13 +28,12 @@ type TUpdateCanvasArgs = {
 type TCreateFileArgs = {
   id: string;
   hash: string;
-  format: TFileFormat;
-  base64: string;
+  mime_type: TFileFormat;
+  data: Uint8Array | ArrayBuffer;
 };
 
 type TGetFileArgs = {
   id: string;
-  format: TFileFormat;
 };
 
 /**
@@ -41,30 +45,30 @@ type TGetFileArgs = {
  */
 export interface IDbService extends IService, IStartableService, IStoppableService {
   account: {
-    getDefaultOwner(): TAccountRecord | null;
-    ensureDefaultOwner(): TAccountRecord;
+    getDefaultOwner(): Promise<TAccountRecord | null>;
+    ensureDefaultOwner(): Promise<TAccountRecord>;
   };
   canvas: {
-    listAll(args?: { accountId?: string }): TCanvasRecord[];
-    findByName(name: string, args?: { accountId?: string }): TCanvasRecord | null;
-    create(args: TCanvasInsertArgs & { accountId?: string }): TCanvasRecord;
-    renameById(args: { id: string, name: string, accountId?: string }): TCanvasRecord | null;
-    deleteById(args: { id: string, accountId?: string }): TCanvasRecord[];
-    listMembers(args: { canvasId: string }): TCanvasMemberRecord[];
+    listAll(args?: { accountId?: string }): Promise<TCanvasRecord[]>;
+    findByName(args: { name: string }, scope?: { accountId?: string }): Promise<TCanvasRecord | null>;
+    create(args: TCanvasInsertArgs, scope?: { accountId?: string }): Promise<TCanvasRecord>;
+    renameById(args: { id: string, name: string }, scope?: { accountId?: string }): Promise<TCanvasRecord | null>;
+    deleteById(args: { id: string }, scope?: { accountId?: string }): Promise<TCanvasRecord[]>;
+    listMembers(args: { canvasId: string }): Promise<TCanvasMemberRecord[]>;
   };
   file: {
-    listAll(): TFileRecord[];
-    create(args: TCreateFileArgs): TFileRecord;
-    get(args: TGetFileArgs): TFileRecord | null;
-    deleteById(args: { id: string }): void;
+    listAll(): Promise<TFileRecord[]>;
+    create(args: TCreateFileArgs): Promise<TFileRecord>;
+    getById(args: TGetFileArgs): Promise<TFileRecord | null>;
+    deleteById(args: { id: string }): Promise<void>;
   };
   filesystem: {
-    listAll(args?: { accountId?: string }): TFilesystemRecord[];
-    findById(id: string, args?: { accountId?: string }): TFilesystemRecord | null;
-    findByMachineId(machineId: string, args?: { accountId?: string }): TFilesystemRecord | null;
-    create(args: TFilesystemInsertArgs & { accountId?: string }): TFilesystemRecord;
-    updateById(args: { id: string; label?: string; kind?: 'local' | 'remote'; home_path?: string | null; accountId?: string }): TFilesystemRecord | null;
-    listMembers(args: { filesystemId: string }): TFilesystemMemberRecord[];
+    listAll(args?: { accountId?: string }): Promise<TFilesystemRecord[]>;
+    findById(id: string, args?: { accountId?: string }): Promise<TFilesystemRecord | null>;
+    findByMachineId?(machineId: string, args?: { accountId?: string }): Promise<TFilesystemRecord | null>;
+    create(args: TFilesystemInsertArgs & { accountId?: string }): Promise<TFilesystemRecord>;
+    updateById?(args: { id: string; label?: string; kind?: 'local' | 'remote'; home_path?: string | null; accountId?: string }): Promise<TFilesystemRecord | null>;
+    listMembers?(args: { filesystemId: string }): Promise<TFilesystemMemberRecord[]>;
   };
 }
 

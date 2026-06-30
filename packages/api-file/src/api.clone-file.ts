@@ -23,7 +23,7 @@ const apiCloneFile = baseFileOs.clone.handler(async ({ input, context }) => {
     id: clonedId,
     hash: record.hash,
     mime_type: record.mime_type,
-    base64: record.base64,
+    data: record.data,
   });
 
   return {

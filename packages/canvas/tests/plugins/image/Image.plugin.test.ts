@@ -148,6 +148,12 @@ async function waitForMicrotasks(count = 12) {
   }
 }
 
+async function waitForAsyncImageInsert() {
+  await waitForMicrotasks();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await waitForMicrotasks();
+}
+
 describe("Image plugin", () => {
   test("registers the image tool and hydrates persisted image elements", async () => {
     const imageElement = createImageElement();
@@ -215,16 +221,25 @@ describe("Image plugin", () => {
         this.result = "data:image/png;base64,ZmFrZQ==";
         queueMicrotask(() => this.onload?.());
       }
+
+      readAsArrayBuffer() {
+        this.result = new Uint8Array([1, 2, 3]).buffer;
+        queueMicrotask(() => this.onload?.());
+      }
     }
 
     class MockImage {
-      width = 100;
-      height = 50;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-
-      set src(_value: string) {
-        queueMicrotask(() => this.onload?.());
+      constructor() {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 50;
+        Object.defineProperty(canvas, "src", {
+          configurable: true,
+          set() {
+            queueMicrotask(() => canvas.onload?.(new Event("load")));
+          },
+        });
+        return canvas;
       }
     }
 
@@ -246,7 +261,7 @@ describe("Image plugin", () => {
       });
 
       document.dispatchEvent(pasteEvent);
-      await waitForMicrotasks();
+      await waitForAsyncImageInsert();
 
       expect(uploadImage).toHaveBeenCalledOnce();
       expect(harness.scene.staticForegroundLayer.getChildren((node) => node instanceof Konva.Image)).toHaveLength(1);

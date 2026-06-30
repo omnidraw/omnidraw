@@ -1,7 +1,7 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFile, TFilesystem, TJson } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFilesystem, TJson, TMediaFile } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
@@ -17,7 +17,7 @@ import { txDefaultRunPragmas } from "./tx.pragma";
 import { Database } from "./turso-native";
 
 type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
-type TFileCreateArgs = Omit<TFile, "created_at">
+type TFileCreateArgs = Omit<TMediaFile, "created_at">
 type TFilesystemCreateArgs = Omit<TFilesystem, "created_at" | "updated_at">;
 type TActorDefinitionCreateArgs = Omit<TActorDefinition, "created_at" | "updated_at">;
 type TActorDefinitionUpdateArgs = Omit<TActorDefinition, "id" | "created_at" | "updated_at">;
@@ -43,9 +43,9 @@ interface IPublicMethods {
     listMembers(args: { canvasId: string }, accountId?: string): Promise<TCanvasMember[]>;
   };
   file: {
-    listAll(): Promise<TFile[]>;
-    create(args: TFileCreateArgs): Promise<TFile>;
-    getById(args: { id: string }): Promise<TFile | null>;
+    listAll(): Promise<TMediaFile[]>;
+    create(args: TFileCreateArgs): Promise<TMediaFile>;
+    getById(args: { id: string }): Promise<TMediaFile | null>;
     deleteById(args: { id: string }): Promise<void>;
   };
   filesystem: {

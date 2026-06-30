@@ -36,6 +36,7 @@ describe("txInsertImage", () => {
       setFocusedNode: vi.fn(),
     };
     const createdNodes: Konva.Image[] = [];
+    const uploadImage = vi.fn(async () => ({ url: "https://cdn.test/image.png" }));
 
     await txInsertImage({
       crdt: {
@@ -50,11 +51,12 @@ describe("txInsertImage", () => {
         sortChildren: vi.fn(),
       } as never,
       selection: selection as never,
-      uploadImage: vi.fn(async () => ({ url: "https://cdn.test/image.png" })),
+      uploadImage,
       notification: { showError: vi.fn() },
       createId: () => "image-1",
       now: () => 100,
       fileToDataUrl: vi.fn(async () => "data:image/png;base64,ZmFrZQ=="),
+      fileToBytes: vi.fn(async () => new Uint8Array([1, 2, 3])),
       parseDataUrl: vi.fn(() => ({ format: "image/png", base64: "ZmFrZQ==" })),
       getImageDimensions: vi.fn(async () => ({ width: 1200, height: 600 })),
       getViewportCenter: () => ({ x: 300, y: 200 }),
@@ -107,6 +109,10 @@ describe("txInsertImage", () => {
       }),
     }));
     expect(commit).toHaveBeenCalledOnce();
+    expect(uploadImage).toHaveBeenCalledWith({
+      data: new Uint8Array([1, 2, 3]),
+      mime_type: "image/png",
+    });
     expect(selection.setSelection).toHaveBeenCalledWith([createdNodes[0]]);
     expect(selection.setFocusedNode).toHaveBeenCalledWith(createdNodes[0]);
 

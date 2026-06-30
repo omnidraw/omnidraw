@@ -52,11 +52,11 @@ export const ZCanvasMember = z.object({
   updated_at: ZTimestamp,
 });
 
-export const ZFile = z.object({
+export const ZMediaFile = z.object({
   id: z.string(),
   hash: z.string(),
   mime_type: ZMimeType,
-  base64: z.string(),
+  data: ZBlob,
   created_at: ZTimestamp,
 });
 
@@ -120,7 +120,8 @@ export type TAutomergeRepoData = z.infer<typeof ZAutomergeRepoData>;
 export type TAccount = z.infer<typeof ZAccount>;
 export type TCanvas = z.infer<typeof ZCanvas>;
 export type TCanvasMember = z.infer<typeof ZCanvasMember>;
-export type TFile = z.infer<typeof ZFile>;
+export type TMediaFile = z.infer<typeof ZMediaFile>;
+export type TFile = TMediaFile;
 export type TFilesystem = z.infer<typeof ZFilesystem>;
 export type TActorDefinition = z.infer<typeof ZActorDefinition>;
 export type TActorInstance = z.infer<typeof ZActorInstance>;

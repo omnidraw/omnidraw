@@ -21,7 +21,7 @@ export async function createNewCanvasHarness(args?: {
   width?: number;
   height?: number;
   image?: {
-    uploadImage: ({ base64, format }: { base64: string; format: string }) => Promise<{ url: string | null }>;
+    uploadImage: ({ data, mime_type }: { data: Uint8Array; mime_type: string }) => Promise<{ url: string | null }>;
     cloneImage: ({ url }: { url: string }) => Promise<{ url: string | null }>;
     deleteImage: ({ url }: { url: string }) => Promise<{ ok: true }>;
   };
@@ -40,7 +40,7 @@ export async function createNewCanvasHarness(args?: {
   const apiService = {
     api: {
       file: {
-        put: async ({ body }: { body: { base64: string; format: string } }) => {
+        put: async ({ body }: { body: { data: Uint8Array; mime_type: string } }) => {
           const result = await args?.image?.uploadImage(body) ?? { url: null };
           return [null, result] as const;
         },
@@ -54,6 +54,9 @@ export async function createNewCanvasHarness(args?: {
         },
       },
       actors: {
+        definitions: {
+          list: async () => [null, []] as const,
+        },
         revisions: {
           list: async () => [null, []] as const,
           register: async () => [null, {
