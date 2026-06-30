@@ -180,6 +180,8 @@ export function ColorPalettePanel(props: {
     <div
       style={{
         width: "230px",
+        height: "24rem",
+        "box-sizing": "border-box",
         border: "1px solid var(--border)",
         background: "var(--popover)",
         "box-shadow": "0 6px 18px rgba(0, 0, 0, 0.12)",
@@ -187,6 +189,7 @@ export function ColorPalettePanel(props: {
         display: "flex",
         "flex-direction": "column",
         gap: "0.75rem",
+        overflow: "auto",
       }}
     >
       <For each={props.palette.groups}>
