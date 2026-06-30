@@ -164,6 +164,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A43](a/A43.md) - db: add authz for public DB methods
 - [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
+- [ ]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -225,6 +226,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
 - [ ]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
+- [ ]: [S60](s/S60.md) - remove terminal widget (comment out only)
+- [ ]: [S61](s/S61.md) - remove filesystem widget (comment out only)
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
