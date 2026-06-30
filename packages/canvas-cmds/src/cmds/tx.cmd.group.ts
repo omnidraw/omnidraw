@@ -92,7 +92,7 @@ export async function txExecuteCanvasGroup(portal: TPortal, input: TCanvasGroupI
   try {
     const dryRun = input.dryRun === true;
     const ids = parseGroupIds(input);
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: input, command: 'canvas.group', actionLabel: 'Group' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: input, command: 'canvas.group', actionLabel: 'Group' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     const matchedElements = resolveElementsByIds(doc, ids, selectedCanvas.id, input.canvasNameQuery ?? null);
     const parentGroupId = ensureSameParentGroupId(matchedElements, selectedCanvas.id, input.canvasNameQuery ?? null);

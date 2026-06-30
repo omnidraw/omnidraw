@@ -76,7 +76,7 @@ export async function txExecuteCanvasDelete(portal: TPortal, input: TCanvasDelet
   try {
     const dryRun = input.dryRun === true;
     const ids = parseDeleteIds(input);
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: input, command: 'canvas.delete', actionLabel: 'Delete' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: input, command: 'canvas.delete', actionLabel: 'Delete' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     const plan = resolveDeletionPlan(doc, ids, selectedCanvas.id, input.canvasNameQuery ?? null);
 

@@ -1,5 +1,5 @@
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
-import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc';
+import { createStartedAutomergeService, stopStartedAutomergeService, type TStartedAutomergeService } from './fixture.automerge';
+import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { tmpdir } from 'node:os';
@@ -37,18 +37,18 @@ function createGroup(overrides?: Partial<TGroup>): TGroup {
 
 describe('delete canvas command', () => {
   let dbService!: DbServiceBunSqlite;
-  let automergeService!: AutomergeService;
+  let automergeService!: TStartedAutomergeService;
   let databasePath!: string;
 
   beforeEach(async () => {
     databasePath = join(tmpdir(), `canvas-cmds-delete-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({ cacheDir: tmpdir(), databasePath, dataDir: tmpdir(), silentMigrations: true });
     await dbService.start();
-    automergeService = new AutomergeService(databasePath);
+    automergeService = await createStartedAutomergeService();
   });
 
   afterEach(async () => {
-    automergeService.stop();
+    await stopStartedAutomergeService(automergeService);
     await dbService.stop();
   });
 

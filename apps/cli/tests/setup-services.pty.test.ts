@@ -3,6 +3,8 @@ import { setupServices } from '../src/setup-services';
 import type { ICliConfig } from '../src/config';
 
 function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
+  const root = `/tmp/vibecanvas-test-${crypto.randomUUID()}`;
+
   return {
     cwd: process.cwd(),
     dev: true,
@@ -12,10 +14,13 @@ function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
     rawArgv: ['bun', 'run'],
     argv: [],
     port: 3000,
-    dataPath: `/tmp/vibecanvas-test-${crypto.randomUUID()}`,
     dbPath: `/tmp/vibecanvas-test-${crypto.randomUUID()}.sqlite`,
-    configPath: `/tmp/vibecanvas-test-${crypto.randomUUID()}.json`,
-    cachePath: `/tmp/vibecanvas-test-${crypto.randomUUID()}`,
+    xdgPaths: {
+      cacheDirPath: `${root}/cache`,
+      configDirPath: `${root}/config`,
+      dataDirPath: `${root}/data`,
+      stateDirPath: `${root}/state`,
+    },
     helpRequested: false,
     versionRequested: false,
     ...overrides,

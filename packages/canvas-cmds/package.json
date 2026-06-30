@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@automerge/automerge-repo": "catalog:",
+    "@tursodatabase/database": "catalog:",
     "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/service-db": "workspace:*"
   }

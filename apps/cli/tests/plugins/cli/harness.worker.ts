@@ -1,7 +1,7 @@
 import { Repo, type PeerId } from '@automerge/automerge-repo';
-import { BunSqliteStorageAdapter } from '@vibecanvas/service-automerge/adapters/sqlite.adapter';
-import type { TCanvasDoc } from '@vibecanvas/service-automerge/types/canvas-doc';
-import { Database } from 'bun:sqlite';
+import { connect, type Database as TursoDatabase } from '@tursodatabase/database';
+import { TursoStorageAdapter } from '@vibecanvas/service-automerge/adapters/turso.adapter';
+import type { TCanvasDoc } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 
 type TCanvasRow = {
   id: string;
@@ -32,30 +32,23 @@ function readPayload<TKey extends keyof TWorkerPayloads>(command: TKey): TWorker
   return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as TWorkerPayloads[TKey];
 }
 
-function applySqlitePragmas(sqlite: Database): void {
-  sqlite.run('PRAGMA foreign_keys = ON');
-  sqlite.run('PRAGMA journal_mode = WAL');
-  sqlite.run('PRAGMA busy_timeout = 5000');
-  sqlite.run('PRAGMA synchronous = NORMAL');
-  sqlite.run('PRAGMA cache_size = 10000');
-  sqlite.run('PRAGMA temp_store = MEMORY');
-  sqlite.run('PRAGMA mmap_size = 268435456');
+function createRepo(database: TursoDatabase): Repo {
+  return new Repo({ storage: new TursoStorageAdapter(database), peerId: `cli-test-worker-${crypto.randomUUID()}` as PeerId });
 }
 
-function createRepo(databasePath: string): Repo {
-  return new Repo({ storage: new BunSqliteStorageAdapter(databasePath), peerId: `cli-test-worker-${crypto.randomUUID()}` as PeerId });
-}
-
-function createCanvasRow(args: { sqlite: Database; repo: Repo; name: string; createdAtUnixSeconds?: number }): TCanvasRow {
+async function createCanvasRow(args: { database: TursoDatabase; repo: Repo; name: string; createdAtUnixSeconds?: number }): Promise<TCanvasRow> {
   const handle = args.repo.create<TCanvasDoc>({ id: crypto.randomUUID(), name: args.name, elements: {}, groups: {} });
   const createdAtUnixSeconds = args.createdAtUnixSeconds ?? Math.floor(Date.now() / 1000);
   const canvas = { id: crypto.randomUUID(), name: args.name, created_at: createdAtUnixSeconds, automerge_url: handle.url };
-  args.sqlite.prepare('INSERT INTO canvas (id, name, automerge_url, created_at) VALUES (?, ?, ?, ?)').run(canvas.id, canvas.name, canvas.automerge_url, createdAtUnixSeconds);
-  return args.sqlite.query('SELECT id, name, automerge_url, created_at FROM canvas WHERE id = ? LIMIT 1').get(canvas.id) as TCanvasRow;
+  const insert = await args.database.prepare('INSERT INTO canvas (id, name, automerge_url, created_at) VALUES (?, ?, ?, ?)');
+  await insert.run(canvas.id, canvas.name, canvas.automerge_url, createdAtUnixSeconds);
+  const select = await args.database.prepare('SELECT id, name, automerge_url, created_at FROM canvas WHERE id = ? LIMIT 1');
+  return await select.get(canvas.id) as TCanvasRow;
 }
 
 async function readCanvasDocFromDb(databasePath: string, automergeUrl: string): Promise<TCanvasDoc> {
-  const repo = createRepo(databasePath);
+  const database = await connect(databasePath);
+  const repo = createRepo(database);
   const handle = await repo.find<TCanvasDoc>(automergeUrl as never);
   await handle.whenReady();
   const doc = handle.doc();
@@ -84,20 +77,18 @@ async function run(): Promise<void> {
 
   if (command === 'list-canvases') {
     const payload = readPayload('list-canvases');
-    const sqlite = new Database(payload.dbPath);
-    applySqlitePragmas(sqlite);
-    const rows = sqlite.query('SELECT id, name, automerge_url, created_at FROM canvas ORDER BY created_at ASC, name ASC').all() as TCanvasRow[];
-    sqlite.close();
+    const database = await connect(payload.dbPath);
+    const stmt = await database.prepare('SELECT id, name, automerge_url, created_at FROM canvas ORDER BY created_at ASC, name ASC');
+    const rows = await stmt.all() as TCanvasRow[];
     console.log(JSON.stringify(rows));
     return;
   }
 
   if (command === 'seed-canvas') {
     const payload = readPayload('seed-canvas');
-    const sqlite = new Database(payload.dbPath);
-    applySqlitePragmas(sqlite);
-    const repo = createRepo(payload.dbPath);
-    const canvas = createCanvasRow({ sqlite, repo, name: payload.args.name ?? `cli-canvas-${crypto.randomUUID().slice(0, 8)}`, createdAtUnixSeconds: payload.args.createdAtUnixSeconds });
+    const database = await connect(payload.dbPath);
+    const repo = createRepo(database);
+    const canvas = await createCanvasRow({ database, repo, name: payload.args.name ?? `cli-canvas-${crypto.randomUUID().slice(0, 8)}`, createdAtUnixSeconds: payload.args.createdAtUnixSeconds });
     const handle = await repo.find<TCanvasDoc>(canvas.automerge_url as never);
     await handle.whenReady();
     handle.change((doc: TCanvasDoc) => {
@@ -107,7 +98,6 @@ async function run(): Promise<void> {
       doc.groups = structuredClone(payload.args.groups ?? {});
     });
     await waitForCanvasDoc({ databasePath: payload.dbPath, automergeUrl: canvas.automerge_url, expectedElementCount: Object.keys(payload.args.elements ?? {}).length, expectedGroupCount: Object.keys(payload.args.groups ?? {}).length });
-    sqlite.close();
     console.log(JSON.stringify({ canvas, automergeUrl: canvas.automerge_url }));
     return;
   }

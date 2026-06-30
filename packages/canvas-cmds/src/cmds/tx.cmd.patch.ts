@@ -205,7 +205,7 @@ export async function txExecuteCanvasPatch(portal: TPortal, input: TCanvasPatchI
     const dryRun = input.dryRun === true;
     validatePatchEnvelope(patch);
     const ids = assertIds(input);
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: input, command: 'canvas.patch', actionLabel: 'Patch' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: input, command: 'canvas.patch', actionLabel: 'Patch' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     const matchedIds = ids.filter((id) => doc.elements[id] || doc.groups[id]);
 

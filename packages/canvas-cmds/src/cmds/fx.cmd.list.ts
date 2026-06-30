@@ -24,7 +24,7 @@ export type TPortal = {
 export async function fxExecuteCanvasList(portal: TPortal): Promise<TCanvasListSuccess> {
   try {
 
-    const canvases = portal.dbService.canvas.listAll()
+    const canvases = (await portal.dbService.canvas.listAll())
       .sort((left, right) => {
         const leftCreatedAt = Number(left.created_at);
         const rightCreatedAt = Number(right.created_at);

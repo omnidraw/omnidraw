@@ -1,7 +1,7 @@
 import { DbServiceBunSqlite } from "@vibecanvas/service-db/DbServiceBunSqlite/index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
-import { fxExecuteCanvasList } from "packages/canvas-cmds/src/cmds/fx.cmd.list";
+import { fxExecuteCanvasList } from "@vibecanvas/canvas-cmds/cmds/fx.cmd.list";
 
 describe('list canvas command', () => {
   let dbService!: DbServiceBunSqlite

@@ -459,7 +459,7 @@ export async function fxExecuteCanvasQuery(portal: TPortal, args: TArgs): Promis
     }
     const omitData = Boolean(args.omitData);
     const omitStyle = Boolean(args.omitStyle);
-    const canvasRows = portal.dbService.canvas.listAll();
+    const canvasRows = await portal.dbService.canvas.listAll();
     const selectedCanvas = fnResolveCanvasSelection({ rows: canvasRows, selector, command: 'canvas.query', actionLabel: 'Query' });
     const { doc: canvasDoc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     validateSelector(canvasDoc, selector);

@@ -164,7 +164,7 @@ export async function txExecuteCanvasMove(portal: TPortal, args: TArgs): Promise
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw { ok: false, command: 'canvas.move', code: 'CANVAS_MOVE_COORDINATE_INVALID', message: 'Move coordinates must be finite numbers.', canvasId: args.canvasId ?? null, canvasNameQuery: args.canvasNameQuery ?? null } satisfies TCanvasCmdErrorDetails;
     const mode = args.mode ?? 'relative';
 
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: args, command: 'canvas.move', actionLabel: 'Move' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: args, command: 'canvas.move', actionLabel: 'Move' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
     const matchedTargets = resolveTargetsByIds(doc, matchedIds, selectedCanvas.id, args.canvasNameQuery ?? null);
 

@@ -1,10 +1,10 @@
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
+import { createStartedAutomergeService, stopStartedAutomergeService, type TStartedAutomergeService } from './fixture.automerge';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import type { TCanvasDoc, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc';
+import type { TCanvasDoc, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { txExecuteCanvasAdd } from 'packages/canvas-cmds/src/cmds/tx.cmd.add';
+import { txExecuteCanvasAdd } from '@vibecanvas/canvas-cmds/cmds/tx.cmd.add';
 
 function createGroup(overrides?: Partial<TGroup>): TGroup {
   return { id: 'group-1', parentGroupId: null, zIndex: 'a0', locked: false, createdAt: 1, ...overrides };
@@ -12,17 +12,17 @@ function createGroup(overrides?: Partial<TGroup>): TGroup {
 
 describe('add canvas command', () => {
   let dbService!: DbServiceBunSqlite;
-  let automergeService!: AutomergeService;
+  let automergeService!: TStartedAutomergeService;
   let databasePath!: string;
 
   beforeEach(async () => {
     databasePath = join(tmpdir(), `canvas-cmds-add-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({ cacheDir: tmpdir(), databasePath, dataDir: tmpdir(), silentMigrations: true });
     await dbService.start();
-    automergeService = new AutomergeService(databasePath);
+    automergeService = await createStartedAutomergeService();
   });
   afterEach(async () => {
-    automergeService.stop();
+    await stopStartedAutomergeService(automergeService);
     await dbService.stop();
   });
 

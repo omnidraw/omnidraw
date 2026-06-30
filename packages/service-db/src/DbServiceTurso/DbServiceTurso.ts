@@ -86,14 +86,12 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     })
   }
   async start(): Promise<void> {
-    console.log('DbServiceTurso started')
     await this.db.connect()
     await txDefaultRunPragmas({ db: this.db }, {})
     await txRunMigrations({ db: this.db, Bun, path }, {})
   }
 
   async stop(): Promise<void> {
-    console.log('DbServiceTurso stopped')
   }
 
   account = {

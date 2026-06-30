@@ -107,7 +107,7 @@ export async function txExecuteCanvasAdd(portal: TPortalCanvasAdd, args: TArgsCa
   try {
     const requestedElements = fnValidateInput(args);
     const dryRun = args.dryRun === true;
-    const selectedCanvas = fnResolveCanvasSelection({ rows: portal.dbService.canvas.listAll(), selector: args, command: 'canvas.add', actionLabel: 'Add' });
+    const selectedCanvas = fnResolveCanvasSelection({ rows: await portal.dbService.canvas.listAll(), selector: args, command: 'canvas.add', actionLabel: 'Add' });
     const { handle, doc } = await fxLoadCanvasHandleDoc(portal, selectedCanvas);
 
     for (const element of requestedElements) fnValidateElementPayload(element, doc, dryRun);

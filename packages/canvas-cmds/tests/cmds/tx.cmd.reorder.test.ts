@@ -1,10 +1,10 @@
-import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
+import { createStartedAutomergeService, stopStartedAutomergeService, type TStartedAutomergeService } from './fixture.automerge';
 import { DbServiceBunSqlite } from '@vibecanvas/service-db/DbServiceBunSqlite/index';
-import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc';
+import type { TCanvasDoc, TElement, TGroup } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { txExecuteCanvasReorder } from 'packages/canvas-cmds/src/cmds/tx.cmd.reorder';
+import { txExecuteCanvasReorder } from '@vibecanvas/canvas-cmds/cmds/tx.cmd.reorder';
 
 function createRectElement(overrides?: Partial<TElement>): TElement {
   return { id: 'rect-1', x: 0, y: 0, rotation: 0, zIndex: 'a0', parentGroupId: null, bindings: [], locked: false, createdAt: 1, updatedAt: 1, data: { type: 'rect', w: 120, h: 80 }, style: { backgroundColor: '#ffffff', strokeColor: '#111111', strokeWidth: "@stroke-width/thin", opacity: 1 }, ...overrides };
@@ -16,17 +16,17 @@ function orderedZIndex(index: number): string { return `z${String(index).padStar
 
 describe('reorder canvas command', () => {
   let dbService!: DbServiceBunSqlite;
-  let automergeService!: AutomergeService;
+  let automergeService!: TStartedAutomergeService;
   let databasePath!: string;
 
   beforeEach(async () => {
     databasePath = join(tmpdir(), `canvas-cmds-reorder-${crypto.randomUUID()}.sqlite`);
     dbService = new DbServiceBunSqlite({ cacheDir: tmpdir(), databasePath, dataDir: tmpdir(), silentMigrations: true });
     await dbService.start();
-    automergeService = new AutomergeService(databasePath);
+    automergeService = await createStartedAutomergeService();
   });
   afterEach(async () => {
-    automergeService.stop();
+    await stopStartedAutomergeService(automergeService);
     await dbService.stop();
   });
 
