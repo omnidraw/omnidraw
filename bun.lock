@@ -375,6 +375,17 @@
         "@vibecanvas/service-event-publisher": "workspace:*",
       },
     },
+    "packages/service-kv": {
+      "name": "@vibecanvas/service-kv",
+      "dependencies": {
+        "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-db": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "typescript": "catalog:",
+      },
+    },
     "packages/service-pty": {
       "name": "@vibecanvas/service-pty",
       "version": "0.3.1",
@@ -1231,6 +1242,8 @@
     "@vibecanvas/service-event-publisher": ["@vibecanvas/service-event-publisher@workspace:packages/service-event-publisher"],
 
     "@vibecanvas/service-filesystem": ["@vibecanvas/service-filesystem@workspace:packages/service-filesystem"],
+
+    "@vibecanvas/service-kv": ["@vibecanvas/service-kv@workspace:packages/service-kv"],
 
     "@vibecanvas/service-pty": ["@vibecanvas/service-pty@workspace:packages/service-pty"],
 
