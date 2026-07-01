@@ -11,6 +11,7 @@
     "test": "bun test tests --timeout=20000"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.3",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",
