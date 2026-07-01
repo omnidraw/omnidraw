@@ -1,55 +1,22 @@
+import type { TChatComposerSubmit } from "../ChatComposer/interface"
+import { createSignal, Show } from "solid-js"
+import { ChatComposer } from "../ChatComposer/ChatComposer"
+
 export function ChatTab() {
+  const [lastSubmit, setLastSubmit] = createSignal<TChatComposerSubmit>()
+
   return (
-    <div class="ai-wizzard-tab ai-wizzard-tab--intent">
-      <label class="ai-wizzard-field">
-        <span class="ai-wizzard-label">What widget should AI build?</span>
-        <textarea
-          class="ai-wizzard-textarea"
-          value="Build a repo health widget that shows failing builds first"
-          aria-label="Widget Chat Wizzard"
-        />
-      </label>
+    <div class="ai-wizzard-tab ai-wizzard-tab--chat">
+      <ChatComposer onSubmit={setLastSubmit} />
 
-      <div class="ai-wizzard-summary-grid" aria-label="chat build summary">
-        <section class="ai-wizzard-summary-card">
-          <div class="ai-wizzard-summary-title">
-            <span aria-hidden="true">◇</span>
-            <span>Purpose</span>
+      <Show when={lastSubmit()}>
+        {(submit) => (
+          <div class="ai-chat-draft" aria-live="polite">
+            <span>Draft</span>
+            <p>{submit().text || `${submit().images.length} image attachment${submit().images.length === 1 ? "" : "s"}`}</p>
           </div>
-          <p>Track repository build health</p>
-        </section>
-
-        <section class="ai-wizzard-summary-card">
-          <div class="ai-wizzard-summary-title">
-            <span aria-hidden="true">▣</span>
-            <span>Data</span>
-          </div>
-          <p>CI builds from selected repos</p>
-        </section>
-
-        <section class="ai-wizzard-summary-card">
-          <div class="ai-wizzard-summary-title">
-            <span aria-hidden="true">✣</span>
-            <span>User action</span>
-          </div>
-          <p>Filter, drill in to failed builds</p>
-        </section>
-
-        <section class="ai-wizzard-summary-card">
-          <div class="ai-wizzard-summary-title">
-            <span aria-hidden="true">⬡</span>
-            <span>Empty state</span>
-          </div>
-          <p>No builds found in time range</p>
-        </section>
-      </div>
-
-      <div class="ai-wizzard-actions">
-        <button class="ai-wizzard-primary-button" type="button">
-          <span>Next</span>
-          <span aria-hidden="true">›</span>
-        </button>
-      </div>
+        )}
+      </Show>
     </div>
   )
 }

@@ -13,7 +13,7 @@ interface IProps {
 export function AiWizzard(props: IProps) {
   return (
     <div class="ai-wizzard-shell">
-      <Tabs aria-label="Main navigation" class="ai-wizzard-tabs" defaultValue="widget">
+      <Tabs aria-label="Main navigation" class="ai-wizzard-tabs" defaultValue="chat">
         <Tabs.List class="ai-wizzard-tabs__list">
           <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="chat">Chat</Tabs.Trigger>
           <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="actor">Actor</Tabs.Trigger>
