@@ -2,7 +2,18 @@ import { eventIterator, oc } from '@orpc/contract';
 import { ZActorStatus, ZJson } from "@vibecanvas/service-db/model";
 import { z } from 'zod';
 
-const ZAgentAuth = z.object({
+const ZAgentSettings = z.object({
+  defaultModel: z.string().optional(),
+  defaultProvider: z.string().optional(),
+  defaultThinkingLevel: z.literal(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+  providersWithCredentials: z.string().array(),
+  providers: z.string().array(),
+  models: z.object({
+    id: z.string(),
+    input: z.literal(['text', 'image']).array(),
+    provider: z.string(),
+    name: z.string()
+  }).array()
 });
 
 export const ZAgentEventOne = z.discriminatedUnion('type', [
@@ -60,11 +71,12 @@ export const ZAgentEvent = z.union([
 ]);
 
 export type TAgentEvent = z.infer<typeof ZAgentEvent>
+export type TAgentSettings = z.infer<typeof ZAgentSettings>
 
 export const agentContract = oc.router({
-  auth: {
+  settings: {
     get: oc
-      .output(ZAgentAuth),
+      .output(ZAgentSettings),
   },
   events: oc
     .input(z.object({}))

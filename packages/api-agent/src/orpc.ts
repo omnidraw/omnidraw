@@ -1,8 +1,8 @@
 import { implement } from '@orpc/server';
 import { agentContract } from './contract';
-import type { TActorsApiContext } from './types';
+import type { TAgentApiContext } from './types';
 
-const baseActorsOs = implement(agentContract)
-  .$context<TActorsApiContext>();
+const baseAgentOs = implement(agentContract)
+  .$context<TAgentApiContext>();
 
-export { baseActorsOs };
+export { baseAgentOs };

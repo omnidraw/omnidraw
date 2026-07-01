@@ -1,11 +1,11 @@
-import type { ActorService } from '@vibecanvas/service-actor';
+import type { AgentService } from '@vibecanvas/service-agent';
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
-export type TActorsApiContext = {
+export type TAgentApiContext = {
   db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
-  actor: ActorService;
+  agent: AgentService;
   accountId?: string;
   requestId?: string;
 };

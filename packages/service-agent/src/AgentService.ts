@@ -4,7 +4,7 @@ import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbSer
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
-import { AuthStorage, createAgentSession, ModelRegistry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, createAgentSession, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 interface IPublicMethods {
 }
@@ -19,7 +19,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #config: IActorServiceConfig;
   #piAgentPath: string;
   authStorage: AuthStorage;
-  models: ModelRegistry
+  models: ModelRegistry;
+  settingsManager: SettingsManager;
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -27,7 +28,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.authStorage = AuthStorage.create(join(this.#piAgentPath, 'auth.json'))
     this.authStorage
     this.models = ModelRegistry.create(this.authStorage, join(this.#piAgentPath, 'models.json'))
-    this.models.getAll
+    this.models.getAvailable
+    this.settingsManager = SettingsManager.create(this.#piAgentPath, undefined, {projectTrusted: true})
+    // const session = await createAgentSession({
+    //   // s
+    // })
 
   }
 
@@ -39,5 +44,23 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
+  async settings() {
+    const defaultModel = this.settingsManager.getDefaultModel()
+    const defaultProvider = this.settingsManager.getDefaultProvider()
+    const defaultThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
+    const providersWithCredentials = this.authStorage.list()
+    const providers = Object.keys(this.authStorage.getAll())
+    const models = this.models.getAvailable().map(m => ({id: m.id, input: m.input, provider: m.provider, name: m.name}))
+
+    return {
+      defaultModel,
+      defaultProvider,
+      defaultThinkingLevel,
+      providersWithCredentials,
+      providers,
+      models
+    }
+
+  }
 
 }

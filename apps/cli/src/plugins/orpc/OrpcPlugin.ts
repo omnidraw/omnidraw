@@ -27,7 +27,8 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const eventPublisher = ctx.services.require('eventPublisher');
       const filesystem = ctx.services.require('filesystem');
       const pty = ctx.services.require('pty');
-      const actor = ctx.services.get('actor');
+      const actor = ctx.services.require('actor');
+      const agent = ctx.services.require('agent');
       const handler = new RPCHandler(baseOs.router(router), {
         interceptors: [
           onError((error) => {
@@ -54,6 +55,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
             filesystem,
             pty,
             actor,
+            agent,
             requestId: socket.data.requestId,
           },
         }).catch((error) => {

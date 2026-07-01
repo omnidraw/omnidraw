@@ -1,12 +1,10 @@
-import { apiGetDefinitions } from "./api.auth.get";
-import { apiNotificationEvents } from "./api.events";
-import { baseActorsOs } from './orpc';
+import { apiGetDefinitions } from "./api.setting.get";
+import { baseAgentOs } from './orpc';
 
-const actorsHandlers = {
+const agentHandlers = {
     auth: {
         get: apiGetDefinitions,
     },
-    events: apiNotificationEvents,
 };
 
-export { actorsHandlers, baseActorsOs };
+export { agentHandlers, baseAgentOs };
