@@ -1,0 +1,324 @@
+.ai-wizzard-shell {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  scrollbar-gutter: stable;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  font-family: var(--vc-terminal-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+}
+
+.ai-wizzard-shell::-webkit-scrollbar,
+.ai-wizzard-tabs__content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ai-wizzard-shell::-webkit-scrollbar-track,
+.ai-wizzard-tabs__content::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+.ai-wizzard-shell::-webkit-scrollbar-thumb,
+.ai-wizzard-tabs__content::-webkit-scrollbar-thumb {
+  border: 2px solid var(--background);
+  background: var(--border);
+}
+
+.ai-wizzard-shell::-webkit-scrollbar-thumb:hover,
+.ai-wizzard-tabs__content::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}
+
+.ai-wizzard-tabs {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.ai-wizzard-tabs__list {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: end;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 92%, var(--background));
+}
+
+.ai-wizzard-tabs__trigger {
+  appearance: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  min-height: 48px;
+  padding: 0 18px;
+  text-align: center;
+}
+
+.ai-wizzard-tabs__trigger:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.ai-wizzard-tabs__trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+
+.ai-wizzard-tabs__trigger[data-selected] {
+  background: color-mix(in srgb, var(--primary) 18%, var(--card));
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.ai-wizzard-tabs__trigger[data-selected]:focus-visible {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.ai-wizzard-tabs__indicator {
+  position: absolute;
+  background: var(--primary);
+  transition: all 180ms ease;
+}
+
+.ai-wizzard-tabs__indicator[data-orientation="horizontal"] {
+  bottom: -1px;
+  height: 2px;
+}
+
+.ai-wizzard-tabs__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 30px 26px 20px;
+}
+
+.ai-wizzard-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  min-height: 100%;
+}
+
+.ai-wizzard-field {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ai-wizzard-label {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ai-wizzard-textarea {
+  flex: 1 1 132px;
+  min-height: 132px;
+  resize: vertical;
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  padding: 18px;
+}
+
+.ai-wizzard-textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-wizzard-summary-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ai-wizzard-option-card,
+.ai-wizzard-preview-card,
+.ai-wizzard-check-card {
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+}
+
+.ai-wizzard-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 84px;
+  padding: 0;
+}
+
+.ai-wizzard-summary-title {
+  align-items: center;
+  color: var(--muted-foreground);
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-wizzard-summary-card p {
+  margin: 0;
+  min-height: 72px;
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+  padding: 13px 14px;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ai-wizzard-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+.ai-wizzard-primary-button {
+  align-items: center;
+  border: 1px solid var(--border);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  gap: 16px;
+  min-height: 44px;
+  padding: 0 22px;
+}
+
+.ai-wizzard-primary-button:hover {
+  background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+}
+
+.ai-wizzard-primary-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-wizzard-section-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-wizzard-option-card,
+.ai-wizzard-check-card,
+.ai-wizzard-preview-card {
+  padding: 18px;
+}
+
+.ai-wizzard-option-card--selected {
+  border-style: solid;
+  border-color: var(--primary);
+}
+
+.ai-wizzard-kicker {
+  color: var(--muted-foreground);
+  display: block;
+  font-size: 12px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.ai-wizzard-option-card strong,
+.ai-wizzard-check-card strong {
+  color: var(--foreground);
+  display: block;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.ai-wizzard-option-card p,
+.ai-wizzard-check-card small {
+  color: var(--muted-foreground);
+  display: block;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.ai-wizzard-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-wizzard-preview-header,
+.ai-wizzard-preview-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.ai-wizzard-preview-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}
+
+.ai-wizzard-preview-row {
+  background: var(--background);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+}
+
+.ai-wizzard-status {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.ai-wizzard-status--bad {
+  color: var(--destructive);
+}
+
+.ai-wizzard-status--good {
+  color: var(--success);
+}
+
+.ai-wizzard-check-card {
+  align-items: flex-start;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+}
+
+.ai-wizzard-check-card input {
+  accent-color: var(--primary);
+  margin-top: 2px;
+}
+
+.ai-wizzard-check-card:focus-within {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+@media (max-width: 720px) {
+  .ai-wizzard-tabs__list,
+  .ai-wizzard-summary-grid,
+  .ai-wizzard-section-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-wizzard-tabs__trigger {
+    text-align: left;
+  }
+}
