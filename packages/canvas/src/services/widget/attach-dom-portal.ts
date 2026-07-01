@@ -5,6 +5,7 @@ import type { CameraService, SelectionService, WidgetManagerService, TWidgetActo
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
 import {
+  WIDGET_DOM_CONTENT_SCALE,
   WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
@@ -47,6 +48,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   if (!isKonvaRect(body)) return;
 
   const div = portal.document.createElement('div');
+  const contentRoot = portal.document.createElement('div');
   const fullscreenHeader = portal.document.createElement('div');
   const fullscreenTitle = portal.document.createElement('div');
   const fullscreenWindowButton = portal.document.createElement('button');
@@ -88,13 +90,16 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (isFullscreen) {
       const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
       portal.widgetPortal.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
-      fullscreenHeader.style.display = '';
+      fullscreenHeader.style.display = 'flex';
       fullscreenHeader.style.width = `${fullscreenParent.clientWidth}px`;
       fullscreenHeader.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       fullscreenHeader.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
       div.style.top = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       div.style.width = `${fullscreenParent.clientWidth}px`;
       div.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
+      contentRoot.style.width = `${fullscreenParent.clientWidth}px`;
+      contentRoot.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
+      contentRoot.style.transform = 'none';
       div.style.transform = 'none';
       div.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
       return;
@@ -107,6 +112,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     div.style.zIndex = '';
     div.style.width = `${body.width()}px`;
     div.style.height = `${body.height()}px`;
+    contentRoot.style.width = `${body.width() / WIDGET_DOM_CONTENT_SCALE}px`;
+    contentRoot.style.height = `${body.height() / WIDGET_DOM_CONTENT_SCALE}px`;
+    contentRoot.style.transform = `scale(${WIDGET_DOM_CONTENT_SCALE})`;
     div.style.transform = `matrix(${matrix.join(',')})`;
   };
 
@@ -157,6 +165,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenHeader.style.pointerEvents = 'auto';
 
   fullscreenTitle.textContent = widgetLabel;
+  fullscreenTitle.style.flex = '1 1 auto';
   fullscreenTitle.style.minWidth = '0';
   fullscreenTitle.style.overflow = 'hidden';
   fullscreenTitle.style.textOverflow = 'ellipsis';
@@ -180,6 +189,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenWindowButton.title = 'Exit Fullscreen';
   fullscreenWindowButton.setAttribute('aria-label', 'Exit Fullscreen');
   fullscreenWindowButton.style.display = 'inline-flex';
+  fullscreenWindowButton.style.flex = '0 0 auto';
+  fullscreenWindowButton.style.whiteSpace = 'nowrap';
   fullscreenWindowButton.style.alignItems = 'center';
   fullscreenWindowButton.style.justifyContent = 'center';
   fullscreenWindowButton.style.gap = '6px';
@@ -221,13 +232,21 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.style.overflow = 'hidden';
   div.style.contain = 'layout paint size';
 
+  contentRoot.style.position = 'absolute';
+  contentRoot.style.left = '0';
+  contentRoot.style.top = '0';
+  contentRoot.style.transformOrigin = '0 0';
+  contentRoot.style.transform = `scale(${WIDGET_DOM_CONTENT_SCALE})`;
+  contentRoot.style.overflow = 'hidden';
+
+  div.appendChild(contentRoot);
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
-  cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
+  cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element });
 
   if (portal.widgetConfig?.sandbox) {
     const cleanupSandbox = mountArrowSandbox({
-      root: div,
+      root: contentRoot,
       apiService: portal.apiService,
       subscribeActorInstanceEvents: (actorInstanceId: string, handler: TWidgetActorEventHandler) => {
         return portal.widgetServie.subscribeActorInstanceEvents(actorInstanceId, handler);
