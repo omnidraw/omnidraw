@@ -34,6 +34,20 @@ type TArgs = {
 
 type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
 
+function syncWidgetRootChildren(contentRoot: HTMLDivElement) {
+  const view = contentRoot.ownerDocument.defaultView;
+  if (!view) return;
+
+  Array.from(contentRoot.children).forEach((child) => {
+    if (!(child instanceof view.HTMLElement)) return;
+
+    child.style.boxSizing = 'border-box';
+    child.style.width = '100%';
+    child.style.minWidth = '100%';
+    child.style.minHeight = '100%';
+  });
+}
+
 export type TWidgetDomPortalListener = (() => void) & {
   syncDiv: () => void;
 };
@@ -100,6 +114,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       contentRoot.style.width = `${fullscreenParent.clientWidth}px`;
       contentRoot.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
       contentRoot.style.transform = 'none';
+      syncWidgetRootChildren(contentRoot);
       div.style.transform = 'none';
       div.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
       return;
@@ -115,6 +130,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     contentRoot.style.width = `${body.width() / WIDGET_DOM_CONTENT_SCALE}px`;
     contentRoot.style.height = `${body.height() / WIDGET_DOM_CONTENT_SCALE}px`;
     contentRoot.style.transform = `scale(${WIDGET_DOM_CONTENT_SCALE})`;
+    syncWidgetRootChildren(contentRoot);
     div.style.transform = `matrix(${matrix.join(',')})`;
   };
 
@@ -237,12 +253,13 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   contentRoot.style.top = '0';
   contentRoot.style.transformOrigin = '0 0';
   contentRoot.style.transform = `scale(${WIDGET_DOM_CONTENT_SCALE})`;
-  contentRoot.style.overflow = 'hidden';
+  contentRoot.style.overflow = 'auto';
 
   div.appendChild(contentRoot);
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
   cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element });
+  syncWidgetRootChildren(contentRoot);
 
   if (portal.widgetConfig?.sandbox) {
     const cleanupSandbox = mountArrowSandbox({
