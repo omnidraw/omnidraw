@@ -107,6 +107,11 @@ export const ZActorConnection = z.object({
 });
 
 export type TJson = z.infer<typeof ZJson>;
+export type TKeyValue =
+  | { name: string; type: "text"; value: string }
+  | { name: string; type: "json"; value: TJson }
+  | { name: string; type: "number"; value: number }
+  | { name: string; type: "bool"; value: boolean };
 export type TTimestamp = z.infer<typeof ZTimestamp>;
 export type TBlob = z.infer<typeof ZBlob>;
 export type TSqlBoolean = z.infer<typeof ZSqlBoolean>;

@@ -19,12 +19,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #config: IActorServiceConfig;
   #piAgentPath: string;
   authStorage: AuthStorage;
+  models: ModelRegistry
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
     this.#piAgentPath = join(config.dataPath, 'pi')
     this.authStorage = AuthStorage.create(join(this.#piAgentPath, 'auth.json'))
-    this.authStorage.list
+    this.authStorage
+    this.models = ModelRegistry.create(this.authStorage, join(this.#piAgentPath, 'models.json'))
+    this.models.getAll
 
   }
 

@@ -1,17 +1,19 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFilesystem, TJson, TMediaFile } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFilesystem, TJson, TKeyValue, TMediaFile } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
+import { fxKeyValueGet } from "./fx.keyValue";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
+import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
 import { txRunMigrations } from "./tx.migrations";
 import { txDefaultRunPragmas } from "./tx.pragma";
 import { Database } from "./turso-native";
@@ -52,6 +54,11 @@ interface IPublicMethods {
     listAll(): Promise<TFilesystem[]>;
     findById(id: string): Promise<TFilesystem | null>;
     create(args: TFilesystemCreateArgs): Promise<TFilesystem>;
+  };
+  keyValue: {
+    add(args: TKeyValue): Promise<TKeyValue>;
+    remove(args: { name: string }): Promise<void>;
+    get(args: { name: string }): Promise<TKeyValue | null>;
   };
   actor: {
     listDefinitions(): Promise<TActorDefinition[]>;
@@ -120,6 +127,12 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     listAll: () => fxFilesystemListAll(this, {}),
     findById: (id: string) => fxFilesystemFindById(this, { id }),
     create: (args: TFilesystemCreateArgs) => txFilesystemCreate(this, args),
+  };
+
+  keyValue = {
+    add: (args: TKeyValue) => txKeyValueAdd(this, args),
+    remove: (args: { name: string }) => txKeyValueRemove(this, args),
+    get: (args: { name: string }) => fxKeyValueGet(this, args),
   };
 
   actor = {

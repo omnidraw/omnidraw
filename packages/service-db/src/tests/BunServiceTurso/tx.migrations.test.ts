@@ -47,6 +47,7 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("actor_definitions");
     expect(tNames).toContain("actor_instances");
     expect(tNames).toContain("actor_connections");
+    expect(tNames).toContain("kv");
     expect(tNames).toContain("migrations");
 
     const migrationStmt = await db.prepare("select name, hash_hex, applied_at from migrations order by name");
