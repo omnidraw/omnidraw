@@ -1,0 +1,20 @@
+{
+  "name": "@vibecanvas/api-agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test --pass-with-no-tests"
+  },
+  "dependencies": {
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
+    "@vibecanvas/service-actor": "workspace:*",
+    "@vibecanvas/service-agent": "workspace:*",
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*",
+    "zod": "catalog:"
+  }
+}

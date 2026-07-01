@@ -17,10 +17,10 @@ const AI_WIDGET_ICON = `
 </svg>
 `;
 
-function mountAiWidget(args: { root: HTMLDivElement; element: TElement }) {
+function mountAiWidget(portal: {apiService: IRuntimeConfig['apiService']}, args: { root: HTMLDivElement; element: TElement }) {
   args.root.replaceChildren();
 
-  render(() => AiWizzard({}), args.root)
+  render(() => AiWizzard({apiService: portal.apiService}), args.root)
 
   return () => {
     args.root.replaceChildren();
@@ -44,7 +44,7 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
           priority: 77,
         },
         initialPayload: {},
-        renderDom: ({ root, element }) => mountAiWidget({ root, element }),
+        renderDom: ({ root, element }) => mountAiWidget({apiService: ctx.config.apiService}, { root, element }),
       });
 
       ctx.hooks.destroy.tap(() => {
