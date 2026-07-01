@@ -23,10 +23,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -106,13 +104,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -125,8 +116,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -159,6 +148,20 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-actors/src/orpc.ts](packages/api-actors/src/orpc.ts) |  |
 | [packages/api-actors/src/types.ts](packages/api-actors/src/types.ts) |  |
 | [packages/api-actors/tsconfig.json](packages/api-actors/tsconfig.json) |  |
+
+## packages/api-agent
+
+| path | jsdocs |
+|---|---|
+| [packages/api-agent/package.json](packages/api-agent/package.json) |  |
+| [packages/api-agent/src/api.auth.get.ts](packages/api-agent/src/api.auth.get.ts) |  |
+| [packages/api-agent/src/api.events.ts](packages/api-agent/src/api.events.ts) |  |
+| [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
+| [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
+| [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
+| [packages/api-agent/src/orpc.ts](packages/api-agent/src/orpc.ts) |  |
+| [packages/api-agent/src/types.ts](packages/api-agent/src/types.ts) |  |
+| [packages/api-agent/tsconfig.json](packages/api-agent/tsconfig.json) |  |
 
 ## packages/api-canvas
 
@@ -273,6 +276,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
 | [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Automerge Client Service |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
+| [packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts) |  |
+| [packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts](packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts) |  |
+| [packages/canvas/src/components/AiWizzard/index.css](packages/canvas/src/components/AiWizzard/index.css) |  |
+| [packages/canvas/src/components/AiWizzard/index.tsx](packages/canvas/src/components/AiWizzard/index.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx](packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx](packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.css](packages/canvas/src/components/CanvasContextMenu/index.css) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.tsx](packages/canvas/src/components/CanvasContextMenu/index.tsx) |  |
@@ -320,6 +332,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/core/tx.set-node-z-index.ts](packages/canvas/src/core/tx.set-node-z-index.ts) |  |
 | [packages/canvas/src/core/types.ts](packages/canvas/src/core/types.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
+| [packages/canvas/src/plugins/ai/Ai.plugin.ts](packages/canvas/src/plugins/ai/Ai.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts](packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CONSTANTS.ts](packages/canvas/src/plugins/camera-control/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/camera-control/fn.get-hand-layer-style.ts](packages/canvas/src/plugins/camera-control/fn.get-hand-layer-style.ts) |  |
@@ -535,6 +548,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
+## packages/service-agent
+
+| path | jsdocs |
+|---|---|
+| [packages/service-agent/package.json](packages/service-agent/package.json) |  |
+| [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
+| [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
+| [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |
+
 ## packages/service-automerge
 
 | path | jsdocs |
@@ -578,7 +600,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

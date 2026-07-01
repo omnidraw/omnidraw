@@ -166,7 +166,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
 - [ ]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
-- [ ]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
+- [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
