@@ -18,6 +18,17 @@ export function ChatTab(props: IProps) {
 
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--chat">
+      <div class="ai-chat-content">
+        <Show when={lastSubmit()}>
+          {(submit) => (
+            <div class="ai-chat-draft" aria-live="polite">
+              <span>Draft · {submit().model?.name ?? "No model"}</span>
+              <p>{submit().text || `${submit().images.length} image attachment${submit().images.length === 1 ? "" : "s"}`}</p>
+            </div>
+          )}
+        </Show>
+      </div>
+
       <ChatComposer
         models={props.settings?.models}
         defaultModel={props.settings?.defaultModel}
@@ -25,15 +36,6 @@ export function ChatTab(props: IProps) {
         defaultThinkingLevel={props.settings?.defaultThinkingLevel}
         onSubmit={setLastSubmit}
       />
-
-      <Show when={lastSubmit()}>
-        {(submit) => (
-          <div class="ai-chat-draft" aria-live="polite">
-            <span>Draft · {submit().model?.name ?? "No model"}</span>
-            <p>{submit().text || `${submit().images.length} image attachment${submit().images.length === 1 ? "" : "s"}`}</p>
-          </div>
-        )}
-      </Show>
     </div>
   )
 }

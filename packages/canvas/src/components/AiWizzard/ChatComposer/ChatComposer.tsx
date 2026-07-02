@@ -11,6 +11,7 @@ import type {
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import ChevronDown from "lucide-solid/icons/chevron-down"
+import FileText from "lucide-solid/icons/file-text"
 import ImageIcon from "lucide-solid/icons/image"
 import X from "lucide-solid/icons/x"
 import Zap from "lucide-solid/icons/zap"
@@ -238,6 +239,8 @@ export function ChatComposer(props: TChatComposerProps) {
   const [modelMenuOpen, setModelMenuOpen] = createSignal(false)
   const [selectedModelId, setSelectedModelId] = createSignal<string>()
   const [activeProvider, setActiveProvider] = createSignal<string>()
+  const [focusedModelId, setFocusedModelId] = createSignal<string>()
+  const [modelMenuColumn, setModelMenuColumn] = createSignal<"provider" | "model">("model")
 
   const availableMentions = () => props.mentions ?? DEFAULT_MENTIONS
   const availableCommands = () => props.commands ?? DEFAULT_COMMANDS
@@ -248,6 +251,7 @@ export function ChatComposer(props: TChatComposerProps) {
   const activeProviderModels = createMemo(() => models().filter((model) => model.provider === activeProvider()))
   const imageInputEnabled = createMemo(() => selectedModel()?.input.includes("image") ?? false)
   const modelButtonLabel = createMemo(() => selectedModel()?.name.replace(/^GPT-/i, "") ?? "Select model")
+  const focusedModel = createMemo(() => models().find((model) => model.id === focusedModelId()))
 
   const suggestions = () => {
     const activeSuggestion = suggestion()
@@ -409,6 +413,82 @@ export function ChatComposer(props: TChatComposerProps) {
     setActiveIndex((current) => (current + direction + count) % count)
   }
 
+  const openModelMenu = () => {
+    const currentModel = selectedModel()
+    setActiveProvider(currentModel?.provider ?? activeProvider() ?? providers()[0])
+    setFocusedModelId(currentModel?.id ?? activeProviderModels()[0]?.id)
+    setModelMenuColumn("model")
+    setModelMenuOpen(true)
+  }
+
+  const moveActiveProvider = (direction: 1 | -1) => {
+    const allProviders = providers()
+    if (allProviders.length === 0) return
+
+    const currentIndex = Math.max(0, allProviders.indexOf(activeProvider() ?? allProviders[0]))
+    const nextProvider = allProviders[(currentIndex + direction + allProviders.length) % allProviders.length]
+    setActiveProvider(nextProvider)
+    setFocusedModelId(models().find((model) => model.provider === nextProvider)?.id)
+  }
+
+  const moveFocusedModel = (direction: 1 | -1) => {
+    const currentModels = activeProviderModels()
+    if (currentModels.length === 0) return
+
+    const currentIndex = Math.max(0, currentModels.findIndex((model) => model.id === focusedModelId()))
+    setFocusedModelId(currentModels[(currentIndex + direction + currentModels.length) % currentModels.length].id)
+  }
+
+  const selectFocusedModel = () => {
+    const model = focusedModel() ?? activeProviderModels()[0]
+    if (!model) return
+
+    setSelectedModelId(model.id)
+    setActiveProvider(model.provider)
+    setFocusedModelId(model.id)
+    setModelMenuOpen(false)
+    view?.focus()
+  }
+
+  const handleModelMenuKey = (event: KeyboardEvent) => {
+    if (!modelMenuOpen()) return false
+
+    if (event.key === "Escape") {
+      setModelMenuOpen(false)
+      return true
+    }
+
+    if (event.key === "ArrowLeft") {
+      setModelMenuColumn("provider")
+      return true
+    }
+
+    if (event.key === "ArrowRight") {
+      setModelMenuColumn("model")
+      setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+      return true
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const direction = event.key === "ArrowDown" ? 1 : -1
+      if (modelMenuColumn() === "provider") moveActiveProvider(direction)
+      else moveFocusedModel(direction)
+      return true
+    }
+
+    if (event.key === "Enter") {
+      if (modelMenuColumn() === "provider") {
+        setModelMenuColumn("model")
+        setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+      } else {
+        selectFocusedModel()
+      }
+      return true
+    }
+
+    return false
+  }
+
   const handleSuggestionKey = (event: KeyboardEvent) => {
     if (!hasFocus() || !suggestion()) {
       return false
@@ -442,8 +522,8 @@ export function ChatComposer(props: TChatComposerProps) {
 
   onMount(() => {
     const handleDocumentKeydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && modelMenuOpen()) {
-        setModelMenuOpen(false)
+      if (handleModelMenuKey(event)) {
+        event.preventDefault()
         event.stopPropagation()
         return
       }
@@ -639,7 +719,8 @@ export function ChatComposer(props: TChatComposerProps) {
                 disabled={models().length === 0}
                 onClick={(event) => {
                   event.stopPropagation()
-                  setModelMenuOpen((open) => !open)
+                  if (modelMenuOpen()) setModelMenuOpen(false)
+                  else openModelMenu()
                 }}
               >
                 <Zap size={18} />
@@ -654,9 +735,17 @@ export function ChatComposer(props: TChatComposerProps) {
                     <For each={providers()}>
                       {(provider) => (
                         <button
-                          classList={{ "ai-chat-composer__model-provider": true, "ai-chat-composer__model-provider--active": provider === activeProvider() }}
+                          classList={{
+                            "ai-chat-composer__model-provider": true,
+                            "ai-chat-composer__model-provider--active": provider === activeProvider(),
+                            "ai-chat-composer__model-provider--focused": provider === activeProvider() && modelMenuColumn() === "provider",
+                          }}
                           type="button"
-                          onClick={() => setActiveProvider(provider)}
+                          onClick={() => {
+                            setActiveProvider(provider)
+                            setFocusedModelId(models().find((model) => model.provider === provider)?.id)
+                            setModelMenuColumn("model")
+                          }}
                         >
                           <span>{providerLabel(provider)}</span>
                         </button>
@@ -667,16 +756,28 @@ export function ChatComposer(props: TChatComposerProps) {
                     <For each={activeProviderModels()}>
                       {(model) => (
                         <button
-                          classList={{ "ai-chat-composer__model-option": true, "ai-chat-composer__model-option--active": model.id === selectedModelId() }}
+                          classList={{
+                            "ai-chat-composer__model-option": true,
+                            "ai-chat-composer__model-option--active": model.id === selectedModelId(),
+                            "ai-chat-composer__model-option--focused": model.id === focusedModelId() && modelMenuColumn() === "model",
+                          }}
                           type="button"
+                          onMouseEnter={() => setFocusedModelId(model.id)}
                           onClick={() => {
                             setSelectedModelId(model.id)
                             setActiveProvider(model.provider)
+                            setFocusedModelId(model.id)
                             setModelMenuOpen(false)
+                            view?.focus()
                           }}
                         >
                           <strong>{model.name}</strong>
-                          <small>{model.id} · {model.input.includes("image") ? "text + image" : "text only"}</small>
+                          <span class="ai-chat-composer__model-capabilities" aria-label={model.input.includes("image") ? "Text and image input" : "Text input only"}>
+                            <FileText size={13} />
+                            <Show when={model.input.includes("image")}>
+                              <ImageIcon size={13} />
+                            </Show>
+                          </span>
                         </button>
                       )}
                     </For>
