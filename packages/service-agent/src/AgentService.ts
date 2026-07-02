@@ -7,6 +7,7 @@ import { dirname, join, relative as relativePath } from 'node:path';
 import { AuthStorage, createAgentSession, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 interface IPublicMethods {
+  setApiKey(providerId: string, key: string): void;
 }
 
 interface IActorServiceConfig {
@@ -16,6 +17,17 @@ interface IActorServiceConfig {
 
 type TWidgetId = string;
 type TLoginId = string;
+type TAgentLoginStatus =
+  | { status: 'pending' }
+  | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
+  | { status: 'progress'; message: string }
+  | { status: 'success' }
+  | { status: 'aborted' }
+  | { status: 'error'; message: string };
+type TLoginSession = {
+  controller: AbortController;
+  status: TAgentLoginStatus;
+};
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -25,7 +37,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   models: ModelRegistry;
   settingsManager: SettingsManager;
   sessionMap: Record<TWidgetId, SessionManager> = {}
-  #loginMap: Record<TLoginId, AbortController> = {}
+  #loginMap: Record<TLoginId, TLoginSession> = {}
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -51,35 +63,62 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   login(providerId: 'openai-codex' | 'github-copilot') {
     const loginId = crypto.randomUUID()
     const controller = new AbortController()
-    const signal = controller.signal
-    this.authStorage.login(providerId, {
+    const session: TLoginSession = { controller, status: { status: 'pending' } }
+    this.#loginMap[loginId] = session
+
+    void this.authStorage.login(providerId, {
       onAuth(info) { },
       onDeviceCode(info) {
-        console.log(info)
-
+        session.status = {
+          status: 'device-code',
+          userCode: info.userCode,
+          verificationUri: info.verificationUri,
+          intervalSeconds: info.intervalSeconds,
+          expiresInSeconds: info.expiresInSeconds,
+        }
       },
       async onPrompt(prompt) { return '' },
       async onSelect(prompt) {
-        if (providerId === 'github-copilot') return undefined
-        else return ""
+        return prompt.options.find((option) => option.id === 'device_code')?.id
       },
       onProgress(message) {
-        console.log(message)
+        if (session.status.status === 'device-code') {
+          session.status = { ...session.status, message }
+          return
+        }
+        session.status = { status: 'progress', message }
       },
-      signal
+      signal: controller.signal,
+    }).then(() => {
+      session.status = { status: 'success' }
+    }).catch((error) => {
+      if (controller.signal.aborted) {
+        session.status = { status: 'aborted' }
+        return
+      }
+      session.status = { status: 'error', message: error instanceof Error ? error.message : String(error) }
     })
-
-    this.#loginMap[loginId] = controller
 
     return loginId
   }
 
+  getLoginStatus(loginId: TLoginId): TAgentLoginStatus {
+    return this.#loginMap[loginId]?.status ?? { status: 'aborted' }
+  }
+
   abortLogin(loginId: TLoginId) {
-    const controller = this.#loginMap[loginId]
-    if(controller) {
-      controller.abort()
-      delete this.#loginMap[loginId]
+    const session = this.#loginMap[loginId]
+    if (session) {
+      session.controller.abort()
+      session.status = { status: 'aborted' }
     }
+  }
+
+  setApiKey(providerId: string, key: string): void {
+    this.authStorage.set(providerId, {
+      type: 'api_key',
+      key,
+    })
   }
 
   async settings() {
@@ -87,7 +126,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const defaultProvider = this.settingsManager.getDefaultProvider()
     const defaultThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
     const providersWithCredentials = this.authStorage.list()
-    const providers = new Set(this.models.getAll().map(m => m.provider)).entries().toArray()
+    const providers = Array.from(new Set(this.models.getAll().map(m => m.provider)))
     const models = this.models.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
 
     return {

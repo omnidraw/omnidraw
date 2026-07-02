@@ -5,12 +5,12 @@ import { z } from 'zod';
 const ZAgentSettings = z.object({
   defaultModel: z.string().optional(),
   defaultProvider: z.string().optional(),
-  defaultThinkingLevel: z.literal(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+  defaultThinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
   providersWithCredentials: z.string().array(),
   providers: z.string().array(),
   models: z.object({
     id: z.string(),
-    input: z.literal(['text', 'image']).array(),
+    input: z.enum(['text', 'image']).array(),
     provider: z.string(),
     name: z.string()
   }).array()
@@ -19,6 +19,31 @@ const ZAgentSettings = z.object({
 const ZAgentLogin = z.object({
   loginId: z.string()
 })
+
+const ZAgentApiKeySet = z.object({
+  providerId: z.string().min(1),
+  key: z.string().min(1),
+})
+
+const ZAgentApiKeySetOutput = z.object({
+  providerId: z.string(),
+})
+
+const ZAgentLoginStatus = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('pending') }),
+  z.object({
+    status: z.literal('device-code'),
+    userCode: z.string(),
+    verificationUri: z.string(),
+    intervalSeconds: z.number().optional(),
+    expiresInSeconds: z.number().optional(),
+    message: z.string().optional(),
+  }),
+  z.object({ status: z.literal('progress'), message: z.string() }),
+  z.object({ status: z.literal('success') }),
+  z.object({ status: z.literal('aborted') }),
+  z.object({ status: z.literal('error'), message: z.string() }),
+])
 
 export const ZAgentEventOne = z.discriminatedUnion('type', [
   z.object({
@@ -76,6 +101,7 @@ export const ZAgentEvent = z.union([
 
 export type TAgentEvent = z.infer<typeof ZAgentEvent>
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
+export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
 
 export const agentContract = oc.router({
   settings: {
@@ -84,9 +110,17 @@ export const agentContract = oc.router({
   },
   auth: {
     login: oc
-      .input(z.object({providerId: z.literal(['openai-codex' , 'github-copilot'])}))
+      .input(z.object({ providerId: z.enum(['openai-codex', 'github-copilot']) }))
       .output(ZAgentLogin),
-    abort: oc.input(z.object({loginId: z.string()}))
+    status: oc
+      .input(z.object({ loginId: z.string() }))
+      .output(ZAgentLoginStatus),
+    abort: oc.input(z.object({ loginId: z.string() })),
+    apiKey: {
+      set: oc
+        .input(ZAgentApiKeySet)
+        .output(ZAgentApiKeySetOutput),
+    },
   },
   events: oc
     .input(z.object({}))

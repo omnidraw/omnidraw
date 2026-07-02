@@ -1,5 +1,7 @@
 import { apiAuthAbort } from "./api.auth.abort";
+import { apiAuthApiKeySet } from "./api.auth.apiKey.set";
 import { apiAuthLogin } from "./api.auth.login";
+import { apiAuthStatus } from "./api.auth.status";
 import { apiGetDefinitions } from "./api.setting.get";
 import { baseAgentOs } from './orpc';
 
@@ -9,7 +11,11 @@ const agentHandlers = {
     },
     auth: {
         login: apiAuthLogin,
-        abort: apiAuthAbort
+        status: apiAuthStatus,
+        abort: apiAuthAbort,
+        apiKey: {
+            set: apiAuthApiKeySet,
+        },
     }
 };
 
