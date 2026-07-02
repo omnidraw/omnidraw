@@ -674,7 +674,7 @@
 .ai-wizzard-provider-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
 }
 
 .ai-wizzard-provider-card {
@@ -701,7 +701,20 @@
   align-items: center;
   display: flex;
   flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.ai-wizzard-provider-card--api-key .ai-wizzard-provider-card__actions {
+  flex: 1 0 100%;
+  justify-content: flex-start;
+}
+
+@media (min-width: 980px) {
+  .ai-wizzard-provider-card--api-key:not(.ai-wizzard-provider-card--expanded) .ai-wizzard-provider-card__actions {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+  }
 }
 
 .ai-wizzard-provider-card strong {

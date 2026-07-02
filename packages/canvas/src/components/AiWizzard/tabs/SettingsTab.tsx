@@ -235,10 +235,10 @@ export function SettingsTab(props: IProps) {
               const configured = () => configuredProviders().has(provider)
               const status = () => apiKeyStatusByProvider()[provider] ?? { status: "idle" } as TApiKeyStatus
               const draft = () => apiKeyDraftByProvider()[provider] ?? ""
-              const expanded = () => expandedApiKeyProviderMap()[provider] ?? !configured()
+              const expanded = () => expandedApiKeyProviderMap()[provider] ?? false
               const busy = () => status().status === "saving" || status().status === "removing"
               return (
-                <article classList={{ "ai-wizzard-provider-card": true, "ai-wizzard-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
+                <article classList={{ "ai-wizzard-provider-card": true, "ai-wizzard-provider-card--api-key": true, "ai-wizzard-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
                   <div class="ai-wizzard-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "API key configured" : "No API key configured"}</small>
