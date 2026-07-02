@@ -14,6 +14,8 @@ interface IActorServiceConfig {
   eventPublisherService: IEventPublisherService,
 }
 
+type TWidgetId = string;
+
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
   #config: IActorServiceConfig;
@@ -21,6 +23,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   models: ModelRegistry;
   settingsManager: SettingsManager;
+  sessionMap: Record<TWidgetId, SessionManager> = {}
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -28,10 +31,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.authStorage = AuthStorage.create(join(this.#piAgentPath, 'auth.json'))
     this.models = ModelRegistry.create(this.authStorage, join(this.#piAgentPath, 'models.json'))
     this.settingsManager = SettingsManager.create(this.#piAgentPath, undefined, {projectTrusted: true})
-    // const session = await createAgentSession({
-    //   // s
-    // })
-
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
@@ -40,6 +39,35 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async stop(): Promise<void> {
     console.log('stop', this.name)
+  }
+
+  async connect(id: TWidgetId) {
+    const session = SessionManager.continueRecent(join(this.#piAgentPath, 'widget', id))
+    this.sessionMap[id] = session
+    // session.log
+  }
+
+  async login(providerId: 'openai-codex' | 'github-copilot') {
+    const loginId = crypto.randomUUID()
+    const signal = new AbortSignal()
+    await this.authStorage.login(providerId, {
+      onAuth(info) {},
+      onDeviceCode(info) {
+        console.log(info)
+
+      },
+      async onPrompt(prompt) {return''},
+      async onSelect(prompt) {
+        if(providerId === 'github-copilot') return undefined
+        else return ""
+      },
+      onProgress(message) {
+        console.log(message)
+      },
+      signal
+    })
+
+    return loginId
   }
 
   async settings() {

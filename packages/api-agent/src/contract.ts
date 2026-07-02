@@ -16,6 +16,10 @@ const ZAgentSettings = z.object({
   }).array()
 });
 
+const ZAgentLogin = z.object({
+  loginId: z.string()
+})
+
 export const ZAgentEventOne = z.discriminatedUnion('type', [
   z.object({
     kind: z.literal('system'),
@@ -77,6 +81,11 @@ export const agentContract = oc.router({
   settings: {
     get: oc
       .output(ZAgentSettings),
+  },
+  auth: {
+    login: oc
+      .input(z.object({providerId: z.literal(['openai-codex' , 'github-copilot'])}))
+      .output(ZAgentLogin)
   },
   events: oc
     .input(z.object({}))
