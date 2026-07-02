@@ -12,13 +12,10 @@ interface IProps {
     id: string
     apiService: TOrpcSafeClient
 }
-const wait = (ms: number) => new Promise((resolve, reject) => {
-    setTimeout(resolve, ms)
-})
+
 export function AiWizzard(props: IProps) {
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
-        await wait(2000)
         return data
     }))
 
@@ -35,7 +32,7 @@ export function AiWizzard(props: IProps) {
                 </Tabs.List>
 
                 <Tabs.Content class="ai-wizzard-tabs__content" value="chat">
-                    <ChatTab />
+                    <ChatTab settings={settingState.latest} />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="actor">
                     <ActorTab apiService={props.apiService} />

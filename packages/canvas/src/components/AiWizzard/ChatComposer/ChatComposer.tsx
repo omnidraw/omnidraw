@@ -3,11 +3,12 @@ import type {
   TChatComposerCommand,
   TChatComposerImage,
   TChatComposerMention,
+  TChatComposerModel,
   TChatComposerProps,
   TChatComposerSubmit,
   TPromptSuggestion,
 } from "./interface"
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import ImageIcon from "lucide-solid/icons/image"
@@ -197,11 +198,36 @@ function isKeyboardEvent(event: Event): event is KeyboardEvent {
   return "key" in event
 }
 
+const providerLabel = (provider: string) => provider
+  .split("-")
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+  .join(" ")
+
+function formatThinkingLevel(level: string | undefined) {
+  if (!level) {
+    return "Medium"
+  }
+
+  return level.charAt(0).toUpperCase() + level.slice(1)
+}
+
+function getDefaultModel(models: TChatComposerModel[], defaultModel?: string, defaultProvider?: string) {
+  const exactDefault = models.find((model) => model.id === defaultModel)
+
+  if (exactDefault) {
+    return exactDefault
+  }
+
+  return models.find((model) => model.provider === defaultProvider) ?? models[0]
+}
+
 export function ChatComposer(props: TChatComposerProps) {
+  let root!: HTMLElement
   let editorRoot!: HTMLDivElement
   let imageInput!: HTMLInputElement
   let view: EditorView | undefined
   let cleanupDocumentKeydown: (() => void) | undefined
+  let cleanupDocumentPointerdown: (() => void) | undefined
   const [suggestion, setSuggestion] = createSignal<TPromptSuggestion>()
   const [activeIndex, setActiveIndex] = createSignal(0)
   const [mentions, setMentions] = createSignal<TChatComposerMention[]>([])
@@ -209,10 +235,19 @@ export function ChatComposer(props: TChatComposerProps) {
   const [images, setImages] = createSignal<TChatComposerImage[]>([])
   const [hasText, setHasText] = createSignal(false)
   const [hasFocus, setHasFocus] = createSignal(false)
+  const [modelMenuOpen, setModelMenuOpen] = createSignal(false)
+  const [selectedModelId, setSelectedModelId] = createSignal<string>()
+  const [activeProvider, setActiveProvider] = createSignal<string>()
 
   const availableMentions = () => props.mentions ?? DEFAULT_MENTIONS
   const availableCommands = () => props.commands ?? DEFAULT_COMMANDS
   const placeholder = () => props.placeholder ?? "Ask for follow-up changes"
+  const models = createMemo(() => props.models ?? [])
+  const providers = createMemo(() => Array.from(new Set(models().map((model) => model.provider))))
+  const selectedModel = createMemo(() => models().find((model) => model.id === selectedModelId()))
+  const activeProviderModels = createMemo(() => models().filter((model) => model.provider === activeProvider()))
+  const imageInputEnabled = createMemo(() => selectedModel()?.input.includes("image") ?? false)
+  const modelButtonLabel = createMemo(() => selectedModel()?.name.replace(/^GPT-/i, "") ?? "Select model")
 
   const suggestions = () => {
     const activeSuggestion = suggestion()
@@ -226,6 +261,45 @@ export function ChatComposer(props: TChatComposerProps) {
 
     return source.filter((item) => item.label.toLocaleLowerCase().includes(query)).slice(0, 6)
   }
+
+  createEffect(() => {
+    const nextDefault = getDefaultModel(models(), props.defaultModel, props.defaultProvider)
+    const current = selectedModelId()
+
+    if (!nextDefault) {
+      setSelectedModelId(undefined)
+      setActiveProvider(undefined)
+      return
+    }
+
+    if (!current || !models().some((model) => model.id === current)) {
+      setSelectedModelId(nextDefault.id)
+      setActiveProvider(nextDefault.provider)
+    }
+  })
+
+  createEffect(() => {
+    const provider = activeProvider()
+    const allProviders = providers()
+
+    if (!provider || !allProviders.includes(provider)) {
+      setActiveProvider(selectedModel()?.provider ?? allProviders[0])
+    }
+  })
+
+  createEffect(() => {
+    if (imageInputEnabled()) {
+      return
+    }
+
+    const currentImages = images()
+    if (currentImages.length === 0) {
+      return
+    }
+
+    currentImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
+    setImages([])
+  })
 
   const syncHasText = () => setHasText(hasEditorContent(view))
   const shouldShowPlaceholder = () => !hasText() && !hasFocus() && !suggestion()
@@ -245,6 +319,10 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const addImageFiles = (files: File[]) => {
+    if (!imageInputEnabled()) {
+      return false
+    }
+
     const imageFiles = files.filter((file) => file.type.startsWith("image/"))
 
     if (imageFiles.length === 0) {
@@ -310,6 +388,7 @@ export function ChatComposer(props: TChatComposerProps) {
       mentions: mentions(),
       command: command(),
       images: currentImages,
+      model: selectedModel(),
     }
 
     props.onSubmit?.(value)
@@ -363,6 +442,12 @@ export function ChatComposer(props: TChatComposerProps) {
 
   onMount(() => {
     const handleDocumentKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && modelMenuOpen()) {
+        setModelMenuOpen(false)
+        event.stopPropagation()
+        return
+      }
+
       if (!handleSuggestionKey(event)) {
         return
       }
@@ -370,8 +455,18 @@ export function ChatComposer(props: TChatComposerProps) {
       event.stopPropagation()
     }
 
+    const handleDocumentPointerdown = (event: PointerEvent) => {
+      if (root?.contains(event.target as Node)) {
+        return
+      }
+
+      setModelMenuOpen(false)
+    }
+
     document.addEventListener("keydown", handleDocumentKeydown, true)
+    document.addEventListener("pointerdown", handleDocumentPointerdown, true)
     cleanupDocumentKeydown = () => document.removeEventListener("keydown", handleDocumentKeydown, true)
+    cleanupDocumentPointerdown = () => document.removeEventListener("pointerdown", handleDocumentPointerdown, true)
 
     const state = EditorState.create({
       doc: createEmptyDoc(),
@@ -442,6 +537,11 @@ export function ChatComposer(props: TChatComposerProps) {
         paste: (_editorView, event) => {
           const files = getImageFilesFromClipboard(event.clipboardData)
 
+          if (files.length > 0 && !imageInputEnabled()) {
+            event.preventDefault()
+            return true
+          }
+
           if (addImageFiles(files)) {
             event.preventDefault()
             return true
@@ -461,12 +561,13 @@ export function ChatComposer(props: TChatComposerProps) {
 
   onCleanup(() => {
     cleanupDocumentKeydown?.()
+    cleanupDocumentPointerdown?.()
     view?.destroy()
     images().forEach((image) => URL.revokeObjectURL(image.previewUrl))
   })
 
   return (
-    <section class="ai-chat-composer" aria-label="Chat prompt composer">
+    <section ref={root} class="ai-chat-composer" aria-label="Chat prompt composer">
       <div class="ai-chat-composer__body" onClick={() => view?.focus()}>
         <Show when={shouldShowPlaceholder()}>
           <div class="ai-chat-composer__placeholder">{placeholder()}</div>
@@ -529,13 +630,67 @@ export function ChatComposer(props: TChatComposerProps) {
 
         <div class="ai-chat-composer__controls">
           <div class="ai-chat-composer__controls-right">
-            <button class="ai-chat-composer__pill" type="button">
-              <Zap size={18} />
-              <span>5.5</span>
-              <span>Medium</span>
-              <ChevronDown size={18} />
-            </button>
-            <button class="ai-chat-composer__icon-button" type="button" aria-label="Attach image from file picker" onClick={() => imageInput.click()}>
+            <div class="ai-chat-composer__model-picker">
+              <button
+                class="ai-chat-composer__pill"
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={modelMenuOpen()}
+                disabled={models().length === 0}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setModelMenuOpen((open) => !open)
+                }}
+              >
+                <Zap size={18} />
+                <span>{modelButtonLabel()}</span>
+                <span>{formatThinkingLevel(props.defaultThinkingLevel)}</span>
+                <ChevronDown size={18} />
+              </button>
+
+              <Show when={modelMenuOpen()}>
+                <div class="ai-chat-composer__model-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                  <div class="ai-chat-composer__model-providers" role="group" aria-label="AI providers">
+                    <For each={providers()}>
+                      {(provider) => (
+                        <button
+                          classList={{ "ai-chat-composer__model-provider": true, "ai-chat-composer__model-provider--active": provider === activeProvider() }}
+                          type="button"
+                          onClick={() => setActiveProvider(provider)}
+                        >
+                          <span>{providerLabel(provider)}</span>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                  <div class="ai-chat-composer__model-list" role="group" aria-label="AI models">
+                    <For each={activeProviderModels()}>
+                      {(model) => (
+                        <button
+                          classList={{ "ai-chat-composer__model-option": true, "ai-chat-composer__model-option--active": model.id === selectedModelId() }}
+                          type="button"
+                          onClick={() => {
+                            setSelectedModelId(model.id)
+                            setActiveProvider(model.provider)
+                            setModelMenuOpen(false)
+                          }}
+                        >
+                          <strong>{model.name}</strong>
+                          <small>{model.id} · {model.input.includes("image") ? "text + image" : "text only"}</small>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+            </div>
+            <button
+              class="ai-chat-composer__icon-button"
+              type="button"
+              aria-label={imageInputEnabled() ? "Attach image from file picker" : "Selected model does not support images"}
+              disabled={!imageInputEnabled()}
+              onClick={() => imageInputEnabled() && imageInput.click()}
+            >
               <ImageIcon size={20} />
             </button>
             <button class="ai-chat-composer__send" type="button" aria-label="Send prompt" onClick={submit}>

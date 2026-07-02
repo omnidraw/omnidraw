@@ -16,17 +16,29 @@ export type TChatComposerImage = {
   previewUrl: string
 }
 
+export type TChatComposerModel = {
+  id: string
+  input: ("text" | "image")[]
+  provider: string
+  name: string
+}
+
 export type TChatComposerSubmit = {
   text: string
   mentions: TChatComposerMention[]
   command?: TChatComposerCommand
   images: TChatComposerImage[]
+  model?: TChatComposerModel
 }
 
 export type TChatComposerProps = {
   placeholder?: string
   mentions?: TChatComposerMention[]
   commands?: TChatComposerCommand[]
+  models?: TChatComposerModel[]
+  defaultModel?: string
+  defaultProvider?: string
+  defaultThinkingLevel?: string
   onSubmit?: (value: TChatComposerSubmit) => void
 }
 
