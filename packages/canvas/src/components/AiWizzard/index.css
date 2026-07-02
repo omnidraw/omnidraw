@@ -232,6 +232,36 @@
   white-space: nowrap;
 }
 
+.ai-chat-history {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ai-chat-history__message {
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+  padding: 10px 12px;
+}
+
+.ai-chat-history__message span {
+  color: var(--muted-foreground);
+  display: block;
+  font-size: 11px;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.ai-chat-history__message p {
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .ai-chat-composer {
   width: min(100%, 980px);
   flex: 0 0 auto;

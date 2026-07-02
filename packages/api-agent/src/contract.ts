@@ -100,6 +100,11 @@ export const ZAgentEvent = z.union([
   ZAgentEventTwo,
 ]);
 
+const ZAgentWizzardConnect = z.object({
+  vcJson: ZVibecanvasJson.nullable(),
+  messageHistory: ZJson.array(),
+})
+
 export type TAgentEvent = z.infer<typeof ZAgentEvent>
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
@@ -110,7 +115,7 @@ export const agentContract = oc.router({
       .output(ZAgentSettings),
   },
   wizzard: {
-    connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZVibecanvasJson.nullable()),
+    connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZAgentWizzardConnect),
     newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),
   },
   auth: {

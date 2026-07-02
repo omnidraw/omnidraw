@@ -1,5 +1,5 @@
 import type { TChatComposerModel, TChatComposerSubmit } from "../ChatComposer/interface"
-import { createSignal, Show } from "solid-js"
+import { For, createSignal, Show } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
 
 type TAgentSettings = {
@@ -12,7 +12,27 @@ type TAgentSettings = {
 interface IProps {
   settings?: TAgentSettings
   sessionId: string
+  messageHistory: readonly unknown[]
   onNewChat: () => void
+}
+
+function getMessageRole(message: unknown) {
+  if (typeof message !== "object" || message === null || !("role" in message)) {
+    return "message"
+  }
+
+  const role = (message as { role?: unknown }).role
+  return typeof role === "string" ? role : "message"
+}
+
+function getMessageContent(message: unknown) {
+  if (typeof message !== "object" || message === null || !("content" in message)) {
+    return JSON.stringify(message, null, 2)
+  }
+
+  const content = (message as { content?: unknown }).content
+  if (typeof content === "string") return content
+  return JSON.stringify(content, null, 2)
 }
 
 export function ChatTab(props: IProps) {
@@ -32,6 +52,18 @@ export function ChatTab(props: IProps) {
             New chat
           </button>
         </div>
+        <Show when={props.messageHistory.length > 0}>
+          <div class="ai-chat-history" aria-live="polite">
+            <For each={props.messageHistory}>
+              {(message) => (
+                <article class="ai-chat-history__message">
+                  <span>{getMessageRole(message)}</span>
+                  <p>{getMessageContent(message)}</p>
+                </article>
+              )}
+            </For>
+          </div>
+        </Show>
         <Show when={lastSubmit()}>
           {(submit) => (
             <div class="ai-chat-draft" aria-live="polite">

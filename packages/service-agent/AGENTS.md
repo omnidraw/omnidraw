@@ -47,6 +47,7 @@ Keep `AgentService` return values aligned with `packages/api-agent/src/contract.
 
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
+- `wizzard.connect` returns `{ vcJson, messageHistory }` for the requested widget/session.
 - `auth.login` accepts only `openai-codex` or `github-copilot` and returns `{ loginId }`.
 - `auth.logout` accepts only `openai-codex` or `github-copilot` and removes stored OAuth credentials.
 - `auth.status` returns a discriminated login status.

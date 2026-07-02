@@ -34,6 +34,11 @@ type TLoginSession = {
   status: TAgentLoginStatus;
 };
 
+type TAgentConnectResult = {
+  vcJson: TVibecanvasJson | null;
+  messageHistory: unknown[];
+};
+
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
   #config: IActorServiceConfig;
@@ -60,7 +65,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async connect(id: TWidgetId, sessionId: string): Promise<TVibecanvasJson | null> {
+  async connect(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
     const cwd = join(this.#piAgentDir, 'widget-cwd', id)
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
@@ -79,6 +84,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       systemPrompt: 'You help to build new widgets.'
     });
     const {session} = await createAgentSessionFromServices({services, sessionManager})
+    const messageHistory = JSON.parse(JSON.stringify(session.messages)) as unknown[]
     const unsub = session.subscribe((event) => {
       console.log(event)
     })
@@ -88,7 +94,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     this.sessionMap[id][sessionId] = {sessionManager, unsub}
 
-    return vcJson
+    return {
+      vcJson,
+      messageHistory,
+    }
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {

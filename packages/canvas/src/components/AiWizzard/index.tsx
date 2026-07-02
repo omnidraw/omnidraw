@@ -1,7 +1,7 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Tabs } from "@kobalte/core/tabs"
 import { Match, Switch, createResource, createSignal } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
 import { PreviewTab } from "./tabs/PreviewTab"
@@ -20,17 +20,22 @@ interface IProps {
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
+    const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
         return data
     }))
     const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
 
-    props.apiService.api.agent.wizzard.connect({ widgetId: props.id, sessionId: props.sessionId })
-        .then(async ([err, data]) => {
-            if (err) throw err
-            setVcJson(data)
-        })
+    createResource(() => ({ widgetId: props.id, sessionId: sessionId() }), async (input) => {
+        const [err, data] = await props.apiService.api.agent.wizzard.connect(input)
+        if (err) throw err
+
+        setVcJson(data.vcJson)
+        setMessageHistory(reconcile(data.messageHistory))
+
+        return data
+    })
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
     return (
@@ -48,6 +53,7 @@ export function AiWizzard(props: IProps) {
                     <ChatTab
                         settings={settingState.latest}
                         sessionId={sessionId()}
+                        messageHistory={messageHistory}
                         onNewChat={() => setSessionId(props.onResetSessionId())}
                     />
                 </Tabs.Content>
