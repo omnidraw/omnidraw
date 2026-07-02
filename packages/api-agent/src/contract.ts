@@ -112,6 +112,9 @@ export const agentContract = oc.router({
     login: oc
       .input(z.object({ providerId: z.enum(['openai-codex', 'github-copilot']) }))
       .output(ZAgentLogin),
+    logout: oc
+      .input(z.object({ providerId: z.enum(['openai-codex', 'github-copilot']) }))
+      .output(ZAgentApiKeySetOutput),
     status: oc
       .input(z.object({ loginId: z.string() }))
       .output(ZAgentLoginStatus),

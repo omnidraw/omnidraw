@@ -118,6 +118,18 @@ export function SettingsTab(props: IProps) {
     setProviderState(provider, { loginId: active.loginId, status: { status: "aborted" } })
   }
 
+  const logout = async (provider: TProviderId) => {
+    clearPoll(provider)
+    const [err] = await props.apiService.api.agent.auth.logout({ providerId: provider })
+    if (err) {
+      setProviderState(provider, { status: { status: "error", message: err.message } })
+      return
+    }
+
+    setProviderState(provider, { status: { status: "aborted" } })
+    props.onSettingsChanged?.()
+  }
+
   const setApiKeyDraft = (provider: string, key: string) => {
     setApiKeyDraftByProvider((current) => ({ ...current, [provider]: key }))
   }
@@ -204,6 +216,11 @@ export function SettingsTab(props: IProps) {
                     <button class="ai-wizzard-secondary-button" type="button" disabled={active()} onClick={() => void startLogin(provider)}>
                       {configured() ? "Reconnect" : "Log in"}
                     </button>
+                    <Show when={configured() && !active()}>
+                      <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" onClick={() => void logout(provider)}>
+                        Logout
+                      </button>
+                    </Show>
                     <Show when={active()}>
                       <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" onClick={() => void abortLogin(provider)}>
                         Cancel

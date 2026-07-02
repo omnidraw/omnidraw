@@ -7,6 +7,7 @@ import { dirname, join, relative as relativePath } from 'node:path';
 import { AuthStorage, createAgentSession, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 interface IPublicMethods {
+  logout(providerId: string): void;
   setApiKey(providerId: string, key: string): void;
   removeApiKey(providerId: string): void;
 }
@@ -113,6 +114,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       session.controller.abort()
       session.status = { status: 'aborted' }
     }
+  }
+
+  logout(providerId: string): void {
+    this.authStorage.logout(providerId)
   }
 
   setApiKey(providerId: string, key: string): void {

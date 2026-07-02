@@ -1,6 +1,6 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Tabs } from "@kobalte/core/tabs"
-import { Match, Switch, createResource } from "solid-js"
+import { Match, Switch, createResource, createSignal } from "solid-js"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
 import { PreviewTab } from "./tabs/PreviewTab"
@@ -14,6 +14,7 @@ interface IProps {
 }
 
 export function AiWizzard(props: IProps) {
+    const [selectedTab, setSelectedTab] = createSignal<string>()
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
         return data
@@ -22,7 +23,7 @@ export function AiWizzard(props: IProps) {
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
     return (
         <div class="ai-wizzard-shell">
-            <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" defaultValue={aiAuthenticated() ? "chat" : "settings"}>
+            <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" value={selectedTab() ?? (aiAuthenticated() ? "chat" : "settings")} onChange={setSelectedTab}>
                 <Tabs.List class="ai-wizzard-tabs__list">
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="chat">Chat</Tabs.Trigger>
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="actor">Actor</Tabs.Trigger>
