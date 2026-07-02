@@ -1,6 +1,6 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Tabs } from "@kobalte/core/tabs"
-import { Match, Switch, createResource, createSignal } from "solid-js"
+import { Match, Switch, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
@@ -35,6 +35,27 @@ export function AiWizzard(props: IProps) {
         setMessageHistory(reconcile(data.messageHistory))
 
         return data
+    })
+
+    onMount(() => {
+        let disposed = false
+
+        void props.apiService.api.agent.events({}).then(async ([err, events]) => {
+            if (err) {
+                console.error(err)
+                return
+            }
+
+            for await (const event of events) {
+                if (disposed) break
+                if (event.widgetId !== props.id) continue
+                console.log('agent event', event)
+            }
+        })
+
+        onCleanup(() => {
+            disposed = true
+        })
     })
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0

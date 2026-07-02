@@ -39,6 +39,17 @@ type TAgentConnectResult = {
   messageHistory: unknown[];
 };
 
+function toJsonValue(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (error) {
+    return {
+      type: 'serialization_error',
+      message: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
   #config: IActorServiceConfig;
@@ -84,9 +95,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       systemPrompt: 'You help to build new widgets.'
     });
     const {session} = await createAgentSessionFromServices({services, sessionManager})
-    const messageHistory = JSON.parse(JSON.stringify(session.messages)) as unknown[]
+    const messageHistory = toJsonValue(session.messages) as unknown[]
     const unsub = session.subscribe((event) => {
-      console.log(event)
+      this.#config.eventPublisherService.publishAgentEvent({
+        widgetId: id,
+        sessionId,
+        event: toJsonValue(event),
+      })
     })
     if(!this.sessionMap[id]) {
       this.sessionMap[id] = {}

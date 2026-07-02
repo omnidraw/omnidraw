@@ -11,12 +11,20 @@ export type TFilesystemEvent = {
   fileName: string;
 };
 export type TActorEvent = z.infer<typeof ZActorEvent>
+export type TAgentEvent = {
+  widgetId: string;
+  sessionId: string;
+  event: unknown;
+};
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
 
   publishActorEvent(event: TActorEvent): void;
   subscribeActorEvents(): AsyncIterable<TActorEvent>;
+
+  publishAgentEvent(event: TAgentEvent): void;
+  subscribeAgentEvents(): AsyncIterable<TAgentEvent>;
 
   publishFilesystemEvent(path: string, event: TFilesystemEvent): void;
   subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent>;

@@ -1,5 +1,5 @@
 import { eventIterator, oc } from '@orpc/contract';
-import { ZActorStatus, ZJson } from "@vibecanvas/service-db/model";
+import { ZJson } from "@vibecanvas/service-db/model";
 import { z } from 'zod';
 import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.zod"
 
@@ -46,59 +46,11 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
   z.object({ status: z.literal('error'), message: z.string() }),
 ])
 
-export const ZAgentEventOne = z.discriminatedUnion('type', [
-  z.object({
-    kind: z.literal('system'),
-    actorId: z.string(),
-    type: z.literal('ack'),
-    messageId: z.string(),
-    inputName: z.string(),
-  }),
-  z.object({
-    kind: z.literal('system'),
-    actorId: z.string(),
-    type: z.literal('state.changed'),
-    from: z.string(),
-    to: z.string(),
-    messageId: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('system'),
-    actorId: z.string(),
-    type: z.literal('status.changed'),
-    from: ZActorStatus.nullable(),
-    to: ZActorStatus,
-  }),
-  z.object({
-    kind: z.literal('system'),
-    actorId: z.string(),
-    type: z.literal('data.changed'),
-    data: ZJson,
-    messageId: z.string().optional(),
-  }),
-  z.object({
-    kind: z.literal('system'),
-    actorId: z.string(),
-    type: z.literal('error'),
-    code: z.string(),
-    message: z.string(),
-    details: ZJson.optional(),
-    messageId: z.string().optional(),
-  }),
-]);
-
-export const ZAgentEventTwo = z.object({
-  kind: z.literal('actor'),
-  actorId: z.string(),
-  name: z.string(),
-  payload: ZJson,
-  messageId: z.string().optional(),
+export const ZAgentEvent = z.object({
+  widgetId: z.string(),
+  sessionId: z.string(),
+  event: ZJson,
 });
-
-export const ZAgentEvent = z.union([
-  ZAgentEventOne,
-  ZAgentEventTwo,
-]);
 
 const ZAgentWizzardConnect = z.object({
   vcJson: ZVibecanvasJson.nullable(),
