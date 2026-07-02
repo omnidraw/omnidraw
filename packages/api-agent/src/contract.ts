@@ -85,7 +85,8 @@ export const agentContract = oc.router({
   auth: {
     login: oc
       .input(z.object({providerId: z.literal(['openai-codex' , 'github-copilot'])}))
-      .output(ZAgentLogin)
+      .output(ZAgentLogin),
+    abort: oc.input(z.object({loginId: z.string()}))
   },
   events: oc
     .input(z.object({}))

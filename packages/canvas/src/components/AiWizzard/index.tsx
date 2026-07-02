@@ -9,6 +9,7 @@ import { ChatTab } from "./tabs/ChatTab"
 import "./index.css"
 
 interface IProps {
+    id: string
     apiService: TOrpcSafeClient
 }
 const wait = (ms: number) => new Promise((resolve, reject) => {
@@ -22,7 +23,7 @@ export function AiWizzard(props: IProps) {
     }))
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
-
+    props.apiService.api.agent.auth.login({providerId: 'github-copilot'}).then(console.log)
     return (
         <div class="ai-wizzard-shell">
             <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" defaultValue={aiAuthenticated() ? "chat" : "settings"}>

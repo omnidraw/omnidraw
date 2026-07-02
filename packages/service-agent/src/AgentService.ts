@@ -15,6 +15,7 @@ interface IActorServiceConfig {
 }
 
 type TWidgetId = string;
+type TLoginId = string;
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -24,13 +25,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   models: ModelRegistry;
   settingsManager: SettingsManager;
   sessionMap: Record<TWidgetId, SessionManager> = {}
+  #loginMap: Record<TLoginId, AbortController> = {}
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
     this.#piAgentPath = join(config.dataPath, 'pi')
     this.authStorage = AuthStorage.create(join(this.#piAgentPath, 'auth.json'))
     this.models = ModelRegistry.create(this.authStorage, join(this.#piAgentPath, 'models.json'))
-    this.settingsManager = SettingsManager.create(this.#piAgentPath, undefined, {projectTrusted: true})
+    this.settingsManager = SettingsManager.create(this.#piAgentPath, undefined, { projectTrusted: true })
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
@@ -44,21 +46,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async connect(id: TWidgetId) {
     const session = SessionManager.continueRecent(join(this.#piAgentPath, 'widget', id))
     this.sessionMap[id] = session
-    // session.log
   }
 
-  async login(providerId: 'openai-codex' | 'github-copilot') {
+  login(providerId: 'openai-codex' | 'github-copilot') {
     const loginId = crypto.randomUUID()
-    const signal = new AbortSignal()
-    await this.authStorage.login(providerId, {
-      onAuth(info) {},
+    const controller = new AbortController()
+    const signal = controller.signal
+    this.authStorage.login(providerId, {
+      onAuth(info) { },
       onDeviceCode(info) {
         console.log(info)
 
       },
-      async onPrompt(prompt) {return''},
+      async onPrompt(prompt) { return '' },
       async onSelect(prompt) {
-        if(providerId === 'github-copilot') return undefined
+        if (providerId === 'github-copilot') return undefined
         else return ""
       },
       onProgress(message) {
@@ -67,7 +69,17 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       signal
     })
 
+    this.#loginMap[loginId] = controller
+
     return loginId
+  }
+
+  abortLogin(loginId: TLoginId) {
+    const controller = this.#loginMap[loginId]
+    if(controller) {
+      controller.abort()
+      delete this.#loginMap[loginId]
+    }
   }
 
   async settings() {
@@ -76,7 +88,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const defaultThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
     const providersWithCredentials = this.authStorage.list()
     const providers = new Set(this.models.getAll().map(m => m.provider)).entries().toArray()
-    const models = this.models.getAvailable().map(m => ({id: m.id, input: m.input, provider: m.provider, name: m.name}))
+    const models = this.models.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
 
     return {
       defaultModel,
