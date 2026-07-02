@@ -1,6 +1,7 @@
 import { eventIterator, oc } from '@orpc/contract';
 import { ZActorStatus, ZJson } from "@vibecanvas/service-db/model";
 import { z } from 'zod';
+import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.zod"
 
 const ZAgentSettings = z.object({
   defaultModel: z.string().optional(),
@@ -107,6 +108,10 @@ export const agentContract = oc.router({
   settings: {
     get: oc
       .output(ZAgentSettings),
+  },
+  wizzard: {
+    connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZVibecanvasJson.nullable()),
+    newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),
   },
   auth: {
     login: oc

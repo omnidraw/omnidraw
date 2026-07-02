@@ -1,12 +1,14 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Tabs } from "@kobalte/core/tabs"
 import { Match, Switch, createResource, createSignal } from "solid-js"
+import { createStore } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
 import { PreviewTab } from "./tabs/PreviewTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { ChatTab } from "./tabs/ChatTab"
 import "./index.css"
+import { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
 
 interface IProps {
     id: string
@@ -22,6 +24,13 @@ export function AiWizzard(props: IProps) {
         if (err) throw err.message
         return data
     }))
+    const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
+
+    props.apiService.api.agent.wizzard.connect({ widgetId: props.id, sessionId: props.sessionId })
+        .then(async ([err, data]) => {
+            if (err) throw err
+            setVcJson(data)
+        })
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
     return (

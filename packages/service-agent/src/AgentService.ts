@@ -5,6 +5,7 @@ import type { IEventPublisherService } from '@vibecanvas/service-event-publisher
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
 import { AuthStorage, createAgentSession, createAgentSessionFromServices, createAgentSessionServices, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -13,6 +14,7 @@ interface IPublicMethods {
 }
 
 interface IActorServiceConfig {
+  cachePath: string;
   dataPath: string;
   eventPublisherService: IEventPublisherService,
 }
@@ -58,10 +60,18 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async connect(id: TWidgetId, sessionId: string) {
+  async connect(id: TWidgetId, sessionId: string): Promise<TVibecanvasJson | null> {
     const cwd = join(this.#piAgentDir, 'widget-cwd', id)
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
+    const entry = sessionManager.getEntry('vibejsonpath')
+    let vcJson: TVibecanvasJson | null = null;
+    if(entry?.type === 'custom' && entry?.customType === 'vibejsonpath' && typeof entry.data === 'string') {
+      try {
+        vcJson = await Bun.file(entry.data).json()
+      } catch {}
+    }
+
     const services = await createAgentSessionServices({ cwd, agentDir: this.#piAgentDir, authStorage: this.authStorage, modelRegistry: this.modelRegistry, settingsManager: this.settingsManager });
     const loader = new DefaultResourceLoader({
       agentDir: this.#piAgentDir,
@@ -78,6 +88,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     this.sessionMap[id][sessionId] = {sessionManager, unsub}
 
+    return vcJson
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {

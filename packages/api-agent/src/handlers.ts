@@ -5,6 +5,7 @@ import { apiAuthLogin } from "./api.auth.login";
 import { apiAuthLogout } from "./api.auth.logout";
 import { apiAuthStatus } from "./api.auth.status";
 import { apiGetDefinitions } from "./api.setting.get";
+import { apiWizzardConnect } from "./api.wizzard.connect";
 import { baseAgentOs } from './orpc';
 
 const agentHandlers = {
@@ -20,6 +21,9 @@ const agentHandlers = {
             set: apiAuthApiKeySet,
             remove: apiAuthApiKeyRemove,
         },
+    },
+    wizzard: {
+        connect: apiWizzardConnect
     }
 };
 

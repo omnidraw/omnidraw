@@ -99,6 +99,7 @@ function setupServices(config: ICliConfig) {
     });
     const agentService = new AgentService({
       dataPath: config.xdgPaths.dataDirPath,
+      cachePath: config.xdgPaths.cacheDirPath,
       eventPublisherService: eventPublisher
     })
     services.provide('actor', 60, actorService);

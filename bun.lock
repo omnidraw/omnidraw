@@ -236,6 +236,7 @@
         "@vibecanvas/api-actors": "workspace:*",
         "@vibecanvas/orpc-client": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-automerge": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-theme": "workspace:*",
@@ -325,6 +326,7 @@
       "dependencies": {
         "@earendil-works/pi-coding-agent": "^0.80.3",
         "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
         "ajv": "^8.20.0",

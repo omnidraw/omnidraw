@@ -57,6 +57,7 @@
     "@vibecanvas/orpc-client": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-automerge": "workspace:*",
+    "@vibecanvas/service-actor": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-theme": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",

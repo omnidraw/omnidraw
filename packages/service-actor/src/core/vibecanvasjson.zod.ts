@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { TActorData, TJsonSchema, TVibecanvasJson } from './types';
+import type { TActorData, TActorNonErrorState, TActorState, TFunctionName, TJsonSchema, TVibecanvasJson } from './types';
 
 export const ZJsonSchemaPrimitiveType = z.enum([
   'null',
@@ -61,12 +61,18 @@ export const ZJsonSchema: z.ZodType<TJsonSchema> = z.lazy(() => z.union([
   }),
 ]));
 
-export const ZActorState = z.string().regex(/^(booting|ready|busy|waiting|error)(\..*)?$/);
+export const ZActorState = z.custom<TActorState>(
+  (value) => typeof value === 'string' && /^(booting|ready|busy|waiting|error)(\..*)?$/.test(value),
+);
 export const ZInputMessage = z.string().min(1);
 export const ZOutputMessage = z.string().min(1);
-export const ZFunctionName = z.string().regex(/^(fn|fx|tx)\..*$/);
+export const ZFunctionName = z.custom<TFunctionName>(
+  (value) => typeof value === 'string' && /^(fn|fx|tx)\..*$/.test(value),
+);
 
-export const ZActorNonErrorState = z.string().regex(/^(booting|ready|busy|waiting)(\..*)?$/);
+export const ZActorNonErrorState = z.custom<TActorNonErrorState>(
+  (value) => typeof value === 'string' && /^(booting|ready|busy|waiting)(\..*)?$/.test(value),
+);
 
 export const ZTransition = z.object({
   func: z.array(ZFunctionName),
