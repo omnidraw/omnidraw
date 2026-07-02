@@ -1,4 +1,5 @@
 import { apiAuthAbort } from "./api.auth.abort";
+import { apiAuthApiKeyRemove } from "./api.auth.apiKey.remove";
 import { apiAuthApiKeySet } from "./api.auth.apiKey.set";
 import { apiAuthLogin } from "./api.auth.login";
 import { apiAuthStatus } from "./api.auth.status";
@@ -15,6 +16,7 @@ const agentHandlers = {
         abort: apiAuthAbort,
         apiKey: {
             set: apiAuthApiKeySet,
+            remove: apiAuthApiKeyRemove,
         },
     }
 };

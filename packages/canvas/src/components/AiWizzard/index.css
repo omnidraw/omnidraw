@@ -755,6 +755,46 @@
   color: var(--destructive);
 }
 
+.ai-wizzard-api-key-box {
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.ai-wizzard-api-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-wizzard-api-key-field span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.ai-wizzard-api-key-input {
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.ai-wizzard-api-key-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-wizzard-api-key-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .ai-wizzard-login-box {
   border-top: 1px dashed var(--border);
   color: var(--muted-foreground);

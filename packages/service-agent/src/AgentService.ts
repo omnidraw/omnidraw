@@ -8,6 +8,7 @@ import { AuthStorage, createAgentSession, ModelRegistry, SessionManager, Setting
 
 interface IPublicMethods {
   setApiKey(providerId: string, key: string): void;
+  removeApiKey(providerId: string): void;
 }
 
 interface IActorServiceConfig {
@@ -119,6 +120,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       type: 'api_key',
       key,
     })
+  }
+
+  removeApiKey(providerId: string): void {
+    this.authStorage.remove(providerId)
   }
 
   async settings() {

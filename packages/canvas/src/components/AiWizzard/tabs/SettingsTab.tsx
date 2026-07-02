@@ -21,6 +21,13 @@ type TLoginUiState = {
   status: TLoginStatus
 }
 
+type TApiKeyStatus =
+  | { status: "idle" }
+  | { status: "saving" }
+  | { status: "removing" }
+  | { status: "success"; message: string }
+  | { status: "error"; message: string }
+
 interface IProps {
   settings?: TAgentSettings
   apiService: TOrpcSafeClient
@@ -46,6 +53,9 @@ export function SettingsTab(props: IProps) {
     providers().filter((provider) => !SUBSCRIPTION_PROVIDERS.includes(provider as typeof SUBSCRIPTION_PROVIDERS[number]))
   ))
   const [loginStateByProvider, setLoginStateByProvider] = createSignal<Record<string, TLoginUiState>>({})
+  const [apiKeyDraftByProvider, setApiKeyDraftByProvider] = createSignal<Record<string, string>>({})
+  const [apiKeyStatusByProvider, setApiKeyStatusByProvider] = createSignal<Record<string, TApiKeyStatus>>({})
+  const [expandedApiKeyProviderMap, setExpandedApiKeyProviderMap] = createSignal<Record<string, boolean>>({})
   const pollTimers = new Map<string, ReturnType<typeof setInterval>>()
 
   const setProviderState = (provider: string, state: TLoginUiState) => {
@@ -106,6 +116,52 @@ export function SettingsTab(props: IProps) {
     clearPoll(provider)
     await props.apiService.api.agent.auth.abort({ loginId: active.loginId })
     setProviderState(provider, { loginId: active.loginId, status: { status: "aborted" } })
+  }
+
+  const setApiKeyDraft = (provider: string, key: string) => {
+    setApiKeyDraftByProvider((current) => ({ ...current, [provider]: key }))
+  }
+
+  const setApiKeyStatus = (provider: string, status: TApiKeyStatus) => {
+    setApiKeyStatusByProvider((current) => ({ ...current, [provider]: status }))
+  }
+
+  const setApiKeyExpanded = (provider: string, expanded: boolean) => {
+    setExpandedApiKeyProviderMap((current) => ({ ...current, [provider]: expanded }))
+  }
+
+  const saveApiKey = async (provider: string) => {
+    const key = apiKeyDraftByProvider()[provider]?.trim() ?? ""
+    if (!key) {
+      setApiKeyStatus(provider, { status: "error", message: "Paste an API key before saving." })
+      return
+    }
+
+    setApiKeyStatus(provider, { status: "saving" })
+    const [err] = await props.apiService.api.agent.auth.apiKey.set({ providerId: provider, key })
+    if (err) {
+      setApiKeyStatus(provider, { status: "error", message: err.message })
+      return
+    }
+
+    setApiKeyDraft(provider, "")
+    setApiKeyStatus(provider, { status: "success", message: "API key saved." })
+    setApiKeyExpanded(provider, false)
+    props.onSettingsChanged?.()
+  }
+
+  const removeApiKey = async (provider: string) => {
+    setApiKeyStatus(provider, { status: "removing" })
+    const [err] = await props.apiService.api.agent.auth.apiKey.remove({ providerId: provider })
+    if (err) {
+      setApiKeyStatus(provider, { status: "error", message: err.message })
+      return
+    }
+
+    setApiKeyDraft(provider, "")
+    setApiKeyStatus(provider, { status: "success", message: "API key removed." })
+    setApiKeyExpanded(provider, false)
+    props.onSettingsChanged?.()
   }
 
   onCleanup(() => {
@@ -177,15 +233,55 @@ export function SettingsTab(props: IProps) {
           <For each={apiKeyProviders()}>
             {(provider) => {
               const configured = () => configuredProviders().has(provider)
+              const status = () => apiKeyStatusByProvider()[provider] ?? { status: "idle" } as TApiKeyStatus
+              const draft = () => apiKeyDraftByProvider()[provider] ?? ""
+              const expanded = () => expandedApiKeyProviderMap()[provider] ?? !configured()
+              const busy = () => status().status === "saving" || status().status === "removing"
               return (
-                <article class="ai-wizzard-provider-card">
-                  <div>
+                <article classList={{ "ai-wizzard-provider-card": true, "ai-wizzard-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
+                  <div class="ai-wizzard-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "API key configured" : "No API key configured"}</small>
                   </div>
-                  <button class="ai-wizzard-secondary-button" type="button">
-                    {configured() ? "Update key" : "Add API key"}
-                  </button>
+                  <div class="ai-wizzard-provider-card__actions">
+                    <button class="ai-wizzard-secondary-button" type="button" disabled={busy()} onClick={() => setApiKeyExpanded(provider, !expanded())}>
+                      {expanded() ? "Close" : configured() ? "Update key" : "Add API key"}
+                    </button>
+                    <Show when={configured()}>
+                      <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" disabled={busy()} onClick={() => void removeApiKey(provider)}>
+                        Remove
+                      </button>
+                    </Show>
+                  </div>
+
+                  <Show when={expanded()}>
+                    <div class="ai-wizzard-api-key-box">
+                      <label class="ai-wizzard-api-key-field">
+                        <span>{configured() ? "Paste a replacement API key" : "Paste API key"}</span>
+                        <input
+                          class="ai-wizzard-api-key-input"
+                          type="password"
+                          autocomplete="off"
+                          spellcheck={false}
+                          value={draft()}
+                          placeholder={configured() ? "Existing key is hidden" : "sk-..."}
+                          disabled={busy()}
+                          onInput={(event) => setApiKeyDraft(provider, event.currentTarget.value)}
+                        />
+                      </label>
+                      <div class="ai-wizzard-provider-card__actions">
+                        <button class="ai-wizzard-secondary-button" type="button" disabled={busy() || draft().trim().length === 0} onClick={() => void saveApiKey(provider)}>
+                          {configured() ? "Save new key" : "Save key"}
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
+
+                  <Show when={status().status !== "idle"}>
+                    <div class="ai-wizzard-login-box" aria-live="polite">
+                      <ApiKeyStatus status={status()} />
+                    </div>
+                  </Show>
                 </article>
               )
             }}
@@ -193,6 +289,22 @@ export function SettingsTab(props: IProps) {
         </div>
       </section>
     </div>
+  )
+}
+
+function ApiKeyStatus(props: { status: TApiKeyStatus }) {
+  return (
+    <>
+      <Show when={props.status.status === "saving"}>
+        <p>Saving API key…</p>
+      </Show>
+      <Show when={props.status.status === "removing"}>
+        <p>Removing API key…</p>
+      </Show>
+      <Show when={(props.status.status === "success" || props.status.status === "error") && "message" in props.status}>
+        <p>{"message" in props.status ? props.status.message : ""}</p>
+      </Show>
+    </>
   )
 }
 

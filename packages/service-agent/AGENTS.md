@@ -51,6 +51,7 @@ Current contract shape includes:
 - `auth.status` returns a discriminated login status.
 - `auth.abort` aborts a login by `loginId`.
 - `auth.apiKey.set` stores an API key credential by provider id and never returns the key.
+- `auth.apiKey.remove` removes a stored API key credential by provider id.
 - `events` is contract-defined as an event iterator, but service-side event behavior may still need implementation.
 
 When changing service public methods:

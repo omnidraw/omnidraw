@@ -120,6 +120,9 @@ export const agentContract = oc.router({
       set: oc
         .input(ZAgentApiKeySet)
         .output(ZAgentApiKeySetOutput),
+      remove: oc
+        .input(z.object({ providerId: z.string().min(1) }))
+        .output(ZAgentApiKeySetOutput),
     },
   },
   events: oc
