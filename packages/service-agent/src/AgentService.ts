@@ -65,7 +65,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async connect(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
+  async connectWizzard(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
     const cwd = join(this.#piAgentDir, 'widget-cwd', id)
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
