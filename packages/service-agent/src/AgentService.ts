@@ -4,7 +4,7 @@ import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbSer
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
-import { AuthStorage, createAgentSession, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, createAgentSession, createAgentSessionFromServices, createAgentSessionServices, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -18,6 +18,7 @@ interface IActorServiceConfig {
 }
 
 type TWidgetId = string;
+type TSessionId = string;
 type TLoginId = string;
 type TAgentLoginStatus =
   | { status: 'pending' }
@@ -34,19 +35,19 @@ type TLoginSession = {
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
   #config: IActorServiceConfig;
-  #piAgentPath: string;
+  #piAgentDir: string;
   authStorage: AuthStorage;
-  models: ModelRegistry;
+  modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, SessionManager> = {}
+  sessionMap: Record<TWidgetId, Record<TSessionId, {unsub: () => void, sessionManager: SessionManager}>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
-    this.#piAgentPath = join(config.dataPath, 'pi')
-    this.authStorage = AuthStorage.create(join(this.#piAgentPath, 'auth.json'))
-    this.models = ModelRegistry.create(this.authStorage, join(this.#piAgentPath, 'models.json'))
-    this.settingsManager = SettingsManager.create(this.#piAgentPath, undefined, { projectTrusted: true })
+    this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
+    this.authStorage = AuthStorage.create(join(this.#piAgentDir, 'auth.json'))
+    this.modelRegistry = ModelRegistry.create(this.authStorage, join(this.#piAgentDir, 'models.json'))
+    this.settingsManager = SettingsManager.create(this.#piAgentDir, this.#piAgentDir, { projectTrusted: true })
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
@@ -57,9 +58,26 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     console.log('stop', this.name)
   }
 
-  async connect(id: TWidgetId) {
-    const session = SessionManager.continueRecent(join(this.#piAgentPath, 'widget', id))
-    this.sessionMap[id] = session
+  async connect(id: TWidgetId, sessionId: string) {
+    const cwd = join(this.#piAgentDir, 'widget-cwd', id)
+    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+    const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
+    const services = await createAgentSessionServices({ cwd, agentDir: this.#piAgentDir, authStorage: this.authStorage, modelRegistry: this.modelRegistry, settingsManager: this.settingsManager });
+    const loader = new DefaultResourceLoader({
+      agentDir: this.#piAgentDir,
+      cwd,
+      systemPrompt: 'You help to build new widgets.'
+    });
+    const {session} = await createAgentSessionFromServices({services, sessionManager})
+    const unsub = session.subscribe((event) => {
+      console.log(event)
+    })
+    if(!this.sessionMap[id]) {
+      this.sessionMap[id] = {}
+    }
+
+    this.sessionMap[id][sessionId] = {sessionManager, unsub}
+
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {
@@ -136,8 +154,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const defaultProvider = this.settingsManager.getDefaultProvider()
     const defaultThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
     const providersWithCredentials = this.authStorage.list()
-    const providers = Array.from(new Set(this.models.getAll().map(m => m.provider)))
-    const models = this.models.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
+    const providers = Array.from(new Set(this.modelRegistry.getAll().map(m => m.provider)))
+    const models = this.modelRegistry.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))
 
     return {
       defaultModel,

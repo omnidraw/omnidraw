@@ -11,10 +11,13 @@ import "./index.css"
 interface IProps {
     id: string
     apiService: TOrpcSafeClient
+    sessionId: string
+    onResetSessionId: () => string
 }
 
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
+    const [sessionId, setSessionId] = createSignal(props.sessionId)
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
         return data
@@ -33,7 +36,11 @@ export function AiWizzard(props: IProps) {
                 </Tabs.List>
 
                 <Tabs.Content class="ai-wizzard-tabs__content" value="chat">
-                    <ChatTab settings={settingState.latest} />
+                    <ChatTab
+                        settings={settingState.latest}
+                        sessionId={sessionId()}
+                        onNewChat={() => setSessionId(props.onResetSessionId())}
+                    />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="actor">
                     <ActorTab apiService={props.apiService} />

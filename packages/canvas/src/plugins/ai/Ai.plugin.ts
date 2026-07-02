@@ -1,10 +1,18 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import Konva from "konva";
 import { render } from "solid-js/web";
+import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
+import { isKonvaGroup } from "../../core/GUARDS";
 import { AiWizzard } from "../../components/AiWizzard";
+import type { CrdtService, SceneService } from "../../services";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 const AI_WIDGET_KIND = "ai";
+
+type TAiWidgetPayload = {
+  sessionId: string;
+};
 
 const AI_WIDGET_ICON = `
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -17,10 +25,79 @@ const AI_WIDGET_ICON = `
 </svg>
 `;
 
-function mountAiWidget(portal: {apiService: IRuntimeConfig['apiService']}, args: { root: HTMLDivElement; element: TElement, id: string }) {
+function getAiSessionId(args: { element: TElement }) {
+  if (args.element.data.type !== "ui-widget") {
+    return null;
+  }
+
+  const sessionId = args.element.data.payload?.sessionId;
+  return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null;
+}
+
+function persistAiPayload(args: {
+  crdt: CrdtService;
+  scene: SceneService;
+  elementId: string;
+  payload: TAiWidgetPayload;
+}) {
+  const currentElement = args.crdt.doc()?.elements[args.elementId];
+  if (!currentElement || currentElement.data.type !== "ui-widget") {
+    return;
+  }
+
+  const nextData: TUiWidgetData = {
+    ...currentElement.data,
+    payload: {
+      ...(currentElement.data.payload ?? {}),
+      ...args.payload,
+    },
+  };
+
+  const node = args.scene.staticForegroundLayer.findOne((candidate: Konva.Node) => {
+    return isKonvaGroup(candidate) && candidate.id() === args.elementId;
+  });
+  if (isKonvaGroup(node)) {
+    node.setAttr(ELEMENT_DATA_ATTR, nextData);
+  }
+
+  args.crdt.build()
+    .patchElement(args.elementId, "data", nextData)
+    .commit();
+}
+
+function mountAiWidget(portal: {
+  apiService: IRuntimeConfig['apiService'];
+  crdt: CrdtService;
+  scene: SceneService;
+  createSessionId: () => string;
+}, args: { root: HTMLDivElement; element: TElement, id: string }) {
   args.root.replaceChildren();
 
-  render(() => AiWizzard({apiService: portal.apiService, id: args.id}), args.root)
+  const initialSessionId = getAiSessionId({ element: args.element }) ?? portal.createSessionId();
+  if (initialSessionId !== getAiSessionId({ element: args.element })) {
+    persistAiPayload({
+      crdt: portal.crdt,
+      scene: portal.scene,
+      elementId: args.id,
+      payload: { sessionId: initialSessionId },
+    });
+  }
+
+  render(() => AiWizzard({
+    apiService: portal.apiService,
+    id: args.id,
+    sessionId: initialSessionId,
+    onResetSessionId: () => {
+      const sessionId = portal.createSessionId();
+      persistAiPayload({
+        crdt: portal.crdt,
+        scene: portal.scene,
+        elementId: args.id,
+        payload: { sessionId },
+      });
+      return sessionId;
+    },
+  }), args.root)
 
   return () => {
     args.root.replaceChildren();
@@ -31,6 +108,8 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
   return {
     name: "ai",
     apply(ctx) {
+      const crdt = ctx.services.require("crdt");
+      const scene = ctx.services.require("scene");
       const tool = ctx.services.require("tool");
       const widgetManager = ctx.services.require("widgetManager");
 
@@ -43,8 +122,13 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
           shortcuts: ["8"],
           priority: 77,
         },
-        initialPayload: {},
-        renderDom: ({ root, element }) => mountAiWidget({apiService: ctx.config.apiService}, { root, element, id: element.id }),
+        initialPayload: { sessionId: crypto.randomUUID() } satisfies TAiWidgetPayload,
+        renderDom: ({ root, element }) => mountAiWidget({
+          apiService: ctx.config.apiService,
+          crdt,
+          scene,
+          createSessionId: () => crypto.randomUUID(),
+        }, { root, element, id: element.id }),
       });
 
       ctx.hooks.destroy.tap(() => {

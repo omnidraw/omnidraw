@@ -11,14 +11,27 @@ type TAgentSettings = {
 
 interface IProps {
   settings?: TAgentSettings
+  sessionId: string
+  onNewChat: () => void
 }
 
 export function ChatTab(props: IProps) {
   const [lastSubmit, setLastSubmit] = createSignal<TChatComposerSubmit>()
 
+  const startNewChat = () => {
+    setLastSubmit(undefined)
+    props.onNewChat()
+  }
+
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--chat">
       <div class="ai-chat-content">
+        <div class="ai-chat-session-bar">
+          <span>Session {props.sessionId}</span>
+          <button class="ai-wizzard-secondary-button" type="button" onClick={startNewChat}>
+            New chat
+          </button>
+        </div>
         <Show when={lastSubmit()}>
           {(submit) => (
             <div class="ai-chat-draft" aria-live="polite">

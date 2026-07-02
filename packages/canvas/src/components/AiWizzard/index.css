@@ -216,6 +216,22 @@
   overflow: auto;
 }
 
+.ai-chat-session-bar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ai-chat-session-bar span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ai-chat-composer {
   width: min(100%, 980px);
   flex: 0 0 auto;
