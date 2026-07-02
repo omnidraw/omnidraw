@@ -140,7 +140,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (div.style.pointerEvents !== 'auto') return;
     event.stopPropagation();
   };
-  const domEventTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick', 'wheel', 'keydown', 'keyup'];
+  const domEventTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick', 'wheel', 'keydown', 'keyup', 'contextmenu'];
   domEventTypes.forEach((eventType) => div.addEventListener(eventType, stopActiveDomEvent));
 
   portal.node.on('dragmove', syncDiv);
