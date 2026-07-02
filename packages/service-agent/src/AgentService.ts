@@ -26,9 +26,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#config = config
     this.#piAgentPath = join(config.dataPath, 'pi')
     this.authStorage = AuthStorage.create(join(this.#piAgentPath, 'auth.json'))
-    this.authStorage
     this.models = ModelRegistry.create(this.authStorage, join(this.#piAgentPath, 'models.json'))
-    this.models.getAvailable
     this.settingsManager = SettingsManager.create(this.#piAgentPath, undefined, {projectTrusted: true})
     // const session = await createAgentSession({
     //   // s
@@ -49,7 +47,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const defaultProvider = this.settingsManager.getDefaultProvider()
     const defaultThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
     const providersWithCredentials = this.authStorage.list()
-    const providers = Object.keys(this.authStorage.getAll())
+    const providers = new Set(this.models.getAll().map(m => m.provider)).entries().toArray()
     const models = this.models.getAvailable().map(m => ({id: m.id, input: m.input, provider: m.provider, name: m.name}))
 
     return {

@@ -11,6 +11,7 @@
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@vibecanvas/api-actors": "workspace:*",
+    "@vibecanvas/api-agent": "workspace:*",
     "@vibecanvas/api-canvas": "workspace:*",
     "@vibecanvas/api-db": "workspace:*",
     "@vibecanvas/api-file": "workspace:*",

@@ -2,7 +2,7 @@ import { apiGetDefinitions } from "./api.setting.get";
 import { baseAgentOs } from './orpc';
 
 const agentHandlers = {
-    auth: {
+    settings: {
         get: apiGetDefinitions,
     },
 };
