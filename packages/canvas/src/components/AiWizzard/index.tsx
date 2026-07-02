@@ -23,7 +23,6 @@ export function AiWizzard(props: IProps) {
     }))
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
-    props.apiService.api.agent.auth.login({providerId: 'github-copilot'}).then(console.log)
     return (
         <div class="ai-wizzard-shell">
             <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" defaultValue={aiAuthenticated() ? "chat" : "settings"}>
@@ -45,7 +44,7 @@ export function AiWizzard(props: IProps) {
                     <PreviewTab />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="settings">
-                    <SettingsTab settings={settingState.latest} />
+                    <SettingsTab settings={settingState.latest} apiService={props.apiService} onSettingsChanged={() => void refetch()} />
                 </Tabs.Content>
             </Tabs>}>
                 <Match when={settingState.loading}>

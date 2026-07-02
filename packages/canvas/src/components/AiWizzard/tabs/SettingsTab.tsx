@@ -1,15 +1,34 @@
-import { For, Show, createMemo } from "solid-js"
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
 
 type TAgentSettings = {
   providersWithCredentials: string[]
   providers: string[]
 }
 
+type TProviderId = "openai-codex" | "github-copilot"
+type TLoginStatus =
+  | { status: "idle" }
+  | { status: "pending" }
+  | { status: "device-code"; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
+  | { status: "progress"; message: string }
+  | { status: "success" }
+  | { status: "aborted" }
+  | { status: "error"; message: string }
+
+type TLoginUiState = {
+  loginId?: string
+  status: TLoginStatus
+}
+
 interface IProps {
   settings?: TAgentSettings
+  apiService: TOrpcSafeClient
+  onSettingsChanged?: () => void
 }
 
 const SUBSCRIPTION_PROVIDERS = ["openai-codex", "github-copilot"] as const
+const POLL_MS = 1000
 
 const providerLabel = (provider: string) => provider
   .split("-")
@@ -26,6 +45,77 @@ export function SettingsTab(props: IProps) {
   const apiKeyProviders = createMemo(() => (
     providers().filter((provider) => !SUBSCRIPTION_PROVIDERS.includes(provider as typeof SUBSCRIPTION_PROVIDERS[number]))
   ))
+  const [loginStateByProvider, setLoginStateByProvider] = createSignal<Record<string, TLoginUiState>>({})
+  const pollTimers = new Map<string, ReturnType<typeof setInterval>>()
+
+  const setProviderState = (provider: string, state: TLoginUiState) => {
+    setLoginStateByProvider((current) => ({ ...current, [provider]: state }))
+  }
+
+  const clearPoll = (provider: string) => {
+    const timer = pollTimers.get(provider)
+    if (timer) clearInterval(timer)
+    pollTimers.delete(provider)
+  }
+
+  const pollLogin = (provider: TProviderId, loginId: string) => {
+    clearPoll(provider)
+    const poll = async () => {
+      const [err, data] = await props.apiService.api.agent.auth.status({ loginId })
+      if (err) {
+        clearPoll(provider)
+        setProviderState(provider, { loginId, status: { status: "error", message: err.message } })
+        return
+      }
+
+      setProviderState(provider, { loginId, status: data })
+
+      if (data.status === "success") {
+        clearPoll(provider)
+        props.onSettingsChanged?.()
+      }
+
+      if (data.status === "error" || data.status === "aborted") {
+        clearPoll(provider)
+      }
+    }
+
+    void poll()
+    pollTimers.set(provider, setInterval(() => void poll(), POLL_MS))
+  }
+
+  const startLogin = async (provider: TProviderId) => {
+    const active = loginStateByProvider()[provider]
+    if (active?.loginId && (active.status.status === "pending" || active.status.status === "device-code" || active.status.status === "progress")) return
+
+    setProviderState(provider, { status: { status: "pending" } })
+    const [err, data] = await props.apiService.api.agent.auth.login({ providerId: provider })
+    if (err) {
+      setProviderState(provider, { status: { status: "error", message: err.message } })
+      return
+    }
+
+    setProviderState(provider, { loginId: data.loginId, status: { status: "pending" } })
+    pollLogin(provider, data.loginId)
+  }
+
+  const abortLogin = async (provider: TProviderId) => {
+    const active = loginStateByProvider()[provider]
+    if (!active?.loginId) return
+
+    clearPoll(provider)
+    await props.apiService.api.agent.auth.abort({ loginId: active.loginId })
+    setProviderState(provider, { loginId: active.loginId, status: { status: "aborted" } })
+  }
+
+  onCleanup(() => {
+    for (const provider of pollTimers.keys()) clearPoll(provider)
+    for (const state of Object.values(loginStateByProvider())) {
+      if (state.loginId && (state.status.status === "pending" || state.status.status === "device-code" || state.status.status === "progress")) {
+        void props.apiService.api.agent.auth.abort({ loginId: state.loginId })
+      }
+    }
+  })
 
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--settings">
@@ -46,15 +136,30 @@ export function SettingsTab(props: IProps) {
           <For each={subscriptionProviders()}>
             {(provider) => {
               const configured = () => configuredProviders().has(provider)
+              const state = () => loginStateByProvider()[provider]?.status ?? { status: "idle" } as TLoginStatus
+              const active = () => state().status === "pending" || state().status === "device-code" || state().status === "progress"
               return (
-                <article class="ai-wizzard-provider-card">
-                  <div>
+                <article classList={{ "ai-wizzard-provider-card": true, "ai-wizzard-provider-card--expanded": active() || state().status === "success" || state().status === "error" || state().status === "aborted" }}>
+                  <div class="ai-wizzard-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "Connected subscription" : "No subscription connected"}</small>
                   </div>
-                  <button class="ai-wizzard-secondary-button" type="button">
-                    {configured() ? "Reconnect" : "Log in"}
-                  </button>
+                  <div class="ai-wizzard-provider-card__actions">
+                    <button class="ai-wizzard-secondary-button" type="button" disabled={active()} onClick={() => void startLogin(provider)}>
+                      {configured() ? "Reconnect" : "Log in"}
+                    </button>
+                    <Show when={active()}>
+                      <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" onClick={() => void abortLogin(provider)}>
+                        Cancel
+                      </button>
+                    </Show>
+                  </div>
+
+                  <Show when={state().status !== "idle"}>
+                    <div class="ai-wizzard-login-box" aria-live="polite">
+                      <SwitchLoginStatus status={state()} />
+                    </div>
+                  </Show>
                 </article>
               )
             }}
@@ -88,5 +193,41 @@ export function SettingsTab(props: IProps) {
         </div>
       </section>
     </div>
+  )
+}
+
+function SwitchLoginStatus(props: { status: TLoginStatus }) {
+  return (
+    <>
+      <Show when={props.status.status === "pending"}>
+        <p>Starting device login…</p>
+      </Show>
+      <Show when={props.status.status === "progress" && "message" in props.status}>
+        <p>{"message" in props.status ? props.status.message : "Waiting for authorization…"}</p>
+      </Show>
+      <Show when={props.status.status === "device-code" && "verificationUri" in props.status}>
+        <div class="ai-wizzard-device-flow">
+          <span>Open this page and enter the code:</span>
+          <a href={"verificationUri" in props.status ? props.status.verificationUri : "#"} target="_blank" rel="noreferrer">
+            {"verificationUri" in props.status ? props.status.verificationUri : ""}
+          </a>
+          <Show when={"userCode" in props.status && props.status.userCode}>
+            <code>{"userCode" in props.status ? props.status.userCode : ""}</code>
+          </Show>
+          <Show when={"message" in props.status && props.status.message}>
+            <p>{"message" in props.status ? props.status.message : ""}</p>
+          </Show>
+        </div>
+      </Show>
+      <Show when={props.status.status === "success"}>
+        <p>Connected. Refreshing settings…</p>
+      </Show>
+      <Show when={props.status.status === "aborted"}>
+        <p>Login cancelled.</p>
+      </Show>
+      <Show when={props.status.status === "error" && "message" in props.status}>
+        <p>{"message" in props.status ? props.status.message : "Login failed"}</p>
+      </Show>
+    </>
   )
 }

@@ -688,6 +688,22 @@
   padding: 16px;
 }
 
+.ai-wizzard-provider-card--expanded {
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.ai-wizzard-provider-card__main {
+  min-width: 0;
+}
+
+.ai-wizzard-provider-card__actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .ai-wizzard-provider-card strong {
   color: var(--foreground);
   display: block;
@@ -727,6 +743,56 @@
 .ai-wizzard-secondary-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-wizzard-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ai-wizzard-secondary-button--danger:hover {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+.ai-wizzard-login-box {
+  border-top: 1px dashed var(--border);
+  color: var(--muted-foreground);
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 10px;
+  line-height: 1.5;
+  padding-top: 14px;
+}
+
+.ai-wizzard-login-box p {
+  margin: 0;
+}
+
+.ai-wizzard-device-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-wizzard-device-flow a {
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+}
+
+.ai-wizzard-device-flow code {
+  align-self: flex-start;
+  border: 2px solid var(--foreground);
+  background: var(--background);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--foreground) 78%, var(--background));
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 8px 10px;
 }
 
 .ai-wizzard-option-card,
