@@ -337,7 +337,7 @@ function SwitchLoginStatus(props: { status: TLoginStatus }) {
       <Show when={props.status.status === "device-code" && "verificationUri" in props.status}>
         <div class="ai-wizzard-device-flow">
           <span>Open this page and enter the code:</span>
-          <a href={"verificationUri" in props.status ? props.status.verificationUri : "#"} target="_blank" rel="noreferrer">
+          <a href={"verificationUri" in props.status ? props.status.verificationUri : "#"} target="_blank" rel="noopener noreferrer">
             {"verificationUri" in props.status ? props.status.verificationUri : ""}
           </a>
           <Show when={"userCode" in props.status && props.status.userCode}>

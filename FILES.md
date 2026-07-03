@@ -298,10 +298,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts](packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts) |  |
+| [packages/canvas/src/components/AiWizzard/CONSTANTS.ts](packages/canvas/src/components/AiWizzard/CONSTANTS.ts) |  |
 | [packages/canvas/src/components/AiWizzard/index.css](packages/canvas/src/components/AiWizzard/index.css) |  |
 | [packages/canvas/src/components/AiWizzard/index.tsx](packages/canvas/src/components/AiWizzard/index.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx](packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx](packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
