@@ -238,6 +238,19 @@
   white-space: nowrap;
 }
 
+.ai-chat-empty {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--foreground);
+  font-size: clamp(22px, 4vw, 44px);
+  font-weight: 800;
+  line-height: 1.15;
+  padding: 24px;
+  text-align: center;
+}
+
 .ai-chat-history {
   display: flex;
   flex: 0 0 auto;

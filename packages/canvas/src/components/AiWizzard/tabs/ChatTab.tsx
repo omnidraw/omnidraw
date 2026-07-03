@@ -56,6 +56,11 @@ export function ChatTab(props: IProps) {
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--chat">
       <div class="ai-chat-content">
+        <Show when={props.messageHistory.length === 0 && !lastSubmit()}>
+          <div class="ai-chat-empty" aria-live="polite">
+            Which Widget should AI build for you?
+          </div>
+        </Show>
         <Show when={props.messageHistory.length > 0}>
           <div class="ai-chat-history" aria-live="polite">
             <For each={props.messageHistory}>
