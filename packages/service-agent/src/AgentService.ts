@@ -6,6 +6,7 @@ import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
 import { AuthStorage, createAgentSession, createAgentSessionFromServices, createAgentSessionServices, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { mkdirSync } from 'node:fs';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -66,7 +67,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async connectWizzard(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
-    const cwd = join(this.#piAgentDir, 'widget-cwd', id)
+    const cwd = join(this.#piAgentDir, 'widget-cwd', id+sessionId)
+    mkdirSync(cwd, {recursive: true})
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
     const entry = sessionManager.getEntry('vibejsonpath')
