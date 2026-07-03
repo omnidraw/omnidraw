@@ -40,6 +40,7 @@ export type TChatComposerProps = {
   defaultProvider?: string
   defaultThinkingLevel?: string
   onSubmit?: (value: TChatComposerSubmit) => void
+  onNewChat?: () => void
 }
 
 export type TPromptSuggestionKind = "mention" | "command"

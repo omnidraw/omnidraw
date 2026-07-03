@@ -11,7 +11,6 @@ type TAgentSettings = {
 
 interface IProps {
   settings?: TAgentSettings
-  sessionId: string
   messageHistory: readonly unknown[]
   onPrompt: (text: string) => Promise<void>
   onNewChat: () => void
@@ -57,12 +56,6 @@ export function ChatTab(props: IProps) {
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--chat">
       <div class="ai-chat-content">
-        <div class="ai-chat-session-bar">
-          <span>Session {props.sessionId}</span>
-          <button class="ai-wizzard-secondary-button" type="button" onClick={startNewChat}>
-            New chat
-          </button>
-        </div>
         <Show when={props.messageHistory.length > 0}>
           <div class="ai-chat-history" aria-live="polite">
             <For each={props.messageHistory}>
@@ -91,6 +84,7 @@ export function ChatTab(props: IProps) {
         defaultProvider={props.settings?.defaultProvider}
         defaultThinkingLevel={props.settings?.defaultThinkingLevel}
         onSubmit={submitPrompt}
+        onNewChat={startNewChat}
       />
     </div>
   )

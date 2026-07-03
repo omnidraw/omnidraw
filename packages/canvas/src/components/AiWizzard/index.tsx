@@ -107,7 +107,6 @@ export function AiWizzard(props: IProps) {
                 <Tabs.Content class="ai-wizzard-tabs__content" value="chat">
                     <ChatTab
                         settings={settingState.latest}
-                        sessionId={sessionId()}
                         messageHistory={messageHistory}
                         onPrompt={prompt}
                         onNewChat={newChat}

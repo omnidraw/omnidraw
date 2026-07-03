@@ -237,6 +237,7 @@ export function ChatComposer(props: TChatComposerProps) {
   const [hasText, setHasText] = createSignal(false)
   const [hasFocus, setHasFocus] = createSignal(false)
   const [modelMenuOpen, setModelMenuOpen] = createSignal(false)
+  const [actionMenuOpen, setActionMenuOpen] = createSignal(false)
   const [selectedModelId, setSelectedModelId] = createSignal<string>()
   const [activeProvider, setActiveProvider] = createSignal<string>()
   const [focusedModelId, setFocusedModelId] = createSignal<string>()
@@ -451,10 +452,18 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const handleModelMenuKey = (event: KeyboardEvent) => {
-    if (!modelMenuOpen()) return false
+    if (!modelMenuOpen()) {
+      if (actionMenuOpen() && event.key === "Escape") {
+        setActionMenuOpen(false)
+        return true
+      }
+
+      return false
+    }
 
     if (event.key === "Escape") {
       setModelMenuOpen(false)
+      setActionMenuOpen(false)
       return true
     }
 
@@ -541,6 +550,7 @@ export function ChatComposer(props: TChatComposerProps) {
       }
 
       setModelMenuOpen(false)
+      setActionMenuOpen(false)
     }
 
     document.addEventListener("keydown", handleDocumentKeydown, true)
@@ -710,6 +720,38 @@ export function ChatComposer(props: TChatComposerProps) {
 
         <div class="ai-chat-composer__controls">
           <div class="ai-chat-composer__controls-right">
+            <div class="ai-chat-composer__action-picker">
+              <button
+                class="ai-chat-composer__icon-button ai-chat-composer__action-button"
+                type="button"
+                aria-label="Chat actions"
+                aria-haspopup="menu"
+                aria-expanded={actionMenuOpen()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setModelMenuOpen(false)
+                  setActionMenuOpen((open) => !open)
+                }}
+              >
+                <span aria-hidden="true">...</span>
+              </button>
+
+              <Show when={actionMenuOpen()}>
+                <div class="ai-chat-composer__action-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionMenuOpen(false)
+                      props.onNewChat?.()
+                      view?.focus()
+                    }}
+                  >
+                    New chat
+                  </button>
+                </div>
+              </Show>
+            </div>
             <div class="ai-chat-composer__model-picker">
               <button
                 class="ai-chat-composer__pill"
@@ -719,6 +761,7 @@ export function ChatComposer(props: TChatComposerProps) {
                 disabled={models().length === 0}
                 onClick={(event) => {
                   event.stopPropagation()
+                  setActionMenuOpen(false)
                   if (modelMenuOpen()) setModelMenuOpen(false)
                   else openModelMenu()
                 }}

@@ -497,6 +497,11 @@
   max-width: min(70%, 560px);
 }
 
+.ai-chat-composer__action-picker {
+  position: relative;
+  flex: 0 0 auto;
+}
+
 .ai-chat-composer__model-picker + .ai-chat-composer__icon-button {
   margin-left: auto;
 }
@@ -546,6 +551,14 @@
   white-space: nowrap;
 }
 
+.ai-chat-composer__action-button span {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateY(-2px);
+}
+
 .ai-chat-composer__icon-button:disabled,
 .ai-chat-composer__pill:disabled {
   cursor: not-allowed;
@@ -553,19 +566,31 @@
   opacity: 0.42;
 }
 
-.ai-chat-composer__model-menu {
+.ai-chat-composer__model-menu,
+.ai-chat-composer__action-menu {
   position: absolute;
-  left: 0;
   bottom: calc(100% + 8px);
   z-index: 4;
-  display: grid;
-  width: min(460px, calc(100vw - 80px));
-  max-width: 78vw;
-  grid-template-columns: minmax(128px, 0.8fr) minmax(210px, 1.2fr);
   overflow: hidden;
   border: 2px solid var(--foreground);
   background: var(--card);
   box-shadow: 6px 6px 0 color-mix(in srgb, var(--foreground) 78%, var(--background));
+}
+
+.ai-chat-composer__model-menu {
+  left: 0;
+  display: grid;
+  width: min(460px, calc(100vw - 80px));
+  max-width: 78vw;
+  grid-template-columns: minmax(128px, 0.8fr) minmax(210px, 1.2fr);
+}
+
+.ai-chat-composer__action-menu {
+  left: 0;
+  display: flex;
+  min-width: 132px;
+  flex-direction: column;
+  padding: 4px;
 }
 
 .ai-chat-composer__model-providers,
@@ -583,7 +608,8 @@
 }
 
 .ai-chat-composer__model-provider,
-.ai-chat-composer__model-option {
+.ai-chat-composer__model-option,
+.ai-chat-composer__action-menu button {
   appearance: none;
   border: 1px solid transparent;
   background: transparent;
@@ -593,7 +619,8 @@
   text-align: left;
 }
 
-.ai-chat-composer__model-provider {
+.ai-chat-composer__model-provider,
+.ai-chat-composer__action-menu button {
   min-height: 28px;
   overflow: hidden;
   padding: 0 8px;
@@ -628,6 +655,7 @@
 
 .ai-chat-composer__model-provider:hover,
 .ai-chat-composer__model-option:hover,
+.ai-chat-composer__action-menu button:hover,
 .ai-chat-composer__model-provider--active,
 .ai-chat-composer__model-option--active {
   border-color: #ff7a2f;
@@ -681,7 +709,8 @@
 .ai-chat-composer__attachment button:focus-visible,
 .ai-chat-composer__suggestions button:focus-visible,
 .ai-chat-composer__model-provider:focus-visible,
-.ai-chat-composer__model-option:focus-visible {
+.ai-chat-composer__model-option:focus-visible,
+.ai-chat-composer__action-menu button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
