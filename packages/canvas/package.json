@@ -56,8 +56,8 @@
     "@vibecanvas/api-actors": "workspace:*",
     "@vibecanvas/orpc-client": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
-    "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/service-actor": "workspace:*",
+    "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-theme": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
@@ -78,6 +78,7 @@
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.41.9",
     "solid-js": "catalog:",
+    "solid-markdown": "^2.1.1",
     "zod": "catalog:"
   }
 }

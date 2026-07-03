@@ -25,6 +25,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -104,6 +105,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
+| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
+| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
+| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
+| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -116,6 +124,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -154,8 +164,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/api-agent/package.json](packages/api-agent/package.json) |  |
-| [packages/api-agent/src/api.auth.get.ts](packages/api-agent/src/api.auth.get.ts) |  |
+| [packages/api-agent/src/api.auth.abort.ts](packages/api-agent/src/api.auth.abort.ts) |  |
+| [packages/api-agent/src/api.auth.apiKey.remove.ts](packages/api-agent/src/api.auth.apiKey.remove.ts) |  |
+| [packages/api-agent/src/api.auth.apiKey.set.ts](packages/api-agent/src/api.auth.apiKey.set.ts) |  |
+| [packages/api-agent/src/api.auth.login.ts](packages/api-agent/src/api.auth.login.ts) |  |
+| [packages/api-agent/src/api.auth.logout.ts](packages/api-agent/src/api.auth.logout.ts) |  |
+| [packages/api-agent/src/api.auth.status.ts](packages/api-agent/src/api.auth.status.ts) |  |
 | [packages/api-agent/src/api.events.ts](packages/api-agent/src/api.events.ts) |  |
+| [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
+| [packages/api-agent/src/api.wizzard.connect.ts](packages/api-agent/src/api.wizzard.connect.ts) |  |
+| [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
 | [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
@@ -276,6 +294,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
 | [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Automerge Client Service |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
+| [packages/canvas/src/components/AiWizzard/AsyncStateView.tsx](packages/canvas/src/components/AiWizzard/AsyncStateView.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts](packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts) |  |
@@ -552,6 +571,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
@@ -585,6 +605,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/list-migration-files.ts](packages/service-db/src/DbServiceTurso/list-migration-files.ts) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql](packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql](packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql) |  |
@@ -592,12 +613,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
@@ -622,6 +645,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-filesystem/src/IFilesystemService.ts](packages/service-filesystem/src/IFilesystemService.ts) |  |
 | [packages/service-filesystem/src/types.ts](packages/service-filesystem/src/types.ts) |  |
 | [packages/service-filesystem/tsconfig.json](packages/service-filesystem/tsconfig.json) |  |
+
+## packages/service-kv
+
+| path | jsdocs |
+|---|---|
+| [packages/service-kv/package.json](packages/service-kv/package.json) |  |
+| [packages/service-kv/src/index.ts](packages/service-kv/src/index.ts) |  |
+| [packages/service-kv/src/KvService.ts](packages/service-kv/src/KvService.ts) |  |
+| [packages/service-kv/src/types.ts](packages/service-kv/src/types.ts) |  |
+| [packages/service-kv/tsconfig.json](packages/service-kv/tsconfig.json) |  |
 
 ## packages/service-pty
 
