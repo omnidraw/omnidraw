@@ -36,19 +36,8 @@ type TLoginSession = {
 
 type TAgentConnectResult = {
   vcJson: TVibecanvasJson | null;
-  messageHistory: unknown[];
+  messageHistory: AgentSession['messages'];
 };
-
-function toJsonValue(value: unknown): unknown {
-  try {
-    return JSON.parse(JSON.stringify(value))
-  } catch (error) {
-    return {
-      type: 'serialization_error',
-      message: error instanceof Error ? error.message : String(error),
-    }
-  }
-}
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -95,12 +84,12 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       systemPrompt: 'You help to build new widgets.'
     });
     const {session} = await createAgentSessionFromServices({services, sessionManager})
-    const messageHistory = toJsonValue(session.messages) as unknown[]
+    const messageHistory = session.messages
     const unsub = session.subscribe((event) => {
       this.#config.eventPublisherService.publishAgentEvent({
         widgetId: id,
         sessionId,
-        event: toJsonValue(event),
+        event,
       })
     })
     if(!this.sessionMap[id]) {

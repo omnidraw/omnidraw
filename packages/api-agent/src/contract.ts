@@ -1,8 +1,7 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { ZJson } from "@vibecanvas/service-db/model";
 import { z } from 'zod';
-import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.zod"
 
 const ZAgentSettings = z.object({
   defaultModel: z.string().optional(),
@@ -49,10 +48,10 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
-const ZAgentWizzardConnect = z.object({
-  vcJson: ZVibecanvasJson.nullable(),
-  messageHistory: ZJson.array(),
-})
+export type TAgentWizzardConnect = {
+  vcJson: TVibecanvasJson | null;
+  messageHistory: unknown[];
+}
 
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
@@ -63,7 +62,7 @@ export const agentContract = oc.router({
       .output(ZAgentSettings),
   },
   wizzard: {
-    connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZAgentWizzardConnect),
+    connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(orpcType<TAgentWizzardConnect>()),
     prompt: oc.input(z.object({widgetId: z.string(), sessionId: z.string(), text: z.string().min(1)})),
     newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),
   },
