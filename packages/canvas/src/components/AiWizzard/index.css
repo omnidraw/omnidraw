@@ -201,8 +201,11 @@
 
 .ai-wizzard-tab--chat {
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 18px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 18px 0 8px;
 }
 
@@ -212,13 +215,16 @@
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  justify-content: flex-end;
-  overflow: auto;
+  justify-content: flex-start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .ai-chat-session-bar {
   align-items: center;
   display: flex;
+  flex: 0 0 auto;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
@@ -234,9 +240,11 @@
 
 .ai-chat-history {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 10px;
   margin-bottom: 12px;
+  margin-top: auto;
 }
 
 .ai-chat-history__message {
@@ -680,6 +688,7 @@
 
 .ai-chat-draft {
   width: 100%;
+  flex: 0 0 auto;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--card) 90%, var(--background));
   padding: 12px 14px;
