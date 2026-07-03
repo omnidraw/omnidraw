@@ -109,7 +109,10 @@ function renderChatTab() {
   container = document.createElement("div")
   document.body.appendChild(container)
   disposeRendered = render(() => ChatTab({
+    isCanceling: false,
+    isRunning: false,
     messageHistory: MOCK_MESSAGE_HISTORY,
+    onCancel: () => {},
     onNewChat: () => {},
     onPrompt: async () => {},
     settings: { models: [] },

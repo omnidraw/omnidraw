@@ -30,6 +30,11 @@ const ZAgentApiKeySetOutput = z.object({
   providerId: z.string(),
 })
 
+const ZAgentWizzardCancel = z.object({
+  canceled: z.boolean(),
+  running: z.boolean(),
+})
+
 const ZAgentLoginStatus = z.discriminatedUnion('status', [
   z.object({ status: z.literal('pending') }),
   z.object({
@@ -64,6 +69,7 @@ export const agentContract = oc.router({
   wizzard: {
     connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(orpcType<TAgentWizzardConnect>()),
     prompt: oc.input(z.object({widgetId: z.string(), sessionId: z.string(), text: z.string().min(1)})),
+    cancel: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZAgentWizzardCancel),
     newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),
   },
   auth: {

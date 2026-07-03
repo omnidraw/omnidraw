@@ -39,7 +39,10 @@ export type TChatComposerProps = {
   defaultModel?: string
   defaultProvider?: string
   defaultThinkingLevel?: string
+  isRunning?: boolean
+  isCanceling?: boolean
   onSubmit?: (value: TChatComposerSubmit) => void
+  onCancel?: () => void
   onNewChat?: () => void
 }
 

@@ -172,6 +172,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.auth.status.ts](packages/api-agent/src/api.auth.status.ts) |  |
 | [packages/api-agent/src/api.events.ts](packages/api-agent/src/api.events.ts) |  |
 | [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
+| [packages/api-agent/src/api.wizzard.cancel.ts](packages/api-agent/src/api.wizzard.cancel.ts) |  |
 | [packages/api-agent/src/api.wizzard.connect.ts](packages/api-agent/src/api.wizzard.connect.ts) |  |
 | [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |

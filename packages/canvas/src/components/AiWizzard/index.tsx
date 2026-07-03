@@ -62,6 +62,8 @@ function withAgentMessageFinished(message: unknown, finished: boolean) {
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
+    const [isRunning, setIsRunning] = createSignal(false)
+    const [isCanceling, setIsCanceling] = createSignal(false)
     const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
@@ -69,22 +71,27 @@ export function AiWizzard(props: IProps) {
     }))
     const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
 
-    createEffect(
-        async (input) => {
-            const [err, data] = await props.apiService.api.agent.wizzard.connect({
-                sessionId: props.sessionId,
-                widgetId: props.id
-            })
+    createEffect(() => {
+        const currentSessionId = sessionId()
+        setIsRunning(false)
+        setIsCanceling(false)
+
+        void props.apiService.api.agent.wizzard.connect({
+            sessionId: currentSessionId,
+            widgetId: props.id
+        }).then(([err, data]) => {
+            if (sessionId() !== currentSessionId) {
+                return
+            }
+
             if (err) {
                 throw err
             }
 
             setVcJson(data.vcJson)
             setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
-
-            return data
-        }
-    )
+        })
+    })
 
 
     onMount(() => {
@@ -119,12 +126,23 @@ export function AiWizzard(props: IProps) {
 
                 const piEvent = event.event
 
+                if (piEvent.type === "agent_start" || piEvent.type === "turn_start") {
+                    setIsRunning(true)
+                    setIsCanceling(false)
+                    continue
+                }
+
                 if (piEvent.type === "agent_end") {
                     appendMessages(piEvent.messages, true)
+                    setIsRunning(piEvent.willRetry)
+                    if (!piEvent.willRetry) {
+                        setIsCanceling(false)
+                    }
                     continue
                 }
 
                 if (piEvent.type === "message_start" || piEvent.type === "message_update") {
+                    setIsRunning(true)
                     upsertMessage(piEvent.message, false)
                     continue
                 }
@@ -146,15 +164,44 @@ export function AiWizzard(props: IProps) {
     })
 
     const prompt = async (text: string) => {
+        const currentSessionId = sessionId()
+        setIsRunning(true)
+        setIsCanceling(false)
+
         const [err] = await props.apiService.api.agent.wizzard.prompt({
             widgetId: props.id,
-            sessionId: sessionId(),
+            sessionId: currentSessionId,
             text,
         })
+        if (sessionId() !== currentSessionId) return
+
+        setIsRunning(false)
+        setIsCanceling(false)
         if (err) throw err
     }
 
+    const cancelPrompt = async () => {
+        if (isCanceling()) return
+
+        const currentSessionId = sessionId()
+        setIsCanceling(true)
+
+        const [err, data] = await props.apiService.api.agent.wizzard.cancel({
+            widgetId: props.id,
+            sessionId: currentSessionId,
+        })
+        if (sessionId() !== currentSessionId) return
+
+        setIsCanceling(false)
+        setIsRunning(err ? false : data.running)
+        if (err) {
+            console.error(err)
+        }
+    }
+
     const newChat = () => {
+        setIsRunning(false)
+        setIsCanceling(false)
         setMessageHistory(reconcile([]))
         setSessionId(props.onResetSessionId())
     }
@@ -175,7 +222,10 @@ export function AiWizzard(props: IProps) {
                     <ChatTab
                         settings={settingState.latest}
                         messageHistory={messageHistory}
+                        isRunning={isRunning()}
+                        isCanceling={isCanceling()}
                         onPrompt={prompt}
+                        onCancel={() => void cancelPrompt()}
                         onNewChat={newChat}
                     />
                 </Tabs.Content>

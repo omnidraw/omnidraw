@@ -17,7 +17,10 @@ type TAgentSettings = {
 interface IProps {
   settings?: TAgentSettings
   messageHistory: readonly unknown[]
+  isRunning: boolean
+  isCanceling: boolean
   onPrompt: (text: string) => Promise<void>
+  onCancel: () => void
   onNewChat: () => void
 }
 
@@ -355,7 +358,10 @@ export function ChatTab(props: IProps) {
         defaultModel={props.settings?.defaultModel}
         defaultProvider={props.settings?.defaultProvider}
         defaultThinkingLevel={props.settings?.defaultThinkingLevel}
+        isRunning={props.isRunning}
+        isCanceling={props.isCanceling}
         onSubmit={submitPrompt}
+        onCancel={props.onCancel}
         onNewChat={props.onNewChat}
       />
     </div>

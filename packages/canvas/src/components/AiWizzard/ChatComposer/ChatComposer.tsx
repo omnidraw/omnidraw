@@ -13,6 +13,7 @@ import ArrowUp from "lucide-solid/icons/arrow-up"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import FileText from "lucide-solid/icons/file-text"
 import ImageIcon from "lucide-solid/icons/image"
+import Square from "lucide-solid/icons/square"
 import X from "lucide-solid/icons/x"
 import Zap from "lucide-solid/icons/zap"
 import { baseKeymap } from "prosemirror-commands"
@@ -381,6 +382,10 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const submit = () => {
+    if (props.isRunning) {
+      return
+    }
+
     const text = getEditorText(view)
     const currentImages = images()
 
@@ -402,6 +407,15 @@ export function ChatComposer(props: TChatComposerProps) {
     setImages([])
     currentImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
     clearEditor()
+  }
+
+  const activatePrimaryAction = () => {
+    if (props.isRunning) {
+      props.onCancel?.()
+      return
+    }
+
+    submit()
   }
 
   const moveSuggestion = (direction: 1 | -1) => {
@@ -837,8 +851,17 @@ export function ChatComposer(props: TChatComposerProps) {
             >
               <ImageIcon size={20} />
             </button>
-            <button class="ai-chat-composer__send" type="button" aria-label="Send prompt" onClick={submit}>
-              <ArrowUp size={25} />
+            <button
+              class="ai-chat-composer__send"
+              type="button"
+              aria-label={props.isRunning ? "Stop response" : "Send prompt"}
+              aria-busy={props.isCanceling ? "true" : undefined}
+              disabled={props.isRunning && props.isCanceling}
+              onClick={activatePrimaryAction}
+            >
+              <Show when={props.isRunning} fallback={<ArrowUp size={25} />}>
+                <Square size={18} fill="currentColor" />
+              </Show>
             </button>
           </div>
         </div>

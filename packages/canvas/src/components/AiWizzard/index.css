@@ -738,7 +738,8 @@
 }
 
 .ai-chat-composer__icon-button:disabled,
-.ai-chat-composer__pill:disabled {
+.ai-chat-composer__pill:disabled,
+.ai-chat-composer__send:disabled {
   cursor: not-allowed;
   filter: blur(0.7px);
   opacity: 0.42;

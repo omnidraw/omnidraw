@@ -39,6 +39,10 @@ type TAgentConnectResult = {
   vcJson: TVibecanvasJson | null;
   messageHistory: AgentSession['messages'];
 };
+type TAgentCancelResult = {
+  canceled: boolean;
+  running: boolean;
+};
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -113,6 +117,17 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     await session.prompt(text)
+  }
+
+  async cancelWizzard(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
+    const session = this.sessionMap[id]?.[sessionId]?.session
+    if (!session || !session.isStreaming) {
+      return { canceled: false, running: false }
+    }
+
+    await session.abort()
+
+    return { canceled: true, running: session.isStreaming }
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {
