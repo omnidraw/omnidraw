@@ -4,7 +4,6 @@ import { Match, Switch, createEffect, createResource, createSignal, onCleanup, o
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
-import { MOCK_AI_WIZZARD_MESSAGE_HISTORY } from "./CONSTANTS"
 import { PreviewTab } from "./tabs/PreviewTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { ChatTab } from "./tabs/ChatTab"
@@ -52,7 +51,6 @@ function findAgentMessageIndex(messages: readonly unknown[], message: unknown) {
 }
 
 export function AiWizzard(props: IProps) {
-    const useMockMessageHistory = import.meta.env.DEV
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
     const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
@@ -73,7 +71,7 @@ export function AiWizzard(props: IProps) {
             }
 
             setVcJson(data.vcJson)
-            setMessageHistory(reconcile(useMockMessageHistory ? [...MOCK_AI_WIZZARD_MESSAGE_HISTORY] : data.messageHistory))
+            setMessageHistory(reconcile(data.messageHistory))
 
             return data
         }
@@ -108,7 +106,6 @@ export function AiWizzard(props: IProps) {
                 if (disposed) break
                 if (event.widgetId !== props.id) continue
                 if (event.sessionId !== sessionId()) continue
-                if (useMockMessageHistory) continue
 
                 const piEvent = event.event
 
@@ -138,11 +135,6 @@ export function AiWizzard(props: IProps) {
     })
 
     const prompt = async (text: string) => {
-        if (useMockMessageHistory) {
-            setMessageHistory(messageHistory.length, { role: "user", content: [{ type: "text", text }] })
-            return
-        }
-
         const [err] = await props.apiService.api.agent.wizzard.prompt({
             widgetId: props.id,
             sessionId: sessionId(),
@@ -152,7 +144,7 @@ export function AiWizzard(props: IProps) {
     }
 
     const newChat = () => {
-        setMessageHistory(reconcile(useMockMessageHistory ? [...MOCK_AI_WIZZARD_MESSAGE_HISTORY] : []))
+        setMessageHistory(reconcile([]))
         setSessionId(props.onResetSessionId())
     }
 

@@ -298,7 +298,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts) |  |
 | [packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts](packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts) |  |
-| [packages/canvas/src/components/AiWizzard/CONSTANTS.ts](packages/canvas/src/components/AiWizzard/CONSTANTS.ts) |  |
 | [packages/canvas/src/components/AiWizzard/index.css](packages/canvas/src/components/AiWizzard/index.css) |  |
 | [packages/canvas/src/components/AiWizzard/index.tsx](packages/canvas/src/components/AiWizzard/index.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx) |  |
