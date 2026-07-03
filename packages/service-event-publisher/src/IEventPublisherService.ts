@@ -1,3 +1,4 @@
+import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import type { IService } from '@vibecanvas/runtime';
 import type { ZDbEventSchema } from '@vibecanvas/api-db/contract';
 import type { ZNotificationEvent } from '@vibecanvas/api-notification/contract';
@@ -14,7 +15,7 @@ export type TActorEvent = z.infer<typeof ZActorEvent>
 export type TAgentEvent = {
   widgetId: string;
   sessionId: string;
-  event: unknown;
+  event: AgentSessionEvent;
 };
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;

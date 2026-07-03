@@ -1,4 +1,5 @@
-import { eventIterator, oc } from '@orpc/contract';
+import { eventIterator, oc, type as orpcType } from '@orpc/contract';
+import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { ZJson } from "@vibecanvas/service-db/model";
 import { z } from 'zod';
 import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.zod"
@@ -46,18 +47,13 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
   z.object({ status: z.literal('error'), message: z.string() }),
 ])
 
-export const ZAgentEvent = z.object({
-  widgetId: z.string(),
-  sessionId: z.string(),
-  event: ZJson,
-});
+export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
 const ZAgentWizzardConnect = z.object({
   vcJson: ZVibecanvasJson.nullable(),
   messageHistory: ZJson.array(),
 })
 
-export type TAgentEvent = z.infer<typeof ZAgentEvent>
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
 
@@ -94,5 +90,5 @@ export const agentContract = oc.router({
   events: oc
     .input(z.object({}))
     .route({ method: 'GET' })
-    .output(eventIterator(ZAgentEvent)),
+    .output(eventIterator(orpcType<TAgentEvent>())), 
 });

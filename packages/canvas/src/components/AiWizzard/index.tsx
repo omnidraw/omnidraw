@@ -1,6 +1,6 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Tabs } from "@kobalte/core/tabs"
-import { Match, Switch, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { Match, Switch, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
@@ -17,12 +17,6 @@ interface IProps {
     onResetSessionId: () => string
 }
 
-type TPiAgentSessionEvent = {
-    type: string
-    message?: unknown
-    messages?: unknown[]
-}
-
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
@@ -33,15 +27,23 @@ export function AiWizzard(props: IProps) {
     }))
     const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
 
-    createResource(() => ({ widgetId: props.id, sessionId: sessionId() }), async (input) => {
-        const [err, data] = await props.apiService.api.agent.wizzard.connect(input)
-        if (err) throw err
+    createEffect(
+        async (input) => {
+            const [err, data] = await props.apiService.api.agent.wizzard.connect({
+                sessionId: props.sessionId,
+                widgetId: props.id
+            })
+            if (err) {
+                throw err
+            }
 
-        setVcJson(data.vcJson)
-        setMessageHistory(reconcile(data.messageHistory))
+            setVcJson(data.vcJson)
+            setMessageHistory(reconcile(data.messageHistory))
 
-        return data
-    })
+            return data
+        }
+    )
+
 
     onMount(() => {
         let disposed = false
@@ -57,15 +59,15 @@ export function AiWizzard(props: IProps) {
                 if (event.widgetId !== props.id) continue
                 if (event.sessionId !== sessionId()) continue
 
-                const piEvent = event.event as TPiAgentSessionEvent
+                const piEvent = event.event
                 console.log('agent event', event)
 
-                if (Array.isArray(piEvent.messages)) {
+                if (piEvent.type === "agent_end") {
                     setMessageHistory(reconcile(piEvent.messages))
                     continue
                 }
 
-                if (piEvent.message) {
+                if (piEvent.type === "turn_end") {
                     setMessageHistory(messageHistory.length, piEvent.message)
                 }
             }

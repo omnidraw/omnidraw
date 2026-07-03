@@ -324,7 +324,7 @@
     "packages/service-agent": {
       "name": "@vibecanvas/service-agent",
       "dependencies": {
-        "@earendil-works/pi-coding-agent": "^0.80.3",
+        "@earendil-works/pi-coding-agent": "catalog:",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
@@ -364,6 +364,7 @@
       "name": "@vibecanvas/service-event-publisher",
       "version": "0.3.1",
       "dependencies": {
+        "@earendil-works/pi-coding-agent": "catalog:",
         "@orpc/server": "catalog:",
         "@vibecanvas/api-actors": "workspace:*",
         "@vibecanvas/api-db": "workspace:*",
@@ -427,6 +428,7 @@
     "@automerge/automerge-repo-network-broadcastchannel": "2.5.5",
     "@automerge/automerge-repo-network-websocket": "2.5.5",
     "@automerge/automerge-repo-storage-indexeddb": "2.5.5",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
     "@kobalte/core": "^0.13.11",
     "@orpc/client": "1.13.13",
     "@orpc/contract": "1.13.13",
