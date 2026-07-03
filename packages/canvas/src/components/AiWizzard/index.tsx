@@ -17,6 +17,39 @@ interface IProps {
     onResetSessionId: () => string
 }
 
+type TAgentMessageRecord = Record<string, unknown>
+
+function isAgentMessageRecord(message: unknown): message is TAgentMessageRecord {
+    return typeof message === "object" && message !== null
+}
+
+function getAgentMessageKey(message: unknown) {
+    if (!isAgentMessageRecord(message)) return undefined
+
+    const role = typeof message.role === "string" ? message.role : "message"
+
+    if (role === "toolResult" && typeof message.toolCallId === "string") {
+        return `${role}:tool:${message.toolCallId}`
+    }
+
+    if (role === "assistant" && typeof message.responseId === "string") {
+        return `${role}:response:${message.responseId}`
+    }
+
+    if (typeof message.timestamp === "number" || typeof message.timestamp === "string") {
+        return `${role}:time:${message.timestamp}`
+    }
+
+    return undefined
+}
+
+function findAgentMessageIndex(messages: readonly unknown[], message: unknown) {
+    const key = getAgentMessageKey(message)
+    if (!key) return -1
+
+    return messages.findIndex((item) => getAgentMessageKey(item) === key)
+}
+
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
@@ -48,6 +81,21 @@ export function AiWizzard(props: IProps) {
     onMount(() => {
         let disposed = false
 
+        const upsertMessage = (message: unknown) => {
+            const index = findAgentMessageIndex(messageHistory, message)
+
+            if (index >= 0) {
+                setMessageHistory(index, reconcile(message))
+                return
+            }
+
+            setMessageHistory(messageHistory.length, message)
+        }
+
+        const appendMessages = (messages: readonly unknown[]) => {
+            messages.forEach(upsertMessage)
+        }
+
         void props.apiService.api.agent.events({}).then(async ([err, events]) => {
             if (err) {
                 console.error(err)
@@ -60,15 +108,23 @@ export function AiWizzard(props: IProps) {
                 if (event.sessionId !== sessionId()) continue
 
                 const piEvent = event.event
-                console.log('agent event', event)
 
                 if (piEvent.type === "agent_end") {
-                    setMessageHistory(reconcile(piEvent.messages))
+                    appendMessages(piEvent.messages)
+                    continue
+                }
+
+                if (
+                    piEvent.type === "message_start"
+                    || piEvent.type === "message_update"
+                    || piEvent.type === "message_end"
+                ) {
+                    upsertMessage(piEvent.message)
                     continue
                 }
 
                 if (piEvent.type === "turn_end") {
-                    setMessageHistory(messageHistory.length, piEvent.message)
+                    upsertMessage(piEvent.message)
                 }
             }
         })
