@@ -103,12 +103,12 @@ function MarkdownHeading(props: { block: Extract<TMarkdownBlock, { kind: "headin
   }
 }
 
-function onTableWheel(event: WheelEvent, tableWrap: HTMLDivElement) {
+function onHorizontalScrollBlockWheel(event: WheelEvent, block: HTMLElement) {
   if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
     return
   }
 
-  const scrollTarget = tableWrap.closest(".ai-chat-content")
+  const scrollTarget = block.closest(".ai-chat-content")
 
   if (scrollTarget === null) {
     return
@@ -123,7 +123,7 @@ function MarkdownTable(props: { block: Extract<TMarkdownBlock, { kind: "table" }
   let tableWrap!: HTMLDivElement
 
   onMount(() => {
-    const listener = (event: WheelEvent) => onTableWheel(event, tableWrap)
+    const listener = (event: WheelEvent) => onHorizontalScrollBlockWheel(event, tableWrap)
     tableWrap.addEventListener("wheel", listener, { passive: false })
     onCleanup(() => tableWrap.removeEventListener("wheel", listener))
   })
@@ -162,6 +162,18 @@ function MarkdownTable(props: { block: Extract<TMarkdownBlock, { kind: "table" }
   )
 }
 
+function MarkdownCode(props: { block: Extract<TMarkdownBlock, { kind: "code" }> }) {
+  let codeBlock!: HTMLPreElement
+
+  onMount(() => {
+    const listener = (event: WheelEvent) => onHorizontalScrollBlockWheel(event, codeBlock)
+    codeBlock.addEventListener("wheel", listener, { passive: false })
+    onCleanup(() => codeBlock.removeEventListener("wheel", listener))
+  })
+
+  return <pre ref={codeBlock}><code>{props.block.code}</code></pre>
+}
+
 function MarkdownBlock(props: { block: TMarkdownBlock }) {
   switch (props.block.kind) {
     case "heading":
@@ -191,7 +203,7 @@ function MarkdownBlock(props: { block: TMarkdownBlock }) {
     case "table":
       return <MarkdownTable block={props.block} />
     case "code":
-      return <pre><code>{props.block.code}</code></pre>
+      return <MarkdownCode block={props.block} />
   }
 }
 
