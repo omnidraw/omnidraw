@@ -169,6 +169,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
 - [x]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
 - [ ]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
+- [ ]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
