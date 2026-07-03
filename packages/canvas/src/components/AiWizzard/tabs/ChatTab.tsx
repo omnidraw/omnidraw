@@ -1,7 +1,7 @@
 import type { TChatComposerModel, TChatComposerSubmit } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
-import { For, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { For, createEffect, onCleanup, onMount, Show } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
 import { fnGetChatMessageParts } from "./fn.chat-message-parts"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
@@ -40,6 +40,18 @@ function getMessageKind(role: string) {
   }
 
   return "other"
+}
+
+function isScrolledToBottom(element: HTMLElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 24
+}
+
+function getChatHistoryScrollKey(messageHistory: readonly unknown[]) {
+  try {
+    return JSON.stringify(messageHistory)
+  } catch {
+    return String(messageHistory.length)
+  }
 }
 
 function ChatMessageImage(props: { part: Extract<TChatMessagePart, { kind: "image" }> }) {
@@ -254,10 +266,26 @@ function ChatHistoryMessage(props: { message: unknown }) {
 }
 
 export function ChatTab(props: IProps) {
-  const [lastSubmit, setLastSubmit] = createSignal<TChatComposerSubmit>()
+  let contentRoot!: HTMLDivElement
+  let shouldAutoScroll = true
+  let scrollAnimationFrame: number | undefined
+
+  const scrollToBottom = () => {
+    contentRoot.scrollTop = contentRoot.scrollHeight
+  }
+
+  const scheduleScrollToBottom = () => {
+    if (scrollAnimationFrame !== undefined) {
+      cancelAnimationFrame(scrollAnimationFrame)
+    }
+
+    scrollAnimationFrame = requestAnimationFrame(() => {
+      scrollAnimationFrame = undefined
+      scrollToBottom()
+    })
+  }
 
   const submitPrompt = (submit: TChatComposerSubmit) => {
-    setLastSubmit(submit)
     const text = submit.text.trim()
     if (!text) return
 
@@ -266,15 +294,35 @@ export function ChatTab(props: IProps) {
     })
   }
 
-  const startNewChat = () => {
-    setLastSubmit(undefined)
-    props.onNewChat()
-  }
+  createEffect(() => {
+    getChatHistoryScrollKey(props.messageHistory)
+
+    if (shouldAutoScroll) {
+      scheduleScrollToBottom()
+    }
+  })
+
+  onMount(() => {
+    const updateAutoScroll = () => {
+      shouldAutoScroll = isScrolledToBottom(contentRoot)
+    }
+
+    updateAutoScroll()
+    contentRoot.addEventListener("scroll", updateAutoScroll, { passive: true })
+
+    onCleanup(() => {
+      contentRoot.removeEventListener("scroll", updateAutoScroll)
+
+      if (scrollAnimationFrame !== undefined) {
+        cancelAnimationFrame(scrollAnimationFrame)
+      }
+    })
+  })
 
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--chat">
-      <div class="ai-chat-content">
-        <Show when={props.messageHistory.length === 0 && !lastSubmit()}>
+      <div ref={contentRoot} class="ai-chat-content">
+        <Show when={props.messageHistory.length === 0}>
           <div class="ai-chat-empty" aria-live="polite">
             Which Widget should AI build for you?
           </div>
@@ -288,14 +336,6 @@ export function ChatTab(props: IProps) {
             </For>
           </div>
         </Show>
-        <Show when={lastSubmit()}>
-          {(submit) => (
-            <div class="ai-chat-draft" aria-live="polite">
-              <span>Draft · {submit().model?.name ?? "No model"}</span>
-              <p>{submit().text || `${submit().images.length} image attachment${submit().images.length === 1 ? "" : "s"}`}</p>
-            </div>
-          )}
-        </Show>
       </div>
 
       <ChatComposer
@@ -304,7 +344,7 @@ export function ChatTab(props: IProps) {
         defaultProvider={props.settings?.defaultProvider}
         defaultThinkingLevel={props.settings?.defaultThinkingLevel}
         onSubmit={submitPrompt}
-        onNewChat={startNewChat}
+        onNewChat={props.onNewChat}
       />
     </div>
   )

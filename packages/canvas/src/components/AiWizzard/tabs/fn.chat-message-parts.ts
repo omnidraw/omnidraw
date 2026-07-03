@@ -37,6 +37,16 @@ function fnGetContent(message: unknown) {
   return object.content
 }
 
+function fnIsFinishedMessage(message: unknown) {
+  const object = fnGetObject(message)
+
+  if (!object || !("__vibecanvasMessageFinished" in object)) {
+    return true
+  }
+
+  return object.__vibecanvasMessageFinished === true
+}
+
 function fnGetDataImageSrc(args: { data: unknown; mediaType: unknown }) {
   const data = fnGetString(args.data)
   const mediaType = fnGetString(args.mediaType)
@@ -88,14 +98,22 @@ function fnGetImageSrc(part: Record<string, unknown>) {
   return fnGetDataImageSrc({ data: part.data ?? part.base64, mediaType: part.media_type ?? part.mime_type ?? part.mimeType })
 }
 
-function fnGetPartFromObject(part: Record<string, unknown>): TChatMessagePart | undefined {
+function fnIsThinkingPartType(type: string | undefined) {
+  return type === "thinking" || type === "reasoning"
+}
+
+function fnGetPartFromObject(part: Record<string, unknown>, args?: { showThinking: boolean }): TChatMessagePart | undefined {
+  const type = fnGetString(part.type)?.toLowerCase()
+
+  if (fnIsThinkingPartType(type)) {
+    return args?.showThinking ? { kind: "text", text: "thinking..." } : undefined
+  }
+
   const text = fnGetString(part.text)
 
   if (text !== undefined) {
     return { kind: "text", text }
   }
-
-  const type = fnGetString(part.type)?.toLowerCase()
 
   if (type?.includes("image")) {
     const src = fnGetImageSrc(part)
@@ -112,13 +130,13 @@ function fnGetPartFromObject(part: Record<string, unknown>): TChatMessagePart | 
   return undefined
 }
 
-function fnGetPart(value: unknown): TChatMessagePart {
+function fnGetPart(value: unknown, args?: { showThinking: boolean }): TChatMessagePart | undefined {
   if (typeof value === "string") {
     return { kind: "text", text: value }
   }
 
   const object = fnGetObject(value)
-  const objectPart = object ? fnGetPartFromObject(object) : undefined
+  const objectPart = object ? fnGetPartFromObject(object, args) : undefined
 
   if (objectPart) {
     return objectPart
@@ -129,10 +147,13 @@ function fnGetPart(value: unknown): TChatMessagePart {
 
 export function fnGetChatMessageParts(message: unknown): TChatMessagePart[] {
   const content = fnGetContent(message)
+  const showThinking = !fnIsFinishedMessage(message)
 
   if (Array.isArray(content)) {
-    return content.map((part) => fnGetPart(part))
+    return content.flatMap((part) => fnGetPart(part, { showThinking }) ?? [])
   }
 
-  return [fnGetPart(content)]
+  const part = fnGetPart(content, { showThinking })
+
+  return part ? [part] : []
 }

@@ -893,29 +893,6 @@
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-chat-draft {
-  width: 100%;
-  flex: 0 0 auto;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--card) 90%, var(--background));
-  padding: 12px 14px;
-}
-
-.ai-chat-draft span {
-  color: var(--muted-foreground);
-  display: block;
-  font-size: 12px;
-  margin-bottom: 7px;
-  text-transform: uppercase;
-}
-
-.ai-chat-draft p {
-  margin: 0;
-  color: var(--foreground);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
 .ai-wizzard-field {
   display: flex;
   flex: 1 1 auto;

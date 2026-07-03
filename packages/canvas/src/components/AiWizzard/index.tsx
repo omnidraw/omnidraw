@@ -50,6 +50,15 @@ function findAgentMessageIndex(messages: readonly unknown[], message: unknown) {
     return messages.findIndex((item) => getAgentMessageKey(item) === key)
 }
 
+function withAgentMessageFinished(message: unknown, finished: boolean) {
+    if (!isAgentMessageRecord(message)) return message
+
+    return {
+        ...message,
+        __vibecanvasMessageFinished: finished,
+    }
+}
+
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
@@ -71,7 +80,7 @@ export function AiWizzard(props: IProps) {
             }
 
             setVcJson(data.vcJson)
-            setMessageHistory(reconcile(data.messageHistory))
+            setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
 
             return data
         }
@@ -81,19 +90,20 @@ export function AiWizzard(props: IProps) {
     onMount(() => {
         let disposed = false
 
-        const upsertMessage = (message: unknown) => {
+        const upsertMessage = (message: unknown, finished: boolean) => {
+            const nextMessage = withAgentMessageFinished(message, finished)
             const index = findAgentMessageIndex(messageHistory, message)
 
             if (index >= 0) {
-                setMessageHistory(index, reconcile(message))
+                setMessageHistory(index, reconcile(nextMessage))
                 return
             }
 
-            setMessageHistory(messageHistory.length, message)
+            setMessageHistory(messageHistory.length, nextMessage)
         }
 
-        const appendMessages = (messages: readonly unknown[]) => {
-            messages.forEach(upsertMessage)
+        const appendMessages = (messages: readonly unknown[], finished: boolean) => {
+            messages.forEach((message) => upsertMessage(message, finished))
         }
 
         void props.apiService.api.agent.events({}).then(async ([err, events]) => {
@@ -110,21 +120,22 @@ export function AiWizzard(props: IProps) {
                 const piEvent = event.event
 
                 if (piEvent.type === "agent_end") {
-                    appendMessages(piEvent.messages)
+                    appendMessages(piEvent.messages, true)
                     continue
                 }
 
-                if (
-                    piEvent.type === "message_start"
-                    || piEvent.type === "message_update"
-                    || piEvent.type === "message_end"
-                ) {
-                    upsertMessage(piEvent.message)
+                if (piEvent.type === "message_start" || piEvent.type === "message_update") {
+                    upsertMessage(piEvent.message, false)
+                    continue
+                }
+
+                if (piEvent.type === "message_end") {
+                    upsertMessage(piEvent.message, true)
                     continue
                 }
 
                 if (piEvent.type === "turn_end") {
-                    upsertMessage(piEvent.message)
+                    upsertMessage(piEvent.message, true)
                 }
             }
         })
