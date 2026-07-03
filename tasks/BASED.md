@@ -168,6 +168,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
 - [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
 - [ ]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
+- [ ]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
