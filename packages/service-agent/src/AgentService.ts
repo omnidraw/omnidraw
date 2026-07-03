@@ -4,7 +4,7 @@ import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbSer
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
-import { AuthStorage, createAgentSession, createAgentSessionFromServices, createAgentSessionServices, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, createAgentSession, createAgentSessionFromServices, createAgentSessionServices, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 
 interface IPublicMethods {
@@ -57,7 +57,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, {unsub: () => void, sessionManager: SessionManager}>> = {}
+  sessionMap: Record<TWidgetId, Record<TSessionId, {unsub: () => void, session: AgentSession, sessionManager: SessionManager}>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
 
   constructor(config: IActorServiceConfig) {
@@ -107,12 +107,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       this.sessionMap[id] = {}
     }
 
-    this.sessionMap[id][sessionId] = {sessionManager, unsub}
+    this.sessionMap[id][sessionId] = {session, sessionManager, unsub}
 
     return {
       vcJson,
       messageHistory,
     }
+  }
+
+  async promptWizzard(id: TWidgetId, sessionId: string, text: string): Promise<void> {
+    const session = this.sessionMap[id]?.[sessionId]?.session
+    if (!session) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+
+    await session.prompt(text)
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {

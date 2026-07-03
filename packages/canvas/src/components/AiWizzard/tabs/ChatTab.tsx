@@ -13,6 +13,7 @@ interface IProps {
   settings?: TAgentSettings
   sessionId: string
   messageHistory: readonly unknown[]
+  onPrompt: (text: string) => Promise<void>
   onNewChat: () => void
 }
 
@@ -37,6 +38,16 @@ function getMessageContent(message: unknown) {
 
 export function ChatTab(props: IProps) {
   const [lastSubmit, setLastSubmit] = createSignal<TChatComposerSubmit>()
+
+  const submitPrompt = (submit: TChatComposerSubmit) => {
+    setLastSubmit(submit)
+    const text = submit.text.trim()
+    if (!text) return
+
+    void props.onPrompt(text).catch((error) => {
+      console.error(error)
+    })
+  }
 
   const startNewChat = () => {
     setLastSubmit(undefined)
@@ -79,7 +90,7 @@ export function ChatTab(props: IProps) {
         defaultModel={props.settings?.defaultModel}
         defaultProvider={props.settings?.defaultProvider}
         defaultThinkingLevel={props.settings?.defaultThinkingLevel}
-        onSubmit={setLastSubmit}
+        onSubmit={submitPrompt}
       />
     </div>
   )

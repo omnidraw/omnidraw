@@ -8,13 +8,19 @@ import { PreviewTab } from "./tabs/PreviewTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { ChatTab } from "./tabs/ChatTab"
 import "./index.css"
-import { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
+import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
 
 interface IProps {
     id: string
     apiService: TOrpcSafeClient
     sessionId: string
     onResetSessionId: () => string
+}
+
+type TPiAgentSessionEvent = {
+    type: string
+    message?: unknown
+    messages?: unknown[]
 }
 
 export function AiWizzard(props: IProps) {
@@ -49,7 +55,19 @@ export function AiWizzard(props: IProps) {
             for await (const event of events) {
                 if (disposed) break
                 if (event.widgetId !== props.id) continue
+                if (event.sessionId !== sessionId()) continue
+
+                const piEvent = event.event as TPiAgentSessionEvent
                 console.log('agent event', event)
+
+                if (Array.isArray(piEvent.messages)) {
+                    setMessageHistory(reconcile(piEvent.messages))
+                    continue
+                }
+
+                if (piEvent.message) {
+                    setMessageHistory(messageHistory.length, piEvent.message)
+                }
             }
         })
 
@@ -57,6 +75,20 @@ export function AiWizzard(props: IProps) {
             disposed = true
         })
     })
+
+    const prompt = async (text: string) => {
+        const [err] = await props.apiService.api.agent.wizzard.prompt({
+            widgetId: props.id,
+            sessionId: sessionId(),
+            text,
+        })
+        if (err) throw err
+    }
+
+    const newChat = () => {
+        setMessageHistory(reconcile([]))
+        setSessionId(props.onResetSessionId())
+    }
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
     return (
@@ -75,7 +107,8 @@ export function AiWizzard(props: IProps) {
                         settings={settingState.latest}
                         sessionId={sessionId()}
                         messageHistory={messageHistory}
-                        onNewChat={() => setSessionId(props.onResetSessionId())}
+                        onPrompt={prompt}
+                        onNewChat={newChat}
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="actor">

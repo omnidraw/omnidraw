@@ -7,6 +7,7 @@ import { apiAuthStatus } from "./api.auth.status";
 import { apiAgentEvents } from "./api.events";
 import { apiGetDefinitions } from "./api.setting.get";
 import { apiWizzardConnect } from "./api.wizzard.connect";
+import { apiWizzardPrompt } from "./api.wizzard.prompt";
 import { baseAgentOs } from './orpc';
 
 const agentHandlers = {
@@ -24,7 +25,8 @@ const agentHandlers = {
         },
     },
     wizzard: {
-        connect: apiWizzardConnect
+        connect: apiWizzardConnect,
+        prompt: apiWizzardPrompt,
     },
     events: apiAgentEvents,
 };

@@ -68,6 +68,7 @@ export const agentContract = oc.router({
   },
   wizzard: {
     connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZAgentWizzardConnect),
+    prompt: oc.input(z.object({widgetId: z.string(), sessionId: z.string(), text: z.string().min(1)})),
     newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),
   },
   auth: {
