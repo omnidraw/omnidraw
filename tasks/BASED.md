@@ -174,6 +174,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [~]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
 - [x]: [A51](a/A51.md) - ai wizard: chat UI actions and model-aware prompts
 - [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
+- [ ]: [A53](a/A53.md) - ai wizard: draft Actor runtime API setup
+- [ ]: [A54](a/A54.md) - ai wizard: Actor tab powered by draft Actor
+- [ ]: [A55](a/A55.md) - ai wizard: Preview tab powered by draft Actor
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

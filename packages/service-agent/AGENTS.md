@@ -11,9 +11,10 @@ Current service entrypoint:
 - `src/index.ts`
 
 Current dependencies and responsibilities:
-- Uses `@earendil-works/pi-coding-agent` for auth, models, settings, and sessions.
+- Uses `@earendil-works/pi-coding-agent` for auth, models, settings, sessions, and custom tools.
 - Stores Pi data under `join(config.dataPath, 'pi')`.
 - Owns login sessions, abort controllers, model registry, settings manager, and widget/session managers.
+- Owns AI widget wizard tool orchestration and phase-specific tool loading.
 - May publish service events through `eventPublisherService` when agent runtime events are implemented.
 
 ## Known consumers
@@ -47,7 +48,8 @@ Keep `AgentService` return values aligned with `packages/api-agent/src/contract.
 
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
-- `wizzard.connect` returns `{ vcJson, messageHistory }` for the requested widget/session.
+- `wizzard.connect` returns `{ vcJson, actorCandidate, messageHistory }` for the requested widget/session.
+- `actorCandidate` is `null` on first connect and otherwise the latest actor candidate custom entry saved in the Pi session.
 - `wizzard.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
 - `auth.login` accepts only `openai-codex` or `github-copilot` and returns `{ loginId }`.
 - `auth.logout` accepts only `openai-codex` or `github-copilot` and removes stored OAuth credentials.
@@ -63,6 +65,40 @@ When changing service public methods:
 - prefer additive changes when possible
 - never return secrets or raw credentials to the API/frontend
 - preserve discriminated union fields exactly; frontend and ORPC validation depend on them
+
+## AI widget wizard tools
+
+Custom wizard tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
+
+Current custom tools:
+- `vc_set_actor_candidate`
+  - Phase 1 only.
+  - Accepts a full actor candidate and validates before saving.
+  - Saves candidates with `sessionManager.appendCustomEntry`; do not write candidate files to cwd.
+  - Uses a hand-authored TypeBox parameter schema in `src/tools/CONSTANTS.ts`; do not use `z.toJSONSchema` for this tool schema because model-facing constraints must be explicit.
+- `vc_approve_actor_candidate`
+  - Phase 1 only.
+  - Reads the latest candidate from Pi session custom entries.
+  - Writes scaffold files into the draft cwd, including `vibecanvas.json`, `package.json`, actor stubs, and widget files.
+  - Attempts `npm install` when `package.json` exists; install failure should be returned in tool details and should not silently drop approval state.
+  - Appends a `vibecanvas.actorCandidateApproved` custom entry when approval succeeds.
+- `vc_validate_widget_files`
+  - Phase 2 only.
+  - Validates generated draft files and actor registry shape.
+- `vc_publish_widget`
+  - Phase 2 only.
+  - Copies draft files to `<configPath>/widgets/<slug>` and reloads actor definitions when `actorService` is available.
+
+Phase selection:
+- `src/tools/fn.phase-tools.ts` chooses phase from Pi session history.
+- No approval custom entry means phase 1 tools.
+- Latest approval custom entry means phase 2 tools plus built-in `read`, `edit`, and `grep`.
+- Phase 1 must not expose filesystem or bash tools.
+- Phase 2 must not expose bash by default.
+
+Shared candidate session helpers:
+- `src/core/fx.session-candidate.ts`
+- `src/core/tx.session-candidate.ts`
 
 ## Service-layer boundaries
 
@@ -91,6 +127,7 @@ For new non-trivial logic:
 - extract impure writes into local `tx.*.ts`
 - keep `AgentService.ts` focused on orchestration and lifecycle
 - use `src/core` only for shared service-agent logic that is reused across features
+- keep `tool.*.ts` files as thin `defineTool(...)` factories; move shared logic to `fn.*`, `fx.*`, `tx.*`, `CONSTANTS.ts`, or `types.ts`
 
 When editing `fn.*.ts`, `fx.*.ts`, or `tx.*.ts`, follow the repository file-type rules from the root `AGENTS.md` and active fn/fx/tx checks.
 
@@ -108,6 +145,9 @@ Keep Pi-specific adapter behavior localized so the API contract remains stable i
 Useful commands from this package:
 - `bun run typecheck`
 - `bun test tests --timeout=20000`
+
+Known current caveat:
+- `bun run typecheck` may fail because of existing cross-package `service-db` SQL module/global typing issues. Still run it when touching public contracts and report whether failures are unrelated.
 
 Also run/check API/frontend callers when public behavior changes:
 - `packages/api-agent` typecheck/tests if available
