@@ -171,7 +171,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
 - [x]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
 - [~]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
-- [ ]: [A51](a/A51.md) - ai wizard: chat UI actions and model-aware prompts
+- [x]: [A51](a/A51.md) - ai wizard: chat UI actions and model-aware prompts
+- [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port

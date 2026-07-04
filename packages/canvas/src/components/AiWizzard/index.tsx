@@ -10,10 +10,21 @@ import { ChatTab } from "./tabs/ChatTab"
 import "./index.css"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
 
+type TAiWizardThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
+type TAiWizardPreference = {
+    model?: {
+        provider: string
+        modelId: string
+    }
+    thinkingLevel?: TAiWizardThinkingLevel
+}
+
 interface IProps {
     id: string
     apiService: TOrpcSafeClient
     sessionId: string
+    aiWizardPreference?: TAiWizardPreference
+    onAiWizardPreferenceChange?: (preference: TAiWizardPreference) => void
     onResetSessionId: () => string
 }
 
@@ -163,15 +174,27 @@ export function AiWizzard(props: IProps) {
         })
     })
 
-    const prompt = async (text: string) => {
+    const prompt = async (args: { text: string; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
         const currentSessionId = sessionId()
         setIsRunning(true)
         setIsCanceling(false)
+        props.onAiWizardPreferenceChange?.({
+            model: args.model ? {
+                provider: args.model.provider,
+                modelId: args.model.id,
+            } : undefined,
+            thinkingLevel: args.thinkingLevel,
+        })
 
         const [err] = await props.apiService.api.agent.wizzard.prompt({
             widgetId: props.id,
             sessionId: currentSessionId,
-            text,
+            text: args.text,
+            model: args.model ? {
+                provider: args.model.provider,
+                modelId: args.model.id,
+            } : undefined,
+            thinkingLevel: args.thinkingLevel,
         })
         if (sessionId() !== currentSessionId) return
 
@@ -221,6 +244,7 @@ export function AiWizzard(props: IProps) {
                 <Tabs.Content class="ai-wizzard-tabs__content" value="chat">
                     <ChatTab
                         settings={settingState.latest}
+                        aiWizardPreference={props.aiWizardPreference}
                         messageHistory={messageHistory}
                         isRunning={isRunning()}
                         isCanceling={isCanceling()}

@@ -37,6 +37,14 @@ const MOCK_MESSAGE_HISTORY = [
     ],
   },
   {
+    role: "toolResult",
+    toolCallId: "call_123",
+    toolName: "bash",
+    content: [
+      { type: "text", text: "validated files" },
+    ],
+  },
+  {
     role: "assistant",
     content: [
       {
@@ -103,7 +111,12 @@ function ensureComponentDomMocks() {
   }
 }
 
-function renderChatTab() {
+function renderChatTab(settings = {
+  defaultThinkingLevel: "low" as const,
+  models: [
+    { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
+  ],
+}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -115,7 +128,7 @@ function renderChatTab() {
     onCancel: () => {},
     onNewChat: () => {},
     onPrompt: async () => {},
-    settings: { models: [] },
+    settings,
   }), container)
 
   return container
@@ -133,10 +146,11 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab()
     const text = root.textContent ?? ""
 
-    expect(root.querySelectorAll(".ai-chat-history__message")).toHaveLength(4)
+    expect(root.querySelectorAll(".ai-chat-history__message")).toHaveLength(5)
     expect(root.querySelectorAll(".ai-chat-history__image")).toHaveLength(2)
     expect(root.querySelectorAll(".ai-chat-history__markdown table")).toHaveLength(2)
     expect(root.querySelectorAll(".ai-chat-history__message--assistant .ai-chat-history__role")).toHaveLength(0)
+    expect(root.querySelector(".ai-chat-history__message--other .ai-chat-history__role")?.textContent).toBe("toolResult - bash")
     expect(root.querySelector("h1")?.textContent).toBe("Launch Dashboard Draft")
     expect(root.querySelector("h2")?.textContent).toBe("Proposed Sections")
     expect(root.querySelector("code")?.textContent).toContain("ready-for-review")
@@ -175,5 +189,28 @@ describe("ChatTab rendered message history", () => {
 
     expect(horizontalResult).toBe(true)
     expect(scroller?.scrollTop).toBe(0)
+  })
+
+  it("opens a thinking level menu before provider model options", () => {
+    const root = renderChatTab()
+    const modelButton = root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")
+
+    expect(modelButton).not.toBeNull()
+    expect(modelButton?.textContent).toContain("Low")
+
+    modelButton?.click()
+
+    const menuButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-menu button"))
+    const thinkingButton = menuButtons.find((button) => button.textContent === "Thinking")
+
+    expect(thinkingButton).not.toBeUndefined()
+    expect(menuButtons[0]?.textContent).toBe("Thinking")
+
+    thinkingButton?.click()
+
+    const menuText = root.querySelector(".ai-chat-composer__model-menu")?.textContent ?? ""
+    expect(menuText).toContain("Off")
+    expect(menuText).toContain("Minimal")
+    expect(menuText).toContain("Xhigh")
   })
 })

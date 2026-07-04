@@ -6,6 +6,7 @@ import type {
   TChatComposerModel,
   TChatComposerProps,
   TChatComposerSubmit,
+  TChatComposerThinkingLevel,
   TPromptSuggestion,
 } from "./interface"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
@@ -35,6 +36,8 @@ const DEFAULT_COMMANDS: TChatComposerCommand[] = [
   { id: "edit-selection", label: "Edit selection", description: "Change selected canvas items" },
   { id: "explain", label: "Explain", description: "Summarize the current design" },
 ]
+
+const THINKING_LEVELS: TChatComposerThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"]
 
 const promptSchema = new Schema({
   nodes: {
@@ -205,7 +208,11 @@ const providerLabel = (provider: string) => provider
   .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
   .join(" ")
 
-function formatThinkingLevel(level: string | undefined) {
+function getDefaultThinkingLevel(level: TChatComposerThinkingLevel | undefined) {
+  return level ?? "medium"
+}
+
+function formatThinkingLevel(level: TChatComposerThinkingLevel | undefined) {
   if (!level) {
     return "Medium"
   }
@@ -242,7 +249,12 @@ export function ChatComposer(props: TChatComposerProps) {
   const [selectedModelId, setSelectedModelId] = createSignal<string>()
   const [activeProvider, setActiveProvider] = createSignal<string>()
   const [focusedModelId, setFocusedModelId] = createSignal<string>()
-  const [modelMenuColumn, setModelMenuColumn] = createSignal<"provider" | "model">("model")
+  const [selectedThinkingLevel, setSelectedThinkingLevel] = createSignal<TChatComposerThinkingLevel>()
+  const [focusedThinkingLevel, setFocusedThinkingLevel] = createSignal<TChatComposerThinkingLevel>()
+  const [modelMenuPane, setModelMenuPane] = createSignal<"thinking" | "models">("models")
+  const [modelMenuColumn, setModelMenuColumn] = createSignal<"category" | "model" | "thinking">("model")
+  const [hasManualModelSelection, setHasManualModelSelection] = createSignal(false)
+  const [hasManualThinkingSelection, setHasManualThinkingSelection] = createSignal(false)
 
   const availableMentions = () => props.mentions ?? DEFAULT_MENTIONS
   const availableCommands = () => props.commands ?? DEFAULT_COMMANDS
@@ -253,6 +265,7 @@ export function ChatComposer(props: TChatComposerProps) {
   const activeProviderModels = createMemo(() => models().filter((model) => model.provider === activeProvider()))
   const imageInputEnabled = createMemo(() => selectedModel()?.input.includes("image") ?? false)
   const modelButtonLabel = createMemo(() => selectedModel()?.name.replace(/^GPT-/i, "") ?? "Select model")
+  const thinkingLevel = createMemo(() => selectedThinkingLevel() ?? getDefaultThinkingLevel(props.defaultThinkingLevel))
   const focusedModel = createMemo(() => models().find((model) => model.id === focusedModelId()))
 
   const suggestions = () => {
@@ -278,9 +291,18 @@ export function ChatComposer(props: TChatComposerProps) {
       return
     }
 
-    if (!current || !models().some((model) => model.id === current)) {
+    if (!current || !models().some((model) => model.id === current) || (!hasManualModelSelection() && current !== nextDefault.id)) {
       setSelectedModelId(nextDefault.id)
       setActiveProvider(nextDefault.provider)
+    }
+  })
+
+  createEffect(() => {
+    const defaultThinkingLevel = getDefaultThinkingLevel(props.defaultThinkingLevel)
+
+    if (!selectedThinkingLevel() || (!hasManualThinkingSelection() && selectedThinkingLevel() !== defaultThinkingLevel)) {
+      setSelectedThinkingLevel(defaultThinkingLevel)
+      setFocusedThinkingLevel(defaultThinkingLevel)
     }
   })
 
@@ -399,6 +421,7 @@ export function ChatComposer(props: TChatComposerProps) {
       command: command(),
       images: currentImages,
       model: selectedModel(),
+      thinkingLevel: thinkingLevel(),
     }
 
     props.onSubmit?.(value)
@@ -430,20 +453,36 @@ export function ChatComposer(props: TChatComposerProps) {
 
   const openModelMenu = () => {
     const currentModel = selectedModel()
+    setModelMenuPane("models")
     setActiveProvider(currentModel?.provider ?? activeProvider() ?? providers()[0])
     setFocusedModelId(currentModel?.id ?? activeProviderModels()[0]?.id)
     setModelMenuColumn("model")
+    setFocusedThinkingLevel(thinkingLevel())
     setModelMenuOpen(true)
   }
 
-  const moveActiveProvider = (direction: 1 | -1) => {
-    const allProviders = providers()
-    if (allProviders.length === 0) return
+  const menuCategoryItems = () => [
+    { kind: "thinking" as const, id: "thinking", label: "Thinking" },
+    ...providers().map((provider) => ({ kind: "provider" as const, id: provider, label: providerLabel(provider) })),
+  ]
 
-    const currentIndex = Math.max(0, allProviders.indexOf(activeProvider() ?? allProviders[0]))
-    const nextProvider = allProviders[(currentIndex + direction + allProviders.length) % allProviders.length]
-    setActiveProvider(nextProvider)
-    setFocusedModelId(models().find((model) => model.provider === nextProvider)?.id)
+  const moveMenuCategory = (direction: 1 | -1) => {
+    const items = menuCategoryItems()
+    if (items.length === 0) return
+
+    const currentId = modelMenuPane() === "thinking" ? "thinking" : activeProvider()
+    const currentIndex = Math.max(0, items.findIndex((item) => item.id === currentId))
+    const nextItem = items[(currentIndex + direction + items.length) % items.length]
+
+    if (nextItem.kind === "thinking") {
+      setModelMenuPane("thinking")
+      setFocusedThinkingLevel(thinkingLevel())
+      return
+    }
+
+    setModelMenuPane("models")
+    setActiveProvider(nextItem.id)
+    setFocusedModelId(models().find((model) => model.provider === nextItem.id)?.id)
   }
 
   const moveFocusedModel = (direction: 1 | -1) => {
@@ -454,13 +493,26 @@ export function ChatComposer(props: TChatComposerProps) {
     setFocusedModelId(currentModels[(currentIndex + direction + currentModels.length) % currentModels.length].id)
   }
 
+  const moveFocusedThinkingLevel = (direction: 1 | -1) => {
+    const currentIndex = Math.max(0, THINKING_LEVELS.indexOf(focusedThinkingLevel() ?? thinkingLevel()))
+    setFocusedThinkingLevel(THINKING_LEVELS[(currentIndex + direction + THINKING_LEVELS.length) % THINKING_LEVELS.length])
+  }
+
   const selectFocusedModel = () => {
     const model = focusedModel() ?? activeProviderModels()[0]
     if (!model) return
 
     setSelectedModelId(model.id)
+    setHasManualModelSelection(true)
     setActiveProvider(model.provider)
     setFocusedModelId(model.id)
+    setModelMenuOpen(false)
+    view?.focus()
+  }
+
+  const selectFocusedThinkingLevel = () => {
+    setSelectedThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
+    setHasManualThinkingSelection(true)
     setModelMenuOpen(false)
     view?.focus()
   }
@@ -482,27 +534,40 @@ export function ChatComposer(props: TChatComposerProps) {
     }
 
     if (event.key === "ArrowLeft") {
-      setModelMenuColumn("provider")
+      setModelMenuColumn("category")
       return true
     }
 
     if (event.key === "ArrowRight") {
-      setModelMenuColumn("model")
-      setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+      if (modelMenuPane() === "thinking") {
+        setModelMenuColumn("thinking")
+        setFocusedThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
+      } else {
+        setModelMenuColumn("model")
+        setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+      }
       return true
     }
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       const direction = event.key === "ArrowDown" ? 1 : -1
-      if (modelMenuColumn() === "provider") moveActiveProvider(direction)
+      if (modelMenuColumn() === "category") moveMenuCategory(direction)
+      else if (modelMenuColumn() === "thinking") moveFocusedThinkingLevel(direction)
       else moveFocusedModel(direction)
       return true
     }
 
     if (event.key === "Enter") {
-      if (modelMenuColumn() === "provider") {
-        setModelMenuColumn("model")
-        setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+      if (modelMenuColumn() === "category") {
+        if (modelMenuPane() === "thinking") {
+          setModelMenuColumn("thinking")
+          setFocusedThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
+        } else {
+          setModelMenuColumn("model")
+          setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+        }
+      } else if (modelMenuColumn() === "thinking") {
+        selectFocusedThinkingLevel()
       } else {
         selectFocusedModel()
       }
@@ -763,6 +828,17 @@ export function ChatComposer(props: TChatComposerProps) {
                   >
                     New chat
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionMenuOpen(false)
+                      props.onCopyChat?.()
+                      view?.focus()
+                    }}
+                  >
+                    Copy chat
+                  </button>
                 </div>
               </Show>
             </div>
@@ -782,62 +858,101 @@ export function ChatComposer(props: TChatComposerProps) {
               >
                 <Zap size={18} />
                 <span>{modelButtonLabel()}</span>
-                <span>{formatThinkingLevel(props.defaultThinkingLevel)}</span>
+                <span>{formatThinkingLevel(thinkingLevel())}</span>
                 <ChevronDown size={18} />
               </button>
 
               <Show when={modelMenuOpen()}>
                 <div class="ai-chat-composer__model-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-                  <div class="ai-chat-composer__model-providers" role="group" aria-label="AI providers">
-                    <For each={providers()}>
-                      {(provider) => (
+                  <div class="ai-chat-composer__model-providers" role="group" aria-label="AI model settings">
+                    <For each={menuCategoryItems()}>
+                      {(item) => (
                         <button
                           classList={{
                             "ai-chat-composer__model-provider": true,
-                            "ai-chat-composer__model-provider--active": provider === activeProvider(),
-                            "ai-chat-composer__model-provider--focused": provider === activeProvider() && modelMenuColumn() === "provider",
+                            "ai-chat-composer__model-provider--active": item.kind === "thinking" ? modelMenuPane() === "thinking" : modelMenuPane() === "models" && item.id === activeProvider(),
+                            "ai-chat-composer__model-provider--focused": (
+                              item.kind === "thinking" ? modelMenuPane() === "thinking" : modelMenuPane() === "models" && item.id === activeProvider()
+                            ) && modelMenuColumn() === "category",
                           }}
                           type="button"
                           onClick={() => {
-                            setActiveProvider(provider)
-                            setFocusedModelId(models().find((model) => model.provider === provider)?.id)
+                            if (item.kind === "thinking") {
+                              setModelMenuPane("thinking")
+                              setFocusedThinkingLevel(thinkingLevel())
+                              setModelMenuColumn("thinking")
+                              return
+                            }
+
+                            setModelMenuPane("models")
+                            setActiveProvider(item.id)
+                            setFocusedModelId(models().find((model) => model.provider === item.id)?.id)
                             setModelMenuColumn("model")
                           }}
                         >
-                          <span>{providerLabel(provider)}</span>
+                          <span>{item.label}</span>
                         </button>
                       )}
                     </For>
                   </div>
                   <div class="ai-chat-composer__model-list" role="group" aria-label="AI models">
-                    <For each={activeProviderModels()}>
-                      {(model) => (
-                        <button
-                          classList={{
-                            "ai-chat-composer__model-option": true,
-                            "ai-chat-composer__model-option--active": model.id === selectedModelId(),
-                            "ai-chat-composer__model-option--focused": model.id === focusedModelId() && modelMenuColumn() === "model",
-                          }}
-                          type="button"
-                          onMouseEnter={() => setFocusedModelId(model.id)}
-                          onClick={() => {
-                            setSelectedModelId(model.id)
-                            setActiveProvider(model.provider)
-                            setFocusedModelId(model.id)
-                            setModelMenuOpen(false)
-                            view?.focus()
-                          }}
-                        >
-                          <strong>{model.name}</strong>
-                          <span class="ai-chat-composer__model-capabilities" aria-label={model.input.includes("image") ? "Text and image input" : "Text input only"}>
-                            <FileText size={13} />
-                            <Show when={model.input.includes("image")}>
-                              <ImageIcon size={13} />
-                            </Show>
-                          </span>
-                        </button>
+                    <Show
+                      when={modelMenuPane() === "thinking"}
+                      fallback={(
+                        <For each={activeProviderModels()}>
+                          {(model) => (
+                            <button
+                              classList={{
+                                "ai-chat-composer__model-option": true,
+                                "ai-chat-composer__model-option--active": model.id === selectedModelId(),
+                                "ai-chat-composer__model-option--focused": model.id === focusedModelId() && modelMenuColumn() === "model",
+                              }}
+                              type="button"
+                              onMouseEnter={() => setFocusedModelId(model.id)}
+                              onClick={() => {
+                                setSelectedModelId(model.id)
+                                setHasManualModelSelection(true)
+                                setActiveProvider(model.provider)
+                                setFocusedModelId(model.id)
+                                setModelMenuOpen(false)
+                                view?.focus()
+                              }}
+                            >
+                              <strong>{model.name}</strong>
+                              <span class="ai-chat-composer__model-capabilities" aria-label={model.input.includes("image") ? "Text and image input" : "Text input only"}>
+                                <FileText size={13} />
+                                <Show when={model.input.includes("image")}>
+                                  <ImageIcon size={13} />
+                                </Show>
+                              </span>
+                            </button>
+                          )}
+                        </For>
                       )}
-                    </For>
+                    >
+                      <For each={THINKING_LEVELS}>
+                        {(level) => (
+                          <button
+                            classList={{
+                              "ai-chat-composer__model-option": true,
+                              "ai-chat-composer__model-option--active": level === thinkingLevel(),
+                              "ai-chat-composer__model-option--focused": level === focusedThinkingLevel() && modelMenuColumn() === "thinking",
+                            }}
+                            type="button"
+                            onMouseEnter={() => setFocusedThinkingLevel(level)}
+                            onClick={() => {
+                              setSelectedThinkingLevel(level)
+                              setHasManualThinkingSelection(true)
+                              setFocusedThinkingLevel(level)
+                              setModelMenuOpen(false)
+                              view?.focus()
+                            }}
+                          >
+                            <strong>{formatThinkingLevel(level)}</strong>
+                          </button>
+                        )}
+                      </For>
+                    </Show>
                   </div>
                 </div>
               </Show>
