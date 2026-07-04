@@ -166,11 +166,11 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A43](a/A43.md) - db: add authz for public DB methods
 - [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
-- [ ]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
+- [~]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
 - [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
 - [x]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
-- [ ]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
-- [ ]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
+- [x]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
+- [~]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
 
 ## S ubtractions
 - [ ]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -261,6 +261,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
 - [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
 - [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
+- [ ]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
