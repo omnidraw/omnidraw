@@ -4,10 +4,12 @@ import type { TActorCandidateRecord } from '@vibecanvas/service-agent';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { z } from 'zod';
 
+const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
 const ZAgentSettings = z.object({
   defaultModel: z.string().optional(),
   defaultProvider: z.string().optional(),
-  defaultThinkingLevel: z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]).optional(),
+  defaultThinkingLevel: ZThinkingLevel.optional(),
   providersWithCredentials: z.string().array(),
   providers: z.string().array(),
   models: z.object({
@@ -78,6 +80,7 @@ export const agentContract = oc.router({
         provider: z.string().min(1),
         modelId: z.string().min(1),
       }).optional(),
+      thinkingLevel: ZThinkingLevel.optional(),
     })),
     cancel: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZAgentWizzardCancel),
     newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),

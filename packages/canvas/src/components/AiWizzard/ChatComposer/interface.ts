@@ -23,12 +23,15 @@ export type TChatComposerModel = {
   name: string
 }
 
+export type TChatComposerThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
+
 export type TChatComposerSubmit = {
   text: string
   mentions: TChatComposerMention[]
   command?: TChatComposerCommand
   images: TChatComposerImage[]
   model?: TChatComposerModel
+  thinkingLevel: TChatComposerThinkingLevel
 }
 
 export type TChatComposerProps = {
@@ -38,7 +41,7 @@ export type TChatComposerProps = {
   models?: TChatComposerModel[]
   defaultModel?: string
   defaultProvider?: string
-  defaultThinkingLevel?: string
+  defaultThinkingLevel?: TChatComposerThinkingLevel
   isRunning?: boolean
   isCanceling?: boolean
   onSubmit?: (value: TChatComposerSubmit) => void

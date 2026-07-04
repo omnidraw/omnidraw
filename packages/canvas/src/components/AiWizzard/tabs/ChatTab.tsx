@@ -1,4 +1,4 @@
-import type { TChatComposerModel, TChatComposerSubmit } from "../ChatComposer/interface"
+import type { TChatComposerModel, TChatComposerSubmit, TChatComposerThinkingLevel } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, onCleanup, onMount, Show } from "solid-js"
@@ -12,16 +12,25 @@ import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 type TAgentSettings = {
   defaultModel?: string
   defaultProvider?: string
-  defaultThinkingLevel?: string
+  defaultThinkingLevel?: TChatComposerThinkingLevel
   models: TChatComposerModel[]
+}
+
+type TAiWizardPreference = {
+  model?: {
+    provider: string
+    modelId: string
+  }
+  thinkingLevel?: TChatComposerThinkingLevel
 }
 
 interface IProps {
   settings?: TAgentSettings
+  aiWizardPreference?: TAiWizardPreference
   messageHistory: readonly unknown[]
   isRunning: boolean
   isCanceling: boolean
-  onPrompt: (args: { text: string; model?: TChatComposerModel }) => Promise<void>
+  onPrompt: (args: { text: string; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onCancel: () => void
   onNewChat: () => void
 }
@@ -298,7 +307,7 @@ export function ChatTab(props: IProps) {
     const text = submit.text.trim()
     if (!text) return
 
-    void props.onPrompt({ text, model: submit.model }).catch((error) => {
+    void props.onPrompt({ text, model: submit.model, thinkingLevel: submit.thinkingLevel }).catch((error) => {
       console.error(error)
     })
   }
@@ -361,9 +370,9 @@ export function ChatTab(props: IProps) {
 
       <ChatComposer
         models={props.settings?.models}
-        defaultModel={props.settings?.defaultModel}
-        defaultProvider={props.settings?.defaultProvider}
-        defaultThinkingLevel={props.settings?.defaultThinkingLevel}
+        defaultModel={props.aiWizardPreference?.model?.modelId ?? props.settings?.defaultModel}
+        defaultProvider={props.aiWizardPreference?.model?.provider ?? props.settings?.defaultProvider}
+        defaultThinkingLevel={props.aiWizardPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
         isRunning={props.isRunning}
         isCanceling={props.isCanceling}
         onSubmit={submitPrompt}

@@ -12,6 +12,11 @@ const AI_WIDGET_KIND = "ai";
 
 type TAiWidgetPayload = {
   sessionId: string;
+  model?: {
+    provider: string;
+    modelId: string;
+  };
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 };
 
 const AI_WIDGET_ICON = `
@@ -32,6 +37,14 @@ function getAiSessionId(args: { element: TElement }) {
 
   const sessionId = args.element.data.payload?.sessionId;
   return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null;
+}
+
+function getAiWidgetPayload(args: { element: TElement }): Partial<TAiWidgetPayload> | undefined {
+  if (args.element.data.type !== "ui-widget") {
+    return undefined;
+  }
+
+  return args.element.data.payload as Partial<TAiWidgetPayload> | undefined;
 }
 
 function persistAiPayload(args: {
@@ -74,6 +87,7 @@ function mountAiWidget(portal: {
   args.root.replaceChildren();
 
   const initialSessionId = getAiSessionId({ element: args.element }) ?? portal.createSessionId();
+  let currentSessionId = initialSessionId;
   if (initialSessionId !== getAiSessionId({ element: args.element })) {
     persistAiPayload({
       crdt: portal.crdt,
@@ -87,8 +101,21 @@ function mountAiWidget(portal: {
     apiService: portal.apiService,
     id: args.id,
     sessionId: initialSessionId,
+    aiWizardPreference: getAiWidgetPayload({ element: args.element }),
+    onAiWizardPreferenceChange: (preference) => {
+      persistAiPayload({
+        crdt: portal.crdt,
+        scene: portal.scene,
+        elementId: args.id,
+        payload: {
+          ...preference,
+          sessionId: currentSessionId,
+        },
+      });
+    },
     onResetSessionId: () => {
       const sessionId = portal.createSessionId();
+      currentSessionId = sessionId;
       persistAiPayload({
         crdt: portal.crdt,
         scene: portal.scene,

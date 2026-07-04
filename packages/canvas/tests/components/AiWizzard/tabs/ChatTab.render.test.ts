@@ -111,7 +111,12 @@ function ensureComponentDomMocks() {
   }
 }
 
-function renderChatTab() {
+function renderChatTab(settings = {
+  defaultThinkingLevel: "low" as const,
+  models: [
+    { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
+  ],
+}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -123,7 +128,7 @@ function renderChatTab() {
     onCancel: () => {},
     onNewChat: () => {},
     onPrompt: async () => {},
-    settings: { models: [] },
+    settings,
   }), container)
 
   return container
@@ -184,5 +189,28 @@ describe("ChatTab rendered message history", () => {
 
     expect(horizontalResult).toBe(true)
     expect(scroller?.scrollTop).toBe(0)
+  })
+
+  it("opens a thinking level menu before provider model options", () => {
+    const root = renderChatTab()
+    const modelButton = root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")
+
+    expect(modelButton).not.toBeNull()
+    expect(modelButton?.textContent).toContain("Low")
+
+    modelButton?.click()
+
+    const menuButtons = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-menu button"))
+    const thinkingButton = menuButtons.find((button) => button.textContent === "Thinking")
+
+    expect(thinkingButton).not.toBeUndefined()
+    expect(menuButtons[0]?.textContent).toBe("Thinking")
+
+    thinkingButton?.click()
+
+    const menuText = root.querySelector(".ai-chat-composer__model-menu")?.textContent ?? ""
+    expect(menuText).toContain("Off")
+    expect(menuText).toContain("Minimal")
+    expect(menuText).toContain("Xhigh")
   })
 })

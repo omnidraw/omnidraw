@@ -32,6 +32,11 @@ type TPromptModel = {
   provider: string;
   modelId: string;
 };
+type TPromptSelection = {
+  model?: TPromptModel;
+  thinkingLevel?: TThinkingLevel;
+};
+type TThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 type TAgentLoginStatus =
   | { status: 'pending' }
   | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
@@ -137,21 +142,27 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptModel?: TPromptModel): Promise<void> {
-    const session = this.sessionMap[id]?.[sessionId]?.session
-    if (!session) {
+  async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
 
-    if (promptModel) {
-      const model = this.modelRegistry.find(promptModel.provider, promptModel.modelId)
+    const session = sessionEntry.session
+
+    if (promptSelection?.model) {
+      const model = this.modelRegistry.find(promptSelection.model.provider, promptSelection.model.modelId)
       if (!model) {
-        throw new Error(`Model not found: ${promptModel.provider}/${promptModel.modelId}`)
+        throw new Error(`Model not found: ${promptSelection.model.provider}/${promptSelection.model.modelId}`)
       }
 
       if (session.model?.provider !== model.provider || session.model?.id !== model.id) {
         await session.setModel(model)
       }
+    }
+
+    if (promptSelection?.thinkingLevel) {
+      session.setThinkingLevel(promptSelection.thinkingLevel)
     }
 
     await session.prompt(text)
