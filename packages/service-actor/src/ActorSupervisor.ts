@@ -1,5 +1,5 @@
 import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
-import type { TActorConnection } from "@vibecanvas/service-db/model";
+import type { TActorConnection, TActorInstance } from "@vibecanvas/service-db/model";
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
 import { readdir, exists } from "node:fs/promises"
@@ -14,6 +14,7 @@ import { Actor, type TActorEvent } from "./Actor";
 
 interface IPublicMethods { // not in use yet
   init(): Promise<void>;
+  reload(): Promise<void>;
   sendMessages(msg: any): Promise<void>;
   claimMessage(): Promise<void>;
   processedMessage(): Promise<void>;
@@ -44,52 +45,72 @@ export class ActorSupervisor {
 
   async init() {
     this.closeActors()
-    this.connectionMap = {}
-    this.vibecanvasDefMap = {}
+    await this.reload()
+  }
 
-    // load defs from fs
-    // update db, no remove from old defs
-    // boot instances from db
+  async reload() {
+    await this.reloadDefinitions()
+    await txSyncDbActorDefinitions({ crypto, db: this.#config.db }, { defs: Object.values(this.vibecanvasDefMap) })
+    await this.loadMissingActorInstances()
+    await this.reloadConnections()
+  }
 
+  private async reloadDefinitions() {
+    const nextDefMap: { [name: string]: TVibecanvasJson & { manifest_path: string } } = {}
     const defs = await fxListVibecanvasJsons({ Bun, readdir, join, exists }, { widgetDir: this.#config.absWidgetDir })
+
     defs.forEach(def => {
       if (def.error !== null) {
         this.#config.eventPublisherService.publishNotification({ type: 'error', description: def.error, title: 'Error loading actor definition' })
         return
       }
 
-      this.vibecanvasDefMap[def.vibecanvasJson.name] = { ...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath }
+      nextDefMap[def.vibecanvasJson.name] = { ...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath }
     })
 
-    await txSyncDbActorDefinitions({ crypto, db: this.#config.db }, { defs: Object.values(this.vibecanvasDefMap) })
+    this.vibecanvasDefMap = nextDefMap
+  }
 
+  private async loadMissingActorInstances() {
     const instances = await this.#config.db.actor.listInstances()
-    instances.forEach(async actorInst => {
-      const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
-      if (!def) return
 
-      const actor = new Actor({
-        id: actorInst.id,
-        vsJson: def,
-        rootDir: dirname(def.manifest_path),
-        state: actorInst.machine_state as TActorState,
-        data: fnToActorData(actorInst.machine_context),
-      })
+    for (const actorInst of instances) {
+      if (this.actorMap[actorInst.id]) continue
+      await this.loadActorInstance(actorInst)
+    }
+  }
 
-      this.actorMap[actor.getId()] = actor
-      this.listenToActor(actor)
-      actor.start()
-      await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
+  private async loadActorInstance(actorInst: TActorInstance) {
+    const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
+    if (!def) return
+
+    const actor = new Actor({
+      id: actorInst.id,
+      vsJson: def,
+      rootDir: dirname(def.manifest_path),
+      state: actorInst.machine_state as TActorState,
+      data: fnToActorData(actorInst.machine_context),
     })
 
+    this.actorMap[actor.getId()] = actor
+    this.listenToActor(actor)
+    actor.start()
+    await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
+  }
+
+  private async reloadConnections() {
+    const nextConnectionMap: Record<string, TActorConnection[]> = {}
     const connections = await this.#config.db.actor.listConnections()
+
     connections.forEach(connection => {
-      if (!this.connectionMap[connection.source_actor_instance_id]) {
-        this.connectionMap[connection.source_actor_instance_id] = []
+      if (!nextConnectionMap[connection.source_actor_instance_id]) {
+        nextConnectionMap[connection.source_actor_instance_id] = []
       }
 
-      this.connectionMap[connection.source_actor_instance_id].push(connection)
+      nextConnectionMap[connection.source_actor_instance_id].push(connection)
     })
+
+    this.connectionMap = nextConnectionMap
   }
 
   listenToActor(actor: Actor) {

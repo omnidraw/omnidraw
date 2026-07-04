@@ -209,6 +209,49 @@ describe("ActorSupervisor", () => {
     supervisor.closeActors();
   });
 
+  test("reload refreshes definitions and loads missing db instances without stopping running actors", async () => {
+    await db.canvas.create({
+      id: "canvas-reload",
+      name: "Actor Reload Test Canvas",
+      automerge_url: "automerge:actor-reload-test",
+    });
+
+    const supervisor = createSupervisor(db, notifications);
+
+    await supervisor.init();
+    const existingActor = await supervisor.createInstance("Account Funds Test", "canvas-reload", "element-existing-fund");
+    if (!existingActor) throw new Error("Expected existing actor to be created");
+    const existingActorId = existingActor.getId();
+    const existingEvents: TActorEvent[] = [];
+    existingActor.listen(event => existingEvents.push(event));
+
+    await db.actor.insertInstance({
+      id: "fund-reload-new",
+      canvas_id: "canvas-reload",
+      element_id: "element-fund-reload-new",
+      actor_definition_name: "Account Funds Test",
+      filesystem_id: null,
+      display_name: "Fund Reload New",
+      status: "created",
+      machine_state: "ready",
+      machine_context: { balance: 7 },
+    });
+
+    await supervisor.reload();
+
+    expect(supervisor.actorMap[existingActorId]).toBe(existingActor);
+    expect(existingEvents).not.toContainEqual({
+      kind: "system",
+      actorId: existingActorId,
+      type: "status.changed",
+      from: "running",
+      to: "stopped",
+    });
+    expect(supervisor.actorMap["fund-reload-new"].getData()).toEqual({ balance: 7 });
+
+    supervisor.closeActors();
+  });
+
   test("persists actor machine data after successful inbox processing", async () => {
     await db.canvas.create({
       id: "canvas-persist-machine",

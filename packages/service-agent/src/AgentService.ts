@@ -4,9 +4,12 @@ import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbSer
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
 import { dirname, join, relative as relativePath } from 'node:path';
-import { AuthStorage, createAgentSession, createAgentSessionFromServices, createAgentSessionServices, DefaultResourceLoader, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { mkdirSync } from 'node:fs';
+import { fxLatestActorCandidateRecord } from './core/fx.session-candidate';
+import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
+import type { TActorCandidateRecord, TActorServiceReloader } from './tools/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -17,7 +20,9 @@ interface IPublicMethods {
 interface IActorServiceConfig {
   cachePath: string;
   dataPath: string;
+  configPath: string;
   eventPublisherService: IEventPublisherService,
+  actorService?: TActorServiceReloader;
 }
 
 type TWidgetId = string;
@@ -37,6 +42,7 @@ type TLoginSession = {
 
 type TAgentConnectResult = {
   vcJson: TVibecanvasJson | null;
+  actorCandidate: TActorCandidateRecord | null;
   messageHistory: AgentSession['messages'];
 };
 type TAgentCancelResult = {
@@ -83,13 +89,29 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       } catch {}
     }
 
-    const services = await createAgentSessionServices({ cwd, agentDir: this.#piAgentDir, authStorage: this.authStorage, modelRegistry: this.modelRegistry, settingsManager: this.settingsManager });
-    const loader = new DefaultResourceLoader({
-      agentDir: this.#piAgentDir,
+    const phaseTools = fnCreateWidgetWizardPhaseTools({
       cwd,
-      systemPrompt: 'You help to build new widgets.'
+      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
+      sessionManager,
+      actorService: this.#config.actorService,
+    })
+    const services = await createAgentSessionServices({
+      cwd,
+      agentDir: this.#piAgentDir,
+      authStorage: this.authStorage,
+      modelRegistry: this.modelRegistry,
+      settingsManager: this.settingsManager,
+      resourceLoaderOptions: {
+        systemPrompt: 'You help to build new widgets.'
+      }
     });
-    const {session} = await createAgentSessionFromServices({services, sessionManager})
+    const {session} = await createAgentSessionFromServices({
+      services,
+      sessionManager,
+      tools: [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)],
+      customTools: phaseTools.customTools,
+    })
+    const actorCandidate = fxLatestActorCandidateRecord({ sessionManager })
     const messageHistory = session.messages
     const unsub = session.subscribe((event) => {
       this.#config.eventPublisherService.publishAgentEvent({
@@ -106,6 +128,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     return {
       vcJson,
+      actorCandidate,
       messageHistory,
     }
   }
