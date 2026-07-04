@@ -5,6 +5,11 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { resolve } from "node:path";
 
+const frontendPort = Number.parseInt(process.env.VIBECANVAS_FRONTEND_PORT ?? "3002", 10);
+const backendPort = Number.parseInt(process.env.VIBECANVAS_BACKEND_PORT ?? "3000", 10);
+const backendHost = process.env.VIBECANVAS_BACKEND_HOST ?? "localhost";
+const backendTarget = `http://${backendHost}:${backendPort}`;
+
 export default defineConfig({
   plugins: [
     wasm(),
@@ -13,14 +18,18 @@ export default defineConfig({
     solidPlugin()
   ],
   server: {
-    port: 3002,
+    port: frontendPort,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: backendTarget,
         ws: true
       },
       '/files': {
-        target: 'http://localhost:3000'
+        target: backendTarget
+      },
+      '/automerge': {
+        target: backendTarget,
+        ws: true
       }
     }
   },

@@ -740,6 +740,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
+| [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |

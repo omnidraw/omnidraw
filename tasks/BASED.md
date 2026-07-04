@@ -176,7 +176,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
 
 ## S ubtractions
-- [ ]: [S1](s/S1.md) - double bun run dev -> find new port
+- [x]: [S1](s/S1.md) - double bun run dev -> find new port
 - [x]: [S2](s/S2.md) - rename CLAUDE.md -> AGENTS.md
 - [x]: [S3](s/S3.md) - ci: introduce release branches, from main to deploy
 - [x]: [S4](s/S4.md) - when hand tool (space pressed) must allow to move over chat too

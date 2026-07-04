@@ -22,11 +22,6 @@ const handles = new Map<string, DocHandle<TCanvasDoc>>()
  * Get WebSocket URL based on current environment.
  */
 function getWebSocketUrl(): string {
-  // In dev, SPA runs on 3001 but server is on 3000
-  const isDev = import.meta.env.DEV
-  if (isDev) {
-    return "ws://localhost:3000/automerge"
-  }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
   const host = window.location.host
   return `${protocol}//${host}/automerge`
