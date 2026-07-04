@@ -37,6 +37,14 @@ const MOCK_MESSAGE_HISTORY = [
     ],
   },
   {
+    role: "toolResult",
+    toolCallId: "call_123",
+    toolName: "bash",
+    content: [
+      { type: "text", text: "validated files" },
+    ],
+  },
+  {
     role: "assistant",
     content: [
       {
@@ -133,10 +141,11 @@ describe("ChatTab rendered message history", () => {
     const root = renderChatTab()
     const text = root.textContent ?? ""
 
-    expect(root.querySelectorAll(".ai-chat-history__message")).toHaveLength(4)
+    expect(root.querySelectorAll(".ai-chat-history__message")).toHaveLength(5)
     expect(root.querySelectorAll(".ai-chat-history__image")).toHaveLength(2)
     expect(root.querySelectorAll(".ai-chat-history__markdown table")).toHaveLength(2)
     expect(root.querySelectorAll(".ai-chat-history__message--assistant .ai-chat-history__role")).toHaveLength(0)
+    expect(root.querySelector(".ai-chat-history__message--other .ai-chat-history__role")?.textContent).toBe("toolResult - bash")
     expect(root.querySelector("h1")?.textContent).toBe("Launch Dashboard Draft")
     expect(root.querySelector("h2")?.textContent).toBe("Proposed Sections")
     expect(root.querySelector("code")?.textContent).toContain("ready-for-review")

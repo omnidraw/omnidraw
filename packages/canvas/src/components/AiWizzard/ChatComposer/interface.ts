@@ -44,6 +44,7 @@ export type TChatComposerProps = {
   onSubmit?: (value: TChatComposerSubmit) => void
   onCancel?: () => void
   onNewChat?: () => void
+  onCopyChat?: () => void
 }
 
 export type TPromptSuggestionKind = "mention" | "command"

@@ -25,7 +25,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -105,13 +104,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -124,8 +116,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -303,6 +293,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/AiWizzard/index.tsx](packages/canvas/src/components/AiWizzard/index.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-label.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-label.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-markdown.ts) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts) |  |

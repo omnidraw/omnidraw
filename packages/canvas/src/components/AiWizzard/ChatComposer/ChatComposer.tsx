@@ -763,6 +763,17 @@ export function ChatComposer(props: TChatComposerProps) {
                   >
                     New chat
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionMenuOpen(false)
+                      props.onCopyChat?.()
+                      view?.focus()
+                    }}
+                  >
+                    Copy chat
+                  </button>
                 </div>
               </Show>
             </div>

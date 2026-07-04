@@ -3,7 +3,9 @@ import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, onCleanup, onMount, Show } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
+import { fnGetChatMessageLabel, fnGetChatMessageRole } from "./fn.chat-message-label"
 import { fnGetChatMessageParts } from "./fn.chat-message-parts"
+import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 
@@ -19,18 +21,9 @@ interface IProps {
   messageHistory: readonly unknown[]
   isRunning: boolean
   isCanceling: boolean
-  onPrompt: (text: string) => Promise<void>
+  onPrompt: (args: { text: string; model?: TChatComposerModel }) => Promise<void>
   onCancel: () => void
   onNewChat: () => void
-}
-
-function getMessageRole(message: unknown) {
-  if (typeof message !== "object" || message === null || !("role" in message)) {
-    return "message"
-  }
-
-  const role = (message as { role?: unknown }).role
-  return typeof role === "string" ? role : "message"
 }
 
 function getMessageKind(role: string) {
@@ -261,14 +254,15 @@ function AssistantMessageParts(props: { parts: TChatMessagePart[] }) {
 }
 
 function ChatHistoryMessage(props: { message: unknown }) {
-  const role = () => getMessageRole(props.message)
+  const role = () => fnGetChatMessageRole(props.message)
+  const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
   const kind = () => getMessageKind(role())
 
   return (
     <article class={`ai-chat-history__message ai-chat-history__message--${kind()}`}>
       <Show when={kind() !== "assistant"}>
-        <span class="ai-chat-history__role">{role()}</span>
+        <span class="ai-chat-history__role">{label()}</span>
       </Show>
       <Show
         when={kind() === "assistant"}
@@ -304,7 +298,19 @@ export function ChatTab(props: IProps) {
     const text = submit.text.trim()
     if (!text) return
 
-    void props.onPrompt(text).catch((error) => {
+    void props.onPrompt({ text, model: submit.model }).catch((error) => {
+      console.error(error)
+    })
+  }
+
+  const copyChat = () => {
+    const markdown = fnSerializeChatMessagesAsMarkdown(props.messageHistory)
+
+    if (!markdown) {
+      return
+    }
+
+    void navigator.clipboard.writeText(markdown).catch((error) => {
       console.error(error)
     })
   }
@@ -363,6 +369,7 @@ export function ChatTab(props: IProps) {
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
         onNewChat={props.onNewChat}
+        onCopyChat={copyChat}
       />
     </div>
   )

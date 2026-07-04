@@ -163,7 +163,7 @@ export function AiWizzard(props: IProps) {
         })
     })
 
-    const prompt = async (text: string) => {
+    const prompt = async (args: { text: string; model?: { id: string; provider: string } }) => {
         const currentSessionId = sessionId()
         setIsRunning(true)
         setIsCanceling(false)
@@ -171,7 +171,11 @@ export function AiWizzard(props: IProps) {
         const [err] = await props.apiService.api.agent.wizzard.prompt({
             widgetId: props.id,
             sessionId: currentSessionId,
-            text,
+            text: args.text,
+            model: args.model ? {
+                provider: args.model.provider,
+                modelId: args.model.id,
+            } : undefined,
         })
         if (sessionId() !== currentSessionId) return
 

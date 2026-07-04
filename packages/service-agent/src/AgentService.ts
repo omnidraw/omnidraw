@@ -28,6 +28,10 @@ interface IActorServiceConfig {
 type TWidgetId = string;
 type TSessionId = string;
 type TLoginId = string;
+type TPromptModel = {
+  provider: string;
+  modelId: string;
+};
 type TAgentLoginStatus =
   | { status: 'pending' }
   | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
@@ -133,10 +137,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async promptWizzard(id: TWidgetId, sessionId: string, text: string): Promise<void> {
+  async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptModel?: TPromptModel): Promise<void> {
     const session = this.sessionMap[id]?.[sessionId]?.session
     if (!session) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+
+    if (promptModel) {
+      const model = this.modelRegistry.find(promptModel.provider, promptModel.modelId)
+      if (!model) {
+        throw new Error(`Model not found: ${promptModel.provider}/${promptModel.modelId}`)
+      }
+
+      if (session.model?.provider !== model.provider || session.model?.id !== model.id) {
+        await session.setModel(model)
+      }
     }
 
     await session.prompt(text)
