@@ -15,7 +15,11 @@ describe('vc_publish_widget', () => {
     let reloadCount = 0;
     const sessionManager = createFakeSessionManager();
     await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate: sampleCandidate() });
-    await executeTool(createApproveActorCandidateTool({ cwd, sessionManager }), { revision: 1 });
+    await executeTool(createApproveActorCandidateTool({
+      cwd,
+      sessionManager,
+      npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
+    }), { revision: 1 });
 
     const result = await executeTool(createPublishWidgetTool({
       cwd,

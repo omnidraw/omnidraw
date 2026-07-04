@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { fxLatestActorCandidateRecord } from '../core/fx.session-candidate';
 import { txAppendActorCandidateApprovalRecord } from '../core/tx.session-candidate';
+import { txTryNpmInstallWithNode, type TNpmInstall } from './tx.npm-install';
 import { txWriteWidgetScaffold } from './tx.scaffold';
 import type { TCandidateSessionManager, TToolDefinition, TToolEventSink } from './types';
 
@@ -11,6 +12,7 @@ export type TCreateApproveActorCandidateToolArgs = {
   cwd: string;
   sessionManager: TCandidateSessionManager;
   onEvent?: TToolEventSink;
+  npmInstall?: TNpmInstall;
 };
 
 export function createApproveActorCandidateTool(args: TCreateApproveActorCandidateToolArgs): TToolDefinition {
@@ -45,6 +47,10 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
       }
 
       const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, { cwd: args.cwd, manifest: record.manifest });
+      const npmInstall = await (args.npmInstall ?? ((cwd) => txTryNpmInstallWithNode({ cwd })))(args.cwd);
+      if (npmInstall.status === 'success') {
+        files.push('package-lock.json');
+      }
       const approval = txAppendActorCandidateApprovalRecord({ sessionManager: args.sessionManager }, {
         candidateRevision: record.revision,
         manifest: record.manifest,
@@ -58,6 +64,7 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
         manifest: record.manifest,
         files,
         approval,
+        npmInstall,
       });
     },
   }) as TToolDefinition;

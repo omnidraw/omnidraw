@@ -11,7 +11,11 @@ describe('vc_validate_widget_files', () => {
     const cwd = await makeTempDir();
     const sessionManager = createFakeSessionManager();
     await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate: sampleCandidate() });
-    await executeTool(createApproveActorCandidateTool({ cwd, sessionManager }), { revision: 1 });
+    await executeTool(createApproveActorCandidateTool({
+      cwd,
+      sessionManager,
+      npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
+    }), { revision: 1 });
 
     const result = await executeTool(createValidateWidgetFilesTool({ cwd }));
 
