@@ -578,7 +578,33 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
+| [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
+| [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
+| [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |
+| [packages/service-agent/src/core/fx.walk-files.ts](packages/service-agent/src/core/fx.walk-files.ts) |  |
+| [packages/service-agent/src/core/lint/fn.actor-registry.ts](packages/service-agent/src/core/lint/fn.actor-registry.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-json-schemas.ts](packages/service-agent/src/core/lint/fn.manifest-json-schemas.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-message-schemas.ts](packages/service-agent/src/core/lint/fn.manifest-message-schemas.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-shape.ts](packages/service-agent/src/core/lint/fn.manifest-shape.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-states.ts](packages/service-agent/src/core/lint/fn.manifest-states.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-transition-functions.ts](packages/service-agent/src/core/lint/fn.manifest-transition-functions.ts) |  |
+| [packages/service-agent/src/core/lint/fn.required-widget-files.ts](packages/service-agent/src/core/lint/fn.required-widget-files.ts) |  |
+| [packages/service-agent/src/core/lint/fn.validate-manifest.ts](packages/service-agent/src/core/lint/fn.validate-manifest.ts) |  |
+| [packages/service-agent/src/core/tx.publish-widget-draft.ts](packages/service-agent/src/core/tx.publish-widget-draft.ts) |  |
+| [packages/service-agent/src/core/tx.session-candidate.ts](packages/service-agent/src/core/tx.session-candidate.ts) |  |
+| [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
+| [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
+| [packages/service-agent/src/tools/CONSTANTS.ts](packages/service-agent/src/tools/CONSTANTS.ts) |  |
+| [packages/service-agent/src/tools/fn.candidate.ts](packages/service-agent/src/tools/fn.candidate.ts) |  |
+| [packages/service-agent/src/tools/fn.phase-tools.ts](packages/service-agent/src/tools/fn.phase-tools.ts) |  |
+| [packages/service-agent/src/tools/fn.result.ts](packages/service-agent/src/tools/fn.result.ts) |  |
+| [packages/service-agent/src/tools/tool.approve-actor-candidate.ts](packages/service-agent/src/tools/tool.approve-actor-candidate.ts) |  |
+| [packages/service-agent/src/tools/tool.publish-widget.ts](packages/service-agent/src/tools/tool.publish-widget.ts) |  |
+| [packages/service-agent/src/tools/tool.set-actor-candidate.ts](packages/service-agent/src/tools/tool.set-actor-candidate.ts) |  |
+| [packages/service-agent/src/tools/tool.validate-widget-files.ts](packages/service-agent/src/tools/tool.validate-widget-files.ts) |  |
+| [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
+| [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
 | [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |
 
 ## packages/service-automerge
