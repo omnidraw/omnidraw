@@ -7,6 +7,18 @@ script = '''
 # - CODEX_SOURE_TREE_PATH
 # - CODEX_WORKTREE_PATH
 
+mkdir -p "$CODEX_WORKTREE_PATH/local-volume"
+rsync -a \
+  --exclude 'data/machine.json' \
+  --exclude 'data/vibecanvas.turso' \
+  --exclude 'data/vibecanvas.turso-tshm' \
+  --exclude 'data/vibecanvas.turso-wal' \
+  "$CODEX_SOURCE_TREE_PATH/local-volume/" \
+  "$CODEX_WORKTREE_PATH/local-volume/"
+
 cd "$CODEX_WORKTREE_PATH"
 bun install
+
+cd "$CODEX_WORKTREE_PATH/packages/sdk"
+bun run build
 '''

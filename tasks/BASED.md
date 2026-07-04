@@ -262,7 +262,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
 - [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
 - [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
-- [ ]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
+- [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
