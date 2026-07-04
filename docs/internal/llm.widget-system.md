@@ -344,7 +344,7 @@ export default html`
 
   <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>
 
-  <button @click="${() => actor.sendMessage('in.addTodo', { title: 'New' })}">
+  <button @click="${() => actor.sendMessage('addTodo', { title: 'New' })}">
     Add
   </button>
 `
@@ -422,13 +422,13 @@ This should be generated from:
 The generated API lets widget code call:
 
 ```ts
-actor.sendMessage('in.addTodo', { title: '...' })
+actor.sendMessage('addTodo', { title: '...' })
 ```
 
 and actor code emit:
 
 ```ts
-await portal.emit('out.todosChanged', payload)
+await portal.emit('todosChanged', payload)
 ```
 
 without hand-written stringly typed maps.
