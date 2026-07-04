@@ -1,5 +1,6 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TActorCandidateRecord } from '@vibecanvas/service-agent';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { z } from 'zod';
 
@@ -55,6 +56,7 @@ export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPubl
 
 export type TAgentWizzardConnect = {
   vcJson: TVibecanvasJson | null;
+  actorCandidate: TActorCandidateRecord | null;
   messageHistory: unknown[];
 }
 
