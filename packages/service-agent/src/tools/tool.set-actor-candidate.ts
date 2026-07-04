@@ -1,5 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
-import { ACTOR_CANDIDATE_JSON_SCHEMA } from './CONSTANTS';
+import { SET_ACTOR_CANDIDATE_PARAMETERS } from './CONSTANTS';
 import { fnValidateCandidate } from './fn.candidate';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txAppendActorCandidateRecord } from '../core/tx.session-candidate';
@@ -16,21 +16,7 @@ export function createSetActorCandidateTool(args: TCreateSetActorCandidateToolAr
     name: 'vc_set_actor_candidate',
     label: 'Set Actor Candidate',
     description: 'Create or replace the current Vibecanvas actor candidate. This validates the candidate and stores it only when valid.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        candidate: {
-          ...ACTOR_CANDIDATE_JSON_SCHEMA,
-          description: 'Actor candidate containing name, optional description, actor config, and widget.tool metadata.',
-        },
-        changeSummary: {
-          type: 'string',
-          description: 'Short summary of what changed in this candidate revision.',
-        },
-      },
-      required: ['candidate'],
-    } as any,
+    parameters: SET_ACTOR_CANDIDATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
       const result = fnValidateCandidate(params.candidate);
 
