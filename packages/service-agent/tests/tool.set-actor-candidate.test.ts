@@ -28,6 +28,56 @@ describe('vc_set_actor_candidate', () => {
     });
   });
 
+  test('allows timout system messages as error recovery handlers without input schema', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const tool = createSetActorCandidateTool({ cwd, sessionManager });
+    const base = sampleCandidate();
+    const candidate = sampleCandidate({
+      actor: {
+        ...base.actor,
+        states: {
+          ready: base.actor.states.ready,
+          error: {
+            on: {
+              'timout:500ms': {
+                func: ['tx.resetError'],
+                allowedTargetStates: ['ready'],
+              },
+            },
+          },
+        },
+        inputMsgSchema: {
+          'in.increment': base.actor.inputMsgSchema?.['in.increment'] ?? true,
+        },
+      },
+    });
+
+    const result = await executeTool(tool, { candidate });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.details.validation.ok).toBe(true);
+  });
+
+  test('requires an error state with a recovery handler', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const tool = createSetActorCandidateTool({ cwd, sessionManager });
+    const { error: _error, ...statesWithoutError } = sampleCandidate().actor.states;
+    const invalid = sampleCandidate({
+      actor: {
+        ...sampleCandidate().actor,
+        states: statesWithoutError,
+      },
+    });
+
+    const result = await executeTool(tool, { candidate: invalid });
+
+    expect(result.isError).toBe(true);
+    expect(result.details.validation.errors).toContain('actor.states.error is required because transition failures implicitly move actors to the base error state');
+    expect(sessionManager.entries).toHaveLength(0);
+  });
+
   test('rejects invalid actor candidates without writing state', async () => {
     const cwd = await makeTempDir();
     const sessionManager = createFakeSessionManager();

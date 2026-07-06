@@ -10,6 +10,12 @@ export function fnLintManifestStates(manifest: TVibecanvasJson): TValidationResu
     errors.push(`actor.initialState '${manifest.actor.initialState}' is not defined in actor.states`);
   }
 
+  if (!stateNames.has('error')) {
+    errors.push(`actor.states.error is required because transition failures implicitly move actors to the base error state`);
+  } else if (Object.keys(manifest.actor.states.error?.on ?? {}).length === 0) {
+    errors.push(`actor.states.error must define at least one recovery input message, for example in.resetError`);
+  }
+
   for (const [stateName, state] of Object.entries(manifest.actor.states)) {
     for (const [messageName, transition] of Object.entries(state?.on ?? {})) {
       if (!transition) continue;

@@ -100,6 +100,7 @@ export class Actor {
     #nextRunId = 1;
     #pendingRuns = new Map<number, TPendingRun>();
     #listeners = new Set<(event: TActorEvent) => void>();
+    #errorTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor(config: IActorConfig) {
         this.#id = config.id
@@ -121,6 +122,7 @@ export class Actor {
         this.actorFuncions()
         this.#emitSystemEvent({ type: "status.changed", from: null, to: "running" })
         this.#emitSystemEvent({ type: "state.changed", from: 'booting', to: this.#state })
+        this.#scheduleErrorTimeoutIfNeeded()
         this.#processQueue()
     }
 
@@ -168,14 +170,20 @@ export class Actor {
 
     inbox(msgName: string, msgPayload: any): string {
         const validFn = this.#inputMessage[msgName]
-        if (!validFn)
+        if (!validFn) {
+            this.#applyImplicitErrorState()
             throw this.#emitError({ code: "UNKNOWN_INPUT_MESSAGE", message: `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}` })
-        if (!validFn(msgPayload))
+        }
+        if (!validFn(msgPayload)) {
+            this.#applyImplicitErrorState()
             throw this.#emitError({ code: "INVALID_INPUT_MESSAGE_PAYLOAD", message: `Invalid message payload.`, details: validFn.errors })
+        }
 
         const transition = this.#getTransition(msgName as TInputMessage);
         if (!transition) {
-            throw this.#emitError({ code: "NO_STATE_TRANSITION", message: `No transition for message ${msgName} in state ${this.#state}` })
+            const state = this.#state;
+            this.#applyImplicitErrorState()
+            throw this.#emitError({ code: "NO_STATE_TRANSITION", message: `No transition for message ${msgName} in state ${state}` })
         }
 
         const messageId = crypto.randomUUID();
@@ -195,6 +203,7 @@ export class Actor {
 
     close() {
         const wasRunning = this.#proc !== null
+        this.#clearErrorTimeout()
         this.#proc?.kill()
         this.#proc = null
         if (wasRunning) this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" })
@@ -238,13 +247,53 @@ export class Actor {
         const prevState = this.#state;
         this.#state = nextState;
         this.#emitSystemEvent({ type: "state.changed", from: prevState, to: nextState, messageId })
+        this.#scheduleErrorTimeoutIfNeeded()
     }
 
-    #applyImplicitErrorState(messageId: string) {
+    #applyImplicitErrorState(messageId?: string) {
         if (this.#state === "error") return;
         const prevState = this.#state;
         this.#state = "error";
         this.#emitSystemEvent({ type: "state.changed", from: prevState, to: "error", messageId })
+        this.#scheduleErrorTimeoutIfNeeded()
+    }
+
+    #scheduleErrorTimeoutIfNeeded() {
+        this.#clearErrorTimeout()
+        if (this.#state !== "error") return;
+
+        const timeout = this.#getErrorTimeoutMessage()
+        if (!timeout) return;
+
+        this.#errorTimeout = setTimeout(() => {
+            this.#errorTimeout = null;
+            if (this.#state !== "error") return;
+            this.#queue.push({
+                messageId: crypto.randomUUID(),
+                msgName: timeout.msgName,
+                msgPayload: {},
+            })
+            this.#processQueue()
+        }, timeout.delayMs)
+    }
+
+    #clearErrorTimeout() {
+        if (!this.#errorTimeout) return;
+        clearTimeout(this.#errorTimeout)
+        this.#errorTimeout = null;
+    }
+
+    #getErrorTimeoutMessage(): { msgName: TInputMessage; delayMs: number } | null {
+        const entries = Object.keys(this.#vsJson.actor.states.error?.on ?? {})
+            .map((msgName) => {
+                const match = /^timout:(\d+)ms$/.exec(msgName)
+                if (!match) return null;
+                return { msgName: msgName as TInputMessage, delayMs: Number(match[1]) }
+            })
+            .filter((item): item is { msgName: TInputMessage; delayMs: number } => item !== null && Number.isFinite(item.delayMs) && item.delayMs >= 0)
+            .sort((a, b) => a.delayMs - b.delayMs)
+
+        return entries[0] ?? null;
     }
 
     #runTransition(transition: TTransition, item: TInboxQueueItem): Promise<void> {

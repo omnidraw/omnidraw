@@ -41,6 +41,14 @@ export function sampleCandidate(overrides: Partial<TActorCandidate> = {}): TActo
             },
           },
         },
+        error: {
+          on: {
+            'in.resetError': {
+              func: ['tx.resetError'],
+              allowedTargetStates: ['ready'],
+            },
+          },
+        },
       },
       inputMsgSchema: {
         'in.increment': {
@@ -49,6 +57,11 @@ export function sampleCandidate(overrides: Partial<TActorCandidate> = {}): TActo
             amount: { type: 'integer', minimum: 1 },
           },
           required: ['amount'],
+          additionalProperties: false,
+        },
+        'in.resetError': {
+          type: 'object',
+          properties: {},
           additionalProperties: false,
         },
       },

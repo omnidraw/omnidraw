@@ -1,6 +1,10 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TValidationResult } from '../types';
 
+function isSystemTimeoutMessage(messageName: string): boolean {
+  return /^timout:\d+ms$/.test(messageName);
+}
+
 export function fnLintManifestMessageSchemas(manifest: TVibecanvasJson): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -10,7 +14,7 @@ export function fnLintManifestMessageSchemas(manifest: TVibecanvasJson): TValida
   for (const [stateName, state] of Object.entries(manifest.actor.states)) {
     for (const [messageName, transition] of Object.entries(state?.on ?? {})) {
       if (!transition) continue;
-      if (!inputSchemaNames.has(messageName)) {
+      if (!inputSchemaNames.has(messageName) && !isSystemTimeoutMessage(messageName)) {
         errors.push(`actor.states.${stateName}.on.${messageName} has no actor.inputMsgSchema entry`);
       }
     }

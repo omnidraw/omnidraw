@@ -131,10 +131,11 @@ Use more success states only when the UI genuinely needs them, for example:
 
 Error handling pattern:
 - Include an "error" state in actor.states.
-- Include an input message like "in.resetError" in actor.inputMsgSchema.
-- Add actor.states.error.on["in.resetError"] with a tx.* function that returns to "ready".
+- Provide at least one recovery handler in actor.states.error.on.
+- Manual recovery: include an input message like "in.resetError" in actor.inputMsgSchema and add actor.states.error.on["in.resetError"] with a tx.* function that returns to "ready".
+- Automatic recovery: use the special system message name "timout:xxxxms" in actor.states.error.on, for example "timout:3000ms". This message is sent automatically by the system after the actor reaches "error" and the delay elapses. Do not add timeout messages to actor.inputMsgSchema; they are system messages, not widget inputs.
 - The recovery function may clear error-related fields in actor data if you store them.
-- Widget UI should show a recovery button when actor.state.value starts with "error".
+- Widget UI should show a recovery button when actor.state.value starts with "error" unless recovery is intentionally automatic.
 
 Multi-target guidance:
 - Do not fear multi-target semantics. Every transition already has implicit error as an extra target.
@@ -324,7 +325,7 @@ Prefer robust layout:
 Before setting a phase 1 candidate:
 - The actor has a simple initialData object.
 - actor.initialState exists in actor.states.
-- actor.states includes "error" with a recovery input message.
+- actor.states includes "error" with a manual recovery input message or a special "timout:xxxxms" system message.
 - All declared success target states exist in actor.states.
 - Every input message has an inputMsgSchema.
 - Every UI action you plan has a matching input message and transition.
@@ -353,6 +354,7 @@ Before publishing:
 - Using a state in allowedTargetStates that is not declared in actor.states.
 - Putting "error" in allowedTargetStates instead of relying on implicit runtime error transitions.
 - Forgetting to define actor.states.error and an error recovery message.
+- Adding "timout:xxxxms" to actor.inputMsgSchema; timeout messages are system-sent and do not need input schemas.
 - Using actor.initialState that is not declared in actor.states.
 - Creating input schemas that do not match actor.sendMessage payloads.
 - Forgetting to register a manifest function in actor/functions.ts.

@@ -122,6 +122,27 @@ describe("Actor", () => {
         actor.close()
     })
 
+    test("moves to implicit base error state when inbox validation fails", () => {
+        const actor = new Actor({
+            id: "fund-actor-invalid-input-error",
+            rootDir,
+            vsJson: testActorConfig
+        })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
+
+        actor.start()
+
+        expect(() => actor.inbox('add-funds', { accountId: '1', amount: 'bad' })).toThrow()
+        expect(actor.getState()).toBe("error")
+        expect(messages.some(event => event.kind === "system" && event.type === "state.changed" && event.to === "error")).toBe(true)
+        expect(messages.some(event => event.kind === "system" && event.type === "error" && event.code === "INVALID_INPUT_MESSAGE_PAYLOAD")).toBe(true)
+
+        actor.close()
+    })
+
     test("moves to implicit base error state when transition function throws", async () => {
         const errorConfig: TVibecanvasJson = {
             ...testActorConfig,
@@ -176,6 +197,65 @@ describe("Actor", () => {
             messageId: expect.any(String),
         })
         expect(messages.some(event => event.kind === "system" && event.type === "error" && event.code === "ACTOR_TRANSITION_FAILED")).toBe(true)
+
+        actor.close()
+    })
+
+    test("sends timout system message after reaching error state", async () => {
+        const timeoutConfig: TVibecanvasJson = {
+            ...testActorConfig,
+            actor: {
+                ...testActorConfig.actor,
+                states: {
+                    ...testActorConfig.actor.states,
+                    ready: {
+                        on: {
+                            ...testActorConfig.actor.states.ready?.on,
+                            explode: {
+                                func: ["fn.throw"],
+                                allowedTargetStates: ["ready"],
+                            },
+                        },
+                    },
+                    error: {
+                        on: {
+                            "timout:20ms": {
+                                func: ["fn.noop"],
+                                allowedTargetStates: ["ready"],
+                            },
+                        },
+                    },
+                },
+                inputMsgSchema: {
+                    ...testActorConfig.actor.inputMsgSchema,
+                    explode: {
+                        type: "object",
+                        properties: {},
+                        additionalProperties: false,
+                    },
+                },
+            },
+        }
+        const actor = new Actor({
+            id: "fund-actor-error-timeout",
+            rootDir,
+            vsJson: timeoutConfig
+        })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
+
+        actor.start()
+        actor.inbox("explode", {})
+        await waitForIdle(actor)
+        expect(actor.getState()).toBe("error")
+
+        await Bun.sleep(40)
+        await waitForIdle(actor)
+
+        expect(actor.getState()).toBe("ready")
+        expect(messages.some(event => event.kind === "system" && event.type === "ack" && event.inputName === "timout:20ms")).toBe(true)
 
         actor.close()
     })
