@@ -9,6 +9,7 @@ import { mkdirSync } from 'node:fs';
 import { readdir, writeFile } from 'node:fs/promises';
 import { join, relative as relativePath, resolve } from 'node:path';
 import { fxLatestActorCandidateRecord } from './core/fx.session-candidate';
+import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './systemprompts';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
 import type { TActorCandidateRecord, TActorServiceReloader } from './tools/types';
 
@@ -184,7 +185,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       modelRegistry: this.modelRegistry,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
-        systemPrompt: 'You help to build new widgets.'
+        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
       }
     });
     const { session } = await createAgentSessionFromServices({

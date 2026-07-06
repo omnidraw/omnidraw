@@ -580,6 +580,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
+| [packages/service-agent/src/systemprompts.ts](packages/service-agent/src/systemprompts.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
 | [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |
