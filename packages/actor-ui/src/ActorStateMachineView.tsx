@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import type { TVibecanvasActor, TVibecanvasJson } from "@vibecanvas/service-actor/core/types";
-import { fnRouteElbowArrow, type TPoint, type TSegment } from "./fn.elbow";
+import { fnPlanStateMachineEdges } from "./fn.edge";
+import type { TPoint } from "./fn.elbow";
 import { fnPlaceLabels } from "./fn.labels";
 import { fnLayoutStateMachine } from "./fn.layout";
 import "./styles.css";
@@ -52,6 +53,15 @@ type TDiagramModel = {
   edges: TDiagramEdge[];
 };
 
+type TEdgeDescriptor = {
+  key: string;
+  message: string;
+  functions: string[];
+  isImplicit: boolean;
+  sourceName: string;
+  targetName: string;
+};
+
 const NODE_WIDTH = 210;
 const NODE_HEIGHT = 92;
 const DIAGRAM_WIDTH = 820;
@@ -61,7 +71,6 @@ const ARROWHEAD_CLEARANCE = 9;
 const EDGE_LANE_GAP = 28;
 const STATE_ORDER = ["booting", "ready", "busy", "waiting", "error"] as const;
 const IMPLICIT_STATE_NAMES = ["booting", "error"] as const;
-type TNodeSide = "top" | "right" | "bottom" | "left";
 
 function getActorFromProps(props: TActorStateMachineViewProps): TVibecanvasActor | undefined {
   return props.actor ?? props.manifest?.actor;
@@ -147,74 +156,6 @@ function getStateSortOrder(stateName: string): number {
   return index === -1 ? STATE_ORDER.length : index;
 }
 
-function getOppositeSide(side: TNodeSide): TNodeSide {
-  if (side === "top") {
-    return "bottom";
-  }
-
-  if (side === "right") {
-    return "left";
-  }
-
-  if (side === "bottom") {
-    return "top";
-  }
-
-  return "right";
-}
-
-function getPrimarySourceSide(source: TDiagramNode, target: TDiagramNode): TNodeSide {
-  const dx = target.centerX - source.centerX;
-  const dy = target.centerY - source.centerY;
-
-  if (Math.abs(dx) >= Math.abs(dy) * 0.75) {
-    return dx >= 0 ? "right" : "left";
-  }
-
-  return dy >= 0 ? "bottom" : "top";
-}
-
-function getAlternateSourceSide(source: TDiagramNode, target: TDiagramNode): TNodeSide {
-  const primarySide = getPrimarySourceSide(source, target);
-  const dx = target.centerX - source.centerX;
-  const dy = target.centerY - source.centerY;
-
-  if (primarySide === "left" || primarySide === "right") {
-    return dy >= 0 ? "bottom" : "top";
-  }
-
-  return dx >= 0 ? "right" : "left";
-}
-
-function getPortPoint(node: TDiagramNode, side: TNodeSide, portOffset: number, clearance: number): TPoint {
-  if (side === "left" || side === "right") {
-    const direction = side === "left" ? -1 : 1;
-
-    return {
-      x: node.centerX + direction * (NODE_WIDTH / 2 + clearance),
-      y: Math.max(node.y + 18, Math.min(node.y + NODE_HEIGHT - 18, node.centerY + portOffset)),
-    };
-  }
-
-  const direction = side === "top" ? -1 : 1;
-
-  return {
-    x: Math.max(node.x + 18, Math.min(node.x + NODE_WIDTH - 18, node.centerX + portOffset)),
-    y: node.centerY + direction * (NODE_HEIGHT / 2 + clearance),
-  };
-}
-
-function getConnectorPoint(source: TDiagramNode, target: TDiagramNode, direction: "source" | "target", portOffset: number, useAlternateSide: boolean) {
-  const sourceSide = useAlternateSide
-    ? getAlternateSourceSide(source, target)
-    : getPrimarySourceSide(source, target);
-  const side = direction === "source" ? sourceSide : getOppositeSide(sourceSide);
-  const node = direction === "source" ? source : target;
-  const clearance = direction === "target" ? ARROWHEAD_CLEARANCE : 0;
-
-  return getPortPoint(node, side, portOffset, clearance);
-}
-
 function getSvgPath(points: TPoint[]): string {
   const [firstPoint, ...restPoints] = points;
 
@@ -223,21 +164,6 @@ function getSvgPath(points: TPoint[]): string {
   }
 
   return `M ${firstPoint.x} ${firstPoint.y} ${restPoints.map((point) => `L ${point.x} ${point.y}`).join(" ")}`;
-}
-
-function getPathSegments(points: TPoint[]): TSegment[] {
-  return points.flatMap((point, index) => {
-    const next = points[index + 1];
-
-    if (!next || (next.x === point.x && next.y === point.y)) {
-      return [];
-    }
-
-    return [{
-      from: point,
-      to: next,
-    }];
-  });
 }
 
 function getLabelPoint(points: TPoint[], edgeIndex: number) {
@@ -282,33 +208,6 @@ function getNodeRect(node: TDiagramNode) {
   };
 }
 
-function getEdgePath(source: TDiagramNode, target: TDiagramNode, edgeIndex: number, nodes: TDiagramNode[], avoidSegments: TSegment[]) {
-  const lane = edgeIndex % 2 === 0 ? -1 : 1;
-  const portOffset = lane * (34 + Math.floor(edgeIndex / 2) * 22);
-  const useAlternateSide = edgeIndex % 2 === 1;
-  const sourcePoint = getConnectorPoint(source, target, "source", portOffset, useAlternateSide);
-  const targetPoint = getConnectorPoint(source, target, "target", portOffset, useAlternateSide);
-  const obstacles = nodes
-    .filter((node) => node.name !== source.name && node.name !== target.name)
-    .map(getNodeRect);
-  const points = fnRouteElbowArrow({
-    start: sourcePoint,
-    end: targetPoint,
-    obstacles,
-    padding: 26 + edgeIndex * 10,
-    avoidSegments,
-    laneGap: EDGE_LANE_GAP,
-  });
-  const label = getLabelPoint(points, edgeIndex);
-
-  return {
-    path: getSvgPath(points),
-    labelX: label.x,
-    labelY: label.y,
-    points,
-  };
-}
-
 function getSelfLoopPath(node: TDiagramNode) {
   const startX = node.centerX + NODE_WIDTH / 2 - 22;
   const startY = node.centerY - NODE_HEIGHT / 2 + 18;
@@ -329,8 +228,13 @@ function getSelfLoopPath(node: TDiagramNode) {
 }
 
 function getDiagramModel(rows: TStateRow[]): TDiagramModel {
+  const layoutTransitions = rows.flatMap((source) => source.transitions.flatMap((transition) => transition.targets.map((target) => ({
+    source: source.name,
+    target,
+  }))));
   const positions = new Map(fnLayoutStateMachine({
     states: rows.map((row) => ({ name: row.name })),
+    transitions: layoutTransitions,
     space: {
       w: DIAGRAM_WIDTH,
       h: DIAGRAM_HEIGHT,
@@ -355,8 +259,7 @@ function getDiagramModel(rows: TStateRow[]): TDiagramModel {
   });
   const nodeByName = new Map(nodes.map((node) => [node.name, node]));
   const edgeSlots = new Map<string, number>();
-  const usedSegments: TSegment[] = [];
-  const edges: TDiagramEdge[] = [];
+  const edgeDescriptors: TEdgeDescriptor[] = [];
 
   for (const source of nodes) {
     for (const transition of source.transitions) {
@@ -370,22 +273,13 @@ function getDiagramModel(rows: TStateRow[]): TDiagramModel {
         const edgeKey = [source.name, target.name].sort().join("<->");
         const edgeIndex = edgeSlots.get(edgeKey) ?? 0;
         edgeSlots.set(edgeKey, edgeIndex + 1);
-        const edgeShape = source.name === target.name
-          ? getSelfLoopPath(source)
-          : getEdgePath(source, target, edgeIndex, nodes, usedSegments);
-
-        usedSegments.push(...getPathSegments(edgeShape.points));
-
-        edges.push({
+        edgeDescriptors.push({
           key: `${source.name}:${transition.message}:${target.name}:${edgeIndex}`,
           message: transition.message,
           functions: transition.functions,
           isImplicit: false,
-          source,
-          target,
-          path: edgeShape.path,
-          labelX: edgeShape.labelX,
-          labelY: edgeShape.labelY,
+          sourceName: source.name,
+          targetName: target.name,
         });
       }
     }
@@ -395,20 +289,66 @@ function getDiagramModel(rows: TStateRow[]): TDiagramModel {
   const bootingNode = nodeByName.get("booting");
 
   if (initialNode && bootingNode && initialNode.name !== "booting") {
-    const edgeShape = getEdgePath(bootingNode, initialNode, 0, nodes, usedSegments);
-    usedSegments.push(...getPathSegments(edgeShape.points));
-    edges.unshift({
+    edgeDescriptors.unshift({
       key: `booting:${initialNode.name}:implicit`,
       message: "",
       functions: [],
       isImplicit: true,
-      source: bootingNode,
-      target: initialNode,
-      path: edgeShape.path,
-      labelX: edgeShape.labelX,
-      labelY: edgeShape.labelY,
+      sourceName: bootingNode.name,
+      targetName: initialNode.name,
     });
   }
+
+  const plannedEdges = new Map(fnPlanStateMachineEdges({
+    nodes: nodes.map((node) => ({
+      name: node.name,
+      x: node.x,
+      y: node.y,
+      w: NODE_WIDTH,
+      h: NODE_HEIGHT,
+    })),
+    transitions: edgeDescriptors
+      .filter((descriptor) => descriptor.sourceName !== descriptor.targetName)
+      .map((descriptor) => ({
+        key: descriptor.key,
+        source: descriptor.sourceName,
+        target: descriptor.targetName,
+      })),
+    padding: 28,
+    laneGap: EDGE_LANE_GAP,
+    arrowheadClearance: ARROWHEAD_CLEARANCE,
+    portGap: 44,
+  }).map((edge) => [edge.key, edge]));
+  const edges = edgeDescriptors.flatMap((descriptor, edgeIndex): TDiagramEdge[] => {
+    const source = nodeByName.get(descriptor.sourceName);
+    const target = nodeByName.get(descriptor.targetName);
+
+    if (!source || !target) {
+      return [];
+    }
+
+    const edgeShape = descriptor.sourceName === descriptor.targetName
+      ? getSelfLoopPath(source)
+      : plannedEdges.get(descriptor.key);
+
+    if (!edgeShape) {
+      return [];
+    }
+
+    const label = getLabelPoint(edgeShape.points, edgeIndex);
+
+    return [{
+      key: descriptor.key,
+      message: descriptor.message,
+      functions: descriptor.functions,
+      isImplicit: descriptor.isImplicit,
+      source,
+      target,
+      path: getSvgPath(edgeShape.points),
+      labelX: label.x,
+      labelY: label.y,
+    }];
+  });
 
   const placedLabels = new Map(fnPlaceLabels({
     labels: edges

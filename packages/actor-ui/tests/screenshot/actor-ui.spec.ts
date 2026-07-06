@@ -16,6 +16,12 @@ test("renders demo actors for visual inspection", async ({ page }) => {
     path: resolve(screenshotDir, "repo-health.png"),
     fullPage: true,
   });
+  await page.getByRole("button", { name: "Set active state waiting.scope" }).click();
+  await expect(page.getByRole("button", { name: "Set active state waiting.scope" })).toHaveAttribute("aria-pressed", "true");
+  await page.screenshot({
+    path: resolve(screenshotDir, "repo-health-waiting-active.png"),
+    fullPage: true,
+  });
 
   const actorSelect = page.getByRole("combobox", { name: "Actor" });
 
