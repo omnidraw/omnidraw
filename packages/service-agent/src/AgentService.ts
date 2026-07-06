@@ -1,12 +1,13 @@
+import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
+import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
+import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { readdir } from 'node:fs/promises';
-import { dirname, join, relative as relativePath } from 'node:path';
-import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from "@earendil-works/pi-coding-agent";
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { mkdirSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
+import { join, relative as relativePath } from 'node:path';
 import { fxLatestActorCandidateRecord } from './core/fx.session-candidate';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
 import type { TActorCandidateRecord, TActorServiceReloader } from './tools/types';
@@ -36,7 +37,7 @@ type TPromptSelection = {
   model?: TPromptModel;
   thinkingLevel?: TThinkingLevel;
 };
-type TThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+type TThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 type TAgentLoginStatus =
   | { status: 'pending' }
   | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
@@ -59,6 +60,61 @@ type TAgentCancelResult = {
   running: boolean;
 };
 
+type TDraftActorKey = `${TWidgetId}:${TSessionId}`;
+
+type TAgentDraftActorSnapshot = {
+  state: TActorState;
+  context: TActorData;
+};
+
+type TDraftActorEntry = {
+  actor: Actor;
+  rootDir: string;
+  manifest: TVibecanvasJson;
+  unlisten: () => void;
+};
+
+type TDraftActorNotReadyReason =
+  | 'manifest-missing'
+  | 'manifest-invalid'
+  | 'actor-functions-missing'
+  | 'session-missing'
+  | 'actor-not-running';
+
+type TAgentDraftActorReadyResult = {
+  ready: true;
+  actorId: string;
+  snapshot: TAgentDraftActorSnapshot;
+};
+
+type TAgentDraftActorNotReadyResult = {
+  ready: false;
+  reason: TDraftActorNotReadyReason;
+  message: string;
+};
+
+type TAgentDraftActorResult = TAgentDraftActorReadyResult | TAgentDraftActorNotReadyResult;
+
+type TAgentDraftActorSendResult =
+  | { ready: true; messageId: string; snapshot: TAgentDraftActorSnapshot }
+  | TAgentDraftActorNotReadyResult;
+
+type TAgentDraftActorStopResult = {
+  stopped: boolean;
+};
+
+type TAgentPreviewSourceResult =
+  | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
+  | TAgentDraftActorNotReadyResult;
+
+type TAgentDraftActorPublishedEvent = {
+  kind: 'draft-actor';
+  widgetId: TWidgetId;
+  sessionId: TSessionId;
+  event: TActorEvent | { kind: 'lifecycle'; type: 'stopped'; actorId: string };
+  snapshot?: TAgentDraftActorSnapshot;
+};
+
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
   #config: IActorServiceConfig;
@@ -66,8 +122,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, {unsub: () => void, session: AgentSession, sessionManager: SessionManager}>> = {}
+  sessionMap: Record<TWidgetId, Record<TSessionId, { unsub: () => void, session: AgentSession, sessionManager: SessionManager }>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
+  #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -78,24 +135,33 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
+    void ctx
     console.log('start', this.name)
   }
 
   async stop(): Promise<void> {
+    for (const [id, sessions] of Object.entries(this.sessionMap)) {
+      for (const sessionId of Object.keys(sessions)) {
+        this.#disposeWizzardSession(id, sessionId)
+      }
+    }
+    this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
 
   async connectWizzard(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
-    const cwd = join(this.#piAgentDir, 'widget-cwd', id+sessionId)
-    mkdirSync(cwd, {recursive: true})
+    this.#disposeAgentSession(id, sessionId)
+
+    const cwd = this.#getWizardCwd(id, sessionId)
+    mkdirSync(cwd, { recursive: true })
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
     const entry = sessionManager.getEntry('vibejsonpath')
     let vcJson: TVibecanvasJson | null = null;
-    if(entry?.type === 'custom' && entry?.customType === 'vibejsonpath' && typeof entry.data === 'string') {
+    if (entry?.type === 'custom' && entry?.customType === 'vibejsonpath' && typeof entry.data === 'string') {
       try {
         vcJson = await Bun.file(entry.data).json()
-      } catch {}
+      } catch { }
     }
 
     const phaseTools = fnCreateWidgetWizardPhaseTools({
@@ -114,7 +180,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         systemPrompt: 'You help to build new widgets.'
       }
     });
-    const {session} = await createAgentSessionFromServices({
+    const { session } = await createAgentSessionFromServices({
       services,
       sessionManager,
       tools: [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)],
@@ -129,17 +195,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         event,
       })
     })
-    if(!this.sessionMap[id]) {
+    if (!this.sessionMap[id]) {
       this.sessionMap[id] = {}
     }
 
-    this.sessionMap[id][sessionId] = {session, sessionManager, unsub}
+    this.sessionMap[id][sessionId] = { session, sessionManager, unsub }
 
     return {
       vcJson,
       actorCandidate,
       messageHistory,
     }
+  }
+
+  newWizzardSession(id: TWidgetId, sessionId: string): void {
+    this.#disposeWizzardSession(id, sessionId)
   }
 
   async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
@@ -179,6 +249,114 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { canceled: true, running: session.isStreaming }
   }
 
+  inspectDraftActorWizzard(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
+    const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
+    if (!entry) {
+      return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
+    }
+
+    return {
+      ready: true,
+      actorId: entry.actor.getId(),
+      snapshot: this.#draftActorSnapshot(entry.actor),
+    }
+  }
+
+  async startDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) {
+      return this.#draftActorNotReady(id, sessionId, 'session-missing')
+    }
+
+    const rootDir = this.#getWizardCwd(id, sessionId)
+    const manifestResult = await this.#readDraftActorManifest(rootDir)
+    if (!manifestResult.ready) return manifestResult
+
+    const actorFunctionPath = join(rootDir, manifestResult.manifest.actor.relFunctionPath)
+    if (!await Bun.file(actorFunctionPath).exists()) {
+      return {
+        ready: false,
+        reason: 'actor-functions-missing',
+        message: `Draft actor functions file does not exist: ${manifestResult.manifest.actor.relFunctionPath}`,
+      }
+    }
+
+    this.#disposeDraftActor(id, sessionId)
+
+    const actor = new Actor({
+      id: `draft:${id}:${sessionId}`,
+      vsJson: manifestResult.manifest,
+      rootDir,
+    })
+
+    const unlisten = actor.listen((event) => {
+      this.#publishDraftActorEvent(id, sessionId, actor, event)
+    })
+
+    actor.start()
+
+    this.#draftActorMap.set(this.#draftActorKey(id, sessionId), {
+      actor,
+      rootDir,
+      manifest: manifestResult.manifest,
+      unlisten,
+    })
+
+    return {
+      ready: true,
+      actorId: actor.getId(),
+      snapshot: this.#draftActorSnapshot(actor),
+    }
+  }
+
+  async reloadDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
+    return this.startDraftActorWizzard(id, sessionId)
+  }
+
+  async resetDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
+    return this.startDraftActorWizzard(id, sessionId)
+  }
+
+  stopDraftActorWizzard(id: TWidgetId, sessionId: string): TAgentDraftActorStopResult {
+    const key = this.#draftActorKey(id, sessionId)
+    const stopped = this.#draftActorMap.has(key)
+
+    this.#disposeDraftActor(id, sessionId)
+
+    return { stopped }
+  }
+
+  sendDraftActorWizzard(id: TWidgetId, sessionId: string, name: string, payload: unknown): TAgentDraftActorSendResult {
+    const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
+    if (!entry) {
+      return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
+    }
+
+    const messageId = entry.actor.inbox(name, payload)
+
+    return {
+      ready: true,
+      messageId,
+      snapshot: this.#draftActorSnapshot(entry.actor),
+    }
+  }
+
+  async previewSourceWizzard(id: TWidgetId, sessionId: string): Promise<TAgentPreviewSourceResult> {
+    if (!this.sessionMap[id]?.[sessionId]) {
+      return this.#draftActorNotReady(id, sessionId, 'session-missing')
+    }
+
+    const rootDir = this.#getWizardCwd(id, sessionId)
+    const manifestResult = await this.#readDraftActorManifest(rootDir)
+    if (!manifestResult.ready) return manifestResult
+
+    return {
+      ready: true,
+      manifest: manifestResult.manifest,
+      sources: await this.#readWidgetSourceMap(rootDir),
+    }
+  }
+
   login(providerId: 'openai-codex' | 'github-copilot') {
     const loginId = crypto.randomUUID()
     const controller = new AbortController()
@@ -186,7 +364,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#loginMap[loginId] = session
 
     void this.authStorage.login(providerId, {
-      onAuth(info) { },
+      onAuth(info) { void info },
       onDeviceCode(info) {
         session.status = {
           status: 'device-code',
@@ -196,7 +374,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           expiresInSeconds: info.expiresInSeconds,
         }
       },
-      async onPrompt(prompt) { return '' },
+      async onPrompt(prompt) { void prompt; return '' },
       async onSelect(prompt) {
         return prompt.options.find((option) => option.id === 'device_code')?.id
       },
@@ -264,7 +442,151 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       providers,
       models
     }
+  }
 
+  #draftActorKey(id: TWidgetId, sessionId: TSessionId): TDraftActorKey {
+    return `${id}:${sessionId}`;
+  }
+
+  #getWizardCwd(id: TWidgetId, sessionId: TSessionId): string {
+    return join(this.#piAgentDir, 'widget-cwd', id + sessionId);
+  }
+
+  #disposeWizzardSession(id: TWidgetId, sessionId: TSessionId): void {
+    this.#disposeDraftActor(id, sessionId)
+    this.#disposeAgentSession(id, sessionId)
+  }
+
+  #disposeAgentSession(id: TWidgetId, sessionId: TSessionId): void {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) return
+
+    sessionEntry.unsub()
+    delete this.sessionMap[id][sessionId]
+
+    if (Object.keys(this.sessionMap[id]).length === 0) {
+      delete this.sessionMap[id]
+    }
+  }
+
+  #disposeDraftActor(id: TWidgetId, sessionId: TSessionId): void {
+    const key = this.#draftActorKey(id, sessionId);
+    const entry = this.#draftActorMap.get(key);
+    if (!entry) return;
+
+    entry.unlisten();
+    entry.actor.close();
+    this.#draftActorMap.delete(key);
+
+    this.#publishDraftActorEvent(id, sessionId, entry.actor, {
+      kind: 'lifecycle',
+      type: 'stopped',
+      actorId: entry.actor.getId(),
+    })
+  }
+
+  #disposeAllDraftActors(): void {
+    for (const key of Array.from(this.#draftActorMap.keys())) {
+      const [id, sessionId] = key.split(':', 2)
+      this.#disposeDraftActor(id, sessionId)
+    }
+  }
+
+  #draftActorSnapshot(actor: Actor): TAgentDraftActorSnapshot {
+    return {
+      state: actor.getState(),
+      context: actor.getData(),
+    }
+  }
+
+  async #readDraftActorManifest(rootDir: string): Promise<
+    | { ready: true; manifest: TVibecanvasJson }
+    | TAgentDraftActorNotReadyResult
+  > {
+    const manifestPath = join(rootDir, 'vibecanvas.json')
+
+    if (!await Bun.file(manifestPath).exists()) {
+      return {
+        ready: false,
+        reason: 'manifest-missing',
+        message: 'Draft vibecanvas.json does not exist yet.',
+      }
+    }
+
+    try {
+      const parsedJson = await Bun.file(manifestPath).json()
+      const parsedManifest = ZVibecanvasJson.safeParse(parsedJson)
+      if (!parsedManifest.success) {
+        return {
+          ready: false,
+          reason: 'manifest-invalid',
+          message: parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
+        }
+      }
+
+      return {
+        ready: true,
+        manifest: parsedManifest.data as TVibecanvasJson,
+      }
+    } catch (error) {
+      return {
+        ready: false,
+        reason: 'manifest-invalid',
+        message: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  async #readWidgetSourceMap(rootDir: string): Promise<Record<string, string>> {
+    const widgetDir = join(rootDir, 'widget')
+    if (!await Bun.file(widgetDir).exists()) return {}
+
+    const sources: Record<string, string> = {}
+    await this.#readSourceMapRecursive(widgetDir, widgetDir, sources)
+    return sources
+  }
+
+  async #readSourceMapRecursive(rootDir: string, dir: string, sources: Record<string, string>): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const absPath = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await this.#readSourceMapRecursive(rootDir, absPath, sources)
+        continue
+      }
+      if (!entry.isFile()) continue
+
+      sources[relativePath(rootDir, absPath)] = await Bun.file(absPath).text()
+    }
+  }
+
+  #draftActorNotReady(id: TWidgetId, sessionId: TSessionId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
+    const label = `widget '${id}' and session '${sessionId}'`
+    const messageMap: Record<TDraftActorNotReadyReason, string> = {
+      'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
+      'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
+      'actor-functions-missing': `Draft actor functions file does not exist for ${label}`,
+      'session-missing': `No connected agent session for ${label}`,
+      'actor-not-running': `No draft actor is running for ${label}`,
+    }
+
+    return {
+      ready: false,
+      reason,
+      message: messageMap[reason],
+    }
+  }
+
+  #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorPublishedEvent['event']): void {
+    const publishEvent: TAgentDraftActorPublishedEvent = {
+      kind: 'draft-actor',
+      widgetId: id,
+      sessionId,
+      event,
+      snapshot: this.#draftActorSnapshot(actor),
+    }
+
+    this.#config.eventPublisherService.publishAgentEvent(publishEvent as never)
   }
 
 }

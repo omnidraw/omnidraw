@@ -71,7 +71,19 @@ export function compileJsonSchema(schema: TJsonSchema) {
 
 /**
  * Actor Instance
- * In memory state. Receives msgs and does state transitions
+ *
+ * In-memory widget actor runtime. Receives input messages, runs transition
+ * functions in a Bun child process, owns current state/data, and emits runtime
+ * events.
+ *
+ * Usage modes:
+ * - Published mode: owned by ActorSupervisor. Database rows, installed widget
+ *   records, and canvas connections are managed outside this class.
+ * - Draft mode: owned by AgentService for a wizard session. Draft files provide
+ *   the manifest/root directory, and the actor is disposed with the session.
+ *
+ * Keep this constructor/runtime generic: no DB, supervisor, canvas, or wizard
+ * concepts should be added here.
  */
 export class Actor {
     readonly #id: string;
