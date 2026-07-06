@@ -8,6 +8,14 @@ import { apiAgentEvents } from "./api.events";
 import { apiGetDefinitions } from "./api.setting.get";
 import { apiWizzardCancel } from "./api.wizzard.cancel";
 import { apiWizzardConnect } from "./api.wizzard.connect";
+import { apiWizzardDraftActorInspect } from "./api.wizzard.draftActor.inspect";
+import { apiWizzardDraftActorReload } from "./api.wizzard.draftActor.reload";
+import { apiWizzardDraftActorReset } from "./api.wizzard.draftActor.reset";
+import { apiWizzardDraftActorSend } from "./api.wizzard.draftActor.send";
+import { apiWizzardDraftActorStart } from "./api.wizzard.draftActor.start";
+import { apiWizzardDraftActorStop } from "./api.wizzard.draftActor.stop";
+import { apiWizzardNewSession } from "./api.wizzard.newSession";
+import { apiWizzardPreviewSource } from "./api.wizzard.previewSource";
 import { apiWizzardPrompt } from "./api.wizzard.prompt";
 import { baseAgentOs } from './orpc';
 
@@ -29,6 +37,16 @@ const agentHandlers = {
         connect: apiWizzardConnect,
         prompt: apiWizzardPrompt,
         cancel: apiWizzardCancel,
+        newSession: apiWizzardNewSession,
+        previewSource: apiWizzardPreviewSource,
+        draftActor: {
+            start: apiWizzardDraftActorStart,
+            reload: apiWizzardDraftActorReload,
+            reset: apiWizzardDraftActorReset,
+            stop: apiWizzardDraftActorStop,
+            inspect: apiWizzardDraftActorInspect,
+            send: apiWizzardDraftActorSend,
+        },
     },
     events: apiAgentEvents,
 };

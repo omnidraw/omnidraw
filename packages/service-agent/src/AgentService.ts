@@ -2,7 +2,7 @@ import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices
 import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
 import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { mkdirSync } from 'node:fs';
@@ -106,14 +106,6 @@ type TAgentDraftActorStopResult = {
 type TAgentPreviewSourceResult =
   | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
   | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftActorPublishedEvent = {
-  kind: 'draft-actor';
-  widgetId: TWidgetId;
-  sessionId: TSessionId;
-  event: TActorEvent | { kind: 'lifecycle'; type: 'stopped'; actorId: string };
-  snapshot?: TAgentDraftActorSnapshot;
-};
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -577,8 +569,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorPublishedEvent['event']): void {
-    const publishEvent: TAgentDraftActorPublishedEvent = {
+  #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
+    const publishEvent: TAgentDraftActorEvent = {
       kind: 'draft-actor',
       widgetId: id,
       sessionId,
@@ -586,7 +578,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       snapshot: this.#draftActorSnapshot(actor),
     }
 
-    this.#config.eventPublisherService.publishAgentEvent(publishEvent as never)
+    this.#config.eventPublisherService.publishAgentEvent(publishEvent)
   }
 
 }

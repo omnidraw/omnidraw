@@ -1,5 +1,5 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TActorCandidateRecord } from '@vibecanvas/service-agent';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { z } from 'zod';
@@ -54,6 +54,13 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
   z.object({ status: z.literal('error'), message: z.string() }),
 ])
 
+const ZAgentWizzardScope = z.object({ widgetId: z.string(), sessionId: z.string() })
+
+const ZAgentWizzardDraftActorSend = ZAgentWizzardScope.extend({
+  name: z.string().min(1),
+  payload: z.unknown(),
+})
+
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
 export type TAgentWizzardConnect = {
@@ -61,6 +68,34 @@ export type TAgentWizzardConnect = {
   actorCandidate: TActorCandidateRecord | null;
   messageHistory: unknown[];
 }
+
+export type TAgentDraftActorSnapshot = {
+  state: TActorState;
+  context: TActorData;
+};
+
+export type TAgentDraftActorNotReadyReason =
+  | 'manifest-missing'
+  | 'manifest-invalid'
+  | 'actor-functions-missing'
+  | 'session-missing'
+  | 'actor-not-running';
+
+export type TAgentDraftActorResult =
+  | { ready: true; actorId: string; snapshot: TAgentDraftActorSnapshot }
+  | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
+
+export type TAgentDraftActorSendResult =
+  | { ready: true; messageId: string; snapshot: TAgentDraftActorSnapshot }
+  | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
+
+export type TAgentDraftActorStopResult = {
+  stopped: boolean;
+};
+
+export type TAgentPreviewSourceResult =
+  | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
+  | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
 
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
@@ -71,7 +106,7 @@ export const agentContract = oc.router({
       .output(ZAgentSettings),
   },
   wizzard: {
-    connect: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(orpcType<TAgentWizzardConnect>()),
+    connect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardConnect>()),
     prompt: oc.input(z.object({
       widgetId: z.string(),
       sessionId: z.string(),
@@ -82,8 +117,17 @@ export const agentContract = oc.router({
       }).optional(),
       thinkingLevel: ZThinkingLevel.optional(),
     })),
-    cancel: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})).output(ZAgentWizzardCancel),
-    newSession: oc.input(z.object({widgetId: z.string(), sessionId: z.string()})),
+    cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
+    newSession: oc.input(ZAgentWizzardScope),
+    previewSource: oc.input(ZAgentWizzardScope).output(orpcType<TAgentPreviewSourceResult>()),
+    draftActor: {
+      start: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
+      reload: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
+      reset: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
+      stop: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorStopResult>()),
+      inspect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
+      send: oc.input(ZAgentWizzardDraftActorSend).output(orpcType<TAgentDraftActorSendResult>()),
+    },
   },
   auth: {
     login: oc

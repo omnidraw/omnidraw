@@ -12,11 +12,30 @@ export type TFilesystemEvent = {
   fileName: string;
 };
 export type TActorEvent = z.infer<typeof ZActorEvent>
-export type TAgentEvent = {
+export type TAgentDraftActorSnapshot = {
+  state: string;
+  context: unknown;
+};
+export type TAgentChatEvent = {
   widgetId: string;
   sessionId: string;
   event: AgentSessionEvent;
 };
+export type TAgentDraftActorRuntimeEvent =
+  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'ack'; readonly messageId: string; readonly inputName: string }
+  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'state.changed'; readonly from: string; readonly to: string; readonly messageId?: string }
+  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'status.changed'; readonly from: string | null; readonly to: string }
+  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'data.changed'; readonly data: unknown; readonly messageId?: string }
+  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'error'; readonly code: string; readonly message: string; readonly details?: unknown; readonly messageId?: string }
+  | { readonly kind: 'actor'; readonly actorId: string; readonly name: string; readonly payload: unknown; readonly messageId?: string };
+export type TAgentDraftActorEvent = {
+  kind: 'draft-actor';
+  widgetId: string;
+  sessionId: string;
+  event: TAgentDraftActorRuntimeEvent | { kind: 'lifecycle'; type: 'stopped'; actorId: string };
+  snapshot?: TAgentDraftActorSnapshot;
+};
+export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent;
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
