@@ -254,7 +254,7 @@ export function AiWizzard(props: IProps) {
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="actor">
-                    <ActorTab apiService={props.apiService} />
+                    <ActorTab actor={vcJson()} apiService={props.apiService} />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="preview">
                     <PreviewTab />
