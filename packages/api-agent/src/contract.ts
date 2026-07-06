@@ -61,6 +61,15 @@ const ZAgentWizzardDraftActorSend = ZAgentWizzardScope.extend({
   payload: z.unknown(),
 })
 
+const ZAgentWizzardDraftManifestPatch = ZAgentWizzardScope.extend({
+  patch: z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    initialData: z.unknown().optional(),
+    dataSchema: z.unknown().optional(),
+  }).strict(),
+})
+
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
 export type TAgentWizzardConnect = {
@@ -97,6 +106,21 @@ export type TAgentPreviewSourceResult =
   | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
   | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
 
+export type TAgentDraftManifestReadResult =
+  | { ready: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
+  | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
+
+export type TAgentDraftManifestPatch = {
+  name?: string;
+  description?: string;
+  initialData?: unknown;
+  dataSchema?: unknown;
+};
+
+export type TAgentDraftManifestPatchResult =
+  | { ok: true; manifest: TVibecanvasJson }
+  | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
+
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
 
@@ -120,6 +144,10 @@ export const agentContract = oc.router({
     cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
     newSession: oc.input(ZAgentWizzardScope),
     previewSource: oc.input(ZAgentWizzardScope).output(orpcType<TAgentPreviewSourceResult>()),
+    draftManifest: {
+      read: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftManifestReadResult>()),
+      patch: oc.input(ZAgentWizzardDraftManifestPatch).output(orpcType<TAgentDraftManifestPatchResult>()),
+    },
     draftActor: {
       start: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
       reload: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),

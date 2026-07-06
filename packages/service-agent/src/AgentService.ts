@@ -1,13 +1,13 @@
 import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
 import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
-import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import type { TActorData, TActorState, TJsonSchema, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { ZActorData, ZJsonSchema, ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { mkdirSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
-import { join, relative as relativePath } from 'node:path';
+import { readdir, writeFile } from 'node:fs/promises';
+import { join, relative as relativePath, resolve } from 'node:path';
 import { fxLatestActorCandidateRecord } from './core/fx.session-candidate';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
 import type { TActorCandidateRecord, TActorServiceReloader } from './tools/types';
@@ -106,6 +106,21 @@ type TAgentDraftActorStopResult = {
 type TAgentPreviewSourceResult =
   | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
   | TAgentDraftActorNotReadyResult;
+
+type TAgentDraftManifestReadResult =
+  | { ready: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
+  | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
+
+type TAgentDraftManifestPatch = {
+  name?: string;
+  description?: string;
+  initialData?: unknown;
+  dataSchema?: unknown;
+};
+
+type TAgentDraftManifestPatchResult =
+  | { ok: true; manifest: TVibecanvasJson }
+  | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -345,8 +360,73 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return {
       ready: true,
       manifest: manifestResult.manifest,
-      sources: await this.#readWidgetSourceMap(rootDir),
+      sources: await this.#readWidgetSourceMap(rootDir, manifestResult.manifest.widget.relWidgetDir),
     }
+  }
+
+  async readDraftManifestWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftManifestReadResult> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) {
+      return {
+        ready: false,
+        reason: 'session-missing',
+        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
+      }
+    }
+
+    const rootDir = this.#getWizardCwd(id, sessionId)
+    const manifestResult = await this.#readDraftActorManifest(rootDir)
+    if (manifestResult.ready) {
+      return {
+        ready: true,
+        source: 'file',
+        manifest: manifestResult.manifest,
+      }
+    }
+
+    if (manifestResult.reason === 'manifest-missing') {
+      const actorCandidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
+      if (actorCandidate) {
+        return {
+          ready: true,
+          source: 'actor-candidate',
+          manifest: actorCandidate.manifest,
+        }
+      }
+    }
+
+    return {
+      ready: false,
+      reason: manifestResult.reason === 'session-missing' ? 'session-missing' : manifestResult.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
+      message: manifestResult.message,
+    }
+  }
+
+  async patchDraftManifestWizzard(id: TWidgetId, sessionId: string, patch: TAgentDraftManifestPatch): Promise<TAgentDraftManifestPatchResult> {
+    if (!this.sessionMap[id]?.[sessionId]) {
+      return {
+        ok: false,
+        reason: 'session-missing',
+        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
+      }
+    }
+
+    const current = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
+    if (!current.ready) {
+      return {
+        ok: false,
+        reason: current.reason === 'session-missing' ? 'session-missing' : current.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
+        message: current.reason === 'manifest-missing' ? 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.' : current.message,
+      }
+    }
+
+    const editResult = this.#applyDraftManifestPatch(current.manifest, patch)
+    if (!editResult.ok) return editResult
+
+    const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
+    await writeFile(manifestPath, `${JSON.stringify(editResult.manifest, null, 2)}\n`, 'utf8')
+
+    return editResult
   }
 
   login(providerId: 'openai-codex' | 'github-copilot') {
@@ -433,6 +513,66 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       providersWithCredentials,
       providers,
       models
+    }
+  }
+
+  #applyDraftManifestPatch(manifest: TVibecanvasJson, patch: TAgentDraftManifestPatch): TAgentDraftManifestPatchResult {
+    const issues: string[] = []
+    let initialData = manifest.actor.initialData
+    let dataSchema = manifest.actor.dataSchema
+
+    if ('initialData' in patch) {
+      const parsed = ZActorData.safeParse(patch.initialData)
+      if (!parsed.success) {
+        issues.push(...parsed.error.issues.map((issue) => `actor.initialData.${issue.path.join('.')}: ${issue.message}`))
+      } else {
+        initialData = parsed.data
+      }
+    }
+
+    if ('dataSchema' in patch) {
+      const parsed = ZJsonSchema.safeParse(patch.dataSchema)
+      if (!parsed.success) {
+        issues.push(...parsed.error.issues.map((issue) => `actor.dataSchema.${issue.path.join('.')}: ${issue.message}`))
+      } else {
+        dataSchema = parsed.data as TJsonSchema
+      }
+    }
+
+    if (issues.length > 0) {
+      return {
+        ok: false,
+        reason: 'edit-invalid',
+        message: issues.join('; '),
+        issues,
+      }
+    }
+
+    const nextManifest = {
+      ...manifest,
+      name: patch.name ?? manifest.name,
+      description: patch.description ?? manifest.description,
+      actor: {
+        ...manifest.actor,
+        initialData,
+        dataSchema,
+      },
+    }
+
+    const parsedManifest = ZVibecanvasJson.safeParse(nextManifest)
+    if (!parsedManifest.success) {
+      const manifestIssues = parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      return {
+        ok: false,
+        reason: 'manifest-invalid',
+        message: manifestIssues.join('; '),
+        issues: manifestIssues,
+      }
+    }
+
+    return {
+      ok: true,
+      manifest: parsedManifest.data as TVibecanvasJson,
     }
   }
 
@@ -529,8 +669,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async #readWidgetSourceMap(rootDir: string): Promise<Record<string, string>> {
-    const widgetDir = join(rootDir, 'widget')
+  async #readWidgetSourceMap(rootDir: string, relWidgetDir: string): Promise<Record<string, string>> {
+    const root = resolve(rootDir)
+    const widgetDir = resolve(root, relWidgetDir)
+    if (widgetDir !== root && !widgetDir.startsWith(`${root}/`)) return {}
     if (!await Bun.file(widgetDir).exists()) return {}
 
     const sources: Record<string, string> = {}
@@ -567,6 +709,17 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       reason,
       message: messageMap[reason],
     }
+  }
+
+  #draftManifestMessage(id: TWidgetId, sessionId: TSessionId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
+    const label = `widget '${id}' and session '${sessionId}'`
+    const messageMap: Record<typeof reason, string> = {
+      'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
+      'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
+      'session-missing': `No connected agent session for ${label}`,
+    }
+
+    return messageMap[reason]
   }
 
   #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorEvent['event']): void {

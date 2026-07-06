@@ -164,6 +164,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
 | [packages/api-agent/src/api.wizzard.cancel.ts](packages/api-agent/src/api.wizzard.cancel.ts) |  |
 | [packages/api-agent/src/api.wizzard.connect.ts](packages/api-agent/src/api.wizzard.connect.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.inspect.ts](packages/api-agent/src/api.wizzard.draftActor.inspect.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.reload.ts](packages/api-agent/src/api.wizzard.draftActor.reload.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.reset.ts](packages/api-agent/src/api.wizzard.draftActor.reset.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.send.ts](packages/api-agent/src/api.wizzard.draftActor.send.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.start.ts](packages/api-agent/src/api.wizzard.draftActor.start.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.stop.ts](packages/api-agent/src/api.wizzard.draftActor.stop.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftManifest.patch.ts](packages/api-agent/src/api.wizzard.draftManifest.patch.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftManifest.read.ts](packages/api-agent/src/api.wizzard.draftManifest.read.ts) |  |
+| [packages/api-agent/src/api.wizzard.newSession.ts](packages/api-agent/src/api.wizzard.newSession.ts) |  |
+| [packages/api-agent/src/api.wizzard.previewSource.ts](packages/api-agent/src/api.wizzard.previewSource.ts) |  |
 | [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
