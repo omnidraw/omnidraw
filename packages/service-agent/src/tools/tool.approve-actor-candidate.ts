@@ -1,10 +1,11 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdir, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { fxLatestActorCandidateRecord } from '../core/fx.session-candidate';
 import { txAppendActorCandidateApprovalRecord } from '../core/tx.session-candidate';
-import { txTryNpmInstallWithNode, type TNpmInstall } from './tx.npm-install';
+import { txTryNpmInstall, type TNpmInstall } from './tx.npm-install';
 import { txWriteWidgetScaffold } from './tx.scaffold';
 import type { TCandidateSessionManager, TToolDefinition, TToolEventSink } from './types';
 
@@ -47,7 +48,7 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
       }
 
       const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, { cwd: args.cwd, manifest: record.manifest });
-      const npmInstall = await (args.npmInstall ?? ((cwd) => txTryNpmInstallWithNode({ cwd })))(args.cwd);
+      const npmInstall = await (args.npmInstall ?? ((cwd) => txTryNpmInstall({ access, execFile, join }, { cwd })))(args.cwd);
       if (npmInstall.status === 'success') {
         files.push('package-lock.json');
       }

@@ -1,7 +1,3 @@
-import { access } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { join } from 'node:path';
-
 export type TNpmInstallResult =
   | { status: 'skipped'; reason: string }
   | { status: 'success'; stdout: string; stderr: string }
@@ -9,9 +5,16 @@ export type TNpmInstallResult =
 
 export type TNpmInstall = (cwd: string) => Promise<TNpmInstallResult>;
 
+type TExecFile = (
+  file: string,
+  args: readonly string[],
+  options: { cwd: string; timeout: number },
+  callback: (error: Error | null, stdout: unknown, stderr: unknown) => void,
+) => void;
+
 type TPortal = {
   access: (path: string) => Promise<void>;
-  execFile: typeof execFile;
+  execFile: TExecFile;
   join: (...paths: string[]) => string;
 };
 
@@ -47,6 +50,3 @@ export async function txTryNpmInstall(portal: TPortal, args: TArgs): Promise<TNp
   });
 }
 
-export function txTryNpmInstallWithNode(args: TArgs): Promise<TNpmInstallResult> {
-  return txTryNpmInstall({ access, execFile, join }, args);
-}
