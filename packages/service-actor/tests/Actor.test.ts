@@ -122,6 +122,64 @@ describe("Actor", () => {
         actor.close()
     })
 
+    test("moves to implicit base error state when transition function throws", async () => {
+        const errorConfig: TVibecanvasJson = {
+            ...testActorConfig,
+            actor: {
+                ...testActorConfig.actor,
+                states: {
+                    ...testActorConfig.actor.states,
+                    ready: {
+                        on: {
+                            ...testActorConfig.actor.states.ready?.on,
+                            explode: {
+                                func: ["fn.throw"],
+                                allowedTargetStates: ["ready"],
+                            },
+                        },
+                    },
+                    error: {
+                        on: {},
+                    },
+                },
+                inputMsgSchema: {
+                    ...testActorConfig.actor.inputMsgSchema,
+                    explode: {
+                        type: "object",
+                        properties: {},
+                        additionalProperties: false,
+                    },
+                },
+            },
+        }
+        const actor = new Actor({
+            id: "fund-actor-error",
+            rootDir,
+            vsJson: errorConfig
+        })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
+
+        actor.start()
+        actor.inbox("explode", {})
+        await waitForIdle(actor)
+
+        expect(actor.getState()).toBe("error")
+        expect(messages).toContainEqual({
+            kind: "system",
+            actorId: "fund-actor-error",
+            type: "state.changed",
+            from: "ready",
+            to: "error",
+            messageId: expect.any(String),
+        })
+        expect(messages.some(event => event.kind === "system" && event.type === "error" && event.code === "ACTOR_TRANSITION_FAILED")).toBe(true)
+
+        actor.close()
+    })
+
     test("applies valid target state changes after transitions", async () => {
         const actor = new Actor({
             id: "ping-pong-actor",

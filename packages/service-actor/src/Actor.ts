@@ -219,6 +219,7 @@ export class Actor {
             this.#applyTransitionTargetState(transition, item.messageId)
             this.#emitSystemEvent({ type: "ack", messageId: item.messageId, inputName: item.msgName })
         } catch (error) {
+            this.#applyImplicitErrorState(item.messageId)
             this.#emitError({
                 code: 'ACTOR_TRANSITION_FAILED',
                 messageId: item.messageId,
@@ -237,6 +238,13 @@ export class Actor {
         const prevState = this.#state;
         this.#state = nextState;
         this.#emitSystemEvent({ type: "state.changed", from: prevState, to: nextState, messageId })
+    }
+
+    #applyImplicitErrorState(messageId: string) {
+        if (this.#state === "error") return;
+        const prevState = this.#state;
+        this.#state = "error";
+        this.#emitSystemEvent({ type: "state.changed", from: prevState, to: "error", messageId })
     }
 
     #runTransition(transition: TTransition, item: TInboxQueueItem): Promise<void> {

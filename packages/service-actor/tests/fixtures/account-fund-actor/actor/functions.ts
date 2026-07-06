@@ -10,6 +10,9 @@ export default {
     "fn.checkFunds": fnCheckFunds,
     "fn.consumeNextReturn": fnConsumeNextReturn,
     "fn.emitInvalidOutput": fnEmitInvalidOutput,
+    "fn.throw": async () => {
+      throw new Error("fixture transition failed");
+    },
   },
   fx: {
     "fx.accountCheck": fxAccountCheck,
