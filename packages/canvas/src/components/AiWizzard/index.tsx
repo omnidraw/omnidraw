@@ -75,6 +75,20 @@ function getConnectedManifest(data: { vcJson: TVibecanvasJson | null; actorCandi
     return data.vcJson ?? data.actorCandidate?.manifest ?? null
 }
 
+const APPROVE_ACTOR_CANDIDATE_PROMPT = "Approve the current actor candidate and write the deterministic draft scaffold only. Use the latest candidate revision."
+
+const IMPLEMENT_APPROVED_ACTOR_PROMPT = [
+    "The actor candidate has been approved and the scaffold files now exist in this working directory.",
+    "",
+    "Implement the approved Vibecanvas widget from the generated files. Read vibecanvas.json, actor/functions.ts, actor/types.ts, widget/main.ts, and widget/main.css first.",
+    "",
+    "Implement the actor transition functions named by the manifest, update actor/types.ts if useful, and replace the starter widget UI with a working Arrow UI that sends the manifest input messages through actor.sendMessage.",
+    "",
+    "Keep actor files aligned with the fn/fx/tx conventions: pure fn helpers, impure reads in fx helpers, and impure writes in tx helpers. Do not leave any \"not implemented yet\" stubs.",
+    "",
+    "After editing, run vc_validate_widget_files and fix validation errors. Do not publish unless I explicitly ask for publishing.",
+].join("\n")
+
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
@@ -139,8 +153,10 @@ export function AiWizzard(props: IProps) {
                 if (disposed) break
                 if (event.widgetId !== props.id) continue
                 if (event.sessionId !== sessionId()) continue
+                if ("kind" in event && event.kind === "draft-actor") continue
 
                 const piEvent = event.event
+                if ("kind" in piEvent) continue
 
                 if (piEvent.type === "agent_start" || piEvent.type === "turn_start") {
                     setIsRunning(true)
@@ -209,15 +225,32 @@ export function AiWizzard(props: IProps) {
         if (err) throw err
     }
 
+    const reconnectWizzard = async () => {
+        const [err, data] = await props.apiService.api.agent.wizzard.connect({
+            sessionId: sessionId(),
+            widgetId: props.id
+        })
+
+        if (err) throw err
+
+        setVcJson(getConnectedManifest(data))
+        setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
+
+        return data
+    }
+
     const approveActorCandidate = async () => {
         await prompt({
-            text: "Approve the current actor candidate and generate the draft actor and widget code. Use the latest candidate revision.",
+            text: APPROVE_ACTOR_CANDIDATE_PROMPT,
+            images: [],
             model: props.aiWizardPreference?.model ? {
                 id: props.aiWizardPreference.model.modelId,
                 provider: props.aiWizardPreference.model.provider,
             } : undefined,
             thinkingLevel: props.aiWizardPreference?.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
         })
+
+        await reconnectWizzard()
 
         const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.read({
             widgetId: props.id,
@@ -227,6 +260,16 @@ export function AiWizzard(props: IProps) {
         if (!err && result.ready) {
             setVcJson(result.manifest)
         }
+
+        await prompt({
+            text: IMPLEMENT_APPROVED_ACTOR_PROMPT,
+            images: [],
+            model: props.aiWizardPreference?.model ? {
+                id: props.aiWizardPreference.model.modelId,
+                provider: props.aiWizardPreference.model.provider,
+            } : undefined,
+            thinkingLevel: props.aiWizardPreference?.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
+        })
     }
 
     const cancelPrompt = async () => {

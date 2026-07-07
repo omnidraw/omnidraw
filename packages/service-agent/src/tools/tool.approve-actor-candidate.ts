@@ -20,7 +20,7 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
   return defineTool({
     name: 'vc_approve_actor_candidate',
     label: 'Approve Actor Candidate',
-    description: 'Approve the current actor candidate and write the initial Vibecanvas widget scaffold into the draft folder.',
+    description: 'Approve the current actor candidate, write the deterministic Vibecanvas widget scaffold into the draft folder, and hand off to implementation phase.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -60,12 +60,13 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
       });
       await args.onEvent?.({ type: 'widgetupdate', cwd: args.cwd, files });
 
-      return fnToolSuccess(`Actor candidate revision ${record.revision} approved and scaffold written.`, {
+      return fnToolSuccess(`Actor candidate revision ${record.revision} approved and scaffold written. Continue in implementation phase to replace stubs with working actor and widget code.`, {
         revision: record.revision,
         manifest: record.manifest,
         files,
         approval,
         npmInstall,
+        nextPhase: 'implementation',
       });
     },
   }) as TToolDefinition;

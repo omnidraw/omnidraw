@@ -207,7 +207,7 @@ export function ActorTab(props: IProps) {
             <strong>{manifest()?.name}</strong>
             <p>
               {isCandidate()
-                ? "This is a draft candidate. Approve it first to generate vibecanvas.json, actor functions, and widget code before manifest file edits are saved."
+                ? "This is a draft candidate. Approve it to scaffold files, then continue the AI run that implements the actor transitions and widget UI."
                 : "Editing draft manifest fields from the scaffolded vibecanvas.json file."}
             </p>
           </div>
@@ -217,7 +217,7 @@ export function ActorTab(props: IProps) {
               <div class="ai-actor-editor__header-actions">
                 <div class="ai-actor-editor__status ai-actor-editor__status--candidate">Draft</div>
                 <button type="button" class="ai-actor-editor__approve-button" disabled={props.isApproving} onClick={() => void props.onApprove()}>
-                  {props.isApproving ? "Approving" : "Approve"}
+                  {props.isApproving ? "Generating" : "Approve + implement"}
                 </button>
               </div>
             }
@@ -309,7 +309,7 @@ export function ActorTab(props: IProps) {
               </button>
             }
           >
-            <span class="ai-actor-editor__hint">Approve this candidate to generate actor and widget files.</span>
+            <span class="ai-actor-editor__hint">Approve this candidate to scaffold files and start the implementation prompt.</span>
           </Show>
         </div>
       </section>

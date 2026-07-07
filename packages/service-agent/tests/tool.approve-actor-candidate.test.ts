@@ -30,6 +30,7 @@ describe('vc_approve_actor_candidate', () => {
     expect(result.details.files).toContain('package-lock.json');
     expect(result.details.files).toContain('actor/functions.ts');
     expect(result.details.files).toContain('actor/tx.increment.ts');
+    expect(result.details.nextPhase).toBe('implementation');
     expect(events.some((event) => event.type === 'widgetupdate')).toBe(true);
     expect(npmInstallCwd).toBe(cwd);
     expect(result.details.npmInstall.status).toBe('success');
