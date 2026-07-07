@@ -101,6 +101,32 @@ export class ContextMenuService implements IService<TContextMenuServiceHooks> {
     this.hooks.stateChange.call();
   }
 
+  openWithActionsAt(args: {
+    x: number;
+    y: number;
+    actions: TContextMenuAction[];
+  }) {
+    const actions = args.actions.filter((action) => !action.hidden).sort((left, right) => {
+      const leftPriority = left.priority ?? 10000;
+      const rightPriority = right.priority ?? 10000;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      return left.label.localeCompare(right.label);
+    });
+
+    this.x = args.x;
+    this.y = args.y;
+    this.context = null;
+    this.actions = actions.length === 0
+      ? [{ id: "no-actions", label: "No actions available", disabled: true, priority: 999999, onSelect: () => {} }]
+      : actions;
+    this.open = true;
+    this.requestId += 1;
+    this.hooks.stateChange.call();
+  }
+
   close() {
     if (!this.open && this.actions.length === 0 && this.context === null) {
       return;
