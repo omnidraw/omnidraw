@@ -91,6 +91,12 @@ const ZAgentWizzardDraftManifestPatch = ZAgentWizzardScope.extend({
     description: z.string().optional(),
     initialData: z.unknown().optional(),
     dataSchema: z.unknown().optional(),
+    tool: z.object({
+      label: z.string().optional(),
+      icon: z.string().nullable().optional(),
+      group: z.string().nullable().optional(),
+      priority: z.number().nullable().optional(),
+    }).strict().optional(),
   }).strict(),
 })
 
@@ -139,6 +145,12 @@ export type TAgentDraftManifestPatch = {
   description?: string;
   initialData?: unknown;
   dataSchema?: unknown;
+  tool?: {
+    label?: string;
+    icon?: string | null;
+    group?: string | null;
+    priority?: number | null;
+  };
 };
 
 export type TAgentDraftManifestPatchResult =

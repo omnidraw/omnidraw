@@ -1,11 +1,12 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
+import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
 import { AiWizzard } from "../../components/AiWizzard";
-import type { CrdtService, SceneService } from "../../services";
+import type { CrdtService, SceneService, ToolService } from "../../services";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 const AI_WIDGET_KIND = "ai";
@@ -82,6 +83,7 @@ function mountAiWidget(portal: {
   apiService: IRuntimeConfig['apiService'];
   crdt: CrdtService;
   scene: SceneService;
+  tool: ToolService;
   createSessionId: () => string;
 }, args: { root: HTMLDivElement; element: TElement, id: string }) {
   args.root.replaceChildren();
@@ -97,10 +99,20 @@ function mountAiWidget(portal: {
     });
   }
 
+  const readToolGroups = () => {
+    return [...new Set(portal.tool.getTools()
+      .map((tool) => tool.group)
+      .filter((group): group is string => typeof group === "string" && group.trim().length > 0))]
+      .sort((left, right) => left.localeCompare(right));
+  };
+  const [toolGroups, setToolGroups] = createSignal(readToolGroups());
+  portal.tool.hooks.toolsChange.tap(() => setToolGroups(readToolGroups()));
+
   render(() => AiWizzard({
     apiService: portal.apiService,
     id: args.id,
     sessionId: initialSessionId,
+    toolGroups: toolGroups(),
     aiWizardPreference: getAiWidgetPayload({ element: args.element }),
     onAiWizardPreferenceChange: (preference) => {
       persistAiPayload({
@@ -154,6 +166,7 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
           apiService: ctx.config.apiService,
           crdt,
           scene,
+          tool,
           createSessionId: () => crypto.randomUUID(),
         }, { root, element, id: element.id }),
       });

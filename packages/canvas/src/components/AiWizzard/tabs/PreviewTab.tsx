@@ -200,6 +200,7 @@ export function PreviewTab(props: IProps) {
   const [isPublishing, setIsPublishing] = createSignal(false)
   const [publishMessage, setPublishMessage] = createSignal<string>()
   const [manifest, setManifest] = createSignal<TVibecanvasJson | null>(null)
+  const [canPreview, setCanPreview] = createSignal(false)
   const [actorState, setActorState] = createSignal<string>("booting")
   const [sourceCount, setSourceCount] = createSignal(0)
 
@@ -235,12 +236,36 @@ export function PreviewTab(props: IProps) {
   async function loadPreview(mode: "start" | "reload" | "reset" = "start") {
     if (!root) return
 
+    setCanPreview(false)
     if (mode === "reload") setIsReloading(true)
     if (mode === "reset") setIsResetting(true)
     setStatus("loading")
     setMessage(mode === "start" ? "Loading preview." : mode === "reload" ? "Reloading files." : "Resetting actor.")
 
     try {
+      const [draftManifestError, draftManifestResult] = await props.apiService.api.agent.wizzard.draftManifest.read({
+        widgetId: props.widgetId,
+        sessionId: props.sessionId,
+      })
+
+      if (draftManifestError) throw new Error(draftManifestError.message)
+      const hasApprovedActorScaffold = draftManifestResult.ready && draftManifestResult.source === "file"
+
+      if (!hasApprovedActorScaffold) {
+        disposeCurrentSandbox()
+        setManifest(null)
+        setStatus("not-ready")
+        setSourceCount(0)
+        setCanPreview(false)
+        setMessage(draftManifestResult.ready
+          ? "Approve the actor candidate first before previewing this widget."
+          : "Approve the actor candidate first before previewing this widget."
+        )
+        return
+      }
+
+      setCanPreview(true)
+
       const [sourceError, sourceResult] = await props.apiService.api.agent.wizzard.previewSource({
         widgetId: props.widgetId,
         sessionId: props.sessionId,
@@ -490,6 +515,19 @@ export function PreviewTab(props: IProps) {
         </Show>
       </section>
       <div class="ai-wizzard-preview-sandbox" ref={root} />
+      <Show when={canPreview()} fallback={
+        <div class="ai-wizzard-preview-card ai-wizzard-preview-card--toolbar">
+          <div class="ai-wizzard-preview-header">
+            <div>
+              <span>Preview</span>
+              <strong>Actor approval needed</strong>
+            </div>
+          </div>
+          <div class="ai-wizzard-preview-row">
+            <span>Approve the actor candidate to unlock preview and test the widget.</span>
+          </div>
+        </div>
+      }>
       <Dialog open={isPublishDialogOpen()} onOpenChange={setIsPublishDialogOpen}>
         <Dialog.Portal>
           <Dialog.Overlay class="ai-wizzard-dialog-overlay" />
@@ -523,6 +561,7 @@ export function PreviewTab(props: IProps) {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog>
+      </Show>
     </div>
   )
 }
