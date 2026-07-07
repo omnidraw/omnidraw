@@ -64,6 +64,7 @@ function isSetActorCandidateToolResult(message: unknown) {
   return object?.role === "toolResult"
     && typeof object.toolName === "string"
     && object.toolName.toLowerCase() === "vc_set_actor_candidate"
+    && object.isError !== true
 }
 
 function isScrolledToBottom(element: HTMLElement) {

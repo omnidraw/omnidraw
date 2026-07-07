@@ -116,7 +116,7 @@ function renderChatTab(settings = {
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}) {
+}, messageHistory = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -124,10 +124,11 @@ function renderChatTab(settings = {
   disposeRendered = render(() => ChatTab({
     isCanceling: false,
     isRunning: false,
-    messageHistory: MOCK_MESSAGE_HISTORY,
+    messageHistory,
     onCancel: () => {},
     onNewChat: () => {},
     onPrompt: async () => {},
+    onInspectActor,
     settings,
   }), container)
 
@@ -212,5 +213,42 @@ describe("ChatTab rendered message history", () => {
     expect(menuText).toContain("Off")
     expect(menuText).toContain("Minimal")
     expect(menuText).toContain("Xhigh")
+  })
+
+  it("shows Inspect Actor for successful vc_set_actor_candidate tool results", () => {
+    const onInspectActor = vi.fn()
+
+    const successfulActorToolResult = {
+      role: "toolResult",
+      toolCallId: "call-ok",
+      toolName: "vc_set_actor_candidate",
+      content: [
+        { type: "text", text: "Actor candidate saved as revision 1." },
+      ],
+    }
+
+    const root = renderChatTab(undefined, [successfulActorToolResult], onInspectActor)
+    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Inspect Actor")
+
+    expect(buttons).toHaveLength(1)
+  })
+
+  it("does not show Inspect Actor for failed vc_set_actor_candidate tool results", () => {
+    const onInspectActor = vi.fn()
+
+    const failedActorToolResult = {
+      role: "toolResult",
+      toolCallId: "call-fail",
+      toolName: "vc_set_actor_candidate",
+      isError: true,
+      content: [
+        { type: "text", text: "Actor candidate is invalid." },
+      ],
+    }
+
+    const root = renderChatTab(undefined, [failedActorToolResult], onInspectActor)
+    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Inspect Actor")
+
+    expect(buttons).toHaveLength(0)
   })
 })
