@@ -8,6 +8,7 @@ import addFormats from "ajv-formats";
 import { join } from "node:path";
 import type { TActorData, TActorState, TInputMessage, TTransition, TJsonSchema, TVibecanvasJson } from "./core/types";
 import type { TActorStatus } from "@vibecanvas/service-db/model";
+import { buildActorIpcCommand } from "./actor-ipc-command";
 
 export type TActorSystemEvent =
     | { readonly kind: "system"; readonly actorId: string; readonly type: "ack"; readonly messageId: string; readonly inputName: string }
@@ -48,6 +49,7 @@ type TInboxQueueItem = {
 }
 
 type TActorChildMessage =
+    | { type: "ready" }
     | { type: "next"; id: number }
     | { type: "setData"; id: number; data: TActorData }
     | { type: "emitMessage"; id: number; msg: any }
@@ -97,6 +99,9 @@ export class Actor {
     #proc: Bun.Subprocess | null = null;
     #queue: TInboxQueueItem[] = [];
     #isProcessing = false;
+    #isChildReady = false;
+    #isClosing = false;
+    #childFailure: Error | null = null;
     #nextRunId = 1;
     #pendingRuns = new Map<number, TPendingRun>();
     #listeners = new Set<(event: TActorEvent) => void>();
@@ -119,16 +124,17 @@ export class Actor {
 
     start() {
         if (this.#proc) return;
-        this.actorFuncions()
+        this.#isClosing = false;
+        this.#childFailure = null;
+        this.#spawnActorFunctionsProcess()
         this.#emitSystemEvent({ type: "status.changed", from: null, to: "running" })
         this.#emitSystemEvent({ type: "state.changed", from: 'booting', to: this.#state })
         this.#scheduleStateTimeoutIfNeeded()
         this.#processQueue()
     }
 
-    private actorFuncions() {
-        const icpClientPath = new URL('icp-client.ts', import.meta.url).pathname
-        const proc = Bun.spawn(["bun", "run", icpClientPath, "--functionPath", this.#functionPath], {
+    #spawnActorFunctionsProcess() {
+        const proc = Bun.spawn(buildActorIpcCommand({ functionPath: this.#functionPath }), {
             cwd: this.#rootDir,
             env: { ...process.env },
             stdout: "pipe",
@@ -138,6 +144,10 @@ export class Actor {
             },
         });
         this.#proc = proc;
+
+        void proc.exited.then((exitCode) => {
+            this.#handleChildExit(exitCode)
+        })
 
         proc.stdout?.pipeTo(new WritableStream({
             write(chunk) {
@@ -203,6 +213,8 @@ export class Actor {
 
     close() {
         const wasRunning = this.#proc !== null
+        this.#isClosing = true;
+        this.#isChildReady = false;
         this.#clearStateTimeout()
         this.#proc?.kill()
         this.#proc = null
@@ -215,6 +227,11 @@ export class Actor {
 
     async #processQueue() {
         if (this.#isProcessing) return;
+        if (this.#childFailure) {
+            this.#failQueued(this.#childFailure)
+            return;
+        }
+        if (!this.#isChildReady) return;
         const item = this.#queue.shift();
         if (!item) return;
 
@@ -300,6 +317,8 @@ export class Actor {
     #runTransition(transition: TTransition, item: TInboxQueueItem): Promise<void> {
         const proc = this.#proc;
         if (!proc) return Promise.reject(new Error("Actor child process is not running"));
+        if (this.#childFailure) return Promise.reject(this.#childFailure);
+        if (!this.#isChildReady) return Promise.reject(new Error("Actor child process is not ready"));
 
         const id = this.#nextRunId++;
         return new Promise((resolve, reject) => {
@@ -324,6 +343,13 @@ export class Actor {
         }
 
         if (!message || typeof message !== "object" || !("type" in message)) return;
+
+        if (message.type === "ready") {
+            this.#isChildReady = true;
+            this.#childFailure = null;
+            this.#processQueue()
+            return;
+        }
 
         if (message.type === "setData") {
             this.#data = message.data;
@@ -358,10 +384,11 @@ export class Actor {
     }
 
     #rejectPending(id: number | undefined, error: unknown) {
+        const rejection = this.#toError(error);
         if (typeof id !== "number") {
             for (const [runId, pending] of this.#pendingRuns) {
                 this.#pendingRuns.delete(runId)
-                pending.reject(error)
+                pending.reject(rejection)
             }
             return;
         }
@@ -369,7 +396,64 @@ export class Actor {
         const pending = this.#pendingRuns.get(id);
         if (!pending) return;
         this.#pendingRuns.delete(id);
-        pending.reject(error);
+        pending.reject(rejection);
+    }
+
+    #failQueued(error: Error) {
+        const queued = this.#queue.splice(0);
+        for (const item of queued) {
+            this.#applyImplicitErrorState(item.messageId)
+            this.#emitError({
+                code: "ACTOR_TRANSITION_FAILED",
+                messageId: item.messageId,
+                message: error.message,
+                details: { cause: error },
+            })
+        }
+    }
+
+    #handleChildExit(exitCode: number | null) {
+        if (this.#isClosing) return;
+
+        this.#isChildReady = false;
+        this.#proc = null;
+
+        const error = new Error(`Actor child process exited with code ${exitCode}`)
+        this.#childFailure = error;
+        this.#rejectPending(undefined, error)
+        this.#failQueued(error)
+
+        if (this.#isProcessing) {
+            this.#isProcessing = false;
+        }
+
+        this.#applyImplicitErrorState()
+        this.#emitError({
+            code: "ACTOR_CHILD_EXITED",
+            message: error.message,
+            details: { exitCode },
+        })
+        this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" })
+    }
+
+    #toError(error: unknown): Error {
+        if (error instanceof Error) return error;
+        if (
+            error &&
+            typeof error === "object" &&
+            "message" in error &&
+            typeof error.message === "string"
+        ) {
+            const named = new Error(error.message)
+            if ("name" in error && typeof error.name === "string") {
+                named.name = error.name
+            }
+            if ("stack" in error && typeof error.stack === "string") {
+                named.stack = error.stack
+            }
+            return named
+        }
+        return new Error(typeof error === "string" ? error : JSON.stringify(error))
     }
 
     #emitActorMessageFromChild(msg: any, runId: number) {

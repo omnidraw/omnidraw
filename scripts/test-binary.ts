@@ -25,6 +25,13 @@ type TBinaryScenario = {
   cleanupPaths: string[]
 }
 
+type TActorIpcChildMessage =
+  | { type: "ready" }
+  | { type: "setData"; id: number; data: unknown }
+  | { type: "emitMessage"; id: number; msg: unknown }
+  | { type: "done"; id: number }
+  | { type: "error"; id?: number; msg: unknown; error?: boolean }
+
 function parseArgs(): TArgs {
   const args = Bun.argv.slice(2)
   const getArg = (name: string): string | undefined => {
@@ -218,6 +225,122 @@ async function createPortBlocker(port: number): Promise<{ close: () => Promise<v
   }
 }
 
+async function createActorIpcFixture(tempRoot: string): Promise<string> {
+  const fixtureDir = path.join(tempRoot, "actor-ipc-fixture")
+  await Bun.$`mkdir -p ${fixtureDir}`.quiet()
+  const functionPath = path.join(fixtureDir, "functions.ts")
+  await Bun.write(functionPath, `
+export default {
+  fn: {},
+  fx: {},
+  tx: {
+    "tx.addFunds": async (portal, args) => {
+      const data = { balance: args.data.balance + args.msg.amount };
+      await portal.setData(data);
+      await portal.emitMessage({
+        type: "funds-added",
+        payload: {
+          accountId: args.msg.accountId,
+          amount: args.msg.amount,
+          balance: data.balance,
+        },
+      });
+    },
+  },
+};
+`)
+  return functionPath
+}
+
+async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeoutMs: number): Promise<void> {
+  const functionPath = await createActorIpcFixture(tempRoot)
+  const messages: TActorIpcChildMessage[] = []
+
+  console.log(`[test-binary] Scenario 'actor-ipc' using ${functionPath}`)
+
+  let proc: Bun.Subprocess | null = null
+  const done = withTimeout(new Promise<void>((resolve, reject) => {
+    proc = Bun.spawn({
+      cmd: [binaryPath, "--icp-client", "--functionPath", functionPath],
+      cwd: path.dirname(functionPath),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env },
+      ipc(message) {
+        const childMessage = message as TActorIpcChildMessage
+        messages.push(childMessage)
+
+        if (childMessage.type === "ready") {
+          proc?.send({
+            type: "run",
+            id: 1,
+            func: ["tx.addFunds"],
+            payload: { accountId: "compiled", amount: 29 },
+            data: { balance: 13 },
+          })
+          return
+        }
+
+        if (childMessage.type === "setData") {
+          proc?.send({ type: "ack", id: childMessage.id, action: "setData" })
+          return
+        }
+
+        if (childMessage.type === "emitMessage") {
+          proc?.send({ type: "ack", id: childMessage.id, action: "emitMessage" })
+          return
+        }
+
+        if (childMessage.type === "done") {
+          resolve()
+          return
+        }
+
+        if (childMessage.type === "error") {
+          reject(new Error(`actor-ipc child error: ${JSON.stringify(childMessage.msg)}`))
+        }
+      },
+    })
+  }), timeoutMs, "actor-ipc")
+
+  try {
+    await done
+  } finally {
+    proc?.kill()
+    if (proc) {
+      const result = await Promise.race([
+        proc.exited,
+        Bun.sleep(5000).then(() => "timeout"),
+      ])
+      if (result === "timeout") {
+        proc.kill(9)
+        await proc.exited
+      }
+    }
+  }
+
+  const types = messages.map((message) => message.type)
+  if (JSON.stringify(types) !== JSON.stringify(["ready", "setData", "emitMessage", "done"])) {
+    throw new Error(`actor-ipc message sequence mismatch: ${JSON.stringify(types)}`)
+  }
+
+  const setData = messages.find((message) => message.type === "setData")
+  if (setData?.type !== "setData" || JSON.stringify(setData.data) !== JSON.stringify({ balance: 42 })) {
+    throw new Error(`actor-ipc setData mismatch: ${JSON.stringify(setData)}`)
+  }
+
+  const emitMessage = messages.find((message) => message.type === "emitMessage")
+  const expectedMsg = {
+    type: "funds-added",
+    payload: { accountId: "compiled", amount: 29, balance: 42 },
+  }
+  if (emitMessage?.type !== "emitMessage" || JSON.stringify(emitMessage.msg) !== JSON.stringify(expectedMsg)) {
+    throw new Error(`actor-ipc emitMessage mismatch: ${JSON.stringify(emitMessage)}`)
+  }
+
+  console.log("[test-binary] PASS actor-ipc ready/setData/emitMessage/done")
+}
+
 async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBinaryScenario): Promise<void> {
   const baseUrl = `http://127.0.0.1:${scenario.port}`
   console.log(`[test-binary] Scenario '${scenario.name}' using ${baseUrl}`)
@@ -329,6 +452,8 @@ async function main() {
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
+
+  await assertActorIpcBinary(binaryPath, tempRoot, args.requestTimeoutMs)
 
   await runBinaryScenario(binaryPath, args, {
     name: "config-env",
