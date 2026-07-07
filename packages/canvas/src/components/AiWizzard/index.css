@@ -11,6 +11,13 @@
   font-family: var(--vc-terminal-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
 }
 
+.ai-wizzard-shell--actor {
+  display: block;
+  height: max-content;
+  min-height: 100%;
+  overflow: visible;
+}
+
 .ai-wizzard-shell::-webkit-scrollbar,
 .ai-wizzard-tabs__content::-webkit-scrollbar {
   width: 10px;
@@ -38,6 +45,12 @@
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+.ai-wizzard-shell--actor .ai-wizzard-tabs {
+  height: max-content;
+  min-height: 100%;
+  overflow: visible;
 }
 
 .vc-async-state {
@@ -190,6 +203,14 @@
   min-height: 0;
   overflow: auto;
   padding: 30px 26px 20px;
+}
+
+.ai-wizzard-tabs__content--actor {
+  display: block;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .ai-wizzard-tab {
@@ -1003,6 +1024,196 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.ai-wizzard-tab--actor {
+  gap: 22px;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  padding-bottom: 20px;
+}
+
+.ai-actor-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+  padding: 18px;
+}
+
+.ai-actor-editor__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.ai-actor-editor__header-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.ai-actor-editor__header strong {
+  color: var(--foreground);
+  display: block;
+  font-size: 18px;
+  line-height: 1.25;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.ai-actor-editor__header p {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.ai-actor-editor__status {
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 8px 10px;
+  text-transform: uppercase;
+}
+
+.ai-actor-editor__status[data-state="saved"] {
+  color: var(--success);
+}
+
+.ai-actor-editor__status--candidate {
+  color: #ff7a2f;
+}
+
+.ai-actor-editor__approve-button {
+  align-items: center;
+  border: 1px solid var(--border);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+
+.ai-actor-editor__approve-button:hover {
+  background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+}
+
+.ai-actor-editor__approve-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-actor-editor__approve-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ai-actor-editor__grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ai-actor-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-actor-editor__field span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ai-actor-editor__field input,
+.ai-actor-editor__field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px;
+}
+
+.ai-actor-editor__field input {
+  min-height: 40px;
+}
+
+.ai-actor-editor__field input[readonly],
+.ai-actor-editor__field textarea[readonly] {
+  color: var(--muted-foreground);
+}
+
+.ai-actor-editor__field textarea {
+  resize: vertical;
+}
+
+.ai-actor-editor__field--json textarea {
+  font-family: var(--vc-terminal-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  min-height: 260px;
+  white-space: pre;
+}
+
+.ai-actor-editor__field input:focus-visible,
+.ai-actor-editor__field textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-actor-editor__field small {
+  color: var(--destructive);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ai-actor-editor__error {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 10%, var(--background));
+  color: var(--destructive);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.ai-actor-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ai-actor-editor__actions .ai-wizzard-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ai-actor-editor__hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .ai-wizzard-tab--settings {
   gap: 22px;
 }
@@ -1311,9 +1522,14 @@
 @media (max-width: 720px) {
   .ai-wizzard-tabs__list,
   .ai-wizzard-summary-grid,
+  .ai-actor-editor__grid,
   .ai-wizzard-section-grid,
   .ai-wizzard-provider-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ai-actor-editor__header {
+    flex-direction: column;
   }
 
   .ai-wizzard-tabs__trigger {

@@ -1,6 +1,6 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Tabs } from "@kobalte/core/tabs"
-import { Match, Switch, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { Match, Switch, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
@@ -70,6 +70,10 @@ function withAgentMessageFinished(message: unknown, finished: boolean) {
     }
 }
 
+function getConnectedManifest(data: { vcJson: TVibecanvasJson | null; actorCandidate?: { manifest: TVibecanvasJson } | null }) {
+    return data.vcJson ?? data.actorCandidate?.manifest ?? null
+}
+
 export function AiWizzard(props: IProps) {
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
@@ -99,7 +103,7 @@ export function AiWizzard(props: IProps) {
                 throw err
             }
 
-            setVcJson(data.vcJson)
+            setVcJson(getConnectedManifest(data))
             setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
         })
     })
@@ -203,6 +207,26 @@ export function AiWizzard(props: IProps) {
         if (err) throw err
     }
 
+    const approveActorCandidate = async () => {
+        await prompt({
+            text: "Approve the current actor candidate and generate the draft actor and widget code. Use the latest candidate revision.",
+            model: props.aiWizardPreference?.model ? {
+                id: props.aiWizardPreference.model.modelId,
+                provider: props.aiWizardPreference.model.provider,
+            } : undefined,
+            thinkingLevel: props.aiWizardPreference?.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
+        })
+
+        const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.read({
+            widgetId: props.id,
+            sessionId: sessionId(),
+        })
+
+        if (!err && result.ready) {
+            setVcJson(result.manifest)
+        }
+    }
+
     const cancelPrompt = async () => {
         if (isCanceling()) return
 
@@ -230,9 +254,11 @@ export function AiWizzard(props: IProps) {
     }
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
+    const activeTab = createMemo(() => selectedTab() ?? (aiAuthenticated() ? "chat" : "settings"))
+
     return (
-        <div class="ai-wizzard-shell">
-            <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" value={selectedTab() ?? (aiAuthenticated() ? "chat" : "settings")} onChange={setSelectedTab}>
+        <div class="ai-wizzard-shell" classList={{ "ai-wizzard-shell--actor": activeTab() === "actor" }}>
+            <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" value={activeTab()} onChange={setSelectedTab}>
                 <Tabs.List class="ai-wizzard-tabs__list">
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="chat">Chat</Tabs.Trigger>
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="actor">Actor</Tabs.Trigger>
@@ -253,8 +279,16 @@ export function AiWizzard(props: IProps) {
                         onNewChat={newChat}
                     />
                 </Tabs.Content>
-                <Tabs.Content class="ai-wizzard-tabs__content" value="actor">
-                    <ActorTab actor={vcJson()} apiService={props.apiService} />
+                <Tabs.Content class="ai-wizzard-tabs__content ai-wizzard-tabs__content--actor" value="actor">
+                    <ActorTab
+                        actor={vcJson()}
+                        apiService={props.apiService}
+                        isApproving={isRunning()}
+                        sessionId={sessionId()}
+                        widgetId={props.id}
+                        onApprove={approveActorCandidate}
+                        onManifestChange={setVcJson}
+                    />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="preview">
                     <PreviewTab />
