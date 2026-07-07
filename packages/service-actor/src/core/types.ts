@@ -16,7 +16,7 @@ export type TActorNonErrorState = Exclude<TActorState, 'error' | `error.${string
 
 export type TTransition = {
   func: TFunctionName[];
-  allowedTargetStates: TActorNonErrorState[];
+  allowedTargetStates: TActorState[];
 }
 
 export type TActorStateConfig = {

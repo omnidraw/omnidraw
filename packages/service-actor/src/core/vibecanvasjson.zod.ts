@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { TActorData, TActorNonErrorState, TActorState, TFunctionName, TJsonSchema, TVibecanvasJson } from './types';
+import type { TActorData, TActorState, TFunctionName, TJsonSchema, TVibecanvasJson } from './types';
 
 export const ZJsonSchemaPrimitiveType = z.enum([
   'null',
@@ -70,13 +70,9 @@ export const ZFunctionName = z.custom<TFunctionName>(
   (value) => typeof value === 'string' && /^(fn|fx|tx)\..*$/.test(value),
 );
 
-export const ZActorNonErrorState = z.custom<TActorNonErrorState>(
-  (value) => typeof value === 'string' && /^(booting|ready|busy|waiting)(\..*)?$/.test(value),
-);
-
 export const ZTransition = z.object({
   func: z.array(ZFunctionName),
-  allowedTargetStates: z.array(ZActorNonErrorState),
+  allowedTargetStates: z.array(ZActorState),
 });
 
 export const ZActorStateConfig = z.object({
