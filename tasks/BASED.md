@@ -124,6 +124,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B34] - ai wizard: model menu need 2 times before update
 - [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
 - [x]: [B36](b/B36.md) - actor timeouts only trigger in error state
+- [ ]: [B66](b/B66.md) - actor clone copy write burst crashes Turso DB (`cell_get`) on dev
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -278,7 +279,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
 - [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 - [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
-- [ ]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
+- [x]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits
