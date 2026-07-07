@@ -100,7 +100,7 @@ export class Actor {
     #nextRunId = 1;
     #pendingRuns = new Map<number, TPendingRun>();
     #listeners = new Set<(event: TActorEvent) => void>();
-    #errorTimeout: ReturnType<typeof setTimeout> | null = null;
+    #stateTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor(config: IActorConfig) {
         this.#id = config.id
@@ -122,7 +122,7 @@ export class Actor {
         this.actorFuncions()
         this.#emitSystemEvent({ type: "status.changed", from: null, to: "running" })
         this.#emitSystemEvent({ type: "state.changed", from: 'booting', to: this.#state })
-        this.#scheduleErrorTimeoutIfNeeded()
+        this.#scheduleStateTimeoutIfNeeded()
         this.#processQueue()
     }
 
@@ -203,7 +203,7 @@ export class Actor {
 
     close() {
         const wasRunning = this.#proc !== null
-        this.#clearErrorTimeout()
+        this.#clearStateTimeout()
         this.#proc?.kill()
         this.#proc = null
         if (wasRunning) this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" })
@@ -247,7 +247,7 @@ export class Actor {
         const prevState = this.#state;
         this.#state = nextState;
         this.#emitSystemEvent({ type: "state.changed", from: prevState, to: nextState, messageId })
-        this.#scheduleErrorTimeoutIfNeeded()
+        this.#scheduleStateTimeoutIfNeeded()
     }
 
     #applyImplicitErrorState(messageId?: string) {
@@ -255,19 +255,20 @@ export class Actor {
         const prevState = this.#state;
         this.#state = "error";
         this.#emitSystemEvent({ type: "state.changed", from: prevState, to: "error", messageId })
-        this.#scheduleErrorTimeoutIfNeeded()
+        this.#scheduleStateTimeoutIfNeeded()
     }
 
-    #scheduleErrorTimeoutIfNeeded() {
-        this.#clearErrorTimeout()
-        if (this.#state !== "error") return;
+    #scheduleStateTimeoutIfNeeded() {
+        this.#clearStateTimeout()
 
-        const timeout = this.#getErrorTimeoutMessage()
+        const timeout = this.#getStateTimeoutMessage()
         if (!timeout) return;
 
-        this.#errorTimeout = setTimeout(() => {
-            this.#errorTimeout = null;
-            if (this.#state !== "error") return;
+        const scheduledState = this.#state
+
+        this.#stateTimeout = setTimeout(() => {
+            this.#stateTimeout = null;
+            if (this.#state !== scheduledState) return;
             this.#queue.push({
                 messageId: crypto.randomUUID(),
                 msgName: timeout.msgName,
@@ -277,16 +278,16 @@ export class Actor {
         }, timeout.delayMs)
     }
 
-    #clearErrorTimeout() {
-        if (!this.#errorTimeout) return;
-        clearTimeout(this.#errorTimeout)
-        this.#errorTimeout = null;
+    #clearStateTimeout() {
+        if (!this.#stateTimeout) return;
+        clearTimeout(this.#stateTimeout)
+        this.#stateTimeout = null;
     }
 
-    #getErrorTimeoutMessage(): { msgName: TInputMessage; delayMs: number } | null {
-        const entries = Object.keys(this.#vsJson.actor.states.error?.on ?? {})
+    #getStateTimeoutMessage(): { msgName: TInputMessage; delayMs: number } | null {
+        const entries = Object.keys(this.#vsJson.actor.states[this.#state]?.on ?? {})
             .map((msgName) => {
-                const match = /^timout:(\d+)ms$/.exec(msgName)
+                const match = /^(?:timeout|timout):(\d+)ms$/.exec(msgName)
                 if (!match) return null;
                 return { msgName: msgName as TInputMessage, delayMs: Number(match[1]) }
             })
