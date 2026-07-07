@@ -378,12 +378,12 @@ function setupDragListener(portal: TPortal) {
   if (!(portal.node instanceof portal.Group)) return false
   const widgetNode = portal.node
 
-  widgetNode.off('dragmove dragend')
-  widgetNode.on('dragmove', () => {
+  widgetNode.off('dragmove.widgetListener dragend.widgetListener')
+  widgetNode.on('dragmove.widgetListener', () => {
     portal.closeWidgetMenu?.()
   })
 
-  widgetNode.on('dragend', () => {
+  widgetNode.on('dragend.widgetListener', () => {
     portal.crdtService.build()
       .patchElement(widgetNode.id(), 'x', widgetNode.x())
       .patchElement(widgetNode.id(), 'y', widgetNode.y())

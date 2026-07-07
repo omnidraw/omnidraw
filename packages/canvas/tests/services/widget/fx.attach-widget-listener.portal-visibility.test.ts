@@ -58,6 +58,63 @@ function createHooks() {
 }
 
 describe("widget button portal visibility", () => {
+  test("keeps the mounted body div synced while dragging after widget listeners attach", () => {
+    ensureDom();
+
+    const element = createWidgetElement();
+    const container = createTestContainer();
+    const stage = new Konva.Stage({ container, width: 800, height: 600 });
+    const layer = new Konva.Layer();
+    const widgetPortal = document.createElement("div");
+    const cameraService = createCameraService();
+    const selectionService = new SelectionService();
+    const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), element);
+
+    expect(node).toBeInstanceOf(Konva.Group);
+    stage.add(layer);
+    layer.add(node as Konva.Group);
+    container.appendChild(widgetPortal);
+
+    const removeListener = txAttachDomPortal({
+      node,
+      document,
+      widgetServie: {} as WidgetManagerService,
+      widgetPortal,
+      cameraService,
+      selectionService,
+    }, { element });
+    if (removeListener) {
+      (node as Konva.Group).setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, removeListener.syncDiv);
+    }
+    cameraService.hooks.change.call();
+
+    fxAttachWidgetListener({
+      node: node as Konva.Group,
+      Circle: Konva.Circle,
+      Group: Konva.Group,
+      Rect: Konva.Rect,
+      hooks: createHooks(),
+      selection: selectionService,
+      toElement: () => element,
+      crdtService: {} as CrdtService,
+    }, {});
+
+    const div = widgetPortal.querySelector<HTMLDivElement>("[data-widget-element-id='widget-button-1']");
+    expect(div).not.toBeNull();
+    const initialTransform = div?.style.transform;
+
+    (node as Konva.Group).position({ x: 80, y: 90 });
+    (node as Konva.Group).fire("dragmove");
+
+    expect(div?.style.transform).not.toBe(initialTransform);
+    expect(div?.style.transform).toContain("80");
+    expect(div?.style.transform).toContain("118");
+
+    removeListener?.();
+    stage.destroy();
+    widgetPortal.remove();
+  });
+
   test("hides the mounted body div when minimize toggles expanded false", () => {
     ensureDom();
 
