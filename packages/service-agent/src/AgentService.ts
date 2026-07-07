@@ -422,16 +422,43 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
-    const current = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
-    if (!current.ready) {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) {
       return {
         ok: false,
-        reason: current.reason === 'session-missing' ? 'session-missing' : current.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-        message: current.reason === 'manifest-missing' ? 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.' : current.message,
+        reason: 'session-missing',
+        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
       }
     }
 
-    const editResult = this.#applyDraftManifestPatch(current.manifest, patch)
+    const currentCandidate = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
+    if (!currentCandidate.ready && currentCandidate.reason === 'manifest-missing') {
+      const candidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
+      if (!candidate) {
+        return {
+          ok: false,
+          reason: currentCandidate.reason === 'session-missing' ? 'session-missing' : currentCandidate.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
+          message: currentCandidate.reason === 'manifest-missing' ? 'Draft vibecanvas.json does not exist yet. Candidate must exist and can be edited before publish.' : currentCandidate.message,
+        }
+      }
+
+      const editResult = this.#applyDraftManifestPatch(candidate.manifest, patch)
+      if (!editResult.ok) return editResult
+
+      const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
+      await writeFile(manifestPath, `${JSON.stringify(editResult.manifest, null, 2)}\n`, 'utf8')
+
+      return editResult
+    }
+    if (!currentCandidate.ready) {
+      return {
+        ok: false,
+        reason: currentCandidate.reason === 'session-missing' ? 'session-missing' : currentCandidate.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
+        message: currentCandidate.message,
+      }
+    }
+
+    const editResult = this.#applyDraftManifestPatch(currentCandidate.manifest, patch)
     if (!editResult.ok) return editResult
 
     const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
