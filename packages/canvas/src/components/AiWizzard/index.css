@@ -324,6 +324,33 @@
   min-width: 0;
 }
 
+.ai-chat-history__actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
+.ai-chat-history__actions button {
+  border: 1px solid var(--border);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.ai-chat-history__actions button:hover {
+  background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+}
+
+.ai-chat-history__actions button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
 .ai-chat-history__parts--assistant {
   gap: 12px;
 }

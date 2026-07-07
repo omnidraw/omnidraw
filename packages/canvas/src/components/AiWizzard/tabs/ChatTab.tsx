@@ -33,6 +33,7 @@ interface IProps {
   onPrompt: (args: { text: string; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onCancel: () => void
   onNewChat: () => void
+  onInspectActor: () => void
 }
 
 function getMessageKind(role: string) {
@@ -45,6 +46,20 @@ function getMessageKind(role: string) {
   }
 
   return "other"
+}
+
+function getMessageObject(message: unknown) {
+  return typeof message === "object" && message !== null
+    ? message as Record<string, unknown>
+    : undefined
+}
+
+function isSetActorCandidateToolResult(message: unknown) {
+  const object = getMessageObject(message)
+
+  return object?.role === "toolResult"
+    && typeof object.toolName === "string"
+    && object.toolName.toLowerCase() === "vc_set_actor_candidate"
 }
 
 function isScrolledToBottom(element: HTMLElement) {
@@ -262,11 +277,12 @@ function AssistantMessageParts(props: { parts: TChatMessagePart[] }) {
   )
 }
 
-function ChatHistoryMessage(props: { message: unknown }) {
+function ChatHistoryMessage(props: { message: unknown; onInspectActor: () => void }) {
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
   const kind = () => getMessageKind(role())
+  const showInspectActor = () => isSetActorCandidateToolResult(props.message)
 
   return (
     <article class={`ai-chat-history__message ai-chat-history__message--${kind()}`}>
@@ -278,6 +294,11 @@ function ChatHistoryMessage(props: { message: unknown }) {
         fallback={<PlainMessageParts parts={parts()} />}
       >
         <AssistantMessageParts parts={parts()} />
+      </Show>
+      <Show when={showInspectActor()}>
+        <div class="ai-chat-history__actions">
+          <button type="button" onClick={props.onInspectActor}>Inspect Actor</button>
+        </div>
       </Show>
     </article>
   )
@@ -361,7 +382,7 @@ export function ChatTab(props: IProps) {
           <div class="ai-chat-history" aria-live="polite">
             <For each={props.messageHistory}>
               {(message) => (
-                <ChatHistoryMessage message={message} />
+                <ChatHistoryMessage message={message} onInspectActor={props.onInspectActor} />
               )}
             </For>
           </div>

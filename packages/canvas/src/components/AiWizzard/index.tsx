@@ -277,6 +277,7 @@ export function AiWizzard(props: IProps) {
                         onPrompt={prompt}
                         onCancel={() => void cancelPrompt()}
                         onNewChat={newChat}
+                        onInspectActor={() => setSelectedTab("actor")}
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content ai-wizzard-tabs__content--actor" value="actor">
