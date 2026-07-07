@@ -252,7 +252,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
 - [ ]: [S62](s/S62.md) - reimplement terminal widget API path
 - [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
-- [ ]: [S64](s/S64.md) - db: store actor manifest paths relative to config
+- [x]: [S64](s/S64.md) - db: store actor manifest paths relative to config
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
