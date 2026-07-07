@@ -96,6 +96,8 @@ export function AiWizzard(props: IProps) {
     const [sessionId, setSessionId] = createSignal(props.sessionId)
     const [isRunning, setIsRunning] = createSignal(false)
     const [isCanceling, setIsCanceling] = createSignal(false)
+    const [chatDraftText, setChatDraftText] = createSignal("")
+    const [wizzardConnectNonce, setWizzardConnectNonce] = createSignal(0)
     const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
@@ -104,6 +106,7 @@ export function AiWizzard(props: IProps) {
     const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
 
     createEffect(() => {
+        const currentConnectNonce = wizzardConnectNonce()
         const currentSessionId = sessionId()
         setIsRunning(false)
         setIsCanceling(false)
@@ -112,7 +115,7 @@ export function AiWizzard(props: IProps) {
             sessionId: currentSessionId,
             widgetId: props.id
         }).then(([err, data]) => {
-            if (sessionId() !== currentSessionId) {
+            if (sessionId() !== currentSessionId || wizzardConnectNonce() !== currentConnectNonce) {
                 return
             }
 
@@ -241,6 +244,11 @@ export function AiWizzard(props: IProps) {
         return data
     }
 
+    const refreshSettingsAndReconnectWizzard = async () => {
+        await refetch()
+        setWizzardConnectNonce((nonce) => nonce + 1)
+    }
+
     const approveActorCandidate = async () => {
         await prompt({
             text: APPROVE_ACTOR_CANDIDATE_PROMPT,
@@ -296,6 +304,7 @@ export function AiWizzard(props: IProps) {
     const newChat = () => {
         setIsRunning(false)
         setIsCanceling(false)
+        setChatDraftText("")
         setMessageHistory(reconcile([]))
         setSessionId(props.onResetSessionId())
     }
@@ -322,6 +331,8 @@ export function AiWizzard(props: IProps) {
                         messageHistory={messageHistory}
                         isRunning={isRunning()}
                         isCanceling={isCanceling()}
+                        draftText={chatDraftText()}
+                        onDraftTextChange={setChatDraftText}
                         onPrompt={prompt}
                         onCancel={() => void cancelPrompt()}
                         onNewChat={newChat}
@@ -357,7 +368,7 @@ export function AiWizzard(props: IProps) {
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="settings">
-                    <SettingsTab settings={settingState.latest} apiService={props.apiService} onSettingsChanged={() => void refetch()} />
+                    <SettingsTab settings={settingState.latest} apiService={props.apiService} onSettingsChanged={() => void refreshSettingsAndReconnectWizzard()} />
                 </Tabs.Content>
             </Tabs>}>
                 <Match when={settingState.loading}>

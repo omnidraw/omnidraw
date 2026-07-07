@@ -138,6 +138,24 @@ function createEmptyDoc() {
   return promptSchema.nodes.doc.create(null, [promptSchema.nodes.paragraph.create()])
 }
 
+function createDocFromText(text: string) {
+  if (text.length === 0) {
+    return createEmptyDoc()
+  }
+
+  const nodes = text.split("\n").flatMap((line, index) => {
+    const lineNodes = line.length > 0 ? [promptSchema.text(line)] : []
+
+    if (index === 0) {
+      return lineNodes
+    }
+
+    return [promptSchema.nodes.hard_break.create(), ...lineNodes]
+  })
+
+  return promptSchema.nodes.doc.create(null, [promptSchema.nodes.paragraph.create(null, nodes)])
+}
+
 function getEditorText(view: EditorView | undefined) {
   if (!view) {
     return ""
@@ -394,6 +412,7 @@ export function ChatComposer(props: TChatComposerProps) {
     })
     view.updateState(state)
     syncHasText()
+    props.onDraftTextChange?.("")
   }
 
   const addImageFiles = (files: File[]) => {
@@ -701,7 +720,7 @@ export function ChatComposer(props: TChatComposerProps) {
     cleanupDocumentPointerdown = () => document.removeEventListener("pointerdown", handleDocumentPointerdown, true)
 
     const state = EditorState.create({
-      doc: createEmptyDoc(),
+      doc: createDocFromText(props.draftText ?? ""),
       schema: promptSchema,
       plugins: [
         history(),
@@ -755,6 +774,7 @@ export function ChatComposer(props: TChatComposerProps) {
 
         view.updateState(view.state.apply(transaction))
         syncHasText()
+        props.onDraftTextChange?.(getEditorText(view))
       },
       handleDOMEvents: {
         keydown: (_editorView, event) => isKeyboardEvent(event) && handleSuggestionKey(event),
@@ -788,6 +808,22 @@ export function ChatComposer(props: TChatComposerProps) {
       },
     })
 
+    syncHasText()
+  })
+
+  createEffect(() => {
+    const nextText = props.draftText ?? ""
+
+    if (!view || getEditorText(view) === nextText) {
+      return
+    }
+
+    const state = EditorState.create({
+      doc: createDocFromText(nextText),
+      schema: promptSchema,
+      plugins: view.state.plugins,
+    })
+    view.updateState(state)
     syncHasText()
   })
 

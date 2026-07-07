@@ -120,7 +120,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B30] - can't delete text
 - [x]: [B31](b/B31.md) - binary: compiled app cannot find Turso native binding
 - [x]: [B32](b/B32.md) - binary: bundle Turso native addon beside compiled executable
-- [ ]: [B33](b/B33.md) - ai wizard: chat does not reconnect after OAuth/API key login
+- [x]: [B33](b/B33.md) - ai wizard: chat does not reconnect after OAuth/API key login
 - [x]: [B34] - ai wizard: model menu need 2 times before update
 - [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
 - [x]: [B36](b/B36.md) - actor timeouts only trigger in error state

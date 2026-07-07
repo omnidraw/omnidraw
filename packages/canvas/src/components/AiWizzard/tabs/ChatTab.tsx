@@ -34,6 +34,8 @@ interface IProps {
   messageHistory: readonly unknown[]
   isRunning: boolean
   isCanceling: boolean
+  draftText?: string
+  onDraftTextChange?: (text: string) => void
   onPrompt: (args: { text: string; images: TChatPromptImage[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onCancel: () => void
   onNewChat: () => void
@@ -449,6 +451,8 @@ export function ChatTab(props: IProps) {
         defaultThinkingLevel={props.aiWizardPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
         isRunning={props.isRunning}
         isCanceling={props.isCanceling}
+        draftText={props.draftText}
+        onDraftTextChange={props.onDraftTextChange}
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
         onNewChat={props.onNewChat}
