@@ -123,7 +123,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [B33](b/B33.md) - ai wizard: chat does not reconnect after OAuth/API key login
 - [x]: [B34] - ai wizard: model menu need 2 times before update
 - [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
-- [ ]: [B36](b/B36.md) - actor timeouts only trigger in error state
+- [x]: [B36](b/B36.md) - actor timeouts only trigger in error state
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
