@@ -9,7 +9,7 @@ import type {
   TChatComposerThinkingLevel,
   TPromptSuggestion,
 } from "./interface"
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import ChevronDown from "lucide-solid/icons/chevron-down"
 import FileText from "lucide-solid/icons/file-text"
@@ -224,6 +224,16 @@ function formatThinkingLevel(level: TChatComposerThinkingLevel | undefined) {
 }
 
 function getDefaultModel(models: TChatComposerModel[], defaultModel?: string, defaultProvider?: string) {
+  if (defaultModel && defaultProvider) {
+    const exactDefaultWithProvider = models.find(
+      (model) => model.id === defaultModel && model.provider === defaultProvider,
+    )
+
+    if (exactDefaultWithProvider) {
+      return exactDefaultWithProvider
+    }
+  }
+
   const exactDefault = models.find((model) => model.id === defaultModel)
 
   if (exactDefault) {
@@ -231,6 +241,23 @@ function getDefaultModel(models: TChatComposerModel[], defaultModel?: string, de
   }
 
   return models.find((model) => model.provider === defaultProvider) ?? models[0]
+}
+
+function getModelSelectionKey(model: TChatComposerModel) {
+  return `${model.provider}::${model.id}`
+}
+
+function getModelBySelectionKey(models: readonly TChatComposerModel[], key?: string) {
+  if (!key) {
+    return undefined
+  }
+
+  return models.find((model) => getModelSelectionKey(model) === key) ?? models.find((model) => model.id === key)
+}
+
+function getModelSelectionKeyOrId(models: readonly TChatComposerModel[], key?: string) {
+  const resolved = getModelBySelectionKey(models, key)
+  return resolved ? getModelSelectionKey(resolved) : undefined
 }
 
 export function ChatComposer(props: TChatComposerProps) {
@@ -264,12 +291,12 @@ export function ChatComposer(props: TChatComposerProps) {
   const placeholder = () => props.placeholder ?? "Ask for follow-up changes"
   const models = createMemo(() => props.models ?? [])
   const providers = createMemo(() => Array.from(new Set(models().map((model) => model.provider))))
-  const selectedModel = createMemo(() => models().find((model) => model.id === selectedModelId()))
+  const selectedModel = createMemo(() => getModelBySelectionKey(models(), selectedModelId()))
   const activeProviderModels = createMemo(() => models().filter((model) => model.provider === activeProvider()))
   const imageInputEnabled = createMemo(() => selectedModel()?.input.includes("image") ?? false)
   const modelButtonLabel = createMemo(() => selectedModel()?.name.replace(/^GPT-/i, "") ?? "Select model")
   const thinkingLevel = createMemo(() => selectedThinkingLevel() ?? getDefaultThinkingLevel(props.defaultThinkingLevel))
-  const focusedModel = createMemo(() => models().find((model) => model.id === focusedModelId()))
+  const focusedModel = createMemo(() => getModelBySelectionKey(models(), focusedModelId()))
 
   const suggestions = () => {
     const activeSuggestion = suggestion()
@@ -287,16 +314,36 @@ export function ChatComposer(props: TChatComposerProps) {
   createEffect(() => {
     const nextDefault = getDefaultModel(models(), props.defaultModel, props.defaultProvider)
     const current = selectedModelId()
+    const resolvedCurrentSelectionKey = getModelSelectionKeyOrId(models(), current)
 
     if (!nextDefault) {
       setSelectedModelId(undefined)
       setActiveProvider(undefined)
+      setFocusedModelId(undefined)
       return
     }
 
-    if (!current || !models().some((model) => model.id === current) || (!hasManualModelSelection() && current !== nextDefault.id)) {
-      setSelectedModelId(nextDefault.id)
+    const nextDefaultSelectionKey = getModelSelectionKey(nextDefault)
+
+    if (current && resolvedCurrentSelectionKey && resolvedCurrentSelectionKey !== current) {
+      setSelectedModelId(resolvedCurrentSelectionKey)
+      setFocusedModelId(resolvedCurrentSelectionKey)
+    }
+
+    if (!current || !resolvedCurrentSelectionKey) {
+      if (!hasManualModelSelection()) {
+        setSelectedModelId(nextDefaultSelectionKey)
+        setActiveProvider(nextDefault.provider)
+        setFocusedModelId(nextDefaultSelectionKey)
+      }
+
+      return
+    }
+
+    if (!hasManualModelSelection() && resolvedCurrentSelectionKey !== nextDefaultSelectionKey) {
+      setSelectedModelId(nextDefaultSelectionKey)
       setActiveProvider(nextDefault.provider)
+      setFocusedModelId(nextDefaultSelectionKey)
     }
   })
 
@@ -461,7 +508,7 @@ export function ChatComposer(props: TChatComposerProps) {
     const currentModel = selectedModel()
     setModelMenuPane("models")
     setActiveProvider(currentModel?.provider ?? activeProvider() ?? providers()[0])
-    setFocusedModelId(currentModel?.id ?? activeProviderModels()[0]?.id)
+    setFocusedModelId(currentModel ? getModelSelectionKey(currentModel) : activeProviderModels()[0] ? getModelSelectionKey(activeProviderModels()[0]) : undefined)
     setModelMenuColumn("model")
     setFocusedThinkingLevel(thinkingLevel())
     setModelMenuOpen(true)
@@ -488,15 +535,30 @@ export function ChatComposer(props: TChatComposerProps) {
 
     setModelMenuPane("models")
     setActiveProvider(nextItem.id)
-    setFocusedModelId(models().find((model) => model.provider === nextItem.id)?.id)
+    const nextProviderModel = models().find((model) => model.provider === nextItem.id)
+    setFocusedModelId(nextProviderModel ? getModelSelectionKey(nextProviderModel) : undefined)
   }
 
   const moveFocusedModel = (direction: 1 | -1) => {
     const currentModels = activeProviderModels()
     if (currentModels.length === 0) return
 
-    const currentIndex = Math.max(0, currentModels.findIndex((model) => model.id === focusedModelId()))
-    setFocusedModelId(currentModels[(currentIndex + direction + currentModels.length) % currentModels.length].id)
+    const currentIndex = Math.max(0, currentModels.findIndex((model) => getModelSelectionKey(model) === focusedModelId()))
+    setFocusedModelId(getModelSelectionKey(currentModels[(currentIndex + direction + currentModels.length) % currentModels.length]))
+  }
+
+  const setSelectedModel = (model: TChatComposerModel) => {
+    const modelSelectionKey = getModelSelectionKey(model)
+
+    batch(() => {
+      setHasManualModelSelection(true)
+      setSelectedModelId(modelSelectionKey)
+      setFocusedModelId(modelSelectionKey)
+      setActiveProvider(model.provider)
+    })
+
+    setModelMenuOpen(false)
+    view?.focus()
   }
 
   const moveFocusedThinkingLevel = (direction: 1 | -1) => {
@@ -508,12 +570,7 @@ export function ChatComposer(props: TChatComposerProps) {
     const model = focusedModel() ?? activeProviderModels()[0]
     if (!model) return
 
-    setSelectedModelId(model.id)
-    setHasManualModelSelection(true)
-    setActiveProvider(model.provider)
-    setFocusedModelId(model.id)
-    setModelMenuOpen(false)
-    view?.focus()
+    setSelectedModel(model)
   }
 
   const selectFocusedThinkingLevel = () => {
@@ -550,7 +607,7 @@ export function ChatComposer(props: TChatComposerProps) {
         setFocusedThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
       } else {
         setModelMenuColumn("model")
-        setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+        setFocusedModelId(focusedModelId() ?? (activeProviderModels()[0] ? getModelSelectionKey(activeProviderModels()[0]) : undefined))
       }
       return true
     }
@@ -570,7 +627,7 @@ export function ChatComposer(props: TChatComposerProps) {
           setFocusedThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
         } else {
           setModelMenuColumn("model")
-          setFocusedModelId(focusedModelId() ?? activeProviderModels()[0]?.id)
+          setFocusedModelId(focusedModelId() ?? (activeProviderModels()[0] ? getModelSelectionKey(activeProviderModels()[0]) : undefined))
         }
       } else if (modelMenuColumn() === "thinking") {
         selectFocusedThinkingLevel()
@@ -892,7 +949,8 @@ export function ChatComposer(props: TChatComposerProps) {
 
                             setModelMenuPane("models")
                             setActiveProvider(item.id)
-                            setFocusedModelId(models().find((model) => model.provider === item.id)?.id)
+                            const nextProviderModel = models().find((model) => model.provider === item.id)
+                            setFocusedModelId(nextProviderModel ? getModelSelectionKey(nextProviderModel) : undefined)
                             setModelMenuColumn("model")
                           }}
                         >
@@ -910,18 +968,13 @@ export function ChatComposer(props: TChatComposerProps) {
                             <button
                               classList={{
                                 "ai-chat-composer__model-option": true,
-                                "ai-chat-composer__model-option--active": model.id === selectedModelId(),
-                                "ai-chat-composer__model-option--focused": model.id === focusedModelId() && modelMenuColumn() === "model",
+                                "ai-chat-composer__model-option--active": getModelSelectionKey(model) === selectedModelId(),
+                                "ai-chat-composer__model-option--focused": getModelSelectionKey(model) === focusedModelId() && modelMenuColumn() === "model",
                               }}
                               type="button"
-                              onMouseEnter={() => setFocusedModelId(model.id)}
+                              onMouseEnter={() => setFocusedModelId(getModelSelectionKey(model))}
                               onClick={() => {
-                                setSelectedModelId(model.id)
-                                setHasManualModelSelection(true)
-                                setActiveProvider(model.provider)
-                                setFocusedModelId(model.id)
-                                setModelMenuOpen(false)
-                                view?.focus()
+                                setSelectedModel(model)
                               }}
                             >
                               <strong>{model.name}</strong>
