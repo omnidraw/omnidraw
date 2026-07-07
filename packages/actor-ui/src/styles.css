@@ -116,12 +116,22 @@
   padding-bottom: 6px;
 }
 
+.vc-actor-ui--embedded .vc-actor-ui__diagram-wrap {
+  max-height: min(520px, 62vh);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
 .vc-actor-ui__diagram {
   position: relative;
   min-width: 760px;
   border: 1px solid var(--vc-actor-border);
   border-radius: 8px;
   background: #ffffff;
+}
+
+.vc-actor-ui--embedded .vc-actor-ui__diagram {
+  min-width: 760px;
 }
 
 .vc-actor-ui__edges {

@@ -249,6 +249,7 @@
         "@kobalte/core": "catalog:",
         "@orpc/contract": "catalog:",
         "@solid-primitives/scheduled": "^1.5.3",
+        "@vibecanvas/actor-ui": "workspace:*",
         "@vibecanvas/api-actors": "workspace:*",
         "@vibecanvas/orpc-client": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
