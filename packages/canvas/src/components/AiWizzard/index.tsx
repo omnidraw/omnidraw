@@ -139,6 +139,7 @@ export function AiWizzard(props: IProps) {
                 if (disposed) break
                 if (event.widgetId !== props.id) continue
                 if (event.sessionId !== sessionId()) continue
+                if ("kind" in event) continue
 
                 const piEvent = event.event
 
@@ -212,6 +213,7 @@ export function AiWizzard(props: IProps) {
     const approveActorCandidate = async () => {
         await prompt({
             text: "Approve the current actor candidate and generate the draft actor and widget code. Use the latest candidate revision.",
+            images: [],
             model: props.aiWizardPreference?.model ? {
                 id: props.aiWizardPreference.model.modelId,
                 provider: props.aiWizardPreference.model.provider,
@@ -294,7 +296,11 @@ export function AiWizzard(props: IProps) {
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="preview">
-                    <PreviewTab />
+                    <PreviewTab
+                        apiService={props.apiService}
+                        sessionId={sessionId()}
+                        widgetId={props.id}
+                    />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="settings">
                     <SettingsTab settings={settingState.latest} apiService={props.apiService} onSettingsChanged={() => void refetch()} />

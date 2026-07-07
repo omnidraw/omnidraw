@@ -18,6 +18,7 @@ import { apiWizzardDraftActorStart } from "./api.wizzard.draftActor.start";
 import { apiWizzardDraftActorStop } from "./api.wizzard.draftActor.stop";
 import { apiWizzardNewSession } from "./api.wizzard.newSession";
 import { apiWizzardPreviewSource } from "./api.wizzard.previewSource";
+import { apiWizzardPublish } from "./api.wizzard.publish";
 import { apiWizzardPrompt } from "./api.wizzard.prompt";
 import { baseAgentOs } from './orpc';
 
@@ -41,6 +42,7 @@ const agentHandlers = {
         cancel: apiWizzardCancel,
         newSession: apiWizzardNewSession,
         previewSource: apiWizzardPreviewSource,
+        publish: apiWizzardPublish,
         draftManifest: {
             read: apiWizzardDraftManifestRead,
             patch: apiWizzardDraftManifestPatch,

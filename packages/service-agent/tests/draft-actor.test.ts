@@ -48,6 +48,7 @@ async function createServiceFixture() {
   const sessionId = 'session-a';
   const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
   await mkdir(join(cwd, 'actor'), { recursive: true });
+  await mkdir(join(cwd, 'widget'), { recursive: true });
   await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
     slug: 'draft-test',
     name: 'Draft Test',
@@ -86,6 +87,15 @@ async function createServiceFixture() {
     '    },',
     '  },',
     '};',
+    '',
+  ].join('\n'), 'utf8');
+  await writeFile(join(cwd, 'widget', 'main.ts'), [
+    'import { html } from "@arrow-js/core";',
+    'html`<p>Draft widget</p>`(document.body);',
+    '',
+  ].join('\n'), 'utf8');
+  await writeFile(join(cwd, 'widget', 'main.css'), [
+    'p { color: red; }',
     '',
   ].join('\n'), 'utf8');
 
@@ -189,6 +199,18 @@ describe('AgentService draft actor runtime', () => {
     expect(service.stopDraftActorWizzard(widgetId, sessionId)).toEqual({ stopped: true });
     const stoppedInspect = service.inspectDraftActorWizzard(widgetId, sessionId);
     expect(stoppedInspect.ready).toBe(false);
+  });
+
+  test('returns widget source files as filename to content map', async () => {
+    const { service, widgetId, sessionId } = await createServiceFixture();
+
+    const result = await service.previewSourceWizzard(widgetId, sessionId);
+    expect(result.ready).toBe(true);
+    if (!result.ready) throw new Error(result.message);
+
+    expect(Object.keys(result.sources).sort()).toEqual(['main.css', 'main.ts']);
+    expect(result.sources['main.ts']).toContain('Draft widget');
+    expect(result.sources['main.css']).toContain('color: red');
   });
 
   test('returns not-ready when manifest is missing', async () => {

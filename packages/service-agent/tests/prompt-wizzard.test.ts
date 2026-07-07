@@ -3,6 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
+import { txAppendActorCandidateApprovalRecord } from '../src/core/tx.session-candidate';
+import { sampleCandidate } from './tool.test-helpers';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
 class TestEventPublisherService implements IEventPublisherService {
@@ -84,5 +86,43 @@ describe('AgentService.promptWizzard', () => {
     await expect(service.promptWizzard('widget', 'session', 'describe this', {
       images: [{ mimeType: 'image/svg+xml', data: 'PHN2Zy8+' }],
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
+  });
+
+  test('refreshes phase tools after approval before the next prompt', async () => {
+    const service = await createService();
+    const widgetId = 'widget-tools';
+    const sessionId = 'session-tools';
+    await service.connectWizzard(widgetId, sessionId);
+
+    const phaseOneTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
+    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_set_actor_candidate']);
+
+    const manifest = {
+      slug: 'counter-widget',
+      name: 'Counter Widget',
+      description: 'A generated counter widget.',
+      actor: {
+        ...sampleCandidate().actor,
+        relFunctionPath: './actor/functions.ts',
+      },
+      widget: {
+        relWidgetDir: './widget',
+        tool: sampleCandidate().widget.tool,
+      },
+    };
+
+    txAppendActorCandidateApprovalRecord({ sessionManager: service.sessionMap[widgetId][sessionId].sessionManager }, {
+      candidateRevision: 1,
+      manifest,
+      files: ['vibecanvas.json'],
+      approvedAt: new Date().toISOString(),
+    });
+
+    await expect(service.promptWizzard(widgetId, sessionId, 'implement this', {
+      images: [{ mimeType: 'image/svg+xml', data: 'PHN2Zy8+' }],
+    })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
+
+    const phaseTwoTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
+    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
   });
 });
