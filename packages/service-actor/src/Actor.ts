@@ -179,24 +179,41 @@ export class Actor {
     }
 
     inbox(msgName: string, msgPayload: any): string {
+        const messageId = crypto.randomUUID();
         const validFn = this.#inputMessage[msgName]
         if (!validFn) {
-            this.#applyImplicitErrorState()
-            throw this.#emitError({ code: "UNKNOWN_INPUT_MESSAGE", message: `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}` })
+            return this.#dropInboxMessage({
+                messageId,
+                msgName,
+                msgPayload,
+                code: "UNKNOWN_INPUT_MESSAGE",
+                message: `Unknown message name ${msgName}. Allowed message name: ${JSON.stringify(Object.keys(this.#inputMessage))}`,
+            })
         }
         if (!validFn(msgPayload)) {
-            this.#applyImplicitErrorState()
-            throw this.#emitError({ code: "INVALID_INPUT_MESSAGE_PAYLOAD", message: `Invalid message payload.`, details: validFn.errors })
+            return this.#dropInboxMessage({
+                messageId,
+                msgName,
+                msgPayload,
+                code: "INVALID_INPUT_MESSAGE_PAYLOAD",
+                message: `Invalid message payload.`,
+                details: validFn.errors,
+            })
         }
 
         const transition = this.#getTransition(msgName as TInputMessage);
         if (!transition) {
             const state = this.#state;
-            this.#applyImplicitErrorState()
-            throw this.#emitError({ code: "NO_STATE_TRANSITION", message: `No transition for message ${msgName} in state ${state}` })
+            return this.#dropInboxMessage({
+                messageId,
+                msgName,
+                msgPayload,
+                code: "NO_STATE_TRANSITION",
+                message: `No transition for message ${msgName} in state ${state}`,
+                details: { state },
+            })
         }
 
-        const messageId = crypto.randomUUID();
         this.#queue.push({
             messageId,
             msgName: msgName as TInputMessage,
@@ -397,6 +414,23 @@ export class Actor {
         if (!pending) return;
         this.#pendingRuns.delete(id);
         pending.reject(rejection);
+    }
+
+    #dropInboxMessage(args: { messageId: string; msgName: string; msgPayload: any; code: string; message: string; details?: unknown }): string {
+        this.#emitEvent({
+            kind: "actor",
+            actorId: this.#id,
+            name: "DROP_MESSAGE",
+            payload: {
+                inputName: args.msgName,
+                inputPayload: args.msgPayload,
+                code: args.code,
+                message: args.message,
+                details: args.details,
+            },
+            messageId: args.messageId,
+        })
+        return args.messageId
     }
 
     #failQueued(error: Error) {

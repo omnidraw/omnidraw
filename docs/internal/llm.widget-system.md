@@ -241,25 +241,26 @@ For actor creation before UI send, also read:
 ### 5. Actor message processing
 
 1. Parent calls `actor.inbox(msgName, msgPayload)`.
-2. `Actor` validates the payload against `actor.inputMsgSchema[msgName]`.
-3. `Actor` finds the transition for current state: `actor.states[currentState].on[msgName]`.
-4. `Actor` generates a message id, enqueues the item, triggers queue processing, and returns the message id immediately.
-5. Inbox items are processed one at a time by the trigger-based queue loop.
-6. The transition function list is sent over IPC to the child process:
+2. `Actor` generates a message id.
+3. `Actor` validates the message name against `actor.inputMsgSchema`, validates the payload against `actor.inputMsgSchema[msgName]`, and finds the transition for current state at `actor.states[currentState].on[msgName]`.
+4. Invalid input messages are dropped instead of changing actor state. A dropped input emits only an implicit actor output event named `DROP_MESSAGE` with drop details, then returns the generated message id.
+5. Valid input messages are enqueued, queue processing is triggered, and the message id is returned immediately.
+6. Inbox items are processed one at a time by the trigger-based queue loop.
+7. The transition function list is sent over IPC to the child process:
    - `func`
    - `payload`
    - current `data`
-7. `icp-client.ts` maps function names to registered guest functions in `functions.ts`.
-8. Guest functions receive `(portal, args)`.
-9. Guest code may call:
+8. `icp-client.ts` maps function names to registered guest functions in `functions.ts`.
+9. Guest functions receive `(portal, args)`.
+10. Guest code may call:
    - `portal.next()` to continue a function pipeline.
    - `portal.setData(nextData)` to update actor data in the parent.
    - `portal.emitMessage({ type, payload })` to emit actor output.
-10. `portal.setData(...)` emits a system `data.changed` event.
-11. Successful transitions with a single `allowedTargetStates` entry update actor state and emit a system `state.changed` event.
-12. Parent validates emitted outputs against `actor.outputMsgSchema`.
-13. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
-14. Transition completion emits a system `ack` event for the accepted message id.
+11. `portal.setData(...)` emits a system `data.changed` event.
+12. Successful transitions with a single `allowedTargetStates` entry update actor state and emit a system `state.changed` event.
+13. Parent validates emitted outputs against `actor.outputMsgSchema`.
+14. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
+15. Transition completion emits a system `ack` event for the accepted message id.
 
 ## Current data model
 

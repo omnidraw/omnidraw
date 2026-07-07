@@ -123,16 +123,32 @@ describe("Actor", () => {
         actor.close()
     })
 
-    test("still rejects direct user timeout messages that are not in input schema", async () => {
+    test("drops direct user timeout messages that are not in input schema", async () => {
         const actor = new Actor({
             id: "fund-actor-timeout-user-input",
             rootDir,
             vsJson: waitingTimeoutConfig
         })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
         actor.start()
 
-        expect(() => actor.inbox("timeout:20ms", {})).toThrow()
-        expect(actor.getState()).toBe("error")
+        const messageId = actor.inbox("timeout:20ms", {})
+
+        expect(messageId).toBeString()
+        expect(actor.getState()).toBe("ready")
+        expect(messages).toContainEqual({
+            kind: "actor",
+            actorId: "fund-actor-timeout-user-input",
+            name: "DROP_MESSAGE",
+            payload: expect.objectContaining({
+                inputName: "timeout:20ms",
+                code: "UNKNOWN_INPUT_MESSAGE",
+            }),
+            messageId,
+        })
 
         actor.close()
     })
@@ -220,7 +236,7 @@ describe("Actor", () => {
         actor.close()
     })
 
-    test("moves to implicit base error state when inbox validation fails", () => {
+    test("drops inbox messages when input validation fails", () => {
         const actor = new Actor({
             id: "fund-actor-invalid-input-error",
             rootDir,
@@ -233,10 +249,67 @@ describe("Actor", () => {
 
         actor.start()
 
-        expect(() => actor.inbox('add-funds', { accountId: '1', amount: 'bad' })).toThrow()
-        expect(actor.getState()).toBe("error")
-        expect(messages.some(event => event.kind === "system" && event.type === "state.changed" && event.to === "error")).toBe(true)
-        expect(messages.some(event => event.kind === "system" && event.type === "error" && event.code === "INVALID_INPUT_MESSAGE_PAYLOAD")).toBe(true)
+        const messageId = actor.inbox('add-funds', { accountId: '1', amount: 'bad' })
+        expect(messageId).toBeString()
+        expect(actor.getState()).toBe("ready")
+        expect(messages.some(event => event.kind === "system" && event.type === "state.changed" && event.to === "error")).toBe(false)
+        expect(messages.some(event => event.kind === "system" && event.type === "error" && event.messageId === messageId)).toBe(false)
+        expect(messages).toContainEqual({
+            kind: "actor",
+            actorId: "fund-actor-invalid-input-error",
+            name: "DROP_MESSAGE",
+            payload: expect.objectContaining({
+                inputName: "add-funds",
+                inputPayload: { accountId: "1", amount: "bad" },
+                code: "INVALID_INPUT_MESSAGE_PAYLOAD",
+            }),
+            messageId,
+        })
+
+        actor.close()
+    })
+
+    test("drops inbox messages when current state has no transition", () => {
+        const noTransitionConfig: TVibecanvasJson = {
+            ...testActorConfig,
+            actor: {
+                ...testActorConfig.actor,
+                initialState: "waiting",
+                states: {
+                    ...testActorConfig.actor.states,
+                    waiting: { on: {} },
+                },
+            },
+        }
+        const actor = new Actor({
+            id: "fund-actor-no-transition-drop",
+            rootDir,
+            vsJson: noTransitionConfig
+        })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
+
+        actor.start()
+
+        const messageId = actor.inbox('add-funds', { accountId: '1', amount: 10 })
+        expect(messageId).toBeString()
+        expect(actor.getState()).toBe("waiting")
+        expect(messages.some(event => event.kind === "system" && event.type === "state.changed" && event.to === "error")).toBe(false)
+        expect(messages.some(event => event.kind === "system" && event.type === "error" && event.messageId === messageId)).toBe(false)
+        expect(messages).toContainEqual({
+            kind: "actor",
+            actorId: "fund-actor-no-transition-drop",
+            name: "DROP_MESSAGE",
+            payload: expect.objectContaining({
+                inputName: "add-funds",
+                inputPayload: { accountId: "1", amount: 10 },
+                code: "NO_STATE_TRANSITION",
+                details: { state: "waiting" },
+            }),
+            messageId,
+        })
 
         actor.close()
     })
