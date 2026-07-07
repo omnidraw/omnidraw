@@ -81,6 +81,7 @@ interface IPublicMethods {
 export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'DbServiceTurso'
   db: Database
+  #actorWriteTail: Promise<void> = Promise.resolve()
 
   constructor(private config: IDbConfig) {
     const experimental = this.config.databasePath === ":memory:"
@@ -99,6 +100,16 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   }
 
   async stop(): Promise<void> {
+  }
+
+  #serializeActorWrite<T>(write: () => Promise<T>): Promise<T> {
+    const result = this.#actorWriteTail.then(write, write)
+    this.#actorWriteTail = result.then(
+      () => undefined,
+      () => undefined,
+    )
+
+    return result
   }
 
   account = {
@@ -137,23 +148,23 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
 
   actor = {
     listDefinitions: () => fxActorListDefinitions(this),
-    insertDefinition: (def: TActorDefinitionCreateArgs) => txActorInsertDefinition(this, def),
-    deleteDefinition: (name: string) => txActorDeleteDefinition(this, { name }),
+    insertDefinition: (def: TActorDefinitionCreateArgs) => this.#serializeActorWrite(() => txActorInsertDefinition(this, def)),
+    deleteDefinition: (name: string) => this.#serializeActorWrite(() => txActorDeleteDefinition(this, { name })),
     getDefinition: (name: string) => fxActorGetDefinition(this, {name}),
-    updateDefinition: (def: TActorDefinitionUpdateArgs) => txActorUpdateDefinition(this, def),
+    updateDefinition: (def: TActorDefinitionUpdateArgs) => this.#serializeActorWrite(() => txActorUpdateDefinition(this, def)),
     reload: async () => {
       // TODO: i forgot what this was about
     },
     listInstances: (filter?: { canvasId?: string }) => fxActorListInstances(this, { canvasId: filter?.canvasId }),
-    insertInstance: (instance: TActorInstanceCreateArgs) => txActorInsertInstance(this, instance),
-    updateInstanceStatus: (instance: TActorInstanceUpdateStatusArgs) => txActorUpdateInstanceStatus(this, instance),
-    updateInstanceMachine: (instance: TActorInstanceUpdateMachineArgs) => txActorUpdateInstanceMachine(this, instance),
+    insertInstance: (instance: TActorInstanceCreateArgs) => this.#serializeActorWrite(() => txActorInsertInstance(this, instance)),
+    updateInstanceStatus: (instance: TActorInstanceUpdateStatusArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceStatus(this, instance)),
+    updateInstanceMachine: (instance: TActorInstanceUpdateMachineArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceMachine(this, instance)),
     getInstanceByElementId: (elementId: string) => fxActorGetInstanceByElementId(this, {elementId}),
     getInstanceById: (instanceId: string) => fxActorGetInstanceById(this, {instanceId}),
-    deleteInstance: (id: string) => txActorDeleteInstance(this, { id }),
+    deleteInstance: (id: string) => this.#serializeActorWrite(() => txActorDeleteInstance(this, { id })),
     listConnections: () => fxActorListConnections(this),
-    insertConnection: (connection: TActorConnectionCreateArgs) => txActorInsertConnection(this, connection),
-    deleteConnectionById: (id: string) => txActorDeleteConnectionById(this, { id }),
-    deleteConnectionBySource: (actorId: string) => txActorDeleteConnectionBySource(this, { actorId }),
+    insertConnection: (connection: TActorConnectionCreateArgs) => this.#serializeActorWrite(() => txActorInsertConnection(this, connection)),
+    deleteConnectionById: (id: string) => this.#serializeActorWrite(() => txActorDeleteConnectionById(this, { id })),
+    deleteConnectionBySource: (actorId: string) => this.#serializeActorWrite(() => txActorDeleteConnectionBySource(this, { actorId })),
   };
 }
