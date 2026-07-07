@@ -193,7 +193,7 @@ export function PreviewTab(props: IProps) {
   const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = []
 
   const [status, setStatus] = createSignal<"loading" | "ready" | "not-ready" | "error">("loading")
-  const [message, setMessage] = createSignal("Loading draft preview.")
+  const [message, setMessage] = createSignal("Loading preview.")
   const [isReloading, setIsReloading] = createSignal(false)
   const [isResetting, setIsResetting] = createSignal(false)
   const [isPublishDialogOpen, setIsPublishDialogOpen] = createSignal(false)
@@ -238,7 +238,7 @@ export function PreviewTab(props: IProps) {
     if (mode === "reload") setIsReloading(true)
     if (mode === "reset") setIsResetting(true)
     setStatus("loading")
-    setMessage(mode === "start" ? "Loading draft preview." : mode === "reload" ? "Reloading draft files." : "Resetting draft actor.")
+    setMessage(mode === "start" ? "Loading preview." : mode === "reload" ? "Reloading files." : "Resetting actor.")
 
     try {
       const [sourceError, sourceResult] = await props.apiService.api.agent.wizzard.previewSource({
@@ -460,7 +460,7 @@ export function PreviewTab(props: IProps) {
       <section class="ai-wizzard-preview-card ai-wizzard-preview-card--toolbar">
         <div class="ai-wizzard-preview-header">
           <div>
-            <span>Draft preview</span>
+            <span>Preview</span>
             <strong>{actorState()}</strong>
           </div>
           <div class="ai-wizzard-preview-actions">
