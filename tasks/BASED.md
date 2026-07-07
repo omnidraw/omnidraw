@@ -185,7 +185,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A58](a/A58.md) - ai wizard: show canvas sidebar on screen
 - [x]: [A59](a/A59.md) - actor-ui: SolidJS actor state machine view
 - [x]: [A60](a/A60.md) - actor IPC: spawn same compiled binary
-- [ ]: [A61](a/A61.md) - ai wizard: approve should scaffold then prompt AI implementation
+- [x]: [A61](a/A61.md) - ai wizard: approve should scaffold then prompt AI implementation
 - [x]: [A62](a/A62.md) - widgets: header three-dot menu
 
 ## S ubtractions
@@ -275,7 +275,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
 - [ ]: [E23](e/E23.md) - actor output log pruning compatibility
 - [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
-- [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
+- [x]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
 - [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
 - [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 - [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
