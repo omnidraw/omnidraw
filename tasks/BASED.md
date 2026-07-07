@@ -178,8 +178,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
 - [x]: [A53](a/A53.md) - ai wizard: draft Actor runtime API setup
 - [x]: [A54](a/A54.md) - ai wizard: Actor tab powered by draft Actor
-- [ ]: [A55](a/A55.md) - ai wizard: Preview tab powered by draft Actor
-- [ ]: [A56](a/A56.md) - ai wizard: Tool tab for widget toolbar metadata
+- [x]: [A55](a/A55.md) - ai wizard: Preview tab powered by draft Actor
+- [x]: [A56](a/A56.md) - ai wizard: Tool tab for widget toolbar metadata
 - [ ]: [A57](a/A57.md) - ai wizard: new widget vs edit published widget flow
 - [x]: [A58](a/A58.md) - ai wizard: show canvas sidebar on screen
 - [x]: [A59](a/A59.md) - actor-ui: SolidJS actor state machine view

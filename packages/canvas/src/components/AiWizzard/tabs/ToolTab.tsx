@@ -1,35 +1,10 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
-import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { NumberField } from "@kobalte/core/number-field"
 import { TextField } from "@kobalte/core/text-field"
-import ArrowRight from "lucide-static/icons/arrow-right.svg?raw"
-import Bot from "lucide-static/icons/bot.svg?raw"
-import Box from "lucide-static/icons/box.svg?raw"
-import Brush from "lucide-static/icons/brush.svg?raw"
-import Calendar from "lucide-static/icons/calendar.svg?raw"
-import ChartBar from "lucide-static/icons/chart-bar.svg?raw"
-import CheckSquare from "lucide-static/icons/check-square.svg?raw"
-import Circle from "lucide-static/icons/circle.svg?raw"
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
+import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
+import * as Lucid from "lucide-static"
 import Code from "lucide-static/icons/code.svg?raw"
-import Component from "lucide-static/icons/component.svg?raw"
-import FileText from "lucide-static/icons/file-text.svg?raw"
-import Gauge from "lucide-static/icons/gauge.svg?raw"
-import Grid2x2 from "lucide-static/icons/grid-2x2.svg?raw"
-import Image from "lucide-static/icons/image.svg?raw"
-import Layers from "lucide-static/icons/layers.svg?raw"
-import List from "lucide-static/icons/list.svg?raw"
-import MousePointer2 from "lucide-static/icons/mouse-pointer-2.svg?raw"
-import Pencil from "lucide-static/icons/pencil.svg?raw"
-import Plus from "lucide-static/icons/plus.svg?raw"
-import Settings from "lucide-static/icons/settings.svg?raw"
-import Shapes from "lucide-static/icons/shapes.svg?raw"
-import Sparkles from "lucide-static/icons/sparkles.svg?raw"
-import Square from "lucide-static/icons/square.svg?raw"
-import Table from "lucide-static/icons/table.svg?raw"
-import Terminal from "lucide-static/icons/square-terminal.svg?raw"
-import Type from "lucide-static/icons/type.svg?raw"
-import WandSparkles from "lucide-static/icons/wand-sparkles.svg?raw"
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 
 interface IProps {
   manifest: TVibecanvasJson | null
@@ -52,35 +27,16 @@ const ICON_NONE_ID = "__none__"
 const ICON_SVG_ID = "__svg__"
 const MAX_PRIORITY = 9999
 
-const ICON_PRESETS: readonly TIconPreset[] = [
-  { id: "mouse-pointer-2", label: "Pointer", icon: MousePointer2 },
-  { id: "square", label: "Square", icon: Square },
-  { id: "circle", label: "Circle", icon: Circle },
-  { id: "arrow-right", label: "Arrow", icon: ArrowRight },
-  { id: "pencil", label: "Pencil", icon: Pencil },
-  { id: "type", label: "Text", icon: Type },
-  { id: "terminal", label: "Terminal", icon: Terminal },
-  { id: "shapes", label: "Shapes", icon: Shapes },
-  { id: "brush", label: "Brush", icon: Brush },
-  { id: "image", label: "Image", icon: Image },
-  { id: "layers", label: "Layers", icon: Layers },
-  { id: "grid-2x2", label: "Grid", icon: Grid2x2 },
-  { id: "table", label: "Table", icon: Table },
-  { id: "list", label: "List", icon: List },
-  { id: "file-text", label: "File Text", icon: FileText },
-  { id: "check-square", label: "Check", icon: CheckSquare },
-  { id: "calendar", label: "Calendar", icon: Calendar },
-  { id: "chart-bar", label: "Chart", icon: ChartBar },
-  { id: "gauge", label: "Gauge", icon: Gauge },
-  { id: "settings", label: "Settings", icon: Settings },
-  { id: "plus", label: "Plus", icon: Plus },
-  { id: "sparkles", label: "Sparkles", icon: Sparkles },
-  { id: "wand-sparkles", label: "Wand", icon: WandSparkles },
-  { id: "bot", label: "Bot", icon: Bot },
-  { id: "box", label: "Box", icon: Box },
-  { id: "component", label: "Component", icon: Component },
-  { id: "code", label: "Code", icon: Code },
-] as const
+const ICON_PRESETS = Object.entries(Lucid).reduce((p, [k,v]) => {
+  const preset: TIconPreset = {
+    icon: v,
+    label: k,
+    id: k
+  }
+
+  p.push(preset)
+  return p
+}, [] as TIconPreset[])
 
 const ICON_OPTIONS: readonly TIconOption[] = [
   { id: ICON_NONE_ID, label: "No icon", icon: "" },
@@ -380,7 +336,7 @@ export function ToolTab(props: IProps) {
               }}
             >
               <TextField.Label class="ai-wizzard-label">SVG</TextField.Label>
-              <TextField.TextArea class="ai-wizzard-kobalte-textarea" rows={5} spellCheck={false} />
+              <TextField.TextArea class="ai-wizzard-kobalte-textarea" rows={5} spellcheck={false} />
             </TextField>
           </Show>
         </div>
