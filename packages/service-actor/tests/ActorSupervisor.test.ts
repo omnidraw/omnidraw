@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
+import path from "node:path";
 
 const widgetDir = new URL("./fixtures", import.meta.url).pathname;
-const fundActorManifestPath = new URL("./fixtures/account-fund-actor/vibecanvas.json", import.meta.url).pathname;
-const bookkeeperActorManifestPath = new URL("./fixtures/account-bookkeeper-actor/vibecanvas.json", import.meta.url).pathname;
+const configPath = new URL(".", import.meta.url).pathname;
+const fundActorManifestPath = path.join("fixtures", "account-fund-actor", "vibecanvas.json");
+const bookkeeperActorManifestPath = path.join("fixtures", "account-bookkeeper-actor", "vibecanvas.json");
 
 type TNotification = {
   readonly type: "error" | "info" | "success" | "warning";
@@ -27,6 +29,7 @@ function createEventPublisherService(notifications: TNotification[], actorEvents
 function createSupervisor(db: DbServiceTurso, notifications: TNotification[], actorEvents: TActorEvent[] = []) {
   return new ActorSupervisor({
     absWidgetDir: widgetDir,
+    configPath,
     db,
     eventPublisherService: createEventPublisherService(notifications, actorEvents) as any,
   });

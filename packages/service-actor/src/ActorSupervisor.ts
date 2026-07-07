@@ -3,7 +3,7 @@ import type { TActorConnection, TActorInstance } from "@vibecanvas/service-db/mo
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
 import { readdir, exists } from "node:fs/promises"
-import { join, dirname } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
 import type { TActorState, TVibecanvasJson } from "./core/types";
@@ -11,6 +11,14 @@ import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./
 import { fnToActorData } from "./core/fn.actor-data";
 import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
+
+function resolveManifestPath(configPath: string, manifestPath: string): string {
+  return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
+}
+
+function makeManifestPathConfigRelative(configPath: string, manifestPath: string): string {
+  return isAbsolute(manifestPath) ? relative(configPath, manifestPath) : manifestPath
+}
 
 interface IPublicMethods { // not in use yet
   init(): Promise<void>;
@@ -27,6 +35,7 @@ interface IPublicMethods { // not in use yet
 interface IActorSupervisorConfig {
   db: DbServiceTurso
   absWidgetDir: string
+  configPath: string
   eventPublisherService: IEventPublisherService
 }
 
@@ -50,7 +59,13 @@ export class ActorSupervisor {
 
   async reload() {
     await this.reloadDefinitions()
-    await txSyncDbActorDefinitions({ crypto, db: this.#config.db }, { defs: Object.values(this.vibecanvasDefMap) })
+    await txSyncDbActorDefinitions({
+      crypto,
+      db: this.#config.db,
+      configPath: this.#config.configPath,
+      isAbsolute,
+      relative,
+    }, { defs: Object.values(this.vibecanvasDefMap) })
     await this.loadMissingActorInstances()
     await this.reloadConnections()
   }
@@ -65,7 +80,10 @@ export class ActorSupervisor {
         return
       }
 
-      nextDefMap[def.vibecanvasJson.name] = { ...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath }
+      nextDefMap[def.vibecanvasJson.name] = {
+        ...def.vibecanvasJson,
+        manifest_path: makeManifestPathConfigRelative(this.#config.configPath, def.vibecanvasJsonPath),
+      }
     })
 
     this.vibecanvasDefMap = nextDefMap
@@ -87,7 +105,7 @@ export class ActorSupervisor {
     const actor = new Actor({
       id: actorInst.id,
       vsJson: def,
-      rootDir: dirname(def.manifest_path),
+      rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
       state: actorInst.machine_state as TActorState,
       data: fnToActorData(actorInst.machine_context),
     })
@@ -199,7 +217,7 @@ export class ActorSupervisor {
     const actor = new Actor({
       id: actorDb.id,
       vsJson: def,
-      rootDir: dirname(def.manifest_path),
+      rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
     })
 
     this.actorMap[actor.getId()] = actor

@@ -3,12 +3,16 @@ import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
-import { dirname, join, relative as relativePath } from 'node:path';
+import { dirname, isAbsolute, join, relative as relativePath } from 'node:path';
 import { ActorSupervisor } from './ActorSupervisor';
 import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
 import type { TActorStatus } from '@vibecanvas/service-db/model';
 import type { Actor, TActorEvent } from './Actor';
+
+function resolveManifestPath(configPath: string, manifestPath: string): string {
+  return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
+}
 
 interface IPublicMethods {
   sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<string>
@@ -35,6 +39,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     this.#config = config
     this.#supervisor = new ActorSupervisor({
       absWidgetDir: join(config.configPath, 'widgets'),
+      configPath: config.configPath,
       db: config.db,
       eventPublisherService: config.eventPublisherService
     })
@@ -78,7 +83,8 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   async getWidgetCode(defName: string): Promise<{ content: string; path: string; }[] | null> {
     const vcJson = this.getVibecanvasJson(defName)
     if (vcJson === null) return null
-    const absWidgetDir = join(dirname(vcJson.manifest_path), vcJson.widget.relWidgetDir)
+    const absManifestPath = resolveManifestPath(this.#config.configPath, vcJson.manifest_path)
+    const absWidgetDir = join(dirname(absManifestPath), vcJson.widget.relWidgetDir)
 
     return txGetWidgetCode({Bun, readdir, join, relative: relativePath}, {absWidgetDir})
   }

@@ -17,7 +17,7 @@ async function seedActorRows(db: Database) {
   await insertCanvas.run("canvas-actor", "Actor Canvas", "automerge:actor");
 
   const insertDefinition = await db.prepare("insert into actor_definitions (name, slug, manifest_path) values (?, ?, ?)");
-  await insertDefinition.run("Counter", "counter", "/actors/counter/vibecanvas.json");
+  await insertDefinition.run("Counter", "counter", "actors/counter/vibecanvas.json");
 
   const insertInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_name, display_name, status, machine_state, machine_context) values (?, ?, ?, ?, ?, ?, ?, ?)");
   await insertInstance.run(
