@@ -13,7 +13,9 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "actor",
+    "widget"
   ],
   "scripts": {
     "build": "bun scripts/build.ts",

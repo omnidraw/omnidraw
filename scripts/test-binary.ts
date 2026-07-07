@@ -205,6 +205,14 @@ async function assertPathMissing(targetPath: string, label: string): Promise<voi
 
 async function createPortBlocker(port: number): Promise<{ close: () => Promise<void> }> {
   const server = net.createServer()
+  const sockets = new Set<net.Socket>()
+
+  server.on("connection", (socket) => {
+    sockets.add(socket)
+    socket.on("close", () => {
+      sockets.delete(socket)
+    })
+  })
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -215,26 +223,61 @@ async function createPortBlocker(port: number): Promise<{ close: () => Promise<v
   })
 
   return {
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    close: () => {
+      for (const socket of sockets) {
+        socket.destroy()
+      }
+      return new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) reject(error)
           else resolve()
         })
-      }),
+      })
+    },
   }
 }
 
 async function createActorIpcFixture(tempRoot: string): Promise<string> {
   const fixtureDir = path.join(tempRoot, "actor-ipc-fixture")
+  const sdkDistDir = path.join(fixtureDir, "node_modules", "@vibecanvas", "sdk", "dist")
   await Bun.$`mkdir -p ${fixtureDir}`.quiet()
+  await Bun.write(path.join(fixtureDir, "package.json"), JSON.stringify({
+    name: "actor-ipc-fixture",
+    version: "1.0.0",
+    type: "module",
+    dependencies: {
+      "@vibecanvas/sdk": "0.1.0",
+    },
+  }, null, 2))
+  await Bun.$`mkdir -p ${sdkDistDir}`.quiet()
+  await Bun.write(path.join(fixtureDir, "node_modules", "@vibecanvas", "sdk", "package.json"), JSON.stringify({
+    name: "@vibecanvas/sdk",
+    version: "0.1.0",
+    type: "module",
+    exports: {
+      "./actor": {
+        types: "./dist/actor.d.ts",
+        default: "./dist/actor.js",
+      },
+    },
+  }, null, 2))
+  await Bun.write(path.join(sdkDistDir, "actor.js"), `
+export function defineFn(fn) { return fn; }
+export function defineTx(tx) { return tx; }
+`)
   const functionPath = path.join(fixtureDir, "functions.ts")
   await Bun.write(functionPath, `
+import { defineFn, defineTx } from "@vibecanvas/sdk/actor";
+
 export default {
-  fn: {},
+  fn: {
+    "fn.throwDomException": defineFn(async () => {
+      throw new DOMException("The object can not be cloned.", "DataCloneError");
+    }),
+  },
   fx: {},
   tx: {
-    "tx.addFunds": async (portal, args) => {
+    "tx.addFunds": defineTx(async (portal, args) => {
       const data = { balance: args.data.balance + args.msg.amount };
       await portal.setData(data);
       await portal.emitMessage({
@@ -245,7 +288,7 @@ export default {
           balance: data.balance,
         },
       });
-    },
+    }),
   },
 };
 `)
@@ -339,6 +382,64 @@ async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeou
   }
 
   console.log("[test-binary] PASS actor-ipc ready/setData/emitMessage/done")
+
+  const errorMessages: TActorIpcChildMessage[] = []
+  let errorProc: Bun.Subprocess | null = null
+  const gotError = withTimeout(new Promise<void>((resolve, reject) => {
+    errorProc = Bun.spawn({
+      cmd: [binaryPath, "--icp-client", "--functionPath", functionPath],
+      cwd: path.dirname(functionPath),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env },
+      ipc(message) {
+        const childMessage = message as TActorIpcChildMessage
+        errorMessages.push(childMessage)
+
+        if (childMessage.type === "ready") {
+          errorProc?.send({
+            type: "run",
+            id: 2,
+            func: ["fn.throwDomException"],
+            payload: {},
+            data: {},
+          })
+          return
+        }
+
+        if (childMessage.type === "error") {
+          const msg = childMessage.msg as { name?: unknown; message?: unknown; code?: unknown }
+          if (msg.name !== "DataCloneError" || msg.message !== "The object can not be cloned." || msg.code !== 25) {
+            reject(new Error(`actor-ipc serialized error mismatch: ${JSON.stringify(childMessage)}`))
+            return
+          }
+          resolve()
+        }
+      },
+    })
+  }), timeoutMs, "actor-ipc DOMException serialization")
+
+  try {
+    await gotError
+  } finally {
+    errorProc?.kill()
+    if (errorProc) {
+      const result = await Promise.race([
+        errorProc.exited,
+        Bun.sleep(5000).then(() => "timeout"),
+      ])
+      if (result === "timeout") {
+        errorProc.kill(9)
+        await errorProc.exited
+      }
+    }
+  }
+
+  const errorTypes = errorMessages.map((message) => message.type)
+  if (JSON.stringify(errorTypes) !== JSON.stringify(["ready", "error"])) {
+    throw new Error(`actor-ipc error message sequence mismatch: ${JSON.stringify(errorTypes)}`)
+  }
+  console.log("[test-binary] PASS actor-ipc serializes DOMException errors")
 }
 
 async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBinaryScenario): Promise<void> {

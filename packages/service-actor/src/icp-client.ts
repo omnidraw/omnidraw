@@ -3,6 +3,8 @@
  */
 
 import { parseArgs } from "node:util";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 export type TFnPortal = {
   next: () => Promise<any>;
@@ -49,15 +51,46 @@ type TFunctionRegistry = {
   tx: { [key: string]: TTxFunc };
 };
 
-function serializeError(value: unknown) {
-  if (value instanceof Error) {
+function serializeCloneableValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "undefined") return undefined;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "symbol") return String(value);
+  if (typeof value === "function") return `[Function ${value.name || "anonymous"}]`;
+
+  if (typeof value !== "object") return String(value);
+
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+
+  if (
+    value instanceof Error ||
+    ("message" in value && typeof value.message === "string" && "name" in value && typeof value.name === "string")
+  ) {
+    const errorLike = value as { name?: unknown; message?: unknown; stack?: unknown; code?: unknown };
     return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack,
+      name: typeof errorLike.name === "string" ? errorLike.name : value.constructor.name,
+      message: typeof errorLike.message === "string" ? errorLike.message : String(value),
+      stack: typeof errorLike.stack === "string" ? errorLike.stack : undefined,
+      code: typeof errorLike.code === "string" || typeof errorLike.code === "number" ? errorLike.code : undefined,
     };
   }
-  return value;
+
+  if (Array.isArray(value)) {
+    return value.map((item) => serializeCloneableValue(item, seen));
+  }
+
+  const record: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    try {
+      record[key] = serializeCloneableValue((value as Record<string, unknown>)[key], seen);
+    } catch (error) {
+      record[key] = `[Unserializable: ${error instanceof Error ? error.message : String(error)}]`;
+    }
+  }
+  return record;
 }
 
 function buildError(msg: unknown, id?: number) {
@@ -65,8 +98,43 @@ function buildError(msg: unknown, id?: number) {
     type: "error",
     error: true,
     id,
-    msg: serializeError(msg),
+    msg: serializeCloneableValue(msg),
   };
+}
+
+function findPackageRoot(startPath: string): string {
+  let current = path.dirname(startPath);
+  while (true) {
+    if (existsSync(path.join(current, "package.json"))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return process.cwd();
+    current = parent;
+  }
+}
+
+function ensureSdkSubpathFallback(packageRoot: string, subpath: "actor" | "widget") {
+  const sdkRoot = path.join(packageRoot, "node_modules", "@vibecanvas", "sdk");
+  const distEntry = path.join(sdkRoot, "dist", `${subpath}.js`);
+  if (!existsSync(distEntry)) return;
+
+  const subpathDir = path.join(sdkRoot, subpath);
+  const subpathEntry = path.join(subpathDir, "index.js");
+  if (existsSync(subpathEntry)) return;
+
+  mkdirSync(subpathDir, { recursive: true });
+  writeFileSync(path.join(subpathDir, "package.json"), JSON.stringify({
+    type: "module",
+    main: "./index.js",
+    types: "./index.d.ts",
+  }, null, 2));
+  writeFileSync(subpathEntry, `export * from "../dist/${subpath}.js";\n`);
+  writeFileSync(path.join(subpathDir, "index.d.ts"), `export * from "../dist/${subpath}";\n`);
+}
+
+function ensureWidgetRuntimeResolution(functionPath: string) {
+  const packageRoot = findPackageRoot(functionPath);
+  ensureSdkSubpathFallback(packageRoot, "actor");
+  ensureSdkSubpathFallback(packageRoot, "widget");
 }
 
 function validateFunctionGroup(value: unknown): value is Record<string, Function> {
@@ -74,6 +142,7 @@ function validateFunctionGroup(value: unknown): value is Record<string, Function
 }
 
 function loadFunctionRegistry(functionPath: string): TFunctionRegistry {
+  ensureWidgetRuntimeResolution(functionPath);
   const mod = require(functionPath);
   const maybeFuncMap = mod.default ?? mod;
 

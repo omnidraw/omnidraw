@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 
 import path from "path"
-import { rmSync } from "fs"
+import { mkdirSync, rmSync } from "fs"
 
 const sdkDir = path.join(import.meta.dir, "..")
 const distDir = path.join(sdkDir, "dist")
+const actorSubpathDir = path.join(sdkDir, "actor")
+const widgetSubpathDir = path.join(sdkDir, "widget")
 
 rmSync(distDir, { recursive: true, force: true })
+rmSync(actorSubpathDir, { recursive: true, force: true })
+rmSync(widgetSubpathDir, { recursive: true, force: true })
 
 const tscPath = Bun.resolveSync("typescript/lib/tsc.js", path.join(sdkDir, "package.json"))
 const tsc = Bun.spawnSync({
@@ -37,3 +41,17 @@ if (!result.success) {
   }
   process.exit(1)
 }
+
+async function writeSubpathFallback(subpathDir: string, distName: string) {
+  mkdirSync(subpathDir, { recursive: true })
+  await Bun.write(path.join(subpathDir, "package.json"), JSON.stringify({
+    type: "module",
+    main: "./index.js",
+    types: "./index.d.ts",
+  }, null, 2))
+  await Bun.write(path.join(subpathDir, "index.js"), `export * from "../dist/${distName}.js";\n`)
+  await Bun.write(path.join(subpathDir, "index.d.ts"), `export * from "../dist/${distName}";\n`)
+}
+
+await writeSubpathFallback(actorSubpathDir, "actor")
+await writeSubpathFallback(widgetSubpathDir, "widget")

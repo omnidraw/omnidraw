@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 type TChildMessage =
   | { type: "ready" }
@@ -93,5 +96,81 @@ describe("icp-client", () => {
         payload: { accountId: "1", amount: 37, balance: 42 },
       },
     });
+  });
+
+  test("serializes DOMException throws without killing the child", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "vibecanvas-icp-domexception-"));
+    const functionPath = join(rootDir, "functions.ts");
+    await writeFile(functionPath, `
+export default {
+  fn: {
+    "fn.throwDomException": async () => {
+      throw new DOMException("The object can not be cloned.", "DataCloneError");
+    },
+  },
+  fx: {},
+  tx: {},
+};
+`);
+
+    const icpClientPath = new URL("../src/icp-client.ts", import.meta.url).pathname;
+    const messages: TChildMessage[] = [];
+    let proc: Bun.Subprocess | null = null;
+
+    try {
+      const gotError = new Promise<TChildMessage>((resolve, reject) => {
+        proc = Bun.spawn([
+          process.execPath,
+          icpClientPath,
+          "--icp-client",
+          "--functionPath",
+          functionPath,
+        ], {
+          cwd: rootDir,
+          stdout: "pipe",
+          stderr: "pipe",
+          ipc(message) {
+            const childMessage = message as TChildMessage;
+            messages.push(childMessage);
+
+            if (childMessage.type === "ready") {
+              proc?.send({
+                type: "run",
+                id: 1,
+                func: ["fn.throwDomException"],
+                payload: {},
+                data: {},
+              });
+              return;
+            }
+
+            if (childMessage.type === "error") {
+              resolve(childMessage);
+            }
+          },
+        });
+
+        void waitForChildExit(proc).then((result) => {
+          if (result !== "timeout") {
+            reject(new Error(`icp-client exited before assertion with code ${result}`));
+          }
+        });
+      });
+
+      const errorMessage = await gotError;
+      expect(messages.map((message) => message.type)).toEqual(["ready", "error"]);
+      expect(errorMessage).toMatchObject({
+        type: "error",
+        id: 1,
+        msg: {
+          name: "DataCloneError",
+          message: "The object can not be cloned.",
+          code: 25,
+        },
+      });
+    } finally {
+      proc?.kill();
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 });
