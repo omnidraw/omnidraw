@@ -145,6 +145,10 @@ export type TAgentDraftManifestPatchResult =
   | { ok: true; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
+export type TAgentWizzardPublishResult =
+  | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
+  | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
+
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
 
@@ -159,6 +163,7 @@ export const agentContract = oc.router({
     cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
     newSession: oc.input(ZAgentWizzardScope),
     previewSource: oc.input(ZAgentWizzardScope).output(orpcType<TAgentPreviewSourceResult>()),
+    publish: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardPublishResult>()),
     draftManifest: {
       read: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftManifestReadResult>()),
       patch: oc.input(ZAgentWizzardDraftManifestPatch).output(orpcType<TAgentDraftManifestPatchResult>()),

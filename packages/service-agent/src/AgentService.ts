@@ -6,9 +6,10 @@ import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { mkdirSync } from 'node:fs';
-import { readdir, writeFile } from 'node:fs/promises';
-import { join, relative as relativePath, resolve } from 'node:path';
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, join, relative as relativePath, resolve } from 'node:path';
 import { fxLatestActorCandidateRecord } from './core/fx.session-candidate';
+import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './systemprompts';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
 import type { TActorCandidateRecord, TActorServiceReloader } from './tools/types';
@@ -70,6 +71,11 @@ type TAgentConnectResult = {
 type TAgentCancelResult = {
   canceled: boolean;
   running: boolean;
+};
+type TWizzardSessionEntry = {
+  unsub: () => void;
+  session: AgentSession;
+  sessionManager: SessionManager;
 };
 
 type TDraftActorKey = `${TWidgetId}:${TSessionId}`;
@@ -134,6 +140,10 @@ type TAgentDraftManifestPatchResult =
   | { ok: true; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
+type TAgentWizzardPublishResult =
+  | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
+  | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
+
 const PROMPT_IMAGE_FALLBACK_TEXT = 'Please use the attached image.'
 const PROMPT_IMAGE_MAX_COUNT = 5
 const PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
@@ -148,7 +158,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, { unsub: () => void, session: AgentSession, sessionManager: SessionManager }>> = {}
+  sessionMap: Record<TWidgetId, Record<TSessionId, TWizzardSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
 
@@ -190,47 +200,18 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       } catch { }
     }
 
-    const phaseTools = fnCreateWidgetWizardPhaseTools({
-      cwd,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      sessionManager,
-      actorService: this.#config.actorService,
-    })
-    const services = await createAgentSessionServices({
-      cwd,
-      agentDir: this.#piAgentDir,
-      authStorage: this.authStorage,
-      modelRegistry: this.modelRegistry,
-      settingsManager: this.settingsManager,
-      resourceLoaderOptions: {
-        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
-      }
-    });
-    const { session } = await createAgentSessionFromServices({
-      services,
-      sessionManager,
-      tools: [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)],
-      customTools: phaseTools.customTools,
-    })
+    const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
     const actorCandidate = fxLatestActorCandidateRecord({ sessionManager })
-    const messageHistory = session.messages
-    const unsub = session.subscribe((event) => {
-      this.#config.eventPublisherService.publishAgentEvent({
-        widgetId: id,
-        sessionId,
-        event,
-      })
-    })
     if (!this.sessionMap[id]) {
       this.sessionMap[id] = {}
     }
 
-    this.sessionMap[id][sessionId] = { session, sessionManager, unsub }
+    this.sessionMap[id][sessionId] = sessionEntry
 
     return {
       vcJson,
       actorCandidate,
-      messageHistory,
+      messageHistory: sessionEntry.session.messages,
     }
   }
 
@@ -239,6 +220,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
+    await this.#refreshWizzardSessionToolsIfNeeded(id, sessionId)
+
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
@@ -451,6 +434,62 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return editResult
   }
 
+  async publishWizzard(id: TWidgetId, sessionId: string): Promise<TAgentWizzardPublishResult> {
+    if (!this.sessionMap[id]?.[sessionId]) {
+      return {
+        published: false,
+        manifest: null,
+        destination: null,
+        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
+      }
+    }
+
+    const rootDir = this.#getWizardCwd(id, sessionId)
+    const manifestResult = await this.#readDraftActorManifest(rootDir)
+    if (!manifestResult.ready) {
+      return {
+        published: false,
+        manifest: null,
+        destination: null,
+        message: manifestResult.message,
+      }
+    }
+
+    const result = await txPublishWidgetDraft({ readdir, readFile, mkdir, rm, cp, join, relative: relativePath, resolve, basename }, {
+      cwd: rootDir,
+      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
+      actorService: this.#config.actorService,
+    })
+
+    if (!result.published) {
+      return {
+        published: false,
+        manifest: result.manifest,
+        destination: null,
+        message: result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
+        errors: result.validation.errors,
+        warnings: result.validation.warnings,
+      }
+    }
+
+    this.#disposeDraftActor(id, sessionId)
+    if (!result.destination) {
+      return {
+        published: false,
+        manifest: result.manifest,
+        destination: null,
+        message: 'Widget publish completed without a destination path.',
+      }
+    }
+
+    return {
+      published: true,
+      manifest: result.manifest,
+      destination: result.destination,
+      files: result.files,
+    }
+  }
+
   login(providerId: 'openai-codex' | 'github-copilot') {
     const loginId = crypto.randomUUID()
     const controller = new AbortController()
@@ -606,6 +645,79 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return join(this.#piAgentDir, 'widget-cwd', id + sessionId);
   }
 
+  async #createWizzardSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TWizzardSessionEntry> {
+    const cwd = this.#getWizardCwd(id, sessionId)
+    const phaseTools = fnCreateWidgetWizardPhaseTools({
+      cwd,
+      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
+      sessionManager,
+      actorService: this.#config.actorService,
+    })
+    const services = await createAgentSessionServices({
+      cwd,
+      agentDir: this.#piAgentDir,
+      authStorage: this.authStorage,
+      modelRegistry: this.modelRegistry,
+      settingsManager: this.settingsManager,
+      resourceLoaderOptions: {
+        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
+      }
+    });
+    const { session } = await createAgentSessionFromServices({
+      services,
+      sessionManager,
+      model: previousSession?.model,
+      thinkingLevel: previousSession?.thinkingLevel,
+      tools: this.#wizzardToolNames(phaseTools),
+      customTools: phaseTools.customTools,
+    })
+    const unsub = session.subscribe((event) => {
+      this.#config.eventPublisherService.publishAgentEvent({
+        widgetId: id,
+        sessionId,
+        event,
+      })
+    })
+
+    return { session, sessionManager, unsub }
+  }
+
+  #wizzardToolNames(phaseTools: ReturnType<typeof fnCreateWidgetWizardPhaseTools>): string[] {
+    return [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)]
+  }
+
+  #sameToolSet(left: readonly string[], right: readonly string[]): boolean {
+    if (left.length !== right.length) return false
+
+    const leftSet = new Set(left)
+    return right.every((tool) => leftSet.has(tool))
+  }
+
+  async #refreshWizzardSessionToolsIfNeeded(id: TWidgetId, sessionId: TSessionId): Promise<void> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry || sessionEntry.session.isStreaming) return
+    if (typeof sessionEntry.session.getActiveToolNames !== 'function') return
+
+    const cwd = this.#getWizardCwd(id, sessionId)
+    const phaseTools = fnCreateWidgetWizardPhaseTools({
+      cwd,
+      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
+      sessionManager: sessionEntry.sessionManager,
+      actorService: this.#config.actorService,
+    })
+    const desiredTools = this.#wizzardToolNames(phaseTools)
+    const activeTools = sessionEntry.session.getActiveToolNames()
+
+    if (this.#sameToolSet(activeTools, desiredTools)) return
+
+    const previousSession = sessionEntry.session
+    const nextEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionEntry.sessionManager, previousSession)
+
+    sessionEntry.unsub()
+    previousSession.dispose()
+    this.sessionMap[id][sessionId] = nextEntry
+  }
+
   #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {
     if (!images || images.length === 0) {
       return []
@@ -721,7 +833,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const root = resolve(rootDir)
     const widgetDir = resolve(root, relWidgetDir)
     if (widgetDir !== root && !widgetDir.startsWith(`${root}/`)) return {}
-    if (!await Bun.file(widgetDir).exists()) return {}
+    const widgetDirStat = await stat(widgetDir).catch(() => null)
+    if (!widgetDirStat?.isDirectory()) return {}
 
     const sources: Record<string, string> = {}
     await this.#readSourceMapRecursive(widgetDir, widgetDir, sources)
