@@ -40,8 +40,8 @@ const ICON_PRESETS = Object.entries(Lucid).reduce((p, [k,v]) => {
 
 const ICON_OPTIONS: readonly TIconOption[] = [
   { id: ICON_NONE_ID, label: "No icon", icon: "" },
-  ...ICON_PRESETS,
   { id: ICON_SVG_ID, label: "Custom SVG", icon: Code },
+  ...ICON_PRESETS,
 ]
 
 const getIconOption = (optionId: string) => ICON_OPTIONS.find((entry) => entry.id === optionId) ?? ICON_OPTIONS[0]
