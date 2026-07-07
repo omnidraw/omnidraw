@@ -123,6 +123,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [B33](b/B33.md) - ai wizard: chat does not reconnect after OAuth/API key login
 - [ ]: [B34] - ai wizard: model menu need 2 times before update
 - [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
+- [ ]: [B36](b/B36.md) - actor timeouts only trigger in error state
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -184,6 +185,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A59](a/A59.md) - actor-ui: SolidJS actor state machine view
 - [ ]: [A60](a/A60.md) - actor IPC: spawn same compiled binary
 - [ ]: [A61](a/A61.md) - ai wizard: approve should scaffold then prompt AI implementation
+- [ ]: [A62](a/A62.md) - widgets: header three-dot menu
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
