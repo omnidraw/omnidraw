@@ -37,6 +37,9 @@ const DEFAULT_COMMANDS: TChatComposerCommand[] = [
   { id: "explain", label: "Explain", description: "Summarize the current design" },
 ]
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+const MAX_PROMPT_IMAGE_COUNT = 5
+const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024
 const THINKING_LEVELS: TChatComposerThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"]
 
 const promptSchema = new Schema({
@@ -351,7 +354,10 @@ export function ChatComposer(props: TChatComposerProps) {
       return false
     }
 
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"))
+    const remainingImageSlots = Math.max(0, MAX_PROMPT_IMAGE_COUNT - images().length)
+    const imageFiles = files
+      .filter((file) => ALLOWED_IMAGE_MIME_TYPES.has(file.type) && file.size <= MAX_PROMPT_IMAGE_BYTES)
+      .slice(0, remainingImageSlots)
 
     if (imageFiles.length === 0) {
       return false

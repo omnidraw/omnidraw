@@ -9,6 +9,7 @@ import { SettingsTab } from "./tabs/SettingsTab"
 import { ChatTab } from "./tabs/ChatTab"
 import "./index.css"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
+import type { TChatPromptImage } from "./ChatComposer/interface"
 
 type TAiWizardThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
 type TAiWizardPreference = {
@@ -174,7 +175,7 @@ export function AiWizzard(props: IProps) {
         })
     })
 
-    const prompt = async (args: { text: string; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
+    const prompt = async (args: { text: string; images: TChatPromptImage[]; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
         const currentSessionId = sessionId()
         setIsRunning(true)
         setIsCanceling(false)
@@ -190,6 +191,7 @@ export function AiWizzard(props: IProps) {
             widgetId: props.id,
             sessionId: currentSessionId,
             text: args.text,
+            images: args.images,
             model: args.model ? {
                 provider: args.model.provider,
                 modelId: args.model.id,

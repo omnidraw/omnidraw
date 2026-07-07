@@ -122,7 +122,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B32](b/B32.md) - binary: bundle Turso native addon beside compiled executable
 - [ ]: [B33](b/B33.md) - ai wizard: chat does not reconnect after OAuth/API key login
 - [ ]: [B34] - ai wizard: model menu need 2 times before update
-- [ ]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
+- [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

@@ -16,6 +16,12 @@ export type TChatComposerImage = {
   previewUrl: string
 }
 
+export type TChatPromptImage = {
+  name?: string
+  mimeType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"
+  data: string
+}
+
 export type TChatComposerModel = {
   id: string
   input: ("text" | "image")[]
