@@ -134,6 +134,12 @@ type TAgentDraftManifestPatch = {
   description?: string;
   initialData?: unknown;
   dataSchema?: unknown;
+  tool?: {
+    label?: string;
+    icon?: string | null;
+    group?: string | null;
+    priority?: number | null;
+  };
 };
 
 type TAgentDraftManifestPatchResult =
@@ -581,6 +587,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const issues: string[] = []
     let initialData = manifest.actor.initialData
     let dataSchema = manifest.actor.dataSchema
+    let tool = manifest.widget.tool
 
     if ('initialData' in patch) {
       const parsed = ZActorData.safeParse(patch.initialData)
@@ -597,6 +604,71 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         issues.push(...parsed.error.issues.map((issue) => `actor.dataSchema.${issue.path.join('.')}: ${issue.message}`))
       } else {
         dataSchema = parsed.data as TJsonSchema
+      }
+    }
+
+    if ('tool' in patch && patch.tool) {
+      if (typeof patch.tool.label === 'string') {
+        tool = {
+          ...tool,
+          label: patch.tool.label,
+        }
+      }
+
+      if ('icon' in patch.tool) {
+        if (patch.tool.icon === null) {
+          tool = {
+            ...tool,
+            icon: undefined,
+          }
+        } else if (typeof patch.tool.icon !== 'string') {
+          issues.push('widget.tool.icon: expected a string')
+        } else {
+          tool = {
+            ...tool,
+            icon: patch.tool.icon,
+          }
+        }
+      }
+
+      if ('group' in patch.tool) {
+        if (patch.tool.group === null) {
+          tool = {
+            ...tool,
+            group: undefined,
+          }
+        } else if (typeof patch.tool.group !== 'string') {
+          issues.push('widget.tool.group: expected a string')
+        } else {
+          tool = {
+            ...tool,
+            group: patch.tool.group,
+          }
+        }
+      }
+
+      if ('priority' in patch.tool) {
+        if (patch.tool.priority === null) {
+          tool = {
+            ...tool,
+            priority: undefined,
+          }
+        } else if (typeof patch.tool.priority !== 'number' || Number.isNaN(patch.tool.priority)) {
+          issues.push('widget.tool.priority: expected a number')
+        } else {
+          tool = {
+            ...tool,
+            priority: patch.tool.priority,
+          }
+        }
+      }
+
+      if (patch.tool.label === undefined
+        && !('icon' in patch.tool)
+        && !('group' in patch.tool)
+        && !('priority' in patch.tool)
+      ) {
+        issues.push('widget.tool: no editable field supplied')
       }
     }
 
@@ -617,6 +689,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         ...manifest.actor,
         initialData,
         dataSchema,
+      },
+      widget: {
+        ...manifest.widget,
+        tool,
       },
     }
 

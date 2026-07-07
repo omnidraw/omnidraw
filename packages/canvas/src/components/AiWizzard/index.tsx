@@ -7,6 +7,7 @@ import { ActorTab } from "./tabs/ActorTab"
 import { PreviewTab } from "./tabs/PreviewTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { ChatTab } from "./tabs/ChatTab"
+import { ToolTab } from "./tabs/ToolTab"
 import "./index.css"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
 import type { TChatPromptImage } from "./ChatComposer/interface"
@@ -25,6 +26,7 @@ interface IProps {
     apiService: TOrpcSafeClient
     sessionId: string
     aiWizardPreference?: TAiWizardPreference
+    toolGroups?: string[]
     onAiWizardPreferenceChange?: (preference: TAiWizardPreference) => void
     onResetSessionId: () => string
 }
@@ -307,6 +309,7 @@ export function AiWizzard(props: IProps) {
                 <Tabs.List class="ai-wizzard-tabs__list">
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="chat">Chat</Tabs.Trigger>
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="actor">Actor</Tabs.Trigger>
+                    <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="tool">Tool</Tabs.Trigger>
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="preview">Preview</Tabs.Trigger>
                     <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="settings">Settings</Tabs.Trigger>
                     <Tabs.Indicator class="ai-wizzard-tabs__indicator" />
@@ -333,6 +336,16 @@ export function AiWizzard(props: IProps) {
                         sessionId={sessionId()}
                         widgetId={props.id}
                         onApprove={approveActorCandidate}
+                        onManifestChange={setVcJson}
+                    />
+                </Tabs.Content>
+                <Tabs.Content class="ai-wizzard-tabs__content" value="tool">
+                    <ToolTab
+                        manifest={vcJson()}
+                        apiService={props.apiService}
+                        sessionId={sessionId()}
+                        existingGroups={props.toolGroups ?? []}
+                        widgetId={props.id}
                         onManifestChange={setVcJson}
                     />
                 </Tabs.Content>
