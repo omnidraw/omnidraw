@@ -21,6 +21,41 @@ async function waitForIdle(actor: Actor) {
 }
 
 describe("Actor", () => {
+    const waitingTimeoutConfig: TVibecanvasJson = {
+        ...testActorConfig,
+        actor: {
+            ...testActorConfig.actor,
+            states: {
+                ...testActorConfig.actor.states,
+                ready: {
+                    on: {
+                        ...testActorConfig.actor.states.ready?.on,
+                        celebrateReady: {
+                            func: ["fn.noop"],
+                            allowedTargetStates: ["waiting.celebrating"],
+                        },
+                    },
+                },
+                "waiting.celebrating": {
+                    on: {
+                        "timeout:20ms": {
+                            func: ["fn.noop"],
+                            allowedTargetStates: ["ready"],
+                        },
+                    },
+                },
+            },
+            inputMsgSchema: {
+                ...testActorConfig.actor.inputMsgSchema,
+                celebrateReady: {
+                    type: "object",
+                    properties: {},
+                    additionalProperties: false,
+                },
+            },
+        },
+    };
+
     test("runs guest functions in child process and updates data", async () => {
         const actor = new Actor({
             id: "fund-actor-1",
@@ -35,6 +70,69 @@ describe("Actor", () => {
         expect(messageId).toBeString()
         expect(actor.getId()).toBe("fund-actor-1")
         expect(actor.getData()).toEqual({ balance: 100 })
+
+        actor.close()
+    })
+
+    test("sends timeout system message after entering waiting state", async () => {
+        const actor = new Actor({
+            id: "fund-actor-waiting-timeout-enter",
+            rootDir,
+            vsJson: waitingTimeoutConfig
+        })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
+
+        actor.start()
+        actor.inbox("celebrateReady", {})
+        await waitForIdle(actor)
+        expect(actor.getState()).toBe("waiting.celebrating")
+
+        await Bun.sleep(40)
+        await waitForIdle(actor)
+
+        expect(actor.getState()).toBe("ready")
+        expect(messages.some(event => event.kind === "system" && event.type === "ack" && event.inputName === "timeout:20ms")).toBe(true)
+
+        actor.close()
+    })
+
+    test("schedules state timeout for actors restored in waiting state", async () => {
+        const actor = new Actor({
+            id: "fund-actor-waiting-timeout-start",
+            rootDir,
+            vsJson: waitingTimeoutConfig,
+            state: "waiting.celebrating",
+        })
+        const messages: TActorEvent[] = []
+        actor.listen((event) => {
+            messages.push(event)
+        })
+
+        actor.start()
+        expect(actor.getState()).toBe("waiting.celebrating")
+
+        await Bun.sleep(40)
+        await waitForIdle(actor)
+
+        expect(actor.getState()).toBe("ready")
+        expect(messages.some(event => event.kind === "system" && event.type === "ack" && event.inputName === "timeout:20ms")).toBe(true)
+
+        actor.close()
+    })
+
+    test("still rejects direct user timeout messages that are not in input schema", async () => {
+        const actor = new Actor({
+            id: "fund-actor-timeout-user-input",
+            rootDir,
+            vsJson: waitingTimeoutConfig
+        })
+        actor.start()
+
+        expect(() => actor.inbox("timeout:20ms", {})).toThrow()
+        expect(actor.getState()).toBe("error")
 
         actor.close()
     })
