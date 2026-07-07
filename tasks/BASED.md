@@ -182,6 +182,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A57](a/A57.md) - ai wizard: new widget vs edit published widget flow
 - [x]: [A58](a/A58.md) - ai wizard: show canvas sidebar on screen
 - [x]: [A59](a/A59.md) - actor-ui: SolidJS actor state machine view
+- [ ]: [A60](a/A60.md) - actor IPC: spawn same compiled binary
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
