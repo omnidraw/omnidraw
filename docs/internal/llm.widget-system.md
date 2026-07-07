@@ -448,6 +448,8 @@ Actor author model:
 - `fx.*` functions: impure reads through injected portal capabilities.
 - `tx.*` functions: writes through injected portal capabilities.
 - Pipelines use `await portal.next()` only when composition is desired.
+- Production actor function files must exist on disk at `actor.relFunctionPath` when loaded by the runtime, including compiled Vibecanvas binaries.
+- External actor `.ts` or `.js` modules should be self-contained or ship any runtime dependencies beside the widget, for example in the widget folder's `node_modules`. Type-only imports are erased and do not need runtime packages.
 
 ### Manifest/type generation
 
