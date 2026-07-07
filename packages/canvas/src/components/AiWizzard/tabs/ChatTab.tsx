@@ -1,4 +1,4 @@
-import type { TChatComposerModel, TChatComposerSubmit, TChatComposerThinkingLevel } from "../ChatComposer/interface"
+import type { TChatComposerImage, TChatComposerModel, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, onCleanup, onMount, Show } from "solid-js"
@@ -24,13 +24,17 @@ type TAiWizardPreference = {
   thinkingLevel?: TChatComposerThinkingLevel
 }
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set<TChatPromptImage["mimeType"]>(["image/png", "image/jpeg", "image/gif", "image/webp"])
+const MAX_PROMPT_IMAGE_COUNT = 5
+const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024
+
 interface IProps {
   settings?: TAgentSettings
   aiWizardPreference?: TAiWizardPreference
   messageHistory: readonly unknown[]
   isRunning: boolean
   isCanceling: boolean
-  onPrompt: (args: { text: string; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
+  onPrompt: (args: { text: string; images: TChatPromptImage[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onCancel: () => void
   onNewChat: () => void
 }
@@ -57,6 +61,47 @@ function getChatHistoryScrollKey(messageHistory: readonly unknown[]) {
   } catch {
     return String(messageHistory.length)
   }
+}
+
+function isAllowedPromptImageMimeType(mimeType: string): mimeType is TChatPromptImage["mimeType"] {
+  return ALLOWED_IMAGE_MIME_TYPES.has(mimeType as TChatPromptImage["mimeType"])
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Image file did not produce a data URL"))
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read image file"))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function encodePromptImage(image: TChatComposerImage): Promise<TChatPromptImage | undefined> {
+  const file = image.file
+
+  if (!isAllowedPromptImageMimeType(file.type) || file.size > MAX_PROMPT_IMAGE_BYTES) {
+    return undefined
+  }
+
+  const dataUrl = await readFileAsDataUrl(file)
+  const [, data = ""] = dataUrl.split(",", 2)
+
+  if (!data) {
+    return undefined
+  }
+
+  return {
+    name: file.name || undefined,
+    mimeType: file.type,
+    data,
+  }
+}
+
+async function encodePromptImages(images: TChatComposerImage[]) {
+  const limitedImages = images.slice(0, MAX_PROMPT_IMAGE_COUNT)
+  const encoded = await Promise.all(limitedImages.map((image) => encodePromptImage(image)))
+
+  return encoded.filter((image): image is TChatPromptImage => image !== undefined)
 }
 
 function ChatMessageImage(props: { part: Extract<TChatMessagePart, { kind: "image" }> }) {
@@ -305,9 +350,16 @@ export function ChatTab(props: IProps) {
 
   const submitPrompt = (submit: TChatComposerSubmit) => {
     const text = submit.text.trim()
-    if (!text) return
+    const hasImages = submit.images.length > 0
 
-    void props.onPrompt({ text, model: submit.model, thinkingLevel: submit.thinkingLevel }).catch((error) => {
+    if (!text && !hasImages) return
+
+    void (async () => {
+      const images = await encodePromptImages(submit.images)
+      if (!text && images.length === 0) return
+
+      await props.onPrompt({ text, images, model: submit.model, thinkingLevel: submit.thinkingLevel })
+    })().catch((error) => {
       console.error(error)
     })
   }

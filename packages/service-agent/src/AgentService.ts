@@ -34,7 +34,18 @@ type TPromptModel = {
   provider: string;
   modelId: string;
 };
+type TPromptImage = {
+  type: 'image';
+  data: string;
+  mimeType: string;
+};
+type TPromptInputImage = {
+  name?: string;
+  data: string;
+  mimeType: string;
+};
 type TPromptSelection = {
+  images?: TPromptInputImage[];
   model?: TPromptModel;
   thinkingLevel?: TThinkingLevel;
 };
@@ -122,6 +133,13 @@ type TAgentDraftManifestPatch = {
 type TAgentDraftManifestPatchResult =
   | { ok: true; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
+
+const PROMPT_IMAGE_FALLBACK_TEXT = 'Please use the attached image.'
+const PROMPT_IMAGE_MAX_COUNT = 5
+const PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+const PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(PROMPT_IMAGE_MAX_BYTES / 3) * 4
+const PROMPT_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+const PROMPT_IMAGE_BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
@@ -243,7 +261,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       session.setThinkingLevel(promptSelection.thinkingLevel)
     }
 
-    await session.prompt(text)
+    const images = this.#normalizePromptImages(promptSelection?.images)
+    const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
+
+    await session.prompt(promptText, images.length > 0 ? { images } : undefined)
   }
 
   async cancelWizzard(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
@@ -583,6 +604,32 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   #getWizardCwd(id: TWidgetId, sessionId: TSessionId): string {
     return join(this.#piAgentDir, 'widget-cwd', id + sessionId);
+  }
+
+  #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {
+    if (!images || images.length === 0) {
+      return []
+    }
+
+    if (images.length > PROMPT_IMAGE_MAX_COUNT) {
+      throw new Error(`Too many prompt images: max ${PROMPT_IMAGE_MAX_COUNT}`)
+    }
+
+    return images.map((image) => {
+      if (!PROMPT_IMAGE_MIME_TYPES.has(image.mimeType)) {
+        throw new Error(`Unsupported prompt image MIME type: ${image.mimeType}`)
+      }
+
+      if (image.data.length > PROMPT_IMAGE_MAX_BASE64_LENGTH || !PROMPT_IMAGE_BASE64_PATTERN.test(image.data)) {
+        throw new Error('Invalid prompt image data')
+      }
+
+      return {
+        type: 'image',
+        data: image.data,
+        mimeType: image.mimeType,
+      }
+    })
   }
 
   #disposeWizzardSession(id: TWidgetId, sessionId: TSessionId): void {

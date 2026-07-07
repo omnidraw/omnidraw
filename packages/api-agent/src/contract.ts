@@ -55,6 +55,30 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 ])
 
 const ZAgentWizzardScope = z.object({ widgetId: z.string(), sessionId: z.string() })
+const AGENT_WIZZARD_PROMPT_IMAGE_MAX_COUNT = 5;
+const AGENT_WIZZARD_PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const AGENT_WIZZARD_PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(AGENT_WIZZARD_PROMPT_IMAGE_MAX_BYTES / 3) * 4;
+const ZAgentWizzardPromptImage = z.object({
+  name: z.string().max(255).optional(),
+  mimeType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
+  data: z.string()
+    .min(1)
+    .max(AGENT_WIZZARD_PROMPT_IMAGE_MAX_BASE64_LENGTH)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+}).strict()
+
+const ZAgentWizzardPrompt = ZAgentWizzardScope.extend({
+  text: z.string(),
+  images: ZAgentWizzardPromptImage.array().max(AGENT_WIZZARD_PROMPT_IMAGE_MAX_COUNT).optional(),
+  model: z.object({
+    provider: z.string().min(1),
+    modelId: z.string().min(1),
+  }).optional(),
+  thinkingLevel: ZThinkingLevel.optional(),
+}).refine((input) => input.text.trim().length > 0 || (input.images?.length ?? 0) > 0, {
+  message: 'Prompt text or at least one image is required',
+  path: ['text'],
+})
 
 const ZAgentWizzardDraftActorSend = ZAgentWizzardScope.extend({
   name: z.string().min(1),
@@ -131,16 +155,7 @@ export const agentContract = oc.router({
   },
   wizzard: {
     connect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardConnect>()),
-    prompt: oc.input(z.object({
-      widgetId: z.string(),
-      sessionId: z.string(),
-      text: z.string().min(1),
-      model: z.object({
-        provider: z.string().min(1),
-        modelId: z.string().min(1),
-      }).optional(),
-      thinkingLevel: ZThinkingLevel.optional(),
-    })),
+    prompt: oc.input(ZAgentWizzardPrompt),
     cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
     newSession: oc.input(ZAgentWizzardScope),
     previewSource: oc.input(ZAgentWizzardScope).output(orpcType<TAgentPreviewSourceResult>()),
