@@ -242,10 +242,10 @@ else
         releases_json=$(curl -s "https://api.github.com/repos/$REPO/releases?per_page=50")
         if [[ "$channel" == "stable" ]]; then
             echo -e "${MUTED}Fetching latest stable version...${NC}"
-            release_tag=$(printf '%s' "$releases_json" | grep -Eo '"tag_name":"vibecanvas-v[0-9]+\.[0-9]+\.[0-9]+"' | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
+            release_tag=$(printf '%s' "$releases_json" | grep -Eo '"tag_name"[[:space:]]*:[[:space:]]*"vibecanvas-v[0-9]+\.[0-9]+\.[0-9]+"' | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
         else
             echo -e "${MUTED}Fetching latest ${channel} version...${NC}"
-            release_tag=$(printf '%s' "$releases_json" | grep -o "\"tag_name\":\"vibecanvas-v[^\"]*${channel}[^\"]*\"" | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
+            release_tag=$(printf '%s' "$releases_json" | grep -Eo "\"tag_name\"[[:space:]]*:[[:space:]]*\"vibecanvas-v[^\"]*${channel}[^\"]*\"" | sed -n '1s/.*"\(vibecanvas-v[^" ]*\)"/\1/p')
         fi
 
         if [[ -z "${release_tag:-}" ]]; then
