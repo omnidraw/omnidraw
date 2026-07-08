@@ -156,6 +156,11 @@ describe('AgentService draft actor runtime', () => {
     expect(result.vcJson.version).toBe('1.2.4');
     expect(result.editSession.sourceName).toBe('Counter Widget');
     expect(result.editSession.previousVersion).toBe('1.2.3');
+    expect(result.messageHistory.some((message) => {
+      const record = message as unknown as Record<string, unknown>;
+      return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
+    })).toBe(true);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
 
     const draftRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'widget-editsession-edit');
     const draftManifest = JSON.parse(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
@@ -167,6 +172,13 @@ describe('AgentService draft actor runtime', () => {
 
     const entries = service.sessionMap['widget-edit']['session-edit'].sessionManager.getEntries();
     expect(entries.some((entry) => entry.type === 'custom' && entry.customType === ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE)).toBe(true);
+
+    const reconnectResult = await service.connectWizzard('widget-edit', 'session-edit');
+    expect(reconnectResult.messageHistory.some((message) => {
+      const record = message as unknown as Record<string, unknown>;
+      return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
+    })).toBe(true);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
   });
 
   test('reads phase 1 manifest from actor candidate and patches only phase 2 vibecanvas.json', async () => {

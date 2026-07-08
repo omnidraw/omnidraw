@@ -10,7 +10,7 @@ import { mkdirSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
 import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
-import { fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
+import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txAppendActorCandidateApprovalRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './systemprompts';
@@ -266,6 +266,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
     const sessionManager = SessionManager.continueRecent(draftDir, sessionDir)
+    const draftFiles = await this.#listDraftFiles(draftDir)
+    const editStartedAt = new Date().toISOString()
+    this.#ensureImplementationPhaseForDraftManifest(sessionManager, draftManifest, draftManifestPath, draftFiles, editStartedAt)
     const editSession = txAppendWidgetEditSessionRecord({ sessionManager }, {
       mode: 'edit-published-widget',
       sourceDefinitionName: definitionName,
@@ -274,15 +277,20 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       sourceManifestPath: sourceManifest.manifest_path,
       previousVersion: sourceManifest.version,
       nextVersion,
-      startedAt: new Date().toISOString(),
+      startedAt: editStartedAt,
     })
-    txAppendActorCandidateApprovalRecord({ sessionManager }, {
-      candidateRevision: 0,
-      manifest: draftManifest,
-      files: await this.#listDraftFiles(draftDir),
-      approvedAt: editSession.startedAt,
-    })
-    txAppendDraftManifestPathRecord({ sessionManager }, { manifestPath: draftManifestPath })
+    sessionManager.appendCustomMessageEntry(
+      'vibecanvas.widgetLoaded',
+      `[Widget ${draftManifest.name} loaded]`,
+      true,
+      {
+        definitionName,
+        slug: draftManifest.slug,
+        previousVersion: sourceManifest.version,
+        nextVersion,
+      },
+    )
+    this.#flushSessionManager(sessionManager)
 
     const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
     if (!this.sessionMap[id]) {
@@ -859,6 +867,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async #createWizzardSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TWizzardSessionEntry> {
     const cwd = this.#getWizardCwd(id, sessionId)
+    const manifestResult = await this.#readDraftActorManifest(cwd)
+    if (manifestResult.ready) {
+      this.#ensureImplementationPhaseForDraftManifest(
+        sessionManager,
+        manifestResult.manifest,
+        join(cwd, 'vibecanvas.json'),
+        await this.#listDraftFiles(cwd),
+        new Date().toISOString(),
+      )
+    }
     const phaseTools = fnCreateWidgetWizardPhaseTools({
       cwd,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
@@ -892,6 +910,23 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     })
 
     return { session, sessionManager, unsub }
+  }
+
+  #ensureImplementationPhaseForDraftManifest(sessionManager: SessionManager, manifest: TVibecanvasJson, manifestPath: string, files: string[], timestamp: string): void {
+    if (!fxLatestActorCandidateApprovalRecord({ sessionManager })) {
+      txAppendActorCandidateApprovalRecord({ sessionManager }, {
+        candidateRevision: 0,
+        manifest,
+        files,
+        approvedAt: timestamp,
+      })
+    }
+    txAppendDraftManifestPathRecord({ sessionManager }, { manifestPath })
+  }
+
+  #flushSessionManager(sessionManager: SessionManager): void {
+    const writableSessionManager = sessionManager as unknown as { _rewriteFile?: () => void }
+    writableSessionManager._rewriteFile?.()
   }
 
   #wizzardToolNames(phaseTools: ReturnType<typeof fnCreateWidgetWizardPhaseTools>): string[] {
