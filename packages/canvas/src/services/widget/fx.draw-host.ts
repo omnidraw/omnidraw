@@ -19,36 +19,9 @@ import {
 } from './CONSTANTS'
 
 import { fnCreateWidgetNode } from './fn.create-widget-node'
+import { fnGetHostThemeColors } from './fn.get-host-theme-colors'
 import type { TToolCanvasPoint, TToolDrawCreateStartDraftArgs } from '../tool/types'
 import type { IWidgetConfig } from './interface'
-
-type THostThemeColors = {
-  headerFill: string;
-  headerTitleFill: string;
-  bodyFill: string;
-  dividerFill: string;
-  windowStroke: string;
-  trafficLightStroke: string;
-  closeButtonFill: string;
-  minimizeButtonFill: string;
-  maximizeButtonFill: string;
-}
-
-function getHostThemeColors(themeService: ThemeService): THostThemeColors {
-  const colors = themeService.getTheme().colors
-
-  return {
-    headerFill: colors.muted,
-    headerTitleFill: colors.mutedForeground,
-    bodyFill: colors.card,
-    dividerFill: colors.border,
-    windowStroke: colors.border,
-    trafficLightStroke: colors.border,
-    closeButtonFill: colors.destructive,
-    minimizeButtonFill: colors.warning,
-    maximizeButtonFill: colors.success,
-  }
-}
 
 type TPortalUpdateHost = {
   konva: typeof Konva;
@@ -73,7 +46,9 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   if (!(body instanceof portal.konva.Rect)) return
   if (!(header instanceof portal.konva.Group)) return
 
-  const hostThemeColors = getHostThemeColors(portal.themeService)
+  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
+  const widgetType = widgetData?.type === 'widget' || widgetData?.type === 'ui-widget' ? widgetData.type : 'ui-widget'
+  const hostThemeColors = fnGetHostThemeColors(portal.themeService, widgetType)
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.point.x - portal.group.x())
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, args.point.y - portal.group.y())
   const bodyHeight = Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, height - WIDGET_HOST_HEADER_HEIGHT)
@@ -112,7 +87,6 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   body.visible(true)
   body.listening(true)
 
-  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
   if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
     widgetData.w = width
     widgetData.h = WIDGET_HOST_HEADER_HEIGHT + bodyHeight
@@ -176,9 +150,9 @@ function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TElemen
 }
 
 export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
-  const hostThemeColors = getHostThemeColors(portal.themeService)
-
   const elementData = createWidgetElementData({ widgetConfig: args.widgetConfig })
+  const hostThemeColors = fnGetHostThemeColors(portal.themeService, elementData.type)
+
 
   const element: TElement = {
     id: portal.crypto.randomUUID(),

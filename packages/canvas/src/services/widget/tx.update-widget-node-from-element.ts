@@ -1,5 +1,6 @@
 import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
+import type { THostThemeColors } from "./types";
 import {
   ELEMENT_DATA_ATTR,
   ELEMENT_STYLE_ATTR,
@@ -131,6 +132,7 @@ export type TArgsUpdateWidgetNodeFromElement = {
   element: TElement;
   label?: string;
   labelFill?: string;
+  hostColors?: THostThemeColors;
 };
 
 function syncWidgetMetadata(args: {
@@ -151,6 +153,7 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
   expanded: boolean;
   label: string;
   labelFill: string;
+  hostColors?: THostThemeColors;
 }) {
   const bodyHeight = Math.max(WIDGET_HOST_MIN_BODY_HEIGHT, args.height - WIDGET_HOST_HEADER_HEIGHT);
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, WIDGET_HOST_HEADER_HEIGHT + bodyHeight);
@@ -164,6 +167,9 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
   if (border instanceof portal.Rect) {
     border.width(width);
     border.height(args.expanded ? height : WIDGET_HOST_HEADER_HEIGHT);
+    if (args.hostColors) {
+      border.stroke(args.hostColors.windowStroke);
+    }
   }
 
   const header = args.node.getChildren().find((child) => {
@@ -174,6 +180,9 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
     if (headerBackground instanceof portal.Rect) {
       headerBackground.width(width);
       headerBackground.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0]);
+      if (args.hostColors) {
+        headerBackground.fill(args.hostColors.headerFill);
+      }
     }
 
     const title = header.findOne(`#${WIDGET_HOST_TITLE_ID}`);
@@ -215,6 +224,9 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
     divider.width(Math.max(0, width - WIDGET_HOST_WINDOW_STROKE_WIDTH * 2));
     divider.visible(args.expanded);
     divider.listening(false);
+    if (args.hostColors) {
+      divider.fill(args.hostColors.dividerFill);
+    }
   }
 
   const body = args.node.findOne(`#${WIDGET_HOST_BODY_ID}`);
@@ -224,6 +236,9 @@ function syncWidgetChrome(portal: TPortalUpdateWidgetNodeFromElement, args: {
     body.height(bodyHeight);
     body.visible(args.expanded);
     body.listening(args.expanded);
+    if (args.hostColors) {
+      body.fill(args.hostColors.bodyFill);
+    }
   }
 }
 
@@ -252,7 +267,8 @@ export function txUpdateWidgetNodeFromElement(
     height,
     expanded,
     label: args.label ?? args.element.data.kind,
-    labelFill: args.labelFill ?? '#ef4444',
+    labelFill: args.labelFill ?? args.hostColors?.headerTitleFill ?? '#ef4444',
+    hostColors: args.hostColors,
   });
   syncWidgetMetadata({
     node: args.node,
