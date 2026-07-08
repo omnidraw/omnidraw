@@ -26,12 +26,3 @@ CREATE INDEX IF NOT EXISTS `canvas_members_account_id_idx` ON `canvas_members` (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS `canvas_members_role_idx` ON `canvas_members` (`role`);
 
-CREATE TRIGGER IF NOT EXISTS `canvas_updated_at_after_update`
-AFTER UPDATE ON `canvas`
-FOR EACH ROW
-WHEN NEW.`updated_at` = OLD.`updated_at`
-BEGIN
-	UPDATE `canvas`
-	SET `updated_at` = datetime('now')
-	WHERE `id` = OLD.`id`;
-END;
