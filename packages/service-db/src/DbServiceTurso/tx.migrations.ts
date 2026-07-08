@@ -38,13 +38,14 @@ export async function txRunMigrations(portal: TPortal, args: TArgs) {
   await txEnsureMigrationTable(portal, args)
   const appliedMigrations = await listAppliedMigrations(portal)
   for (const file of migrationFiles) {
-    if(appliedMigrations.some((m) => m.name === file.path)) continue
+    const migrationName = portal.path.basename(file.path)
+    if(appliedMigrations.some((m) => m.name === migrationName)) continue
     if(file.type !== 'sql') continue
     const sqlFile = await portal.Bun.file(file.path).text()
     const hashHex = portal.Bun.hash(sqlFile).toString(16)
     await portal.db.exec(sqlFile).then(async () => {
       const stmt = await portal.db.prepare(`INSERT INTO migrations (name, hash_hex) VALUES (?, ?)`)
-      await stmt.run(portal.path.basename(file.path), hashHex)
+      await stmt.run(migrationName, hashHex)
     })
   }
 }
