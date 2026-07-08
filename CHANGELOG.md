@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.0
+
+### Added
+- Added Pi Harness support for AI Wizzard Widget
+- Added Actor and Agent Service
+- Added sdk for guest code
+- Added draft Actor runtime support for AI widget generation, including actor manifests, actor/preview/tool tabs, actor state machine UI, approval handoff, tool result inspection, and compiled-binary IPC spawning.
+- Added widget toolbar metadata editing with structured icon metadata, preset/custom SVG icons, and validation.
+- Added widget header overflow menus plus separate instance deletion and widget definition deletion flows.
+- Added sandbox-local reactive actor proxy support for the Widget SDK bridge.
+- Added package/version metadata simplification for release builds.
+
+### Changed
+- Migrated BunSqlite -> Turso
+- Reworked the widget system around actor-backed draft and published widget flows, including published-widget edit sessions, toolbar refresh after publish, and preview gating until an actor candidate is approved.
+- Persisted actor manifest paths relative to the Vibecanvas config so cloned/worktree environments can relocate actor projects more reliably.
+- Improved AI wizard layout and UX, including visible canvas sidebar behavior, settings/chat tab routing, composer overflow caps, and cleaner assistant markdown rendering.
+- Centralized and hardened canvas/service/plugin architecture with functional-core checks, fn/fx/tx linting, service boundary cleanup, and broader canvas service/test coverage.
+- Stored pasted/imported images as blobs instead of base64.
+- Temporarily removed legacy terminal and filesystem widgets while the new widget API path is rebuilt.
+
+### Fixed
+- Fixed canvas interaction regressions including frame drag, hand/drag behavior, 1D edits, text deletion, inline shape text editing, style palette layout, pan/zoom during text edit, preview listener attachment, and initial camera movement performance.
+
 ## 0.3.1
 
 ### Added
