@@ -8,6 +8,8 @@ Reference only:
 
 Merging to `main` does not publish npm packages. Package releases are tag-driven.
 
+The web/docs site is different: it is deployed automatically from `main` to GitHub Pages.
+
 ## Vibecanvas CLI and binary packages
 
 Publishes `vibecanvas` and generated macOS/Linux `vibecanvas-*` platform packages. Windows builds are not published.
@@ -30,6 +32,17 @@ Publishes `vibecanvas` and generated macOS/Linux `vibecanvas-*` platform package
 2. Commit and merge the version change.
 3. Create and push an explicit tag: `git tag vibecanvas-v0.3.0-nightly.20260409 && git push origin vibecanvas-v0.3.0-nightly.20260409`.
 4. GitHub Actions publishes npm `nightly` and a GitHub prerelease.
+
+## Web/docs site
+
+Deploys the Astro site in `apps/web` to GitHub Pages.
+
+This is not tag-driven. It deploys when either:
+
+1. A commit is pushed or merged to `main`.
+2. The `Deploy Web Docs` workflow is run manually from GitHub Actions.
+
+The workflow uses `.github/workflows/deploy-web.yml`, builds with Bun in `apps/web`, runs `bun run build`, and deploys via GitHub Pages.
 
 ## SDK package
 
