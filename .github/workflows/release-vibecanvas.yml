@@ -77,9 +77,7 @@ jobs:
 
           for PACKAGE in "${PACKAGES[@]}"; do
             if bun pm view "$PACKAGE@$APP_VERSION" version >/dev/null 2>&1; then
-              echo "npm package already exists: $PACKAGE@$APP_VERSION" >&2
-              echo "Refusing to publish. Bump apps/vibecanvas/package.json version or remove the package version from npm first." >&2
-              exit 1
+              echo "npm package already exists and will be skipped during publish: $PACKAGE@$APP_VERSION"
             fi
           done
 
@@ -263,9 +261,7 @@ jobs:
           )
           for PACKAGE in "${PACKAGES[@]}"; do
             if bun pm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
-              echo "npm package already exists: $PACKAGE@$VERSION" >&2
-              echo "Refusing to publish. Bump apps/vibecanvas/package.json version or remove the package version from npm first." >&2
-              exit 1
+              echo "npm package already exists and will be skipped during publish: $PACKAGE@$VERSION"
             fi
           done
 

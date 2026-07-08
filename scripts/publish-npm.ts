@@ -349,15 +349,25 @@ async function main() {
 
   let finished = 0
   const total = tasks.length
+  const platformTasks = tasks.filter((task) => task.name !== "vibecanvas")
+  const wrapperTasks = tasks.filter((task) => task.name === "vibecanvas")
 
-  const results = await mapWithConcurrency(tasks, args.concurrency, async (task) => {
+  const publishTask = async (task: TPackageTask): Promise<TPackageResult> => {
     console.log(`\n[publish:start] ${task.name}@${task.version}`)
     const result = await publishOne(task, args, rootDir)
     finished += 1
     console.log(`[publish:done]  ${task.name}@${task.version} -> ${result.status} (${shortMessage(result)})`)
     console.log(`[progress] ${progressBar(finished, total)} ${finished}/${total}`)
     return result
-  })
+  }
+
+  console.log("[publish] Publishing platform packages before wrapper package")
+  const platformResults = await mapWithConcurrency(platformTasks, args.concurrency, publishTask)
+  const platformFailures = platformResults.filter((result) => result.status === "failed")
+  const wrapperResults = platformFailures.length > 0
+    ? []
+    : await mapWithConcurrency(wrapperTasks, 1, publishTask)
+  const results = [...platformResults, ...wrapperResults]
 
   const published = results.filter((r) => r.status === "published")
   const skipped = results.filter((r) => r.status === "skipped")
