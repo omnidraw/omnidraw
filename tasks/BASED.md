@@ -127,7 +127,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B37](b/B37.md) - actor clone copy write burst crashes Turso DB (`cell_get`) on dev
 - [x]: [B38](b/B38.md) - ai wizard: chat tab forgets selected model after tab switch
 - [x]: [B39](b/B39.md) - ai wizard: actor tab stale after new actor candidate
-- [ ]: [B40](b/B40.md) - widgets: clone-drag creates multiple copies
+- [x]: [B40](b/B40.md) - widgets: clone-drag creates multiple copies
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

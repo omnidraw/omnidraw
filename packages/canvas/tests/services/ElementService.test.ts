@@ -196,4 +196,70 @@ describe("ElementService", () => {
     expect(service.getTransformOptions({ node, selection })).toEqual({});
     expect(service.getMatchingElementDefinitionsByNode(node)).toEqual([]);
   });
+
+  test("stops clone-drag dispatch after the first matching handler accepts it", () => {
+    const service = new ElementService();
+    const node = new Konva.Rect({ id: "shape-clone" });
+    const calls: string[] = [];
+
+    service.registerElement({
+      id: "first",
+      priority: 10,
+      matchesElement: () => false,
+      matchesNode: (candidate) => candidate.id() === node.id(),
+      afterCreateNode: () => {},
+      createDragClone: () => {
+        calls.push("first");
+        return true;
+      },
+    });
+
+    service.registerElement({
+      id: "second",
+      priority: 20,
+      matchesElement: () => false,
+      matchesNode: (candidate) => candidate.id() === node.id(),
+      afterCreateNode: () => {},
+      createDragClone: () => {
+        calls.push("second");
+        return true;
+      },
+    });
+
+    expect(service.createDragClone({ node, selection: [node] })).toBe(true);
+    expect(calls).toEqual(["first"]);
+  });
+
+  test("continues clone-drag dispatch past non-handling definitions", () => {
+    const service = new ElementService();
+    const node = new Konva.Rect({ id: "shape-clone-fallback" });
+    const calls: string[] = [];
+
+    service.registerElement({
+      id: "first",
+      priority: 10,
+      matchesElement: () => false,
+      matchesNode: (candidate) => candidate.id() === node.id(),
+      afterCreateNode: () => {},
+      createDragClone: () => {
+        calls.push("first");
+        return false;
+      },
+    });
+
+    service.registerElement({
+      id: "second",
+      priority: 20,
+      matchesElement: () => false,
+      matchesNode: (candidate) => candidate.id() === node.id(),
+      afterCreateNode: () => {},
+      createDragClone: () => {
+        calls.push("second");
+        return true;
+      },
+    });
+
+    expect(service.createDragClone({ node, selection: [node] })).toBe(true);
+    expect(calls).toEqual(["first", "second"]);
+  });
 });

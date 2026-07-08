@@ -262,15 +262,14 @@ export class ElementService implements IService<TElementServiceHooks> {
       return false;
     }
 
-    let didHandle = false;
     for (const definition of definitions) {
       const result = definition.createDragClone?.(args);
-      if (result !== undefined) {
-        didHandle = Boolean(result) || didHandle;
+      if (result === true) {
+        return true;
       }
     }
 
-    return didHandle;
+    return false;
   }
 
   /**
