@@ -6,12 +6,13 @@ import { Show, createEffect, createMemo, createSignal, onCleanup, untrack } from
 
 interface IProps {
   actor: TVibecanvasJson | null
+  actorSource: "file" | "actor-candidate" | "connected"
   apiService: TOrpcSafeClient
   sessionId: string
   widgetId: string
   isApproving: boolean
   onApprove: () => Promise<void>
-  onManifestChange: (manifest: TVibecanvasJson | null) => void
+  onManifestChange: (manifest: TVibecanvasJson | null, source?: "file" | "actor-candidate" | "connected") => void
 }
 
 type TJsonField = "initialData" | "dataSchema"
@@ -47,7 +48,7 @@ function parseJsonField(label: string, text: string): TJsonValidation {
 
 export function ActorTab(props: IProps) {
   const [manifest, setManifest] = createSignal<TVibecanvasJson | null>(props.actor)
-  const [manifestSource, setManifestSource] = createSignal<"file" | "actor-candidate" | "connected">("connected")
+  const [manifestSource, setManifestSource] = createSignal<"file" | "actor-candidate" | "connected">(props.actorSource)
   const [name, setName] = createSignal("")
   const [description, setDescription] = createSignal("")
   const [initialDataText, setInitialDataText] = createSignal("")
@@ -68,10 +69,11 @@ export function ActorTab(props: IProps) {
 
   createEffect(() => {
     const nextManifest = props.actor
+    const nextSource = props.actorSource
 
-    if (nextManifest !== untrack(manifest)) {
+    if (nextManifest !== untrack(manifest) || nextSource !== untrack(manifestSource)) {
       syncForm(nextManifest)
-      setManifestSource("connected")
+      setManifestSource(nextSource)
     }
   })
 
@@ -102,7 +104,7 @@ export function ActorTab(props: IProps) {
 
       setManifestSource(result.source)
       syncForm(result.manifest)
-      props.onManifestChange(result.manifest)
+      props.onManifestChange(result.manifest, result.source)
     })
 
     onCleanup(() => {
@@ -182,12 +184,14 @@ export function ActorTab(props: IProps) {
 
     setManifestSource("file")
     syncForm(result.manifest)
-    props.onManifestChange(result.manifest)
+    props.onManifestChange(result.manifest, "file")
     setSaveStatus("saved")
   }
 
-  if (manifest() === null) {
-    return (
+  return (
+    <Show
+      when={manifest() !== null}
+      fallback={
       <div class="ai-wizzard-tab">
         <section class="ai-wizzard-option-card ai-wizzard-option-card--selected">
           <span class="ai-wizzard-kicker">Actor</span>
@@ -195,10 +199,8 @@ export function ActorTab(props: IProps) {
           <p>{loadError() ?? "Ask the chat to generate an actor/widget first. Once an actor candidate exists, this tab will show the manifest for inspection."}</p>
         </section>
       </div>
-    )
-  }
-
-  return (
+      }
+    >
     <div class="ai-wizzard-tab ai-wizzard-tab--actor">
       <section class="ai-actor-editor">
         <header class="ai-actor-editor__header">
@@ -316,5 +318,6 @@ export function ActorTab(props: IProps) {
 
       <ActorStateMachineView manifest={manifest() ?? undefined} variant="embedded" title="Draft actor state machine" />
     </div>
+    </Show>
   )
 }

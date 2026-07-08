@@ -20,6 +20,11 @@ type TAiWizardPreference = {
     }
     thinkingLevel?: TAiWizardThinkingLevel
 }
+type TAiWizardManifestSource = "file" | "actor-candidate" | "connected"
+type TAiWizardManifestState = {
+    manifest: TVibecanvasJson | null
+    source: TAiWizardManifestSource
+}
 
 interface IProps {
     id: string
@@ -73,8 +78,38 @@ function withAgentMessageFinished(message: unknown, finished: boolean) {
     }
 }
 
-function getConnectedManifest(data: { vcJson: TVibecanvasJson | null; actorCandidate?: { manifest: TVibecanvasJson } | null }) {
-    return data.vcJson ?? data.actorCandidate?.manifest ?? null
+function isSetActorCandidateToolResult(message: unknown) {
+    if (!isAgentMessageRecord(message)) return false
+
+    return message.role === "toolResult"
+        && typeof message.toolName === "string"
+        && message.toolName.toLowerCase() === "vc_set_actor_candidate"
+        && message.isError !== true
+}
+
+function hasSetActorCandidateToolResult(messages: readonly unknown[]) {
+    return messages.some((message) => isSetActorCandidateToolResult(message))
+}
+
+function getConnectedManifestState(data: { vcJson: TVibecanvasJson | null; actorCandidate?: { manifest: TVibecanvasJson } | null }): TAiWizardManifestState {
+    if (data.vcJson) {
+        return {
+            manifest: data.vcJson,
+            source: "connected",
+        }
+    }
+
+    if (data.actorCandidate?.manifest) {
+        return {
+            manifest: data.actorCandidate.manifest,
+            source: "actor-candidate",
+        }
+    }
+
+    return {
+        manifest: null,
+        source: "connected",
+    }
 }
 
 function getPreferencePromptModel(preference: TAiWizardPreference) {
@@ -99,6 +134,7 @@ const IMPLEMENT_APPROVED_ACTOR_PROMPT = [
 ].join("\n")
 
 export function AiWizzard(props: IProps) {
+    let draftManifestRefreshRequestId = 0
     const [selectedTab, setSelectedTab] = createSignal<string>()
     const [sessionId, setSessionId] = createSignal(props.sessionId)
     const [isRunning, setIsRunning] = createSignal(false)
@@ -111,7 +147,10 @@ export function AiWizzard(props: IProps) {
         if (err) throw err.message
         return data
     }))
-    const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
+    const [manifestState, setManifestState] = createSignal<TAiWizardManifestState>({
+        manifest: null,
+        source: "connected",
+    })
 
     createEffect(() => {
         setLocalAiWizardPreference(props.aiWizardPreference ?? {})
@@ -135,10 +174,32 @@ export function AiWizzard(props: IProps) {
                 throw err
             }
 
-            setVcJson(getConnectedManifest(data))
+            setManifestState(getConnectedManifestState(data))
             setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
         })
     })
+
+    const setWizardManifest = (manifest: TVibecanvasJson | null, source: TAiWizardManifestSource = "connected") => {
+        setManifestState({ manifest, source })
+    }
+
+    const refreshDraftManifest = async (args: { currentSessionId: string }) => {
+        const requestId = ++draftManifestRefreshRequestId
+        const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.read({
+            widgetId: props.id,
+            sessionId: args.currentSessionId,
+        })
+
+        if (sessionId() !== args.currentSessionId || requestId !== draftManifestRefreshRequestId) {
+            return
+        }
+
+        if (err || !result.ready) {
+            return
+        }
+
+        setWizardManifest(result.manifest, result.source)
+    }
 
 
     onMount(() => {
@@ -158,6 +219,14 @@ export function AiWizzard(props: IProps) {
 
         const appendMessages = (messages: readonly unknown[], finished: boolean) => {
             messages.forEach((message) => upsertMessage(message, finished))
+        }
+
+        const refreshManifestForCandidateMessages = (messages: readonly unknown[]) => {
+            if (!hasSetActorCandidateToolResult(messages)) {
+                return
+            }
+
+            void refreshDraftManifest({ currentSessionId: sessionId() })
         }
 
         void props.apiService.api.agent.events({}).then(async ([err, events]) => {
@@ -183,6 +252,7 @@ export function AiWizzard(props: IProps) {
 
                 if (piEvent.type === "agent_end") {
                     appendMessages(piEvent.messages, true)
+                    refreshManifestForCandidateMessages(piEvent.messages)
                     setIsRunning(piEvent.willRetry)
                     if (!piEvent.willRetry) {
                         setIsCanceling(false)
@@ -198,11 +268,13 @@ export function AiWizzard(props: IProps) {
 
                 if (piEvent.type === "message_end") {
                     upsertMessage(piEvent.message, true)
+                    refreshManifestForCandidateMessages([piEvent.message])
                     continue
                 }
 
                 if (piEvent.type === "turn_end") {
                     upsertMessage(piEvent.message, true)
+                    refreshManifestForCandidateMessages([piEvent.message])
                 }
             }
         })
@@ -260,7 +332,7 @@ export function AiWizzard(props: IProps) {
 
         if (err) throw err
 
-        setVcJson(getConnectedManifest(data))
+        setManifestState(getConnectedManifestState(data))
         setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
 
         return data
@@ -289,7 +361,7 @@ export function AiWizzard(props: IProps) {
         })
 
         if (!err && result.ready) {
-            setVcJson(result.manifest)
+            setWizardManifest(result.manifest, result.source)
         }
 
         const nextPreference = localAiWizardPreference()
@@ -326,6 +398,7 @@ export function AiWizzard(props: IProps) {
         setIsCanceling(false)
         setChatDraftText("")
         setMessageHistory(reconcile([]))
+        setWizardManifest(null)
         setSessionId(props.onResetSessionId())
     }
 
@@ -362,23 +435,24 @@ export function AiWizzard(props: IProps) {
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content ai-wizzard-tabs__content--actor" value="actor">
                     <ActorTab
-                        actor={vcJson()}
+                        actor={manifestState().manifest}
+                        actorSource={manifestState().source}
                         apiService={props.apiService}
                         isApproving={isRunning()}
                         sessionId={sessionId()}
                         widgetId={props.id}
                         onApprove={approveActorCandidate}
-                        onManifestChange={setVcJson}
+                        onManifestChange={setWizardManifest}
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="tool">
                     <ToolTab
-                        manifest={vcJson()}
+                        manifest={manifestState().manifest}
                         apiService={props.apiService}
                         sessionId={sessionId()}
                         existingGroups={props.toolGroups ?? []}
                         widgetId={props.id}
-                        onManifestChange={setVcJson}
+                        onManifestChange={(manifest) => setWizardManifest(manifest, "file")}
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="preview">

@@ -1,6 +1,14 @@
 import { render } from "solid-js/web"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatTab } from "../../../../src/components/AiWizzard/tabs/ChatTab"
+import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../../src/components/AiWizzard/ChatComposer/interface"
+
+type TRenderChatTabSettings = {
+  defaultModel?: string
+  defaultProvider?: string
+  defaultThinkingLevel?: TChatComposerThinkingLevel
+  models: TChatComposerModel[]
+}
 
 const MOCK_MESSAGE_HISTORY = [
   {
@@ -111,12 +119,12 @@ function ensureComponentDomMocks() {
   }
 }
 
-function renderChatTab(settings = {
+function renderChatTab(settings: TRenderChatTabSettings = {
   defaultThinkingLevel: "low" as const,
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}, messageHistory = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}) {
+}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
