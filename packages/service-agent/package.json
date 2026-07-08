@@ -1,0 +1,27 @@
+{
+  "name": "@vibecanvas/service-agent",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "bun test tests --timeout=20000"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
+    "@vibecanvas/runtime": "workspace:*",
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-actor": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*",
+    "ajv": "^8.20.0",
+    "typebox": "^1.1.38",
+    "ajv-formats": "^3.0.1",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

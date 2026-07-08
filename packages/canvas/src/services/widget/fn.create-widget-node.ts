@@ -8,6 +8,15 @@ import {
   WIDGET_HOST_DIVIDER_ID,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
+  WIDGET_HOST_MENU_BUTTON_DOT_ID,
+  WIDGET_HOST_MENU_BUTTON_HIT_ID,
+  WIDGET_HOST_MENU_BUTTON_ID,
+  WIDGET_HOST_MENU_BUTTON_RIGHT_INSET,
+  WIDGET_HOST_MENU_BUTTON_SIZE,
+  WIDGET_HOST_MENU_DOT_RADIUS,
+  WIDGET_HOST_MENU_DOT_SPACING,
+  WIDGET_HOST_TITLE_ID,
+  WIDGET_HOST_TITLE_MENU_GAP,
   WIDGET_HOST_MIN_BODY_HEIGHT,
   WIDGET_HOST_MIN_HEIGHT,
   WIDGET_HOST_MAXIMIZE_BUTTON_ID,
@@ -23,8 +32,19 @@ import {
 import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS"
 import type { THostThemeColors } from "./types";
 
+function getMenuButtonX(width: number) {
+  return Math.max(0, width - WIDGET_HOST_MENU_BUTTON_RIGHT_INSET - WIDGET_HOST_MENU_BUTTON_SIZE)
+}
 
-function createHeader(konva: typeof Konva, colors: THostThemeColors) {
+function getTitleWidth(args: {
+  titleX: number;
+  menuButtonX: number;
+}) {
+  return Math.max(0, args.menuButtonX - args.titleX - WIDGET_HOST_TITLE_MENU_GAP)
+}
+
+function createHeader(konva: typeof Konva, colors: THostThemeColors, label: string) {
+  const menuButtonX = getMenuButtonX(WIDGET_HOST_MIN_WIDTH)
 
   const header = new konva.Rect({
     id: WIDGET_HOST_HEADER_ID,
@@ -75,6 +95,73 @@ function createHeader(konva: typeof Konva, colors: THostThemeColors) {
     strokeWidth: 1,
   })
 
+  const title = new konva.Text({
+    id: WIDGET_HOST_TITLE_ID,
+    x: WIDGET_HOST_TRAFFIC_LIGHT_START_X + WIDGET_HOST_TRAFFIC_LIGHT_SPACING * 3,
+    y: 0,
+    width: getTitleWidth({
+      titleX: WIDGET_HOST_TRAFFIC_LIGHT_START_X + WIDGET_HOST_TRAFFIC_LIGHT_SPACING * 3,
+      menuButtonX,
+    }),
+    height: WIDGET_HOST_HEADER_HEIGHT,
+    text: label,
+    fill: colors.headerTitleFill,
+    fontSize: 12,
+    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+    fontStyle: 'bold',
+    align: 'left',
+    verticalAlign: 'middle',
+    ellipsis: true,
+    listening: false,
+  })
+
+  const menuButton = new konva.Group({
+    id: WIDGET_HOST_MENU_BUTTON_ID,
+    x: menuButtonX,
+    y: Math.floor((WIDGET_HOST_HEADER_HEIGHT - WIDGET_HOST_MENU_BUTTON_SIZE) / 2),
+    width: WIDGET_HOST_MENU_BUTTON_SIZE,
+    height: WIDGET_HOST_MENU_BUTTON_SIZE,
+  })
+
+  const menuHit = new konva.Rect({
+    id: WIDGET_HOST_MENU_BUTTON_HIT_ID,
+    x: 0,
+    y: 0,
+    width: WIDGET_HOST_MENU_BUTTON_SIZE,
+    height: WIDGET_HOST_MENU_BUTTON_SIZE,
+    fill: colors.headerFill,
+    opacity: 0,
+    cornerRadius: 4,
+  })
+
+  const dotCenterY = WIDGET_HOST_MENU_BUTTON_SIZE / 2
+  const dotStartX = WIDGET_HOST_MENU_BUTTON_SIZE / 2 - WIDGET_HOST_MENU_DOT_SPACING
+  const dotFill = colors.headerTitleFill
+  menuButton.add(menuHit)
+  menuButton.add(new konva.Circle({
+    id: `${WIDGET_HOST_MENU_BUTTON_DOT_ID}-left`,
+    x: dotStartX,
+    y: dotCenterY,
+    radius: WIDGET_HOST_MENU_DOT_RADIUS,
+    fill: dotFill,
+    listening: false,
+  }))
+  menuButton.add(new konva.Circle({
+    id: `${WIDGET_HOST_MENU_BUTTON_DOT_ID}-center`,
+    x: WIDGET_HOST_MENU_BUTTON_SIZE / 2,
+    y: dotCenterY,
+    radius: WIDGET_HOST_MENU_DOT_RADIUS,
+    fill: dotFill,
+    listening: false,
+  }))
+  menuButton.add(new konva.Circle({
+    id: `${WIDGET_HOST_MENU_BUTTON_DOT_ID}-right`,
+    x: dotStartX + WIDGET_HOST_MENU_DOT_SPACING * 2,
+    y: dotCenterY,
+    radius: WIDGET_HOST_MENU_DOT_RADIUS,
+    fill: dotFill,
+    listening: false,
+  }))
 
   const headerGroup = new konva.Group({
     id: `${WIDGET_HOST_HEADER_ID}`,
@@ -84,6 +171,8 @@ function createHeader(konva: typeof Konva, colors: THostThemeColors) {
   headerGroup.add(closeButton)
   headerGroup.add(minimizeButton)
   headerGroup.add(maximizeButton)
+  headerGroup.add(title)
+  headerGroup.add(menuButton)
 
   return headerGroup
 }
@@ -117,7 +206,7 @@ function createBody(konva: typeof Konva, colors: THostThemeColors) {
   return body;
 }
 
-export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors, element: TElement) {
+export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors, element: TElement, args?: { label?: string }) {
   if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return null
 
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, element.data.w)
@@ -139,10 +228,12 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   body.visible(isExpanded)
   body.listening(isExpanded)
 
-  const header = createHeader(konva, colors)
+  const header = createHeader(konva, colors, args?.label ?? element.data.kind)
   const border = createBorder(konva, colors)
   const headerBackground = header.findOne(`#${WIDGET_HOST_HEADER_ID}`)
   const divider = header.findOne(`#${WIDGET_HOST_DIVIDER_ID}`)
+  const title = header.findOne(`#${WIDGET_HOST_TITLE_ID}`)
+  const menuButton = header.findOne(`#${WIDGET_HOST_MENU_BUTTON_ID}`)
 
   if (border) {
     border.width(width)
@@ -159,6 +250,15 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
     divider.width(dividerWidth)
     divider.visible(isExpanded)
     divider.listening(false)
+  }
+
+  if (title instanceof konva.Text) {
+    const menuButtonX = getMenuButtonX(width)
+    title.width(getTitleWidth({ titleX: title.x(), menuButtonX }))
+  }
+
+  if (menuButton instanceof konva.Group) {
+    menuButton.x(getMenuButtonX(width))
   }
 
   group.add(border)

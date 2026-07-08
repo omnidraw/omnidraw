@@ -1,6 +1,7 @@
 export * from "./actor-widget/ActorWidgetBindingService";
 export * from "./widget/WidgetManagerService";
 export * from "./camera/CameraService";
+export * from "./confirm-dialog/ConfirmDialogService";
 export * from "./context-menu/ContextMenuService";
 export * from "./crdt/CrdtService";
 export * from "./history/HistoryService";

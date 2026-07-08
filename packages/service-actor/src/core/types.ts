@@ -1,3 +1,5 @@
+import type { TVibecanvasToolIcon } from './tool-icon';
+
 export type TActorData = string | number | boolean | null | TActorData[] | { [key: string]: TActorData | undefined };
 
 export type TActorState =
@@ -16,7 +18,7 @@ export type TActorNonErrorState = Exclude<TActorState, 'error' | `error.${string
 
 export type TTransition = {
   func: TFunctionName[];
-  allowedTargetStates: TActorNonErrorState[];
+  allowedTargetStates: TActorState[];
 }
 
 export type TActorStateConfig = {
@@ -37,7 +39,7 @@ export type TVibecanvasActorWidget = {
   readonly relWidgetDir: string;
   readonly tool: {
     readonly label: string;
-    readonly icon?: string;
+    readonly icon?: TVibecanvasToolIcon;
     readonly group?: string;
     readonly priority?: number;
     readonly behavior: {

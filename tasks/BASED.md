@@ -45,6 +45,7 @@ Based now lives at the repository root in `tasks/`.
 
 Each line in the overview stays short and links to one dedicated file.
 Each dedicated file stores the task context, TODOs, notes, and logs.
+Once you completed a task you must update this file.
 
 ## Format
 
@@ -120,6 +121,14 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B30] - can't delete text
 - [x]: [B31](b/B31.md) - binary: compiled app cannot find Turso native binding
 - [x]: [B32](b/B32.md) - binary: bundle Turso native addon beside compiled executable
+- [x]: [B33](b/B33.md) - ai wizard: chat does not reconnect after OAuth/API key login
+- [x]: [B34] - ai wizard: model menu need 2 times before update
+- [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
+- [x]: [B36](b/B36.md) - actor timeouts only trigger in error state
+- [x]: [B37](b/B37.md) - actor clone copy write burst crashes Turso DB (`cell_get`) on dev
+- [x]: [B38](b/B38.md) - ai wizard: chat tab forgets selected model after tab switch
+- [x]: [B39](b/B39.md) - ai wizard: actor tab stale after new actor candidate
+- [x]: [B40](b/B40.md) - widgets: clone-drag creates multiple copies
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -165,10 +174,27 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A43](a/A43.md) - db: add authz for public DB methods
 - [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
-- [ ]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
+- [~]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
+- [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
+- [x]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
+- [x]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
+- [~]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
+- [x]: [A51](a/A51.md) - ai wizard: chat UI actions and model-aware prompts
+- [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
+- [x]: [A53](a/A53.md) - ai wizard: draft Actor runtime API setup
+- [x]: [A54](a/A54.md) - ai wizard: Actor tab powered by draft Actor
+- [x]: [A55](a/A55.md) - ai wizard: Preview tab powered by draft Actor
+- [x]: [A56](a/A56.md) - ai wizard: Tool tab for widget toolbar metadata
+- [x]: [A57](a/A57.md) - ai wizard: new widget vs edit published widget flow
+- [x]: [A58](a/A58.md) - ai wizard: show canvas sidebar on screen
+- [x]: [A59](a/A59.md) - actor-ui: SolidJS actor state machine view
+- [x]: [A60](a/A60.md) - actor IPC: spawn same compiled binary
+- [x]: [A61](a/A61.md) - ai wizard: approve should scaffold then prompt AI implementation
+- [x]: [A62](a/A62.md) - widgets: header three-dot menu
+- [x]: [A63](a/A63.md) - widgets: split instance delete from definition delete
 
 ## S ubtractions
-- [ ]: [S1](s/S1.md) - double bun run dev -> find new port
+- [x]: [S1](s/S1.md) - double bun run dev -> find new port
 - [x]: [S2](s/S2.md) - rename CLAUDE.md -> AGENTS.md
 - [x]: [S3](s/S3.md) - ci: introduce release branches, from main to deploy
 - [x]: [S4](s/S4.md) - when hand tool (space pressed) must allow to move over chat too
@@ -231,6 +257,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
 - [ ]: [S62](s/S62.md) - reimplement terminal widget API path
 - [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
+- [x]: [S64](s/S64.md) - db: store actor manifest paths relative to config
+- [x]: [S65](s/S65.md) - widget tool icon metadata object and validation
+- [x]: [S66](s/S66.md) - ai wizard: cap chat input height
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -253,9 +282,11 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
 - [ ]: [E23](e/E23.md) - actor output log pruning compatibility
 - [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
-- [ ]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
+- [x]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
 - [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
 - [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
+- [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
+- [x]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
 
 ## D eployable
 - [ ]: [D1] - Generative UI with AI assits

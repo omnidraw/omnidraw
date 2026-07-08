@@ -1,4 +1,4 @@
-import type { TCanvasRegistrySelectionStyleConfig } from "../../services/canvas-registry/types";
+import type { TElementSelectionStyleConfig } from "../../services/element/types";
 import { DEFAULT_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
 import {
   DEFAULT_OPACITY,
@@ -11,7 +11,7 @@ type TArgsFnGetShape1dSelectionStyleMenuConfig = {
   type: TShape1dTool;
 };
 
-export function fnGetShape1dSelectionStyleMenuConfig(args: TArgsFnGetShape1dSelectionStyleMenuConfig): TCanvasRegistrySelectionStyleConfig {
+export function fnGetShape1dSelectionStyleMenuConfig(args: TArgsFnGetShape1dSelectionStyleMenuConfig): TElementSelectionStyleConfig {
   if (args.type === "arrow") {
     return {
       sections: {

@@ -43,6 +43,37 @@ The SDK should make this split feel intentional: UI authors should work with can
   - Builds the portal passed to guest functions: `next`, `setData`, `emitMessage`.
   - Supports transition pipelines such as `fn.check`, `fx.read`, `tx.write` via `portal.next()`.
 
+### AI widget wizard
+
+- `packages/service-agent/src/AgentService.ts`
+  - Owns Pi sessions for the AI wizard.
+  - `connectWizzard(widgetId, sessionId)` creates/resumes the Pi session for a widget draft cwd under `<dataPath>/pi/agent/widget-cwd/*`.
+  - Returns chat history plus the latest actor candidate custom entry when one exists.
+  - Loads phase-specific tools from `packages/service-agent/src/tools/fn.phase-tools.ts`.
+
+- `packages/service-agent/src/tools/tool.set-actor-candidate.ts`
+  - Phase 1 custom Pi tool.
+  - Accepts a full actor candidate, validates it, and appends it to the Pi session with `sessionManager.appendCustomEntry`.
+  - Uses a hand-authored TypeBox tool parameter schema so the model sees actor state and transition-function constraints.
+
+- `packages/service-agent/src/tools/tool.approve-actor-candidate.ts`
+  - Phase 1 custom Pi tool.
+  - Approves the latest actor candidate revision, writes scaffold files into the draft cwd, appends an approval custom entry, and emits a widget update event when wired.
+  - Scaffold includes `vibecanvas.json`, `package.json`, `actor/functions.ts`, actor function stubs, `actor/types.ts`, `widget/main.ts`, and `widget/main.css`.
+  - After writing `package.json`, tries `npm install`; install failure is reported in tool details and does not by itself undo approval.
+
+- `packages/service-agent/src/tools/tool.validate-widget-files.ts`
+  - Phase 2 custom Pi tool.
+  - Validates the generated draft files against the approved manifest and actor registry expectations.
+
+- `packages/service-agent/src/tools/tool.publish-widget.ts`
+  - Phase 2 custom Pi tool.
+  - Copies the draft widget folder to `<configPath>/widgets/<slug>` and reloads actor definitions through `ActorService.reload()` when available.
+
+- `packages/service-agent/src/core/fx.session-candidate.ts` and `packages/service-agent/src/core/tx.session-candidate.ts`
+  - Read/write latest actor candidate and approval records from Pi session custom entries.
+  - Candidate records are not written to separate files.
+
 ### Manifest and schemas
 
 - `packages/service-actor/src/core/types.ts`
@@ -210,25 +241,26 @@ For actor creation before UI send, also read:
 ### 5. Actor message processing
 
 1. Parent calls `actor.inbox(msgName, msgPayload)`.
-2. `Actor` validates the payload against `actor.inputMsgSchema[msgName]`.
-3. `Actor` finds the transition for current state: `actor.states[currentState].on[msgName]`.
-4. `Actor` generates a message id, enqueues the item, triggers queue processing, and returns the message id immediately.
-5. Inbox items are processed one at a time by the trigger-based queue loop.
-6. The transition function list is sent over IPC to the child process:
+2. `Actor` generates a message id.
+3. `Actor` validates the message name against `actor.inputMsgSchema`, validates the payload against `actor.inputMsgSchema[msgName]`, and finds the transition for current state at `actor.states[currentState].on[msgName]`.
+4. Invalid input messages are dropped instead of changing actor state. A dropped input emits only an implicit actor output event named `DROP_MESSAGE` with drop details, then returns the generated message id.
+5. Valid input messages are enqueued, queue processing is triggered, and the message id is returned immediately.
+6. Inbox items are processed one at a time by the trigger-based queue loop.
+7. The transition function list is sent over IPC to the child process:
    - `func`
    - `payload`
    - current `data`
-7. `icp-client.ts` maps function names to registered guest functions in `functions.ts`.
-8. Guest functions receive `(portal, args)`.
-9. Guest code may call:
+8. `icp-client.ts` maps function names to registered guest functions in `functions.ts`.
+9. Guest functions receive `(portal, args)`.
+10. Guest code may call:
    - `portal.next()` to continue a function pipeline.
    - `portal.setData(nextData)` to update actor data in the parent.
    - `portal.emitMessage({ type, payload })` to emit actor output.
-10. `portal.setData(...)` emits a system `data.changed` event.
-11. Successful transitions with a single `allowedTargetStates` entry update actor state and emit a system `state.changed` event.
-12. Parent validates emitted outputs against `actor.outputMsgSchema`.
-13. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
-14. Transition completion emits a system `ack` event for the accepted message id.
+11. `portal.setData(...)` emits a system `data.changed` event.
+12. Successful transitions with a single `allowedTargetStates` entry update actor state and emit a system `state.changed` event.
+13. Parent validates emitted outputs against `actor.outputMsgSchema`.
+14. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
+15. Transition completion emits a system `ack` event for the accepted message id.
 
 ## Current data model
 
@@ -246,6 +278,19 @@ For actor creation before UI send, also read:
 - `actor.relFunctionPath`
 - `widget.relWidgetDir`
 - `widget.tool`
+
+### AI wizard draft data
+
+The AI wizard has a pre-publish draft layer before a widget becomes a real actor definition:
+
+- Actor candidates are stored as Pi session custom entries, not as standalone candidate files.
+- The latest candidate custom entry is returned by `agent.wizzard.connect` as `actorCandidate`.
+- Successful approval appends a separate approval custom entry.
+- Phase selection is derived from the session history:
+  - no approval entry: phase 1 tools only (`vc_set_actor_candidate`, `vc_approve_actor_candidate`)
+  - approval entry exists: phase 2 tools plus built-in `read`, `edit`, and `grep`
+- Approval writes draft files into the wizard cwd. The draft is not installed for runtime until `vc_publish_widget` copies it to `<configPath>/widgets/<slug>` and reloads actor definitions.
+- Approval scaffold writes a `package.json` and attempts `npm install` if `package.json` exists.
 
 ### DB-backed runtime rows
 
@@ -344,7 +389,7 @@ export default html`
 
   <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>
 
-  <button @click="${() => actor.sendMessage('in.addTodo', { title: 'New' })}">
+  <button @click="${() => actor.sendMessage('addTodo', { title: 'New' })}">
     Add
   </button>
 `
@@ -404,6 +449,8 @@ Actor author model:
 - `fx.*` functions: impure reads through injected portal capabilities.
 - `tx.*` functions: writes through injected portal capabilities.
 - Pipelines use `await portal.next()` only when composition is desired.
+- Production actor function files must exist on disk at `actor.relFunctionPath` when loaded by the runtime, including compiled Vibecanvas binaries.
+- External actor `.ts` or `.js` modules should be self-contained or ship any runtime dependencies beside the widget, for example in the widget folder's `node_modules`. Type-only imports are erased and do not need runtime packages.
 
 ### Manifest/type generation
 
@@ -422,13 +469,13 @@ This should be generated from:
 The generated API lets widget code call:
 
 ```ts
-actor.sendMessage('in.addTodo', { title: '...' })
+actor.sendMessage('addTodo', { title: '...' })
 ```
 
 and actor code emit:
 
 ```ts
-await portal.emit('out.todosChanged', payload)
+await portal.emit('todosChanged', payload)
 ```
 
 without hand-written stringly typed maps.

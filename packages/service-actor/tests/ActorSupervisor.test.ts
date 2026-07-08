@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
+import path from "node:path";
+import { access, cp, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const widgetDir = new URL("./fixtures", import.meta.url).pathname;
-const fundActorManifestPath = new URL("./fixtures/account-fund-actor/vibecanvas.json", import.meta.url).pathname;
-const bookkeeperActorManifestPath = new URL("./fixtures/account-bookkeeper-actor/vibecanvas.json", import.meta.url).pathname;
+const configPath = new URL(".", import.meta.url).pathname;
+const fundActorManifestPath = path.join("fixtures", "account-fund-actor", "vibecanvas.json");
+const bookkeeperActorManifestPath = path.join("fixtures", "account-bookkeeper-actor", "vibecanvas.json");
 
 type TNotification = {
   readonly type: "error" | "info" | "success" | "warning";
@@ -27,8 +31,24 @@ function createEventPublisherService(notifications: TNotification[], actorEvents
 function createSupervisor(db: DbServiceTurso, notifications: TNotification[], actorEvents: TActorEvent[] = []) {
   return new ActorSupervisor({
     absWidgetDir: widgetDir,
+    configPath,
     db,
     eventPublisherService: createEventPublisherService(notifications, actorEvents) as any,
+  });
+}
+
+function createSupervisorWithPaths(args: {
+  db: DbServiceTurso;
+  notifications: TNotification[];
+  actorEvents?: TActorEvent[];
+  absWidgetDir: string;
+  configPath: string;
+}) {
+  return new ActorSupervisor({
+    absWidgetDir: args.absWidgetDir,
+    configPath: args.configPath,
+    db: args.db,
+    eventPublisherService: createEventPublisherService(args.notifications, args.actorEvents ?? []) as any,
   });
 }
 
@@ -209,6 +229,49 @@ describe("ActorSupervisor", () => {
     supervisor.closeActors();
   });
 
+  test("reload refreshes definitions and loads missing db instances without stopping running actors", async () => {
+    await db.canvas.create({
+      id: "canvas-reload",
+      name: "Actor Reload Test Canvas",
+      automerge_url: "automerge:actor-reload-test",
+    });
+
+    const supervisor = createSupervisor(db, notifications);
+
+    await supervisor.init();
+    const existingActor = await supervisor.createInstance("Account Funds Test", "canvas-reload", "element-existing-fund");
+    if (!existingActor) throw new Error("Expected existing actor to be created");
+    const existingActorId = existingActor.getId();
+    const existingEvents: TActorEvent[] = [];
+    existingActor.listen(event => existingEvents.push(event));
+
+    await db.actor.insertInstance({
+      id: "fund-reload-new",
+      canvas_id: "canvas-reload",
+      element_id: "element-fund-reload-new",
+      actor_definition_name: "Account Funds Test",
+      filesystem_id: null,
+      display_name: "Fund Reload New",
+      status: "created",
+      machine_state: "ready",
+      machine_context: { balance: 7 },
+    });
+
+    await supervisor.reload();
+
+    expect(supervisor.actorMap[existingActorId]).toBe(existingActor);
+    expect(existingEvents).not.toContainEqual({
+      kind: "system",
+      actorId: existingActorId,
+      type: "status.changed",
+      from: "running",
+      to: "stopped",
+    });
+    expect(supervisor.actorMap["fund-reload-new"].getData()).toEqual({ balance: 7 });
+
+    supervisor.closeActors();
+  });
+
   test("persists actor machine data after successful inbox processing", async () => {
     await db.canvas.create({
       id: "canvas-persist-machine",
@@ -365,5 +428,44 @@ describe("ActorSupervisor", () => {
     });
 
     supervisor.closeActors();
+  });
+
+  test("deleteDefinition removes instances, db definition, and widget files", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-delete-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const tempDefinitionDir = path.join(tempWidgetDir, "account-fund-actor");
+    await cp(path.join(widgetDir, "account-fund-actor"), tempDefinitionDir, { recursive: true });
+
+    try {
+      await db.canvas.create({
+        id: "canvas-delete-definition",
+        name: "Actor Delete Definition Test Canvas",
+        automerge_url: "automerge:actor-delete-definition-test",
+      });
+
+      const supervisor = createSupervisorWithPaths({
+        db,
+        notifications,
+        absWidgetDir: tempWidgetDir,
+        configPath: tempConfigPath,
+      });
+
+      await supervisor.init();
+      const actor = await supervisor.createInstance("Account Funds Test", "canvas-delete-definition", "element-delete-definition");
+      if (!actor) throw new Error("Expected actor to be created");
+
+      const deleted = await supervisor.deleteDefinition("Account Funds Test");
+
+      expect(deleted).toBe(true);
+      expect(supervisor.vibecanvasDefMap["Account Funds Test"]).toBeUndefined();
+      expect(supervisor.actorMap[actor.getId()]).toBeUndefined();
+      expect(await db.actor.getDefinition("Account Funds Test")).toBeUndefined();
+      expect(await db.actor.getInstanceById(actor.getId())).toBeUndefined();
+      await expect(access(tempDefinitionDir)).rejects.toThrow();
+
+      supervisor.closeActors();
+    } finally {
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
   });
 });

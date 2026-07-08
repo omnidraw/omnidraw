@@ -1,26 +1,15 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import { createComponent, createMemo, createSignal } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
-import type { ElementService, SessionService, ToolService, CrdtService, HistoryService, SceneService, SelectionService } from "../../services";
 import { SelectionStyleMenu } from "../../components/SelectionStyleMenu";
 import { txApplySelectionStyleChange, txApplySelectionStyleChangeRuntime, txCommitSelectionStyleChange, txCreateSelectionStyleChangePlan } from "../../core/tx.apply-selection-style-change";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { fxMountSelectionStyleMenu } from "./fx.mount-selection-style-menu";
 
 type TSelectionStyleMenuTimer = number | ReturnType<typeof globalThis.setTimeout>;
 
-export function createSelectionStyleMenuPlugin(): IPlugin<{
-  element: ElementService;
-  crdt: CrdtService;
-  history: HistoryService;
-  scene: SceneService;
-  selection: SelectionService;
-  theme: ThemeService;
-  tool: ToolService;
-  session: SessionService;
-}, IRuntimeHooks> {
+export function createSelectionStyleMenuPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let menuMount: ReturnType<typeof fxMountSelectionStyleMenu> | null = null;
 
   return {

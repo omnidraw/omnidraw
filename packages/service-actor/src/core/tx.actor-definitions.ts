@@ -1,7 +1,9 @@
 import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import type { TVibecanvasJson } from "./types";
 import type { readdir as _readdir } from 'node:fs/promises';
-import type { join as _join, relative as _relative } from 'node:path';
+import type { rm as _rm } from 'node:fs/promises';
+import type { dirname as _dirname } from 'node:path';
+import type { isAbsolute as _isAbsolute, join as _join, relative as _relative } from 'node:path';
 
 type TVibecanvasDefinition = TVibecanvasJson & {
   readonly manifest_path: string,
@@ -11,6 +13,9 @@ type TVibecanvasDefinition = TVibecanvasJson & {
 type TPortalSyncDbActorDefinitions = {
   db: DbServiceTurso,
   crypto: Pick<typeof crypto, "randomUUID">,
+  configPath: string,
+  isAbsolute: typeof _isAbsolute,
+  relative: typeof _relative,
 }
 
 type TArgsSyncDbActorDefinitions = {
@@ -26,6 +31,19 @@ type TPortalReadWidgetCode = {
 
 type TArgsReadWidgetCode = {
   absWidgetDir: string,
+}
+
+type TPortalDeleteActorDefinitionFiles = {
+  dirname: typeof _dirname,
+  rm: typeof _rm,
+}
+
+type TArgsDeleteActorDefinitionFiles = {
+  absManifestPath: string,
+}
+
+function manifestPathToRelativeConfigPath(portal: TPortalSyncDbActorDefinitions, manifestPath: string): string {
+  return portal.isAbsolute(manifestPath) ? portal.relative(portal.configPath, manifestPath) : manifestPath
 }
 
 export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgsReadWidgetCode): Promise<{content: string, path: string}[]> {
@@ -51,13 +69,24 @@ export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgs
   return collectFiles(args.absWidgetDir)
 }
 
+export async function txDeleteActorDefinitionFiles(portal: TPortalDeleteActorDefinitionFiles, args: TArgsDeleteActorDefinitionFiles): Promise<void> {
+  await portal.rm(portal.dirname(args.absManifestPath), {
+    recursive: true,
+    force: true,
+  })
+}
+
 export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinitions, args: TArgsSyncDbActorDefinitions) {
   const definitionsInDb = await portal.db.actor.listDefinitions()
   const defsToInsert: Set<TVibecanvasDefinition> = new Set()
   const defsToUpdate: Set<TVibecanvasDefinition> = new Set()
-  const manifestPathsInDb = new Set(definitionsInDb.map(definition => definition.manifest_path))
+  const manifestPathsInDb = new Set(definitionsInDb.map(definition => manifestPathToRelativeConfigPath(portal, definition.manifest_path)))
+  const defsWithRelativeManifestPath = args.defs.map(definition => ({
+    ...definition,
+    manifest_path: manifestPathToRelativeConfigPath(portal, definition.manifest_path),
+  }))
 
-  args.defs.forEach(def => {
+  defsWithRelativeManifestPath.forEach(def => {
     if(manifestPathsInDb.has(def.manifest_path))
       defsToUpdate.add(def)
     else defsToInsert.add(def)

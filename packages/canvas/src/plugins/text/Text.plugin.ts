@@ -9,20 +9,10 @@ import { ELEMENT_DATA_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../..
 import { isKonvaText } from "../../core/GUARDS";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import type {
-  CameraService,
-  ContextMenuService,
-  CrdtService,
-  ElementService,
-  GroupService,
-  HistoryService,
-  RenderOrderService, SceneService,
-  SelectionService,
-  SessionService,
-  TCanvasTransformAnchor,
-  ToolService
+  TCanvasTransformAnchor
 } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { txDeleteSelection } from "../select/tx.delete-selection";
 import {
   DEFAULT_TEXT_ALIGN,
@@ -161,20 +151,7 @@ function txApplyTextTransform(args: {
 /**
  * Owns standalone free-text create, edit, drag, clone-drag, and transform flows.
  */
-export function createTextPlugin(): IPlugin<{
-  camera: CameraService;
-  element: ElementService;
-  group: GroupService;
-  contextMenu: ContextMenuService;
-  crdt: CrdtService;
-  history: HistoryService;
-  scene: SceneService;
-  renderOrder: RenderOrderService;
-  selection: SelectionService;
-  theme: ThemeService;
-  session: SessionService;
-  tool: ToolService;
-}, IRuntimeHooks> {
+export function createTextPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "text",
     apply(ctx) {

@@ -5,12 +5,11 @@ import { render as renderSolid } from "solid-js/web";
 import { CanvasContextMenu } from "../../components/CanvasContextMenu";
 import { isCanvasGroupNode, isCanvasNode } from "../../core/GUARDS";
 import type {
-    ContextMenuService,
-    ElementService, GroupService,
-    SceneService, SelectionService,
-    TContextMenuNode, TContextMenuScope
+  ContextMenuService,
+  SceneService, SelectionService,
+  TContextMenuNode, TContextMenuScope
 } from "../../services";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 function getSelectionPath(
   scene: SceneService,
@@ -202,13 +201,7 @@ function mountContextMenu(args: {
  * Owns right-click hit testing and Solid context menu mount.
  * Feature actions come from ContextMenuService providers.
  */
-export function createContextMenuPlugin(): IPlugin<{
-  element: ElementService;
-  group: GroupService;
-  contextMenu: ContextMenuService;
-  scene: SceneService;
-  selection: SelectionService;
-}, IRuntimeHooks> {
+export function createContextMenuPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let menuMount: ReturnType<typeof mountContextMenu> | null = null;
 
   return {

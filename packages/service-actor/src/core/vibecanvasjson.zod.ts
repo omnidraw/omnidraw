@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-import type { TActorData, TJsonSchema, TVibecanvasJson } from './types';
+import { LUCIDE_STATIC_ICON_KEYS, isLucideStaticIconKey } from './tool-icon';
+import type { TActorData, TActorState, TFunctionName, TJsonSchema, TVibecanvasJson } from './types';
+import type { TVibecanvasToolIcon } from './tool-icon';
 
 export const ZJsonSchemaPrimitiveType = z.enum([
   'null',
@@ -61,16 +63,28 @@ export const ZJsonSchema: z.ZodType<TJsonSchema> = z.lazy(() => z.union([
   }),
 ]));
 
-export const ZActorState = z.string().regex(/^(booting|ready|busy|waiting|error)(\..*)?$/);
+export const ZActorState = z.custom<TActorState>(
+  (value) => typeof value === 'string' && /^(booting|ready|busy|waiting|error)(\..*)?$/.test(value),
+);
 export const ZInputMessage = z.string().min(1);
 export const ZOutputMessage = z.string().min(1);
-export const ZFunctionName = z.string().regex(/^(fn|fx|tx)\..*$/);
+export const ZFunctionName = z.custom<TFunctionName>(
+  (value) => typeof value === 'string' && /^(fn|fx|tx)\..*$/.test(value),
+);
 
-export const ZActorNonErrorState = z.string().regex(/^(booting|ready|busy|waiting)(\..*)?$/);
+export const ZVibecanvasToolIcon: z.ZodType<TVibecanvasToolIcon> = z.object({
+  lucidIcon: z.custom<string>(
+    isLucideStaticIconKey,
+    `expected one of: ${LUCIDE_STATIC_ICON_KEYS.join(', ')}`,
+  ).optional(),
+  svgIcon: z.string().min(1).optional(),
+}).strict().refine((icon) => icon.lucidIcon !== undefined || icon.svgIcon !== undefined, {
+  message: 'expected at least one of lucidIcon or svgIcon',
+});
 
 export const ZTransition = z.object({
   func: z.array(ZFunctionName),
-  allowedTargetStates: z.array(ZActorNonErrorState),
+  allowedTargetStates: z.array(ZActorState),
 });
 
 export const ZActorStateConfig = z.object({
@@ -91,7 +105,7 @@ export const ZVibecanvasActorWidget = z.object({
   relWidgetDir: z.string(),
   tool: z.object({
     label: z.string(),
-    icon: z.string().optional(),
+    icon: ZVibecanvasToolIcon.optional(),
     group: z.string().optional(),
     priority: z.number().optional(),
     behavior: z.discriminatedUnion('type', [

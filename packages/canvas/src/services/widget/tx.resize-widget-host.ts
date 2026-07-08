@@ -8,6 +8,11 @@ import {
   WIDGET_HOST_DIVIDER_ID,
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
+  WIDGET_HOST_MENU_BUTTON_ID,
+  WIDGET_HOST_MENU_BUTTON_RIGHT_INSET,
+  WIDGET_HOST_MENU_BUTTON_SIZE,
+  WIDGET_HOST_TITLE_ID,
+  WIDGET_HOST_TITLE_MENU_GAP,
   WIDGET_HOST_MIN_BODY_HEIGHT,
   WIDGET_HOST_MIN_HEIGHT,
   WIDGET_HOST_MIN_WIDTH,
@@ -20,6 +25,7 @@ type TPortal = {
   Group: typeof Konva.Group;
   Line?: typeof Konva.Line;
   Rect: typeof Konva.Rect;
+  Text?: typeof Konva.Text;
 }
 
 type TArgs = {
@@ -28,6 +34,17 @@ type TArgs = {
 }
 
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
+
+function getMenuButtonX(width: number) {
+  return Math.max(0, width - WIDGET_HOST_MENU_BUTTON_RIGHT_INSET - WIDGET_HOST_MENU_BUTTON_SIZE);
+}
+
+function getTitleWidth(args: {
+  titleX: number;
+  menuButtonX: number;
+}) {
+  return Math.max(0, args.menuButtonX - args.titleX - WIDGET_HOST_TITLE_MENU_GAP);
+}
 
 function txApplyWidgetHostSize(portal: TPortal, args: {
   node: Konva.Group;
@@ -67,6 +84,17 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
     if (headerBackground instanceof portal.Rect) {
       headerBackground.width(width);
       headerBackground.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0]);
+    }
+
+    const title = header.findOne(`#${WIDGET_HOST_TITLE_ID}`);
+    if (portal.Text && title instanceof portal.Text) {
+      const menuButtonX = getMenuButtonX(width);
+      title.width(getTitleWidth({ titleX: title.x(), menuButtonX }));
+    }
+
+    const menuButton = header.findOne(`#${WIDGET_HOST_MENU_BUTTON_ID}`);
+    if (menuButton instanceof portal.Group) {
+      menuButton.x(getMenuButtonX(width));
     }
   }
 

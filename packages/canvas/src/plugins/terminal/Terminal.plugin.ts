@@ -5,12 +5,10 @@ import SquareTerminal from "lucide-static/icons/square-terminal.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
 import type {
-    CrdtService,
-    SceneService,
-    ToolService,
-    WidgetManagerService,
+  CrdtService,
+  SceneService
 } from "../../services";
-import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import type { TTerminalWidgetPayload } from "./typed";
 import { mountTerminalWidget } from "./widget";
 
@@ -47,12 +45,7 @@ function persistTerminalPayload(args: {
     .commit();
 }
 
-export function createTerminalPlugin(): IPlugin<{
-  crdt: CrdtService;
-  scene: SceneService;
-  tool: ToolService;
-  widgetManager: WidgetManagerService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createTerminalPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
 
   return {
     name: "terminal",

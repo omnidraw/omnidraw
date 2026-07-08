@@ -14,6 +14,8 @@ import {
   WIDGET_HOST_HEADER_HEIGHT,
   WIDGET_HOST_HEADER_ID,
   WIDGET_HOST_MAXIMIZE_BUTTON_ID,
+  WIDGET_HOST_MENU_BUTTON_HIT_ID,
+  WIDGET_HOST_MENU_BUTTON_ID,
   WIDGET_HOST_MINIMIZE_BUTTON_ID,
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_WINDOW_CONTAINED,
@@ -35,6 +37,14 @@ type TPortal = {
     selection: Konva.Node[];
   }) => boolean;
   removeWidget?: (node: Konva.Group) => boolean;
+  openWidgetMenu?: (args: {
+    node: Konva.Group;
+    anchor: {
+      x: number;
+      y: number;
+    };
+  }) => void;
+  closeWidgetMenu?: () => void;
   setTimer?: (callback: () => void, timeout: number) => unknown;
   clearTimer?: (timer: unknown) => void;
 }
@@ -108,6 +118,63 @@ function setupButtons(args: {
           : WIDGET_WINDOW_FULLSCREEN
         args.syncWindowState(nextWindowMode)
       }
+    })
+  })
+}
+
+function setupMenuButton(args: {
+  Group: typeof Konva.Group;
+  Rect: typeof Konva.Rect;
+  node: Konva.Group;
+  setCursor: (cursor: string) => void;
+  openWidgetMenu?: TPortal["openWidgetMenu"];
+}) {
+  const menuButton = args.node.findOne(`#${WIDGET_HOST_MENU_BUTTON_ID}`)
+  if (!(menuButton instanceof args.Group)) {
+    return
+  }
+
+  const hit = menuButton.findOne(`#${WIDGET_HOST_MENU_BUTTON_HIT_ID}`)
+  const setHover = (hovered: boolean) => {
+    if (hit instanceof args.Rect) {
+      hit.opacity(hovered ? 0.12 : 0)
+      hit.getLayer()?.batchDraw()
+    }
+  }
+
+  menuButton.off('pointerover pointerout pointerdown pointerup pointerclick')
+  menuButton.on('pointerover', (event) => {
+    event.cancelBubble = true
+    setHover(true)
+    args.setCursor('pointer')
+  })
+  menuButton.on('pointerout', (event) => {
+    event.cancelBubble = true
+    setHover(false)
+    args.setCursor('default')
+  })
+  menuButton.on('pointerdown pointerup', (event) => {
+    event.cancelBubble = true
+    args.setCursor('pointer')
+  })
+  menuButton.on('pointerclick', (event) => {
+    event.cancelBubble = true
+    setHover(false)
+    args.setCursor('pointer')
+
+    const stage = args.node.getStage()
+    if (!stage) {
+      return
+    }
+
+    const containerRect = stage.container().getBoundingClientRect()
+    const buttonRect = menuButton.getClientRect()
+    args.openWidgetMenu?.({
+      node: args.node,
+      anchor: {
+        x: containerRect.left + buttonRect.x + buttonRect.width,
+        y: containerRect.top + buttonRect.y + buttonRect.height,
+      },
     })
   })
 }
@@ -311,11 +378,12 @@ function setupDragListener(portal: TPortal) {
   if (!(portal.node instanceof portal.Group)) return false
   const widgetNode = portal.node
 
-  widgetNode.off('dragend')
-  widgetNode.on('dragmove', () => {
+  widgetNode.off('dragmove.widgetListener dragend.widgetListener')
+  widgetNode.on('dragmove.widgetListener', () => {
+    portal.closeWidgetMenu?.()
   })
 
-  widgetNode.on('dragend', () => {
+  widgetNode.on('dragend.widgetListener', () => {
     portal.crdtService.build()
       .patchElement(widgetNode.id(), 'x', widgetNode.x())
       .patchElement(widgetNode.id(), 'y', widgetNode.y())
@@ -345,6 +413,13 @@ export function fxAttachWidgetListener(portal: TPortal, args: TArgs) {
     removeWidget: portal.removeWidget,
     syncExpandedState: fnCurry(syncExpandedState)(portal),
     syncWindowState: fnCurry(syncWindowState)(portal),
+  })
+  setupMenuButton({
+    Group: portal.Group,
+    Rect: portal.Rect,
+    node: portal.node,
+    setCursor,
+    openWidgetMenu: portal.openWidgetMenu,
   })
   if(header) setupCursor(setCursor, portal.node, header)
   setupDragListener(portal)

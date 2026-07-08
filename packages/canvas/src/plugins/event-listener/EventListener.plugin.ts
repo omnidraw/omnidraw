@@ -1,7 +1,6 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import Konva from "konva";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { IRuntimeHooks, TElementPointerEvent, TMouseEvent, TPointerEvent, TWheelEvent } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices, TElementPointerEvent, TMouseEvent, TPointerEvent, TWheelEvent } from "../../types";
 
 function isInsideHostedWidget(target: EventTarget | null) {
   return target instanceof HTMLElement && target.closest('[data-hosted-widget-root="true"]') !== null;
@@ -58,9 +57,7 @@ function getElementPointerEvent(event: TPointerEvent) {
  * Bridges stage and DOM input into runtime hooks.
  * Keeps raw input wiring out of feature plugins.
  */
-export function createEventListenerPlugin(): IPlugin<{
-  scene: SceneService;
-}, IRuntimeHooks> {
+export function createEventListenerPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "event-listener",
     apply(ctx) {

@@ -22,8 +22,8 @@ $
  pnpm create arrow-js@latest arrow-app
 
 Coding agent skill
- 
- 
+
+
  Install the Arrow coding agent skill wrapper if you want the same
  project-specific guidance in tools like Codex and Claude Code.
 
@@ -31,8 +31,8 @@ $
  npx @arrow-js/skill@latest
 
 Other ways to install
- 
- 
+
+
  Arrow still works fine without a build tool. If you only need the core
  runtime, a simple module import is enough.
 
@@ -40,14 +40,6 @@ Other ways to install
 
 ```shell
 npm install @arrow-js/core
-```
-
-#### From a CDN:
-
-```html
-<script type="module">
-  import { reactive, html } from 'https://esm.sh/@arrow-js/core'
-</script>
 ```
 
 ### Editor support
@@ -412,12 +404,12 @@ Agent Prompt
 `Build this UI as an Arrow sandbox payload. Return an object for sandbox({ source, ... }) with exactly one entry file named main.ts or main.js, plus main.css only if styles are needed. Use @arrow-js/core primitives directly: reactive(...) for state, html`...` for DOM, and component(...) only when reusable local state or composition is actually needed. Arrow expression slots are static by default, so any live value must be wrapped in a callable function like ${() => state.count}. Use event bindings like @click="${() => state.count++}", do not use JSX, React hooks, Vue directives, direct DOM mutation, or framework-specific render APIs.
 
 Export a default Arrow template or component result from main.ts. Keep the example self-contained, prefer a single clear root view, and communicate back to the host with output(payload) when needed. Put CSS in main.css, keep payloads JSON-serializable, and only return the files that are necessary for the requested interface. If you create multiple files, make sure imports match the virtual filenames you place in source.`
- 
 
- 
+
+
  JSON schema tool
- 
- 
+
+
  If your agent supports tool calling, this schema produces the exact
  argument object expected by `sandbox()`.
 
@@ -466,15 +458,15 @@ create_arrow_sandbox
  "required": ["source"]
  }
 }`
- 
 
- 
- 
- 
- 
+
+
+
+
+
  [](https://standardagents.ai)Early Access
- 
- 
+
+
  From the team behind
  [FormKit](https://formkit.com),
  [Tempo](https://tempo.formkit.com),
@@ -698,18 +690,18 @@ const fragment = template()
 ### Expression types
 
 - **Static** â€” Any non-function value. Renders once.
- 
+
  `html`<p>${someString}</p>``
 - **Reactive** â€” A function expression. Re-evaluates
  when tracked reads change.
- 
+
  `html`<p>${() => data.count}</p>``
 - **Template / component** â€” Nest directly.
- 
+
  `html`<div>${otherTemplate}</div>`
 html`<div>${MyComponent({ label: 'hi' })}</div>``
 - **Array** â€” Renders a list of templates.
- 
+
  `html`<ul>${() => items.map(i => html`<li>${i.name}</li>`)}</ul>``
 
 ### Attribute binding
@@ -860,7 +852,7 @@ const Counter = component((props: Props<{ count: number }>) => {
   return html`<button @click="${() => local.clicks++}">
     Root ${() => props.count} | Local ${() => local.clicks}
   </button>`
-}) 
+})
 
 // Async component
 const UserName = component(async ({ id }: { id: string }) => {

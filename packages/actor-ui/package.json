@@ -1,0 +1,29 @@
+{
+  "name": "@vibecanvas/actor-ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "typecheck": "bun x tsc -p tsconfig.json --noEmit",
+    "test": "vitest --run",
+    "test:screenshot": "playwright test"
+  },
+  "dependencies": {
+    "@vibecanvas/service-actor": "workspace:*",
+    "solid-js": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "jsdom": "^27.4.0",
+    "typescript": "catalog:",
+    "vite": "^7.3.1",
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^4.0.16"
+  }
+}

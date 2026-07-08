@@ -1,19 +1,38 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
+import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { isCanvasGroupNode, isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
+import type { TNodeOnRemove } from "../../core/types";
 import type { CrdtService, TCrdtChangeSummary } from "../../services/crdt/CrdtService";
 import type { ElementService } from "../../services/element/ElementService";
 import type { GroupService } from "../../services/group/GroupService";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 type TSceneNode = Konva.Group | Konva.Shape;
 type TSceneStateSnapshot = {
   selectionIds: string[];
   focusedId: string | null;
 };
+
+function destroySceneNode(node: Konva.Node | null | undefined) {
+  if (!node) return;
+
+  const onRemove = node.getAttr(VC_ON_REMOVE_ATTR);
+  if (typeof onRemove === "function") {
+    (onRemove as TNodeOnRemove)({ node });
+  }
+
+  node.destroy();
+}
+
+function destroySceneChildren(parent: Konva.Container) {
+  parent.getChildren().slice().forEach((node) => {
+    destroySceneNode(node);
+  });
+}
 
 function compareByPersistedOrder(left: { id: string; zIndex?: string }, right: { id: string; zIndex?: string }) {
   const zCompare = (left.zIndex ?? "").localeCompare(right.zIndex ?? "");
@@ -195,7 +214,7 @@ function reloadElementsByWidgetKind(args: {
         return;
       }
 
-      existingNode?.destroy();
+      destroySceneNode(existingNode);
       const nextNode = args.element.createNodeFromElement(widgetElement);
       if (!isKonvaGroup(nextNode) && !isKonvaShape(nextNode)) {
         return;
@@ -275,7 +294,7 @@ function applyIncrementalElementChange(args: {
     if (parent instanceof Konva.Layer || parent instanceof Konva.Group) {
       affectedParents.add(parent);
     }
-    node?.destroy();
+    destroySceneNode(node);
   });
 
   for (const id of getChangedElementIds(args.change)) {
@@ -328,13 +347,7 @@ function applyIncrementalElementChange(args: {
 /**
  * Rebuilds runtime scene from CRDT document for migrated groups and elements.
  */
-export function createSceneHydratorPlugin(): IPlugin<{
-  crdt: CrdtService;
-  element: ElementService;
-  group: GroupService;
-  scene: SceneService;
-  selection: SelectionService;
-}, IRuntimeHooks> {
+export function createSceneHydratorPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "scene-hydrator",
     apply(ctx) {
@@ -362,7 +375,7 @@ export function createSceneHydratorPlugin(): IPlugin<{
 
         try {
           const snapshot = captureSceneState(selection);
-          scene.staticForegroundLayer.destroyChildren();
+          destroySceneChildren(scene.staticForegroundLayer);
           loadCanvas({ crdt, element, group, scene });
           restoreSceneState(scene, selection, snapshot);
         } finally {

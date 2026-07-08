@@ -5,6 +5,7 @@ import type { CameraService, SelectionService, WidgetManagerService, TWidgetActo
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
 import {
+  WIDGET_DOM_CONTENT_SCALE,
   WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
@@ -33,6 +34,20 @@ type TArgs = {
 
 type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
 
+function syncWidgetRootChildren(contentRoot: HTMLDivElement) {
+  const view = contentRoot.ownerDocument.defaultView;
+  if (!view) return;
+
+  Array.from(contentRoot.children).forEach((child) => {
+    if (!(child instanceof view.HTMLElement)) return;
+
+    child.style.boxSizing = 'border-box';
+    child.style.width = '100%';
+    child.style.minWidth = '100%';
+    child.style.minHeight = '100%';
+  });
+}
+
 export type TWidgetDomPortalListener = (() => void) & {
   syncDiv: () => void;
 };
@@ -47,9 +62,13 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   if (!isKonvaRect(body)) return;
 
   const div = portal.document.createElement('div');
+  const contentRoot = portal.document.createElement('div');
   const fullscreenHeader = portal.document.createElement('div');
+  const fullscreenTitle = portal.document.createElement('div');
   const fullscreenWindowButton = portal.document.createElement('button');
   const view = portal.document.defaultView;
+  const widgetLabel = portal.widgetConfig?.tool?.label
+    ?? (args.element.data.type === 'widget' || args.element.data.type === 'ui-widget' ? args.element.data.kind : 'Widget');
 
   let disposed = false;
   let initialRenderTimer: number | null = null;
@@ -85,13 +104,17 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (isFullscreen) {
       const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
       portal.widgetPortal.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
-      fullscreenHeader.style.display = '';
+      fullscreenHeader.style.display = 'flex';
       fullscreenHeader.style.width = `${fullscreenParent.clientWidth}px`;
       fullscreenHeader.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       fullscreenHeader.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
       div.style.top = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       div.style.width = `${fullscreenParent.clientWidth}px`;
       div.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
+      contentRoot.style.width = `${fullscreenParent.clientWidth}px`;
+      contentRoot.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
+      contentRoot.style.transform = 'none';
+      syncWidgetRootChildren(contentRoot);
       div.style.transform = 'none';
       div.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
       return;
@@ -104,6 +127,10 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     div.style.zIndex = '';
     div.style.width = `${body.width()}px`;
     div.style.height = `${body.height()}px`;
+    contentRoot.style.width = `${body.width() / WIDGET_DOM_CONTENT_SCALE}px`;
+    contentRoot.style.height = `${body.height() / WIDGET_DOM_CONTENT_SCALE}px`;
+    contentRoot.style.transform = `scale(${WIDGET_DOM_CONTENT_SCALE})`;
+    syncWidgetRootChildren(contentRoot);
     div.style.transform = `matrix(${matrix.join(',')})`;
   };
 
@@ -113,7 +140,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (div.style.pointerEvents !== 'auto') return;
     event.stopPropagation();
   };
-  const domEventTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick', 'wheel', 'keydown', 'keyup'];
+  const domEventTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick', 'wheel', 'keydown', 'keyup', 'contextmenu'];
   domEventTypes.forEach((eventType) => div.addEventListener(eventType, stopActiveDomEvent));
 
   portal.node.on('dragmove', syncDiv);
@@ -146,12 +173,22 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenHeader.style.top = '0';
   fullscreenHeader.style.display = 'none';
   fullscreenHeader.style.alignItems = 'center';
-  fullscreenHeader.style.justifyContent = 'flex-end';
+  fullscreenHeader.style.justifyContent = 'space-between';
   fullscreenHeader.style.boxSizing = 'border-box';
   fullscreenHeader.style.padding = '0 10px';
   fullscreenHeader.style.backgroundColor = '#111827';
   fullscreenHeader.style.borderBottom = '1px solid #374151';
   fullscreenHeader.style.pointerEvents = 'auto';
+
+  fullscreenTitle.textContent = widgetLabel;
+  fullscreenTitle.style.flex = '1 1 auto';
+  fullscreenTitle.style.minWidth = '0';
+  fullscreenTitle.style.overflow = 'hidden';
+  fullscreenTitle.style.textOverflow = 'ellipsis';
+  fullscreenTitle.style.whiteSpace = 'nowrap';
+  fullscreenTitle.style.color = '#f9fafb';
+  fullscreenTitle.style.fontSize = '12px';
+  fullscreenTitle.style.fontWeight = '600';
 
   const windowIcon = portal.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   windowIcon.setAttribute('viewBox', '0 0 24 24');
@@ -168,6 +205,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   fullscreenWindowButton.title = 'Exit Fullscreen';
   fullscreenWindowButton.setAttribute('aria-label', 'Exit Fullscreen');
   fullscreenWindowButton.style.display = 'inline-flex';
+  fullscreenWindowButton.style.flex = '0 0 auto';
+  fullscreenWindowButton.style.whiteSpace = 'nowrap';
   fullscreenWindowButton.style.alignItems = 'center';
   fullscreenWindowButton.style.justifyContent = 'center';
   fullscreenWindowButton.style.gap = '6px';
@@ -195,6 +234,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     }
     syncDiv();
   };
+  fullscreenHeader.appendChild(fullscreenTitle);
   fullscreenHeader.appendChild(fullscreenWindowButton);
 
   div.dataset.widgetElementId = args.element.id;
@@ -208,13 +248,22 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.style.overflow = 'hidden';
   div.style.contain = 'layout paint size';
 
+  contentRoot.style.position = 'absolute';
+  contentRoot.style.left = '0';
+  contentRoot.style.top = '0';
+  contentRoot.style.transformOrigin = '0 0';
+  contentRoot.style.transform = `scale(${WIDGET_DOM_CONTENT_SCALE})`;
+  contentRoot.style.overflow = 'auto';
+
+  div.appendChild(contentRoot);
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
-  cleanupRender = portal.widgetConfig?.renderDom?.({ root: div, element: args.element });
+  cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element });
+  syncWidgetRootChildren(contentRoot);
 
   if (portal.widgetConfig?.sandbox) {
     const cleanupSandbox = mountArrowSandbox({
-      root: div,
+      root: contentRoot,
       apiService: portal.apiService,
       subscribeActorInstanceEvents: (actorInstanceId: string, handler: TWidgetActorEventHandler) => {
         return portal.widgetServie.subscribeActorInstanceEvents(actorInstanceId, handler);

@@ -1,6 +1,5 @@
 {
   "name": "@vibecanvas/service-actor",
-  "version": "0.3.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -17,6 +16,7 @@
     "@vibecanvas/service-event-publisher": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "lucide-static": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

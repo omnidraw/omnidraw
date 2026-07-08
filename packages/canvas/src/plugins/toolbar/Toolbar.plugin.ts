@@ -5,11 +5,11 @@ import SidebarOpen from "lucide-static/icons/sidebar-open.svg?raw";
 import { createComponent } from "solid-js";
 import { render } from "solid-js/web";
 import { RuntimeToolbar } from "../../components/FloatingCanvasToolbar/RuntimeToolbar";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
-import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { ToolService, TTool } from "../../services";
+import type { SceneService } from "../../services/scene/SceneService";
+import { CanvasMode } from "../../services/selection/CONSTANTS";
+import type { SelectionService } from "../../services/selection/SelectionService";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { txSelectTool } from "./tx.select-tool";
 
 function getModeFromTool(tool: TTool | undefined) {
@@ -110,11 +110,7 @@ function mountToolbar(args: {
  * Registers base tools and renders toolbar UI from editor tool registry.
  * Toolbar should stay dumb and only reflect registered tool state.
  */
-export function createToolbarPlugin(): IPlugin<{
-  tool: ToolService;
-  scene: SceneService;
-  selection: SelectionService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let toolbarMount: ReturnType<typeof mountToolbar> | null = null;
   let toolBeforeSpaceHold: string | null = null;
 

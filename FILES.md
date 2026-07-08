@@ -23,14 +23,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
 | [apps/cli/src/hooks.ts](apps/cli/src/hooks.ts) |  |
+| [apps/cli/src/main-app.ts](apps/cli/src/main-app.ts) |  |
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
 | [apps/cli/src/parse-argv.ts](apps/cli/src/parse-argv.ts) |  |
 | [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
@@ -106,13 +105,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -125,8 +117,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -143,12 +133,34 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/src/styles/global.css](apps/web/src/styles/global.css) |  |
 | [apps/web/tsconfig.json](apps/web/tsconfig.json) |  |
 
+## packages/actor-ui
+
+| path | jsdocs |
+|---|---|
+| [packages/actor-ui/demo/actors.ts](packages/actor-ui/demo/actors.ts) |  |
+| [packages/actor-ui/demo/main.tsx](packages/actor-ui/demo/main.tsx) |  |
+| [packages/actor-ui/demo/styles.css](packages/actor-ui/demo/styles.css) |  |
+| [packages/actor-ui/index.html](packages/actor-ui/index.html) |  |
+| [packages/actor-ui/package.json](packages/actor-ui/package.json) |  |
+| [packages/actor-ui/playwright.config.ts](packages/actor-ui/playwright.config.ts) |  |
+| [packages/actor-ui/src/ActorStateMachineView.tsx](packages/actor-ui/src/ActorStateMachineView.tsx) |  |
+| [packages/actor-ui/src/fn.edge.ts](packages/actor-ui/src/fn.edge.ts) |  |
+| [packages/actor-ui/src/fn.elbow.ts](packages/actor-ui/src/fn.elbow.ts) |  |
+| [packages/actor-ui/src/fn.labels.ts](packages/actor-ui/src/fn.labels.ts) |  |
+| [packages/actor-ui/src/fn.layout.ts](packages/actor-ui/src/fn.layout.ts) |  |
+| [packages/actor-ui/src/index.ts](packages/actor-ui/src/index.ts) |  |
+| [packages/actor-ui/src/styles.css](packages/actor-ui/src/styles.css) |  |
+| [packages/actor-ui/tsconfig.json](packages/actor-ui/tsconfig.json) |  |
+| [packages/actor-ui/vite.config.ts](packages/actor-ui/vite.config.ts) |  |
+| [packages/actor-ui/vitest.config.ts](packages/actor-ui/vitest.config.ts) |  |
+
 ## packages/api-actors
 
 | path | jsdocs |
 |---|---|
 | [packages/api-actors/package.json](packages/api-actors/package.json) |  |
 | [packages/api-actors/src/api.actor-snapshot.ts](packages/api-actors/src/api.actor-snapshot.ts) |  |
+| [packages/api-actors/src/api.def-delete.ts](packages/api-actors/src/api.def-delete.ts) |  |
 | [packages/api-actors/src/api.def-get.ts](packages/api-actors/src/api.def-get.ts) |  |
 | [packages/api-actors/src/api.def-list.ts](packages/api-actors/src/api.def-list.ts) |  |
 | [packages/api-actors/src/api.events.ts](packages/api-actors/src/api.events.ts) |  |
@@ -159,6 +171,41 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-actors/src/orpc.ts](packages/api-actors/src/orpc.ts) |  |
 | [packages/api-actors/src/types.ts](packages/api-actors/src/types.ts) |  |
 | [packages/api-actors/tsconfig.json](packages/api-actors/tsconfig.json) |  |
+
+## packages/api-agent
+
+| path | jsdocs |
+|---|---|
+| [packages/api-agent/package.json](packages/api-agent/package.json) |  |
+| [packages/api-agent/src/api.auth.abort.ts](packages/api-agent/src/api.auth.abort.ts) |  |
+| [packages/api-agent/src/api.auth.apiKey.remove.ts](packages/api-agent/src/api.auth.apiKey.remove.ts) |  |
+| [packages/api-agent/src/api.auth.apiKey.set.ts](packages/api-agent/src/api.auth.apiKey.set.ts) |  |
+| [packages/api-agent/src/api.auth.login.ts](packages/api-agent/src/api.auth.login.ts) |  |
+| [packages/api-agent/src/api.auth.logout.ts](packages/api-agent/src/api.auth.logout.ts) |  |
+| [packages/api-agent/src/api.auth.status.ts](packages/api-agent/src/api.auth.status.ts) |  |
+| [packages/api-agent/src/api.events.ts](packages/api-agent/src/api.events.ts) |  |
+| [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
+| [packages/api-agent/src/api.wizzard.cancel.ts](packages/api-agent/src/api.wizzard.cancel.ts) |  |
+| [packages/api-agent/src/api.wizzard.connect.ts](packages/api-agent/src/api.wizzard.connect.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.inspect.ts](packages/api-agent/src/api.wizzard.draftActor.inspect.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.reload.ts](packages/api-agent/src/api.wizzard.draftActor.reload.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.reset.ts](packages/api-agent/src/api.wizzard.draftActor.reset.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.send.ts](packages/api-agent/src/api.wizzard.draftActor.send.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.start.ts](packages/api-agent/src/api.wizzard.draftActor.start.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftActor.stop.ts](packages/api-agent/src/api.wizzard.draftActor.stop.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftManifest.patch.ts](packages/api-agent/src/api.wizzard.draftManifest.patch.ts) |  |
+| [packages/api-agent/src/api.wizzard.draftManifest.read.ts](packages/api-agent/src/api.wizzard.draftManifest.read.ts) |  |
+| [packages/api-agent/src/api.wizzard.newSession.ts](packages/api-agent/src/api.wizzard.newSession.ts) |  |
+| [packages/api-agent/src/api.wizzard.previewSource.ts](packages/api-agent/src/api.wizzard.previewSource.ts) |  |
+| [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
+| [packages/api-agent/src/api.wizzard.publish.ts](packages/api-agent/src/api.wizzard.publish.ts) |  |
+| [packages/api-agent/src/api.wizzard.startWidgetEdit.ts](packages/api-agent/src/api.wizzard.startWidgetEdit.ts) |  |
+| [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
+| [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
+| [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
+| [packages/api-agent/src/orpc.ts](packages/api-agent/src/orpc.ts) |  |
+| [packages/api-agent/src/types.ts](packages/api-agent/src/types.ts) |  |
+| [packages/api-agent/tsconfig.json](packages/api-agent/tsconfig.json) |  |
 
 ## packages/api-canvas
 
@@ -273,7 +320,25 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
 | [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Automerge Client Service |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
+| [packages/canvas/src/components/AiWizzard/AsyncStateView.tsx](packages/canvas/src/components/AiWizzard/AsyncStateView.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiWizzard/ChatComposer/ChatComposer.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiWizzard/ChatComposer/fn.trigger.ts) |  |
+| [packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts](packages/canvas/src/components/AiWizzard/ChatComposer/interface.ts) |  |
+| [packages/canvas/src/components/AiWizzard/index.css](packages/canvas/src/components/AiWizzard/index.css) |  |
+| [packages/canvas/src/components/AiWizzard/index.tsx](packages/canvas/src/components/AiWizzard/index.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ActorTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ChatTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-label.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-label.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-markdown.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts](packages/canvas/src/components/AiWizzard/tabs/fn.chat-message-parts.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown-blocks.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx](packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx](packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
+| [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
+| [packages/canvas/src/components/CanvasConfirmDialog/styles.css](packages/canvas/src/components/CanvasConfirmDialog/styles.css) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.css](packages/canvas/src/components/CanvasContextMenu/index.css) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.tsx](packages/canvas/src/components/CanvasContextMenu/index.tsx) |  |
 | [packages/canvas/src/components/CanvasHelp/help.data.ts](packages/canvas/src/components/CanvasHelp/help.data.ts) |  |
@@ -320,6 +385,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/core/tx.set-node-z-index.ts](packages/canvas/src/core/tx.set-node-z-index.ts) |  |
 | [packages/canvas/src/core/types.ts](packages/canvas/src/core/types.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
+| [packages/canvas/src/plugins/ai/Ai.plugin.ts](packages/canvas/src/plugins/ai/Ai.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts](packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CONSTANTS.ts](packages/canvas/src/plugins/camera-control/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/camera-control/fn.get-hand-layer-style.ts](packages/canvas/src/plugins/camera-control/fn.get-hand-layer-style.ts) |  |
@@ -328,6 +394,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts](packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts) |  |
 | [packages/canvas/src/plugins/camera-control/tx.sync-hand-layer.ts](packages/canvas/src/plugins/camera-control/tx.sync-hand-layer.ts) |  |
 | [packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts](packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts) |  |
+| [packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts](packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts) |  |
 | [packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts](packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts) |  |
 | [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
 | [packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts](packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts) |  |
@@ -428,6 +495,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/camera/CameraService.ts](packages/canvas/src/services/camera/CameraService.ts) |  |
 | [packages/canvas/src/services/clone/CloneService.ts](packages/canvas/src/services/clone/CloneService.ts) |  |
+| [packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts](packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts) |  |
 | [packages/canvas/src/services/context-menu/ContextMenuService.ts](packages/canvas/src/services/context-menu/ContextMenuService.ts) |  |
 | [packages/canvas/src/services/crdt/CrdtService.ts](packages/canvas/src/services/crdt/CrdtService.ts) |  |
 | [packages/canvas/src/services/crdt/fxBuilder.ts](packages/canvas/src/services/crdt/fxBuilder.ts) |  |
@@ -463,6 +531,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/widget/CONSTANTS.ts](packages/canvas/src/services/widget/CONSTANTS.ts) |  |
 | [packages/canvas/src/services/widget/fn.create-widget-node.ts](packages/canvas/src/services/widget/fn.create-widget-node.ts) |  |
 | [packages/canvas/src/services/widget/fn.get-host-theme-colors.ts](packages/canvas/src/services/widget/fn.get-host-theme-colors.ts) |  |
+| [packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts](packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts) |  |
 | [packages/canvas/src/services/widget/fn.to-widget-element.ts](packages/canvas/src/services/widget/fn.to-widget-element.ts) |  |
 | [packages/canvas/src/services/widget/fx.attach-widget-listener.ts](packages/canvas/src/services/widget/fx.attach-widget-listener.ts) |  |
 | [packages/canvas/src/services/widget/fx.draw-host.ts](packages/canvas/src/services/widget/fx.draw-host.ts) |  |
@@ -503,6 +572,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/sdk/.gitignore](packages/sdk/.gitignore) |  |
+| [packages/sdk/actor/index.d.ts](packages/sdk/actor/index.d.ts) |  |
+| [packages/sdk/actor/index.js](packages/sdk/actor/index.js) |  |
+| [packages/sdk/actor/package.json](packages/sdk/actor/package.json) |  |
 | [packages/sdk/package.json](packages/sdk/package.json) |  |
 | [packages/sdk/scripts/build.ts](packages/sdk/scripts/build.ts) |  |
 | [packages/sdk/src/actor.ts](packages/sdk/src/actor.ts) |  |
@@ -514,6 +586,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/sdk/tsconfig.build.json](packages/sdk/tsconfig.build.json) |  |
 | [packages/sdk/tsconfig.json](packages/sdk/tsconfig.json) |  |
 | [packages/sdk/vibecanvas.schema.json](packages/sdk/vibecanvas.schema.json) |  |
+| [packages/sdk/widget/index.d.ts](packages/sdk/widget/index.d.ts) |  |
+| [packages/sdk/widget/index.js](packages/sdk/widget/index.js) |  |
+| [packages/sdk/widget/package.json](packages/sdk/widget/package.json) |  |
 
 ## packages/service-actor
 
@@ -521,19 +596,67 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/service-actor/AGENTS.md](packages/service-actor/AGENTS.md) |  |
 | [packages/service-actor/package.json](packages/service-actor/package.json) |  |
+| [packages/service-actor/src/actor-ipc-command.ts](packages/service-actor/src/actor-ipc-command.ts) |  |
 | [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process, validating inbox and output messages around guest transitions. |
 | [packages/service-actor/src/ActorService.ts](packages/service-actor/src/ActorService.ts) |  |
 | [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
 | [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
 | [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
+| [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |
 | [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
 | [packages/service-actor/src/core/tx.vibecanvas-widgets.ts](packages/service-actor/src/core/tx.vibecanvas-widgets.ts) |  |
 | [packages/service-actor/src/core/types.ts](packages/service-actor/src/core/types.ts) |  |
 | [packages/service-actor/src/core/vibecanvasjson.zod.ts](packages/service-actor/src/core/vibecanvasjson.zod.ts) |  |
-| [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent |
+| [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
+
+## packages/service-agent
+
+| path | jsdocs |
+|---|---|
+| [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
+| [packages/service-agent/package.json](packages/service-agent/package.json) |  |
+| [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
+| [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
+| [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
+| [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
+| [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |
+| [packages/service-agent/src/core/fx.walk-files.ts](packages/service-agent/src/core/fx.walk-files.ts) |  |
+| [packages/service-agent/src/core/lint/fn.actor-registry.ts](packages/service-agent/src/core/lint/fn.actor-registry.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-json-schemas.ts](packages/service-agent/src/core/lint/fn.manifest-json-schemas.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-message-schemas.ts](packages/service-agent/src/core/lint/fn.manifest-message-schemas.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-shape.ts](packages/service-agent/src/core/lint/fn.manifest-shape.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-states.ts](packages/service-agent/src/core/lint/fn.manifest-states.ts) |  |
+| [packages/service-agent/src/core/lint/fn.manifest-transition-functions.ts](packages/service-agent/src/core/lint/fn.manifest-transition-functions.ts) |  |
+| [packages/service-agent/src/core/lint/fn.required-widget-files.ts](packages/service-agent/src/core/lint/fn.required-widget-files.ts) |  |
+| [packages/service-agent/src/core/lint/fn.validate-manifest.ts](packages/service-agent/src/core/lint/fn.validate-manifest.ts) |  |
+| [packages/service-agent/src/core/tx.publish-widget-draft.ts](packages/service-agent/src/core/tx.publish-widget-draft.ts) |  |
+| [packages/service-agent/src/core/tx.session-candidate.ts](packages/service-agent/src/core/tx.session-candidate.ts) |  |
+| [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
+| [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
+| [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
+| [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
+| [packages/service-agent/src/prompts/index.ts](packages/service-agent/src/prompts/index.ts) |  |
+| [packages/service-agent/src/prompts/prompt.actor-implementation.md](packages/service-agent/src/prompts/prompt.actor-implementation.md) |  |
+| [packages/service-agent/src/prompts/prompt.arrow-js.md](packages/service-agent/src/prompts/prompt.arrow-js.md) |  |
+| [packages/service-agent/src/prompts/prompt.product-and-manifest.md](packages/service-agent/src/prompts/prompt.product-and-manifest.md) |  |
+| [packages/service-agent/src/prompts/prompt.style-guide.md](packages/service-agent/src/prompts/prompt.style-guide.md) |  |
+| [packages/service-agent/src/prompts/prompt.tools.md](packages/service-agent/src/prompts/prompt.tools.md) |  |
+| [packages/service-agent/src/prompts/prompt.widget-implementation.md](packages/service-agent/src/prompts/prompt.widget-implementation.md) |  |
+| [packages/service-agent/src/tools/CONSTANTS.ts](packages/service-agent/src/tools/CONSTANTS.ts) |  |
+| [packages/service-agent/src/tools/fn.candidate.ts](packages/service-agent/src/tools/fn.candidate.ts) |  |
+| [packages/service-agent/src/tools/fn.phase-tools.ts](packages/service-agent/src/tools/fn.phase-tools.ts) |  |
+| [packages/service-agent/src/tools/fn.result.ts](packages/service-agent/src/tools/fn.result.ts) |  |
+| [packages/service-agent/src/tools/tool.approve-actor-candidate.ts](packages/service-agent/src/tools/tool.approve-actor-candidate.ts) |  |
+| [packages/service-agent/src/tools/tool.publish-widget.ts](packages/service-agent/src/tools/tool.publish-widget.ts) |  |
+| [packages/service-agent/src/tools/tool.set-actor-candidate.ts](packages/service-agent/src/tools/tool.set-actor-candidate.ts) |  |
+| [packages/service-agent/src/tools/tool.validate-widget-files.ts](packages/service-agent/src/tools/tool.validate-widget-files.ts) |  |
+| [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
+| [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
+| [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
+| [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |
 
 ## packages/service-automerge
 
@@ -563,6 +686,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/list-migration-files.ts](packages/service-db/src/DbServiceTurso/list-migration-files.ts) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql](packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql](packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql) |  |
@@ -570,15 +694,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
@@ -601,6 +726,16 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-filesystem/src/IFilesystemService.ts](packages/service-filesystem/src/IFilesystemService.ts) |  |
 | [packages/service-filesystem/src/types.ts](packages/service-filesystem/src/types.ts) |  |
 | [packages/service-filesystem/tsconfig.json](packages/service-filesystem/tsconfig.json) |  |
+
+## packages/service-kv
+
+| path | jsdocs |
+|---|---|
+| [packages/service-kv/package.json](packages/service-kv/package.json) |  |
+| [packages/service-kv/src/index.ts](packages/service-kv/src/index.ts) |  |
+| [packages/service-kv/src/KvService.ts](packages/service-kv/src/KvService.ts) |  |
+| [packages/service-kv/src/types.ts](packages/service-kv/src/types.ts) |  |
+| [packages/service-kv/tsconfig.json](packages/service-kv/tsconfig.json) |  |
 
 ## packages/service-pty
 
@@ -664,6 +799,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
+| [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
@@ -673,4 +809,3 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
-| [scripts/update-version.ts](scripts/update-version.ts) | Updates root, app, and package package.json versions to a validated release version. |

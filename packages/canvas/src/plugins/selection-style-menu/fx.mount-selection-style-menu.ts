@@ -29,7 +29,7 @@ import type {
   HistoryService,
   SceneService, SelectionService,
   SessionService,
-  TCanvasRegistrySelectionStyleConfig,
+  TElementSelectionStyleConfig,
   ToolService
 } from "../../services";
 import { fxFindShape1dNodeById } from "../shape1d/fx.node";
@@ -205,7 +205,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
     const selectedEntries = portal.createMemo(() => {
       version();
 
-      const entries: Array<{ element: TElement; config: TCanvasRegistrySelectionStyleConfig }> = [];
+      const entries: Array<{ element: TElement; config: TElementSelectionStyleConfig }> = [];
       selectedElements().forEach((element) => {
         const config = portal.element.getSelectionStyleMenuConfigByElement({
           element,

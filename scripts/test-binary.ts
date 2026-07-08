@@ -25,6 +25,13 @@ type TBinaryScenario = {
   cleanupPaths: string[]
 }
 
+type TActorIpcChildMessage =
+  | { type: "ready" }
+  | { type: "setData"; id: number; data: unknown }
+  | { type: "emitMessage"; id: number; msg: unknown }
+  | { type: "done"; id: number }
+  | { type: "error"; id?: number; msg: unknown; error?: boolean }
+
 function parseArgs(): TArgs {
   const args = Bun.argv.slice(2)
   const getArg = (name: string): string | undefined => {
@@ -198,6 +205,14 @@ async function assertPathMissing(targetPath: string, label: string): Promise<voi
 
 async function createPortBlocker(port: number): Promise<{ close: () => Promise<void> }> {
   const server = net.createServer()
+  const sockets = new Set<net.Socket>()
+
+  server.on("connection", (socket) => {
+    sockets.add(socket)
+    socket.on("close", () => {
+      sockets.delete(socket)
+    })
+  })
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -208,14 +223,223 @@ async function createPortBlocker(port: number): Promise<{ close: () => Promise<v
   })
 
   return {
-    close: () =>
-      new Promise<void>((resolve, reject) => {
+    close: () => {
+      for (const socket of sockets) {
+        socket.destroy()
+      }
+      return new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) reject(error)
           else resolve()
         })
-      }),
+      })
+    },
   }
+}
+
+async function createActorIpcFixture(tempRoot: string): Promise<string> {
+  const fixtureDir = path.join(tempRoot, "actor-ipc-fixture")
+  const sdkDistDir = path.join(fixtureDir, "node_modules", "@vibecanvas", "sdk", "dist")
+  await Bun.$`mkdir -p ${fixtureDir}`.quiet()
+  await Bun.write(path.join(fixtureDir, "package.json"), JSON.stringify({
+    name: "actor-ipc-fixture",
+    version: "1.0.0",
+    type: "module",
+    dependencies: {
+      "@vibecanvas/sdk": "0.1.0",
+    },
+  }, null, 2))
+  await Bun.$`mkdir -p ${sdkDistDir}`.quiet()
+  await Bun.write(path.join(fixtureDir, "node_modules", "@vibecanvas", "sdk", "package.json"), JSON.stringify({
+    name: "@vibecanvas/sdk",
+    version: "0.1.0",
+    type: "module",
+    exports: {
+      "./actor": {
+        types: "./dist/actor.d.ts",
+        default: "./dist/actor.js",
+      },
+    },
+  }, null, 2))
+  await Bun.write(path.join(sdkDistDir, "actor.js"), `
+export function defineFn(fn) { return fn; }
+export function defineTx(tx) { return tx; }
+`)
+  const functionPath = path.join(fixtureDir, "functions.ts")
+  await Bun.write(functionPath, `
+import { defineFn, defineTx } from "@vibecanvas/sdk/actor";
+
+export default {
+  fn: {
+    "fn.throwDomException": defineFn(async () => {
+      throw new DOMException("The object can not be cloned.", "DataCloneError");
+    }),
+  },
+  fx: {},
+  tx: {
+    "tx.addFunds": defineTx(async (portal, args) => {
+      const data = { balance: args.data.balance + args.msg.amount };
+      await portal.setData(data);
+      await portal.emitMessage({
+        type: "funds-added",
+        payload: {
+          accountId: args.msg.accountId,
+          amount: args.msg.amount,
+          balance: data.balance,
+        },
+      });
+    }),
+  },
+};
+`)
+  return functionPath
+}
+
+async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeoutMs: number): Promise<void> {
+  const functionPath = await createActorIpcFixture(tempRoot)
+  const messages: TActorIpcChildMessage[] = []
+
+  console.log(`[test-binary] Scenario 'actor-ipc' using ${functionPath}`)
+
+  let proc: Bun.Subprocess | null = null
+  const done = withTimeout(new Promise<void>((resolve, reject) => {
+    proc = Bun.spawn({
+      cmd: [binaryPath, "--icp-client", "--functionPath", functionPath],
+      cwd: path.dirname(functionPath),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env },
+      ipc(message) {
+        const childMessage = message as TActorIpcChildMessage
+        messages.push(childMessage)
+
+        if (childMessage.type === "ready") {
+          proc?.send({
+            type: "run",
+            id: 1,
+            func: ["tx.addFunds"],
+            payload: { accountId: "compiled", amount: 29 },
+            data: { balance: 13 },
+          })
+          return
+        }
+
+        if (childMessage.type === "setData") {
+          proc?.send({ type: "ack", id: childMessage.id, action: "setData" })
+          return
+        }
+
+        if (childMessage.type === "emitMessage") {
+          proc?.send({ type: "ack", id: childMessage.id, action: "emitMessage" })
+          return
+        }
+
+        if (childMessage.type === "done") {
+          resolve()
+          return
+        }
+
+        if (childMessage.type === "error") {
+          reject(new Error(`actor-ipc child error: ${JSON.stringify(childMessage.msg)}`))
+        }
+      },
+    })
+  }), timeoutMs, "actor-ipc")
+
+  try {
+    await done
+  } finally {
+    proc?.kill()
+    if (proc) {
+      const result = await Promise.race([
+        proc.exited,
+        Bun.sleep(5000).then(() => "timeout"),
+      ])
+      if (result === "timeout") {
+        proc.kill(9)
+        await proc.exited
+      }
+    }
+  }
+
+  const types = messages.map((message) => message.type)
+  if (JSON.stringify(types) !== JSON.stringify(["ready", "setData", "emitMessage", "done"])) {
+    throw new Error(`actor-ipc message sequence mismatch: ${JSON.stringify(types)}`)
+  }
+
+  const setData = messages.find((message) => message.type === "setData")
+  if (setData?.type !== "setData" || JSON.stringify(setData.data) !== JSON.stringify({ balance: 42 })) {
+    throw new Error(`actor-ipc setData mismatch: ${JSON.stringify(setData)}`)
+  }
+
+  const emitMessage = messages.find((message) => message.type === "emitMessage")
+  const expectedMsg = {
+    type: "funds-added",
+    payload: { accountId: "compiled", amount: 29, balance: 42 },
+  }
+  if (emitMessage?.type !== "emitMessage" || JSON.stringify(emitMessage.msg) !== JSON.stringify(expectedMsg)) {
+    throw new Error(`actor-ipc emitMessage mismatch: ${JSON.stringify(emitMessage)}`)
+  }
+
+  console.log("[test-binary] PASS actor-ipc ready/setData/emitMessage/done")
+
+  const errorMessages: TActorIpcChildMessage[] = []
+  let errorProc: Bun.Subprocess | null = null
+  const gotError = withTimeout(new Promise<void>((resolve, reject) => {
+    errorProc = Bun.spawn({
+      cmd: [binaryPath, "--icp-client", "--functionPath", functionPath],
+      cwd: path.dirname(functionPath),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env },
+      ipc(message) {
+        const childMessage = message as TActorIpcChildMessage
+        errorMessages.push(childMessage)
+
+        if (childMessage.type === "ready") {
+          errorProc?.send({
+            type: "run",
+            id: 2,
+            func: ["fn.throwDomException"],
+            payload: {},
+            data: {},
+          })
+          return
+        }
+
+        if (childMessage.type === "error") {
+          const msg = childMessage.msg as { name?: unknown; message?: unknown; code?: unknown }
+          if (msg.name !== "DataCloneError" || msg.message !== "The object can not be cloned." || msg.code !== 25) {
+            reject(new Error(`actor-ipc serialized error mismatch: ${JSON.stringify(childMessage)}`))
+            return
+          }
+          resolve()
+        }
+      },
+    })
+  }), timeoutMs, "actor-ipc DOMException serialization")
+
+  try {
+    await gotError
+  } finally {
+    errorProc?.kill()
+    if (errorProc) {
+      const result = await Promise.race([
+        errorProc.exited,
+        Bun.sleep(5000).then(() => "timeout"),
+      ])
+      if (result === "timeout") {
+        errorProc.kill(9)
+        await errorProc.exited
+      }
+    }
+  }
+
+  const errorTypes = errorMessages.map((message) => message.type)
+  if (JSON.stringify(errorTypes) !== JSON.stringify(["ready", "error"])) {
+    throw new Error(`actor-ipc error message sequence mismatch: ${JSON.stringify(errorTypes)}`)
+  }
+  console.log("[test-binary] PASS actor-ipc serializes DOMException errors")
 }
 
 async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBinaryScenario): Promise<void> {
@@ -329,6 +553,8 @@ async function main() {
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
+
+  await assertActorIpcBinary(binaryPath, tempRoot, args.requestTimeoutMs)
 
   await runBinaryScenario(binaryPath, args, {
     name: "config-env",

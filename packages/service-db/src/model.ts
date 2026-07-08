@@ -1,6 +1,18 @@
 import { z } from 'zod';
 import { MIME_TYPES } from './CONSTANTS';
 
+const RELATIVE_NO_TRAVERSAL_PATH = /^[^\\:]+$/;
+
+const ZManifestPath = z
+  .string()
+  .min(1)
+  .refine((path) => !path.startsWith("/"), "Actor manifest path must be config-relative")
+  .refine((path) => RELATIVE_NO_TRAVERSAL_PATH.test(path), "Actor manifest path must be a relative path without backslashes or drive letters")
+  .refine((path) => {
+    const segments = path.replace(/\\/g, "/").split("/");
+    return !segments.some(segment => segment === ".." || segment === "." || segment === "");
+  }, "Actor manifest path must not contain traversal segments")
+
 export const ZJson: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
   z.number(),
@@ -75,7 +87,7 @@ export const ZActorDefinition = z.object({
   slug: z.string(),
   url: z.string().nullable(),
   description: z.string().nullable(),
-  manifest_path: z.string().startsWith("/"),
+  manifest_path: ZManifestPath,
   created_at: ZTimestamp,
   updated_at: ZTimestamp,
 });
@@ -107,6 +119,11 @@ export const ZActorConnection = z.object({
 });
 
 export type TJson = z.infer<typeof ZJson>;
+export type TKeyValue =
+  | { name: string; type: "text"; value: string }
+  | { name: string; type: "json"; value: TJson }
+  | { name: string; type: "number"; value: number }
+  | { name: string; type: "bool"; value: boolean };
 export type TTimestamp = z.infer<typeof ZTimestamp>;
 export type TBlob = z.infer<typeof ZBlob>;
 export type TSqlBoolean = z.infer<typeof ZSqlBoolean>;

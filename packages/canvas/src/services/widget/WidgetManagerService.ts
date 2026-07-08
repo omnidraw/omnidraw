@@ -1,14 +1,24 @@
 import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
+import type { TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
+import type { ConfirmDialogService } from "../confirm-dialog/ConfirmDialogService";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import {
     WIDGET_DOM_PORTAL_SYNC_ATTR,
+    WIDGET_HOST_BODY_ID,
+    WIDGET_HOST_BORDER_ID,
+    WIDGET_HOST_DIVIDER_ID,
+    WIDGET_HOST_HEADER_HEIGHT,
+    WIDGET_HOST_HEADER_ID,
     WIDGET_HOST_MIN_HEIGHT,
     WIDGET_HOST_MIN_WIDTH,
+    WIDGET_HOST_WINDOW_CORNER_RADIUS,
+    WIDGET_WINDOW_CONTAINED,
+    WIDGET_WINDOW_FULLSCREEN,
 } from "./CONSTANTS";
 import { fnCreateWidgetNode } from "./fn.create-widget-node";
 import { fnGetHostThemeColors } from "./fn.get-host-theme-colors";
@@ -43,6 +53,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #sceneService: SceneService;
   #renderOrderService: RenderOrderService;
   #cameraService: CameraService;
+  #confirmDialogService: ConfirmDialogService;
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #apiService: TOrpcSafeClient;
@@ -64,6 +75,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService = props.sceneService;
     this.#renderOrderService = props.renderOrderService;
     this.#cameraService = props.cameraService;
+    this.#confirmDialogService = props.confirmDialogService;
     this.#apiService = props.apiService
   }
 
@@ -85,6 +97,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#actorEventSubscribers.clear();
     this.#removeSelectionChangeListener?.();
     this.#removeSelectionChangeListener = undefined;
+    this.#contextMenuService.close();
     this.#widgetPortal.remove()
   }
 
@@ -140,6 +153,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       return false;
     }
 
+    this.#contextMenuService.close();
     const commitResult = this.#elementService.removeElement(node, this.#crdtService.build()).commit();
     this.#selectionService.clear();
     this.#sceneService.staticForegroundLayer.batchDraw();
@@ -180,9 +194,201 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     return true;
   }
 
+  async #deleteWidgetDefinition(kind: string) {
+    this.#contextMenuService.close();
+    const confirmed = await this.#confirmDialogService.confirm({
+      title: "Delete widget",
+      description: `Delete the published widget "${kind}"? This removes all current canvas instances and unregisters the widget from the toolbar. This action cannot be undone.`,
+      confirmLabel: "Delete widget",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    if (!confirmed) {
+      return false;
+    }
+
+    const [error] = await this.#apiService.api.actors.definitions.delete({ name: kind });
+    if (error) {
+      this.#loggingService.warn({
+        kind: "service",
+        name: this.name,
+        level: 1,
+        event: "delete-widget-definition-failed",
+        payload: error,
+      });
+      return false;
+    }
+
+    const doc = this.#crdtService.doc();
+    const matchingElements = Object.values(doc.elements).filter((element) => {
+      return element.data.type === "widget" && element.data.kind === kind;
+    });
+
+    if (matchingElements.length > 0) {
+      let builder = this.#crdtService.build();
+      matchingElements.forEach((element) => {
+        const node = this.#findWidgetNodeById(element.id);
+        if (node) {
+          builder = this.#elementService.removeElement(node, builder);
+          return;
+        }
+
+        builder.deleteElement(element.id);
+      });
+      builder.commit();
+    }
+
+    this.unregisterWidget(kind);
+    this.#selectionService.clear();
+    this.#sceneService.staticForegroundLayer.batchDraw();
+    return true;
+  }
+
+  #syncWidgetDomPortal(node: Konva.Node) {
+    const syncWidgetDomPortal = node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as TWidgetDomPortalSync | undefined;
+    syncWidgetDomPortal?.();
+  }
+
+  #setWidgetExpanded(node: Konva.Group, expanded: boolean) {
+    const body = node.findOne(`#${WIDGET_HOST_BODY_ID}`);
+    if (body instanceof Konva.Rect) {
+      body.visible(expanded);
+      body.listening(expanded);
+    }
+
+    const border = node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
+    if (border instanceof Konva.Rect) {
+      border.height(expanded ? node.height() : WIDGET_HOST_HEADER_HEIGHT);
+    }
+
+    const divider = node.findOne(`#${WIDGET_HOST_DIVIDER_ID}`);
+    if (divider instanceof Konva.Rect) {
+      divider.visible(expanded);
+      divider.listening(false);
+    }
+
+    const header = node.findOne(`#${WIDGET_HOST_HEADER_ID}`);
+    if (header instanceof Konva.Rect) {
+      header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0]);
+    }
+
+    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+    if (widgetData?.type === "widget" || widgetData?.type === "ui-widget") {
+      node.setAttr(ELEMENT_DATA_ATTR, {
+        ...widgetData,
+        expanded,
+      });
+    }
+
+    this.#syncWidgetDomPortal(node);
+    node.getLayer()?.batchDraw();
+  }
+
+  #setWidgetWindowMode(node: Konva.Group, windowMode: typeof WIDGET_WINDOW_CONTAINED | typeof WIDGET_WINDOW_FULLSCREEN) {
+    if (windowMode === WIDGET_WINDOW_FULLSCREEN) {
+      if (this.#selectionService.selection.length > 0) {
+        this.#selectionService.setSelection([]);
+      }
+
+      if (this.#selectionService.focusedId !== node.id()) {
+        this.#selectionService.setFocusedId(node.id());
+      }
+    }
+
+    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+    if (widgetData?.type === "widget" || widgetData?.type === "ui-widget") {
+      node.setAttr(ELEMENT_DATA_ATTR, {
+        ...widgetData,
+        window: windowMode,
+      });
+    }
+
+    this.#syncWidgetDomPortal(node);
+    node.getLayer()?.batchDraw();
+  }
+
+  #openWidgetHeaderMenu(args: {
+    node: Konva.Group;
+    anchor: {
+      x: number;
+      y: number;
+    };
+  }) {
+    const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
+    if (widgetData?.type !== "widget" && widgetData?.type !== "ui-widget") {
+      return;
+    }
+
+    this.#selectionService.setSelection([args.node]);
+    const deleteActions = widgetData.type === "widget"
+      ? [
+        {
+          id: "widget-delete-instance",
+          label: "Delete instance",
+          priority: 30,
+          onSelect: () => {
+            this.#removeWidgetNode(args.node, { recordHistory: true });
+          },
+        },
+        {
+          id: "widget-delete-definition",
+          label: "Delete widget",
+          priority: 40,
+          onSelect: () => {
+            void this.#deleteWidgetDefinition(widgetData.kind);
+          },
+        },
+      ]
+      : [
+        {
+          id: "widget-delete",
+          label: "Delete widget",
+          priority: 30,
+          onSelect: () => {
+            this.#removeWidgetNode(args.node, { recordHistory: true });
+          },
+        },
+      ];
+
+    this.#contextMenuService.openWithActionsAt({
+      x: args.anchor.x,
+      y: args.anchor.y,
+      actions: [
+        {
+          id: "widget-toggle-expanded",
+          label: widgetData.expanded === false ? "Restore" : "Minimize",
+          priority: 10,
+          onSelect: () => {
+            this.#contextMenuService.close();
+            this.#setWidgetExpanded(args.node, widgetData.expanded === false);
+          },
+        },
+        {
+          id: "widget-toggle-fullscreen",
+          label: widgetData.window === WIDGET_WINDOW_FULLSCREEN ? "Exit fullscreen" : "Fullscreen",
+          priority: 20,
+          onSelect: () => {
+            this.#contextMenuService.close();
+            this.#setWidgetWindowMode(
+              args.node,
+              widgetData.window === WIDGET_WINDOW_FULLSCREEN
+                ? WIDGET_WINDOW_CONTAINED
+                : WIDGET_WINDOW_FULLSCREEN,
+            );
+          },
+        },
+        ...deleteActions,
+      ],
+    });
+  }
+
+  unregisterWidget(kind: string) {
+    this.#toolService.unregisterTool(kind);
+    this.#elementService.unregisterElement(kind);
+  }
+
   registerWidget(wConfig: IWidgetConfig) {
-    this.#toolService.unregisterTool(wConfig.id);
-    this.#elementService.unregisterElement(wConfig.id);
+    this.unregisterWidget(wConfig.id);
 
     if (wConfig.tool) {
       fxRegisterWidgetTool({
@@ -197,13 +403,13 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       id: wConfig.id,
       toElement: fnToWidgetElement,
       matchesNode: (node) => {
-        const type = node.getAttr(ELEMENT_DATA_ATTR)?.type;
-        return type === 'widget' || type === 'ui-widget';
+        const data = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | TUiWidgetData | undefined;
+        return (data?.type === 'widget' || data?.type === 'ui-widget') && data.kind === wConfig.id;
       },
       matchesElement: (element) => (element.data.type === "widget" || element.data.type === "ui-widget") && element.data.kind === wConfig.id,
       createNode: (element) => {
-        const colors = fnGetHostThemeColors(this.#themeService)
-        const node = fnCreateWidgetNode(Konva, colors, element)
+        const colors = fnGetHostThemeColors(this.#themeService, wConfig.dataType ?? 'ui-widget')
+        const node = fnCreateWidgetNode(Konva, colors, element, { label: wConfig.tool?.label })
         const onRemove = txAttachDomPortal({
           node,
           widgetPortal: this.#widgetPortal,
@@ -243,14 +449,19 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           return false;
         }
 
+        const colors = fnGetHostThemeColors(this.#themeService, wConfig.dataType ?? 'ui-widget');
         const didUpdate = txUpdateWidgetNodeFromElement({
           Circle: Konva.Circle,
           Group: Konva.Group,
           Line: Konva.Line,
           Rect: Konva.Rect,
+          Text: Konva.Text,
         }, {
           node,
           element,
+          label: wConfig.tool?.label,
+          labelFill: colors.headerTitleFill,
+          hostColors: colors,
         });
         return didUpdate;
       },
@@ -287,6 +498,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
               crdtService: this.#crdtService,
               startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
               removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
+              openWidgetMenu: (menuArgs) => this.#openWidgetHeaderMenu(menuArgs),
+              closeWidgetMenu: () => this.#contextMenuService.close(),
               setTimer: (callback, timeout) => window.setInterval(callback, timeout),
               clearTimer: (timer) => window.clearInterval(timer as ReturnType<typeof window.setInterval>),
             }, {})
@@ -314,6 +527,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           Group: Konva.Group,
           Line: Konva.Line,
           Rect: Konva.Rect,
+          Text: Konva.Text,
         }, {
           node,
           anchors,
@@ -339,6 +553,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         crdtService: this.#crdtService,
         startDragClone: (args) => this.#elementService.createDragClone(args),
         removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
+        openWidgetMenu: (args) => this.#openWidgetHeaderMenu(args),
+        closeWidgetMenu: () => this.#contextMenuService.close(),
         setTimer: (callback, timeout) => window.setInterval(callback, timeout),
         clearTimer: (timer) => window.clearInterval(timer as ReturnType<typeof window.setInterval>),
       }, {})

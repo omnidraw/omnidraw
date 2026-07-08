@@ -1,12 +1,12 @@
 {
   "name": "@vibecanvas/service-event-publisher",
-  "version": "0.3.1",
   "private": true,
   "type": "module",
   "exports": {
     "./*": "./src/*.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "catalog:",
     "@orpc/server": "catalog:",
     "@vibecanvas/api-db": "workspace:*",
     "@vibecanvas/api-notification": "workspace:*",

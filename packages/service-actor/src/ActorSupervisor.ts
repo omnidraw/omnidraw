@@ -1,31 +1,42 @@
 import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
-import type { TActorConnection } from "@vibecanvas/service-db/model";
+import type { TActorConnection, TActorInstance } from "@vibecanvas/service-db/model";
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
-import { readdir, exists } from "node:fs/promises"
-import { join, dirname } from "node:path";
+import { readdir, exists, rm } from "node:fs/promises"
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
 import type { TActorState, TVibecanvasJson } from "./core/types";
 import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./core/fn.actor-connections";
 import { fnToActorData } from "./core/fn.actor-data";
-import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
+import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
+
+function resolveManifestPath(configPath: string, manifestPath: string): string {
+  return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
+}
+
+function makeManifestPathConfigRelative(configPath: string, manifestPath: string): string {
+  return isAbsolute(manifestPath) ? relative(configPath, manifestPath) : manifestPath
+}
 
 interface IPublicMethods { // not in use yet
   init(): Promise<void>;
+  reload(): Promise<void>;
   sendMessages(msg: any): Promise<void>;
   claimMessage(): Promise<void>;
   processedMessage(): Promise<void>;
   failedMessage(): Promise<void>;
   createInstance(defId: string, canvasId: string): Promise<void>
   removeInstance(instanceId: string): Promise<void>
+  deleteDefinition(defName: string): Promise<boolean>
 
 }
 
 interface IActorSupervisorConfig {
   db: DbServiceTurso
   absWidgetDir: string
+  configPath: string
   eventPublisherService: IEventPublisherService
 }
 
@@ -44,52 +55,118 @@ export class ActorSupervisor {
 
   async init() {
     this.closeActors()
-    this.connectionMap = {}
-    this.vibecanvasDefMap = {}
+    await this.reload()
+  }
 
-    // load defs from fs
-    // update db, no remove from old defs
-    // boot instances from db
+  async reload() {
+    await this.reloadDefinitions()
+    await txSyncDbActorDefinitions({
+      crypto,
+      db: this.#config.db,
+      configPath: this.#config.configPath,
+      isAbsolute,
+      relative,
+    }, { defs: Object.values(this.vibecanvasDefMap) })
+    await this.loadMissingActorInstances()
+    await this.reloadConnections()
+  }
 
+  async reloadDefinitionInstances(defName: string) {
+    const def = this.vibecanvasDefMap[defName]
+    if (!def) return
+
+    const instances = await this.#config.db.actor.listInstances()
+    const matchingInstances = instances.filter((instance) => instance.actor_definition_name === defName)
+
+    for (const instance of matchingInstances) {
+      const actor = this.actorMap[instance.id]
+      if (actor) {
+        actor.close()
+        delete this.actorMap[instance.id]
+      }
+
+      await this.#config.db.actor.updateInstanceMachine({
+        id: instance.id,
+        machine_state: def.actor.initialState,
+        machine_context: def.actor.initialData,
+      })
+      await this.#config.db.actor.updateInstanceStatus({ id: instance.id, status: 'created' })
+      await this.loadActorInstance({
+        ...instance,
+        machine_state: def.actor.initialState,
+        machine_context: def.actor.initialData,
+        status: 'created',
+      })
+    }
+
+    if (matchingInstances.length > 0) {
+      this.#config.eventPublisherService.publishNotification({
+        type: 'success',
+        title: 'Widget instances reloaded',
+        description: `Reloaded ${matchingInstances.length} instance(s) for ${defName}.`,
+      })
+    }
+  }
+
+  private async reloadDefinitions() {
+    const nextDefMap: { [name: string]: TVibecanvasJson & { manifest_path: string } } = {}
     const defs = await fxListVibecanvasJsons({ Bun, readdir, join, exists }, { widgetDir: this.#config.absWidgetDir })
+
     defs.forEach(def => {
       if (def.error !== null) {
         this.#config.eventPublisherService.publishNotification({ type: 'error', description: def.error, title: 'Error loading actor definition' })
         return
       }
 
-      this.vibecanvasDefMap[def.vibecanvasJson.name] = { ...def.vibecanvasJson, manifest_path: def.vibecanvasJsonPath }
+      nextDefMap[def.vibecanvasJson.name] = {
+        ...def.vibecanvasJson,
+        manifest_path: makeManifestPathConfigRelative(this.#config.configPath, def.vibecanvasJsonPath),
+      }
     })
 
-    await txSyncDbActorDefinitions({ crypto, db: this.#config.db }, { defs: Object.values(this.vibecanvasDefMap) })
+    this.vibecanvasDefMap = nextDefMap
+  }
 
+  private async loadMissingActorInstances() {
     const instances = await this.#config.db.actor.listInstances()
-    instances.forEach(async actorInst => {
-      const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
-      if (!def) return
 
-      const actor = new Actor({
-        id: actorInst.id,
-        vsJson: def,
-        rootDir: dirname(def.manifest_path),
-        state: actorInst.machine_state as TActorState,
-        data: fnToActorData(actorInst.machine_context),
-      })
+    for (const actorInst of instances) {
+      if (this.actorMap[actorInst.id]) continue
+      await this.loadActorInstance(actorInst)
+    }
+  }
 
-      this.actorMap[actor.getId()] = actor
-      this.listenToActor(actor)
-      actor.start()
-      await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
+  private async loadActorInstance(actorInst: TActorInstance) {
+    const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
+    if (!def) return
+
+    const actor = new Actor({
+      id: actorInst.id,
+      vsJson: def,
+      rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
+      state: actorInst.machine_state as TActorState,
+      data: fnToActorData(actorInst.machine_context),
     })
 
+    this.actorMap[actor.getId()] = actor
+    this.listenToActor(actor)
+    actor.start()
+    await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
+  }
+
+  private async reloadConnections() {
+    const nextConnectionMap: Record<string, TActorConnection[]> = {}
     const connections = await this.#config.db.actor.listConnections()
+
     connections.forEach(connection => {
-      if (!this.connectionMap[connection.source_actor_instance_id]) {
-        this.connectionMap[connection.source_actor_instance_id] = []
+      if (!nextConnectionMap[connection.source_actor_instance_id]) {
+        nextConnectionMap[connection.source_actor_instance_id] = []
       }
 
-      this.connectionMap[connection.source_actor_instance_id].push(connection)
+      nextConnectionMap[connection.source_actor_instance_id].push(connection)
     })
+
+    this.connectionMap = nextConnectionMap
   }
 
   listenToActor(actor: Actor) {
@@ -178,7 +255,7 @@ export class ActorSupervisor {
     const actor = new Actor({
       id: actorDb.id,
       vsJson: def,
-      rootDir: dirname(def.manifest_path),
+      rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
     })
 
     this.actorMap[actor.getId()] = actor
@@ -209,6 +286,37 @@ export class ActorSupervisor {
     }
 
     await this.#config.db.actor.deleteInstance(instanceId)
+  }
+
+  public async deleteDefinition(defName: string): Promise<boolean> {
+    const def = this.vibecanvasDefMap[defName]
+    if (!def) {
+      return false
+    }
+
+    const instances = await this.#config.db.actor.listInstances()
+    const matchingInstances = instances.filter((instance) => instance.actor_definition_name === defName)
+    for (const instance of matchingInstances) {
+      await this.removeInstance(instance.id)
+    }
+
+    await txDeleteActorDefinitionFiles({
+      dirname,
+      rm,
+    }, {
+      absManifestPath: resolveManifestPath(this.#config.configPath, def.manifest_path),
+    })
+    await this.#config.db.actor.deleteDefinition(defName)
+    delete this.vibecanvasDefMap[defName]
+    await this.reloadConnections()
+
+    this.#config.eventPublisherService.publishNotification({
+      type: 'success',
+      title: 'Widget deleted',
+      description: `Deleted ${defName}.`,
+    })
+
+    return true
   }
 
 

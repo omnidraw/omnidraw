@@ -6,11 +6,7 @@ import { checkForUpdateOnBoot } from './check-update';
 import { handleHttpRequest } from './http';
 import type { TOrpcWebSocketData } from '../orpc/OrpcPlugin';
 
-function serveWithPortFallback<TSocketData>(serve: (port: number) => ReturnType<typeof Bun.serve<TSocketData>>, startPort: number, compiled: boolean): ReturnType<typeof Bun.serve<TSocketData>> {
-  if (!compiled) {
-    return serve(startPort);
-  }
-
+function serveWithPortFallback<TSocketData>(serve: (port: number) => ReturnType<typeof Bun.serve<TSocketData>>, startPort: number): ReturnType<typeof Bun.serve<TSocketData>> {
   const maxAttempts = 100;
   for (let i = 0; i < maxAttempts; i += 1) {
     const port = startPort + i;
@@ -92,7 +88,7 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
               ctx.hooks.wsPong.call(ws as unknown as WebSocket, pongData);
             },
           },
-        }), ctx.config.port, ctx.config.compiled);
+        }), ctx.config.port);
       });
 
       ctx.hooks.ready.tapPromise(async () => {

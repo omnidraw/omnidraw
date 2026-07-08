@@ -4,6 +4,9 @@ import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.z
 import { ZActorDefinition, ZActorStatus, ZJson } from "@vibecanvas/service-db/model"
 
 const ZActorDefListItem = ZVibecanvasJson.extend(ZActorDefinition.shape)
+const ZActorDefinitionListItem = ZActorDefinition.extend({
+  version: z.string().optional(),
+})
 const ZActorDefResponse = z.object({
   def: ZActorDefListItem,
   widgetCode: z.object({
@@ -79,9 +82,13 @@ export type TActorEvent = z.infer<typeof ZActorEvent>
 
 export const actorsContract = oc.router({
   definitions: {
-    list: oc.output(ZActorDefinition.array()),
+    list: oc.output(ZActorDefinitionListItem.array()),
     get: oc.input(z.object({ name: z.string() }))
       .output(ZActorDefResponse),
+    delete: oc
+      .input(z.object({ name: z.string() }))
+      .route({ method: 'DELETE' })
+      .output(z.object({ deleted: z.boolean() })),
   },
   events: oc
     .input(z.object({}))

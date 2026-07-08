@@ -2,11 +2,12 @@ import { layoutWithLines, prepareWithSegments } from "@chenglou/pretext";
 import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import Circle from "lucide-static/icons/circle.svg?raw";
 import Diamond from "lucide-static/icons/diamond.svg?raw";
 import Square from "lucide-static/icons/square.svg?raw";
+import { DEFAULT_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
+import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup, isKonvaShape } from "../../core/GUARDS";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import {
@@ -18,25 +19,14 @@ import {
   type TShape2dElementType,
   type TShape2dToolId,
 } from "../../core/fn.shape2d";
-import { VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
 import type {
-  CameraService,
-  ContextMenuService,
-  CrdtService,
-  ElementService,
-  GroupService,
-  HistoryService,
-  RenderOrderService,
   SceneService,
-  SelectionService,
-  SessionService,
-  ToolService,
+  SelectionService
 } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { txDeleteSelection } from "../select/tx.delete-selection";
-import { DEFAULT_STROKE_WIDTHS } from "../../components/SelectionStyleMenu/types";
 import {
   DEFAULT_ATTACHED_TEXT_ALIGN,
   DEFAULT_ATTACHED_TEXT_VERTICAL_ALIGN,
@@ -181,20 +171,7 @@ function getSelectionStyleMenuConfig(element?: TElement) {
   };
 }
 
-export function createShape2dPlugin(): IPlugin<{
-  camera: CameraService;
-  contextMenu: ContextMenuService;
-  crdt: CrdtService;
-  element: ElementService;
-  group: GroupService;
-  history: HistoryService;
-  scene: SceneService;
-  renderOrder: RenderOrderService;
-  selection: SelectionService;
-  session: SessionService;
-  theme: ThemeService;
-  tool: ToolService;
-}, IRuntimeHooks> {
+export function createShape2dPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "shape2d",
     apply(ctx) {

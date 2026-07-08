@@ -1,11 +1,12 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import { createComponent, createSignal, type Accessor, type Setter } from "solid-js";
 import Konva from "konva";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { IRuntimeHooks, TMouseEvent, TPointerEvent } from "../../types";
+import { createComponent, createSignal, type Accessor, type Setter } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { CanvasRecorder } from "../../components/CanvasRecorder";
+import type { CrdtService } from "../../services/crdt/CrdtService";
+import type { SceneService } from "../../services/scene/SceneService";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices, TMouseEvent, TPointerEvent } from "../../types";
+import type { TCrdtOp, TRecording, TStep } from "./CONSTANTS";
 import {
   fnCanExportRecording,
   fnCreateDragStep,
@@ -19,7 +20,6 @@ import {
 } from "./fn.recording";
 import { txSaveJsonFile } from "./tx.file";
 import { txMountRecorderPanel } from "./tx.mount";
-import type { TCrdtOp, TRecording, TStep } from "./CONSTANTS";
 
 function fnGetDefaultReducedEvents() {
   return true;
@@ -297,10 +297,7 @@ function setupCrdtCapture(args: { state: TRecorderState; crdt: CrdtService }) {
  * Dev-only recorder panel.
  * Captures input hooks and CRDT writes for replay/debug export.
  */
-export function createRecorderPlugin(): IPlugin<{
-  crdt: CrdtService;
-  scene: SceneService;
-}, IRuntimeHooks> {
+export function createRecorderPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   const state = createRecorderState();
 
   return {

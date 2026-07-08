@@ -6,12 +6,10 @@ import Konva from "konva";
 import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { isCanvasGroupNode } from "../../core/GUARDS";
-import type { ElementService, GroupService, SessionService, TCanvasTransformAnchor } from "../../services";
-import type { CrdtService } from "../../services/crdt/CrdtService";
-import type { HistoryService } from "../../services/history/HistoryService";
+import type { ElementService, TCanvasTransformAnchor } from "../../services";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
-import type { IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { fxGetProxyBounds } from "./fx.proxy-bounds";
 import { fxGetProxyDragTarget } from "./fx.proxy-drag-target";
 import { txDispatchSelectionTransformHooks } from "./tx.dispatch-selection-transform-hooks";
@@ -242,16 +240,7 @@ function syncTransformerTheme(theme: ThemeService, transformer: Konva.Transforme
  * - resize/rotate fallback still lives here for element types that have not claimed ownership yet
  * - drag proxy stays behind the visual node so direct pointer targeting still works
  */
-export function createTransformPlugin(): IPlugin<{
-  element: ElementService;
-  group: GroupService;
-  session: SessionService;
-  crdt: CrdtService;
-  history: HistoryService;
-  scene: SceneService;
-  selection: SelectionService;
-  theme: ThemeService;
-}, IRuntimeHooks> {
+export function createTransformPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let transformer: Konva.Transformer | null = null;
   let dragProxy: Konva.Rect | null = null;
   let dragProxyState: TTransformDragProxyState | null = null;

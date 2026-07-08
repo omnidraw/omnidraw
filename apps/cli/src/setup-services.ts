@@ -1,6 +1,7 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
+import { AgentService } from '@vibecanvas/service-agent';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
@@ -23,6 +24,7 @@ export interface IRuntimeServices {
   filesystem: IFilesystemService;
   pty: IPtyService;
   actor: ActorService;
+  agent: AgentService;
 }
 
 declare module '@vibecanvas/runtime' {
@@ -89,33 +91,21 @@ function setupServices(config: ICliConfig) {
   );
   services.provide('automerge', 50, automergeService);
 
-  if (config.command !== 'serve') {
-    // TODO
-    // services.provide('widgetSource', 52, createWidgetSourceService({ db: dbService.actor }));
-  }
-
   if (config.command === 'serve') {
     const actorService = new ActorService({
       db: dbService,
       configPath: config.xdgPaths.configDirPath,
       eventPublisherService: eventPublisher
-    }
-      //   {
-      //   db: dbService.actor,
-      //   workflowDb,
-      //   eventPublisher,
-      //   workerDistPath: ACTOR_WORKER_DIST_PATH,
-      //   sandboxRunner: createActorSandboxRunner(config, dbService.sandbox),
-      //   startSandboxInBackground: config.dev,
-      //   workerEnv: {
-      //     VIBECANVAS_DATA_DIR: ACTOR_SANDBOX_HOST_DATA_DIR,
-      //     VIBECANVAS_DB_PATH: `${ACTOR_SANDBOX_HOST_DATA_DIR}/${basename(config.dbPath)}`,
-      //     VIBECANVAS_CACHE_DIR: `${ACTOR_SANDBOX_HOST_DATA_DIR}/cache`,
-      //     VIBECANVAS_MIGRATIONS_SILENT: '1',
-      //   },
-      // }
-    );
+    });
+    const agentService = new AgentService({
+      dataPath: config.xdgPaths.dataDirPath,
+      cachePath: config.xdgPaths.cacheDirPath,
+      configPath: config.xdgPaths.configDirPath,
+      eventPublisherService: eventPublisher,
+      actorService
+    })
     services.provide('actor', 60, actorService);
+    services.provide('agent', 62, agentService);
   }
 
   return { services, automergeService, dbService, eventPublisher, filesystemService, ptyService };

@@ -1,7 +1,5 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { CameraService } from "../../services/camera/CameraService";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
+import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 import { fnGetHandLayerStyle } from "./fn.get-hand-layer-style";
 import { fnGetPointerDelta } from "./fn.get-pointer-delta";
 import { fxReadCameraStateFromLocalStorage } from "./fx.read-camera-state-from-localstorage";
@@ -22,10 +20,7 @@ function getDefaultStorage(): Storage | null {
  * Owns camera pan and zoom input behavior.
  * Keeps hand-drag overlay local to camera control behavior.
  */
-export function createCameraControlPlugin(): IPlugin<{
-  camera: CameraService;
-  scene: SceneService;
-}, IRuntimeHooks, IRuntimeConfig> {
+export function createCameraControlPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   let handLayer: HTMLDivElement | null = null;
   let isHandDragging = false;
   let activePointerId: number | null = null;

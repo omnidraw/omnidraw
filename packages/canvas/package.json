@@ -1,6 +1,5 @@
 {
   "name": "@vibecanvas/canvas",
-  "version": "0.3.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -54,8 +53,10 @@
     "@orpc/contract": "catalog:",
     "@solid-primitives/scheduled": "^1.5.3",
     "@vibecanvas/api-actors": "workspace:*",
+    "@vibecanvas/actor-ui": "workspace:*",
     "@vibecanvas/orpc-client": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
+    "@vibecanvas/service-actor": "workspace:*",
     "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-theme": "workspace:*",
@@ -65,12 +66,19 @@
     "ghostty-web": "^0.4.0",
     "konva": "^9.3.22",
     "lucide-solid": "catalog:",
-    "lucide-static": "^1.8.0",
+    "lucide-static": "catalog:",
     "microdiff": "^1.5.0",
     "partysocket": "^1.1.16",
     "pdfjs-dist": "^4.10.38",
     "perfect-freehand": "^1.2.2",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.9",
     "solid-js": "catalog:",
+    "solid-markdown": "^2.1.1",
     "zod": "catalog:"
   }
 }
