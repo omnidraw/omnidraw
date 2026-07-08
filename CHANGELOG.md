@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.1
+
+### Fixed
+- Fixed CLI upgrade release detection for `vibecanvas-v*` GitHub release tags so `vibecanvas upgrade --check` can find newer releases.
+- Fixed curl installer checksum fallback URLs to use `vibecanvas-v*` release tags.
+- Made Vibecanvas npm publishing safer to retry by skipping already-published package versions and publishing platform packages before the wrapper package.
+
 ## 0.4.0
 
 ### Added
