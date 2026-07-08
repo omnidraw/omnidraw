@@ -7,7 +7,7 @@ import type Konva from "konva";
 import type { Group } from "konva/lib/Group";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CameraService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetManagerService } from "./services";
+import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetManagerService } from "./services";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
@@ -50,6 +50,7 @@ export type TWidgetRegistryEvent = {
 
 export interface IRuntimeServices {
   camera: CameraService;
+  confirmDialog: ConfirmDialogService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
   history: HistoryService;

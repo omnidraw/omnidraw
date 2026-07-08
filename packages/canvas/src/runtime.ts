@@ -3,7 +3,7 @@ import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
     createAiPlugin,
-    createCameraControlPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
+    createCameraControlPlugin, createConfirmDialogPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
     createHistoryControlPlugin,
     createImagePlugin,
     createPenPlugin,
@@ -18,6 +18,7 @@ import {
     createWidgetPlugin
 } from "./plugins";
 import { CameraService } from "./services/camera/CameraService";
+import { ConfirmDialogService } from "./services/confirm-dialog/ConfirmDialogService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
 import { ElementService } from "./services/element/ElementService";
@@ -35,6 +36,7 @@ import { IRuntimeConfig, IRuntimeHooks } from "./types";
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
     camera: CameraService;
+    confirmDialog: ConfirmDialogService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;
     history: HistoryService;
@@ -81,6 +83,7 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
   const sessionService = new SessionService();
   const scene = new SceneService({ container: config.container, });
   const camera = new CameraService({ scene });
+  const confirmDialog = new ConfirmDialogService();
   const contextMenu = new ContextMenuService();
   const history = new HistoryService();
   const selection = new SelectionService();
@@ -104,6 +107,7 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
     sceneService: scene,
     renderOrderService: renderOrder,
     cameraService: camera,
+    confirmDialogService: confirmDialog,
     apiService: config.apiService
   });
   const group = new GroupService(
@@ -121,6 +125,7 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
 
   services.provide("scene", 10, scene);
   services.provide("camera", 20, camera);
+  services.provide("confirmDialog", 25, confirmDialog);
   services.provide("element", 30, element);
   services.provide("group", 230, group);
   services.provide("contextMenu", 40, contextMenu);
@@ -140,6 +145,7 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
 export function buildRuntime(config: IRuntimeConfig) {
   const plugins: Array<import("@vibecanvas/runtime").IPlugin<any, IRuntimeHooks, IRuntimeConfig>> = [
     createEventListenerPlugin(),
+    createConfirmDialogPlugin(),
     createGridPlugin(),
     createAiPlugin(),
     createToolbarPlugin(),

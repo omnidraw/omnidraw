@@ -7,6 +7,7 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
     name: "widget-plugin",
     apply(ctx) {
       const widgetMangerService = ctx.services.require('widgetManager')
+      const registeredPublishedWidgetNames = new Set<string>()
       const registerActorDefinition = async (name: string) => {
         const [error, actor] = await ctx.config.apiService.api.actors.definitions.get({ name })
         if (error) {
@@ -34,6 +35,7 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
             arrowjs
           }
         })
+        registeredPublishedWidgetNames.add(actor.def.name)
         ctx.hooks.widgetRegister.call({ kind: actor.def.name })
       }
       const registerPublishedWidgets = async () => {
@@ -42,6 +44,15 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
           console.error(error)
           return
         }
+        const nextDefinitionNames = new Set(actorDefs.map((actorDef) => actorDef.name))
+        registeredPublishedWidgetNames.forEach((name) => {
+          if (nextDefinitionNames.has(name)) {
+            return
+          }
+
+          widgetMangerService.unregisterWidget(name)
+          registeredPublishedWidgetNames.delete(name)
+        })
         await Promise.all(actorDefs.map((actorDef) => registerActorDefinition(actorDef.name)))
       }
       ctx.hooks.initAsync.tapPromise(async () => {

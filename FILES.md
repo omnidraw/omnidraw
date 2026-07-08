@@ -160,6 +160,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/api-actors/package.json](packages/api-actors/package.json) |  |
 | [packages/api-actors/src/api.actor-snapshot.ts](packages/api-actors/src/api.actor-snapshot.ts) |  |
+| [packages/api-actors/src/api.def-delete.ts](packages/api-actors/src/api.def-delete.ts) |  |
 | [packages/api-actors/src/api.def-get.ts](packages/api-actors/src/api.def-get.ts) |  |
 | [packages/api-actors/src/api.def-list.ts](packages/api-actors/src/api.def-list.ts) |  |
 | [packages/api-actors/src/api.events.ts](packages/api-actors/src/api.events.ts) |  |
@@ -198,6 +199,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.wizzard.previewSource.ts](packages/api-agent/src/api.wizzard.previewSource.ts) |  |
 | [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
 | [packages/api-agent/src/api.wizzard.publish.ts](packages/api-agent/src/api.wizzard.publish.ts) |  |
+| [packages/api-agent/src/api.wizzard.startWidgetEdit.ts](packages/api-agent/src/api.wizzard.startWidgetEdit.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
 | [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
@@ -335,6 +337,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx](packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
+| [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
+| [packages/canvas/src/components/CanvasConfirmDialog/styles.css](packages/canvas/src/components/CanvasConfirmDialog/styles.css) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.css](packages/canvas/src/components/CanvasContextMenu/index.css) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.tsx](packages/canvas/src/components/CanvasContextMenu/index.tsx) |  |
 | [packages/canvas/src/components/CanvasHelp/help.data.ts](packages/canvas/src/components/CanvasHelp/help.data.ts) |  |
@@ -390,6 +394,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts](packages/canvas/src/plugins/camera-control/fx.read-camera-state-from-localstorage.ts) |  |
 | [packages/canvas/src/plugins/camera-control/tx.sync-hand-layer.ts](packages/canvas/src/plugins/camera-control/tx.sync-hand-layer.ts) |  |
 | [packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts](packages/canvas/src/plugins/camera-control/tx.write-camera-state-to-localstorage.ts) |  |
+| [packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts](packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts) |  |
 | [packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts](packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts) |  |
 | [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
 | [packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts](packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts) |  |
@@ -490,6 +495,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/runtime.ts](packages/canvas/src/runtime.ts) |  |
 | [packages/canvas/src/services/camera/CameraService.ts](packages/canvas/src/services/camera/CameraService.ts) |  |
 | [packages/canvas/src/services/clone/CloneService.ts](packages/canvas/src/services/clone/CloneService.ts) |  |
+| [packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts](packages/canvas/src/services/confirm-dialog/ConfirmDialogService.ts) |  |
 | [packages/canvas/src/services/context-menu/ContextMenuService.ts](packages/canvas/src/services/context-menu/ContextMenuService.ts) |  |
 | [packages/canvas/src/services/crdt/CrdtService.ts](packages/canvas/src/services/crdt/CrdtService.ts) |  |
 | [packages/canvas/src/services/crdt/fxBuilder.ts](packages/canvas/src/services/crdt/fxBuilder.ts) |  |
@@ -613,6 +619,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
+| [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
 | [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |

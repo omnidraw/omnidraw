@@ -85,6 +85,10 @@ export const actorsContract = oc.router({
     list: oc.output(ZActorDefinitionListItem.array()),
     get: oc.input(z.object({ name: z.string() }))
       .output(ZActorDefResponse),
+    delete: oc
+      .input(z.object({ name: z.string() }))
+      .route({ method: 'DELETE' })
+      .output(z.object({ deleted: z.boolean() })),
   },
   events: oc
     .input(z.object({}))

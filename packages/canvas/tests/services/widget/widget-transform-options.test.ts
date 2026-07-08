@@ -28,6 +28,7 @@ describe("widget transform options", () => {
       sceneService: {} as never,
       renderOrderService: {} as never,
       cameraService: {} as never,
+      confirmDialogService: {} as never,
       apiService: {} as never,
     });
 
@@ -70,6 +71,7 @@ describe("widget transform options", () => {
       sceneService: {} as never,
       renderOrderService: {} as never,
       cameraService: {} as never,
+      confirmDialogService: {} as never,
       apiService: {} as never,
     });
 
