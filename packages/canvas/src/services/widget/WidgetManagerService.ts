@@ -323,8 +323,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       id: wConfig.id,
       toElement: fnToWidgetElement,
       matchesNode: (node) => {
-        const type = node.getAttr(ELEMENT_DATA_ATTR)?.type;
-        return type === 'widget' || type === 'ui-widget';
+        const data = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | TUiWidgetData | undefined;
+        return (data?.type === 'widget' || data?.type === 'ui-widget') && data.kind === wConfig.id;
       },
       matchesElement: (element) => (element.data.type === "widget" || element.data.type === "ui-widget") && element.data.kind === wConfig.id,
       createNode: (element) => {
