@@ -77,6 +77,13 @@ function getConnectedManifest(data: { vcJson: TVibecanvasJson | null; actorCandi
     return data.vcJson ?? data.actorCandidate?.manifest ?? null
 }
 
+function getPreferencePromptModel(preference: TAiWizardPreference) {
+    return preference.model ? {
+        id: preference.model.modelId,
+        provider: preference.model.provider,
+    } : undefined
+}
+
 const APPROVE_ACTOR_CANDIDATE_PROMPT = "Approve the current actor candidate and write the deterministic draft scaffold only. Use the latest candidate revision."
 
 const IMPLEMENT_APPROVED_ACTOR_PROMPT = [
@@ -97,6 +104,7 @@ export function AiWizzard(props: IProps) {
     const [isRunning, setIsRunning] = createSignal(false)
     const [isCanceling, setIsCanceling] = createSignal(false)
     const [chatDraftText, setChatDraftText] = createSignal("")
+    const [localAiWizardPreference, setLocalAiWizardPreference] = createSignal<TAiWizardPreference>(props.aiWizardPreference ?? {})
     const [wizzardConnectNonce, setWizzardConnectNonce] = createSignal(0)
     const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
@@ -104,6 +112,10 @@ export function AiWizzard(props: IProps) {
         return data
     }))
     const [vcJson, setVcJson] = createSignal<TVibecanvasJson | null>(null)
+
+    createEffect(() => {
+        setLocalAiWizardPreference(props.aiWizardPreference ?? {})
+    })
 
     createEffect(() => {
         const currentConnectNonce = wizzardConnectNonce()
@@ -200,11 +212,21 @@ export function AiWizzard(props: IProps) {
         })
     })
 
+    const updateAiWizardPreference = (preference: TAiWizardPreference) => {
+        const nextPreference = {
+            ...localAiWizardPreference(),
+            ...preference,
+        }
+
+        setLocalAiWizardPreference(nextPreference)
+        props.onAiWizardPreferenceChange?.(nextPreference)
+    }
+
     const prompt = async (args: { text: string; images: TChatPromptImage[]; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
         const currentSessionId = sessionId()
         setIsRunning(true)
         setIsCanceling(false)
-        props.onAiWizardPreferenceChange?.({
+        updateAiWizardPreference({
             model: args.model ? {
                 provider: args.model.provider,
                 modelId: args.model.id,
@@ -250,14 +272,13 @@ export function AiWizzard(props: IProps) {
     }
 
     const approveActorCandidate = async () => {
+        const currentPreference = localAiWizardPreference()
+
         await prompt({
             text: APPROVE_ACTOR_CANDIDATE_PROMPT,
             images: [],
-            model: props.aiWizardPreference?.model ? {
-                id: props.aiWizardPreference.model.modelId,
-                provider: props.aiWizardPreference.model.provider,
-            } : undefined,
-            thinkingLevel: props.aiWizardPreference?.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
+            model: getPreferencePromptModel(currentPreference),
+            thinkingLevel: currentPreference.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
         })
 
         await reconnectWizzard()
@@ -271,14 +292,13 @@ export function AiWizzard(props: IProps) {
             setVcJson(result.manifest)
         }
 
+        const nextPreference = localAiWizardPreference()
+
         await prompt({
             text: IMPLEMENT_APPROVED_ACTOR_PROMPT,
             images: [],
-            model: props.aiWizardPreference?.model ? {
-                id: props.aiWizardPreference.model.modelId,
-                provider: props.aiWizardPreference.model.provider,
-            } : undefined,
-            thinkingLevel: props.aiWizardPreference?.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
+            model: getPreferencePromptModel(nextPreference),
+            thinkingLevel: nextPreference.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
         })
     }
 
@@ -327,12 +347,13 @@ export function AiWizzard(props: IProps) {
                 <Tabs.Content class="ai-wizzard-tabs__content" value="chat">
                     <ChatTab
                         settings={settingState.latest}
-                        aiWizardPreference={props.aiWizardPreference}
+                        aiWizardPreference={localAiWizardPreference()}
                         messageHistory={messageHistory}
                         isRunning={isRunning()}
                         isCanceling={isCanceling()}
                         draftText={chatDraftText()}
                         onDraftTextChange={setChatDraftText}
+                        onPreferenceChange={updateAiWizardPreference}
                         onPrompt={prompt}
                         onCancel={() => void cancelPrompt()}
                         onNewChat={newChat}

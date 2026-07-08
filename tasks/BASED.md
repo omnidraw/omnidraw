@@ -125,7 +125,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B35](b/B35.md) - ai wizard: image attachments are not sent to Pi
 - [x]: [B36](b/B36.md) - actor timeouts only trigger in error state
 - [x]: [B37](b/B37.md) - actor clone copy write burst crashes Turso DB (`cell_get`) on dev
-- [ ]: [B38](b/B38.md) - ai wizard: chat tab forgets selected model after tab switch
+- [x]: [B38](b/B38.md) - ai wizard: chat tab forgets selected model after tab switch
 - [ ]: [B39](b/B39.md) - ai wizard: actor tab stale after new actor candidate
 
 ## A dditions
