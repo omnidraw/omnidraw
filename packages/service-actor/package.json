@@ -1,6 +1,5 @@
 {
   "name": "@vibecanvas/service-actor",
-  "version": "0.3.1",
   "private": true,
   "type": "module",
   "exports": {
