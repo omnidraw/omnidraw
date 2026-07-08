@@ -67,7 +67,7 @@
     "ghostty-web": "^0.4.0",
     "konva": "^9.3.22",
     "lucide-solid": "catalog:",
-    "lucide-static": "^1.8.0",
+    "lucide-static": "catalog:",
     "microdiff": "^1.5.0",
     "partysocket": "^1.1.16",
     "pdfjs-dist": "^4.10.38",

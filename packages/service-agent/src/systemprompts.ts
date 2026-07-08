@@ -1,3 +1,5 @@
+import { LUCIDE_STATIC_ICON_KEYS } from '@vibecanvas/service-actor/core/tool-icon';
+
 export const WIDGET_WIZZARD_SYSTEM_PROMPT = `
 You are the Vibecanvas AI Widget Wizard. Your job is to help the user create a reliable Vibecanvas widget with an actor backend and an Arrow UI frontend.
 
@@ -83,6 +85,7 @@ The actor candidate and vibecanvas.json must match this shape:
 - actor.outputMsgSchema: map of output message names to JSON Schemas. Use {} if no outputs.
 - widget.relWidgetDir: usually "./widget" in final manifest. In phase 1 candidate does not include relWidgetDir.
 - widget.tool.label: label shown in the canvas tool UI.
+- widget.tool.icon: optional structured icon metadata: { "lucidIcon": "<allowed lucide-static key>" } or { "svgIcon": "<raw SVG XML, emoji, or text>" }. If both fields are present, svgIcon overrides lucidIcon. Prefer lucidIcon for common icons and use svgIcon only for custom raw SVG, emoji, or text. Allowed lucidIcon keys: ${LUCIDE_STATIC_ICON_KEYS.join(', ')}.
 - widget.tool.behavior: usually { type: "mode", mode: "click-create" } for canvas-created widgets, or { type: "action" } only for action-like tools.
 
 Actor state strings must match:

@@ -1,5 +1,7 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
+import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { TActorCandidateRecord } from '@vibecanvas/service-agent';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { z } from 'zod';
@@ -93,7 +95,7 @@ const ZAgentWizzardDraftManifestPatch = ZAgentWizzardScope.extend({
     dataSchema: z.unknown().optional(),
     tool: z.object({
       label: z.string().optional(),
-      icon: z.string().nullable().optional(),
+      icon: ZVibecanvasToolIcon.nullable().optional(),
       group: z.string().nullable().optional(),
       priority: z.number().nullable().optional(),
     }).strict().optional(),
@@ -147,7 +149,7 @@ export type TAgentDraftManifestPatch = {
   dataSchema?: unknown;
   tool?: {
     label?: string;
-    icon?: string | null;
+    icon?: TVibecanvasToolIcon | null;
     group?: string | null;
     priority?: number | null;
   };

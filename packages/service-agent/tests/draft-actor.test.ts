@@ -213,6 +213,39 @@ describe('AgentService draft actor runtime', () => {
     expect(result.sources['main.css']).toContain('color: red');
   });
 
+  test('patches draft tool icon metadata and rejects invalid lucid keys', async () => {
+    const { service, widgetId, sessionId } = await createServiceFixture();
+
+    const validLucid = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+      tool: { icon: { lucidIcon: 'Activity' } },
+    });
+    expect(validLucid.ok).toBe(true);
+    if (!validLucid.ok) throw new Error(validLucid.message);
+    expect(validLucid.manifest.widget.tool.icon).toEqual({ lucidIcon: 'Activity' });
+
+    const customText = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+      tool: { icon: { svgIcon: '🔢' } },
+    });
+    expect(customText.ok).toBe(true);
+    if (!customText.ok) throw new Error(customText.message);
+    expect(customText.manifest.widget.tool.icon).toEqual({ svgIcon: '🔢' });
+
+    const invalidLucid = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+      tool: { icon: { lucidIcon: 'not-a-lucide-icon' } },
+    });
+    expect(invalidLucid.ok).toBe(false);
+    if (invalidLucid.ok) throw new Error('Expected invalid lucid icon patch to fail');
+    expect(invalidLucid.reason).toBe('edit-invalid');
+    expect(invalidLucid.issues?.some((issue) => issue.includes('widget.tool.icon.lucidIcon'))).toBe(true);
+
+    const cleared = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+      tool: { icon: null },
+    });
+    expect(cleared.ok).toBe(true);
+    if (!cleared.ok) throw new Error(cleared.message);
+    expect(cleared.manifest.widget.tool.icon).toBeUndefined();
+  });
+
   test('returns not-ready when manifest is missing', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-missing-'));
     tempDirs.push(dataPath);

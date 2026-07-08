@@ -26,6 +26,10 @@ function sanitizeToolIcon(icon: string) {
   });
 }
 
+function isSvgIcon(icon: string) {
+  return /^\s*(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/.test(icon);
+}
+
 function getShortcutParts(shortcuts: string[] | undefined) {
   if (!shortcuts || shortcuts.length === 0) {
     return { shortcut: undefined, letterShortcut: undefined };
@@ -77,7 +81,9 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
                 return (
                   <ToolButton
                     icon={icon
-                      ? <span class="vc-toolbar-button__icon" innerHTML={sanitizeToolIcon(icon)} />
+                      ? isSvgIcon(icon)
+                        ? <span class="vc-toolbar-button__icon" innerHTML={sanitizeToolIcon(icon)} />
+                        : <span class="vc-toolbar-button__icon">{icon}</span>
                       : <span class="vc-runtime-toolbar-fallback-label">{tool.id.slice(0, 2)}</span>}
                     shortcut={shortcutParts.shortcut}
                     letterShortcut={shortcutParts.letterShortcut}

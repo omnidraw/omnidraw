@@ -1,4 +1,5 @@
 import type { IPlugin } from "@vibecanvas/runtime";
+import { fnResolveWidgetToolIcon } from "../../services/widget/fn.resolve-widget-tool-icon";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
@@ -27,7 +28,10 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
           widgetMangerService.registerWidget({
             id: actor.def.name,
             dataType: 'widget',
-            tool: actor.def.widget.tool,
+            tool: {
+              ...actor.def.widget.tool,
+              icon: fnResolveWidgetToolIcon(actor.def.widget.tool.icon),
+            },
             actor: {
               actorDefinitionName: actor.def.name,
             },
