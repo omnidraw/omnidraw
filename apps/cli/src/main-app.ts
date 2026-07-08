@@ -11,7 +11,6 @@ import { createFilesystemPlugin } from './plugins/filesystem/FilesystemPlugin';
 import { createOrpcPlugin } from './plugins/orpc/OrpcPlugin';
 import { createPtyPlugin } from './plugins/pty/PtyPlugin';
 import { createServerPlugin } from './plugins/server/ServerPlugin';
-import { setupServices } from './setup-services';
 import { setupSignals } from './setup-signals';
 
 export async function runCliMain() {
@@ -36,6 +35,12 @@ export async function runCliMain() {
     throw error
   }
 
+  if (config.versionRequested) {
+    console.log(config.version);
+    return;
+  }
+
+  const { setupServices } = await import('./setup-services');
   const { services } = setupServices(config);
 
   const runtime = createRuntime<any, ICliConfig>({

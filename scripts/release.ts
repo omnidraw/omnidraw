@@ -129,9 +129,14 @@ async function packDist(rootDir: string, manifest: TReleaseManifest): Promise<vo
       throw new Error(`Missing package directory: ${packageDir}`)
     }
 
+    const nativeDir = path.join(packageDir, "native")
+    if (!existsSync(nativeDir)) {
+      throw new Error(`Missing native addon directory: ${nativeDir}`)
+    }
+
     const tarName = `${target.packageName}.tar.gz`
     console.log(`[release] Packing ${tarName}`)
-    const result = await runCommand(["tar", "-czf", tarName, "-C", `${target.packageName}/bin`, "vibecanvas"], distDir)
+    const result = await runCommand(["tar", "-czf", tarName, "-C", target.packageName, "bin", "native"], distDir)
     if (result.exitCode !== 0) {
       throw new Error(`Failed to tar ${target.packageName}: ${result.stderr || result.stdout}`)
     }

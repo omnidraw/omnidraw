@@ -135,7 +135,9 @@ verify_binary_checksum() {
 }
 
 INSTALL_DIR="${VIBECANVAS_INSTALL_DIR:-$HOME/.vibecanvas/bin}"
-MIGRATIONS_DIR="${VIBECANVAS_MIGRATIONS_DIR:-$(dirname "$INSTALL_DIR")/database-migrations}"
+VIBECANVAS_HOME="$(dirname "$INSTALL_DIR")"
+NATIVE_DIR="${VIBECANVAS_NATIVE_DIR:-$VIBECANVAS_HOME/native}"
+MIGRATIONS_DIR="${VIBECANVAS_MIGRATIONS_DIR:-$VIBECANVAS_HOME/database-migrations}"
 mkdir -p "$INSTALL_DIR"
 
 copy_migrations() {
@@ -347,6 +349,27 @@ else
     fi
 
     cp "$binary_candidate" "$INSTALL_DIR/vibecanvas"
+
+    native_installed=false
+    for native_candidate in \
+        "$tmp_dir/native" \
+        "$tmp_dir/package/native" \
+        "$tmp_dir"/*/native
+    do
+        if [[ -d "$native_candidate" ]]; then
+            rm -rf "$NATIVE_DIR"
+            mkdir -p "$(dirname "$NATIVE_DIR")"
+            cp -R "$native_candidate" "$NATIVE_DIR"
+            echo -e "${GREEN}Installed native addons${NC}"
+            native_installed=true
+            break
+        fi
+    done
+
+    if [[ "$native_installed" != "true" ]]; then
+        echo -e "${RED}Could not find native addon directory in archive${NC}"
+        exit 1
+    fi
 
     migrations_installed=false
     for migrations_candidate in \
