@@ -4,31 +4,40 @@ import "../styles/global.css";
 type TProps = {
   title: string;
   description: string;
+  imageAlt?: string;
+  schema?: unknown;
 };
 
-const { title, description } = Astro.props;
+const { title, description, imageAlt = "Vibecanvas infinite canvas preview", schema } = Astro.props;
 const siteUrl = Astro.site ?? new URL("https://vibecanvas.dev");
 const canonicalUrl = new URL(Astro.url.pathname, siteUrl).toString();
 const seoImageUrl = new URL("seo.png", siteUrl).toString();
+const schemaJson = schema ? JSON.stringify(schema) : undefined;
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
     <meta name="robots" content="index,follow" />
     <meta name="image" content={seoImageUrl} />
+    <meta name="theme-color" content="#f59e0b" />
     <link rel="canonical" href={canonicalUrl} />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="sitemap" href="/sitemap.xml" type="application/xml" />
 
     <meta property="og:site_name" content="Vibecanvas" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:image" content={seoImageUrl} />
-    <meta property="og:image:alt" content="Vibecanvas preview" />
+    <meta property="og:image:secure_url" content={seoImageUrl} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content={imageAlt} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
@@ -38,12 +47,11 @@ const seoImageUrl = new URL("seo.png", siteUrl).toString();
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={seoImageUrl} />
-    <meta name="twitter:image:alt" content="Vibecanvas preview" />
+    <meta name="twitter:image:alt" content={imageAlt} />
     <title>{title}</title>
+    {schemaJson && <script type="application/ld+json" set:html={schemaJson} />}
   </head>
   <body>
-    <div class="bg-orb bg-orb-1" aria-hidden="true"></div>
-    <div class="bg-orb bg-orb-2" aria-hidden="true"></div>
     <main>
       <slot />
     </main>

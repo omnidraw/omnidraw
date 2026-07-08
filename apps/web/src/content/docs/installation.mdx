@@ -1,12 +1,23 @@
 ---
 title: Installation and Setup
 description: Prepare your environment and launch Vibecanvas locally.
-order: 2
+order: 3
 ---
 
 This guide helps you get Vibecanvas running reliably on a new machine.
 
-## 1) Install Bun
+## 1) Install Node.js
+
+Install Node.js 18 or newer, then verify:
+
+```bash
+node --version
+npm --version
+```
+
+Vibecanvas uses Node package tooling when generated guest widget code installs its package dependencies.
+
+## 2) Install Bun
 
 Follow the Bun install guide, then verify:
 
@@ -14,7 +25,7 @@ Follow the Bun install guide, then verify:
 bun --version
 ```
 
-## 2) Install Vibecanvas globally
+## 3) Install Vibecanvas globally
 
 Choose the package manager you already use:
 
@@ -30,16 +41,15 @@ npm i -g vibecanvas
 pnpm add -g vibecanvas
 ```
 
-## 3) Verify the CLI is available
+## 4) Verify the CLI is available
 
 ```bash
 vibecanvas --version
 ```
 
-## 4) Launch from your project
+## 5) Launch the local app
 
 ```bash
-cd your-project
 vibecanvas
 ```
 
@@ -53,13 +63,14 @@ vibecanvas serve --port 3001
 
 The default port is `3000` in development and `7496` in compiled builds.
 
-## 5) Verify core behavior
+## 6) Verify core behavior
 
 - App opens with canvas and side panels.
 - Chat can start a new conversation.
-- Project files appear in the workspace tree.
+- Generated widgets can be added to the canvas.
+- Live widget state updates through the local backend.
 
-## 6) Keep Vibecanvas updated
+## 7) Keep Vibecanvas updated
 
 ```bash
 vibecanvas upgrade --check
