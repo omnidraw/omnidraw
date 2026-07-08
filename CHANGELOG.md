@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.2
+
+### Fixed
+- Fixed curl installer latest-release parsing for GitHub API `tag_name` JSON formatting.
+- Fixed curl-installed binaries failing to start by packaging Turso native addons in GitHub release archives and installing them into `~/.vibecanvas/native`.
+
 ## 0.4.1
 
 ### Fixed
