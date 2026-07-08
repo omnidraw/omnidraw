@@ -535,13 +535,19 @@
 .ai-chat-composer__editor-root {
   flex: 1 1 auto;
   min-height: 84px;
+  min-width: 0;
 }
 
 .ai-chat-composer__editor {
+  max-height: 220px;
   min-height: 84px;
+  overflow-x: hidden;
+  overflow-y: auto;
   outline: none;
+  scrollbar-gutter: stable;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .ai-chat-composer__editor p {
