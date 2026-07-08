@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { render } from "solid-js/web"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatTab } from "../../../../src/components/AiWizzard/tabs/ChatTab"
 import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../../src/components/AiWizzard/ChatComposer/interface"
+
+const AI_WIZARD_CSS_PATH = resolve(process.cwd(), "src/components/AiWizzard/index.css")
 
 type TRenderChatTabSettings = {
   defaultModel?: string
@@ -145,6 +149,11 @@ function renderChatTab(settings: TRenderChatTabSettings = {
   return container
 }
 
+function readAiChatComposerEditorCssRule() {
+  const css = readFileSync(AI_WIZARD_CSS_PATH, "utf8")
+  return css.match(/\.ai-chat-composer__editor\s*\{[^}]*\}/)?.[0] ?? ""
+}
+
 afterEach(() => {
   disposeRendered?.()
   disposeRendered = undefined
@@ -223,6 +232,18 @@ describe("ChatTab rendered message history", () => {
     expect(menuText).toContain("Off")
     expect(menuText).toContain("Minimal")
     expect(menuText).toContain("Xhigh")
+  })
+
+  it("renders a capped scroll container for long composer input", () => {
+    const root = renderChatTab()
+    const editor = root.querySelector(".ai-chat-composer__editor")
+    const editorRule = readAiChatComposerEditorCssRule()
+
+    expect(editor).not.toBeNull()
+    expect(editorRule).toContain("max-height:")
+    expect(editorRule).toContain("overflow-y: auto")
+    expect(editorRule).toContain("overflow-x: hidden")
+    expect(editorRule).toContain("overflow-wrap: anywhere")
   })
 
   it("forwards selected model changes as chat preference changes", () => {
