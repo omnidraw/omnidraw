@@ -10,9 +10,6 @@ script = '''
 mkdir -p "$CODEX_WORKTREE_PATH/local-volume"
 rsync -a \
   --exclude 'data/machine.json' \
-  --exclude 'data/vibecanvas.turso' \
-  --exclude 'data/vibecanvas.turso-tshm' \
-  --exclude 'data/vibecanvas.turso-wal' \
   "$CODEX_SOURCE_TREE_PATH/local-volume/" \
   "$CODEX_WORKTREE_PATH/local-volume/"
 
