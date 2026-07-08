@@ -1,15 +1,16 @@
 ---
 title: Getting Started
-description: Install Vibecanvas and run your first session.
+description: Install Vibecanvas and generate your first live widget.
 order: 1
 ---
 
-Vibecanvas is a visual development workspace where you can sketch flows, add project widgets, and iterate in one place. You can also edit canvases through the CLI, which means agents can do canvas mutations too.
+Vibecanvas is a generative app on an infinite canvas. Use it to create many small live widgets, each with backend behavior, then arrange them spatially into dashboards, tools, forms, and workflows.
 
 ## Prerequisites
 
+- Node.js 18 or newer for guest widget package installs.
 - Bun installed on your machine.
-- A local project folder where you want to work.
+- A browser where you can open the local Vibecanvas app.
 
 ## Install
 
@@ -29,10 +30,9 @@ pnpm add -g vibecanvas
 
 ## Run
 
-From your project directory:
+Start the local app:
 
 ```bash
-cd your-project
 vibecanvas
 ```
 
@@ -44,17 +44,7 @@ If you want a specific port:
 vibecanvas serve --port 3001
 ```
 
-Once launched, open the canvas and start creating frames, notes, and task flows.
-
-You can also inspect or mutate canvas state from the CLI:
-
-```bash
-vibecanvas canvas --help
-```
-
-The Vibecanvas skill for agents lives here:
-
-- https://github.com/vibecanvas/skills
+Once launched, open the canvas and start generating widgets. A widget can be a chart, booking form, queue, gallery, table, chat surface, control panel, or any other focused app surface with live state behind it.
 
 ## Check the CLI
 
@@ -82,8 +72,8 @@ vibecanvas --upgrade 0.2.0-beta.3
 
 ## What to do first
 
-1. Create one canvas for your feature.
-2. Add wireframes or flow boxes.
-3. Add terminal and filesystem widgets for the project you are working in.
-4. Use the canvas CLI when you want repeatable or agent-driven canvas edits.
-5. Keep docs open while implementing.
+1. Create a canvas for the app idea or workflow.
+2. Generate one focused widget with clear behavior.
+3. Add more widgets as separate live app surfaces.
+4. Arrange related widgets near each other on the infinite canvas.
+5. Iterate by regenerating, replacing, or composing widgets as the workflow changes.

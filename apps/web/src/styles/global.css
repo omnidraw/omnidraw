@@ -25,36 +25,11 @@ body {
 body {
   position: relative;
   background:
-    radial-gradient(circle at 80% 12%, #fef3c7 0%, transparent 30%),
-    radial-gradient(circle at 20% 0%, #e7e5e4 0%, transparent 35%),
+    linear-gradient(180deg, #fffaf0 0%, transparent 22rem),
     var(--bg);
   color: var(--text);
   font-family: "Space Grotesk", "Avenir Next", sans-serif;
   line-height: 1.6;
-}
-
-.bg-orb {
-  position: fixed;
-  z-index: -1;
-  width: 16rem;
-  height: 16rem;
-  border-radius: 999px;
-  filter: blur(48px);
-  opacity: 0.35;
-  animation: float 12s ease-in-out infinite;
-}
-
-.bg-orb-1 {
-  right: -4rem;
-  top: 16vh;
-  background: #fde68a;
-}
-
-.bg-orb-2 {
-  left: -4rem;
-  top: 52vh;
-  background: #e7e5e4;
-  animation-delay: 0.8s;
 }
 
 .shell {
@@ -90,9 +65,20 @@ body {
 }
 
 .topnav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   color: var(--text-muted);
   text-decoration: none;
   font-size: 0.96rem;
+}
+
+.github-mark {
+  width: 1.05em;
+  height: 1.05em;
+  display: block;
+  fill: currentColor;
+  flex: 0 0 auto;
 }
 
 .topnav a:hover,
@@ -104,7 +90,7 @@ body {
 .hero {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  padding: 0.7rem 2rem 1.4rem;
+  padding: clamp(0.9rem, 3vw, 2rem);
   margin-bottom: 1.25rem;
   animation: rise 500ms ease-out;
 }
@@ -145,7 +131,8 @@ h3 {
   border: 1px solid var(--border);
   background: #fff;
   overflow: hidden;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 12 / 7;
+  max-height: min(72vh, 52rem);
 }
 
 .hero-gif-frame picture,
@@ -153,7 +140,7 @@ h3 {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top center;
 }
 
@@ -374,9 +361,20 @@ a {
 }
 
 @media (max-width: 900px) {
+  .shell {
+    padding-inline: clamp(0.6rem, 3vw, 1rem);
+  }
+
+  .topbar {
+    margin-bottom: 1.35rem;
+  }
+
+  .hero {
+    padding: clamp(0.8rem, 3vw, 1.2rem);
+  }
+
   .hero-gif-frame {
-    aspect-ratio: 338 / 600;
-    max-height: 70vh;
+    max-height: 55vh;
   }
 
   .steps-grid {

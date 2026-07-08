@@ -1,38 +1,24 @@
 ---
 title: FAQ
 description: Common questions about Vibecanvas.
-order: 3
+order: 4
 ---
 
-## What runtime do the terminal widgets use?
+## What is Vibecanvas?
 
-Vibecanvas uses a built-in Bun PTY backend for terminal widgets.
+Vibecanvas is a generative app on an infinite canvas. You generate many small live widgets, then arrange them spatially into the app or workflow you want.
 
-## What can the terminal access right now?
+## What kinds of widgets can I generate?
 
-Terminal widgets run in your local project path and have access to the same files and tools available in that environment.
+Use widgets for focused app surfaces: charts, forms, queues, galleries, tables, dashboards, chats, timers, controls, and internal tools.
 
-Current limitations:
+## What does "live backend" mean?
 
-- Terminal sessions are kept in memory by the local server.
-- Sessions do not survive a full server restart yet.
-- Windows PTY support depends on Bun platform support.
+Widgets are not just static mockups. They can have local backend behavior for state, updates, actions, and generated app logic.
 
-## Can the AI edit the canvas for me?
+## Does Vibecanvas mirror a local project environment?
 
-Yes. Vibecanvas now has a canvas CLI, so agents can edit the canvas by calling CLI commands.
-
-Typical flow:
-
-1. `vibecanvas canvas list`
-2. `vibecanvas canvas query`
-3. `vibecanvas canvas add|patch|move|group|ungroup|delete|reorder`
-
-Use `--json` when another tool or agent will parse the result.
-
-The Vibecanvas skill for agents lives here:
-
-- https://github.com/vibecanvas/skills
+No. Vibecanvas is focused on generating and composing live app widgets on the canvas, not on mirroring a local developer environment.
 
 ## How do I upgrade Vibecanvas?
 
