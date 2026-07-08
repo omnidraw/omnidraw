@@ -49,9 +49,9 @@ function parseArgs(): TArgs {
 }
 
 async function resolveBinaryPath(inputPath?: string): Promise<string> {
-  if (inputPath) return inputPath
-
   const rootDir = path.join(path.dirname(new URL(import.meta.url).pathname), "..")
+  if (inputPath) return path.resolve(rootDir, inputPath)
+
   const osMap: Record<string, string> = {
     darwin: "darwin",
     linux: "linux",

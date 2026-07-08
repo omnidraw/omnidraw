@@ -204,7 +204,7 @@ jobs:
       - name: Test Linux x64 binary
         run: |
           chmod +x dist/vibecanvas-linux-x64/bin/vibecanvas
-          bun run scripts/test-binary.ts --binary dist/vibecanvas-linux-x64/bin/vibecanvas --port 3339
+          bun run scripts/test-binary.ts --binary "$PWD/dist/vibecanvas-linux-x64/bin/vibecanvas" --port 3339
 
   publish-release:
     runs-on: ubuntu-latest
