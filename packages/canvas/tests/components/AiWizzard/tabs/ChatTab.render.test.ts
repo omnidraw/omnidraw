@@ -1,6 +1,14 @@
 import { render } from "solid-js/web"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ChatTab } from "../../../../src/components/AiWizzard/tabs/ChatTab"
+import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../../src/components/AiWizzard/ChatComposer/interface"
+
+type TRenderChatTabSettings = {
+  defaultModel?: string
+  defaultProvider?: string
+  defaultThinkingLevel?: TChatComposerThinkingLevel
+  models: TChatComposerModel[]
+}
 
 const MOCK_MESSAGE_HISTORY = [
   {
@@ -111,12 +119,12 @@ function ensureComponentDomMocks() {
   }
 }
 
-function renderChatTab(settings = {
+function renderChatTab(settings: TRenderChatTabSettings = {
   defaultThinkingLevel: "low" as const,
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}, messageHistory = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}) {
+}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -128,6 +136,7 @@ function renderChatTab(settings = {
     onCancel: () => {},
     onNewChat: () => {},
     onPrompt: async () => {},
+    onPreferenceChange,
     onInspectActor,
     settings,
   }), container)
@@ -213,6 +222,46 @@ describe("ChatTab rendered message history", () => {
     expect(menuText).toContain("Off")
     expect(menuText).toContain("Minimal")
     expect(menuText).toContain("Xhigh")
+  })
+
+  it("forwards selected model changes as chat preference changes", () => {
+    const onPreferenceChange = vi.fn()
+    const root = renderChatTab({
+      defaultModel: "gpt-test",
+      defaultProvider: "openai-codex",
+      defaultThinkingLevel: "low" as const,
+      models: [
+        { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
+        { id: "gpt-next", input: ["text" as const], provider: "openai-codex", name: "GPT Next" },
+      ],
+    }, MOCK_MESSAGE_HISTORY, () => {}, onPreferenceChange)
+
+    root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")?.click()
+    Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-option"))
+      .find((button) => button.textContent?.includes("GPT Next"))
+      ?.click()
+
+    expect(onPreferenceChange).toHaveBeenCalledWith({
+      model: {
+        provider: "openai-codex",
+        modelId: "gpt-next",
+      },
+    })
+  })
+
+  it("forwards selected thinking level changes as chat preference changes", () => {
+    const onPreferenceChange = vi.fn()
+    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, () => {}, onPreferenceChange)
+
+    root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")?.click()
+    Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-provider"))
+      .find((button) => button.textContent === "Thinking")
+      ?.click()
+    Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-option"))
+      .find((button) => button.textContent === "High")
+      ?.click()
+
+    expect(onPreferenceChange).toHaveBeenCalledWith({ thinkingLevel: "high" })
   })
 
   it("shows Inspect Actor for successful vc_set_actor_candidate tool results", () => {

@@ -1,4 +1,4 @@
-import type { TChatComposerImage, TChatComposerModel, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
+import type { TChatComposerImage, TChatComposerModel, TChatComposerPreferenceChange, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, onCleanup, onMount, Show } from "solid-js"
@@ -36,6 +36,7 @@ interface IProps {
   isCanceling: boolean
   draftText?: string
   onDraftTextChange?: (text: string) => void
+  onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   onPrompt: (args: { text: string; images: TChatPromptImage[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onCancel: () => void
   onNewChat: () => void
@@ -453,6 +454,7 @@ export function ChatTab(props: IProps) {
         isCanceling={props.isCanceling}
         draftText={props.draftText}
         onDraftTextChange={props.onDraftTextChange}
+        onPreferenceChange={props.onPreferenceChange}
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
         onNewChat={props.onNewChat}

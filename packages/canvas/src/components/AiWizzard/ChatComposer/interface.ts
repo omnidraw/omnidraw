@@ -40,6 +40,14 @@ export type TChatComposerSubmit = {
   thinkingLevel: TChatComposerThinkingLevel
 }
 
+export type TChatComposerPreferenceChange = {
+  model?: {
+    provider: string
+    modelId: string
+  }
+  thinkingLevel?: TChatComposerThinkingLevel
+}
+
 export type TChatComposerProps = {
   placeholder?: string
   mentions?: TChatComposerMention[]
@@ -52,6 +60,7 @@ export type TChatComposerProps = {
   isCanceling?: boolean
   draftText?: string
   onDraftTextChange?: (text: string) => void
+  onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   onSubmit?: (value: TChatComposerSubmit) => void
   onCancel?: () => void
   onNewChat?: () => void

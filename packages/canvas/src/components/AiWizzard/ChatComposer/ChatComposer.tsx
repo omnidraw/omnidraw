@@ -576,6 +576,24 @@ export function ChatComposer(props: TChatComposerProps) {
       setActiveProvider(model.provider)
     })
 
+    props.onPreferenceChange?.({
+      model: {
+        provider: model.provider,
+        modelId: model.id,
+      },
+    })
+    setModelMenuOpen(false)
+    view?.focus()
+  }
+
+  const setThinkingLevel = (level: TChatComposerThinkingLevel) => {
+    batch(() => {
+      setSelectedThinkingLevel(level)
+      setHasManualThinkingSelection(true)
+      setFocusedThinkingLevel(level)
+    })
+
+    props.onPreferenceChange?.({ thinkingLevel: level })
     setModelMenuOpen(false)
     view?.focus()
   }
@@ -593,10 +611,7 @@ export function ChatComposer(props: TChatComposerProps) {
   }
 
   const selectFocusedThinkingLevel = () => {
-    setSelectedThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
-    setHasManualThinkingSelection(true)
-    setModelMenuOpen(false)
-    view?.focus()
+    setThinkingLevel(focusedThinkingLevel() ?? thinkingLevel())
   }
 
   const handleModelMenuKey = (event: KeyboardEvent) => {
@@ -1036,11 +1051,7 @@ export function ChatComposer(props: TChatComposerProps) {
                             type="button"
                             onMouseEnter={() => setFocusedThinkingLevel(level)}
                             onClick={() => {
-                              setSelectedThinkingLevel(level)
-                              setHasManualThinkingSelection(true)
-                              setFocusedThinkingLevel(level)
-                              setModelMenuOpen(false)
-                              view?.focus()
+                              setThinkingLevel(level)
                             }}
                           >
                             <strong>{formatThinkingLevel(level)}</strong>
