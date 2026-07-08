@@ -1,6 +1,7 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
+import { Dialog } from "@kobalte/core/dialog"
 import { Tabs } from "@kobalte/core/tabs"
-import { Match, Switch, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ActorTab } from "./tabs/ActorTab"
@@ -37,6 +38,13 @@ interface IProps {
 }
 
 type TAgentMessageRecord = Record<string, unknown>
+type TPublishedWidgetListItem = {
+    name: string
+    slug: string
+    version?: string
+    description: string | null
+    manifest_path: string
+}
 
 function isAgentMessageRecord(message: unknown): message is TAgentMessageRecord {
     return typeof message === "object" && message !== null
@@ -142,6 +150,11 @@ export function AiWizzard(props: IProps) {
     const [chatDraftText, setChatDraftText] = createSignal("")
     const [localAiWizardPreference, setLocalAiWizardPreference] = createSignal<TAiWizardPreference>(props.aiWizardPreference ?? {})
     const [wizzardConnectNonce, setWizzardConnectNonce] = createSignal(0)
+    const [isEditPickerOpen, setIsEditPickerOpen] = createSignal(false)
+    const [editPickerNonce, setEditPickerNonce] = createSignal(0)
+    const [selectedPublishedWidgetName, setSelectedPublishedWidgetName] = createSignal<string>()
+    const [editPickerError, setEditPickerError] = createSignal<string>()
+    const [isStartingWidgetEdit, setIsStartingWidgetEdit] = createSignal(false)
     const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
@@ -151,6 +164,13 @@ export function AiWizzard(props: IProps) {
         manifest: null,
         source: "connected",
     })
+    const [publishedWidgetState, { refetch: refetchPublishedWidgets }] = createResource(
+        () => isEditPickerOpen() ? editPickerNonce() : undefined,
+        () => props.apiService.api.actors.definitions.list().then(async ([err, data]) => {
+            if (err) throw err.message
+            return data as TPublishedWidgetListItem[]
+        }),
+    )
 
     createEffect(() => {
         setLocalAiWizardPreference(props.aiWizardPreference ?? {})
@@ -393,13 +413,56 @@ export function AiWizzard(props: IProps) {
         }
     }
 
-    const newChat = () => {
+    const newWidget = () => {
         setIsRunning(false)
         setIsCanceling(false)
         setChatDraftText("")
         setMessageHistory(reconcile([]))
         setWizardManifest(null)
         setSessionId(props.onResetSessionId())
+    }
+
+    const openEditPicker = () => {
+        setEditPickerError(undefined)
+        setSelectedPublishedWidgetName(undefined)
+        setIsEditPickerOpen(true)
+        setEditPickerNonce((nonce) => nonce + 1)
+        void refetchPublishedWidgets()
+    }
+
+    const startWidgetEdit = async () => {
+        const definitionName = selectedPublishedWidgetName()
+        if (!definitionName || isStartingWidgetEdit()) return
+
+        const nextSessionId = props.onResetSessionId()
+        setIsStartingWidgetEdit(true)
+        setEditPickerError(undefined)
+        setIsRunning(false)
+        setIsCanceling(false)
+        setChatDraftText("")
+
+        const [err, result] = await props.apiService.api.agent.wizzard.startWidgetEdit({
+            widgetId: props.id,
+            sessionId: nextSessionId,
+            definitionName,
+        })
+
+        setIsStartingWidgetEdit(false)
+        if (err) {
+            setEditPickerError(err.message)
+            return
+        }
+
+        if (!result.ok) {
+            setEditPickerError(result.message)
+            return
+        }
+
+        setWizardManifest(result.vcJson, "file")
+        setMessageHistory(reconcile(result.messageHistory.map((message) => withAgentMessageFinished(message, true))))
+        setSessionId(nextSessionId)
+        setSelectedTab("actor")
+        setIsEditPickerOpen(false)
     }
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
@@ -429,7 +492,8 @@ export function AiWizzard(props: IProps) {
                         onPreferenceChange={updateAiWizardPreference}
                         onPrompt={prompt}
                         onCancel={() => void cancelPrompt()}
-                        onNewChat={newChat}
+                        onNewWidget={newWidget}
+                        onEditExistingWidget={openEditPicker}
                         onInspectActor={() => setSelectedTab("actor")}
                     />
                 </Tabs.Content>
@@ -485,6 +549,80 @@ export function AiWizzard(props: IProps) {
                     )}
                 </Match>
             </Switch>
+            <Dialog open={isEditPickerOpen()} onOpenChange={setIsEditPickerOpen}>
+                <Dialog.Portal>
+                    <Dialog.Overlay class="ai-wizzard-dialog-overlay" />
+                    <Dialog.Content class="ai-wizzard-dialog ai-wizzard-dialog--wide">
+                        <header class="ai-wizzard-dialog__header">
+                            <div>
+                                <Dialog.Title class="ai-wizzard-dialog__title">Edit existing widget</Dialog.Title>
+                                <Dialog.Description class="ai-wizzard-dialog__description">
+                                    Choose a published widget. Vibecanvas copies it into a draft and leaves the published folder unchanged until publish.
+                                </Dialog.Description>
+                            </div>
+                            <Dialog.CloseButton class="ai-wizzard-dialog__close">Close</Dialog.CloseButton>
+                        </header>
+                        <div class="ai-wizzard-dialog__body">
+                            <Switch>
+                                <Match when={publishedWidgetState.loading}>
+                                    <p>Loading published widgets...</p>
+                                </Match>
+                                <Match when={publishedWidgetState.error}>
+                                    {(error) => (
+                                        <div class="ai-wizzard-picker-state">
+                                            <p>{String(error())}</p>
+                                            <button type="button" class="ai-wizzard-secondary-button" onClick={() => void refetchPublishedWidgets()}>
+                                                Try again
+                                            </button>
+                                        </div>
+                                    )}
+                                </Match>
+                                <Match when={(publishedWidgetState.latest?.length ?? 0) === 0}>
+                                    <p>No published widgets are available yet.</p>
+                                </Match>
+                                <Match when={(publishedWidgetState.latest?.length ?? 0) > 0}>
+                                    <div class="ai-wizzard-widget-picker-list">
+                                        <For each={publishedWidgetState.latest ?? []}>
+                                            {(widget) => (
+                                                <button
+                                                    type="button"
+                                                    class="ai-wizzard-widget-picker-item"
+                                                    classList={{ "ai-wizzard-widget-picker-item--selected": selectedPublishedWidgetName() === widget.name }}
+                                                    onClick={() => setSelectedPublishedWidgetName(widget.name)}
+                                                >
+                                                    <span class="ai-wizzard-widget-picker-item__main">
+                                                        <strong>{widget.name}</strong>
+                                                        <span>{widget.description ?? "No description"}</span>
+                                                    </span>
+                                                    <span class="ai-wizzard-widget-picker-item__meta">
+                                                        <span>{widget.slug}</span>
+                                                        <span>v{widget.version ?? "unknown"}</span>
+                                                        <span>{widget.manifest_path}</span>
+                                                    </span>
+                                                </button>
+                                            )}
+                                        </For>
+                                    </div>
+                                </Match>
+                            </Switch>
+                            <Show when={editPickerError()}>
+                                {(message) => <pre class="ai-wizzard-dialog__message">{message()}</pre>}
+                            </Show>
+                        </div>
+                        <footer class="ai-wizzard-dialog__actions">
+                            <Dialog.CloseButton class="ai-wizzard-secondary-button">Cancel</Dialog.CloseButton>
+                            <button
+                                type="button"
+                                class="ai-wizzard-primary-button"
+                                disabled={!selectedPublishedWidgetName() || isStartingWidgetEdit()}
+                                onClick={() => void startWidgetEdit()}
+                            >
+                                {isStartingWidgetEdit() ? "Preparing..." : "Start editing"}
+                            </button>
+                        </footer>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog>
         </div>
     )
 }

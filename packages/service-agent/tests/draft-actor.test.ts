@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
-import { ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE } from '../src/tools/CONSTANTS';
+import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE } from '../src/tools/CONSTANTS';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
@@ -56,13 +56,24 @@ async function createServiceFixture() {
       relFunctionPath: './actor/functions.ts',
       initialState: 'ready',
       initialData: { count: 0 },
-      inputMsgSchema: { ping: { type: 'object', additionalProperties: true } },
+      inputMsgSchema: {
+        ping: { type: 'object', additionalProperties: true },
+        'in.resetError': { type: 'object', additionalProperties: true },
+      },
       outputMsgSchema: {},
       states: {
         ready: {
           on: {
             ping: {
               func: ['tx.increment'],
+              allowedTargetStates: ['ready'],
+            },
+          },
+        },
+        error: {
+          on: {
+            'in.resetError': {
+              func: ['tx.resetError'],
               allowedTargetStates: ['ready'],
             },
           },
@@ -85,6 +96,7 @@ async function createServiceFixture() {
     '    "tx.increment": async (portal, args) => {',
     '      await portal.setData({ count: (args.data.count ?? 0) + 1 });',
     '    },',
+    '    "tx.resetError": async () => {},',
     '  },',
     '};',
     '',
@@ -100,13 +112,87 @@ async function createServiceFixture() {
   ].join('\n'), 'utf8');
 
   service.sessionMap[widgetId] = {
-    [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: {} as never },
+    [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: { getEntries: () => [] } as never },
   };
 
   return { service, eventPublisher, widgetId, sessionId };
 }
 
 describe('AgentService draft actor runtime', () => {
+  test('starts editing a published widget from a copied bumped draft', async () => {
+    const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-edit-'));
+    tempDirs.push(dataPath);
+    const configPath = join(dataPath, 'config');
+    const publishedRoot = join(configPath, 'widgets', 'counter-widget');
+    await mkdir(join(publishedRoot, 'actor'), { recursive: true });
+    await mkdir(join(publishedRoot, 'widget'), { recursive: true });
+    await mkdir(join(publishedRoot, 'node_modules', 'ignored'), { recursive: true });
+
+    const manifest: TVibecanvasJson & { manifest_path: string } = {
+      slug: 'counter-widget',
+      name: 'Counter Widget',
+      version: '1.2.3',
+      description: 'Published counter',
+      manifest_path: 'widgets/counter-widget/vibecanvas.json',
+      actor: {
+        relFunctionPath: './actor/functions.ts',
+        initialState: 'ready',
+        initialData: { count: 0 },
+        states: {},
+      },
+      widget: {
+        relWidgetDir: './widget',
+        tool: { label: 'Counter', behavior: { type: 'action' } },
+      },
+    };
+    await writeFile(join(publishedRoot, 'vibecanvas.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    await writeFile(join(publishedRoot, 'actor', 'functions.ts'), 'export default { fn: {}, fx: {}, tx: {} };\n', 'utf8');
+    await writeFile(join(publishedRoot, 'widget', 'main.ts'), 'export default null;\n', 'utf8');
+    await writeFile(join(publishedRoot, 'node_modules', 'ignored', 'file.js'), 'ignored\n', 'utf8');
+
+    const service = new AgentService({
+      cachePath: join(dataPath, 'cache'),
+      dataPath,
+      configPath,
+      eventPublisherService: new TestEventPublisherService(),
+      actorService: {
+        reload: async () => {},
+        getVibecanvasJson: () => manifest,
+      },
+    });
+
+    const result = await service.startWidgetEditWizzard('widget-edit', 'session-edit', 'Counter Widget');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.phase).toBe('implementation');
+    expect(result.vcJson.version).toBe('1.2.4');
+    expect(result.editSession.sourceName).toBe('Counter Widget');
+    expect(result.editSession.previousVersion).toBe('1.2.3');
+    expect(result.messageHistory.some((message) => {
+      const record = message as unknown as Record<string, unknown>;
+      return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
+    })).toBe(true);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
+
+    const draftRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'widget-editsession-edit');
+    const draftManifest = JSON.parse(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
+    expect(draftManifest.version).toBe('1.2.4');
+    await expect(readFile(join(draftRoot, 'node_modules', 'ignored', 'file.js'), 'utf8')).rejects.toThrow();
+
+    const sourceManifest = JSON.parse(await readFile(join(publishedRoot, 'vibecanvas.json'), 'utf8'));
+    expect(sourceManifest.version).toBe('1.2.3');
+
+    const entries = service.sessionMap['widget-edit']['session-edit'].sessionManager.getEntries();
+    expect(entries.some((entry) => entry.type === 'custom' && entry.customType === ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE)).toBe(true);
+
+    const reconnectResult = await service.connectWizzard('widget-edit', 'session-edit');
+    expect(reconnectResult.messageHistory.some((message) => {
+      const record = message as unknown as Record<string, unknown>;
+      return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
+    })).toBe(true);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
+  });
+
   test('reads phase 1 manifest from actor candidate and patches only phase 2 vibecanvas.json', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-manifest-'));
     tempDirs.push(dataPath);
@@ -211,6 +297,23 @@ describe('AgentService draft actor runtime', () => {
     expect(Object.keys(result.sources).sort()).toEqual(['main.css', 'main.ts']);
     expect(result.sources['main.ts']).toContain('Draft widget');
     expect(result.sources['main.css']).toContain('color: red');
+  });
+
+  test('emits widget update event after publishing draft', async () => {
+    const { service, eventPublisher, widgetId, sessionId } = await createServiceFixture();
+
+    const result = await service.publishWizzard(widgetId, sessionId);
+    expect(result.published).toBe(true);
+    if (!result.published) throw new Error(result.message);
+
+    const updateEvent = eventPublisher.agentEvents.find((event) => 'kind' in event && event.kind === 'widgetupdate');
+    expect(updateEvent).toEqual({
+      kind: 'widgetupdate',
+      widgetId,
+      sessionId,
+      cwd: result.destination,
+      files: result.files,
+    });
   });
 
   test('patches draft tool icon metadata and rejects invalid lucid keys', async () => {

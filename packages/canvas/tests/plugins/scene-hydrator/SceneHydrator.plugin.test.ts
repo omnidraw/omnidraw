@@ -34,6 +34,35 @@ function createTextElement(overrides?: Partial<TElement>): TElement {
   };
 }
 
+function createWidgetElement(overrides?: Partial<TElement>): TElement {
+  return {
+    id: "widget-1",
+    x: 10,
+    y: 20,
+    rotation: 0,
+    zIndex: "a0",
+    parentGroupId: null,
+    bindings: [],
+    locked: false,
+    createdAt: 1,
+    updatedAt: 2,
+    data: {
+      type: "widget",
+      kind: "published-widget",
+      w: 260,
+      h: 160,
+      expanded: true,
+      window: "contained",
+      actorDefinitionName: "Published Widget",
+      actorInstanceId: "actor-instance-1",
+    },
+    style: {
+      opacity: 1,
+    },
+    ...overrides,
+  };
+}
+
 describe("new SceneHydrator plugin", () => {
   test("applies remote element updates without recreating the scene node", async () => {
     const element = createTextElement({ id: "text-live" });
@@ -106,6 +135,52 @@ describe("new SceneHydrator plugin", () => {
     expect(hydratedSelectedNode).toBe(selectedNode);
     expect(selection.selection[0]).toBe(hydratedSelectedNode);
     expect(selection.focusedId).toBe("text-selected");
+
+    await harness.destroy();
+  });
+
+  test("cleans up old widget DOM portal before reloading a published widget kind", async () => {
+    const widgetElement = createWidgetElement();
+    const docHandle = createMockDocHandle({
+      elements: {
+        [widgetElement.id]: widgetElement,
+      },
+    }) as DocHandle<TCanvasDoc>;
+
+    const harness = await createNewCanvasHarness({ docHandle });
+    const widgetManager = harness.runtime.services.require("widgetManager");
+    let cleanupCount = 0;
+
+    widgetManager.registerWidget({
+      id: "published-widget",
+      dataType: "widget",
+      tool: {
+        label: "Published Widget",
+      },
+      actor: {
+        actorDefinitionName: "Published Widget",
+      },
+      renderDom: ({ root }) => {
+        const content = root.ownerDocument.createElement("div");
+        content.textContent = "published widget";
+        root.appendChild(content);
+        return () => {
+          cleanupCount += 1;
+          content.remove();
+        };
+      },
+    });
+    harness.runtime.hooks.widgetRegister.call({ kind: "published-widget" });
+    await flushCanvasEffects();
+
+    const widgetPortal = harness.stage.container().querySelector("#widget-portal");
+    expect(widgetPortal?.querySelectorAll("[data-widget-element-id='widget-1']")).toHaveLength(1);
+
+    harness.runtime.hooks.widgetRegister.call({ kind: "published-widget" });
+    await flushCanvasEffects();
+
+    expect(cleanupCount).toBe(1);
+    expect(widgetPortal?.querySelectorAll("[data-widget-element-id='widget-1']")).toHaveLength(1);
 
     await harness.destroy();
   });

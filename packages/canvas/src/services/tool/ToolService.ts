@@ -20,6 +20,7 @@ export class ToolService implements IService<TToolServiceHooks> {
   };
   #activeToolId = "select";
   readonly #tools = new Map<string, TTool>();
+  readonly #toolHookCleanupMap = new Map<string, (() => unknown)[]>();
   readonly #runtimeHooks!: IRuntimeHooks;
   #previewOrigin: TToolCanvasPoint | null = null;
 
@@ -40,11 +41,16 @@ export class ToolService implements IService<TToolServiceHooks> {
   }
 
   registerTool(tool: TTool) {
+    if (this.#tools.has(tool.id)) {
+      this.unregisterTool(tool.id);
+    }
+
     this.#tools.set(tool.id, tool);
+    const cleanupHooks: (() => unknown)[] = [];
 
     // setup create-draw
     if (tool.behavior.type === "mode" && tool.behavior.mode === "draw-create" && tool.drawCreate) {
-      this.#runtimeHooks.pointerDown.tap((event) => {
+      cleanupHooks.push(this.#runtimeHooks.pointerDown.tap((event) => {
         if (this.#activeToolId !== tool.id) {
           return;
         }
@@ -59,9 +65,9 @@ export class ToolService implements IService<TToolServiceHooks> {
         if (preview) {
           this.sceneService.setPreviewNode(preview);
         }
-      });
+      }));
 
-      this.#runtimeHooks.pointerMove.tap((event) => {
+      cleanupHooks.push(this.#runtimeHooks.pointerMove.tap((event) => {
         if (this.#activeToolId !== tool.id) {
           return;
         }
@@ -83,9 +89,9 @@ export class ToolService implements IService<TToolServiceHooks> {
           shiftKey: event.evt.shiftKey,
           now: Date.now(),
         });
-      });
+      }));
 
-      this.#runtimeHooks.pointerUp.tap(() => {
+      cleanupHooks.push(this.#runtimeHooks.pointerUp.tap(() => {
         if (this.#activeToolId !== tool.id) {
           return;
         }
@@ -95,9 +101,9 @@ export class ToolService implements IService<TToolServiceHooks> {
         }
 
         this.commitPreview();
-      });
+      }));
 
-      this.hooks.activeToolChange.tap((activeToolId) => {
+      cleanupHooks.push(this.hooks.activeToolChange.tap((activeToolId) => {
         if (activeToolId === tool.id) {
           return;
         }
@@ -107,9 +113,10 @@ export class ToolService implements IService<TToolServiceHooks> {
         }
 
         this.sceneService.clearPreviewState();
-      });
+      }));
     }
 
+    this.#toolHookCleanupMap.set(tool.id, cleanupHooks);
     this.hooks.toolsChange.call();
   }
 
@@ -118,6 +125,8 @@ export class ToolService implements IService<TToolServiceHooks> {
    */
   unregisterTool(id: string) {
     const didDelete = this.#tools.delete(id);
+    this.#toolHookCleanupMap.get(id)?.forEach((cleanup) => cleanup());
+    this.#toolHookCleanupMap.delete(id);
     if (!didDelete) {
       return;
     }

@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { fxLatestActorCandidateApprovalRecord } from '../core/fx.session-candidate';
+import { fxLatestActorCandidateApprovalRecord, fxLatestWidgetEditSessionRecord } from '../core/fx.session-candidate';
 import type { TActorServiceReloader, TCandidateSessionManager, TToolDefinition, TToolEventSink, TWidgetWizardPhase } from './types';
 import { createApproveActorCandidateTool } from './tool.approve-actor-candidate';
 import { createPublishWidgetTool } from './tool.publish-widget';
@@ -26,6 +26,7 @@ export function fnGetWidgetWizardPhase(sessionManager: TCandidateSessionManager)
 
 export function fnCreateWidgetWizardPhaseTools(args: TCreateWidgetWizardPhaseToolsArgs): TWidgetWizardPhaseTools {
   const phase = args.phase ?? fnGetWidgetWizardPhase(args.sessionManager);
+  const editSession = fxLatestWidgetEditSessionRecord({ sessionManager: args.sessionManager });
 
   if (phase === 'actor-candidate') {
     return {
@@ -41,7 +42,7 @@ export function fnCreateWidgetWizardPhaseTools(args: TCreateWidgetWizardPhaseToo
     builtInTools: ['read', 'edit', 'grep'],
     customTools: [
       createValidateWidgetFilesTool({ cwd: args.cwd }),
-      createPublishWidgetTool({ cwd: args.cwd, finalWidgetsDir: args.finalWidgetsDir, actorService: args.actorService, onEvent: args.onEvent }),
+      createPublishWidgetTool({ cwd: args.cwd, finalWidgetsDir: args.finalWidgetsDir, actorService: args.actorService, editSession: editSession ?? undefined, onEvent: args.onEvent }),
     ],
   };
 }

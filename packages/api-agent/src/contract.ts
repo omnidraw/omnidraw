@@ -57,6 +57,9 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 ])
 
 const ZAgentWizzardScope = z.object({ widgetId: z.string(), sessionId: z.string() })
+const ZAgentWizzardStartWidgetEdit = ZAgentWizzardScope.extend({
+  definitionName: z.string().min(1),
+})
 const AGENT_WIZZARD_PROMPT_IMAGE_MAX_COUNT = 5;
 const AGENT_WIZZARD_PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const AGENT_WIZZARD_PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(AGENT_WIZZARD_PROMPT_IMAGE_MAX_BYTES / 3) * 4;
@@ -108,6 +111,16 @@ export type TAgentWizzardConnect = {
   vcJson: TVibecanvasJson | null;
   actorCandidate: TActorCandidateRecord | null;
   messageHistory: unknown[];
+  editSession: {
+    mode: 'edit-published-widget';
+    sourceDefinitionName: string;
+    sourceSlug: string;
+    sourceName: string;
+    sourceManifestPath: string;
+    previousVersion?: string;
+    nextVersion: string;
+    startedAt: string;
+  } | null;
 }
 
 export type TAgentDraftActorSnapshot = {
@@ -163,6 +176,10 @@ export type TAgentWizzardPublishResult =
   | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
   | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
 
+export type TAgentWizzardStartWidgetEditResult =
+  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: NonNullable<TAgentWizzardConnect['editSession']>; messageHistory: unknown[] }
+  | { ok: false; message: string };
+
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
 export type TAgentLoginStatus = z.infer<typeof ZAgentLoginStatus>
 
@@ -173,6 +190,7 @@ export const agentContract = oc.router({
   },
   wizzard: {
     connect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardConnect>()),
+    startWidgetEdit: oc.input(ZAgentWizzardStartWidgetEdit).output(orpcType<TAgentWizzardStartWidgetEditResult>()),
     prompt: oc.input(ZAgentWizzardPrompt),
     cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
     newSession: oc.input(ZAgentWizzardScope),

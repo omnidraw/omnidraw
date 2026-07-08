@@ -3,12 +3,13 @@ import { cp, mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
-import type { TActorServiceReloader, TToolDefinition, TToolEventSink } from './types';
+import type { TActorServiceReloader, TToolDefinition, TToolEventSink, TWidgetEditSessionRecord } from './types';
 
 export type TCreatePublishWidgetToolArgs = {
   cwd: string;
   finalWidgetsDir: string;
   actorService?: TActorServiceReloader;
+  editSession?: TWidgetEditSessionRecord;
   onEvent?: TToolEventSink;
 };
 
@@ -38,13 +39,23 @@ export function createPublishWidgetTool(args: TCreatePublishWidgetToolArgs): TTo
       const result = await txPublishWidgetDraft({ readdir, readFile, mkdir, rm, cp, join, relative, resolve, basename }, {
         cwd: args.cwd,
         finalWidgetsDir: args.finalWidgetsDir,
-        actorService: args.actorService,
+        actorService: args.editSession ? undefined : args.actorService,
       });
 
       if (!result.published) {
         return fnToolError('Widget draft is invalid and was not published.', result);
       }
 
+      const shouldReloadEditedInstances = args.editSession !== undefined
+        && args.editSession.sourceName === result.manifest.name
+        && args.editSession.sourceSlug === result.manifest.slug;
+
+      if (args.editSession) {
+        await args.actorService?.reload();
+        if (shouldReloadEditedInstances) {
+          await args.actorService?.reloadDefinitionInstances?.(args.editSession.sourceDefinitionName);
+        }
+      }
       await args.onEvent?.({ type: 'widgetupdate', cwd: result.destination ?? args.cwd, files: result.files });
 
       return fnToolSuccess(`Published widget '${result.manifest.name}' to ${result.destination}.`, result);

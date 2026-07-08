@@ -22,6 +22,7 @@ interface IPublicMethods {
   getVibecanvasJson(defId: string): TVibecanvasJson | null;
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
   reload(): Promise<void>
+  reloadDefinitionInstances(defName: string): Promise<void>
 }
 
 interface IActorServiceConfig {
@@ -56,6 +57,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   async reload(): Promise<void> {
     await this.#supervisor.reload()
+  }
+
+  async reloadDefinitionInstances(defName: string): Promise<void> {
+    await this.#supervisor.reloadDefinitionInstances(defName)
   }
 
   async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {

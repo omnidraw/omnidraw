@@ -7,6 +7,8 @@ import { z } from 'zod';
 
 export const ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE = 'vibecanvas.actorCandidate';
 export const ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE = 'vibecanvas.actorCandidateApproved';
+export const WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetEditSession';
+export const WIDGET_DRAFT_MANIFEST_PATH_CUSTOM_ENTRY_TYPE = 'vibejsonpath';
 
 export const Z_ACTOR_CANDIDATE = z.object({
   slug: z.string().min(1).optional(),

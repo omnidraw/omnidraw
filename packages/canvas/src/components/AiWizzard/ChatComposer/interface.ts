@@ -63,7 +63,8 @@ export type TChatComposerProps = {
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   onSubmit?: (value: TChatComposerSubmit) => void
   onCancel?: () => void
-  onNewChat?: () => void
+  onNewWidget?: () => void
+  onEditExistingWidget?: () => void
   onCopyChat?: () => void
 }
 

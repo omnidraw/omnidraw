@@ -49,13 +49,23 @@ const ICON_OPTIONS: readonly TIconOption[] = [
 const getIconOption = (optionId: string) => ICON_OPTIONS.find((entry) => entry.id === optionId) ?? ICON_OPTIONS[0]
 const getPresetById = (iconId: string) => ICON_PRESETS.find((entry) => entry.id === iconId)
 const isSvgIcon = (icon: string) => /^\s*(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/.test(icon)
+const SVG_FRAGMENT_PATTERN = /<(?:path|circle|rect|line|polyline|polygon|ellipse|g)\b[\s\S]*$/i
 const sanitizeSvgIcon = (icon: string) => DOMPurify.sanitize(icon, {
   USE_PROFILES: { svg: true, svgFilters: true },
   FORBID_TAGS: ["script", "foreignObject"],
   FORBID_ATTR: ["onload", "onclick", "onerror", "style"],
 })
 const sameIcon = (left: TVibecanvasToolIcon | null, right: TVibecanvasToolIcon | null) => JSON.stringify(left) === JSON.stringify(right)
-const normalizeIcon = (icon: TVibecanvasToolIcon | undefined): TVibecanvasToolIcon | null => {
+const normalizeIcon = (icon: TVibecanvasToolIcon | string | undefined): TVibecanvasToolIcon | null => {
+  if (typeof icon === "string") {
+    const value = icon.trim()
+    if (value.length === 0) {
+      return null
+    }
+
+    return isLucideStaticIconKey(value) ? { lucidIcon: value } : { svgIcon: value }
+  }
+
   const svgIcon = icon?.svgIcon?.trim()
   if (svgIcon) {
     return { svgIcon }
@@ -66,6 +76,36 @@ const normalizeIcon = (icon: TVibecanvasToolIcon | undefined): TVibecanvasToolIc
   }
 
   return null
+}
+const toSvgMarkup = (icon: string) => {
+  const value = icon.trim()
+  if (isSvgIcon(value)) {
+    return sanitizeSvgIcon(value)
+  }
+
+  const fragmentMatch = SVG_FRAGMENT_PATTERN.exec(value)
+  if (fragmentMatch) {
+    return sanitizeSvgIcon(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${fragmentMatch[0]}</svg>`)
+  }
+
+  return undefined
+}
+
+function IconGlyph(props: { icon?: string }) {
+  const svgMarkup = createMemo(() => props.icon ? toSvgMarkup(props.icon) : undefined)
+
+  return (
+    <Show when={props.icon}>
+      {(icon) => (
+        <Show
+          when={svgMarkup()}
+          fallback={<span class="ai-wizzard-icon-select-text">{icon()}</span>}
+        >
+          {(markup) => <span class="ai-wizzard-icon-select-glyph" innerHTML={markup()} aria-hidden="true" />}
+        </Show>
+      )}
+    </Show>
+  )
 }
 
 export function ToolTab(props: IProps) {
@@ -269,9 +309,11 @@ export function ToolTab(props: IProps) {
           </div>
           <div class="ai-wizzard-icon-preview ai-wizzard-icon-preview--header" aria-hidden="true">
             <Show when={previewIcon()}>
-              {(icon) => isSvgIcon(icon())
-                ? <div class="ai-wizzard-icon-preview__svg" innerHTML={sanitizeSvgIcon(icon())} />
-                : <div class="ai-wizzard-icon-preview__svg">{icon()}</div>}
+              {(icon) => (
+                <div class="ai-wizzard-icon-preview__svg">
+                  <IconGlyph icon={icon()} />
+                </div>
+              )}
             </Show>
           </div>
         </div>
@@ -337,9 +379,7 @@ export function ToolTab(props: IProps) {
               onClick={() => setIsIconMenuOpen((value) => !value)}
             >
               <span class="ai-wizzard-icon-select-value">
-                <Show when={selectedIconOption().icon}>
-                  {(svg) => <span class="ai-wizzard-icon-select-glyph" innerHTML={svg()} aria-hidden="true" />}
-                </Show>
+                <IconGlyph icon={selectedIconOption().icon} />
                 <span>{selectedIconOption().label}</span>
               </span>
               <span class="ai-wizzard-kobalte-select-icon">v</span>
@@ -356,9 +396,7 @@ export function ToolTab(props: IProps) {
                       aria-selected={iconId() === option.id}
                       onClick={() => selectIcon(option.id)}
                     >
-                      <Show when={option.icon}>
-                        {(svg) => <span class="ai-wizzard-icon-select-glyph" innerHTML={svg()} aria-hidden="true" />}
-                      </Show>
+                      <IconGlyph icon={option.icon} />
                       <span>{option.label}</span>
                     </button>
                   )}

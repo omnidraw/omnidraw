@@ -1122,6 +1122,18 @@
   justify-content: center;
 }
 
+.ai-wizzard-icon-select-text {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1;
+}
+
 .ai-wizzard-number-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 36px 36px;
@@ -1871,6 +1883,10 @@
   box-shadow: 0 18px 48px rgb(0 0 0 / 0.22);
 }
 
+.ai-wizzard-dialog--wide {
+  width: min(720px, calc(100vw - 24px));
+}
+
 .ai-wizzard-dialog__header {
   align-items: flex-start;
   border-bottom: 1px solid var(--border);
@@ -1950,6 +1966,74 @@
   padding: 14px 20px;
 }
 
+.ai-wizzard-picker-state {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ai-wizzard-widget-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-wizzard-widget-picker-item {
+  align-items: stretch;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr);
+  min-height: 88px;
+  padding: 12px;
+  text-align: left;
+}
+
+.ai-wizzard-widget-picker-item:hover,
+.ai-wizzard-widget-picker-item--selected {
+  border-color: #ff7a2f;
+  background: color-mix(in srgb, #ff7a2f 12%, var(--background));
+}
+
+.ai-wizzard-widget-picker-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-wizzard-widget-picker-item__main,
+.ai-wizzard-widget-picker-item__meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ai-wizzard-widget-picker-item__main strong {
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ai-wizzard-widget-picker-item__main span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ai-wizzard-widget-picker-item__meta {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .ai-wizzard-status {
   color: var(--muted-foreground);
   font-size: 12px;
@@ -1986,7 +2070,8 @@
   .ai-actor-editor__grid,
   .ai-wizzard-section-grid,
   .ai-wizzard-tool-form,
-  .ai-wizzard-provider-grid {
+  .ai-wizzard-provider-grid,
+  .ai-wizzard-widget-picker-item {
     grid-template-columns: 1fr;
   }
 

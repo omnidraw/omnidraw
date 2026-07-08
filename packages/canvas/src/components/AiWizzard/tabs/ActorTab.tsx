@@ -49,10 +49,10 @@ function parseJsonField(label: string, text: string): TJsonValidation {
 export function ActorTab(props: IProps) {
   const [manifest, setManifest] = createSignal<TVibecanvasJson | null>(props.actor)
   const [manifestSource, setManifestSource] = createSignal<"file" | "actor-candidate" | "connected">(props.actorSource)
-  const [name, setName] = createSignal("")
-  const [description, setDescription] = createSignal("")
-  const [initialDataText, setInitialDataText] = createSignal("")
-  const [dataSchemaText, setDataSchemaText] = createSignal("")
+  const [name, setName] = createSignal(props.actor?.name ?? "")
+  const [description, setDescription] = createSignal(props.actor?.description ?? "")
+  const [initialDataText, setInitialDataText] = createSignal(formatJson(props.actor?.actor.initialData))
+  const [dataSchemaText, setDataSchemaText] = createSignal(formatJson(props.actor?.actor.dataSchema ?? true))
   const [loadError, setLoadError] = createSignal<string>()
   const [saveError, setSaveError] = createSignal<string>()
   const [saveStatus, setSaveStatus] = createSignal<"idle" | "saving" | "saved">("idle")
@@ -188,136 +188,135 @@ export function ActorTab(props: IProps) {
     setSaveStatus("saved")
   }
 
-  return (
-    <Show
-      when={manifest() !== null}
-      fallback={
-      <div class="ai-wizzard-tab">
-        <section class="ai-wizzard-option-card ai-wizzard-option-card--selected">
-          <span class="ai-wizzard-kicker">Actor</span>
-          <strong>No actor loaded</strong>
-          <p>{loadError() ?? "Ask the chat to generate an actor/widget first. Once an actor candidate exists, this tab will show the manifest for inspection."}</p>
-        </section>
-      </div>
-      }
-    >
-    <div class="ai-wizzard-tab ai-wizzard-tab--actor">
-      <section class="ai-actor-editor">
-        <header class="ai-actor-editor__header">
-          <div>
-            <span class="ai-wizzard-kicker">{isCandidate() ? "Draft actor candidate" : "Actor manifest"}</span>
-            <strong>{manifest()?.name}</strong>
-            <p>
-              {isCandidate()
-                ? "This is a draft candidate. Approve it to scaffold files, then continue the AI run that implements the actor transitions and widget UI."
-                : "Editing draft manifest fields from the scaffolded vibecanvas.json file."}
-            </p>
-          </div>
-          <Show
-            when={!isCandidate()}
-            fallback={
-              <div class="ai-actor-editor__header-actions">
-                <div class="ai-actor-editor__status ai-actor-editor__status--candidate">Draft</div>
-                <button type="button" class="ai-actor-editor__approve-button" disabled={props.isApproving} onClick={() => void props.onApprove()}>
-                  {props.isApproving ? "Generating" : "Approve + implement"}
-                </button>
-              </div>
-            }
-          >
-            <div class="ai-actor-editor__header-actions">
-              <div class="ai-actor-editor__status" data-state={saveStatus()}>
-                <Show when={jsonError()} fallback={saveStatus() === "saved" ? "Saved" : isDirty() ? "Unsaved" : "Clean"}>
-                  Invalid JSON
-                </Show>
-              </div>
-            </div>
-          </Show>
-        </header>
+  const noActorLoaded = () => (
+    <div class="ai-wizzard-tab">
+      <section class="ai-wizzard-option-card ai-wizzard-option-card--selected">
+        <span class="ai-wizzard-kicker">Actor</span>
+        <strong>No actor loaded</strong>
+        <p>{loadError() ?? "Ask the chat to generate an actor/widget first. Once an actor candidate exists, this tab will show the manifest for inspection."}</p>
+      </section>
+    </div>
+  )
 
-        <div class="ai-actor-editor__grid">
+  return (
+    <Show when={manifest() !== null} fallback={noActorLoaded()}>
+      <div class="ai-wizzard-tab ai-wizzard-tab--actor">
+        <section class="ai-actor-editor">
+          <header class="ai-actor-editor__header">
+            <div>
+              <span class="ai-wizzard-kicker">{isCandidate() ? "Draft actor candidate" : "Actor manifest"}</span>
+              <strong>{manifest()?.name}</strong>
+              <p>
+                {isCandidate()
+                  ? "This is a draft candidate. Approve it to scaffold files, then continue the AI run that implements the actor transitions and widget UI."
+                  : "Editing draft manifest fields from the scaffolded vibecanvas.json file."}
+              </p>
+            </div>
+            <Show
+              when={!isCandidate()}
+              fallback={
+                <div class="ai-actor-editor__header-actions">
+                  <div class="ai-actor-editor__status ai-actor-editor__status--candidate">Draft</div>
+                  <button type="button" class="ai-actor-editor__approve-button" disabled={props.isApproving} onClick={() => void props.onApprove()}>
+                    {props.isApproving ? "Generating" : "Approve + implement"}
+                  </button>
+                </div>
+              }
+            >
+              <div class="ai-actor-editor__header-actions">
+                <div class="ai-actor-editor__status" data-state={saveStatus()}>
+                  <Show when={jsonError()} fallback={saveStatus() === "saved" ? "Saved" : isDirty() ? "Unsaved" : "Clean"}>
+                    Invalid JSON
+                  </Show>
+                </div>
+              </div>
+            </Show>
+          </header>
+
+          <div class="ai-actor-editor__grid">
+            <label class="ai-actor-editor__field">
+              <span>Name</span>
+              <input
+                readOnly={isCandidate()}
+                value={name()}
+                onInput={(event) => {
+                  setName(event.currentTarget.value)
+                  setSaveStatus("idle")
+                  setSaveError(undefined)
+                }}
+              />
+            </label>
+
+            <label class="ai-actor-editor__field">
+              <span>Initial state</span>
+              <input value={manifest()?.actor.initialState ?? ""} readOnly />
+            </label>
+          </div>
+
           <label class="ai-actor-editor__field">
-            <span>Name</span>
-            <input
+            <span>Description</span>
+            <textarea
+              rows={4}
               readOnly={isCandidate()}
-              value={name()}
+              value={description()}
               onInput={(event) => {
-                setName(event.currentTarget.value)
+                setDescription(event.currentTarget.value)
                 setSaveStatus("idle")
                 setSaveError(undefined)
               }}
             />
           </label>
 
-          <label class="ai-actor-editor__field">
-            <span>Initial state</span>
-            <input value={manifest()?.actor.initialState ?? ""} readOnly />
-          </label>
-        </div>
+          <div class="ai-actor-editor__grid">
+            <label class="ai-actor-editor__field ai-actor-editor__field--json">
+              <span>Initial data JSON</span>
+              <textarea
+                rows={12}
+                readOnly={isCandidate()}
+                spellcheck={false}
+                value={initialDataText()}
+                onInput={(event) => setJsonField("initialData", event.currentTarget.value)}
+              />
+              <Show when={initialDataValidation().error}>
+                {(error) => <small>{error()}</small>}
+              </Show>
+            </label>
 
-        <label class="ai-actor-editor__field">
-          <span>Description</span>
-          <textarea
-            rows={4}
-            readOnly={isCandidate()}
-            value={description()}
-            onInput={(event) => {
-              setDescription(event.currentTarget.value)
-              setSaveStatus("idle")
-              setSaveError(undefined)
-            }}
-          />
-        </label>
+            <label class="ai-actor-editor__field ai-actor-editor__field--json">
+              <span>Data schema JSON</span>
+              <textarea
+                rows={12}
+                readOnly={isCandidate()}
+                spellcheck={false}
+                value={dataSchemaText()}
+                onInput={(event) => setJsonField("dataSchema", event.currentTarget.value)}
+              />
+              <Show when={dataSchemaValidation().error}>
+                {(error) => <small>{error()}</small>}
+              </Show>
+            </label>
+          </div>
 
-        <div class="ai-actor-editor__grid">
-          <label class="ai-actor-editor__field ai-actor-editor__field--json">
-            <span>Initial data JSON</span>
-            <textarea
-              rows={12}
-              readOnly={isCandidate()}
-              spellcheck={false}
-              value={initialDataText()}
-              onInput={(event) => setJsonField("initialData", event.currentTarget.value)}
-            />
-            <Show when={initialDataValidation().error}>
-              {(error) => <small>{error()}</small>}
-            </Show>
-          </label>
-
-          <label class="ai-actor-editor__field ai-actor-editor__field--json">
-            <span>Data schema JSON</span>
-            <textarea
-              rows={12}
-              readOnly={isCandidate()}
-              spellcheck={false}
-              value={dataSchemaText()}
-              onInput={(event) => setJsonField("dataSchema", event.currentTarget.value)}
-            />
-            <Show when={dataSchemaValidation().error}>
-              {(error) => <small>{error()}</small>}
-            </Show>
-          </label>
-        </div>
-
-        <Show when={saveError()}>
-          {(error) => <pre class="ai-actor-editor__error">{error()}</pre>}
-        </Show>
-
-        <div class="ai-actor-editor__actions">
-          <Show
-            when={isCandidate()}
-            fallback={
-              <button type="button" class="ai-wizzard-primary-button" disabled={!canSave()} onClick={() => void saveManifest()}>
-                {saveStatus() === "saving" ? "Saving" : "Save manifest"}
-              </button>
-            }
-          >
-            <span class="ai-actor-editor__hint">Approve this candidate to scaffold files and start the implementation prompt.</span>
+          <Show when={saveError()}>
+            {(error) => <pre class="ai-actor-editor__error">{error()}</pre>}
           </Show>
-        </div>
-      </section>
 
-      <ActorStateMachineView manifest={manifest() ?? undefined} variant="embedded" title="Draft actor state machine" />
-    </div>
+          <div class="ai-actor-editor__actions">
+            <Show
+              when={isCandidate()}
+              fallback={
+                <button type="button" class="ai-wizzard-primary-button" disabled={!canSave()} onClick={() => void saveManifest()}>
+                  {saveStatus() === "saving" ? "Saving" : "Save manifest"}
+                </button>
+              }
+            >
+              <span class="ai-actor-editor__hint">Approve this candidate to scaffold files and start the implementation prompt.</span>
+            </Show>
+          </div>
+        </section>
+
+        <ActorStateMachineView manifest={manifest() ?? undefined} variant="embedded" title="Draft actor state machine" />
+      </div>
     </Show>
   )
 }

@@ -20,6 +20,7 @@ import { apiWizzardNewSession } from "./api.wizzard.newSession";
 import { apiWizzardPreviewSource } from "./api.wizzard.previewSource";
 import { apiWizzardPublish } from "./api.wizzard.publish";
 import { apiWizzardPrompt } from "./api.wizzard.prompt";
+import { apiWizzardStartWidgetEdit } from "./api.wizzard.startWidgetEdit";
 import { baseAgentOs } from './orpc';
 
 const agentHandlers = {
@@ -38,6 +39,7 @@ const agentHandlers = {
     },
     wizzard: {
         connect: apiWizzardConnect,
+        startWidgetEdit: apiWizzardStartWidgetEdit,
         prompt: apiWizzardPrompt,
         cancel: apiWizzardCancel,
         newSession: apiWizzardNewSession,
