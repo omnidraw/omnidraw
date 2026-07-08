@@ -62,13 +62,38 @@ function getMessageObject(message: unknown) {
     : undefined
 }
 
+function getToolResultText(message: Record<string, unknown>) {
+  const content = message.content
+
+  if (!Array.isArray(content)) {
+    return ""
+  }
+
+  return content
+    .map((part) => {
+      const object = getMessageObject(part)
+      return typeof object?.text === "string" ? object.text : ""
+    })
+    .join("\n")
+}
+
+function hasFailedActorCandidateToolResult(message: Record<string, unknown>) {
+  const details = getMessageObject(message.details)
+  const validation = getMessageObject(details?.validation)
+  const contentText = getToolResultText(message).toLowerCase()
+
+  return message.isError === true
+    || validation?.ok === false
+    || contentText.includes("actor candidate is invalid")
+}
+
 function isSetActorCandidateToolResult(message: unknown) {
   const object = getMessageObject(message)
 
   return object?.role === "toolResult"
     && typeof object.toolName === "string"
     && object.toolName.toLowerCase() === "vc_set_actor_candidate"
-    && object.isError !== true
+    && !hasFailedActorCandidateToolResult(object)
 }
 
 function isScrolledToBottom(element: HTMLElement) {

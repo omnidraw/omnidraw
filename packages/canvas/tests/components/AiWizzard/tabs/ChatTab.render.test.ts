@@ -290,7 +290,6 @@ describe("ChatTab rendered message history", () => {
       role: "toolResult",
       toolCallId: "call-fail",
       toolName: "vc_set_actor_candidate",
-      isError: true,
       content: [
         { type: "text", text: "Actor candidate is invalid." },
       ],
