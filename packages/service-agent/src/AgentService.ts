@@ -13,7 +13,7 @@ import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
 import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txAppendActorCandidateApprovalRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
-import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './systemprompts';
+import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
 import type { TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetEditSessionRecord } from './tools/types';
 

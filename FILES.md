@@ -630,7 +630,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
-| [packages/service-agent/src/systemprompts.ts](packages/service-agent/src/systemprompts.ts) |  |
+| [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
+| [packages/service-agent/src/prompts/index.ts](packages/service-agent/src/prompts/index.ts) |  |
+| [packages/service-agent/src/prompts/prompt.actor-implementation.md](packages/service-agent/src/prompts/prompt.actor-implementation.md) |  |
+| [packages/service-agent/src/prompts/prompt.arrow-js.md](packages/service-agent/src/prompts/prompt.arrow-js.md) |  |
+| [packages/service-agent/src/prompts/prompt.product-and-manifest.md](packages/service-agent/src/prompts/prompt.product-and-manifest.md) |  |
+| [packages/service-agent/src/prompts/prompt.style-guide.md](packages/service-agent/src/prompts/prompt.style-guide.md) |  |
+| [packages/service-agent/src/prompts/prompt.tools.md](packages/service-agent/src/prompts/prompt.tools.md) |  |
+| [packages/service-agent/src/prompts/prompt.widget-implementation.md](packages/service-agent/src/prompts/prompt.widget-implementation.md) |  |
 | [packages/service-agent/src/tools/CONSTANTS.ts](packages/service-agent/src/tools/CONSTANTS.ts) |  |
 | [packages/service-agent/src/tools/fn.candidate.ts](packages/service-agent/src/tools/fn.candidate.ts) |  |
 | [packages/service-agent/src/tools/fn.phase-tools.ts](packages/service-agent/src/tools/fn.phase-tools.ts) |  |

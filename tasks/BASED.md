@@ -190,6 +190,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A60](a/A60.md) - actor IPC: spawn same compiled binary
 - [x]: [A61](a/A61.md) - ai wizard: approve should scaffold then prompt AI implementation
 - [x]: [A62](a/A62.md) - widgets: header three-dot menu
+- [ ]: [A63](a/A63.md) - widgets: split instance delete from definition delete
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
