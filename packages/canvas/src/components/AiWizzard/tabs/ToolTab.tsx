@@ -1,7 +1,9 @@
 import { NumberField } from "@kobalte/core/number-field"
 import { TextField } from "@kobalte/core/text-field"
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
+import { isLucideStaticIconKey, type TVibecanvasToolIcon } from "@vibecanvas/service-actor/core/tool-icon"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
+import DOMPurify from "dompurify"
 import * as Lucid from "lucide-static"
 import Code from "lucide-static/icons/code.svg?raw"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
@@ -40,12 +42,31 @@ const ICON_PRESETS = Object.entries(Lucid).reduce((p, [k,v]) => {
 
 const ICON_OPTIONS: readonly TIconOption[] = [
   { id: ICON_NONE_ID, label: "No icon", icon: "" },
-  { id: ICON_SVG_ID, label: "Custom SVG", icon: Code },
+  { id: ICON_SVG_ID, label: "Custom SVG / emoji / text", icon: Code },
   ...ICON_PRESETS,
 ]
 
 const getIconOption = (optionId: string) => ICON_OPTIONS.find((entry) => entry.id === optionId) ?? ICON_OPTIONS[0]
-const getPresetByIcon = (icon: string) => ICON_PRESETS.find((entry) => entry.icon === icon)
+const getPresetById = (iconId: string) => ICON_PRESETS.find((entry) => entry.id === iconId)
+const isSvgIcon = (icon: string) => /^\s*(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/.test(icon)
+const sanitizeSvgIcon = (icon: string) => DOMPurify.sanitize(icon, {
+  USE_PROFILES: { svg: true, svgFilters: true },
+  FORBID_TAGS: ["script", "foreignObject"],
+  FORBID_ATTR: ["onload", "onclick", "onerror", "style"],
+})
+const sameIcon = (left: TVibecanvasToolIcon | null, right: TVibecanvasToolIcon | null) => JSON.stringify(left) === JSON.stringify(right)
+const normalizeIcon = (icon: TVibecanvasToolIcon | undefined): TVibecanvasToolIcon | null => {
+  const svgIcon = icon?.svgIcon?.trim()
+  if (svgIcon) {
+    return { svgIcon }
+  }
+
+  if (isLucideStaticIconKey(icon?.lucidIcon)) {
+    return { lucidIcon: icon.lucidIcon }
+  }
+
+  return null
+}
 
 export function ToolTab(props: IProps) {
   const [label, setLabel] = createSignal("")
@@ -76,17 +97,30 @@ export function ToolTab(props: IProps) {
   })
 
   const groupValue = createMemo(() => groupId() === GROUP_NONE_ID ? null : groupId())
-  const iconValue = createMemo(() => {
+  const iconValue = createMemo<TVibecanvasToolIcon | null>(() => {
     if (iconId() === ICON_NONE_ID) {
       return null
     }
 
     if (iconId() === ICON_SVG_ID) {
       const value = customIconSvg().trim()
-      return value.length > 0 ? value : null
+      return value.length > 0 ? { svgIcon: value } : null
     }
 
-    return getIconOption(iconId()).icon || null
+    return getPresetById(iconId()) ? { lucidIcon: iconId() } : null
+  })
+  const previewIcon = createMemo(() => {
+    const icon = iconValue()
+    const svgIcon = icon?.svgIcon?.trim()
+    if (svgIcon) {
+      return svgIcon
+    }
+
+    if (icon?.lucidIcon) {
+      return getPresetById(icon.lucidIcon)?.icon
+    }
+
+    return undefined
   })
 
   const parsedPriority = createMemo(() => {
@@ -114,7 +148,7 @@ export function ToolTab(props: IProps) {
     }
 
     return currentTool.label !== label()
-      || (currentTool.icon ?? null) !== iconValue()
+      || !sameIcon(normalizeIcon(currentTool.icon), iconValue())
       || (currentTool.group ?? null) !== groupValue()
       || currentTool.priority !== parsedPriority()
   })
@@ -131,22 +165,27 @@ export function ToolTab(props: IProps) {
     setGroupId(nextTool.group?.trim() ? nextTool.group : GROUP_NONE_ID)
     setPriorityText(nextTool.priority === undefined ? "" : String(nextTool.priority))
 
-    const currentIcon = nextTool.icon ?? ""
-    const preset = getPresetByIcon(currentIcon)
+    const currentIcon = normalizeIcon(nextTool.icon)
     if (!currentIcon) {
       setIconId(ICON_NONE_ID)
       setCustomIconSvg("")
       return
     }
 
-    if (preset) {
-      setIconId(preset.id)
+    if (currentIcon.svgIcon) {
+      setIconId(ICON_SVG_ID)
+      setCustomIconSvg(currentIcon.svgIcon)
+      return
+    }
+
+    if (currentIcon.lucidIcon && getPresetById(currentIcon.lucidIcon)) {
+      setIconId(currentIcon.lucidIcon)
       setCustomIconSvg("")
       return
     }
 
-    setIconId(ICON_SVG_ID)
-    setCustomIconSvg(currentIcon)
+    setIconId(ICON_NONE_ID)
+    setCustomIconSvg("")
   }
 
   createEffect(() => {
@@ -171,7 +210,7 @@ export function ToolTab(props: IProps) {
       return
     }
 
-    const patchPayload: { label: string; icon?: string | null; group?: string | null; priority?: number | null } = {
+    const patchPayload: { label: string; icon?: TVibecanvasToolIcon | null; group?: string | null; priority?: number | null } = {
       label: label(),
       icon: iconValue(),
       group: groupValue(),
@@ -229,8 +268,10 @@ export function ToolTab(props: IProps) {
             <strong>Configure toolbar metadata</strong>
           </div>
           <div class="ai-wizzard-icon-preview ai-wizzard-icon-preview--header" aria-hidden="true">
-            <Show when={iconValue()}>
-              {(svg) => <div class="ai-wizzard-icon-preview__svg" innerHTML={svg()} />}
+            <Show when={previewIcon()}>
+              {(icon) => isSvgIcon(icon())
+                ? <div class="ai-wizzard-icon-preview__svg" innerHTML={sanitizeSvgIcon(icon())} />
+                : <div class="ai-wizzard-icon-preview__svg">{icon()}</div>}
             </Show>
           </div>
         </div>
@@ -335,7 +376,7 @@ export function ToolTab(props: IProps) {
                 markDirty()
               }}
             >
-              <TextField.Label class="ai-wizzard-label">SVG</TextField.Label>
+              <TextField.Label class="ai-wizzard-label">Custom SVG / emoji / text</TextField.Label>
               <TextField.TextArea class="ai-wizzard-kobalte-textarea" rows={5} spellcheck={false} />
             </TextField>
           </Show>

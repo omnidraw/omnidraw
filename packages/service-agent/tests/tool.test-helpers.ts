@@ -79,7 +79,7 @@ export function sampleCandidate(overrides: Partial<TActorCandidate> = {}): TActo
     widget: {
       tool: {
         label: 'Counter',
-        icon: '🔢',
+        icon: { svgIcon: '🔢' },
         group: 'Generated',
         priority: 10,
         behavior: { type: 'mode', mode: 'draw-create' },

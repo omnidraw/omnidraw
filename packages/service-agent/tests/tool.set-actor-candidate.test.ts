@@ -95,4 +95,26 @@ describe('vc_set_actor_candidate', () => {
     expect(result.details.validation.ok).toBe(false);
     expect(sessionManager.entries).toHaveLength(0);
   });
+
+  test('rejects invalid lucid icon keys', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const tool = createSetActorCandidateTool({ cwd, sessionManager });
+    const base = sampleCandidate();
+    const invalid = sampleCandidate({
+      widget: {
+        tool: {
+          ...base.widget.tool,
+          icon: { lucidIcon: 'not-a-lucide-icon' },
+        },
+      },
+    });
+
+    const result = await executeTool(tool, { candidate: invalid });
+
+    expect(result.isError).toBe(true);
+    expect(result.details.validation.ok).toBe(false);
+    expect(result.details.validation.errors.some((error: string) => error.includes('widget.tool.icon.lucidIcon'))).toBe(true);
+    expect(sessionManager.entries).toHaveLength(0);
+  });
 });

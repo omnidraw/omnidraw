@@ -29,6 +29,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
 | [apps/cli/src/hooks.ts](apps/cli/src/hooks.ts) |  |
+| [apps/cli/src/main-app.ts](apps/cli/src/main-app.ts) |  |
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
 | [apps/cli/src/parse-argv.ts](apps/cli/src/parse-argv.ts) |  |
 | [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
@@ -132,6 +133,27 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/src/styles/global.css](apps/web/src/styles/global.css) |  |
 | [apps/web/tsconfig.json](apps/web/tsconfig.json) |  |
 
+## packages/actor-ui
+
+| path | jsdocs |
+|---|---|
+| [packages/actor-ui/demo/actors.ts](packages/actor-ui/demo/actors.ts) |  |
+| [packages/actor-ui/demo/main.tsx](packages/actor-ui/demo/main.tsx) |  |
+| [packages/actor-ui/demo/styles.css](packages/actor-ui/demo/styles.css) |  |
+| [packages/actor-ui/index.html](packages/actor-ui/index.html) |  |
+| [packages/actor-ui/package.json](packages/actor-ui/package.json) |  |
+| [packages/actor-ui/playwright.config.ts](packages/actor-ui/playwright.config.ts) |  |
+| [packages/actor-ui/src/ActorStateMachineView.tsx](packages/actor-ui/src/ActorStateMachineView.tsx) |  |
+| [packages/actor-ui/src/fn.edge.ts](packages/actor-ui/src/fn.edge.ts) |  |
+| [packages/actor-ui/src/fn.elbow.ts](packages/actor-ui/src/fn.elbow.ts) |  |
+| [packages/actor-ui/src/fn.labels.ts](packages/actor-ui/src/fn.labels.ts) |  |
+| [packages/actor-ui/src/fn.layout.ts](packages/actor-ui/src/fn.layout.ts) |  |
+| [packages/actor-ui/src/index.ts](packages/actor-ui/src/index.ts) |  |
+| [packages/actor-ui/src/styles.css](packages/actor-ui/src/styles.css) |  |
+| [packages/actor-ui/tsconfig.json](packages/actor-ui/tsconfig.json) |  |
+| [packages/actor-ui/vite.config.ts](packages/actor-ui/vite.config.ts) |  |
+| [packages/actor-ui/vitest.config.ts](packages/actor-ui/vitest.config.ts) |  |
+
 ## packages/api-actors
 
 | path | jsdocs |
@@ -175,6 +197,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.wizzard.newSession.ts](packages/api-agent/src/api.wizzard.newSession.ts) |  |
 | [packages/api-agent/src/api.wizzard.previewSource.ts](packages/api-agent/src/api.wizzard.previewSource.ts) |  |
 | [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
+| [packages/api-agent/src/api.wizzard.publish.ts](packages/api-agent/src/api.wizzard.publish.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
 | [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
@@ -310,6 +333,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts](packages/canvas/src/components/AiWizzard/tabs/fn.markdown.ts) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx](packages/canvas/src/components/AiWizzard/tabs/PreviewTab.tsx) |  |
 | [packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx](packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx) |  |
+| [packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx](packages/canvas/src/components/AiWizzard/tabs/ToolTab.tsx) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.css](packages/canvas/src/components/CanvasContextMenu/index.css) |  |
 | [packages/canvas/src/components/CanvasContextMenu/index.tsx](packages/canvas/src/components/CanvasContextMenu/index.tsx) |  |
@@ -501,6 +525,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/widget/CONSTANTS.ts](packages/canvas/src/services/widget/CONSTANTS.ts) |  |
 | [packages/canvas/src/services/widget/fn.create-widget-node.ts](packages/canvas/src/services/widget/fn.create-widget-node.ts) |  |
 | [packages/canvas/src/services/widget/fn.get-host-theme-colors.ts](packages/canvas/src/services/widget/fn.get-host-theme-colors.ts) |  |
+| [packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts](packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts) |  |
 | [packages/canvas/src/services/widget/fn.to-widget-element.ts](packages/canvas/src/services/widget/fn.to-widget-element.ts) |  |
 | [packages/canvas/src/services/widget/fx.attach-widget-listener.ts](packages/canvas/src/services/widget/fx.attach-widget-listener.ts) |  |
 | [packages/canvas/src/services/widget/fx.draw-host.ts](packages/canvas/src/services/widget/fx.draw-host.ts) |  |
@@ -541,6 +566,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/sdk/.gitignore](packages/sdk/.gitignore) |  |
+| [packages/sdk/actor/index.d.ts](packages/sdk/actor/index.d.ts) |  |
+| [packages/sdk/actor/index.js](packages/sdk/actor/index.js) |  |
+| [packages/sdk/actor/package.json](packages/sdk/actor/package.json) |  |
 | [packages/sdk/package.json](packages/sdk/package.json) |  |
 | [packages/sdk/scripts/build.ts](packages/sdk/scripts/build.ts) |  |
 | [packages/sdk/src/actor.ts](packages/sdk/src/actor.ts) |  |
@@ -552,6 +580,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/sdk/tsconfig.build.json](packages/sdk/tsconfig.build.json) |  |
 | [packages/sdk/tsconfig.json](packages/sdk/tsconfig.json) |  |
 | [packages/sdk/vibecanvas.schema.json](packages/sdk/vibecanvas.schema.json) |  |
+| [packages/sdk/widget/index.d.ts](packages/sdk/widget/index.d.ts) |  |
+| [packages/sdk/widget/index.js](packages/sdk/widget/index.js) |  |
+| [packages/sdk/widget/package.json](packages/sdk/widget/package.json) |  |
 
 ## packages/service-actor
 
@@ -559,17 +590,19 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/service-actor/AGENTS.md](packages/service-actor/AGENTS.md) |  |
 | [packages/service-actor/package.json](packages/service-actor/package.json) |  |
+| [packages/service-actor/src/actor-ipc-command.ts](packages/service-actor/src/actor-ipc-command.ts) |  |
 | [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process, validating inbox and output messages around guest transitions. |
 | [packages/service-actor/src/ActorService.ts](packages/service-actor/src/ActorService.ts) |  |
 | [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
 | [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
 | [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
+| [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |
 | [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
 | [packages/service-actor/src/core/tx.vibecanvas-widgets.ts](packages/service-actor/src/core/tx.vibecanvas-widgets.ts) |  |
 | [packages/service-actor/src/core/types.ts](packages/service-actor/src/core/types.ts) |  |
 | [packages/service-actor/src/core/vibecanvasjson.zod.ts](packages/service-actor/src/core/vibecanvasjson.zod.ts) |  |
-| [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent |
+| [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
@@ -580,7 +613,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/AGENTS.md](packages/service-agent/AGENTS.md) |  |
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
-| [packages/service-agent/src/systemprompts.ts](packages/service-agent/src/systemprompts.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
 | [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |
@@ -598,6 +630,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
+| [packages/service-agent/src/systemprompts.ts](packages/service-agent/src/systemprompts.ts) |  |
 | [packages/service-agent/src/tools/CONSTANTS.ts](packages/service-agent/src/tools/CONSTANTS.ts) |  |
 | [packages/service-agent/src/tools/fn.candidate.ts](packages/service-agent/src/tools/fn.candidate.ts) |  |
 | [packages/service-agent/src/tools/fn.phase-tools.ts](packages/service-agent/src/tools/fn.phase-tools.ts) |  |
@@ -606,6 +639,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/tool.publish-widget.ts](packages/service-agent/src/tools/tool.publish-widget.ts) |  |
 | [packages/service-agent/src/tools/tool.set-actor-candidate.ts](packages/service-agent/src/tools/tool.set-actor-candidate.ts) |  |
 | [packages/service-agent/src/tools/tool.validate-widget-files.ts](packages/service-agent/src/tools/tool.validate-widget-files.ts) |  |
+| [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
 | [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
 | [packages/service-agent/tsconfig.json](packages/service-agent/tsconfig.json) |  |

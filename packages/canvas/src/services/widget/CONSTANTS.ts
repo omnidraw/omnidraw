@@ -1,3 +1,7 @@
+import * as Lucid from "lucide-static"
+
+export const LUCIDE_STATIC_ICON_BY_KEY: Readonly<Record<string, string>> = Lucid
+
 export const WIDGET_HOST_BORDER_ID = 'border'
 export const WIDGET_HOST_HEADER_ID = 'header'
 export const WIDGET_HOST_TITLE_ID = 'title'

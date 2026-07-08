@@ -1,7 +1,8 @@
 import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
 import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
+import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TActorData, TActorState, TJsonSchema, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZActorData, ZJsonSchema, ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import { ZActorData, ZJsonSchema, ZVibecanvasJson, ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
@@ -136,7 +137,7 @@ type TAgentDraftManifestPatch = {
   dataSchema?: unknown;
   tool?: {
     label?: string;
-    icon?: string | null;
+    icon?: TVibecanvasToolIcon | null;
     group?: string | null;
     priority?: number | null;
   };
@@ -433,22 +434,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     const currentCandidate = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
     if (!currentCandidate.ready && currentCandidate.reason === 'manifest-missing') {
-      const candidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
-      if (!candidate) {
-        return {
-          ok: false,
-          reason: currentCandidate.reason === 'session-missing' ? 'session-missing' : currentCandidate.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-          message: currentCandidate.reason === 'manifest-missing' ? 'Draft vibecanvas.json does not exist yet. Candidate must exist and can be edited before publish.' : currentCandidate.message,
-        }
+      return {
+        ok: false,
+        reason: 'manifest-missing',
+        message: 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.',
       }
-
-      const editResult = this.#applyDraftManifestPatch(candidate.manifest, patch)
-      if (!editResult.ok) return editResult
-
-      const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
-      await writeFile(manifestPath, `${JSON.stringify(editResult.manifest, null, 2)}\n`, 'utf8')
-
-      return editResult
     }
     if (!currentCandidate.ready) {
       return {
@@ -648,12 +638,18 @@ export class AgentService implements IService, IStartableService, IStoppableServ
             ...tool,
             icon: undefined,
           }
-        } else if (typeof patch.tool.icon !== 'string') {
-          issues.push('widget.tool.icon: expected a string')
         } else {
-          tool = {
-            ...tool,
-            icon: patch.tool.icon,
+          const parsedIcon = ZVibecanvasToolIcon.safeParse(patch.tool.icon)
+          if (!parsedIcon.success) {
+            issues.push(...parsedIcon.error.issues.map((issue) => {
+              const path = ['widget', 'tool', 'icon', ...issue.path].join('.')
+              return `${path}: ${issue.message}`
+            }))
+          } else {
+            tool = {
+              ...tool,
+              icon: parsedIcon.data,
+            }
           }
         }
       }

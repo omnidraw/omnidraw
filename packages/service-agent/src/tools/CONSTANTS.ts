@@ -1,3 +1,4 @@
+import { LUCIDE_STATIC_ICON_KEYS } from '@vibecanvas/service-actor/core/tool-icon';
 import { ZVibecanvasActor, ZVibecanvasActorWidget, ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -69,6 +70,20 @@ const ACTOR_TOOL_BEHAVIOR_SCHEMA = Type.Union([
   Type.Object({ type: Type.Literal('modal') }),
 ]);
 
+const ACTOR_TOOL_ICON_SCHEMA = Type.Object({
+  lucidIcon: Type.Optional(Type.String({
+    enum: [...LUCIDE_STATIC_ICON_KEYS],
+    description: 'Valid lucide-static export key. Use this for common toolbar icons.',
+  })),
+  svgIcon: Type.Optional(Type.String({
+    minLength: 1,
+    description: 'Raw SVG XML, emoji, or text. Takes precedence over lucidIcon when both are present.',
+  })),
+}, {
+  additionalProperties: false,
+  description: 'Structured toolbar icon metadata. Provide at least one of lucidIcon or svgIcon.',
+});
+
 export const ACTOR_CANDIDATE_PARAMETER_SCHEMA = Type.Object({
   slug: Type.Optional(Type.String({ minLength: 1, description: 'URL/file-safe slug. If omitted, Vibecanvas derives one from name.' })),
   name: Type.String({ minLength: 1, description: 'Human-readable widget/actor name.' }),
@@ -87,7 +102,7 @@ export const ACTOR_CANDIDATE_PARAMETER_SCHEMA = Type.Object({
   widget: Type.Object({
     tool: Type.Object({
       label: Type.String({ minLength: 1, description: 'Tool label shown in the canvas UI.' }),
-      icon: Type.Optional(Type.String({ description: 'Small icon/emoji for the tool.' })),
+      icon: Type.Optional(ACTOR_TOOL_ICON_SCHEMA),
       group: Type.Optional(Type.String({ description: 'Tool group label.' })),
       priority: Type.Optional(Type.Number({ description: 'Tool ordering priority.' })),
       behavior: ACTOR_TOOL_BEHAVIOR_SCHEMA,

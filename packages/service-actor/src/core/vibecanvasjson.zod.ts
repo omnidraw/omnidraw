@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+import { LUCIDE_STATIC_ICON_KEYS, isLucideStaticIconKey } from './tool-icon';
 import type { TActorData, TActorState, TFunctionName, TJsonSchema, TVibecanvasJson } from './types';
+import type { TVibecanvasToolIcon } from './tool-icon';
 
 export const ZJsonSchemaPrimitiveType = z.enum([
   'null',
@@ -70,6 +72,16 @@ export const ZFunctionName = z.custom<TFunctionName>(
   (value) => typeof value === 'string' && /^(fn|fx|tx)\..*$/.test(value),
 );
 
+export const ZVibecanvasToolIcon: z.ZodType<TVibecanvasToolIcon> = z.object({
+  lucidIcon: z.custom<string>(
+    isLucideStaticIconKey,
+    `expected one of: ${LUCIDE_STATIC_ICON_KEYS.join(', ')}`,
+  ).optional(),
+  svgIcon: z.string().min(1).optional(),
+}).strict().refine((icon) => icon.lucidIcon !== undefined || icon.svgIcon !== undefined, {
+  message: 'expected at least one of lucidIcon or svgIcon',
+});
+
 export const ZTransition = z.object({
   func: z.array(ZFunctionName),
   allowedTargetStates: z.array(ZActorState),
@@ -93,7 +105,7 @@ export const ZVibecanvasActorWidget = z.object({
   relWidgetDir: z.string(),
   tool: z.object({
     label: z.string(),
-    icon: z.string().optional(),
+    icon: ZVibecanvasToolIcon.optional(),
     group: z.string().optional(),
     priority: z.number().optional(),
     behavior: z.discriminatedUnion('type', [
