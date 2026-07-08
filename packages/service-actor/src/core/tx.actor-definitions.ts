@@ -1,6 +1,8 @@
 import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import type { TVibecanvasJson } from "./types";
 import type { readdir as _readdir } from 'node:fs/promises';
+import type { rm as _rm } from 'node:fs/promises';
+import type { dirname as _dirname } from 'node:path';
 import type { isAbsolute as _isAbsolute, join as _join, relative as _relative } from 'node:path';
 
 type TVibecanvasDefinition = TVibecanvasJson & {
@@ -31,6 +33,15 @@ type TArgsReadWidgetCode = {
   absWidgetDir: string,
 }
 
+type TPortalDeleteActorDefinitionFiles = {
+  dirname: typeof _dirname,
+  rm: typeof _rm,
+}
+
+type TArgsDeleteActorDefinitionFiles = {
+  absManifestPath: string,
+}
+
 function manifestPathToRelativeConfigPath(portal: TPortalSyncDbActorDefinitions, manifestPath: string): string {
   return portal.isAbsolute(manifestPath) ? portal.relative(portal.configPath, manifestPath) : manifestPath
 }
@@ -56,6 +67,13 @@ export async function txGetWidgetCode(portal: TPortalReadWidgetCode, args: TArgs
   }
 
   return collectFiles(args.absWidgetDir)
+}
+
+export async function txDeleteActorDefinitionFiles(portal: TPortalDeleteActorDefinitionFiles, args: TArgsDeleteActorDefinitionFiles): Promise<void> {
+  await portal.rm(portal.dirname(args.absManifestPath), {
+    recursive: true,
+    force: true,
+  })
 }
 
 export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinitions, args: TArgsSyncDbActorDefinitions) {

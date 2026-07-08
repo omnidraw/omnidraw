@@ -3,6 +3,7 @@ import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/int
 import type { TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
+import type { ConfirmDialogService } from "../confirm-dialog/ConfirmDialogService";
 import type { CameraService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "..";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
@@ -52,6 +53,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #sceneService: SceneService;
   #renderOrderService: RenderOrderService;
   #cameraService: CameraService;
+  #confirmDialogService: ConfirmDialogService;
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #apiService: TOrpcSafeClient;
@@ -73,6 +75,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#sceneService = props.sceneService;
     this.#renderOrderService = props.renderOrderService;
     this.#cameraService = props.cameraService;
+    this.#confirmDialogService = props.confirmDialogService;
     this.#apiService = props.apiService
   }
 
@@ -191,6 +194,56 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     return true;
   }
 
+  async #deleteWidgetDefinition(kind: string) {
+    this.#contextMenuService.close();
+    const confirmed = await this.#confirmDialogService.confirm({
+      title: "Delete widget",
+      description: `Delete the published widget "${kind}"? This removes all current canvas instances and unregisters the widget from the toolbar. This action cannot be undone.`,
+      confirmLabel: "Delete widget",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    if (!confirmed) {
+      return false;
+    }
+
+    const [error] = await this.#apiService.api.actors.definitions.delete({ name: kind });
+    if (error) {
+      this.#loggingService.warn({
+        kind: "service",
+        name: this.name,
+        level: 1,
+        event: "delete-widget-definition-failed",
+        payload: error,
+      });
+      return false;
+    }
+
+    const doc = this.#crdtService.doc();
+    const matchingElements = Object.values(doc.elements).filter((element) => {
+      return element.data.type === "widget" && element.data.kind === kind;
+    });
+
+    if (matchingElements.length > 0) {
+      let builder = this.#crdtService.build();
+      matchingElements.forEach((element) => {
+        const node = this.#findWidgetNodeById(element.id);
+        if (node) {
+          builder = this.#elementService.removeElement(node, builder);
+          return;
+        }
+
+        builder.deleteElement(element.id);
+      });
+      builder.commit();
+    }
+
+    this.unregisterWidget(kind);
+    this.#selectionService.clear();
+    this.#sceneService.staticForegroundLayer.batchDraw();
+    return true;
+  }
+
   #syncWidgetDomPortal(node: Konva.Node) {
     const syncWidgetDomPortal = node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as TWidgetDomPortalSync | undefined;
     syncWidgetDomPortal?.();
@@ -267,6 +320,36 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     }
 
     this.#selectionService.setSelection([args.node]);
+    const deleteActions = widgetData.type === "widget"
+      ? [
+        {
+          id: "widget-delete-instance",
+          label: "Delete instance",
+          priority: 30,
+          onSelect: () => {
+            this.#removeWidgetNode(args.node, { recordHistory: true });
+          },
+        },
+        {
+          id: "widget-delete-definition",
+          label: "Delete widget",
+          priority: 40,
+          onSelect: () => {
+            void this.#deleteWidgetDefinition(widgetData.kind);
+          },
+        },
+      ]
+      : [
+        {
+          id: "widget-delete",
+          label: "Delete widget",
+          priority: 30,
+          onSelect: () => {
+            this.#removeWidgetNode(args.node, { recordHistory: true });
+          },
+        },
+      ];
+
     this.#contextMenuService.openWithActionsAt({
       x: args.anchor.x,
       y: args.anchor.y,
@@ -294,21 +377,18 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
             );
           },
         },
-        {
-          id: "widget-delete",
-          label: "Delete widget",
-          priority: 30,
-          onSelect: () => {
-            this.#removeWidgetNode(args.node, { recordHistory: true });
-          },
-        },
+        ...deleteActions,
       ],
     });
   }
 
+  unregisterWidget(kind: string) {
+    this.#toolService.unregisterTool(kind);
+    this.#elementService.unregisterElement(kind);
+  }
+
   registerWidget(wConfig: IWidgetConfig) {
-    this.#toolService.unregisterTool(wConfig.id);
-    this.#elementService.unregisterElement(wConfig.id);
+    this.unregisterWidget(wConfig.id);
 
     if (wConfig.tool) {
       fxRegisterWidgetTool({

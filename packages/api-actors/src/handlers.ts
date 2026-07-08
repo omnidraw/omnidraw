@@ -1,6 +1,7 @@
 import { baseActorsOs } from './orpc';
 import { apiListDefinitions } from "./api.def-list";
 import { apiGetDefinitions } from "./api.def-get";
+import { apiDeleteDefinition } from "./api.def-delete";
 import { apiActorSnapshot } from "./api.actor-snapshot";
 import { apiNotificationEvents } from "./api.events";
 import { apiActorSendMessage } from "./api.instance-send-message";
@@ -9,6 +10,7 @@ const actorsHandlers = {
     definitions: {
         list: apiListDefinitions,
         get: apiGetDefinitions,
+        delete: apiDeleteDefinition,
     },
     events: apiNotificationEvents,
     instances: {

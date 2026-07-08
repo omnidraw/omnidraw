@@ -2,14 +2,14 @@ import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbSer
 import type { TActorConnection, TActorInstance } from "@vibecanvas/service-db/model";
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
-import { readdir, exists } from "node:fs/promises"
+import { readdir, exists, rm } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
 import type { TActorState, TVibecanvasJson } from "./core/types";
 import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./core/fn.actor-connections";
 import { fnToActorData } from "./core/fn.actor-data";
-import { txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
+import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
@@ -29,6 +29,7 @@ interface IPublicMethods { // not in use yet
   failedMessage(): Promise<void>;
   createInstance(defId: string, canvasId: string): Promise<void>
   removeInstance(instanceId: string): Promise<void>
+  deleteDefinition(defName: string): Promise<boolean>
 
 }
 
@@ -285,6 +286,37 @@ export class ActorSupervisor {
     }
 
     await this.#config.db.actor.deleteInstance(instanceId)
+  }
+
+  public async deleteDefinition(defName: string): Promise<boolean> {
+    const def = this.vibecanvasDefMap[defName]
+    if (!def) {
+      return false
+    }
+
+    const instances = await this.#config.db.actor.listInstances()
+    const matchingInstances = instances.filter((instance) => instance.actor_definition_name === defName)
+    for (const instance of matchingInstances) {
+      await this.removeInstance(instance.id)
+    }
+
+    await txDeleteActorDefinitionFiles({
+      dirname,
+      rm,
+    }, {
+      absManifestPath: resolveManifestPath(this.#config.configPath, def.manifest_path),
+    })
+    await this.#config.db.actor.deleteDefinition(defName)
+    delete this.vibecanvasDefMap[defName]
+    await this.reloadConnections()
+
+    this.#config.eventPublisherService.publishNotification({
+      type: 'success',
+      title: 'Widget deleted',
+      description: `Deleted ${defName}.`,
+    })
+
+    return true
   }
 
 

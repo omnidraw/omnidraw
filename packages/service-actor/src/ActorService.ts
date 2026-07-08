@@ -19,6 +19,7 @@ interface IPublicMethods {
   listenToActorEvents(instanceId: string, cb: (event: TActorEvent) => void): (() => void) | null
   createInstance(defId: string, canvasId: string, elementId: string): Promise<Actor | null>
   removeInstance(instanceId: string): Promise<void>
+  deleteDefinition(defName: string): Promise<boolean>
   getVibecanvasJson(defId: string): TVibecanvasJson | null;
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
   reload(): Promise<void>
@@ -69,6 +70,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   async removeInstance(instanceId: string): Promise<void> {
     return this.#supervisor.removeInstance(instanceId)
+  }
+
+  async deleteDefinition(defName: string): Promise<boolean> {
+    return this.#supervisor.deleteDefinition(defName)
   }
 
   async sendMessage(instanceId: string, msgName: string, msgPayload: any): Promise<string> {

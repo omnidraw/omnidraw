@@ -1,5 +1,6 @@
 export * from "./ai/Ai.plugin";
 export * from "./camera-control/CameraControl.plugin";
+export * from "./confirm-dialog/ConfirmDialog.plugin";
 export * from "./context-menu/ContextMenu.plugin";
 export * from "./event-listener/EventListener.plugin";
 export * from "./filesystem/Filesystem.plugin";
