@@ -255,7 +255,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S62](s/S62.md) - reimplement terminal widget API path
 - [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
 - [x]: [S64](s/S64.md) - db: store actor manifest paths relative to config
-- [ ]: [S65](s/S65.md) - widget tool icon metadata object and validation
+- [x]: [S65](s/S65.md) - widget tool icon metadata object and validation
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
