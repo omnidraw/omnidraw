@@ -88,15 +88,15 @@
     },
     "apps/vibecanvas": {
       "name": "vibecanvas",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "bin": {
         "vibecanvas": "./bin/vibecanvas",
       },
       "optionalDependencies": {
-        "vibecanvas-darwin-arm64": "0.4.1",
-        "vibecanvas-linux-arm64": "0.4.1",
-        "vibecanvas-linux-x64": "0.4.1",
-        "vibecanvas-linux-x64-baseline": "0.4.1",
+        "vibecanvas-darwin-arm64": "0.4.2",
+        "vibecanvas-linux-arm64": "0.4.2",
+        "vibecanvas-linux-x64": "0.4.2",
+        "vibecanvas-linux-x64-baseline": "0.4.2",
       },
     },
     "apps/web": {
@@ -2289,14 +2289,6 @@
     "vfile-message": ["vfile-message@4.0.3", "", { "dependencies": { "@types/unist": "^3.0.0", "unist-util-stringify-position": "^4.0.0" } }, "sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw=="],
 
     "vibecanvas": ["vibecanvas@workspace:apps/vibecanvas"],
-
-    "vibecanvas-darwin-arm64": ["vibecanvas-darwin-arm64@0.4.1", "", { "os": "darwin", "cpu": "arm64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-pG9qhmHl61saEm+ktZ3boaTVVihd1tzmhsLOcfVt5A6Qm81bGHQsacYaBZ+UMof/iMLmT4bTTCmyT2MVE3j2Ig=="],
-
-    "vibecanvas-linux-arm64": ["vibecanvas-linux-arm64@0.4.1", "", { "os": "linux", "cpu": "arm64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-ZjOowB4Gj9/iVseqnqoe1rlgKUp1Tjnzi3KActjlP+KIHBrGVWMjRRBSKrr5fnUj+2XfOLOpLm54EKPy5XMilA=="],
-
-    "vibecanvas-linux-x64": ["vibecanvas-linux-x64@0.4.1", "", { "os": "linux", "cpu": "x64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-vcPxkJYBhlKA0zCYkea8TE04qU0icLALzw3y9107jeJt8aNRpCIGgtmBjXSJ663V88bem2FgBg34yzMYugtZPw=="],
-
-    "vibecanvas-linux-x64-baseline": ["vibecanvas-linux-x64-baseline@0.4.1", "", { "os": "linux", "cpu": "x64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-z3TEnDbbGmUDAHczREDdKIiLa2iDbeV4r9yWIMWtAaGTDyDbx2lvRI9wflCRi0XYD1E4w4u9sbuhBzDO2oNaHw=="],
 
     "vite": ["vite@7.3.2", "", { "dependencies": { "esbuild": "^0.27.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-Bby3NOsna2jsjfLVOHKes8sGwgl4TT0E6vvpYgnAYDIF/tie7MRaFthmKuHx1NSXjiTueXH3do80FMQgvEktRg=="],
 
