@@ -56,13 +56,24 @@ async function createServiceFixture() {
       relFunctionPath: './actor/functions.ts',
       initialState: 'ready',
       initialData: { count: 0 },
-      inputMsgSchema: { ping: { type: 'object', additionalProperties: true } },
+      inputMsgSchema: {
+        ping: { type: 'object', additionalProperties: true },
+        'in.resetError': { type: 'object', additionalProperties: true },
+      },
       outputMsgSchema: {},
       states: {
         ready: {
           on: {
             ping: {
               func: ['tx.increment'],
+              allowedTargetStates: ['ready'],
+            },
+          },
+        },
+        error: {
+          on: {
+            'in.resetError': {
+              func: ['tx.resetError'],
               allowedTargetStates: ['ready'],
             },
           },
@@ -85,6 +96,7 @@ async function createServiceFixture() {
     '    "tx.increment": async (portal, args) => {',
     '      await portal.setData({ count: (args.data.count ?? 0) + 1 });',
     '    },',
+    '    "tx.resetError": async () => {},',
     '  },',
     '};',
     '',
@@ -100,7 +112,7 @@ async function createServiceFixture() {
   ].join('\n'), 'utf8');
 
   service.sessionMap[widgetId] = {
-    [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: {} as never },
+    [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: { getEntries: () => [] } as never },
   };
 
   return { service, eventPublisher, widgetId, sessionId };
@@ -285,6 +297,23 @@ describe('AgentService draft actor runtime', () => {
     expect(Object.keys(result.sources).sort()).toEqual(['main.css', 'main.ts']);
     expect(result.sources['main.ts']).toContain('Draft widget');
     expect(result.sources['main.css']).toContain('color: red');
+  });
+
+  test('emits widget update event after publishing draft', async () => {
+    const { service, eventPublisher, widgetId, sessionId } = await createServiceFixture();
+
+    const result = await service.publishWizzard(widgetId, sessionId);
+    expect(result.published).toBe(true);
+    if (!result.published) throw new Error(result.message);
+
+    const updateEvent = eventPublisher.agentEvents.find((event) => 'kind' in event && event.kind === 'widgetupdate');
+    expect(updateEvent).toEqual({
+      kind: 'widgetupdate',
+      widgetId,
+      sessionId,
+      cwd: result.destination,
+      files: result.files,
+    });
   });
 
   test('patches draft tool icon metadata and rejects invalid lucid keys', async () => {

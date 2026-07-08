@@ -15,7 +15,7 @@ import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txAppendActorCandidateApprovalRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './systemprompts';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
-import type { TActorCandidateRecord, TActorServiceReloader, TWidgetEditSessionRecord } from './tools/types';
+import type { TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetEditSessionRecord } from './tools/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -594,6 +594,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
+    this.#publishToolEvent(id, sessionId, { type: 'widgetupdate', cwd: result.destination, files: result.files })
+
     return {
       published: true,
       manifest: result.manifest,
@@ -882,6 +884,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
       sessionManager,
       actorService: this.#config.actorService,
+      onEvent: (event) => this.#publishToolEvent(id, sessionId, event),
     })
     const services = await createAgentSessionServices({
       cwd,
@@ -931,6 +934,18 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   #wizzardToolNames(phaseTools: ReturnType<typeof fnCreateWidgetWizardPhaseTools>): string[] {
     return [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)]
+  }
+
+  #publishToolEvent(id: TWidgetId, sessionId: TSessionId, event: TToolEvent): void {
+    if (event.type !== 'widgetupdate') return
+
+    this.#config.eventPublisherService.publishAgentEvent({
+      kind: 'widgetupdate',
+      widgetId: id,
+      sessionId,
+      cwd: event.cwd,
+      files: event.files,
+    })
   }
 
   #sameToolSet(left: readonly string[], right: readonly string[]): boolean {

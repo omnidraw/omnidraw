@@ -35,7 +35,14 @@ export type TAgentDraftActorEvent = {
   event: TAgentDraftActorRuntimeEvent | { kind: 'lifecycle'; type: 'stopped'; actorId: string };
   snapshot?: TAgentDraftActorSnapshot;
 };
-export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent;
+export type TAgentWidgetUpdateEvent = {
+  kind: 'widgetupdate';
+  widgetId: string;
+  sessionId: string;
+  cwd: string;
+  files: string[];
+};
+export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent | TAgentWidgetUpdateEvent;
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
