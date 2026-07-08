@@ -334,7 +334,7 @@ else
     done
 
     if [[ "$checksum_verified" != "true" ]]; then
-        checksum_url="https://github.com/$REPO/releases/download/v${specific_version}/${package_name}.sha256"
+        checksum_url="https://github.com/$REPO/releases/download/vibecanvas-v${specific_version}/${package_name}.sha256"
         echo -e "${MUTED}Downloading checksum...${NC}"
         if curl -fsSL -o "$tmp_dir/${package_name}.sha256" "$checksum_url"; then
             verify_binary_checksum "$binary_candidate" "$tmp_dir/${package_name}.sha256"

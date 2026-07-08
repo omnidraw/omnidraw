@@ -151,29 +151,27 @@ function resolveUpdatePolicy(config: ICliConfig, method: TInstallMethod): TUpdat
 }
 
 function extractVersionFromTag(tag: string): string {
-  return tag.replace(/^v/i, '');
+  return tag.replace(/^vibecanvas-v/i, '').replace(/^v/i, '');
+}
+
+function isStableReleaseTag(tag: string): boolean {
+  return /^vibecanvas-v\d+\.\d+\.\d+$/i.test(tag);
 }
 
 async function fetchLatestVersion(targetVersionOverride?: string): Promise<TLatestVersion | null> {
   const channel = getUpdateChannel();
 
   if (targetVersionOverride) {
-    return { version: targetVersionOverride.replace(/^v/i, ''), channel };
-  }
-
-  if (channel === 'stable') {
-    const response = await fetch(`${RELEASES_API}/latest`);
-    if (!response.ok) return null;
-    const data = (await response.json()) as { tag_name?: string };
-    if (!data.tag_name) return null;
-    return { version: extractVersionFromTag(data.tag_name), channel };
+    return { version: extractVersionFromTag(targetVersionOverride), channel };
   }
 
   const response = await fetch(`${RELEASES_API}?per_page=50`);
   if (!response.ok) return null;
 
   const releases = (await response.json()) as Array<{ tag_name?: string }>;
-  const match = releases.find((release) => release.tag_name?.toLowerCase().includes(channel));
+  const match = channel === 'stable'
+    ? releases.find((release) => release.tag_name ? isStableReleaseTag(release.tag_name) : false)
+    : releases.find((release) => release.tag_name?.toLowerCase().includes(`-${channel}`));
   if (!match?.tag_name) return null;
 
   return { version: extractVersionFromTag(match.tag_name), channel };
@@ -450,7 +448,7 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
   const checksumPath = join(tempRoot, releaseAsset.checksumName);
   const extractDir = join(tempRoot, 'extract');
   const tempConfigDir = join(tempRoot, 'config');
-  const releaseTag = `v${args.version.replace(/^v/i, '')}`;
+  const releaseTag = `vibecanvas-v${extractVersionFromTag(args.version)}`;
 
   try {
     args.onProgress?.({ percent: 72, label: `Downloading ${releaseAsset.archiveName}` });
