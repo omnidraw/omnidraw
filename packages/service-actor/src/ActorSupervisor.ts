@@ -70,6 +70,43 @@ export class ActorSupervisor {
     await this.reloadConnections()
   }
 
+  async reloadDefinitionInstances(defName: string) {
+    const def = this.vibecanvasDefMap[defName]
+    if (!def) return
+
+    const instances = await this.#config.db.actor.listInstances()
+    const matchingInstances = instances.filter((instance) => instance.actor_definition_name === defName)
+
+    for (const instance of matchingInstances) {
+      const actor = this.actorMap[instance.id]
+      if (actor) {
+        actor.close()
+        delete this.actorMap[instance.id]
+      }
+
+      await this.#config.db.actor.updateInstanceMachine({
+        id: instance.id,
+        machine_state: def.actor.initialState,
+        machine_context: def.actor.initialData,
+      })
+      await this.#config.db.actor.updateInstanceStatus({ id: instance.id, status: 'created' })
+      await this.loadActorInstance({
+        ...instance,
+        machine_state: def.actor.initialState,
+        machine_context: def.actor.initialData,
+        status: 'created',
+      })
+    }
+
+    if (matchingInstances.length > 0) {
+      this.#config.eventPublisherService.publishNotification({
+        type: 'success',
+        title: 'Widget instances reloaded',
+        description: `Reloaded ${matchingInstances.length} instance(s) for ${defName}.`,
+      })
+    }
+  }
+
   private async reloadDefinitions() {
     const nextDefMap: { [name: string]: TVibecanvasJson & { manifest_path: string } } = {}
     const defs = await fxListVibecanvasJsons({ Bun, readdir, join, exists }, { widgetDir: this.#config.absWidgetDir })

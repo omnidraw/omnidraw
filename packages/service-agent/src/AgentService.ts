@@ -8,12 +8,14 @@ import type { IService, IStartableService, IStoppableService } from '@vibecanvas
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { mkdirSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, join, relative as relativePath, resolve } from 'node:path';
-import { fxLatestActorCandidateRecord } from './core/fx.session-candidate';
+import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
+import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
+import { fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
+import { txAppendActorCandidateApprovalRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './systemprompts';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
-import type { TActorCandidateRecord, TActorServiceReloader } from './tools/types';
+import type { TActorCandidateRecord, TActorServiceReloader, TWidgetEditSessionRecord } from './tools/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -68,6 +70,7 @@ type TAgentConnectResult = {
   vcJson: TVibecanvasJson | null;
   actorCandidate: TActorCandidateRecord | null;
   messageHistory: AgentSession['messages'];
+  editSession: TWidgetEditSessionRecord | null;
 };
 type TAgentCancelResult = {
   canceled: boolean;
@@ -151,6 +154,10 @@ type TAgentWizzardPublishResult =
   | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
   | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
 
+type TAgentWizzardStartWidgetEditResult =
+  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: TWidgetEditSessionRecord; messageHistory: AgentSession['messages'] }
+  | { ok: false; message: string };
+
 const PROMPT_IMAGE_FALLBACK_TEXT = 'Please use the attached image.'
 const PROMPT_IMAGE_MAX_COUNT = 5
 const PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
@@ -219,11 +226,77 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       vcJson,
       actorCandidate,
       messageHistory: sessionEntry.session.messages,
+      editSession: fxLatestWidgetEditSessionRecord({ sessionManager }),
     }
   }
 
   newWizzardSession(id: TWidgetId, sessionId: string): void {
     this.#disposeWizzardSession(id, sessionId)
+  }
+
+  async startWidgetEditWizzard(id: TWidgetId, sessionId: string, definitionName: string): Promise<TAgentWizzardStartWidgetEditResult> {
+    const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
+    if (!sourceManifest) {
+      return { ok: false, message: `Published widget definition not found: ${definitionName}` }
+    }
+
+    const sourceManifestPath = this.#resolveConfigPath(sourceManifest.manifest_path)
+    const sourceDir = dirname(sourceManifestPath)
+    const draftDir = this.#getWizardCwd(id, sessionId)
+    const sourceStat = await stat(sourceDir).catch(() => null)
+    if (!sourceStat?.isDirectory()) {
+      return { ok: false, message: `Published widget folder does not exist: ${sourceDir}` }
+    }
+
+    this.#disposeWizzardSession(id, sessionId)
+    await rm(draftDir, { recursive: true, force: true })
+    await mkdir(draftDir, { recursive: true })
+    await cp(sourceDir, draftDir, {
+      recursive: true,
+      filter: (source) => this.#shouldCopyPublishedWidgetFile(sourceDir, source),
+    })
+
+    const nextVersion = fnBumpWidgetVersion(sourceManifest.version)
+    const draftManifest: TVibecanvasJson = {
+      ...sourceManifest,
+      version: nextVersion,
+    }
+    const draftManifestPath = join(draftDir, 'vibecanvas.json')
+    await writeFile(draftManifestPath, `${JSON.stringify(draftManifest, null, 2)}\n`, 'utf8')
+
+    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+    const sessionManager = SessionManager.continueRecent(draftDir, sessionDir)
+    const editSession = txAppendWidgetEditSessionRecord({ sessionManager }, {
+      mode: 'edit-published-widget',
+      sourceDefinitionName: definitionName,
+      sourceSlug: sourceManifest.slug,
+      sourceName: sourceManifest.name,
+      sourceManifestPath: sourceManifest.manifest_path,
+      previousVersion: sourceManifest.version,
+      nextVersion,
+      startedAt: new Date().toISOString(),
+    })
+    txAppendActorCandidateApprovalRecord({ sessionManager }, {
+      candidateRevision: 0,
+      manifest: draftManifest,
+      files: await this.#listDraftFiles(draftDir),
+      approvedAt: editSession.startedAt,
+    })
+    txAppendDraftManifestPathRecord({ sessionManager }, { manifestPath: draftManifestPath })
+
+    const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
+    if (!this.sessionMap[id]) {
+      this.sessionMap[id] = {}
+    }
+    this.sessionMap[id][sessionId] = sessionEntry
+
+    return {
+      ok: true,
+      vcJson: draftManifest,
+      phase: 'implementation',
+      editSession,
+      messageHistory: sessionEntry.session.messages,
+    }
   }
 
   async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
@@ -478,10 +551,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
+    const editSession = fxLatestWidgetEditSessionRecord({ sessionManager: this.sessionMap[id][sessionId].sessionManager })
+    const shouldReloadEditedInstances = editSession !== null
+      && editSession.sourceName === manifestResult.manifest.name
+      && editSession.sourceSlug === manifestResult.manifest.slug
     const result = await txPublishWidgetDraft({ readdir, readFile, mkdir, rm, cp, join, relative: relativePath, resolve, basename }, {
       cwd: rootDir,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      actorService: this.#config.actorService,
+      actorService: shouldReloadEditedInstances ? undefined : this.#config.actorService,
     })
 
     if (!result.published) {
@@ -496,6 +573,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     this.#disposeDraftActor(id, sessionId)
+    await this.#config.actorService?.reload()
+    if (shouldReloadEditedInstances) {
+      await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
+    }
     if (!result.destination) {
       return {
         published: false,
@@ -742,6 +823,38 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   #getWizardCwd(id: TWidgetId, sessionId: TSessionId): string {
     return join(this.#piAgentDir, 'widget-cwd', id + sessionId);
+  }
+
+  #resolveConfigPath(path: string): string {
+    return isAbsolute(path) ? path : join(this.#config.configPath, path)
+  }
+
+  #shouldCopyPublishedWidgetFile(sourceDir: string, source: string): boolean {
+    const relative = relativePath(sourceDir, source)
+    if (relative.length === 0) return true
+
+    const parts = relative.split(/[\\/]/)
+    return !parts.some((part) => part === 'node_modules' || part === '.git' || part === '.vibecanvas-wizard')
+  }
+
+  async #listDraftFiles(rootDir: string): Promise<string[]> {
+    const files: string[] = []
+    await this.#listDraftFilesRecursive(rootDir, rootDir, files)
+    return files
+  }
+
+  async #listDraftFilesRecursive(rootDir: string, dir: string, files: string[]): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const absPath = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await this.#listDraftFilesRecursive(rootDir, absPath, files)
+        continue
+      }
+      if (!entry.isFile()) continue
+
+      files.push(relativePath(rootDir, absPath))
+    }
   }
 
   async #createWizzardSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TWizzardSessionEntry> {

@@ -30,6 +30,17 @@ export type TActorCandidateApprovalRecord = {
   approvedAt: string;
 };
 
+export type TWidgetEditSessionRecord = {
+  mode: 'edit-published-widget';
+  sourceDefinitionName: string;
+  sourceSlug: string;
+  sourceName: string;
+  sourceManifestPath: string;
+  previousVersion?: string;
+  nextVersion: string;
+  startedAt: string;
+};
+
 export type TToolEvent =
   | { type: 'actorCandidateChanged'; cwd: string; revision: number; candidate: TActorCandidate; manifest: TVibecanvasJson; validation: TValidationResult }
   | { type: 'widgetupdate'; cwd: string; files: string[] };

@@ -1,5 +1,5 @@
-import type { TActorCandidateApprovalRecord, TActorCandidateRecord, TCandidateSessionManager } from '../tools/types';
-import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
+import type { TActorCandidateApprovalRecord, TActorCandidateRecord, TCandidateSessionManager, TWidgetEditSessionRecord } from '../tools/types';
+import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
 
 export type TPortal = {
   sessionManager: Pick<TCandidateSessionManager, 'getEntries'>;
@@ -32,4 +32,9 @@ export function fxLatestActorCandidateRecord(portal: TPortal, args?: TArgs): TAc
 export function fxLatestActorCandidateApprovalRecord(portal: TPortal, args?: TArgs): TActorCandidateApprovalRecord | null {
   void args;
   return fxLatestCustomEntryData<TActorCandidateApprovalRecord>(portal, ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE);
+}
+
+export function fxLatestWidgetEditSessionRecord(portal: TPortal, args?: TArgs): TWidgetEditSessionRecord | null {
+  void args;
+  return fxLatestCustomEntryData<TWidgetEditSessionRecord>(portal, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE);
 }

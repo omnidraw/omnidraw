@@ -38,7 +38,8 @@ interface IProps {
   onDraftTextChange?: (text: string) => void
   onPrompt: (args: { text: string; images: TChatPromptImage[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onCancel: () => void
-  onNewChat: () => void
+  onNewWidget: () => void
+  onEditExistingWidget: () => void
   onInspectActor: () => void
 }
 
@@ -455,7 +456,8 @@ export function ChatTab(props: IProps) {
         onDraftTextChange={props.onDraftTextChange}
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
-        onNewChat={props.onNewChat}
+        onNewWidget={props.onNewWidget}
+        onEditExistingWidget={props.onEditExistingWidget}
         onCopyChat={copyChat}
       />
     </div>

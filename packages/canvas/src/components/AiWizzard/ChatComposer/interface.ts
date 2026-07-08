@@ -54,7 +54,8 @@ export type TChatComposerProps = {
   onDraftTextChange?: (text: string) => void
   onSubmit?: (value: TChatComposerSubmit) => void
   onCancel?: () => void
-  onNewChat?: () => void
+  onNewWidget?: () => void
+  onEditExistingWidget?: () => void
   onCopyChat?: () => void
 }
 
