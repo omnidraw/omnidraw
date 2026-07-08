@@ -72,21 +72,28 @@ html`
 
 ## Lists
 
-Return arrays of templates for lists. Use `.key(id)` when items can be reordered or updated.
+Return arrays of templates from inside a reactive function. Prefer the simplest unkeyed pattern first.
 
 ```ts
 html`
   <ul>
-    ${() => todos().map((todo) => html`
-      <li>${todo.title}</li>
-    `.key(todo.id))}
+    ${() => {
+      const currentTodos = todos();
+      return currentTodos.map((todo) => html`
+        <li>${todo.title}</li>
+      `);
+    }}
   </ul>
 `
 ```
 
+Avoid `.key(...)` unless identity preservation is actually required. In sandboxed widgets, complex/keyed list templates can be fragile; first prove a plain mapped list renders.
+
 ## Actor data
 
 `actor.context.value` can be null or incomplete on first render. Always provide fallbacks.
+
+If actor context visibly contains data but the UI is empty, debug the template before the backend: confirm reads are inside `${() => ...}`, then reduce rendering to the smallest plain mapped list. Do not keep adding backend logs or fetch comparisons once data is present.
 
 ```ts
 const todos = () => ((actor.context.value as any)?.todos ?? []);
