@@ -656,6 +656,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/tool.publish-widget.ts](packages/service-agent/src/tools/tool.publish-widget.ts) |  |
 | [packages/service-agent/src/tools/tool.set-actor-candidate.ts](packages/service-agent/src/tools/tool.set-actor-candidate.ts) |  |
 | [packages/service-agent/src/tools/tool.validate-widget-files.ts](packages/service-agent/src/tools/tool.validate-widget-files.ts) |  |
+| [packages/service-agent/src/tools/tool.web-fetch.ts](packages/service-agent/src/tools/tool.web-fetch.ts) |  |
 | [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
 | [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |

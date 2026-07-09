@@ -1,7 +1,7 @@
 import type { TChatComposerImage, TChatComposerModel, TChatComposerPreferenceChange, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
-import { For, createEffect, onCleanup, onMount, Show } from "solid-js"
+import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
 import { fnGetChatMessageLabel, fnGetChatMessageRole } from "./fn.chat-message-label"
 import { fnGetChatMessageParts } from "./fn.chat-message-parts"
@@ -27,6 +27,7 @@ type TAiWizardPreference = {
 const ALLOWED_IMAGE_MIME_TYPES = new Set<TChatPromptImage["mimeType"]>(["image/png", "image/jpeg", "image/gif", "image/webp"])
 const MAX_PROMPT_IMAGE_COUNT = 5
 const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024
+const TOOL_RESULT_COLLAPSED_LINE_LIMIT = 5
 
 interface IProps {
   settings?: TAgentSettings
@@ -94,6 +95,75 @@ function isSetActorCandidateToolResult(message: unknown) {
     && typeof object.toolName === "string"
     && object.toolName.toLowerCase() === "vc_set_actor_candidate"
     && !hasFailedActorCandidateToolResult(object)
+}
+
+function isToolResultMessage(message: unknown) {
+  const object = getMessageObject(message)
+  return object?.role === "toolResult"
+}
+
+function truncateTextLines(text: string, lineLimit: number) {
+  const lines = text.split(/\r\n|\n|\r/)
+
+  if (lines.length <= lineLimit) {
+    return { text, truncated: false, usedLines: lines.length }
+  }
+
+  const previewLines = lines.slice(0, lineLimit)
+  previewLines[previewLines.length - 1] = `${previewLines[previewLines.length - 1]} ...`
+
+  return {
+    text: previewLines.join("\n"),
+    truncated: true,
+    usedLines: lineLimit,
+  }
+}
+
+function collapseToolResultParts(parts: TChatMessagePart[], lineLimit: number) {
+  const collapsedParts: TChatMessagePart[] = []
+  let remainingLines = lineLimit
+  let truncated = false
+
+  for (const part of parts) {
+    if (remainingLines <= 0) {
+      truncated = true
+      break
+    }
+
+    if (part.kind === "image") {
+      collapsedParts.push(part)
+      continue
+    }
+
+    const collapsed = truncateTextLines(part.text, remainingLines)
+    collapsedParts.push({ ...part, text: collapsed.text })
+    remainingLines -= collapsed.usedLines
+
+    if (collapsed.truncated) {
+      truncated = true
+      break
+    }
+  }
+
+  if (truncated && !collapsedParts.some((part) => part.kind === "text" && part.text.endsWith(" ..."))) {
+    let lastTextPart: Extract<TChatMessagePart, { kind: "text" }> | undefined
+
+    for (let index = collapsedParts.length - 1; index >= 0; index -= 1) {
+      const part = collapsedParts[index]
+      if (part?.kind === "text") {
+        lastTextPart = part
+        break
+      }
+    }
+
+    if (lastTextPart) {
+      lastTextPart.text = `${lastTextPart.text} ...`
+    } else {
+      collapsedParts.push({ kind: "text", text: "..." })
+    }
+  }
+
+  return { parts: collapsedParts, truncated }
 }
 
 function isScrolledToBottom(element: HTMLElement) {
@@ -353,25 +423,53 @@ function AssistantMessageParts(props: { parts: TChatMessagePart[] }) {
 }
 
 function ChatHistoryMessage(props: { message: unknown; onInspectActor: () => void }) {
+  const [isExpanded, setIsExpanded] = createSignal(false)
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
   const kind = () => getMessageKind(role())
   const showInspectActor = () => isSetActorCandidateToolResult(props.message)
+  const isToolResult = () => isToolResultMessage(props.message)
+  const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
+  const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
+  const toggleToolResult = () => {
+    if (isToolResult()) {
+      setIsExpanded((value) => !value)
+    }
+  }
+  const onMessageKeyDown = (event: KeyboardEvent) => {
+    if (!isToolResult() || (event.key !== "Enter" && event.key !== " ")) {
+      return
+    }
+
+    event.preventDefault()
+    toggleToolResult()
+  }
 
   return (
-    <article class={`ai-chat-history__message ai-chat-history__message--${kind()}`}>
+    <article
+      class={`ai-chat-history__message ai-chat-history__message--${kind()}`}
+      classList={{
+        "ai-chat-history__message--tool-result": isToolResult(),
+        "ai-chat-history__message--tool-result-expanded": isToolResult() && isExpanded(),
+      }}
+      role={isToolResult() ? "button" : undefined}
+      tabIndex={isToolResult() ? 0 : undefined}
+      aria-expanded={isToolResult() ? isExpanded() : undefined}
+      onClick={toggleToolResult}
+      onKeyDown={onMessageKeyDown}
+    >
       <Show when={kind() !== "assistant"}>
         <span class="ai-chat-history__role">{label()}</span>
       </Show>
       <Show
         when={kind() === "assistant"}
-        fallback={<PlainMessageParts parts={parts()} />}
+        fallback={<PlainMessageParts parts={renderedPlainParts()} />}
       >
         <AssistantMessageParts parts={parts()} />
       </Show>
       <Show when={showInspectActor()}>
-        <div class="ai-chat-history__actions">
+        <div class="ai-chat-history__actions" onClick={(event) => event.stopPropagation()}>
           <button type="button" onClick={props.onInspectActor}>Inspect Actor</button>
         </div>
       </Show>
