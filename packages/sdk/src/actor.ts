@@ -17,13 +17,9 @@ export type TActorFunctionArgs<TContext = TVibecanvasJsonValue, TMsg = TVibecanv
   readonly msg: TMsg;
 };
 
-/** Backward-compatible short names used by current actor fixtures. */
 export type TFnPortal = TActorFunctionPortal;
 export type TFxPortal = TActorReadPortal;
 export type TTxPortal = TActorWritePortal;
-export type TFnArgs<TContext = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue> = TActorFunctionArgs<TContext, TMsg>;
-export type TFxArgs<TContext = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue> = TActorFunctionArgs<TContext, TMsg>;
-export type TTxArgs<TContext = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue> = TActorFunctionArgs<TContext, TMsg>;
 
 export type TActorFn<TContext = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue, TResult = unknown> = (
   portal: TActorFunctionPortal,

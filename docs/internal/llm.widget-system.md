@@ -347,7 +347,7 @@ Current package source files:
 - `packages/sdk/src/actor.ts`
   - Actor-side types and helpers.
   - Exposes `defineActorFunctions`, `defineFn`, `defineFx`, `defineTx`.
-  - Exposes compatibility actor types: `TFnPortal`, `TFxPortal`, `TTxPortal`, `TFnArgs`, `TFxArgs`, `TTxArgs`.
+  - Exposes short actor portal types: `TFnPortal`, `TFxPortal`, `TTxPortal`.
 
 Current status:
 
@@ -434,8 +434,7 @@ Current exports:
 - `defineActorFunctions({ fn, fx, tx })`
 - `defineFn()`, `defineFx()`, `defineTx()` helpers for typing.
 - `TActorFn`, `TActorFx`, `TActorTx` function types.
-- `TFnPortal`, `TFxPortal`, `TTxPortal` compatibility portal types.
-- `TFnArgs`, `TFxArgs`, `TTxArgs` compatibility arg types.
+- `TFnPortal`, `TFxPortal`, `TTxPortal` portal types.
 
 Potential later exports:
 
