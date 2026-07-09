@@ -262,7 +262,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S64](s/S64.md) - db: store actor manifest paths relative to config
 - [x]: [S65](s/S65.md) - widget tool icon metadata object and validation
 - [x]: [S66](s/S66.md) - ai wizard: cap chat input height
-- [ ]: [S67](s/S67.md) - floating menu only when element is selected
+- [x]: [S67](s/S67.md) - floating menu only when element is selected
 - [ ]: [S68](s/S68.md) - ai wizard chat running indicator
 - [ ]: [S69](s/S69.md) - ai wizard: save tool before phase2 updates candidate
 
