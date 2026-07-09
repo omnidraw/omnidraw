@@ -25,18 +25,6 @@ import { EditorState, Plugin, PluginKey, TextSelection } from "prosemirror-state
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view"
 import { fnFindPromptTrigger } from "./fn.trigger"
 
-const DEFAULT_MENTIONS: TChatComposerMention[] = [
-  { id: "canvas", label: "Canvas selection", kind: "context" },
-  { id: "style", label: "Style guide", kind: "context" },
-  { id: "actor", label: "Active actor", kind: "actor" },
-]
-
-const DEFAULT_COMMANDS: TChatComposerCommand[] = [
-  { id: "create-widget", label: "Create widget", description: "Draft a new canvas widget" },
-  { id: "edit-selection", label: "Edit selection", description: "Change selected canvas items" },
-  { id: "explain", label: "Explain", description: "Summarize the current design" },
-]
-
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 const MAX_PROMPT_IMAGE_COUNT = 5
 const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024
@@ -304,8 +292,8 @@ export function ChatComposer(props: TChatComposerProps) {
   const [hasManualModelSelection, setHasManualModelSelection] = createSignal(false)
   const [hasManualThinkingSelection, setHasManualThinkingSelection] = createSignal(false)
 
-  const availableMentions = () => props.mentions ?? DEFAULT_MENTIONS
-  const availableCommands = () => props.commands ?? DEFAULT_COMMANDS
+  const availableMentions = () => props.mentions ?? []
+  const availableCommands = () => props.commands ?? []
   const placeholder = () => props.placeholder ?? "Ask for follow-up changes"
   const models = createMemo(() => props.models ?? [])
   const providers = createMemo(() => Array.from(new Set(models().map((model) => model.provider))))

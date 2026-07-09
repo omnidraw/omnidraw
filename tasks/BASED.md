@@ -265,7 +265,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S67](s/S67.md) - floating menu only when element is selected
 - [x]: [S68](s/S68.md) - ai wizard chat running indicator
 - [x]: [S69](s/S69.md) - ai wizard: save tool before phase2 updates candidate
-- [ ]: [S70](s/S70.md) - ai wizard: remove default slash and mention values
+- [x]: [S70](s/S70.md) - ai wizard: remove default slash and mention values
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
