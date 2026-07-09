@@ -379,6 +379,19 @@ function ChatHistoryMessage(props: { message: unknown; onInspectActor: () => voi
   )
 }
 
+function ChatWorkingIndicator(props: { isCanceling: boolean }) {
+  return (
+    <div class="ai-chat-running" role="status" aria-live="polite">
+      <span class="ai-chat-running__dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>{props.isCanceling ? "Stopping response" : "Assistant is working"}</span>
+    </div>
+  )
+}
+
 export function ChatTab(props: IProps) {
   let contentRoot!: HTMLDivElement
   let shouldAutoScroll = true
@@ -427,8 +440,14 @@ export function ChatTab(props: IProps) {
     })
   }
 
+  const getChatScrollSignal = () => [
+    getChatHistoryScrollKey(props.messageHistory),
+    props.isRunning ? "running" : "idle",
+    props.isCanceling ? "canceling" : "active",
+  ].join(":")
+
   createEffect(() => {
-    getChatHistoryScrollKey(props.messageHistory)
+    getChatScrollSignal()
 
     if (shouldAutoScroll) {
       scheduleScrollToBottom()
@@ -455,7 +474,7 @@ export function ChatTab(props: IProps) {
   return (
     <div class="ai-wizzard-tab ai-wizzard-tab--chat">
       <div ref={contentRoot} class="ai-chat-content">
-        <Show when={props.messageHistory.length === 0}>
+        <Show when={props.messageHistory.length === 0 && !props.isRunning}>
           <div class="ai-chat-empty" aria-live="polite">
             Which Widget should AI build for you?
           </div>
@@ -468,6 +487,9 @@ export function ChatTab(props: IProps) {
               )}
             </For>
           </div>
+        </Show>
+        <Show when={props.isRunning}>
+          <ChatWorkingIndicator isCanceling={props.isCanceling} />
         </Show>
       </div>
 
