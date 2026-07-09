@@ -12,10 +12,11 @@ import { basename, dirname, isAbsolute, join, relative as relativePath, resolve 
 import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
 import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
-import { txAppendActorCandidateApprovalRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
+import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
+import { fnValidateCandidate } from './tools/fn.candidate';
 import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
-import type { TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetEditSessionRecord } from './tools/types';
+import type { TActorCandidate, TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetEditSessionRecord } from './tools/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -147,7 +148,7 @@ type TAgentDraftManifestPatch = {
 };
 
 type TAgentDraftManifestPatchResult =
-  | { ok: true; manifest: TVibecanvasJson }
+  | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
 type TAgentWizzardPublishResult =
@@ -513,29 +514,64 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
-    const currentCandidate = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
-    if (!currentCandidate.ready && currentCandidate.reason === 'manifest-missing') {
+    const currentManifest = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
+    if (!currentManifest.ready && currentManifest.reason === 'manifest-missing') {
+      const actorCandidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
+
+      if (!actorCandidate) {
+        return {
+          ok: false,
+          reason: 'manifest-missing',
+          message: 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.',
+        }
+      }
+
+      const editResult = this.#applyDraftManifestPatch(actorCandidate.manifest, patch)
+      if (!editResult.ok) return editResult
+
+      const candidate = this.#createActorCandidateFromManifest(actorCandidate.candidate, editResult.manifest)
+      const validationResult = fnValidateCandidate(candidate)
+
+      if (!validationResult.candidate || !validationResult.manifest || !validationResult.validation.ok) {
+        return {
+          ok: false,
+          reason: 'manifest-invalid',
+          message: validationResult.validation.errors.join('; ') || 'Actor candidate is invalid.',
+          issues: validationResult.validation.errors,
+        }
+      }
+
+      const record = txAppendActorCandidateRecord({ sessionManager: sessionEntry.sessionManager }, {
+        candidate: validationResult.candidate,
+        manifest: validationResult.manifest,
+        validation: validationResult.validation,
+        updatedAt: new Date().toISOString(),
+      })
+
       return {
-        ok: false,
-        reason: 'manifest-missing',
-        message: 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.',
+        ok: true,
+        source: 'actor-candidate',
+        manifest: record.manifest,
       }
     }
-    if (!currentCandidate.ready) {
+    if (!currentManifest.ready) {
       return {
         ok: false,
-        reason: currentCandidate.reason === 'session-missing' ? 'session-missing' : currentCandidate.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-        message: currentCandidate.message,
+        reason: currentManifest.reason === 'session-missing' ? 'session-missing' : currentManifest.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
+        message: currentManifest.message,
       }
     }
 
-    const editResult = this.#applyDraftManifestPatch(currentCandidate.manifest, patch)
+    const editResult = this.#applyDraftManifestPatch(currentManifest.manifest, patch)
     if (!editResult.ok) return editResult
 
     const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
     await writeFile(manifestPath, `${JSON.stringify(editResult.manifest, null, 2)}\n`, 'utf8')
 
-    return editResult
+    return {
+      ...editResult,
+      source: 'file',
+    }
   }
 
   async publishWizzard(id: TWidgetId, sessionId: string): Promise<TAgentWizzardPublishResult> {
@@ -823,7 +859,25 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     return {
       ok: true,
+      source: 'file',
       manifest: parsedManifest.data as TVibecanvasJson,
+    }
+  }
+
+  #createActorCandidateFromManifest(previousCandidate: TActorCandidate, manifest: TVibecanvasJson): TActorCandidate {
+    return {
+      ...previousCandidate,
+      slug: manifest.slug,
+      name: manifest.name,
+      description: manifest.description,
+      actor: {
+        ...previousCandidate.actor,
+        ...manifest.actor,
+      },
+      widget: {
+        ...previousCandidate.widget,
+        tool: manifest.widget.tool,
+      },
     }
   }
 

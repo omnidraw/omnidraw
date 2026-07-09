@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
 import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE } from '../src/tools/CONSTANTS';
+import { fnValidateCandidate } from '../src/tools/fn.candidate';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { createFakeSessionManager, sampleCandidate } from './tool.test-helpers';
 
 class TestEventPublisherService implements IEventPublisherService {
   name = 'test-event-publisher';
@@ -193,7 +195,7 @@ describe('AgentService draft actor runtime', () => {
     expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
   });
 
-  test('reads phase 1 manifest from actor candidate and patches only phase 2 vibecanvas.json', async () => {
+  test('reads and patches phase 1 manifest from actor candidate, then patches phase 2 vibecanvas.json', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-manifest-'));
     tempDirs.push(dataPath);
     const service = new AgentService({
@@ -207,41 +209,52 @@ describe('AgentService draft actor runtime', () => {
     const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
     await mkdir(cwd, { recursive: true });
 
-    const manifest: TVibecanvasJson = {
+    const candidate = sampleCandidate({
       slug: 'candidate-test',
       name: 'Candidate Test',
-      actor: {
-        relFunctionPath: './actor/functions.ts',
-        initialState: 'ready',
-        initialData: { count: 0 },
-        dataSchema: { type: 'object' },
-        states: {},
-      },
       widget: {
-        relWidgetDir: './widget-ui',
         tool: { label: 'Candidate Test', behavior: { type: 'action' } },
       },
-    };
-    const entries = [{
-      type: 'custom',
-      customType: ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE,
-      data: { revision: 1, candidate: {} as never, manifest, validation: { ok: true }, updatedAt: 'now' },
-    }];
+    });
+    const candidateResult = fnValidateCandidate(candidate);
+    if (!candidateResult.candidate || !candidateResult.manifest || !candidateResult.validation.ok) {
+      throw new Error('sample candidate must be valid');
+    }
+    const manifest = candidateResult.manifest;
+    const sessionManager = createFakeSessionManager();
+    sessionManager.appendCustomEntry(ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE, {
+      revision: 1,
+      candidate: candidateResult.candidate,
+      manifest,
+      validation: candidateResult.validation,
+      updatedAt: 'now',
+    });
     service.sessionMap[widgetId] = {
-      [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: { getEntries: () => entries } as never },
+      [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: sessionManager as never },
     };
 
     expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest });
-    expect(await service.patchDraftManifestWizzard(widgetId, sessionId, { name: 'No File Yet' })).toEqual({
-      ok: false,
-      reason: 'manifest-missing',
-      message: 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.',
+    const candidatePatchResult = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+      tool: {
+        label: 'Saved Candidate Tool',
+        group: 'Saved',
+        priority: 3,
+      },
     });
+    expect(candidatePatchResult.ok).toBe(true);
+    if (!candidatePatchResult.ok) throw new Error(candidatePatchResult.message);
+    expect(candidatePatchResult.source).toBe('actor-candidate');
+    expect(candidatePatchResult.manifest.widget.tool.label).toBe('Saved Candidate Tool');
+    expect(candidatePatchResult.manifest.widget.tool.group).toBe('Saved');
+    expect(candidatePatchResult.manifest.widget.tool.priority).toBe(3);
+    expect(await readFile(join(cwd, 'vibecanvas.json'), 'utf8').catch(() => null)).toBe(null);
+    expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest: candidatePatchResult.manifest });
 
-    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify(candidatePatchResult.manifest, null, 2)}\n`, 'utf8');
     const patchResult = await service.patchDraftManifestWizzard(widgetId, sessionId, { name: 'Patched Test', initialData: { count: 1 } });
     expect(patchResult.ok).toBe(true);
     if (!patchResult.ok) throw new Error(patchResult.message);
+    expect(patchResult.source).toBe('file');
     expect(patchResult.manifest.name).toBe('Patched Test');
     expect(patchResult.manifest.actor.initialData).toEqual({ count: 1 });
     expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'file', manifest: patchResult.manifest });

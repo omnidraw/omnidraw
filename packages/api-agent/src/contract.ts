@@ -169,7 +169,7 @@ export type TAgentDraftManifestPatch = {
 };
 
 export type TAgentDraftManifestPatchResult =
-  | { ok: true; manifest: TVibecanvasJson }
+  | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
 export type TAgentWizzardPublishResult =

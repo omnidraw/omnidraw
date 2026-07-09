@@ -14,7 +14,7 @@ interface IProps {
   sessionId: string
   existingGroups: string[]
   widgetId: string
-  onManifestChange: (manifest: TVibecanvasJson | null) => void
+  onManifestChange: (manifest: TVibecanvasJson | null, source: "file" | "actor-candidate") => void
 }
 
 type TIconPreset = {
@@ -280,7 +280,7 @@ export function ToolTab(props: IProps) {
       return
     }
 
-    props.onManifestChange(result.manifest)
+    props.onManifestChange(result.manifest, result.source)
     syncFromManifest(result.manifest)
     setSaveStatus("saved")
   }

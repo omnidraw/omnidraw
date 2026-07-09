@@ -516,7 +516,7 @@ export function AiWizzard(props: IProps) {
                         sessionId={sessionId()}
                         existingGroups={props.toolGroups ?? []}
                         widgetId={props.id}
-                        onManifestChange={(manifest) => setWizardManifest(manifest, "file")}
+                        onManifestChange={setWizardManifest}
                     />
                 </Tabs.Content>
                 <Tabs.Content class="ai-wizzard-tabs__content" value="preview">
