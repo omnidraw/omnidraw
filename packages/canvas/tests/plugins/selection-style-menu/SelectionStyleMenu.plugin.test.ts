@@ -46,7 +46,7 @@ function createPenElement(args?: {
 }
 
 function getStageDom(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>) {
-  return harness.stage.container();
+  return harness.stage.container().ownerDocument.body;
 }
 
 function getButtonByTitle(root: ParentNode, title: string, index = 0) {

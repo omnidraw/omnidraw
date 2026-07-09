@@ -107,12 +107,12 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
 
   const mountElement = portal.scene.container.ownerDocument.createElement("div");
   Object.assign(mountElement.style, {
-    position: "absolute",
+    position: "fixed",
     inset: "0",
     pointerEvents: "none",
     zIndex: "50",
   });
-  portal.scene.stage.container().appendChild(mountElement);
+  portal.scene.container.ownerDocument.body.appendChild(mountElement);
 
   const txRefreshEditingShape1d = () => {
     if (portal.session.editingId === null) {
