@@ -194,6 +194,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A63](a/A63.md) - widgets: split instance delete from definition delete
 - [x]: [A64](a/A64.md) - cli: uninstall command removes binary and data
 - [x]: [A65](a/A65.md) - agent tools: self-contained web_fetch tool
+- [ ]: [A66](a/A66.md) - toolbar: group widget tools into hover flyouts
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
