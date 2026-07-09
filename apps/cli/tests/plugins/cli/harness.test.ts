@@ -36,6 +36,7 @@ describe('CLI test harness', () => {
     expect(result.stdout).toContain('Commands:');
     expect(result.stdout).toContain('serve     Start the vibecanvas runtime');
     expect(result.stdout).toContain('upgrade   Check for and install updates');
+    expect(result.stdout).toContain('uninstall Remove the installed binary');
     expect(result.stdout).not.toContain('Canvas subcommands:');
     expect(result.stdout).not.toContain('vibecanvas canvas');
   });
@@ -54,5 +55,23 @@ describe('CLI test harness', () => {
       next: 'Try: vibecanvas upgrade --help',
       suggestions: ['upgrade'],
     });
+
+    const uninstallUnknown = await context.runVibecanvasCli(['uninstal', '--json']);
+    expectExitCode(uninstallUnknown, 1);
+    expect(JSON.parse(uninstallUnknown.stderr)).toMatchObject({
+      hint: "Did you mean 'uninstall'?",
+      next: 'Try: vibecanvas uninstall --help',
+      suggestions: ['uninstall'],
+    });
+  });
+
+  test('runs uninstall dry-run without deleting test config', async () => {
+    const context = await createContext();
+    const result = await context.runVibecanvasCli(['uninstall', '--dry-run']);
+
+    expectExitCode(result, 0);
+    expectNoStderr(result);
+    expect(result.stdout).toContain('[Uninstall] Dry-run');
+    expect(result.stdout).toContain('database file');
   });
 });

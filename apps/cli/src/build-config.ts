@@ -1,3 +1,4 @@
+import { fnXdgPaths } from '@vibecanvas/shared-functions/vibecanvas-config/fn.xdg-paths';
 import { txEnsureXdgPaths } from '@vibecanvas/shared-functions/vibecanvas-config/tx.xdg-paths';
 import { existsSync, mkdirSync } from 'fs';
 import type { ICliConfig } from './config';
@@ -18,10 +19,22 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
     (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION) ||
     process.env.VIBECANVAS_VERSION ||
     '0.0.0';
-  const resolved = txEnsureXdgPaths({ fs: { existsSync, mkdirSync }, dirname, join, resolve, process }, { isCompiled: compiled, homedir:homedir() });
+  const resolved = parsed.command === 'serve'
+    ? txEnsureXdgPaths({ fs: { existsSync, mkdirSync }, dirname, join, resolve, process }, { isCompiled: compiled, homedir: homedir() })
+    : (() => {
+      const paths = fnXdgPaths({ dirname, join, resolve }, {
+        env: process.env,
+        cwd: process.cwd(),
+        homedir: homedir(),
+        isCompiled: compiled,
+      });
+      return { databasePath: paths.databasePath, paths };
+    })();
 
   const dbPath = parsed.dbPath ?? resolved.databasePath;
-  mkdirSync(dirname(dbPath), { recursive: true });
+  if (parsed.command === 'serve') {
+    mkdirSync(dirname(dbPath), { recursive: true });
+  }
 
   return {
     cwd: process.cwd(),

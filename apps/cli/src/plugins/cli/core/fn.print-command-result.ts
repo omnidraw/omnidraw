@@ -11,7 +11,7 @@ type TCliErrorPayload = {
   [key: string]: unknown;
 };
 
-const ROOT_COMMANDS = ['serve', 'upgrade'] as const;
+const ROOT_COMMANDS = ['serve', 'upgrade', 'uninstall'] as const;
 
 function fnLevenshteinDistance(left: string, right: string): number {
   const a = left.toLowerCase();

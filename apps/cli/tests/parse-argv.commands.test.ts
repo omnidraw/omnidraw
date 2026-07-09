@@ -22,6 +22,7 @@ describe('parseCliArgv command resolution', () => {
   test('resolves known commands', () => {
     expect(parseCliArgv(['bun', 'run', 'serve'])).toMatchObject({ command: 'serve', subcommand: undefined });
     expect(parseCliArgv(['bun', 'run', 'upgrade'])).toMatchObject({ command: 'upgrade', subcommand: undefined });
+    expect(parseCliArgv(['bun', 'run', 'uninstall'])).toMatchObject({ command: 'uninstall', subcommand: undefined });
   });
 
   test('treats removed canvas commands as unknown', () => {

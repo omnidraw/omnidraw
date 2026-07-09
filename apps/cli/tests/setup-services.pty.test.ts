@@ -44,4 +44,11 @@ describe('setupServices PTY wiring', () => {
 
     expect(pty).toBeUndefined();
   });
+
+  test('does not provide pty service during uninstall', async () => {
+    const { services } = setupServices(createConfig({ command: 'uninstall' }));
+    const pty = services.get('pty');
+
+    expect(pty).toBeUndefined();
+  });
 });
