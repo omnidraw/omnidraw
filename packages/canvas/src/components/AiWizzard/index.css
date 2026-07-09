@@ -309,6 +309,22 @@
   padding: 0 2px;
 }
 
+.ai-chat-history__message--tool-result {
+  cursor: pointer;
+}
+
+.ai-chat-history__message--tool-result:focus-visible {
+  outline: none;
+  box-shadow:
+    5px 5px 0 color-mix(in srgb, var(--foreground) 72%, var(--background)),
+    0 0 0 3px var(--ring);
+}
+
+.ai-chat-history__message--tool-result:not(.ai-chat-history__message--tool-result-expanded) .ai-chat-history__plain {
+  max-height: calc(1.5em * 5);
+  overflow: hidden;
+}
+
 .ai-chat-history__role {
   color: var(--muted-foreground);
   display: block;

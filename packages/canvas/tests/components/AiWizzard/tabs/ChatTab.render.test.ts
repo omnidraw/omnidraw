@@ -186,6 +186,40 @@ describe("ChatTab rendered message history", () => {
     expect(link?.rel).toContain("noreferrer")
   })
 
+  it("collapses tool results by default and toggles expanded state on click", () => {
+    const root = renderChatTab(undefined, [
+      {
+        role: "toolResult",
+        toolCallId: "call_web",
+        toolName: "web_fetch",
+        content: [
+          { type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7" },
+        ],
+      },
+    ])
+    const message = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
+
+    expect(message).not.toBeNull()
+    expect(message?.getAttribute("aria-expanded")).toBe("false")
+    expect(message?.textContent).toContain("line 1")
+    expect(message?.textContent).toContain("line 5")
+    expect(message?.textContent).toContain("...")
+    expect(message?.textContent).not.toContain("line 6")
+
+    message?.click()
+
+    expect(message?.getAttribute("aria-expanded")).toBe("true")
+    expect(message?.textContent).toContain("line 6")
+    expect(message?.textContent).toContain("line 7")
+    expect(message?.textContent).not.toContain("...")
+
+    message?.click()
+
+    expect(message?.getAttribute("aria-expanded")).toBe("false")
+    expect(message?.textContent).toContain("...")
+    expect(message?.textContent).not.toContain("line 6")
+  })
+
   it("forwards vertical table wheel gestures to the chat scroller", () => {
     const root = renderChatTab()
     const scroller = root.querySelector<HTMLElement>(".ai-chat-content")

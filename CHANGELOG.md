@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 - Added a lightweight `web_fetch` agent tool for fetching HTTP(S) pages as raw text, normalized text, or markdown with timeout, byte-limit, and SPA/app-shell detection.
 
 ### Fixed
+- Collapsed AI wizard tool-result messages by default with a five-line preview and click-to-expand behavior.
 - Renamed the UI widget header menu delete action from `Delete widget` to `Delete instance` to match its instance-only behavior.
 
 ## 0.4.2
