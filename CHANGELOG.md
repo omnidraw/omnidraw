@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Collapsed AI wizard tool-result messages by default with a five-line preview and click-to-expand behavior.
+- Added a subtle AI wizard chat working indicator while assistant runs are active or stopping.
 - Renamed the UI widget header menu delete action from `Delete widget` to `Delete instance` to match its instance-only behavior.
 - Fixed the canvas style menu so drawing tools no longer show it without a selected element, and mounted it relative to the page body to avoid wasting canvas space.
 
