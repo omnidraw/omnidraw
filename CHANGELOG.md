@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Fixed
+- Renamed the UI widget header menu delete action from `Delete widget` to `Delete instance` to match its instance-only behavior.
+
 ## 0.4.2
 
 ### Fixed

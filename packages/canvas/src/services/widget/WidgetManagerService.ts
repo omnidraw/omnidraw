@@ -341,8 +341,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       ]
       : [
         {
-          id: "widget-delete",
-          label: "Delete widget",
+          id: "widget-delete-instance",
+          label: "Delete instance",
           priority: 30,
           onSelect: () => {
             this.#removeWidgetNode(args.node, { recordHistory: true });
