@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Added a lightweight `web_fetch` agent tool for fetching HTTP(S) pages as raw text, normalized text, or markdown with timeout, byte-limit, and SPA/app-shell detection.
+
 ### Fixed
 - Renamed the UI widget header menu delete action from `Delete widget` to `Delete instance` to match its instance-only behavior.
 

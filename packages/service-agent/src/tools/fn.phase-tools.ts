@@ -5,6 +5,7 @@ import { createApproveActorCandidateTool } from './tool.approve-actor-candidate'
 import { createPublishWidgetTool } from './tool.publish-widget';
 import { createSetActorCandidateTool } from './tool.set-actor-candidate';
 import { createValidateWidgetFilesTool } from './tool.validate-widget-files';
+import { createWebFetchTool } from './tool.web-fetch';
 
 export type TCreateWidgetWizardPhaseToolsArgs = {
   phase?: TWidgetWizardPhase;
@@ -32,6 +33,7 @@ export function fnCreateWidgetWizardPhaseTools(args: TCreateWidgetWizardPhaseToo
     return {
       builtInTools: [],
       customTools: [
+        createWebFetchTool(),
         createSetActorCandidateTool({ cwd: args.cwd, sessionManager: args.sessionManager, onEvent: args.onEvent }),
         createApproveActorCandidateTool({ cwd: args.cwd, sessionManager: args.sessionManager, onEvent: args.onEvent }),
       ],
@@ -41,6 +43,7 @@ export function fnCreateWidgetWizardPhaseTools(args: TCreateWidgetWizardPhaseToo
   return {
     builtInTools: ['read', 'edit', 'grep'],
     customTools: [
+      createWebFetchTool(),
       createValidateWidgetFilesTool({ cwd: args.cwd }),
       createPublishWidgetTool({ cwd: args.cwd, finalWidgetsDir: args.finalWidgetsDir, actorService: args.actorService, editSession: editSession ?? undefined, onEvent: args.onEvent }),
     ],

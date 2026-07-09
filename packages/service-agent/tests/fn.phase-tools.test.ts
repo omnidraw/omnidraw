@@ -14,6 +14,7 @@ describe('fnCreateWidgetWizardPhaseTools', () => {
     expect(phaseOne.customTools.map((tool) => tool.name).sort()).toEqual([
       'vc_approve_actor_candidate',
       'vc_set_actor_candidate',
+      'web_fetch',
     ]);
 
     const phaseTwo = fnCreateWidgetWizardPhaseTools({ phase: 'implementation', cwd, finalWidgetsDir, sessionManager });
@@ -22,6 +23,7 @@ describe('fnCreateWidgetWizardPhaseTools', () => {
     expect(phaseTwo.customTools.map((tool) => tool.name).sort()).toEqual([
       'vc_publish_widget',
       'vc_validate_widget_files',
+      'web_fetch',
     ]);
   });
 
@@ -56,5 +58,6 @@ describe('fnCreateWidgetWizardPhaseTools', () => {
     expect(fnGetWidgetWizardPhase(sessionManager)).toBe('implementation');
     const tools = fnCreateWidgetWizardPhaseTools({ cwd, finalWidgetsDir, sessionManager });
     expect(tools.builtInTools.sort()).toEqual(['edit', 'grep', 'read']);
+    expect(tools.customTools.map((tool) => tool.name)).toContain('web_fetch');
   });
 });

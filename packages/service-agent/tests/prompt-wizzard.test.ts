@@ -95,7 +95,7 @@ describe('AgentService.promptWizzard', () => {
     await service.connectWizzard(widgetId, sessionId);
 
     const phaseOneTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_set_actor_candidate']);
+    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_set_actor_candidate', 'web_fetch']);
 
     const manifest = {
       slug: 'counter-widget',
@@ -123,6 +123,6 @@ describe('AgentService.promptWizzard', () => {
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
 
     const phaseTwoTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files']);
+    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
   });
 });
