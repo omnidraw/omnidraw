@@ -192,7 +192,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A61](a/A61.md) - ai wizard: approve should scaffold then prompt AI implementation
 - [x]: [A62](a/A62.md) - widgets: header three-dot menu
 - [x]: [A63](a/A63.md) - widgets: split instance delete from definition delete
-- [ ]: [A64](a/A64.md) - cli: uninstall command removes binary and data
+- [x]: [A64](a/A64.md) - cli: uninstall command removes binary and data
 - [ ]: [A65](a/A65.md) - agent tools: self-contained web_fetch tool
 
 ## S ubtractions
