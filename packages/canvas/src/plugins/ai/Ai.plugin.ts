@@ -158,8 +158,8 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
         tool: {
           label: "Widget AI Wizzard",
           icon: AI_WIDGET_ICON,
-          shortcuts: ["8"],
-          priority: 77,
+          shortcuts: ["Q"],
+          priority: 5,
         },
         initialPayload: { sessionId: crypto.randomUUID() } satisfies TAiWidgetPayload,
         renderDom: ({ root, element }) => mountAiWidget({

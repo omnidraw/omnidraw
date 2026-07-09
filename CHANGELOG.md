@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - Added `vibecanvas uninstall` with dry-run output, confirmation, and `--yes` for removing curl-installed binaries and local Vibecanvas data safely.
 - Added a lightweight `web_fetch` agent tool for fetching HTTP(S) pages as raw text, normalized text, or markdown with timeout, byte-limit, and SPA/app-shell detection.
 
+### Changed
+- Moved the Widget AI Wizzard toolbar tool between Hand and Select, and changed its shortcut from `8` to `Q`.
+
 ### Fixed
 - Collapsed AI wizard tool-result messages by default with a five-line preview and click-to-expand behavior.
 - Added a subtle AI wizard chat working indicator while assistant runs are active or stopping.
