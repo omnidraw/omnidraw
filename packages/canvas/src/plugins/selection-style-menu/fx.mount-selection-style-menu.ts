@@ -107,12 +107,12 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
 
   const mountElement = portal.scene.container.ownerDocument.createElement("div");
   Object.assign(mountElement.style, {
-    position: "absolute",
+    position: "fixed",
     inset: "0",
     pointerEvents: "none",
     zIndex: "50",
   });
-  portal.scene.stage.container().appendChild(mountElement);
+  portal.scene.container.ownerDocument.body.appendChild(mountElement);
 
   const txRefreshEditingShape1d = () => {
     if (portal.session.editingId === null) {
@@ -278,12 +278,7 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
 
     const configs = portal.createMemo(() => {
       const entries = selectedEntries();
-      if (entries.length > 0) {
-        return entries.map((entry) => entry.config);
-      }
-
-      const toolConfig = activeToolConfig();
-      return toolConfig ? [toolConfig] : [];
+      return entries.map((entry) => entry.config);
     });
 
     const sections = portal.createMemo(() => {
@@ -298,6 +293,10 @@ export function fxMountSelectionStyleMenu(portal: TPortalMountSelectionStyleMenu
       const textareaMounted = portal.scene.stage.container().querySelector("textarea") !== null;
       const isEditingTextActive = portal.session.editingId !== null && textareaMounted;
       if (isEditingTextActive) {
+        return false;
+      }
+
+      if (selectedEntries().length === 0) {
         return false;
       }
 

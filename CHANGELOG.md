@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Renamed the UI widget header menu delete action from `Delete widget` to `Delete instance` to match its instance-only behavior.
+- Fixed the canvas style menu so drawing tools no longer show it without a selected element, and mounted it relative to the page body to avoid wasting canvas space.
 
 ## 0.4.2
 

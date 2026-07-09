@@ -46,7 +46,7 @@ function createPenElement(args?: {
 }
 
 function getStageDom(harness: Awaited<ReturnType<typeof createNewCanvasHarness>>) {
-  return harness.stage.container();
+  return harness.stage.container().ownerDocument.body;
 }
 
 function getButtonByTitle(root: ParentNode, title: string, index = 0) {
@@ -63,26 +63,21 @@ function clickElement(element: HTMLElement) {
 }
 
 describe("SelectionStyleMenu plugin", () => {
-  test("stores remembered pen tool color from the menu when nothing is selected", async () => {
+  test.each(["rect", "pen", "text"])("hides the style menu when %s is active without selection", async (toolId) => {
     const harness = await createNewCanvasHarness();
     const tool = harness.runtime.services.require("tool");
-    const theme = harness.runtime.services.require("theme");
     const root = getStageDom(harness);
 
-    tool.setActiveTool("pen");
+    tool.setActiveTool(toolId);
     await flushCanvasEffects();
 
-    const blueButton = getButtonByTitle(root, "blue/700");
-    clickElement(blueButton);
-    await flushCanvasEffects();
-
-    expect(theme.getRememberedStyle("pen").strokeColor).toBe("@blue/700");
-    expect(root.querySelectorAll('button[title="blue/700"]').length).toBe(2);
+    expect(root.querySelector('button[title="blue/700"]')).toBeNull();
+    expect(root.querySelector('button[title="base/900"]')).toBeNull();
 
     await harness.destroy();
   });
 
-  test("returns to remembered pen tool color after selection is cleared", async () => {
+  test("shows selected element style and hides after selection is cleared", async () => {
     const element = createPenElement({ id: "pen-selected", color: "@red/700" });
     const docHandle = createMockDocHandle({
       elements: {
@@ -101,32 +96,39 @@ describe("SelectionStyleMenu plugin", () => {
     tool.setActiveTool("pen");
     await flushCanvasEffects();
 
-    const rememberedBlueButton = getButtonByTitle(root, "blue/700");
-    clickElement(rememberedBlueButton);
-    await flushCanvasEffects();
-    expect(root.querySelectorAll('button[title="blue/700"]').length).toBe(2);
+    expect(root.querySelector('button[title="red/700"]')).toBeNull();
 
     selection.setSelection([selectedNode]);
     selection.setFocusedNode(selectedNode);
     await flushCanvasEffects();
 
     expect(root.querySelectorAll('button[title="red/700"]').length).toBe(2);
-    expect(root.querySelectorAll('button[title="blue/700"]').length).toBe(1);
 
     selection.clear();
     await flushCanvasEffects();
 
-    expect(root.querySelectorAll('button[title="blue/700"]').length).toBe(2);
+    expect(root.querySelector('button[title="red/700"]')).toBeNull();
 
     await harness.destroy();
   });
 
   test("renders expanded color shades in a side panel", async () => {
-    const harness = await createNewCanvasHarness();
-    const tool = harness.runtime.services.require("tool");
+    const element = createPenElement({ id: "pen-expanded", color: "@base/900" });
+    const docHandle = createMockDocHandle({
+      elements: {
+        [element.id]: structuredClone(element),
+      },
+    });
+    const harness = await createNewCanvasHarness({ docHandle });
+    const selection = harness.runtime.services.require("selection");
     const root = getStageDom(harness);
+    const selectedNode = harness.staticForegroundLayer.findOne<Konva.Path>(`#${element.id}`);
+    if (!(selectedNode instanceof Konva.Path)) {
+      throw new Error("Expected hydrated selected pen node");
+    }
 
-    tool.setActiveTool("pen");
+    selection.setSelection([selectedNode]);
+    selection.setFocusedNode(selectedNode);
     await flushCanvasEffects();
 
     const currentColorButton = getButtonByTitle(root, "base/900", 1);
