@@ -35,10 +35,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
 | [apps/cli/src/plugins/automerge/AutomergePlugin.ts](apps/cli/src/plugins/automerge/AutomergePlugin.ts) |  |
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts](apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts](apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.print-command-result.ts](apps/cli/src/plugins/cli/core/fn.print-command-result.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.resolve-policy.ts](apps/cli/src/plugins/cli/core/fn.resolve-policy.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
+| [apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts](apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts) |  |
+| [apps/cli/src/plugins/cli/core/tx.uninstall.ts](apps/cli/src/plugins/cli/core/tx.uninstall.ts) |  |
 | [apps/cli/src/plugins/filesystem/FilesystemPlugin.ts](apps/cli/src/plugins/filesystem/FilesystemPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/orpc.base.ts](apps/cli/src/plugins/orpc/orpc.base.ts) |  |
 | [apps/cli/src/plugins/orpc/OrpcPlugin.ts](apps/cli/src/plugins/orpc/OrpcPlugin.ts) |  |

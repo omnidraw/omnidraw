@@ -90,10 +90,11 @@ pnpm remove -g vibecanvas
 yarn global remove vibecanvas
 ```
 
-If you installed using the install script (`curl ... | bash`) instead of a package manager, remove the installed files manually:
+To remove the curl-installed binary and local Vibecanvas config/data/state/cache:
 
 ```bash
-rm -rf ~/.vibecanvas
+vibecanvas uninstall --dry-run
+vibecanvas uninstall --yes
 ```
 
 Also remove any PATH line you added for `~/.vibecanvas/bin` in your shell profile (`~/.zshrc`, `~/.bashrc`, `~/.profile`, or fish config).

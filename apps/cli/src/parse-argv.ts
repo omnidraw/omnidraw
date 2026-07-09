@@ -1,6 +1,6 @@
 import { parseArgs } from 'util';
 
-type TCliCommand = 'serve' | 'upgrade' | 'unknown';
+type TCliCommand = 'serve' | 'upgrade' | 'uninstall' | 'unknown';
 
 type TCliSubcommandOptions = {
   json?: boolean;
@@ -31,6 +31,7 @@ type TCliParsedArgv = {
 
 function getDefaultCommand(commandToken: string | undefined): TCliCommand {
   if (commandToken === 'upgrade') return 'upgrade';
+  if (commandToken === 'uninstall') return 'uninstall';
   if (commandToken === undefined || /^\d+$/.test(commandToken)) return 'serve';
   if (commandToken === 'serve') return 'serve';
   if (commandToken.startsWith('-')) return 'serve';

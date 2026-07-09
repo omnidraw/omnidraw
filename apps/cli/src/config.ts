@@ -5,7 +5,7 @@ export interface ICliConfig {
   dev: boolean;
   compiled: boolean;
   version: string;
-  command: 'serve' | 'upgrade' | 'unknown';
+  command: 'serve' | 'upgrade' | 'uninstall' | 'unknown';
   subcommand?: string;
   rawArgv: string[];
   argv: string[];

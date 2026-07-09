@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+- Added `vibecanvas uninstall` with dry-run output, confirmation, and `--yes` for removing curl-installed binaries and local Vibecanvas data safely.
+
 ### Fixed
 - Renamed the UI widget header menu delete action from `Delete widget` to `Delete instance` to match its instance-only behavior.
 
