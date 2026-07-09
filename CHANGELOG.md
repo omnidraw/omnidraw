@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.4.3
 
 ### Added
 - Added `vibecanvas uninstall` with dry-run output, confirmation, and `--yes` for removing curl-installed binaries and local Vibecanvas data safely.

@@ -1,6 +1,6 @@
 {
   "name": "vibecanvas",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Run your agents in an infinite canvas",
   "license": "MIT",
   "bin": {
@@ -15,10 +15,10 @@
     "postinstall": "node postinstall.mjs"
   },
   "optionalDependencies": {
-    "vibecanvas-darwin-arm64": "0.4.2",
-    "vibecanvas-linux-arm64": "0.4.2",
-    "vibecanvas-linux-x64": "0.4.2",
-    "vibecanvas-linux-x64-baseline": "0.4.2"
+    "vibecanvas-darwin-arm64": "0.4.3",
+    "vibecanvas-linux-arm64": "0.4.3",
+    "vibecanvas-linux-x64": "0.4.3",
+    "vibecanvas-linux-x64-baseline": "0.4.3"
   },
   "engines": {
     "node": ">=18"
