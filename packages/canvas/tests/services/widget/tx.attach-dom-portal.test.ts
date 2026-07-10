@@ -83,6 +83,34 @@ function firstPortalDiv(widgetPortal: HTMLDivElement) {
 }
 
 describe("txAttachDomPortal", () => {
+  test("replaces a throwing renderer with escaped host-owned error text", () => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
+    const removeListener = txAttachDomPortal({
+      node: group,
+      document,
+      widgetServie: {} as WidgetManagerService,
+      widgetPortal,
+      cameraService,
+      widgetConfig: {
+        id: "example",
+        renderDom: () => {
+          throw new Error('<img src=x onerror="alert(1)">');
+        },
+      },
+    }, { element });
+
+    const alert = widgetPortal.querySelector<HTMLElement>('[role="alert"]');
+    expect(alert?.textContent).toContain('[Error loading Widget: <img src=x onerror="alert(1)">]');
+    expect(alert?.textContent).toContain('Widget fault');
+    expect(alert?.textContent).toContain('WIDGET_RENDER_FAILED');
+    expect(alert?.querySelector('img')).toBeNull();
+    expect(alert?.dataset.widgetErrorCode).toBe('WIDGET_RENDER_FAILED');
+
+    removeListener?.();
+    stage.destroy();
+    widgetPortal.remove();
+  });
+
   test("renders the widget body div from the canvas transform", async () => {
     const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget();
     layer.position({ x: 50, y: 60 });

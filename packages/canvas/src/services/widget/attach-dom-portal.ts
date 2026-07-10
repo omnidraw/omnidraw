@@ -14,6 +14,8 @@ import {
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
 import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
+import type { TWidgetError } from '@vibecanvas/service-db/model';
+import { txRenderWidgetError } from './tx.render-widget-error';
 // @ts-ignore keep this way as rules should not applied for this import
 import { mountArrowSandbox } from './mount-arrow-sandbox';
 
@@ -25,7 +27,7 @@ type TPortal = {
   cameraService: CameraService;
   selectionService?: SelectionService;
   widgetConfig?: IWidgetConfig;
-  apiService: TOrpcSafeClient
+  apiService?: TOrpcSafeClient
 };
 
 type TArgs = {
@@ -72,7 +74,17 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   let disposed = false;
   let initialRenderTimer: number | null = null;
-  let cleanupRender: TWidgetRenderCleanup | void;
+  let cleanupRender: TWidgetRenderCleanup | void = undefined;
+  let hasNonRecoverableHostError = false;
+
+  const renderError = (error: TWidgetError, replaceContent = true) => {
+    if (!error.retryable) hasNonRecoverableHostError = true;
+    if (replaceContent) {
+      try { cleanupRender?.(); } catch { /* cleanup must not hide the host error */ }
+      cleanupRender = undefined;
+    }
+    txRenderWidgetError({ document: portal.document }, { root: contentRoot, error, replaceContent });
+  };
 
   const syncDiv = () => {
     if (disposed || !div.isConnected) return;
@@ -104,7 +116,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     if (isFullscreen) {
       const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
       portal.widgetPortal.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
-      fullscreenHeader.style.display = 'flex';
+      fullscreenHeader.style.display = '';
       fullscreenHeader.style.width = `${fullscreenParent.clientWidth}px`;
       fullscreenHeader.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       fullscreenHeader.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
@@ -158,7 +170,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     portal.node.off('dragmove', syncDiv);
     portal.node.off('destroy', onNodeDestroy);
     domEventTypes.forEach((eventType) => div.removeEventListener(eventType, stopActiveDomEvent));
-    cleanupRender?.();
+    try { cleanupRender?.(); } catch { /* portal removal must remain reliable */ }
     cleanupRender = undefined;
     fullscreenHeader.remove();
     div.remove();
@@ -258,11 +270,22 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.appendChild(contentRoot);
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
-  cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element });
+  try {
+    cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element });
+  } catch (error) {
+    renderError({
+      phase: 'dom-render',
+      code: 'WIDGET_RENDER_FAILED',
+      message: error instanceof Error ? error.message : String(error),
+      retryable: false,
+    });
+  }
   syncWidgetRootChildren(contentRoot);
 
   if (portal.widgetConfig?.sandbox) {
-    const cleanupSandbox = mountArrowSandbox({
+    try {
+      if (!portal.apiService) throw new Error('Widget API service is unavailable.');
+      const cleanupSandbox = mountArrowSandbox({
       root: contentRoot,
       apiService: portal.apiService,
       subscribeActorInstanceEvents: (actorInstanceId: string, handler: TWidgetActorEventHandler) => {
@@ -273,12 +296,30 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
         const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
         return widgetData?.type === 'widget' ? widgetData.actorInstanceId ?? null : null;
       },
+      onError: (error) => renderError(error, false),
+      onRecovered: () => {
+        if (!hasNonRecoverableHostError) contentRoot.querySelector('[data-widget-host-error]')?.remove();
+      },
     }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
-    const cleanupDomRender = cleanupRender;
-    cleanupRender = () => {
-      cleanupDomRender?.();
-      cleanupSandbox();
-    };
+      const cleanupDomRender = cleanupRender;
+      cleanupRender = () => {
+        try { cleanupDomRender?.(); } finally { cleanupSandbox(); }
+      };
+    } catch (error) {
+      renderError({
+        phase: 'sandbox-compile',
+        code: 'WIDGET_SANDBOX_MOUNT_FAILED',
+        message: error instanceof Error ? error.message : String(error),
+        retryable: false,
+      });
+    }
+  } else if (!portal.widgetConfig?.renderDom) {
+    renderError(portal.widgetServie.getWidgetError?.(args.element) ?? {
+      phase: 'definition-fetch',
+      code: 'WIDGET_DEFINITION_UNAVAILABLE',
+      message: 'Widget definition is unavailable.',
+      retryable: true,
+    });
   }
 
   if (view) {

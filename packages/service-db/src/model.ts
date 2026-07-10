@@ -33,6 +33,29 @@ export const ZMimeType = z.enum(MIME_TYPES);
 export const ZActorStatus = z.enum(['created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked']);
 export const ZActorInboxStatus = z.enum(['queued', 'processing', 'processed', 'failed']);
 
+export const ZWidgetErrorPhase = z.enum([
+  'definition-discovery',
+  'definition-sync',
+  'definition-fetch',
+  'instance-create',
+  'instance-start',
+  'instance-persist',
+  'snapshot',
+  'event-stream',
+  'dom-render',
+  'sandbox-compile',
+  'sandbox-runtime',
+]);
+
+export const ZWidgetError = z.object({
+  phase: ZWidgetErrorPhase,
+  code: z.string(),
+  message: z.string(),
+  details: ZJson.optional(),
+  retryable: z.boolean(),
+  occurredAt: ZTimestamp.optional(),
+});
+
 export const ZAutomergeRepoData = z.object({
   key: z.string(),
   updated_at: ZTimestamp,
@@ -102,6 +125,7 @@ export const ZActorInstance = z.object({
   status: ZActorStatus,
   machine_state: z.string(),
   machine_context: ZJson,
+  last_error: ZWidgetError.nullable(),
   created_at: ZTimestamp,
   updated_at: ZTimestamp,
 });
@@ -133,6 +157,8 @@ export type TCanvasMemberRole = z.infer<typeof ZCanvasMemberRole>;
 export type TFileFormat = z.infer<typeof ZMimeType>;
 export type TActorStatus = z.infer<typeof ZActorStatus>;
 export type TActorInboxStatus = z.infer<typeof ZActorInboxStatus>;
+export type TWidgetErrorPhase = z.infer<typeof ZWidgetErrorPhase>;
+export type TWidgetError = z.infer<typeof ZWidgetError>;
 export type TAutomergeRepoData = z.infer<typeof ZAutomergeRepoData>;
 export type TAccount = z.infer<typeof ZAccount>;
 export type TCanvas = z.infer<typeof ZCanvas>;

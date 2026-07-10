@@ -13,8 +13,8 @@ export type TAutomergeElementEvent = {
 };
 
 export type TAutomergeCallbacks = {
-  onElementDelete: (event: TAutomergeElementEvent, handle: DocHandle<TCanvasDoc>) => void;
-  onElementCreate: (event: TAutomergeElementEvent, handle: DocHandle<TCanvasDoc>) => void;
+  onElementDelete: (event: TAutomergeElementEvent, handle: DocHandle<TCanvasDoc>) => void | Promise<void>;
+  onElementCreate: (event: TAutomergeElementEvent, handle: DocHandle<TCanvasDoc>) => void | Promise<void>;
 };
 
 export class AutomergeService implements IAutomergeService {
@@ -23,8 +23,8 @@ export class AutomergeService implements IAutomergeService {
   readonly wsAdapter: BunWSServerAdapter;
   #elementDeleteWatchedDocumentIds = new Set<string>();
   #elementDeleteScanInterval: ReturnType<typeof setInterval> | null = null;
-  #onElementDelete: (event: TAutomergeElementEvent) => void;
-  #onElementCreate: (event: TAutomergeElementEvent) => void;
+  #onElementDelete: TAutomergeCallbacks['onElementDelete'];
+  #onElementCreate: TAutomergeCallbacks['onElementCreate'];
 
   constructor(
     private readonly database: TAutomergeStorageConfig,
@@ -100,11 +100,11 @@ export class AutomergeService implements IAutomergeService {
           continue;
         }
 
-        this.#onElementDelete({
+        void Promise.resolve(this.#onElementDelete({
           canvasDocId,
           automergeUrl: handle.url,
           element,
-        }, handle);
+        }, handle)).catch(() => undefined);
       }
 
       for (const [elementId, element] of Object.entries(afterElements)) {
@@ -112,11 +112,11 @@ export class AutomergeService implements IAutomergeService {
           continue;
         }
 
-        this.#onElementCreate({
+        void Promise.resolve(this.#onElementCreate({
           canvasDocId,
           automergeUrl: handle.url,
           element,
-        }, handle);
+        }, handle)).catch(() => undefined);
       }
     });
   }

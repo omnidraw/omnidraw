@@ -59,32 +59,47 @@ function setupServices(config: ICliConfig) {
 
   const automergeService = new AutomergeService(dbService.db, {
     async onElementCreate(event, handle) {
-      const element = event.element;
-      if (element.data.type !== 'widget' || !element.data.actorDefinitionName) return;
+      try {
+        const element = event.element;
+        if (element.data.type !== 'widget' || !element.data.actorDefinitionName) return;
 
-      const canvases = await dbService.canvas.listAll();
-      const canvas = canvases.find(row => row.automerge_url === event.automergeUrl);
-      if (!canvas) return;
+        const canvases = await dbService.canvas.listAll();
+        const canvas = canvases.find(row => row.automerge_url === event.automergeUrl);
+        if (!canvas) return;
 
-      const actor = await services.require('actor').createInstance(element.data.actorDefinitionName, canvas.id, element.id)
-      if (actor === null) return
+        const actor = await services.require('actor').createInstance(element.data.actorDefinitionName, canvas.id, element.id)
+        if (actor === null) return
 
-      handle.change((doc) => {
-        const currentElement = doc.elements[element.id];
-        if (!currentElement) return;
-        if (currentElement.data.type !== 'widget') return;
+        handle.change((doc) => {
+          const currentElement = doc.elements[element.id];
+          if (!currentElement) return;
+          if (currentElement.data.type !== 'widget') return;
 
-        currentElement.data.actorInstanceId = actor.getId();
-        currentElement.updatedAt = Date.now();
-      });
+          currentElement.data.actorInstanceId = actor.getId();
+          currentElement.updatedAt = Date.now();
+        });
+      } catch (error) {
+        eventPublisher.publishNotification({
+          type: 'error',
+          title: 'Failed to create widget actor',
+          description: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
     async onElementDelete(event, handle) {
-      const element = event.element;
-      if (element.data.type === 'widget') {
-        const instance = await dbService.actor.getInstanceByElementId(event.element.id)
-        console.log(event.element.id, instance)
-        if (!instance) return
-        await services.require('actor').removeInstance(instance.id)
+      try {
+        const element = event.element;
+        if (element.data.type === 'widget') {
+          const instance = await dbService.actor.getInstanceByElementId(event.element.id)
+          if (!instance) return
+          await services.require('actor').removeInstance(instance.id)
+        }
+      } catch (error) {
+        eventPublisher.publishNotification({
+          type: 'error',
+          title: 'Failed to remove widget actor',
+          description: error instanceof Error ? error.message : String(error),
+        });
       }
     },
   },

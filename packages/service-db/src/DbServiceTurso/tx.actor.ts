@@ -8,8 +8,9 @@ type TPortal = {
 type TArgsDefinitionCreate = Omit<TActorDefinition, "created_at" | "updated_at">
 type TArgsDefinitionDelete = { name: string }
 type TArgsDefinitionUpdate = Omit<TActorDefinition, "created_at" | "updated_at">
-type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context"> & { machine_context: TJson }
+type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context" | "last_error"> & { machine_context: TJson; last_error?: TActorInstance['last_error'] }
 type TArgsInstanceUpdateStatus = Pick<TActorInstance, "id" | "status">
+type TArgsInstanceUpdateHealth = Pick<TActorInstance, "id" | "status" | "last_error">
 type TArgsInstanceUpdateMachine = Pick<TActorInstance, "id" | "machine_state"> & { machine_context: TJson }
 type TArgsInstanceDelete = { id: string }
 type TArgsConnectionCreate = Omit<TActorConnection, "created_at" | "updated_at" | "style"> & { style: TJson }
@@ -31,6 +32,9 @@ function parseActorInstance(row: unknown): TActorInstance {
   return {
     ...instance,
     machine_context: parseJson(instance.machine_context),
+    last_error: instance.last_error === null || instance.last_error === undefined
+      ? null
+      : parseJson(instance.last_error) as TActorInstance['last_error'],
   }
 }
 
@@ -81,12 +85,30 @@ export async function txActorUpdateDefinition(portal: TPortal, args: TArgsDefini
 
 export async function txActorInsertInstance(portal: TPortal, args: TArgsInstanceCreate): Promise<TActorInstance> {
   const stmt = await portal.db.prepare(`
-    INSERT INTO actor_instances (id, canvas_id, element_id, actor_definition_name, filesystem_id, display_name, status, machine_state, machine_context)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO actor_instances (id, canvas_id, element_id, actor_definition_name, filesystem_id, display_name, status, machine_state, machine_context, last_error)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `)
-  const row = await stmt.get(args.id, args.canvas_id, args.element_id, args.actor_definition_name, args.filesystem_id, args.display_name, args.status, args.machine_state, serializeJson(args.machine_context))
+  const row = await stmt.get(args.id, args.canvas_id, args.element_id, args.actor_definition_name, args.filesystem_id, args.display_name, args.status, args.machine_state, serializeJson(args.machine_context), args.last_error == null ? null : serializeJson(args.last_error))
   if (!row) throw new Error("Failed to insert actor instance")
+  return parseActorInstance(row)
+}
+
+export async function txActorUpdateInstanceHealth(portal: TPortal, args: TArgsInstanceUpdateHealth): Promise<TActorInstance> {
+  const updateStmt = await portal.db.prepare(`
+    UPDATE actor_instances
+    SET status = ?, last_error = ?
+    WHERE id = ?
+  `)
+  await updateStmt.run(args.status, args.last_error === null ? null : serializeJson(args.last_error), args.id)
+
+  const selectStmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_instances
+    WHERE id = ?
+  `)
+  const row = await selectStmt.get(args.id)
+  if (!row) throw new Error(`Unknown actor instance "${args.id}"`)
   return parseActorInstance(row)
 }
 

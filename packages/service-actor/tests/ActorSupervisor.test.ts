@@ -204,6 +204,58 @@ describe("ActorSupervisor", () => {
     supervisor.closeActors();
   });
 
+  test("keeps loading persisted actors after one definition is unavailable", async () => {
+    const supervisor = createSupervisor(db, notifications);
+    await supervisor.init();
+    supervisor.closeActors();
+
+    await db.canvas.create({
+      id: "canvas-isolation",
+      name: "Isolation",
+      automerge_url: "automerge:actor-isolation",
+    });
+    await db.actor.insertDefinition({
+      name: "Unavailable Widget",
+      slug: "unavailable-widget",
+      url: null,
+      description: null,
+      manifest_path: "widgets/unavailable/vibecanvas.json",
+    });
+    await db.actor.insertInstance({
+      id: "actor-bad-first",
+      canvas_id: "canvas-isolation",
+      element_id: "element-bad-first",
+      actor_definition_name: "Unavailable Widget",
+      filesystem_id: null,
+      display_name: "Unavailable Widget",
+      status: "created",
+      machine_state: "idle",
+      machine_context: {},
+    });
+    await db.actor.insertInstance({
+      id: "actor-good-second",
+      canvas_id: "canvas-isolation",
+      element_id: "element-good-second",
+      actor_definition_name: "Account Funds Test",
+      filesystem_id: null,
+      display_name: "Account Funds Test",
+      status: "created",
+      machine_state: "idle",
+      machine_context: { balance: 10 },
+    });
+
+    await supervisor.init();
+
+    expect(supervisor.actorMap["actor-bad-first"]).toBeUndefined();
+    expect(supervisor.actorMap["actor-good-second"]).toBeDefined();
+    expect(await db.actor.getInstanceById("actor-bad-first")).toMatchObject({
+      status: "error",
+      last_error: { code: "WIDGET_DEFINITION_UNAVAILABLE" },
+    });
+    expect(await db.actor.getInstanceById("actor-good-second")).toMatchObject({ status: "running", last_error: null });
+    supervisor.closeActors();
+  });
+
   test("publishes running status event when actor instance is created", async () => {
     await db.canvas.create({
       id: "canvas-create-instance",

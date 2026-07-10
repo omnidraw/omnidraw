@@ -11,7 +11,12 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
       const registerActorDefinition = async (name: string) => {
         const [error, actor] = await ctx.config.apiService.api.actors.definitions.get({ name })
         if (error) {
-          console.error(error)
+          widgetMangerService.setDefinitionError(name, {
+            phase: 'definition-fetch',
+            code: 'WIDGET_DEFINITION_UNAVAILABLE',
+            message: `Could not load widget definition "${name}".`,
+            retryable: true,
+          })
           return
         }
 
@@ -41,9 +46,15 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
       const registerPublishedWidgets = async () => {
         const [error, actorDefs] = await ctx.config.apiService.api.actors.definitions.list();
         if (error) {
-          console.error(error)
+          widgetMangerService.setGlobalDefinitionError({
+            phase: 'definition-discovery',
+            code: 'WIDGET_DEFINITION_UNAVAILABLE',
+            message: 'Published widget definitions could not be loaded.',
+            retryable: true,
+          })
           return
         }
+        widgetMangerService.setGlobalDefinitionError(null)
         const nextDefinitionNames = new Set(actorDefs.map((actorDef) => actorDef.name))
         registeredPublishedWidgetNames.forEach((name) => {
           if (nextDefinitionNames.has(name)) {
@@ -53,7 +64,18 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
           widgetMangerService.unregisterWidget(name)
           registeredPublishedWidgetNames.delete(name)
         })
-        await Promise.all(actorDefs.map((actorDef) => registerActorDefinition(actorDef.name)))
+        await Promise.all(actorDefs.map((actorDef) => {
+          if (actorDef.health === 'error') {
+            widgetMangerService.setDefinitionError(actorDef.name, actorDef.error ?? {
+              phase: 'definition-fetch',
+              code: 'WIDGET_DEFINITION_UNAVAILABLE',
+              message: `Could not load widget definition "${actorDef.name}".`,
+              retryable: true,
+            });
+            return Promise.resolve();
+          }
+          return registerActorDefinition(actorDef.name);
+        }))
       }
       ctx.hooks.initAsync.tapPromise(async () => {
         await registerPublishedWidgets()

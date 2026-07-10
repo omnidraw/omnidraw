@@ -1,11 +1,13 @@
 import { eventIterator, oc } from '@orpc/contract';
 import { z } from 'zod';
 import { ZVibecanvasJson } from "@vibecanvas/service-actor/core/vibecanvasjson.zod"
-import { ZActorDefinition, ZActorStatus, ZJson } from "@vibecanvas/service-db/model"
+import { ZActorDefinition, ZActorStatus, ZJson, ZWidgetError } from "@vibecanvas/service-db/model"
 
 const ZActorDefListItem = ZVibecanvasJson.extend(ZActorDefinition.shape)
 const ZActorDefinitionListItem = ZActorDefinition.extend({
   version: z.string().optional(),
+  health: z.enum(['ready', 'error']),
+  error: ZWidgetError.nullable(),
 })
 const ZActorDefResponse = z.object({
   def: ZActorDefListItem,
@@ -16,8 +18,10 @@ const ZActorDefResponse = z.object({
 });
 
 const ZActorSnapshot = z.object({
+  status: ZActorStatus,
   state: z.string(),
-  context: ZJson
+  context: ZJson,
+  error: ZWidgetError.nullable(),
 })
 
 const ZActorSendMessageResult = z.object({
@@ -96,7 +100,10 @@ export const actorsContract = oc.router({
     .output(eventIterator(ZActorEvent)),
   instances: {
     snapshot: oc
-      .input(z.object({ instanceId: z.string() }))
+      .input(z.union([
+        z.object({ instanceId: z.string() }),
+        z.object({ elementId: z.string() }),
+      ]))
       .output(ZActorSnapshot),
     sendMessage: oc
       .input(z.object({ name: z.string(), payload: z.unknown(), instanceId: z.string() }))
