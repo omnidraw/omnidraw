@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.5
+
+### Added
+- Added persistent actor and widget error states.
+- Added in-frame error views for broken widgets.
+
+### Changed
+- Isolated actor and widget startup failures.
+- Added actor event-stream reconnection.
+- Expanded the Vibecanvas LLM style guide.
+
+### Fixed
+- Made CLI upgrades transactional and rollback-safe.
+- Signed and validated macOS release binaries.
+- Kept failed widgets visible without crashing startup.
+- Kept AI Wizzard tabs horizontal.
+
 ## 0.4.4
 
 ### Fixed
