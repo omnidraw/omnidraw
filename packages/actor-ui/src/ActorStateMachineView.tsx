@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 import type { TVibecanvasActor, TVibecanvasJson } from "@vibecanvas/service-actor/core/types";
+import { fnNormalizeTransition } from "@vibecanvas/service-actor/core/fn.normalize-actor-manifest";
 import { fnPlanStateMachineEdges } from "./fn.edge";
 import type { TPoint } from "./fn.elbow";
 import { fnPlaceLabels } from "./fn.labels";
@@ -89,11 +90,14 @@ function getStateRows(actor: TVibecanvasActor | undefined): TStateRow[] {
       isInitial: name === actor.initialState,
       transitions: Object.entries(config?.on ?? {})
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([message, transition]) => ({
-          message,
-          functions: [...(transition?.func ?? [])],
-          targets: [...(transition?.allowedTargetStates ?? [])],
-        })),
+        .map(([message, transition]) => {
+          const normalized = transition ? fnNormalizeTransition(transition, name as Parameters<typeof fnNormalizeTransition>[1]) : null;
+          return {
+            message,
+            functions: [...(transition?.func ?? [])],
+            targets: normalized ? [normalized.transition.targetState] : [],
+          };
+        }),
     });
   }
 

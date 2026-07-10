@@ -3,8 +3,9 @@ import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceT
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
 import path from "node:path";
-import { access, cp, mkdtemp, rm } from "node:fs/promises";
+import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import fundActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
 
 const widgetDir = new URL("./fixtures", import.meta.url).pathname;
 const configPath = new URL(".", import.meta.url).pathname;
@@ -71,6 +72,15 @@ async function waitForPersistedContext(db: DbServiceTurso, instanceId: string, e
     await Bun.sleep(10);
   }
   throw new Error("Timed out waiting for actor context to persist");
+}
+
+async function waitForPersistedState(db: DbServiceTurso, instanceId: string, expectedState: string) {
+  for (let index = 0; index < 100; index += 1) {
+    const instance = await db.actor.getInstanceById(instanceId);
+    if (instance?.machine_state === expectedState) return;
+    await Bun.sleep(10);
+  }
+  throw new Error(`Timed out waiting for actor state ${expectedState} to persist`);
 }
 
 describe("ActorSupervisor", () => {
@@ -362,6 +372,105 @@ describe("ActorSupervisor", () => {
     expect(instance?.machine_state).toBe("ready");
 
     supervisor.closeActors();
+  });
+
+  test("persists startup lifecycle and activity snapshots without an input ack", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-activity-persist-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const tempDefinitionDir = path.join(tempWidgetDir, "activity-persist");
+    await cp(path.join(widgetDir, "account-fund-actor"), tempDefinitionDir, { recursive: true });
+
+    const manifest = structuredClone(fundActorConfigJson) as any;
+    manifest.name = "Activity Persist Test";
+    manifest.slug = "activity-persist-test";
+    manifest.actor.initialState = "busy.counting";
+    manifest.actor.initialData = { events: [], ticks: 0 };
+    manifest.actor.states = {
+      "busy.counting": {
+        on: {},
+        onEnter: ["tx.record"],
+        activity: { everyMs: 1000, runImmediately: true, func: ["tx.activityTick"] },
+      },
+      error: { on: {} },
+    };
+    manifest.actor.inputMsgSchema = {};
+    await writeFile(path.join(tempDefinitionDir, "vibecanvas.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    try {
+      await db.canvas.create({
+        id: "canvas-activity-persist",
+        name: "Activity Persist",
+        automerge_url: "automerge:activity-persist",
+      });
+      const actorEvents: TActorEvent[] = [];
+      const supervisor = createSupervisorWithPaths({
+        db,
+        notifications,
+        actorEvents,
+        absWidgetDir: tempWidgetDir,
+        configPath: tempConfigPath,
+      });
+      await supervisor.init();
+      const actor = await supervisor.createInstance("Activity Persist Test", "canvas-activity-persist", "element-activity-persist");
+      if (!actor) throw new Error("Expected activity actor to be created");
+
+      await waitForPersistedContext(db, actor.getId(), { events: ["lifecycle.enter"], ticks: 1 });
+      expect(actorEvents.some(event => event.kind === "system" && event.type === "snapshot" && event.cause === "startup")).toBe(true);
+      expect(actorEvents.some(event => event.kind === "system" && event.type === "snapshot" && event.cause === "activity")).toBe(true);
+      expect(actorEvents
+        .filter((event): event is Extract<TActorEvent, { kind: "system"; type: "snapshot" }> => event.kind === "system" && event.type === "snapshot")
+        .map(event => event.revision)).toEqual([1, 2]);
+      expect(actorEvents.some(event => event.kind === "system" && event.type === "ack")).toBe(false);
+      supervisor.closeActors();
+    } finally {
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
+  });
+
+  test("persists implicit error state produced by an activity failure", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-error-persist-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const tempDefinitionDir = path.join(tempWidgetDir, "error-persist");
+    await cp(path.join(widgetDir, "account-fund-actor"), tempDefinitionDir, { recursive: true });
+
+    const manifest = structuredClone(fundActorConfigJson) as any;
+    manifest.name = "Error Persist Test";
+    manifest.slug = "error-persist-test";
+    manifest.actor.initialState = "busy.counting";
+    manifest.actor.initialData = { balance: 0 };
+    manifest.actor.states = {
+      "busy.counting": {
+        on: {},
+        activity: { everyMs: 1000, runImmediately: true, func: ["fn.throw"] },
+      },
+      error: { on: {} },
+    };
+    manifest.actor.inputMsgSchema = {};
+    await writeFile(path.join(tempDefinitionDir, "vibecanvas.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    try {
+      await db.canvas.create({
+        id: "canvas-error-persist",
+        name: "Error Persist",
+        automerge_url: "automerge:error-persist",
+      });
+      const supervisor = createSupervisorWithPaths({
+        db,
+        notifications,
+        absWidgetDir: tempWidgetDir,
+        configPath: tempConfigPath,
+      });
+      await supervisor.init();
+      const actor = await supervisor.createInstance("Error Persist Test", "canvas-error-persist", "element-error-persist");
+      if (!actor) throw new Error("Expected error actor to be created");
+
+      await waitForPersistedState(db, actor.getId(), "error");
+      expect(actor.getState()).toBe("error");
+      expect((await db.actor.getInstanceById(actor.getId()))?.status).toBe("running");
+      supervisor.closeActors();
+    } finally {
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
   });
 
   test("routes emitted actor messages to connected target actors", async () => {

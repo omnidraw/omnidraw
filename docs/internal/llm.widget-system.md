@@ -245,7 +245,7 @@ For actor creation before UI send, also read:
 3. `Actor` validates the message name against `actor.inputMsgSchema`, validates the payload against `actor.inputMsgSchema[msgName]`, and finds the transition for current state at `actor.states[currentState].on[msgName]`.
 4. Invalid input messages are dropped instead of changing actor state. A dropped input emits only an implicit actor output event named `DROP_MESSAGE` with drop details, then returns the generated message id.
 5. Valid input messages are enqueued, queue processing is triggered, and the message id is returned immediately.
-6. Inbox items are processed one at a time by the trigger-based queue loop.
+6. Startup activation, inbox messages, timeout messages, and state activity ticks are processed one at a time by one serialized queue.
 7. The transition function list is sent over IPC to the child process:
    - `func`
    - `payload`
@@ -257,10 +257,11 @@ For actor creation before UI send, also read:
    - `portal.setData(nextData)` to update actor data in the parent.
    - `portal.emitMessage({ type, payload })` to emit actor output.
 11. `portal.setData(...)` emits a system `data.changed` event.
-12. Successful transitions with a single `allowedTargetStates` entry update actor state and emit a system `state.changed` event.
+12. New transitions use one `targetState`. Legacy `allowedTargetStates` manifests are normalized at load time without breaking their current behavior.
 13. Parent validates emitted outputs against `actor.outputMsgSchema`.
 14. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
-15. Transition completion emits a system `ack` event for the accepted message id.
+15. State-changing messages run source `onExit`, transition functions, target `onEnter`, then start target timeout/activity scheduling before emitting `ack`.
+16. Final startup, input, activity, recovery, and implicit-error outcomes emit revisioned snapshot events for ordered persistence and widget updates.
 
 ## Current data model
 
@@ -273,6 +274,9 @@ For actor creation before UI send, also read:
 - `actor.initialData`
 - `actor.dataSchema`
 - `actor.states[state].on[msgName].func`
+- `actor.states[state].on[msgName].targetState`
+- `actor.states[state].onEnter`, `onExit`, and `onError`
+- `actor.states[state].activity` for one fixed-delay, non-overlapping state activity
 - `actor.inputMsgSchema`
 - `actor.outputMsgSchema`
 - `actor.relFunctionPath`
@@ -358,13 +362,11 @@ Current status:
 - UI-to-actor send is wired through `api.actors.instances.sendMessage({ instanceId, name, payload })` and returns a backend message id.
 - Host-to-sandbox actor updates are event-driven: `WidgetManagerService` listens to all actor events, routes matching `actorId` events to the mounted sandbox, and `mount-arrow-sandbox.ts` converts state/data/error system events into SDK snapshots.
 
-## Key architectural gap
+## Remaining architectural gaps
 
 The main bridge path now exists: widget UI can send input to its owning backend actor, and state/data/error changes flow back into the sandbox as snapshots. Remaining gaps:
 
-- Actor data/state updates are in memory but are not currently persisted back to DB after `portal.setData()` or state transitions.
 - Actor output messages route to other actors; the public widget SDK does not yet expose output-message subscriptions.
-- `allowedTargetStates` currently updates actor state when exactly one target state is declared; multi-target transitions are not yet selected/validated by guest return value.
 - Actor event streaming is global at the API level and filtered in `WidgetManagerService`; per-instance stream APIs may be useful later.
 - Widget SDK types are still manually authored in fixtures rather than generated from `vibecanvas.json` schemas.
 
@@ -498,13 +500,11 @@ Important boundaries:
 
 ## Suggested next implementation steps
 
-1. Persist actor machine data/state after `portal.setData()` or after each transition completes.
-2. Decide how multi-target `allowedTargetStates` should be selected and validated.
-3. Expose actor output-message subscriptions to widget SDK only if a clear UI use case appears.
-4. Consider replacing the global actor event stream with an instance-scoped API, or keep global streaming with client-side routing if that remains simpler.
-5. Keep injecting the real `@vibecanvas/sdk/widget` module into `@arrow-js/sandbox` and keep host bridge details hidden behind the bootstrap module.
-6. Ensure guest code imports only `@vibecanvas/sdk/widget` or `@vibecanvas/sdk/actor`; do not use bare `@vibecanvas/sdk`.
-7. Generate TypeScript types from `vibecanvas.json` schemas for guest projects.
+1. Expose actor output-message subscriptions to widget SDK only if a clear UI use case appears.
+2. Consider replacing the global actor event stream with an instance-scoped API, or keep global streaming with client-side routing if that remains simpler.
+3. Keep injecting the real `@vibecanvas/sdk/widget` module into `@arrow-js/sandbox` and keep host bridge details hidden behind the bootstrap module.
+4. Ensure guest code imports only `@vibecanvas/sdk/widget` or `@vibecanvas/sdk/actor`; do not use bare `@vibecanvas/sdk`.
+5. Generate TypeScript types from `vibecanvas.json` schemas for guest projects.
 
 ## Design principle
 

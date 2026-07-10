@@ -6,14 +6,8 @@ import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/
 import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 import type { IWidgetConfig } from './interface';
 import type { TWidgetActorEvent } from './WidgetManagerService';
-import type { TActorStatus, TWidgetError } from '@vibecanvas/service-db/model';
-
-type TActorSnapshot = {
-  status: TActorStatus;
-  state: string;
-  context: unknown;
-  error: TWidgetError | null;
-};
+import type { TWidgetError } from '@vibecanvas/service-db/model';
+import { fnActorEventSnapshot, type TActorSnapshot } from './fn.actor-event-snapshot';
 
 type TWidgetHostActorEventResult =
   | { readonly cursor?: string; readonly type: 'snapshot'; readonly snapshot: TActorSnapshot }
@@ -273,53 +267,6 @@ async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string 
   return snapshot;
 }
 
-function getSnapshotFromActorEvent(portal: TPortal, snapshot: TActorSnapshot | null, event: TWidgetActorEvent): TActorSnapshot | null {
-  if (event.kind !== 'system') return null;
-
-  if (event.type === 'state.changed') {
-    portal.onRecovered();
-    return {
-      state: event.to,
-      context: snapshot?.context ?? null,
-      status: snapshot?.status ?? 'running',
-      error: snapshot?.error ?? null,
-    };
-  }
-
-  if (event.type === 'data.changed') {
-    portal.onRecovered();
-    return {
-      state: snapshot?.state ?? 'booting',
-      context: event.data,
-      status: snapshot?.status ?? 'running',
-      error: snapshot?.error ?? null,
-    };
-  }
-
-  if (event.type === 'error') {
-    const error: TWidgetError = {
-      phase: 'sandbox-runtime',
-      code: event.code,
-      message: event.message,
-      details: event.details,
-      retryable: true,
-    };
-    portal.onError(error);
-    return {
-      status: 'error',
-      state: 'error',
-      context: {
-        code: event.code,
-        message: event.message,
-        details: event.details,
-      },
-      error,
-    };
-  }
-
-  return null;
-}
-
 export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let actorInstanceId = portal.getActorInstanceId() ?? getActorInstanceId(args.element);
   let hasSandboxError = false;
@@ -356,9 +303,11 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   }
 
   function handleActorEvent(event: TWidgetActorEvent) {
-    const snapshot = getSnapshotFromActorEvent(actorPortal, currentSnapshot, event);
-    if (!snapshot) return;
-    pushSnapshot(snapshot);
+    const result = fnActorEventSnapshot({ snapshot: currentSnapshot, event });
+    if (!result) return;
+    if (result.error) actorPortal.onError(result.error);
+    else if (result.recovered) actorPortal.onRecovered();
+    pushSnapshot(result.snapshot);
   }
 
   function subscribeActorEvents(nextActorInstanceId: string) {

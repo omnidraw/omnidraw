@@ -113,13 +113,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
 | [apps/web/package.json](apps/web/package.json) |  |
 | [apps/web/public/_redirects](apps/web/public/_redirects) |  |
-| [apps/web/public/1200x675.png](apps/web/public/1200x675.png) |  |
-| [apps/web/public/1200x675.webp](apps/web/public/1200x675.webp) |  |
-| [apps/web/public/338x600.png](apps/web/public/338x600.png) |  |
-| [apps/web/public/338x600.webp](apps/web/public/338x600.webp) |  |
 | [apps/web/public/CNAME](apps/web/public/CNAME) |  |
 | [apps/web/public/favicon.png](apps/web/public/favicon.png) |  |
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
+| [apps/web/public/hero.png](apps/web/public/hero.png) |  |
+| [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -127,12 +125,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/src/content/docs/faq.mdx](apps/web/src/content/docs/faq.mdx) |  |
 | [apps/web/src/content/docs/getting-started.mdx](apps/web/src/content/docs/getting-started.mdx) |  |
 | [apps/web/src/content/docs/installation.mdx](apps/web/src/content/docs/installation.mdx) |  |
+| [apps/web/src/content/docs/widgets-and-actors.mdx](apps/web/src/content/docs/widgets-and-actors.mdx) |  |
 | [apps/web/src/env.d.ts](apps/web/src/env.d.ts) |  |
 | [apps/web/src/layouts/BaseLayout.astro](apps/web/src/layouts/BaseLayout.astro) |  |
 | [apps/web/src/layouts/DocsLayout.astro](apps/web/src/layouts/DocsLayout.astro) |  |
 | [apps/web/src/pages/docs/[...slug].astro](apps/web/src/pages/docs/[...slug].astro) |  |
 | [apps/web/src/pages/docs/index.astro](apps/web/src/pages/docs/index.astro) |  |
 | [apps/web/src/pages/index.astro](apps/web/src/pages/index.astro) |  |
+| [apps/web/src/pages/robots.txt.ts](apps/web/src/pages/robots.txt.ts) |  |
+| [apps/web/src/pages/sitemap.xml.ts](apps/web/src/pages/sitemap.xml.ts) |  |
 | [apps/web/src/styles/global.css](apps/web/src/styles/global.css) |  |
 | [apps/web/tsconfig.json](apps/web/tsconfig.json) |  |
 
@@ -532,6 +533,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/tool/types.ts](packages/canvas/src/services/tool/types.ts) |  |
 | [packages/canvas/src/services/widget/attach-dom-portal.ts](packages/canvas/src/services/widget/attach-dom-portal.ts) |  |
 | [packages/canvas/src/services/widget/CONSTANTS.ts](packages/canvas/src/services/widget/CONSTANTS.ts) |  |
+| [packages/canvas/src/services/widget/fn.actor-event-snapshot.ts](packages/canvas/src/services/widget/fn.actor-event-snapshot.ts) |  |
 | [packages/canvas/src/services/widget/fn.create-widget-node.ts](packages/canvas/src/services/widget/fn.create-widget-node.ts) |  |
 | [packages/canvas/src/services/widget/fn.get-host-theme-colors.ts](packages/canvas/src/services/widget/fn.get-host-theme-colors.ts) |  |
 | [packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts](packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts) |  |
@@ -601,11 +603,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/AGENTS.md](packages/service-actor/AGENTS.md) |  |
 | [packages/service-actor/package.json](packages/service-actor/package.json) |  |
 | [packages/service-actor/src/actor-ipc-command.ts](packages/service-actor/src/actor-ipc-command.ts) |  |
-| [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process, validating inbox and output messages around guest transitions. |
+| [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process. |
 | [packages/service-actor/src/ActorService.ts](packages/service-actor/src/ActorService.ts) |  |
 | [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
 | [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
 | [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
+| [packages/service-actor/src/core/fn.normalize-actor-manifest.ts](packages/service-actor/src/core/fn.normalize-actor-manifest.ts) |  |
 | [packages/service-actor/src/core/fn.widget-error.ts](packages/service-actor/src/core/fn.widget-error.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
 | [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |
@@ -613,6 +616,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/core/tx.vibecanvas-widgets.ts](packages/service-actor/src/core/tx.vibecanvas-widgets.ts) |  |
 | [packages/service-actor/src/core/types.ts](packages/service-actor/src/core/types.ts) |  |
 | [packages/service-actor/src/core/vibecanvasjson.zod.ts](packages/service-actor/src/core/vibecanvasjson.zod.ts) |  |
+| [packages/service-actor/src/fn.actor-runtime.ts](packages/service-actor/src/fn.actor-runtime.ts) |  |
 | [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
@@ -645,6 +649,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
 | [packages/service-agent/src/prompts/index.ts](packages/service-agent/src/prompts/index.ts) |  |
 | [packages/service-agent/src/prompts/prompt.actor-implementation.md](packages/service-agent/src/prompts/prompt.actor-implementation.md) |  |
+| [packages/service-agent/src/prompts/prompt.actor-lifecycle-and-activity.md](packages/service-agent/src/prompts/prompt.actor-lifecycle-and-activity.md) |  |
 | [packages/service-agent/src/prompts/prompt.arrow-js.md](packages/service-agent/src/prompts/prompt.arrow-js.md) |  |
 | [packages/service-agent/src/prompts/prompt.product-and-manifest.md](packages/service-agent/src/prompts/prompt.product-and-manifest.md) |  |
 | [packages/service-agent/src/prompts/prompt.style-guide.md](packages/service-agent/src/prompts/prompt.style-guide.md) |  |

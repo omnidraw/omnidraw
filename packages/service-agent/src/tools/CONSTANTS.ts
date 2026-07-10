@@ -43,19 +43,34 @@ const ACTOR_FUNCTION_NAME_SCHEMA = Type.String({
   description: 'Transition function name. Must be a string like fn.checkInput, fx.readThing, or tx.applyMessage.',
 });
 
+const ACTOR_ERROR_HANDLER_SCHEMA = Type.Object({
+  func: Type.Array(ACTOR_FUNCTION_NAME_SCHEMA, { minItems: 1 }),
+  recover: Type.Union([
+    Type.Literal('stay'),
+    Type.Object({ targetState: ACTOR_NON_ERROR_STATE_SCHEMA }),
+  ]),
+});
+
 const ACTOR_TRANSITION_SCHEMA = Type.Object({
   func: Type.Array(ACTOR_FUNCTION_NAME_SCHEMA, {
     minItems: 1,
     description: 'Ordered transition function names. Do not put objects here; use only fn.*, fx.*, or tx.* strings.',
   }),
-  allowedTargetStates: Type.Array(ACTOR_NON_ERROR_STATE_SCHEMA, {
-    minItems: 1,
-    description: 'Allowed non-error target states after this message.',
-  }),
+  targetState: ACTOR_NON_ERROR_STATE_SCHEMA,
+  onError: Type.Optional(ACTOR_ERROR_HANDLER_SCHEMA),
 });
 
 const ACTOR_STATE_CONFIG_SCHEMA = Type.Object({
   on: Type.Record(Type.String({ minLength: 1, description: 'Input message name. Prefer in.* names, for example in.increment.' }), ACTOR_TRANSITION_SCHEMA),
+  activity: Type.Optional(Type.Object({
+    everyMs: Type.Integer({ minimum: 1_000, maximum: 2_147_483_647 }),
+    func: Type.Array(ACTOR_FUNCTION_NAME_SCHEMA, { minItems: 1 }),
+    runImmediately: Type.Optional(Type.Boolean()),
+    onError: Type.Optional(ACTOR_ERROR_HANDLER_SCHEMA),
+  })),
+  onEnter: Type.Optional(Type.Array(ACTOR_FUNCTION_NAME_SCHEMA)),
+  onExit: Type.Optional(Type.Array(ACTOR_FUNCTION_NAME_SCHEMA)),
+  onError: Type.Optional(ACTOR_ERROR_HANDLER_SCHEMA),
 });
 
 const ACTOR_TOOL_BEHAVIOR_SCHEMA = Type.Union([

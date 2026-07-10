@@ -32,7 +32,7 @@ const MANIFEST = {
         on: {
           complete: {
             func: ["tx.save"],
-            allowedTargetStates: ["ready"],
+            targetState: "ready",
           },
         },
       },

@@ -49,4 +49,56 @@ describe('vc_approve_actor_candidate', () => {
     const registry = await readFile(join(cwd, 'actor', 'functions.ts'), 'utf8');
     expect(registry).toContain('"tx.increment"');
   });
+
+  test('scaffolds lifecycle, activity, and error-handler functions', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const base = sampleCandidate();
+    const candidate = sampleCandidate({
+      actor: {
+        ...base.actor,
+        states: {
+          ready: {
+            onEnter: ['fx.load'],
+            onExit: ['tx.cleanup'],
+            onError: { func: ['tx.recoverState'], recover: 'stay' },
+            activity: {
+              everyMs: 1000,
+              runImmediately: true,
+              func: ['fx.poll'],
+              onError: { func: ['tx.recoverActivity'], recover: 'stay' },
+            },
+            on: {
+              'in.increment': {
+                func: ['tx.increment'],
+                targetState: 'ready',
+                onError: { func: ['tx.recoverTransition'], recover: 'stay' },
+              },
+            },
+          },
+          error: base.actor.states.error,
+        },
+      },
+    });
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate });
+
+    const result = await executeTool(createApproveActorCandidateTool({
+      cwd,
+      sessionManager,
+      npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
+    }), { revision: 1 });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.details.files).toEqual(expect.arrayContaining([
+      'actor/fx.load.ts',
+      'actor/tx.cleanup.ts',
+      'actor/tx.recoverState.ts',
+      'actor/fx.poll.ts',
+      'actor/tx.recoverActivity.ts',
+      'actor/tx.recoverTransition.ts',
+    ]));
+    const registry = await readFile(join(cwd, 'actor', 'functions.ts'), 'utf8');
+    expect(registry).toContain('"fx.poll"');
+    expect(registry).toContain('"tx.recoverTransition"');
+  });
 });

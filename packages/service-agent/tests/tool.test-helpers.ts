@@ -37,7 +37,7 @@ export function sampleCandidate(overrides: Partial<TActorCandidate> = {}): TActo
           on: {
             'in.increment': {
               func: ['tx.increment'],
-              allowedTargetStates: ['ready'],
+              targetState: 'ready',
             },
           },
         },
@@ -45,7 +45,7 @@ export function sampleCandidate(overrides: Partial<TActorCandidate> = {}): TActo
           on: {
             'in.resetError': {
               func: ['tx.resetError'],
-              allowedTargetStates: ['ready'],
+              targetState: 'ready',
             },
           },
         },

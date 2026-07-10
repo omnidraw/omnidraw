@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { LUCIDE_STATIC_ICON_KEYS, isLucideStaticIconKey } from './tool-icon';
-import type { TActorData, TActorState, TFunctionName, TJsonSchema, TVibecanvasJson } from './types';
+import type { TActorData, TActorNonErrorState, TActorState, TFunctionName, TJsonSchema, TTransition, TVibecanvasJson } from './types';
 import type { TVibecanvasToolIcon } from './tool-icon';
 
 export const ZJsonSchemaPrimitiveType = z.enum([
@@ -72,6 +72,10 @@ export const ZFunctionName = z.custom<TFunctionName>(
   (value) => typeof value === 'string' && /^(fn|fx|tx)\..*$/.test(value),
 );
 
+export const ZActorNonErrorState = z.custom<TActorNonErrorState>(
+  (value) => typeof value === 'string' && /^(booting|ready|busy|waiting)(\..*)?$/.test(value),
+);
+
 export const ZVibecanvasToolIcon: z.ZodType<TVibecanvasToolIcon> = z.object({
   lucidIcon: z.custom<string>(
     isLucideStaticIconKey,
@@ -82,13 +86,39 @@ export const ZVibecanvasToolIcon: z.ZodType<TVibecanvasToolIcon> = z.object({
   message: 'expected at least one of lucidIcon or svgIcon',
 });
 
-export const ZTransition = z.object({
+export const ZActorErrorHandler = z.object({
   func: z.array(ZFunctionName),
-  allowedTargetStates: z.array(ZActorState),
-});
+  recover: z.union([
+    z.literal('stay'),
+    z.object({ targetState: ZActorNonErrorState }).strict(),
+  ]),
+}).strict();
+
+export const ZActorActivity = z.object({
+  everyMs: z.number().int().min(1_000).max(2_147_483_647),
+  func: z.array(ZFunctionName),
+  runImmediately: z.boolean().optional(),
+  onError: ZActorErrorHandler.optional(),
+}).strict();
+
+export const ZTransition: z.ZodType<TTransition> = z.object({
+  func: z.array(ZFunctionName),
+  targetState: ZActorState.optional(),
+  allowedTargetStates: z.array(ZActorState).optional(),
+  onError: ZActorErrorHandler.optional(),
+}).refine(
+  (transition) => Number(transition.targetState !== undefined) + Number(transition.allowedTargetStates !== undefined) === 1,
+  { message: 'expected exactly one of targetState or allowedTargetStates' },
+).transform((transition): TTransition => transition.targetState !== undefined
+  ? { func: transition.func, targetState: transition.targetState, onError: transition.onError }
+  : { func: transition.func, allowedTargetStates: transition.allowedTargetStates ?? [], onError: transition.onError });
 
 export const ZActorStateConfig = z.object({
   on: z.partialRecord(ZInputMessage, ZTransition),
+  activity: ZActorActivity.optional(),
+  onEnter: z.array(ZFunctionName).optional(),
+  onExit: z.array(ZFunctionName).optional(),
+  onError: ZActorErrorHandler.optional(),
 });
 
 export const ZVibecanvasActor = z.object({

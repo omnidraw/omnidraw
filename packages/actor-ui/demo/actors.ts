@@ -50,7 +50,7 @@ export const DEMO_ACTORS = [
           on: {
             inspect: {
               func: ["fx.loadRepo", "fn.planChecks"],
-              allowedTargetStates: ["busy.inspecting"],
+              targetState: "busy.inspecting",
             },
           },
         },
@@ -58,15 +58,15 @@ export const DEMO_ACTORS = [
           on: {
             complete: {
               func: ["tx.saveReport"],
-              allowedTargetStates: ["ready"],
+              targetState: "ready",
             },
             needsInput: {
               func: ["fx.requestScope"],
-              allowedTargetStates: ["waiting.scope"],
+              targetState: "waiting.scope",
             },
             validationFailed: {
               func: ["fn.describeValidationError"],
-              allowedTargetStates: ["error.validation"],
+              targetState: "error.validation",
             },
           },
         },
@@ -74,7 +74,7 @@ export const DEMO_ACTORS = [
           on: {
             scopeProvided: {
               func: ["fn.mergeScope"],
-              allowedTargetStates: ["busy.inspecting"],
+              targetState: "busy.inspecting",
             },
           },
         },
@@ -104,7 +104,7 @@ export const DEMO_ACTORS = [
           on: {
             load: {
               func: ["fx.loadDraft"],
-              allowedTargetStates: ["ready.idle"],
+              targetState: "ready.idle",
             },
           },
         },
@@ -112,7 +112,7 @@ export const DEMO_ACTORS = [
           on: {
             write: {
               func: ["fn.createOutline", "tx.persistDraft"],
-              allowedTargetStates: ["busy.writing"],
+              targetState: "busy.writing",
             },
           },
         },
@@ -120,7 +120,7 @@ export const DEMO_ACTORS = [
           on: {
             review: {
               func: ["fx.scoreDraft"],
-              allowedTargetStates: ["waiting.review"],
+              targetState: "waiting.review",
             },
           },
         },
@@ -128,11 +128,11 @@ export const DEMO_ACTORS = [
           on: {
             approve: {
               func: ["tx.publishDraft"],
-              allowedTargetStates: ["ready.idle"],
+              targetState: "ready.idle",
             },
             revise: {
               func: ["fn.applyNotes"],
-              allowedTargetStates: ["busy.writing"],
+              targetState: "busy.writing",
             },
           },
         },
