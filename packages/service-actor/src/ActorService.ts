@@ -54,6 +54,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   async stop(): Promise<void> {
     console.log('stop', this.name)
+    this.#supervisor.closeActors()
   }
 
   async reload(): Promise<void> {

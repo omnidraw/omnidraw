@@ -83,6 +83,49 @@ function firstPortalDiv(widgetPortal: HTMLDivElement) {
 }
 
 describe("txAttachDomPortal", () => {
+  test("shows loading instead of a definition error while widget discovery is pending", () => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
+    const removeListener = txAttachDomPortal({
+      node: group,
+      document,
+      widgetServie: { getWidgetError: () => null } as unknown as WidgetManagerService,
+      widgetPortal,
+      cameraService,
+    }, { element });
+
+    expect(widgetPortal.querySelector('[data-widget-host-loading]')?.textContent).toBe('Loading widget…');
+    expect(widgetPortal.querySelector('[data-widget-host-error]')).toBeNull();
+
+    removeListener?.();
+    stage.destroy();
+    widgetPortal.remove();
+  });
+
+  test("shows a definition error after widget discovery has settled", () => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
+    const removeListener = txAttachDomPortal({
+      node: group,
+      document,
+      widgetServie: {
+        getWidgetError: () => ({
+          phase: 'definition-fetch',
+          code: 'WIDGET_DEFINITION_UNAVAILABLE',
+          message: 'Widget definition is unavailable.',
+          retryable: true,
+        }),
+      } as unknown as WidgetManagerService,
+      widgetPortal,
+      cameraService,
+    }, { element });
+
+    expect(widgetPortal.querySelector('[data-widget-host-error]')).not.toBeNull();
+    expect(widgetPortal.querySelector('[data-widget-host-loading]')).toBeNull();
+
+    removeListener?.();
+    stage.destroy();
+    widgetPortal.remove();
+  });
+
   test("replaces a throwing renderer with escaped host-owned error text", () => {
     const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
     const removeListener = txAttachDomPortal({

@@ -1,6 +1,7 @@
 import { ZVibecanvasJson as Z_VIBECANVAS_JSON } from "./vibecanvasjson.zod";
+import { fnNormalizeVibecanvasJson } from "./fn.normalize-actor-manifest";
 
-import type { TVibecanvasJson } from "./types";
+import type { TResolvedVibecanvasJson } from "./types";
 import type { readdir, exists } from "node:fs/promises"
 import type { join } from "node:path";
 
@@ -35,10 +36,12 @@ type TWidgetRepoResult = {
     vibecanvasJsonPath: string,
     error: string
     vibecanvasJson: null
+    warnings: string[]
 } | {
     vibecanvasJsonPath: string,
     error: null
-    vibecanvasJson: TVibecanvasJson
+    vibecanvasJson: TResolvedVibecanvasJson
+    warnings: string[]
 }
 
 async function fxIsVibecanvasWidgetRepo(portal: TPortalListVibecanvasJsons, args: {repoDir: string}): Promise<TWidgetRepoResult | null> {
@@ -54,7 +57,8 @@ async function fxIsVibecanvasWidgetRepo(portal: TPortalListVibecanvasJsons, args
         return {
             vibecanvasJsonPath,
             error: `Could not parse json`,
-            vibecanvasJson: null
+            vibecanvasJson: null,
+            warnings: [],
         }
     }
 
@@ -63,14 +67,17 @@ async function fxIsVibecanvasWidgetRepo(portal: TPortalListVibecanvasJsons, args
         return {
             vibecanvasJsonPath,
             error: parsedVibecanvasJson.error.issues.map(formatZodIssue).join('; '),
-            vibecanvasJson: null
+            vibecanvasJson: null,
+            warnings: [],
         }
     }
 
+    const normalized = fnNormalizeVibecanvasJson(parsedVibecanvasJson.data)
     return {
         vibecanvasJsonPath,
         error: null,
-        vibecanvasJson: parsedVibecanvasJson.data as TVibecanvasJson
+        vibecanvasJson: normalized.manifest,
+        warnings: normalized.warnings,
     }
 }
 

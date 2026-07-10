@@ -6,7 +6,7 @@ import { readdir, exists, rm } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { txEnsureWidgetFolder } from "./core/tx.vibecanvas-widgets";
 import { existsSync, mkdirSync } from 'fs';
-import type { TActorState, TVibecanvasJson } from "./core/types";
+import type { TActorData, TActorState, TVibecanvasJson } from "./core/types";
 import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./core/fn.actor-connections";
 import { fnToActorData } from "./core/fn.actor-data";
 import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
@@ -47,6 +47,8 @@ export class ActorSupervisor {
   actorMap: Record<string, Actor> = {}
   connectionMap: Record<string, TActorConnection[]> = {}
   vibecanvasDefMap: { [name: string]: TVibecanvasJson & { manifest_path: string } } = {}
+  #snapshotPersistenceRevision = new Map<string, number>()
+  #snapshotPersistenceTail = new Map<string, Promise<void>>()
 
 
   constructor(config: IActorSupervisorConfig) {
@@ -126,6 +128,14 @@ export class ActorSupervisor {
         return
       }
 
+      def.warnings.forEach((warning) => {
+        this.#config.eventPublisherService.publishNotification({
+          type: 'info',
+          title: 'Legacy actor manifest behavior',
+          description: warning,
+        })
+      })
+
       nextDefMap[def.vibecanvasJson.name] = {
         ...def.vibecanvasJson,
         manifest_path: makeManifestPathConfigRelative(this.#config.configPath, def.vibecanvasJsonPath),
@@ -187,6 +197,8 @@ export class ActorSupervisor {
 
     let actor: Actor | null = null
     try {
+      await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'starting', last_error: null })
+      this.#snapshotPersistenceRevision.delete(actorInst.id)
       actor = new Actor({
         id: actorInst.id,
         vsJson: def,
@@ -235,8 +247,8 @@ export class ActorSupervisor {
     actor.listen((event) => {
       this.#config.eventPublisherService.publishActorEvent(event as any)
 
-      if (event.kind === "system" && event.type === "ack") {
-        void this.persistActorMachineSnapshot(actor)
+      if (event.kind === "system" && event.type === "snapshot") {
+        this.queueActorMachineSnapshot(actor.getId(), event)
         return
       }
 
@@ -268,12 +280,29 @@ export class ActorSupervisor {
     }, false)
   }
 
-  private async persistActorMachineSnapshot(actor: Actor) {
+  private queueActorMachineSnapshot(actorId: string, event: Extract<TActorEvent, { kind: 'system'; type: 'snapshot' }>) {
+    const latestRevision = this.#snapshotPersistenceRevision.get(actorId) ?? 0
+    if (event.revision <= latestRevision) return
+    this.#snapshotPersistenceRevision.set(actorId, event.revision)
+
+    const previous = this.#snapshotPersistenceTail.get(actorId) ?? Promise.resolve()
+    const next = previous
+      .catch(() => undefined)
+      .then(() => this.persistActorMachineSnapshot(actorId, event.state, event.data))
+    this.#snapshotPersistenceTail.set(actorId, next)
+    void next.finally(() => {
+      if (this.#snapshotPersistenceTail.get(actorId) === next) {
+        this.#snapshotPersistenceTail.delete(actorId)
+      }
+    })
+  }
+
+  private async persistActorMachineSnapshot(actorId: string, state: TActorState, data: TActorData) {
     try {
       await this.#config.db.actor.updateInstanceMachine({
-        id: actor.getId(),
-        machine_state: actor.getState(),
-        machine_context: actor.getData(),
+        id: actorId,
+        machine_state: state,
+        machine_context: data,
       })
     } catch (error) {
       this.#config.eventPublisherService.publishNotification({
@@ -307,6 +336,7 @@ export class ActorSupervisor {
     Object.values(this.actorMap).forEach(actor => actor.close())
     this.actorMap = {}
     this.connectionMap = {}
+    this.#snapshotPersistenceRevision.clear()
   }
 
   public async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {

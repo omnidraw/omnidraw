@@ -1,203 +1,228 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibecanvas.dev/schemas/vibecanvas.schema.json",
-  "title": "Vibecanvas widget addon config",
+  "title": "Vibecanvas widget manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "slug", "name", "version", "description", "actor", "widget"],
+  "required": ["slug", "name", "actor", "widget"],
   "properties": {
-    "$schema": {
-      "type": "string",
-      "description": "Optional JSON Schema URI for editor support."
-    },
-    "id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Shared widget/actor id. Used as the widget kind and the stable addon identity."
-    },
-    "slug": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Human-readable unique addon slug."
-    },
-    "name": {
-      "type": "string",
-      "minLength": 1
-    },
-    "version": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "description": {
-      "type": "string"
-    },
-    "actor": {
-      "$ref": "#/$defs/actor"
-    },
-    "widget": {
-      "$ref": "#/$defs/widget"
-    }
+    "$schema": { "type": "string" },
+    "slug": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "url": { "type": "string", "format": "uri" },
+    "version": { "type": "string" },
+    "description": { "type": "string" },
+    "actor": { "$ref": "#/$defs/actor" },
+    "widget": { "$ref": "#/$defs/widget" }
   },
   "$defs": {
+    "actorStateName": {
+      "type": "string",
+      "pattern": "^(booting|ready|busy|waiting|error)(\\..*)?$"
+    },
+    "nonErrorActorStateName": {
+      "type": "string",
+      "pattern": "^(booting|ready|busy|waiting)(\\..*)?$"
+    },
+    "functionName": {
+      "type": "string",
+      "pattern": "^(fn|fx|tx)\\..+$"
+    },
     "jsonValue": {
       "oneOf": [
         { "type": "null" },
         { "type": "boolean" },
         { "type": "number" },
         { "type": "string" },
-        {
-          "type": "array",
-          "items": { "$ref": "#/$defs/jsonValue" }
-        },
-        {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
-        }
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
       ]
     },
     "jsonSchema": {
-      "type": "object",
-      "additionalProperties": true
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "object", "additionalProperties": true }
+      ]
     },
-    "actorTransition": {
+    "errorHandler": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["target"],
+      "required": ["func", "recover"],
       "properties": {
-        "target": {
-          "type": "string",
-          "minLength": 1
-        },
-        "guard": {
-          "type": "string",
-          "minLength": 1
-        },
-        "actions": {
+        "func": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "items": { "$ref": "#/$defs/functionName" }
+        },
+        "recover": {
+          "oneOf": [
+            { "const": "stay" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["targetState"],
+              "properties": {
+                "targetState": { "$ref": "#/$defs/nonErrorActorStateName" }
+              }
+            }
+          ]
         }
+      }
+    },
+    "targetTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["func", "targetState"],
+      "properties": {
+        "func": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/functionName" }
+        },
+        "targetState": { "$ref": "#/$defs/actorStateName" },
+        "onError": { "$ref": "#/$defs/errorHandler" }
+      }
+    },
+    "legacyTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["func", "allowedTargetStates"],
+      "properties": {
+        "func": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/functionName" }
+        },
+        "allowedTargetStates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/actorStateName" }
+        },
+        "onError": { "$ref": "#/$defs/errorHandler" }
+      },
+      "deprecated": true
+    },
+    "transition": {
+      "oneOf": [
+        { "$ref": "#/$defs/targetTransition" },
+        { "$ref": "#/$defs/legacyTransition" }
+      ]
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["everyMs", "func"],
+      "properties": {
+        "everyMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 2147483647
+        },
+        "func": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/functionName" }
+        },
+        "runImmediately": { "type": "boolean" },
+        "onError": { "$ref": "#/$defs/errorHandler" }
       }
     },
     "actorState": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["on"],
       "properties": {
-        "entry": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "exit": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
         "on": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/actorTransition" }
-        }
+          "additionalProperties": { "$ref": "#/$defs/transition" }
+        },
+        "activity": { "$ref": "#/$defs/activity" },
+        "onEnter": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/functionName" }
+        },
+        "onExit": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/functionName" }
+        },
+        "onError": { "$ref": "#/$defs/errorHandler" }
       }
     },
     "actor": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["functionsPath", "initialState", "states"],
+      "required": ["relFunctionPath", "initialState", "initialData", "states"],
       "properties": {
-        "functionsPath": {
-          "type": "string",
-          "minLength": 1,
-          "default": "./actor/functions.ts",
-          "description": "Path to actor effect functions, relative to vibecanvas.json."
-        },
-        "initialState": {
-          "type": "string",
-          "minLength": 1
-        },
-        "initialContext": {
-          "$ref": "#/$defs/jsonValue"
-        },
+        "relFunctionPath": { "type": "string", "minLength": 1 },
+        "initialState": { "$ref": "#/$defs/actorStateName" },
+        "initialData": { "$ref": "#/$defs/jsonValue" },
+        "dataSchema": { "$ref": "#/$defs/jsonSchema" },
         "states": {
           "type": "object",
+          "propertyNames": { "$ref": "#/$defs/actorStateName" },
           "additionalProperties": { "$ref": "#/$defs/actorState" }
         },
-        "inputSchema": {
+        "inputMsgSchema": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/jsonSchema" }
         },
-        "outputSchema": {
+        "outputMsgSchema": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/jsonSchema" }
         }
       }
     },
-    "toolBehavior": {
+    "toolIcon": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
       "properties": {
-        "type": {
-          "type": "string",
-          "enum": ["mode", "action", "modal"]
+        "lucidIcon": { "type": "string", "minLength": 1 },
+        "svgIcon": { "type": "string", "minLength": 1 }
+      },
+      "anyOf": [
+        { "required": ["lucidIcon"] },
+        { "required": ["svgIcon"] }
+      ]
+    },
+    "toolBehavior": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "mode"],
+          "properties": {
+            "type": { "const": "mode" },
+            "mode": { "enum": ["draw-create", "click-create", "select", "hand"] }
+          }
         },
-        "mode": {
-          "type": "string",
-          "enum": ["draw-create", "click-create", "select", "hand"]
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "action" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "modal" } }
         }
-      }
+      ]
     },
     "tool": {
       "type": "object",
       "additionalProperties": false,
       "required": ["label", "behavior"],
       "properties": {
-        "label": {
-          "type": "string",
-          "minLength": 1
-        },
-        "icon": {
-          "type": "string",
-          "description": "Toolbar icon as inline SVG markup or a named Lucide icon id such as list-todo."
-        },
-        "shortcuts": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "group": {
-          "type": "string",
-          "description": "Optional toolbar group."
-        },
-        "priority": {
-          "type": "number"
-        },
-        "behavior": {
-          "$ref": "#/$defs/toolBehavior"
-        }
+        "label": { "type": "string", "minLength": 1 },
+        "icon": { "$ref": "#/$defs/toolIcon" },
+        "group": { "type": "string" },
+        "priority": { "type": "number" },
+        "behavior": { "$ref": "#/$defs/toolBehavior" }
       }
     },
     "widget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["tool"],
+      "required": ["relWidgetDir", "tool"],
       "properties": {
-        "sourceDir": {
-          "type": "string",
-          "minLength": 1,
-          "default": "./widget",
-          "description": "Directory containing widget source files such as main.ts and main.css, relative to vibecanvas.json."
-        },
-        "tool": {
-          "$ref": "#/$defs/tool"
-        }
+        "relWidgetDir": { "type": "string", "minLength": 1 },
+        "tool": { "$ref": "#/$defs/tool" }
       }
     }
   }

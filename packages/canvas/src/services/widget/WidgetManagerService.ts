@@ -65,6 +65,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #definitionErrors = new Map<string, TWidgetError>();
   #elementErrors = new Map<string, TWidgetError>();
   #globalDefinitionError: TWidgetError | null = null;
+  #definitionDiscoveryComplete = false;
   #activeActorEventIterator: AsyncIterator<unknown> | null = null;
   #reconnectTimer: number | null = null;
   #resolveReconnectWait: (() => void) | null = null;
@@ -161,12 +162,23 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     }
   }
 
-  getWidgetError(element: TElement): TWidgetError {
+  getWidgetError(element: TElement): TWidgetError | null {
     const kind = element.data.type === 'widget' || element.data.type === 'ui-widget' ? element.data.kind : 'unknown';
-    return this.#elementErrors.get(element.id)
+    const error = this.#elementErrors.get(element.id)
       ?? this.#definitionErrors.get(kind)
-      ?? this.#globalDefinitionError
-      ?? { phase: 'definition-fetch', code: 'WIDGET_DEFINITION_UNAVAILABLE', message: `Widget definition "${kind}" is unavailable.`, retryable: true };
+      ?? this.#globalDefinitionError;
+    if (error) return error;
+    if (!this.#definitionDiscoveryComplete) return null;
+    return { phase: 'definition-fetch', code: 'WIDGET_DEFINITION_UNAVAILABLE', message: `Widget definition "${kind}" is unavailable.`, retryable: true };
+  }
+
+  completeDefinitionDiscovery() {
+    if (this.#definitionDiscoveryComplete) return;
+    this.#definitionDiscoveryComplete = true;
+    const kinds = new Set(Object.values(this.#crdtService.doc().elements).flatMap((element) => {
+      return element.data.type === 'widget' || element.data.type === 'ui-widget' ? [element.data.kind] : [];
+    }));
+    kinds.forEach((kind) => this.runtimeHooks.widgetRegister.call({ kind }));
   }
 
   setGlobalDefinitionError(error: TWidgetError | null) {

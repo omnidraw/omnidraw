@@ -6,6 +6,7 @@ import { AgentService } from '../src/AgentService';
 import { txAppendActorCandidateApprovalRecord } from '../src/core/tx.session-candidate';
 import { sampleCandidate } from './tool.test-helpers';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { WIDGET_WIZZARD_SYSTEM_PROMPT } from '../src/prompts';
 
 class TestEventPublisherService implements IEventPublisherService {
   name = 'test-event-publisher';
@@ -42,6 +43,14 @@ async function createService() {
 }
 
 describe('AgentService.promptWizzard', () => {
+  test('teaches widget agents the actor lifecycle and activity contract', () => {
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('New transitions use `{ func: ["tx.name"], targetState: "ready" }`');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('Never write a loop or sleep/retry cycle inside it');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('args.msg.kind === "activity.tick"');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('recover: { targetState: "ready" }');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('accepted only so existing widgets keep working');
+  });
+
   test('passes image-only prompts to Pi with fallback text', async () => {
     const service = await createService();
     const calls: Array<{ text: string; options: unknown }> = [];

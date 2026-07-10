@@ -12,10 +12,14 @@ An actor is a long-lived in-memory instance that:
 - starts from `actor.initialState` and `actor.initialData`
 - validates incoming messages with `actor.inputMsgSchema`
 - finds transitions in `actor.states[currentState].on[msgName]`
-- runs transition functions listed in `transition.func`
+- normalizes new `targetState` and legacy `allowedTargetStates` transitions to one runtime shape
+- runs startup, input, timeout, and activity work through one serialized job lane
+- runs `onExit` before state-changing transition functions and `onEnter` after applying the target state
+- owns one optional fixed-delay, non-overlapping activity per active state
+- runs phase-aware transition/activity/state error handlers and recovery
 - allows guest functions to update data and emit output messages
 - validates emitted messages with `actor.outputMsgSchema`
-- processes inbox messages sequentially, even when callers enqueue concurrently
+- emits revisioned final snapshots for ordered persistence beyond external input acknowledgements
 
 `Actor` runs guest code in a child Bun process through `src/icp-client.ts`. Host code communicates with that process by IPC. Do not import or execute guest actor functions directly in host orchestration code.
 
@@ -37,7 +41,7 @@ export default {
 }
 ```
 
-`icp-client.ts` resolves transition names against that map, then runs them in order. A function advances to the next transition function only when it calls `portal.next()`. `portal.next()` returns the downstream function result.
+`icp-client.ts` resolves transition, lifecycle, activity, and error-handler names against that map, then runs them in order. A function advances to the next function only when it calls `portal.next()`. `portal.next()` returns the downstream function result.
 
 ## Message behavior
 

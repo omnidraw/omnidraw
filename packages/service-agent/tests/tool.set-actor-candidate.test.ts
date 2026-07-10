@@ -42,7 +42,7 @@ describe('vc_set_actor_candidate', () => {
             on: {
               'timout:500ms': {
                 func: ['tx.resetError'],
-                allowedTargetStates: ['ready'],
+                targetState: 'ready',
               },
             },
           },

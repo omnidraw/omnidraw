@@ -197,7 +197,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A64](a/A64.md) - cli: uninstall command removes binary and data
 - [x]: [A65](a/A65.md) - agent tools: self-contained web_fetch tool
 - [ ]: [A66](a/A66.md) - toolbar: group widget tools into hover flyouts
-- [ ]: [A67](a/A67.md) - actor runtime: state lifecycle hooks and single state activity
+- [x]: [A67](a/A67.md) - actor runtime: state lifecycle hooks and single state activity
 - [x]: [A68](a/A68.md) - widgets: isolate loading failures and render in-frame error states
 - [ ]: [A69](a/A69.md) - actor resources: prepare shared resource control plane and IPC
 - [ ]: [A70](a/A70.md) - actor resources: implement KvResource

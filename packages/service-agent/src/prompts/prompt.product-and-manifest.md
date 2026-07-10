@@ -47,16 +47,16 @@ Actor state strings must match:
 - "waiting" or "waiting.*"
 - "error" or "error.*"
 
-Transition allowedTargetStates lists successful non-error target states only:
+Transition targetState names one successful non-error target state:
 - "booting"/"booting.*", "ready"/"ready.*", "busy"/"busy.*", "waiting"/"waiting.*"
-- Do not put "error" in allowedTargetStates.
+- Do not put "error" in targetState.
 - Error is implicit for every transition: if a transition function throws, the runtime can move the actor to the base "error" state.
-- This means every transition is effectively multi-target: declared success target(s) plus implicit "error".
+- Legacy manifests may contain allowedTargetStates, but never generate that deprecated field.
 
 Validation-critical rules:
 - actor.initialState must be a key in actor.states.
 - actor.states should always include an "error" state with at least one recovery input message, for example "in.resetError" or "in.dismissError".
-- Every allowedTargetStates value must also be a key in actor.states.
+- Every targetState value must also be a key in actor.states.
 - Every transition function name must start with fn., fx., or tx.
 - Every transition function named in the manifest must be registered in actor/functions.ts after approval.
 - Final drafts must include vibecanvas.json, actor/functions.ts, and widget/main.ts.
@@ -75,7 +75,7 @@ For most widgets:
 - Use two declared states: "ready" and "error".
 - Put normal user commands under actor.states.ready.on.
 - Put recovery commands under actor.states.error.on.
-- Most successful transitions should have exactly one declared success target, usually allowedTargetStates: ["ready"].
+- Most successful transitions should use `targetState: "ready"`.
 - Remember that "error" is still an implicit target for every transition when guest code throws.
 
 Use more success states only when the UI genuinely needs them, for example:
@@ -95,10 +95,15 @@ Error handling pattern:
 - The recovery function may clear error-related fields in actor data if you store them.
 - Widget UI should show a recovery button when actor.state.value starts with "error" unless recovery is intentionally automatic.
 
-Multi-target guidance:
-- Do not fear multi-target semantics. Every transition already has implicit error as an extra target.
-- Keep declared success targets simple and usually singular.
+Target guidance:
+- Every transition has one declared success target plus implicit error behavior.
 - Use data fields such as status/message for UI nuance instead of unnecessary state branching.
+
+State lifecycle and activity guidance:
+- Use onEnter/onExit for short state-bound setup and cleanup pipelines.
+- A state may declare one activity with everyMs, func, optional runImmediately, and optional onError.
+- Activity everyMs must be at least 1000. Activity functions must be short jobs; never put a loop inside them.
+- Use activity.onError, transition.onError, or state.onError with an explicit recover policy when automatic recovery is needed.
 
 # JSON Schema rules
 

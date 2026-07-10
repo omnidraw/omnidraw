@@ -75,8 +75,9 @@ Before publishing:
 
 - Trying to edit files in phase 1.
 - Forgetting that vc_set_actor_candidate does not write files.
-- Using a state in allowedTargetStates that is not declared in actor.states.
-- Putting "error" in allowedTargetStates instead of relying on implicit runtime error transitions.
+- Using a targetState that is not declared in actor.states.
+- Putting "error" in targetState instead of relying on implicit runtime error transitions.
+- Generating deprecated allowedTargetStates instead of targetState.
 - Forgetting to define actor.states.error and an error recovery message.
 - Adding timeout messages (such as "timeout:xxxxms" or "timout:xxxxms") to actor.inputMsgSchema is unnecessary; they are system-sent and do not need input schemas.
 - Using actor.initialState that is not declared in actor.states.

@@ -52,6 +52,7 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
             message: 'Published widget definitions could not be loaded.',
             retryable: true,
           })
+          widgetMangerService.completeDefinitionDiscovery()
           return
         }
         widgetMangerService.setGlobalDefinitionError(null)
@@ -76,6 +77,7 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
           }
           return registerActorDefinition(actorDef.name);
         }))
+        widgetMangerService.completeDefinitionDiscovery()
       }
       ctx.hooks.initAsync.tapPromise(async () => {
         await registerPublishedWidgets()

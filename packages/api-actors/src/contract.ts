@@ -61,6 +61,16 @@ export const ZActorSystemEvent = z.discriminatedUnion('type', [
   z.object({
     kind: z.literal('system'),
     actorId: z.string(),
+    type: z.literal('snapshot'),
+    revision: z.number().int().positive(),
+    state: z.string(),
+    data: ZJson,
+    cause: z.enum(['startup', 'input', 'activity', 'error']),
+    jobId: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('system'),
+    actorId: z.string(),
     type: z.literal('error'),
     code: z.string(),
     message: z.string(),

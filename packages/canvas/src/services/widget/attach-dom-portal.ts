@@ -16,6 +16,7 @@ import {
 import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
 import type { TWidgetError } from '@vibecanvas/service-db/model';
 import { txRenderWidgetError } from './tx.render-widget-error';
+import { txRenderWidgetLoading } from './tx.render-widget-loading';
 // @ts-ignore keep this way as rules should not applied for this import
 import { mountArrowSandbox } from './mount-arrow-sandbox';
 
@@ -84,6 +85,10 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       cleanupRender = undefined;
     }
     txRenderWidgetError({ document: portal.document }, { root: contentRoot, error, replaceContent });
+  };
+  const renderLoading = () => {
+    if (hasNonRecoverableHostError) return;
+    txRenderWidgetLoading({ document: portal.document }, { root: contentRoot });
   };
 
   const syncDiv = () => {
@@ -296,9 +301,13 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
         const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
         return widgetData?.type === 'widget' ? widgetData.actorInstanceId ?? null : null;
       },
+      onLoading: renderLoading,
       onError: (error) => renderError(error, false),
       onRecovered: () => {
-        if (!hasNonRecoverableHostError) contentRoot.querySelector('[data-widget-host-error]')?.remove();
+        if (!hasNonRecoverableHostError) {
+          contentRoot.querySelector('[data-widget-host-error]')?.remove();
+          contentRoot.querySelector('[data-widget-host-loading]')?.remove();
+        }
       },
     }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
       const cleanupDomRender = cleanupRender;
@@ -314,12 +323,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       });
     }
   } else if (!portal.widgetConfig?.renderDom) {
-    renderError(portal.widgetServie.getWidgetError?.(args.element) ?? {
-      phase: 'definition-fetch',
-      code: 'WIDGET_DEFINITION_UNAVAILABLE',
-      message: 'Widget definition is unavailable.',
-      retryable: true,
-    });
+    const definitionError = portal.widgetServie.getWidgetError?.(args.element);
+    if (definitionError) renderError(definitionError);
+    else renderLoading();
   }
 
   if (view) {

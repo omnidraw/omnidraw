@@ -16,13 +16,50 @@ export type TFunctionName = `fn.${string}` | `fx.${string}` | `tx.${string}`
 
 export type TActorNonErrorState = Exclude<TActorState, 'error' | `error.${string}`>
 
-export type TTransition = {
+export type TActorErrorHandler = {
+  func: TFunctionName[];
+  recover: "stay" | {
+    targetState: TActorNonErrorState;
+  };
+}
+
+export type TActorActivity = {
+  everyMs: number;
+  func: TFunctionName[];
+  runImmediately?: boolean;
+  onError?: TActorErrorHandler;
+}
+
+export type TTargetTransition = {
+  func: TFunctionName[];
+  targetState: TActorState;
+  onError?: TActorErrorHandler;
+}
+
+export type TLegacyTransition = {
   func: TFunctionName[];
   allowedTargetStates: TActorState[];
+  onError?: TActorErrorHandler;
 }
+
+export type TTransition = TTargetTransition | TLegacyTransition;
 
 export type TActorStateConfig = {
   on: Partial<Record<TInputMessage, TTransition>>;
+  activity?: TActorActivity;
+  onEnter?: TFunctionName[];
+  onExit?: TFunctionName[];
+  onError?: TActorErrorHandler;
+}
+
+export type TResolvedTransition = {
+  func: TFunctionName[];
+  targetState: TActorState;
+  onError?: TActorErrorHandler;
+}
+
+export type TResolvedActorStateConfig = Omit<TActorStateConfig, 'on'> & {
+  on: Partial<Record<TInputMessage, TResolvedTransition>>;
 }
 
 export type TVibecanvasActor = {
@@ -33,6 +70,10 @@ export type TVibecanvasActor = {
   readonly states: Partial<Record<TActorState, TActorStateConfig>>;
   readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
   readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
+}
+
+export type TResolvedVibecanvasActor = Omit<TVibecanvasActor, 'states'> & {
+  readonly states: Partial<Record<TActorState, TResolvedActorStateConfig>>;
 }
 
 export type TVibecanvasActorWidget = {
@@ -61,6 +102,10 @@ export type TVibecanvasJson = {
   readonly description?: string;
   readonly actor: TVibecanvasActor;
   readonly widget: TVibecanvasActorWidget;
+};
+
+export type TResolvedVibecanvasJson = Omit<TVibecanvasJson, 'actor'> & {
+  readonly actor: TResolvedVibecanvasActor;
 };
 
 export type TFnPortal = {

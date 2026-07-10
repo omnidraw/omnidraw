@@ -26,6 +26,7 @@ export type TAgentDraftActorRuntimeEvent =
   | { readonly kind: 'system'; readonly actorId: string; readonly type: 'state.changed'; readonly from: string; readonly to: string; readonly messageId?: string }
   | { readonly kind: 'system'; readonly actorId: string; readonly type: 'status.changed'; readonly from: string | null; readonly to: string }
   | { readonly kind: 'system'; readonly actorId: string; readonly type: 'data.changed'; readonly data: unknown; readonly messageId?: string }
+  | { readonly kind: 'system'; readonly actorId: string; readonly type: 'snapshot'; readonly revision: number; readonly state: string; readonly data: unknown; readonly cause: 'startup' | 'input' | 'activity' | 'error'; readonly jobId?: string }
   | { readonly kind: 'system'; readonly actorId: string; readonly type: 'error'; readonly code: string; readonly message: string; readonly details?: unknown; readonly messageId?: string }
   | { readonly kind: 'actor'; readonly actorId: string; readonly name: string; readonly payload: unknown; readonly messageId?: string };
 export type TAgentDraftActorEvent = {

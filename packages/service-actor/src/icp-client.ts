@@ -35,7 +35,7 @@ type TParentRunMessage = {
   type: "run";
   id: number;
   func: string[];
-  payload: object;
+  payload: unknown;
   data: any;
 };
 
@@ -199,10 +199,6 @@ function validateIncomingMessage(message: unknown): TParentRunMessage | null {
   }
   if (!("payload" in message)) {
     process.send!(buildError("message.payload is missing", message.id));
-    return null;
-  }
-  if (typeof message.payload !== "object" || message.payload === null) {
-    process.send!(buildError("message.payload must be object", message.id));
     return null;
   }
   if (!("data" in message)) {
