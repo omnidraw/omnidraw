@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.4.4
 
 ### Fixed
 - Fixed Turso crashes and incorrect returned rows during actor updates with medium-sized JSON/HTML state by replacing trigger-sensitive `UPDATE ... RETURNING` queries with separate update and select statements.
