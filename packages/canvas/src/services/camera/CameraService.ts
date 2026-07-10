@@ -16,8 +16,8 @@ export type TCameraViewport = {
  * Holds canvas camera state and camera operations.
  * Wraps the current camera implementation behind a service.
  */
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 4;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 6;
 
 function clampZoom(zoom: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));

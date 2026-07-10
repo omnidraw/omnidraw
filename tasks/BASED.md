@@ -272,6 +272,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S69](s/S69.md) - ai wizard: save tool before phase2 updates candidate
 - [x]: [S70](s/S70.md) - ai wizard: remove default slash and mention values
 - [x]: [S71](s/S71.md) - image paste: render local preview while uploading to remote server
+- [x]: [S72](s/S72.md) - canvas: allow zoom from 0.1 to 6.0
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

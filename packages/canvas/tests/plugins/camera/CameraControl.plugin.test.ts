@@ -1,7 +1,7 @@
 import Konva from "konva";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { beforeEach, describe, expect, test } from "vitest";
-import { CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, MAX_CAMERA_ZOOM } from "../../../src/plugins/camera-control/CONSTANTS";
+import { CAMERA_VIEWPORTS_LOCAL_STORAGE_KEY, MAX_CAMERA_ZOOM, MIN_CAMERA_ZOOM } from "../../../src/plugins/camera-control/CONSTANTS";
 import { CanvasMode } from "../../../src/services/selection/CONSTANTS";
 import { createMockDocHandle, createNewCanvasHarness, flushCanvasEffects } from "../../new-test-setup";
 
@@ -244,6 +244,11 @@ describe("new CameraControl plugin", () => {
         rawValue: JSON.stringify({ x: 10, y: 20, zoom: 999 }),
         expected: { x: 10, y: 20, zoom: MAX_CAMERA_ZOOM },
       },
+      {
+        canvasId: "camera-clamped-min-zoom",
+        rawValue: JSON.stringify({ x: 10, y: 20, zoom: 0.001 }),
+        expected: { x: 10, y: 20, zoom: MIN_CAMERA_ZOOM },
+      },
     ];
 
     for (const scenario of scenarios) {
@@ -266,6 +271,21 @@ describe("new CameraControl plugin", () => {
     expect({ x: malformedCamera.x, y: malformedCamera.y, zoom: malformedCamera.zoom }).toEqual({ x: 0, y: 0, zoom: 1 });
 
     await malformedHarness.destroy();
+  });
+
+  test("clamps live canvas zoom to the 0.1 through 6.0 range", async () => {
+    const harness = await createNewCanvasHarness();
+    const camera = harness.runtime.services.require("camera");
+
+    camera.setViewport({ x: 0, y: 0, zoom: 0.001 });
+    expect(camera.zoom).toBe(MIN_CAMERA_ZOOM);
+    expect(harness.staticForegroundLayer.scaleX()).toBe(MIN_CAMERA_ZOOM);
+
+    camera.setViewport({ x: 0, y: 0, zoom: 100 });
+    expect(camera.zoom).toBe(MAX_CAMERA_ZOOM);
+    expect(harness.staticForegroundLayer.scaleX()).toBe(MAX_CAMERA_ZOOM);
+
+    await harness.destroy();
   });
 
   test("persists viewport changes after hand pan and ctrl-wheel zoom", async () => {
