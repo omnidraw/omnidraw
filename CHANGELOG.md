@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.6
+
+### Added
+- Added actor state lifecycle hooks, recurring activities, and configurable error recovery.
+- Added immediate canvas previews while uploaded images are persisted.
+
+### Changed
+- Expanded the canvas zoom range from 10% to 600%.
+
+### Fixed
+- Show widget loading states while actor definitions and restored instances initialize.
+- Cancel pending image uploads when their canvas elements are deleted.
+
 ## 0.4.5
 
 ### Added
