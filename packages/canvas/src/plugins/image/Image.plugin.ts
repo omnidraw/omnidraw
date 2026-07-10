@@ -3,17 +3,14 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import ImageIcon from "lucide-static/icons/image.svg?raw";
-import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
 import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
 import {
   fnFileToBytes,
-  fnFileToDataUrl,
-  fnGetImageDimensions,
   fnGetImageSource,
   fnGetSupportedImageFormat,
-  fnParseDataUrl,
 } from "../../core/fn.image-utils";
 import { fnGetWorldPosition } from "../../core/fn.world-position";
 import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
@@ -25,7 +22,7 @@ import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../type
 import { txDeleteSelection } from "../select/tx.delete-selection";
 import { fnToImageElement } from "./fn.to-image-element";
 import { txCreateImageCloneDrag } from "./tx.create-image-clone-drag";
-import { txInsertImage } from "./tx.insert-image";
+import { txInsertImage, type TPendingImageInsertToken } from "./tx.insert-image";
 import { txSetupImageListeners } from "./tx.setup-image-listeners";
 import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
 
@@ -119,7 +116,7 @@ function syncNodeMetadata(node: Konva.Image, element: TElement) {
   node.setAttr(ELEMENT_CREATED_AT_ATTR, element.createdAt);
 }
 
-function loadImageIntoNode(node: Konva.Image, source: string | null) {
+function loadImageIntoNode(node: Konva.Image, source: string | null, onError?: () => void) {
   node.setAttr(IMAGE_SOURCE_ATTR, source);
   if (!source) {
     node.image(null);
@@ -132,7 +129,19 @@ function loadImageIntoNode(node: Konva.Image, source: string | null) {
     node.image(image);
     node.getLayer()?.batchDraw();
   };
+  image.onerror = () => {
+    onError?.();
+  };
   image.src = source;
+}
+
+function decodeImage(source: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to decode image"));
+    image.src = source;
+  });
 }
 
 function createImageNode(element: TElement) {
@@ -267,6 +276,10 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
       const selection = ctx.services.require("selection");
       const session = ctx.services.require("session");
       const toolService = ctx.services.require("tool");
+      const pendingInserts = new Map<string, {
+        token: TPendingImageInsertToken;
+        node: Konva.Image;
+      }>();
 
       const updateImageNodeFromElementPortal = {
         setNodeZIndex,
@@ -397,26 +410,52 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
           notification: getNotification(ctx.config),
           createId: () => crypto.randomUUID(),
           now: () => Date.now(),
-          fileToDataUrl: (file) => fnFileToDataUrl({
-            createFileReader: () => new FileReader(),
-          }, {
-            file,
-          }),
           fileToBytes: (file) => fnFileToBytes({
             createFileReader: () => new FileReader(),
           }, {
             file,
           }),
-          parseDataUrl: fnParseDataUrl,
-          getImageDimensions: (source) => fnGetImageDimensions({
-            createImage: () => new window.Image(),
-          }, {
-            src: source,
-          }),
+          createObjectUrl: (file) => URL.createObjectURL(file),
+          revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+          decodeImage,
           getViewportCenter: () => getViewportCenter(render),
           getViewportWorldSize: () => getViewportWorldSize(render),
           createRuntimeNode: createRuntimeImageNode,
+          setupRuntimeNode: setupNode,
+          syncNodeMetadata,
+          setNodeImage: (node, image) => {
+            node.image(image);
+          },
+          loadImageIntoNode,
           toElement,
+          registerPendingInsert: (id, token, node) => {
+            pendingInserts.set(id, { token, node });
+            node.setAttr(VC_ON_REMOVE_ATTR, () => {
+              const pending = pendingInserts.get(id);
+              if (pending?.token !== token) {
+                return;
+              }
+
+              token.cancelled = true;
+              pendingInserts.delete(id);
+            });
+          },
+          isPendingInsertActive: (id, token, node) => {
+            const pending = pendingInserts.get(id);
+            return !token.cancelled
+              && pending?.token === token
+              && pending.node === node
+              && node.getLayer() === render.staticForegroundLayer;
+          },
+          releasePendingInsert: (id, token) => {
+            const pending = pendingInserts.get(id);
+            if (pending?.token !== token) {
+              return;
+            }
+
+            pending.node.setAttr(VC_ON_REMOVE_ATTR, undefined);
+            pendingInserts.delete(id);
+          },
         }, args);
       };
 
@@ -604,6 +643,12 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
       });
 
       ctx.hooks.destroy.tap(() => {
+        pendingInserts.forEach(({ token, node }) => {
+          token.cancelled = true;
+          node.setAttr(VC_ON_REMOVE_ATTR, undefined);
+          node.destroy();
+        });
+        pendingInserts.clear();
         contextMenu.unregisterProvider("image");
         unregisterImageElement();
         toolService.unregisterTool("image");

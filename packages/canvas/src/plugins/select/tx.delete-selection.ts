@@ -67,6 +67,23 @@ function callNodeOnRemove(node: TSceneNode) {
   (onRemove as TNodeOnRemove)({ node });
 }
 
+function isRuntimeOnlyRemovableNode(portal: TPortalDeleteSelection, node: TSceneNode) {
+  if (typeof node.getAttr(VC_ON_REMOVE_ATTR) !== "function") {
+    return false;
+  }
+
+  const kind = fnGetCanvasNodeKind(node);
+  if (kind === "element") {
+    return portal.crdt.doc().elements[node.id()] === undefined;
+  }
+
+  if (kind === "group") {
+    return portal.crdt.doc().groups[node.id()] === undefined;
+  }
+
+  return false;
+}
+
 function isNodeDescendantOf(node: Node, ancestor: Node) {
   let current = node.getParent();
 
@@ -306,7 +323,20 @@ function deleteSelectionInternal(portal: TPortalDeleteSelection, args: TArgsDele
     });
   }));
 
-  const collected = collectDeleteSnapshot(portal, expandedRoots);
+  const runtimeOnlyRoots = expandedRoots.filter((node) => isRuntimeOnlyRemovableNode(portal, node));
+  runtimeOnlyRoots.forEach((node) => {
+    callNodeOnRemove(node);
+    node.destroy();
+  });
+
+  const persistedRoots = expandedRoots.filter((node) => !runtimeOnlyRoots.includes(node));
+  if (persistedRoots.length === 0) {
+    portal.selection.clear();
+    portal.scene.stage.batchDraw();
+    return true;
+  }
+
+  const collected = collectDeleteSnapshot(portal, persistedRoots);
   if (!collected) {
     return false;
   }
@@ -400,14 +430,27 @@ export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDel
     });
   }));
 
-  const collected = collectDeleteSnapshot(portal, expandedRoots);
+  const runtimeOnlyRoots = expandedRoots.filter((node) => isRuntimeOnlyRemovableNode(portal, node));
+  runtimeOnlyRoots.forEach((node) => {
+    callNodeOnRemove(node);
+    node.destroy();
+  });
+
+  const persistedRoots = expandedRoots.filter((node) => !runtimeOnlyRoots.includes(node));
+  if (persistedRoots.length === 0) {
+    portal.selection.clear();
+    portal.scene.stage.batchDraw();
+    return true;
+  }
+
+  const collected = collectDeleteSnapshot(portal, persistedRoots);
   if (!collected) {
     return false;
   }
 
   const { snapshot } = collected;
   const commitResult = commitDeleteWithServices(portal, {
-    roots: expandedRoots,
+    roots: persistedRoots,
     snapshot,
   });
 
@@ -442,7 +485,7 @@ export function txDeleteSelection(portal: TPortalDeleteSelection, args: TArgsDel
       portal.selection.clear();
       portal.scene.stage.batchDraw();
     },
-    label: `Delete ${expandedRoots.length} ${expandedRoots.length === 1 ? 'item' : 'items'}`,
+    label: `Delete ${persistedRoots.length} ${persistedRoots.length === 1 ? 'item' : 'items'}`,
   });
 
   return true;

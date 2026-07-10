@@ -5,7 +5,7 @@ export type TArgsCreateImageElement = {
   center: { x: number; y: number };
   width: number;
   height: number;
-  sourceUrl: string;
+  sourceUrl: string | null;
   naturalWidth: number;
   naturalHeight: number;
   now: number;
