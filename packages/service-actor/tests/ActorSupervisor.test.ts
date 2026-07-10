@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
@@ -187,6 +187,7 @@ describe("ActorSupervisor", () => {
       },
     });
 
+    const updateInstanceHealth = spyOn(db.actor, "updateInstanceHealth");
     const supervisor = createSupervisor(db, notifications);
 
     await supervisor.init();
@@ -210,6 +211,11 @@ describe("ActorSupervisor", () => {
         },
       ],
     });
+    const readyInstanceStatuses = updateInstanceHealth.mock.calls
+      .map(([args]) => args)
+      .filter((args) => args.id === "fund-instance-ready")
+      .map((args) => args.status);
+    expect(readyInstanceStatuses).toEqual(["starting", "running"]);
 
     supervisor.closeActors();
   });

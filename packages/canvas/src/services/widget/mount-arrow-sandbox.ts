@@ -18,6 +18,7 @@ type TPortal = {
   apiService: TOrpcSafeClient;
   subscribeActorInstanceEvents: (actorInstanceId: string, handler: (event: TWidgetActorEvent) => void) => () => void;
   getActorInstanceId: () => string | null;
+  onLoading: () => void;
   onError: (error: TWidgetError) => void;
   onRecovered: () => void;
 };
@@ -235,7 +236,8 @@ async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string 
   if (!actorInstanceId) {
     const [elementError, elementSnapshot] = await portal.apiService.api.actors.instances.snapshot({ elementId });
     if (!elementError) {
-      if (elementSnapshot.error) portal.onError(elementSnapshot.error);
+      if (elementSnapshot.status === 'created' || elementSnapshot.status === 'starting') portal.onLoading();
+      else if (elementSnapshot.error) portal.onError(elementSnapshot.error);
       else portal.onRecovered();
       return elementSnapshot;
     }
@@ -251,7 +253,9 @@ async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string 
     return { status: 'error', state: 'error', context: { message: widgetError.message }, error: widgetError };
   }
 
-  if (snapshot.error) {
+  if (snapshot.status === 'created' || snapshot.status === 'starting') {
+    portal.onLoading();
+  } else if (snapshot.error) {
     portal.onError(snapshot.error);
   } else if (snapshot.status === 'error' || snapshot.status === 'stopped' || snapshot.status === 'blocked') {
     portal.onError({

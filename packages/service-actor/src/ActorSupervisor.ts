@@ -197,6 +197,7 @@ export class ActorSupervisor {
 
     let actor: Actor | null = null
     try {
+      await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'starting', last_error: null })
       this.#snapshotPersistenceRevision.delete(actorInst.id)
       actor = new Actor({
         id: actorInst.id,
