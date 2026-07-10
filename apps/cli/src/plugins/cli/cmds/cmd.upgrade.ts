@@ -80,7 +80,9 @@ type TDryRunResult = {
 
 const ANSI_RESET = '\x1b[0m';
 const RELEASES_API = 'https://api.github.com/repos/vibecanvas/vibecanvas/releases' as const;
-const RELEASE_DOWNLOAD_BASE = 'https://github.com/vibecanvas/vibecanvas/releases/download' as const;
+const RELEASE_DOWNLOAD_BASE =
+  (typeof VIBECANVAS_RELEASE_DOWNLOAD_BASE !== 'undefined' && VIBECANVAS_RELEASE_DOWNLOAD_BASE) ||
+  'https://github.com/vibecanvas/vibecanvas/releases/download';
 const UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const;
 const DOWNLOAD_PROGRESS_START = 85;
 const CANDIDATE_TIMEOUT_MS = 8_000;

@@ -10,6 +10,7 @@
  *   bun scripts/build.ts              # Build all platforms
  *   bun scripts/build.ts --single     # Build current platform only
  *   bun scripts/build.ts --channel beta
+ *   VIBECANVAS_BUILD_VERSION=0.0.1 bun scripts/build.ts --single
  *
  * If --channel is omitted, the channel is inferred from apps/vibecanvas/package.json:
  * - *-beta* -> beta
@@ -392,7 +393,8 @@ async function main() {
     description?: string
     license?: string
   }
-  const version = await readWrapperVersion(rootDir)
+  const version = process.env.VIBECANVAS_BUILD_VERSION || await readWrapperVersion(rootDir)
+  const releaseDownloadBase = process.env.VIBECANVAS_BUILD_RELEASE_DOWNLOAD_BASE || "https://github.com/vibecanvas/vibecanvas/releases/download"
   const description = wrapperSourcePkg.description ?? "Vibecanvas binary package"
   const license = wrapperSourcePkg.license ?? "ISC"
 
@@ -400,6 +402,7 @@ async function main() {
   const singleFlag = process.argv.includes("--single")
   const platformArg = process.argv.find((arg) => arg.startsWith("--platform="))?.slice("--platform=".length)
   const skipWrapperFlag = process.argv.includes("--skip-wrapper")
+  const reuseAssetsFlag = process.argv.includes("--reuse-assets")
   const inferredChannel = inferReleaseChannelFromVersion(version)
   const channel = parseChannelArg(process.argv, inferredChannel)
 
@@ -433,18 +436,22 @@ async function main() {
   await Bun.$`mkdir -p ${rootDir}/dist`
 
   // Phase 1: Build SDK package consumed by widget sandbox and bundle SPA assets
-  console.log("[1/4] Bundling SPA assets...")
-  await buildSdkPackage()
-  const bundledFiles = await bundleSpaAssets()
+  if (reuseAssetsFlag) {
+    console.log("[1/4] Reusing previously generated SPA assets and migrations...")
+  } else {
+    console.log("[1/4] Bundling SPA assets...")
+    await buildSdkPackage()
+    const bundledFiles = await bundleSpaAssets()
 
-  // Phase 2: Generate embedded assets module
-  console.log("\n[2/4] Generating embedded assets...")
-  await generateEmbeddedAssets(bundledFiles)
+    // Phase 2: Generate embedded assets module
+    console.log("\n[2/4] Generating embedded assets...")
+    await generateEmbeddedAssets(bundledFiles)
 
-  // Phase 3: Generate embedded migrations module
-  console.log("\n[3/4] Generating embedded migrations...")
-  const migrationFiles = await collectMigrationFiles()
-  await generateEmbeddedMigrations(migrationFiles)
+    // Phase 3: Generate embedded migrations module
+    console.log("\n[3/4] Generating embedded migrations...")
+    const migrationFiles = await collectMigrationFiles()
+    await generateEmbeddedMigrations(migrationFiles)
+  }
 
   // Phase 4: Build each target
   console.log("\n[4/4] Compiling executables...")
@@ -474,6 +481,7 @@ async function main() {
           VIBECANVAS_VERSION: JSON.stringify(version),
           VIBECANVAS_COMPILED: "true",
           VIBECANVAS_CHANNEL: JSON.stringify(channel),
+          VIBECANVAS_RELEASE_DOWNLOAD_BASE: JSON.stringify(releaseDownloadBase),
         },
         plugins: [
           {
