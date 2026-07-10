@@ -40,6 +40,7 @@ const forbiddenBinaryMarkers = [
   "wasm_bindgen_output/nodejs/automerge_wasm_bg.wasm",
 ] as const
 const suspiciousBinaryMarkers = ["/home/runner/work/"] as const
+const darwinEntitlementsPath = path.join(__dirname, "vibecanvas.entitlements.plist")
 
 // Platform targets
 const targets = [
@@ -233,6 +234,17 @@ async function assertPortableBinary(binaryPath: string): Promise<void> {
   }
 }
 
+async function signAndVerifyDarwinBinary(binaryPath: string): Promise<void> {
+  if (process.platform !== "darwin") {
+    throw new Error("Darwin release binaries must be built and signed on macOS")
+  }
+  const identity = process.env.VIBECANVAS_CODESIGN_IDENTITY || "-"
+  const sign = await Bun.$`codesign --force --options runtime --entitlements ${darwinEntitlementsPath} --sign ${identity} ${binaryPath}`.quiet()
+  if (sign.exitCode !== 0) throw new Error(`codesign failed: ${sign.stderr.toString()}`)
+  const verify = await Bun.$`codesign --verify --deep --strict --verbose=4 ${binaryPath}`.quiet()
+  if (verify.exitCode !== 0) throw new Error(`codesign verification failed: ${verify.stderr.toString()}`)
+}
+
 // ============================================================
 // SPA Bundling
 // ============================================================
@@ -386,6 +398,7 @@ async function main() {
 
   // Parse flags
   const singleFlag = process.argv.includes("--single")
+  const platformArg = process.argv.find((arg) => arg.startsWith("--platform="))?.slice("--platform=".length)
   const skipWrapperFlag = process.argv.includes("--skip-wrapper")
   const inferredChannel = inferReleaseChannelFromVersion(version)
   const channel = parseChannelArg(process.argv, inferredChannel)
@@ -395,7 +408,9 @@ async function main() {
   process.env.VIBECANVAS_CHANNEL = channel
 
   // Filter targets
-  const filteredTargets = singleFlag
+  const filteredTargets = platformArg
+    ? targets.filter((target) => target.os === platformArg)
+    : singleFlag
     ? targets.filter(
       (t) =>
         t.os === process.platform &&
@@ -478,6 +493,7 @@ async function main() {
       }
 
       await assertPortableBinary(outputPath)
+      if (target.os === "darwin") await signAndVerifyDarwinBinary(outputPath)
       const nativeAddonPath = await copyTursoNativeAddon(target, distDir)
 
       // Create platform package.json

@@ -140,6 +140,76 @@ NATIVE_DIR="${VIBECANVAS_NATIVE_DIR:-$VIBECANVAS_HOME/native}"
 MIGRATIONS_DIR="${VIBECANVAS_MIGRATIONS_DIR:-$VIBECANVAS_HOME/database-migrations}"
 mkdir -p "$INSTALL_DIR"
 
+validate_candidate() {
+    local candidate=$1
+    local expected_version=$2
+    chmod 755 "$candidate"
+
+    if [[ "$(uname -s)" == Darwin* ]]; then
+        if ! codesign --verify --deep --strict --verbose=4 "$candidate" 2>&1; then
+            echo -e "${RED}Candidate has an invalid macOS signature; installed version was not changed${NC}" >&2
+            return 1
+        fi
+    fi
+
+    local output_file="$tmp_dir/candidate-version.txt"
+    local error_file="$tmp_dir/candidate-error.txt"
+    VIBECANVAS_DISABLE_AUTOUPDATE=1 \
+      XDG_DATA_HOME="$tmp_dir/xdg/data" XDG_CONFIG_HOME="$tmp_dir/xdg/config" \
+      XDG_STATE_HOME="$tmp_dir/xdg/state" XDG_CACHE_HOME="$tmp_dir/xdg/cache" \
+      "$candidate" --version >"$output_file" 2>"$error_file" &
+    local candidate_pid=$!
+    local elapsed=0
+    while kill -0 "$candidate_pid" 2>/dev/null && [[ "$elapsed" -lt 80 ]]; do
+        sleep 0.1
+        elapsed=$((elapsed + 1))
+    done
+    if kill -0 "$candidate_pid" 2>/dev/null; then
+        kill -KILL "$candidate_pid" 2>/dev/null || true
+        echo -e "${RED}Candidate startup timed out after 8s; installed version was not changed${NC}" >&2
+        return 1
+    fi
+    if ! wait "$candidate_pid"; then
+        echo -e "${RED}Candidate failed to start: $(cat "$error_file")${NC}" >&2
+        return 1
+    fi
+    local reported_version
+    reported_version=$(tr -d '\r\n' < "$output_file")
+    if [[ "$expected_version" != "local" && "$reported_version" != "$expected_version" ]]; then
+        echo -e "${RED}Candidate version mismatch: expected $expected_version, received ${reported_version:-<empty>}${NC}" >&2
+        return 1
+    fi
+}
+
+install_candidate_unit() {
+    local candidate_binary=$1
+    local candidate_native=${2:-}
+    local installed_binary="$INSTALL_DIR/vibecanvas"
+    local backup_binary="$INSTALL_DIR/.vibecanvas.upgrade-backup"
+    local backup_native="$VIBECANVAS_HOME/.native.upgrade-backup"
+    local staged_binary="$INSTALL_DIR/.vibecanvas.upgrade-new"
+    local staged_native="$VIBECANVAS_HOME/.native.upgrade-new"
+
+    rm -f "$backup_binary" "$staged_binary"
+    rm -rf "$backup_native" "$staged_native"
+    [[ ! -f "$installed_binary" ]] || cp "$installed_binary" "$backup_binary"
+    [[ ! -d "$NATIVE_DIR" ]] || cp -R "$NATIVE_DIR" "$backup_native"
+    cp "$candidate_binary" "$staged_binary"
+    chmod 755 "$staged_binary"
+    [[ -z "$candidate_native" ]] || cp -R "$candidate_native" "$staged_native"
+
+    if ! mv -f "$staged_binary" "$installed_binary" || \
+       { [[ -n "$candidate_native" ]] && { rm -rf "$NATIVE_DIR"; ! mv "$staged_native" "$NATIVE_DIR"; }; }; then
+        [[ ! -f "$backup_binary" ]] || cp "$backup_binary" "$installed_binary"
+        rm -rf "$NATIVE_DIR"
+        [[ ! -d "$backup_native" ]] || cp -R "$backup_native" "$NATIVE_DIR"
+        echo -e "${RED}Installation failed and the previous installation was restored${NC}" >&2
+        return 1
+    fi
+    rm -f "$backup_binary"
+    rm -rf "$backup_native"
+}
+
 copy_migrations() {
     local source_dir=$1
 
@@ -289,7 +359,11 @@ fi
 # Install
 if [[ -n "$binary_path" ]]; then
     echo -e "\n${MUTED}Installing from: ${NC}$binary_path"
-    cp "$binary_path" "$INSTALL_DIR/vibecanvas"
+    tmp_dir="${TMPDIR:-/tmp}/vibecanvas_install_$$"
+    mkdir -p "$tmp_dir"
+    trap "rm -rf '$tmp_dir'" EXIT
+    validate_candidate "$binary_path" "local"
+    install_candidate_unit "$binary_path" ""
 else
     echo -e "\n${MUTED}Installing vibecanvas ${NC}$specific_version${MUTED} for ${NC}$target"
 
@@ -348,19 +422,15 @@ else
         fi
     fi
 
-    cp "$binary_candidate" "$INSTALL_DIR/vibecanvas"
-
     native_installed=false
+    native_source=""
     for native_candidate in \
         "$tmp_dir/native" \
         "$tmp_dir/package/native" \
         "$tmp_dir"/*/native
     do
         if [[ -d "$native_candidate" ]]; then
-            rm -rf "$NATIVE_DIR"
-            mkdir -p "$(dirname "$NATIVE_DIR")"
-            cp -R "$native_candidate" "$NATIVE_DIR"
-            echo -e "${GREEN}Installed native addons${NC}"
+            native_source="$native_candidate"
             native_installed=true
             break
         fi
@@ -370,6 +440,11 @@ else
         echo -e "${RED}Could not find native addon directory in archive${NC}"
         exit 1
     fi
+
+    echo -e "${MUTED}Validating candidate...${NC}"
+    validate_candidate "$binary_candidate" "$specific_version"
+    install_candidate_unit "$binary_candidate" "$native_source"
+    echo -e "${GREEN}Installed validated binary and native addons${NC}"
 
     migrations_installed=false
     for migrations_candidate in \

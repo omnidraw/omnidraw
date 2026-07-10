@@ -813,3 +813,4 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
+| [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |
