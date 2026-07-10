@@ -141,4 +141,72 @@ describe("DbServiceTurso actor writes", () => {
       slug: "timer",
     });
   });
+
+  test("updates the correct actor rows with medium JSON state and update triggers", async () => {
+    const mediumHtml = `<!doctype html><html><body>${"x".repeat(16_000)}</body></html>`;
+
+    for (const [id, context] of [
+      ["actor-small-a", { kind: "small-a" }],
+      ["actor-update-target", { kind: "target" }],
+      ["actor-medium-c", { kind: "medium", html: mediumHtml }],
+    ] as const) {
+      await db.actor.insertInstance({
+        id,
+        canvas_id: CANVAS_ID,
+        element_id: `element-${id}`,
+        actor_definition_name: ACTOR_DEFINITION_NAME,
+        filesystem_id: null,
+        display_name: id,
+        status: "created",
+        machine_state: "idle",
+        machine_context: context,
+      });
+    }
+
+    const statusResult = await db.actor.updateInstanceStatus({
+      id: "actor-update-target",
+      status: "running",
+    });
+    expect(statusResult).toMatchObject({
+      id: "actor-update-target",
+      status: "running",
+      machine_context: { kind: "target" },
+    });
+
+    const nextContext = { kind: "medium-updated", html: mediumHtml };
+    const machineResult = await db.actor.updateInstanceMachine({
+      id: "actor-medium-c",
+      machine_state: "ready",
+      machine_context: nextContext,
+    });
+    expect(machineResult).toMatchObject({
+      id: "actor-medium-c",
+      machine_state: "ready",
+      machine_context: nextContext,
+    });
+
+    const persistedTarget = await db.actor.getInstanceById("actor-update-target");
+    const persistedMedium = await db.actor.getInstanceById("actor-medium-c");
+    expect(persistedTarget?.id).toBe("actor-update-target");
+    expect(persistedTarget?.status).toBe("running");
+    expect(persistedMedium?.id).toBe("actor-medium-c");
+  });
+
+  test("updates actor definitions without UPDATE RETURNING on the self-triggered table", async () => {
+    const updated = await db.actor.updateDefinition({
+      name: ACTOR_DEFINITION_NAME,
+      slug: "counter",
+      url: "https://example.com/counter",
+      description: "Updated counter",
+      manifest_path: "/actors/counter-renamed/vibecanvas.json",
+    });
+
+    expect(updated).toMatchObject({
+      name: ACTOR_DEFINITION_NAME,
+      slug: "counter",
+      url: "https://example.com/counter",
+      description: "Updated counter",
+      manifest_path: "/actors/counter-renamed/vibecanvas.json",
+    });
+  });
 });

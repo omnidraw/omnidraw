@@ -62,13 +62,19 @@ export async function txActorDeleteDefinition(portal: TPortal, args: TArgsDefini
 }
 
 export async function txActorUpdateDefinition(portal: TPortal, args: TArgsDefinitionUpdate): Promise<TActorDefinition> {
-  const stmt = await portal.db.prepare(`
+  const updateStmt = await portal.db.prepare(`
     UPDATE actor_definitions
     SET name = ?, url = ?, description = ?, manifest_path = ?
     WHERE slug = ?
-    RETURNING *
   `)
-  const row = await stmt.get(args.name, args.url, args.description, args.manifest_path, args.slug)
+  await updateStmt.run(args.name, args.url, args.description, args.manifest_path, args.slug)
+
+  const selectStmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_definitions
+    WHERE slug = ?
+  `)
+  const row = await selectStmt.get(args.slug)
   if (!row) throw new Error(`Unknown actor definition slug "${args.slug}"`)
   return row as TActorDefinition
 }
@@ -85,25 +91,37 @@ export async function txActorInsertInstance(portal: TPortal, args: TArgsInstance
 }
 
 export async function txActorUpdateInstanceStatus(portal: TPortal, args: TArgsInstanceUpdateStatus): Promise<TActorInstance> {
-  const stmt = await portal.db.prepare(`
+  const updateStmt = await portal.db.prepare(`
     UPDATE actor_instances
     SET status = ?
     WHERE id = ?
-    RETURNING *
   `)
-  const row = await stmt.get(args.status, args.id)
+  await updateStmt.run(args.status, args.id)
+
+  const selectStmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_instances
+    WHERE id = ?
+  `)
+  const row = await selectStmt.get(args.id)
   if (!row) throw new Error(`Unknown actor instance "${args.id}"`)
   return parseActorInstance(row)
 }
 
 export async function txActorUpdateInstanceMachine(portal: TPortal, args: TArgsInstanceUpdateMachine): Promise<TActorInstance> {
-  const stmt = await portal.db.prepare(`
+  const updateStmt = await portal.db.prepare(`
     UPDATE actor_instances
     SET machine_state = ?, machine_context = ?
     WHERE id = ?
-    RETURNING *
   `)
-  const row = await stmt.get(args.machine_state, serializeJson(args.machine_context), args.id)
+  await updateStmt.run(args.machine_state, serializeJson(args.machine_context), args.id)
+
+  const selectStmt = await portal.db.prepare(`
+    SELECT *
+    FROM actor_instances
+    WHERE id = ?
+  `)
+  const row = await selectStmt.get(args.id)
   if (!row) throw new Error(`Unknown actor instance "${args.id}"`)
   return parseActorInstance(row)
 }
