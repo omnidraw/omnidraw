@@ -24,6 +24,9 @@ function parseActorInstance(row: unknown): TActorInstance {
   return {
     ...instance,
     machine_context: parseJson(instance.machine_context),
+    last_error: instance.last_error === null || instance.last_error === undefined
+      ? null
+      : parseJson(instance.last_error) as TActorInstance['last_error'],
   }
 }
 
@@ -95,7 +98,8 @@ export async function fxActorGetInstanceByElementId(portal: TPortal, args: TArgs
     FROM actor_instances
     WHERE element_id = ?
   `)
-  return await stmt.get(args.elementId)
+  const row = await stmt.get(args.elementId)
+  return row ? parseActorInstance(row) : row as null
 }
 type TArgsGetInstanceById = {
   instanceId: string
@@ -106,5 +110,6 @@ export async function fxActorGetInstanceById(portal: TPortal, args: TArgsGetInst
     FROM actor_instances
     WHERE id = ?
   `)
-  return await stmt.get(args.instanceId)
+  const row = await stmt.get(args.instanceId)
+  return row ? parseActorInstance(row) : row as null
 }

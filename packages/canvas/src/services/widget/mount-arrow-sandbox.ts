@@ -6,10 +6,13 @@ import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/
 import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 import type { IWidgetConfig } from './interface';
 import type { TWidgetActorEvent } from './WidgetManagerService';
+import type { TActorStatus, TWidgetError } from '@vibecanvas/service-db/model';
 
 type TActorSnapshot = {
+  status: TActorStatus;
   state: string;
   context: unknown;
+  error: TWidgetError | null;
 };
 
 type TWidgetHostActorEventResult =
@@ -21,6 +24,8 @@ type TPortal = {
   apiService: TOrpcSafeClient;
   subscribeActorInstanceEvents: (actorInstanceId: string, handler: (event: TWidgetActorEvent) => void) => () => void;
   getActorInstanceId: () => string | null;
+  onError: (error: TWidgetError) => void;
+  onRecovered: () => void;
 };
 
 type TArgs = {
@@ -179,6 +184,33 @@ function bindSandboxFormSubmitGuards(root: HTMLElement): () => void {
   };
 }
 
+function getSandboxOutputError(payload: unknown): string | null {
+  if (payload instanceof Error) return payload.message;
+  if (!payload || typeof payload !== 'object') return null;
+  if ('error' in payload) {
+    const error = (payload as { error?: unknown }).error;
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+  }
+  if ('type' in payload && (payload as { type?: unknown }).type === 'error' && 'message' in payload) {
+    const message = (payload as { message?: unknown }).message;
+    return typeof message === 'string' ? message : null;
+  }
+  return null;
+}
+
+function getSandboxHostError(error: Error | string): TWidgetError {
+  const rawMessage = error instanceof Error ? error.message : error;
+  const message = rawMessage.split('\n').find((line) => line.trim().length > 0)?.trim() || 'Widget sandbox failed.';
+  const isCompileError = error instanceof Error && error.name === 'SandboxCompileError';
+  return {
+    phase: isCompileError ? 'sandbox-compile' : 'sandbox-runtime',
+    code: isCompileError ? 'WIDGET_SANDBOX_MOUNT_FAILED' : 'WIDGET_SANDBOX_RUNTIME_FAILED',
+    message,
+    retryable: false,
+  };
+}
+
 function sleep(portal: TPortal, ms: number): Promise<void> {
   return new Promise((resolve) => {
     const view = portal.root.ownerDocument.defaultView;
@@ -205,40 +237,83 @@ async function waitForActorInstanceId(portal: TPortal): Promise<string | null> {
   return null;
 }
 
-async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string | null): Promise<TActorSnapshot> {
-  if (!actorInstanceId) return { state: 'booting', context: null };
+async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string | null, elementId: string): Promise<TActorSnapshot> {
+  if (!actorInstanceId) {
+    const [elementError, elementSnapshot] = await portal.apiService.api.actors.instances.snapshot({ elementId });
+    if (!elementError) {
+      if (elementSnapshot.error) portal.onError(elementSnapshot.error);
+      else portal.onRecovered();
+      return elementSnapshot;
+    }
+    const error: TWidgetError = { phase: 'instance-create', code: 'ACTOR_INSTANCE_NOT_READY', message: 'Widget actor instance is not ready yet.', retryable: true };
+    portal.onError(error);
+    return { status: 'error', state: 'error', context: { message: error.message }, error };
+  }
 
   const [error, snapshot] = await portal.apiService.api.actors.instances.snapshot({ instanceId: actorInstanceId });
-  if (error) return { state: 'error', context: { message: String(error) } };
+  if (error) {
+    const widgetError: TWidgetError = { phase: 'snapshot', code: 'ACTOR_SNAPSHOT_FAILED', message: String(error), retryable: true };
+    portal.onError(widgetError);
+    return { status: 'error', state: 'error', context: { message: widgetError.message }, error: widgetError };
+  }
+
+  if (snapshot.error) {
+    portal.onError(snapshot.error);
+  } else if (snapshot.status === 'error' || snapshot.status === 'stopped' || snapshot.status === 'blocked') {
+    portal.onError({
+      phase: 'snapshot',
+      code: 'ACTOR_INSTANCE_NOT_READY',
+      message: `Widget actor is ${snapshot.status}.`,
+      retryable: true,
+    });
+  } else {
+    portal.onRecovered();
+  }
 
   return snapshot;
 }
 
-function getSnapshotFromActorEvent(snapshot: TActorSnapshot | null, event: TWidgetActorEvent): TActorSnapshot | null {
+function getSnapshotFromActorEvent(portal: TPortal, snapshot: TActorSnapshot | null, event: TWidgetActorEvent): TActorSnapshot | null {
   if (event.kind !== 'system') return null;
 
   if (event.type === 'state.changed') {
+    portal.onRecovered();
     return {
       state: event.to,
       context: snapshot?.context ?? null,
+      status: snapshot?.status ?? 'running',
+      error: snapshot?.error ?? null,
     };
   }
 
   if (event.type === 'data.changed') {
+    portal.onRecovered();
     return {
       state: snapshot?.state ?? 'booting',
       context: event.data,
+      status: snapshot?.status ?? 'running',
+      error: snapshot?.error ?? null,
     };
   }
 
   if (event.type === 'error') {
+    const error: TWidgetError = {
+      phase: 'sandbox-runtime',
+      code: event.code,
+      message: event.message,
+      details: event.details,
+      retryable: true,
+    };
+    portal.onError(error);
     return {
+      status: 'error',
       state: 'error',
       context: {
         code: event.code,
         message: event.message,
         details: event.details,
       },
+      error,
     };
   }
 
@@ -247,6 +322,7 @@ function getSnapshotFromActorEvent(snapshot: TActorSnapshot | null, event: TWidg
 
 export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let actorInstanceId = portal.getActorInstanceId() ?? getActorInstanceId(args.element);
+  let hasSandboxError = false;
   let unsubscribeActorEvents: (() => void) | undefined;
   let disposed = false;
   let cursor = 0;
@@ -254,6 +330,12 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let unbindSandboxFormSubmitGuards: (() => void) | undefined;
   const queuedEvents: TWidgetHostActorEventResult[] = [];
   const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = [];
+  const actorPortal: TPortal = {
+    ...portal,
+    onRecovered: () => {
+      if (!hasSandboxError) portal.onRecovered();
+    },
+  };
 
   function pushActorEvent(event: TWidgetHostActorEventResult) {
     if (disposed) return;
@@ -274,7 +356,7 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   }
 
   function handleActorEvent(event: TWidgetActorEvent) {
-    const snapshot = getSnapshotFromActorEvent(currentSnapshot, event);
+    const snapshot = getSnapshotFromActorEvent(actorPortal, currentSnapshot, event);
     if (!snapshot) return;
     pushSnapshot(snapshot);
   }
@@ -315,15 +397,27 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
     </style>
     ${SANDBOX({
     source: getSandboxSource(args.sandbox.arrowjs),
+    onError(error) {
+      hasSandboxError = true;
+      portal.onError(getSandboxHostError(error));
+    },
   }, {
     output(payload) {
-      console.log(payload)
+      const message = getSandboxOutputError(payload);
+      if (!message) return;
+      hasSandboxError = true;
+      portal.onError({
+        phase: 'sandbox-runtime',
+        code: 'WIDGET_SANDBOX_RUNTIME_FAILED',
+        message,
+        retryable: false,
+      });
     },
   }, {
     [SDK_HOST_BRIDGE_MODULE]: {
       async getActorSnapshot() {
         const readyActorInstanceId = await ensureActorInstanceId();
-        currentSnapshot = await getInitialActorSnapshot(portal, readyActorInstanceId);
+        currentSnapshot = await getInitialActorSnapshot(actorPortal, readyActorInstanceId, args.element.id);
         return currentSnapshot;
       },
       async sendActorMessage(args: unknown) {

@@ -542,6 +542,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/widget/interface.ts](packages/canvas/src/services/widget/interface.ts) |  |
 | [packages/canvas/src/services/widget/mount-arrow-sandbox.ts](packages/canvas/src/services/widget/mount-arrow-sandbox.ts) |  |
 | [packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts](packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts) |  |
+| [packages/canvas/src/services/widget/tx.render-widget-error.ts](packages/canvas/src/services/widget/tx.render-widget-error.ts) |  |
 | [packages/canvas/src/services/widget/tx.resize-widget-host.ts](packages/canvas/src/services/widget/tx.resize-widget-host.ts) |  |
 | [packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts](packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts) |  |
 | [packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts](packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts) |  |
@@ -605,6 +606,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
 | [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
 | [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
+| [packages/service-actor/src/core/fn.widget-error.ts](packages/service-actor/src/core/fn.widget-error.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
 | [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |
 | [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
@@ -699,6 +701,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |

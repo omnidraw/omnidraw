@@ -9,7 +9,7 @@ import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { fxKeyValueGet } from "./fx.keyValue";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
-import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
+import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceHealth, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
@@ -23,8 +23,9 @@ type TFileCreateArgs = Omit<TMediaFile, "created_at">
 type TFilesystemCreateArgs = Omit<TFilesystem, "created_at" | "updated_at">;
 type TActorDefinitionCreateArgs = Omit<TActorDefinition, "created_at" | "updated_at">;
 type TActorDefinitionUpdateArgs = Omit<TActorDefinition, "id" | "created_at" | "updated_at">;
-type TActorInstanceCreateArgs = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context"> & { machine_context: TJson };
+type TActorInstanceCreateArgs = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context" | "last_error"> & { machine_context: TJson; last_error?: TActorInstance['last_error'] };
 type TActorInstanceUpdateStatusArgs = Pick<TActorInstance, "id" | "status">;
+type TActorInstanceUpdateHealthArgs = Pick<TActorInstance, "id" | "status" | "last_error">;
 type TActorInstanceUpdateMachineArgs = Pick<TActorInstance, "id" | "machine_state"> & { machine_context: TJson };
 type TActorConnectionCreateArgs = Omit<TActorConnection, "created_at" | "updated_at" | "style"> & { style: TJson };
 
@@ -69,6 +70,7 @@ interface IPublicMethods {
     listInstances(filter?: { canvasId?: string }): Promise<TActorInstance[]>;
     insertInstance(instance: TActorInstanceCreateArgs): Promise<TActorInstance>;
     updateInstanceStatus(instance: TActorInstanceUpdateStatusArgs): Promise<TActorInstance>;
+    updateInstanceHealth(instance: TActorInstanceUpdateHealthArgs): Promise<TActorInstance>;
     updateInstanceMachine(instance: TActorInstanceUpdateMachineArgs): Promise<TActorInstance>;
     deleteInstance(id: string): Promise<void>;
     listConnections(): Promise<TActorConnection[]>;
@@ -158,6 +160,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     listInstances: (filter?: { canvasId?: string }) => fxActorListInstances(this, { canvasId: filter?.canvasId }),
     insertInstance: (instance: TActorInstanceCreateArgs) => this.#serializeActorWrite(() => txActorInsertInstance(this, instance)),
     updateInstanceStatus: (instance: TActorInstanceUpdateStatusArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceStatus(this, instance)),
+    updateInstanceHealth: (instance: TActorInstanceUpdateHealthArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceHealth(this, instance)),
     updateInstanceMachine: (instance: TActorInstanceUpdateMachineArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceMachine(this, instance)),
     getInstanceByElementId: (elementId: string) => fxActorGetInstanceByElementId(this, {elementId}),
     getInstanceById: (instanceId: string) => fxActorGetInstanceById(this, {instanceId}),

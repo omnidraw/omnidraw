@@ -4,7 +4,7 @@ import type { IRuntime } from "@vibecanvas/runtime";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TCanvas } from "@vibecanvas/service-db/model";
 import type { ThemeService } from "@vibecanvas/service-theme";
-import { createEffect, createResource, Match, onCleanup, Switch } from "solid-js";
+import { createEffect, createResource, createSignal, Match, onCleanup, Switch } from "solid-js";
 import { findDocument } from "../automerge";
 import { buildRuntime } from "../runtime";
 
@@ -30,6 +30,7 @@ export function Canvas(props: CanvasPageProps) {
   let containerRef!: HTMLDivElement;
   let activeHandle: DocHandle<TCanvasDoc> | null = null;
   let runtime: IRuntime | null = null;
+  const [bootError, setBootError] = createSignal<string | null>(null);
   const [docHandle] = createResource(() => props.canvas.automerge_url as AutomergeUrl, async (url) => {
     try {
       return await findDocument(url);
@@ -61,8 +62,17 @@ export function Canvas(props: CanvasPageProps) {
       notification: props.notification,
       themeService: props.themeService,
     })
-
-    void runtime.boot();
+    const bootingRuntime = runtime;
+    setBootError(null);
+    void bootingRuntime.boot().catch(async (error) => {
+      if (runtime !== bootingRuntime) return;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[CanvasPage] Failed to boot canvas runtime:', error);
+      props.notification.showError('Failed to start canvas', message);
+      setBootError(message);
+      await bootingRuntime.shutdown().catch(() => undefined);
+      if (runtime === bootingRuntime) runtime = null;
+    });
   });
 
   onCleanup(() => {
@@ -78,6 +88,11 @@ export function Canvas(props: CanvasPageProps) {
       </Match>
       <Match when={docHandle.error}>
         <div>Error</div>
+      </Match>
+      <Match when={bootError()}>
+        {(message) => <div role="alert" style={{ position: 'absolute', inset: '0', display: 'grid', 'place-items': 'center', padding: '24px', color: 'var(--vc-text-primary, #111827)' }}>
+          Canvas failed to start: {message()}
+        </div>}
       </Match>
     </Switch>
   </div>;

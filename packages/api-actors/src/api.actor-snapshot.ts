@@ -2,11 +2,15 @@ import { ORPCError } from '@orpc/contract';
 import { baseActorsOs } from './orpc';
 
 const apiActorSnapshot = baseActorsOs.instances.snapshot.handler(async ({ context, input }) => {
-  const actorInstance = await context.db.actor.getInstanceById(input.instanceId)
+  const actorInstance = 'instanceId' in input
+    ? await context.db.actor.getInstanceById(input.instanceId)
+    : await context.db.actor.getInstanceByElementId(input.elementId)
   if (!actorInstance) throw new ORPCError('NOT_FOUND')
   return {
-    context: JSON.parse(actorInstance.machine_context as any),
-    state: actorInstance.machine_state
+    context: actorInstance.machine_context,
+    state: actorInstance.machine_state,
+    status: actorInstance.status,
+    error: actorInstance.last_error,
   }
 });
 

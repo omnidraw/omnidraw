@@ -209,4 +209,36 @@ describe("DbServiceTurso actor writes", () => {
       manifest_path: "/actors/counter-renamed/vibecanvas.json",
     });
   });
+
+  test("persists and clears actor infrastructure errors without changing machine context", async () => {
+    const mediumHtml = `<main>${"state".repeat(4_000)}</main>`;
+    await db.actor.insertInstance({
+      id: "actor-health",
+      canvas_id: CANVAS_ID,
+      element_id: "element-health",
+      actor_definition_name: ACTOR_DEFINITION_NAME,
+      filesystem_id: null,
+      display_name: "Actor Health",
+      status: "created",
+      machine_state: "idle",
+      machine_context: { html: mediumHtml, count: 7 },
+    });
+
+    const failed = await db.actor.updateInstanceHealth({
+      id: "actor-health",
+      status: "error",
+      last_error: {
+        phase: "instance-start",
+        code: "ACTOR_INSTANCE_START_FAILED",
+        message: "Child process did not start",
+        retryable: true,
+      },
+    });
+    expect(failed.last_error?.code).toBe("ACTOR_INSTANCE_START_FAILED");
+    expect(failed.machine_context).toEqual({ html: mediumHtml, count: 7 });
+
+    const recovered = await db.actor.updateInstanceHealth({ id: "actor-health", status: "running", last_error: null });
+    expect(recovered.last_error).toBeNull();
+    expect(recovered.machine_context).toEqual({ html: mediumHtml, count: 7 });
+  });
 });

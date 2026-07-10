@@ -116,5 +116,6 @@ export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinit
     promises.push(p)
   })
 
-  await Promise.all(promises)
+  const results = await Promise.allSettled(promises)
+  return results.flatMap((result) => result.status === 'rejected' ? [result.reason as unknown] : [])
 }

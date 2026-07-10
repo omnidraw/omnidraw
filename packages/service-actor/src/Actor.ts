@@ -106,6 +106,7 @@ export class Actor {
     #pendingRuns = new Map<number, TPendingRun>();
     #listeners = new Set<(event: TActorEvent) => void>();
     #stateTimeout: ReturnType<typeof setTimeout> | null = null;
+    #readyWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 
     constructor(config: IActorConfig) {
         this.#id = config.id
@@ -174,6 +175,30 @@ export class Actor {
         return this.#data
     }
 
+    waitUntilReady(timeoutMs = 5_000): Promise<void> {
+        if (this.#isChildReady) return Promise.resolve();
+        if (this.#childFailure) return Promise.reject(this.#childFailure);
+        if (!this.#proc) return Promise.reject(new Error('Actor child process is not running'));
+
+        return new Promise((resolve, reject) => {
+            let waiter!: { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
+            waiter = {
+                resolve: () => {
+                    clearTimeout(waiter.timer);
+                    this.#readyWaiters.delete(waiter);
+                    resolve();
+                },
+                reject: (error: Error) => {
+                    clearTimeout(waiter.timer);
+                    this.#readyWaiters.delete(waiter);
+                    reject(error);
+                },
+                timer: setTimeout(() => waiter.reject(new Error(`Actor child process was not ready within ${timeoutMs}ms`)), timeoutMs),
+            };
+            this.#readyWaiters.add(waiter);
+        });
+    }
+
     isIdle() {
         return !this.#isProcessing && this.#queue.length === 0 && this.#pendingRuns.size === 0
     }
@@ -232,6 +257,7 @@ export class Actor {
         const wasRunning = this.#proc !== null
         this.#isClosing = true;
         this.#isChildReady = false;
+        for (const waiter of [...this.#readyWaiters]) waiter.reject(new Error('Actor child process was closed before it became ready'));
         this.#clearStateTimeout()
         this.#proc?.kill()
         this.#proc = null
@@ -364,6 +390,7 @@ export class Actor {
         if (message.type === "ready") {
             this.#isChildReady = true;
             this.#childFailure = null;
+            for (const waiter of [...this.#readyWaiters]) waiter.resolve();
             this.#processQueue()
             return;
         }
@@ -453,6 +480,7 @@ export class Actor {
         this.#proc = null;
 
         const error = new Error(`Actor child process exited with code ${exitCode}`)
+        for (const waiter of [...this.#readyWaiters]) waiter.reject(error);
         this.#childFailure = error;
         this.#rejectPending(undefined, error)
         this.#failQueued(error)

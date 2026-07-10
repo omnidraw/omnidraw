@@ -1,5 +1,5 @@
 import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
-import type { TActorConnection, TActorInstance } from "@vibecanvas/service-db/model";
+import type { TActorConnection, TActorInstance, TWidgetError } from "@vibecanvas/service-db/model";
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
 import { readdir, exists, rm } from "node:fs/promises"
@@ -11,6 +11,7 @@ import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./
 import { fnToActorData } from "./core/fn.actor-data";
 import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
+import { fnNormalizeWidgetError } from './core/fn.widget-error';
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
@@ -60,13 +61,20 @@ export class ActorSupervisor {
 
   async reload() {
     await this.reloadDefinitions()
-    await txSyncDbActorDefinitions({
+    const definitionSyncErrors = await txSyncDbActorDefinitions({
       crypto,
       db: this.#config.db,
       configPath: this.#config.configPath,
       isAbsolute,
       relative,
     }, { defs: Object.values(this.vibecanvasDefMap) })
+    definitionSyncErrors.forEach((error) => {
+      this.#config.eventPublisherService.publishNotification({
+        type: 'error',
+        title: 'Failed to synchronize widget definition',
+        description: error instanceof Error ? error.message : String(error),
+      })
+    })
     await this.loadMissingActorInstances()
     await this.reloadConnections()
   }
@@ -136,22 +144,76 @@ export class ActorSupervisor {
     }
   }
 
-  private async loadActorInstance(actorInst: TActorInstance) {
-    const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
-    if (!def) return
+  private async persistInstanceError(actorInst: TActorInstance, error: TWidgetError, publishEvent = true) {
+    try {
+      await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'error', last_error: error })
+    } catch (persistError) {
+      this.#config.eventPublisherService.publishNotification({
+        type: 'error',
+        title: 'Failed to persist widget error',
+        description: persistError instanceof Error ? persistError.message : String(persistError),
+      })
+    }
 
-    const actor = new Actor({
-      id: actorInst.id,
-      vsJson: def,
-      rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
-      state: actorInst.machine_state as TActorState,
-      data: fnToActorData(actorInst.machine_context),
+    if (publishEvent) {
+      this.#config.eventPublisherService.publishActorEvent({
+        kind: 'system',
+        actorId: actorInst.id,
+        type: 'error',
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      })
+    }
+    this.#config.eventPublisherService.publishNotification({
+      type: 'error',
+      title: 'Error loading widget',
+      description: `${actorInst.display_name}: ${error.message}`,
     })
+  }
 
-    this.actorMap[actor.getId()] = actor
-    this.listenToActor(actor)
-    actor.start()
-    await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
+  private async loadActorInstance(actorInst: TActorInstance): Promise<Actor | null> {
+    const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
+    if (!def) {
+      await this.persistInstanceError(actorInst, {
+        phase: 'definition-fetch',
+        code: 'WIDGET_DEFINITION_UNAVAILABLE',
+        message: `Widget definition "${actorInst.actor_definition_name}" is unavailable.`,
+        retryable: true,
+        occurredAt: new Date().toISOString(),
+      })
+      return null
+    }
+
+    let actor: Actor | null = null
+    try {
+      actor = new Actor({
+        id: actorInst.id,
+        vsJson: def,
+        rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
+        state: actorInst.machine_state as TActorState,
+        data: fnToActorData(actorInst.machine_context),
+      })
+
+      this.actorMap[actor.getId()] = actor
+      this.listenToActor(actor)
+      actor.start()
+      await actor.waitUntilReady()
+      await this.#config.db.actor.updateInstanceHealth({ id: actor.getId(), status: 'running', last_error: null })
+      return actor
+    } catch (cause) {
+      if (actor) {
+        try { actor.close() } catch { /* best-effort cleanup */ }
+        delete this.actorMap[actor.getId()]
+      }
+      await this.persistInstanceError(actorInst, fnNormalizeWidgetError(cause, {
+        phase: 'instance-start',
+        code: 'ACTOR_INSTANCE_START_FAILED',
+        retryable: true,
+        occurredAt: new Date().toISOString(),
+      }))
+      return null
+    }
   }
 
   private async reloadConnections() {
@@ -178,6 +240,11 @@ export class ActorSupervisor {
         return
       }
 
+      if (event.kind === 'system' && event.type === 'error' && event.code === 'ACTOR_CHILD_EXITED') {
+        void this.persistRuntimeActorError(actor, event)
+        return
+      }
+
       if (event.kind !== "actor") return
 
       void this.routeActorOutput({
@@ -186,6 +253,19 @@ export class ActorSupervisor {
         msgPayload: event.payload,
       })
     })
+  }
+
+  private async persistRuntimeActorError(actor: Actor, event: Extract<TActorEvent, { kind: 'system'; type: 'error' }>) {
+    const instance = await this.#config.db.actor.getInstanceById(actor.getId())
+    if (!instance) return
+    await this.persistInstanceError(instance, {
+      phase: 'sandbox-runtime',
+      code: event.code,
+      message: event.message,
+      details: event.details as TWidgetError['details'],
+      retryable: true,
+      occurredAt: new Date().toISOString(),
+    }, false)
   }
 
   private async persistActorMachineSnapshot(actor: Actor) {
@@ -252,17 +332,7 @@ export class ActorSupervisor {
       machine_context: def.actor.initialData
     })
 
-    const actor = new Actor({
-      id: actorDb.id,
-      vsJson: def,
-      rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
-    })
-
-    this.actorMap[actor.getId()] = actor
-    this.listenToActor(actor)
-    actor.start()
-    await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'running'})
-    return actor;
+    return this.loadActorInstance(actorDb)
   }
 
   public async removeInstance(instanceId: string): Promise<void> {
