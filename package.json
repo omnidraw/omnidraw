@@ -30,6 +30,7 @@
     "test": "bun run --parallel --filter '@vibecanvas/cli' --filter '@vibecanvas/web' --filter '@vibecanvas/frontend' --filter '@vibecanvas/actor-ui' --filter '@vibecanvas/api-actors' --filter '@vibecanvas/api-canvas' --filter '@vibecanvas/api-db' --filter '@vibecanvas/api-file' --filter '@vibecanvas/api-filesystem' --filter '@vibecanvas/api-notification' --filter '@vibecanvas/api-pty' --filter '@vibecanvas/runtime' --filter '@vibecanvas/service-automerge' --filter '@vibecanvas/service-db' --filter '@vibecanvas/service-event-publisher' --filter '@vibecanvas/service-filesystem' --filter '@vibecanvas/service-pty' --filter '@vibecanvas/shared-functions' --filter '@vibecanvas/tapable' test",
     "test:ci:docker": "docker run --rm -it --platform linux/amd64 -v \"$PWD\":/repo -w /repo ubuntu:24.04 bash -lc 'export DEBIAN_FRONTEND=noninteractive && apt-get update && apt-get install -y curl unzip git ca-certificates && curl -fsSL https://bun.sh/install | bash && export BUN_INSTALL=/root/.bun && export PATH=$BUN_INSTALL/bin:$PATH && bun --version && bun install --frozen-lockfile && bun run test'",
     "test:binary": "bun run scripts/test-binary.ts",
+    "test:upgrade:local": "bun run scripts/test-local-upgrade.ts",
     "build": "bun run scripts/build.ts",
     "build:single": "bun run scripts/build.ts --single",
     "web:dev": "bun --filter @vibecanvas/web dev",

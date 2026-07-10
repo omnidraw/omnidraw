@@ -10,6 +10,7 @@
  *   bun scripts/build.ts              # Build all platforms
  *   bun scripts/build.ts --single     # Build current platform only
  *   bun scripts/build.ts --channel beta
+ *   VIBECANVAS_BUILD_VERSION=0.0.1 bun scripts/build.ts --single
  *
  * If --channel is omitted, the channel is inferred from apps/vibecanvas/package.json:
  * - *-beta* -> beta
@@ -40,6 +41,7 @@ const forbiddenBinaryMarkers = [
   "wasm_bindgen_output/nodejs/automerge_wasm_bg.wasm",
 ] as const
 const suspiciousBinaryMarkers = ["/home/runner/work/"] as const
+const darwinEntitlementsPath = path.join(__dirname, "vibecanvas.entitlements.plist")
 
 // Platform targets
 const targets = [
@@ -233,6 +235,17 @@ async function assertPortableBinary(binaryPath: string): Promise<void> {
   }
 }
 
+async function signAndVerifyDarwinBinary(binaryPath: string): Promise<void> {
+  if (process.platform !== "darwin") {
+    throw new Error("Darwin release binaries must be built and signed on macOS")
+  }
+  const identity = process.env.VIBECANVAS_CODESIGN_IDENTITY || "-"
+  const sign = await Bun.$`codesign --force --options runtime --entitlements ${darwinEntitlementsPath} --sign ${identity} ${binaryPath}`.quiet()
+  if (sign.exitCode !== 0) throw new Error(`codesign failed: ${sign.stderr.toString()}`)
+  const verify = await Bun.$`codesign --verify --deep --strict --verbose=4 ${binaryPath}`.quiet()
+  if (verify.exitCode !== 0) throw new Error(`codesign verification failed: ${verify.stderr.toString()}`)
+}
+
 // ============================================================
 // SPA Bundling
 // ============================================================
@@ -380,13 +393,16 @@ async function main() {
     description?: string
     license?: string
   }
-  const version = await readWrapperVersion(rootDir)
+  const version = process.env.VIBECANVAS_BUILD_VERSION || await readWrapperVersion(rootDir)
+  const releaseDownloadBase = process.env.VIBECANVAS_BUILD_RELEASE_DOWNLOAD_BASE || "https://github.com/vibecanvas/vibecanvas/releases/download"
   const description = wrapperSourcePkg.description ?? "Vibecanvas binary package"
   const license = wrapperSourcePkg.license ?? "ISC"
 
   // Parse flags
   const singleFlag = process.argv.includes("--single")
+  const platformArg = process.argv.find((arg) => arg.startsWith("--platform="))?.slice("--platform=".length)
   const skipWrapperFlag = process.argv.includes("--skip-wrapper")
+  const reuseAssetsFlag = process.argv.includes("--reuse-assets")
   const inferredChannel = inferReleaseChannelFromVersion(version)
   const channel = parseChannelArg(process.argv, inferredChannel)
 
@@ -395,7 +411,9 @@ async function main() {
   process.env.VIBECANVAS_CHANNEL = channel
 
   // Filter targets
-  const filteredTargets = singleFlag
+  const filteredTargets = platformArg
+    ? targets.filter((target) => target.os === platformArg)
+    : singleFlag
     ? targets.filter(
       (t) =>
         t.os === process.platform &&
@@ -418,18 +436,22 @@ async function main() {
   await Bun.$`mkdir -p ${rootDir}/dist`
 
   // Phase 1: Build SDK package consumed by widget sandbox and bundle SPA assets
-  console.log("[1/4] Bundling SPA assets...")
-  await buildSdkPackage()
-  const bundledFiles = await bundleSpaAssets()
+  if (reuseAssetsFlag) {
+    console.log("[1/4] Reusing previously generated SPA assets and migrations...")
+  } else {
+    console.log("[1/4] Bundling SPA assets...")
+    await buildSdkPackage()
+    const bundledFiles = await bundleSpaAssets()
 
-  // Phase 2: Generate embedded assets module
-  console.log("\n[2/4] Generating embedded assets...")
-  await generateEmbeddedAssets(bundledFiles)
+    // Phase 2: Generate embedded assets module
+    console.log("\n[2/4] Generating embedded assets...")
+    await generateEmbeddedAssets(bundledFiles)
 
-  // Phase 3: Generate embedded migrations module
-  console.log("\n[3/4] Generating embedded migrations...")
-  const migrationFiles = await collectMigrationFiles()
-  await generateEmbeddedMigrations(migrationFiles)
+    // Phase 3: Generate embedded migrations module
+    console.log("\n[3/4] Generating embedded migrations...")
+    const migrationFiles = await collectMigrationFiles()
+    await generateEmbeddedMigrations(migrationFiles)
+  }
 
   // Phase 4: Build each target
   console.log("\n[4/4] Compiling executables...")
@@ -459,6 +481,7 @@ async function main() {
           VIBECANVAS_VERSION: JSON.stringify(version),
           VIBECANVAS_COMPILED: "true",
           VIBECANVAS_CHANNEL: JSON.stringify(channel),
+          VIBECANVAS_RELEASE_DOWNLOAD_BASE: JSON.stringify(releaseDownloadBase),
         },
         plugins: [
           {
@@ -478,6 +501,7 @@ async function main() {
       }
 
       await assertPortableBinary(outputPath)
+      if (target.os === "darwin") await signAndVerifyDarwinBinary(outputPath)
       const nativeAddonPath = await copyTursoNativeAddon(target, distDir)
 
       // Create platform package.json

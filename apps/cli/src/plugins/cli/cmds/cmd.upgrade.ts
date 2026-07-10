@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { parseArgs } from 'util';
@@ -27,7 +27,7 @@ type TUpgradeProgressEvent = {
 type TUpgradeResult =
   | { status: 'updated'; version: string; method: TInstallMethod }
   | { status: 'up-to-date'; version: string; method: TInstallMethod }
-  | { status: 'update-available'; version: string; method: TInstallMethod; command?: string }
+  | { status: 'update-available'; version: string; method: TInstallMethod; command?: string; message?: string }
   | { status: 'dry-run-ok'; version: string; method: TInstallMethod; message: string }
   | { status: 'dry-run-failed'; version: string; method: TInstallMethod; message: string; command?: string }
   | { status: 'disabled'; method: TInstallMethod; reason: TUpdatePolicy['reason'] }
@@ -36,6 +36,8 @@ type TUpgradeResult =
 type TConfigFile = {
   autoupdate?: boolean | 'notify';
 };
+
+type TFailedUpgrade = { version: string; reason: string };
 
 type TRunUpgradeArgs = {
   config: ICliConfig;
@@ -78,10 +80,12 @@ type TDryRunResult = {
 
 const ANSI_RESET = '\x1b[0m';
 const RELEASES_API = 'https://api.github.com/repos/vibecanvas/vibecanvas/releases' as const;
-const RELEASE_DOWNLOAD_BASE = 'https://github.com/vibecanvas/vibecanvas/releases/download' as const;
+const RELEASE_DOWNLOAD_BASE =
+  (typeof VIBECANVAS_RELEASE_DOWNLOAD_BASE !== 'undefined' && VIBECANVAS_RELEASE_DOWNLOAD_BASE) ||
+  'https://github.com/vibecanvas/vibecanvas/releases/download';
 const UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const;
 const DOWNLOAD_PROGRESS_START = 85;
-const DOWNLOAD_PROGRESS_END = 96;
+const CANDIDATE_TIMEOUT_MS = 8_000;
 
 function printUpgradeHelp(): void {
   console.log(`Usage: vibecanvas upgrade [options]
@@ -148,6 +152,28 @@ function resolveUpdatePolicy(config: ICliConfig, method: TInstallMethod): TUpdat
   });
 
   return policy ?? { mode: 'notify', reason: 'default' };
+}
+
+function failedUpgradePath(config: ICliConfig): string {
+  return join(config.xdgPaths.stateDirPath, 'failed-upgrade.json');
+}
+
+function readFailedUpgrade(config: ICliConfig): TFailedUpgrade | null {
+  try {
+    return JSON.parse(readFileSync(failedUpgradePath(config), 'utf8')) as TFailedUpgrade;
+  } catch {
+    return null;
+  }
+}
+
+async function writeFailedUpgrade(config: ICliConfig, failure: TFailedUpgrade | null): Promise<void> {
+  const path = failedUpgradePath(config);
+  if (!failure) {
+    rmSync(path, { force: true });
+    return;
+  }
+  mkdirSync(config.xdgPaths.stateDirPath, { recursive: true });
+  await Bun.write(path, `${JSON.stringify(failure, null, 2)}\n`);
 }
 
 function extractVersionFromTag(tag: string): string {
@@ -229,43 +255,6 @@ function createUpgradeProgressRenderer() {
   }
 
   return { update, finish };
-}
-
-function mapDownloadPercentToOverall(downloadPercent: number): number {
-  const normalized = Math.max(0, Math.min(100, Math.round(downloadPercent)));
-  const span = DOWNLOAD_PROGRESS_END - DOWNLOAD_PROGRESS_START;
-  return DOWNLOAD_PROGRESS_START + Math.round((normalized / 100) * span);
-}
-
-function parsePercentsFromChunk(chunk: string): number[] {
-  const matches = chunk.matchAll(/(\d{1,3})(?:\.\d+)?%/g);
-  const percents: number[] = [];
-
-  for (const match of matches) {
-    const value = Number.parseInt(match[1] ?? '', 10);
-    if (Number.isFinite(value) && value >= 0 && value <= 100) {
-      percents.push(value);
-    }
-  }
-
-  return percents;
-}
-
-async function consumeStream(stream: ReadableStream<Uint8Array> | null | undefined, onChunk: (chunk: string) => void): Promise<void> {
-  if (!stream) return;
-
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    onChunk(decoder.decode(value, { stream: true }));
-  }
-
-  const tail = decoder.decode();
-  if (tail) onChunk(tail);
 }
 
 function commandForMethod(method: TInstallMethod, version: string): string | undefined {
@@ -416,7 +405,7 @@ function findExtractedBinary(extractDir: string, binaryName: string): string {
   throw new Error(`Could not find ${binaryName} in extracted archive`);
 }
 
-async function executeCandidateBinary(binaryPath: string, tempConfigDir: string): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+async function executeCandidateBinary(binaryPath: string, tempConfigDir: string): Promise<{ exitCode: number; stdout: string; stderr: string; timedOut: boolean }> {
   const proc = Bun.spawn({
     cmd: [binaryPath, '--version'],
     stdout: 'pipe',
@@ -432,13 +421,37 @@ async function executeCandidateBinary(binaryPath: string, tempConfigDir: string)
     },
   });
 
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    proc.kill('SIGKILL');
+  }, CANDIDATE_TIMEOUT_MS);
 
-  return { exitCode, stdout, stderr };
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited,
+  ]).finally(() => clearTimeout(timeout));
+
+  return { exitCode, stdout, stderr, timedOut };
+}
+
+async function validateCandidateBinary(binaryPath: string, tempConfigDir: string, version: string): Promise<void> {
+  if (process.platform === 'darwin') {
+    const signature = await runTextCommand(['codesign', '--verify', '--deep', '--strict', '--verbose=4', binaryPath]);
+    if (signature.exitCode !== 0) {
+      throw new Error(`Candidate has an invalid macOS signature: ${(signature.stderr || signature.stdout).trim()}`);
+    }
+  }
+
+  const result = await executeCandidateBinary(binaryPath, tempConfigDir);
+  if (result.timedOut) throw new Error(`Candidate startup timed out after ${CANDIDATE_TIMEOUT_MS / 1000}s`);
+  if (result.exitCode !== 0) {
+    throw new Error((result.stderr || result.stdout).trim() || `Candidate exited with status ${result.exitCode}`);
+  }
+  const reportedVersion = extractVersionFromTag(result.stdout.trim());
+  const expectedVersion = extractVersionFromTag(version);
+  if (reportedVersion !== expectedVersion) {
+    throw new Error(`Candidate version mismatch: expected ${expectedVersion}, received ${reportedVersion || '<empty>'}`);
+  }
 }
 
 async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: string; onProgress?: (event: TUpgradeProgressEvent) => void }): Promise<TDryRunResult> {
@@ -457,13 +470,12 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
     args.onProgress?.({ percent: 78, label: `Downloading ${releaseAsset.checksumName}` });
     await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${releaseTag}/${releaseAsset.checksumName}`, checksumPath);
 
-    args.onProgress?.({ percent: 82, label: 'Verifying checksum' });
-    await verifyFileChecksum(archivePath, checksumPath);
-
     args.onProgress?.({ percent: 86, label: 'Extracting archive' });
     await extractArchive(archivePath, extractDir, releaseAsset.isWindows);
 
     const binaryPath = findExtractedBinary(extractDir, releaseAsset.binaryName);
+    args.onProgress?.({ percent: 88, label: 'Verifying candidate checksum' });
+    await verifyFileChecksum(binaryPath, checksumPath);
     if (!releaseAsset.isWindows) {
       chmodSync(binaryPath, 0o755);
     }
@@ -472,11 +484,7 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
     mkdirSync(tempConfigDir, { recursive: true });
 
     args.onProgress?.({ percent: 95, label: 'Running startup dry-run' });
-    const result = await executeCandidateBinary(binaryPath, tempConfigDir);
-    if (result.exitCode !== 0) {
-      const details = (result.stderr || result.stdout).trim() || 'candidate binary exited with non-zero status';
-      return { ok: false, message: `Dry-run failed: ${details}` };
-    }
+    await validateCandidateBinary(binaryPath, tempConfigDir, args.version);
 
     return {
       ok: true,
@@ -498,83 +506,63 @@ async function applyUpgrade(args: TApplyUpgradeArgs): Promise<TApplyUpgradeResul
     return { ok: false, command, message: 'Auto-install is only enabled for curl installs' };
   }
 
-  args.onProgress?.({ percent: DOWNLOAD_PROGRESS_START, label: 'Downloading update (0%)' });
-
-  const script = `curl -fsSL https://vibecanvas.dev/install | bash -s -- --version ${args.version} --channel ${args.channel} --no-modify-path`;
-
+  const tempRoot = mkdtempSync(join(tmpdir(), 'vibecanvas-upgrade-'));
   try {
-    const proc = Bun.spawn(['bash', '-lc', script], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const asset = await buildReleaseAssetDescriptor();
+    const tag = `vibecanvas-v${extractVersionFromTag(args.version)}`;
+    const archivePath = join(tempRoot, asset.archiveName);
+    const checksumPath = join(tempRoot, asset.checksumName);
+    const extractDir = join(tempRoot, 'extract');
+    args.onProgress?.({ percent: 85, label: 'Downloading candidate' });
+    await Promise.all([
+      downloadFile(`${RELEASE_DOWNLOAD_BASE}/${tag}/${asset.archiveName}`, archivePath),
+      downloadFile(`${RELEASE_DOWNLOAD_BASE}/${tag}/${asset.checksumName}`, checksumPath),
+    ]);
+    await extractArchive(archivePath, extractDir, asset.isWindows);
+    const candidateBinary = findExtractedBinary(extractDir, asset.binaryName);
+    await verifyFileChecksum(candidateBinary, checksumPath);
+    if (!asset.isWindows) chmodSync(candidateBinary, 0o755);
+    const candidateNative = join(extractDir, 'native');
+    if (!existsSync(candidateNative)) throw new Error('Candidate archive is missing native addons');
+    const tempConfigDir = join(tempRoot, 'config');
+    mkdirSync(tempConfigDir, { recursive: true });
+    args.onProgress?.({ percent: 92, label: 'Validating candidate' });
+    await validateCandidateBinary(candidateBinary, tempConfigDir, args.version);
 
-    let stderrText = '';
-    let trailingChunk = '';
-    let lastOverallPercent = DOWNLOAD_PROGRESS_START;
-    let lastDownloadPercent = 0;
-    let sawDownloadSignal = false;
-
-    const emitDownloadProgress = (downloadPercent: number): void => {
-      const normalized = Math.max(0, Math.min(100, Math.round(downloadPercent)));
-      const overallPercent = mapDownloadPercentToOverall(normalized);
-
-      if (overallPercent === lastOverallPercent && normalized === lastDownloadPercent) return;
-
-      lastDownloadPercent = normalized;
-      lastOverallPercent = overallPercent;
-      sawDownloadSignal = true;
-      args.onProgress?.({
-        percent: overallPercent,
-        label: `Downloading update (${normalized}%)`,
-      });
-    };
-
-    const fallbackTicker = setInterval(() => {
-      if (sawDownloadSignal) return;
-      if (lastOverallPercent >= DOWNLOAD_PROGRESS_END - 2) return;
-
-      lastOverallPercent += 1;
-      args.onProgress?.({
-        percent: lastOverallPercent,
-        label: 'Downloading update (waiting for progress data)',
-      });
-    }, 1200);
-
-    const onOutput = (chunk: string): void => {
-      const combined = `${trailingChunk}${chunk}`;
-      const percents = parsePercentsFromChunk(combined);
-      for (const percent of percents) {
-        emitDownloadProgress(percent);
-      }
-
-      trailingChunk = combined.slice(-32);
-    };
-
+    const installedBinary = process.execPath;
+    const installDir = join(installedBinary, '..');
+    const nativeDir = join(installDir, '..', 'native');
+    const backupBinary = `${installedBinary}.upgrade-backup`;
+    const backupNative = `${nativeDir}.upgrade-backup`;
+    rmSync(backupBinary, { force: true });
+    rmSync(backupNative, { recursive: true, force: true });
+    copyFileSync(installedBinary, backupBinary);
+    if (existsSync(nativeDir)) cpSync(nativeDir, backupNative, { recursive: true });
     try {
-      await Promise.all([
-        consumeStream(proc.stdout, onOutput),
-        consumeStream(proc.stderr, (chunk) => {
-          stderrText += chunk;
-          onOutput(chunk);
-        }),
-        proc.exited,
-      ]);
+      const stagedBinary = `${installedBinary}.upgrade-new`;
+      const stagedNative = `${nativeDir}.upgrade-new`;
+      copyFileSync(candidateBinary, stagedBinary);
+      chmodSync(stagedBinary, 0o755);
+      rmSync(stagedNative, { recursive: true, force: true });
+      cpSync(candidateNative, stagedNative, { recursive: true });
+      renameSync(stagedBinary, installedBinary);
+      rmSync(nativeDir, { recursive: true, force: true });
+      renameSync(stagedNative, nativeDir);
+    } catch (error) {
+      copyFileSync(backupBinary, installedBinary);
+      rmSync(nativeDir, { recursive: true, force: true });
+      if (existsSync(backupNative)) cpSync(backupNative, nativeDir, { recursive: true });
+      throw error;
     } finally {
-      clearInterval(fallbackTicker);
+      rmSync(backupBinary, { force: true });
+      rmSync(backupNative, { recursive: true, force: true });
     }
-
-    if (proc.exitCode !== 0) {
-      return { ok: false, message: stderrText.trim() || 'Upgrade command failed' };
-    }
-
-    if (lastDownloadPercent < 100) {
-      emitDownloadProgress(100);
-    }
-
-    args.onProgress?.({ percent: 98, label: 'Finalizing upgrade' });
+    args.onProgress?.({ percent: 98, label: 'Installed validated update' });
     return { ok: true };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
   }
 }
 
@@ -656,6 +644,15 @@ async function checkForUpgrade(args: TCheckForUpgradeArgs): Promise<TUpgradeResu
     };
   }
 
+  const previousFailure = readFailedUpgrade(args.config);
+  if (!args.targetVersionOverride && previousFailure?.version === latest.version) {
+    args.onProgress?.({ percent: 100, label: 'Known-invalid update skipped' });
+    return {
+      status: 'update-available', version: latest.version, method, command: manualCommand,
+      message: `Automatic retry skipped after previous validation failure: ${previousFailure.reason}`,
+    };
+  }
+
   const upgraded = await applyUpgrade({
     method,
     version: latest.version,
@@ -664,14 +661,18 @@ async function checkForUpgrade(args: TCheckForUpgradeArgs): Promise<TUpgradeResu
   });
 
   if (!upgraded.ok) {
+    await writeFailedUpgrade(args.config, { version: latest.version, reason: upgraded.message ?? 'candidate validation failed' });
     args.onProgress?.({ percent: 100, label: 'Done' });
     return {
       status: 'update-available',
       version: latest.version,
       method,
       command: upgraded.command ?? manualCommand,
+      message: upgraded.message,
     };
   }
+
+  await writeFailedUpgrade(args.config, null);
 
   args.onProgress?.({ percent: 100, label: 'Done' });
   return { status: 'updated', version: latest.version, method };
@@ -776,6 +777,7 @@ async function txCmdUpgrade(args: TRunUpgradeArgs): Promise<void> {
       console.log('[Update] Check-only mode, no changes applied');
     }
     console.log(`[Update] New version available: v${result.version}`);
+    if (result.message) console.error(`[Update] Candidate was not installed: ${result.message}`);
     if (result.command) {
       console.log(`[Update] Run: ${result.command}`);
     }
