@@ -199,6 +199,10 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A66](a/A66.md) - toolbar: group widget tools into hover flyouts
 - [ ]: [A67](a/A67.md) - actor runtime: state lifecycle hooks and single state activity
 - [x]: [A68](a/A68.md) - widgets: isolate loading failures and render in-frame error states
+- [ ]: [A69](a/A69.md) - actor resources: prepare shared resource control plane and IPC
+- [ ]: [A70](a/A70.md) - actor resources: implement KvResource
+- [ ]: [A71](a/A71.md) - actor resources: implement SecretStoreResource
+- [ ]: [A72](a/A72.md) - actor resources: implement schema-agnostic local Turso DbResource
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
