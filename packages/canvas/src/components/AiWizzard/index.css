@@ -2139,7 +2139,6 @@
 }
 
 @media (max-width: 720px) {
-  .ai-wizzard-tabs__list,
   .ai-wizzard-summary-grid,
   .ai-actor-editor__grid,
   .ai-wizzard-section-grid,
@@ -2151,10 +2150,6 @@
 
   .ai-actor-editor__header {
     flex-direction: column;
-  }
-
-  .ai-wizzard-tabs__trigger {
-    text-align: left;
   }
 
   .ai-wizzard-tabs__content {
