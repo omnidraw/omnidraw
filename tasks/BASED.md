@@ -130,7 +130,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B39](b/B39.md) - ai wizard: actor tab stale after new actor candidate
 - [x]: [B40](b/B40.md) - widgets: clone-drag creates multiple copies
 - [x]: [B41](b/B41.md) - binary: Turso `UPDATE ... RETURNING` crashes on actor instance with medium HTML state
-- [ ]: [B42](b/B42.md) - release: macOS binary freezes after unsafe automatic upgrade
+- [x]: [B42](b/B42.md) - release: macOS binary freezes after unsafe automatic upgrade
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
