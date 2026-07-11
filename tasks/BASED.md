@@ -307,11 +307,11 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
 
 ## D eployable
-- [ ]: [D1] - Generative UI with AI assits
-- [ ]: [D2] - Actor system is attachable
-- [ ]: [D3] - Support pluggable filsystem architecture
-- [ ]: [D4] - Support sideloadable ui elements
-- [ ]: [D5] - AI Canvas Element, attachable to other elements
+- [x]: [D1] - Generative UI with AI assits
+- [ ]: [D2] - Widget Resource Support
+- [ ]: [D3] - Actor system is attachable
+- [ ]: [D4] - AI Canvas Element
+- [ ]: [D5] - Widget filsystem resource
 - [ ]: [D6] - Gateway support
 - [ ]: [D7] - Auth support
 

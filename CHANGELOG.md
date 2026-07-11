@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Added
+- stream upgrade download progress
+
+### Fixed
+- state upgrade cli
+
 ## 0.4.6
 
 ### Added
