@@ -44,17 +44,10 @@ export default defineConfig({
   optimizeDeps: {
     exclude: [
       'lucide-solid',
-      '@arrow-js/sandbox',
-      'quickjs-emscripten',
-      'quickjs-emscripten-core',
-      '@jitl/quickjs-wasmfile-release-asyncify',
-      '@jitl/quickjs-wasmfile-debug-asyncify',
-      '@jitl/quickjs-wasmfile-release-sync',
-      '@jitl/quickjs-wasmfile-debug-sync',
     ],
     // Include Automerge packages for proper CJS/ESM interop
     include: [
-      'typescript',
+      '@vibecanvas/canvas > @arrow-js/sandbox',
       '@automerge/automerge',
       '@automerge/automerge-repo',
       '@automerge/automerge-repo-network-websocket',
