@@ -6,6 +6,13 @@ import { parseArgs } from 'util';
 import type { ICliConfig } from '../../../config';
 import { fnCliUpdateResolvePolicy } from '../core/fn.resolve-policy';
 import { fnCliUpdateShouldUpgrade } from '../core/fn.should-upgrade';
+import {
+  fnDownloadMonotonicPercent,
+  fnDownloadOverallPercent,
+  fnFormatDownloadLabel,
+  fnShouldEmitProgress,
+  type TDownloadProgress,
+} from './fn.download-progress';
 
 type TInstallMethod = 'curl' | 'npm' | 'unknown';
 
@@ -22,6 +29,7 @@ type TLatestVersion = {
 type TUpgradeProgressEvent = {
   percent: number;
   label: string;
+  download?: TDownloadProgress;
 };
 
 type TUpgradeResult =
@@ -85,6 +93,8 @@ const RELEASE_DOWNLOAD_BASE =
   'https://github.com/vibecanvas/vibecanvas/releases/download';
 const UPDATE_CHANNELS = ['stable', 'beta', 'nightly'] as const;
 const DOWNLOAD_PROGRESS_START = 85;
+const DOWNLOAD_PROGRESS_END = 91;
+const DOWNLOAD_INACTIVITY_TIMEOUT_MS = 30_000;
 const CANDIDATE_TIMEOUT_MS = 8_000;
 
 function printUpgradeHelp(): void {
@@ -212,6 +222,7 @@ function createUpgradeProgressRenderer() {
 
   let lastPercent = -1;
   let lastLabel = '';
+  let lastEmittedAtMs = -1;
 
   function clampPercent(value: number): number {
     return Math.max(0, Math.min(100, Math.round(value)));
@@ -234,12 +245,25 @@ function createUpgradeProgressRenderer() {
   function update(event: TUpgradeProgressEvent): void {
     const percent = clampPercent(event.percent);
     const label = event.label;
+    const nowMs = Date.now();
+
+    if (event.download && !fnShouldEmitProgress({
+      nowMs,
+      lastEmittedAtMs,
+      percent,
+      lastPercent,
+      label,
+      lastLabel,
+      isTTY,
+      isIndeterminate: event.download.totalBytes === undefined,
+    })) return;
 
     if (!isTTY) {
       if (percent === lastPercent && label === lastLabel) return;
       console.log(`[Update] ${label} (${percent}%)`);
       lastPercent = percent;
       lastLabel = label;
+      lastEmittedAtMs = nowMs;
       return;
     }
 
@@ -247,6 +271,7 @@ function createUpgradeProgressRenderer() {
     process.stdout.write(`\r\x1b[2K${line}`);
     lastPercent = percent;
     lastLabel = label;
+    lastEmittedAtMs = nowMs;
   }
 
   function finish(): void {
@@ -350,18 +375,91 @@ async function buildReleaseAssetDescriptor(): Promise<TReleaseAssetDescriptor> {
   return { packageName, archiveName, checksumName, binaryName, isWindows };
 }
 
-async function downloadFile(url: string, destinationPath: string): Promise<void> {
-  const response = await fetch(url, {
+type TDownloadFileOptions = {
+  inactivityTimeoutMs?: number;
+  onProgress?: (progress: TDownloadProgress) => void;
+  fetchImpl?: typeof fetch;
+};
+
+async function downloadFile(url: string, destinationPath: string, options: TDownloadFileOptions = {}): Promise<void> {
+  const controller = new AbortController();
+  const response = await (options.fetchImpl ?? fetch)(url, {
     headers: {
       'user-agent': 'vibecanvas-upgrade',
     },
+    redirect: 'follow',
+    signal: controller.signal,
   });
 
   if (!response.ok) {
     throw new Error(`Download failed (${response.status}) for ${url}`);
   }
 
-  await Bun.write(destinationPath, response);
+  if (!response.body) throw new Error(`Download returned no body for ${url}`);
+
+  const contentLength = response.headers.get('content-length');
+  const parsedTotal = contentLength === null ? undefined : Number(contentLength);
+  const totalBytes = parsedTotal !== undefined && Number.isFinite(parsedTotal) && parsedTotal >= 0
+    ? parsedTotal
+    : undefined;
+  const reader = response.body.getReader();
+  const writer = Bun.file(destinationPath).writer();
+  const inactivityTimeoutMs = options.inactivityTimeoutMs ?? DOWNLOAD_INACTIVITY_TIMEOUT_MS;
+  let downloadedBytes = 0;
+  let completed = false;
+
+  options.onProgress?.({ downloadedBytes, totalBytes });
+  try {
+    while (true) {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const stalled = new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`Download stalled for ${inactivityTimeoutMs / 1_000}s: ${url}`));
+        }, inactivityTimeoutMs);
+      });
+      const result = await Promise.race([reader.read(), stalled]).finally(() => clearTimeout(timeout));
+      if (result.done) break;
+      if (!result.value.byteLength) continue;
+      writer.write(result.value);
+      downloadedBytes += result.value.byteLength;
+      options.onProgress?.({ downloadedBytes, totalBytes });
+    }
+    await writer.flush();
+    completed = true;
+  } finally {
+    controller.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      // The reader may already be closed or aborted.
+    }
+    try {
+      await writer.end();
+    } finally {
+      if (!completed) rmSync(destinationPath, { force: true });
+    }
+  }
+}
+
+function createDownloadProgressReporter(
+  assetName: string,
+  startPercent: number,
+  endPercent: number,
+  onProgress?: (event: TUpgradeProgressEvent) => void,
+): (progress: TDownloadProgress) => void {
+  let lastPercent = startPercent;
+  return (download) => {
+    lastPercent = fnDownloadMonotonicPercent(
+      lastPercent,
+      fnDownloadOverallPercent(download, startPercent, endPercent),
+    );
+    onProgress?.({
+      percent: lastPercent,
+      label: fnFormatDownloadLabel(assetName, download),
+      download,
+    });
+  };
 }
 
 async function verifyFileChecksum(filePath: string, checksumPath: string): Promise<void> {
@@ -464,11 +562,12 @@ async function dryRunUpgradeCandidate(args: { config: ICliConfig; version: strin
   const releaseTag = `vibecanvas-v${extractVersionFromTag(args.version)}`;
 
   try {
-    args.onProgress?.({ percent: 72, label: `Downloading ${releaseAsset.archiveName}` });
-    await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${releaseTag}/${releaseAsset.archiveName}`, archivePath);
-
-    args.onProgress?.({ percent: 78, label: `Downloading ${releaseAsset.checksumName}` });
-    await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${releaseTag}/${releaseAsset.checksumName}`, checksumPath);
+    await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${releaseTag}/${releaseAsset.checksumName}`, checksumPath, {
+      onProgress: createDownloadProgressReporter(releaseAsset.checksumName, 70, 72, args.onProgress),
+    });
+    await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${releaseTag}/${releaseAsset.archiveName}`, archivePath, {
+      onProgress: createDownloadProgressReporter(releaseAsset.archiveName, 72, 84, args.onProgress),
+    });
 
     args.onProgress?.({ percent: 86, label: 'Extracting archive' });
     await extractArchive(archivePath, extractDir, releaseAsset.isWindows);
@@ -513,11 +612,13 @@ async function applyUpgrade(args: TApplyUpgradeArgs): Promise<TApplyUpgradeResul
     const archivePath = join(tempRoot, asset.archiveName);
     const checksumPath = join(tempRoot, asset.checksumName);
     const extractDir = join(tempRoot, 'extract');
-    args.onProgress?.({ percent: 85, label: 'Downloading candidate' });
-    await Promise.all([
-      downloadFile(`${RELEASE_DOWNLOAD_BASE}/${tag}/${asset.archiveName}`, archivePath),
-      downloadFile(`${RELEASE_DOWNLOAD_BASE}/${tag}/${asset.checksumName}`, checksumPath),
-    ]);
+    await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${tag}/${asset.checksumName}`, checksumPath, {
+      onProgress: createDownloadProgressReporter(asset.checksumName, DOWNLOAD_PROGRESS_START, 86, args.onProgress),
+    });
+    await downloadFile(`${RELEASE_DOWNLOAD_BASE}/${tag}/${asset.archiveName}`, archivePath, {
+      onProgress: createDownloadProgressReporter(asset.archiveName, 86, DOWNLOAD_PROGRESS_END, args.onProgress),
+    });
+    args.onProgress?.({ percent: 92, label: 'Extracting archive' });
     await extractArchive(archivePath, extractDir, asset.isWindows);
     const candidateBinary = findExtractedBinary(extractDir, asset.binaryName);
     await verifyFileChecksum(candidateBinary, checksumPath);
@@ -526,7 +627,7 @@ async function applyUpgrade(args: TApplyUpgradeArgs): Promise<TApplyUpgradeResul
     if (!existsSync(candidateNative)) throw new Error('Candidate archive is missing native addons');
     const tempConfigDir = join(tempRoot, 'config');
     mkdirSync(tempConfigDir, { recursive: true });
-    args.onProgress?.({ percent: 92, label: 'Validating candidate' });
+    args.onProgress?.({ percent: 95, label: 'Validating candidate' });
     await validateCandidateBinary(candidateBinary, tempConfigDir, args.version);
 
     const installedBinary = process.execPath;
@@ -798,4 +899,4 @@ async function txCmdUpgrade(args: TRunUpgradeArgs): Promise<void> {
   process.exit(1);
 }
 
-export { checkForUpgrade, txCmdUpgrade };
+export { checkForUpgrade, downloadFile, txCmdUpgrade };

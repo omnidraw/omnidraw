@@ -37,6 +37,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts](apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts](apps/cli/src/plugins/cli/cmds/cmd.upgrade.ts) |  |
+| [apps/cli/src/plugins/cli/cmds/fn.download-progress.ts](apps/cli/src/plugins/cli/cmds/fn.download-progress.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.print-command-result.ts](apps/cli/src/plugins/cli/core/fn.print-command-result.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.resolve-policy.ts](apps/cli/src/plugins/cli/core/fn.resolve-policy.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
