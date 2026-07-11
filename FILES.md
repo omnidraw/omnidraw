@@ -81,6 +81,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/feature/sidebar/components/SidebarItem.module.css](apps/frontend/src/feature/sidebar/components/SidebarItem.module.css) |  |
 | [apps/frontend/src/feature/sidebar/components/SidebarItem.tsx](apps/frontend/src/feature/sidebar/components/SidebarItem.tsx) |  |
 | [apps/frontend/src/feature/sidebar/index.ts](apps/frontend/src/feature/sidebar/index.ts) |  |
+| [apps/frontend/src/fn.startup-canvas-navigation.ts](apps/frontend/src/fn.startup-canvas-navigation.ts) |  |
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
 | [apps/frontend/src/index.tsx](apps/frontend/src/index.tsx) |  |
 | [apps/frontend/src/pages/canvas.tsx](apps/frontend/src/pages/canvas.tsx) |  |
@@ -89,6 +90,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
 | [apps/frontend/src/services/theme.ts](apps/frontend/src/services/theme.ts) |  |
+| [apps/frontend/src/startup-canvas.ts](apps/frontend/src/startup-canvas.ts) |  |
 | [apps/frontend/src/store.ts](apps/frontend/src/store.ts) |  |
 | [apps/frontend/src/styles/route-state.module.css](apps/frontend/src/styles/route-state.module.css) |  |
 | [apps/frontend/src/types/backend.types.ts](apps/frontend/src/types/backend.types.ts) | Backend Types |
@@ -546,6 +548,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/widget/mount-arrow-sandbox.ts](packages/canvas/src/services/widget/mount-arrow-sandbox.ts) |  |
 | [packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts](packages/canvas/src/services/widget/tx.create-widget-clone-drag.ts) |  |
 | [packages/canvas/src/services/widget/tx.render-widget-error.ts](packages/canvas/src/services/widget/tx.render-widget-error.ts) |  |
+| [packages/canvas/src/services/widget/tx.render-widget-loading.ts](packages/canvas/src/services/widget/tx.render-widget-loading.ts) |  |
 | [packages/canvas/src/services/widget/tx.resize-widget-host.ts](packages/canvas/src/services/widget/tx.resize-widget-host.ts) |  |
 | [packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts](packages/canvas/src/services/widget/tx.sync-widget-dom-portals.ts) |  |
 | [packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts](packages/canvas/src/services/widget/tx.update-widget-node-from-element.ts) |  |
