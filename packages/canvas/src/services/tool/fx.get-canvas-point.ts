@@ -1,13 +1,13 @@
 import type { SceneService } from "../scene/SceneService";
-import type { TEditorToolCanvasPoint, TEditorToolPointerEvent } from "./types";
+import type { TToolCanvasPoint, TToolPointerEvent } from "./types";
 
 type TPortal = {
   scene: SceneService;
 }
 type TArgs = {
-  event: TEditorToolPointerEvent;
+  event: TToolPointerEvent;
 }
-export function fxGetCanvasPoint(portal: TPortal, args: TArgs): TEditorToolCanvasPoint | null {
+export function fxGetCanvasPoint(portal: TPortal, args: TArgs): TToolCanvasPoint | null {
   const point = portal.scene.dynamicLayer.getRelativePointerPosition();
   if (!point) {
     return null;

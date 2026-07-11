@@ -712,7 +712,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async settings() {
     const defaultModel = this.settingsManager.getDefaultModel()
     const defaultProvider = this.settingsManager.getDefaultProvider()
-    const defaultThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
+    const configuredThinkingLevel = this.settingsManager.getDefaultThinkingLevel()
+    const defaultThinkingLevel: TThinkingLevel | undefined = configuredThinkingLevel === 'max'
+      ? 'xhigh'
+      : configuredThinkingLevel
     const providersWithCredentials = this.authStorage.list()
     const providers = Array.from(new Set(this.modelRegistry.getAll().map(m => m.provider)))
     const models = this.modelRegistry.getAvailable().map(m => ({ id: m.id, input: m.input, provider: m.provider, name: m.name }))

@@ -13,7 +13,7 @@ import type {
   GroupService,
   HistoryService,
   SceneService,
-  TCanvasTransformAnchor,
+  TElementTransformAnchor,
   TToolCanvasPoint
 } from "../../services";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices, TElementPointerEvent } from "../../types";
@@ -31,7 +31,7 @@ const PEN_MOVE_BEFORE_ELEMENT_ATTR = "vcPenMoveBeforeElement";
 const TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR = "vcTransformMoveBeforeElement";
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
 const MOVE_PATCH_INTERVAL_MS = 100;
-const PEN_TRANSFORM_ANCHORS: TCanvasTransformAnchor[] = [
+const PEN_TRANSFORM_ANCHORS: TElementTransformAnchor[] = [
   "top-left",
   "top-right",
   "bottom-left",

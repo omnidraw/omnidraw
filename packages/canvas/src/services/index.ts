@@ -1,4 +1,3 @@
-export * from "./actor-widget/ActorWidgetBindingService";
 export * from "./widget/WidgetManagerService";
 export * from "./camera/CameraService";
 export * from "./confirm-dialog/ConfirmDialogService";

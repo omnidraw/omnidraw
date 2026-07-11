@@ -1,7 +1,7 @@
 import type { TActorConnection } from "@vibecanvas/service-db/model";
 
 export function fnIsActorConnectionEnabled(connection: TActorConnection): boolean {
-  return connection.enabled === true || connection.enabled === 1
+  return connection.enabled
 }
 
 export function fnCanRouteActorConnectionMessage(connection: TActorConnection, msgName: string): boolean {

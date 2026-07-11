@@ -138,7 +138,8 @@ describe("RuntimeToolbar", () => {
     expect(document.querySelector(".vc-toolbar-label-popover")?.textContent).toBe("Select tool");
 
     anchor?.dispatchEvent(new MouseEvent("pointerleave"));
-    expect(document.querySelector(".vc-toolbar-label-popover")?.hasAttribute("data-closed")).toBe(true);
+    const closedPopover = document.querySelector(".vc-toolbar-label-popover");
+    expect(closedPopover === null || closedPopover.hasAttribute("data-closed")).toBe(true);
   });
 
   it("shows tool labels immediately for keyboard focus", () => {

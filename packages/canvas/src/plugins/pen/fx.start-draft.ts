@@ -1,7 +1,7 @@
 import type { ThemeService, TThemeDefinition } from "@vibecanvas/service-theme";
 import type Konva from "konva";
 import type { StrokeOptions } from "perfect-freehand";
-import type { TEditorToolCanvasPoint } from "src/services/editor/EditorService";
+import type { TToolCanvasPoint } from "../../services/tool/types";
 import { fxCreatePenNode } from "./fx.create-node";
 import { fnCreatePenDraftElement } from "./fn.draft-element";
 
@@ -21,7 +21,7 @@ export type TPortalFxStartPenDraft = {
 };
 
 export type TArgsFxStartPenDraft = {
-  point: TEditorToolCanvasPoint;
+  point: TToolCanvasPoint;
 };
 
 export function fxStartPenDraft(portal: TPortalFxStartPenDraft, args: TArgsFxStartPenDraft) {

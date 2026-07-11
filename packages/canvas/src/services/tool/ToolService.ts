@@ -1,7 +1,8 @@
 import type { IService } from "@vibecanvas/runtime";
 import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
 import { SyncHook } from "@vibecanvas/tapable";
-import type { IRuntimeConfig, IRuntimeHooks } from "src/types";
+import type Konva from "konva";
+import type { IRuntimeConfig, IRuntimeHooks } from "../../types";
 import type { CrdtService, ElementService, SceneService, SelectionService } from "..";
 import { fxGetCanvasPoint } from "./fx.get-canvas-point";
 import type { TTool, TToolCanvasPoint, TToolPointerEvent } from "./types";
@@ -197,7 +198,7 @@ export class ToolService implements IService<TToolServiceHooks> {
       return;
     }
 
-    this.sceneService.staticForegroundLayer.add(newNode);
+    this.sceneService.staticForegroundLayer.add(newNode as Konva.Group | Konva.Shape);
     const builder = this.crdt.build();
     builder.patchElement(element.id, element);
     builder.commit();

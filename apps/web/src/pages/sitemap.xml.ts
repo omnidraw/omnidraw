@@ -22,7 +22,7 @@ export const GET: APIRoute = async ({ site }) => {
     { path: "/", changefreq: "weekly", priority: "1.0" },
     { path: "/docs", changefreq: "monthly", priority: "0.8" },
     ...docs.map((entry) => ({
-      path: `/docs/${entry.slug}`,
+      path: `/docs/${entry.id}`,
       changefreq: "monthly" as const,
       priority: "0.7",
     })),

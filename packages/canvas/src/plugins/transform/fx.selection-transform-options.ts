@@ -1,16 +1,17 @@
+import type Konva from "konva";
 import type { Node } from "konva/lib/Node";
 import { isCanvasGroupNode } from "../../core/GUARDS";
-import type { ElementService, TCanvasTransformAnchor, TElementTransformOptions } from "../../services";
+import type { ElementService, TElementTransformAnchor, TElementTransformOptions } from "../../services";
 import { fxIsShape1dNode } from "../shape1d/fx.node";
 
-const GROUP_ANCHORS: TCanvasTransformAnchor[] = [
+const GROUP_ANCHORS: TElementTransformAnchor[] = [
   "top-left",
   "top-right",
   "bottom-left",
   "bottom-right",
 ];
 
-const DEFAULT_ANCHORS: TCanvasTransformAnchor[] = [
+const DEFAULT_ANCHORS: TElementTransformAnchor[] = [
   "top-left",
   "top-center",
   "top-right",
@@ -38,7 +39,7 @@ export function fxGetSelectionTransformOptions(portal: TPortalFxGetSelectionTran
   const hasShape1dOnly = args.selection.length > 0 && args.selection.every((node) => fxIsShape1dNode({}, { node }));
 
   const defaultUseCornerAnchors = isSingleGroupSelection || hasTextOnly || hasShape1dOnly || isMultiSelection;
-  let enabledAnchors: TCanvasTransformAnchor[] = defaultUseCornerAnchors ? [...GROUP_ANCHORS] : [...DEFAULT_ANCHORS];
+  let enabledAnchors: TElementTransformAnchor[] = defaultUseCornerAnchors ? [...GROUP_ANCHORS] : [...DEFAULT_ANCHORS];
   let keepRatio = defaultUseCornerAnchors;
   let flipEnabled = true;
   let boundBoxFunc: TElementTransformOptions["boundBoxFunc"];

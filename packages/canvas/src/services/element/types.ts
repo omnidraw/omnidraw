@@ -26,6 +26,7 @@ export type TElementTransformBox = {
   y: number;
   width: number;
   height: number;
+  rotation: number;
 };
 
 export type TElementTransformOptions = {

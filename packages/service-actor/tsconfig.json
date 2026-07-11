@@ -4,5 +4,10 @@
     "noEmit": true,
     "types": ["bun-types"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../../global.d.ts",
+    "../service-db/src/assets.d.ts"
+  ]
 }

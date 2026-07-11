@@ -17,7 +17,7 @@ export function txSyncDraggability(
   args: TArgsSyncDraggability,
 ) {
   const allSceneNodes = portal.scene.staticForegroundLayer.find((node: Konva.Node) => {
-    return fnIsSceneNode({ render: portal.scene, node });
+    return fnIsSceneNode({ scene: portal.scene, node });
   });
 
   allSceneNodes.forEach((node) => {

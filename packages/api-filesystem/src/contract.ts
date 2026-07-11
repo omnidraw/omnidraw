@@ -17,12 +17,12 @@ const filesystemScopeSchema = z.object({
 
 const registeredFilesystemSchema = z.object({
   id: z.string(),
-  label: z.string(),
-  kind: z.enum(['local', 'remote']),
-  machine_id: z.string(),
-  home_path: z.string().nullable(),
-  created_at: z.date(),
-  updated_at: z.date(),
+  name: z.string(),
+  slug: z.string(),
+  path: z.string(),
+  description: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
 });
 
 const dirListSchema = z.object({

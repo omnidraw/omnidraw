@@ -279,7 +279,14 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S71](s/S71.md) - image paste: render local preview while uploading to remote server
 - [x]: [S72](s/S72.md) - canvas: allow zoom from 0.1 to 6.0
 - [x]: [S73](s/S73.md) - cli upgrade: replace fixed download marker with streamed progress
-- [ ]: [S74](s/S74.md) - update workspace dependencies in safe coordinated batches
+- [x]: [S74](s/S74.md) - update workspace dependencies in safe coordinated batches
+- [x]: [S75](s/S75.md) - migrate canvas and frontend to Konva 10
+- [x]: [S76](s/S76.md) - remove unused PDF.js dependency
+- [x]: [S77](s/S77.md) - migrate marketing site to Astro 7
+- [x]: [S78](s/S78.md) - migrate workspace builds to Vite 8
+- [x]: [S79](s/S79.md) - migrate DOM tests to jsdom 29
+- [x]: [S80](s/S80.md) - migrate workspace to TypeScript 7
+- [ ]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

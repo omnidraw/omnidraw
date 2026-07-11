@@ -86,8 +86,8 @@ const schema = {
         <p class="sidebar-title">Guides</p>
         <ul>
           {docs.map((entry) => {
-            const href = `${base}docs/${entry.slug}`;
-            const active = currentSlug === entry.slug;
+            const href = `${base}docs/${entry.id}`;
+            const active = currentSlug === entry.id;
 
             return (
               <li>

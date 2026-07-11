@@ -1,3 +1,5 @@
+/// <reference path="../assets.d.ts" />
+
 import path000 from "./migration-files/000-add-automerge.sql" with { type: "file" }
 import path001 from "./migration-files/001-add-auth-tables.sql" with { type: "file" }
 import path002 from "./migration-files/002-add-canvas.sql" with { type: "file" }

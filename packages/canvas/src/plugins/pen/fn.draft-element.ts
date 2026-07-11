@@ -1,11 +1,11 @@
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { TEditorToolCanvasPoint } from "src/services/editor/EditorService";
+import type { TToolCanvasPoint } from "../../services/tool/types";
 import { fnCreatePenDataFromStrokePoints } from "./fn.math";
 
 export type TArgsCreatePenDraftElement = {
   id: string;
   now: number;
-  points: TEditorToolCanvasPoint[];
+  points: TToolCanvasPoint[];
 };
 
 export function fnCreatePenDraftElement(args: TArgsCreatePenDraftElement): TElement {

@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "@vibecanvas/runtime": "workspace:*",
-    "bun-pty": "^0.4.8"
+    "bun-pty": "^0.4.10"
   }
 }

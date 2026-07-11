@@ -238,8 +238,8 @@ function sortSceneTopDown(parent: Konva.Layer | Konva.Group) {
     .slice()
     .sort((left, right) => {
       return compareByPersistedOrder(
-        { id: left.id(), zIndex: left.getAttr("vcZIndex") as string | undefined },
-        { id: right.id(), zIndex: right.getAttr("vcZIndex") as string | undefined },
+        { id: left.id(), zIndex: (left as Konva.Node).getAttr("vcZIndex") as string | undefined },
+        { id: right.id(), zIndex: (right as Konva.Node).getAttr("vcZIndex") as string | undefined },
       );
     })
     .forEach((child, index) => {

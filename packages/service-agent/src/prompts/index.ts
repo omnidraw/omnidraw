@@ -1,3 +1,5 @@
+/// <reference path="./assets.d.ts" />
+
 import { LUCIDE_STATIC_ICON_KEYS } from '@vibecanvas/service-actor/core/tool-icon';
 import actorImplementationPrompt from './prompt.actor-implementation.md' with { type: 'text' };
 import actorLifecycleAndActivityPrompt from './prompt.actor-lifecycle-and-activity.md' with { type: 'text' };

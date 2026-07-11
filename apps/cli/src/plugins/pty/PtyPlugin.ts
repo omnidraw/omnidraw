@@ -72,7 +72,7 @@ function createPtyPlugin(): IPlugin<{ pty: IPtyService }, ICliHooks, ICliConfig>
           cursor: Number.isFinite(cursor) ? cursor : undefined,
           send: (data) => {
             if (socket.readyState !== WebSocket.OPEN) return;
-            socket.send(data);
+            socket.send(new Uint8Array(data));
           },
           close: (code, reason) => {
             if (socket.readyState !== WebSocket.OPEN) return;

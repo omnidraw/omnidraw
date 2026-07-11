@@ -10,7 +10,7 @@ import {
   WIDGET_HOST_MIN_WIDTH,
 } from "../../../src/services/widget/CONSTANTS";
 import { fxDrawHost, fxUpdateHost } from "../../../src/services/widget/fx.draw-host";
-import type { TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ensureDom } from "../../test-setup";
 
 function createPoint(x: number, y: number) {
@@ -28,13 +28,12 @@ describe("widget draw host", () => {
     }, {
       event: {} as never,
       point: createPoint(10, 20),
-      kind: "example",
-      initialPayload: {},
+      widgetConfig: { id: "example", initialPayload: {} },
     });
 
     expect(node).toBeInstanceOf(Konva.Group);
     expect(node?.height()).toBe(WIDGET_HOST_MIN_HEIGHT);
-    const data = node?.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    const data = node?.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined;
     expect(data).toMatchObject({
       expanded: true,
       h: WIDGET_HOST_MIN_HEIGHT,
@@ -57,8 +56,7 @@ describe("widget draw host", () => {
     }, {
       event: {} as never,
       point: createPoint(10, 20),
-      kind: "example",
-      initialPayload: {},
+      widgetConfig: { id: "example", initialPayload: {} },
     });
     expect(group).toBeInstanceOf(Konva.Group);
 
@@ -70,7 +68,7 @@ describe("widget draw host", () => {
       point: createPoint(240, WIDGET_HOST_HEADER_HEIGHT + 8),
     });
 
-    const data = group?.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | undefined;
+    const data = group?.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined;
     expect(group?.width()).toBe(230);
     expect(group?.height()).toBe(WIDGET_HOST_MIN_HEIGHT);
     expect(data?.w).toBe(230);

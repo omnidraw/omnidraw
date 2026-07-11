@@ -2,7 +2,7 @@ import type { ThemeService, TThemeDefinition } from "@vibecanvas/service-theme";
 import type Konva from "konva";
 import type { StrokeOptions } from "perfect-freehand";
 import type { SceneService } from "../../services/scene/SceneService";
-import type { TEditorToolCanvasPoint } from "src/services/editor/EditorService";
+import type { TToolCanvasPoint } from "../../services/tool/types";
 import { fnCreatePenDraftElement } from "./fn.draft-element";
 import { txUpdatePenPathFromElement } from "./tx.path";
 
@@ -23,13 +23,13 @@ export type TPortalTxUpdatePenDraft = {
 
 export type TArgsTxUpdatePenDraft = {
   previewNode: Konva.Path;
-  point: TEditorToolCanvasPoint;
+  point: TToolCanvasPoint;
   now: number;
 };
 
 export function txUpdatePenDraft(portal: TPortalTxUpdatePenDraft, args: TArgsTxUpdatePenDraft) {
   const points = [
-    ...((args.previewNode.getAttr(DRAFT_POINTS_ATTR) as TEditorToolCanvasPoint[] | undefined) ?? []),
+    ...((args.previewNode.getAttr(DRAFT_POINTS_ATTR) as TToolCanvasPoint[] | undefined) ?? []),
     args.point,
   ];
   args.previewNode.setAttr(DRAFT_POINTS_ATTR, points);

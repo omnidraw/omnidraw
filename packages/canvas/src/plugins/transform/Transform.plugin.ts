@@ -6,7 +6,7 @@ import Konva from "konva";
 import type { Group } from "konva/lib/Group";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import { isCanvasGroupNode } from "../../core/GUARDS";
-import type { ElementService, TCanvasTransformAnchor } from "../../services";
+import type { ElementService, TElementTransformAnchor } from "../../services";
 import type { SceneService } from "../../services/scene/SceneService";
 import type { SelectionService } from "../../services/selection/SelectionService";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
@@ -38,7 +38,7 @@ function collectSerializableNodes(
   elementSrv: ElementService,
   nodes: Konva.Node[],
 ): Array<Group | Shape<ShapeConfig>> {
-  return nodes.flatMap((node) => {
+  return nodes.flatMap<Group | Shape<ShapeConfig>>((node) => {
     if (node instanceof Konva.Group) {
       return elementSrv.toElement(node) ? [node] : collectSerializableNodes(elementSrv  , node.getChildren());
     }
@@ -108,7 +108,7 @@ function getTransformerPointer(scene: SceneService) {
 /**
  * Narrows Konva transformer anchor names into the typed registry anchor union.
  */
-function isTypedAnchor(anchor: string | null): anchor is TCanvasTransformAnchor {
+function isTypedAnchor(anchor: string | null): anchor is TElementTransformAnchor {
   return anchor === "top-left"
     || anchor === "top-center"
     || anchor === "top-right"
@@ -126,7 +126,7 @@ function txApplySelectionResizeHooks(args: {
   element: ElementService;
   scene: SceneService;
   selection: Array<Group | Shape<ShapeConfig>>;
-  anchors: TCanvasTransformAnchor[];
+  anchors: TElementTransformAnchor[];
 }) {
   const pointer = getTransformerPointer(args.scene);
 
@@ -170,7 +170,7 @@ function txFinalizeSelectionResize(args: {
   element: ElementService;
   scene: SceneService;
   selection: Array<Group | Shape<ShapeConfig>>;
-  anchors: TCanvasTransformAnchor[];
+  anchors: TElementTransformAnchor[];
 }) {
   const pointer = getTransformerPointer(args.scene);
 

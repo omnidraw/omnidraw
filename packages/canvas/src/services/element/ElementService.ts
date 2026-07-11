@@ -1,9 +1,9 @@
 import type { IService } from "@vibecanvas/runtime";
-import type { TElement, TElementData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
-import { ELEMENT_DATA_ATTR, VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
+import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { isCanvasElementNode } from "../../core/GUARDS";
 import type { TCanvasNodeKind, TNodeOnRemove } from "../../core/types";
@@ -122,28 +122,18 @@ export class ElementService implements IService<TElementServiceHooks> {
   removeElement(node: unknown, builder: TCrdtBuilder) {
     if (!isCanvasElementNode(node)) return builder;
 
-    const element = this.toElement(node);
-    const data = (node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined) ?? element?.data;
-    const definitionId = data
-      ? data.type === "widget" || data.type === "ui-widget"
-        ? data.kind
-        : data.type
-      : null;
-
     return builder.deleteElement(node.id(), {
       onCommit: (args) => {
-        const def = definitionId
-          ? this.getElementDefinitions().find((candidate) => candidate.id === definitionId)
-          : null;
-        def?.onDelete?.(args.entity);
+        for (const definition of this.getMatchingElementDefinitionsByElement(args.entity)) {
+          definition.onDelete?.(args.entity);
+        }
         callNodeOnRemove(node);
         node.destroy();
       },
       onRollback: (args) => {
-        const def = definitionId
-          ? this.getElementDefinitions().find((candidate) => candidate.id === definitionId)
-          : null;
-        def?.onRestore?.(args.entity);
+        for (const definition of this.getMatchingElementDefinitionsByElement(args.entity)) {
+          definition.onRestore?.(args.entity);
+        }
       },
     });
   }
@@ -295,7 +285,7 @@ export class ElementService implements IService<TElementServiceHooks> {
 
   getTransformOptions(args: {
     node: Konva.Node;
-    selection: Array<Konva.Group | Konva.Shape>;
+    selection: Konva.Node[];
   }) {
     const element = this.toElement(args.node);
     if (!element) {

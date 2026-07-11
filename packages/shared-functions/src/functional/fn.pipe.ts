@@ -25,7 +25,7 @@ export function fnPipe<TValue, TResult1, TResult2, TResult3, TResult4>(
 ): TResult4;
 export function fnPipe<TValue>(
   value: TValue,
-  ...fns: Array<(value: unknown) => unknown>
+  ...fns: Array<(value: any) => any>
 ) {
   return fns.reduce((currentValue, fn) => fn(currentValue), value);
 }

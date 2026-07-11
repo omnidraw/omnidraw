@@ -398,7 +398,7 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
           selection,
           uploadImage: (body) => ctx.config.apiService.api.file.put({
             body: {
-              data: new Blob([body.data], { type: body.mime_type }),
+              data: new Blob([new Uint8Array(body.data)], { type: body.mime_type }),
               mime_type: body.mime_type,
             },
           }).then(([err, res]) => {

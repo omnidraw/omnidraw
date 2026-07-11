@@ -23,11 +23,11 @@ const patches = [
 
 function patchFile(path, oldText, newText) {
   const source = readFileSync(path, "utf8");
-  if (source.includes(newText)) return false;
   if (!source.includes(oldText)) {
+    if (source.includes(newText)) return false;
     throw new Error(`patch target not found in ${path}`);
   }
-  writeFileSync(path, source.replace(oldText, newText));
+  writeFileSync(path, source.replaceAll(oldText, newText));
   return true;
 }
 

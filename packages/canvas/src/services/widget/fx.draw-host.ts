@@ -118,7 +118,7 @@ type TPortalCreateHost = {
 
 type TArgsCreateHost = { widgetConfig: IWidgetConfig } & TToolDrawCreateStartDraftArgs
 
-function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TElementData {
+function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TUiWidgetData | TWidgetData {
   const widgetType = args.widgetConfig.dataType ?? 'ui-widget'
 
   if (widgetType === 'widget') {

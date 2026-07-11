@@ -60,9 +60,6 @@ export default defineConfig({
       '@automerge/automerge-repo-network-websocket',
       '@automerge/automerge-repo-network-broadcastchannel',
       '@automerge/automerge-repo-storage-indexeddb'
-    ],
-    esbuildOptions: {
-      target: 'esnext'
-    }
+    ]
   }
 });

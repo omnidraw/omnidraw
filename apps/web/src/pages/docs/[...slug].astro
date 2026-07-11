@@ -1,5 +1,5 @@
 ---
-import { getCollection, type CollectionEntry } from "astro:content";
+import { getCollection, render, type CollectionEntry } from "astro:content";
 import DocsLayout from "../../layouts/DocsLayout.astro";
 
 type TProps = {
@@ -10,19 +10,19 @@ export async function getStaticPaths() {
   const docs = await getCollection("docs");
 
   return docs.map((entry) => ({
-    params: { slug: entry.slug },
+    params: { slug: entry.id },
     props: { entry },
   }));
 }
 
 const { entry } = Astro.props as TProps;
-const { Content } = await entry.render();
+const { Content } = await render(entry);
 ---
 
 <DocsLayout
   title={`${entry.data.title} - Vibecanvas Docs`}
   description={entry.data.description}
-  currentSlug={entry.slug}
+  currentSlug={entry.id}
 >
   <h1>{entry.data.title}</h1>
   <p class="doc-description">{entry.data.description}</p>

@@ -2,7 +2,7 @@ import type Konva from "konva";
 import { VC_Z_INDEX_ATTR } from "./CONSTANTS";
 
 export type TArgsGetNodeZIndex = {
-  node: Konva.Group | Konva.Shape;
+  node: Konva.Node;
 };
 
 export function fnGetNodeZIndex(args: TArgsGetNodeZIndex) {

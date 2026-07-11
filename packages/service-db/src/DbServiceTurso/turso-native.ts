@@ -109,3 +109,4 @@ export class Database extends DatabasePromise {
     super(new nativeBinding.Database(databasePath, nativeOpts));
   }
 }
+declare const VIBECANVAS_COMPILED: boolean | undefined;

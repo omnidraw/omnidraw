@@ -30,7 +30,7 @@ const apiPutFile = baseFileOs.put.handler(async ({ input, context }) => {
     id,
     hash,
     mime_type: input.body.mime_type,
-    data: bytes,
+    data: new Uint8Array(bytes),
   });
 
   return {

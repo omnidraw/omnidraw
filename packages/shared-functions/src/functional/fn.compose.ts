@@ -18,7 +18,7 @@ export function fnCompose<TValue, TResult1, TResult2, TResult3, TResult4>(
   fn1: (value: TValue) => TResult1,
 ): (value: TValue) => TResult4;
 export function fnCompose(
-  ...fns: Array<(value: unknown) => unknown>
+  ...fns: Array<(value: any) => any>
 ) {
   return function fnComposed<TValue>(value: TValue) {
     return fns.reduceRight((currentValue, fn) => fn(currentValue), value);

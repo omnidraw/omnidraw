@@ -55,11 +55,11 @@ function isSceneParent(portal: TPortalDeleteSelection, node: Node | null | undef
 }
 
 function isRuntimeOnlyDerivedNode(node: Node) {
-  return node.getAttr(SHAPE2D_INLINE_TEXT_DERIVED_ATTR) === true;
+  return (node as Node).getAttr(SHAPE2D_INLINE_TEXT_DERIVED_ATTR) === true;
 }
 
 function callNodeOnRemove(node: TSceneNode) {
-  const onRemove = node.getAttr(VC_ON_REMOVE_ATTR);
+  const onRemove = (node as Node).getAttr(VC_ON_REMOVE_ATTR);
   if (typeof onRemove !== "function") {
     return;
   }
@@ -68,7 +68,7 @@ function callNodeOnRemove(node: TSceneNode) {
 }
 
 function isRuntimeOnlyRemovableNode(portal: TPortalDeleteSelection, node: TSceneNode) {
-  if (typeof node.getAttr(VC_ON_REMOVE_ATTR) !== "function") {
+  if (typeof (node as Node).getAttr(VC_ON_REMOVE_ATTR) !== "function") {
     return false;
   }
 

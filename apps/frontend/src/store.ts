@@ -1,6 +1,6 @@
 import { makePersisted } from "@solid-primitives/storage";
 import { DEFAULT_THEME_ID, THEME_ID_DARK, type ThemeId } from "@vibecanvas/service-theme";
-import { createStore } from "solid-js/store";
+import { createStore, type SetStoreFunction, type Store } from "solid-js/store";
 import type { TBackendCanvas } from "./types/backend.types";
 
 type TGlobalStore = {
@@ -11,7 +11,7 @@ type TGlobalStore = {
   canvases: TBackendCanvas[];
 };
 
-const [store, setStore, init] = makePersisted(createStore<TGlobalStore>({
+const [store, setStore, init] = makePersisted<TGlobalStore, [Store<TGlobalStore>, SetStoreFunction<TGlobalStore>]>(createStore<TGlobalStore>({
   theme: DEFAULT_THEME_ID,
   lastLightThemeId: DEFAULT_THEME_ID,
   lastDarkThemeId: THEME_ID_DARK,

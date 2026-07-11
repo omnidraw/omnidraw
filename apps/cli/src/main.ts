@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+export {};
+
 const args = Bun.argv.slice(2);
 
 if (args.includes("--icp-client")) {

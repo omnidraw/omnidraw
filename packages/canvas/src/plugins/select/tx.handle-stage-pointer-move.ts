@@ -52,7 +52,7 @@ export function txHandleStagePointerMove(
         return false;
       }
 
-      if (node.getAttr("vcInteractionOverlay") === true) {
+      if ((node as Konva.Node).getAttr("vcInteractionOverlay") === true) {
         return false;
       }
 

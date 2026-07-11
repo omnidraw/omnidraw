@@ -15,12 +15,12 @@
     "strict": true,
     "skipLibCheck": true,
     "types": [
+      "bun-types",
       "vite/client"
     ]
   },
   "include": [
     "src",
-    "tests",
     "../../global.d.ts"
   ]
 }

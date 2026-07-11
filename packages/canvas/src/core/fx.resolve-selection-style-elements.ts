@@ -4,7 +4,7 @@ import type { SceneService } from "../services/scene/SceneService";
 import type { SelectionService } from "../services/selection/SelectionService";
 import { isKonvaGroup, isKonvaShape } from "./GUARDS";
 import { fnFilterSelection } from "./fn.filter-selection";
-import type { ElementService } from "src/services";
+import type { ElementService } from "../services";
 
 export type TPortalResolveSelectionStyleElements = {
   element: ElementService

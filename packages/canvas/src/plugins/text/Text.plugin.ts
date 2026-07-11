@@ -9,7 +9,7 @@ import { ELEMENT_DATA_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../..
 import { isKonvaText } from "../../core/GUARDS";
 import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
 import type {
-  TCanvasTransformAnchor
+  TElementTransformAnchor
 } from "../../services";
 import { CanvasMode } from "../../services/selection/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
@@ -32,7 +32,7 @@ const FREE_TEXT_NAME = "free-text";
 const TEXT_USES_THEME_COLOR_ATTR = "vcUsesThemeTextColor";
 const ELEMENT_STYLE_ATTR = "vcElementStyle";
 const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
-const TEXT_TRANSFORM_ANCHORS: TCanvasTransformAnchor[] = [
+const TEXT_TRANSFORM_ANCHORS: TElementTransformAnchor[] = [
   "top-left",
   "top-right",
   "bottom-left",

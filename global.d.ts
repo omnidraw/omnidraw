@@ -2,6 +2,7 @@ declare global {
   const VIBECANVAS_COMPILED: boolean | undefined;
   const VIBECANVAS_VERSION: string | undefined;
   const VIBECANVAS_CHANNEL: string | undefined;
+  const VIBECANVAS_RELEASE_DOWNLOAD_BASE: string | undefined;
 
   /**
    * Error code prefix indicating which layer the error originated from.

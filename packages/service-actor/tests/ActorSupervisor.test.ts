@@ -284,11 +284,12 @@ describe("ActorSupervisor", () => {
 
     await supervisor.init();
     const actor = await supervisor.createInstance("Account Funds Test", "canvas-create-instance", "element-created-fund");
+    if (!actor) throw new Error("Expected actor instance to be created");
 
-    expect(actor?.getId()).toBeString();
+    expect(actor.getId()).toBeString();
     expect(publishedActorEvents).toContainEqual({
       kind: "system",
-      actorId: actor?.getId(),
+      actorId: actor.getId(),
       type: "status.changed",
       from: null,
       to: "running",

@@ -23,8 +23,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -112,6 +114,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
+| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
+| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
+| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
+| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -122,6 +131,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -152,6 +163,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/actor-ui/package.json](packages/actor-ui/package.json) |  |
 | [packages/actor-ui/playwright.config.ts](packages/actor-ui/playwright.config.ts) |  |
 | [packages/actor-ui/src/ActorStateMachineView.tsx](packages/actor-ui/src/ActorStateMachineView.tsx) |  |
+| [packages/actor-ui/src/env.d.ts](packages/actor-ui/src/env.d.ts) |  |
 | [packages/actor-ui/src/fn.edge.ts](packages/actor-ui/src/fn.edge.ts) |  |
 | [packages/actor-ui/src/fn.elbow.ts](packages/actor-ui/src/fn.elbow.ts) |  |
 | [packages/actor-ui/src/fn.labels.ts](packages/actor-ui/src/fn.labels.ts) |  |
@@ -378,8 +390,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/FloatingCanvasToolbar/RuntimeToolbar.tsx](packages/canvas/src/components/FloatingCanvasToolbar/RuntimeToolbar.tsx) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/styles.css](packages/canvas/src/components/FloatingCanvasToolbar/styles.css) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) | Toolbar Types Type definitions for the floating drawing toolbar |
-| [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) | ToolButton Component Individual tool button in the floating toolbar |
 | [packages/canvas/src/components/FloatingCanvasToolbar/ToolbarLabelPopover.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolbarLabelPopover.tsx) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) | ToolButton Component Individual tool button in the floating toolbar |
 | [packages/canvas/src/components/SelectionStyleMenu/CapPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/CapPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/ColorPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/ColorPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/FontFamilyPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/FontFamilyPicker.tsx) |  |
@@ -388,11 +400,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/SelectionStyleMenu/LineTypePicker.tsx](packages/canvas/src/components/SelectionStyleMenu/LineTypePicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/OpacitySlider.tsx](packages/canvas/src/components/SelectionStyleMenu/OpacitySlider.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/StrokeWidthPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/StrokeWidthPicker.tsx) |  |
-| [packages/canvas/src/components/ToolIconPicker/styles.css](packages/canvas/src/components/ToolIconPicker/styles.css) |  |
-| [packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx](packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/types.ts](packages/canvas/src/components/SelectionStyleMenu/types.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx) |  |
+| [packages/canvas/src/components/ToolIconPicker/styles.css](packages/canvas/src/components/ToolIconPicker/styles.css) |  |
+| [packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx](packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx) |  |
 | [packages/canvas/src/core/CONSTANTS.ts](packages/canvas/src/core/CONSTANTS.ts) |  |
 | [packages/canvas/src/core/fn.canvas-node-semantics.ts](packages/canvas/src/core/fn.canvas-node-semantics.ts) |  |
 | [packages/canvas/src/core/fn.create-ordered-z-index.ts](packages/canvas/src/core/fn.create-ordered-z-index.ts) |  |
@@ -674,6 +686,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
+| [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
 | [packages/service-agent/src/prompts/index.ts](packages/service-agent/src/prompts/index.ts) |  |
 | [packages/service-agent/src/prompts/prompt.actor-implementation.md](packages/service-agent/src/prompts/prompt.actor-implementation.md) |  |
@@ -747,6 +760,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

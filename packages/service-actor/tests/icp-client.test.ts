@@ -169,7 +169,7 @@ export default {
         },
       });
     } finally {
-      proc?.kill();
+      (proc as Bun.Subprocess | null)?.kill();
       await rm(rootDir, { recursive: true, force: true });
     }
   });

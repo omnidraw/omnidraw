@@ -12,7 +12,8 @@ rmSync(distDir, { recursive: true, force: true })
 rmSync(actorSubpathDir, { recursive: true, force: true })
 rmSync(widgetSubpathDir, { recursive: true, force: true })
 
-const tscPath = Bun.resolveSync("typescript/lib/tsc.js", path.join(sdkDir, "package.json"))
+const typescriptPackagePath = Bun.resolveSync("typescript/package.json", path.join(sdkDir, "package.json"))
+const tscPath = path.join(path.dirname(typescriptPackagePath), "bin", "tsc")
 const tsc = Bun.spawnSync({
   cmd: ["bun", tscPath, "-p", "tsconfig.build.json"],
   cwd: sdkDir,

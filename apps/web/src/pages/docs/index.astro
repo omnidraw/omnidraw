@@ -21,7 +21,7 @@ const docs = (await getCollection("docs")).sort(
   <div class="docs-cards">
     {
       docs.map((entry) => (
-        <a class="docs-card" href={`${base}docs/${entry.slug}`}>
+        <a class="docs-card" href={`${base}docs/${entry.id}`}>
           <h2>{entry.data.title}</h2>
           <p>{entry.data.description}</p>
         </a>
