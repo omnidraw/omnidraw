@@ -279,6 +279,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S71](s/S71.md) - image paste: render local preview while uploading to remote server
 - [x]: [S72](s/S72.md) - canvas: allow zoom from 0.1 to 6.0
 - [x]: [S73](s/S73.md) - cli upgrade: replace fixed download marker with streamed progress
+- [ ]: [S74](s/S74.md) - update workspace dependencies in safe coordinated batches
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
