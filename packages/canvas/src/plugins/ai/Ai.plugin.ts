@@ -1,7 +1,6 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
-import { createSignal } from "solid-js";
 import { render } from "solid-js/web";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
@@ -99,20 +98,10 @@ function mountAiWidget(portal: {
     });
   }
 
-  const readToolGroups = () => {
-    return [...new Set(portal.tool.getTools()
-      .map((tool) => tool.group)
-      .filter((group): group is string => typeof group === "string" && group.trim().length > 0))]
-      .sort((left, right) => left.localeCompare(right));
-  };
-  const [toolGroups, setToolGroups] = createSignal(readToolGroups());
-  portal.tool.hooks.toolsChange.tap(() => setToolGroups(readToolGroups()));
-
   render(() => AiWizzard({
     apiService: portal.apiService,
     id: args.id,
     sessionId: initialSessionId,
-    toolGroups: toolGroups(),
     aiWizardPreference: getAiWidgetPayload({ element: args.element }),
     onAiWizardPreferenceChange: (preference) => {
       persistAiPayload({

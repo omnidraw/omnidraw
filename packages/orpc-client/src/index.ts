@@ -9,6 +9,7 @@ import { fileContract } from "@vibecanvas/api-file/contract";
 import { filesystemContract } from "@vibecanvas/api-filesystem/contract";
 import { notificationContract, type TNotificationEvent } from "@vibecanvas/api-notification/contract";
 import { ptyContract, type TPtyImageFormat } from "@vibecanvas/api-pty/contract";
+import { toolContract } from "@vibecanvas/api-tool/contract";
 import { WebSocket as PartySocketWebSocket } from "partysocket";
 
 const contract = oc.router({
@@ -20,6 +21,7 @@ const contract = oc.router({
   filesystem: filesystemContract,
   notification: notificationContract,
   pty: ptyContract,
+  tool: toolContract,
 });
 
 const apiContract = populateContractRouterPaths(

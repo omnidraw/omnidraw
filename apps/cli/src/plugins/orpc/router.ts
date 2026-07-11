@@ -6,6 +6,7 @@ import { fileHandlers } from '@vibecanvas/api-file/handlers';
 import { filesystemHandlers } from '@vibecanvas/api-filesystem/handlers';
 import { notificationHandlers } from '@vibecanvas/api-notification/handlers';
 import { ptyHandlers } from '@vibecanvas/api-pty/handlers';
+import { toolHandlers } from '@vibecanvas/api-tool/handlers';
 
 const router = {
   api: {
@@ -17,6 +18,7 @@ const router = {
     filesystem: filesystemHandlers,
     notification: notificationHandlers,
     pty: ptyHandlers,
+    tool: toolHandlers,
   },
 };
 

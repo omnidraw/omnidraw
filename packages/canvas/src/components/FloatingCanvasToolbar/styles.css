@@ -15,11 +15,18 @@
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--card-foreground);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.vc-canvas-toolbar-panel {
+  overflow: hidden;
+}
+
+.vc-runtime-toolbar-panel {
+  overflow: visible;
 }
 
 .vc-canvas-toolbar-collapse,
@@ -49,13 +56,99 @@
 }
 
 .vc-runtime-toolbar-collapse {
+  width: 100%;
+  min-width: 2.25rem;
   border-bottom: 1px solid var(--border);
 }
 
 .vc-canvas-toolbar-list,
 .vc-runtime-toolbar-list {
   display: flex;
+}
+
+.vc-canvas-toolbar-list {
   flex-direction: column;
+}
+
+.vc-runtime-toolbar-list {
+  align-items: flex-start;
+  overflow: visible;
+}
+
+.vc-runtime-toolbar-list--scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.vc-runtime-toolbar-column {
+  display: flex;
+  width: 2.25rem;
+  flex: 0 0 2.25rem;
+  flex-direction: column;
+}
+
+.vc-runtime-toolbar-group {
+  width: 100%;
+}
+
+.vc-runtime-toolbar-group__button::after {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 0;
+  height: 0;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 3px solid currentColor;
+  content: "";
+  opacity: 0.65;
+  transform: rotate(45deg);
+}
+
+.vc-runtime-toolbar-group__flyout {
+  position: absolute;
+  z-index: 60;
+  pointer-events: auto;
+  display: flex;
+  width: max-content;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  transform: translateX(-100%);
+}
+
+.vc-runtime-toolbar-group__member {
+  width: 2.25rem;
+  flex: 0 0 2.25rem;
+}
+
+.vc-toolbar-label-anchor {
+  width: 100%;
+}
+
+.vc-toolbar-label-popover {
+  z-index: 70;
+  pointer-events: none !important;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.25rem 0.5rem;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+.vc-toolbar-label-popover[data-closed] {
+  display: none;
+}
+
+.vc-toolbar-label-popover__text {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .vc-toolbar-button {

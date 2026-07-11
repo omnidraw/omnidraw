@@ -1,19 +1,21 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFilesystem, TJson, TKeyValue, TMediaFile } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TCanvas, TCanvasMember, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { fxKeyValueGet } from "./fx.keyValue";
+import { fxToolGroupGetByName, fxToolGroupListAll } from "./fx.tool-group";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceHealth, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
+import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
 import { txRunMigrations } from "./tx.migrations";
 import { txDefaultRunPragmas } from "./tx.pragma";
 import { Database } from "./turso-native";
@@ -60,6 +62,13 @@ interface IPublicMethods {
     add(args: TKeyValue): Promise<TKeyValue>;
     remove(args: { name: string }): Promise<void>;
     get(args: { name: string }): Promise<TKeyValue | null>;
+  };
+  toolGroup: {
+    listAll(): Promise<TToolGroup[]>;
+    getByName(args: { name: string }): Promise<TToolGroup | null>;
+    create(args: TToolGroup): Promise<TToolGroup>;
+    update(args: TToolGroup & { currentName: string }): Promise<TToolGroup | null>;
+    remove(args: { name: string }): Promise<TToolGroup | null>;
   };
   actor: {
     listDefinitions(): Promise<TActorDefinition[]>;
@@ -146,6 +155,14 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     add: (args: TKeyValue) => txKeyValueAdd(this, args),
     remove: (args: { name: string }) => txKeyValueRemove(this, args),
     get: (args: { name: string }) => fxKeyValueGet(this, args),
+  };
+
+  toolGroup = {
+    listAll: () => fxToolGroupListAll(this, {}),
+    getByName: (args: { name: string }) => fxToolGroupGetByName(this, args),
+    create: (args: TToolGroup) => txToolGroupCreate(this, args),
+    update: (args: TToolGroup & { currentName: string }) => txToolGroupUpdate(this, args),
+    remove: (args: { name: string }) => txToolGroupRemove(this, args),
   };
 
   actor = {

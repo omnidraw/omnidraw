@@ -48,6 +48,7 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("actor_instances");
     expect(tNames).toContain("actor_connections");
     expect(tNames).toContain("kv");
+    expect(tNames).toContain("tool_groups");
     expect(tNames).toContain("migrations");
 
     const migrationStmt = await db.prepare("select name, hash_hex, applied_at from migrations order by name");
@@ -62,6 +63,22 @@ describe("tx.migrations", () => {
       expect(migration.hash_hex).not.toBe("");
       expect(migration.applied_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     }
+  });
+
+  test("tool groups are independent and enforce non-empty names", async () => {
+    await txRunMigrations({ db, Bun, path }, {});
+
+    const insertGroup = await db.prepare("insert into tool_groups (name, json) values (?, ?)");
+    await insertGroup.run("Productivity", '{"lucidIcon":"LayoutGrid"}');
+    await insertGroup.run("Unstyled", null);
+
+    const groups = await (await db.prepare("select name, json from tool_groups order by name")).all();
+    expect(groups).toEqual([
+      { name: "Productivity", json: '{"lucidIcon":"LayoutGrid"}' },
+      { name: "Unstyled", json: null },
+    ]);
+
+    await expectSqlConstraintFailure(() => insertGroup.run("   ", null));
   });
 
   test("accounts table", async () => {

@@ -120,7 +120,7 @@ export const ACTOR_CANDIDATE_PARAMETER_SCHEMA = Type.Object({
     tool: Type.Object({
       label: Type.String({ minLength: 1, description: 'Tool label shown in the canvas UI.' }),
       icon: Type.Optional(ACTOR_TOOL_ICON_SCHEMA),
-      group: Type.Optional(Type.String({ description: 'Tool group label.' })),
+      group: Type.Optional(Type.String({ description: 'Omit by default. Set only when the user explicitly requests a specific tool group name.' })),
       priority: Type.Optional(Type.Number({ description: 'Tool ordering priority.' })),
       behavior: ACTOR_TOOL_BEHAVIOR_SCHEMA,
     }),

@@ -12,6 +12,10 @@ interface ToolButtonProps {
   letterShortcut?: string;
   isActive: boolean;
   onClick: () => void;
+  ariaLabel?: string;
+  ariaHasPopup?: "menu";
+  ariaExpanded?: boolean;
+  role?: "menuitem";
 }
 
 export function ToolButton(props: ToolButtonProps) {
@@ -21,6 +25,10 @@ export function ToolButton(props: ToolButtonProps) {
     <button
       type="button"
       onClick={props.onClick}
+      aria-label={props.ariaLabel}
+      aria-haspopup={props.ariaHasPopup}
+      aria-expanded={props.ariaExpanded}
+      role={props.role}
       class="vc-toolbar-button"
       classList={{
         "vc-toolbar-button--active": props.isActive,

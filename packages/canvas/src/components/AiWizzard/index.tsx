@@ -32,7 +32,6 @@ interface IProps {
     apiService: TOrpcSafeClient
     sessionId: string
     aiWizardPreference?: TAiWizardPreference
-    toolGroups?: string[]
     onAiWizardPreferenceChange?: (preference: TAiWizardPreference) => void
     onResetSessionId: () => string
 }
@@ -159,6 +158,10 @@ export function AiWizzard(props: IProps) {
     const [settingState, { refetch }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([err, data]) => {
         if (err) throw err.message
         return data
+    }))
+    const [toolGroupState] = createResource(() => props.apiService.api.tool.groups.list().then(([err, data]) => {
+        if (err) return []
+        return data.map((group) => group.name)
     }))
     const [manifestState, setManifestState] = createSignal<TAiWizardManifestState>({
         manifest: null,
@@ -514,7 +517,7 @@ export function AiWizzard(props: IProps) {
                         manifest={manifestState().manifest}
                         apiService={props.apiService}
                         sessionId={sessionId()}
-                        existingGroups={props.toolGroups ?? []}
+                        existingGroups={toolGroupState() ?? []}
                         widgetId={props.id}
                         onManifestChange={setWizardManifest}
                     />

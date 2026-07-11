@@ -1051,8 +1051,6 @@
 
 .ai-wizzard-kobalte-input:focus-visible,
 .ai-wizzard-native-select:focus-visible,
-.ai-wizzard-icon-menu__trigger:focus-visible,
-.ai-wizzard-icon-menu__item:focus-visible,
 .ai-wizzard-number-stepper:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
@@ -1111,8 +1109,7 @@
   grid-column: 1 / -1;
 }
 
-.ai-wizzard-native-select,
-.ai-wizzard-icon-menu__trigger {
+.ai-wizzard-native-select {
   width: 100%;
   height: 38px;
   border: 1px solid var(--input);
@@ -1124,88 +1121,6 @@
 
 .ai-wizzard-native-select {
   padding: 0 10px;
-}
-
-.ai-wizzard-icon-menu {
-  position: relative;
-}
-
-.ai-wizzard-icon-menu__trigger {
-  justify-content: space-between;
-  align-items: center;
-  display: inline-flex;
-  cursor: pointer;
-  gap: 8px;
-  padding: 0 10px 0 12px;
-}
-
-.ai-wizzard-kobalte-select-icon {
-  color: var(--muted-foreground);
-}
-
-.ai-wizzard-icon-menu__content {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 100%;
-  max-height: 300px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  background: var(--card);
-  box-shadow: 6px 6px 0 color-mix(in srgb, var(--foreground) 78%, var(--background));
-  z-index: 10;
-  padding: 4px;
-}
-
-.ai-wizzard-icon-menu__item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--foreground);
-  cursor: pointer;
-  min-height: 34px;
-  padding: 7px 9px;
-  font: inherit;
-  text-align: left;
-}
-
-.ai-wizzard-icon-menu__item:hover,
-.ai-wizzard-icon-menu__item--selected {
-  border-color: #ff7a2f;
-  background: color-mix(in srgb, #ff7a2f 18%, var(--background));
-  color: var(--foreground);
-}
-
-.ai-wizzard-icon-select-value {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-}
-
-.ai-wizzard-icon-select-glyph,
-.ai-wizzard-icon-select-glyph svg {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.ai-wizzard-icon-select-text {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  font-size: 16px;
-  line-height: 1;
 }
 
 .ai-wizzard-number-control {

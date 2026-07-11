@@ -80,6 +80,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/feature/sidebar/components/SidebarDialog.module.css](apps/frontend/src/feature/sidebar/components/SidebarDialog.module.css) |  |
 | [apps/frontend/src/feature/sidebar/components/SidebarItem.module.css](apps/frontend/src/feature/sidebar/components/SidebarItem.module.css) |  |
 | [apps/frontend/src/feature/sidebar/components/SidebarItem.tsx](apps/frontend/src/feature/sidebar/components/SidebarItem.tsx) |  |
+| [apps/frontend/src/feature/sidebar/components/ToolGroupDialog.tsx](apps/frontend/src/feature/sidebar/components/ToolGroupDialog.tsx) |  |
 | [apps/frontend/src/feature/sidebar/index.ts](apps/frontend/src/feature/sidebar/index.ts) |  |
 | [apps/frontend/src/fn.startup-canvas-navigation.ts](apps/frontend/src/fn.startup-canvas-navigation.ts) |  |
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
@@ -316,6 +317,24 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-pty/src/types.ts](packages/api-pty/src/types.ts) |  |
 | [packages/api-pty/tsconfig.json](packages/api-pty/tsconfig.json) |  |
 
+## packages/api-tool
+
+| path | jsdocs |
+|---|---|
+| [packages/api-tool/package.json](packages/api-tool/package.json) |  |
+| [packages/api-tool/src/api.create-tool-group.ts](packages/api-tool/src/api.create-tool-group.ts) |  |
+| [packages/api-tool/src/api.get-tool-group.ts](packages/api-tool/src/api.get-tool-group.ts) |  |
+| [packages/api-tool/src/api.list-tool-groups.ts](packages/api-tool/src/api.list-tool-groups.ts) |  |
+| [packages/api-tool/src/api.remove-tool-group.ts](packages/api-tool/src/api.remove-tool-group.ts) |  |
+| [packages/api-tool/src/api.update-tool-group.ts](packages/api-tool/src/api.update-tool-group.ts) |  |
+| [packages/api-tool/src/CONSTANTS.ts](packages/api-tool/src/CONSTANTS.ts) |  |
+| [packages/api-tool/src/contract.ts](packages/api-tool/src/contract.ts) |  |
+| [packages/api-tool/src/fn.to-tool-group.ts](packages/api-tool/src/fn.to-tool-group.ts) |  |
+| [packages/api-tool/src/handlers.ts](packages/api-tool/src/handlers.ts) |  |
+| [packages/api-tool/src/orpc.ts](packages/api-tool/src/orpc.ts) |  |
+| [packages/api-tool/src/types.ts](packages/api-tool/src/types.ts) |  |
+| [packages/api-tool/tsconfig.json](packages/api-tool/tsconfig.json) |  |
+
 ## packages/canvas
 
 | path | jsdocs |
@@ -353,11 +372,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/CanvasHelp/index.tsx](packages/canvas/src/components/CanvasHelp/index.tsx) |  |
 | [packages/canvas/src/components/CanvasRecorder/index.css](packages/canvas/src/components/CanvasRecorder/index.css) |  |
 | [packages/canvas/src/components/CanvasRecorder/index.tsx](packages/canvas/src/components/CanvasRecorder/index.tsx) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/CONSTANTS.ts](packages/canvas/src/components/FloatingCanvasToolbar/CONSTANTS.ts) |  |
+| [packages/canvas/src/components/FloatingCanvasToolbar/fn.runtime-toolbar.ts](packages/canvas/src/components/FloatingCanvasToolbar/fn.runtime-toolbar.ts) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/index.tsx](packages/canvas/src/components/FloatingCanvasToolbar/index.tsx) | FloatingDrawingToolbar Component Excalidraw-style floating toolbar at top center of canvas Presentational floating toolbar for a single canvas |
 | [packages/canvas/src/components/FloatingCanvasToolbar/RuntimeToolbar.tsx](packages/canvas/src/components/FloatingCanvasToolbar/RuntimeToolbar.tsx) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/styles.css](packages/canvas/src/components/FloatingCanvasToolbar/styles.css) |  |
 | [packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts](packages/canvas/src/components/FloatingCanvasToolbar/toolbar.types.ts) | Toolbar Types Type definitions for the floating drawing toolbar |
 | [packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolButton.tsx) | ToolButton Component Individual tool button in the floating toolbar |
+| [packages/canvas/src/components/FloatingCanvasToolbar/ToolbarLabelPopover.tsx](packages/canvas/src/components/FloatingCanvasToolbar/ToolbarLabelPopover.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/CapPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/CapPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/ColorPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/ColorPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/FontFamilyPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/FontFamilyPicker.tsx) |  |
@@ -366,6 +388,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/SelectionStyleMenu/LineTypePicker.tsx](packages/canvas/src/components/SelectionStyleMenu/LineTypePicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/OpacitySlider.tsx](packages/canvas/src/components/SelectionStyleMenu/OpacitySlider.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/StrokeWidthPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/StrokeWidthPicker.tsx) |  |
+| [packages/canvas/src/components/ToolIconPicker/styles.css](packages/canvas/src/components/ToolIconPicker/styles.css) |  |
+| [packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx](packages/canvas/src/components/ToolIconPicker/ToolIconPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/types.ts](packages/canvas/src/components/SelectionStyleMenu/types.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx) |  |
@@ -702,6 +726,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.tool-group.ts](packages/service-db/src/DbServiceTurso/fx.tool-group.ts) |  |
 | [packages/service-db/src/DbServiceTurso/list-migration-files.ts](packages/service-db/src/DbServiceTurso/list-migration-files.ts) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql](packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql](packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql) |  |
@@ -711,6 +736,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql](packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
@@ -720,6 +746,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

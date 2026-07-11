@@ -1,12 +1,16 @@
 import { Button } from "@kobalte/core/button";
 import * as ToggleButton from "@kobalte/core/toggle-button";
 import { useLocation, useNavigate } from "@solidjs/router";
+import { TOOL_GROUPS_CHANGED_EVENT } from "@vibecanvas/canvas/components/FloatingCanvasToolbar/CONSTANTS";
+import DOMPurify from "dompurify";
+import ChevronRight from "lucide-solid/icons/chevron-right";
 import MoonStar from "lucide-solid/icons/moon-star";
 import PanelLeft from "lucide-solid/icons/panel-left";
 import Plus from "lucide-solid/icons/plus";
 import Sun from "lucide-solid/icons/sun";
+import * as LucideStatic from "lucide-static";
 import type { Component } from "solid-js";
-import { For, createSignal } from "solid-js";
+import { For, Show, createSignal, onMount } from "solid-js";
 import { showErrorToast } from "@/components/ui/Toast";
 import { removeFromCache } from "@/services/automerge";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
@@ -17,6 +21,7 @@ import { CreateCanvasDialog } from "./CreateCanvasDialog";
 import { DeleteCanvasDialog } from "./DeleteCanvasDialog";
 import { RenameDialog } from "./RenameDialog";
 import SidebarItem from "./SidebarItem";
+import { ToolGroupDialog, type TToolGroupValue } from "./ToolGroupDialog";
 import styles from "./Sidebar.module.css";
 
 export type SidebarProps = {
@@ -43,6 +48,39 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const [canvasToDelete, setCanvasToDelete] = createSignal<TBackendCanvas | null>(null);
 
   const [createDialogOpen, setCreateDialogOpen] = createSignal(false);
+  const [canvasesExpanded, setCanvasesExpanded] = createSignal(true);
+  const [groupsExpanded, setGroupsExpanded] = createSignal(true);
+  const [toolGroups, setToolGroups] = createSignal<TToolGroupValue[]>([]);
+  const [groupDialogOpen, setGroupDialogOpen] = createSignal(false);
+  const [selectedGroup, setSelectedGroup] = createSignal<TToolGroupValue | null>(null);
+  const [widgetGroups, setWidgetGroups] = createSignal<Array<{ name: string; group: string }>>([]);
+
+  const loadToolGroups = async () => {
+    const [err, groups] = await orpcWebsocketService.apiService.api.tool.groups.list();
+    if (err) {
+      showErrorToast(err.message);
+      return;
+    }
+    setToolGroups(groups);
+  };
+
+  const loadWidgetGroups = async () => {
+    const [listError, definitions] = await orpcWebsocketService.apiService.api.actors.definitions.list();
+    if (listError) return;
+    const results = await Promise.all(definitions.map((definition) =>
+      orpcWebsocketService.apiService.api.actors.definitions.get({ name: definition.name })
+    ));
+    setWidgetGroups(results.flatMap(([, result]) => {
+      if (!result) return [];
+      const group = result?.def.widget?.tool?.group?.trim();
+      return group ? [{ name: result.def.name, group }] : [];
+    }));
+  };
+
+  onMount(() => {
+    void loadToolGroups();
+    void loadWidgetGroups();
+  });
 
   const handleOpenRenameDialog = (canvasId: string, canvasName: string) => {
     setCanvasToRename({ id: canvasId, name: canvasName });
@@ -88,6 +126,54 @@ const Sidebar: Component<SidebarProps> = (props) => {
     }
   };
 
+  const openCreateGroup = () => {
+    setSelectedGroup(null);
+    setGroupDialogOpen(true);
+  };
+
+  const openEditGroup = (group: TToolGroupValue) => {
+    setSelectedGroup(group);
+    setGroupDialogOpen(true);
+  };
+
+  const handleSaveGroup = async (group: TToolGroupValue) => {
+    const current = selectedGroup();
+    const [err] = current
+      ? await orpcWebsocketService.apiService.api.tool.groups.update({ currentName: current.name, group })
+      : await orpcWebsocketService.apiService.api.tool.groups.create(group);
+    if (err) {
+      showErrorToast(err.message);
+      return false;
+    }
+    await loadToolGroups();
+    document.defaultView?.dispatchEvent(new Event(TOOL_GROUPS_CHANGED_EVENT));
+    return true;
+  };
+
+  const handleDeleteGroup = async () => {
+    const current = selectedGroup();
+    if (!current) return false;
+    const [err] = await orpcWebsocketService.apiService.api.tool.groups.remove({ name: current.name });
+    if (err) {
+      showErrorToast(err.message);
+      return false;
+    }
+    await loadToolGroups();
+    document.defaultView?.dispatchEvent(new Event(TOOL_GROUPS_CHANGED_EVENT));
+    return true;
+  };
+
+  const linkedWidgets = () => {
+    const group = selectedGroup();
+    return group ? widgetGroups().filter((widget) => widget.group === group.name).map((widget) => widget.name) : [];
+  };
+
+  const groupIconMarkup = (group: TToolGroupValue) => {
+    const raw = group.json?.svgIcon?.trim()
+      || (group.json?.lucidIcon ? (LucideStatic as Record<string, string>)[group.json.lucidIcon] : undefined);
+    return raw ? DOMPurify.sanitize(raw, { USE_PROFILES: { svg: true, svgFilters: true } }) : "";
+  };
+
   const isDarkTheme = () => {
     void store.theme;
     return themeService.getTheme().appearance === "dark";
@@ -117,23 +203,20 @@ const Sidebar: Component<SidebarProps> = (props) => {
           </Button>
         </div>
 
-        <div class={styles.primaryAction}>
-          <Button
-            class={styles.createButton}
-            onClick={() => setCreateDialogOpen(true)}
-          >
-            <Plus size={15} class={styles.createIcon} />
-            <span class={styles.createLabel}>New Canvas</span>
-          </Button>
-        </div>
+        <nav class={styles.nav} aria-label="Workspace navigation">
+          <section class={styles.section}>
+            <div class={styles.sectionHeader}>
+              <Button class={styles.sectionToggle} onClick={() => setCanvasesExpanded((value) => !value)} aria-expanded={canvasesExpanded()}>
+                <ChevronRight size={13} class={styles.sectionChevron} />
+                <span class={styles.sectionTitle}>Canvases</span>
+              </Button>
+              <div class={styles.sectionActions}>
+                <Button class={styles.sectionAdd} onClick={() => setCreateDialogOpen(true)} aria-label="Add canvas"><Plus size={14} /></Button>
+              </div>
+            </div>
 
-        <nav class={styles.nav} aria-label="Canvases">
-          <div class={styles.sectionHeader}>
-            <span class={styles.sectionTitle}>Canvases</span>
-            <span class={styles.sectionCount}>{store.canvases.length}</span>
-          </div>
-
-          <div class={styles.list}>
+            <Show when={canvasesExpanded()}>
+              <div class={styles.list}>
             <For
               each={store.canvases}
               fallback={
@@ -153,7 +236,36 @@ const Sidebar: Component<SidebarProps> = (props) => {
                 />
               )}
             </For>
-          </div>
+              </div>
+            </Show>
+          </section>
+
+          <section class={styles.section}>
+            <div class={styles.sectionHeader}>
+              <Button class={styles.sectionToggle} onClick={() => setGroupsExpanded((value) => !value)} aria-expanded={groupsExpanded()}>
+                <ChevronRight size={13} class={styles.sectionChevron} />
+                <span class={styles.sectionTitle}>Tool Groups</span>
+              </Button>
+              <div class={styles.sectionActions}>
+                <Button class={styles.sectionAdd} onClick={openCreateGroup} aria-label="Add tool group"><Plus size={14} /></Button>
+              </div>
+            </div>
+
+            <Show when={groupsExpanded()}>
+              <div class={styles.groupList}>
+                <For each={toolGroups()} fallback={<p class={styles.emptyGroup}>No tool groups.</p>}>
+                  {(group) => (
+                    <Button class={styles.groupItem} onClick={() => openEditGroup(group)}>
+                      <Show when={groupIconMarkup(group)}>
+                        {(markup) => <span class={styles.groupIcon} innerHTML={markup()} aria-hidden="true" />}
+                      </Show>
+                      <span class={styles.groupName}>{group.name}</span>
+                    </Button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </section>
         </nav>
 
         <div class={styles.footer}>
@@ -192,6 +304,15 @@ const Sidebar: Component<SidebarProps> = (props) => {
         open={createDialogOpen()}
         onOpenChange={setCreateDialogOpen}
         onCanvasCreated={handleCreateCanvas}
+      />
+
+      <ToolGroupDialog
+        open={groupDialogOpen()}
+        onOpenChange={setGroupDialogOpen}
+        group={selectedGroup()}
+        linkedWidgets={linkedWidgets()}
+        onSave={handleSaveGroup}
+        onDelete={handleDeleteGroup}
       />
     </>
   );

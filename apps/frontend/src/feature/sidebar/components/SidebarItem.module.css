@@ -51,9 +51,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.875rem;
-  line-height: 1.15;
-  font-weight: 650;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 700;
 }
 
 .menuTrigger {

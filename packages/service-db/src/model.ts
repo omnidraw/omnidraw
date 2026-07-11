@@ -142,6 +142,11 @@ export const ZActorConnection = z.object({
   created_at: ZTimestamp,
 });
 
+export const ZToolGroup = z.object({
+  name: z.string(),
+  json: ZJson.nullable(),
+});
+
 export type TJson = z.infer<typeof ZJson>;
 export type TKeyValue =
   | { name: string; type: "text"; value: string }
@@ -169,3 +174,4 @@ export type TFilesystem = z.infer<typeof ZFilesystem>;
 export type TActorDefinition = z.infer<typeof ZActorDefinition>;
 export type TActorInstance = z.infer<typeof ZActorInstance>;
 export type TActorConnection = z.infer<typeof ZActorConnection>;
+export type TToolGroup = z.infer<typeof ZToolGroup>;

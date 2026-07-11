@@ -3,10 +3,8 @@ import { TextField } from "@kobalte/core/text-field"
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { isLucideStaticIconKey, type TVibecanvasToolIcon } from "@vibecanvas/service-actor/core/tool-icon"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
-import DOMPurify from "dompurify"
-import * as Lucid from "lucide-static"
-import Code from "lucide-static/icons/code.svg?raw"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { resolveToolIconMarkup, ToolIconGlyph, ToolIconPicker } from "../../ToolIconPicker/ToolIconPicker"
 
 interface IProps {
   manifest: TVibecanvasJson | null
@@ -17,44 +15,10 @@ interface IProps {
   onManifestChange: (manifest: TVibecanvasJson | null, source: "file" | "actor-candidate") => void
 }
 
-type TIconPreset = {
-  id: string
-  label: string
-  icon: string
-}
-type TIconOption = TIconPreset | { id: typeof ICON_NONE_ID | typeof ICON_SVG_ID; label: string; icon: string }
-
 const GROUP_NONE_ID = "__none__"
 const ICON_NONE_ID = "__none__"
 const ICON_SVG_ID = "__svg__"
 const MAX_PRIORITY = 9999
-
-const ICON_PRESETS = Object.entries(Lucid).reduce((p, [k,v]) => {
-  const preset: TIconPreset = {
-    icon: v,
-    label: k,
-    id: k
-  }
-
-  p.push(preset)
-  return p
-}, [] as TIconPreset[])
-
-const ICON_OPTIONS: readonly TIconOption[] = [
-  { id: ICON_NONE_ID, label: "No icon", icon: "" },
-  { id: ICON_SVG_ID, label: "Custom SVG / emoji / text", icon: Code },
-  ...ICON_PRESETS,
-]
-
-const getIconOption = (optionId: string) => ICON_OPTIONS.find((entry) => entry.id === optionId) ?? ICON_OPTIONS[0]
-const getPresetById = (iconId: string) => ICON_PRESETS.find((entry) => entry.id === iconId)
-const isSvgIcon = (icon: string) => /^\s*(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/.test(icon)
-const SVG_FRAGMENT_PATTERN = /<(?:path|circle|rect|line|polyline|polygon|ellipse|g)\b[\s\S]*$/i
-const sanitizeSvgIcon = (icon: string) => DOMPurify.sanitize(icon, {
-  USE_PROFILES: { svg: true, svgFilters: true },
-  FORBID_TAGS: ["script", "foreignObject"],
-  FORBID_ATTR: ["onload", "onclick", "onerror", "style"],
-})
 const sameIcon = (left: TVibecanvasToolIcon | null, right: TVibecanvasToolIcon | null) => JSON.stringify(left) === JSON.stringify(right)
 const normalizeIcon = (icon: TVibecanvasToolIcon | string | undefined): TVibecanvasToolIcon | null => {
   if (typeof icon === "string") {
@@ -77,43 +41,12 @@ const normalizeIcon = (icon: TVibecanvasToolIcon | string | undefined): TVibecan
 
   return null
 }
-const toSvgMarkup = (icon: string) => {
-  const value = icon.trim()
-  if (isSvgIcon(value)) {
-    return sanitizeSvgIcon(value)
-  }
-
-  const fragmentMatch = SVG_FRAGMENT_PATTERN.exec(value)
-  if (fragmentMatch) {
-    return sanitizeSvgIcon(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${fragmentMatch[0]}</svg>`)
-  }
-
-  return undefined
-}
-
-function IconGlyph(props: { icon?: string }) {
-  const svgMarkup = createMemo(() => props.icon ? toSvgMarkup(props.icon) : undefined)
-
-  return (
-    <Show when={props.icon}>
-      {(icon) => (
-        <Show
-          when={svgMarkup()}
-          fallback={<span class="ai-wizzard-icon-select-text">{icon()}</span>}
-        >
-          {(markup) => <span class="ai-wizzard-icon-select-glyph" innerHTML={markup()} aria-hidden="true" />}
-        </Show>
-      )}
-    </Show>
-  )
-}
 
 export function ToolTab(props: IProps) {
   const [label, setLabel] = createSignal("")
   const [groupId, setGroupId] = createSignal<string>(GROUP_NONE_ID)
   const [priorityText, setPriorityText] = createSignal("")
   const [iconId, setIconId] = createSignal<string>(ICON_NONE_ID)
-  const [isIconMenuOpen, setIsIconMenuOpen] = createSignal(false)
   const [customIconSvg, setCustomIconSvg] = createSignal("")
   const [saveStatus, setSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
   const [saveError, setSaveError] = createSignal<string>()
@@ -127,11 +60,6 @@ export function ToolTab(props: IProps) {
         values.add(trimmed)
       }
     })
-
-    const currentGroup = tool()?.group?.trim()
-    if (currentGroup) {
-      values.add(currentGroup)
-    }
 
     return [GROUP_NONE_ID, ...[...values].sort((left, right) => left.localeCompare(right))]
   })
@@ -147,20 +75,10 @@ export function ToolTab(props: IProps) {
       return value.length > 0 ? { svgIcon: value } : null
     }
 
-    return getPresetById(iconId()) ? { lucidIcon: iconId() } : null
+    return isLucideStaticIconKey(iconId()) ? { lucidIcon: iconId() } : null
   })
   const previewIcon = createMemo(() => {
-    const icon = iconValue()
-    const svgIcon = icon?.svgIcon?.trim()
-    if (svgIcon) {
-      return svgIcon
-    }
-
-    if (icon?.lucidIcon) {
-      return getPresetById(icon.lucidIcon)?.icon
-    }
-
-    return undefined
+    return resolveToolIconMarkup(iconValue())
   })
 
   const parsedPriority = createMemo(() => {
@@ -202,7 +120,8 @@ export function ToolTab(props: IProps) {
     }
 
     setLabel(nextTool.label)
-    setGroupId(nextTool.group?.trim() ? nextTool.group : GROUP_NONE_ID)
+    const currentGroup = nextTool.group?.trim()
+    setGroupId(currentGroup && props.existingGroups.includes(currentGroup) ? currentGroup : GROUP_NONE_ID)
     setPriorityText(nextTool.priority === undefined ? "" : String(nextTool.priority))
 
     const currentIcon = normalizeIcon(nextTool.icon)
@@ -218,7 +137,7 @@ export function ToolTab(props: IProps) {
       return
     }
 
-    if (currentIcon.lucidIcon && getPresetById(currentIcon.lucidIcon)) {
+    if (currentIcon.lucidIcon) {
       setIconId(currentIcon.lucidIcon)
       setCustomIconSvg("")
       return
@@ -236,12 +155,6 @@ export function ToolTab(props: IProps) {
   const markDirty = () => {
     setSaveStatus("idle")
     setSaveError(undefined)
-  }
-
-  const selectIcon = (optionId: string) => {
-    setIconId(optionId)
-    setIsIconMenuOpen(false)
-    markDirty()
   }
 
   const save = async () => {
@@ -297,8 +210,6 @@ export function ToolTab(props: IProps) {
     )
   }
 
-  const selectedIconOption = createMemo(() => getIconOption(iconId()))
-
   return (
     <div class="ai-wizzard-tab">
       <section class="ai-wizzard-option-card ai-wizzard-tool-card">
@@ -311,7 +222,7 @@ export function ToolTab(props: IProps) {
             <Show when={previewIcon()}>
               {(icon) => (
                 <div class="ai-wizzard-icon-preview__svg">
-                  <IconGlyph icon={icon()} />
+                  <ToolIconGlyph icon={icon()} />
                 </div>
               )}
             </Show>
@@ -370,54 +281,14 @@ export function ToolTab(props: IProps) {
             </NumberField.ErrorMessage>
           </NumberField>
 
-          <div class="ai-wizzard-kobalte-field ai-wizzard-icon-menu">
-            <span class="ai-wizzard-label">Icon</span>
-            <button
-              type="button"
-              class="ai-wizzard-icon-menu__trigger"
-              aria-expanded={isIconMenuOpen()}
-              onClick={() => setIsIconMenuOpen((value) => !value)}
-            >
-              <span class="ai-wizzard-icon-select-value">
-                <IconGlyph icon={selectedIconOption().icon} />
-                <span>{selectedIconOption().label}</span>
-              </span>
-              <span class="ai-wizzard-kobalte-select-icon">v</span>
-            </button>
-            <Show when={isIconMenuOpen()}>
-              <div class="ai-wizzard-icon-menu__content" role="listbox">
-                <For each={ICON_OPTIONS}>
-                  {(option) => (
-                    <button
-                      type="button"
-                      class="ai-wizzard-icon-menu__item"
-                      classList={{ "ai-wizzard-icon-menu__item--selected": iconId() === option.id }}
-                      role="option"
-                      aria-selected={iconId() === option.id}
-                      onClick={() => selectIcon(option.id)}
-                    >
-                      <IconGlyph icon={option.icon} />
-                      <span>{option.label}</span>
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
+          <div class="ai-wizzard-kobalte-field ai-wizzard-tool-form__wide">
+            <ToolIconPicker value={iconValue()} onChange={(next) => {
+              if (!next) { setIconId(ICON_NONE_ID); setCustomIconSvg("") }
+              else if (next.svgIcon) { setIconId(ICON_SVG_ID); setCustomIconSvg(next.svgIcon) }
+              else if (next.lucidIcon) { setIconId(next.lucidIcon); setCustomIconSvg("") }
+              markDirty()
+            }} />
           </div>
-
-          <Show when={iconId() === ICON_SVG_ID}>
-            <TextField
-              class="ai-wizzard-kobalte-field ai-wizzard-tool-form__wide"
-              value={customIconSvg()}
-              onChange={(next) => {
-                setCustomIconSvg(next)
-                markDirty()
-              }}
-            >
-              <TextField.Label class="ai-wizzard-label">Custom SVG / emoji / text</TextField.Label>
-              <TextField.TextArea class="ai-wizzard-kobalte-textarea" rows={5} spellcheck={false} />
-            </TextField>
-          </Show>
         </div>
 
         <Show when={saveError()}>

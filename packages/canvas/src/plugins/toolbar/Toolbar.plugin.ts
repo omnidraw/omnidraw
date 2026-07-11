@@ -82,6 +82,7 @@ function fnGetShortcutToolId(toolService: ToolService, event: KeyboardEvent) {
 }
 
 function mountToolbar(args: {
+  apiService: IRuntimeConfig["apiService"];
   scene: SceneService;
   tool: ToolService;
   onToolSelect: (toolId: string) => void;
@@ -93,6 +94,8 @@ function mountToolbar(args: {
   const disposeRender = render(() => {
     return createComponent(RuntimeToolbar, {
       tool: args.tool,
+      apiService: args.apiService,
+      viewportElement: args.scene.stage.container(),
       onToolSelect: args.onToolSelect,
     });
   }, mountElement);
@@ -151,6 +154,7 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
 
       ctx.hooks.init.tap(() => {
         toolbarMount = mountToolbar({
+          apiService: ctx.config.apiService,
           scene,
           tool,
           onToolSelect: (toolId) => {

@@ -17,6 +17,7 @@
     "@vibecanvas/api-filesystem": "workspace:*",
     "@vibecanvas/api-notification": "workspace:*",
     "@vibecanvas/api-pty": "workspace:*",
+    "@vibecanvas/api-tool": "workspace:*",
     "partysocket": "^1.1.16"
   }
 }

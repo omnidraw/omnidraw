@@ -8,6 +8,7 @@ import { fileContract } from '@vibecanvas/api-file/contract';
 import { filesystemContract } from '@vibecanvas/api-filesystem/contract';
 import { notificationContract } from '@vibecanvas/api-notification/contract';
 import { ptyContract } from '@vibecanvas/api-pty/contract';
+import { toolContract } from '@vibecanvas/api-tool/contract';
 import type { ActorService } from '@vibecanvas/service-actor';
 import type { AgentService } from '@vibecanvas/service-agent';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
@@ -25,6 +26,7 @@ const contract = oc.router({
   filesystem: filesystemContract,
   notification: notificationContract,
   pty: ptyContract,
+  tool: toolContract,
 });
 
 const apiContract = populateContractRouterPaths(
