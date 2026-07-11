@@ -10,6 +10,12 @@ All notable changes to this project will be documented in this file.
 - Tool Groups
 - New db table - tool_groups
 
+### Changed
+- update to Typescript 7
+- update to Konva 10
+- update to Astro 7
+- update to Vite 8
+
 ### Fixed
 - state upgrade cli
 
