@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 - stream upgrade download progress
 - Automatically create and open an empty canvas for first-time users while preserving valid canvas deep links.
+- Tool Groups
+- New db table - tool_groups
 
 ### Fixed
 - state upgrade cli
