@@ -16,13 +16,90 @@ export type TFnArgs<D = any, M = any> = {
 };
 export type TFnFunc<D = any, M = any> = (portal: TFnPortal, args: TFnArgs<D, M>) => Promise<any>;
 
+type TResourceListOptions = {
+  prefix?: string;
+  cursor?: string;
+  limit?: number;
+};
+
+type TKvResourceReadPortal = {
+  get: <TValue = any>(key: string) => Promise<{ value: TValue; revision: number } | null>;
+  has: (key: string) => Promise<boolean>;
+  list: <TValue = any>(options?: TResourceListOptions) => Promise<{
+    items: Array<{ key: string; value: TValue; revision: number }>;
+    nextCursor?: string;
+  }>;
+};
+
+type TKvResourceWritePortal = TKvResourceReadPortal & {
+  set: <TValue = any>(args: { key: string; value: TValue }) => Promise<{ value: TValue; revision: number }>;
+  delete: (key: string) => Promise<{ deleted: boolean }>;
+  compareAndSet: <TValue = any>(args: {
+    key: string;
+    expectedRevision: number | null;
+    value: TValue;
+  }) => Promise<
+    | { ok: true; entry: { value: TValue; revision: number } }
+    | { ok: false; currentRevision: number | null }
+  >;
+};
+
+type TSecretStoreResourceReadPortal = {
+  get: (name: string) => Promise<{ value: string; revision: number } | null>;
+  has: (name: string) => Promise<boolean>;
+  list: (options?: TResourceListOptions) => Promise<{
+    items: Array<{ name: string; revision: number; createdAt?: string; updatedAt?: string }>;
+    nextCursor?: string;
+  }>;
+};
+
+type TSecretStoreResourceWritePortal = TSecretStoreResourceReadPortal & {
+  set: (args: { name: string; value: string }) => Promise<{ name: string; revision: number }>;
+  delete: (name: string) => Promise<{ deleted: boolean }>;
+  compareAndSet: (args: {
+    name: string;
+    expectedRevision: number | null;
+    value: string;
+  }) => Promise<
+    | { ok: true; entry: { name: string; revision: number } }
+    | { ok: false; currentRevision: number | null }
+  >;
+};
+
+type TDbResourceReadPortal = {
+  invoke: <TResult = any>(operation: string, parameters?: Record<string, any>) => Promise<TResult>;
+  query: <TRow = Record<string, any>>(sql: string, parameters?: Record<string, any>) => Promise<TRow[]>;
+};
+
+type TDbResourceWritePortal = TDbResourceReadPortal & {
+  execute: (sql: string, parameters?: Record<string, any>) => Promise<{
+    rowsAffected: number;
+    lastInsertRowId?: bigint;
+  }>;
+};
+
+type TActorReadResources = {
+  kv: (slot: string) => TKvResourceReadPortal;
+  secretStore: (slot: string) => TSecretStoreResourceReadPortal;
+  db: (slot: string) => TDbResourceReadPortal;
+};
+
+type TActorWriteResources = {
+  kv: (slot: string) => TKvResourceWritePortal;
+  secretStore: (slot: string) => TSecretStoreResourceWritePortal;
+  db: (slot: string) => TDbResourceWritePortal;
+};
+
 export type TFxPortal = TFnPortal & {
   setData: (data: any) => Promise<any>;
+  resources: TActorReadResources;
 };
 export type TFxArgs<D = any, M = any> = TFnArgs<D, M>;
 export type TFxFunc<D = any, M = any> = (portal: TFxPortal, args: TFxArgs<D, M>) => Promise<any>;
 
-export type TTxPortal = TFxPortal;
+export type TTxPortal = Omit<TFxPortal, "resources"> & {
+  resources: TActorWriteResources;
+};
 export type TTxArgs<D = any, M = any> = TFnArgs<D, M>;
 export type TTxFunc<D = any, M = any> = (portal: TTxPortal, args: TTxArgs<D, M>) => Promise<any>;
 
@@ -44,6 +121,43 @@ type TParentAckMessage = {
   id: number;
   action: "next" | "setData" | "emitMessage";
 };
+
+type TActorResourceKind = "kv" | "secretStore" | "db";
+
+type TParentResourceResultMessage =
+  | { type: "resourceResult"; callId: string; ok: true; result: unknown }
+  | {
+      type: "resourceResult";
+      callId: string;
+      ok: false;
+      error: { code: string; message: string; details?: unknown };
+    };
+
+type TPendingResourceCall = {
+  runId: number;
+  resolve: (result: any) => void;
+  reject: (error: Error) => void;
+};
+
+type TResourceCall = (
+  runId: number,
+  slot: string,
+  kind: TActorResourceKind,
+  operation: string,
+  args: Record<string, unknown>,
+) => Promise<any>;
+
+class ActorResourceCallError extends Error {
+  readonly code: string;
+  readonly details?: unknown;
+
+  constructor(code: string, message: string, details?: unknown) {
+    super(message);
+    this.name = "ActorResourceCallError";
+    this.code = code;
+    this.details = details;
+  }
+}
 
 type TFunctionRegistry = {
   fn: { [key: string]: TFnFunc };
@@ -100,6 +214,15 @@ function buildError(msg: unknown, id?: number) {
     id,
     msg: serializeCloneableValue(msg),
   };
+}
+
+function sendIfConnected(message: Record<string, unknown>) {
+  if (!process.send || process.connected === false) return;
+  try {
+    process.send(message);
+  } catch {
+    // The disconnect handler owns cancellation when the IPC channel closes mid-send.
+  }
 }
 
 function findPackageRoot(startPath: string): string {
@@ -233,6 +356,155 @@ function buildFunctions(funcMap: TFunctionRegistry, func: string[]): TFunctionEn
   return error || functions;
 }
 
+function cancelledResourceCallError() {
+  return new ActorResourceCallError(
+    "RESOURCE_CALL_CANCELLED",
+    "Actor resource call was cancelled because the IPC connection closed.",
+  );
+}
+
+function createResourceCall(pendingResourceCalls: Map<string, TPendingResourceCall>): TResourceCall {
+  let nextCallId = 1;
+
+  return (runId, slot, kind, operation, args) => {
+    const callId = `${runId}:${nextCallId++}`;
+
+    const promise = new Promise<any>((resolve, reject) => {
+      pendingResourceCalls.set(callId, { runId, resolve, reject });
+
+      try {
+        if (!process.send || process.connected === false) {
+          throw cancelledResourceCallError();
+        }
+        process.send({ type: "resourceCall", id: runId, callId, slot, kind, operation, args });
+      } catch {
+        pendingResourceCalls.delete(callId);
+        reject(cancelledResourceCallError());
+      }
+    });
+    void promise.catch(() => undefined);
+    return promise;
+  };
+}
+
+function handleResourceResult(
+  pendingResourceCalls: Map<string, TPendingResourceCall>,
+  message: unknown,
+): boolean {
+  if (
+    typeof message !== "object" ||
+    message === null ||
+    !("type" in message) ||
+    message.type !== "resourceResult"
+  ) {
+    return false;
+  }
+
+  if (!("callId" in message) || typeof message.callId !== "string") return true;
+
+  const pending = pendingResourceCalls.get(message.callId);
+  if (!pending) return true;
+  pendingResourceCalls.delete(message.callId);
+
+  if ("ok" in message && message.ok === true) {
+    pending.resolve("result" in message ? message.result : undefined);
+    return true;
+  }
+
+  if (
+    "ok" in message &&
+    message.ok === false &&
+    "error" in message &&
+    typeof message.error === "object" &&
+    message.error !== null &&
+    "code" in message.error &&
+    typeof message.error.code === "string" &&
+    "message" in message.error &&
+    typeof message.error.message === "string"
+  ) {
+    const resourceResult = message as TParentResourceResultMessage & { ok: false };
+    pending.reject(new ActorResourceCallError(
+      resourceResult.error.code,
+      resourceResult.error.message,
+      resourceResult.error.details,
+    ));
+    return true;
+  }
+
+  pending.reject(new ActorResourceCallError(
+    "RESOURCE_PROVIDER_UNAVAILABLE",
+    "Actor resource call received an invalid response.",
+  ));
+  return true;
+}
+
+function rejectPendingResourceCalls(pendingResourceCalls: Map<string, TPendingResourceCall>) {
+  const error = cancelledResourceCallError();
+  const pendingCalls = [...pendingResourceCalls.values()];
+  pendingResourceCalls.clear();
+  pendingCalls.forEach(({ reject }) => reject(error));
+}
+
+function rejectPendingResourceCallsForRun(
+  pendingResourceCalls: Map<string, TPendingResourceCall>,
+  runId: number,
+) {
+  const error = new ActorResourceCallError(
+    "RESOURCE_CALL_CANCELLED",
+    "Actor resource call was cancelled because its actor run completed.",
+  );
+  for (const [callId, pending] of pendingResourceCalls) {
+    if (pending.runId !== runId) continue;
+    pendingResourceCalls.delete(callId);
+    pending.reject(error);
+  }
+}
+
+function buildReadResources(call: (slot: string, kind: TActorResourceKind, operation: string, args: Record<string, unknown>) => Promise<any>): TActorReadResources {
+  return {
+    kv: (slot) => ({
+      get: (key) => call(slot, "kv", "get", { key }),
+      has: (key) => call(slot, "kv", "has", { key }),
+      list: (options = {}) => call(slot, "kv", "list", options),
+    }),
+    secretStore: (slot) => ({
+      get: (name) => call(slot, "secretStore", "get", { name }),
+      has: (name) => call(slot, "secretStore", "has", { name }),
+      list: (options = {}) => call(slot, "secretStore", "list", options),
+    }),
+    db: (slot) => ({
+      invoke: (operation, parameters) => call(slot, "db", "invoke", { operation, parameters }),
+      query: (sql, parameters) => call(slot, "db", "query", { sql, parameters }),
+    }),
+  };
+}
+
+function buildWriteResources(call: (slot: string, kind: TActorResourceKind, operation: string, args: Record<string, unknown>) => Promise<any>): TActorWriteResources {
+  return {
+    kv: (slot) => ({
+      get: (key) => call(slot, "kv", "get", { key }),
+      has: (key) => call(slot, "kv", "has", { key }),
+      list: (options = {}) => call(slot, "kv", "list", options),
+      set: (args) => call(slot, "kv", "set", args),
+      delete: (key) => call(slot, "kv", "delete", { key }),
+      compareAndSet: (args) => call(slot, "kv", "compareAndSet", args),
+    }),
+    secretStore: (slot) => ({
+      get: (name) => call(slot, "secretStore", "get", { name }),
+      has: (name) => call(slot, "secretStore", "has", { name }),
+      list: (options = {}) => call(slot, "secretStore", "list", options),
+      set: (args) => call(slot, "secretStore", "set", args),
+      delete: (name) => call(slot, "secretStore", "delete", { name }),
+      compareAndSet: (args) => call(slot, "secretStore", "compareAndSet", args),
+    }),
+    db: (slot) => ({
+      invoke: (operation, parameters) => call(slot, "db", "invoke", { operation, parameters }),
+      query: (sql, parameters) => call(slot, "db", "query", { sql, parameters }),
+      execute: (sql, parameters) => call(slot, "db", "execute", { sql, parameters }),
+    }),
+  };
+}
+
 function waitForAck(pendingAck: Map<string, () => void>, id: number, action: TParentAckMessage["action"]) {
   return new Promise<void>((resolve) => {
     pendingAck.set(`${id}:${action}`, resolve);
@@ -249,7 +521,7 @@ async function sendAndWaitForAck(
   await waitForAck(pendingAck, id, action);
 }
 
-function buildPortal(pendingAck: Map<string, () => void>, id: number, dataRef: { current: any }): TTxPortal {
+function buildPortalActions(pendingAck: Map<string, () => void>, id: number, dataRef: { current: any }) {
   return {
     emitMessage: async (msg: any) => {
       await sendAndWaitForAck(pendingAck, id, "emitMessage", { type: "emitMessage", id, msg });
@@ -264,7 +536,13 @@ function buildPortal(pendingAck: Map<string, () => void>, id: number, dataRef: {
   };
 }
 
-async function runMessage(funcMap: TFunctionRegistry, pendingAck: Map<string, () => void>, message: TParentRunMessage) {
+async function runMessage(
+  funcMap: TFunctionRegistry,
+  pendingAck: Map<string, () => void>,
+  pendingResourceCalls: Map<string, TPendingResourceCall>,
+  resourceCall: TResourceCall,
+  message: TParentRunMessage,
+) {
   const functions = buildFunctions(funcMap, message.func);
   if (typeof functions === "string") {
     process.send!(buildError(functions, message.id));
@@ -273,31 +551,68 @@ async function runMessage(funcMap: TFunctionRegistry, pendingAck: Map<string, ()
 
   const functionEntries = functions;
   const dataRef = { current: message.data };
-  const portal = buildPortal(pendingAck, message.id, dataRef);
+  const portalActions = buildPortalActions(pendingAck, message.id, dataRef);
 
   async function runFunctionAt(index: number): Promise<any> {
     const entry = functionEntries[index];
     if (!entry) return undefined;
 
     let didCallNext = false;
-    const stepPortal = {
-      ...portal,
-      next: async () => {
-        didCallNext = true;
-        await portal.next();
-        return runFunctionAt(index + 1);
-      },
+    const next = async () => {
+      if (didCallNext) return undefined;
+      didCallNext = true;
+      await portalActions.next();
+      return runFunctionAt(index + 1);
     };
+    const callFromStep = (
+      slot: string,
+      kind: TActorResourceKind,
+      operation: string,
+      args: Record<string, unknown>,
+    ) => {
+      if (didCallNext) {
+        return Promise.reject(new ActorResourceCallError(
+          "RESOURCE_CALL_CANCELLED",
+          "Actor resource calls cannot start after this function step calls next().",
+        ));
+      }
+      return resourceCall(message.id, slot, kind, operation, args);
+    };
+    const functionArgs = { msg: message.payload, data: dataRef.current };
 
-    const result = await entry.func(stepPortal, { msg: message.payload, data: dataRef.current });
-    return didCallNext ? result : result;
+    if (entry.type === "fn") {
+      return entry.func({
+        emitMessage: portalActions.emitMessage,
+        next,
+      }, functionArgs);
+    }
+
+    if (entry.type === "fx") {
+      return entry.func({
+        emitMessage: portalActions.emitMessage,
+        next,
+        setData: portalActions.setData,
+        resources: buildReadResources(callFromStep),
+      }, functionArgs);
+    }
+
+    return entry.func({
+      emitMessage: portalActions.emitMessage,
+      next: async () => {
+        return next();
+      },
+      setData: portalActions.setData,
+      resources: buildWriteResources(callFromStep),
+    }, functionArgs);
   }
 
   try {
     await runFunctionAt(0);
-    process.send!({ type: "done", id: message.id });
+    sendIfConnected({ type: "done", id: message.id });
   } catch (error) {
-    process.send!(buildError(error, message.id));
+    sendIfConnected(buildError(error, message.id));
+  } finally {
+    rejectPendingResourceCallsForRun(pendingResourceCalls, message.id);
   }
 }
 
@@ -332,10 +647,20 @@ export async function runActorIpcClient(rawArgs = Bun.argv.slice(2)) {
   }
 
   const pendingAck = new Map<string, () => void>();
+  const pendingResourceCalls = new Map<string, TPendingResourceCall>();
+  const resourceCall = createResourceCall(pendingResourceCalls);
+  const disconnected = new Promise<void>((resolve) => {
+    process.on("disconnect", () => {
+      rejectPendingResourceCalls(pendingResourceCalls);
+      resolve();
+    });
+  });
 
   process.stdin.resume();
 
   process.on("message", (message) => {
+    if (handleResourceResult(pendingResourceCalls, message)) return;
+
     if (typeof message === "object" && message !== null && "type" in message && message.type === "ack") {
       const ack = message as TParentAckMessage;
       const key = `${ack.id}:${ack.action}`;
@@ -349,7 +674,7 @@ export async function runActorIpcClient(rawArgs = Bun.argv.slice(2)) {
 
     const valid = validateIncomingMessage(message);
     if (valid === null) return;
-    void runMessage(funcMap, pendingAck, valid);
+    void runMessage(funcMap, pendingAck, pendingResourceCalls, resourceCall, valid);
   });
 
   process.send({ type: "ready" });
@@ -358,9 +683,7 @@ export async function runActorIpcClient(rawArgs = Bun.argv.slice(2)) {
     console.log("start icp client", values, positionals);
   }
 
-  await new Promise<void>((resolve) => {
-    process.on("disconnect", resolve);
-  });
+  await disconnected;
 }
 
 if (import.meta.main) {

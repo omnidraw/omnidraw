@@ -30,6 +30,8 @@ import {
     fnSerializeActorError,
     type TActorFailurePhase,
 } from "./fn.actor-runtime";
+import { toSafeActorResourceError } from './resources/ActorResourceError';
+import type { TActorResourceCall, TActorResourceFunctionClass, TActorResourceGateway } from './resources/resource-types';
 
 type TSnapshotCause = "startup" | "input" | "activity" | "error";
 
@@ -63,6 +65,7 @@ interface IActorConfig {
     readonly rootDir: string
     readonly state?: TActorState
     readonly data?: TActorData
+    readonly resourceGateway?: TActorResourceGateway
 }
 
 type TStartupJob = {
@@ -98,6 +101,7 @@ type TActorChildMessage =
     | { type: "setData"; id: number; data: TActorData }
     | { type: "emitMessage"; id: number; msg: unknown }
     | { type: "done"; id: number }
+    | { type: "resourceCall"; id: number; callId: string; slot: string; kind: TActorResourceCall['kind']; operation: string; args: unknown }
     | { type: "error"; id?: number; msg: unknown }
     | { error: boolean; id?: number; msg: unknown };
 
@@ -110,6 +114,8 @@ type TRunMeta = {
 type TPendingRun = TRunMeta & {
     readonly resolve: () => void;
     readonly reject: (error: unknown) => void;
+    readonly functionClasses: readonly TActorResourceFunctionClass[];
+    activeFunctionIndex: number;
 };
 
 type TFailureContext = {
@@ -158,6 +164,7 @@ export class Actor {
     #listeners = new Set<(event: TActorEvent) => void>();
     #stateTimeout: ReturnType<typeof setTimeout> | null = null;
     #activityTimer: ReturnType<typeof setTimeout> | null = null;
+    readonly #resourceGateway?: TActorResourceGateway;
     #readyWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
 
     constructor(config: IActorConfig) {
@@ -175,6 +182,7 @@ export class Actor {
         });
         this.#rootDir = config.rootDir;
         this.#functionPath = join(config.rootDir, normalized.manifest.actor.relFunctionPath);
+        this.#resourceGateway = config.resourceGateway;
     }
 
     start() {
@@ -329,6 +337,42 @@ export class Actor {
             this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" });
             this.#didEmitRunning = false;
         }
+    }
+
+    async closeAndWait(timeoutMs = 5_000): Promise<boolean> {
+        const proc = this.#proc;
+        this.close();
+        if (!proc) return true;
+
+        if (await this.#waitForExit(proc, timeoutMs)) return true;
+        try {
+            proc.kill(9);
+        } catch {
+            return false;
+        }
+        return this.#waitForExit(proc, Math.min(timeoutMs, 1_000));
+    }
+
+    #waitForExit(proc: Bun.Subprocess, timeoutMs: number): Promise<boolean> {
+        return new Promise((resolve) => {
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                resolve(false);
+            }, timeoutMs);
+            void proc.exited.then(() => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve(true);
+            }, () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve(false);
+            });
+        });
     }
 
     #getTransition(msgName: TInputMessage): TResolvedTransition | null {
@@ -814,7 +858,13 @@ export class Actor {
 
         const id = this.#nextRunId++;
         return new Promise((resolve, reject) => {
-            this.#pendingRuns.set(id, { ...meta, resolve, reject });
+            this.#pendingRuns.set(id, {
+                ...meta,
+                resolve,
+                reject,
+                functionClasses: functions.map((name) => name.startsWith('fn.') ? 'fn' : name.startsWith('fx.') ? 'fx' : 'tx'),
+                activeFunctionIndex: 0,
+            });
             try {
                 proc.send({
                     type: "run",
@@ -868,7 +918,13 @@ export class Actor {
             return;
         }
         if (message.type === "next") {
+            const pending = this.#pendingRuns.get(message.id);
+            if (pending) pending.activeFunctionIndex += 1;
             this.#proc?.send({ type: "ack", id: message.id, action: "next" });
+            return;
+        }
+        if (message.type === 'resourceCall') {
+            void this.#handleResourceCall(message);
             return;
         }
         if (message.type === "done") {
@@ -879,6 +935,57 @@ export class Actor {
             return;
         }
         if (message.type === "error") this.#rejectPending(message.id, message.msg);
+    }
+
+    async #handleResourceCall(message: Extract<TActorChildMessage, { type: 'resourceCall' }>) {
+        const proc = this.#proc;
+        if (!proc) return;
+        const sendError = (code: string, errorMessage: string) => {
+            try {
+                proc.send({ type: 'resourceResult', callId: typeof message.callId === 'string' ? message.callId : '', ok: false, error: { code, message: errorMessage } });
+            } catch { /* child exit races are expected */ }
+        };
+        if (
+            typeof message.id !== 'number' ||
+            typeof message.callId !== 'string' ||
+            typeof message.slot !== 'string' ||
+            (message.kind !== 'kv' && message.kind !== 'secretStore' && message.kind !== 'db') ||
+            typeof message.operation !== 'string'
+        ) {
+            sendError('RESOURCE_PROVIDER_UNAVAILABLE', 'Actor resource request is invalid.');
+            return;
+        }
+        const pending = this.#pendingRuns.get(message.id);
+        if (!pending) {
+            sendError('RESOURCE_CALL_CANCELLED', 'Actor resource call belongs to a completed or cancelled run.');
+            return;
+        }
+        const functionClass = pending.functionClasses[pending.activeFunctionIndex];
+        if (!functionClass || !this.#resourceGateway) {
+            sendError('RESOURCE_PROVIDER_UNAVAILABLE', 'Actor resource gateway is unavailable.');
+            return;
+        }
+        try {
+            const result = await this.#resourceGateway({
+                actorId: this.#id,
+                definitionName: this.#vsJson.name,
+                runId: message.id,
+                functionClass,
+                slot: message.slot,
+                kind: message.kind,
+                operation: message.operation,
+                args: message.args,
+            });
+            if (this.#proc === proc && this.#pendingRuns.has(message.id)) {
+                proc.send({ type: 'resourceResult', callId: message.callId, ok: true, result });
+            }
+        } catch (error) {
+            if (this.#proc !== proc || !this.#pendingRuns.has(message.id)) return;
+            const safeError = toSafeActorResourceError(error);
+            try {
+                proc.send({ type: 'resourceResult', callId: message.callId, ok: false, error: safeError });
+            } catch { /* child exit races are expected */ }
+        }
     }
 
     #rejectPending(id: number | undefined, error: unknown) {

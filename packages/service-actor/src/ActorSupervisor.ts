@@ -12,6 +12,7 @@ import { fnToActorData } from "./core/fn.actor-data";
 import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
 import { fnNormalizeWidgetError } from './core/fn.widget-error';
+import type { TActorResourceGateway, TActorStartAdmission } from './resources/resource-types';
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
@@ -39,6 +40,13 @@ interface IActorSupervisorConfig {
   absWidgetDir: string
   configPath: string
   eventPublisherService: IEventPublisherService
+  resourceGateway?: TActorResourceGateway
+  actorStartAdmission?: (args: {
+    definitionName: string
+    actorInstanceId: string
+    restartIfCompatible: boolean
+  }) => Promise<TActorStartAdmission>
+  actorStartSucceeded?: (args: { actorInstanceId: string; resourceIds: readonly string[] }) => Promise<void>
 }
 
 export class ActorSupervisor {
@@ -90,6 +98,13 @@ export class ActorSupervisor {
 
     for (const instance of matchingInstances) {
       const actor = this.actorMap[instance.id]
+      if (!actor && instance.status === 'stopped') {
+        continue
+      }
+      if (!actor && instance.status === 'blocked') {
+        await this.loadActorInstance(instance, { respectPersistedStop: true })
+        continue
+      }
       if (actor) {
         actor.close()
         delete this.actorMap[instance.id]
@@ -150,7 +165,7 @@ export class ActorSupervisor {
 
     for (const actorInst of instances) {
       if (this.actorMap[actorInst.id]) continue
-      await this.loadActorInstance(actorInst)
+      await this.loadActorInstance(actorInst, { respectPersistedStop: true })
     }
   }
 
@@ -182,7 +197,10 @@ export class ActorSupervisor {
     })
   }
 
-  private async loadActorInstance(actorInst: TActorInstance): Promise<Actor | null> {
+  private async loadActorInstance(
+    actorInst: TActorInstance,
+    options: { respectPersistedStop?: boolean } = {},
+  ): Promise<Actor | null> {
     const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
     if (!def) {
       await this.persistInstanceError(actorInst, {
@@ -195,9 +213,70 @@ export class ActorSupervisor {
       return null
     }
 
+    let admission: TActorStartAdmission | null = null
+    if (this.#config.actorStartAdmission) {
+      admission = await this.#config.actorStartAdmission({
+        definitionName: actorInst.actor_definition_name,
+        actorInstanceId: actorInst.id,
+        restartIfCompatible: actorInst.status === 'created' || actorInst.status === 'running' || actorInst.status === 'starting',
+      })
+      if (!admission.allowed) {
+        await this.#config.db.actor.updateInstanceHealth({
+          id: actorInst.id,
+          status: 'blocked',
+          last_error: {
+            phase: 'instance-start',
+            code: admission.code ?? 'DB_RESOURCE_UNAVAILABLE',
+            message: admission.message ?? 'Actor start is blocked by a database resource lifecycle operation.',
+            retryable: true,
+            occurredAt: new Date().toISOString(),
+          },
+        })
+        return null
+      }
+      if (admission.hadBlocks && !admission.shouldRestart) {
+        await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
+        return null
+      }
+      if (
+        options.respectPersistedStop
+        && (actorInst.status === 'stopped' || actorInst.status === 'blocked')
+        && !admission.shouldRestart
+      ) {
+        return null
+      }
+    } else if (
+      options.respectPersistedStop
+      && (actorInst.status === 'stopped' || actorInst.status === 'blocked')
+    ) {
+      return null
+    }
+
     let actor: Actor | null = null
     try {
       await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'starting', last_error: null })
+      if (this.#config.actorStartAdmission) {
+        const finalAdmission = await this.#config.actorStartAdmission({
+          definitionName: actorInst.actor_definition_name,
+          actorInstanceId: actorInst.id,
+          restartIfCompatible: admission?.shouldRestart ?? false,
+        })
+        if (!finalAdmission.allowed) {
+          await this.#config.db.actor.updateInstanceHealth({
+            id: actorInst.id,
+            status: 'blocked',
+            last_error: {
+              phase: 'instance-start',
+              code: finalAdmission.code ?? 'DB_RESOURCE_UNAVAILABLE',
+              message: finalAdmission.message ?? 'Actor start is blocked by a database resource lifecycle operation.',
+              retryable: true,
+              occurredAt: new Date().toISOString(),
+            },
+          })
+          return null
+        }
+        admission = finalAdmission
+      }
       this.#snapshotPersistenceRevision.delete(actorInst.id)
       actor = new Actor({
         id: actorInst.id,
@@ -205,6 +284,7 @@ export class ActorSupervisor {
         rootDir: dirname(resolveManifestPath(this.#config.configPath, def.manifest_path)),
         state: actorInst.machine_state as TActorState,
         data: fnToActorData(actorInst.machine_context),
+        resourceGateway: this.#config.resourceGateway,
       })
 
       this.actorMap[actor.getId()] = actor
@@ -212,6 +292,12 @@ export class ActorSupervisor {
       actor.start()
       await actor.waitUntilReady()
       await this.#config.db.actor.updateInstanceHealth({ id: actor.getId(), status: 'running', last_error: null })
+      if (admission && admission.resolvedBlockResourceIds.length > 0) {
+        await this.#config.actorStartSucceeded?.({
+          actorInstanceId: actor.getId(),
+          resourceIds: admission.resolvedBlockResourceIds,
+        })
+      }
       return actor
     } catch (cause) {
       if (actor) {
@@ -386,6 +472,32 @@ export class ActorSupervisor {
     }
 
     await this.#config.db.actor.deleteInstance(instanceId)
+  }
+
+  public isInstanceRunning(instanceId: string): boolean {
+    return this.actorMap[instanceId] !== undefined
+  }
+
+  public async stopInstanceForResourceMigration(instanceId: string): Promise<boolean> {
+    const actor = this.actorMap[instanceId]
+    if (!actor) return false
+    await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'stopping' })
+    const stopped = await actor.closeAndWait()
+    delete this.actorMap[instanceId]
+    if (!stopped) {
+      await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'error' })
+      return false
+    }
+    await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'blocked' })
+    return true
+  }
+
+  public async restartInstanceAfterResourceMigration(instanceId: string): Promise<Actor | null> {
+    if (this.actorMap[instanceId]) return this.actorMap[instanceId]
+    const instance = await this.#config.db.actor.getInstanceById(instanceId)
+    if (!instance) return null
+    await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'created' })
+    return this.loadActorInstance({ ...instance, status: 'created' })
   }
 
   public async deleteDefinition(defName: string): Promise<boolean> {

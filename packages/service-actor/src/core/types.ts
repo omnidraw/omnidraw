@@ -14,6 +14,60 @@ export type TOutputMessage = string
 
 export type TFunctionName = `fn.${string}` | `fx.${string}` | `tx.${string}`
 
+export type TActorResourceKind = 'kv' | 'secretStore' | 'db';
+
+export type TActorResourcePermission = 'read' | 'write';
+
+export type TActorResourceScope = TActorResourcePermission[];
+
+export type TActorKvResourceRequirement = {
+  readonly kind: 'kv';
+  readonly required: boolean;
+  readonly scope: TActorResourceScope;
+};
+
+export type TActorSecretStoreResourceRequirement = {
+  readonly kind: 'secretStore';
+  readonly required: boolean;
+  readonly scope: TActorResourceScope;
+};
+
+export type TActorDbSchemaRequirement = {
+  readonly id: string;
+  readonly version: number;
+};
+
+export type TActorDbParameterType = 'string' | 'number' | 'boolean' | 'bigint' | 'bytes' | 'json';
+
+export type TActorDbOperationParameterDeclaration = {
+  readonly type: TActorDbParameterType;
+  readonly required?: boolean;
+  readonly nullable?: boolean;
+};
+
+export type TActorDbNamedOperation = {
+  readonly effect: TActorResourcePermission;
+  readonly sql: string;
+  readonly parameters?: Record<string, TActorDbOperationParameterDeclaration>;
+  readonly result: 'rows' | 'execute';
+};
+
+export type TActorDbResourceRequirement = {
+  readonly kind: 'db';
+  readonly required: boolean;
+  readonly scope: TActorResourceScope;
+  readonly schema: TActorDbSchemaRequirement;
+  readonly arbitrarySql?: boolean;
+  readonly operations?: Record<string, TActorDbNamedOperation>;
+};
+
+export type TActorResourceRequirement =
+  | TActorKvResourceRequirement
+  | TActorSecretStoreResourceRequirement
+  | TActorDbResourceRequirement;
+
+export type TActorResourceRequirements = Record<string, TActorResourceRequirement>;
+
 export type TActorNonErrorState = Exclude<TActorState, 'error' | `error.${string}`>
 
 export type TActorErrorHandler = {
@@ -67,6 +121,7 @@ export type TVibecanvasActor = {
   readonly initialState: TActorState;
   readonly initialData: TActorData;
   readonly dataSchema?: TJsonSchema;
+  readonly resources?: TActorResourceRequirements;
   readonly states: Partial<Record<TActorState, TActorStateConfig>>;
   readonly inputMsgSchema?: Record<TInputMessage, TJsonSchema>;
   readonly outputMsgSchema?: Record<TOutputMessage, TJsonSchema>;
