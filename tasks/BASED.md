@@ -205,6 +205,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A71](a/A71.md) - actor resources: implement SecretStoreResource
 - [x]: [A72](a/A72.md) - actor resources: implement schema-agnostic local Turso DbResource
 - [x]: [A73](a/A73.md) - startup: create an empty canvas when none exists
+- [ ]: [A74](a/A74.md) - actor resources: replace versioned DbResource migrations with coordinated drafts and applies
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
