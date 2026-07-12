@@ -288,6 +288,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S79](s/S79.md) - migrate DOM tests to jsdom 29
 - [x]: [S80](s/S80.md) - migrate workspace to TypeScript 7
 - [ ]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
+- [ ]: [S82](s/S82.md) - keep AI wizard Tool tab synchronized with sidebar tool changes
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
