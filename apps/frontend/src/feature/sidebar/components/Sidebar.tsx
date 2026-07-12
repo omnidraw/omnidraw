@@ -10,7 +10,7 @@ import Plus from "lucide-solid/icons/plus";
 import Sun from "lucide-solid/icons/sun";
 import * as LucideStatic from "lucide-static";
 import type { Component } from "solid-js";
-import { For, Show, createSignal, onMount } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { showErrorToast } from "@/components/ui/Toast";
 import { removeFromCache } from "@/services/automerge";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
@@ -19,6 +19,7 @@ import { setStore, store } from "@/store";
 import type { TBackendCanvas } from "../../../types/backend.types";
 import { CreateCanvasDialog } from "./CreateCanvasDialog";
 import { CreateResourceDialog } from "./CreateResourceDialog";
+import { RESOURCE_CATALOG_CHANGED_EVENT } from "./CONSTANTS";
 import { DeleteCanvasDialog } from "./DeleteCanvasDialog";
 import { RenameDialog } from "./RenameDialog";
 import SidebarItem from "./SidebarItem";
@@ -38,6 +39,8 @@ const Sidebar: Component<SidebarProps> = (props) => {
     const match = location.pathname.match(/^\/c\/(.+)/);
     return match ? match[1] : null;
   };
+
+  const activeResourceId = () => location.pathname.match(/^\/resources\/([^/]+)/)?.[1] ?? null;
 
   const [renameDialogOpen, setRenameDialogOpen] = createSignal(false);
   const [canvasToRename, setCanvasToRename] = createSignal<{
@@ -106,6 +109,9 @@ const Sidebar: Component<SidebarProps> = (props) => {
     void loadWidgetGroups();
     void loadResources();
     void loadDbSchemas();
+    const handleResourceCatalogChange = () => void loadResources();
+    window.addEventListener(RESOURCE_CATALOG_CHANGED_EVENT, handleResourceCatalogChange);
+    onCleanup(() => window.removeEventListener(RESOURCE_CATALOG_CHANGED_EVENT, handleResourceCatalogChange));
   });
 
   const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string; db?: { schemaId: string; version: number }; createSchema?: boolean }) => {
@@ -132,6 +138,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
       return false;
     }
     await loadResources();
+    window.dispatchEvent(new Event(RESOURCE_CATALOG_CHANGED_EVENT));
     return true;
   };
 
@@ -308,11 +315,11 @@ const Sidebar: Component<SidebarProps> = (props) => {
               <div class={styles.resourceList}>
                 <For each={resources()} fallback={<p class={styles.emptyGroup}>No resources.</p>}>
                   {(resource) => (
-                    <div class={styles.resourceItem} title={`${resource.kind} · ${resource.status}`}>
+                    <Button class={`${styles.resourceItem} ${activeResourceId() === resource.id ? styles.resourceItemSelected : ""}`} title={`${resource.kind} · ${resource.status}`} onClick={() => navigate(`/resources/${resource.id}`)}>
                       <span class={`${styles.resourceStatus} ${resource.status === "ready" ? styles.resourceStatusReady : ""}`} aria-hidden="true" />
                       <span class={styles.resourceName}>{resource.name}</span>
                       <span class={styles.resourceKind}>{resource.kind === "secretStore" ? "SECRET" : resource.kind.toUpperCase()}</span>
-                    </div>
+                    </Button>
                   )}
                 </For>
               </div>

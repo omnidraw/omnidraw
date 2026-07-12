@@ -1,0 +1,40 @@
+.page { height: 100%; overflow-y: auto; background: var(--background); color: var(--foreground); }
+.header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--card); }
+.eyebrow { margin: 0 0 0.25rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 800; text-transform: uppercase; }
+.title { margin: 0; font-family: var(--font-display); font-size: 1.125rem; line-height: 1.4; }
+.headerActions, .actions { display: flex; align-items: center; gap: 0.5rem; }
+.content { display: grid; gap: 1rem; width: min(70rem, 100%); padding: 1.25rem; }
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); background: var(--card); }
+.summaryItem { min-width: 0; padding: 0.75rem; border-right: 1px solid var(--border); }
+.summaryItem:last-child { border-right: 0; }
+.label { display: block; margin-bottom: 0.25rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; }
+.value { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8125rem; }
+.status { display: inline-flex; align-items: center; gap: 0.375rem; font-weight: 700; }
+.dot { width: 0.5rem; height: 0.5rem; border: 1px solid var(--muted-foreground); background: var(--muted); }
+.dotReady { border-color: var(--success); background: var(--success); }
+.panel { border: 1px solid var(--border); background: var(--card); }
+.panelHeader { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.5rem; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); }
+.panelTitle { margin: 0; font-size: 0.8125rem; text-transform: uppercase; }
+.panelBody { padding: 0.75rem; }
+.muted { margin: 0; color: var(--muted-foreground); font-size: 0.75rem; line-height: 1.5; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+.table th, .table td { padding: 0.5rem 0.625rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.table th { color: var(--muted-foreground); font-size: 0.6875rem; text-transform: uppercase; }
+.table tr:last-child td { border-bottom: 0; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 2rem; padding: 0.375rem 0.75rem; border: 1px solid var(--border); border-radius: 0; background: var(--background); color: var(--foreground); font: inherit; font-size: 0.75rem; font-weight: 700; }
+.button:hover:not(:disabled) { background: var(--accent); }
+.button:focus-visible, .input:focus-visible, .textarea:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.button:disabled { cursor: not-allowed; opacity: 0.5; }
+.iconButton { width: 2rem; padding: 0; justify-content: center; }
+.primary { border-color: var(--primary); }
+.danger { border-color: var(--destructive); color: var(--destructive); }
+.dangerConfirm { border-color: var(--destructive); background: var(--destructive); color: var(--destructive-foreground); }
+.form { display: grid; gap: 0.75rem; }
+.field { display: grid; gap: 0.375rem; }
+.input, .textarea { width: 100%; padding: 0.5rem 0.625rem; border: 1px solid var(--input); border-radius: 0; background: var(--background); color: var(--foreground); font: inherit; font-size: 0.75rem; }
+.textarea { min-height: 9rem; resize: vertical; line-height: 1.5; }
+.twoColumn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.65fr); gap: 1rem; }
+.error { margin: 0; color: var(--destructive); font-size: 0.75rem; }
+.empty { padding: 1.5rem 0.75rem; text-align: center; }
+.code { margin: 0; padding: 0.625rem; overflow-x: auto; border: 1px solid var(--border); background: var(--background); font-size: 0.6875rem; white-space: pre-wrap; }
+@media (max-width: 56rem) { .summary { grid-template-columns: repeat(2, 1fr); } .summaryItem:nth-child(2) { border-right: 0; } .summaryItem:nth-child(-n+2) { border-bottom: 1px solid var(--border); } .twoColumn { grid-template-columns: 1fr; } }

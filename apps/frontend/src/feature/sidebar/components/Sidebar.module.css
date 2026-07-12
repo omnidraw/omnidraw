@@ -271,7 +271,16 @@
   min-height: 1.875rem;
   padding: 0.3125rem 0.75rem 0.3125rem 1.125rem;
   color: var(--foreground);
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
 }
+
+.resourceItem:hover { background: var(--accent); }
+.resourceItem:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.resourceItemSelected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--background)); }
 
 .resourceStatus {
   width: 0.4375rem;
@@ -297,6 +306,8 @@
 }
 
 .resourceKind {
+  flex: 0 0 auto;
+  margin-right: 0.25rem;
   color: var(--muted-foreground);
   font-size: 0.625rem;
   line-height: 1;

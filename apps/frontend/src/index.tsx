@@ -10,6 +10,7 @@ import { Show } from "solid-js";
 import App from "./App";
 import CanvasPage from "./pages/canvas";
 import WelcomePage from "./pages/welcome";
+import ResourcePage from "./pages/resource";
 import { store } from "./store";
 import routeStateStyles from "./styles/route-state.module.css";
 
@@ -44,6 +45,7 @@ render(
     <Router root={App}>
       <Route path="/" component={WelcomePage} />
       <Route path="/c/:id" component={CanvasRoute} />
+      <Route path="/resources/:id" component={ResourcePage} />
     </Router>
   ),
   root!,
