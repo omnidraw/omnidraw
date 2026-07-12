@@ -3,6 +3,7 @@ import { connect, Database } from "@tursodatabase/database";
 import { listMigrationFiles } from "../../../src/DbServiceTurso/list-migration-files";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
 import path from "node:path"
+import { readdir } from "node:fs/promises";
 
 async function inMemoryDb() {
   // @ts-expect-error custom_types not typed yet
@@ -49,6 +50,13 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("actor_connections");
     expect(tNames).toContain("kv");
     expect(tNames).toContain("tool_groups");
+    expect(tNames).toContain("actor_resources");
+    expect(tNames).toContain("actor_resource_bindings");
+    expect(tNames).toContain("actor_resource_key_values");
+    expect(tNames).toContain("db_resource_schemas");
+    expect(tNames).toContain("db_resource_schema_migrations");
+    expect(tNames).toContain("db_resource_configurations");
+    expect(tNames).toContain("db_resource_migration_blocks");
     expect(tNames).toContain("migrations");
 
     const migrationStmt = await db.prepare("select name, hash_hex, applied_at from migrations order by name");
@@ -63,6 +71,37 @@ describe("tx.migrations", () => {
       expect(migration.hash_hex).not.toBe("");
       expect(migration.applied_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     }
+  });
+
+  test("source migration registration matches every discovered SQL file in order", async () => {
+    const migrationDirectory = new URL("../../../src/DbServiceTurso/migration-files/", import.meta.url).pathname;
+    const discovered = (await readdir(migrationDirectory))
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
+    const registered = listMigrationFiles().map((file) => path.basename(file.path));
+
+    expect(registered).toEqual(discovered);
+  });
+
+  test("actor and db resource tables enforce domains and strict entry constraints", async () => {
+    await txRunMigrations({ db, Bun, path }, {});
+
+    const actorResourceColumns = await (await db.prepare("pragma table_info(actor_resources)")).all() as { name: string }[];
+    expect(actorResourceColumns.map((column) => column.name)).not.toContain("metadata");
+    const insertResource = await db.prepare("insert into actor_resources (id, kind, name, status) values (?, ?, ?, ?)");
+    await insertResource.run("kv-ok", "kv", "KV", "ready");
+    await expectSqlConstraintFailure(() => insertResource.run("kind-bad", "store", "Bad", "ready"));
+    await expectSqlConstraintFailure(() => insertResource.run("status-bad", "kv", "Bad", "online"));
+
+    const insertEntry = await db.prepare("insert into actor_resource_key_values (resource_id, key, value, revision) values (?, ?, ?, ?)");
+    await insertEntry.run("kv-ok", "valid", "null", 1);
+    await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "   ", "null", 1));
+    await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "negative", "null", 0));
+    await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "invalid-json", "not-json", 1));
+
+    const insertSchema = await db.prepare("insert into db_resource_schemas (id, name, status) values (?, ?, ?)");
+    await insertSchema.run("schema-ok", "Schema", "draft");
+    await expectSqlConstraintFailure(() => insertSchema.run("schema-bad", "Schema", "active"));
   });
 
   test("tool groups are independent and enforce non-empty names", async () => {
