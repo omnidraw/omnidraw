@@ -28,6 +28,139 @@
       "type": "string",
       "pattern": "^(fn|fx|tx)\\..+$"
     },
+    "resourcePermission": {
+      "enum": ["read", "write"]
+    },
+    "resourceScope": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/resourcePermission" }
+    },
+    "resourceSlotName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": ".*\\S.*"
+    },
+    "resourceIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": ".*\\S.*"
+    },
+    "kvResourceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "required", "scope"],
+      "properties": {
+        "kind": { "const": "kv" },
+        "required": { "type": "boolean", "default": true },
+        "scope": { "$ref": "#/$defs/resourceScope" }
+      }
+    },
+    "secretStoreResourceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "required", "scope"],
+      "properties": {
+        "kind": { "const": "secretStore" },
+        "required": { "type": "boolean", "default": true },
+        "scope": { "$ref": "#/$defs/resourceScope" }
+      }
+    },
+    "dbOperationParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["string", "number", "boolean", "bigint", "bytes", "json"] },
+        "required": { "type": "boolean", "default": true },
+        "nullable": { "type": "boolean", "default": false }
+      }
+    },
+    "dbNamedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["effect", "sql", "result"],
+      "properties": {
+        "effect": { "$ref": "#/$defs/resourcePermission" },
+        "sql": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "pattern": ".*\\S.*",
+          "description": "One SQL statement. Runtime publication validation rejects multiple statements."
+        },
+        "parameters": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": { "$ref": "#/$defs/resourceIdentifier" },
+          "additionalProperties": { "$ref": "#/$defs/dbOperationParameter" }
+        },
+        "result": { "enum": ["rows", "execute"] }
+      }
+    },
+    "dbResourceRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "required", "scope", "schema"],
+      "properties": {
+        "kind": { "const": "db" },
+        "required": { "type": "boolean", "default": true },
+        "scope": { "$ref": "#/$defs/resourceScope" },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": { "$ref": "#/$defs/resourceIdentifier" },
+            "version": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "arbitrarySql": { "type": "boolean", "default": false },
+        "operations": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": { "$ref": "#/$defs/resourceIdentifier" },
+          "additionalProperties": { "$ref": "#/$defs/dbNamedOperation" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "scope": { "not": { "contains": { "const": "write" } } } }
+          },
+          "then": {
+            "properties": {
+              "operations": {
+                "additionalProperties": { "properties": { "effect": { "const": "read" } } }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "scope": { "not": { "contains": { "const": "read" } } } }
+          },
+          "then": {
+            "properties": {
+              "operations": {
+                "additionalProperties": { "properties": { "effect": { "const": "write" } } }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "actorResourceRequirement": {
+      "oneOf": [
+        { "$ref": "#/$defs/kvResourceRequirement" },
+        { "$ref": "#/$defs/secretStoreResourceRequirement" },
+        { "$ref": "#/$defs/dbResourceRequirement" }
+      ]
+    },
     "jsonValue": {
       "oneOf": [
         { "type": "null" },
@@ -152,6 +285,11 @@
         "initialState": { "$ref": "#/$defs/actorStateName" },
         "initialData": { "$ref": "#/$defs/jsonValue" },
         "dataSchema": { "$ref": "#/$defs/jsonSchema" },
+        "resources": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/resourceSlotName" },
+          "additionalProperties": { "$ref": "#/$defs/actorResourceRequirement" }
+        },
         "states": {
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/actorStateName" },

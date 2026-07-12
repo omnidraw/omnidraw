@@ -157,6 +157,49 @@ describe('DbResource', () => {
     })).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
   });
 
+  test('executes caller-controlled transactions and savepoints as one ordered resource call', async () => {
+    await publishInitialSchema();
+    const resource = await createAndBindNotesResource();
+    const call = (operations: readonly { sql: string; parameters?: Record<string, unknown> }[]) => manager.call({
+      actorId: 'actor-a', definitionName, runId: 1, functionClass: 'tx', slot: 'notes', kind: 'db', operation: 'execute',
+      args: { operations },
+    });
+
+    const committed = await call([
+      { sql: 'BEGIN IMMEDIATE' },
+      { sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)', parameters: { id: 'a', title: 'Alpha' } },
+      { sql: 'SAVEPOINT optional_note' },
+      { sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)', parameters: { id: 'b', title: 'Beta' } },
+      { sql: 'ROLLBACK TO optional_note' },
+      { sql: 'RELEASE optional_note' },
+      { sql: 'COMMIT' },
+    ]);
+    expect(committed).toHaveLength(7);
+    expect(await manager.call({
+      actorId: 'actor-a', definitionName, runId: 2, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'query',
+      args: { sql: 'SELECT id, title FROM notes ORDER BY id', parameters: {} },
+    })).toEqual([{ id: 'a', title: 'Alpha' }]);
+
+    await expect(call([
+      { sql: 'BEGIN' },
+      { sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)', parameters: { id: 'c', title: 'Gamma' } },
+      { sql: 'INSERT INTO missing_table (id) VALUES (:id)', parameters: { id: 'failure' } },
+      { sql: 'COMMIT' },
+    ])).rejects.toMatchObject({ code: 'DB_EXECUTE_FAILED' });
+    expect(await manager.call({
+      actorId: 'actor-a', definitionName, runId: 3, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'query',
+      args: { sql: 'SELECT id FROM notes WHERE id = :id', parameters: { id: 'c' } },
+    })).toEqual([]);
+
+    await expect(call([])).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
+    await expect(call([{ sql: 'INSERT INTO notes (id, title) VALUES (\'x\', \'X\'); DELETE FROM notes' }]))
+      .rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
+    await expect(call([{ sql: 'DELETE FROM notes', unexpected: true } as never]))
+      .rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
+
+    expect(resource.status).toBe('ready');
+  });
+
   test('migrates forward, blocks old manifest versions, and restores a verified backup on failure', async () => {
     await publishInitialSchema();
     const resource = await manager.createResource({ kind: 'db', name: 'Shared Notes', db: { schemaId: 'notes', version: 1 } });

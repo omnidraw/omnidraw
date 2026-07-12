@@ -251,6 +251,11 @@ export default {
         secrets.delete("old-token"),
         secrets.compareAndSet({ name: "token", expectedRevision: 2, value: "rotated-value" }),
         db.execute("UPDATE notes SET archived = :archived", { archived: true }),
+        db.execute([
+          { sql: "BEGIN IMMEDIATE" },
+          { sql: "UPDATE notes SET title = :title WHERE id = :id", parameters: { id: "a", title: "Updated" } },
+          { sql: "COMMIT" },
+        ]),
       ]);
 
       await portal.emitMessage({
@@ -292,7 +297,11 @@ export default {
       }
       if (call.kind === "db" && call.operation === "invoke") return [{ id: "named-result" }];
       if (call.kind === "db" && call.operation === "query") return [{ id: "query-result" }];
-      if (call.kind === "db" && call.operation === "execute") return { rowsAffected: 4, lastInsertRowId: 9n };
+      if (call.kind === "db" && call.operation === "execute") {
+        return Array.isArray(call.args.operations)
+          ? call.args.operations.map(() => ({ rowsAffected: 0 }))
+          : { rowsAffected: 4, lastInsertRowId: 9n };
+      }
       throw new Error(`Unexpected resource call ${call.kind}.${call.operation}`);
     }
 
@@ -446,6 +455,11 @@ export default {
         { slot: "credentials", kind: "secretStore", operation: "delete", args: { name: "old-token" } },
         { slot: "credentials", kind: "secretStore", operation: "compareAndSet", args: { name: "token", expectedRevision: 2, value: "rotated-value" } },
         { slot: "notes", kind: "db", operation: "execute", args: { sql: "UPDATE notes SET archived = :archived", parameters: { archived: true } } },
+        { slot: "notes", kind: "db", operation: "execute", args: { operations: [
+          { sql: "BEGIN IMMEDIATE" },
+          { sql: "UPDATE notes SET title = :title WHERE id = :id", parameters: { id: "a", title: "Updated" } },
+          { sql: "COMMIT" },
+        ] } },
       ]);
     } finally {
       (proc as Bun.Subprocess | null)?.kill();

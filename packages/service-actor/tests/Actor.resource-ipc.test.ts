@@ -91,7 +91,12 @@ export default {
   tx: {
     "tx.write": async (portal, args) => {
       const result = await portal.resources.kv("preferences").set({ key: "combined", value: args.data.reads });
-      await portal.setData({ ...args.data, writeRevision: result.revision });
+      const transactionResults = await portal.resources.db("notes").execute([
+        { sql: "BEGIN IMMEDIATE" },
+        { sql: "UPDATE notes SET title = :title WHERE id = :id", parameters: { id: "a", title: "Updated" } },
+        { sql: "COMMIT" },
+      ]);
+      await portal.setData({ ...args.data, writeRevision: result.revision, transactionResultCount: transactionResults.length });
     },
   },
 };
@@ -123,6 +128,10 @@ export default {
         return Promise.resolve({ value: callArgs.value, revision: 3 });
       }
 
+      if (call.kind === "db" && call.operation === "execute") {
+        return Promise.resolve([{ rowsAffected: 0 }, { rowsAffected: 1 }, { rowsAffected: 0 }]);
+      }
+
       return Promise.reject(new Error(`Unexpected resource operation ${call.operation}`));
     };
     const manifest = buildManifest({
@@ -131,6 +140,7 @@ export default {
       initialData: { started: true },
       resources: {
         preferences: { kind: "kv", required: true, scope: ["read", "write"] },
+        notes: { kind: "db", required: true, scope: ["write"], schema: { id: "notes", version: 1 }, arbitrarySql: true },
       },
     });
     const actor = new Actor({
@@ -152,6 +162,7 @@ export default {
         started: true,
         reads: ["first-value", "second-value"],
         writeRevision: 3,
+        transactionResultCount: 3,
       });
       expect(completionOrder).toEqual(["second", "first"]);
       expect(new Set(calls.map((call) => call.runId)).size).toBe(1);
@@ -190,6 +201,19 @@ export default {
           kind: "kv",
           operation: "set",
           args: { key: "combined", value: ["first-value", "second-value"] },
+        },
+        {
+          actorId: "resource-ipc-actor",
+          definitionName: "Resource IPC Definition",
+          functionClass: "tx",
+          slot: "notes",
+          kind: "db",
+          operation: "execute",
+          args: { operations: [
+            { sql: "BEGIN IMMEDIATE" },
+            { sql: "UPDATE notes SET title = :title WHERE id = :id", parameters: { id: "a", title: "Updated" } },
+            { sql: "COMMIT" },
+          ] },
         },
       ]);
     } finally {

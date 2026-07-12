@@ -71,11 +71,21 @@ type TDbResourceReadPortal = {
   query: <TRow = Record<string, any>>(sql: string, parameters?: Record<string, any>) => Promise<TRow[]>;
 };
 
+type TDbResourceExecuteResult = {
+  rowsAffected: number;
+  lastInsertRowId?: bigint;
+};
+
+type TDbResourceExecuteOperation = {
+  sql: string;
+  parameters?: Record<string, any>;
+};
+
 type TDbResourceWritePortal = TDbResourceReadPortal & {
-  execute: (sql: string, parameters?: Record<string, any>) => Promise<{
-    rowsAffected: number;
-    lastInsertRowId?: bigint;
-  }>;
+  execute: {
+    (sql: string, parameters?: Record<string, any>): Promise<TDbResourceExecuteResult>;
+    (operations: readonly TDbResourceExecuteOperation[]): Promise<readonly TDbResourceExecuteResult[]>;
+  };
 };
 
 type TActorReadResources = {
@@ -500,7 +510,9 @@ function buildWriteResources(call: (slot: string, kind: TActorResourceKind, oper
     db: (slot) => ({
       invoke: (operation, parameters) => call(slot, "db", "invoke", { operation, parameters }),
       query: (sql, parameters) => call(slot, "db", "query", { sql, parameters }),
-      execute: (sql, parameters) => call(slot, "db", "execute", { sql, parameters }),
+      execute: (sqlOrOperations: string | readonly TDbResourceExecuteOperation[], parameters?: Record<string, any>) => Array.isArray(sqlOrOperations)
+        ? call(slot, "db", "execute", { operations: sqlOrOperations })
+        : call(slot, "db", "execute", { sql: sqlOrOperations, parameters }),
     }),
   };
 }

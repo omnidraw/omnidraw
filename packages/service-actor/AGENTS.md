@@ -2,7 +2,7 @@
 
 Host-side actor runtime for Vibecanvas widgets.
 
-This package is currently WIP. Treat the code in `src/Actor.ts` and the behavior covered by `tests/Actor.test.ts` as the most accurate description of the current runtime. `ActorService` and `ActorSupervisor` are facade/orchestration work in progress.
+Treat the implementation and tests together as the source of truth. Core runtime behavior is covered by `tests/Actor.test.ts`; resource behavior is covered by `tests/ActorResourceManager.test.ts`, `tests/Actor.resource-ipc.test.ts`, `tests/DbResource.test.ts`, and `tests/ActorService.resource-migration.test.ts`.
 
 ## Current runtime model
 
@@ -27,9 +27,9 @@ An actor is a long-lived in-memory instance that:
 
 Transition functions are named with one of these prefixes:
 
-- `fn.*` — pure-ish guest function; can call `portal.next()` and `portal.emitMessage()`
-- `fx.*` — guest read/effect function; can also call `portal.setData()`
-- `tx.*` — guest write function; same portal shape as `fx` for now
+- `fn.*` — pure-ish guest function; can call `portal.next()` and `portal.emitMessage()`; receives no resource portal
+- `fx.*` — guest read/effect function; can also call `portal.setData()` and receives read-capable resource proxies when permitted
+- `tx.*` — guest write function; receives resource read/write proxies according to manifest scope and binding restrictions
 
 The child process loads the actor function module at `actor.relFunctionPath`. That module must default-export a map shaped like:
 
@@ -81,6 +81,40 @@ Expected behavior from tests:
 
 Do not put product-facing facade policy directly in `Actor`. `Actor` should remain focused on one running actor instance: validate input, run transition, hold current state/data, emit messages.
 
+## Resource architecture
+
+All host-side resource implementation lives under `src/resources/`:
+
+- `ActorResourceManager.ts` — generic catalog, binding, compatibility, permission, dispatch, lifecycle, drain, and shutdown coordination
+- `KvResource.ts` — resource-scoped JSON key/value operations
+- `SecretStoreResource.ts` — string secret operations with value-safe list/write/error surfaces
+- `DbResource.ts` — physical Turso database provisioning, handles, SQL dispatch, backup, restore, and migration primitives
+- `DbResourceMigrationCoordinator.ts` — coordinates DB migration with linked actor stop/restart and durable compatibility blocks
+- `ActorResourceError.ts` — stable resource errors and safe serialization
+- `resource-types.ts` — provider, gateway, binding-status, and migration-preview contracts
+
+`ActorService` is the composition root. It constructs all resource providers, injects them into `ActorResourceManager`, and exposes app-facing resource and schema-management methods. `ActorResourceManager` must remain generic: do not instantiate concrete providers inside it.
+
+Definitions declare named resource slots; users bind each slot to a concrete resource. Bindings are definition-level, so every instance of that definition resolves the same binding. One definition may declare multiple slots, and one resource may be shared by multiple slots or definitions.
+
+For every actor resource call, the host derives definition identity, actor/run identity, function class, binding, resource ID, lifecycle state, and effective permission. The child supplies only slot, expected kind, operation, and serializable arguments. Never expose control-database handles, physical paths, provider handles, resource selection, or effective authority to the child.
+
+Effective access is:
+
+```text
+manifest scope ∩ binding restriction ∩ function-class ceiling
+```
+
+Resource persistence differs by kind:
+
+- KV and secret entries currently use the resource-scoped `actor_resource_key_values` table in the Vibecanvas control database.
+- Each DbResource owns a separate physical database under `<dataRoot>/actor-resources/db/<resource-id>/data.db`.
+- Arbitrary `query` is single-statement. Arbitrary `execute` is always tx/write-capable and accepts either one statement or an ordered operation array. Operation arrays use one connection without interleaving; callers explicitly provide transaction/savepoint control statements, and each operation binds its own parameters.
+- Named manifest DB operations remain single-statement.
+- Resource catalog, bindings, DB schema metadata, and migration control state remain in `DbServiceTurso`.
+
+Keep resource-specific helpers and types inside `src/resources/`. Prefer sibling `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files there when extracting provider-local logic. Move logic into `src/core/` only when it is genuinely shared with non-resource actor features.
+
 ## DB model
 
 Use `@vibecanvas/service-db/src/model.ts` as the source of truth for actor persistence.
@@ -127,7 +161,8 @@ Prefer durable inbox rows for cross-actor delivery so message routing survives p
 
 - Keep guest code execution isolated to the child process path (`icp-client.ts`).
 - Host service/supervisor code may inspect manifests and schemas, but must not call guest functions directly.
-- Keep `ActorService` as public facade and `ActorSupervisor` as orchestration coordinator.
+- Keep `ActorService` as public facade and composition root, `ActorSupervisor` as actor orchestration coordinator, and `ActorResourceManager` as generic resource coordinator.
+- Keep `Actor`, `ActorService`, `ActorSupervisor`, and `icp-client.ts` at the `src/` root; keep resource providers/managers/contracts under `src/resources/`.
 - Keep `Actor` small enough to represent one actor instance runtime.
 - Prefer extracting pure logic into local `fn.*.ts` files and impure helpers into `fx.*.ts` / `tx.*.ts` following the repo rules.
 - When editing `fn.*.ts`, `fx.*.ts`, or `tx.*.ts`, follow the package/root AGENTS rules for those file types.

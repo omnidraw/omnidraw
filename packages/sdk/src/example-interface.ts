@@ -1,7 +1,13 @@
 import { html } from '@arrow-js/core';
 
 import { actor, type TWidgetActor } from '@vibecanvas/sdk/widget';
-import { defineActorFunctions, defineTx, type TActorTx } from '@vibecanvas/sdk/actor';
+import {
+  defineActorFunctions,
+  defineFx,
+  defineTx,
+  type TActorResourceRequirements,
+  type TActorTx,
+} from '@vibecanvas/sdk/actor';
 
 type TTodoItem = {
   id: string;
@@ -27,6 +33,20 @@ type TTodoInput = {
   'in.removeTodo': { id: string };
   'in.setFilter': { filter: 'all' | 'open' | 'done' };
 };
+
+export const exampleActorResources = {
+  preferences: { kind: 'kv', required: true, scope: ['read', 'write'] },
+  credentials: { kind: 'secretStore', required: false, scope: ['read'] },
+  notes: {
+    kind: 'db',
+    required: true,
+    scope: ['read'],
+    schema: { id: 'notes', version: 1 },
+    operations: {
+      listNotes: { effect: 'read', sql: 'SELECT id, title FROM notes', result: 'rows' },
+    },
+  },
+} as const satisfies TActorResourceRequirements;
 
 const todoActor = actor as TWidgetActor<TTodoContext, TTodoInput>;
 
@@ -121,6 +141,21 @@ export const txExampleAddTodo: TActorTx<TTodoContext, TTodoInput['in.addTodo']> 
       highPriorityOpen: nextContext.todos.filter((todo) => !todo.completed && todo.priority === 'high').length,
       revision: 0,
     },
+  });
+});
+
+export const fxExampleLoadResources = defineFx<TTodoContext, Record<string, never>>(async (portal) => {
+  const preference = await portal.resources.kv('preferences').get<string>('filter');
+  const hasCredentials = await portal.resources.secretStore('credentials').has('accessToken');
+  const notes = await portal.resources.db('notes').invoke<Array<{ id: string; title: string }>>('listNotes');
+  return { preference, hasCredentials, notes };
+});
+
+export const txExampleCompareAndSetPreference = defineTx<TTodoContext, { value: string; revision: number }>(async (portal, args) => {
+  return portal.resources.kv('preferences').compareAndSet({
+    key: 'filter',
+    expectedRevision: args.msg.revision,
+    value: args.msg.value,
   });
 });
 

@@ -25,6 +25,8 @@ const MIGRATION_SQL_MAX_LENGTH = 1_048_576;
 const MIGRATION_MAX_COUNT = 256;
 const MIGRATION_STATEMENT_MAX_COUNT = 256;
 const PARAMETER_MAX_COUNT = 128;
+const EXECUTE_OPERATION_MAX_COUNT = 256;
+const EXECUTE_TOTAL_SQL_MAX_LENGTH = 1_048_576;
 const PARAMETER_BYTES_MAX = 1_048_576;
 const RESULT_ROW_MAX_COUNT = 1_000;
 const RESULT_COLUMN_MAX_COUNT = 128;
@@ -63,6 +65,7 @@ export type TDbResourceConfig = {
 
 type TDbBindValue = null | string | number | bigint | Uint8Array;
 type TDbBindParameters = Record<string, TDbBindValue>;
+type TDbExecuteOperation = { readonly sql: string; readonly parameters: TDbBindParameters };
 
 function validateResourceId(id: string): string {
   if (
@@ -278,6 +281,29 @@ function boundArbitraryParameters(value: unknown): TDbBindParameters {
     bound[name] = converted;
   }
   return bound;
+}
+
+function executeOperations(value: unknown): TDbExecuteOperation[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > EXECUTE_OPERATION_MAX_COUNT) {
+    throw new ActorResourceError(
+      'DB_OPERATION_PARAMETERS_INVALID',
+      `Database execute operations must be a non-empty array of at most ${EXECUTE_OPERATION_MAX_COUNT} statements.`,
+    );
+  }
+  let totalSqlLength = 0;
+  return value.map((rawOperation) => {
+    const operation = recordArgs(rawOperation);
+    const unknownKeys = Object.keys(operation).filter((key) => key !== 'sql' && key !== 'parameters');
+    if (unknownKeys.length > 0) {
+      throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute operation contains unknown fields.');
+    }
+    const sql = boundedSql(operation.sql);
+    totalSqlLength += sql.length;
+    if (totalSqlLength > EXECUTE_TOTAL_SQL_MAX_LENGTH) {
+      throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute operations exceed the total SQL size limit.');
+    }
+    return { sql, parameters: boundArbitraryParameters(operation.parameters) };
+  });
 }
 
 function boundNamedParameters(
@@ -825,6 +851,16 @@ export class DbResource implements IActorResourceProvider {
           throw new ActorResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', 'Arbitrary SQL is not enabled for this DbResource slot.');
         }
         if (!context.canWrite) throw new ActorResourceError('DB_WRITE_NOT_ALLOWED', 'Write access is not allowed for this DbResource slot.');
+        if (args.operations !== undefined) {
+          if (args.sql !== undefined || args.parameters !== undefined) {
+            throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute accepts either one statement or an operations array.');
+          }
+          const operations = executeOperations(args.operations);
+          return this.#serializeWrite(
+            context.resource.id,
+            () => this.#executeOperations(context.resource.id, operations),
+          );
+        }
         return this.#serializeWrite(
           context.resource.id,
           () => this.#execute(context.resource.id, boundedSql(args.sql), boundArbitraryParameters(args.parameters)),
@@ -869,23 +905,43 @@ export class DbResource implements IActorResourceProvider {
     }
   }
 
+  async #executeOperations(resourceId: string, operations: readonly TDbExecuteOperation[]) {
+    const database = await this.#open(resourceId, true);
+    const results: { rowsAffected: number; lastInsertRowId?: bigint }[] = [];
+    try {
+      for (const operation of operations) {
+        results.push(await this.#runStatement(database, operation.sql, operation.parameters));
+      }
+      // Never return a shared handle with a caller-opened transaction.
+      await database.exec('ROLLBACK', { queryTimeout: QUERY_TIMEOUT_MS }).catch(() => undefined);
+      return results;
+    } catch {
+      await database.exec('ROLLBACK', { queryTimeout: QUERY_TIMEOUT_MS }).catch(() => undefined);
+      throw new ActorResourceError('DB_EXECUTE_FAILED', 'Database execute failed.');
+    }
+  }
+
+  async #runStatement(database: Database, sql: string, parameters: TDbBindParameters) {
+    const statement = await database.prepare(sql);
+    statement.safeIntegers(true);
+    try {
+      const result = await statement.run(parameters, { queryTimeout: QUERY_TIMEOUT_MS });
+      const rowId = result.lastInsertRowid as number | bigint;
+      return {
+        rowsAffected: result.changes,
+        ...(typeof rowId === 'bigint'
+          ? { lastInsertRowId: rowId }
+          : Number.isSafeInteger(rowId) ? { lastInsertRowId: BigInt(rowId) } : {}),
+      };
+    } finally {
+      statement.close();
+    }
+  }
+
   async #execute(resourceId: string, sql: string, parameters: TDbBindParameters) {
     try {
       const database = await this.#open(resourceId, true);
-      const statement = await database.prepare(sql);
-      statement.safeIntegers(true);
-      try {
-        const result = await statement.run(parameters, { queryTimeout: QUERY_TIMEOUT_MS });
-        const rowId = result.lastInsertRowid as number | bigint;
-        return {
-          rowsAffected: result.changes,
-          ...(typeof rowId === 'bigint'
-            ? { lastInsertRowId: rowId }
-            : Number.isSafeInteger(rowId) ? { lastInsertRowId: BigInt(rowId) } : {}),
-        };
-      } finally {
-        statement.close();
-      }
+      return await this.#runStatement(database, sql, parameters);
     } catch {
       throw new ActorResourceError('DB_EXECUTE_FAILED', 'Database execute failed.');
     }
