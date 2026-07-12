@@ -12,7 +12,14 @@ describe('vc_approve_actor_candidate', () => {
     const events: TToolEvent[] = [];
     const sessionManager = createFakeSessionManager();
     let npmInstallCwd: string | undefined;
-    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate: sampleCandidate() });
+    const base = sampleCandidate();
+    const resources = {
+      preferences: { kind: 'kv' as const, required: true, scope: ['read', 'write'] as ('read' | 'write')[] },
+      credentials: { kind: 'secretStore' as const, required: false, scope: ['read'] as ('read' | 'write')[] },
+    };
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), {
+      candidate: sampleCandidate({ actor: { ...base.actor, resources } }),
+    });
 
     const result = await executeTool(createApproveActorCandidateTool({
       cwd,
@@ -42,12 +49,17 @@ describe('vc_approve_actor_candidate', () => {
 
     const manifest = JSON.parse(await readFile(join(cwd, 'vibecanvas.json'), 'utf8'));
     expect(manifest.name).toBe('Counter Widget');
+    expect(manifest.actor.resources).toEqual(resources);
     const packageJson = JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8'));
     expect(packageJson.dependencies).toHaveProperty('@arrow-js/core');
     expect(packageJson.dependencies).toHaveProperty('@vibecanvas/sdk');
 
     const registry = await readFile(join(cwd, 'actor', 'functions.ts'), 'utf8');
     expect(registry).toContain('"tx.increment"');
+    const actorTypes = await readFile(join(cwd, 'actor', 'types.ts'), 'utf8');
+    expect(actorTypes).toContain('export type TActorResourceSlot = "preferences" | "credentials";');
+    const txStub = await readFile(join(cwd, 'actor', 'tx.increment.ts'), 'utf8');
+    expect(txStub).toContain('import type { TTxArgs, TTxPortal } from "@vibecanvas/sdk/actor";');
   });
 
   test('scaffolds lifecycle, activity, and error-handler functions', async () => {

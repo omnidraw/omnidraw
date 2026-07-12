@@ -209,9 +209,14 @@ describe('AgentService draft actor runtime', () => {
     const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
     await mkdir(cwd, { recursive: true });
 
+    const base = sampleCandidate();
+    const resources = {
+      storage: { kind: 'kv' as const, required: true, scope: ['read', 'write'] as ('read' | 'write')[] },
+    };
     const candidate = sampleCandidate({
       slug: 'candidate-test',
       name: 'Candidate Test',
+      actor: { ...base.actor, resources },
       widget: {
         tool: { label: 'Candidate Test', behavior: { type: 'action' } },
       },
@@ -247,6 +252,7 @@ describe('AgentService draft actor runtime', () => {
     expect(candidatePatchResult.manifest.widget.tool.label).toBe('Saved Candidate Tool');
     expect(candidatePatchResult.manifest.widget.tool.group).toBe('Saved');
     expect(candidatePatchResult.manifest.widget.tool.priority).toBe(3);
+    expect(candidatePatchResult.manifest.actor.resources).toEqual(resources);
     expect(await readFile(join(cwd, 'vibecanvas.json'), 'utf8').catch(() => null)).toBe(null);
     expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest: candidatePatchResult.manifest });
 
@@ -257,6 +263,7 @@ describe('AgentService draft actor runtime', () => {
     expect(patchResult.source).toBe('file');
     expect(patchResult.manifest.name).toBe('Patched Test');
     expect(patchResult.manifest.actor.initialData).toEqual({ count: 1 });
+    expect(patchResult.manifest.actor.resources).toEqual(resources);
     expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'file', manifest: patchResult.manifest });
   });
 

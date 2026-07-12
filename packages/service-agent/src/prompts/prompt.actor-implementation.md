@@ -30,6 +30,8 @@ Function signatures:
 - Use await portal.next() only when continuing an ordered pipeline.
 - Use await portal.setData(nextData) to update actor data.
 - Use await portal.emitMessage({ type: "out.name", payload }) to emit actor outputs.
+- `fn.*` receives no resource portal. `fx.*` receives read-only resources. `tx.*` receives resource reads and writes permitted by the manifest and user binding.
+- Select a declared slot through `portal.resources.kv("slot")`, `portal.resources.secretStore("slot")`, or `portal.resources.db("slot")`. Never supply or derive a concrete resource ID or path.
 
 Reliable implementation style:
 - For simple widgets, use one tx.* function per input message.
@@ -58,3 +60,56 @@ export const txAddTodo = defineTx<TData, TMsg>(async (portal, args) => {
     todos: [...args.data.todos, { id: String(nextId), title, done: false }],
   });
 });
+
+# Shared actor resources
+
+Resource bindings belong to the widget definition, so all actor instances of that definition resolve the same bound resource. A rebind affects calls that start after it. Do not copy a complete shared resource into actor data unless the UI genuinely needs that data.
+
+KV reads are available in `fx` and `tx`; writes are `tx` only:
+
+```ts
+import { defineFx, defineTx } from "@vibecanvas/sdk/actor";
+
+export const fxLoadPreference = defineFx(async (portal) => {
+  const entry = await portal.resources.kv("preferences").get<string>("theme");
+  return entry?.value ?? "system";
+});
+
+export const txSavePreference = defineTx(async (portal, args: { msg: { theme: string }; data: unknown }) => {
+  await portal.resources.kv("preferences").set({ key: "theme", value: args.msg.theme });
+});
+```
+
+Use `compareAndSet` with the revision returned by `get` for shared read-modify-write flows. Plain `set` is last-write-wins across actor instances.
+
+Secret-store reads are available in `fx` and `tx`; writes are `tx` only:
+
+```ts
+const token = await portal.resources.secretStore("credentials").get("accessToken");
+await portal.resources.secretStore("credentials").set({ name: "accessToken", value: nextToken });
+```
+
+Secret values are currently stored as plaintext. Retrieve them only when needed. Never log, emit, or copy a token into actor data. Secret `list`, `set`, and `delete` results intentionally omit plaintext values.
+
+DB named operations are preferred and arbitrary SQL exists only when the manifest explicitly enables it:
+
+```ts
+const rows = await portal.resources.db("notes").invoke("listNotes", { archived: false });
+const selected = await portal.resources.db("notes").query("SELECT id, title FROM notes WHERE id = :id", { id });
+await portal.resources.db("notes").execute("UPDATE notes SET title = :title WHERE id = :id", { id, title });
+await portal.resources.db("notes").execute([
+  { sql: "BEGIN IMMEDIATE" },
+  { sql: "INSERT INTO notes (id, title) VALUES (:id, :title)", parameters: { id, title } },
+  { sql: "UPDATE counters SET value = value + 1 WHERE name = :name", parameters: { name: "notes" } },
+  { sql: "COMMIT" },
+]);
+```
+
+- `invoke` calls only a manifest-declared named operation.
+- `query` requires declared arbitrary SQL plus effective read access and is available to `fx` and `tx`.
+- `execute` requires declared arbitrary SQL plus effective write access and is available only to `tx`; it is always treated as write-capable even when SQL happens to read.
+- `execute(sql, parameters?)` runs one statement. `execute(operations)` runs a non-empty ordered operation array on one resolved resource connection without interleaving.
+- Multi-operation execution is not automatically atomic. Include explicit `BEGIN`/`COMMIT` operations when atomicity is required; `SAVEPOINT`, `ROLLBACK TO`, `RELEASE`, and `ROLLBACK` are supported for caller-controlled flow.
+- Each operation contains exactly one SQL statement and its own parameters. Bind values through parameter objects; never interpolate actor values into SQL.
+- If an operation fails, execution stops and the host defensively rolls back any transaction left open. Without an explicit transaction, earlier successful operations may already be committed.
+- Actors cannot publish schemas, run host migrations, choose database files, or access Vibecanvas's application database.

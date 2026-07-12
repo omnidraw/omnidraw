@@ -14,7 +14,31 @@ describe('vc_publish_widget', () => {
     const events: TToolEvent[] = [];
     let reloadCount = 0;
     const sessionManager = createFakeSessionManager();
-    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate: sampleCandidate() });
+    const base = sampleCandidate();
+    const resources = {
+      notes: {
+        kind: 'db' as const,
+        required: true,
+        scope: ['read', 'write'] as ('read' | 'write')[],
+        schema: { id: 'notes', version: 2 },
+        arbitrarySql: false,
+        operations: {
+          listNotes: { effect: 'read' as const, sql: 'SELECT id, title FROM notes', result: 'rows' as const },
+          renameNote: {
+            effect: 'write' as const,
+            sql: 'UPDATE notes SET title = :title WHERE id = :id',
+            parameters: {
+              id: { type: 'string' as const, required: true, nullable: false },
+              title: { type: 'string' as const, required: true, nullable: false },
+            },
+            result: 'execute' as const,
+          },
+        },
+      },
+    };
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), {
+      candidate: sampleCandidate({ actor: { ...base.actor, resources } }),
+    });
     await executeTool(createApproveActorCandidateTool({
       cwd,
       sessionManager,
@@ -35,6 +59,7 @@ describe('vc_publish_widget', () => {
 
     const publishedManifest = JSON.parse(await readFile(join(finalWidgetsDir, 'counter-widget', 'vibecanvas.json'), 'utf8'));
     expect(publishedManifest.name).toBe('Counter Widget');
+    expect(publishedManifest.actor.resources).toEqual(resources);
   });
 
   test('refuses unconfirmed publish', async () => {

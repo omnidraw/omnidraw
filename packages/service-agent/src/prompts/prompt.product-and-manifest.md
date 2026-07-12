@@ -32,6 +32,7 @@ The actor candidate and vibecanvas.json must match this shape:
 - actor.initialState: an actor state string. Prefer "ready" for simple widgets.
 - actor.initialData: JSON-serializable initial data only. No functions, Date, Map, Set, undefined, symbols, classes, cyclic objects, or BigInt.
 - actor.dataSchema: JSON Schema for actor data. Keep it simple and accurate.
+- actor.resources: optional definition-level map of stable named resource slots. Omit it when the widget needs no shared resource. Never put a concrete resource ID, path, handle, credential, or value in the manifest.
 - actor.states: map of state names to { on: { [inputMessageName]: transition } }.
 - actor.inputMsgSchema: map of input message names to JSON Schemas.
 - actor.outputMsgSchema: map of output message names to JSON Schemas. Use {} if no outputs.
@@ -40,6 +41,18 @@ The actor candidate and vibecanvas.json must match this shape:
 - widget.tool.icon: optional structured icon metadata: { "lucidIcon": "<allowed lucide-static key>" } or { "svgIcon": "<raw SVG XML, emoji, or text>" }. If both fields are present, svgIcon overrides lucidIcon. Prefer lucidIcon for common icons and use svgIcon only for custom raw SVG, emoji, or text. Allowed lucidIcon keys: {{LUCIDE_STATIC_ICON_KEYS}}.
 - widget.tool.group: omit by default. Do not infer or invent a group from the widget's purpose. Set it only when the user explicitly requests a specific group name.
 - widget.tool.behavior: usually { type: "mode", mode: "click-create" } for canvas-created widgets, or { type: "action" } only for action-like tools.
+
+Resource slot declarations:
+- Every slot declares `required` explicitly. Use `true` by default. Missing bindings are reported to control clients; the generic actor can still start and a resource call fails safely.
+- `scope` is a non-empty duplicate-free list containing `read`, `write`, or both. It controls permission, not actor-instance or row isolation.
+- KV slot: `{ "kind": "kv", "required": true, "scope": ["read", "write"] }`.
+- Secret slot: `{ "kind": "secretStore", "required": true, "scope": ["read"] }`. Secret values are currently plaintext at rest; never put them in actor data, logs, or output messages unless the user flow strictly requires it.
+- DB slot: `{ "kind": "db", "required": true, "scope": ["read"], "schema": { "id": "notes", "version": 2 } }`.
+- DB schema version 0 is valid and means no host migrations have been applied. The schema must still be published by the host.
+- DB `arbitrarySql` defaults to false. Prefer named operations under `operations`.
+- A named DB operation declares `effect`, one SQL statement, optional named parameter declarations, and `result: "rows" | "execute"`. A read operation requires read scope; a write operation requires write scope. Named operations remain single-statement; when `arbitrarySql` is enabled, actor `tx` code may pass an ordered operation array to `execute` and explicitly control `BEGIN`, `COMMIT`, rollback, and savepoints.
+- Parameter declarations use `{ "type": "string" | "number" | "boolean" | "bigint" | "bytes" | "json", "required"?: boolean, "nullable"?: boolean }`. Required defaults true and nullable defaults false.
+- Bind actor values as named parameters. Never interpolate values into SQL.
 
 Actor state strings must match:
 - "booting" or "booting.*"

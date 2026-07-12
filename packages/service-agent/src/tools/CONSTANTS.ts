@@ -1,5 +1,14 @@
 import { LUCIDE_STATIC_ICON_KEYS } from '@vibecanvas/service-actor/core/tool-icon';
-import { ZVibecanvasActor, ZVibecanvasActorWidget, ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import {
+  ACTOR_DB_NAMED_OPERATION_MAX_COUNT,
+  ACTOR_DB_NAMED_OPERATION_PARAMETER_MAX_COUNT,
+  ACTOR_DB_NAMED_OPERATION_SQL_MAX_LENGTH,
+  ACTOR_RESOURCE_IDENTIFIER_MAX_LENGTH,
+  ACTOR_RESOURCE_SLOT_NAME_MAX_LENGTH,
+  ZVibecanvasActor,
+  ZVibecanvasActorWidget,
+  ZVibecanvasJson,
+} from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import { Type } from 'typebox';
@@ -42,6 +51,95 @@ const ACTOR_FUNCTION_NAME_SCHEMA = Type.String({
   pattern: '^(fn|fx|tx)\\..+$',
   description: 'Transition function name. Must be a string like fn.checkInput, fx.readThing, or tx.applyMessage.',
 });
+
+const ACTOR_RESOURCE_SCOPE_SCHEMA = Type.Array(Type.Union([
+  Type.Literal('read'),
+  Type.Literal('write'),
+]), {
+  minItems: 1,
+  maxItems: 2,
+  uniqueItems: true,
+  description: 'Permission scope. Use read, write, or both. Scope controls permission, not instance isolation.',
+});
+
+const ACTOR_RESOURCE_SLOT_NAME_SCHEMA = Type.String({
+  minLength: 1,
+  maxLength: ACTOR_RESOURCE_SLOT_NAME_MAX_LENGTH,
+  pattern: '.*\\S.*',
+  description: 'Stable definition-level resource slot name. It is preserved exactly and must not contain only whitespace.',
+});
+
+const ACTOR_RESOURCE_IDENTIFIER_SCHEMA = Type.String({
+  minLength: 1,
+  maxLength: ACTOR_RESOURCE_IDENTIFIER_MAX_LENGTH,
+  pattern: '.*\\S.*',
+});
+
+const ACTOR_DB_PARAMETER_DECLARATION_SCHEMA = Type.Object({
+  type: Type.Union([
+    Type.Literal('string'),
+    Type.Literal('number'),
+    Type.Literal('boolean'),
+    Type.Literal('bigint'),
+    Type.Literal('bytes'),
+    Type.Literal('json'),
+  ]),
+  required: Type.Optional(Type.Boolean({ default: true })),
+  nullable: Type.Optional(Type.Boolean({ default: false })),
+});
+
+const ACTOR_DB_NAMED_OPERATION_SCHEMA = Type.Object({
+  effect: Type.Union([Type.Literal('read'), Type.Literal('write')]),
+  sql: Type.String({
+    minLength: 1,
+    maxLength: ACTOR_DB_NAMED_OPERATION_SQL_MAX_LENGTH,
+    pattern: '.*\\S.*',
+    description: 'One SQL statement. Use named bound parameters; never interpolate actor values.',
+  }),
+  parameters: Type.Optional(Type.Record(
+    ACTOR_RESOURCE_IDENTIFIER_SCHEMA,
+    ACTOR_DB_PARAMETER_DECLARATION_SCHEMA,
+    { maxProperties: ACTOR_DB_NAMED_OPERATION_PARAMETER_MAX_COUNT },
+  )),
+  result: Type.Union([Type.Literal('rows'), Type.Literal('execute')]),
+});
+
+const ACTOR_RESOURCES_SCHEMA = Type.Record(
+  ACTOR_RESOURCE_SLOT_NAME_SCHEMA,
+  Type.Union([
+    Type.Object({
+      kind: Type.Literal('kv'),
+      required: Type.Boolean({ description: 'Use true by default so missing bindings are visible to control clients.' }),
+      scope: ACTOR_RESOURCE_SCOPE_SCHEMA,
+    }),
+    Type.Object({
+      kind: Type.Literal('secretStore'),
+      required: Type.Boolean({ description: 'Use true by default so missing bindings are visible to control clients.' }),
+      scope: ACTOR_RESOURCE_SCOPE_SCHEMA,
+    }),
+    Type.Object({
+      kind: Type.Literal('db'),
+      required: Type.Boolean({ description: 'Use true by default so missing bindings are visible to control clients.' }),
+      scope: ACTOR_RESOURCE_SCOPE_SCHEMA,
+      schema: Type.Object({
+        id: ACTOR_RESOURCE_IDENTIFIER_SCHEMA,
+        version: Type.Integer({ minimum: 0 }),
+      }),
+      arbitrarySql: Type.Optional(Type.Boolean({
+        default: false,
+        description: 'Defaults to false. Prefer named operations.',
+      })),
+      operations: Type.Optional(Type.Record(
+        ACTOR_RESOURCE_IDENTIFIER_SCHEMA,
+        ACTOR_DB_NAMED_OPERATION_SCHEMA,
+        { maxProperties: ACTOR_DB_NAMED_OPERATION_MAX_COUNT },
+      )),
+    }),
+  ]),
+  {
+    description: 'Definition-level named resource requirements. Never include concrete resource IDs, paths, handles, or credentials.',
+  },
+);
 
 const ACTOR_ERROR_HANDLER_SCHEMA = Type.Object({
   func: Type.Array(ACTOR_FUNCTION_NAME_SCHEMA, { minItems: 1 }),
@@ -114,6 +212,7 @@ export const ACTOR_CANDIDATE_PARAMETER_SCHEMA = Type.Object({
     }),
     inputMsgSchema: Type.Optional(Type.Record(Type.String({ minLength: 1, description: 'Input message name. Prefer in.* names.' }), JSON_SCHEMA_SCHEMA)),
     outputMsgSchema: Type.Optional(Type.Record(Type.String({ minLength: 1, description: 'Output message name. Prefer out.* names.' }), JSON_SCHEMA_SCHEMA)),
+    resources: Type.Optional(ACTOR_RESOURCES_SCHEMA),
     relFunctionPath: Type.Optional(Type.String({ description: 'Usually omitted; Vibecanvas sets ./actor/functions.ts.' })),
   }),
   widget: Type.Object({

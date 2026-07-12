@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createApproveActorCandidateTool } from '../src/tools/tool.approve-actor-candidate';
 import { createSetActorCandidateTool } from '../src/tools/tool.set-actor-candidate';
@@ -48,5 +48,35 @@ describe('vc_validate_widget_files', () => {
     expect(result.details.ok).toBe(false);
     expect(result.details.errors).toContain('Missing src/actor-functions.ts');
     expect(result.details.errors).toContain('Missing src/widget-ui/main.ts');
+  });
+
+  test('revalidates resource declarations from the complete draft manifest', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate: sampleCandidate() });
+    await executeTool(createApproveActorCandidateTool({
+      cwd,
+      sessionManager,
+      npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
+    }), { revision: 1 });
+    const manifestPath = join(cwd, 'vibecanvas.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.actor.resources = {
+      notes: {
+        kind: 'db',
+        required: true,
+        scope: ['read'],
+        schema: { id: 'notes', version: 1 },
+        operations: {
+          broken: { effect: 'read', sql: 'SELECT 1; SELECT 2', result: 'rows' },
+        },
+      },
+    };
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const result = await executeTool(createValidateWidgetFilesTool({ cwd }));
+
+    expect(result.details.ok).toBe(false);
+    expect(result.details.errors.some((error: string) => error.includes('actor.resources.notes.operations.broken.sql'))).toBe(true);
   });
 });

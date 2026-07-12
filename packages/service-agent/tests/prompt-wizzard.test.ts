@@ -7,6 +7,8 @@ import { txAppendActorCandidateApprovalRecord } from '../src/core/tx.session-can
 import { sampleCandidate } from './tool.test-helpers';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from '../src/prompts';
+import { fxBuildDbSchemaContextPrompt } from '../src/fx.db-schema-context';
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 
 class TestEventPublisherService implements IEventPublisherService {
   name = 'test-event-publisher';
@@ -50,6 +52,51 @@ describe('AgentService.promptWizzard', () => {
     expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('recover: { targetState: "ready" }');
     expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('accepted only so existing widgets keep working');
     expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('widget.tool.group: omit by default');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('actor.resources: optional definition-level map');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('portal.resources.kv("slot")');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('Secret values are currently stored as plaintext');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
+  });
+
+  test('supplies exact published DbResource migrations through the declared version', async () => {
+    const base = sampleCandidate();
+    const manifest: TVibecanvasJson = {
+      slug: 'db-widget',
+      name: 'DB Widget',
+      actor: {
+        ...base.actor,
+        relFunctionPath: './actor/functions.ts',
+        resources: {
+          notes: {
+            kind: 'db',
+            required: true,
+            scope: ['read'],
+            schema: { id: 'notes', version: 2 },
+          },
+        },
+      },
+      widget: { relWidgetDir: './widget', tool: base.widget.tool },
+    };
+    const calls: Array<[string, number]> = [];
+    const sql = 'CREATE TABLE notes (id TEXT);\nINSERT INTO notes VALUES ("seed");';
+    const prompt = await fxBuildDbSchemaContextPrompt({
+      getDbSchemaContext: async (schemaId, version) => {
+        calls.push([schemaId, version]);
+        return {
+          schema: { id: schemaId, name: 'Notes', description: 'Shared notes.', status: 'published' },
+          migrations: [
+            { schema_id: schemaId, version: 1, name: 'initial', sql, checksum: 'sha256:first', status: 'published' },
+            { schema_id: schemaId, version: 2, name: 'index', sql: 'CREATE INDEX notes_id ON notes(id);', checksum: 'sha256:second', status: 'published' },
+          ],
+        };
+      },
+    }, { manifest });
+
+    expect(calls).toEqual([['notes', 2]]);
+    expect(prompt).toContain('# Host-published DbResource schema context');
+    expect(prompt).toContain('## notes@2 — Notes');
+    expect(prompt).toContain(JSON.stringify(sql));
+    expect(prompt).toContain('sha256:second');
   });
 
   test('passes image-only prompts to Pi with fallback text', async () => {

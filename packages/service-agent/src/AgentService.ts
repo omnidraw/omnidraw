@@ -10,6 +10,7 @@ import { mkdirSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
 import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
+import { fxBuildDbSchemaContextPrompt } from './fx.db-schema-context';
 import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
@@ -936,6 +937,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         new Date().toISOString(),
       )
     }
+    const dbSchemaContextPrompt = manifestResult.ready
+      ? await fxBuildDbSchemaContextPrompt({
+          getDbSchemaContext: this.#config.actorService?.getDbSchemaContext?.bind(this.#config.actorService),
+        }, { manifest: manifestResult.manifest })
+      : ''
     const phaseTools = fnCreateWidgetWizardPhaseTools({
       cwd,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
@@ -950,7 +956,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       modelRegistry: this.modelRegistry,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
-        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
+        systemPrompt: dbSchemaContextPrompt.length > 0
+          ? `${WIDGET_WIZZARD_SYSTEM_PROMPT}\n${dbSchemaContextPrompt}\n`
+          : WIDGET_WIZZARD_SYSTEM_PROMPT
       }
     });
     const { session } = await createAgentSessionFromServices({

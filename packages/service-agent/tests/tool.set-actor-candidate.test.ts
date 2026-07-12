@@ -117,4 +117,89 @@ describe('vc_set_actor_candidate', () => {
     expect(result.details.validation.errors.some((error: string) => error.includes('widget.tool.icon.lucidIcon'))).toBe(true);
     expect(sessionManager.entries).toHaveLength(0);
   });
+
+  test('validates and preserves resource requirements in actor candidates', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const tool = createSetActorCandidateTool({ cwd, sessionManager });
+    const base = sampleCandidate();
+    const candidate = sampleCandidate({
+      actor: {
+        ...base.actor,
+        resources: {
+          storage: { kind: 'kv', required: true, scope: ['read', 'write'] },
+          credentials: { kind: 'secretStore', required: true, scope: ['read'] },
+          notes: {
+            kind: 'db',
+            required: true,
+            scope: ['read'],
+            schema: { id: 'notes', version: 0 },
+            operations: {
+              listNotes: {
+                effect: 'read',
+                sql: 'SELECT id, title FROM notes',
+                result: 'rows',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const result = await executeTool(tool, { candidate });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.details.manifest.actor.resources).toEqual({
+      storage: { kind: 'kv', required: true, scope: ['read', 'write'] },
+      credentials: { kind: 'secretStore', required: true, scope: ['read'] },
+      notes: {
+        kind: 'db',
+        required: true,
+        scope: ['read'],
+        schema: { id: 'notes', version: 0 },
+        arbitrarySql: false,
+        operations: {
+          listNotes: {
+            effect: 'read',
+            sql: 'SELECT id, title FROM notes',
+            result: 'rows',
+          },
+        },
+      },
+    });
+  });
+
+  test('rejects invalid named database operations in actor candidates', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const tool = createSetActorCandidateTool({ cwd, sessionManager });
+    const base = sampleCandidate();
+    const candidate = sampleCandidate({
+      actor: {
+        ...base.actor,
+        resources: {
+          notes: {
+            kind: 'db',
+            required: true,
+            scope: ['read'],
+            schema: { id: 'notes', version: 1 },
+            operations: {
+              mutate: {
+                effect: 'write',
+                sql: 'DELETE FROM notes; DROP TABLE notes',
+                result: 'execute',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const result = await executeTool(tool, { candidate });
+
+    expect(result.isError).toBe(true);
+    expect(result.details.validation.ok).toBe(false);
+    expect(result.details.validation.errors.some((error: string) => error.includes('actor.resources.notes'))).toBe(true);
+    expect(sessionManager.entries).toHaveLength(0);
+  });
 });

@@ -23,24 +23,33 @@ function functionStub(functionName: TFunctionName) {
   const exportName = toExportName(functionName);
   const prefix = functionName.split('.', 1)[0];
   const shouldContinue = prefix === 'fn' || prefix === 'fx';
+  const portalType = prefix === 'fn' ? 'TFnPortal' : prefix === 'fx' ? 'TFxPortal' : 'TTxPortal';
+  const argsType = prefix === 'fn' ? 'TFnArgs' : prefix === 'fx' ? 'TFxArgs' : 'TTxArgs';
 
   return [
-    `type TPortal = {`,
-    `  next?: () => Promise<unknown>;`,
-    `  setData?: (data: unknown) => Promise<unknown>;`,
-    `  emitMessage?: (message: { type: string; payload: unknown }) => Promise<unknown>;`,
-    `};`,
+    `import type { ${argsType}, ${portalType} } from "@vibecanvas/sdk/actor";`,
     ``,
-    `type TArgs = {`,
-    `  data: unknown;`,
-    `  msg: unknown;`,
-    `};`,
+    `type TPortal = ${portalType};`,
+    `type TArgs = ${argsType};`,
     ``,
     `export async function ${exportName}(portal: TPortal, args: TArgs) {`,
     `  void args;`,
-    shouldContinue ? `  return portal.next?.();` : `  throw new Error("${functionName} is not implemented yet");`,
+    shouldContinue ? `  return portal.next();` : `  throw new Error("${functionName} is not implemented yet");`,
     `}`,
     ``,
+  ].join('\n');
+}
+
+function actorTypes(manifest: TVibecanvasJson) {
+  const resourceSlots = Object.keys(manifest.actor.resources ?? {});
+  const resourceSlotType = resourceSlots.length > 0
+    ? resourceSlots.map((slot) => JSON.stringify(slot)).join(' | ')
+    : 'never';
+
+  return [
+    `export type TActorData = ${JSON.stringify(manifest.actor.initialData, null, 2)};`,
+    `export type TActorResourceSlot = ${resourceSlotType};`,
+    '',
   ].join('\n');
 }
 
@@ -96,7 +105,7 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs) {
   await portal.writeFile(portal.join(args.cwd, 'vibecanvas.json'), `${JSON.stringify(args.manifest, null, 2)}\n`, 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'package.json'), packageJson(args.manifest), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'actor', 'functions.ts'), functionsRegistry(args.manifest), 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'actor', 'types.ts'), `export type TActorData = ${JSON.stringify(args.manifest.actor.initialData, null, 2)};\n`, 'utf8');
+  await portal.writeFile(portal.join(args.cwd, 'actor', 'types.ts'), actorTypes(args.manifest), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'widget', 'main.ts'), [
     'import { html } from "@arrow-js/core";',
     'import { actor } from "@vibecanvas/sdk/widget";',
