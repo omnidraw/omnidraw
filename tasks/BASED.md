@@ -200,10 +200,10 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A66](a/A66.md) - toolbar: group widget tools into hover flyouts
 - [x]: [A67](a/A67.md) - actor runtime: state lifecycle hooks and single state activity
 - [x]: [A68](a/A68.md) - widgets: isolate loading failures and render in-frame error states
-- [ ]: [A69](a/A69.md) - actor resources: prepare shared resource control plane and IPC
-- [ ]: [A70](a/A70.md) - actor resources: implement KvResource
-- [ ]: [A71](a/A71.md) - actor resources: implement SecretStoreResource
-- [ ]: [A72](a/A72.md) - actor resources: implement schema-agnostic local Turso DbResource
+- [x]: [A69](a/A69.md) - actor resources: prepare shared resource control plane and IPC
+- [x]: [A70](a/A70.md) - actor resources: implement KvResource
+- [x]: [A71](a/A71.md) - actor resources: implement SecretStoreResource
+- [x]: [A72](a/A72.md) - actor resources: implement schema-agnostic local Turso DbResource
 - [x]: [A73](a/A73.md) - startup: create an empty canvas when none exists
 
 ## S ubtractions
@@ -315,6 +315,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 - [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
 - [x]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
+- [ ]: [E30](e/E30.md) - actor resources: evaluate independent files for KV and secret stores
+- [ ]: [E31](e/E31.md) - Turso schema to TypeScript type generation
 
 ## D eployable
 - [x]: [D1] - Generative UI with AI assits

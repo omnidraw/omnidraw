@@ -2381,6 +2381,14 @@
 
     "vibecanvas": ["vibecanvas@workspace:apps/vibecanvas"],
 
+    "vibecanvas-darwin-arm64": ["vibecanvas-darwin-arm64@0.4.7", "", { "os": "darwin", "cpu": "arm64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-H10hexxqXlSWN5NkrAn80fccUjo6ndcSmCeNVKnFgYiMffmrqFuBlSFeNKqwvud1r7x+/ZEzgvlnuMTvMyeR/w=="],
+
+    "vibecanvas-linux-arm64": ["vibecanvas-linux-arm64@0.4.7", "", { "os": "linux", "cpu": "arm64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-u7+Bs6Ps1kmu3LOv+Lss2TNyTc3zILbjbpRQmOGIDm6tfjXu6NF8YCoeA4NxIUeptsz8lcb8eSh/TSx6qBbkMA=="],
+
+    "vibecanvas-linux-x64": ["vibecanvas-linux-x64@0.4.7", "", { "os": "linux", "cpu": "x64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-rAqOPV4K0DVLq7JHb++gI/uGPm22pWKkuHV/2b38zy90KrFjo2KEme5+6ICMqvgD5mriiM1qjgr0c4ctfeDVxQ=="],
+
+    "vibecanvas-linux-x64-baseline": ["vibecanvas-linux-x64-baseline@0.4.7", "", { "os": "linux", "cpu": "x64", "bin": { "vibecanvas": "bin/vibecanvas" } }, "sha512-qVE8QeRl6Q2yDqY7NtgNo2PR9ndGX0LDb8WUuAVqxNZPzzRnVgR115mNsqLE1frTbg91nB2OmGqDRSL7X/RC3g=="],
+
     "vite": ["vite@8.1.4", "", { "dependencies": { "lightningcss": "^1.32.0", "picomatch": "^4.0.5", "postcss": "^8.5.16", "rolldown": "~1.1.4", "tinyglobby": "^0.2.17" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "@vitejs/devtools": "^0.3.0", "esbuild": "^0.27.0 || ^0.28.0", "jiti": ">=1.21.0", "less": "^4.0.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "@vitejs/devtools", "esbuild", "jiti", "less", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-bTT9PsdWO+MQMNG9ZXIP/qM9wGh37DFxTV/sPq9cFpHr3w4jkgef032PkAL9jAqhk3Nz8NQw3O8n6/xFkqO4QQ=="],
 
     "vite-plugin-solid": ["vite-plugin-solid@2.11.12", "", { "dependencies": { "@babel/core": "^7.23.3", "@types/babel__core": "^7.20.4", "babel-preset-solid": "^1.8.4", "merge-anything": "^5.1.7", "solid-refresh": "^0.6.3", "vitefu": "^1.0.4" }, "peerDependencies": { "@testing-library/jest-dom": "^5.16.6 || ^5.17.0 || ^6.*", "solid-js": "^1.7.2", "vite": "^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0" }, "optionalPeers": ["@testing-library/jest-dom"] }, "sha512-FgjPcx2OwX9h6f28jli7A4bG7PP3te8uyakE5iqsmpq3Jqi1TWLgSroC9N6cMfGRU2zXsl4Q6ISvTr2VL0QHpA=="],

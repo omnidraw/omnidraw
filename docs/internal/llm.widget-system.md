@@ -279,6 +279,7 @@ For actor creation before UI send, also read:
 - `actor.states[state].activity` for one fixed-delay, non-overlapping state activity
 - `actor.inputMsgSchema`
 - `actor.outputMsgSchema`
+- optional `actor.resources`, a definition-level map of named `kv`, `secretStore`, and versioned `db` requirements
 - `actor.relFunctionPath`
 - `widget.relWidgetDir`
 - `widget.tool`
@@ -306,6 +307,50 @@ The active model in `packages/service-db/src/model.ts` contains:
   - `id`, `canvas_id`, `element_id`, `actor_definition_name`, `status`, `machine_state`, `machine_context`.
 - `actor_connections`
   - Source/target actor instance ids, `enabled`, optional message whitelist, style.
+
+### Shared actor resources
+
+Actor resources are neutral shared infrastructure. A manifest declares stable named slots and permissions; it never contains a concrete resource ID, local path, provider handle, or credential. Users bind a definition slot to a catalog resource, and every actor instance of that definition resolves the same binding. Multiple definitions may intentionally bind the same resource.
+
+Effective access is the intersection of manifest scope, the persisted binding restriction, and the function-class ceiling:
+
+| Function class | Resource access |
+|---|---|
+| `fn.*` | none |
+| `fx.*` | reads declared and permitted by the binding |
+| `tx.*` | declared reads/writes permitted by the binding |
+
+A resource call resolves its binding when the call starts. It finishes against that resolved resource even if a concurrent rebind commits; later calls resolve the new binding. Bindings are not copied into actor machine context.
+
+Manifest examples:
+
+```json
+{
+  "resources": {
+    "preferences": { "kind": "kv", "required": true, "scope": ["read", "write"] },
+    "credentials": { "kind": "secretStore", "required": true, "scope": ["read"] },
+    "notes": {
+      "kind": "db",
+      "required": true,
+      "scope": ["read", "write"],
+      "schema": { "id": "notes", "version": 2 },
+      "operations": {
+        "listNotes": { "effect": "read", "sql": "SELECT id, title FROM notes", "result": "rows" }
+      }
+    }
+  }
+}
+```
+
+`KvResource` stores JSON-compatible values. Plain `set` is last-write-wins; revisions and `compareAndSet` provide explicit coordination for shared read-modify-write flows. Separate resources remain isolated even when their keys match. Writes do not automatically rerun other actor instances; they observe committed data on their next read.
+
+`SecretStoreResource` stores string values on the shared resource-key-value persistence layer but has a distinct public interface and kind. Values are plaintext at rest in this version. `list`, write, delete, conflict, control responses, logs, and ordinary errors omit plaintext values; an explicit `get` returns the value to the trusted actor child. This is accidental-disclosure hygiene, not encryption or a hostile-process boundary.
+
+`DbResource` is a separate host-managed local database, never Vibecanvas's application `DbServiceTurso`. DB slots declare an exact schema ID/version, named operations, and optional `arbitrarySql` (false by default). `db_resource_configurations` is authoritative for a resource's schema ID and applied/target versions; the physical database's `_vibecanvas_migrations` table is authoritative for its actual migration history. Version 0 means no host migrations have been applied, but the schema must still be published. Named parameters are bound rather than interpolated. `fx` can invoke reads/query when permitted; only `tx` can execute writes. Schema publication, migration, physical paths, and native handles are never actor capabilities.
+
+Arbitrary `query(sql, parameters?)` accepts one row-producing statement. Arbitrary `execute(sql, parameters?)` accepts one write-capable statement, while `execute(operations)` accepts a bounded non-empty array of individually parameterized statements. An operation array runs in order through one IPC call, binding resolution, physical connection, and serialized resource write lane. The caller controls transaction flow by including `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `ROLLBACK TO`, and `RELEASE`; arrays are not automatically atomic, and earlier operations may commit when no explicit transaction was opened. Execution stops on failure and the host defensively rolls back a transaction left open. Named manifest operations remain one statement.
+
+Arbitrary SQL remains a trusted-actor feature. The current Turso adapter has no proven read-only authorizer, and SQLite can report a mutating `INSERT`/`UPDATE`/`DELETE … RETURNING` statement as row-producing; therefore the `query` surface is not a hostile-code read boundary. The host still enforces declared/effective permissions, bounded actor statements/operation arrays, parameter/result/time limits, and rejects file-control/extension-loading forms such as `ATTACH`, `DETACH`, `VACUUM INTO`, and `load_extension`. These lexical guards reduce accidental host-path access but are not presented as a general SQL sandbox.
 
 ### Canvas document element
 
@@ -352,6 +397,7 @@ Current package source files:
   - Actor-side types and helpers.
   - Exposes `defineActorFunctions`, `defineFn`, `defineFx`, `defineTx`.
   - Exposes short actor portal types: `TFnPortal`, `TFxPortal`, `TTxPortal`.
+  - Exposes resource requirement/call types plus slot-bound `KvResource`, `SecretStoreResource`, and `DbResource` actor portals.
 
 Current status:
 
@@ -437,6 +483,8 @@ Current exports:
 - `defineFn()`, `defineFx()`, `defineTx()` helpers for typing.
 - `TActorFn`, `TActorFx`, `TActorTx` function types.
 - `TFnPortal`, `TFxPortal`, `TTxPortal` portal types.
+- Manifest preparation types for resource kinds, permission scopes, DB schemas, named operations, and named parameters.
+- `portal.resources.kv(slot)`, `portal.resources.secretStore(slot)`, and `portal.resources.db(slot)` on effect-capable portals. `TFnPortal` intentionally has no `resources` field.
 
 Potential later exports:
 

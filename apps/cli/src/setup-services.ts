@@ -110,6 +110,7 @@ function setupServices(config: ICliConfig) {
     const actorService = new ActorService({
       db: dbService,
       configPath: config.xdgPaths.configDirPath,
+      dataRoot: config.xdgPaths.dataDirPath,
       eventPublisherService: eventPublisher
     });
     const agentService = new AgentService({

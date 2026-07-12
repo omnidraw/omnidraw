@@ -119,6 +119,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
 | [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
 | [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
 | [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
 | [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
@@ -131,8 +132,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -180,11 +179,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/api-actors/package.json](packages/api-actors/package.json) |  |
 | [packages/api-actors/src/api.actor-snapshot.ts](packages/api-actors/src/api.actor-snapshot.ts) |  |
+| [packages/api-actors/src/api.db-resources.ts](packages/api-actors/src/api.db-resources.ts) |  |
 | [packages/api-actors/src/api.def-delete.ts](packages/api-actors/src/api.def-delete.ts) |  |
 | [packages/api-actors/src/api.def-get.ts](packages/api-actors/src/api.def-get.ts) |  |
 | [packages/api-actors/src/api.def-list.ts](packages/api-actors/src/api.def-list.ts) |  |
 | [packages/api-actors/src/api.events.ts](packages/api-actors/src/api.events.ts) |  |
 | [packages/api-actors/src/api.instance-send-message.ts](packages/api-actors/src/api.instance-send-message.ts) |  |
+| [packages/api-actors/src/api.resource-error.ts](packages/api-actors/src/api.resource-error.ts) |  |
+| [packages/api-actors/src/api.resources.ts](packages/api-actors/src/api.resources.ts) |  |
 | [packages/api-actors/src/CONSTANTS.ts](packages/api-actors/src/CONSTANTS.ts) |  |
 | [packages/api-actors/src/contract.ts](packages/api-actors/src/contract.ts) |  |
 | [packages/api-actors/src/handlers.ts](packages/api-actors/src/handlers.ts) |  |
@@ -659,6 +661,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/fn.actor-runtime.ts](packages/service-actor/src/fn.actor-runtime.ts) |  |
 | [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
+| [packages/service-actor/src/resources/ActorResourceError.ts](packages/service-actor/src/resources/ActorResourceError.ts) |  |
+| [packages/service-actor/src/resources/ActorResourceManager.ts](packages/service-actor/src/resources/ActorResourceManager.ts) |  |
+| [packages/service-actor/src/resources/DbResource.ts](packages/service-actor/src/resources/DbResource.ts) |  |
+| [packages/service-actor/src/resources/DbResourceMigrationCoordinator.ts](packages/service-actor/src/resources/DbResourceMigrationCoordinator.ts) |  |
+| [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
+| [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
+| [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
 ## packages/service-agent
@@ -685,6 +694,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.session-candidate.ts](packages/service-agent/src/core/tx.session-candidate.ts) |  |
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
+| [packages/service-agent/src/fx.db-schema-context.ts](packages/service-agent/src/fx.db-schema-context.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
 | [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
@@ -733,9 +743,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/assets.d.ts](packages/service-db/src/assets.d.ts) |  |
 | [packages/service-db/src/CONSTANTS.ts](packages/service-db/src/CONSTANTS.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.actor-resource-row.ts](packages/service-db/src/DbServiceTurso/fn.actor-resource-row.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.db-resource.ts](packages/service-db/src/DbServiceTurso/fn.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.actor-resource.ts](packages/service-db/src/DbServiceTurso/fx.actor-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
@@ -750,10 +764,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql](packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql](packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.actor-resource.ts](packages/service-db/src/DbServiceTurso/tx.actor-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |

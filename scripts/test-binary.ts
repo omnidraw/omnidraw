@@ -27,6 +27,15 @@ type TBinaryScenario = {
 
 type TActorIpcChildMessage =
   | { type: "ready" }
+  | {
+      type: "resourceCall"
+      id: number
+      callId: string
+      slot: string
+      kind: "kv" | "secretStore" | "db"
+      operation: string
+      args: unknown
+    }
   | { type: "setData"; id: number; data: unknown }
   | { type: "emitMessage"; id: number; msg: unknown }
   | { type: "done"; id: number }
@@ -279,6 +288,11 @@ export default {
   tx: {
     "tx.addFunds": defineTx(async (portal, args) => {
       const data = { balance: args.data.balance + args.msg.amount };
+      const stored = await portal.resources.kv("balances").set({
+        key: args.msg.accountId,
+        value: data.balance,
+      });
+      if (stored.revision !== 17) throw new Error("compiled resource IPC result mismatch");
       await portal.setData(data);
       await portal.emitMessage({
         type: "funds-added",
@@ -324,6 +338,34 @@ async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeou
           return
         }
 
+        if (childMessage.type === "resourceCall") {
+          const expectedCall = {
+            id: 1,
+            slot: "balances",
+            kind: "kv",
+            operation: "set",
+            args: { key: "compiled", value: 42 },
+          }
+          const actualCall = {
+            id: childMessage.id,
+            slot: childMessage.slot,
+            kind: childMessage.kind,
+            operation: childMessage.operation,
+            args: childMessage.args,
+          }
+          if (!childMessage.callId || JSON.stringify(actualCall) !== JSON.stringify(expectedCall)) {
+            reject(new Error(`actor-ipc resourceCall mismatch: ${JSON.stringify(childMessage)}`))
+            return
+          }
+          proc?.send({
+            type: "resourceResult",
+            callId: childMessage.callId,
+            ok: true,
+            result: { value: 42, revision: 17 },
+          })
+          return
+        }
+
         if (childMessage.type === "setData") {
           proc?.send({ type: "ack", id: childMessage.id, action: "setData" })
           return
@@ -349,21 +391,22 @@ async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeou
   try {
     await done
   } finally {
-    proc?.kill()
-    if (proc) {
+    const activeProc = proc as Bun.Subprocess | null
+    activeProc?.kill()
+    if (activeProc) {
       const result = await Promise.race([
-        proc.exited,
+        activeProc.exited,
         Bun.sleep(5000).then(() => "timeout"),
       ])
       if (result === "timeout") {
-        proc.kill(9)
-        await proc.exited
+        activeProc.kill(9)
+        await activeProc.exited
       }
     }
   }
 
   const types = messages.map((message) => message.type)
-  if (JSON.stringify(types) !== JSON.stringify(["ready", "setData", "emitMessage", "done"])) {
+  if (JSON.stringify(types) !== JSON.stringify(["ready", "resourceCall", "setData", "emitMessage", "done"])) {
     throw new Error(`actor-ipc message sequence mismatch: ${JSON.stringify(types)}`)
   }
 
@@ -381,7 +424,7 @@ async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeou
     throw new Error(`actor-ipc emitMessage mismatch: ${JSON.stringify(emitMessage)}`)
   }
 
-  console.log("[test-binary] PASS actor-ipc ready/setData/emitMessage/done")
+  console.log("[test-binary] PASS actor-ipc resourceCall/resourceResult/setData/emitMessage/done")
 
   const errorMessages: TActorIpcChildMessage[] = []
   let errorProc: Bun.Subprocess | null = null
@@ -422,15 +465,16 @@ async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeou
   try {
     await gotError
   } finally {
-    errorProc?.kill()
-    if (errorProc) {
+    const activeErrorProc = errorProc as Bun.Subprocess | null
+    activeErrorProc?.kill()
+    if (activeErrorProc) {
       const result = await Promise.race([
-        errorProc.exited,
+        activeErrorProc.exited,
         Bun.sleep(5000).then(() => "timeout"),
       ])
       if (result === "timeout") {
-        errorProc.kill(9)
-        await errorProc.exited
+        activeErrorProc.kill(9)
+        await activeErrorProc.exited
       }
     }
   }
@@ -599,6 +643,7 @@ async function main() {
     await blockedCompiledPort.close()
   }
 
+  await Bun.$`rm -rf ${tempRoot}`.quiet()
   console.log("[test-binary] All checks passed")
 }
 
