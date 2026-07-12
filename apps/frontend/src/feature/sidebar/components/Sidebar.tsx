@@ -18,6 +18,7 @@ import { themeService, txSetThemeAppearance } from "@/services/theme";
 import { setStore, store } from "@/store";
 import type { TBackendCanvas } from "../../../types/backend.types";
 import { CreateCanvasDialog } from "./CreateCanvasDialog";
+import { CreateResourceDialog } from "./CreateResourceDialog";
 import { DeleteCanvasDialog } from "./DeleteCanvasDialog";
 import { RenameDialog } from "./RenameDialog";
 import SidebarItem from "./SidebarItem";
@@ -50,6 +51,10 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const [createDialogOpen, setCreateDialogOpen] = createSignal(false);
   const [canvasesExpanded, setCanvasesExpanded] = createSignal(true);
   const [groupsExpanded, setGroupsExpanded] = createSignal(true);
+  const [resourcesExpanded, setResourcesExpanded] = createSignal(true);
+  const [createResourceDialogOpen, setCreateResourceDialogOpen] = createSignal(false);
+  const [resources, setResources] = createSignal<Array<{ id: string; name: string; kind: "kv" | "secretStore" | "db"; status: string }>>([]);
+  const [dbSchemas, setDbSchemas] = createSignal<Array<{ id: string; name: string; version: number }>>([]);
   const [toolGroups, setToolGroups] = createSignal<TToolGroupValue[]>([]);
   const [groupDialogOpen, setGroupDialogOpen] = createSignal(false);
   const [selectedGroup, setSelectedGroup] = createSignal<TToolGroupValue | null>(null);
@@ -77,10 +82,58 @@ const Sidebar: Component<SidebarProps> = (props) => {
     }));
   };
 
+  const loadResources = async () => {
+    const [err, result] = await orpcWebsocketService.apiService.api.actors.resources.list();
+    if (err) {
+      showErrorToast(err.message);
+      return;
+    }
+    setResources(result);
+  };
+
+  const loadDbSchemas = async () => {
+    const [schemaError, schemas] = await orpcWebsocketService.apiService.api.actors.dbSchemas.list({ status: "published" });
+    if (schemaError) return;
+    const options = await Promise.all(schemas.map(async (schema) => {
+      const [migrationError, migrations] = await orpcWebsocketService.apiService.api.actors.dbMigrations.list({ schemaId: schema.id, status: "published" });
+      return { id: schema.id, name: schema.name, version: migrationError ? 0 : Math.max(0, ...migrations.map((migration) => migration.version)) };
+    }));
+    setDbSchemas(options);
+  };
+
   onMount(() => {
     void loadToolGroups();
     void loadWidgetGroups();
+    void loadResources();
+    void loadDbSchemas();
   });
+
+  const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string; db?: { schemaId: string; version: number }; createSchema?: boolean }) => {
+    if (value.kind === "db" && value.db && value.createSchema) {
+      const [createSchemaError] = await orpcWebsocketService.apiService.api.actors.dbSchemas.create({
+        id: value.db.schemaId,
+        name: value.name,
+      });
+      if (createSchemaError) {
+        showErrorToast(createSchemaError.message);
+        return false;
+      }
+      const [publishSchemaError] = await orpcWebsocketService.apiService.api.actors.dbSchemas.publish({ id: value.db.schemaId });
+      if (publishSchemaError) {
+        showErrorToast(publishSchemaError.message);
+        return false;
+      }
+      await loadDbSchemas();
+    }
+    const { createSchema: _createSchema, ...resourceInput } = value;
+    const [err] = await orpcWebsocketService.apiService.api.actors.resources.create(resourceInput);
+    if (err) {
+      showErrorToast(err.message);
+      return false;
+    }
+    await loadResources();
+    return true;
+  };
 
   const handleOpenRenameDialog = (canvasId: string, canvasName: string) => {
     setCanvasToRename({ id: canvasId, name: canvasName });
@@ -242,6 +295,32 @@ const Sidebar: Component<SidebarProps> = (props) => {
 
           <section class={styles.section}>
             <div class={styles.sectionHeader}>
+              <Button class={styles.sectionToggle} onClick={() => setResourcesExpanded((value) => !value)} aria-expanded={resourcesExpanded()}>
+                <ChevronRight size={13} class={styles.sectionChevron} />
+                <span class={styles.sectionTitle}>Resources</span>
+              </Button>
+              <div class={styles.sectionActions}>
+                <Button class={styles.sectionAdd} onClick={() => setCreateResourceDialogOpen(true)} aria-label="Add resource"><Plus size={14} /></Button>
+              </div>
+            </div>
+
+            <Show when={resourcesExpanded()}>
+              <div class={styles.resourceList}>
+                <For each={resources()} fallback={<p class={styles.emptyGroup}>No resources.</p>}>
+                  {(resource) => (
+                    <div class={styles.resourceItem} title={`${resource.kind} · ${resource.status}`}>
+                      <span class={`${styles.resourceStatus} ${resource.status === "ready" ? styles.resourceStatusReady : ""}`} aria-hidden="true" />
+                      <span class={styles.resourceName}>{resource.name}</span>
+                      <span class={styles.resourceKind}>{resource.kind === "secretStore" ? "SECRET" : resource.kind.toUpperCase()}</span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </section>
+
+          <section class={styles.section}>
+            <div class={styles.sectionHeader}>
               <Button class={styles.sectionToggle} onClick={() => setGroupsExpanded((value) => !value)} aria-expanded={groupsExpanded()}>
                 <ChevronRight size={13} class={styles.sectionChevron} />
                 <span class={styles.sectionTitle}>Tool Groups</span>
@@ -304,6 +383,13 @@ const Sidebar: Component<SidebarProps> = (props) => {
         open={createDialogOpen()}
         onOpenChange={setCreateDialogOpen}
         onCanvasCreated={handleCreateCanvas}
+      />
+
+      <CreateResourceDialog
+        open={createResourceDialogOpen()}
+        onOpenChange={setCreateResourceDialogOpen}
+        schemas={dbSchemas()}
+        onCreate={handleCreateResource}
       />
 
       <ToolGroupDialog
