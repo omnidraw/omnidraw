@@ -10,6 +10,7 @@ type TPortal = {
 type TArgs = {
   cwd: string;
   manifest: TVibecanvasJson;
+  sdkDependency: string;
 };
 
 function toExportName(functionName: string) {
@@ -82,7 +83,7 @@ function functionsRegistry(manifest: TVibecanvasJson) {
   ].join('\n');
 }
 
-function packageJson(manifest: TVibecanvasJson) {
+function packageJson(manifest: TVibecanvasJson, sdkDependency: string) {
   return `${JSON.stringify({
     name: manifest.slug,
     version: '1.0.0',
@@ -90,7 +91,7 @@ function packageJson(manifest: TVibecanvasJson) {
     type: 'module',
     dependencies: {
       '@arrow-js/core': '^1.0.6',
-      '@vibecanvas/sdk': '^0.1.0',
+      '@vibecanvas/sdk': sdkDependency,
     },
     devDependencies: {
       typescript: '^5.9.3',
@@ -98,12 +99,28 @@ function packageJson(manifest: TVibecanvasJson) {
   }, null, 2)}\n`;
 }
 
+function tsconfigJson() {
+  return `${JSON.stringify({
+    compilerOptions: {
+      target: 'ES2022',
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      strict: true,
+      skipLibCheck: true,
+      noEmit: true,
+      lib: ['ES2022', 'DOM'],
+    },
+    include: ['actor/**/*.ts', 'widget/**/*.ts'],
+  }, null, 2)}\n`;
+}
+
 export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs) {
-  const changedFiles = ['vibecanvas.json', 'package.json', 'actor/functions.ts', 'actor/types.ts', 'widget/main.ts', 'widget/main.css'];
+  const changedFiles = ['vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts', 'widget/main.ts', 'widget/main.css'];
   await portal.mkdir(portal.join(args.cwd, 'actor'), { recursive: true });
   await portal.mkdir(portal.join(args.cwd, 'widget'), { recursive: true });
   await portal.writeFile(portal.join(args.cwd, 'vibecanvas.json'), `${JSON.stringify(args.manifest, null, 2)}\n`, 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'package.json'), packageJson(args.manifest), 'utf8');
+  await portal.writeFile(portal.join(args.cwd, 'package.json'), packageJson(args.manifest, args.sdkDependency), 'utf8');
+  await portal.writeFile(portal.join(args.cwd, 'tsconfig.json'), tsconfigJson(), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'actor', 'functions.ts'), functionsRegistry(args.manifest), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'actor', 'types.ts'), actorTypes(args.manifest), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'widget', 'main.ts'), [

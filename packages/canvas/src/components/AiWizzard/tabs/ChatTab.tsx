@@ -45,6 +45,7 @@ interface IProps {
   onCancel: () => void
   onNewWidget: () => void
   onEditExistingWidget: () => void
+  onClearResourceBindings: () => Promise<void>
   onInspectActor: () => void
 }
 
@@ -713,6 +714,9 @@ export function ChatTab(props: IProps) {
         onNewWidget={props.onNewWidget}
         onEditExistingWidget={props.onEditExistingWidget}
         onCopyChat={copyChat}
+        onClearResourceBindings={() => {
+          void props.onClearResourceBindings().catch((error) => console.error(error))
+        }}
       />
     </div>
   )

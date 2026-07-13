@@ -132,6 +132,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B41](b/B41.md) - binary: Turso `UPDATE ... RETURNING` crashes on actor instance with medium HTML state
 - [x]: [B42](b/B42.md) - release: macOS binary freezes after unsafe automatic upgrade
 - [x]: [B43](b/B43.md) - widgets: optimize Arrow sandbox dependency chain under TypeScript 7
+- [x]: [B44](b/B44.md) - ai wizard: preview loses mentioned resource after continuation prompt
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

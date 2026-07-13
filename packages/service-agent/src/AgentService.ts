@@ -1,18 +1,21 @@
 import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
 import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
+import { ActorResourceError } from '@vibecanvas/service-actor';
 import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TActorData, TActorState, TJsonSchema, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZActorData, ZJsonSchema, ZVibecanvasJson, ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
+import { execFile } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
 import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
-import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord, fxLatestWidgetResourceSelectionRecord } from './core/fx.session-candidate';
+import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
-import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetDbChangeProposalRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-candidate';
+import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
 import { fnValidateCandidate } from './tools/fn.candidate';
 import { createWidgetWizardPhaseTools } from './tools/phase-tools';
@@ -104,6 +107,7 @@ type TDraftActorNotReadyReason =
   | 'manifest-invalid'
   | 'actor-functions-missing'
   | 'session-missing'
+  | 'resource-binding-invalid'
   | 'actor-not-running';
 
 type TAgentDraftActorReadyResult = {
@@ -321,6 +325,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         resources,
         selectedAt: new Date().toISOString(),
       })
+      if (resources.length > 0) {
+        const current = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {})
+        txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
+          resources: fnMergeDraftResourceSelections({ current: current?.resources ?? [], mentioned: resources }),
+          selectedAt: new Date().toISOString(),
+          source: 'mention',
+        })
+      }
     }
 
     await this.#refreshWizzardSessionToolsIfNeeded(id, sessionId)
@@ -351,6 +363,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
+  }
+
+  clearDraftResourceBindingsWizzard(id: TWidgetId, sessionId: string): { cleared: true } {
+    const connectedEntry = this.sessionMap[id]?.[sessionId]
+    if (!connectedEntry) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+    txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
+      resources: [],
+      selectedAt: new Date().toISOString(),
+      source: 'explicit-clear',
+    })
+    return { cleared: true }
   }
 
   async approveWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
@@ -451,14 +476,24 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#disposeDraftActor(id, sessionId)
 
     const bindingPlan = await this.#wizzardResourceBindingPlan(manifestResult.manifest, sessionEntry.sessionManager)
-    const directBindings = bindingPlan.ok
-      ? new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]))
-      : new Map<string, TResourceBindingPlan>()
+    if (!bindingPlan.ok) {
+      return { ready: false, reason: 'resource-binding-invalid', message: bindingPlan.message }
+    }
+    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.callWithDirectResourceBinding) {
+      return {
+        ready: false,
+        reason: 'resource-binding-invalid',
+        message: 'Selected resources cannot be used by Preview in this host.',
+      }
+    }
+    const directBindings = new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]))
     const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
       ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
           const binding = directBindings.get(call.slot)
           const requirement = manifestResult.manifest.actor.resources?.[call.slot]
-          if (!binding || !requirement) throw new Error(bindingPlan.ok ? `Draft resource slot '${call.slot}' is not selected.` : bindingPlan.message)
+          if (!binding || !requirement) {
+            throw new ActorResourceError('RESOURCE_NOT_BOUND', `Draft resource slot '${call.slot}' has no selected Preview binding.`)
+          }
           return this.#config.actorService!.callWithDirectResourceBinding!(call, {
             resourceId: binding.resource.id,
             requirement,
@@ -689,13 +724,22 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         message: bindingPlan.message,
       }
     }
+    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.bindResource) {
+      return {
+        published: false,
+        manifest: manifestResult.manifest,
+        destination: null,
+        message: 'Selected resources cannot be persisted by Publish in this host.',
+      }
+    }
     const shouldReloadEditedInstances = editSession !== null
       && editSession.sourceName === manifestResult.manifest.name
       && editSession.sourceSlug === manifestResult.manifest.slug
-    const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, join, relative: relativePath, resolve, basename }, {
+    const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative: relativePath, resolve, basename }, {
       cwd: rootDir,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
       actorService: shouldReloadEditedInstances ? undefined : this.#config.actorService,
+      sdkActorTypePath: resolve(import.meta.dir, '../../sdk/src/actor.ts'),
     })
 
     if (!result.published) {
@@ -1160,13 +1204,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async #wizzardResourceBindingPlan(manifest: TVibecanvasJson, sessionManager: SessionManager): Promise<{ ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string }> {
     const requirements = Object.keys(manifest.actor.resources ?? {})
     if (requirements.length === 0) return { ok: true, bindings: [] }
-    if (!this.#config.actorService?.bindResource) return { ok: false, message: 'Selected resources cannot be bound in this host. The widget was not published.' }
 
-    const selectedRecord = fxLatestWidgetResourceSelectionRecord({ sessionManager }, {})
+    const selectedRecord = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
     let selected = selectedRecord?.resources ?? []
-    if (selected.length === 0) {
-      if (!this.#config.actorService.listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
-      const available = await this.#config.actorService.listResources({ status: 'ready' })
+    if (!selectedRecord) {
+      const listResources = this.#config.actorService?.listResources
+      if (!listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
+      const available = await listResources({ status: 'ready' })
       const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
         id: resource.id,
         kind: resource.kind,
@@ -1323,6 +1367,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
       'actor-functions-missing': `Draft actor functions file does not exist for ${label}`,
       'session-missing': `No connected agent session for ${label}`,
+      'resource-binding-invalid': `Draft resources cannot be bound for ${label}`,
       'actor-not-running': `No draft actor is running for ${label}`,
     }
 

@@ -304,6 +304,9 @@ export type TActorFunctionArgs<TContext = TVibecanvasJsonValue, TMsg = TVibecanv
 export type TFnPortal = TActorFunctionPortal;
 export type TFxPortal = TActorReadPortal;
 export type TTxPortal = TActorWritePortal;
+export type TFnArgs<TData = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue> = TActorFunctionArgs<TData, TMsg>;
+export type TFxArgs<TData = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue> = TActorFunctionArgs<TData, TMsg>;
+export type TTxArgs<TData = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue> = TActorFunctionArgs<TData, TMsg>;
 
 export type TActorFn<TContext = TVibecanvasJsonValue, TMsg = TVibecanvasJsonValue, TResult = unknown> = (
   portal: TActorFunctionPortal,

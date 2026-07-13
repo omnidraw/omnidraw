@@ -19,14 +19,16 @@ The AI Widget Wizard creates a **draft definition** before anything is published
 flowchart LR
   U["User + AI Widget Wizard"] --> C["Actor candidate in session history"]
   C --> D["Draft files in Wizard cwd"]
-  R["Resource catalog"] --> M["@mention selection"]
+  R["Resource catalog"] --> M["Prompt-local @mention authority"]
   M --> C
-  M --> P["Ephemeral preview bindings"]
+  M --> I["Persistent draft binding intent"]
+  CLR["Explicit clear action"] --> I
+  I --> P["Ephemeral preview bindings"]
   D --> P
   P --> A["Draft actor + widget preview"]
   D --> V["Validate"]
   V --> PUB["Publish definition"]
-  M --> B["Persisted definition bindings"]
+  I --> B["Persisted definition bindings"]
   PUB --> B
   PUB --> T["Canvas tool registration"]
   T --> E["Canvas widget element"]
@@ -51,7 +53,8 @@ flowchart LR
 | Actor instance | One stateful backend belonging to one canvas element | `actor_instances` plus an in-memory `Actor` while running |
 | Resource catalog entry | Host-managed `kv`, `secretStore`, or `db` resource | `actor_resources`; DB data lives separately |
 | Resource requirement / slot | Manifest declaration of kind, requiredness, and scope | `vibecanvas.json` |
-| Resource selection | Resources explicitly `@mentioned` in the latest Wizard prompt | Pi session custom entry |
+| Prompt resource authority | Resources explicitly `@mentioned` in the current Wizard prompt; an empty prompt selection revokes it | Pi session `vibecanvas.widgetResourceSelection` entry |
+| Draft binding intent | Concrete resources intended for this Wizard draft across continuation prompts | Pi session `vibecanvas.widgetDraftResourceBindingSelection` entry |
 | Resource binding | Definition slot mapped to a concrete resource and scope | `actor_resource_bindings` |
 | DB schema draft | Physical copy used to stage database structure/SQL changes | Resource-local draft DB plus control rows |
 | Canvas widget element | Automerge element that hosts UI and points at an actor definition/instance | Canvas document |
@@ -75,11 +78,12 @@ New agents should preserve these rules unless a task explicitly changes the prod
 5. `fn.*` has no resources, `fx.*` can read, and only `tx.*` can write.
 6. A required unbound, mismatched, non-ready, or over-scoped resource blocks actor start admission.
 7. Wizard preview bindings are scoped and ephemeral; publish bindings are persisted at definition level.
-8. Secret values are never returned by list/control/management surfaces. An explicit actor `get` is the intentional value-bearing operation.
-9. AI-proposed DB changes never execute from the model tool call. Exact SQL requires a visible human risk acknowledgement and approval.
-10. Actor runtime writes allowed by a published manifest and binding do not receive a per-call human approval prompt. Actors are trusted within their granted capability.
-11. DB structure drafts do not modify live data until coordinated apply.
-12. SQLite INTEGER values cross the actor resource boundary as `bigint`; actor data/messages are JSON and must not contain `bigint`.
+8. Prompt-local AI authority and persistent draft binding intent are separate. A continuation prompt may revoke AI mutation authority without changing Preview/Publish intent.
+9. Secret values are never returned by list/control/management surfaces. An explicit actor `get` is the intentional value-bearing operation.
+10. AI-proposed DB changes never execute from the model tool call. Exact SQL requires a visible human risk acknowledgement and approval.
+11. Actor runtime writes allowed by a published manifest and binding do not receive a per-call human approval prompt. Actors are trusted within their granted capability.
+12. DB structure drafts do not modify live data until coordinated apply.
+13. SQLite INTEGER values cross the actor resource boundary as `bigint`; actor data/messages are JSON and must not contain `bigint`.
 
 ## End-to-end lifecycle
 
@@ -104,18 +108,27 @@ The Wizard can discover safe metadata with:
 - `vc_list_resources` — up to 100 catalog entries; marks the latest explicitly selected resources.
 - `vc_inspect_resource` — safe metadata; DB resources include bounded live schema. It never returns DB rows, BLOB payloads, secret names/values, credentials, or physical paths.
 
-### 2. `@mention` selection
+### 2. `@mention` authority and draft binding intent
 
 The chat composer represents a resource mention as a typed ProseMirror node containing the resource ID, label, and kind. On submit it sends the unique mention IDs as `resourceIds` to `agent.wizzard.prompt`.
 
-`AgentService.promptWizzard` resolves every ID against the live resource catalog and appends a resource-selection record to the Pi session before prompting the model.
+`AgentService.promptWizzard` resolves every ID against the live resource catalog. It always appends a prompt-local selection record before prompting the model, including an empty record when the prompt contains no mentions.
 
-Selection is intentionally **latest-prompt scoped**:
+Prompt-local selection is intentionally **latest-prompt scoped**:
 
-- A prompt with mentions replaces the previous selection.
+- A prompt with mentions replaces prompt-local selection.
 - A prompt with no mentions sends `resourceIds: []` and revokes previous explicit selection authority.
 - The model can list all resources, but a resource marked `selected` is the one the user explicitly authorized for that prompt.
 - `vc_propose_db_change` accepts only a DB in the latest explicit selection record.
+
+The host also maintains separate **persistent draft binding intent**:
+
+- A non-empty mention updates binding intent; same-kind mentions replace the previous same-kind resources while unrelated kinds remain.
+- A normal mentionless continuation such as `yes continue` does not change binding intent.
+- `Clear resource bindings` in the Chat actions menu calls `agent.wizzard.resourceBindings.clear` and writes an authoritative empty intent.
+- Preview and both publish paths consume binding intent, never prompt-local authority.
+- Existing sessions created before this split recover the latest historical non-empty mention only until a new binding-intent record is written.
+- When no intent record exists, unique-resource inference remains allowed; an explicit clear does not fall back to inference.
 
 Concrete IDs stay in host/session state. The manifest declares only logical slots.
 
@@ -154,11 +167,12 @@ The candidate defines:
 `vc_approve_actor_candidate` refuses missing, invalid, or stale candidate revisions. Approval:
 
 1. Writes a deterministic scaffold into the Wizard cwd.
-2. Creates `vibecanvas.json`, `package.json`, actor files, `widget/main.ts`, and `widget/main.css`.
-3. Attempts `npm install`; install failure is reported but does not erase the approved draft.
-4. Appends a candidate-approval custom entry.
-5. Emits a `widgetupdate` event.
-6. Moves the session into implementation phase.
+2. Creates `vibecanvas.json`, `package.json`, `tsconfig.json`, actor files, `widget/main.ts`, and `widget/main.css`.
+3. Pins the draft SDK dependency to the current workspace SDK package so authoring declarations match the runtime contract.
+4. Attempts `npm install`; install failure is reported but does not erase the approved draft.
+5. Appends a candidate-approval custom entry.
+6. Emits a `widgetupdate` event.
+7. Moves the session into implementation phase.
 
 This approval changes only the unpublished Wizard draft. It is not the DB-change approval and it does not publish a widget.
 
@@ -180,7 +194,7 @@ The AI implements:
 - `widget/main.ts` — Arrow UI using `actor.state`, `actor.context`, and `actor.sendMessage`.
 - `widget/main.css` — widget-scoped styles.
 
-`vc_validate_widget_files` checks the manifest, required files, actor function registration, and widget source. Validation does not publish.
+`vc_validate_widget_files` checks the manifest, required files, actor function registration, and widget source. Scaffolded drafts also receive a bounded TypeScript compilation of actor files against the current workspace `@vibecanvas/sdk/actor` contract. Resource functions should type data as `TFxArgs<TData>` or `TTxArgs<TData>`, not by intersecting an unparameterized args type with another `data` property. Validation does not publish.
 
 ### 6. Draft preview
 
@@ -202,7 +216,10 @@ Resource calls in Preview use `ActorService.callWithDirectResourceBinding`. The 
 - are never persisted in `actor_resource_bindings`;
 - still enforce resource kind, requirement scope, function class, and provider lifecycle;
 - do not grant authority to unselected resources;
-- fail safely if selection-to-slot mapping is ambiguous or missing.
+- are planned from persistent draft binding intent;
+- return `ready: false` with reason `resource-binding-invalid` before constructing or starting an actor when required mapping is ambiguous or missing.
+
+An impossible binding miss after startup throws a typed `ActorResourceError(RESOURCE_NOT_BOUND)`, so it cannot collapse into the generic `Actor resource call failed.` fallback.
 
 This lets a draft widget exercise real selected resources without prematurely publishing a definition or binding.
 
@@ -235,7 +252,7 @@ Publish validates and copies the Wizard draft to `<configPath>/widgets/<slug>`, 
 
 Binding planning uses this order:
 
-1. Latest explicit resource selection, when present.
+1. Persistent draft binding intent, when a record exists (including an explicit empty record).
 2. Otherwise, implicit selection only when a manifest kind has one compatible slot and the host has exactly one ready resource of that kind.
 3. Refuse to guess when multiple resources or compatible slots are available; ask the user to `@mention` the intended resource.
 
@@ -418,7 +435,7 @@ Do not use “compatible” for an actor after a DB change. Restart success is a
 
 | Data | Owner | Storage |
 |---|---|---|
-| Wizard messages/candidates/approvals/selections/proposals | Agent service | Pi session files/custom entries |
+| Wizard messages/candidates/approvals/prompt authority/draft binding intent/proposals | Agent service | Pi session files/custom entries |
 | Wizard draft source | Agent service | Wizard cwd |
 | Draft preview actor | Agent service | Memory only |
 | Published manifest/source | Actor service / filesystem | Widget directory |
@@ -460,6 +477,7 @@ All product clients use ORPC, normally over WebSocket.
 ### Agent / Wizard
 
 - `agent.wizzard.connect`, `prompt`, `cancel`, `newSession`
+- `agent.wizzard.resourceBindings.clear`
 - `agent.wizzard.startWidgetEdit`
 - `agent.wizzard.previewSource`
 - `agent.wizzard.draftManifest.read`, `patch`
@@ -561,7 +579,7 @@ Preview bindings are not persisted, so Preview success alone does not prove publ
 Check:
 
 1. Manifest slot name, kind, required flag, and scope.
-2. Latest Wizard selection and publish binding plan.
+2. Persistent draft binding-intent record and publish binding plan.
 3. Persisted definition binding and reduced scope.
 4. Resource lifecycle status.
 5. Guest function class (`fx` versus `tx`).
@@ -574,9 +592,11 @@ Check:
 
 1. The prompt contains a real mention node, not only typed `@name` text.
 2. `resourceIds` reached `agent.wizzard.prompt`.
-3. The latest selection custom entry contains the ID.
+3. The latest prompt-local selection custom entry contains the ID.
 4. `vc_list_resources` marks it `selected`.
 5. `vc_inspect_resource` was called with the exact returned ID.
+
+If AI inspection works but Preview does not, inspect the separate draft binding-intent entry. A mentionless prompt should clear the former and preserve the latter.
 
 ### DB change is pending forever
 
@@ -599,7 +619,7 @@ Before changing this system:
 4. State whether the action is draft-only, persisted, externally visible, or destructive.
 5. Preserve the widget/actor sandbox boundary.
 6. Keep resource IDs and paths out of guest files.
-7. Decide whether authority comes from an explicit mention, an existing binding, or safe implicit single-resource mapping.
+7. Decide separately whether AI tool authority comes from the current prompt and whether Preview/Publish mapping comes from persistent draft intent, an existing binding, or safe implicit single-resource mapping.
 8. For DB changes, identify the approval path before writing code.
 9. Test both draft Preview and a real published canvas instance when runtime behavior changes.
 10. Test required-resource admission and failure behavior, not only the happy path.

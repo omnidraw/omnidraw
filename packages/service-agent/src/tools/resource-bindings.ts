@@ -32,6 +32,15 @@ export function planSelectedResourceBindings(manifest: TVibecanvasJson, selected
     bindings.push({ slot, resource, scope: [...requirement.scope] });
   }
 
+  const missingRequired = requirements.find(([slot, requirement]) => availableSlots.has(slot) && requirement.required);
+  if (missingRequired) {
+    const [slot, requirement] = missingRequired;
+    return {
+      ok: false,
+      message: `Required ${requirement.kind} resource slot '${slot}' has no selected binding. @mention the intended resource before Preview or Publish.`,
+    };
+  }
+
   return { ok: true, bindings };
 }
 
