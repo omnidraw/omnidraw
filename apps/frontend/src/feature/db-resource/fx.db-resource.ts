@@ -34,9 +34,9 @@ export type TArgsRows = { resourceId: string; objectName: string; cursor?: TDbRo
 export const fxRows = (portal: TPortal, args: TArgsRows) =>
   portal.api.dbRows.list({ resourceId: args.resourceId, object: args.objectName, cursor: args.cursor, limit: args.limit });
 
-export type TArgsRow = { resourceId: string; objectName: string; identity: TDbRowIdentity };
+export type TArgsRow = { resourceId: string; objectName: string; identity: TDbRowIdentity; columns?: string[] };
 export const fxRow = (portal: TPortal, args: TArgsRow) =>
-  portal.api.dbRows.get({ resourceId: args.resourceId, object: args.objectName, identity: args.identity });
+  portal.api.dbRows.get({ resourceId: args.resourceId, object: args.objectName, identity: args.identity, columns: args.columns });
 
 export type TArgsApplies = { resourceId: string; limit: number };
 export const fxApplies = (portal: TPortal, args: TArgsApplies) =>

@@ -78,6 +78,7 @@ import type {
   TDbApplyDetails,
   TDbApplyPreview,
   TDbBackup,
+  TDbColumn,
   TDbDraft,
   TDbDraftDetails,
   TDbImpact,
@@ -118,6 +119,9 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
   const [rowCursors, setRowCursors] = createSignal<Array<TDbRowIdentity | undefined>>([undefined]);
   const [selectedRows, setSelectedRows] = createSignal<TDbRowPreview[]>([]);
   const [editingRow, setEditingRow] = createSignal<TDbRow | null>(null);
+  const [rowEditorColumns, setRowEditorColumns] = createSignal<TDbColumn[]>([]);
+  const [rowEditorDisabledColumns, setRowEditorDisabledColumns] = createSignal<string[]>([]);
+  const [rowEditorDisabledValues, setRowEditorDisabledValues] = createSignal<Record<string, string>>({});
   const [rowDialogMode, setRowDialogMode] = createSignal<"create" | "edit">("create");
   const [rowDialogOpen, setRowDialogOpen] = createSignal(false);
   const [rowConflict, setRowConflict] = createSignal("");
@@ -390,12 +394,30 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     if (mode === "edit") {
       const object = selectedLiveObject();
       if (!object || !row?.identity) return;
-      setBusy(true);
-      const [rowError, fullRow] = await fxRow(portal, { resourceId: props.resourceId, objectName: object.name, identity: row.identity });
-      setBusy(false);
-      if (rowError || !fullRow) return showErrorToast(rowError?.message ?? "Database row response was empty.");
+      const columns = selectedLiveColumns();
+      const disabledColumns = columns.filter((column) => {
+        const preview = row.values[column.name];
+        return column.declaredType.toUpperCase().includes("BLOB") || preview?.type === "blob" || preview?.type === "blobPreview";
+      });
+      const editableColumns = columns.filter((column) => !disabledColumns.includes(column));
+      let fullRow: TDbRow = { identity: row.identity, values: {} };
+      if (editableColumns.length > 0) {
+        setBusy(true);
+        const [rowError, projectedRow] = await fxRow(portal, { resourceId: props.resourceId, objectName: object.name, identity: row.identity, columns: editableColumns.map((column) => column.name) });
+        setBusy(false);
+        if (rowError || !projectedRow) return showErrorToast(rowError?.message ?? "Database row response was empty.");
+        fullRow = projectedRow;
+      }
+      setRowEditorColumns(columns);
+      setRowEditorDisabledColumns(disabledColumns.map((column) => column.name));
+      setRowEditorDisabledValues(Object.fromEntries(disabledColumns.map((column) => [column.name, fnCellText(row.values[column.name])])));
       setEditingRow(fullRow);
-    } else setEditingRow(null);
+    } else {
+      setRowEditorColumns(selectedLiveColumns());
+      setRowEditorDisabledColumns([]);
+      setRowEditorDisabledValues({});
+      setEditingRow(null);
+    }
     setRowDialogOpen(true);
   };
 
@@ -760,7 +782,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
 
       <StructureChangeDialog open={changeDialogOpen()} kind={changeKind()} tableName={selectedStructureObject()?.name} columnName={changeColumn()} column={selectedStructureObject()?.columns.find((column) => column.name === changeColumn())} busy={busy()} onOpenChange={setChangeDialogOpen} onSubmit={submitStructureOperation} />
       <Dialog.Root open={inspectorDialogOpen()} onOpenChange={setInspectorDialogOpen}><Dialog.Portal><Dialog.Overlay class={styles.dialogOverlay} /><Dialog.Content class={`${styles.dialogContent} ${styles.inspectorDialog}`}><Dialog.Title class={styles.dialogTitle}>Object details · {selectedStructureObject()?.name}</Dialog.Title><Dialog.Description class={styles.dialogDescription}>Indexes, foreign keys, triggers, and exact create SQL.</Dialog.Description><ObjectInspector object={selectedStructureObject()} editableDraft={Boolean(activeDraft())} onChange={(kind, value) => { setInspectorDialogOpen(false); openChange(kind, value); }} /><div class={styles.dialogActions}><Dialog.CloseButton class={styles.button}>Close</Dialog.CloseButton></div></Dialog.Content></Dialog.Portal></Dialog.Root>
-      <RowEditorDialog open={rowDialogOpen()} mode={rowDialogMode()} tableName={selectedLiveObject()?.name ?? ""} columns={selectedLiveColumns()} row={editingRow()} busy={busy()} conflict={rowConflict()} onOpenChange={(open) => { setRowDialogOpen(open); if (!open) setEditingRow(null); }} onSubmit={(values) => void saveRow(values)} onReload={() => { setRowDialogOpen(false); setEditingRow(null); void loadRows(rowCursors()[rowCursors().length - 1]); }} />
+      <RowEditorDialog open={rowDialogOpen()} mode={rowDialogMode()} tableName={selectedLiveObject()?.name ?? ""} columns={rowEditorColumns()} disabledColumns={rowEditorDisabledColumns()} disabledValues={rowEditorDisabledValues()} row={editingRow()} busy={busy()} conflict={rowConflict()} onOpenChange={(open) => { setRowDialogOpen(open); if (!open) setEditingRow(null); }} onSubmit={(values) => void saveRow(values)} onReload={() => { setRowDialogOpen(false); setEditingRow(null); void loadRows(rowCursors()[rowCursors().length - 1]); }} />
       <CoordinatedOperationDialog open={operationDialogOpen()} mode={operationMode()} loading={operationLoading()} busy={busy()} preview={operationPreview()} run={operationRun()} error={operationError()} onOpenChange={setCoordinatedOperationOpen} onConfirm={() => operationMode() === "apply" ? void confirmApply() : void confirmRestore()} />
       <LiveSqlApprovalDialog open={sqlApprovalOpen()} sql={pendingSqlApproval()} busy={busy()} onOpenChange={(open) => { setSqlApprovalOpen(open); if (!open) setPendingSqlApproval(""); }} onConfirm={() => void executeSql(true, pendingSqlApproval())} />
 

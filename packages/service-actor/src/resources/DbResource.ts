@@ -638,13 +638,20 @@ export class DbResource implements IActorResourceProvider {
     });
   }
 
-  async getRow(args: { resourceId: string; object: string; identity: TDbRowIdentity }): Promise<TDbRow> {
+  async getRow(args: { resourceId: string; object: string; identity: TDbRowIdentity; columns?: readonly string[] }): Promise<TDbRow> {
     const resourceId = validateHostId(args.resourceId);
     this.#assertAvailable(resourceId);
     return this.#withDatabase(this.#databasePath(resourceId), true, async (database) => {
       const object = await this.#requireEditableObject(database, args.object);
-      const visibleColumns = object.columns.filter((column) => !column.hidden).map((column) => column.name);
-      if (visibleColumns.length > RESULT_COLUMN_MAX_COUNT) throw new ActorResourceError('DB_RESULT_LIMIT_EXCEEDED', 'Database table has too many columns to hydrate safely.');
+      const allVisibleColumns = object.columns.filter((column) => !column.hidden).map((column) => column.name);
+      const visibleColumnSet = new Set(allVisibleColumns);
+      const visibleColumns = args.columns?.map(validateIdentifier) ?? allVisibleColumns;
+      if (visibleColumns.length === 0 || visibleColumns.length > RESULT_COLUMN_MAX_COUNT || new Set(visibleColumns).size !== visibleColumns.length) {
+        throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database row projection must contain between 1 and 128 unique columns.');
+      }
+      if (visibleColumns.some((column) => !visibleColumnSet.has(column))) {
+        throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database row projection contains a missing or hidden column.');
+      }
       const identity = this.#identityPredicate(object, args.identity);
       let nativeRows: TNativeRow[];
       try {

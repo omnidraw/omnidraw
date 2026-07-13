@@ -286,7 +286,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.listRows(args))
   }
 
-  getDbRow(args: { resourceId: string; object: string; identity: TDbRowIdentity }) {
+  getDbRow(args: { resourceId: string; object: string; identity: TDbRowIdentity; columns?: string[] }) {
     return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.getRow(args))
   }
 

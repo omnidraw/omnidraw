@@ -441,7 +441,7 @@ export const actorsContract = oc.errors({
       .input(z.object({ resourceId: ZResourceId, object: ZObjectName, cursor: ZDbRowIdentity.nullable().optional(), limit: z.number().int().min(1).max(200).optional() }))
       .output(z.object({ object: ZDbObject, rows: z.array(ZDbRowPreview).max(200), hasMore: z.boolean(), nextCursor: ZDbRowIdentity.nullable() }).strict()),
     get: oc
-      .input(z.object({ resourceId: ZResourceId, object: ZObjectName, identity: ZDbRowIdentity }).strict())
+      .input(z.object({ resourceId: ZResourceId, object: ZObjectName, identity: ZDbRowIdentity, columns: z.array(ZObjectName).min(1).max(128).optional() }).strict())
       .output(ZDbRow),
     create: oc
       .input(z.object({ resourceId: ZResourceId, object: ZObjectName, values: ZDbValueRecord }).strict())

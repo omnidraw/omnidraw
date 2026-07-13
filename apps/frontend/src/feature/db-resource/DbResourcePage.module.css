@@ -48,6 +48,7 @@
 .dangerFill:hover:not(:disabled), .danger:hover:not(:disabled) { border-color: var(--destructive); background: var(--destructive); color: var(--destructive-foreground); }
 .dangerText { color: var(--destructive); }
 .input, .selectTrigger { width: 100%; min-height: 2.25rem; padding: .45rem .6rem; border: 1px solid var(--input); border-radius: 0; background: var(--background); color: var(--foreground); font: inherit; font-size: .75rem; }
+.input:disabled { cursor: not-allowed; background: var(--secondary); color: var(--muted-foreground); opacity: 1; }
 .selectTrigger { display: flex; align-items: center; justify-content: space-between; }
 .selectContent, .menu { z-index: 80; min-width: 10rem; padding: .25rem 0; border: 1px solid var(--border); background: var(--popover); color: var(--popover-foreground); box-shadow: 0 10px 24px rgb(0 0 0 / .18); }
 .selectItem, .menuItem { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 2rem; padding: .375rem .625rem; outline: 0; font-size: .6875rem; }
@@ -91,7 +92,7 @@
 .workbenchHeader strong { font-size: .75rem; text-transform: uppercase; }
 .workbenchHeader span { color: var(--muted-foreground); font-size: .625rem; }
 .workbench { display: grid; grid-template-columns: 12rem minmax(28rem, 1fr) 18rem; min-height: 31rem; border-bottom: 1px solid var(--border); }
-.dataWorkbench { display: grid; grid-template-columns: 12rem minmax(0, 1fr); min-height: 100%; }
+.dataWorkbench { display: grid; grid-template-columns: 12rem minmax(0, 1fr); min-height: 0; height: 100%; overflow: hidden; }
 .navigator, .inspector { min-width: 0; border-right: 1px solid var(--border); background: var(--card); }
 .navigatorHeader { display: flex; align-items: center; justify-content: space-between; min-height: 2.25rem; padding: .35rem .5rem; border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: .625rem; font-weight: 800; text-transform: uppercase; }
 .navigatorEmpty { padding: .75rem .5rem; color: var(--muted-foreground); font-size: .65rem; }
@@ -100,7 +101,7 @@
 .objectItem small { color: var(--muted-foreground); font-size: .5625rem; text-transform: uppercase; }
 .objectItem:hover, .objectItemSelected { background: var(--accent); color: var(--accent-foreground); }
 .objectItemSelected { box-shadow: inset 2px 0 var(--primary); }
-.structureMain, .dataMain { min-width: 0; background: var(--background); }
+.structureMain, .dataMain { min-width: 0; min-height: 0; background: var(--background); }
 .objectTitle { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 3rem; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
 .objectTitle h3, .dataHeader h3 { font-size: .8125rem; }
 .objectTitle span { color: var(--muted-foreground); font-size: .625rem; }
@@ -121,15 +122,15 @@
 .changeList li:last-child { border-bottom: 0; }
 .changeList code { overflow-x: auto; color: var(--muted-foreground); white-space: pre-wrap; }
 .sequence { display: inline-flex; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; border: 1px solid var(--border); background: var(--secondary); font-size: .6rem; }
-.dataMain { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.dataMain { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
 .dataHeader .actions { flex-wrap: wrap; justify-content: flex-end; }
 .readOnly { max-width: 24rem; color: var(--warning); font-size: .625rem; }
-.gridScroll { min-width: 0; overflow: auto; }
+.gridScroll { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .dataTable { min-width: max-content; }
 .dataTable td { max-width: 18rem; height: 2.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .checkCell { width: 2rem; text-align: center !important; }
 .checkCell input { accent-color: var(--primary); }
-.cell { font-variant-numeric: tabular-nums; }
+.cell { pointer-events: none; font-variant-numeric: tabular-nums; }
 .nullCell { color: var(--muted-foreground); font-style: italic; }
 .blobCell { color: var(--warning); }
 .pagination { display: flex; align-items: center; justify-content: center; gap: .75rem; min-height: 3rem; padding: .5rem; border-top: 1px solid var(--border); background: var(--card); color: var(--muted-foreground); font-size: .65rem; }

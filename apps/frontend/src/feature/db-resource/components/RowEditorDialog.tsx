@@ -11,6 +11,8 @@ export type TRowEditorDialogProps = {
   mode: "create" | "edit";
   tableName: string;
   columns: TDbColumn[];
+  disabledColumns?: string[];
+  disabledValues?: Record<string, string>;
   row: TDbRow | null;
   busy?: boolean;
   conflict?: string;
@@ -25,13 +27,18 @@ export const RowEditorDialog: Component<TRowEditorDialogProps> = (props) => {
 
   createEffect(() => {
     if (!props.open) return;
-    setValues(Object.fromEntries(props.columns.map((column) => [column.name, fnCellEditorText(props.row?.values[column.name])])));
+    setValues(Object.fromEntries(props.columns.map((column) => [
+      column.name,
+      props.disabledColumns?.includes(column.name)
+        ? props.disabledValues?.[column.name] ?? "BLOB value"
+        : fnCellEditorText(props.row?.values[column.name]),
+    ])));
     setValidationError("");
   });
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
-    const includedColumns = props.columns.filter((column) => !fnRowInputOmitted(props.mode, values()[column.name] ?? "", column));
+    const includedColumns = props.columns.filter((column) => !props.disabledColumns?.includes(column.name) && !fnRowInputOmitted(props.mode, values()[column.name] ?? "", column));
     const inputError = includedColumns.map((column) => fnCellInputError(values()[column.name] ?? "", column)).find(Boolean);
     if (inputError) {
       setValidationError(inputError);
@@ -50,13 +57,15 @@ export const RowEditorDialog: Component<TRowEditorDialogProps> = (props) => {
           <Dialog.Description class={styles.dialogDescription}>
             {props.mode === "create"
               ? "Blank primary-key and defaulted fields are omitted so SQLite can generate them. Other blank nullable fields become NULL."
-              : "Empty values become NULL for nullable columns. Integer and blob values stay lossless on the wire."}
+              : props.disabledColumns?.length
+                ? "BLOB columns are not editable. Their previews are shown below and their stored values remain unchanged when you save."
+                : "Empty values become NULL for nullable columns. Integer and blob values stay lossless on the wire."}
           </Dialog.Description>
           <form class={styles.rowForm} onSubmit={submit}>
             <For each={props.columns}>{(column) => (
-              <TextField.Root value={values()[column.name] ?? ""} onChange={(value) => setValues((current) => ({ ...current, [column.name]: value }))}>
-                <TextField.Label class={styles.label}>{column.name} <span class={styles.typeHint}>{column.declaredType || "ANY"}</span></TextField.Label>
-                <TextField.Input class={styles.input} />
+              <TextField.Root disabled={props.disabledColumns?.includes(column.name)} value={values()[column.name] ?? ""} onChange={(value) => setValues((current) => ({ ...current, [column.name]: value }))}>
+                <TextField.Label class={styles.label}>{column.name} <span class={styles.typeHint}>{column.declaredType || "ANY"}{props.disabledColumns?.includes(column.name) ? " · not editable" : ""}</span></TextField.Label>
+                <TextField.Input class={styles.input} disabled={props.disabledColumns?.includes(column.name)} />
               </TextField.Root>
             )}</For>
             <Show when={props.conflict}>
@@ -69,7 +78,7 @@ export const RowEditorDialog: Component<TRowEditorDialogProps> = (props) => {
             <Show when={validationError()}><p class={styles.rowValidationError} role="alert">{validationError()}</p></Show>
             <div class={styles.dialogActions}>
               <Dialog.CloseButton class={styles.button} disabled={props.busy}>Cancel</Dialog.CloseButton>
-              <Button type="submit" class={`${styles.button} ${styles.primary}`} disabled={props.busy}>{props.busy ? "Saving…" : "Save row"}</Button>
+              <Button type="submit" class={`${styles.button} ${styles.primary}`} disabled={props.busy || (props.mode === "edit" && props.columns.every((column) => props.disabledColumns?.includes(column.name)))}>{props.busy ? "Saving…" : "Save row"}</Button>
             </div>
           </form>
         </Dialog.Content>
