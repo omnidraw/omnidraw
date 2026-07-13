@@ -223,11 +223,6 @@ export const ZActorSecretStoreResourceRequirement = z.object({
   scope: ZActorResourceScope,
 });
 
-export const ZActorDbSchemaRequirement = z.object({
-  id: ZActorResourceIdentifier,
-  version: z.number().int().min(0),
-});
-
 export const ZActorDbParameterType = z.enum(['string', 'number', 'boolean', 'bigint', 'bytes', 'json']);
 
 export const ZActorDbOperationParameterDeclaration = z.object({
@@ -254,14 +249,13 @@ export const ZActorDbResourceRequirement = z.object({
   kind: z.literal('db'),
   required: z.boolean(),
   scope: ZActorResourceScope,
-  schema: ZActorDbSchemaRequirement,
   arbitrarySql: z.boolean().default(false),
   operations: boundedRecord(
     ZActorResourceIdentifier,
     ZActorDbNamedOperation,
     ACTOR_DB_NAMED_OPERATION_MAX_COUNT,
   ).optional(),
-}).superRefine((requirement, ctx) => {
+}).strict().superRefine((requirement, ctx) => {
   for (const [operationName, operation] of Object.entries(requirement.operations ?? {})) {
     if (!requirement.scope.includes(operation.effect)) {
       ctx.addIssue({

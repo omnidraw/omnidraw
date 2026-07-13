@@ -46,7 +46,11 @@ interface IActorSupervisorConfig {
     actorInstanceId: string
     restartIfCompatible: boolean
   }) => Promise<TActorStartAdmission>
-  actorStartSucceeded?: (args: { actorInstanceId: string; resourceIds: readonly string[] }) => Promise<void>
+  actorStartCompleted?: (args: {
+    actorInstanceId: string
+    resourceIds: readonly string[]
+    succeeded: boolean
+  }) => Promise<void>
 }
 
 export class ActorSupervisor {
@@ -57,6 +61,10 @@ export class ActorSupervisor {
   vibecanvasDefMap: { [name: string]: TVibecanvasJson & { manifest_path: string } } = {}
   #snapshotPersistenceRevision = new Map<string, number>()
   #snapshotPersistenceTail = new Map<string, Promise<void>>()
+  #actorStartTails = new Map<string, Promise<void>>()
+  #actorStartOperations = new Set<Promise<unknown>>()
+  #acceptActorStarts = false
+  #actorStartEpoch = 0
 
 
   constructor(config: IActorSupervisorConfig) {
@@ -65,7 +73,8 @@ export class ActorSupervisor {
   }
 
   async init() {
-    this.closeActors()
+    await this.closeActors()
+    this.#acceptActorStarts = true
     await this.reload()
   }
 
@@ -197,10 +206,24 @@ export class ActorSupervisor {
     })
   }
 
-  private async loadActorInstance(
+  private loadActorInstance(
     actorInst: TActorInstance,
     options: { respectPersistedStop?: boolean } = {},
   ): Promise<Actor | null> {
+    const epoch = this.#actorStartEpoch
+    return this.trackActorStart(this.withActorStartLane(actorInst.id, () => (
+      this.loadActorInstanceInLane(actorInst, options, epoch)
+    )))
+  }
+
+  private async loadActorInstanceInLane(
+    actorInst: TActorInstance,
+    options: { respectPersistedStop?: boolean },
+    epoch: number,
+  ): Promise<Actor | null> {
+    if (!this.canContinueActorStart(epoch)) return null
+    const alreadyRunning = this.actorMap[actorInst.id]
+    if (alreadyRunning) return alreadyRunning
     const def = this.vibecanvasDefMap[actorInst.actor_definition_name]
     if (!def) {
       await this.persistInstanceError(actorInst, {
@@ -214,12 +237,26 @@ export class ActorSupervisor {
     }
 
     let admission: TActorStartAdmission | null = null
+    let admissionCompleted = false
+    const completeAdmission = async (succeeded: boolean) => {
+      if (admissionCompleted || !admission) return
+      admissionCompleted = true
+      await this.#config.actorStartCompleted?.({
+        actorInstanceId: actorInst.id,
+        resourceIds: admission.resolvedBlockResourceIds,
+        succeeded,
+      })
+    }
     if (this.#config.actorStartAdmission) {
       admission = await this.#config.actorStartAdmission({
         definitionName: actorInst.actor_definition_name,
         actorInstanceId: actorInst.id,
         restartIfCompatible: actorInst.status === 'created' || actorInst.status === 'running' || actorInst.status === 'starting',
       })
+      if (!this.canContinueActorStart(epoch)) {
+        await completeAdmission(false)
+        return null
+      }
       if (!admission.allowed) {
         await this.#config.db.actor.updateInstanceHealth({
           id: actorInst.id,
@@ -236,6 +273,7 @@ export class ActorSupervisor {
       }
       if (admission.hadBlocks && !admission.shouldRestart) {
         await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
+        await completeAdmission(false)
         return null
       }
       if (
@@ -243,6 +281,7 @@ export class ActorSupervisor {
         && (actorInst.status === 'stopped' || actorInst.status === 'blocked')
         && !admission.shouldRestart
       ) {
+        await completeAdmission(false)
         return null
       }
     } else if (
@@ -252,30 +291,18 @@ export class ActorSupervisor {
       return null
     }
 
+    if (!this.canContinueActorStart(epoch)) {
+      await completeAdmission(false)
+      return null
+    }
+
     let actor: Actor | null = null
     try {
       await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'starting', last_error: null })
-      if (this.#config.actorStartAdmission) {
-        const finalAdmission = await this.#config.actorStartAdmission({
-          definitionName: actorInst.actor_definition_name,
-          actorInstanceId: actorInst.id,
-          restartIfCompatible: admission?.shouldRestart ?? false,
-        })
-        if (!finalAdmission.allowed) {
-          await this.#config.db.actor.updateInstanceHealth({
-            id: actorInst.id,
-            status: 'blocked',
-            last_error: {
-              phase: 'instance-start',
-              code: finalAdmission.code ?? 'DB_RESOURCE_UNAVAILABLE',
-              message: finalAdmission.message ?? 'Actor start is blocked by a database resource lifecycle operation.',
-              retryable: true,
-              occurredAt: new Date().toISOString(),
-            },
-          })
-          return null
-        }
-        admission = finalAdmission
+      if (!this.canContinueActorStart(epoch)) {
+        await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
+        await completeAdmission(false)
+        return null
       }
       this.#snapshotPersistenceRevision.delete(actorInst.id)
       actor = new Actor({
@@ -291,18 +318,36 @@ export class ActorSupervisor {
       this.listenToActor(actor)
       actor.start()
       await actor.waitUntilReady()
-      await this.#config.db.actor.updateInstanceHealth({ id: actor.getId(), status: 'running', last_error: null })
-      if (admission && admission.resolvedBlockResourceIds.length > 0) {
-        await this.#config.actorStartSucceeded?.({
-          actorInstanceId: actor.getId(),
-          resourceIds: admission.resolvedBlockResourceIds,
-        })
+      if (!this.canContinueActorStart(epoch)) {
+        actor.close()
+        delete this.actorMap[actor.getId()]
+        await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
+        await completeAdmission(false)
+        return null
       }
+      await this.#config.db.actor.updateInstanceHealth({ id: actor.getId(), status: 'running', last_error: null })
+      if (!this.canContinueActorStart(epoch)) {
+        actor.close()
+        delete this.actorMap[actor.getId()]
+        await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
+        await completeAdmission(false)
+        return null
+      }
+      await completeAdmission(true)
       return actor
     } catch (cause) {
       if (actor) {
         try { actor.close() } catch { /* best-effort cleanup */ }
         delete this.actorMap[actor.getId()]
+      }
+      if (!this.canContinueActorStart(epoch)) {
+        try {
+          await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
+        } catch {
+          // Shutdown may close persistence immediately after actor-start draining.
+        }
+        await completeAdmission(false)
+        return null
       }
       await this.persistInstanceError(actorInst, fnNormalizeWidgetError(cause, {
         phase: 'instance-start',
@@ -310,7 +355,37 @@ export class ActorSupervisor {
         retryable: true,
         occurredAt: new Date().toISOString(),
       }))
+      await completeAdmission(false)
       return null
+    }
+  }
+
+  private canContinueActorStart(epoch: number): boolean {
+    return this.#acceptActorStarts && epoch === this.#actorStartEpoch
+  }
+
+  private trackActorStart<T>(operation: Promise<T>): Promise<T> {
+    this.#actorStartOperations.add(operation)
+    void operation.finally(() => this.#actorStartOperations.delete(operation)).catch(() => undefined)
+    return operation
+  }
+
+  private async withActorStartLane<T>(actorInstanceId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#actorStartTails.get(actorInstanceId) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => { release = resolve })
+    const tail = previous.catch(() => undefined).then(() => current)
+    this.#actorStartTails.set(actorInstanceId, tail)
+    await previous.catch(() => undefined)
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (this.#actorStartTails.get(actorInstanceId) === tail) {
+        void tail.finally(() => {
+          if (this.#actorStartTails.get(actorInstanceId) === tail) this.#actorStartTails.delete(actorInstanceId)
+        })
+      }
     }
   }
 
@@ -418,11 +493,16 @@ export class ActorSupervisor {
     })
   }
 
-  closeActors() {
+  async closeActors(): Promise<void> {
+    this.#acceptActorStarts = false
+    this.#actorStartEpoch += 1
     Object.values(this.actorMap).forEach(actor => actor.close())
     this.actorMap = {}
     this.connectionMap = {}
     this.#snapshotPersistenceRevision.clear()
+    await Promise.allSettled([...this.#actorStartOperations])
+    Object.values(this.actorMap).forEach(actor => actor.close())
+    this.actorMap = {}
   }
 
   public async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {
@@ -478,7 +558,7 @@ export class ActorSupervisor {
     return this.actorMap[instanceId] !== undefined
   }
 
-  public async stopInstanceForResourceMigration(instanceId: string): Promise<boolean> {
+  public async stopInstanceForResourceApply(instanceId: string): Promise<boolean> {
     const actor = this.actorMap[instanceId]
     if (!actor) return false
     await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'stopping' })
@@ -492,11 +572,14 @@ export class ActorSupervisor {
     return true
   }
 
-  public async restartInstanceAfterResourceMigration(instanceId: string): Promise<Actor | null> {
+  public async restartInstanceAfterResourceApply(instanceId: string): Promise<Actor | null> {
     if (this.actorMap[instanceId]) return this.actorMap[instanceId]
+    if (!this.#acceptActorStarts) return null
     const instance = await this.#config.db.actor.getInstanceById(instanceId)
     if (!instance) return null
+    if (!this.#acceptActorStarts) return null
     await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'created' })
+    if (!this.#acceptActorStarts) return null
     return this.loadActorInstance({ ...instance, status: 'created' })
   }
 

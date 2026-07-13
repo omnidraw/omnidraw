@@ -1,12 +1,12 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceMigrationBlockReason, TDbResourceMigrationStatus, TDbResourceSchemaStatus, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxActorResourceGet, fxActorResourceKeyValueGet, fxActorResourceKeyValueHas, fxActorResourceKeyValueList, fxActorResourceList, fxActorResourceListBindingsForDefinition, fxActorResourceListBindingsForResource, fxActorResourceListDefinitionsReferencingResource } from "./fx.actor-resource";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
-import { fxDbResourceConfigurationGet, fxDbResourceConfigurationList, fxDbResourceListAffectedInstances, fxDbResourceMigrationBlockListByInstance, fxDbResourceMigrationBlockListByResource, fxDbResourceMigrationGet, fxDbResourceMigrationList, fxDbResourceSchemaGet, fxDbResourceSchemaList } from "./fx.db-resource";
+import { fxDbResourceApplyGet, fxDbResourceApplyInstanceResultListByApply, fxDbResourceApplyInstanceResultListByInstance, fxDbResourceApplyList, fxDbResourceDraftChangeList, fxDbResourceDraftGet, fxDbResourceDraftGetActive, fxDbResourceDraftList, fxDbResourceListAffectedInstances } from "./fx.db-resource";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { fxKeyValueGet } from "./fx.keyValue";
@@ -15,7 +15,7 @@ import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceHealth, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
 import { txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceKeyValueCompareAndSet, txActorResourceKeyValueDelete, txActorResourceKeyValueSet, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
-import { txDbResourceConfigurationCreate, txDbResourceConfigurationSetTargetVersion, txDbResourceConfigurationSetVersions, txDbResourceMigrationBlockRemove, txDbResourceMigrationBlockUpsert, txDbResourceMigrationCreateDraft, txDbResourceMigrationDeleteDraft, txDbResourceMigrationPublish, txDbResourceMigrationUpdateDraft, txDbResourceSchemaCreate, txDbResourceSchemaDeleteDraft, txDbResourceSchemaDeprecate, txDbResourceSchemaPublish, txDbResourceSchemaUpdateDraft } from "./tx.db-resource";
+import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyInstanceResultUpsert, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
@@ -201,44 +201,81 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   };
 
   dbResource = {
-    schema: {
-      create: (args: { id: string; name: string; description?: string | null }) => this.#serializeActorWrite(() => txDbResourceSchemaCreate(this, args)),
-      get: (args: { id: string }) => fxDbResourceSchemaGet(this, args),
-      list: (args: { status?: TDbResourceSchemaStatus } = {}) => fxDbResourceSchemaList(this, args),
-      updateDraft: (args: { id: string; name: string; description?: string | null }) => this.#serializeActorWrite(() => txDbResourceSchemaUpdateDraft(this, args)),
-      deleteDraft: (args: { id: string }) => this.#serializeActorWrite(() => txDbResourceSchemaDeleteDraft(this, args)),
-      publish: (args: { id: string }) => this.#serializeActorWrite(() => txDbResourceSchemaPublish(this, args)),
-      deprecate: (args: { id: string }) => this.#serializeActorWrite(() => txDbResourceSchemaDeprecate(this, args)),
-    },
-    migration: {
-      createDraft: (args: { schemaId: string; version: number; name: string; sql: string; checksum: string }) => this.#serializeActorWrite(() => txDbResourceMigrationCreateDraft(this, args)),
-      get: (args: { schemaId: string; version: number }) => fxDbResourceMigrationGet(this, args),
-      list: (args: { schemaId: string; status?: TDbResourceMigrationStatus; throughVersion?: number }) => fxDbResourceMigrationList(this, args),
-      updateDraft: (args: { schemaId: string; version: number; name: string; sql: string; checksum: string }) => this.#serializeActorWrite(() => txDbResourceMigrationUpdateDraft(this, args)),
-      deleteDraft: (args: { schemaId: string; version: number }) => this.#serializeActorWrite(() => txDbResourceMigrationDeleteDraft(this, args)),
-      publish: (args: { schemaId: string; version: number }) => this.#serializeActorWrite(() => txDbResourceMigrationPublish(this, args)),
-    },
-    configuration: {
-      create: (args: { resourceId: string; schemaId: string; appliedVersion?: number; targetVersion?: number }) => this.#serializeActorWrite(() => txDbResourceConfigurationCreate(this, args)),
-      get: (args: { resourceId: string }) => fxDbResourceConfigurationGet(this, args),
-      list: (args: { schemaId?: string } = {}) => fxDbResourceConfigurationList(this, args),
-      setTargetVersion: (args: { resourceId: string; targetVersion: number }) => this.#serializeActorWrite(() => txDbResourceConfigurationSetTargetVersion(this, args)),
-      setVersions: (args: { resourceId: string; appliedVersion: number; targetVersion: number }) => this.#serializeActorWrite(() => txDbResourceConfigurationSetVersions(this, args)),
-    },
-    migrationBlock: {
-      upsert: (args: {
+    draft: {
+      create: (args: { id: string; resourceId: string; name: string }) => this.#serializeActorWrite(() => txDbResourceDraftCreate(this, args)),
+      get: (args: { id: string }) => fxDbResourceDraftGet(this, args),
+      getActive: (args: { resourceId: string }) => fxDbResourceDraftGetActive(this, args),
+      list: (args: {
         resourceId: string;
-        actorInstanceId: string;
-        reason: TDbResourceMigrationBlockReason;
-        restartWhenCompatible: boolean;
-        expectedSchemaId: string;
-        expectedVersion: number;
-        actualSchemaId: string;
-        actualVersion: number;
-      }) => this.#serializeActorWrite(() => txDbResourceMigrationBlockUpsert(this, args)),
-      listByResource: (args: { resourceId: string }) => fxDbResourceMigrationBlockListByResource(this, args),
-      listByInstance: (args: { actorInstanceId: string }) => fxDbResourceMigrationBlockListByInstance(this, args),
-      remove: (args: { resourceId: string; actorInstanceId: string }) => this.#serializeActorWrite(() => txDbResourceMigrationBlockRemove(this, args)),
+        status?: TDbResourceDraftStatus;
+        before?: { createdAt: string; id: string };
+        limit?: number;
+      }) => fxDbResourceDraftList(this, args),
+      rename: (args: { id: string; name: string }) => this.#serializeActorWrite(() => txDbResourceDraftRename(this, args)),
+      updateStatus: (args: {
+        id: string;
+        status: TDbResourceDraftStatus;
+        expectedStatus?: TDbResourceDraftStatus;
+        lastError?: TJson | null;
+      }) => this.#serializeActorWrite(() => txDbResourceDraftUpdateStatus(this, args)),
+      discard: (args: { id: string; lastError?: TJson | null }) => this.#serializeActorWrite(() => txDbResourceDraftDiscard(this, args)),
+      change: {
+        list: (args: { draftId: string }) => fxDbResourceDraftChangeList(this, args),
+        append: (args: {
+          draftId: string;
+          sequence: number;
+          kind: TDbResourceDraftChangeKind;
+          operation?: TJson | null;
+          sql: string;
+        }) => this.#serializeActorWrite(() => txDbResourceDraftAppendChange(this, args)),
+      },
+    },
+    apply: {
+      create: (args: {
+        id: string;
+        resourceId: string;
+        draftId?: string | null;
+        sourceApplyId?: string | null;
+        status?: TDbResourceApplyStatus;
+      }) => this.#serializeActorWrite(() => txDbResourceApplyCreate(this, args)),
+      createFromDraft: (args: { id: string; resourceId: string; draftId: string }) => (
+        this.#serializeActorWrite(() => txDbResourceApplyCreateFromDraft(this, args))
+      ),
+      get: (args: { id: string }) => fxDbResourceApplyGet(this, args),
+      list: (args: {
+        resourceId: string;
+        status?: TDbResourceApplyStatus;
+        before?: { createdAt: string; id: string };
+        limit?: number;
+      }) => fxDbResourceApplyList(this, args),
+      update: (args: {
+        id: string;
+        status: TDbResourceApplyStatus;
+        expectedStatus?: TDbResourceApplyStatus;
+        lastError?: TJson | null;
+        backupRetained?: boolean;
+      }) => this.#serializeActorWrite(() => txDbResourceApplyUpdate(this, args)),
+      finishWithDraft: (args: {
+        id: string;
+        draftId: string;
+        status: Extract<TDbResourceApplyStatus, "succeeded" | "failed" | "recovered">;
+        expectedStatus?: TDbResourceApplyStatus;
+        draftStatus: Extract<TDbResourceDraftStatus, "applied" | "editing" | "error">;
+        lastError?: TJson | null;
+        backupRetained?: boolean;
+      }) => this.#serializeActorWrite(() => txDbResourceApplyFinishWithDraft(this, args)),
+      instanceResult: {
+        upsert: (args: {
+          applyId: string;
+          actorInstanceId: string;
+          actorDefinitionName: string;
+          wasRunning: boolean;
+          status: TDbResourceApplyInstanceStatus;
+          error?: TJson | null;
+        }) => this.#serializeActorWrite(() => txDbResourceApplyInstanceResultUpsert(this, args)),
+        listByApply: (args: { applyId: string }) => fxDbResourceApplyInstanceResultListByApply(this, args),
+        listByInstance: (args: { actorInstanceId: string }) => fxDbResourceApplyInstanceResultListByInstance(this, args),
+      },
     },
     listAffectedInstances: (args: { resourceId: string }) => fxDbResourceListAffectedInstances(this, args),
   };

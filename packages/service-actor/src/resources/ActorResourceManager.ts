@@ -4,7 +4,6 @@ import type {
   TActorResourceBinding,
   TActorResourceKind,
   TActorResourceStatus,
-  TDbResourceMigrationBlock,
   TJson,
 } from '@vibecanvas/service-db/model';
 import { ActorResourceError, toActorResourceError } from './ActorResourceError';
@@ -13,6 +12,7 @@ import type {
   TActorManifestResolver,
   TActorResourceBindingStatus,
   TActorResourceCall,
+  TActorResourceDirectBinding,
   TActorResourceProviderCreateArgs,
   TActorStartAdmission,
 } from './resource-types';
@@ -38,6 +38,13 @@ type TBindResourceArgs = {
   readonly slot: string;
   readonly resourceId: string;
   readonly scope?: TActorResourceScope;
+};
+
+type TActorStartReservation = {
+  readonly admission: TActorStartAdmission;
+  readonly definitionName: string;
+  readonly release: () => void;
+  readonly settled: Promise<void>;
 };
 
 function validateResourceName(name: string): string {
@@ -84,6 +91,12 @@ export class ActorResourceManager {
   readonly #gatewayCancellations = new Set<(error: ActorResourceError) => void>();
   readonly #lifecycleOperations = new Set<Promise<unknown>>();
   readonly #blockedResources = new Set<string>();
+  readonly #resourceGateTails = new Map<string, Promise<void>>();
+  readonly #definitionGateTails = new Map<string, Promise<void>>();
+  readonly #actorStartAdmissionGateTails = new Map<string, Promise<void>>();
+  readonly #actorStartReservations = new Map<string, TActorStartReservation>();
+  readonly #definitionStartLeases = new Map<string, Set<Promise<void>>>();
+  readonly #bindingIntents = new Map<string, Set<Promise<void>>>();
   #closed = false;
   #closePromise: Promise<void> | null = null;
 
@@ -121,10 +134,11 @@ export class ActorResourceManager {
       .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource recovery state could not be listed.'); });
 
     for (const resource of resources) {
-      if (resource.status === 'ready') continue;
+      const provider = this.#provider(resource.kind);
+      if (resource.status === 'ready' && !provider.reconcileReady) continue;
+      if (resource.kind === 'db' && resource.status === 'migrating') continue;
       this.#blockedResources.add(resource.id);
       try {
-        const provider = this.#provider(resource.kind);
         if (resource.status === 'deleting') {
           await provider.delete(resource);
           await this.#db.actorResource.delete({ id: resource.id });
@@ -189,17 +203,19 @@ export class ActorResourceManager {
 
   async renameResource(args: { id: string; name: string }): Promise<TActorResource> {
     this.#assertOpen();
-    const current = await this.#requireResource(args.id);
-    if (current.status === 'provisioning' || current.status === 'migrating' || current.status === 'deleting') {
-      throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${current.name}" cannot be renamed while ${current.status}.`);
-    }
-    if (this.#blockedResources.has(args.id)) {
-      throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${current.name}" is busy with a lifecycle operation.`);
-    }
-    const resource = await this.#db.actorResource.rename({ id: args.id, name: validateResourceName(args.name) })
-      .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource rename failed.'); });
-    if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${args.id}" was not found.`);
-    return resource;
+    return this.#trackLifecycle(this.#withResourceGate(args.id, async () => {
+      const current = await this.#requireResource(args.id);
+      if (current.status === 'provisioning' || current.status === 'migrating' || current.status === 'deleting') {
+        throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${current.name}" cannot be renamed while ${current.status}.`);
+      }
+      if (this.#blockedResources.has(args.id)) {
+        throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${current.name}" is busy with a lifecycle operation.`);
+      }
+      const resource = await this.#db.actorResource.rename({ id: args.id, name: validateResourceName(args.name) })
+        .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource rename failed.'); });
+      if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${args.id}" was not found.`);
+      return resource;
+    }));
   }
 
   deleteResource(id: string): Promise<void> {
@@ -208,43 +224,52 @@ export class ActorResourceManager {
   }
 
   async #deleteResource(id: string): Promise<void> {
-    const resource = await this.#requireResource(id);
-    const references = await this.#db.actorResource.listBindingsForResource({ resourceId: id });
-    if (references.length > 0) {
-      throw new ActorResourceError('RESOURCE_STILL_BOUND', `Resource "${resource.name}" is still bound to ${references.length} definition slot(s).`, {
-        resourceId: id,
-        bindingCount: references.length,
-      });
-    }
-    if (this.#blockedResources.has(id)) {
-      throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" already has a lifecycle operation in progress.`);
-    }
-    this.#blockedResources.add(id);
-    try {
-      const deleting = await this.#db.actorResource.beginDelete({ id })
-        .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource deletion could not begin.'); });
-      if (!deleting) {
-        const currentReferences = await this.#db.actorResource.listBindingsForResource({ resourceId: id });
-        if (currentReferences.length > 0) {
-          throw new ActorResourceError('RESOURCE_STILL_BOUND', `Resource "${resource.name}" became bound before deletion could begin.`, {
+    await this.#drainBindingIntents(id);
+    this.#assertOpen();
+    return this.#withResourceGate(id, async () => {
+      const resource = await this.#requireResource(id);
+      if (this.#blockedResources.has(id)) {
+        throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" already has a lifecycle operation in progress.`);
+      }
+      if (resource.kind === 'db') {
+        const [activeDraft, ...activeApplyPages] = await Promise.all([
+          this.#db.dbResource.draft.getActive({ resourceId: id }),
+          ...(['preparing', 'stopping', 'applying', 'restarting'] as const).map((status) => (
+            this.#db.dbResource.apply.list({ resourceId: id, status, limit: 1 })
+          )),
+        ]);
+        const activeApply = activeApplyPages.some((page) => page.length > 0);
+        if (activeDraft || activeApply) {
+          throw new ActorResourceError('RESOURCE_NOT_READY', `DbResource "${resource.name}" has accepted draft or apply work that must finish or be discarded before deletion.`);
+        }
+      }
+      this.#blockedResources.add(id);
+      try {
+        const references = await this.#db.actorResource.listBindingsForResource({ resourceId: id });
+        if (references.length > 0) {
+          throw new ActorResourceError('RESOURCE_STILL_BOUND', `Resource "${resource.name}" is still bound to ${references.length} definition slot(s).`, {
             resourceId: id,
-            bindingCount: currentReferences.length,
+            bindingCount: references.length,
           });
         }
-        throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" cannot begin deletion from status "${resource.status}".`);
+        const deleting = await this.#db.actorResource.beginDelete({ id })
+          .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource deletion could not begin.'); });
+        if (!deleting) {
+          throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" cannot begin deletion from status "${resource.status}".`);
+        }
+        await this.#drain(id);
+        try {
+          await this.#provider(resource.kind).delete(deleting);
+          const deleted = await this.#db.actorResource.delete({ id });
+          if (!deleted) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${id}" was not deleted.`);
+        } catch (error) {
+          await this.#markResourceError(id, error);
+          throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', `Failed to delete ${resource.kind} resource.`);
+        }
+      } finally {
+        this.#blockedResources.delete(id);
       }
-      await this.#drain(id);
-      try {
-        await this.#provider(resource.kind).delete(deleting);
-        const deleted = await this.#db.actorResource.delete({ id });
-        if (!deleted) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${id}" was not deleted.`);
-      } catch (error) {
-        await this.#markResourceError(id, error);
-        throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', `Failed to delete ${resource.kind} resource.`);
-      }
-    } finally {
-      this.#blockedResources.delete(id);
-    }
+    });
   }
 
   listResourceReferences(resourceId: string): Promise<TActorResourceBinding[]> {
@@ -254,48 +279,63 @@ export class ActorResourceManager {
 
   async bindResource(args: TBindResourceArgs): Promise<TActorResourceBinding> {
     this.#assertOpen();
-    const requirement = this.#requireRequirement(args.definitionName, args.slot);
-    const resource = await this.#requireResource(args.resourceId);
-    if (resource.status !== 'ready') this.#throwUnavailable(resource);
-    if (resource.kind !== requirement.kind) {
-      throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Slot "${args.slot}" requires ${requirement.kind}, not ${resource.kind}.`, {
-        slot: args.slot,
-        expectedKind: requirement.kind,
-        actualKind: resource.kind,
-      });
+    const releaseIntent = this.#registerBindingIntent(args.resourceId);
+    try {
+      return await this.#trackLifecycle(this.#withDefinitionGate(args.definitionName, async () => {
+        await this.#drainDefinitionStarts(args.definitionName);
+        this.#assertOpen();
+        const requirement = this.#requireRequirement(args.definitionName, args.slot);
+        const existing = (await this.#db.actorResource.listBindingsForDefinition({ definitionName: args.definitionName }))
+          .find((binding) => binding.slot_name === args.slot);
+        const resourceIds = existing ? [existing.resource_id, args.resourceId] : [args.resourceId];
+        return this.#withResourceGates(resourceIds, async () => {
+          const resource = await this.#requireResource(args.resourceId);
+          if (resource.status !== 'ready') this.#throwUnavailable(resource);
+          if (resource.kind !== requirement.kind) {
+            throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Slot "${args.slot}" requires ${requirement.kind}, not ${resource.kind}.`, {
+              slot: args.slot,
+              expectedKind: requirement.kind,
+              actualKind: resource.kind,
+            });
+          }
+          const scope = validateScope(args.scope ?? requirement.scope, requirement);
+          for (const resourceId of resourceIds) {
+            if (this.#blockedResources.has(resourceId)) {
+              throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is busy with a lifecycle operation.`);
+            }
+          }
+          const binding = await this.#db.actorResource.upsertBinding({
+            definitionName: args.definitionName,
+            slotName: args.slot,
+            resourceId: args.resourceId,
+            allowRead: scope.includes('read'),
+            allowWrite: scope.includes('write'),
+          }).catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be persisted.'); });
+          if (!binding) throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is not ready for binding.`);
+          return binding;
+        });
+      }));
+    } finally {
+      releaseIntent();
     }
-    const scope = validateScope(args.scope ?? requirement.scope, requirement);
-    const compatibility = await this.#compatibility(requirement, resource);
-    if (!compatibility.compatible) {
-      const code = compatibility.code === 'DB_RESOURCE_SCHEMA_MISMATCH'
-        ? 'DB_RESOURCE_SCHEMA_MISMATCH'
-        : compatibility.code === 'DB_RESOURCE_UNAVAILABLE'
-          ? 'DB_RESOURCE_UNAVAILABLE'
-          : compatibility.code === 'RESOURCE_SCHEMA_MISMATCH'
-            ? 'RESOURCE_SCHEMA_MISMATCH'
-            : compatibility.code === 'DB_RESOURCE_VERSION_MISMATCH'
-              ? 'DB_RESOURCE_VERSION_MISMATCH'
-              : 'RESOURCE_VERSION_MISMATCH';
-      throw new ActorResourceError(code, compatibility.message ?? 'Resource is incompatible with this slot.');
-    }
-    if (this.#blockedResources.has(resource.id)) {
-      throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is busy with a lifecycle operation.`);
-    }
-    const binding = await this.#db.actorResource.upsertBinding({
-      definitionName: args.definitionName,
-      slotName: args.slot,
-      resourceId: args.resourceId,
-      allowRead: scope.includes('read'),
-      allowWrite: scope.includes('write'),
-    }).catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be persisted.'); });
-    if (!binding) throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is not ready for binding.`);
-    return binding;
   }
 
-  unbindResource(args: { definitionName: string; slot: string }): Promise<boolean> {
+  async unbindResource(args: { definitionName: string; slot: string }): Promise<boolean> {
     this.#assertOpen();
-    return this.#db.actorResource.removeBinding({ definitionName: args.definitionName, slotName: args.slot })
-      .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be removed.'); });
+    return this.#trackLifecycle(this.#withDefinitionGate(args.definitionName, async () => {
+      await this.#drainDefinitionStarts(args.definitionName);
+      this.#assertOpen();
+      const existing = (await this.#db.actorResource.listBindingsForDefinition({ definitionName: args.definitionName }))
+        .find((binding) => binding.slot_name === args.slot);
+      if (!existing) return false;
+      return this.#withResourceGate(existing.resource_id, async () => {
+        if (this.#blockedResources.has(existing.resource_id)) {
+          throw new ActorResourceError('RESOURCE_NOT_READY', 'Resource is busy with a lifecycle operation.');
+        }
+        return this.#db.actorResource.removeBinding({ definitionName: args.definitionName, slotName: args.slot })
+          .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be removed.'); });
+      });
+    }));
   }
 
   async getDefinitionResourceStatus(definitionName: string): Promise<TActorResourceBindingStatus[]> {
@@ -314,10 +354,7 @@ export class ActorResourceManager {
       const scopeValid = scope ? scope.every((permission) => requirement.scope.includes(permission)) : true;
       const kindMatches = resource ? resource.kind === requirement.kind : false;
       const ready = resource?.status === 'ready';
-      const compatibility = resource && kindMatches ? await this.#compatibility(requirement, resource) : { compatible: false };
-      const blocked = this.#statusBlock(requirement, binding, resource, scopeValid, kindMatches, compatibility);
-      const actualSchemaId = resource ? compatibility.actualSchemaId ?? null : null;
-      const actualVersion = resource ? compatibility.actualVersion ?? null : null;
+      const blocked = this.#statusBlock(requirement, binding, resource, scopeValid, kindMatches);
       statuses.push({
         slot,
         requirement,
@@ -328,140 +365,166 @@ export class ActorResourceManager {
         scopeValid,
         kindMatches,
         ready,
-        compatible: Boolean(binding && resource && scopeValid && kindMatches && ready && compatibility.compatible),
         blockedCode: blocked.code,
         blockedMessage: blocked.message,
-        ...(requirement.kind === 'db' ? {
-          expectedSchemaId: requirement.schema.id,
-          expectedVersion: requirement.schema.version,
-          actualSchemaId,
-          actualVersion,
-          targetVersion: resource ? compatibility.targetVersion ?? null : null,
-          schemaMatches: actualSchemaId === requirement.schema.id,
-          versionMatches: actualVersion === requirement.schema.version,
-        } : {}),
       });
     }
     return statuses;
   }
 
-  async getActorStartAdmission(args: {
+  getActorStartAdmission(args: {
     definitionName: string;
     actorInstanceId: string;
     restartIfCompatible: boolean;
   }): Promise<TActorStartAdmission> {
-    this.#requireRequirementMap(args.definitionName);
-    const migrationBlocks = await this.#db.dbResource.migrationBlock.listByInstance({ actorInstanceId: args.actorInstanceId });
-    let shouldRestart = false;
-    const unresolved: TDbResourceMigrationBlock[] = [];
-    const resolvedBlockResourceIds: string[] = [];
-    for (const block of migrationBlocks) {
-      shouldRestart ||= block.restart_when_compatible;
-      const compatible = block.reason !== 'migrationError'
-        && await this.#isDefinitionCompatibleWithDbResource(args.definitionName, block.resource_id);
-      if (compatible) {
-        if (block.restart_when_compatible) {
-          resolvedBlockResourceIds.push(block.resource_id);
-        } else {
-          await this.#db.dbResource.migrationBlock.remove({
-            resourceId: block.resource_id,
-            actorInstanceId: args.actorInstanceId,
-          });
-        }
-      } else {
-        unresolved.push(await this.#reclassifyDbMigrationBlock(args.definitionName, block));
+    this.#assertOpen();
+    return this.#trackLifecycle(this.#withActorStartAdmissionGate(args.actorInstanceId, async () => {
+      const existingReservation = this.#actorStartReservations.get(args.actorInstanceId);
+      if (existingReservation) {
+        await existingReservation.settled;
+        this.#assertOpen();
       }
-    }
+      return this.#withDefinitionGate(args.definitionName, async () => {
+        const requirements = this.#requireRequirementMap(args.definitionName);
+        const bindings = await this.#db.actorResource.listBindingsForDefinition({ definitionName: args.definitionName });
+        const bindingBySlot = new Map(bindings.map((binding) => [binding.slot_name, binding]));
+        const resourceIds = [...new Set(bindings.map((binding) => binding.resource_id))].sort();
+        return this.#withResourceGates(resourceIds, async () => {
+          const admittedResourceIds: string[] = [];
+          const admittedDbResourceIds: string[] = [];
+          for (const [slot, requirement] of Object.entries(requirements)) {
+            const binding = bindingBySlot.get(slot);
+            if (!binding) {
+              if (!requirement.required) continue;
+              return this.#blockedStartAdmission(args, {
+                code: this.#notBoundCode(requirement.kind),
+                message: `Required ${requirement.kind} resource slot "${slot}" is not bound for actor definition "${args.definitionName}".`,
+                lifecycleBlocked: false,
+              });
+            }
+            const resource = await this.#readResource(binding.resource_id);
+            if (!resource) {
+              return this.#blockedStartAdmission(args, {
+                code: 'RESOURCE_NOT_FOUND',
+                message: `Resource slot "${slot}" is bound to missing resource "${binding.resource_id}".`,
+                lifecycleBlocked: false,
+              });
+            }
+            const scope = bindingScope(binding);
+            if (!scope.every((permission) => requirement.scope.includes(permission))) {
+              return this.#blockedStartAdmission(args, {
+                code: 'RESOURCE_SCOPE_INVALID',
+                message: `Resource slot "${slot}" has a binding scope that exceeds its manifest scope.`,
+                lifecycleBlocked: false,
+              });
+            }
+            if (resource.kind !== requirement.kind) {
+              return this.#blockedStartAdmission(args, {
+                code: 'RESOURCE_KIND_MISMATCH',
+                message: `Resource slot "${slot}" requires ${requirement.kind}, but "${resource.name}" is ${resource.kind}.`,
+                lifecycleBlocked: false,
+              });
+            }
+            admittedResourceIds.push(resource.id);
+            if (resource.kind === 'db') admittedDbResourceIds.push(resource.id);
+            const lifecycleBlocked = resource.status === 'migrating' || this.#blockedResources.has(resource.id);
+            if (lifecycleBlocked || resource.status !== 'ready') {
+              return this.#blockedStartAdmission(args, {
+                code: resource.status === 'migrating'
+                  ? (resource.kind === 'db' ? 'DB_RESOURCE_MIGRATING' : 'RESOURCE_MIGRATING')
+                  : this.#unavailableCode(resource.kind),
+                message: lifecycleBlocked
+                  ? `Actor definition "${args.definitionName}" is waiting for ${resource.kind} resource "${resource.name}" to finish a lifecycle operation.`
+                  : `${resource.kind} resource "${resource.name}" bound to slot "${slot}" is ${resource.status}.`,
+                lifecycleBlocked,
+              });
+            }
+          }
 
-    if (unresolved.length > 0) {
-      const block = unresolved[0];
-      const mismatch = block.reason === 'schemaMismatch'
-        ? `expects schema ${block.expected_schema_id} but the resource provides ${block.actual_schema_id}`
-        : block.reason === 'versionMismatch'
-          ? `expects version ${block.expected_version} but the resource provides ${block.actual_version}`
-          : block.reason === 'migrating'
-            ? 'is waiting for a database resource migration to finish'
-            : 'is waiting for database resource recovery';
-      return {
-        allowed: false,
-        hadBlocks: true,
-        shouldRestart,
-        resolvedBlockResourceIds: [],
-        code: block.reason === 'schemaMismatch' ? 'DB_RESOURCE_SCHEMA_MISMATCH'
-          : block.reason === 'versionMismatch' ? 'DB_RESOURCE_VERSION_MISMATCH'
-            : block.reason === 'migrating' ? 'DB_RESOURCE_MIGRATING' : 'DB_RESOURCE_RECOVERY_FAILED',
-        message: `Actor definition "${args.definitionName}" ${mismatch}.`,
-      };
-    }
-
-    const bindings = await this.#db.actorResource.listBindingsForDefinition({ definitionName: args.definitionName });
-    for (const binding of bindings) {
-      const resource = await this.#readResource(binding.resource_id);
-      if (!resource || resource.kind !== 'db') continue;
-      const configuration = await this.#db.dbResource.configuration.get({ resourceId: resource.id });
-      const requirement = this.#requireRequirementMap(args.definitionName)[binding.slot_name];
-      const lifecycleBlocked = resource.status === 'migrating' || this.#blockedResources.has(resource.id);
-      const incompatible = resource.status === 'ready'
-        && requirement?.kind === 'db'
-        && (
-          !configuration
-          || configuration.applied_version !== configuration.target_version
-          || configuration.schema_id !== requirement.schema.id
-          || configuration.applied_version !== requirement.schema.version
-        );
-      if (!lifecycleBlocked && !incompatible) continue;
-      if (configuration && requirement?.kind === 'db') {
-        await this.#db.dbResource.migrationBlock.upsert({
-          resourceId: resource.id,
-          actorInstanceId: args.actorInstanceId,
-          reason: lifecycleBlocked
-            ? 'migrating'
-            : configuration.schema_id === requirement.schema.id ? 'versionMismatch' : 'schemaMismatch',
-          restartWhenCompatible: args.restartIfCompatible,
-          expectedSchemaId: requirement.schema.id,
-          expectedVersion: requirement.schema.version,
-          actualSchemaId: configuration.schema_id,
-          actualVersion: configuration.applied_version,
+          const interrupted = await this.#resolvedActorApplyBlocks(args.actorInstanceId, admittedDbResourceIds);
+          const admission: TActorStartAdmission = {
+            allowed: true,
+            hadBlocks: interrupted.length > 0,
+            shouldRestart: args.restartIfCompatible || interrupted.length > 0,
+            resolvedBlockResourceIds: interrupted,
+            code: null,
+            message: null,
+          };
+          this.#reserveActorStart(args.actorInstanceId, args.definitionName, admittedResourceIds, admission);
+          return admission;
         });
-      }
-      return {
-        allowed: false,
-        hadBlocks: true,
-        shouldRestart: args.restartIfCompatible,
-        resolvedBlockResourceIds: [],
-        code: lifecycleBlocked
-          ? 'DB_RESOURCE_MIGRATING'
-          : requirement?.kind === 'db' && configuration?.schema_id === requirement.schema.id
-            ? 'DB_RESOURCE_VERSION_MISMATCH'
-            : 'DB_RESOURCE_SCHEMA_MISMATCH',
-        message: lifecycleBlocked
-          ? `Actor definition "${args.definitionName}" is waiting for DbResource "${resource.name}" to finish migrating.`
-          : `DbResource "${resource.name}" provides ${configuration?.schema_id ?? 'unknown'}@${configuration?.applied_version ?? 'unknown'}, but actor definition "${args.definitionName}" expects ${requirement?.kind === 'db' ? `${requirement.schema.id}@${requirement.schema.version}` : 'a different schema'}. Update and republish the widget definition before restarting its actors.`,
-      };
-    }
-
-    return {
-      allowed: true,
-      hadBlocks: migrationBlocks.length > 0,
-      shouldRestart,
-      resolvedBlockResourceIds,
-      code: null,
-      message: null,
-    };
+      });
+    }));
   }
 
-  async completeActorStart(args: { actorInstanceId: string; resourceIds: readonly string[] }): Promise<void> {
-    for (const resourceId of new Set(args.resourceIds)) {
-      await this.#db.dbResource.migrationBlock.remove({
-        resourceId,
-        actorInstanceId: args.actorInstanceId,
+  async completeActorStart(args: {
+    actorInstanceId: string;
+    resourceIds: readonly string[];
+    succeeded: boolean;
+  }): Promise<void> {
+    const reservation = this.#actorStartReservations.get(args.actorInstanceId);
+    if (reservation) {
+      this.#actorStartReservations.delete(args.actorInstanceId);
+      reservation.release();
+    }
+    if (this.#closed && !reservation) return;
+    if (!args.succeeded) return;
+    const resolved = new Set(args.resourceIds);
+    if (resolved.size === 0) return;
+    const handledResources = new Set<string>();
+    const results = await this.#db.dbResource.apply.instanceResult.listByInstance({ actorInstanceId: args.actorInstanceId });
+    for (const result of results) {
+      const apply = await this.#db.dbResource.apply.get({ id: result.apply_id });
+      if (!apply || !resolved.has(apply.resource_id) || handledResources.has(apply.resource_id)) continue;
+      handledResources.add(apply.resource_id);
+      if (!result.was_running || result.status === 'restarted' || result.status === 'notRunning') continue;
+      await this.#db.dbResource.apply.instanceResult.upsert({
+        applyId: result.apply_id,
+        actorInstanceId: result.actor_instance_id,
+        actorDefinitionName: result.actor_definition_name,
+        wasRunning: true,
+        status: 'restarted',
+        error: null,
       });
     }
+  }
+
+  withReadyResource<T>(
+    resourceId: string,
+    operation: (resource: TActorResource) => Promise<T>,
+  ): Promise<T> {
+    this.#assertOpen();
+    return this.#trackLifecycle(this.#withResourceGate(resourceId, async () => {
+      const resource = await this.#requireResource(resourceId);
+      if (resource.status !== 'ready' || this.#blockedResources.has(resourceId)) this.#throwUnavailable(resource);
+      return operation(resource);
+    }));
   }
 
   call(call: TActorResourceCall): Promise<unknown> {
     if (this.#closed) return Promise.reject(new ActorResourceError('RESOURCE_CALL_CANCELLED', 'Actor resource gateway is closed.'));
     return this.#trackGatewayCall(this.#cancelOnGatewayClose(this.#resolveCall(call)));
+  }
+
+  callWithDirectBinding(call: TActorResourceCall, direct: TActorResourceDirectBinding): Promise<unknown> {
+    if (this.#closed) return Promise.reject(new ActorResourceError('RESOURCE_CALL_CANCELLED', 'Actor resource gateway is closed.'));
+    const resolving = (async () => {
+      if (direct.requirement.kind !== call.kind) {
+        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Slot "${call.slot}" is not a ${call.kind} resource.`);
+      }
+      const scope = validateScope(direct.scope, direct.requirement);
+      const binding: TActorResourceBinding = {
+        actor_definition_name: call.definitionName,
+        slot_name: call.slot,
+        resource_id: direct.resourceId,
+        allow_read: scope.includes('read'),
+        allow_write: scope.includes('write'),
+        created_at: '',
+        updated_at: '',
+      };
+      return this.#track(direct.resourceId, this.#resolveBoundCall(call, direct.requirement, binding));
+    })();
+    return this.#trackGatewayCall(this.#cancelOnGatewayClose(resolving));
   }
 
   async #resolveCall(call: TActorResourceCall): Promise<unknown> {
@@ -491,19 +554,6 @@ export class ActorResourceManager {
     resource: TActorResource,
   ): Promise<unknown> {
     if (this.#blockedResources.has(resource.id)) this.#throwCallUnavailable(resource);
-    const compatibility = await this.#compatibility(requirement, resource);
-    if (!compatibility.compatible) {
-      const code = compatibility.code === 'DB_RESOURCE_SCHEMA_MISMATCH'
-        ? 'DB_RESOURCE_SCHEMA_MISMATCH'
-        : compatibility.code === 'DB_RESOURCE_UNAVAILABLE'
-          ? 'DB_RESOURCE_UNAVAILABLE'
-          : compatibility.code === 'RESOURCE_SCHEMA_MISMATCH'
-            ? 'RESOURCE_SCHEMA_MISMATCH'
-            : compatibility.code === 'DB_RESOURCE_VERSION_MISMATCH'
-              ? 'DB_RESOURCE_VERSION_MISMATCH'
-              : 'RESOURCE_VERSION_MISMATCH';
-      throw new ActorResourceError(code, compatibility.message ?? `Resource slot "${call.slot}" is incompatible.`);
-    }
     const provider = this.#provider(resource.kind);
     const effect = provider.effect(call.operation, requirement, call.args);
     if (!effect) throw new ActorResourceError('RESOURCE_PROVIDER_UNAVAILABLE', `Unknown ${resource.kind} operation "${call.operation}".`);
@@ -522,6 +572,12 @@ export class ActorResourceManager {
       const cancellation = new ActorResourceError('RESOURCE_CALL_CANCELLED', 'Actor resource gateway closed before the operation completed.');
       for (const cancel of [...this.#gatewayCancellations]) cancel(cancellation);
       await this.#settleWithin([...this.#lifecycleOperations], SHUTDOWN_DRAIN_TIMEOUT_MS);
+      await this.#settleWithin(
+        [...this.#actorStartReservations.values()].map((reservation) => reservation.settled),
+        SHUTDOWN_DRAIN_TIMEOUT_MS,
+      );
+      for (const reservation of this.#actorStartReservations.values()) reservation.release();
+      this.#actorStartReservations.clear();
       await this.#settleWithin([...this.#gatewayCalls], SHUTDOWN_DRAIN_TIMEOUT_MS);
       await this.#settleWithin(
         [...this.#inflight.keys()].map((resourceId) => this.#drain(resourceId)),
@@ -539,44 +595,202 @@ export class ActorResourceManager {
     return this.#drain(resourceId);
   }
 
-  coordinateResourceMigration<T>(
+  coordinateResourceApply<T>(
     resourceId: string,
     operation: (resource: TActorResource) => Promise<T>,
   ): Promise<T> {
     this.#assertOpen();
-    return this.#trackLifecycle(this.#coordinateResourceMigration(resourceId, operation));
+    return this.#trackLifecycle(this.#coordinateResourceApply(resourceId, operation));
   }
 
-  async #coordinateResourceMigration<T>(
+  async #coordinateResourceApply<T>(
     resourceId: string,
     operation: (resource: TActorResource) => Promise<T>,
   ): Promise<T> {
-    const resource = await this.#requireResource(resourceId);
-    if (resource.kind !== 'db') {
-      throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource "${resourceId}" is not a DbResource.`);
-    }
-    if (resource.status !== 'ready' || this.#blockedResources.has(resourceId)) {
-      this.#throwUnavailable(resource);
-    }
-    this.#blockedResources.add(resourceId);
-    try {
-      const migrating = await this.#db.actorResource.updateProviderState({
-        id: resourceId,
-        status: 'migrating',
-        lastError: null,
-      });
-      if (!migrating) {
-        throw new ActorResourceError('DB_RESOURCE_UNAVAILABLE', 'DbResource catalog row disappeared before migration.');
+    await this.#drainBindingIntents(resourceId);
+    this.#assertOpen();
+    return this.#withResourceGate(resourceId, async () => {
+      const resource = await this.#requireResource(resourceId);
+      if (resource.kind !== 'db') {
+        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource "${resourceId}" is not a DbResource.`);
       }
+      if (resource.status !== 'ready' || this.#blockedResources.has(resourceId)) {
+        this.#throwUnavailable(resource);
+      }
+      this.#blockedResources.add(resourceId);
       try {
-        return await operation(migrating);
-      } catch (error) {
-        const current = await this.#readResource(resourceId).catch(() => null);
-        if (current?.status === 'migrating') await this.#markResourceError(resourceId, error);
-        throw error;
+        await this.#drain(resourceId);
+        const migrating = await this.#db.actorResource.updateProviderState({
+          id: resourceId,
+          status: 'migrating',
+          lastError: null,
+        });
+        if (!migrating) {
+          throw new ActorResourceError('DB_RESOURCE_UNAVAILABLE', 'DbResource catalog row disappeared before apply.');
+        }
+        try {
+          return await operation(migrating);
+        } catch (error) {
+          const current = await this.#readResource(resourceId).catch(() => null);
+          if (current?.status === 'migrating') await this.#markResourceError(resourceId, error);
+          throw error;
+        }
+      } finally {
+        this.#blockedResources.delete(resourceId);
       }
+    });
+  }
+
+  async #resolvedActorApplyBlocks(actorInstanceId: string, resourceIds: readonly string[]): Promise<string[]> {
+    if (resourceIds.length === 0) return [];
+    const resourceIdSet = new Set(resourceIds);
+    const resolved = new Set<string>();
+    const handledResources = new Set<string>();
+    const results = await this.#db.dbResource.apply.instanceResult.listByInstance({ actorInstanceId });
+    for (const result of results) {
+      const apply = await this.#db.dbResource.apply.get({ id: result.apply_id });
+      if (!apply || !resourceIdSet.has(apply.resource_id) || handledResources.has(apply.resource_id)) continue;
+      handledResources.add(apply.resource_id);
+      if (result.was_running && result.status !== 'restarted' && result.status !== 'notRunning') {
+        resolved.add(apply.resource_id);
+      }
+    }
+    return [...resolved].sort();
+  }
+
+  #reserveActorStart(
+    actorInstanceId: string,
+    definitionName: string,
+    resourceIds: readonly string[],
+    admission: TActorStartAdmission,
+  ): void {
+    if (this.#actorStartReservations.has(actorInstanceId)) return;
+    const releases: (() => void)[] = [];
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    let released = false;
+    for (const resourceId of [...new Set(resourceIds)]) {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => { release = resolve; });
+      this.#track(resourceId, pending);
+      releases.push(release);
+    }
+    this.#actorStartReservations.set(actorInstanceId, {
+      admission,
+      definitionName,
+      settled,
+      release: () => {
+        if (released) return;
+        released = true;
+        for (const release of releases) release();
+        settle();
+      },
+    });
+    let definitionLeases = this.#definitionStartLeases.get(definitionName);
+    if (!definitionLeases) {
+      definitionLeases = new Set();
+      this.#definitionStartLeases.set(definitionName, definitionLeases);
+    }
+    definitionLeases.add(settled);
+    void settled.finally(() => {
+      definitionLeases?.delete(settled);
+      if (definitionLeases?.size === 0) this.#definitionStartLeases.delete(definitionName);
+    });
+  }
+
+  async #drainDefinitionStarts(definitionName: string): Promise<void> {
+    const leases = this.#definitionStartLeases.get(definitionName);
+    if (!leases || leases.size === 0) return;
+    await Promise.all([...leases]);
+  }
+
+  #registerBindingIntent(resourceId: string): () => void {
+    let settle!: () => void;
+    const intent = new Promise<void>((resolve) => { settle = resolve; });
+    let intents = this.#bindingIntents.get(resourceId);
+    if (!intents) {
+      intents = new Set();
+      this.#bindingIntents.set(resourceId, intents);
+    }
+    intents.add(intent);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      intents?.delete(intent);
+      if (intents?.size === 0) this.#bindingIntents.delete(resourceId);
+      settle();
+    };
+  }
+
+  async #drainBindingIntents(resourceId: string): Promise<void> {
+    const intents = this.#bindingIntents.get(resourceId);
+    if (!intents || intents.size === 0) return;
+    await Promise.all([...intents]);
+  }
+
+  #withResourceGates<T>(resourceIds: readonly string[], operation: () => Promise<T>): Promise<T> {
+    const ordered = [...new Set(resourceIds)].sort();
+    const enter = (index: number): Promise<T> => index === ordered.length
+      ? operation()
+      : this.#withResourceGate(ordered[index]!, () => enter(index + 1));
+    return enter(0);
+  }
+
+  async #withResourceGate<T>(resourceId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#resourceGateTails.get(resourceId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.catch(() => undefined).then(() => current);
+    this.#resourceGateTails.set(resourceId, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
     } finally {
-      this.#blockedResources.delete(resourceId);
+      release();
+      if (this.#resourceGateTails.get(resourceId) === tail) {
+        void tail.finally(() => {
+          if (this.#resourceGateTails.get(resourceId) === tail) this.#resourceGateTails.delete(resourceId);
+        });
+      }
+    }
+  }
+
+  async #withDefinitionGate<T>(definitionName: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#definitionGateTails.get(definitionName) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.catch(() => undefined).then(() => current);
+    this.#definitionGateTails.set(definitionName, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.#definitionGateTails.get(definitionName) === tail) {
+        void tail.finally(() => {
+          if (this.#definitionGateTails.get(definitionName) === tail) this.#definitionGateTails.delete(definitionName);
+        });
+      }
+    }
+  }
+
+  async #withActorStartAdmissionGate<T>(actorInstanceId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#actorStartAdmissionGateTails.get(actorInstanceId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    const tail = previous.catch(() => undefined).then(() => current);
+    this.#actorStartAdmissionGateTails.set(actorInstanceId, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.#actorStartAdmissionGateTails.get(actorInstanceId) === tail) {
+        void tail.finally(() => {
+          if (this.#actorStartAdmissionGateTails.get(actorInstanceId) === tail) this.#actorStartAdmissionGateTails.delete(actorInstanceId);
+        });
+      }
     }
   }
 
@@ -609,74 +823,40 @@ export class ActorResourceManager {
     return definition.actor.resources ?? {};
   }
 
-  async #isDefinitionCompatibleWithDbResource(definitionName: string, resourceId: string): Promise<boolean> {
-    const resource = await this.#readResource(resourceId);
-    if (!resource || resource.kind !== 'db' || resource.status !== 'ready') return false;
-    const configuration = await this.#db.dbResource.configuration.get({ resourceId });
-    if (!configuration || configuration.applied_version !== configuration.target_version) return false;
-    const bindings = (await this.#db.actorResource.listBindingsForDefinition({ definitionName }))
-      .filter((binding) => binding.resource_id === resourceId);
-    if (bindings.length === 0) return true;
-    const requirements = this.#requireRequirementMap(definitionName);
-    return bindings.every((binding) => {
-      const requirement = requirements[binding.slot_name];
-      return requirement?.kind === 'db'
-        && requirement.schema.id === configuration.schema_id
-        && requirement.schema.version === configuration.applied_version;
-    });
-  }
-
-  async #reclassifyDbMigrationBlock(
-    definitionName: string,
-    block: TDbResourceMigrationBlock,
-  ): Promise<TDbResourceMigrationBlock> {
-    if (block.reason !== 'migrating') return block;
-    const resource = await this.#readResource(block.resource_id);
-    const configuration = await this.#db.dbResource.configuration.get({ resourceId: block.resource_id });
-    if (!resource || !configuration || resource.status === 'migrating') return block;
-    const bindings = (await this.#db.actorResource.listBindingsForDefinition({ definitionName }))
-      .filter((binding) => binding.resource_id === block.resource_id);
-    const requirements = this.#requireRequirementMap(definitionName);
-    const requirement = bindings
-      .map((binding) => requirements[binding.slot_name])
-      .find((candidate) => candidate?.kind === 'db');
-    if (!requirement || requirement.kind !== 'db') return block;
-    return this.#db.dbResource.migrationBlock.upsert({
-      resourceId: block.resource_id,
-      actorInstanceId: block.actor_instance_id,
-      reason: resource.status === 'error'
-        ? 'migrationError'
-        : configuration.schema_id === requirement.schema.id ? 'versionMismatch' : 'schemaMismatch',
-      restartWhenCompatible: block.restart_when_compatible,
-      expectedSchemaId: requirement.schema.id,
-      expectedVersion: requirement.schema.version,
-      actualSchemaId: configuration.schema_id,
-      actualVersion: configuration.applied_version,
-    });
-  }
-
-  async #compatibility(requirement: TActorResourceRequirement, resource: TActorResource) {
-    const provider = this.#provider(resource.kind);
-    if (provider.compatibility) {
-      return provider.compatibility(requirement, resource)
-        .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource compatibility could not be checked.'); });
-    }
-    if (requirement.kind !== 'db') return { compatible: true };
-    throw new ActorResourceError(
-      'RESOURCE_PROVIDER_UNAVAILABLE',
-      'DbResource provider does not expose compatibility information.',
-    );
-  }
-
-  #statusBlock(requirement: TActorResourceRequirement, binding: TActorResourceBinding | null, resource: TActorResource | null, scopeValid: boolean, kindMatches: boolean, compatibility: { compatible: boolean; code?: string; message?: string }): { code: string | null; message: string | null } {
+  #statusBlock(requirement: TActorResourceRequirement, binding: TActorResourceBinding | null, resource: TActorResource | null, scopeValid: boolean, kindMatches: boolean): { code: string | null; message: string | null } {
     if (!binding) return { code: requirement.required ? 'RESOURCE_NOT_BOUND' : null, message: requirement.required ? 'Required resource slot is not bound.' : null };
     if (!resource) return { code: 'RESOURCE_NOT_FOUND', message: 'The bound resource no longer exists.' };
     if (!scopeValid) return { code: 'RESOURCE_SCOPE_INVALID', message: 'The binding scope broadens the manifest scope.' };
     if (!kindMatches) return { code: 'RESOURCE_KIND_MISMATCH', message: 'The bound resource kind does not match the slot.' };
     if (resource.status === 'migrating') return { code: 'RESOURCE_MIGRATING', message: 'The resource is migrating.' };
     if (resource.status !== 'ready') return { code: 'RESOURCE_NOT_READY', message: `The resource is ${resource.status}.` };
-    if (!compatibility.compatible) return { code: compatibility.code ?? 'RESOURCE_VERSION_MISMATCH', message: compatibility.message ?? 'The resource is incompatible.' };
     return { code: null, message: null };
+  }
+
+  #blockedStartAdmission(
+    args: { readonly restartIfCompatible: boolean },
+    blocked: { readonly code: string; readonly message: string; readonly lifecycleBlocked: boolean },
+  ): TActorStartAdmission {
+    return {
+      allowed: false,
+      hadBlocks: blocked.lifecycleBlocked,
+      shouldRestart: args.restartIfCompatible,
+      resolvedBlockResourceIds: [],
+      code: blocked.code,
+      message: blocked.message,
+    };
+  }
+
+  #notBoundCode(kind: TActorResourceKind): string {
+    if (kind === 'db') return 'DB_RESOURCE_NOT_BOUND';
+    if (kind === 'kv') return 'KV_RESOURCE_NOT_BOUND';
+    return 'SECRET_STORE_NOT_BOUND';
+  }
+
+  #unavailableCode(kind: TActorResourceKind): string {
+    if (kind === 'db') return 'DB_RESOURCE_UNAVAILABLE';
+    if (kind === 'kv') return 'KV_RESOURCE_UNAVAILABLE';
+    return 'SECRET_STORE_UNAVAILABLE';
   }
 
   #throwUnavailable(resource: TActorResource): never {

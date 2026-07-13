@@ -1,20 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { TDbResourceDraftChange } from '@vibecanvas/service-db/model';
+import type { TVibecanvasJson } from '../src/core/types';
 import { ActorResourceManager } from '../src/resources/ActorResourceManager';
 import { DbResource } from '../src/resources/DbResource';
-import type { TVibecanvasJson } from '../src/core/types';
 
 const definitionName = 'Notes Widget';
 
-function checksum(sql: string) {
-  return `sha256:${createHash('sha256').update(sql, 'utf8').digest('hex')}`;
-}
-
-function manifest(version: number): TVibecanvasJson & { manifest_path: string } {
+function manifest(): TVibecanvasJson & { manifest_path: string } {
   return {
     slug: 'notes-widget',
     name: definitionName,
@@ -28,61 +24,40 @@ function manifest(version: number): TVibecanvasJson & { manifest_path: string } 
           kind: 'db',
           required: true,
           scope: ['read', 'write'],
-          schema: { id: 'notes', version },
           arbitrarySql: true,
           operations: {
             createNote: {
               effect: 'write',
               sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)',
-              parameters: {
-                id: { type: 'string' },
-                title: { type: 'string' },
-              },
+              parameters: { id: { type: 'string' }, title: { type: 'string' } },
               result: 'execute',
             },
-            listNotes: {
-              effect: 'read',
-              sql: 'SELECT id, title FROM notes ORDER BY id',
-              result: 'rows',
-            },
+            listNotes: { effect: 'read', sql: 'SELECT id, title FROM notes ORDER BY id', result: 'rows' },
+            mutatingReadRows: { effect: 'read', sql: "INSERT INTO notes (id, title) VALUES ('read-rows', 'forbidden') RETURNING id", result: 'rows' },
+            mutatingReadExecute: { effect: 'read', sql: "INSERT INTO notes (id, title) VALUES ('read-execute', 'forbidden')", result: 'execute' },
           },
         },
       },
       states: { ready: { on: {} } },
     },
-    widget: {
-      relWidgetDir: './widget',
-      tool: { label: 'Notes', behavior: { type: 'action' } },
-    },
+    widget: { relWidgetDir: './widget', tool: { label: 'Notes', behavior: { type: 'action' } } },
   };
 }
 
-describe('DbResource', () => {
+describe('DbResource schema-agnostic provider', () => {
   let db: DbServiceTurso;
   let provider: DbResource;
   let manager: ActorResourceManager;
   let dataRoot: string;
-  let currentManifest: ReturnType<typeof manifest>;
 
   beforeEach(async () => {
     dataRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-db-resource-'));
     db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
     await db.start();
-    currentManifest = manifest(1);
-    await db.actor.insertDefinition({
-      name: definitionName,
-      slug: currentManifest.slug,
-      url: null,
-      description: null,
-      manifest_path: currentManifest.manifest_path,
-    });
+    const definition = manifest();
+    await db.actor.insertDefinition({ name: definitionName, slug: definition.slug, url: null, description: null, manifest_path: definition.manifest_path });
     provider = new DbResource({ db, dataRoot });
-    manager = new ActorResourceManager({
-      db,
-      crypto,
-      getDefinition: (name) => name === definitionName ? currentManifest : null,
-      providers: [provider],
-    });
+    manager = new ActorResourceManager({ db, crypto, getDefinition: (name) => name === definitionName ? definition : null, providers: [provider] });
   });
 
   afterEach(async () => {
@@ -91,308 +66,578 @@ describe('DbResource', () => {
     await rm(dataRoot, { recursive: true, force: true });
   });
 
-  async function publishInitialSchema() {
-    const sql = 'CREATE TABLE notes (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL) STRICT;';
-    await db.dbResource.schema.create({ id: 'notes', name: 'Notes' });
-    await db.dbResource.migration.createDraft({ schemaId: 'notes', version: 1, name: 'initial', sql, checksum: checksum(sql) });
-    await db.dbResource.schema.publish({ id: 'notes' });
-  }
-
-  async function publishSecondMigration() {
-    const sql = 'ALTER TABLE notes ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;';
-    await db.dbResource.migration.createDraft({
-      schemaId: 'notes',
-      version: 2,
-      name: 'add-archived',
-      sql,
-      checksum: checksum(sql),
-    });
-    await db.dbResource.migration.publish({ schemaId: 'notes', version: 2 });
-  }
-
-  async function createAndBindNotesResource() {
-    const resource = await manager.createResource({
-      kind: 'db',
-      name: 'Shared Notes',
-      db: { schemaId: 'notes', version: 1 },
-    });
+  async function createBoundResource() {
+    const resource = await manager.createResource({ kind: 'db', name: 'Shared Notes' });
     await manager.bindResource({ definitionName, slot: 'notes', resourceId: resource.id });
     return resource;
   }
 
-  test('provisions a host-derived database and dispatches named and arbitrary operations', async () => {
-    await publishInitialSchema();
-    const resource = await manager.createResource({ kind: 'db', name: 'Shared Notes', db: { schemaId: 'notes', version: 1 } });
+  function call(resourceOperation: string, args: unknown, functionClass: 'fx' | 'tx' = 'tx') {
+    return manager.call({
+      actorId: 'actor-a',
+      definitionName,
+      runId: 1,
+      functionClass,
+      slot: 'notes',
+      kind: 'db',
+      operation: resourceOperation,
+      args,
+    });
+  }
+
+  test('creates an empty physical database and preserves named and arbitrary SQLite-compatible calls', async () => {
+    const resource = await createBoundResource();
     await access(join(dataRoot, 'actor-resources', 'db', resource.id, 'data.db'));
-    await expect(db.dbResource.configuration.get({ resourceId: resource.id })).resolves.toMatchObject({
-      schema_id: 'notes', applied_version: 1, target_version: 1,
-    });
-    await manager.bindResource({ definitionName, slot: 'notes', resourceId: resource.id });
-
-    const created = await manager.call({
-      actorId: 'actor-a', definitionName, runId: 1, functionClass: 'tx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'createNote', parameters: { id: 'a', title: 'Alpha' } },
-    });
-    expect(created).toMatchObject({ rowsAffected: 1 });
-    expect(await manager.call({
-      actorId: 'actor-b', definitionName, runId: 2, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'listNotes', parameters: {} },
-    })).toEqual([{ id: 'a', title: 'Alpha' }]);
-    expect(await manager.call({
-      actorId: 'actor-b', definitionName, runId: 3, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'query',
-      args: { sql: 'SELECT COUNT(*) AS total FROM notes', parameters: {} },
-    })).toEqual([{ total: 1n }]);
-
-    await expect(manager.call({
-      actorId: 'actor-b', definitionName, runId: 4, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'execute',
-      args: { sql: 'DELETE FROM notes', parameters: {} },
-    })).rejects.toMatchObject({ code: 'RESOURCE_WRITE_NOT_ALLOWED' });
-    await expect(manager.call({
-      actorId: 'actor-b', definitionName, runId: 5, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'query',
-      args: { sql: 'DELETE FROM notes', parameters: {} },
-    })).rejects.toMatchObject({ code: 'DB_READ_NOT_ALLOWED' });
-    await expect(manager.call({
-      actorId: 'actor-a', definitionName, runId: 6, functionClass: 'tx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'createNote', parameters: { id: 'b', title: 'Beta', extra: true } },
-    })).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
+    await call('execute', { sql: 'CREATE TABLE notes (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL) STRICT' });
+    await expect(call('invoke', { operation: 'createNote', parameters: { id: 'a', title: 'Alpha' } }))
+      .resolves.toMatchObject({ rowsAffected: 1 });
+    await expect(call('invoke', { operation: 'listNotes', parameters: {} }, 'fx'))
+      .resolves.toEqual([{ id: 'a', title: 'Alpha' }]);
+    await expect(call('query', { sql: 'SELECT COUNT(*) AS total FROM notes', parameters: {} }, 'fx'))
+      .resolves.toEqual([{ total: 1n }]);
+    await expect(call('execute', { operations: [
+      { sql: "INSERT INTO notes (id, title) VALUES ('b', 'Before rollback')" },
+      { sql: "INSERT INTO notes (id, title) VALUES ('a', 'Duplicate')" },
+    ] })).rejects.toMatchObject({ code: 'DB_EXECUTE_FAILED' });
+    await expect(call('query', { sql: 'SELECT id FROM notes ORDER BY id', parameters: {} }, 'fx'))
+      .resolves.toEqual([{ id: 'a' }]);
+    await expect(call('query', { sql: "INSERT INTO notes (id, title) VALUES ('query-read', 'forbidden') RETURNING id", parameters: {} }, 'fx'))
+      .rejects.toMatchObject({ code: 'DB_QUERY_FAILED' });
+    await expect(call('invoke', { operation: 'mutatingReadRows', parameters: {} }, 'fx'))
+      .rejects.toMatchObject({ code: 'DB_QUERY_FAILED' });
+    await expect(call('invoke', { operation: 'mutatingReadExecute', parameters: {} }, 'fx'))
+      .rejects.toMatchObject({ code: 'DB_QUERY_FAILED' });
+    await expect(call('query', { sql: 'SELECT COUNT(*) AS total FROM notes', parameters: {} }, 'fx'))
+      .resolves.toEqual([{ total: 1n }]);
+    await expect(call('execute', { sql: 'ATTACH DATABASE :path AS stolen', parameters: { path: '/tmp/stolen.db' } }))
+      .rejects.toMatchObject({ code: 'DB_ARBITRARY_SQL_NOT_ALLOWED' });
   });
 
-  test('executes caller-controlled transactions and savepoints as one ordered resource call', async () => {
-    await publishInitialSchema();
-    const resource = await createAndBindNotesResource();
-    const call = (operations: readonly { sql: string; parameters?: Record<string, unknown> }[]) => manager.call({
-      actorId: 'actor-a', definitionName, runId: 1, functionClass: 'tx', slot: 'notes', kind: 'db', operation: 'execute',
-      args: { operations },
+  test('runs bounded SQL against live, returns result sets, and never mutates without approval', async () => {
+    const resource = await createBoundResource();
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'CREATE TABLE live_notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL, payload BLOB)',
+      approved: true,
+    })).resolves.toEqual({ kind: 'execute', rowsAffected: 0, lastInsertRowId: null });
+
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'INSERT INTO live_notes (title) VALUES (:title)',
+      parameters: { title: { type: 'text', value: 'must not persist' } },
+      approved: false,
+    })).rejects.toMatchObject({ code: 'DB_LIVE_SQL_APPROVAL_REQUIRED' });
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'INSERT INTO live_notes (title) VALUES (:title) RETURNING id, title',
+      parameters: { title: { type: 'text', value: 'also must not persist' } },
+      approved: false,
+    })).rejects.toMatchObject({ code: 'DB_LIVE_SQL_APPROVAL_REQUIRED' });
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: "WITH values_to_add(title) AS (VALUES ('cte must not persist')) INSERT INTO live_notes (title) SELECT title FROM values_to_add",
+      approved: false,
+    })).rejects.toMatchObject({ code: 'DB_LIVE_SQL_APPROVAL_REQUIRED' });
+
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'SELECT COUNT(*) AS total FROM live_notes',
+      approved: false,
+    })).resolves.toEqual({
+      kind: 'rows',
+      columns: ['total'],
+      rows: [{ total: { type: 'integer', value: '0' } }],
+      rowCount: 1,
+      rowsAffected: 0,
+      truncated: false,
     });
 
-    const committed = await call([
-      { sql: 'BEGIN IMMEDIATE' },
-      { sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)', parameters: { id: 'a', title: 'Alpha' } },
-      { sql: 'SAVEPOINT optional_note' },
-      { sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)', parameters: { id: 'b', title: 'Beta' } },
-      { sql: 'ROLLBACK TO optional_note' },
-      { sql: 'RELEASE optional_note' },
-      { sql: 'COMMIT' },
-    ]);
-    expect(committed).toHaveLength(7);
-    expect(await manager.call({
-      actorId: 'actor-a', definitionName, runId: 2, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'query',
-      args: { sql: 'SELECT id, title FROM notes ORDER BY id', parameters: {} },
-    })).toEqual([{ id: 'a', title: 'Alpha' }]);
-
-    await expect(call([
-      { sql: 'BEGIN' },
-      { sql: 'INSERT INTO notes (id, title) VALUES (:id, :title)', parameters: { id: 'c', title: 'Gamma' } },
-      { sql: 'INSERT INTO missing_table (id) VALUES (:id)', parameters: { id: 'failure' } },
-      { sql: 'COMMIT' },
-    ])).rejects.toMatchObject({ code: 'DB_EXECUTE_FAILED' });
-    expect(await manager.call({
-      actorId: 'actor-a', definitionName, runId: 3, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'query',
-      args: { sql: 'SELECT id FROM notes WHERE id = :id', parameters: { id: 'c' } },
-    })).toEqual([]);
-
-    await expect(call([])).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
-    await expect(call([{ sql: 'INSERT INTO notes (id, title) VALUES (\'x\', \'X\'); DELETE FROM notes' }]))
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'INSERT INTO live_notes (title, payload) VALUES (:title, :payload) RETURNING id, title',
+      parameters: {
+        title: { type: 'text', value: 'approved' },
+        payload: { type: 'blob', base64: 'AQID' },
+      },
+      approved: true,
+    })).resolves.toMatchObject({
+      kind: 'rows',
+      rows: [{ id: { type: 'integer', value: '1' }, title: { type: 'text', value: 'approved' } }],
+      rowsAffected: 1,
+    });
+    await expect(provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'SELECT id, title, payload FROM live_notes',
+      approved: false,
+    })).resolves.toMatchObject({
+      kind: 'rows',
+      columns: ['id', 'title', 'payload'],
+      rows: [{
+        id: { type: 'integer', value: '1' },
+        title: { type: 'text', value: 'approved' },
+        payload: { type: 'blobPreview', byteLength: 3, previewBase64: 'AQID', truncated: false },
+      }],
+      rowCount: 1,
+      rowsAffected: 0,
+      truncated: false,
+    });
+    await expect(provider.executeLiveSql({ resourceId: resource.id, sql: 'SELECT 1; SELECT 2', approved: false }))
       .rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
-    await expect(call([{ sql: 'DELETE FROM notes', unexpected: true } as never]))
-      .rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
-
-    expect(resource.status).toBe('ready');
+    await expect(provider.executeLiveSql({ resourceId: resource.id, sql: 'SELECT FROM', approved: false }))
+      .rejects.toMatchObject({ code: 'DB_QUERY_FAILED' });
+    await expect(provider.executeLiveSql({ resourceId: resource.id, sql: 'SELECT * FROM missing_table', approved: false }))
+      .rejects.toMatchObject({ code: 'DB_QUERY_FAILED' });
   });
 
-  test('migrates forward, blocks old manifest versions, and restores a verified backup on failure', async () => {
-    await publishInitialSchema();
-    const resource = await manager.createResource({ kind: 'db', name: 'Shared Notes', db: { schemaId: 'notes', version: 1 } });
-    await manager.bindResource({ definitionName, slot: 'notes', resourceId: resource.id });
-    await manager.call({
-      actorId: 'actor-a', definitionName, runId: 1, functionClass: 'tx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'createNote', parameters: { id: 'a', title: 'Alpha' } },
-    });
+  test('previews large BLOBs without loading them into row pages and bounds explicit hydration', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'CREATE TABLE files (id INTEGER PRIMARY KEY, name TEXT NOT NULL, payload BLOB)' });
+    await call('execute', { sql: 'CREATE TABLE blob_keys (id BLOB PRIMARY KEY NOT NULL, name TEXT NOT NULL)' });
+    await call('execute', { sql: "INSERT INTO files (id, name, payload) VALUES (1, 'large', zeroblob(2097152))" });
+    await call('execute', { sql: "INSERT INTO files (id, name, payload) VALUES (2, 'small', x'010203')" });
+    await call('execute', { sql: "INSERT INTO blob_keys (id, name) VALUES (zeroblob(2097152), 'large key')" });
 
-    const addArchived = 'ALTER TABLE notes ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;';
-    await db.dbResource.migration.createDraft({
-      schemaId: 'notes', version: 2, name: 'add-archived', sql: addArchived, checksum: checksum(addArchived),
+    const page = await provider.listRows({ resourceId: resource.id, object: 'files', limit: 10 });
+    expect(JSON.stringify(page).length).toBeLessThan(20_000);
+    expect(page.rows[0].values.payload).toEqual({
+      type: 'blobPreview',
+      byteLength: 2_097_152,
+      previewBase64: Buffer.alloc(64).toString('base64'),
+      truncated: true,
     });
-    await db.dbResource.migration.publish({ schemaId: 'notes', version: 2 });
-    expect((await provider.migrate(resource.id, 2)).applied_version).toBe(2);
-    await expect(manager.call({
-      actorId: 'actor-a', definitionName, runId: 2, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'listNotes', parameters: {} },
-    })).rejects.toMatchObject({ code: 'DB_RESOURCE_VERSION_MISMATCH' });
-
-    currentManifest = manifest(2);
-    expect(await manager.call({
-      actorId: 'actor-a', definitionName, runId: 3, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'listNotes', parameters: {} },
-    })).toEqual([{ id: 'a', title: 'Alpha' }]);
-
-    const invalidSql = 'ALTER TABLE missing_table ADD COLUMN broken TEXT;';
-    await db.dbResource.migration.createDraft({
-      schemaId: 'notes', version: 3, name: 'broken', sql: invalidSql, checksum: checksum(invalidSql),
+    expect(page.rows[1].values.payload).toEqual({ type: 'blobPreview', byteLength: 3, previewBase64: 'AQID', truncated: false });
+    await expect(provider.getRow({ resourceId: resource.id, object: 'files', identity: page.rows[0].identity! }))
+      .rejects.toMatchObject({ code: 'DB_RESOURCE_ROW_TOO_LARGE' });
+    const hydrated = await provider.getRow({ resourceId: resource.id, object: 'files', identity: page.rows[1].identity! });
+    expect(hydrated).toMatchObject({ values: { payload: { type: 'blob', base64: 'AQID' } } });
+    await expect(provider.deleteRow({
+      resourceId: resource.id,
+      object: 'files',
+      identity: hydrated.identity!,
+      expectedOriginal: hydrated.values,
+    })).resolves.toEqual({ rowsAffected: 1 });
+    await expect(provider.executeLiveSql({ resourceId: resource.id, sql: 'SELECT payload FROM files WHERE id = 1', approved: false }))
+      .rejects.toMatchObject({ code: 'DB_RESULT_LIMIT_EXCEEDED' });
+    await expect(provider.executeLiveSql({ resourceId: resource.id, sql: 'SELECT id, name, length(payload) AS bytes FROM files ORDER BY id', approved: false }))
+      .resolves.toMatchObject({
+        kind: 'rows',
+        rows: [
+          { id: { type: 'integer', value: '1' }, name: { type: 'text', value: 'large' }, bytes: { type: 'integer', value: '2097152' } },
+        ],
+      });
+    const blobKeyPage = await provider.listRows({ resourceId: resource.id, object: 'blob_keys' });
+    expect(blobKeyPage).toMatchObject({
+      object: { identity: { kind: 'rowid' }, editable: true },
+      rows: [{ identity: { kind: 'rowid' }, values: { id: { type: 'blobPreview', byteLength: 2_097_152, truncated: true } } }],
     });
-    await db.dbResource.migration.publish({ schemaId: 'notes', version: 3 });
-    await expect(provider.migrate(resource.id, 3)).rejects.toMatchObject({ code: 'DB_RESOURCE_MIGRATION_FAILED' });
-    expect(await db.dbResource.configuration.get({ resourceId: resource.id })).toMatchObject({
-      applied_version: 2,
-      target_version: 2,
-    });
-    await expect(access(join(dataRoot, 'actor-resources', 'db', resource.id, 'data.db'))).resolves.toBeNull();
-    expect(await manager.call({
-      actorId: 'actor-a', definitionName, runId: 4, functionClass: 'fx', slot: 'notes', kind: 'db', operation: 'invoke',
-      args: { operation: 'listNotes', parameters: {} },
-    })).toEqual([{ id: 'a', title: 'Alpha' }]);
   });
 
-  test('supports a published schema at version zero', async () => {
-    await db.dbResource.schema.create({ id: 'empty', name: 'Empty' });
-    await db.dbResource.schema.publish({ id: 'empty' });
-    currentManifest = {
-      ...manifest(1),
-      actor: {
-        ...manifest(1).actor,
-        resources: {
-          notes: { kind: 'db', required: true, scope: ['read'], schema: { id: 'empty', version: 0 } },
+  test('cursor-paginates many live rows without offsets or oversized pages', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'CREATE TABLE many_rows (id INTEGER PRIMARY KEY, title TEXT NOT NULL)' });
+    for (let start = 1; start <= 1000; start += 100) {
+      await provider.bulkRows({
+        resourceId: resource.id,
+        object: 'many_rows',
+        operations: Array.from({ length: 100 }, (_, offset) => {
+          const id = start + offset;
+          return {
+            kind: 'create' as const,
+            values: {
+              id: { type: 'integer' as const, value: String(id) },
+              title: { type: 'text' as const, value: `row-${String(id).padStart(4, '0')}` },
+            },
+          };
+        }),
+      });
+    }
+
+    const ids: string[] = [];
+    let cursor = null;
+    do {
+      const page = await provider.listRows({ resourceId: resource.id, object: 'many_rows', cursor, limit: 137 });
+      expect(page.rows.length).toBeLessThanOrEqual(137);
+      ids.push(...page.rows.map((row) => row.values.id.type === 'integer' ? row.values.id.value : 'invalid'));
+      cursor = page.nextCursor;
+      if (!page.hasMore) break;
+      expect(cursor).not.toBeNull();
+    } while (cursor);
+    expect(ids).toHaveLength(1000);
+    expect(new Set(ids).size).toBe(1000);
+    expect(ids[0]).toBe('1');
+    expect(ids.at(-1)).toBe('1000');
+
+    const sqlPage = await provider.executeLiveSql({
+      resourceId: resource.id,
+      sql: 'SELECT id, title FROM many_rows ORDER BY id',
+      approved: false,
+    });
+    expect(sqlPage).toMatchObject({ kind: 'rows', rowCount: 1000, truncated: true, rowsAffected: 0 });
+    expect(sqlPage.kind === 'rows' ? sqlPage.rows : []).toHaveLength(200);
+  });
+
+  test('inspects user objects and provides lossless cursor CRUD with optimistic conflicts', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL, payload BLOB)' },
+      { sql: 'CREATE INDEX notes_title ON notes (title)' },
+      { sql: 'INSERT INTO notes (id, title, payload) VALUES (:id, :title, :payload)', parameters: { id: 9n, title: 'Alpha', payload: new Uint8Array([1, 2, 3]) } },
+    ] });
+
+    const inspection = await provider.inspect(resource.id, 'live');
+    expect(inspection.objects.map((object) => object.name)).toEqual(['notes']);
+    expect(inspection.objects[0]).toMatchObject({ editable: true, identity: { kind: 'primaryKey', columns: ['id'] } });
+    expect(inspection.objects[0].indexes.map((index) => index.name)).toContain('notes_title');
+
+    const page = await provider.listRows({ resourceId: resource.id, object: 'notes', limit: 1 });
+    expect(page.rows[0].values).toEqual({
+      id: { type: 'integer', value: '9' },
+      title: { type: 'text', value: 'Alpha' },
+      payload: { type: 'blobPreview', byteLength: 3, previewBase64: 'AQID', truncated: false },
+    });
+    const identity = page.rows[0].identity!;
+    await provider.updateRow({
+      resourceId: resource.id,
+      object: 'notes',
+      identity,
+      values: { title: { type: 'text', value: 'Beta' } },
+      expectedOriginal: { title: { type: 'text', value: 'Alpha' } },
+    });
+    await expect(provider.updateRow({
+      resourceId: resource.id,
+      object: 'notes',
+      identity,
+      values: { title: { type: 'text', value: 'Gamma' } },
+      expectedOriginal: { title: { type: 'text', value: 'Alpha' } },
+    })).rejects.toMatchObject({ code: 'DB_RESOURCE_ROW_CONFLICT' });
+    expect((await provider.listRows({ resourceId: resource.id, object: 'notes' })).rows[0].values.title)
+      .toEqual({ type: 'text', value: 'Beta' });
+
+    await provider.bulkRows({
+      resourceId: resource.id,
+      object: 'notes',
+      operations: [
+        { kind: 'create', values: { id: { type: 'integer', value: '10' }, title: { type: 'text', value: 'Ten' } } },
+        { kind: 'create', values: { id: { type: 'integer', value: '11' }, title: { type: 'text', value: 'Eleven' } } },
+      ],
+    });
+    await expect(provider.bulkRows({
+      resourceId: resource.id,
+      object: 'notes',
+      operations: [
+        {
+          kind: 'delete',
+          identity: { kind: 'primaryKey', values: { id: { type: 'integer', value: '10' } } },
+          expectedOriginal: {
+            id: { type: 'integer', value: '10' },
+            title: { type: 'text', value: 'Ten' },
+            payload: { type: 'null' },
+          },
         },
-      },
-    };
-    const resource = await manager.createResource({ kind: 'db', name: 'Empty DB', db: { schemaId: 'empty', version: 0 } });
-    expect(await db.dbResource.configuration.get({ resourceId: resource.id })).toMatchObject({
-      schema_id: 'empty', applied_version: 0, target_version: 0,
-    });
+        {
+          kind: 'delete',
+          identity: { kind: 'primaryKey', values: { id: { type: 'integer', value: '11' } } },
+          expectedOriginal: {
+            id: { type: 'integer', value: '11' },
+            title: { type: 'text', value: 'stale' },
+            payload: { type: 'null' },
+          },
+        },
+      ],
+    })).rejects.toMatchObject({ code: 'DB_RESOURCE_ROW_CONFLICT' });
+    expect((await provider.listRows({ resourceId: resource.id, object: 'notes', limit: 10 })).rows.map((row) => row.values.id))
+      .toEqual([
+        { type: 'integer', value: '9' },
+        { type: 'integer', value: '10' },
+        { type: 'integer', value: '11' },
+      ]);
   });
 
-  test('excludes a concurrent migration and retains its backup until commit', async () => {
-    await publishInitialSchema();
-    const resource = await createAndBindNotesResource();
-    await publishSecondMigration();
+  test('uses rowid for nullable non-integer primary keys and reports non-pageable overflow explicitly', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE nullable_keys (id TEXT PRIMARY KEY, title TEXT NOT NULL)' },
+      { sql: "INSERT INTO nullable_keys (id, title) VALUES (NULL, 'First')" },
+      { sql: "INSERT INTO nullable_keys (id, title) VALUES (NULL, 'Second')" },
+      { sql: 'CREATE VIEW nullable_keys_view AS SELECT id, title FROM nullable_keys' },
+    ] });
 
-    const migration = provider.migrate(resource.id, 2);
-    const competingMigration = provider.migrate(resource.id, 2);
+    const inspection = await provider.inspect(resource.id, 'live');
+    expect(inspection.objects.find((object) => object.name === 'nullable_keys'))
+      .toMatchObject({ editable: true, identity: { kind: 'rowid' } });
 
-    await expect(competingMigration).rejects.toMatchObject({ code: 'DB_RESOURCE_MIGRATING' });
-    await expect(migration).resolves.toMatchObject({ applied_version: 2, target_version: 2 });
+    const first = await provider.listRows({ resourceId: resource.id, object: 'nullable_keys', limit: 1 });
+    expect(first).toMatchObject({ hasMore: true, nextCursor: { kind: 'rowid' } });
+    expect(first.rows[0].values.title).toEqual({ type: 'text', value: 'First' });
+    await expect(provider.getRow({ resourceId: resource.id, object: 'nullable_keys', identity: first.rows[0].identity! }))
+      .resolves.toMatchObject({ identity: first.rows[0].identity, values: { title: { type: 'text', value: 'First' } } });
+    const second = await provider.listRows({ resourceId: resource.id, object: 'nullable_keys', cursor: first.nextCursor, limit: 1 });
+    expect(second.rows[0].values.title).toEqual({ type: 'text', value: 'Second' });
 
-    const backupPath = join(dataRoot, 'actor-resources', 'db', resource.id, 'data.db.pre-migration');
-    await expect(access(backupPath)).resolves.toBeNull();
-    await provider.commitMigration(resource.id);
-    await expect(access(backupPath)).rejects.toBeDefined();
+    const view = await provider.listRows({ resourceId: resource.id, object: 'nullable_keys_view', limit: 1 });
+    expect(view).toMatchObject({ hasMore: true, nextCursor: null });
+    await expect(provider.listRows({
+      resourceId: resource.id,
+      object: 'nullable_keys_view',
+      cursor: { kind: 'rowid', value: { type: 'integer', value: '1' } },
+      limit: 1,
+    })).rejects.toMatchObject({ code: 'DB_RESOURCE_ROW_IDENTITY_REQUIRED' });
   });
 
-  test('reports preflight physical-history drift as unrecoverable and reconciles the catalog to error', async () => {
-    await publishInitialSchema();
-    const resource = await createAndBindNotesResource();
-    await publishSecondMigration();
+  test('requires optimistic originals for every updated column and the complete deleted row', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL, detail TEXT)' },
+      { sql: "INSERT INTO notes VALUES (1, 'Alpha', 'A')" },
+    ] });
+    const row = (await provider.listRows({ resourceId: resource.id, object: 'notes' })).rows[0];
+    await expect(provider.updateRow({
+      resourceId: resource.id,
+      object: 'notes',
+      identity: row.identity!,
+      values: { title: { type: 'text', value: 'Beta' } },
+      expectedOriginal: { detail: { type: 'text', value: 'A' } },
+    })).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
+    await expect(provider.deleteRow({
+      resourceId: resource.id,
+      object: 'notes',
+      identity: row.identity!,
+      expectedOriginal: { title: { type: 'text', value: 'Alpha' } },
+    })).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
+    expect((await provider.listRows({ resourceId: resource.id, object: 'notes' })).rows[0].values.title)
+      .toEqual({ type: 'text', value: 'Alpha' });
+  });
 
-    await manager.call({
-      actorId: 'actor-a',
-      definitionName,
-      runId: 1,
-      functionClass: 'tx',
-      slot: 'notes',
-      kind: 'db',
-      operation: 'execute',
-      args: {
-        sql: 'UPDATE _vibecanvas_migrations SET checksum = :checksum WHERE version = 1',
-        parameters: { checksum: 'sha256:changed-outside-the-host-migrator' },
-      },
+  test('keeps structure changes isolated in a physical draft and retains a restorable pre-apply backup', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL)' });
+    await provider.createRow({ resourceId: resource.id, object: 'notes', values: { id: { type: 'integer', value: '1' }, title: { type: 'text', value: 'before' } } });
+
+    await provider.createDraft(resource.id, 'draft-a');
+    const sql = await provider.applyDraftChange('draft-a', {
+      kind: 'addColumn',
+      table: 'notes',
+      column: { name: 'archived', declaredType: 'INTEGER', nullable: false, defaultSql: '0' },
     });
+    expect((await provider.inspect(resource.id, 'live')).objects[0].columns.map((column) => column.name)).not.toContain('archived');
+    expect((await provider.inspect(resource.id, 'draft', 'draft-a')).objects[0].columns.map((column) => column.name)).toContain('archived');
+    expect(await provider.listDraftChangeEvidence('draft-a')).toEqual([{ sequence: 1, kind: 'structure', sql: sql.sql }]);
 
-    await expect(provider.migrate(resource.id, 2)).rejects.toMatchObject({
-      code: 'DB_RESOURCE_RECOVERY_FAILED',
+    const changes: TDbResourceDraftChange[] = [{
+      draft_id: 'draft-a', sequence: 1, kind: 'structure', operation: { kind: 'addColumn' }, sql: sql.sql, created_at: new Date().toISOString(),
+    }];
+    await expect(provider.applyDraft({ resourceId: resource.id, draftId: 'draft-a', applyId: 'apply-a', changes }))
+      .resolves.toMatchObject({ outcome: 'succeeded', backupRetained: true });
+    expect((await provider.inspect(resource.id, 'live')).objects[0].columns.map((column) => column.name)).toContain('archived');
+    await expect(provider.reconcileApply(resource.id, 'apply-a'))
+      .resolves.toEqual({ outcome: 'committed', retainedBackupApplyId: 'apply-a' });
+
+    await expect(provider.reconcileApply(resource.id, 'restore-after-crash', { restoreSourceApplyId: 'apply-a' }))
+      .resolves.toEqual({ outcome: 'recovered', retainedBackupApplyId: 'apply-a' });
+    expect(await provider.hasApplyMarker(resource.id, 'restore-after-crash')).toBe(true);
+
+    await provider.updateRow({
+      resourceId: resource.id,
+      object: 'notes',
+      identity: { kind: 'primaryKey', values: { id: { type: 'integer', value: '1' } } },
+      values: { title: { type: 'text', value: 'after' } },
+      expectedOriginal: { title: { type: 'text', value: 'before' } },
     });
+    await provider.restoreBackup(resource.id, 'apply-a', 'restore-a');
+    const restored = await provider.listRows({ resourceId: resource.id, object: 'notes' });
+    expect(restored.rows[0].values.title).toEqual({ type: 'text', value: 'before' });
+    expect(restored.object.columns.map((column) => column.name)).not.toContain('archived');
+  });
 
-    await db.actorResource.updateProviderState({ id: resource.id, status: 'migrating' });
+  test('accepts a verified backup with pre-existing foreign-key violations as the apply baseline', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'PRAGMA foreign_keys = OFF' });
+    await call('execute', { sql: 'CREATE TABLE parents (id INTEGER PRIMARY KEY)' });
+    await call('execute', { sql: 'CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id))' });
+    await call('execute', { sql: 'INSERT INTO children (id, parent_id) VALUES (1, 999)' });
+    expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(1);
+    await expect(provider.reconcile(resource)).resolves.toEqual({ status: 'ready' });
+
+    await provider.createDraft(resource.id, 'draft-with-fk-baseline');
+    const sql = await provider.applyDraftChange('draft-with-fk-baseline', {
+      kind: 'addColumn',
+      table: 'children',
+      column: { name: 'label', declaredType: 'TEXT' },
+    });
+    const changes: TDbResourceDraftChange[] = [{
+      draft_id: 'draft-with-fk-baseline',
+      sequence: 1,
+      kind: 'structure',
+      operation: { kind: 'addColumn' },
+      sql: sql.sql,
+      created_at: new Date().toISOString(),
+    }];
+
+    await expect(provider.applyDraft({
+      resourceId: resource.id,
+      draftId: 'draft-with-fk-baseline',
+      applyId: 'apply-with-fk-baseline',
+      changes,
+    })).resolves.toMatchObject({ outcome: 'succeeded', backupRetained: true });
+    expect(await provider.hasVerifiedBackup(resource.id, 'apply-with-fk-baseline')).toBe(true);
+  });
+
+  test('detects a newly introduced foreign-key violation and restores the verified pre-apply database', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE parents (id INTEGER PRIMARY KEY)' },
+      { sql: 'CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id))' },
+    ] });
+    const changes: TDbResourceDraftChange[] = [{
+      draft_id: 'draft-new-fk',
+      sequence: 1,
+      kind: 'sql',
+      operation: null,
+      sql: '-- __vibecanvas_rebuild\nINSERT INTO children (id, parent_id) VALUES (1, 999);',
+      created_at: new Date().toISOString(),
+    }];
+    await expect(provider.applyDraft({
+      resourceId: resource.id,
+      draftId: 'draft-new-fk',
+      applyId: 'apply-new-fk',
+      changes,
+    })).resolves.toMatchObject({ outcome: 'recovered', backupRetained: true });
+    expect(await provider.inspectForeignKeyViolations(resource.id)).toEqual([]);
+    await expect(call('query', { sql: 'SELECT * FROM children', parameters: {} }, 'fx')).resolves.toEqual([]);
+  });
+
+  test('represents missing-parent and omitted-parent-key violations without disabling self-baselining', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'PRAGMA foreign_keys = OFF' });
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE parents (id INTEGER PRIMARY KEY)' },
+      { sql: 'CREATE TABLE omitted_parent_key (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents)' },
+      { sql: 'CREATE TABLE missing_parent (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES absent_parents(id))' },
+      { sql: 'INSERT INTO omitted_parent_key (id, parent_id) VALUES (1, 41)' },
+      { sql: 'INSERT INTO missing_parent (id, parent_id) VALUES (1, 42)' },
+      { sql: 'INSERT INTO missing_parent (id, parent_id) VALUES (2, NULL)' },
+    ] });
+    expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(2);
+    await expect(provider.reconcile(resource)).resolves.toEqual({ status: 'ready' });
+  });
+
+  test('fails closed when an explicit foreign key targets non-unique parent columns', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'PRAGMA foreign_keys = OFF' });
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE non_unique_parent (code TEXT)' },
+      { sql: 'CREATE TABLE invalid_child (id INTEGER PRIMARY KEY, code TEXT REFERENCES non_unique_parent(code))' },
+      { sql: "INSERT INTO invalid_child (id, code) VALUES (1, 'missing')" },
+    ] });
+    await expect(provider.inspectForeignKeyViolations(resource.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_RECOVERY_FAILED' });
+    await expect(provider.reconcile(resource)).resolves.toMatchObject({ status: 'error' });
+  });
+
+  test('fails closed when a UNIQUE parent index uses a mismatched collation', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { sql: 'PRAGMA foreign_keys = OFF' });
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE collated_parent (code TEXT COLLATE NOCASE)' },
+      { sql: 'CREATE UNIQUE INDEX collated_parent_code ON collated_parent(code COLLATE BINARY)' },
+      { sql: 'CREATE TABLE collated_child (id INTEGER PRIMARY KEY, code TEXT REFERENCES collated_parent(code))' },
+    ] });
+    await expect(provider.inspectForeignKeyViolations(resource.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_RECOVERY_FAILED' });
+  });
+
+  test('does not overwrite newer healthy live state from an unrelated retained backup during precommit reconciliation', async () => {
+    const resource = await createBoundResource();
+    await expect(provider.applyDraft({ resourceId: resource.id, draftId: 'draft-old', applyId: 'apply-old', changes: [] }))
+      .resolves.toMatchObject({ outcome: 'succeeded', backupRetained: true });
+    await call('execute', { sql: 'PRAGMA foreign_keys = OFF' });
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE parents (id INTEGER PRIMARY KEY)' },
+      { sql: 'CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id))' },
+      { sql: 'INSERT INTO children (id, parent_id) VALUES (1, 999)' },
+    ] });
+    expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(1);
+    await expect(provider.reconcileApply(resource.id, 'apply-interrupted', { fallbackBackupApplyId: 'apply-old' }))
+      .resolves.toEqual({ outcome: 'uncommitted', retainedBackupApplyId: 'apply-old' });
+    expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(1);
+    await expect(call('query', { sql: 'SELECT id, parent_id FROM children', parameters: {} }, 'fx'))
+      .resolves.toEqual([{ id: 1n, parent_id: 999n }]);
+  });
+
+  test('treats views and unsafe identities as read-only', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE values_only (value TEXT)' },
+      { sql: 'CREATE VIEW values_view AS SELECT value FROM values_only' },
+    ] });
+    const view = (await provider.inspect(resource.id, 'live')).objects.find((object) => object.name === 'values_view');
+    expect(view).toMatchObject({ editable: false, identity: null });
+    await expect(provider.createRow({ resourceId: resource.id, object: 'values_view', values: { value: { type: 'text', value: 'x' } } }))
+      .rejects.toMatchObject({ code: 'DB_RESOURCE_TABLE_READ_ONLY' });
+  });
+
+  test('supports the complete structured table, column, index, and foreign-key draft surface', async () => {
+    const resource = await createBoundResource();
+    await provider.createDraft(resource.id, 'draft-structure');
+    await provider.applyDraftChange('draft-structure', {
+      kind: 'createTable', table: 'parents', columns: [{ name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 }],
+    });
+    await provider.applyDraftChange('draft-structure', {
+      kind: 'createTable', table: 'children', columns: [
+        { name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 },
+        { name: 'parent_id', declaredType: 'INTEGER' },
+        { name: 'label', declaredType: 'TEXT' },
+      ],
+    });
+    await provider.applyDraftChange('draft-structure', { kind: 'createIndex', table: 'children', name: 'children_parent', columns: ['parent_id'] });
+    await provider.applyDraftChange('draft-structure', {
+      kind: 'createForeignKey', table: 'children', columns: ['parent_id'], referencedTable: 'parents', referencedColumns: ['id'], onDelete: 'CASCADE',
+    });
+    let children = (await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.find((object) => object.name === 'children')!;
+    expect(children.foreignKeys).toHaveLength(1);
+    await provider.applyDraftChange('draft-structure', {
+      kind: 'alterColumn', table: 'children', column: 'label', definition: { name: 'label', declaredType: 'TEXT', nullable: false, defaultSql: "''" },
+    });
+    await provider.applyDraftChange('draft-structure', { kind: 'renameColumn', table: 'children', column: 'label', newName: 'title' });
+    children = (await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.find((object) => object.name === 'children')!;
+    await provider.applyDraftChange('draft-structure', { kind: 'dropForeignKey', table: 'children', id: children.foreignKeys[0].id });
+    await provider.applyDraftChange('draft-structure', { kind: 'dropIndex', name: 'children_parent' });
+    await provider.applyDraftChange('draft-structure', { kind: 'dropColumn', table: 'children', column: 'title' });
+    await provider.applyDraftChange('draft-structure', { kind: 'renameTable', table: 'children', newName: 'items' });
+    expect((await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.map((object) => object.name)).toEqual(['items', 'parents']);
+    await provider.applyDraftChange('draft-structure', { kind: 'dropTable', table: 'items' });
+    expect((await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.map((object) => object.name)).toEqual(['parents']);
+  });
+
+  test('preserves STRICT rebuild options and rejects structure it cannot reproduce losslessly', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE strict_notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL) STRICT' },
+      { sql: 'CREATE TABLE collated_notes (id INTEGER PRIMARY KEY, title TEXT COLLATE NOCASE)' },
+    ] });
+    await provider.createDraft(resource.id, 'draft-lossless');
+    const sql = await provider.applyDraftChange('draft-lossless', {
+      kind: 'alterColumn', table: 'strict_notes', column: 'title', definition: { name: 'title', defaultSql: "''" },
+    });
+    expect(sql.sql).toContain(' STRICT;');
+    expect((await provider.inspect(resource.id, 'draft', 'draft-lossless')).objects.find((object) => object.name === 'strict_notes')?.createSql)
+      .toMatch(/\bSTRICT\b/i);
+    await expect(provider.applyDraftChange('draft-lossless', {
+      kind: 'alterColumn', table: 'collated_notes', column: 'title', definition: { name: 'title', nullable: false },
+    })).rejects.toMatchObject({ code: 'DB_RESOURCE_SCHEMA_OPERATION_INVALID' });
+  });
+
+  test('reconciles ready legacy physical resources without removing user tables or rows', async () => {
+    const resource = await createBoundResource();
+    await call('execute', { operations: [
+      { sql: 'CREATE TABLE `_vibecanvas_migrations` (schema_id TEXT, version INTEGER)' },
+      { sql: 'CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL)' },
+      { sql: 'INSERT INTO notes (id, title) VALUES (1, :title)', parameters: { title: 'preserved' } },
+    ] });
+    await manager.close();
+    provider = new DbResource({ db, dataRoot });
+    const definition = manifest();
+    manager = new ActorResourceManager({ db, crypto, getDefinition: (name) => name === definitionName ? definition : null, providers: [provider] });
     await manager.reconcileStartup();
-    expect(await db.actorResource.get({ id: resource.id })).toMatchObject({
-      status: 'error',
-      last_error: { code: 'DB_RESOURCE_RECOVERY_FAILED' },
-    });
-  });
-
-  test('rejects host-path SQL for arbitrary and named operations before creating a file', async () => {
-    await publishInitialSchema();
-    const resource = await createAndBindNotesResource();
-    const arbitraryPath = join(dataRoot, 'arbitrary-export.db');
-    const namedPath = join(dataRoot, 'named-export.db');
-
-    await expect(manager.call({
-      actorId: 'actor-a',
-      definitionName,
-      runId: 1,
-      functionClass: 'tx',
-      slot: 'notes',
-      kind: 'db',
-      operation: 'execute',
-      args: { sql: `VACUUM INTO '${arbitraryPath}'`, parameters: {} },
-    })).rejects.toMatchObject({ code: 'DB_ARBITRARY_SQL_NOT_ALLOWED' });
-
-    const requirement = currentManifest.actor.resources?.notes;
-    if (requirement?.kind !== 'db' || !requirement.operations) throw new Error('Expected notes DbResource requirement');
-    requirement.operations.exportToHost = {
-      effect: 'write',
-      sql: `VACUUM INTO '${namedPath}'`,
-      result: 'execute',
-    };
-    await expect(manager.call({
-      actorId: 'actor-a',
-      definitionName,
-      runId: 2,
-      functionClass: 'tx',
-      slot: 'notes',
-      kind: 'db',
-      operation: 'invoke',
-      args: { operation: 'exportToHost', parameters: {} },
-    })).rejects.toMatchObject({ code: 'DB_ARBITRARY_SQL_NOT_ALLOWED' });
-
-    await expect(access(arbitraryPath)).rejects.toBeDefined();
-    await expect(access(namedPath)).rejects.toBeDefined();
-    expect(await manager.call({
-      actorId: 'actor-a',
-      definitionName,
-      runId: 3,
-      functionClass: 'fx',
-      slot: 'notes',
-      kind: 'db',
-      operation: 'invoke',
-      args: { operation: 'listNotes', parameters: {} },
-    })).toEqual([]);
-  });
-
-  test('restores a retained successful-migration backup when finalization fails', async () => {
-    await publishInitialSchema();
-    const resource = await createAndBindNotesResource();
-    const originalConfiguration = await db.dbResource.configuration.get({ resourceId: resource.id });
-    if (!originalConfiguration) throw new Error('Expected DbResource configuration');
-    await manager.call({
-      actorId: 'actor-a',
-      definitionName,
-      runId: 1,
-      functionClass: 'tx',
-      slot: 'notes',
-      kind: 'db',
-      operation: 'invoke',
-      args: { operation: 'createNote', parameters: { id: 'before', title: 'Before migration' } },
-    });
-    await publishSecondMigration();
-
-    await provider.migrate(resource.id, 2);
-    const backupPath = join(dataRoot, 'actor-resources', 'db', resource.id, 'data.db.pre-migration');
-    await expect(access(backupPath)).resolves.toBeNull();
-
-    await expect(provider.restoreMigration(resource.id, originalConfiguration)).resolves.toMatchObject({
-      applied_version: 1,
-      target_version: 1,
-    });
-    await expect(access(backupPath)).rejects.toBeDefined();
-    expect(await manager.call({
-      actorId: 'actor-a',
-      definitionName,
-      runId: 2,
-      functionClass: 'fx',
-      slot: 'notes',
-      kind: 'db',
-      operation: 'invoke',
-      args: { operation: 'listNotes', parameters: {} },
-    })).toEqual([{ id: 'before', title: 'Before migration' }]);
+    await expect(call('query', { sql: "SELECT name FROM sqlite_schema WHERE name = '_vibecanvas_migrations'", parameters: {} }, 'fx')).resolves.toEqual([]);
+    await expect(call('query', { sql: 'SELECT id, title FROM notes', parameters: {} }, 'fx')).resolves.toEqual([{ id: 1n, title: 'preserved' }]);
   });
 });

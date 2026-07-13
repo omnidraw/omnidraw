@@ -10,6 +10,8 @@ import { apiWizzardCancel } from "./api.wizzard.cancel";
 import { apiWizzardConnect } from "./api.wizzard.connect";
 import { apiWizzardDraftManifestPatch } from "./api.wizzard.draftManifest.patch";
 import { apiWizzardDraftManifestRead } from "./api.wizzard.draftManifest.read";
+import { apiWizzardDbChangeApprove } from "./api.wizzard.dbChange.approve";
+import { apiWizzardDbChangeReject } from "./api.wizzard.dbChange.reject";
 import { apiWizzardDraftActorInspect } from "./api.wizzard.draftActor.inspect";
 import { apiWizzardDraftActorReload } from "./api.wizzard.draftActor.reload";
 import { apiWizzardDraftActorReset } from "./api.wizzard.draftActor.reset";
@@ -41,6 +43,10 @@ const agentHandlers = {
         connect: apiWizzardConnect,
         startWidgetEdit: apiWizzardStartWidgetEdit,
         prompt: apiWizzardPrompt,
+        dbChange: {
+            approve: apiWizzardDbChangeApprove,
+            reject: apiWizzardDbChangeReject,
+        },
         cancel: apiWizzardCancel,
         newSession: apiWizzardNewSession,
         previewSource: apiWizzardPreviewSource,

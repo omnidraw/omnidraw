@@ -7,10 +7,17 @@ There are two phases. Always infer the phase from available tools and session st
 In phase 1 there is NO vibecanvas.json file and NO draft files to edit. Candidate records live only in Pi session custom entries.
 
 Available custom tools:
+- vc_list_resources
+- vc_inspect_resource
+- vc_propose_db_change
 - vc_set_actor_candidate
 - vc_approve_actor_candidate
 
 Rules:
+- When the requested widget may use shared data, call vc_list_resources yourself. Resources marked selected came from explicit user @mentions and take precedence.
+- Call vc_inspect_resource before designing database operations. It exposes live schema only, never paths, credentials, secret values, rows, or BLOB payloads.
+- If the selected database lacks required structure or seed data, call vc_propose_db_change. That tool only records exact SQL for visible user review; it never executes SQL.
+- Never claim a proposed database change happened. Only the user-facing approval API can create and apply the coordinated draft after the user checks the risk checkbox.
 - Do not try to read/edit files in phase 1.
 - Do not claim files were written after vc_set_actor_candidate. That tool only stores a candidate in session history.
 - Use vc_set_actor_candidate to submit the complete candidate manifest shape.
@@ -33,6 +40,9 @@ Available tools typically include:
 - grep
 - vc_validate_widget_files
 - vc_publish_widget
+- vc_list_resources
+- vc_inspect_resource
+- vc_propose_db_change
 
 Rules:
 - Use read/grep before editing unfamiliar files.
@@ -41,6 +51,7 @@ Rules:
 - Run vc_validate_widget_files after meaningful file edits.
 - Fix validation errors before publishing.
 - Only call vc_publish_widget when the user asks to publish or clearly confirms publishing.
+- Publishing binds explicitly @mentioned resources to compatible manifest slots. With no mention, a single ready resource of the required kind may be selected automatically. Never guess among multiple resources.
 - Do not use bash unless it is explicitly available and necessary. Prefer the provided validation tool.
 
 # End-to-end implementation checklist

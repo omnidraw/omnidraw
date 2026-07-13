@@ -88,6 +88,28 @@ describe('ActorResourceManager', () => {
     })).toBeNull();
   });
 
+  test('dispatches a draft-preview call through an explicit scoped binding without persisting it', async () => {
+    const resource = await manager.createResource({ kind: 'kv', name: 'Preview preferences' });
+    const requirement = manifest.actor.resources!.storage;
+    const binding = { resourceId: resource.id, requirement, scope: ['read', 'write'] as ('read' | 'write')[] };
+
+    await manager.callWithDirectBinding({
+      actorId: 'draft:actor', definitionName: 'Draft Resource Test', runId: 1, functionClass: 'tx', slot: 'storage', kind: 'kv',
+      operation: 'set', args: { key: 'selected', value: 9 },
+    }, binding);
+    expect(await manager.callWithDirectBinding({
+      actorId: 'draft:actor', definitionName: 'Draft Resource Test', runId: 2, functionClass: 'fx', slot: 'storage', kind: 'kv',
+      operation: 'get', args: { key: 'selected' },
+    }, binding)).toEqual({ value: 9, revision: 1 });
+    expect(await manager.listResourceReferences(resource.id)).toEqual([]);
+
+    await expect(manager.callWithDirectBinding({
+      actorId: 'draft:actor', definitionName: 'Draft Resource Test', runId: 3, functionClass: 'tx', slot: 'readonly', kind: 'kv',
+      operation: 'set', args: { key: 'selected', value: 10 },
+    }, { resourceId: resource.id, requirement: manifest.actor.resources!.readonly, scope: ['read'] }))
+      .rejects.toMatchObject({ code: 'RESOURCE_WRITE_NOT_ALLOWED' });
+  });
+
   test('enforces manifest scope, binding reduction, and function-class ceilings', async () => {
     const resource = await manager.createResource({ kind: 'kv', name: 'Read only' });
     await expect(manager.bindResource({ definitionName, slot: 'readonly', resourceId: resource.id, scope: ['write'] }))
@@ -114,11 +136,245 @@ describe('ActorResourceManager', () => {
 
     await manager.bindResource({ definitionName, slot: 'storage', resourceId: resource.id });
     status = await manager.getDefinitionResourceStatus(definitionName);
-    expect(status.find((item) => item.slot === 'storage')).toMatchObject({ bound: true, ready: true, compatible: true });
+    expect(status.find((item) => item.slot === 'storage')).toMatchObject({ bound: true, ready: true, blockedCode: null });
     await expect(manager.deleteResource(resource.id)).rejects.toMatchObject({ code: 'RESOURCE_STILL_BOUND' });
     expect(await manager.unbindResource({ definitionName, slot: 'storage' })).toBe(true);
     await manager.deleteResource(resource.id);
     expect(await manager.getResource(resource.id)).toBeNull();
+  });
+
+  test('blocks actor start on every required unbound resource kind with a specific error', async () => {
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'required-slots',
+      restartIfCompatible: true,
+    })).toMatchObject({
+      allowed: false,
+      code: 'KV_RESOURCE_NOT_BOUND',
+      message: expect.stringContaining('resource slot "storage"'),
+    });
+
+    const storage = await manager.createResource({ kind: 'kv', name: 'Required storage' });
+    await manager.bindResource({ definitionName, slot: 'storage', resourceId: storage.id });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'required-slots',
+      restartIfCompatible: true,
+    })).toMatchObject({
+      allowed: false,
+      code: 'SECRET_STORE_NOT_BOUND',
+      message: expect.stringContaining('resource slot "credentials"'),
+    });
+
+    const credentials = await manager.createResource({ kind: 'secretStore', name: 'Required credentials' });
+    await manager.bindResource({ definitionName, slot: 'credentials', resourceId: credentials.id });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'required-slots',
+      restartIfCompatible: true,
+    })).toMatchObject({ allowed: true, code: null });
+    await manager.completeActorStart({ actorInstanceId: 'required-slots', resourceIds: [], succeeded: true });
+
+    await manager.close();
+    const dbManifest: typeof manifest = {
+      ...manifest,
+      actor: {
+        ...manifest.actor,
+        resources: {
+          database: { kind: 'db', required: true, scope: ['read', 'write'], arbitrarySql: false },
+        },
+      },
+    };
+    manager = new ActorResourceManager({
+      db,
+      crypto,
+      getDefinition: (name) => name === definitionName ? dbManifest : null,
+      providers: [{
+        kind: 'db',
+        async provision() {},
+        async delete() {},
+        effect() { return null; },
+        async dispatch() { return null; },
+      }],
+    });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'required-db-slot',
+      restartIfCompatible: true,
+    })).toMatchObject({
+      allowed: false,
+      code: 'DB_RESOURCE_NOT_BOUND',
+      message: expect.stringContaining('resource slot "database"'),
+    });
+  });
+
+  test('serializes unbind with a concurrent rebind before choosing the resource gate', async () => {
+    const original = await manager.createResource({ kind: 'kv', name: 'Original binding' });
+    const replacement = await manager.createResource({ kind: 'kv', name: 'Replacement binding' });
+    await manager.bindResource({ definitionName, slot: 'storage', resourceId: original.id });
+
+    const listBindings = db.actorResource.listBindingsForDefinition;
+    let releaseRead!: () => void;
+    let markReadStarted!: () => void;
+    const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+    let readCount = 0;
+    db.actorResource.listBindingsForDefinition = async (args) => {
+      const bindings = await listBindings(args);
+      readCount += 1;
+      if (readCount === 1) {
+        markReadStarted();
+        await readGate;
+      }
+      return bindings;
+    };
+
+    const unbinding = manager.unbindResource({ definitionName, slot: 'storage' });
+    await readStarted;
+    let rebindSettled = false;
+    const rebinding = manager.bindResource({
+      definitionName,
+      slot: 'storage',
+      resourceId: replacement.id,
+    }).then((binding) => {
+      rebindSettled = true;
+      return binding;
+    });
+    await Bun.sleep(10);
+    expect(rebindSettled).toBe(false);
+
+    releaseRead();
+    expect(await unbinding).toBe(true);
+    expect(await rebinding).toMatchObject({ resource_id: replacement.id });
+    expect(await manager.listResourceReferences(replacement.id)).toHaveLength(1);
+  });
+
+  test('serializes start admission with binding changes and fresh same-actor attempts', async () => {
+    const original = await manager.createResource({ kind: 'kv', name: 'Admission original' });
+    const replacement = await manager.createResource({ kind: 'kv', name: 'Admission replacement' });
+    const credentials = await manager.createResource({ kind: 'secretStore', name: 'Admission credentials' });
+    await manager.bindResource({ definitionName, slot: 'storage', resourceId: original.id });
+    await manager.bindResource({ definitionName, slot: 'credentials', resourceId: credentials.id });
+
+    const listBindings = db.actorResource.listBindingsForDefinition;
+    let releaseRead!: () => void;
+    let markReadStarted!: () => void;
+    const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+    let readCount = 0;
+    db.actorResource.listBindingsForDefinition = async (args) => {
+      const bindings = await listBindings(args);
+      readCount += 1;
+      if (readCount === 1) {
+        markReadStarted();
+        await readGate;
+      }
+      return bindings;
+    };
+
+    const firstAdmission = manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'serialized-start',
+      restartIfCompatible: true,
+    });
+    await readStarted;
+    let rebindSettled = false;
+    const rebinding = manager.bindResource({
+      definitionName,
+      slot: 'storage',
+      resourceId: replacement.id,
+    }).then((binding) => {
+      rebindSettled = true;
+      return binding;
+    });
+    await Bun.sleep(10);
+    expect(rebindSettled).toBe(false);
+
+    releaseRead();
+    expect(await firstAdmission).toMatchObject({ allowed: true });
+
+    let secondAdmissionSettled = false;
+    const secondAdmission = manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'serialized-start',
+      restartIfCompatible: true,
+    }).then((admission) => {
+      secondAdmissionSettled = true;
+      return admission;
+    });
+    await Bun.sleep(10);
+    expect(secondAdmissionSettled).toBe(false);
+    expect(rebindSettled).toBe(false);
+
+    await manager.completeActorStart({ actorInstanceId: 'serialized-start', resourceIds: [], succeeded: true });
+    await rebinding;
+    expect(await secondAdmission).toMatchObject({ allowed: true });
+    await manager.completeActorStart({ actorInstanceId: 'serialized-start', resourceIds: [], succeeded: true });
+  });
+
+  test('holds the definition binding stable until an admitted start completes', async () => {
+    await manager.close();
+    const dbManifest: typeof manifest = {
+      ...manifest,
+      actor: {
+        ...manifest.actor,
+        resources: {
+          database: { kind: 'db', required: true, scope: ['read', 'write'], arbitrarySql: false },
+        },
+      },
+    };
+    const provider: IActorResourceProvider = {
+      kind: 'db',
+      async provision() {},
+      async delete() {},
+      effect() { return null; },
+      async dispatch() { return null; },
+    };
+    manager = new ActorResourceManager({
+      db,
+      crypto,
+      getDefinition: (name) => name === definitionName ? dbManifest : null,
+      providers: [provider],
+    });
+    const original = await manager.createResource({ kind: 'db', name: 'Start binding A' });
+    const replacement = await manager.createResource({ kind: 'db', name: 'Start binding B' });
+    await manager.bindResource({ definitionName, slot: 'database', resourceId: original.id });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'binding-stability-start',
+      restartIfCompatible: true,
+    })).toMatchObject({ allowed: true });
+
+    let rebindSettled = false;
+    let replacementApplyEntered = false;
+    const rebinding = manager.bindResource({
+      definitionName,
+      slot: 'database',
+      resourceId: replacement.id,
+    }).then((binding) => {
+      rebindSettled = true;
+      return binding;
+    });
+    const replacementApply = manager.coordinateResourceApply(replacement.id, async () => {
+      replacementApplyEntered = true;
+      await db.actorResource.updateProviderState({ id: replacement.id, status: 'ready', lastError: null });
+    });
+    await Bun.sleep(10);
+    expect(rebindSettled).toBe(false);
+    expect(replacementApplyEntered).toBe(false);
+    expect(await manager.listResourceReferences(original.id)).toHaveLength(1);
+    expect(await manager.listResourceReferences(replacement.id)).toHaveLength(0);
+
+    await manager.completeActorStart({
+      actorInstanceId: 'binding-stability-start',
+      resourceIds: [],
+      succeeded: true,
+    });
+    expect(await rebinding).toMatchObject({ resource_id: replacement.id });
+    await replacementApply;
+    expect(replacementApplyEntered).toBe(true);
+    expect(await manager.listResourceReferences(original.id)).toHaveLength(0);
+    expect(await manager.listResourceReferences(replacement.id)).toHaveLength(1);
   });
 
   test('keeps secret values out of list, write, and conflict results', async () => {
@@ -293,6 +549,133 @@ describe('ActorResourceManager', () => {
     expect(await db.actorResource.keyValue.get({ resourceId: 'delete-kv', key: 'stale' })).toBeNull();
   });
 
+  test('leaves migrating database resources blocked for apply recovery', async () => {
+    await manager.close();
+    let reconciled = false;
+    const dbManifest: typeof manifest = {
+      ...manifest,
+      actor: {
+        ...manifest.actor,
+        resources: {
+          database: { kind: 'db', required: true, scope: ['read', 'write'], arbitrarySql: false },
+        },
+      },
+    };
+    const provider: IActorResourceProvider = {
+      kind: 'db',
+      reconcileReady: true,
+      async provision() {},
+      async delete() {},
+      async reconcile() {
+        reconciled = true;
+        return { status: 'ready' };
+      },
+      effect() { return null; },
+      async dispatch() { return null; },
+    };
+    manager = new ActorResourceManager({
+      db,
+      crypto,
+      getDefinition: (name) => name === definitionName ? dbManifest : null,
+      providers: [provider],
+    });
+    const resource = await manager.createResource({ kind: 'db', name: 'Interrupted DB' });
+    await manager.bindResource({ definitionName, slot: 'database', resourceId: resource.id });
+    await db.actorResource.updateProviderState({ id: resource.id, status: 'migrating', lastError: null });
+
+    await manager.reconcileStartup();
+
+    expect(reconciled).toBe(false);
+    expect(await manager.getResource(resource.id)).toMatchObject({ status: 'migrating' });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'blocked-actor',
+      restartIfCompatible: true,
+    })).toMatchObject({ allowed: false, hadBlocks: true, code: 'DB_RESOURCE_MIGRATING' });
+  });
+
+  test('reserves ready database resources atomically until actor startup completes', async () => {
+    await manager.close();
+    const dbManifest: typeof manifest = {
+      ...manifest,
+      actor: {
+        ...manifest.actor,
+        resources: {
+          database: { kind: 'db', required: true, scope: ['read', 'write'], arbitrarySql: false },
+        },
+      },
+    };
+    const provider: IActorResourceProvider = {
+      kind: 'db',
+      async provision() {},
+      async delete() {},
+      effect() { return null; },
+      async dispatch() { return null; },
+    };
+    manager = new ActorResourceManager({
+      db,
+      crypto,
+      getDefinition: (name) => name === definitionName ? dbManifest : null,
+      providers: [provider],
+    });
+    const resource = await manager.createResource({ kind: 'db', name: 'Admission DB' });
+    await manager.bindResource({ definitionName, slot: 'database', resourceId: resource.id });
+    const admission = await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'starting-actor',
+      restartIfCompatible: true,
+    });
+    expect(admission.allowed).toBe(true);
+
+    let applyEntered = false;
+    const apply = manager.coordinateResourceApply(resource.id, async () => {
+      applyEntered = true;
+      await db.actorResource.updateProviderState({ id: resource.id, status: 'ready', lastError: null });
+    });
+    await Bun.sleep(10);
+    expect(applyEntered).toBe(false);
+
+    await manager.completeActorStart({ actorInstanceId: 'starting-actor', resourceIds: [], succeeded: true });
+    await apply;
+    expect(applyEntered).toBe(true);
+    expect(await manager.getResource(resource.id)).toMatchObject({ status: 'ready' });
+  });
+
+  test('serializes management work ahead of database apply admission', async () => {
+    await manager.close();
+    const provider: IActorResourceProvider = {
+      kind: 'db',
+      async provision() {},
+      async delete() {},
+      effect() { return null; },
+      async dispatch() { return null; },
+    };
+    manager = new ActorResourceManager({ db, crypto, getDefinition: () => null, providers: [provider] });
+    const resource = await manager.createResource({ kind: 'db', name: 'Management gate DB' });
+    let releaseManagement!: () => void;
+    let markManagementStarted!: () => void;
+    const managementGate = new Promise<void>((resolve) => { releaseManagement = resolve; });
+    const managementStarted = new Promise<void>((resolve) => { markManagementStarted = resolve; });
+    const management = manager.withReadyResource(resource.id, async () => {
+      markManagementStarted();
+      await managementGate;
+    });
+    await managementStarted;
+
+    let applyEntered = false;
+    const apply = manager.coordinateResourceApply(resource.id, async () => {
+      applyEntered = true;
+      await db.actorResource.updateProviderState({ id: resource.id, status: 'ready', lastError: null });
+    });
+    await Bun.sleep(10);
+    expect(applyEntered).toBe(false);
+
+    releaseManagement();
+    await management;
+    await apply;
+    expect(applyEntered).toBe(true);
+  });
+
   test('unbind removes a persisted binding after its slot disappears from the manifest', async () => {
     const resource = await manager.createResource({ kind: 'kv', name: 'Stale slot test' });
     await manager.bindResource({ definitionName, slot: 'storage', resourceId: resource.id });
@@ -342,7 +725,7 @@ describe('ActorResourceManager', () => {
       providers: [provider],
     });
 
-    const creation = manager.createResource({ kind: 'db', name: 'Provisioning', db: { schemaId: 'empty', version: 0 } });
+    const creation = manager.createResource({ kind: 'db', name: 'Provisioning' });
     await started;
     const closing = manager.close();
     await Bun.sleep(10);
@@ -354,7 +737,50 @@ describe('ActorResourceManager', () => {
     expect(providerClosed).toBe(true);
   });
 
-  test('requires database providers to expose authoritative compatibility', async () => {
+  test('waits for accepted actor starts before closing resource providers', async () => {
+    await manager.close();
+    let providerClosed = false;
+    const dbManifest: typeof manifest = {
+      ...manifest,
+      actor: {
+        ...manifest.actor,
+        resources: {
+          database: { kind: 'db', required: true, scope: ['read', 'write'], arbitrarySql: false },
+        },
+      },
+    };
+    const provider: IActorResourceProvider = {
+      kind: 'db',
+      async provision() {},
+      async delete() {},
+      effect() { return null; },
+      async dispatch() { return null; },
+      async close() { providerClosed = true; },
+    };
+    manager = new ActorResourceManager({
+      db,
+      crypto,
+      getDefinition: (name) => name === definitionName ? dbManifest : null,
+      providers: [provider],
+    });
+    const resource = await manager.createResource({ kind: 'db', name: 'Shutdown admission' });
+    await manager.bindResource({ definitionName, slot: 'database', resourceId: resource.id });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'shutdown-start',
+      restartIfCompatible: true,
+    })).toMatchObject({ allowed: true });
+
+    const closing = manager.close();
+    await Bun.sleep(10);
+    expect(providerClosed).toBe(false);
+
+    await manager.completeActorStart({ actorInstanceId: 'shutdown-start', resourceIds: [], succeeded: false });
+    await closing;
+    expect(providerClosed).toBe(true);
+  });
+
+  test('binds database resources by kind, lifecycle, and permission scope only', async () => {
     await manager.close();
     const dbManifest: typeof manifest = {
       ...manifest,
@@ -365,7 +791,6 @@ describe('ActorResourceManager', () => {
             kind: 'db',
             required: true,
             scope: ['read', 'write'],
-            schema: { id: 'notes', version: 1 },
             arbitrarySql: false,
           },
         },
@@ -387,21 +812,12 @@ describe('ActorResourceManager', () => {
 
     const resource = await manager.createResource({
       kind: 'db',
-      name: 'Missing compatibility',
-      db: { schemaId: 'notes', version: 1 },
+      name: 'Schema agnostic',
     });
     await expect(manager.bindResource({ definitionName, slot: 'database', resourceId: resource.id }))
-      .rejects.toMatchObject({ code: 'RESOURCE_PROVIDER_UNAVAILABLE' });
-
-    await db.actorResource.upsertBinding({
-      definitionName,
-      slotName: 'database',
-      resourceId: resource.id,
-      allowRead: true,
-      allowWrite: true,
-    });
+      .resolves.toMatchObject({ resource_id: resource.id });
     await expect(manager.getDefinitionResourceStatus(definitionName))
-      .rejects.toMatchObject({ code: 'RESOURCE_PROVIDER_UNAVAILABLE' });
+      .resolves.toEqual([expect.objectContaining({ slot: 'database', ready: true, blockedCode: null })]);
   });
 
   test('uses stable validation errors and redacts sensitive error details', async () => {

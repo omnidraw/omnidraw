@@ -2,6 +2,10 @@ export const DEFAULT_OSS_ACCOUNT_ID = 'oss-owner';
 export const DEFAULT_OSS_ACCOUNT_DISPLAY_NAME = 'OSS Owner';
 export const ACTOR_RESOURCE_KEY_VALUE_LIST_DEFAULT_LIMIT = 50;
 export const ACTOR_RESOURCE_KEY_VALUE_LIST_MAX_LIMIT = 500;
+export const DB_RESOURCE_DRAFT_LIST_DEFAULT_LIMIT = 50;
+export const DB_RESOURCE_DRAFT_LIST_MAX_LIMIT = 200;
+export const DB_RESOURCE_APPLY_LIST_DEFAULT_LIMIT = 20;
+export const DB_RESOURCE_APPLY_LIST_MAX_LIMIT = 100;
 export const MIME_TYPES = [
   'application/abiword',
   'application/acad',

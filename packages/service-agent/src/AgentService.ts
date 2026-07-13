@@ -10,14 +10,14 @@ import { mkdirSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
 import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
-import { fxBuildDbSchemaContextPrompt } from './fx.db-schema-context';
-import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
+import { fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord, fxLatestWidgetResourceSelectionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
-import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetEditSessionRecord } from './core/tx.session-candidate';
+import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetDbChangeProposalRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
 import { fnValidateCandidate } from './tools/fn.candidate';
-import { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
-import type { TActorCandidate, TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetEditSessionRecord } from './tools/types';
+import { createWidgetWizardPhaseTools } from './tools/phase-tools';
+import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from './tools/resource-bindings';
+import type { TActorCandidate, TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -53,6 +53,7 @@ type TPromptInputImage = {
 type TPromptSelection = {
   images?: TPromptInputImage[];
   model?: TPromptModel;
+  resourceIds?: string[];
   thinkingLevel?: TThinkingLevel;
 };
 type TThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -310,6 +311,18 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
+    const connectedEntry = this.sessionMap[id]?.[sessionId]
+    if (!connectedEntry) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
+    if (promptSelection?.resourceIds !== undefined) {
+      const resources = await this.#resolveWizzardResourceSelections(promptSelection?.resourceIds ?? [])
+      txAppendWidgetResourceSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
+        resources,
+        selectedAt: new Date().toISOString(),
+      })
+    }
+
     await this.#refreshWizzardSessionToolsIfNeeded(id, sessionId)
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -338,6 +351,58 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
+  }
+
+  async approveWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
+    if (!proposal) throw new Error('Database change proposal was not found.')
+    if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
+
+    const actorService = this.#config.actorService
+    if (!actorService?.createDbDraft || !actorService.executeDbDraftSql || !actorService.discardDbDraft || !actorService.previewDbApply || !actorService.confirmDbApply) {
+      throw new Error('Coordinated database changes are unavailable in this host.')
+    }
+
+    const details = await actorService.createDbDraft(proposal.resourceId, `AI Wizard: ${proposal.reason}`)
+    const draftId = details.draft.id
+    let preview: { warnings: string[] }
+    let apply: Awaited<ReturnType<NonNullable<TActorServiceReloader['confirmDbApply']>>>
+    try {
+      await actorService.executeDbDraftSql(draftId, proposal.sql)
+      preview = await actorService.previewDbApply(draftId)
+      apply = await actorService.confirmDbApply(draftId)
+    } catch (error) {
+      await actorService.discardDbDraft(draftId).catch(() => undefined)
+      throw error
+    }
+    const approved = {
+      ...proposal,
+      status: 'approved' as const,
+      resolvedAt: new Date().toISOString(),
+      draftId,
+      applyId: apply.id,
+      warnings: preview.warnings,
+    }
+    txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, approved)
+    return approved
+  }
+
+  rejectWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): TWidgetDbChangeProposalRecord {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
+    if (!proposal) throw new Error('Database change proposal was not found.')
+    if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
+
+    const rejected = {
+      ...proposal,
+      status: 'rejected' as const,
+      resolvedAt: new Date().toISOString(),
+    }
+    txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, rejected)
+    return rejected
   }
 
   async cancelWizzard(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
@@ -385,10 +450,28 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     this.#disposeDraftActor(id, sessionId)
 
+    const bindingPlan = await this.#wizzardResourceBindingPlan(manifestResult.manifest, sessionEntry.sessionManager)
+    const directBindings = bindingPlan.ok
+      ? new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]))
+      : new Map<string, TResourceBindingPlan>()
+    const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
+      ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
+          const binding = directBindings.get(call.slot)
+          const requirement = manifestResult.manifest.actor.resources?.[call.slot]
+          if (!binding || !requirement) throw new Error(bindingPlan.ok ? `Draft resource slot '${call.slot}' is not selected.` : bindingPlan.message)
+          return this.#config.actorService!.callWithDirectResourceBinding!(call, {
+            resourceId: binding.resource.id,
+            requirement,
+            scope: binding.scope,
+          })
+        }
+      : undefined
+
     const actor = new Actor({
       id: `draft:${id}:${sessionId}`,
       vsJson: manifestResult.manifest,
       rootDir,
+      resourceGateway,
     })
 
     const unlisten = actor.listen((event) => {
@@ -597,10 +680,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     const editSession = fxLatestWidgetEditSessionRecord({ sessionManager: this.sessionMap[id][sessionId].sessionManager })
+    const bindingPlan = await this.#wizzardResourceBindingPlan(manifestResult.manifest, this.sessionMap[id][sessionId].sessionManager)
+    if (!bindingPlan.ok) {
+      return {
+        published: false,
+        manifest: manifestResult.manifest,
+        destination: null,
+        message: bindingPlan.message,
+      }
+    }
     const shouldReloadEditedInstances = editSession !== null
       && editSession.sourceName === manifestResult.manifest.name
       && editSession.sourceSlug === manifestResult.manifest.slug
-    const result = await txPublishWidgetDraft({ readdir, readFile, mkdir, rm, cp, join, relative: relativePath, resolve, basename }, {
+    const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, join, relative: relativePath, resolve, basename }, {
       cwd: rootDir,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
       actorService: shouldReloadEditedInstances ? undefined : this.#config.actorService,
@@ -619,6 +711,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     this.#disposeDraftActor(id, sessionId)
     await this.#config.actorService?.reload()
+    for (const binding of bindingPlan.bindings) {
+      await this.#config.actorService?.bindResource?.({
+        definitionName: result.manifest.name,
+        slot: binding.slot,
+        resourceId: binding.resource.id,
+        scope: binding.scope,
+      })
+    }
     if (shouldReloadEditedInstances) {
       await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
     }
@@ -937,12 +1037,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         new Date().toISOString(),
       )
     }
-    const dbSchemaContextPrompt = manifestResult.ready
-      ? await fxBuildDbSchemaContextPrompt({
-          getDbSchemaContext: this.#config.actorService?.getDbSchemaContext?.bind(this.#config.actorService),
-        }, { manifest: manifestResult.manifest })
-      : ''
-    const phaseTools = fnCreateWidgetWizardPhaseTools({
+    const phaseTools = createWidgetWizardPhaseTools({
       cwd,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
       sessionManager,
@@ -956,9 +1051,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       modelRegistry: this.modelRegistry,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
-        systemPrompt: dbSchemaContextPrompt.length > 0
-          ? `${WIDGET_WIZZARD_SYSTEM_PROMPT}\n${dbSchemaContextPrompt}\n`
-          : WIDGET_WIZZARD_SYSTEM_PROMPT
+        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
       }
     });
     const { session } = await createAgentSessionFromServices({
@@ -997,7 +1090,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     writableSessionManager._rewriteFile?.()
   }
 
-  #wizzardToolNames(phaseTools: ReturnType<typeof fnCreateWidgetWizardPhaseTools>): string[] {
+  #wizzardToolNames(phaseTools: ReturnType<typeof createWidgetWizardPhaseTools>): string[] {
     return [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)]
   }
 
@@ -1026,7 +1119,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (typeof sessionEntry.session.getActiveToolNames !== 'function') return
 
     const cwd = this.#getWizardCwd(id, sessionId)
-    const phaseTools = fnCreateWidgetWizardPhaseTools({
+    const phaseTools = createWidgetWizardPhaseTools({
       cwd,
       finalWidgetsDir: join(this.#config.configPath, 'widgets'),
       sessionManager: sessionEntry.sessionManager,
@@ -1043,6 +1136,47 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     sessionEntry.unsub()
     previousSession.dispose()
     this.sessionMap[id][sessionId] = nextEntry
+  }
+
+  async #resolveWizzardResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
+    if (resourceIds.length > 16) throw new Error('A prompt can select at most 16 resources.')
+    const ids = [...new Set(resourceIds)]
+    if (!this.#config.actorService?.getResource) throw new Error('Resource selection is unavailable in this host.')
+
+    const selected: TWidgetResourceSelection[] = []
+    for (const resourceId of ids) {
+      const resource = await this.#config.actorService.getResource(resourceId)
+      if (!resource) throw new Error(`Selected resource was not found: ${resourceId}`)
+      selected.push({
+        id: resource.id,
+        kind: resource.kind,
+        name: resource.name,
+        status: resource.status,
+      })
+    }
+    return selected
+  }
+
+  async #wizzardResourceBindingPlan(manifest: TVibecanvasJson, sessionManager: SessionManager): Promise<{ ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string }> {
+    const requirements = Object.keys(manifest.actor.resources ?? {})
+    if (requirements.length === 0) return { ok: true, bindings: [] }
+    if (!this.#config.actorService?.bindResource) return { ok: false, message: 'Selected resources cannot be bound in this host. The widget was not published.' }
+
+    const selectedRecord = fxLatestWidgetResourceSelectionRecord({ sessionManager }, {})
+    let selected = selectedRecord?.resources ?? []
+    if (selected.length === 0) {
+      if (!this.#config.actorService.listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
+      const available = await this.#config.actorService.listResources({ status: 'ready' })
+      const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
+        id: resource.id,
+        kind: resource.kind,
+        name: resource.name,
+        status: resource.status,
+      })))
+      if (!implicit.ok) return implicit
+      selected = implicit.resources
+    }
+    return planSelectedResourceBindings(manifest, selected)
   }
 
   #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {

@@ -3,7 +3,6 @@ import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, join, relative as relativePath } from 'node:path';
 import { ActorSupervisor } from './ActorSupervisor';
 import { txGetWidgetCode } from './core/tx.actor-definitions';
@@ -11,42 +10,16 @@ import type { TVibecanvasJson } from './core/types';
 import type { Actor, TActorEvent } from './Actor';
 import { ActorResourceManager, type TBindResourceArgs, type TCreateResourceArgs } from './resources/ActorResourceManager';
 import type { TActorResourceKind, TActorResourceStatus } from '@vibecanvas/service-db/model';
-import { DbResource } from './resources/DbResource';
+import { DbResource, type TDatabaseFactory } from './resources/DbResource';
 import { KvResource } from './resources/KvResource';
 import { SecretStoreResource } from './resources/SecretStoreResource';
-import { DbResourceMigrationCoordinator } from './resources/DbResourceMigrationCoordinator';
-import { ActorResourceError, type TActorResourceErrorCode } from './resources/ActorResourceError';
-import type { TDbResourceMigrationPreview } from './resources/resource-types';
+import { DbResourceCoordinator } from './resources/DbResourceCoordinator';
+import type { TActorResourceCall, TActorResourceDataPage, TActorResourceDirectBinding, TDbCellValue, TDbDraftOperation, TDbRowCreate, TDbRowDelete, TDbRowIdentity, TDbRowUpdate } from './resources/resource-types';
+import { ActorResourceError } from './resources/ActorResourceError';
+import { fnActorResourceDataPage } from './resources/fn.resource-data';
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
-}
-
-function migrationChecksum(sql: string): string {
-  return `sha256:${createHash('sha256').update(Buffer.from(sql, 'utf8')).digest('hex')}`
-}
-
-const DB_MIGRATION_SQL_MAX_BYTES = 1_048_576
-
-function validateMigrationSql(sql: string): void {
-  if (typeof sql !== 'string' || sql.trim().length === 0 || Buffer.byteLength(sql, 'utf8') > DB_MIGRATION_SQL_MAX_BYTES) {
-    throw new ActorResourceError(
-      'DB_RESOURCE_MIGRATION_FAILED',
-      `DbResource migration SQL must be non-blank and no larger than ${DB_MIGRATION_SQL_MAX_BYTES} UTF-8 bytes.`,
-    )
-  }
-}
-
-function safeDbControlMessage(error: unknown, fallback: string): string {
-  if (!(error instanceof Error)) return fallback
-  const message = error.message.trim()
-  if (
-    message.length === 0
-    || message.length > 512
-    || /[\\/\r\n]/.test(message)
-    || /\b(?:SQLITE|TURSO|SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA)\b/i.test(message)
-  ) return fallback
-  return message
 }
 
 interface IPublicMethods {
@@ -59,13 +32,15 @@ interface IPublicMethods {
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
   reload(): Promise<void>
   reloadDefinitionInstances(defName: string): Promise<void>
+  callWithDirectResourceBinding(call: TActorResourceCall, binding: TActorResourceDirectBinding): Promise<unknown>
 }
 
 interface IActorServiceConfig {
   db: DbServiceTurso;
   configPath: string;
-  dataRoot?: string;
+  dataRoot: string;
   crypto?: Pick<Crypto, 'randomUUID'>;
+  dbResourceDatabaseFactory?: TDatabaseFactory;
   eventPublisherService: IEventPublisherService,
 }
 
@@ -74,7 +49,8 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   #config: IActorServiceConfig
   #supervisor: ActorSupervisor
   #resourceManager: ActorResourceManager
-  #dbMigrationCoordinator: DbResourceMigrationCoordinator
+  #dbResource: DbResource
+  #dbResourceCoordinator: DbResourceCoordinator
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -85,37 +61,46 @@ export class ActorService implements IService, IStartableService, IStoppableServ
       eventPublisherService: config.eventPublisherService,
       resourceGateway: (call) => this.#resourceManager.call(call),
       actorStartAdmission: (args) => this.#resourceManager.getActorStartAdmission(args),
-      actorStartSucceeded: (args) => this.#resourceManager.completeActorStart(args),
+      actorStartCompleted: (args) => this.#resourceManager.completeActorStart(args),
     })
     const kvResource = new KvResource(config.db.actorResource.keyValue)
     const secretStoreResource = new SecretStoreResource(config.db.actorResource.keyValue)
-    const dbResource = new DbResource({
+    this.#dbResource = new DbResource({
       db: config.db,
-      dataRoot: config.dataRoot ?? join(config.configPath, '.vibecanvas-data'),
+      dataRoot: config.dataRoot,
+      databaseFactory: config.dbResourceDatabaseFactory,
     })
     this.#resourceManager = new ActorResourceManager({
       db: config.db,
       crypto: config.crypto ?? crypto,
       getDefinition: (definitionName) => this.#supervisor.vibecanvasDefMap[definitionName] ?? null,
-      providers: [kvResource, secretStoreResource, dbResource],
+      providers: [kvResource, secretStoreResource, this.#dbResource],
     })
-    this.#dbMigrationCoordinator = new DbResourceMigrationCoordinator({
+    this.#dbResourceCoordinator = new DbResourceCoordinator({
       db: config.db,
       resourceManager: this.#resourceManager,
       supervisor: this.#supervisor,
-      dbResource,
+      dbResource: this.#dbResource,
+      crypto: config.crypto ?? crypto,
     })
+  }
+
+  callWithDirectResourceBinding(call: TActorResourceCall, binding: TActorResourceDirectBinding): Promise<unknown> {
+    return this.#resourceManager.callWithDirectBinding(call, binding)
   }
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
     console.log('start', this.name)
     await this.#resourceManager.reconcileStartup()
+    await this.#clearObsoleteDbResourceErrors()
+    await this.#dbResourceCoordinator.reconcileStartup()
     await this.#supervisor.init()
   }
 
   async stop(): Promise<void> {
     console.log('stop', this.name)
-    this.#supervisor.closeActors()
+    await this.#supervisor.closeActors()
+    await this.#dbResourceCoordinator.close()
     await this.#resourceManager.close()
   }
 
@@ -186,6 +171,15 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#resourceManager.listResourceReferences(resourceId)
   }
 
+  async listResourceData(args: { resourceId: string; prefix?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage> {
+    const resource = await this.#resourceManager.getResource(args.resourceId)
+    if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${args.resourceId}" was not found.`)
+    if (resource.kind === 'db') throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Database rows use the database resource data API.')
+    if (resource.status !== 'ready') throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is not ready.`)
+    const page = await this.#config.db.actorResource.keyValue.list(args)
+    return fnActorResourceDataPage(resource.kind, page)
+  }
+
   getDefinitionResourceStatus(definitionName: string) {
     return this.#resourceManager.getDefinitionResourceStatus(definitionName)
   }
@@ -198,127 +192,143 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#resourceManager.unbindResource(args)
   }
 
-  listDbSchemas(args: { status?: 'draft' | 'published' | 'deprecated' } = {}) {
-    return this.#config.db.dbResource.schema.list(args)
+  dbResourceImpact(resourceId: string) {
+    return this.#dbResourceCoordinator.impact(resourceId)
   }
 
-  getDbSchema(id: string) {
-    return this.#config.db.dbResource.schema.get({ id })
+  async inspectDbResource(args: { resourceId: string; target: 'live' | 'draft'; draftId?: string }) {
+    return this.#withReadyDbResource(args.resourceId, async () => {
+      if (args.target === 'draft') {
+        const details = args.draftId
+          ? await this.#dbResourceCoordinator.getDraft(args.draftId)
+          : await this.#dbResourceCoordinator.getActiveDraft(args.resourceId)
+        if (!details || details.draft.resource_id !== args.resourceId) return null
+        return this.#dbResource.inspect(args.resourceId, 'draft', details.draft.id)
+      }
+      return this.#dbResource.inspect(args.resourceId, 'live')
+    })
   }
 
-  createDbSchema(args: { id: string; name: string; description?: string | null }) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.schema.create(args),
+  listDbRows(args: { resourceId: string; object: string; cursor?: TDbRowIdentity | null; limit?: number }) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.listRows(args))
+  }
+
+  getDbRow(args: { resourceId: string; object: string; identity: TDbRowIdentity }) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.getRow(args))
+  }
+
+  executeDbLiveSql(args: { resourceId: string; sql: string; parameters?: Readonly<Record<string, TDbCellValue>>; approved: boolean }) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.executeLiveSql(args))
+  }
+
+  createDbRow(args: { resourceId: string; object: string; values: TDbRowCreate['values'] }) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.createRow(args))
+  }
+
+  updateDbRow(args: { resourceId: string; object: string } & Omit<TDbRowUpdate, 'kind'>) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.updateRow(args))
+  }
+
+  deleteDbRow(args: { resourceId: string; object: string } & Omit<TDbRowDelete, 'kind'>) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.deleteRow(args))
+  }
+
+  bulkDbRows(args: { resourceId: string; object: string; operations: readonly (TDbRowCreate | TDbRowUpdate | TDbRowDelete)[] }) {
+    return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.bulkRows(args))
+  }
+
+  createDbDraft(resourceId: string, name: string) {
+    return this.#dbResourceCoordinator.createDraft(resourceId, name)
+  }
+
+  listDbDrafts(args: { resourceId: string; before?: { createdAt: string; id: string }; limit?: number }) {
+    return this.#dbResourceCoordinator.listDrafts(args)
+  }
+
+  getDbDraft(draftId: string) {
+    return this.#dbResourceCoordinator.getDraft(draftId)
+  }
+
+  getActiveDbDraft(resourceId: string) {
+    return this.#dbResourceCoordinator.getActiveDraft(resourceId)
+  }
+
+  changeDbDraft(draftId: string, operation: TDbDraftOperation) {
+    return this.#dbResourceCoordinator.changeDraft(draftId, operation)
+  }
+
+  executeDbDraftSql(draftId: string, sql: string) {
+    return this.#dbResourceCoordinator.executeDraftSql(draftId, sql)
+  }
+
+  discardDbDraft(draftId: string) {
+    return this.#dbResourceCoordinator.discardDraft(draftId)
+  }
+
+  previewDbApply(draftId: string) {
+    return this.#dbResourceCoordinator.previewApply(draftId)
+  }
+
+  confirmDbApply(draftId: string) {
+    return this.#dbResourceCoordinator.confirmApply(draftId)
+  }
+
+  getDbApply(applyId: string) {
+    return this.#dbResourceCoordinator.getApply(applyId)
+  }
+
+  listDbApplies(args: { resourceId: string; before?: { createdAt: string; id: string }; limit?: number }) {
+    return this.#dbResourceCoordinator.listApplies(args)
+  }
+
+  getDbBackup(resourceId: string) {
+    return this.#dbResourceCoordinator.getBackup(resourceId)
+  }
+
+  discardDbBackup(resourceId: string, applyId: string) {
+    return this.#dbResourceCoordinator.discardBackup(resourceId, applyId)
+  }
+
+  previewDbBackupRestore(resourceId: string, applyId: string) {
+    return this.#dbResourceCoordinator.previewRestore(resourceId, applyId)
+  }
+
+  restoreDbBackup(resourceId: string, applyId: string) {
+    return this.#dbResourceCoordinator.restore(resourceId, applyId)
+  }
+
+  getDbRestoreStatus(restoreId: string) {
+    return this.#dbResourceCoordinator.restoreStatus(restoreId)
+  }
+
+  #withReadyDbResource<T>(resourceId: string, operation: () => Promise<T>): Promise<T> {
+    return this.#resourceManager.withReadyResource(resourceId, (resource) => {
+      if (resource.kind !== 'db') {
+        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource "${resourceId}" is not a DbResource.`)
+      }
+      return operation()
+    })
+  }
+
+  async #clearObsoleteDbResourceErrors(): Promise<void> {
+    const obsoleteCodes = new Set([
       'DB_RESOURCE_SCHEMA_MISMATCH',
-      'DbResource schema could not be created; verify its ID and lifecycle state.',
-    )
-  }
-
-  updateDbSchemaDraft(args: { id: string; name: string; description?: string | null }) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.schema.updateDraft(args),
-      'DB_RESOURCE_SCHEMA_MISMATCH',
-      'Only an existing draft DbResource schema can be updated.',
-    )
-  }
-
-  deleteDbSchemaDraft(id: string) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.schema.deleteDraft({ id }),
-      'DB_RESOURCE_SCHEMA_MISMATCH',
-      'Only an unreferenced draft DbResource schema can be deleted.',
-    )
-  }
-
-  publishDbSchema(id: string) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.schema.publish({ id }),
+      'DB_RESOURCE_VERSION_MISMATCH',
+      'DB_RESOURCE_MIGRATION_CHANGED',
       'DB_RESOURCE_MIGRATION_FAILED',
-      'DbResource schema publication requires a valid contiguous draft migration sequence.',
-    )
-  }
-
-  deprecateDbSchema(id: string) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.schema.deprecate({ id }),
-      'DB_RESOURCE_SCHEMA_MISMATCH',
-      'Only a published DbResource schema without draft migrations can be deprecated.',
-    )
-  }
-
-  listDbMigrations(args: { schemaId: string; status?: 'draft' | 'published'; throughVersion?: number }) {
-    return this.#config.db.dbResource.migration.list(args)
-  }
-
-  createDbMigrationDraft(args: { schemaId: string; version: number; name: string; sql: string }) {
-    validateMigrationSql(args.sql)
-    return this.#dbControl(
-      () => this.#config.db.dbResource.migration.createDraft({ ...args, checksum: migrationChecksum(args.sql) }),
-      'DB_RESOURCE_MIGRATION_FAILED',
-      'DbResource migration draft must be the next contiguous version on a non-deprecated schema.',
-    )
-  }
-
-  updateDbMigrationDraft(args: { schemaId: string; version: number; name: string; sql: string }) {
-    validateMigrationSql(args.sql)
-    return this.#dbControl(
-      () => this.#config.db.dbResource.migration.updateDraft({ ...args, checksum: migrationChecksum(args.sql) }),
-      'DB_RESOURCE_MIGRATION_FAILED',
-      'Only the current draft DbResource migration can be updated.',
-    )
-  }
-
-  deleteDbMigrationDraft(args: { schemaId: string; version: number }) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.migration.deleteDraft(args),
-      'DB_RESOURCE_MIGRATION_FAILED',
-      'Only the latest draft DbResource migration can be deleted.',
-    )
-  }
-
-  publishDbMigration(args: { schemaId: string; version: number }) {
-    return this.#dbControl(
-      () => this.#config.db.dbResource.migration.publish(args),
-      'DB_RESOURCE_MIGRATION_FAILED',
-      'DbResource migration publication requires the next contiguous draft version.',
-    )
-  }
-
-  async #dbControl<T>(
-    operation: () => Promise<T>,
-    code: TActorResourceErrorCode,
-    fallbackMessage: string,
-  ): Promise<T> {
-    try {
-      return await operation()
-    } catch (error) {
-      if (error instanceof ActorResourceError) throw error
-      throw new ActorResourceError(code, safeDbControlMessage(error, fallbackMessage))
+    ])
+    const instances = await this.#config.db.actor.listInstances()
+    for (const instance of instances) {
+      const code = instance.last_error && typeof instance.last_error === 'object' && !Array.isArray(instance.last_error)
+        ? (instance.last_error as { code?: unknown }).code
+        : null
+      if (typeof code !== 'string' || !obsoleteCodes.has(code)) continue
+      await this.#config.db.actor.updateInstanceHealth({
+        id: instance.id,
+        status: instance.status === 'blocked' ? 'stopped' : instance.status,
+        last_error: null,
+      })
     }
-  }
-
-  async getDbSchemaContext(schemaId: string, version: number) {
-    if (!Number.isInteger(version) || version < 0) return null
-    const schema = await this.#config.db.dbResource.schema.get({ id: schemaId })
-    if (!schema || schema.status !== 'published') return null
-    const migrations = await this.#config.db.dbResource.migration.list({ schemaId, status: 'published', throughVersion: version })
-    if (
-      migrations.length !== version
-      || migrations.some((migration, index) => migration.version !== index + 1)
-    ) return null
-    return { schema, migrations }
-  }
-
-  getDbResourceConfiguration(resourceId: string) {
-    return this.#dbMigrationCoordinator.getDbResourceConfiguration(resourceId)
-  }
-
-  previewDbResourceMigration(resourceId: string, targetVersion: number): Promise<TDbResourceMigrationPreview> {
-    return this.#dbMigrationCoordinator.previewDbResourceMigration(resourceId, targetVersion)
-  }
-
-  migrateDbResource(resourceId: string, targetVersion: number) {
-    return this.#dbMigrationCoordinator.migrateDbResource(resourceId, targetVersion)
   }
 
 }

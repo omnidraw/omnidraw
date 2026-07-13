@@ -1,4 +1,5 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { fnNormalizeVibecanvasJson } from '@vibecanvas/service-actor/core/fn.normalize-actor-manifest';
 import type { TActorServiceReloader } from './types';
 import { fxWalkFiles } from './fx.walk-files';
 import { fnAssertSafeFinalDestination } from './fn.safe-destination';
@@ -13,6 +14,7 @@ export type TDirent = {
 export type TPortalPublishWidgetDraft = {
   readdir: (path: string, options: { withFileTypes: true }) => Promise<TDirent[]>;
   readFile: (path: string, encoding: 'utf8') => Promise<string>;
+  writeFile: (path: string, content: string, encoding: 'utf8') => Promise<void>;
   mkdir: (path: string, options: { recursive: true }) => Promise<string | undefined>;
   rm: (path: string, options: { recursive: true; force: true }) => Promise<void>;
   cp: (source: string, destination: string, options: { recursive: true; filter: (source: string) => boolean }) => Promise<void>;
@@ -29,12 +31,15 @@ export type TArgsPublishWidgetDraft = {
 };
 
 export async function txPublishWidgetDraft(portal: TPortalPublishWidgetDraft, args: TArgsPublishWidgetDraft) {
-  const manifest = JSON.parse(await portal.readFile(portal.join(args.cwd, 'vibecanvas.json'), 'utf8')) as TVibecanvasJson;
+  const manifestPath = portal.join(args.cwd, 'vibecanvas.json');
+  const draftManifest = JSON.parse(await portal.readFile(manifestPath, 'utf8')) as TVibecanvasJson;
   const validation = await txValidateWidgetFiles(portal, { cwd: args.cwd });
   if (!validation.ok) {
-    return { published: false, manifest, validation, destination: null as string | null, files: [] as string[] };
+    return { published: false, manifest: draftManifest, validation, destination: null as string | null, files: [] as string[] };
   }
 
+  const manifest = fnNormalizeVibecanvasJson(draftManifest).manifest;
+  await portal.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   const destination = fnAssertSafeFinalDestination({ finalWidgetsDir: args.finalWidgetsDir, slug: manifest.slug, basename: portal.basename, resolve: portal.resolve });
   await portal.mkdir(args.finalWidgetsDir, { recursive: true });
   await portal.rm(destination, { recursive: true, force: true });

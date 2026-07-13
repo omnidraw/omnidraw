@@ -140,7 +140,7 @@ export default {
       initialData: { started: true },
       resources: {
         preferences: { kind: "kv", required: true, scope: ["read", "write"] },
-        notes: { kind: "db", required: true, scope: ["write"], schema: { id: "notes", version: 1 }, arbitrarySql: true },
+        notes: { kind: "db", required: true, scope: ["write"], arbitrarySql: true },
       },
     });
     const actor = new Actor({

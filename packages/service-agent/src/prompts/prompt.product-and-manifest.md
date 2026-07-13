@@ -43,16 +43,21 @@ The actor candidate and vibecanvas.json must match this shape:
 - widget.tool.behavior: usually { type: "mode", mode: "click-create" } for canvas-created widgets, or { type: "action" } only for action-like tools.
 
 Resource slot declarations:
+- Discover host resources with vc_list_resources instead of telling the user you cannot inspect them. Inspect a database with vc_inspect_resource before writing its named operations.
+- Treat an @mentioned resource as an explicit typed selection. Keep the concrete resource ID out of the manifest; publish maps the selection to a compatible slot and creates the host binding.
+- If exactly one ready resource matches a slot kind, publish can bind it without a mention. If multiple resources match, ask the user to @mention the intended one.
 - Every slot declares `required` explicitly. Use `true` by default. Missing bindings are reported to control clients; the generic actor can still start and a resource call fails safely.
 - `scope` is a non-empty duplicate-free list containing `read`, `write`, or both. It controls permission, not actor-instance or row isolation.
 - KV slot: `{ "kind": "kv", "required": true, "scope": ["read", "write"] }`.
 - Secret slot: `{ "kind": "secretStore", "required": true, "scope": ["read"] }`. Secret values are currently plaintext at rest; never put them in actor data, logs, or output messages unless the user flow strictly requires it.
-- DB slot: `{ "kind": "db", "required": true, "scope": ["read"], "schema": { "id": "notes", "version": 2 } }`.
-- DB schema version 0 is valid and means no host migrations have been applied. The schema must still be published by the host.
+- DB slot: `{ "kind": "db", "required": true, "scope": ["read"] }`. DB slots are schema-agnostic: never add schema IDs, versions, migrations, generations, or compatibility ranges.
 - DB `arbitrarySql` defaults to false. Prefer named operations under `operations`.
 - A named DB operation declares `effect`, one SQL statement, optional named parameter declarations, and `result: "rows" | "execute"`. A read operation requires read scope; a write operation requires write scope. Named operations remain single-statement; when `arbitrarySql` is enabled, actor `tx` code may pass an ordered operation array to `execute` and explicitly control `BEGIN`, `COMMIT`, rollback, and savepoints.
 - Parameter declarations use `{ "type": "string" | "number" | "boolean" | "bigint" | "bytes" | "json", "required"?: boolean, "nullable"?: boolean }`. Required defaults true and nullable defaults false.
+- SQLite INTEGER result cells arrive in actor code as `bigint`, not `number`. Actor data and messages are JSON and cannot contain bigint, so model identifiers/counters as decimal strings by default (or explicitly range-check before converting to a safe number).
 - Bind actor values as named parameters. Never interpolate values into SQL.
+- Guest SQL must use ordinary SQLite-compatible tables, indexes, views, triggers, parameters, and transactions. Do not use Turso-only SQL or PRAGMAs, custom types, materialized views, extensions, remote sync, MVCC, or CDC. The host may replace its internal SQLite-compatible engine without changing actor APIs.
+- The Wizard may never execute database changes from an ordinary prompt or model tool confirmation. Use vc_propose_db_change; the exact SQL remains pending until the human checks the visible risk checkbox and approves it.
 
 Actor state strings must match:
 - "booting" or "booting.*"

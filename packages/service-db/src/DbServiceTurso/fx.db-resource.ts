@@ -1,188 +1,227 @@
 import type { Database } from "@tursodatabase/database"
 import type {
   TActorInstance,
-  TDbResourceMigrationBlock,
-  TDbResourceConfiguration,
-  TDbResourceMigrationStatus,
-  TDbResourceSchema,
-  TDbResourceSchemaMigration,
-  TDbResourceSchemaStatus,
+  TDbResourceApplyInstanceResult,
+  TDbResourceApplyRun,
+  TDbResourceApplyStatus,
+  TDbResourceDraft,
+  TDbResourceDraftChange,
+  TDbResourceDraftStatus,
 } from "../model"
-import { fnParseActorInstanceRow, fnParseDbResourceMigrationBlockRow } from "./fn.actor-resource-row"
+import { fnParseActorInstanceRow } from "./fn.actor-resource-row"
+import {
+  fnDbResourceApplyListLimit,
+  fnDbResourceDraftListLimit,
+  fnParseDbResourceApplyInstanceResultRow,
+  fnParseDbResourceApplyRunRow,
+  fnParseDbResourceDraftChangeRow,
+  fnParseDbResourceDraftRow,
+} from "./fn.db-resource"
 
 type TPortal = {
   db: Database
 }
 
-type TArgsSchemaGet = {
+type TArgsDraftGet = {
   id: string
 }
 
-type TArgsSchemaList = {
-  status?: TDbResourceSchemaStatus
+type TArgsDraftList = {
+  resourceId: string
+  status?: TDbResourceDraftStatus
+  before?: { createdAt: string; id: string }
+  limit?: number
 }
 
-type TArgsMigrationGet = {
-  schemaId: string
-  version: number
-}
-
-type TArgsMigrationList = {
-  schemaId: string
-  status?: TDbResourceMigrationStatus
-  throughVersion?: number
-}
-
-type TArgsConfigurationGet = {
+type TArgsDraftGetActive = {
   resourceId: string
 }
 
-type TArgsConfigurationList = {
-  schemaId?: string
+type TArgsDraftChangeList = {
+  draftId: string
 }
 
-type TArgsMigrationBlockListByResource = {
+type TArgsApplyGet = {
+  id: string
+}
+
+type TArgsApplyList = {
   resourceId: string
+  status?: TDbResourceApplyStatus
+  before?: { createdAt: string; id: string }
+  limit?: number
 }
 
-type TArgsMigrationBlockListByInstance = {
+type TArgsApplyInstanceResultListByApply = {
+  applyId: string
+}
+
+type TArgsApplyInstanceResultListByInstance = {
   actorInstanceId: string
 }
 
-export async function fxDbResourceSchemaGet(portal: TPortal, args: TArgsSchemaGet): Promise<TDbResourceSchema | null> {
+type TArgsListAffectedInstances = {
+  resourceId: string
+}
+
+export async function fxDbResourceDraftGet(portal: TPortal, args: TArgsDraftGet): Promise<TDbResourceDraft | null> {
   const row = await (await portal.db.prepare(`
     SELECT *
-    FROM db_resource_schemas
+    FROM db_resource_drafts
     WHERE id = ?
   `)).get(args.id)
-  return (row ?? null) as TDbResourceSchema | null
+  return row === undefined || row === null ? null : fnParseDbResourceDraftRow(row)
 }
 
-export async function fxDbResourceSchemaList(portal: TPortal, args: TArgsSchemaList): Promise<TDbResourceSchema[]> {
-  const rows = args.status === undefined
-    ? await (await portal.db.prepare(`
-        SELECT *
-        FROM db_resource_schemas
-        ORDER BY created_at ASC, id ASC
-      `)).all()
-    : await (await portal.db.prepare(`
-        SELECT *
-        FROM db_resource_schemas
-        WHERE status = ?
-        ORDER BY created_at ASC, id ASC
-      `)).all(args.status)
-  return rows as TDbResourceSchema[]
-}
-
-export async function fxDbResourceMigrationGet(
-  portal: TPortal,
-  args: TArgsMigrationGet,
-): Promise<TDbResourceSchemaMigration | null> {
-  const row = await (await portal.db.prepare(`
-    SELECT *
-    FROM db_resource_schema_migrations
-    WHERE schema_id = ? AND version = ?
-  `)).get(args.schemaId, args.version)
-  return (row ?? null) as TDbResourceSchemaMigration | null
-}
-
-export async function fxDbResourceMigrationList(
-  portal: TPortal,
-  args: TArgsMigrationList,
-): Promise<TDbResourceSchemaMigration[]> {
+export async function fxDbResourceDraftList(portal: TPortal, args: TArgsDraftList): Promise<TDbResourceDraft[]> {
+  const limit = fnDbResourceDraftListLimit(args.limit)
   let rows: unknown[]
-  if (args.status !== undefined && args.throughVersion !== undefined) {
+  if (args.status !== undefined && args.before !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
-      FROM db_resource_schema_migrations
-      WHERE schema_id = ? AND status = ? AND version <= ?
-      ORDER BY version ASC
-    `)).all(args.schemaId, args.status, args.throughVersion)
+      FROM db_resource_drafts
+      WHERE resource_id = ? AND status = ?
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, args.status, args.before.createdAt, args.before.createdAt, args.before.id, limit)
   } else if (args.status !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
-      FROM db_resource_schema_migrations
-      WHERE schema_id = ? AND status = ?
-      ORDER BY version ASC
-    `)).all(args.schemaId, args.status)
-  } else if (args.throughVersion !== undefined) {
+      FROM db_resource_drafts
+      WHERE resource_id = ? AND status = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, args.status, limit)
+  } else if (args.before !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
-      FROM db_resource_schema_migrations
-      WHERE schema_id = ? AND version <= ?
-      ORDER BY version ASC
-    `)).all(args.schemaId, args.throughVersion)
+      FROM db_resource_drafts
+      WHERE resource_id = ?
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, args.before.createdAt, args.before.createdAt, args.before.id, limit)
   } else {
     rows = await (await portal.db.prepare(`
       SELECT *
-      FROM db_resource_schema_migrations
-      WHERE schema_id = ?
-      ORDER BY version ASC
-    `)).all(args.schemaId)
+      FROM db_resource_drafts
+      WHERE resource_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, limit)
   }
-  return rows as TDbResourceSchemaMigration[]
+  return rows.map(fnParseDbResourceDraftRow)
 }
 
-export async function fxDbResourceConfigurationGet(
+export async function fxDbResourceDraftGetActive(
   portal: TPortal,
-  args: TArgsConfigurationGet,
-): Promise<TDbResourceConfiguration | null> {
+  args: TArgsDraftGetActive,
+): Promise<TDbResourceDraft | null> {
   const row = await (await portal.db.prepare(`
     SELECT *
-    FROM db_resource_configurations
-    WHERE resource_id = ?
+    FROM db_resource_drafts
+    WHERE resource_id = ? AND status IN ('editing', 'applying')
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
   `)).get(args.resourceId)
-  return (row ?? null) as TDbResourceConfiguration | null
+  return row === undefined || row === null ? null : fnParseDbResourceDraftRow(row)
 }
 
-export async function fxDbResourceConfigurationList(
+export async function fxDbResourceDraftChangeList(
   portal: TPortal,
-  args: TArgsConfigurationList,
-): Promise<TDbResourceConfiguration[]> {
-  const rows = args.schemaId === undefined
-    ? await (await portal.db.prepare(`
-        SELECT *
-        FROM db_resource_configurations
-        ORDER BY created_at ASC, resource_id ASC
-      `)).all()
-    : await (await portal.db.prepare(`
-        SELECT *
-        FROM db_resource_configurations
-        WHERE schema_id = ?
-        ORDER BY created_at ASC, resource_id ASC
-      `)).all(args.schemaId)
-  return rows as TDbResourceConfiguration[]
-}
-
-export async function fxDbResourceMigrationBlockListByResource(
-  portal: TPortal,
-  args: TArgsMigrationBlockListByResource,
-): Promise<TDbResourceMigrationBlock[]> {
+  args: TArgsDraftChangeList,
+): Promise<TDbResourceDraftChange[]> {
   const rows = await (await portal.db.prepare(`
     SELECT *
-    FROM db_resource_migration_blocks
-    WHERE resource_id = ?
-    ORDER BY actor_instance_id ASC
-  `)).all(args.resourceId)
-  return rows.map(fnParseDbResourceMigrationBlockRow)
+    FROM db_resource_draft_changes
+    WHERE draft_id = ?
+    ORDER BY sequence ASC
+  `)).all(args.draftId)
+  return rows.map(fnParseDbResourceDraftChangeRow)
 }
 
-export async function fxDbResourceMigrationBlockListByInstance(
+export async function fxDbResourceApplyGet(portal: TPortal, args: TArgsApplyGet): Promise<TDbResourceApplyRun | null> {
+  const row = await (await portal.db.prepare(`
+    SELECT *
+    FROM db_resource_apply_runs
+    WHERE id = ?
+  `)).get(args.id)
+  return row === undefined || row === null ? null : fnParseDbResourceApplyRunRow(row)
+}
+
+export async function fxDbResourceApplyList(portal: TPortal, args: TArgsApplyList): Promise<TDbResourceApplyRun[]> {
+  const limit = fnDbResourceApplyListLimit(args.limit)
+  let rows: unknown[]
+  if (args.status !== undefined && args.before !== undefined) {
+    rows = await (await portal.db.prepare(`
+      SELECT *
+      FROM db_resource_apply_runs
+      WHERE resource_id = ? AND status = ?
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, args.status, args.before.createdAt, args.before.createdAt, args.before.id, limit)
+  } else if (args.status !== undefined) {
+    rows = await (await portal.db.prepare(`
+      SELECT *
+      FROM db_resource_apply_runs
+      WHERE resource_id = ? AND status = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, args.status, limit)
+  } else if (args.before !== undefined) {
+    rows = await (await portal.db.prepare(`
+      SELECT *
+      FROM db_resource_apply_runs
+      WHERE resource_id = ?
+        AND (created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, args.before.createdAt, args.before.createdAt, args.before.id, limit)
+  } else {
+    rows = await (await portal.db.prepare(`
+      SELECT *
+      FROM db_resource_apply_runs
+      WHERE resource_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `)).all(args.resourceId, limit)
+  }
+  return rows.map(fnParseDbResourceApplyRunRow)
+}
+
+export async function fxDbResourceApplyInstanceResultListByApply(
   portal: TPortal,
-  args: TArgsMigrationBlockListByInstance,
-): Promise<TDbResourceMigrationBlock[]> {
+  args: TArgsApplyInstanceResultListByApply,
+): Promise<TDbResourceApplyInstanceResult[]> {
   const rows = await (await portal.db.prepare(`
     SELECT *
-    FROM db_resource_migration_blocks
-    WHERE actor_instance_id = ?
-    ORDER BY resource_id ASC
+    FROM db_resource_apply_instance_results
+    WHERE apply_id = ?
+    ORDER BY actor_definition_name ASC, actor_instance_id ASC
+  `)).all(args.applyId)
+  return rows.map(fnParseDbResourceApplyInstanceResultRow)
+}
+
+export async function fxDbResourceApplyInstanceResultListByInstance(
+  portal: TPortal,
+  args: TArgsApplyInstanceResultListByInstance,
+): Promise<TDbResourceApplyInstanceResult[]> {
+  const rows = await (await portal.db.prepare(`
+    SELECT db_resource_apply_instance_results.*
+    FROM db_resource_apply_instance_results
+    INNER JOIN db_resource_apply_runs
+      ON db_resource_apply_runs.id = db_resource_apply_instance_results.apply_id
+    WHERE db_resource_apply_instance_results.actor_instance_id = ?
+    ORDER BY db_resource_apply_runs.created_at DESC, db_resource_apply_runs.id DESC
   `)).all(args.actorInstanceId)
-  return rows.map(fnParseDbResourceMigrationBlockRow)
+  return rows.map(fnParseDbResourceApplyInstanceResultRow)
 }
 
 export async function fxDbResourceListAffectedInstances(
   portal: TPortal,
-  args: TArgsMigrationBlockListByResource,
+  args: TArgsListAffectedInstances,
 ): Promise<TActorInstance[]> {
   const rows = await (await portal.db.prepare(`
     SELECT DISTINCT actor_instances.*

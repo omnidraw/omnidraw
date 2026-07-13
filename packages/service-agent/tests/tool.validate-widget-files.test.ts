@@ -66,7 +66,6 @@ describe('vc_validate_widget_files', () => {
         kind: 'db',
         required: true,
         scope: ['read'],
-        schema: { id: 'notes', version: 1 },
         operations: {
           broken: { effect: 'read', sql: 'SELECT 1; SELECT 2', result: 'rows' },
         },

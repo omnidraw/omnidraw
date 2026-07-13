@@ -32,11 +32,6 @@ export type TActorSecretStoreResourceRequirement = {
   readonly scope: TActorResourceScope;
 };
 
-export type TActorDbSchemaRequirement = {
-  readonly id: string;
-  readonly version: number;
-};
-
 export type TActorDbParameterType = 'string' | 'number' | 'boolean' | 'bigint' | 'bytes' | 'json';
 
 export type TActorDbOperationParameterDeclaration = {
@@ -52,11 +47,11 @@ export type TActorDbNamedOperation = {
   readonly result: 'rows' | 'execute';
 };
 
+/** Schema-agnostic database slot exposed through the SQLite-compatible guest contract. */
 export type TActorDbResourceRequirement = {
   readonly kind: 'db';
   readonly required: boolean;
   readonly scope: TActorResourceScope;
-  readonly schema: TActorDbSchemaRequirement;
   readonly arbitrarySql?: boolean;
   readonly operations?: Record<string, TActorDbNamedOperation>;
 };

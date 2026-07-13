@@ -4,6 +4,7 @@ export const apiWizzardPrompt = baseAgentOs.wizzard.prompt.handler(async ({ inpu
   await context.agent.promptWizzard(input.widgetId, input.sessionId, input.text, {
     images: input.images,
     model: input.model,
+    resourceIds: input.resourceIds,
     thinkingLevel: input.thinkingLevel,
   })
 });

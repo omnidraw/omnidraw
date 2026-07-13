@@ -1,7 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 import { ActorResourceError } from '@vibecanvas/service-actor/resources/ActorResourceError';
 import { withActorResourceApiError } from './api.resource-error';
-import { ZActorEvent, ZActorResource, ZActorResourceScope, ZCreateActorResourceInput } from './contract';
+import {
+  ZActorEvent,
+  ZActorResource,
+  ZActorResourceDataPage,
+  ZActorResourceScope,
+  ZCreateActorResourceInput,
+  ZDbBlobPreviewCellValue,
+  ZDbCellValue,
+  ZDbInspection,
+  ZDbPreviewCellValue,
+  ZDbRowIdentity,
+} from './contract';
 
 describe('ZActorEvent', () => {
   test('accepts revisioned actor snapshot events', () => {
@@ -53,12 +64,17 @@ describe('actor resource contracts', () => {
       name: 'Preferences',
       db: { schemaId: 'notes', version: 1 },
     }).success).toBe(false);
-    expect(ZCreateActorResourceInput.safeParse({ kind: 'db', name: 'Notes' }).success).toBe(false);
+    expect(ZCreateActorResourceInput.safeParse({ kind: 'db', name: 'Notes' }).success).toBe(true);
+    expect(ZCreateActorResourceInput.safeParse({
+      kind: 'db',
+      name: 'Notes',
+      db: { schemaId: 'legacy', version: 1 },
+    }).success).toBe(false);
     expect(ZCreateActorResourceInput.safeParse({
       kind: 'db',
       name: 'Notes',
       db: { schemaId: 'notes', version: 0 },
-    }).success).toBe(true);
+    }).success).toBe(false);
     expect(ZCreateActorResourceInput.safeParse({ kind: 'secretStore', name: '   ' }).success).toBe(false);
   });
 
@@ -66,6 +82,64 @@ describe('actor resource contracts', () => {
     expect(ZActorResourceScope.safeParse([]).success).toBe(false);
     expect(ZActorResourceScope.safeParse(['read', 'read']).success).toBe(false);
     expect(ZActorResourceScope.parse(['read', 'write'])).toEqual(['read', 'write']);
+  });
+
+  test('exposes bounded KV previews while secret pages omit values', () => {
+    expect(ZActorResourceDataPage.parse({
+      kind: 'kv',
+      entries: [{
+        key: 'theme',
+        valuePreview: '"dark"',
+        valueTruncated: false,
+        revision: 2,
+        createdAt: '2026-07-13T00:00:00.000Z',
+        updatedAt: '2026-07-13T00:01:00.000Z',
+      }],
+      nextCursor: null,
+    })).toMatchObject({ kind: 'kv', entries: [{ key: 'theme' }] });
+    expect(ZActorResourceDataPage.safeParse({
+      kind: 'secretStore',
+      entries: [{
+        name: 'api-token',
+        value: 'must-not-cross-the-api',
+        revision: 1,
+        createdAt: '2026-07-13T00:00:00.000Z',
+        updatedAt: '2026-07-13T00:00:00.000Z',
+      }],
+      nextCursor: null,
+    }).success).toBe(false);
+  });
+
+  test('bounds lossless SQLite integers, blobs, identities, and inspection SQL', () => {
+    expect(ZDbPreviewCellValue.parse({ type: 'text', value: 'row 1' })).toEqual({ type: 'text', value: 'row 1' });
+    expect(ZDbCellValue.safeParse({ type: 'integer', value: '-9223372036854775808' }).success).toBe(true);
+    expect(ZDbCellValue.safeParse({ type: 'integer', value: '9223372036854775807' }).success).toBe(true);
+    expect(ZDbCellValue.safeParse({ type: 'integer', value: '9223372036854775808' }).success).toBe(false);
+    expect(ZDbCellValue.safeParse({ type: 'blob', base64: 'AQID' }).success).toBe(true);
+    expect(ZDbCellValue.safeParse({ type: 'blob', base64: 'not base64' }).success).toBe(false);
+    expect(ZDbBlobPreviewCellValue.safeParse({ type: 'blobPreview', byteLength: 8_388_608, previewBase64: 'AQID', truncated: true }).success).toBe(true);
+    expect(ZDbBlobPreviewCellValue.safeParse({ type: 'blobPreview', byteLength: 3, previewBase64: 'not base64', truncated: false }).success).toBe(false);
+    expect(ZDbRowIdentity.safeParse({ kind: 'rowid', value: { type: 'null' } }).success).toBe(false);
+    expect(ZDbRowIdentity.safeParse({ kind: 'primaryKey', values: {} }).success).toBe(false);
+
+    const inspection = {
+      resourceId: 'resource-1',
+      target: 'live' as const,
+      draftId: null,
+      objects: [{
+        name: 'notes',
+        kind: 'table' as const,
+        columns: [],
+        indexes: [],
+        foreignKeys: [],
+        triggers: [],
+        createSql: `CREATE TABLE notes (value TEXT DEFAULT '${'x'.repeat(1_048_577)}')`,
+        identity: { kind: 'rowid' as const },
+        editable: true,
+        readOnlyReason: null,
+      }],
+    };
+    expect(ZDbInspection.safeParse(inspection).success).toBe(false);
   });
 
   test('preserves stable safe resource codes through the ORPC error envelope', async () => {

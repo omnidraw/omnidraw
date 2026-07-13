@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
+import type { TActorStartAdmission } from "../src/resources/resource-types";
 import path from "node:path";
 import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -120,7 +121,7 @@ describe("ActorSupervisor", () => {
     ]);
     expect(notifications).toEqual([]);
 
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("init boots actor instances from db with saved state and data", async () => {
@@ -217,13 +218,13 @@ describe("ActorSupervisor", () => {
       .map((args) => args.status);
     expect(readyInstanceStatuses).toEqual(["starting", "running"]);
 
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("keeps loading persisted actors after one definition is unavailable", async () => {
     const supervisor = createSupervisor(db, notifications);
     await supervisor.init();
-    supervisor.closeActors();
+    await supervisor.closeActors();
 
     await db.canvas.create({
       id: "canvas-isolation",
@@ -269,7 +270,7 @@ describe("ActorSupervisor", () => {
       last_error: { code: "WIDGET_DEFINITION_UNAVAILABLE" },
     });
     expect(await db.actor.getInstanceById("actor-good-second")).toMatchObject({ status: "running", last_error: null });
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("publishes running status event when actor instance is created", async () => {
@@ -295,7 +296,7 @@ describe("ActorSupervisor", () => {
       to: "running",
     });
 
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("reload refreshes definitions and loads missing db instances without stopping running actors", async () => {
@@ -338,7 +339,7 @@ describe("ActorSupervisor", () => {
     });
     expect(supervisor.actorMap["fund-reload-new"].getData()).toEqual({ balance: 7 });
 
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("persists actor machine data after successful inbox processing", async () => {
@@ -378,7 +379,7 @@ describe("ActorSupervisor", () => {
     const instance = await db.actor.getInstanceById("fund-persist");
     expect(instance?.machine_state).toBe("ready");
 
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("persists startup lifecycle and activity snapshots without an input ack", async () => {
@@ -428,7 +429,7 @@ describe("ActorSupervisor", () => {
         .filter((event): event is Extract<TActorEvent, { kind: "system"; type: "snapshot" }> => event.kind === "system" && event.type === "snapshot")
         .map(event => event.revision)).toEqual([1, 2]);
       expect(actorEvents.some(event => event.kind === "system" && event.type === "ack")).toBe(false);
-      supervisor.closeActors();
+      await supervisor.closeActors();
     } finally {
       await rm(tempConfigPath, { recursive: true, force: true });
     }
@@ -474,7 +475,7 @@ describe("ActorSupervisor", () => {
       await waitForPersistedState(db, actor.getId(), "error");
       expect(actor.getState()).toBe("error");
       expect((await db.actor.getInstanceById(actor.getId()))?.status).toBe("running");
-      supervisor.closeActors();
+      await supervisor.closeActors();
     } finally {
       await rm(tempConfigPath, { recursive: true, force: true });
     }
@@ -595,7 +596,7 @@ describe("ActorSupervisor", () => {
       ],
     });
 
-    supervisor.closeActors();
+    await supervisor.closeActors();
   });
 
   test("deleteDefinition removes instances, db definition, and widget files", async () => {
@@ -631,9 +632,131 @@ describe("ActorSupervisor", () => {
       expect(await db.actor.getInstanceById(actor.getId())).toBeUndefined();
       await expect(access(tempDefinitionDir)).rejects.toThrow();
 
-      supervisor.closeActors();
+      await supervisor.closeActors();
     } finally {
       await rm(tempConfigPath, { recursive: true, force: true });
     }
+  });
+
+  test("serializes duplicate starts for one actor instance", async () => {
+    await db.canvas.create({
+      id: "canvas-serialized-start",
+      name: "Serialized start",
+      automerge_url: "automerge:serialized-start",
+    });
+    const allowedAdmission: TActorStartAdmission = {
+      allowed: true,
+      hadBlocks: false,
+      shouldRestart: true,
+      resolvedBlockResourceIds: [],
+      code: null,
+      message: null,
+    };
+    let admissionCalls = 0;
+    let completions: boolean[] = [];
+    let holdAdmission = false;
+    let releaseAdmission!: () => void;
+    let markAdmissionStarted!: () => void;
+    const admissionGate = new Promise<void>((resolve) => { releaseAdmission = resolve; });
+    const admissionStarted = new Promise<void>((resolve) => { markAdmissionStarted = resolve; });
+    const supervisor = new ActorSupervisor({
+      absWidgetDir: widgetDir,
+      configPath,
+      db,
+      eventPublisherService: createEventPublisherService(notifications, []) as any,
+      actorStartAdmission: async () => {
+        admissionCalls += 1;
+        if (holdAdmission) {
+          markAdmissionStarted();
+          await admissionGate;
+        }
+        return allowedAdmission;
+      },
+      actorStartCompleted: async ({ succeeded }) => { completions.push(succeeded); },
+    });
+    await supervisor.init();
+    const actor = await supervisor.createInstance(
+      "Account Funds Test",
+      "canvas-serialized-start",
+      "element-serialized-start",
+    );
+    if (!actor) throw new Error("Expected actor instance to be created");
+    await supervisor.stopInstanceForResourceApply(actor.getId());
+    admissionCalls = 0;
+    completions = [];
+    holdAdmission = true;
+
+    const firstStart = supervisor.restartInstanceAfterResourceApply(actor.getId());
+    const secondStart = supervisor.restartInstanceAfterResourceApply(actor.getId());
+    await admissionStarted;
+    await Bun.sleep(10);
+    expect(admissionCalls).toBe(1);
+
+    releaseAdmission();
+    const [firstActor, secondActor] = await Promise.all([firstStart, secondStart]);
+    expect(firstActor).toBeDefined();
+    expect(secondActor).toBe(firstActor);
+    expect(admissionCalls).toBe(1);
+    expect(completions).toEqual([true]);
+    await supervisor.closeActors();
+  });
+
+  test("closeActors drains an accepted start and prevents a post-shutdown actor", async () => {
+    await db.canvas.create({
+      id: "canvas-shutdown-start",
+      name: "Shutdown start",
+      automerge_url: "automerge:shutdown-start",
+    });
+    const allowedAdmission: TActorStartAdmission = {
+      allowed: true,
+      hadBlocks: false,
+      shouldRestart: true,
+      resolvedBlockResourceIds: [],
+      code: null,
+      message: null,
+    };
+    let holdAdmission = false;
+    let releaseAdmission!: () => void;
+    let markAdmissionStarted!: () => void;
+    const admissionGate = new Promise<void>((resolve) => { releaseAdmission = resolve; });
+    const admissionStarted = new Promise<void>((resolve) => { markAdmissionStarted = resolve; });
+    let completions: boolean[] = [];
+    const supervisor = new ActorSupervisor({
+      absWidgetDir: widgetDir,
+      configPath,
+      db,
+      eventPublisherService: createEventPublisherService(notifications, []) as any,
+      actorStartAdmission: async () => {
+        if (holdAdmission) {
+          markAdmissionStarted();
+          await admissionGate;
+        }
+        return allowedAdmission;
+      },
+      actorStartCompleted: async ({ succeeded }) => { completions.push(succeeded); },
+    });
+    await supervisor.init();
+    const actor = await supervisor.createInstance(
+      "Account Funds Test",
+      "canvas-shutdown-start",
+      "element-shutdown-start",
+    );
+    if (!actor) throw new Error("Expected actor instance to be created");
+    await supervisor.stopInstanceForResourceApply(actor.getId());
+    completions = [];
+    holdAdmission = true;
+
+    const starting = supervisor.restartInstanceAfterResourceApply(actor.getId());
+    await admissionStarted;
+    let closeSettled = false;
+    const closing = supervisor.closeActors().then(() => { closeSettled = true; });
+    await Bun.sleep(10);
+    expect(closeSettled).toBe(false);
+
+    releaseAdmission();
+    expect(await starting).toBeNull();
+    await closing;
+    expect(completions).toEqual([false]);
+    expect(supervisor.actorMap[actor.getId()]).toBeUndefined();
   });
 });

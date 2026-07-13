@@ -5,6 +5,7 @@ import { createApproveActorCandidateTool } from '../src/tools/tool.approve-actor
 import { createPublishWidgetTool } from '../src/tools/tool.publish-widget';
 import { createSetActorCandidateTool } from '../src/tools/tool.set-actor-candidate';
 import type { TToolEvent } from '../src/tools/types';
+import { txAppendWidgetResourceSelectionRecord } from '../src/core/tx.session-candidate';
 import { createFakeSessionManager, executeTool, makeTempDir, sampleCandidate } from './tool.test-helpers';
 
 describe('vc_publish_widget', () => {
@@ -13,6 +14,7 @@ describe('vc_publish_widget', () => {
     const finalWidgetsDir = await makeTempDir();
     const events: TToolEvent[] = [];
     let reloadCount = 0;
+    const bindings: unknown[] = [];
     const sessionManager = createFakeSessionManager();
     const base = sampleCandidate();
     const resources = {
@@ -20,7 +22,6 @@ describe('vc_publish_widget', () => {
         kind: 'db' as const,
         required: true,
         scope: ['read', 'write'] as ('read' | 'write')[],
-        schema: { id: 'notes', version: 2 },
         arbitrarySql: false,
         operations: {
           listNotes: { effect: 'read' as const, sql: 'SELECT id, title FROM notes', result: 'rows' as const },
@@ -44,17 +45,32 @@ describe('vc_publish_widget', () => {
       sessionManager,
       npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
     }), { revision: 1 });
-
+    txAppendWidgetResourceSelectionRecord({ sessionManager }, {
+      resources: [{ id: 'db-notes', kind: 'db', name: 'Notes Database', status: 'ready' }],
+      selectedAt: new Date().toISOString(),
+    });
     const result = await executeTool(createPublishWidgetTool({
       cwd,
       finalWidgetsDir,
-      actorService: { reload: async () => { reloadCount += 1 } },
+      sessionManager,
+      actorService: {
+        reload: async () => { reloadCount += 1 },
+        bindResource: async (binding) => { bindings.push(binding); },
+      },
       onEvent: (event) => { events.push(event) },
     }), { confirm: true });
 
     expect(result.isError).toBeUndefined();
     expect(result.details.published).toBe(true);
+    expect(result.details.manifest.actor.resources).toEqual(resources);
     expect(reloadCount).toBe(1);
+    expect(bindings).toEqual([{
+      definitionName: 'Counter Widget',
+      slot: 'notes',
+      resourceId: 'db-notes',
+      scope: ['read', 'write'],
+    }]);
+    expect(result.details.bindings).toEqual([{ slot: 'notes', resourceId: 'db-notes', resourceName: 'Notes Database', kind: 'db' }]);
     expect(events.some((event) => event.type === 'widgetupdate')).toBe(true);
 
     const publishedManifest = JSON.parse(await readFile(join(finalWidgetsDir, 'counter-widget', 'vibecanvas.json'), 'utf8'));
@@ -69,6 +85,71 @@ describe('vc_publish_widget', () => {
 
     expect(result.isError).toBe(true);
     expect(result.details.published).toBe(false);
+  });
+
+  test('binds the unique ready resource by kind when no resource was mentioned', async () => {
+    const cwd = await makeTempDir();
+    const finalWidgetsDir = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const base = sampleCandidate();
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), {
+      candidate: sampleCandidate({ actor: {
+        ...base.actor,
+        resources: { database: { kind: 'db', required: true, scope: ['read'] } },
+      } }),
+    });
+    await executeTool(createApproveActorCandidateTool({ cwd, sessionManager, npmInstall: async () => ({ status: 'skipped', reason: 'test' }) }), { revision: 1 });
+    const bindings: unknown[] = [];
+    const result = await executeTool(createPublishWidgetTool({
+      cwd,
+      finalWidgetsDir,
+      sessionManager,
+      actorService: {
+        reload: async () => {},
+        listResources: async () => [{
+          id: 'db-only', kind: 'db', name: 'Only Database', status: 'ready', last_error: null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }],
+        bindResource: async (binding) => { bindings.push(binding); },
+      },
+    }), { confirm: true });
+
+    expect(result.isError).toBeUndefined();
+    expect(bindings).toEqual([{
+      definitionName: 'Counter Widget', slot: 'database', resourceId: 'db-only', scope: ['read'],
+    }]);
+  });
+
+  test('refuses to guess among multiple ready resources', async () => {
+    const cwd = await makeTempDir();
+    const finalWidgetsDir = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const base = sampleCandidate();
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), {
+      candidate: sampleCandidate({ actor: {
+        ...base.actor,
+        resources: { database: { kind: 'db', required: true, scope: ['read'] } },
+      } }),
+    });
+    await executeTool(createApproveActorCandidateTool({ cwd, sessionManager, npmInstall: async () => ({ status: 'skipped', reason: 'test' }) }), { revision: 1 });
+    const resource = (id: string) => ({
+      id, kind: 'db' as const, name: id, status: 'ready' as const, last_error: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    const result = await executeTool(createPublishWidgetTool({
+      cwd,
+      finalWidgetsDir,
+      sessionManager,
+      actorService: {
+        reload: async () => {},
+        listResources: async () => [resource('db-a'), resource('db-b')],
+        bindResource: async () => {},
+      },
+    }), { confirm: true });
+
+    expect(result.isError).toBe(true);
+    expect(result.details.published).toBe(false);
+    expect(result.content[0].text).toContain('@mention');
   });
 
   test('reloads existing instances only when edit publish keeps identity unchanged', async () => {

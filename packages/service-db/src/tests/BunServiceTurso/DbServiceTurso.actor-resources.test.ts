@@ -57,7 +57,7 @@ describe("DbServiceTurso actor resources", () => {
       status: "error",
       last_error: { code: "TEST_FAILURE" },
     })
-    expect("metadata" in (await db.actorResource.get({ id: "kv-a" })!)).toBe(false)
+    expect("metadata" in (await db.actorResource.get({ id: "kv-a" }))!).toBe(false)
     await expect(db.actorResource.updateProviderState({ id: "kv-a", status: "ready", lastError: null })).resolves.toMatchObject({
       status: "ready",
       last_error: null,

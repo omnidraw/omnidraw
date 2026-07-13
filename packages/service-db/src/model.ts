@@ -34,9 +34,27 @@ export const ZActorStatus = z.enum(['created', 'starting', 'running', 'paused', 
 export const ZActorInboxStatus = z.enum(['queued', 'processing', 'processed', 'failed']);
 export const ZActorResourceKind = z.enum(['kv', 'secretStore', 'db']);
 export const ZActorResourceStatus = z.enum(['created', 'provisioning', 'ready', 'migrating', 'error', 'deleting']);
-export const ZDbResourceSchemaStatus = z.enum(['draft', 'published', 'deprecated']);
-export const ZDbResourceMigrationStatus = z.enum(['draft', 'published']);
-export const ZDbResourceMigrationBlockReason = z.enum(['migrating', 'schemaMismatch', 'versionMismatch', 'migrationError']);
+export const ZDbResourceDraftStatus = z.enum(['editing', 'applying', 'applied', 'discarded', 'error']);
+export const ZDbResourceDraftChangeKind = z.enum(['structure', 'sql']);
+export const ZDbResourceApplyStatus = z.enum([
+  'preparing',
+  'stopping',
+  'applying',
+  'restarting',
+  'succeeded',
+  'failed',
+  'recovered',
+]);
+export const ZDbResourceApplyInstanceStatus = z.enum([
+  'notRunning',
+  'pendingStop',
+  'stopped',
+  'stopFailed',
+  'pendingRestart',
+  'restarted',
+  'startFailed',
+  'crashed',
+]);
 
 export const ZWidgetErrorPhase = z.enum([
   'definition-discovery',
@@ -176,45 +194,45 @@ export const ZActorResourceKeyValue = z.object({
   updated_at: ZTimestamp,
 });
 
-export const ZDbResourceSchema = z.object({
+export const ZDbResourceDraft = z.object({
   id: z.string(),
+  resource_id: z.string(),
   name: z.string(),
-  description: z.string().nullable(),
-  status: ZDbResourceSchemaStatus,
+  status: ZDbResourceDraftStatus,
+  last_error: ZJson.nullable(),
   created_at: ZTimestamp,
   updated_at: ZTimestamp,
+  applied_at: ZTimestamp.nullable(),
 });
 
-export const ZDbResourceSchemaMigration = z.object({
-  schema_id: z.string(),
-  version: z.number().int().positive(),
-  name: z.string(),
+export const ZDbResourceDraftChange = z.object({
+  draft_id: z.string(),
+  sequence: z.number().int().positive(),
+  kind: ZDbResourceDraftChangeKind,
+  operation: ZJson.nullable(),
   sql: z.string(),
-  checksum: z.string(),
-  status: ZDbResourceMigrationStatus,
   created_at: ZTimestamp,
-  published_at: ZTimestamp.nullable(),
 });
 
-export const ZDbResourceConfiguration = z.object({
+export const ZDbResourceApplyRun = z.object({
+  id: z.string(),
   resource_id: z.string(),
-  schema_id: z.string(),
-  applied_version: z.number().int().nonnegative(),
-  target_version: z.number().int().nonnegative(),
+  draft_id: z.string().nullable(),
+  source_apply_id: z.string().nullable(),
+  status: ZDbResourceApplyStatus,
+  last_error: ZJson.nullable(),
+  backup_retained: ZSqlBoolean,
   created_at: ZTimestamp,
-  updated_at: ZTimestamp,
+  completed_at: ZTimestamp.nullable(),
 });
 
-export const ZDbResourceMigrationBlock = z.object({
-  resource_id: z.string(),
+export const ZDbResourceApplyInstanceResult = z.object({
+  apply_id: z.string(),
   actor_instance_id: z.string(),
-  reason: ZDbResourceMigrationBlockReason,
-  restart_when_compatible: ZSqlBoolean,
-  expected_schema_id: z.string(),
-  expected_version: z.number().int().nonnegative(),
-  actual_schema_id: z.string(),
-  actual_version: z.number().int().nonnegative(),
-  created_at: ZTimestamp,
+  actor_definition_name: z.string(),
+  was_running: ZSqlBoolean,
+  status: ZDbResourceApplyInstanceStatus,
+  error: ZJson.nullable(),
   updated_at: ZTimestamp,
 });
 
@@ -240,9 +258,10 @@ export type TActorStatus = z.infer<typeof ZActorStatus>;
 export type TActorInboxStatus = z.infer<typeof ZActorInboxStatus>;
 export type TActorResourceKind = z.infer<typeof ZActorResourceKind>;
 export type TActorResourceStatus = z.infer<typeof ZActorResourceStatus>;
-export type TDbResourceSchemaStatus = z.infer<typeof ZDbResourceSchemaStatus>;
-export type TDbResourceMigrationStatus = z.infer<typeof ZDbResourceMigrationStatus>;
-export type TDbResourceMigrationBlockReason = z.infer<typeof ZDbResourceMigrationBlockReason>;
+export type TDbResourceDraftStatus = z.infer<typeof ZDbResourceDraftStatus>;
+export type TDbResourceDraftChangeKind = z.infer<typeof ZDbResourceDraftChangeKind>;
+export type TDbResourceApplyStatus = z.infer<typeof ZDbResourceApplyStatus>;
+export type TDbResourceApplyInstanceStatus = z.infer<typeof ZDbResourceApplyInstanceStatus>;
 export type TWidgetErrorPhase = z.infer<typeof ZWidgetErrorPhase>;
 export type TWidgetError = z.infer<typeof ZWidgetError>;
 export type TAutomergeRepoData = z.infer<typeof ZAutomergeRepoData>;
@@ -258,8 +277,8 @@ export type TActorConnection = z.infer<typeof ZActorConnection>;
 export type TActorResource = z.infer<typeof ZActorResource>;
 export type TActorResourceBinding = z.infer<typeof ZActorResourceBinding>;
 export type TActorResourceKeyValue = z.infer<typeof ZActorResourceKeyValue>;
-export type TDbResourceSchema = z.infer<typeof ZDbResourceSchema>;
-export type TDbResourceSchemaMigration = z.infer<typeof ZDbResourceSchemaMigration>;
-export type TDbResourceConfiguration = z.infer<typeof ZDbResourceConfiguration>;
-export type TDbResourceMigrationBlock = z.infer<typeof ZDbResourceMigrationBlock>;
+export type TDbResourceDraft = z.infer<typeof ZDbResourceDraft>;
+export type TDbResourceDraftChange = z.infer<typeof ZDbResourceDraftChange>;
+export type TDbResourceApplyRun = z.infer<typeof ZDbResourceApplyRun>;
+export type TDbResourceApplyInstanceResult = z.infer<typeof ZDbResourceApplyInstanceResult>;
 export type TToolGroup = z.infer<typeof ZToolGroup>;

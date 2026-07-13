@@ -174,7 +174,7 @@ describe('AgentService draft actor runtime', () => {
       const record = message as unknown as Record<string, unknown>;
       return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
     })).toBe(true);
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
 
     const draftRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'widget-editsession-edit');
     const draftManifest = JSON.parse(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
@@ -192,7 +192,7 @@ describe('AgentService draft actor runtime', () => {
       const record = message as unknown as Record<string, unknown>;
       return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
     })).toBe(true);
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
   });
 
   test('reads and patches phase 1 manifest from actor candidate, then patches phase 2 vibecanvas.json', async () => {

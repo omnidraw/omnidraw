@@ -3,7 +3,6 @@ import type {
   TActorResource,
   TActorResourceBinding,
   TActorResourceKeyValue,
-  TDbResourceMigrationBlock,
   TJson,
 } from "../model"
 import {
@@ -83,14 +82,6 @@ export function fnParseActorResourceKeyValueRow(row: unknown): TActorResourceKey
   return {
     ...value,
     value: fnParseJsonValue(value.value),
-  }
-}
-
-export function fnParseDbResourceMigrationBlockRow(row: unknown): TDbResourceMigrationBlock {
-  const value = row as TDbResourceMigrationBlock
-  return {
-    ...value,
-    restart_when_compatible: Boolean(value.restart_when_compatible),
   }
 }
 
