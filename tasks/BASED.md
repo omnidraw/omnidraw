@@ -135,6 +135,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B44](b/B44.md) - ai wizard: preview loses mentioned resource after continuation prompt
 - [x]: [B45](b/B45.md) - image paste: pending local preview can persist without media upload
 - [x]: [B46](b/B46.md) - db resource: structured tables should default to SQLite STRICT mode
+- [x]: [B47](b/B47.md) - image delete: remove media_files row
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

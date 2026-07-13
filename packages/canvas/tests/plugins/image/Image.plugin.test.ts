@@ -66,6 +66,7 @@ function createImageTestHooks() {
 
 function createImagePluginUnitHarness(args?: {
   uploadImage?: ReturnType<typeof vi.fn>;
+  deleteImage?: ReturnType<typeof vi.fn>;
 }) {
   ensureDom();
   ensureResizeObserver();
@@ -102,6 +103,7 @@ function createImagePluginUnitHarness(args?: {
   ]);
 
   const uploadImage = args?.uploadImage ?? vi.fn(async () => [null, { url: "https://cdn.test/uploaded.png" }] as const);
+  const deleteImage = args?.deleteImage ?? vi.fn(async () => [null, { ok: true }] as const);
   const plugin = createImagePlugin();
   void plugin.apply({
     hooks,
@@ -122,6 +124,7 @@ function createImagePluginUnitHarness(args?: {
           file: {
             put: uploadImage,
             clone: vi.fn(),
+            remove: deleteImage,
           },
         },
       },
@@ -134,6 +137,7 @@ function createImagePluginUnitHarness(args?: {
     scene,
     element,
     uploadImage,
+    deleteImage,
     destroy: () => {
       hooks.destroy.call();
       scene.stop();
@@ -188,18 +192,24 @@ describe("Image plugin", () => {
     await harness.destroy();
   });
 
-  test("created image nodes include element metadata required by delete", () => {
+  test("created image nodes include element metadata and delete their backend media", async () => {
     const harness = createImagePluginUnitHarness();
     try {
       const imageElement = createImageElement();
       const node = harness.element.createNodeFromElement(imageElement);
       const builder = {} as { deleteElement: ReturnType<typeof vi.fn> };
-      builder.deleteElement = vi.fn(() => builder);
+      builder.deleteElement = vi.fn((_id, callbacks) => {
+        callbacks.onCommit({ entity: imageElement });
+        return builder;
+      });
 
       expect(node).toBeInstanceOf(Konva.Image);
       expect((node as Konva.Image).getAttr(ELEMENT_DATA_ATTR)).toMatchObject({ type: "image" });
       expect(() => harness.element.removeElement(node, builder as never)).not.toThrow();
       expect(builder.deleteElement).toHaveBeenCalledWith(imageElement.id, expect.any(Object));
+      await vi.waitFor(() => {
+        expect(harness.deleteImage).toHaveBeenCalledWith({ body: { url: imageElement.data.type === "image" ? imageElement.data.url : null } });
+      });
     } finally {
       harness.destroy();
     }

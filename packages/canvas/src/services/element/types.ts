@@ -217,11 +217,11 @@ type TElementElementHookBag = {
   /**
    * Called after canvas element is removed
    */
-  onDelete?: (element: TElement) => {}
+  onDelete?: (element: TElement) => void;
   /**
    * Called when deleted element is restored via undo
    */
-  onRestore?: (element: TElement) => {}
+  onRestore?: (element: TElement) => void;
 };
 
 type TElementNodeRuntimeHookBag = Pick<

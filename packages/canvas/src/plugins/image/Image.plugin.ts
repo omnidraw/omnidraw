@@ -22,6 +22,7 @@ import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../type
 import { txDeleteSelection } from "../select/tx.delete-selection";
 import { fnToImageElement } from "./fn.to-image-element";
 import { txCreateImageCloneDrag } from "./tx.create-image-clone-drag";
+import { txDeleteBackendFileForElement } from "./tx.delete-backend-file-for-element";
 import { txInsertImage, type TPendingImageInsertToken } from "./tx.insert-image";
 import { txSetupImageListeners } from "./tx.setup-image-listeners";
 import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
@@ -310,6 +311,16 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
         updateImageNodeFromElementPortal,
       };
 
+      const deleteBackendFileForElementPortal = {
+        deleteImage: ({ url }: { url: string }) => ctx.config.apiService.api.file.remove({ body: { url } }).then(([err, res]) => {
+          if (err) {
+            throw err;
+          }
+          return res;
+        }),
+        notification: getNotification(ctx.config),
+      };
+
       const applyElement = (element: TElement) => {
         const didUpdate = elementService.updateElement(element);
         if (!didUpdate) {
@@ -542,6 +553,9 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
 
           txCreateImageCloneDrag(cloneDragPortal, { node });
           return true;
+        },
+        onDelete: (element) => {
+          void txDeleteBackendFileForElement(deleteBackendFileForElementPortal, { element });
         },
         getTransformOptions: () => ({
           keepRatio: true,
