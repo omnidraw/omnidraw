@@ -1,6 +1,6 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TActorResourceCall, TActorResourceDirectBinding, TDbInspection } from '@vibecanvas/service-actor/resources/resource-types';
-import type { TActorResource, TDbResourceApplyRun } from '@vibecanvas/service-db/model';
+import type { TActorResource, TActorResourceBinding, TDbResourceApplyRun } from '@vibecanvas/service-db/model';
 
 export type TValidationResult = {
   ok: boolean;
@@ -15,7 +15,9 @@ export type TActorServiceReloader = {
   listResources?(filter?: { kind?: TActorResource['kind']; status?: TActorResource['status'] }): Promise<TActorResource[]>;
   getResource?(id: string): Promise<TActorResource | null>;
   inspectDbResource?(args: { resourceId: string; target: 'live'; draftId?: never }): Promise<TDbInspection | null>;
+  listResourceBindingsForDefinition?(definitionName: string): Promise<Pick<TActorResourceBinding, 'slot_name' | 'resource_id'>[]>;
   bindResource?(args: { definitionName: string; slot: string; resourceId: string; scope?: ('read' | 'write')[] }): Promise<unknown>;
+  unbindResource?(args: { definitionName: string; slot: string }): Promise<unknown>;
   createDbDraft?(resourceId: string, name: string): Promise<{ draft: { id: string } }>;
   executeDbDraftSql?(draftId: string, sql: string): Promise<unknown>;
   discardDbDraft?(draftId: string): Promise<unknown>;

@@ -277,6 +277,11 @@ export class ActorResourceManager {
       .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource references could not be listed.'); });
   }
 
+  listResourceBindingsForDefinition(definitionName: string): Promise<TActorResourceBinding[]> {
+    return this.#db.actorResource.listBindingsForDefinition({ definitionName })
+      .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Definition resource bindings could not be listed.'); });
+  }
+
   async bindResource(args: TBindResourceArgs): Promise<TActorResourceBinding> {
     this.#assertOpen();
     const releaseIntent = this.#registerBindingIntent(args.resourceId);

@@ -34,7 +34,7 @@ afterEach(async () => {
   }
 });
 
-async function createServiceFixture() {
+async function createServiceFixture(actorService?: ConstructorParameters<typeof AgentService>[0]['actorService']) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-'));
   tempDirs.push(dataPath);
 
@@ -44,6 +44,7 @@ async function createServiceFixture() {
     dataPath,
     configPath: join(dataPath, 'config'),
     eventPublisherService: eventPublisher,
+    actorService,
   });
 
   const widgetId = 'widget-a';
@@ -562,6 +563,20 @@ describe('AgentService draft actor runtime', () => {
       cwd: result.destination,
       files: result.files,
     });
+  });
+
+  test('service publish removes persisted bindings for slots deleted from the manifest', async () => {
+    const persistedBindings = new Map([['removed-database', 'db-old']]);
+    const { service, widgetId, sessionId } = await createServiceFixture({
+      reload: async () => {},
+      listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({ slot_name, resource_id })),
+      unbindResource: async ({ slot }) => persistedBindings.delete(slot),
+    });
+
+    const result = await service.publishWizzard(widgetId, sessionId);
+
+    expect(result.published).toBe(true);
+    expect(persistedBindings.size).toBe(0);
   });
 
   test('patches draft tool icon metadata and rejects invalid lucid keys', async () => {

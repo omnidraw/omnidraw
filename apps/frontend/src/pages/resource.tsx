@@ -4,6 +4,7 @@ import { DbResourcePage } from "@/feature/db-resource/DbResourcePage";
 import { GenericResourcePage } from "@/feature/resource/GenericResourcePage";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import routeStateStyles from "@/styles/route-state.module.css";
+import { fnBeginResourceRouteLoad, fnResolveResourceRouteLoad, type TResourceRouteLoadState } from "./fn.resource-route";
 
 export type TRouteResource = {
   id: string;
@@ -17,19 +18,28 @@ export type TRouteResource = {
 
 const ResourcePage: Component = () => {
   const params = useParams<{ id: string }>();
-  const [resource, setResource] = createSignal<TRouteResource | null>(null);
-  const [error, setError] = createSignal("");
+  const [loadState, setLoadState] = createSignal<TResourceRouteLoadState<TRouteResource>>({
+    requestId: 0,
+    resourceId: "",
+    resource: null,
+    error: "",
+  });
+  const resource = () => loadState().resource;
+  const error = () => loadState().error;
+  let latestRequestId = 0;
 
   createEffect(() => {
     const resourceId = params.id;
-    setResource(null);
-    setError("");
+    const requestId = ++latestRequestId;
+    setLoadState((state) => fnBeginResourceRouteLoad({ state, requestId, resourceId }));
     void orpcWebsocketService.apiService.api.actors.resources.get({ resourceId }).then(([loadError, value]) => {
-      if (loadError || !value) {
-        setError(loadError?.message ?? "Resource response was empty.");
-        return;
-      }
-      setResource(value);
+      setLoadState((state) => fnResolveResourceRouteLoad({
+        state,
+        requestId,
+        resourceId,
+        resource: loadError || !value ? null : value,
+        error: loadError?.message ?? (!value ? "Resource response was empty." : ""),
+      }));
     });
   });
 

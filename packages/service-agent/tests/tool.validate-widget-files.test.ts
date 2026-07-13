@@ -20,6 +20,7 @@ describe('vc_validate_widget_files', () => {
     const result = await executeTool(createValidateWidgetFilesTool({ cwd }));
 
     expect(result.isError).toBeUndefined();
+    expect(result.details.errors).toEqual([]);
     expect(result.details.ok).toBe(true);
     expect(result.details.files).toContain('widget/main.ts');
   });

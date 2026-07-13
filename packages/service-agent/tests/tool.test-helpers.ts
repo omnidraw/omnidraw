@@ -1,21 +1,15 @@
-import { afterEach } from 'bun:test';
+import { onTestFinished } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { SessionEntry } from '@earendil-works/pi-coding-agent';
 import type { TActorCandidate, TCandidateSessionManager } from '../src/tools/types';
 
-const tempRoots: string[] = [];
-
 export async function makeTempDir() {
   const path = await mkdtemp(join(tmpdir(), 'vc-service-agent-tools-'));
-  tempRoots.push(path);
+  onTestFinished(() => rm(path, { recursive: true, force: true }));
   return path;
 }
-
-afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
-});
 
 export function sampleCandidate(overrides: Partial<TActorCandidate> = {}): TActorCandidate {
   return {
