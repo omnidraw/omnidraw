@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { fnActorResourceDataPage, fnJsonValuePreview } from '../src/resources/fn.resource-data';
+import { fnActorResourceDataMutationResult, fnActorResourceDataPage, fnJsonValuePreview } from '../src/resources/fn.resource-data';
 
 describe('resource management data previews', () => {
   test('bounds large KV values without changing short JSON', () => {
@@ -27,5 +27,19 @@ describe('resource management data previews', () => {
       nextCursor: null,
     });
     expect(JSON.stringify(page)).not.toContain('must-not-leak');
+
+    const mutation = fnActorResourceDataMutationResult('secretStore', {
+      resource_id: 'secrets',
+      key: 'token',
+      value: 'rotated-must-not-leak',
+      revision: 4,
+      created_at: 'created',
+      updated_at: 'later',
+    });
+    expect(mutation).toEqual({
+      kind: 'secretStore',
+      entry: { name: 'token', revision: 4, createdAt: 'created', updatedAt: 'later' },
+    });
+    expect(JSON.stringify(mutation)).not.toContain('rotated-must-not-leak');
   });
 });

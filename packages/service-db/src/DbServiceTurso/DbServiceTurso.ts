@@ -195,7 +195,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       has: (args: { resourceId: string; key: string }) => fxActorResourceKeyValueHas(this, args),
       list: (args: { resourceId: string; prefix?: string; cursor?: string; limit?: number }) => fxActorResourceKeyValueList(this, args),
       set: (args: { resourceId: string; key: string; value: TJson }) => this.#serializeActorWrite(() => txActorResourceKeyValueSet(this, args)),
-      delete: (args: { resourceId: string; key: string }) => this.#serializeActorWrite(() => txActorResourceKeyValueDelete(this, args)),
+      delete: (args: { resourceId: string; key: string; expectedRevision?: number }) => this.#serializeActorWrite(() => txActorResourceKeyValueDelete(this, args)),
       compareAndSet: (args: { resourceId: string; key: string; expectedRevision: number | null; value: TJson }) => this.#serializeActorWrite(() => txActorResourceKeyValueCompareAndSet(this, args)),
     },
   };

@@ -45,30 +45,46 @@ export const ZActorResourceBinding = z.object({
   updated_at: z.string(),
 });
 
+const ZActorResourceKvDataEntry = z.object({
+  key: z.string().max(1_024),
+  valuePreview: z.string().max(4_096),
+  valueTruncated: z.boolean(),
+  revision: z.number().int().positive(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).strict();
+const ZActorResourceSecretDataEntry = z.object({
+  name: z.string().max(256),
+  revision: z.number().int().positive(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+}).strict();
+
 export const ZActorResourceDataPage = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('kv'),
-    entries: z.array(z.object({
-      key: z.string().max(1_024),
-      valuePreview: z.string().max(4_096),
-      valueTruncated: z.boolean(),
-      revision: z.number().int().positive(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    }).strict()).max(100),
+    entries: z.array(ZActorResourceKvDataEntry).max(100),
     nextCursor: z.string().max(1_024).nullable(),
   }).strict(),
   z.object({
     kind: z.literal('secretStore'),
-    entries: z.array(z.object({
-      name: z.string().max(256),
-      revision: z.number().int().positive(),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    }).strict()).max(100),
+    entries: z.array(ZActorResourceSecretDataEntry).max(100),
     nextCursor: z.string().max(256).nullable(),
   }).strict(),
 ]);
+
+export const ZActorResourceDataMutationResult = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('kv'), entry: ZActorResourceKvDataEntry }).strict(),
+  z.object({ kind: z.literal('secretStore'), entry: ZActorResourceSecretDataEntry }).strict(),
+]);
+
+const ZActorResourceDataValue = ZJson.refine((value) => {
+  try {
+    return (JSON.stringify(value)?.length ?? 0) <= 1_048_576;
+  } catch {
+    return false;
+  }
+}, 'Resource values must be JSON-compatible and no larger than 1 MiB.');
 
 const boundedNonBlankString = (max: number) => z.string().min(1).max(max).refine(
   (value) => value.trim().length > 0,
@@ -377,6 +393,22 @@ export const actorsContract = oc.errors({
         limit: z.number().int().min(1).max(100).optional(),
       }).strict())
       .output(ZActorResourceDataPage),
+    dataSet: oc
+      .input(z.object({
+        resourceId: ZResourceId,
+        key: boundedNonBlankString(1_024),
+        expectedRevision: z.number().int().positive().nullable(),
+        value: ZActorResourceDataValue,
+      }).strict())
+      .output(ZActorResourceDataMutationResult),
+    dataDelete: oc
+      .input(z.object({
+        resourceId: ZResourceId,
+        key: boundedNonBlankString(1_024),
+        expectedRevision: z.number().int().positive(),
+      }).strict())
+      .route({ method: 'DELETE' })
+      .output(z.object({ deleted: z.literal(true) }).strict()),
     definitionStatus: oc
       .input(z.object({ definitionName: ZDefinitionName }))
       .output(ZActorResourceBindingStatus.array()),

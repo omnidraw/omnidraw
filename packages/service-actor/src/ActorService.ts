@@ -9,17 +9,38 @@ import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
 import type { Actor, TActorEvent } from './Actor';
 import { ActorResourceManager, type TBindResourceArgs, type TCreateResourceArgs } from './resources/ActorResourceManager';
-import type { TActorResourceKind, TActorResourceStatus } from '@vibecanvas/service-db/model';
+import type { TActorResourceKind, TActorResourceStatus, TJson } from '@vibecanvas/service-db/model';
 import { DbResource, type TDatabaseFactory } from './resources/DbResource';
 import { KvResource } from './resources/KvResource';
 import { SecretStoreResource } from './resources/SecretStoreResource';
 import { DbResourceCoordinator } from './resources/DbResourceCoordinator';
-import type { TActorResourceCall, TActorResourceDataPage, TActorResourceDirectBinding, TDbCellValue, TDbDraftOperation, TDbRowCreate, TDbRowDelete, TDbRowIdentity, TDbRowUpdate } from './resources/resource-types';
+import type { TActorResourceCall, TActorResourceDataMutationResult, TActorResourceDataPage, TActorResourceDirectBinding, TDbCellValue, TDbDraftOperation, TDbRowCreate, TDbRowDelete, TDbRowIdentity, TDbRowUpdate } from './resources/resource-types';
 import { ActorResourceError } from './resources/ActorResourceError';
-import { fnActorResourceDataPage } from './resources/fn.resource-data';
+import { fnActorResourceDataMutationResult, fnActorResourceDataPage } from './resources/fn.resource-data';
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
+}
+
+const KV_KEY_MAX_LENGTH = 1_024
+const SECRET_NAME_MAX_LENGTH = 256
+const SECRET_VALUE_MAX_LENGTH = 1_048_576
+
+function managementDataKey(kind: 'kv' | 'secretStore', value: string): string {
+  const maxLength = kind === 'kv' ? KV_KEY_MAX_LENGTH : SECRET_NAME_MAX_LENGTH
+  if (value.trim().length === 0 || value.length > maxLength) {
+    const code = kind === 'kv' ? 'KV_KEY_INVALID' : 'SECRET_NAME_INVALID'
+    const label = kind === 'kv' ? 'KV keys' : 'Secret names'
+    throw new ActorResourceError(code, `${label} must be non-blank strings no longer than ${maxLength} characters.`)
+  }
+  return value
+}
+
+function managementDataValue(kind: 'kv' | 'secretStore', value: TJson): TJson {
+  if (kind === 'secretStore' && (typeof value !== 'string' || value.length === 0 || value.length > SECRET_VALUE_MAX_LENGTH)) {
+    throw new ActorResourceError('SECRET_VALUE_INVALID', `Secret values must be non-empty strings no longer than ${SECRET_VALUE_MAX_LENGTH} characters.`)
+  }
+  return value
 }
 
 interface IPublicMethods {
@@ -172,12 +193,64 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   }
 
   async listResourceData(args: { resourceId: string; prefix?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage> {
-    const resource = await this.#resourceManager.getResource(args.resourceId)
-    if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${args.resourceId}" was not found.`)
-    if (resource.kind === 'db') throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Database rows use the database resource data API.')
-    if (resource.status !== 'ready') throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${resource.name}" is not ready.`)
-    const page = await this.#config.db.actorResource.keyValue.list(args)
-    return fnActorResourceDataPage(resource.kind, page)
+    return this.#withReadyDataResource(args.resourceId, async (kind) => {
+      const page = await this.#config.db.actorResource.keyValue.list(args)
+      return fnActorResourceDataPage(kind, page)
+    })
+  }
+
+  async setResourceDataEntry(args: {
+    resourceId: string
+    key: string
+    expectedRevision: number | null
+    value: TJson
+  }): Promise<TActorResourceDataMutationResult> {
+    return this.#withReadyDataResource(args.resourceId, async (kind) => {
+      const key = managementDataKey(kind, args.key)
+      const value = managementDataValue(kind, args.value)
+      let result
+      try {
+        result = await this.#config.db.actorResource.keyValue.compareAndSet({
+          resourceId: args.resourceId,
+          key,
+          expectedRevision: args.expectedRevision,
+          value,
+        })
+      } catch (error) {
+        if (error instanceof TypeError) {
+          throw new ActorResourceError('KV_VALUE_INVALID', 'KV value is not JSON-compatible.')
+        }
+        throw error
+      }
+      if (!result.ok) {
+        throw new ActorResourceError(
+          kind === 'kv' ? 'KV_ENTRY_CONFLICT' : 'SECRET_CONFLICT',
+          kind === 'kv' ? 'The value changed before it could be saved.' : 'The secret changed before it could be rotated.',
+          { expectedRevision: result.expectedRevision, currentRevision: result.currentRevision },
+        )
+      }
+      return fnActorResourceDataMutationResult(kind, result.entry)
+    })
+  }
+
+  async deleteResourceDataEntry(args: { resourceId: string; key: string; expectedRevision: number }): Promise<{ deleted: true }> {
+    return this.#withReadyDataResource(args.resourceId, async (kind) => {
+      const key = managementDataKey(kind, args.key)
+      const result = await this.#config.db.actorResource.keyValue.delete({
+        resourceId: args.resourceId,
+        key,
+        expectedRevision: args.expectedRevision,
+      })
+      if (!result.deleted) {
+        const current = await this.#config.db.actorResource.keyValue.get({ resourceId: args.resourceId, key })
+        throw new ActorResourceError(
+          kind === 'kv' ? 'KV_ENTRY_CONFLICT' : 'SECRET_CONFLICT',
+          kind === 'kv' ? 'The value changed or was deleted before it could be removed.' : 'The secret changed or was deleted before it could be removed.',
+          { expectedRevision: args.expectedRevision, currentRevision: current?.revision ?? null },
+        )
+      }
+      return { deleted: true }
+    })
   }
 
   getDefinitionResourceStatus(definitionName: string) {
@@ -307,6 +380,15 @@ export class ActorService implements IService, IStartableService, IStoppableServ
         throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource "${resourceId}" is not a DbResource.`)
       }
       return operation()
+    })
+  }
+
+  #withReadyDataResource<T>(resourceId: string, operation: (kind: 'kv' | 'secretStore') => Promise<T>): Promise<T> {
+    return this.#resourceManager.withReadyResource(resourceId, (resource) => {
+      if (resource.kind === 'db') {
+        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Database rows use the database resource data API.')
+      }
+      return operation(resource.kind)
     })
   }
 

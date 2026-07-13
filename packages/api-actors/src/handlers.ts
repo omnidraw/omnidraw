@@ -10,11 +10,13 @@ import {
     apiBindActorResource,
     apiCreateActorResource,
     apiDeleteActorResource,
+    apiDeleteActorResourceData,
     apiGetActorResource,
     apiListActorResourceData,
     apiListActorResourceReferences,
     apiListActorResources,
     apiRenameActorResource,
+    apiSetActorResourceData,
     apiUnbindActorResource,
 } from './api.resources';
 import {
@@ -65,6 +67,8 @@ const actorsHandlers = {
         delete: apiDeleteActorResource,
         references: apiListActorResourceReferences,
         data: apiListActorResourceData,
+        dataSet: apiSetActorResourceData,
+        dataDelete: apiDeleteActorResourceData,
         definitionStatus: apiActorDefinitionResourceStatus,
         bind: apiBindActorResource,
         unbind: apiUnbindActorResource,

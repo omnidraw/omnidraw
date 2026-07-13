@@ -33,6 +33,14 @@ export const apiListActorResourceData = baseActorsOs.resources.data.handler(asyn
   return withActorResourceApiError(() => context.actor.listResourceData(input));
 });
 
+export const apiSetActorResourceData = baseActorsOs.resources.dataSet.handler(async ({ input, context }) => {
+  return withActorResourceApiError(() => context.actor.setResourceDataEntry(input));
+});
+
+export const apiDeleteActorResourceData = baseActorsOs.resources.dataDelete.handler(async ({ input, context }) => {
+  return withActorResourceApiError(() => context.actor.deleteResourceDataEntry(input));
+});
+
 export const apiActorDefinitionResourceStatus = baseActorsOs.resources.definitionStatus.handler(async ({ input, context }) => {
   return withActorResourceApiError(() => context.actor.getDefinitionResourceStatus(input.definitionName));
 });
