@@ -5,6 +5,7 @@ import { basename, join, relative, resolve } from 'node:path';
 import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
+import { txReconcileResourceBindings } from '../core/tx.reconcile-resource-bindings';
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord } from '../core/fx.session-candidate';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { planImplicitResourceSelections, planSelectedResourceBindings } from './resource-bindings';
@@ -81,14 +82,16 @@ export function createPublishWidgetTool(args: TCreatePublishWidgetToolArgs): TTo
       if (args.editSession) {
         await args.actorService?.reload();
       }
-      const bindings: Array<{ slot: string; resourceId: string; resourceName: string; kind: string }> = [];
-      for (const binding of bindingPlan.bindings) {
-        await args.actorService?.bindResource?.({
-          definitionName: result.manifest.name,
+      await txReconcileResourceBindings({ actorService: args.actorService }, {
+        definitionName: result.manifest.name,
+        bindings: bindingPlan.bindings.map((binding) => ({
           slot: binding.slot,
           resourceId: binding.resource.id,
           scope: binding.scope,
-        });
+        })),
+      });
+      const bindings: Array<{ slot: string; resourceId: string; resourceName: string; kind: string }> = [];
+      for (const binding of bindingPlan.bindings) {
         bindings.push({
           slot: binding.slot,
           resourceId: binding.resource.id,

@@ -41,7 +41,6 @@ function txCompileActorTypescript(portal: TPortalValidateWidgetFiles, args: TArg
       strict: true,
       skipLibCheck: true,
       noEmit: true,
-      baseUrl: args.cwd,
       paths: {
         '@vibecanvas/sdk/actor': [args.sdkActorTypePath],
       },

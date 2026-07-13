@@ -72,4 +72,50 @@ describe('AgentService database change approval', () => {
     await expect(service.approveWizzardDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('invalid SQL');
     expect(calls).toEqual(['create', 'execute', 'discard:draft-1']);
   });
+
+  test('does not let another approval or rejection race a claimed proposal', async () => {
+    const calls: string[] = [];
+    let releaseDraftCreation = () => {};
+    let reportDraftCreationStarted = () => {};
+    const draftCreationBlocked = new Promise<void>((resolve) => { releaseDraftCreation = resolve; });
+    const draftCreationStarted = new Promise<void>((resolve) => { reportDraftCreationStarted = resolve; });
+    const service = createService({
+      reload: async () => {},
+      createDbDraft: async () => {
+        calls.push('create');
+        reportDraftCreationStarted();
+        await draftCreationBlocked;
+        return { draft: { id: 'draft-1' } };
+      },
+      executeDbDraftSql: async () => { calls.push('execute'); },
+      discardDbDraft: async () => { calls.push('discard'); },
+      previewDbApply: async () => { calls.push('preview'); return { warnings: [] }; },
+      confirmDbApply: async () => {
+        calls.push('confirm');
+        return {
+          id: 'apply-1', resource_id: 'db-1', draft_id: 'draft-1', source_apply_id: null,
+          status: 'applying', last_error: null, backup_retained: false,
+          created_at: '2026-01-01T00:00:00.000Z', completed_at: null,
+        };
+      },
+    });
+
+    const approving = service.approveWizzardDbChange('widget', 'session', 'proposal-1');
+    await draftCreationStarted;
+    await expect(service.approveWizzardDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('being resolved');
+    let rejectError: unknown;
+    try {
+      service.rejectWizzardDbChange('widget', 'session', 'proposal-1');
+    } catch (error) {
+      rejectError = error;
+    } finally {
+      releaseDraftCreation();
+    }
+
+    const approved = await approving;
+    expect(rejectError).toBeInstanceOf(Error);
+    expect((rejectError as Error).message).toContain('being resolved');
+    expect(approved.status).toBe('approved');
+    expect(calls).toEqual(['create', 'execute', 'preview', 'confirm']);
+  });
 });

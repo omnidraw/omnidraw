@@ -15,6 +15,7 @@ import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
 import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
+import { txReconcileResourceBindings } from './core/tx.reconcile-resource-bindings';
 import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-candidate';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
 import { fnValidateCandidate } from './tools/fn.candidate';
@@ -182,6 +183,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   sessionMap: Record<TWidgetId, Record<TSessionId, TWizzardSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
+  #dbChangeProposalResolutions = new Set<string>();
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -379,55 +381,65 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async approveWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
-    const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
-    if (!proposal) throw new Error('Database change proposal was not found.')
-    if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
-
-    const actorService = this.#config.actorService
-    if (!actorService?.createDbDraft || !actorService.executeDbDraftSql || !actorService.discardDbDraft || !actorService.previewDbApply || !actorService.confirmDbApply) {
-      throw new Error('Coordinated database changes are unavailable in this host.')
-    }
-
-    const details = await actorService.createDbDraft(proposal.resourceId, `AI Wizard: ${proposal.reason}`)
-    const draftId = details.draft.id
-    let preview: { warnings: string[] }
-    let apply: Awaited<ReturnType<NonNullable<TActorServiceReloader['confirmDbApply']>>>
+    const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
-      await actorService.executeDbDraftSql(draftId, proposal.sql)
-      preview = await actorService.previewDbApply(draftId)
-      apply = await actorService.confirmDbApply(draftId)
-    } catch (error) {
-      await actorService.discardDbDraft(draftId).catch(() => undefined)
-      throw error
+      const sessionEntry = this.sessionMap[id]?.[sessionId]
+      if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+      const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
+      if (!proposal) throw new Error('Database change proposal was not found.')
+      if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
+
+      const actorService = this.#config.actorService
+      if (!actorService?.createDbDraft || !actorService.executeDbDraftSql || !actorService.discardDbDraft || !actorService.previewDbApply || !actorService.confirmDbApply) {
+        throw new Error('Coordinated database changes are unavailable in this host.')
+      }
+
+      const details = await actorService.createDbDraft(proposal.resourceId, `AI Wizard: ${proposal.reason}`)
+      const draftId = details.draft.id
+      let preview: { warnings: string[] }
+      let apply: Awaited<ReturnType<NonNullable<TActorServiceReloader['confirmDbApply']>>>
+      try {
+        await actorService.executeDbDraftSql(draftId, proposal.sql)
+        preview = await actorService.previewDbApply(draftId)
+        apply = await actorService.confirmDbApply(draftId)
+      } catch (error) {
+        await actorService.discardDbDraft(draftId).catch(() => undefined)
+        throw error
+      }
+      const approved = {
+        ...proposal,
+        status: 'approved' as const,
+        resolvedAt: new Date().toISOString(),
+        draftId,
+        applyId: apply.id,
+        warnings: preview.warnings,
+      }
+      txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, approved)
+      return approved
+    } finally {
+      releaseResolution()
     }
-    const approved = {
-      ...proposal,
-      status: 'approved' as const,
-      resolvedAt: new Date().toISOString(),
-      draftId,
-      applyId: apply.id,
-      warnings: preview.warnings,
-    }
-    txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, approved)
-    return approved
   }
 
   rejectWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): TWidgetDbChangeProposalRecord {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
-    const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
-    if (!proposal) throw new Error('Database change proposal was not found.')
-    if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
+    const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
+    try {
+      const sessionEntry = this.sessionMap[id]?.[sessionId]
+      if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+      const proposal = fxLatestWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, { proposalId })
+      if (!proposal) throw new Error('Database change proposal was not found.')
+      if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
 
-    const rejected = {
-      ...proposal,
-      status: 'rejected' as const,
-      resolvedAt: new Date().toISOString(),
+      const rejected = {
+        ...proposal,
+        status: 'rejected' as const,
+        resolvedAt: new Date().toISOString(),
+      }
+      txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, rejected)
+      return rejected
+    } finally {
+      releaseResolution()
     }
-    txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, rejected)
-    return rejected
   }
 
   async cancelWizzard(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
@@ -755,14 +767,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     this.#disposeDraftActor(id, sessionId)
     await this.#config.actorService?.reload()
-    for (const binding of bindingPlan.bindings) {
-      await this.#config.actorService?.bindResource?.({
-        definitionName: result.manifest.name,
+    await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
+      definitionName: result.manifest.name,
+      bindings: bindingPlan.bindings.map((binding) => ({
         slot: binding.slot,
         resourceId: binding.resource.id,
         scope: binding.scope,
-      })
-    }
+      })),
+    })
     if (shouldReloadEditedInstances) {
       await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
     }
@@ -1252,6 +1264,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #disposeWizzardSession(id: TWidgetId, sessionId: TSessionId): void {
     this.#disposeDraftActor(id, sessionId)
     this.#disposeAgentSession(id, sessionId)
+  }
+
+  #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TSessionId, proposalId: string): () => void {
+    const key = JSON.stringify([id, sessionId, proposalId])
+    if (this.#dbChangeProposalResolutions.has(key)) {
+      throw new Error('Database change proposal is already being resolved.')
+    }
+    this.#dbChangeProposalResolutions.add(key)
+    return () => { this.#dbChangeProposalResolutions.delete(key) }
   }
 
   #disposeAgentSession(id: TWidgetId, sessionId: TSessionId): void {

@@ -60,6 +60,7 @@ describe('vc_publish_widget', () => {
       onEvent: (event) => { events.push(event) },
     }), { confirm: true });
 
+    expect(result.details.errors ?? []).toEqual([]);
     expect(result.isError).toBeUndefined();
     expect(result.details.published).toBe(true);
     expect(result.details.manifest.actor.resources).toEqual(resources);
@@ -229,5 +230,32 @@ describe('vc_publish_widget', () => {
     expect(reloadCount).toBe(2);
     expect(instanceReloadCount).toBe(1);
     expect(JSON.parse(await readFile(join(finalWidgetsDir, 'counter-widget-fork', 'vibecanvas.json'), 'utf8')).slug).toBe('counter-widget-fork');
+  });
+
+  test('removes persisted bindings for slots deleted from the published manifest', async () => {
+    const cwd = await makeTempDir();
+    const finalWidgetsDir = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate: sampleCandidate() });
+    await executeTool(createApproveActorCandidateTool({
+      cwd,
+      sessionManager,
+      npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
+    }), { revision: 1 });
+    const persistedBindings = new Map([['removed-database', 'db-old']]);
+
+    const result = await executeTool(createPublishWidgetTool({
+      cwd,
+      finalWidgetsDir,
+      sessionManager,
+      actorService: {
+        reload: async () => {},
+        listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({ slot_name, resource_id })),
+        unbindResource: async ({ slot }) => persistedBindings.delete(slot),
+      },
+    }), { confirm: true });
+
+    expect(result.isError).toBeUndefined();
+    expect(persistedBindings.size).toBe(0);
   });
 });

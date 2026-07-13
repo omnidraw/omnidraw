@@ -103,6 +103,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
 | [apps/frontend/src/index.tsx](apps/frontend/src/index.tsx) |  |
 | [apps/frontend/src/pages/canvas.tsx](apps/frontend/src/pages/canvas.tsx) |  |
+| [apps/frontend/src/pages/fn.resource-route.ts](apps/frontend/src/pages/fn.resource-route.ts) |  |
 | [apps/frontend/src/pages/resource.module.css](apps/frontend/src/pages/resource.module.css) |  |
 | [apps/frontend/src/pages/resource.tsx](apps/frontend/src/pages/resource.tsx) |  |
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
@@ -241,6 +242,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.wizzard.previewSource.ts](packages/api-agent/src/api.wizzard.previewSource.ts) |  |
 | [packages/api-agent/src/api.wizzard.prompt.ts](packages/api-agent/src/api.wizzard.prompt.ts) |  |
 | [packages/api-agent/src/api.wizzard.publish.ts](packages/api-agent/src/api.wizzard.publish.ts) |  |
+| [packages/api-agent/src/api.wizzard.resourceBindings.clear.ts](packages/api-agent/src/api.wizzard.resourceBindings.clear.ts) |  |
 | [packages/api-agent/src/api.wizzard.startWidgetEdit.ts](packages/api-agent/src/api.wizzard.startWidgetEdit.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
@@ -699,6 +701,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/package.json](packages/service-agent/package.json) |  |
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
 | [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
+| [packages/service-agent/src/core/fn.draft-resource-bindings.ts](packages/service-agent/src/core/fn.draft-resource-bindings.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
 | [packages/service-agent/src/core/fx.session-candidate.ts](packages/service-agent/src/core/fx.session-candidate.ts) |  |
@@ -712,6 +715,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/lint/fn.required-widget-files.ts](packages/service-agent/src/core/lint/fn.required-widget-files.ts) |  |
 | [packages/service-agent/src/core/lint/fn.validate-manifest.ts](packages/service-agent/src/core/lint/fn.validate-manifest.ts) |  |
 | [packages/service-agent/src/core/tx.publish-widget-draft.ts](packages/service-agent/src/core/tx.publish-widget-draft.ts) |  |
+| [packages/service-agent/src/core/tx.reconcile-resource-bindings.ts](packages/service-agent/src/core/tx.reconcile-resource-bindings.ts) |  |
 | [packages/service-agent/src/core/tx.session-candidate.ts](packages/service-agent/src/core/tx.session-candidate.ts) |  |
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |

@@ -192,6 +192,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#resourceManager.listResourceReferences(resourceId)
   }
 
+  listResourceBindingsForDefinition(definitionName: string) {
+    return this.#resourceManager.listResourceBindingsForDefinition(definitionName)
+  }
+
   async listResourceData(args: { resourceId: string; prefix?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage> {
     return this.#withReadyDataResource(args.resourceId, async (kind) => {
       const page = await this.#config.db.actorResource.keyValue.list(args)
