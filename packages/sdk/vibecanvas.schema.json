@@ -104,22 +104,18 @@
     },
     "dbResourceRequirement": {
       "type": "object",
+      "description": "Schema-agnostic database slot. SQL must use the ordinary SQLite-compatible guest contract; never declare a schema ID or version.",
       "additionalProperties": false,
-      "required": ["kind", "required", "scope", "schema"],
+      "required": ["kind", "required", "scope"],
       "properties": {
         "kind": { "const": "db" },
         "required": { "type": "boolean", "default": true },
         "scope": { "$ref": "#/$defs/resourceScope" },
-        "schema": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["id", "version"],
-          "properties": {
-            "id": { "$ref": "#/$defs/resourceIdentifier" },
-            "version": { "type": "integer", "minimum": 0 }
-          }
+        "arbitrarySql": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow trusted actor SQL. Do not depend on Turso-only syntax, PRAGMAs, extensions, remote sync, MVCC, or CDC."
         },
-        "arbitrarySql": { "type": "boolean", "default": false },
         "operations": {
           "type": "object",
           "maxProperties": 128,

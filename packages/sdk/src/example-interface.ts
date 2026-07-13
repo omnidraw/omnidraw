@@ -41,7 +41,6 @@ export const exampleActorResources = {
     kind: 'db',
     required: true,
     scope: ['read'],
-    schema: { id: 'notes', version: 1 },
     operations: {
       listNotes: { effect: 'read', sql: 'SELECT id, title FROM notes', result: 'rows' },
     },

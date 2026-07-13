@@ -20,11 +20,6 @@ export type TActorSecretStoreResourceRequirement = {
   readonly scope: TActorResourceScope;
 };
 
-export type TActorDbSchemaRequirement = {
-  readonly id: string;
-  readonly version: number;
-};
-
 export type TActorDbParameterType = 'string' | 'number' | 'boolean' | 'bigint' | 'bytes' | 'json';
 
 export type TActorDbOperationParameterDeclaration = {
@@ -40,11 +35,15 @@ export type TActorDbNamedOperation = {
   readonly result: 'rows' | 'execute';
 };
 
+/**
+ * A schema-agnostic database slot using Vibecanvas's SQLite-compatible guest
+ * contract. Structure coordination and the host database engine are not actor
+ * capabilities.
+ */
 export type TActorDbResourceRequirement = {
   readonly kind: 'db';
   readonly required: boolean;
   readonly scope: TActorResourceScope;
-  readonly schema: TActorDbSchemaRequirement;
   readonly arbitrarySql?: boolean;
   readonly operations?: Readonly<Record<string, TActorDbNamedOperation>>;
 };
@@ -70,10 +69,7 @@ export type TGenericActorResourceErrorCode =
   | 'RESOURCE_NOT_BOUND'
   | 'RESOURCE_SLOT_UNKNOWN'
   | 'RESOURCE_KIND_MISMATCH'
-  | 'RESOURCE_SCHEMA_MISMATCH'
-  | 'RESOURCE_VERSION_MISMATCH'
   | 'RESOURCE_UNAVAILABLE'
-  | 'RESOURCE_MIGRATING'
   | 'RESOURCE_READ_NOT_ALLOWED'
   | 'RESOURCE_WRITE_NOT_ALLOWED'
   | 'RESOURCE_CALL_CANCELLED'
@@ -103,10 +99,6 @@ export type TDbResourceErrorCode =
   | 'DB_RESOURCE_NOT_BOUND'
   | 'DB_RESOURCE_UNAVAILABLE'
   | 'DB_RESOURCE_MIGRATING'
-  | 'DB_RESOURCE_SCHEMA_MISMATCH'
-  | 'DB_RESOURCE_VERSION_MISMATCH'
-  | 'DB_RESOURCE_MIGRATION_CHANGED'
-  | 'DB_RESOURCE_MIGRATION_FAILED'
   | 'DB_RESOURCE_RECOVERY_FAILED'
   | 'DB_NAMED_OPERATION_UNKNOWN'
   | 'DB_OPERATION_PARAMETERS_INVALID'
