@@ -5,7 +5,7 @@ import { createApproveActorCandidateTool } from '../src/tools/tool.approve-actor
 import { createPublishWidgetTool } from '../src/tools/tool.publish-widget';
 import { createSetActorCandidateTool } from '../src/tools/tool.set-actor-candidate';
 import type { TToolEvent } from '../src/tools/types';
-import { txAppendWidgetResourceSelectionRecord } from '../src/core/tx.session-candidate';
+import { txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetResourceSelectionRecord } from '../src/core/tx.session-candidate';
 import { createFakeSessionManager, executeTool, makeTempDir, sampleCandidate } from './tool.test-helpers';
 
 describe('vc_publish_widget', () => {
@@ -118,6 +118,28 @@ describe('vc_publish_widget', () => {
     expect(bindings).toEqual([{
       definitionName: 'Counter Widget', slot: 'database', resourceId: 'db-only', scope: ['read'],
     }]);
+
+    txAppendWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {
+      resources: [],
+      selectedAt: new Date().toISOString(),
+      source: 'explicit-clear',
+    });
+    const clearedResult = await executeTool(createPublishWidgetTool({
+      cwd,
+      finalWidgetsDir,
+      sessionManager,
+      actorService: {
+        reload: async () => {},
+        listResources: async () => [{
+          id: 'db-only', kind: 'db', name: 'Only Database', status: 'ready', last_error: null,
+          created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }],
+        bindResource: async (binding) => { bindings.push(binding); },
+      },
+    }), { confirm: true });
+    expect(clearedResult.isError).toBe(true);
+    expect(clearedResult.content[0].text).toContain('@mention');
+    expect(bindings).toHaveLength(1);
   });
 
   test('refuses to guess among multiple ready resources', async () => {

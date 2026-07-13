@@ -16,7 +16,13 @@ export type TPortalPublishWidgetDraft = {
   readFile: (path: string, encoding: 'utf8') => Promise<string>;
   writeFile: (path: string, content: string, encoding: 'utf8') => Promise<void>;
   mkdir: (path: string, options: { recursive: true }) => Promise<string | undefined>;
-  rm: (path: string, options: { recursive: true; force: true }) => Promise<void>;
+  rm: (path: string, options: { recursive: true; force: true } | { force: true }) => Promise<void>;
+  execFile: (
+    file: string,
+    args: readonly string[],
+    options: { cwd: string; timeout: number; maxBuffer: number },
+    callback: (error: Error | null, stdout: unknown, stderr: unknown) => void,
+  ) => void;
   cp: (source: string, destination: string, options: { recursive: true; filter: (source: string) => boolean }) => Promise<void>;
   join: (...paths: string[]) => string;
   relative: (from: string, to: string) => string;
@@ -28,12 +34,13 @@ export type TArgsPublishWidgetDraft = {
   cwd: string;
   finalWidgetsDir: string;
   actorService?: TActorServiceReloader;
+  sdkActorTypePath: string;
 };
 
 export async function txPublishWidgetDraft(portal: TPortalPublishWidgetDraft, args: TArgsPublishWidgetDraft) {
   const manifestPath = portal.join(args.cwd, 'vibecanvas.json');
   const draftManifest = JSON.parse(await portal.readFile(manifestPath, 'utf8')) as TVibecanvasJson;
-  const validation = await txValidateWidgetFiles(portal, { cwd: args.cwd });
+  const validation = await txValidateWidgetFiles(portal, { cwd: args.cwd, sdkActorTypePath: args.sdkActorTypePath });
   if (!validation.ok) {
     return { published: false, manifest: draftManifest, validation, destination: null as string | null, files: [] as string[] };
   }

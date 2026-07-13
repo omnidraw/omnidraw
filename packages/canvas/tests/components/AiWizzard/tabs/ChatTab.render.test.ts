@@ -128,7 +128,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}, onApproveDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onRejectDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }) {
+}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}, onApproveDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onRejectDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onClearResourceBindings: () => Promise<void> = async () => {}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -140,6 +140,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     onCancel: () => {},
     onNewWidget: () => {},
     onEditExistingWidget: () => {},
+    onClearResourceBindings,
     onPrompt: async () => {},
     onPreferenceChange,
     onInspectActor,
@@ -311,6 +312,26 @@ describe("ChatTab rendered message history", () => {
     expect(editorRule).toContain("overflow-y: auto")
     expect(editorRule).toContain("overflow-x: hidden")
     expect(editorRule).toContain("overflow-wrap: anywhere")
+  })
+
+  it("exposes an explicit action that clears persistent draft resource bindings", () => {
+    const onClearResourceBindings = vi.fn(async () => {})
+    const root = renderChatTab(
+      undefined,
+      MOCK_MESSAGE_HISTORY,
+      () => {},
+      () => {},
+      async () => { throw new Error("not configured") },
+      async () => { throw new Error("not configured") },
+      onClearResourceBindings,
+    )
+
+    root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
+    Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .find((button) => button.textContent?.trim() === "Clear resource bindings")
+      ?.click()
+
+    expect(onClearResourceBindings).toHaveBeenCalledTimes(1)
   })
 
   it("forwards selected model changes as chat preference changes", () => {

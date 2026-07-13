@@ -359,6 +359,14 @@ export function AiWizzard(props: IProps) {
         if (err) throw err
     }
 
+    const clearResourceBindings = async () => {
+        const [err] = await props.apiService.api.agent.wizzard.resourceBindings.clear({
+            widgetId: props.id,
+            sessionId: sessionId(),
+        })
+        if (err) throw err
+    }
+
     const reconnectWizzard = async () => {
         const [err, data] = await props.apiService.api.agent.wizzard.connect({
             sessionId: sessionId(),
@@ -538,6 +546,7 @@ export function AiWizzard(props: IProps) {
                         onCancel={() => void cancelPrompt()}
                         onNewWidget={newWidget}
                         onEditExistingWidget={openEditPicker}
+                        onClearResourceBindings={clearResourceBindings}
                         onInspectActor={() => setSelectedTab("actor")}
                     />
                 </Tabs.Content>

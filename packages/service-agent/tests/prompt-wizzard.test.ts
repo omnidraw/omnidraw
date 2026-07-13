@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
 import { txAppendActorCandidateApprovalRecord } from '../src/core/tx.session-candidate';
-import { fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-candidate';
-import { executeTool, sampleCandidate } from './tool.test-helpers';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-candidate';
+import { createFakeSessionManager, executeTool, sampleCandidate } from './tool.test-helpers';
 import { createProposeDbChangeTool } from '../src/tools/tool.propose-db-change';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from '../src/prompts';
@@ -144,6 +144,9 @@ describe('AgentService.promptWizzard', () => {
     });
     await service.promptWizzard('widget', 'session', 'Do not use a resource now', { resourceIds: [] });
     expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([]);
+    expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
+      { id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' },
+    ]);
     const proposal = await executeTool(createProposeDbChangeTool({
       sessionManager: sessionManager as never,
       actorService: {
@@ -153,6 +156,48 @@ describe('AgentService.promptWizzard', () => {
     }), { resourceId: 'db-1', sql: 'DROP TABLE notes;', reason: 'No longer authorized.' });
     expect(proposal.isError).toBe(true);
     expect(proposal.content[0].text).toContain('@mention');
+  });
+
+  test('replaces a same-kind draft binding on mention and clears it only through the explicit action', async () => {
+    const resources = [
+      { id: 'db-1', kind: 'db' as const, name: 'QA Database' },
+      { id: 'db-2', kind: 'db' as const, name: 'Manual QA Database' },
+      { id: 'kv-1', kind: 'kv' as const, name: 'Preferences' },
+    ];
+    const service = await createService({
+      reload: async () => {},
+      getResource: async (id) => {
+        const resource = resources.find((candidate) => candidate.id === id);
+        return resource ? {
+          ...resource,
+          status: 'ready',
+          last_error: null,
+          created_at: '2026-07-13T00:00:00.000Z',
+          updated_at: '2026-07-13T00:00:00.000Z',
+        } : null;
+      },
+    });
+    const sessionManager = createFakeSessionManager();
+    service.sessionMap.widget = {
+      session: {
+        unsub: () => {},
+        sessionManager: sessionManager as never,
+        session: { prompt: async () => {} } as never,
+      },
+    };
+
+    await service.promptWizzard('widget', 'session', 'Use these resources', { resourceIds: ['db-1', 'kv-1'] });
+    await service.promptWizzard('widget', 'session', 'Switch to @Manual QA Database', { resourceIds: ['db-2'] });
+    expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
+      { id: 'kv-1', kind: 'kv', name: 'Preferences', status: 'ready' },
+      { id: 'db-2', kind: 'db', name: 'Manual QA Database', status: 'ready' },
+    ]);
+
+    expect(service.clearDraftResourceBindingsWizzard('widget', 'session')).toEqual({ cleared: true });
+    expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})).toMatchObject({
+      resources: [],
+      source: 'explicit-clear',
+    });
   });
 
   test('refreshes phase tools after approval before the next prompt', async () => {

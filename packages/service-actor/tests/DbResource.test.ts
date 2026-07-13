@@ -208,6 +208,16 @@ describe('DbResource schema-agnostic provider', () => {
     expect(page.rows[1].values.payload).toEqual({ type: 'blobPreview', byteLength: 3, previewBase64: 'AQID', truncated: false });
     await expect(provider.getRow({ resourceId: resource.id, object: 'files', identity: page.rows[0].identity! }))
       .rejects.toMatchObject({ code: 'DB_RESOURCE_ROW_TOO_LARGE' });
+    const projected = await provider.getRow({ resourceId: resource.id, object: 'files', identity: page.rows[0].identity!, columns: ['id', 'name'] });
+    expect(projected).toMatchObject({ values: { id: { type: 'integer', value: '1' }, name: { type: 'text', value: 'large' } } });
+    expect(projected.values).not.toHaveProperty('payload');
+    await expect(provider.updateRow({
+      resourceId: resource.id,
+      object: 'files',
+      identity: projected.identity!,
+      values: { name: { type: 'text', value: 'renamed' } },
+      expectedOriginal: { name: projected.values.name },
+    })).resolves.toEqual({ rowsAffected: 1 });
     const hydrated = await provider.getRow({ resourceId: resource.id, object: 'files', identity: page.rows[1].identity! });
     expect(hydrated).toMatchObject({ values: { payload: { type: 'blob', base64: 'AQID' } } });
     await expect(provider.deleteRow({
@@ -222,7 +232,7 @@ describe('DbResource schema-agnostic provider', () => {
       .resolves.toMatchObject({
         kind: 'rows',
         rows: [
-          { id: { type: 'integer', value: '1' }, name: { type: 'text', value: 'large' }, bytes: { type: 'integer', value: '2097152' } },
+          { id: { type: 'integer', value: '1' }, name: { type: 'text', value: 'renamed' }, bytes: { type: 'integer', value: '2097152' } },
         ],
       });
     const blobKeyPage = await provider.listRows({ resourceId: resource.id, object: 'blob_keys' });

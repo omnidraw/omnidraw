@@ -121,6 +121,234 @@ async function createServiceFixture() {
 }
 
 describe('AgentService draft actor runtime', () => {
+  test('keeps the mentioned database bound after a mentionless continuation prompt', async () => {
+    const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-resource-continuation-'));
+    tempDirs.push(dataPath);
+    const widgetId = 'manual-qa-data-viewer';
+    const sessionId = 'resource-continuation';
+    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+    await mkdir(join(cwd, 'actor'), { recursive: true });
+    await mkdir(join(cwd, 'widget'), { recursive: true });
+
+    const resources = [
+      {
+        id: 'qa-database',
+        kind: 'db' as const,
+        name: 'QA Database',
+        status: 'ready' as const,
+        last_error: null,
+        created_at: '2026-07-13T00:00:00.000Z',
+        updated_at: '2026-07-13T00:00:00.000Z',
+      },
+      {
+        id: 'manual-qa-database',
+        kind: 'db' as const,
+        name: 'Manual QA Database',
+        status: 'ready' as const,
+        last_error: null,
+        created_at: '2026-07-13T00:00:00.000Z',
+        updated_at: '2026-07-13T00:00:00.000Z',
+      },
+    ];
+    const directCalls: Array<{ call: unknown; binding: unknown }> = [];
+    const persistedBindings: unknown[] = [];
+    const service = new AgentService({
+      cachePath: join(dataPath, 'cache'),
+      dataPath,
+      configPath: join(dataPath, 'config'),
+      eventPublisherService: new TestEventPublisherService(),
+      actorService: {
+        reload: async () => {},
+        listResources: async () => resources,
+        getResource: async (id) => resources.find((resource) => resource.id === id) ?? null,
+        bindResource: async (binding) => { persistedBindings.push(binding); return {}; },
+        callWithDirectResourceBinding: async (call, binding) => {
+          directCalls.push({ call, binding });
+          return [
+            { id: 1n, title: 'First QA row' },
+            { id: 250n, title: 'Last QA row' },
+          ];
+        },
+      },
+    });
+    const sessionManager = createFakeSessionManager();
+    service.sessionMap[widgetId] = {
+      [sessionId]: {
+        unsub: () => {},
+        sessionManager: sessionManager as never,
+        session: { prompt: async () => {} } as never,
+      },
+    };
+
+    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+      slug: 'manual-qa-data-viewer',
+      name: 'Manual QA Data Viewer',
+      actor: {
+        relFunctionPath: './actor/functions.ts',
+        initialState: 'ready',
+        initialData: { loaded: false, rows: [] },
+        resources: {
+          database: {
+            kind: 'db',
+            required: true,
+            scope: ['read'],
+            arbitrarySql: false,
+            operations: {
+              listQaRows: {
+                effect: 'read',
+                sql: 'SELECT id, title FROM qa_rows ORDER BY id',
+                result: 'rows',
+              },
+            },
+          },
+        },
+        states: {
+          ready: { onEnter: ['fx.loadRows'], on: {} },
+          error: {
+            on: {
+              'in.resetError': { func: ['tx.resetError'], targetState: 'ready' },
+            },
+          },
+        },
+        inputMsgSchema: {
+          'in.resetError': { type: 'object', additionalProperties: false },
+        },
+        outputMsgSchema: {},
+      },
+      widget: {
+        relWidgetDir: './widget',
+        tool: { label: 'Manual QA rows', behavior: { type: 'action' } },
+      },
+    }, null, 2)}\n`, 'utf8');
+    await writeFile(join(cwd, 'actor', 'functions.ts'), [
+      'export default {',
+      '  fn: {},',
+      '  fx: {',
+      '    "fx.loadRows": async (portal, args) => {',
+      '      const rows = await portal.resources.db("database").invoke("listQaRows", {});',
+      '      await portal.setData({ ...args.data, loaded: true, rows: rows.map((row) => ({ id: String(row.id), title: row.title })) });',
+      '      return portal.next();',
+      '    },',
+      '  },',
+      '  tx: { "tx.resetError": async () => {} },',
+      '};',
+      '',
+    ].join('\n'), 'utf8');
+    await writeFile(join(cwd, 'widget', 'main.ts'), 'export default null;\n', 'utf8');
+    await writeFile(join(cwd, 'widget', 'main.css'), ':root {}\n', 'utf8');
+
+    await service.promptWizzard(widgetId, sessionId, 'Use @Manual QA Database', {
+      resourceIds: ['manual-qa-database'],
+    });
+    await service.promptWizzard(widgetId, sessionId, 'yes continue', { resourceIds: [] });
+
+    const startResult = await service.startDraftActorWizzard(widgetId, sessionId);
+    expect(startResult.ready).toBe(true);
+    if (!startResult.ready) throw new Error(startResult.message);
+
+    let snapshot = service.inspectDraftActorWizzard(widgetId, sessionId);
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (snapshot.ready && (snapshot.snapshot.context as { loaded?: boolean }).loaded === true) break;
+      await Bun.sleep(10);
+      snapshot = service.inspectDraftActorWizzard(widgetId, sessionId);
+    }
+
+    expect(snapshot).toMatchObject({
+      ready: true,
+      snapshot: {
+        state: 'ready',
+        context: {
+          loaded: true,
+          rows: [
+            { id: '1', title: 'First QA row' },
+            { id: '250', title: 'Last QA row' },
+          ],
+        },
+      },
+    });
+    expect(directCalls).toHaveLength(1);
+    expect(directCalls[0]).toMatchObject({
+      call: { slot: 'database', kind: 'db', operation: 'invoke' },
+      binding: {
+        resourceId: 'manual-qa-database',
+        requirement: { kind: 'db', required: true, scope: ['read'] },
+        scope: ['read'],
+      },
+    });
+    const publishResult = await service.publishWizzard(widgetId, sessionId);
+    if (!publishResult.published) throw new Error(publishResult.message);
+    expect(publishResult.published).toBe(true);
+    expect(persistedBindings).toEqual([{
+      definitionName: 'Manual QA Data Viewer',
+      slot: 'database',
+      resourceId: 'manual-qa-database',
+      scope: ['read'],
+    }]);
+  });
+
+  test('refuses Preview before actor startup when required binding intent is ambiguous', async () => {
+    const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-resource-ambiguous-'));
+    tempDirs.push(dataPath);
+    const widgetId = 'ambiguous-resource-widget';
+    const sessionId = 'ambiguous-resource-session';
+    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+    await mkdir(join(cwd, 'actor'), { recursive: true });
+    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+      slug: 'ambiguous-resource-widget',
+      name: 'Ambiguous Resource Widget',
+      actor: {
+        relFunctionPath: './actor/functions.ts',
+        initialState: 'ready',
+        initialData: {},
+        resources: {
+          database: { kind: 'db', required: true, scope: ['read'], arbitrarySql: false, operations: {} },
+        },
+        states: { ready: { on: {} }, error: { on: {} } },
+        inputMsgSchema: {},
+        outputMsgSchema: {},
+      },
+      widget: { relWidgetDir: './widget', tool: { label: 'Ambiguous', behavior: { type: 'action' } } },
+    }, null, 2)}\n`, 'utf8');
+    await writeFile(join(cwd, 'actor', 'functions.ts'), 'export default { fn: {}, fx: {}, tx: {} };\n', 'utf8');
+    let gatewayCalls = 0;
+    const service = new AgentService({
+      cachePath: join(dataPath, 'cache'),
+      dataPath,
+      configPath: join(dataPath, 'config'),
+      eventPublisherService: new TestEventPublisherService(),
+      actorService: {
+        reload: async () => {},
+        listResources: async () => ['qa', 'manual'].map((id) => ({
+          id,
+          kind: 'db' as const,
+          name: id === 'qa' ? 'QA Database' : 'Manual QA Database',
+          status: 'ready' as const,
+          last_error: null,
+          created_at: '2026-07-13T00:00:00.000Z',
+          updated_at: '2026-07-13T00:00:00.000Z',
+        })),
+        callWithDirectResourceBinding: async () => { gatewayCalls += 1; return []; },
+      },
+    });
+    service.sessionMap[widgetId] = {
+      [sessionId]: {
+        unsub: () => {},
+        session: {} as never,
+        sessionManager: createFakeSessionManager() as never,
+      },
+    };
+
+    const result = await service.startDraftActorWizzard(widgetId, sessionId);
+    expect(result).toMatchObject({
+      ready: false,
+      reason: 'resource-binding-invalid',
+    });
+    if (result.ready) throw new Error('Expected ambiguous binding to block Preview');
+    expect(result.message).toContain('@mention');
+    expect(service.inspectDraftActorWizzard(widgetId, sessionId)).toMatchObject({ ready: false, reason: 'actor-not-running' });
+    expect(gatewayCalls).toBe(0);
+  });
+
   test('starts editing a published widget from a copied bumped draft', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-edit-'));
     tempDirs.push(dataPath);

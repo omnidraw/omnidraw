@@ -53,6 +53,12 @@ export type TWidgetResourceSelectionRecord = {
   selectedAt: string;
 };
 
+export type TWidgetDraftResourceBindingSelectionRecord = {
+  resources: TWidgetResourceSelection[];
+  selectedAt: string;
+  source: 'mention' | 'explicit-clear';
+};
+
 export type TWidgetDbChangeProposalRecord = {
   id: string;
   resourceId: string;

@@ -1,10 +1,11 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
+import { execFile } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
 import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
-import { fxLatestWidgetResourceSelectionRecord } from '../core/fx.session-candidate';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord } from '../core/fx.session-candidate';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { planImplicitResourceSelections, planSelectedResourceBindings } from './resource-bindings';
 import type { TActorServiceReloader, TCandidateSessionManager, TToolDefinition, TToolEventSink, TWidgetEditSessionRecord } from './types';
@@ -34,11 +35,11 @@ export function createPublishWidgetTool(args: TCreatePublishWidgetToolArgs): TTo
       }
 
       const selectionRecord = args.sessionManager
-        ? fxLatestWidgetResourceSelectionRecord({ sessionManager: args.sessionManager }, {})
+        ? fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: args.sessionManager }, {})
         : null;
       const draftManifest = JSON.parse(await readFile(join(args.cwd, 'vibecanvas.json'), 'utf8')) as TVibecanvasJson;
       let selectedResources = selectionRecord?.resources ?? [];
-      if (selectedResources.length === 0 && Object.keys(draftManifest.actor.resources ?? {}).length > 0) {
+      if (!selectionRecord && Object.keys(draftManifest.actor.resources ?? {}).length > 0) {
         if (!args.actorService?.listResources) {
           return fnToolError('Resources cannot be discovered in this host. The widget was not published.', { published: false, bindings: [] });
         }
@@ -62,10 +63,11 @@ export function createPublishWidgetTool(args: TCreatePublishWidgetToolArgs): TTo
 
       // TODO: must run validation first
 
-      const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, join, relative, resolve, basename }, {
+      const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative, resolve, basename }, {
         cwd: args.cwd,
         finalWidgetsDir: args.finalWidgetsDir,
         actorService: args.editSession ? undefined : args.actorService,
+        sdkActorTypePath: resolve(import.meta.dir, '../../../sdk/src/actor.ts'),
       });
 
       if (!result.published) {

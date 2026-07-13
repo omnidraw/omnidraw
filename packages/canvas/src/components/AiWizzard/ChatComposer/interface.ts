@@ -66,6 +66,7 @@ export type TChatComposerProps = {
   onNewWidget?: () => void
   onEditExistingWidget?: () => void
   onCopyChat?: () => void
+  onClearResourceBindings?: () => void
 }
 
 export type TPromptSuggestionKind = "mention" | "command"

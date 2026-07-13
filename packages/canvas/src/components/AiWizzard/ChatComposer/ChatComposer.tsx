@@ -966,6 +966,17 @@ export function ChatComposer(props: TChatComposerProps) {
                   >
                     Copy chat
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionMenuOpen(false)
+                      props.onClearResourceBindings?.()
+                      view?.focus()
+                    }}
+                  >
+                    Clear resource bindings
+                  </button>
                 </div>
               </Show>
             </div>

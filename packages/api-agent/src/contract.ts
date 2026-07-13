@@ -148,6 +148,7 @@ export type TAgentDraftActorNotReadyReason =
   | 'manifest-invalid'
   | 'actor-functions-missing'
   | 'session-missing'
+  | 'resource-binding-invalid'
   | 'actor-not-running';
 
 export type TAgentDraftActorResult =
@@ -207,6 +208,9 @@ export const agentContract = oc.router({
     connect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardConnect>()),
     startWidgetEdit: oc.input(ZAgentWizzardStartWidgetEdit).output(orpcType<TAgentWizzardStartWidgetEditResult>()),
     prompt: oc.input(ZAgentWizzardPrompt),
+    resourceBindings: {
+      clear: oc.input(ZAgentWizzardScope).output(z.object({ cleared: z.literal(true) })),
+    },
     dbChange: {
       approve: oc.input(ZAgentWizzardScope.extend({
         proposalId: z.string().min(1),

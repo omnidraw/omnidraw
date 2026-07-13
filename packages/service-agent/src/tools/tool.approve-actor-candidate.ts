@@ -1,7 +1,7 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile, access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { fxLatestActorCandidateRecord } from '../core/fx.session-candidate';
@@ -42,7 +42,12 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
         return fnToolError('Cannot approve invalid actor candidate.', { validation: record.validation });
       }
 
-      const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, { cwd: args.cwd, manifest: record.manifest });
+      const sdkPackagePath = resolve(import.meta.dir, '../../../sdk');
+      const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, {
+        cwd: args.cwd,
+        manifest: record.manifest,
+        sdkDependency: `file:${sdkPackagePath}`,
+      });
       const npmInstall = await (args.npmInstall ?? ((cwd) => txTryNpmInstall({ access, execFile, join }, { cwd })))(args.cwd);
       if (npmInstall.status === 'success') {
         files.push('package-lock.json');

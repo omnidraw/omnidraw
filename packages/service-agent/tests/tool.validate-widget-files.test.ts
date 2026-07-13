@@ -78,4 +78,59 @@ describe('vc_validate_widget_files', () => {
     expect(result.details.ok).toBe(false);
     expect(result.details.errors.some((error: string) => error.includes('actor.resources.notes.operations.broken.sql'))).toBe(true);
   });
+
+  test('compiles a resource-using actor against the workspace SDK contract', async () => {
+    const cwd = await makeTempDir();
+    const sessionManager = createFakeSessionManager();
+    const base = sampleCandidate();
+    const candidate = sampleCandidate({
+      actor: {
+        ...base.actor,
+        resources: {
+          database: {
+            kind: 'db',
+            required: true,
+            scope: ['read'],
+            operations: {
+              listQaRows: { effect: 'read', sql: 'SELECT id, title FROM qa_rows ORDER BY id', result: 'rows' },
+            },
+          },
+        },
+        states: {
+          ...base.actor.states,
+          ready: {
+            ...base.actor.states.ready,
+            on: base.actor.states.ready?.on ?? {},
+            onEnter: ['fx.loadRows'],
+          },
+        },
+      },
+    });
+    await executeTool(createSetActorCandidateTool({ cwd, sessionManager }), { candidate });
+    await executeTool(createApproveActorCandidateTool({
+      cwd,
+      sessionManager,
+      npmInstall: async () => ({ status: 'skipped', reason: 'test' }),
+    }), { revision: 1 });
+    const actorPath = join(cwd, 'actor', 'fx.loadRows.ts');
+    await writeFile(actorPath, [
+      'import type { TFxArgs, TFxPortal } from "@vibecanvas/sdk/actor";',
+      'type TData = { rows: Array<{ id: string; title: string }> };',
+      'type TArgs = TFxArgs<TData>;',
+      'export async function fxLoadRows(portal: TFxPortal, args: TArgs) {',
+      '  const rows = await portal.resources.db("database").invoke<Array<{ id: bigint; title: string }>>("listQaRows", {});',
+      '  await portal.setData({ ...args.data, rows: rows.map((row) => ({ id: String(row.id), title: row.title })) });',
+      '  return portal.next();',
+      '}',
+      '',
+    ].join('\n'), 'utf8');
+
+    const valid = await executeTool(createValidateWidgetFilesTool({ cwd }));
+    expect(valid.details.ok).toBe(true);
+
+    await writeFile(actorPath, `${await readFile(actorPath, 'utf8')}\nconst invalidSdkContract: string = 123;\n`, 'utf8');
+    const invalid = await executeTool(createValidateWidgetFilesTool({ cwd }));
+    expect(invalid.details.ok).toBe(false);
+    expect(invalid.details.errors.some((error: string) => error.includes('error TS2322'))).toBe(true);
+  });
 });
