@@ -74,6 +74,7 @@ const ZAgentWizzardPromptImage = z.object({
 
 const ZAgentWizzardPrompt = ZAgentWizzardScope.extend({
   text: z.string(),
+  resourceIds: z.string().min(1).max(128).array().max(16).optional(),
   images: ZAgentWizzardPromptImage.array().max(AGENT_WIZZARD_PROMPT_IMAGE_MAX_COUNT).optional(),
   model: z.object({
     provider: z.string().min(1),
@@ -83,6 +84,20 @@ const ZAgentWizzardPrompt = ZAgentWizzardScope.extend({
 }).refine((input) => input.text.trim().length > 0 || (input.images?.length ?? 0) > 0, {
   message: 'Prompt text or at least one image is required',
   path: ['text'],
+})
+
+const ZAgentWizzardDbChangeProposal = z.object({
+  id: z.string(),
+  resourceId: z.string(),
+  resourceName: z.string(),
+  sql: z.string(),
+  reason: z.string(),
+  status: z.enum(['pending', 'approved', 'rejected']),
+  proposedAt: z.string(),
+  resolvedAt: z.string().optional(),
+  draftId: z.string().optional(),
+  applyId: z.string().optional(),
+  warnings: z.string().array().optional(),
 })
 
 const ZAgentWizzardDraftActorSend = ZAgentWizzardScope.extend({
@@ -192,6 +207,13 @@ export const agentContract = oc.router({
     connect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardConnect>()),
     startWidgetEdit: oc.input(ZAgentWizzardStartWidgetEdit).output(orpcType<TAgentWizzardStartWidgetEditResult>()),
     prompt: oc.input(ZAgentWizzardPrompt),
+    dbChange: {
+      approve: oc.input(ZAgentWizzardScope.extend({
+        proposalId: z.string().min(1),
+        confirmedRisk: z.literal(true),
+      })).output(ZAgentWizzardDbChangeProposal),
+      reject: oc.input(ZAgentWizzardScope.extend({ proposalId: z.string().min(1) })).output(ZAgentWizzardDbChangeProposal),
+    },
     cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
     newSession: oc.input(ZAgentWizzardScope),
     previewSource: oc.input(ZAgentWizzardScope).output(orpcType<TAgentPreviewSourceResult>()),

@@ -78,7 +78,7 @@ class OrpcWebsocketService {
     this.websocket = new PartySocketWebSocket(args.websocketUrl ?? getRpcWebsocketUrl());
 
     const link = new RPCLink({
-      // @ts-expect-error weak typing from orpc
+      // @ts-ignore PartySocket exposes the WebSocket runtime contract; published readyState typings vary by resolver.
       websocket: this.websocket,
     });
 

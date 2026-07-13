@@ -29,6 +29,10 @@ export const apiListActorResourceReferences = baseActorsOs.resources.references.
   return withActorResourceApiError(() => context.actor.listResourceReferences(input.resourceId));
 });
 
+export const apiListActorResourceData = baseActorsOs.resources.data.handler(async ({ input, context }) => {
+  return withActorResourceApiError(() => context.actor.listResourceData(input));
+});
+
 export const apiActorDefinitionResourceStatus = baseActorsOs.resources.definitionStatus.handler(async ({ input, context }) => {
   return withActorResourceApiError(() => context.actor.getDefinitionResourceStatus(input.definitionName));
 });
