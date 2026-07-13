@@ -85,11 +85,11 @@ Do not put product-facing facade policy directly in `Actor`. `Actor` should rema
 
 All host-side resource implementation lives under `src/resources/`:
 
-- `ActorResourceManager.ts` — generic catalog, binding, compatibility, permission, dispatch, lifecycle, drain, and shutdown coordination
+- `ActorResourceManager.ts` — generic catalog, binding, permission, dispatch, lifecycle, drain, and shutdown coordination
 - `KvResource.ts` — resource-scoped JSON key/value operations
 - `SecretStoreResource.ts` — string secret operations with value-safe list/write/error surfaces
-- `DbResource.ts` — physical Turso database provisioning, handles, SQL dispatch, backup, restore, and migration primitives
-- `DbResourceMigrationCoordinator.ts` — coordinates DB migration with linked actor stop/restart and durable compatibility blocks
+- `DbResource.ts` — physical SQLite-compatible database provisioning, inspection, live rows, draft copies, SQL dispatch, apply backups, and restore primitives
+- `DbResourceCoordinator.ts` — coordinates structure drafts/applies/restores with linked actor stop/restart and durable observed outcomes
 - `ActorResourceError.ts` — stable resource errors and safe serialization
 - `resource-types.ts` — provider, gateway, binding-status, and migration-preview contracts
 
@@ -111,7 +111,7 @@ Resource persistence differs by kind:
 - Each DbResource owns a separate physical database under `<dataRoot>/actor-resources/db/<resource-id>/data.db`.
 - Arbitrary `query` is single-statement. Arbitrary `execute` is always tx/write-capable and accepts either one statement or an ordered operation array. Operation arrays use one connection without interleaving; callers explicitly provide transaction/savepoint control statements, and each operation binds its own parameters.
 - Named manifest DB operations remain single-statement.
-- Resource catalog, bindings, DB schema metadata, and migration control state remain in `DbServiceTurso`.
+- Resource catalog, bindings, structure drafts, apply runs, and actor outcomes remain in `DbServiceTurso`.
 
 Keep resource-specific helpers and types inside `src/resources/`. Prefer sibling `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files there when extracting provider-local logic. Move logic into `src/core/` only when it is genuinely shared with non-resource actor features.
 

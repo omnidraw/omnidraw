@@ -76,6 +76,7 @@ export function fnNormalizeVibecanvasJson(manifest: TVibecanvasJson): TNormalize
       ...manifest,
       actor: {
         ...manifest.actor,
+        resources: manifest.actor.resources,
         states,
       },
     },

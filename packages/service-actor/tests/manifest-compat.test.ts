@@ -122,20 +122,18 @@ describe("actor manifest compatibility", () => {
     expect(parseName(" Storage ").success).toBe(true);
   });
 
-  test("accepts db schema version zero and positive versions with named operations", () => {
+  test("accepts schema-agnostic db slots with named operations", () => {
     const manifest = manifestWithTransition({ func: [], targetState: "busy" });
     Object.assign(manifest.actor, { resources: {
       empty: {
         kind: "db",
         required: true,
         scope: ["read"],
-        schema: { id: "empty-schema", version: 0 },
       },
       notes: {
         kind: "db",
         required: true,
         scope: ["read", "write"],
-        schema: { id: "notes", version: 2 },
         operations: {
           listNotes: {
             effect: "read",
@@ -169,7 +167,7 @@ describe("actor manifest compatibility", () => {
     });
   });
 
-  test("rejects invalid db versions, operation effects, identifiers, and parameter declarations", () => {
+  test("rejects invalid db operation effects, identifiers, and parameter declarations", () => {
     const manifest = manifestWithTransition({ func: [], targetState: "busy" });
     const parseRequirement = (requirement: unknown) => ZVibecanvasJson.safeParse({
       ...manifest,
@@ -179,12 +177,8 @@ describe("actor manifest compatibility", () => {
       kind: "db",
       required: true,
       scope: ["read"],
-      schema: { id: "notes", version: 1 },
     };
 
-    expect(parseRequirement({ ...base, schema: { id: "notes", version: -1 } }).success).toBe(false);
-    expect(parseRequirement({ ...base, schema: { id: "notes", version: 1.5 } }).success).toBe(false);
-    expect(parseRequirement({ ...base, schema: { id: " ", version: 1 } }).success).toBe(false);
     expect(parseRequirement({
       ...base,
       operations: { mutate: { effect: "write", sql: "DELETE FROM notes", result: "execute" } },
@@ -217,7 +211,6 @@ describe("actor manifest compatibility", () => {
             kind: "db",
             required: true,
             scope: ["read"],
-            schema: { id: "notes", version: 0 },
             operations: { query: { effect: "read", sql, result: "rows" } },
           },
         },
@@ -240,5 +233,15 @@ describe("actor manifest compatibility", () => {
     const normalized = fnNormalizeVibecanvasJson(manifest);
 
     expect(normalized.manifest.actor.resources).toEqual(manifest.actor.resources);
+  });
+
+  test("rejects legacy db schema declarations", () => {
+    const manifest = manifestWithTransition({ func: [], targetState: "busy" });
+    Object.assign(manifest.actor, { resources: {
+      primary: { kind: "db", required: true, scope: ["read"], schema: { id: "notes", version: 2 } },
+      secondary: { kind: "db", required: false, scope: ["write"], schema: { id: "archive", version: 1 } },
+    } });
+
+    expect(ZVibecanvasJson.safeParse(manifest).success).toBe(false);
   });
 });
