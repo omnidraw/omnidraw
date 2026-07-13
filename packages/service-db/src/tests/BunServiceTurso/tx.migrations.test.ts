@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { connect, Database } from "@tursodatabase/database";
 import { listMigrationFiles } from "../../../src/DbServiceTurso/list-migration-files";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
+import { listEmbeddedMigrationFiles } from "../../../src/_embedded-migrations";
 import path from "node:path"
 import { readdir } from "node:fs/promises";
 
@@ -53,10 +54,14 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("actor_resources");
     expect(tNames).toContain("actor_resource_bindings");
     expect(tNames).toContain("actor_resource_key_values");
-    expect(tNames).toContain("db_resource_schemas");
-    expect(tNames).toContain("db_resource_schema_migrations");
-    expect(tNames).toContain("db_resource_configurations");
-    expect(tNames).toContain("db_resource_migration_blocks");
+    expect(tNames).toContain("db_resource_drafts");
+    expect(tNames).toContain("db_resource_draft_changes");
+    expect(tNames).toContain("db_resource_apply_runs");
+    expect(tNames).toContain("db_resource_apply_instance_results");
+    expect(tNames).not.toContain("db_resource_schemas");
+    expect(tNames).not.toContain("db_resource_schema_migrations");
+    expect(tNames).not.toContain("db_resource_configurations");
+    expect(tNames).not.toContain("db_resource_migration_blocks");
     expect(tNames).toContain("migrations");
 
     const migrationStmt = await db.prepare("select name, hash_hex, applied_at from migrations order by name");
@@ -81,6 +86,69 @@ describe("tx.migrations", () => {
     const registered = listMigrationFiles().map((file) => path.basename(file.path));
 
     expect(registered).toEqual(discovered);
+    expect(listEmbeddedMigrationFiles()).toEqual(discovered);
+  });
+
+  test("migrations 012 and 013 replace legacy metadata and add restore provenance", async () => {
+    const migrationFiles = listMigrationFiles();
+    const legacyFiles = migrationFiles.slice(0, 12);
+    for (const file of legacyFiles) {
+      await db.exec(await Bun.file(file.path).text());
+    }
+    await db.exec(`
+      CREATE TABLE migrations (
+        name TEXT NOT NULL,
+        hash_hex TEXT NOT NULL,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    const recordMigration = await db.prepare("INSERT INTO migrations (name, hash_hex) VALUES (?, 'legacy')");
+    for (const file of legacyFiles) {
+      await recordMigration.run(path.basename(file.path));
+    }
+
+    await db.exec(`
+      INSERT INTO canvas (id, name, automerge_url)
+      VALUES ('canvas', 'Canvas', 'automerge:upgrade');
+      INSERT INTO actor_definitions (name, slug, manifest_path)
+      VALUES ('Widget', 'widget', 'widgets/widget/vibecanvas.json');
+      INSERT INTO actor_instances (
+        id, canvas_id, element_id, actor_definition_name, display_name,
+        status, machine_state, machine_context
+      ) VALUES ('instance', 'canvas', 'element', 'Widget', 'Widget', 'stopped', 'ready', '{}');
+      INSERT INTO actor_resources (id, kind, name, status)
+      VALUES ('resource', 'db', 'Database', 'ready');
+      INSERT INTO actor_resource_bindings (
+        actor_definition_name, slot_name, resource_id, allow_read, allow_write
+      ) VALUES ('Widget', 'database', 'resource', true, true);
+      INSERT INTO db_resource_schemas (id, name, status)
+      VALUES ('schema', 'Legacy schema', 'published');
+      INSERT INTO db_resource_configurations (resource_id, schema_id, applied_version, target_version)
+      VALUES ('resource', 'schema', 0, 0);
+      INSERT INTO db_resource_migration_blocks (
+        resource_id, actor_instance_id, reason, restart_when_compatible,
+        expected_schema_id, expected_version, actual_schema_id, actual_version
+      ) VALUES ('resource', 'instance', 'schemaMismatch', true, 'schema', 0, 'other', 0);
+    `);
+
+    await txRunMigrations({ db, Bun, path }, {});
+
+    expect(await (await db.prepare("SELECT id, kind, name FROM actor_resources WHERE id = 'resource'")).get()).toEqual({
+      id: "resource",
+      kind: "db",
+      name: "Database",
+    });
+    expect(await (await db.prepare("SELECT resource_id FROM actor_resource_bindings WHERE slot_name = 'database'")).get()).toEqual({
+      resource_id: "resource",
+    });
+    expect(await (await db.prepare("SELECT id FROM actor_instances WHERE id = 'instance'")).get()).toEqual({ id: "instance" });
+    const tables = await (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'")).all();
+    const names = tables.map((table) => table.name);
+    expect(names).toContain("db_resource_drafts");
+    expect(names).not.toContain("db_resource_configurations");
+    expect(names).not.toContain("db_resource_migration_blocks");
+    const applyColumns = await (await db.prepare("PRAGMA table_info(db_resource_apply_runs)")).all() as { name: string }[];
+    expect(applyColumns.map((column) => column.name)).toContain("source_apply_id");
   });
 
   test("actor and db resource tables enforce domains and strict entry constraints", async () => {
@@ -99,9 +167,15 @@ describe("tx.migrations", () => {
     await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "negative", "null", 0));
     await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "invalid-json", "not-json", 1));
 
-    const insertSchema = await db.prepare("insert into db_resource_schemas (id, name, status) values (?, ?, ?)");
-    await insertSchema.run("schema-ok", "Schema", "draft");
-    await expectSqlConstraintFailure(() => insertSchema.run("schema-bad", "Schema", "active"));
+    await insertResource.run("db-ok", "db", "DB", "ready");
+    const insertDraft = await db.prepare("insert into db_resource_drafts (id, resource_id, name, status) values (?, ?, ?, ?)");
+    await insertDraft.run("draft-ok", "db-ok", "Draft", "editing");
+    await expectSqlConstraintFailure(() => insertDraft.run("draft-bad", "db-ok", "Draft", "published"));
+
+    const insertChange = await db.prepare("insert into db_resource_draft_changes (draft_id, sequence, kind, operation, sql) values (?, ?, ?, ?, ?)");
+    await insertChange.run("draft-ok", 1, "structure", '{"type":"createTable"}', "CREATE TABLE notes (id TEXT)");
+    await expectSqlConstraintFailure(() => insertChange.run("draft-ok", 2, "migration", null, "SELECT 1"));
+    await expectSqlConstraintFailure(() => insertChange.run("draft-ok", 2, "sql", "not-json", "SELECT 1"));
   });
 
   test("tool groups are independent and enforce non-empty names", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ZActorDefinition, ZActorResource, ZActorResourceBinding, ZActorResourceKeyValue, ZDbResourceConfiguration, ZDbResourceMigrationBlock, ZDbResourceSchema, ZDbResourceSchemaMigration } from "../model";
+import { ZActorDefinition, ZActorResource, ZActorResourceBinding, ZActorResourceKeyValue, ZDbResourceApplyInstanceResult, ZDbResourceApplyRun, ZDbResourceDraft, ZDbResourceDraftChange } from "../model";
 
 describe("model", () => {
   test("accepts relative manifest paths", () => {
@@ -84,41 +84,43 @@ describe("model", () => {
       revision: 1,
       ...timestamps,
     }).success).toBe(true);
-    expect(ZDbResourceSchema.safeParse({
-      id: "notes",
-      name: "Notes",
-      description: null,
-      status: "published",
+    expect(ZDbResourceDraft.safeParse({
+      id: "draft",
+      resource_id: "resource",
+      name: "Add notes",
+      status: "editing",
+      last_error: null,
       ...timestamps,
+      applied_at: null,
     }).success).toBe(true);
-    expect(ZDbResourceSchemaMigration.safeParse({
-      schema_id: "notes",
-      version: 1,
-      name: "initial",
+    expect(ZDbResourceDraftChange.safeParse({
+      draft_id: "draft",
+      sequence: 1,
+      kind: "structure",
+      operation: { type: "createTable", table: "notes" },
       sql: "CREATE TABLE notes (id TEXT);",
-      checksum: "sha256:abc",
-      status: "published",
       created_at: timestamps.created_at,
-      published_at: timestamps.updated_at,
     }).success).toBe(true);
-    expect(ZDbResourceConfiguration.safeParse({
+    expect(ZDbResourceApplyRun.parse({
+      id: "apply",
       resource_id: "resource",
-      schema_id: "notes",
-      applied_version: 0,
-      target_version: 1,
-      ...timestamps,
-    }).success).toBe(true);
-    expect(ZDbResourceMigrationBlock.parse({
-      resource_id: "resource",
+      draft_id: "draft",
+      source_apply_id: null,
+      status: "restarting",
+      last_error: null,
+      backup_retained: 1,
+      created_at: timestamps.created_at,
+      completed_at: null,
+    })).toMatchObject({ backup_retained: true });
+    expect(ZDbResourceApplyInstanceResult.parse({
+      apply_id: "apply",
       actor_instance_id: "actor",
-      reason: "versionMismatch",
-      restart_when_compatible: 1,
-      expected_schema_id: "notes",
-      expected_version: 1,
-      actual_schema_id: "notes",
-      actual_version: 2,
-      ...timestamps,
-    })).toMatchObject({ restart_when_compatible: true });
+      actor_definition_name: "Widget",
+      was_running: 1,
+      status: "restarted",
+      error: null,
+      updated_at: timestamps.updated_at,
+    })).toMatchObject({ was_running: true });
   });
 
   test("rejects invalid resource revisions, versions, and lifecycle discriminants", () => {
@@ -130,19 +132,22 @@ describe("model", () => {
       revision: 0,
       ...timestamps,
     }).success).toBe(false);
-    expect(ZDbResourceConfiguration.safeParse({
-      resource_id: "resource",
-      schema_id: "notes",
-      applied_version: -1,
-      target_version: 0,
-      ...timestamps,
+    expect(ZDbResourceDraftChange.safeParse({
+      draft_id: "draft",
+      sequence: 0,
+      kind: "structure",
+      operation: null,
+      sql: "SELECT 1",
+      created_at: timestamps.created_at,
     }).success).toBe(false);
-    expect(ZDbResourceSchema.safeParse({
-      id: "notes",
-      name: "Notes",
-      description: null,
-      status: "active",
+    expect(ZDbResourceDraft.safeParse({
+      id: "draft",
+      resource_id: "resource",
+      name: "Draft",
+      status: "published",
+      last_error: null,
       ...timestamps,
+      applied_at: null,
     }).success).toBe(false);
   });
 });

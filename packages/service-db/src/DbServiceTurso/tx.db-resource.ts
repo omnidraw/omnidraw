@@ -1,367 +1,329 @@
 import type { Database } from "@tursodatabase/database"
 import type {
-  TDbResourceMigrationBlock,
-  TDbResourceMigrationBlockReason,
-  TDbResourceConfiguration,
-  TDbResourceSchema,
-  TDbResourceSchemaMigration,
+  TDbResourceApplyInstanceResult,
+  TDbResourceApplyInstanceStatus,
+  TDbResourceApplyRun,
+  TDbResourceApplyStatus,
+  TDbResourceDraft,
+  TDbResourceDraftChange,
+  TDbResourceDraftChangeKind,
+  TDbResourceDraftStatus,
+  TActorResourceStatus,
+  TJson,
 } from "../model"
-import { fnDbResourceAssertContiguousMigrations, fnDbResourceAssertVersions } from "./fn.db-resource"
-import { fnParseDbResourceMigrationBlockRow } from "./fn.actor-resource-row"
+import { fnSerializeJsonValue } from "./fn.actor-resource-row"
+import { fnParseDbResourceApplyInstanceResultRow, fnParseDbResourceDraftChangeRow } from "./fn.db-resource"
 import { fxActorResourceGet } from "./fx.actor-resource"
-import {
-  fxDbResourceConfigurationGet,
-  fxDbResourceMigrationGet,
-  fxDbResourceMigrationList,
-  fxDbResourceSchemaGet,
-} from "./fx.db-resource"
+import { fxDbResourceApplyGet, fxDbResourceDraftGet } from "./fx.db-resource"
 
 type TPortal = {
   db: Database
 }
 
-type TArgsSchemaCreate = {
+type TArgsDraftCreate = {
   id: string
+  resourceId: string
   name: string
-  description?: string | null
 }
 
-type TArgsSchemaUpdateDraft = {
+type TArgsDraftRename = {
   id: string
   name: string
-  description?: string | null
 }
 
-type TArgsSchemaId = {
+type TArgsDraftUpdateStatus = {
   id: string
+  status: TDbResourceDraftStatus
+  expectedStatus?: TDbResourceDraftStatus
+  lastError?: TJson | null
 }
 
-type TArgsMigrationCreateDraft = {
-  schemaId: string
-  version: number
-  name: string
+type TArgsDraftAppendChange = {
+  draftId: string
+  sequence: number
+  kind: TDbResourceDraftChangeKind
+  operation?: TJson | null
   sql: string
-  checksum: string
 }
 
-type TArgsMigrationUpdateDraft = TArgsMigrationCreateDraft
-
-type TArgsMigrationIdentity = {
-  schemaId: string
-  version: number
+type TArgsDraftDiscard = {
+  id: string
+  lastError?: TJson | null
 }
 
-type TArgsConfigurationCreate = {
+type TArgsApplyCreate = {
+  id: string
   resourceId: string
-  schemaId: string
-  appliedVersion?: number
-  targetVersion?: number
+  draftId?: string | null
+  sourceApplyId?: string | null
+  status?: TDbResourceApplyStatus
 }
 
-type TArgsConfigurationSetTargetVersion = {
+type TArgsApplyCreateFromDraft = {
+  id: string
   resourceId: string
-  targetVersion: number
+  draftId: string
 }
 
-type TArgsConfigurationSetVersions = {
-  resourceId: string
-  appliedVersion: number
-  targetVersion: number
+type TArgsApplyFinishWithDraft = {
+  id: string
+  draftId: string
+  status: Extract<TDbResourceApplyStatus, "succeeded" | "failed" | "recovered">
+  expectedStatus?: TDbResourceApplyStatus
+  draftStatus: Extract<TDbResourceDraftStatus, "applied" | "editing" | "error">
+  lastError?: TJson | null
+  backupRetained?: boolean
 }
 
-type TArgsMigrationBlockUpsert = {
-  resourceId: string
+type TArgsApplyUpdate = {
+  id: string
+  status: TDbResourceApplyStatus
+  expectedStatus?: TDbResourceApplyStatus
+  lastError?: TJson | null
+  backupRetained?: boolean
+}
+
+type TArgsApplyInstanceResultUpsert = {
+  applyId: string
   actorInstanceId: string
-  reason: TDbResourceMigrationBlockReason
-  restartWhenCompatible: boolean
-  expectedSchemaId: string
-  expectedVersion: number
-  actualSchemaId: string
-  actualVersion: number
+  actorDefinitionName: string
+  wasRunning: boolean
+  status: TDbResourceApplyInstanceStatus
+  error?: TJson | null
 }
 
-type TArgsMigrationBlockRemove = {
-  resourceId: string
-  actorInstanceId: string
+function serializedJson(value: TJson | null | undefined): string | null {
+  return value === null || value === undefined ? null : fnSerializeJsonValue(value)
 }
 
-async function assertPublishedVersion(portal: TPortal, schemaId: string, version: number): Promise<void> {
-  if (!Number.isInteger(version) || version < 0) {
-    throw new RangeError("DbResource version must be a non-negative integer")
-  }
-  if (version === 0) return
-  const migration = await fxDbResourceMigrationGet(portal, { schemaId, version })
-  if (!migration || migration.status !== "published") {
-    throw new Error(`DbResource schema "${schemaId}" has no published migration at version ${version}`)
-  }
-}
-
-export async function txDbResourceSchemaCreate(portal: TPortal, args: TArgsSchemaCreate): Promise<TDbResourceSchema> {
-  await (await portal.db.prepare(`
-    INSERT INTO db_resource_schemas (id, name, description, status)
-    VALUES (?, ?, ?, 'draft')
-  `)).run(args.id, args.name, args.description ?? null)
-  const schema = await fxDbResourceSchemaGet(portal, { id: args.id })
-  if (!schema) throw new Error(`Failed to create DbResource schema "${args.id}"`)
-  return schema
-}
-
-export async function txDbResourceSchemaUpdateDraft(
+async function requireDbResource(
   portal: TPortal,
-  args: TArgsSchemaUpdateDraft,
-): Promise<TDbResourceSchema | null> {
-  const result = await (await portal.db.prepare(`
-    UPDATE db_resource_schemas
-    SET name = ?, description = ?
-    WHERE id = ? AND status = 'draft'
-  `)).run(args.name, args.description ?? null, args.id)
-  if (result.changes === 0) return null
-  return fxDbResourceSchemaGet(portal, { id: args.id })
-}
-
-export async function txDbResourceSchemaDeleteDraft(portal: TPortal, args: TArgsSchemaId): Promise<boolean> {
-  const result = await (await portal.db.prepare(`
-    DELETE FROM db_resource_schemas
-    WHERE id = ? AND status = 'draft'
-  `)).run(args.id)
-  return result.changes > 0
-}
-
-export async function txDbResourceSchemaPublish(portal: TPortal, args: TArgsSchemaId): Promise<TDbResourceSchema> {
-  const schema = await fxDbResourceSchemaGet(portal, args)
-  if (!schema || schema.status !== "draft") throw new Error(`DbResource schema "${args.id}" is not a draft`)
-  const migrations = await fxDbResourceMigrationList(portal, { schemaId: args.id })
-  fnDbResourceAssertContiguousMigrations(migrations)
-  if (migrations.some((migration) => migration.status !== "draft")) {
-    throw new Error("A draft DbResource schema cannot contain published migrations")
+  resourceId: string,
+  allowedStatuses: readonly TActorResourceStatus[],
+): Promise<void> {
+  const resource = await fxActorResourceGet(portal, { id: resourceId })
+  if (!resource || resource.kind !== "db" || !allowedStatuses.includes(resource.status)) {
+    throw new Error(`Actor resource "${resourceId}" is not an available DbResource`)
   }
+}
 
-  const publish = portal.db.transaction(async () => {
+export async function txDbResourceDraftCreate(portal: TPortal, args: TArgsDraftCreate): Promise<TDbResourceDraft> {
+  await requireDbResource(portal, args.resourceId, ["ready"])
+  await (await portal.db.prepare(`
+    INSERT INTO db_resource_drafts (id, resource_id, name, status)
+    VALUES (?, ?, ?, 'editing')
+  `)).run(args.id, args.resourceId, args.name)
+  const draft = await fxDbResourceDraftGet(portal, { id: args.id })
+  if (!draft) throw new Error(`Failed to create DbResource draft "${args.id}"`)
+  return draft
+}
+
+export async function txDbResourceDraftRename(portal: TPortal, args: TArgsDraftRename): Promise<TDbResourceDraft | null> {
+  const result = await (await portal.db.prepare(`
+    UPDATE db_resource_drafts
+    SET name = ?
+    WHERE id = ? AND status = 'editing'
+  `)).run(args.name, args.id)
+  if (result.changes === 0) return null
+  return fxDbResourceDraftGet(portal, args)
+}
+
+export async function txDbResourceDraftUpdateStatus(
+  portal: TPortal,
+  args: TArgsDraftUpdateStatus,
+): Promise<TDbResourceDraft | null> {
+  const lastError = serializedJson(args.lastError)
+  const result = args.expectedStatus === undefined
+    ? await (await portal.db.prepare(`
+        UPDATE db_resource_drafts
+        SET status = ?, last_error = ?,
+          applied_at = CASE WHEN ? = 'applied' THEN datetime('now') ELSE applied_at END
+        WHERE id = ?
+      `)).run(args.status, lastError, args.status, args.id)
+    : await (await portal.db.prepare(`
+        UPDATE db_resource_drafts
+        SET status = ?, last_error = ?,
+          applied_at = CASE WHEN ? = 'applied' THEN datetime('now') ELSE applied_at END
+        WHERE id = ? AND status = ?
+      `)).run(args.status, lastError, args.status, args.id, args.expectedStatus)
+  if (result.changes === 0) return null
+  return fxDbResourceDraftGet(portal, { id: args.id })
+}
+
+export async function txDbResourceDraftAppendChange(
+  portal: TPortal,
+  args: TArgsDraftAppendChange,
+): Promise<TDbResourceDraftChange> {
+  const append = portal.db.transaction(async () => {
+    const draft = await fxDbResourceDraftGet(portal, { id: args.draftId })
+    if (!draft || draft.status !== "editing") {
+      throw new Error(`DbResource draft "${args.draftId}" is not editable`)
+    }
+    const sequenceRow = await (await portal.db.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+      FROM db_resource_draft_changes
+      WHERE draft_id = ?
+    `)).get(args.draftId) as { next_sequence: number } | undefined
+    const sequence = sequenceRow?.next_sequence ?? 1
+    if (sequence !== args.sequence) {
+      throw new Error(`DbResource draft "${args.draftId}" physical and control sequences diverged`)
+    }
     await (await portal.db.prepare(`
-      UPDATE db_resource_schema_migrations
-      SET status = 'published', published_at = datetime('now')
-      WHERE schema_id = ? AND status = 'draft'
-    `)).run(args.id)
-    const result = await (await portal.db.prepare(`
-      UPDATE db_resource_schemas
-      SET status = 'published'
-      WHERE id = ? AND status = 'draft'
-    `)).run(args.id)
-    if (result.changes !== 1) throw new Error(`Failed to publish DbResource schema "${args.id}"`)
+      INSERT INTO db_resource_draft_changes (draft_id, sequence, kind, operation, sql)
+      VALUES (?, ?, ?, ?, ?)
+    `)).run(args.draftId, args.sequence, args.kind, serializedJson(args.operation), args.sql)
+    const row = await (await portal.db.prepare(`
+      SELECT *
+      FROM db_resource_draft_changes
+      WHERE draft_id = ? AND sequence = ?
+    `)).get(args.draftId, args.sequence)
+    if (row === undefined || row === null) throw new Error("Failed to persist DbResource draft change")
+    return fnParseDbResourceDraftChangeRow(row)
   })
-  await publish()
-
-  const published = await fxDbResourceSchemaGet(portal, args)
-  if (!published) throw new Error(`Published DbResource schema "${args.id}" disappeared`)
-  return published
+  return append()
 }
 
-export async function txDbResourceSchemaDeprecate(portal: TPortal, args: TArgsSchemaId): Promise<TDbResourceSchema | null> {
-  const draftMigrations = await fxDbResourceMigrationList(portal, { schemaId: args.id, status: "draft" })
-  if (draftMigrations.length > 0) throw new Error("Cannot deprecate a DbResource schema with a draft migration")
+export async function txDbResourceDraftDiscard(portal: TPortal, args: TArgsDraftDiscard): Promise<TDbResourceDraft | null> {
   const result = await (await portal.db.prepare(`
-    UPDATE db_resource_schemas
-    SET status = 'deprecated'
-    WHERE id = ? AND status = 'published'
-  `)).run(args.id)
+    UPDATE db_resource_drafts
+    SET status = 'discarded', last_error = ?
+    WHERE id = ? AND status IN ('editing', 'error')
+  `)).run(serializedJson(args.lastError), args.id)
   if (result.changes === 0) return null
-  return fxDbResourceSchemaGet(portal, args)
+  return fxDbResourceDraftGet(portal, { id: args.id })
 }
 
-export async function txDbResourceMigrationCreateDraft(
-  portal: TPortal,
-  args: TArgsMigrationCreateDraft,
-): Promise<TDbResourceSchemaMigration> {
-  const schema = await fxDbResourceSchemaGet(portal, { id: args.schemaId })
-  if (!schema || schema.status === "deprecated") {
-    throw new Error(`DbResource schema "${args.schemaId}" cannot accept migrations`)
+export async function txDbResourceApplyCreate(portal: TPortal, args: TArgsApplyCreate): Promise<TDbResourceApplyRun> {
+  await requireDbResource(portal, args.resourceId, ["ready", "migrating"])
+  if (args.draftId !== undefined && args.draftId !== null) {
+    const draft = await fxDbResourceDraftGet(portal, { id: args.draftId })
+    if (!draft || draft.resource_id !== args.resourceId || !["editing", "applying"].includes(draft.status)) {
+      throw new Error(`DbResource draft "${args.draftId}" is not active for resource "${args.resourceId}"`)
+    }
   }
-  const migrations = await fxDbResourceMigrationList(portal, { schemaId: args.schemaId })
-  fnDbResourceAssertContiguousMigrations(migrations)
-  const nextVersion = (migrations.at(-1)?.version ?? 0) + 1
-  if (args.version !== nextVersion) {
-    throw new Error(`Next DbResource migration for "${args.schemaId}" must be version ${nextVersion}`)
+  if (args.sourceApplyId !== undefined && args.sourceApplyId !== null) {
+    const source = await fxDbResourceApplyGet(portal, { id: args.sourceApplyId })
+    if (!source || source.resource_id !== args.resourceId || !source.backup_retained) {
+      throw new Error(`DbResource retained backup "${args.sourceApplyId}" is not available for resource "${args.resourceId}"`)
+    }
   }
-  if (schema.status === "published" && migrations.some((migration) => migration.status === "draft")) {
-    throw new Error("A published DbResource schema may have only one draft migration")
+  if (args.draftId != null && args.sourceApplyId != null) {
+    throw new Error("DbResource work cannot be both a draft apply and a backup restore")
   }
-
   await (await portal.db.prepare(`
-    INSERT INTO db_resource_schema_migrations (schema_id, version, name, sql, checksum, status)
-    VALUES (?, ?, ?, ?, ?, 'draft')
-  `)).run(args.schemaId, args.version, args.name, args.sql, args.checksum)
-  const migration = await fxDbResourceMigrationGet(portal, args)
-  if (!migration) throw new Error("Failed to create DbResource draft migration")
-  return migration
+    INSERT INTO db_resource_apply_runs (id, resource_id, draft_id, source_apply_id, status)
+    VALUES (?, ?, ?, ?, ?)
+  `)).run(args.id, args.resourceId, args.draftId ?? null, args.sourceApplyId ?? null, args.status ?? "preparing")
+  const apply = await fxDbResourceApplyGet(portal, { id: args.id })
+  if (!apply) throw new Error(`Failed to create DbResource apply run "${args.id}"`)
+  return apply
 }
 
-export async function txDbResourceMigrationUpdateDraft(
+export async function txDbResourceApplyCreateFromDraft(
   portal: TPortal,
-  args: TArgsMigrationUpdateDraft,
-): Promise<TDbResourceSchemaMigration | null> {
-  const result = await (await portal.db.prepare(`
-    UPDATE db_resource_schema_migrations
-    SET name = ?, sql = ?, checksum = ?
-    WHERE schema_id = ? AND version = ? AND status = 'draft'
-  `)).run(args.name, args.sql, args.checksum, args.schemaId, args.version)
+  args: TArgsApplyCreateFromDraft,
+): Promise<{ apply: TDbResourceApplyRun; draft: TDbResourceDraft }> {
+  const admit = portal.db.transaction(async () => {
+    await requireDbResource(portal, args.resourceId, ["ready"])
+    const draft = await fxDbResourceDraftGet(portal, { id: args.draftId })
+    if (!draft || draft.resource_id !== args.resourceId || draft.status !== "editing") {
+      throw new Error(`DbResource draft "${args.draftId}" is not editable for resource "${args.resourceId}"`)
+    }
+    const updatedDraft = await txDbResourceDraftUpdateStatus(portal, {
+      id: args.draftId,
+      status: "applying",
+      expectedStatus: "editing",
+      lastError: null,
+    })
+    if (!updatedDraft) throw new Error(`DbResource draft "${args.draftId}" changed before apply admission`)
+    const apply = await txDbResourceApplyCreate(portal, {
+      id: args.id,
+      resourceId: args.resourceId,
+      draftId: args.draftId,
+      status: "preparing",
+    })
+    return { apply, draft: updatedDraft }
+  })
+  return admit()
+}
+
+export async function txDbResourceApplyFinishWithDraft(
+  portal: TPortal,
+  args: TArgsApplyFinishWithDraft,
+): Promise<{ apply: TDbResourceApplyRun; draft: TDbResourceDraft }> {
+  const finish = portal.db.transaction(async () => {
+    const apply = await txDbResourceApplyUpdate(portal, {
+      id: args.id,
+      status: args.status,
+      expectedStatus: args.expectedStatus,
+      lastError: args.lastError,
+      backupRetained: args.backupRetained,
+    })
+    if (!apply || apply.draft_id !== args.draftId) throw new Error(`DbResource apply "${args.id}" changed before completion`)
+    const draft = await txDbResourceDraftUpdateStatus(portal, {
+      id: args.draftId,
+      status: args.draftStatus,
+      expectedStatus: "applying",
+      lastError: args.lastError,
+    })
+    if (!draft) throw new Error(`DbResource draft "${args.draftId}" changed before apply completion`)
+    return { apply, draft }
+  })
+  return finish()
+}
+
+export async function txDbResourceApplyUpdate(portal: TPortal, args: TArgsApplyUpdate): Promise<TDbResourceApplyRun | null> {
+  const terminal = ["succeeded", "failed", "recovered"].includes(args.status)
+  const result = args.expectedStatus === undefined
+    ? await (await portal.db.prepare(`
+        UPDATE db_resource_apply_runs
+        SET status = ?, last_error = ?,
+          backup_retained = COALESCE(?, backup_retained),
+          completed_at = CASE WHEN ? AND completed_at IS NULL THEN datetime('now') ELSE completed_at END
+        WHERE id = ?
+      `)).run(args.status, serializedJson(args.lastError), args.backupRetained ?? null, terminal, args.id)
+    : await (await portal.db.prepare(`
+        UPDATE db_resource_apply_runs
+        SET status = ?, last_error = ?,
+          backup_retained = COALESCE(?, backup_retained),
+          completed_at = CASE WHEN ? AND completed_at IS NULL THEN datetime('now') ELSE completed_at END
+        WHERE id = ? AND status = ?
+      `)).run(args.status, serializedJson(args.lastError), args.backupRetained ?? null, terminal, args.id, args.expectedStatus)
   if (result.changes === 0) return null
-  return fxDbResourceMigrationGet(portal, args)
+  return fxDbResourceApplyGet(portal, { id: args.id })
 }
 
-export async function txDbResourceMigrationDeleteDraft(portal: TPortal, args: TArgsMigrationIdentity): Promise<boolean> {
-  const migrations = await fxDbResourceMigrationList(portal, { schemaId: args.schemaId })
-  if (migrations.at(-1)?.version !== args.version) return false
-  const result = await (await portal.db.prepare(`
-    DELETE FROM db_resource_schema_migrations
-    WHERE schema_id = ? AND version = ? AND status = 'draft'
-  `)).run(args.schemaId, args.version)
-  return result.changes > 0
-}
-
-export async function txDbResourceMigrationPublish(
+export async function txDbResourceApplyInstanceResultUpsert(
   portal: TPortal,
-  args: TArgsMigrationIdentity,
-): Promise<TDbResourceSchemaMigration> {
-  const schema = await fxDbResourceSchemaGet(portal, { id: args.schemaId })
-  if (!schema || schema.status !== "published") {
-    throw new Error(`DbResource schema "${args.schemaId}" must be published before publishing a migration`)
-  }
-  const migrations = await fxDbResourceMigrationList(portal, { schemaId: args.schemaId })
-  fnDbResourceAssertContiguousMigrations(migrations)
-  const migration = migrations.find((candidate) => candidate.version === args.version)
-  if (!migration || migration.status !== "draft") throw new Error("DbResource migration is not a draft")
-  const published = migrations.filter((candidate) => candidate.status === "published")
-  const expectedVersion = (published.at(-1)?.version ?? 0) + 1
-  if (args.version !== expectedVersion) {
-    throw new Error(`Next published DbResource migration must be version ${expectedVersion}`)
-  }
-
-  const result = await (await portal.db.prepare(`
-    UPDATE db_resource_schema_migrations
-    SET status = 'published', published_at = datetime('now')
-    WHERE schema_id = ? AND version = ? AND status = 'draft'
-  `)).run(args.schemaId, args.version)
-  if (result.changes !== 1) throw new Error("Failed to publish DbResource migration")
-  const row = await fxDbResourceMigrationGet(portal, args)
-  if (!row) throw new Error("Published DbResource migration disappeared")
-  return row
-}
-
-export async function txDbResourceConfigurationCreate(
-  portal: TPortal,
-  args: TArgsConfigurationCreate,
-): Promise<TDbResourceConfiguration> {
-  const resource = await fxActorResourceGet(portal, { id: args.resourceId })
-  if (!resource || resource.kind !== "db" || resource.status === "deleting") {
-    throw new Error(`Actor resource "${args.resourceId}" is not an available DbResource`)
-  }
-  const schema = await fxDbResourceSchemaGet(portal, { id: args.schemaId })
-  if (!schema || schema.status !== "published") {
-    throw new Error(`DbResource schema "${args.schemaId}" is not published`)
-  }
-  const appliedVersion = args.appliedVersion ?? 0
-  const targetVersion = args.targetVersion ?? appliedVersion
-  fnDbResourceAssertVersions(appliedVersion, targetVersion)
-  await assertPublishedVersion(portal, args.schemaId, appliedVersion)
-  await assertPublishedVersion(portal, args.schemaId, targetVersion)
-
+  args: TArgsApplyInstanceResultUpsert,
+): Promise<TDbResourceApplyInstanceResult> {
   await (await portal.db.prepare(`
-    INSERT INTO db_resource_configurations (resource_id, schema_id, applied_version, target_version)
-    VALUES (?, ?, ?, ?)
-  `)).run(args.resourceId, args.schemaId, appliedVersion, targetVersion)
-  const configuration = await fxDbResourceConfigurationGet(portal, args)
-  if (!configuration) throw new Error("Failed to create DbResource configuration")
-  return configuration
-}
-
-export async function txDbResourceConfigurationSetTargetVersion(
-  portal: TPortal,
-  args: TArgsConfigurationSetTargetVersion,
-): Promise<TDbResourceConfiguration> {
-  const configuration = await fxDbResourceConfigurationGet(portal, args)
-  if (!configuration) throw new Error(`DbResource configuration "${args.resourceId}" was not found`)
-  if (args.targetVersion < configuration.target_version) {
-    throw new Error("DbResource target version cannot move backwards")
-  }
-  if (args.targetVersion === configuration.target_version) return configuration
-  if (args.targetVersion <= configuration.applied_version) {
-    throw new Error("DbResource migration target must be greater than its applied version")
-  }
-  await assertPublishedVersion(portal, configuration.schema_id, args.targetVersion)
-  await (await portal.db.prepare(`
-    UPDATE db_resource_configurations
-    SET target_version = ?
-    WHERE resource_id = ?
-  `)).run(args.targetVersion, args.resourceId)
-  const updated = await fxDbResourceConfigurationGet(portal, args)
-  if (!updated) throw new Error("Updated DbResource configuration disappeared")
-  return updated
-}
-
-export async function txDbResourceConfigurationSetVersions(
-  portal: TPortal,
-  args: TArgsConfigurationSetVersions,
-): Promise<TDbResourceConfiguration> {
-  const configuration = await fxDbResourceConfigurationGet(portal, args)
-  if (!configuration) throw new Error(`DbResource configuration "${args.resourceId}" was not found`)
-  fnDbResourceAssertVersions(args.appliedVersion, args.targetVersion)
-  await assertPublishedVersion(portal, configuration.schema_id, args.appliedVersion)
-  await assertPublishedVersion(portal, configuration.schema_id, args.targetVersion)
-  await (await portal.db.prepare(`
-    UPDATE db_resource_configurations
-    SET applied_version = ?, target_version = ?
-    WHERE resource_id = ?
-  `)).run(args.appliedVersion, args.targetVersion, args.resourceId)
-  const updated = await fxDbResourceConfigurationGet(portal, args)
-  if (!updated) throw new Error("Updated DbResource configuration disappeared")
-  return updated
-}
-
-export async function txDbResourceMigrationBlockUpsert(
-  portal: TPortal,
-  args: TArgsMigrationBlockUpsert,
-): Promise<TDbResourceMigrationBlock> {
-  await (await portal.db.prepare(`
-    INSERT INTO db_resource_migration_blocks (
-      resource_id,
+    INSERT INTO db_resource_apply_instance_results (
+      apply_id,
       actor_instance_id,
-      reason,
-      restart_when_compatible,
-      expected_schema_id,
-      expected_version,
-      actual_schema_id,
-      actual_version
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (resource_id, actor_instance_id) DO UPDATE SET
-      reason = excluded.reason,
-      restart_when_compatible = excluded.restart_when_compatible,
-      expected_schema_id = excluded.expected_schema_id,
-      expected_version = excluded.expected_version,
-      actual_schema_id = excluded.actual_schema_id,
-      actual_version = excluded.actual_version
+      actor_definition_name,
+      was_running,
+      status,
+      error
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (apply_id, actor_instance_id) DO UPDATE SET
+      actor_definition_name = excluded.actor_definition_name,
+      was_running = excluded.was_running,
+      status = excluded.status,
+      error = excluded.error
   `)).run(
-    args.resourceId,
+    args.applyId,
     args.actorInstanceId,
-    args.reason,
-    args.restartWhenCompatible,
-    args.expectedSchemaId,
-    args.expectedVersion,
-    args.actualSchemaId,
-    args.actualVersion,
+    args.actorDefinitionName,
+    args.wasRunning,
+    args.status,
+    serializedJson(args.error),
   )
   const row = await (await portal.db.prepare(`
     SELECT *
-    FROM db_resource_migration_blocks
-    WHERE resource_id = ? AND actor_instance_id = ?
-  `)).get(args.resourceId, args.actorInstanceId)
-  if (!row) throw new Error("Failed to persist DbResource migration block")
-  return fnParseDbResourceMigrationBlockRow(row)
-}
-
-export async function txDbResourceMigrationBlockRemove(portal: TPortal, args: TArgsMigrationBlockRemove): Promise<boolean> {
-  const result = await (await portal.db.prepare(`
-    DELETE FROM db_resource_migration_blocks
-    WHERE resource_id = ? AND actor_instance_id = ?
-  `)).run(args.resourceId, args.actorInstanceId)
-  return result.changes > 0
+    FROM db_resource_apply_instance_results
+    WHERE apply_id = ? AND actor_instance_id = ?
+  `)).get(args.applyId, args.actorInstanceId)
+  if (row === undefined || row === null) throw new Error("Failed to persist DbResource apply instance result")
+  return fnParseDbResourceApplyInstanceResultRow(row)
 }

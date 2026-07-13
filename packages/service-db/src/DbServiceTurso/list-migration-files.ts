@@ -12,6 +12,8 @@ import path008 from "./migration-files/008-add-tool-groups.sql" with { type: "fi
 import path009 from "./migration-files/009-add-actor-resources.sql" with { type: "file" }
 import path010 from "./migration-files/010-add-actor-resource-key-values.sql" with { type: "file" }
 import path011 from "./migration-files/011-add-db-resources.sql" with { type: "file" }
+import path012 from "./migration-files/012-replace-db-resource-migrations.sql" with { type: "file" }
+import path013 from "./migration-files/013-add-db-resource-restore-source.sql" with { type: "file" }
 
 type TSql = {
   type: 'sql',
@@ -33,5 +35,7 @@ export function listMigrationFiles(): TSql[] {
     { type: 'sql', path: path009 },
     { type: 'sql', path: path010 },
     { type: 'sql', path: path011 },
+    { type: 'sql', path: path012 },
+    { type: 'sql', path: path013 },
   ]
 }
