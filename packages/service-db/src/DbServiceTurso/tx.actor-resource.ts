@@ -63,6 +63,7 @@ type TArgsKeyValueSet = {
 type TArgsKeyValueDelete = {
   resourceId: string
   key: string
+  expectedRevision?: number
 }
 
 type TArgsKeyValueCompareAndSet = TArgsKeyValueSet & {
@@ -217,10 +218,14 @@ export async function txActorResourceKeyValueDelete(
   portal: TPortal,
   args: TArgsKeyValueDelete,
 ): Promise<TActorResourceKeyValueDeleteResult> {
+  if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision < 1)) {
+    throw new RangeError("Expected revision must be a positive integer")
+  }
   const result = await (await portal.db.prepare(`
     DELETE FROM actor_resource_key_values
     WHERE resource_id = ? AND key = ?
-  `)).run(args.resourceId, args.key)
+      AND (? IS NULL OR revision = ?)
+  `)).run(args.resourceId, args.key, args.expectedRevision ?? null, args.expectedRevision ?? null)
   return { deleted: result.changes > 0 }
 }
 

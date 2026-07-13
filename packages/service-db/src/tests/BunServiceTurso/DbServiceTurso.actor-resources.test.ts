@@ -216,6 +216,26 @@ describe("DbServiceTurso actor resources", () => {
     expect(count).toEqual({ count: 0 })
   })
 
+  test("deletes an entry only at the expected revision", async () => {
+    await db.actorResource.create({ id: "kv-a", kind: "kv", name: "A", status: "ready" })
+    await db.actorResource.keyValue.set({ resourceId: "kv-a", key: "revision-delete", value: "one" })
+    await db.actorResource.keyValue.set({ resourceId: "kv-a", key: "revision-delete", value: "two" })
+
+    await expect(db.actorResource.keyValue.delete({
+      resourceId: "kv-a",
+      key: "revision-delete",
+      expectedRevision: 1,
+    })).resolves.toEqual({ deleted: false })
+    await expect(db.actorResource.keyValue.has({ resourceId: "kv-a", key: "revision-delete" })).resolves.toBe(true)
+
+    await expect(db.actorResource.keyValue.delete({
+      resourceId: "kv-a",
+      key: "revision-delete",
+      expectedRevision: 2,
+    })).resolves.toEqual({ deleted: true })
+    await expect(db.actorResource.keyValue.has({ resourceId: "kv-a", key: "revision-delete" })).resolves.toBe(false)
+  })
+
   test("rejects non-JSON values before persistence", async () => {
     await db.actorResource.create({ id: "kv-a", kind: "kv", name: "A", status: "ready" })
     const cyclic: Record<string, unknown> = {}

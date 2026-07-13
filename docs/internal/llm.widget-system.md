@@ -1,566 +1,627 @@
-# Vibecanvas Widget + Actor System
+# Vibecanvas Widget System
+
+This is the onboarding map for AI agents and engineers working on widgets, actors, resources, Wizard drafts, preview, publishing, and runtime instances.
+
+It describes the implemented system as of 2026-07-13. The code and tests remain authoritative when this document and implementation disagree. Update this document whenever a lifecycle boundary, persisted artifact, permission rule, or Wizard tool changes.
+
+## The mental model
+
+A Vibecanvas widget is not one process. It is a published definition with two guest-authored halves:
+
+- **Widget UI** — Arrow code running in a browser-side `@arrow-js/sandbox` QuickJS/WASM sandbox.
+- **Actor backend** — state-machine functions running in a Bun child process.
 
-This document summarizes the current widget system and the architecture implied by the local `sdk-test` fixture. It is written as context for designing the public SDK exposed to guest widget authors.
+The UI talks only to its owning actor instance. The actor may use host-managed resources through manifest-declared slots. Concrete resource IDs are selected and bound by the host; they never belong in guest files.
 
-## Goal
+The AI Widget Wizard creates a **draft definition** before anything is published. A draft can run an ephemeral preview actor with temporary resource bindings. Publishing installs the definition, creates durable definition-level resource bindings, and makes the widget available to the canvas. Creating that widget on a canvas creates a persisted actor instance.
 
-Vibecanvas allows generative widgets to appear as live UI on the infinite canvas. A widget has two guest-authored halves:
+```mermaid
+flowchart LR
+  U["User + AI Widget Wizard"] --> C["Actor candidate in session history"]
+  C --> D["Draft files in Wizard cwd"]
+  R["Resource catalog"] --> M["@mention selection"]
+  M --> C
+  M --> P["Ephemeral preview bindings"]
+  D --> P
+  P --> A["Draft actor + widget preview"]
+  D --> V["Validate"]
+  V --> PUB["Publish definition"]
+  M --> B["Persisted definition bindings"]
+  PUB --> B
+  PUB --> T["Canvas tool registration"]
+  T --> E["Canvas widget element"]
+  E --> I["Persisted actor instance"]
+  I --> W["Sandboxed Widget UI"]
+  I --> X["Bun child Actor"]
+  X --> B
+  B --> R
+  W -->|"input message"| X
+  X -->|"state/context snapshot"| W
+```
 
-- **Widget UI**: browser-side Arrow code mounted inside an `@arrow-js/sandbox` sandbox.
-- **Actor backend**: Bun-side functions executed in a child process and driven by messages/state-machine transitions.
+## Vocabulary
 
-The SDK should make this split feel intentional: UI authors should work with canvas/widget concepts, while actor authors should work with typed messages, durable state, and controlled effects. The current implementation exposes lower-level pieces, so the next SDK layer should hide transport, IPC, schema validation, and storage details.
+| Term | Meaning | Lifetime / storage |
+|---|---|---|
+| Widget definition | Published manifest plus widget and actor source files | `<configPath>/widgets/<slug>` and `actor_definitions` |
+| Actor candidate | Validated phase-one design before files exist | Pi session custom entry |
+| Wizard draft | Private working directory containing generated files | `<dataPath>/pi/agent/widget-cwd/<widgetId><sessionId>` |
+| Draft actor | Ephemeral `Actor` used by Preview | In memory only; ID starts with `draft:` |
+| Widget UI | Arrow template mounted in a browser sandbox | One mounted canvas widget |
+| Actor instance | One stateful backend belonging to one canvas element | `actor_instances` plus an in-memory `Actor` while running |
+| Resource catalog entry | Host-managed `kv`, `secretStore`, or `db` resource | `actor_resources`; DB data lives separately |
+| Resource requirement / slot | Manifest declaration of kind, requiredness, and scope | `vibecanvas.json` |
+| Resource selection | Resources explicitly `@mentioned` in the latest Wizard prompt | Pi session custom entry |
+| Resource binding | Definition slot mapped to a concrete resource and scope | `actor_resource_bindings` |
+| DB schema draft | Physical copy used to stage database structure/SQL changes | Resource-local draft DB plus control rows |
+| Canvas widget element | Automerge element that hosts UI and points at an actor definition/instance | Canvas document |
 
-## Important files
+Do not confuse these three uses of “draft”:
 
-### Runtime services
+1. A **Wizard draft** is a folder of unpublished widget files.
+2. A **draft actor** runs those files temporarily for Preview.
+3. A **DB schema draft** is a physical database copy used for coordinated database changes.
 
-- `packages/service-actor/src/ActorService.ts`
-  - Public service facade for actor definitions, widget source loading, actor instance lifecycle, and actor input delivery.
-  - Wraps `ActorSupervisor`.
-  - `sendMessage(instanceId, msgName, msgPayload)` delegates to the in-memory actor and returns the accepted message id.
-
-- `packages/service-actor/src/ActorSupervisor.ts`
-  - Loads widget manifests from `<configPath>/widgets/*/vibecanvas.json`.
-  - Syncs actor definitions into DB.
-  - Boots DB-backed actor instances into memory.
-  - Creates/removes actor instances when canvas widget elements are created/deleted.
-  - Publishes actor event envelopes to `IEventPublisherService`.
-  - Routes only `kind === "actor"` output messages across actor connections.
-
-- `packages/service-actor/src/Actor.ts`
-  - In-memory runtime for one actor instance.
-  - Owns current actor state/data and serializes inbox processing.
-  - `inbox(msgName, msgPayload)` validates and enqueues immediately, returning a generated message id.
-  - `start()` boots the child process and emits system lifecycle/state events.
-  - Emits discriminated actor events with `kind: "system" | "actor"`.
-  - Validates input and output message payloads with AJV schemas from `vibecanvas.json`.
-  - Spawns `icp-client.ts` as a Bun child process to run guest code.
-
-- `packages/service-actor/src/icp-client.ts`
-  - Child-process bridge that loads guest `actor/functions.ts`.
-  - Receives transition runs from parent.
-  - Builds the portal passed to guest functions: `next`, `setData`, `emitMessage`.
-  - Supports transition pipelines such as `fn.check`, `fx.read`, `tx.write` via `portal.next()`.
-
-### AI widget wizard
-
-- `packages/service-agent/src/AgentService.ts`
-  - Owns Pi sessions for the AI wizard.
-  - `connectWizzard(widgetId, sessionId)` creates/resumes the Pi session for a widget draft cwd under `<dataPath>/pi/agent/widget-cwd/*`.
-  - Returns chat history plus the latest actor candidate custom entry when one exists.
-  - Loads phase-specific tools from `packages/service-agent/src/tools/fn.phase-tools.ts`.
-
-- `packages/service-agent/src/tools/tool.set-actor-candidate.ts`
-  - Phase 1 custom Pi tool.
-  - Accepts a full actor candidate, validates it, and appends it to the Pi session with `sessionManager.appendCustomEntry`.
-  - Uses a hand-authored TypeBox tool parameter schema so the model sees actor state and transition-function constraints.
-
-- `packages/service-agent/src/tools/tool.approve-actor-candidate.ts`
-  - Phase 1 custom Pi tool.
-  - Approves the latest actor candidate revision, writes scaffold files into the draft cwd, appends an approval custom entry, and emits a widget update event when wired.
-  - Scaffold includes `vibecanvas.json`, `package.json`, `actor/functions.ts`, actor function stubs, `actor/types.ts`, `widget/main.ts`, and `widget/main.css`.
-  - After writing `package.json`, tries `npm install`; install failure is reported in tool details and does not by itself undo approval.
-
-- `packages/service-agent/src/tools/tool.validate-widget-files.ts`
-  - Phase 2 custom Pi tool.
-  - Validates the generated draft files against the approved manifest and actor registry expectations.
-
-- `packages/service-agent/src/tools/tool.publish-widget.ts`
-  - Phase 2 custom Pi tool.
-  - Copies the draft widget folder to `<configPath>/widgets/<slug>` and reloads actor definitions through `ActorService.reload()` when available.
-
-- `packages/service-agent/src/core/fx.session-candidate.ts` and `packages/service-agent/src/core/tx.session-candidate.ts`
-  - Read/write latest actor candidate and approval records from Pi session custom entries.
-  - Candidate records are not written to separate files.
-
-### Manifest and schemas
-
-- `packages/service-actor/src/core/types.ts`
-  - Current TypeScript contract for `TVibecanvasJson`, actor state, messages, transition functions, and JSON Schema.
-  - Also defines SDK actor types currently re-exported by `@vibecanvas/sdk`.
-
-- `packages/service-actor/src/core/vibecanvasjson.zod.ts`
-  - Runtime validation of `vibecanvas.json`.
-
-- `packages/service-db/src/model.ts`
-  - Zod model for persisted DB rows.
-  - Actor rows include definitions, instances, connections, status, state, and JSON context.
-
-### Canvas/front-end integration
-
-- `packages/api-actors/src/contract.ts`
-  - ORPC contract for listing/getting actor definitions, actor snapshots, actor event streaming, and actor input sending.
-  - `definitions.get` returns the merged manifest/DB definition plus widget source files.
-  - `events` streams `TActorEvent` envelopes.
-  - `instances.sendMessage` accepts `{ instanceId, name, payload }` and returns `{ messageId }`.
-
-- `packages/api-actors/src/api.def-get.ts`
-  - Reads the manifest from `ActorService` and widget source from disk.
-
-- `packages/canvas/src/plugins/widget/Widget.plugin.ts`
-  - On canvas init, fetches actor definitions and widget source.
-  - Registers each actor-backed widget with `WidgetManagerService`.
-
-- `packages/canvas/src/services/widget/fx.draw-host.ts`
-  - Creates a canvas element with `data.type === "widget"` and `actorDefinitionName`.
-
-- `packages/canvas/src/services/widget/attach-dom-portal.ts`
-  - Attaches an absolutely positioned DOM portal over the Konva widget body.
-  - Mounts the Arrow sandbox if the widget config contains sandbox source.
-  - Passes a fresh actor-instance-id reader and actor-event subscription capability into the sandbox host bridge.
-
-- `packages/canvas/src/services/widget/mount-arrow-sandbox.ts`
-  - Wraps `@arrow-js/sandbox`.
-  - Injects base CSS.
-  - Rewrites `@vibecanvas/sdk/widget` imports to `/__vibecanvas_sdk_bootstrap.js`.
-  - Injects the built widget SDK module at `/__vibecanvas_sdk.js`.
-  - Implements the private `host-bridge:vibecanvas-widget` module used by the SDK bootstrap.
-  - Fetches initial actor snapshots through the actor API.
-  - Sends widget input messages through `api.actors.instances.sendMessage`.
-  - Converts relevant actor events into sandbox snapshot updates.
-
-### UI action → backend actor trace
-
-Read these files in order when debugging a widget button click such as `actor.sendMessage(name, payload)`:
-
-1. `local-volume/config/widgets/sdk-test/widget/main.ts`
-   - Guest Arrow UI calls `actor.sendMessage(...)` from `@vibecanvas/sdk/widget`.
-2. `packages/sdk/src/widget.ts`
-   - Public widget SDK singleton; forwards `actor.sendMessage(...)` to the injected private implementation set by `__setSendMessage`.
-3. `packages/canvas/src/services/widget/mount-arrow-sandbox.ts`
-   - Injects SDK/bootstrap modules into `@arrow-js/sandbox`.
-   - Implements `host-bridge:vibecanvas-widget`.
-   - `sendActorMessage({ name, payload })` waits for the widget actor instance id and calls `api.actors.instances.sendMessage(...)`.
-   - `getActorSnapshot()` waits for actor id and fetches `api.actors.instances.snapshot(...)`.
-   - `nextActorEvent({ cursor })` delivers event-driven snapshot updates into the sandbox.
-4. `packages/canvas/src/services/widget/attach-dom-portal.ts`
-   - Mounts the sandbox for a Konva widget host.
-   - Supplies `getActorInstanceId()` from fresh Konva node attrs, avoiding stale initial canvas element data.
-   - Supplies `subscribeActorInstanceEvents(...)` from `WidgetManagerService`.
-5. `packages/canvas/src/services/widget/WidgetManagerService.ts`
-   - Registers widget tools/elements.
-   - Opens one service-level `api.actors.events({})` stream.
-   - Routes incoming actor events by `event.actorId` to mounted sandbox subscribers.
-6. `packages/api-actors/src/contract.ts`
-   - Defines `instances.sendMessage`, `instances.snapshot`, and streamed `TActorEvent` envelopes.
-7. `packages/api-actors/src/api.instance-send-message.ts`
-   - ORPC handler for `instances.sendMessage`; calls `context.actor.sendMessage(...)` and returns `{ messageId }`.
-8. `packages/service-actor/src/ActorService.ts`
-   - Service facade; delegates `sendMessage(instanceId, msgName, msgPayload)` to the supervisor actor map.
-9. `packages/service-actor/src/ActorSupervisor.ts`
-   - Owns in-memory actor instances.
-   - Publishes all actor events to `IEventPublisherService`.
-   - Routes only `kind: "actor"` output events across actor connections.
-10. `packages/service-actor/src/Actor.ts`
-    - Validates input, enqueues immediately, returns message id.
-    - Serializes queue processing.
-    - Emits system events (`ack`, `state.changed`, `data.changed`, `status.changed`, `error`) and actor output events.
-11. `packages/service-actor/src/icp-client.ts`
-    - Child-process runner for guest actor functions.
-    - Implements guest portals: `next`, `setData`, `emitMessage`.
-12. `local-volume/config/widgets/sdk-test/actor/functions.ts` and sibling actor files
-    - Guest actor transition implementation.
-
-For actor creation before UI send, also read:
-
-- `packages/canvas/src/services/widget/fx.draw-host.ts`
-  - Creates widget canvas elements with `data.actorDefinitionName`.
-- `packages/imperative-shell` / Automerge actor-create integration files as needed
-  - Canvas element creation triggers `ActorService.createInstance(...)`.
-- `packages/service-actor/src/ActorSupervisor.ts`
-  - `createInstance(...)` inserts DB row, creates `Actor`, listens before `start()`, and returns the actor id used as `data.actorInstanceId`.
-
-### Guest fixture
-
-- `local-volume/config/widgets/sdk-test/vibecanvas.json`
-  - Defines the Todo Actor System manifest.
-  - Declares initial actor data, JSON schemas for data/input/output messages, state transitions, actor function path, and widget tool metadata.
-
-- `local-volume/config/widgets/sdk-test/widget/main.ts`
-  - Arrow UI widget.
-  - Imports `actor` from `@vibecanvas/sdk/widget`.
-  - Renders reactive actor state/context and sends typed todo input messages through `actor.sendMessage(...)`.
-
-- `local-volume/config/widgets/sdk-test/actor/functions.ts`
-  - Guest actor function registry.
-  - Exports `{ fn, fx, tx }` maps keyed by manifest transition names.
-
-- `local-volume/config/widgets/sdk-test/actor/*.ts`
-  - Example actor logic split into pure reducers (`fn.*`), read helpers (`fx.*`), and writes (`tx.*`).
-
-## Current lifecycle
-
-### 1. Service startup
-
-1. CLI starts `DbServiceTurso`, `AutomergeService`, and `ActorService` during `serve`.
-2. `ActorService.start()` calls `ActorSupervisor.init()`.
-3. Supervisor scans `<configPath>/widgets/*/vibecanvas.json`.
-4. Each manifest is parsed and validated by `ZVibecanvasJson`.
-5. Definitions are synced into `actor_definitions`.
-6. Existing `actor_instances` are loaded from DB and booted into in-memory `Actor` objects.
-7. Existing `actor_connections` are loaded into `connectionMap`.
-
-### 2. Widget registration in the canvas client
-
-1. The canvas `Widget.plugin` calls `api.actors.definitions.list()`.
-2. For each definition, it calls `api.actors.definitions.get({ name })`.
-3. The API returns:
-   - DB definition fields.
-   - Manifest fields.
-   - Widget source files from `widget.relWidgetDir`.
-4. The plugin builds an Arrow sandbox source map like `{ "main.ts": string, "main.css": string }`.
-5. The widget is registered with:
-   - `id = actor.def.name`
-   - `dataType = "widget"`
-   - manifest `tool` metadata
-   - `actor.actorDefinitionName`
-   - sandbox Arrow source
-
-### 3. Widget creation on the canvas
-
-1. User selects the registered tool and creates a widget host.
-2. `fx.draw-host.ts` creates an Automerge canvas element:
-   - `data.type = "widget"`
-   - `data.kind = widget id`
-   - `data.actorDefinitionName = actor definition name`
-3. `AutomergeService.onElementCreate` sees the widget element.
-4. It calls `ActorService.createInstance(defName, canvasId, elementId)`.
-5. Supervisor inserts an `actor_instances` row and creates an in-memory `Actor`.
-6. The canvas element is patched with `data.actorInstanceId = actor.getId()`.
-
-### 4. Widget rendering
-
-1. The Konva widget host gets a DOM portal over its body.
-2. If the widget config has `sandbox`, `mountArrowSandbox()` mounts an `@arrow-js/sandbox` template into that portal.
-3. The sandbox runs the guest Arrow `main.ts` in QuickJS/WASM.
-4. The host page owns the real DOM rendered by Arrow sandbox, not guest code directly.
-5. The sandbox bridge waits for `data.actorInstanceId` with a short exponential backoff because widget DOM can mount before actor creation has patched the canvas element.
-6. Once an actor id is known, the bridge fetches `api.actors.instances.snapshot({ instanceId })` and subscribes to routed actor events for that actor instance.
-
-### 5. Actor message processing
-
-1. Parent calls `actor.inbox(msgName, msgPayload)`.
-2. `Actor` generates a message id.
-3. `Actor` validates the message name against `actor.inputMsgSchema`, validates the payload against `actor.inputMsgSchema[msgName]`, and finds the transition for current state at `actor.states[currentState].on[msgName]`.
-4. Invalid input messages are dropped instead of changing actor state. A dropped input emits only an implicit actor output event named `DROP_MESSAGE` with drop details, then returns the generated message id.
-5. Valid input messages are enqueued, queue processing is triggered, and the message id is returned immediately.
-6. Startup activation, inbox messages, timeout messages, and state activity ticks are processed one at a time by one serialized queue.
-7. The transition function list is sent over IPC to the child process:
-   - `func`
-   - `payload`
-   - current `data`
-8. `icp-client.ts` maps function names to registered guest functions in `functions.ts`.
-9. Guest functions receive `(portal, args)`.
-10. Guest code may call:
-   - `portal.next()` to continue a function pipeline.
-   - `portal.setData(nextData)` to update actor data in the parent.
-   - `portal.emitMessage({ type, payload })` to emit actor output.
-11. `portal.setData(...)` emits a system `data.changed` event.
-12. New transitions use one `targetState`. Legacy `allowedTargetStates` manifests are normalized at load time without breaking their current behavior.
-13. Parent validates emitted outputs against `actor.outputMsgSchema`.
-14. Valid output is emitted as `kind: "actor"` and supervisor can route it to connected target actors.
-15. State-changing messages run source `onExit`, transition functions, target `onEnter`, then start target timeout/activity scheduling before emitting `ack`.
-16. Final startup, input, activity, recovery, and implicit-error outcomes emit revisioned snapshot events for ordered persistence and widget updates.
-
-## Current data model
-
-### Manifest-level definition
-
-`vibecanvas.json` is the source of truth for guest code structure:
-
-- `slug`, `name`, `version`, `description`
-- `actor.initialState`
-- `actor.initialData`
-- `actor.dataSchema`
-- `actor.states[state].on[msgName].func`
-- `actor.states[state].on[msgName].targetState`
-- `actor.states[state].onEnter`, `onExit`, and `onError`
-- `actor.states[state].activity` for one fixed-delay, non-overlapping state activity
-- `actor.inputMsgSchema`
-- `actor.outputMsgSchema`
-- optional `actor.resources`, a definition-level map of named `kv`, `secretStore`, and schema-agnostic `db` requirements
-- `actor.relFunctionPath`
-- `widget.relWidgetDir`
-- `widget.tool`
-
-### AI wizard draft data
-
-The AI wizard has a pre-publish draft layer before a widget becomes a real actor definition:
-
-- Actor candidates are stored as Pi session custom entries, not as standalone candidate files.
-- The latest candidate custom entry is returned by `agent.wizzard.connect` as `actorCandidate`.
-- Successful approval appends a separate approval custom entry.
-- Phase selection is derived from the session history:
-  - no approval entry: phase 1 tools only (`vc_set_actor_candidate`, `vc_approve_actor_candidate`)
-  - approval entry exists: phase 2 tools plus built-in `read`, `edit`, and `grep`
-- Approval writes draft files into the wizard cwd. The draft is not installed for runtime until `vc_publish_widget` copies it to `<configPath>/widgets/<slug>` and reloads actor definitions.
-- Approval scaffold writes a `package.json` and attempts `npm install` if `package.json` exists.
-
-### DB-backed runtime rows
-
-The active model in `packages/service-db/src/model.ts` contains:
-
-- `actor_definitions`
-  - `name`, `slug`, `url`, `description`, `manifest_path`, timestamps.
-- `actor_instances`
-  - `id`, `canvas_id`, `element_id`, `actor_definition_name`, `status`, `machine_state`, `machine_context`.
-- `actor_connections`
-  - Source/target actor instance ids, `enabled`, optional message whitelist, style.
-
-### Shared actor resources
-
-Actor resources are neutral shared infrastructure. A manifest declares stable named slots and permissions; it never contains a concrete resource ID, local path, provider handle, or credential. Users bind a definition slot to a catalog resource, and every actor instance of that definition resolves the same binding. Multiple definitions may intentionally bind the same resource.
-
-Database INTEGER cells cross the actor resource boundary as `bigint` to preserve SQLite's signed 64-bit range. Because actor data and messages are JSON, guest code must convert them to decimal strings or explicitly range-check before converting to numbers.
-
-Effective access is the intersection of manifest scope, the persisted binding restriction, and the function-class ceiling:
-
-| Function class | Resource access |
-|---|---|
-| `fn.*` | none |
-| `fx.*` | reads declared and permitted by the binding |
-| `tx.*` | declared reads/writes permitted by the binding |
-
-A resource call resolves its binding when the call starts. It finishes against that resolved resource even if a concurrent rebind commits; later calls resolve the new binding. Bindings are not copied into actor machine context.
-
-Manifest examples:
+They have different storage, authority, and cleanup behavior.
+
+## System invariants
+
+New agents should preserve these rules unless a task explicitly changes the product model:
+
+1. `vibecanvas.json` is the published guest contract.
+2. Widget UI imports `@vibecanvas/sdk/widget`; actor code imports `@vibecanvas/sdk/actor`. There is no public bare `@vibecanvas/sdk` entrypoint.
+3. Guest files never contain a concrete resource ID, database path, credential, native handle, ORPC client, or host service.
+4. Resource authority is `manifest requirement ∩ binding scope ∩ function-class ceiling`.
+5. `fn.*` has no resources, `fx.*` can read, and only `tx.*` can write.
+6. A required unbound, mismatched, non-ready, or over-scoped resource blocks actor start admission.
+7. Wizard preview bindings are scoped and ephemeral; publish bindings are persisted at definition level.
+8. Secret values are never returned by list/control/management surfaces. An explicit actor `get` is the intentional value-bearing operation.
+9. AI-proposed DB changes never execute from the model tool call. Exact SQL requires a visible human risk acknowledgement and approval.
+10. Actor runtime writes allowed by a published manifest and binding do not receive a per-call human approval prompt. Actors are trusted within their granted capability.
+11. DB structure drafts do not modify live data until coordinated apply.
+12. SQLite INTEGER values cross the actor resource boundary as `bigint`; actor data/messages are JSON and must not contain `bigint`.
+
+## End-to-end lifecycle
+
+### 1. Resource creation and discovery
+
+Resources exist independently of widgets. The sidebar can create:
+
+- `kv` — resource-scoped JSON key/value data.
+- `secretStore` — string secrets with value-safe list/control surfaces.
+- `db` — a separate physical SQLite-compatible database.
+
+The resource catalog stores kind, name, lifecycle status, and provider error. It does not expose physical DB paths or secret values.
+
+Management pages currently provide:
+
+- DB: `Overview`, `Schema`, `Data`, and `SQL` tabs.
+- KV: `Overview` and `Data`, with debounced key-prefix cursor pagination, bounded JSON previews, and revision-aware create/update/delete controls.
+- Secret store: `Overview` and `Data`, with debounced name-prefix cursor pagination and revision-aware create/rotate/delete controls. Only names, revisions, and timestamps are returned; management secret values are write-only.
+
+The Wizard can discover safe metadata with:
+
+- `vc_list_resources` — up to 100 catalog entries; marks the latest explicitly selected resources.
+- `vc_inspect_resource` — safe metadata; DB resources include bounded live schema. It never returns DB rows, BLOB payloads, secret names/values, credentials, or physical paths.
+
+### 2. `@mention` selection
+
+The chat composer represents a resource mention as a typed ProseMirror node containing the resource ID, label, and kind. On submit it sends the unique mention IDs as `resourceIds` to `agent.wizzard.prompt`.
+
+`AgentService.promptWizzard` resolves every ID against the live resource catalog and appends a resource-selection record to the Pi session before prompting the model.
+
+Selection is intentionally **latest-prompt scoped**:
+
+- A prompt with mentions replaces the previous selection.
+- A prompt with no mentions sends `resourceIds: []` and revokes previous explicit selection authority.
+- The model can list all resources, but a resource marked `selected` is the one the user explicitly authorized for that prompt.
+- `vc_propose_db_change` accepts only a DB in the latest explicit selection record.
+
+Concrete IDs stay in host/session state. The manifest declares only logical slots.
+
+### 3. Phase one: actor candidate
+
+Before approval there are no editable draft files. The candidate lives only in Pi session custom entries.
+
+Phase-one tools are assembled by `createWidgetWizardPhaseTools`:
+
+- `web_fetch`
+- `vc_list_resources`
+- `vc_inspect_resource`
+- `vc_propose_db_change`
+- `vc_set_actor_candidate`
+- `vc_approve_actor_candidate`
+
+`vc_set_actor_candidate`:
+
+1. Validates the complete candidate.
+2. Normalizes it into a final manifest shape.
+3. Appends a revisioned candidate record to session history.
+4. Emits `actorCandidateChanged` for the Wizard UI.
+5. Does **not** write files.
+
+The candidate defines:
+
+- name, slug, description, and version;
+- actor initial state/data and JSON schemas;
+- states, transitions, lifecycle functions, activities, and errors;
+- input/output message schemas;
+- logical resource requirements;
+- widget tool metadata.
+
+### 4. Candidate approval and scaffold
+
+`vc_approve_actor_candidate` refuses missing, invalid, or stale candidate revisions. Approval:
+
+1. Writes a deterministic scaffold into the Wizard cwd.
+2. Creates `vibecanvas.json`, `package.json`, actor files, `widget/main.ts`, and `widget/main.css`.
+3. Attempts `npm install`; install failure is reported but does not erase the approved draft.
+4. Appends a candidate-approval custom entry.
+5. Emits a `widgetupdate` event.
+6. Moves the session into implementation phase.
+
+This approval changes only the unpublished Wizard draft. It is not the DB-change approval and it does not publish a widget.
+
+### 5. Phase two: implementation
+
+After candidate approval, draft files exist in the Wizard cwd. Implementation phase exposes built-in `read`, `edit`, and `grep` plus:
+
+- `web_fetch`
+- `vc_list_resources`
+- `vc_inspect_resource`
+- `vc_propose_db_change`
+- `vc_validate_widget_files`
+- `vc_publish_widget`
+
+The AI implements:
+
+- `actor/functions.ts` — default export with `fn`, `fx`, and `tx` registries.
+- sibling actor functions — guest state/resource behavior.
+- `widget/main.ts` — Arrow UI using `actor.state`, `actor.context`, and `actor.sendMessage`.
+- `widget/main.css` — widget-scoped styles.
+
+`vc_validate_widget_files` checks the manifest, required files, actor function registration, and widget source. Validation does not publish.
+
+### 6. Draft preview
+
+Preview has two cooperating parts:
+
+- `previewSourceWizzard` reads the draft manifest and widget source map for the browser sandbox.
+- `startDraftActorWizzard` starts an in-memory `Actor` from the draft cwd.
+
+The draft actor:
+
+- uses ID `draft:<widgetId>:<sessionId>`;
+- is not inserted into `actor_instances`;
+- publishes draft actor events/snapshots through the agent event stream;
+- supports start, reload, reset, stop, inspect, and input-message send APIs;
+- is disposed when its session stops, reloads, publishes, or the service shuts down.
+
+Resource calls in Preview use `ActorService.callWithDirectResourceBinding`. The host plans selected resources against manifest slots, then injects a scoped direct binding for each call. These bindings:
+
+- are never persisted in `actor_resource_bindings`;
+- still enforce resource kind, requirement scope, function class, and provider lifecycle;
+- do not grant authority to unselected resources;
+- fail safely if selection-to-slot mapping is ambiguous or missing.
+
+This lets a draft widget exercise real selected resources without prematurely publishing a definition or binding.
+
+### 7. AI-proposed database changes
+
+The model calls `vc_propose_db_change({ resourceId, sql, reason })` only for an explicitly selected, ready DB. The tool appends a `pending` proposal record and returns it to the chat UI. It never executes SQL.
+
+The UI renders the exact SQL, reason, and a prominent risk checkbox. Approval calls `agent.wizzard.dbChange.approve` with `confirmedRisk: true`.
+
+Approval performs a coordinated host workflow:
+
+1. Create a physical DB schema draft.
+2. Execute the exact proposed SQL against the draft.
+3. Produce a fresh apply preview and warnings.
+4. Confirm coordinated apply.
+5. Persist the proposal as approved with draft/apply IDs and warnings.
+6. Discard the draft on pre-apply failure.
+
+Rejection records the proposal as rejected and does not create a DB draft.
+
+This gate is for AI-originated database change proposals. It is separate from:
+
+- DB workbench live-SQL mutation approval;
+- manual DB schema-draft apply approval;
+- trusted runtime actor resource writes.
+
+### 8. Publish
+
+Publish validates and copies the Wizard draft to `<configPath>/widgets/<slug>`, reloads actor definitions, and persists resource bindings.
+
+Binding planning uses this order:
+
+1. Latest explicit resource selection, when present.
+2. Otherwise, implicit selection only when a manifest kind has one compatible slot and the host has exactly one ready resource of that kind.
+3. Refuse to guess when multiple resources or compatible slots are available; ask the user to `@mention` the intended resource.
+
+An explicitly selected resource maps to a same-kind slot when either:
+
+- slot name and resource display name match case-insensitively; or
+- exactly one compatible remaining slot exists.
+
+Publish creates definition-level bindings. Every current and future instance of that definition resolves the same binding. Binding scope is copied from the manifest requirement and cannot exceed it.
+
+Publishing a new definition reloads the definition registry. Publishing an edit of the same name/slug reloads affected persisted instances after the new files and bindings are installed.
+
+### 9. Canvas registration and instance creation
+
+After reload:
+
+1. `Widget.plugin.ts` lists actor definitions.
+2. It fetches each manifest and widget source map.
+3. `WidgetManagerService` registers a canvas tool using `widget.tool` metadata.
+4. The user creates a widget canvas element containing `data.actorDefinitionName`.
+5. Automerge element creation calls `ActorService.createInstance`.
+6. `ActorSupervisor` inserts `actor_instances`, starts an `Actor`, and patches the canvas element with `data.actorInstanceId`.
+
+Start admission checks every required resource before the actor is allowed to run. An unbound, missing, wrong-kind, over-scoped, migrating, or non-ready required resource blocks the actor with a stable reason. Optional unbound slots do not block start, but calls to them fail because no binding exists.
+
+### 10. Runtime widget and actor flow
+
+The browser UI and actor do not share memory.
+
+```text
+Widget UI
+  -> actor.sendMessage(name, JSON payload)
+  -> ORPC instances.sendMessage
+  -> ActorService / ActorSupervisor
+  -> Actor.inbox
+  -> child-process fn/fx/tx pipeline
+  -> portal.setData / portal.emitMessage
+  -> revisioned actor events
+  -> WidgetManagerService event routing
+  -> sandbox actor.state / actor.context update
+```
+
+`Actor` serializes startup, input, timeout, activity, lifecycle, and recovery jobs. It validates input and output payloads against manifest JSON schemas. State-changing transitions run source `onExit`, transition functions, target `onEnter`, and then target timeout/activity scheduling.
+
+Actor output events can route through persisted actor connections to other actor instances. The public widget SDK currently consumes state/context snapshots, not arbitrary actor output subscriptions.
+
+### 11. Editing a published widget
+
+`startWidgetEditWizzard`:
+
+1. Resolves an existing published definition.
+2. Copies its folder into a fresh Wizard cwd, excluding `node_modules`, `.git`, and Wizard metadata.
+3. Bumps the manifest version.
+4. Records an edit session and draft manifest path.
+5. Enters implementation phase directly.
+
+Publish replaces the installed definition, reloads the registry, reapplies the planned bindings, and reloads matching persisted instances when name/slug identity is preserved.
+
+## Manifest contract
+
+`vibecanvas.json` is the source of truth for a published definition. Important fields are:
+
+- `slug`, `name`, `version`, `description`;
+- `actor.relFunctionPath`;
+- `actor.initialState`, `actor.initialData`, `actor.dataSchema`;
+- `actor.states` with transitions, lifecycle hooks, activities, and recovery;
+- `actor.inputMsgSchema`, `actor.outputMsgSchema`;
+- optional `actor.resources` logical slot map;
+- `widget.relWidgetDir`;
+- `widget.tool` canvas registration metadata.
+
+Resource example:
 
 ```json
 {
-  "resources": {
-    "preferences": { "kind": "kv", "required": true, "scope": ["read", "write"] },
-    "credentials": { "kind": "secretStore", "required": true, "scope": ["read"] },
-    "notes": {
-      "kind": "db",
-      "required": true,
-      "scope": ["read", "write"],
-      "operations": {
-        "listNotes": { "effect": "read", "sql": "SELECT id, title FROM notes", "result": "rows" }
+  "actor": {
+    "resources": {
+      "preferences": {
+        "kind": "kv",
+        "required": true,
+        "scope": ["read", "write"]
+      },
+      "credentials": {
+        "kind": "secretStore",
+        "required": true,
+        "scope": ["read"]
+      },
+      "notes": {
+        "kind": "db",
+        "required": true,
+        "scope": ["read", "write"],
+        "operations": {
+          "listNotes": {
+            "effect": "read",
+            "sql": "SELECT id, title FROM notes ORDER BY id",
+            "result": "rows"
+          }
+        }
       }
     }
   }
 }
 ```
 
-`KvResource` stores JSON-compatible values. Plain `set` is last-write-wins; revisions and `compareAndSet` provide explicit coordination for shared read-modify-write flows. Separate resources remain isolated even when their keys match. Writes do not automatically rerun other actor instances; they observe committed data on their next read.
+DB slots are schema-agnostic. Never add schema IDs, versions, migration lineages, physical paths, or credentials to the manifest.
 
-`SecretStoreResource` stores string values on the shared resource-key-value persistence layer but has a distinct public interface and kind. Values are plaintext at rest in this version. `list`, write, delete, conflict, control responses, logs, and ordinary errors omit plaintext values; an explicit `get` returns the value to the trusted actor child. This is accidental-disclosure hygiene, not encryption or a hostile-process boundary.
+## Resource authority
 
-`DbResource` is a separate host-managed local database, never Vibecanvas's application `DbServiceTurso`. DB slots are schema-agnostic: they declare permissions, named operations, and optional `arbitrarySql` (false by default), but no schema ID, version, generation, compatibility range, or migration lineage. Named parameters are bound rather than interpolated. `fx` can invoke reads/query when permitted; only `tx` can execute writes. Structure drafting/apply coordination, physical paths, and native handles are never actor capabilities.
+### Definition-level requirements and bindings
 
-Guest SQL is an ordinary SQLite-compatible language contract: tables, indexes, views, triggers, parameters, and transactions are supported. Turso is a host-private implementation detail. Guest code must not depend on Turso-only SQL or PRAGMAs, custom types, materialized views, extensions, remote synchronization, MVCC, or CDC. The host may replace its internal SQLite-compatible engine without changing actor APIs.
+The manifest says what the actor needs. The binding says which host resource satisfies it.
 
-Arbitrary `query(sql, parameters?)` accepts one row-producing statement. Arbitrary `execute(sql, parameters?)` accepts one write-capable statement, while `execute(operations)` accepts a bounded non-empty array of individually parameterized statements. An operation array runs in order through one IPC call, binding resolution, physical connection, and serialized resource write lane. The caller controls transaction flow by including `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `ROLLBACK TO`, and `RELEASE`; arrays are not automatically atomic, and earlier operations may commit when no explicit transaction was opened. Execution stops on failure and the host defensively rolls back a transaction left open. Named manifest operations remain one statement.
-
-Arbitrary SQL remains a trusted-actor feature. The host adapter has no proven read-only authorizer, and SQLite can report a mutating `INSERT`/`UPDATE`/`DELETE … RETURNING` statement as row-producing; therefore the `query` surface is not a hostile-code read boundary. The host still enforces declared/effective permissions, bounded actor statements/operation arrays, parameter/result/time limits, and rejects file-control/extension-loading forms such as `ATTACH`, `DETACH`, `VACUUM INTO`, and `load_extension`. These lexical guards reduce accidental host-path access but are not presented as a general SQL sandbox.
-
-### Canvas document element
-
-Actor-backed widgets are canvas elements with:
-
-- `data.type = "widget"`
-- `data.kind`
-- `data.w`, `data.h`, window/expanded state
-- `data.actorDefinitionName`
-- optional `data.actorInstanceId`
-- optional `data.uiProps`
-
-## Arrow UI model
-
-Guest UI uses `@arrow-js/core` primitives:
-
-- `reactive()` for local state.
-- `html` tagged templates for UI.
-- `component()` when reusable component instances are needed.
-
-`@arrow-js/sandbox` is a good fit because generated UI code runs in QuickJS/WASM and communicates with the host only through serialized bridge calls. The host can expose safe APIs through sandbox host bridges rather than leaking the browser window or internal services.
-
-The current Todo widget imports `actor` from `@vibecanvas/sdk/widget`. The bridge waits for the owning `actorInstanceId`, fetches the initial actor snapshot, sends widget messages to the backend actor API, and receives live snapshot updates from actor event envelopes.
-
-## Current SDK surface
-
-The SDK is now split by runtime. There is intentionally no bare `@vibecanvas/sdk` public entrypoint. Guest code must import a runtime-specific subpath:
-
-- `@vibecanvas/sdk/widget` for browser/Arrow sandbox widget code.
-- `@vibecanvas/sdk/actor` for Bun-side actor function code.
-
-Current package source files:
-
-- `packages/sdk/src/widget.ts`
-  - Small author-facing widget API.
-  - Exposes the singleton `actor` and `TWidgetActor`.
-  - The actor object only exposes reactive `state`, reactive `context`, and `sendMessage()`.
-  - It also exposes internal setters used by the injected sandbox bootstrap: `__setActorSnapshot` and `__setSendMessage`.
-- `packages/sdk/src/widget-bridge.ts`
-  - Non-guest bridge helper for tests/future host integrations.
-  - Exposes `connectWidgetBridge` and `IWidgetHostPortal`.
-  - Models `getActorSnapshot`, `sendActorMessage`, optional `subscribeActor`, and optional long-poll `nextActorEvent`.
-- `packages/sdk/src/actor.ts`
-  - Actor-side types and helpers.
-  - Exposes `defineActorFunctions`, `defineFn`, `defineFx`, `defineTx`.
-  - Exposes short actor portal types: `TFnPortal`, `TFxPortal`, `TTxPortal`.
-  - Exposes resource requirement/call types plus slot-bound `KvResource`, `SecretStoreResource`, and `DbResource` actor portals.
-
-Current status:
-
-- Actor authors can import types from `@vibecanvas/sdk/actor`.
-- Widget authors have a small intended API from `@vibecanvas/sdk/widget`.
-- The sandbox host injects the built `@vibecanvas/sdk/widget` source and a bootstrap module.
-- Initial actor snapshots are fetched through `api.actors.instances.snapshot({ instanceId })` after the bridge discovers the widget's `actorInstanceId`.
-- UI-to-actor send is wired through `api.actors.instances.sendMessage({ instanceId, name, payload })` and returns a backend message id.
-- Host-to-sandbox actor updates are event-driven: `WidgetManagerService` listens to all actor events, routes matching `actorId` events to the mounted sandbox, and `mount-arrow-sandbox.ts` converts state/data/error system events into SDK snapshots.
-
-## Remaining architectural gaps
-
-The main bridge path now exists: widget UI can send input to its owning backend actor, and state/data/error changes flow back into the sandbox as snapshots. Remaining gaps:
-
-- Actor output messages route to other actors; the public widget SDK does not yet expose output-message subscriptions.
-- Actor event streaming is global at the API level and filtered in `WidgetManagerService`; per-instance stream APIs may be useful later.
-- Widget SDK types are still manually authored in fixtures rather than generated from `vibecanvas.json` schemas.
-
-## Recommended SDK shape
-
-The public SDK should be split by runtime.
-
-### `@vibecanvas/sdk/widget`
-
-For Arrow sandbox code. The widget entrypoint should stay intentionally small. Widget authors should see only what they need to render and talk to their own actor.
-
-Current intended primitives:
-
-```ts
-import { html } from '@arrow-js/core'
-import { actor } from '@vibecanvas/sdk/widget'
-
-export default html`
-  <header>
-    <span>${() => actor.state.value}</span>
-  </header>
-
-  <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>
-
-  <button @click="${() => actor.sendMessage('addTodo', { title: 'New' })}">
-    Add
-  </button>
-`
-```
-
-Current minimum capabilities:
-
-- `actor.state.value`
-  - Arrow-reactive actor machine state, e.g. `ready`, `busy.saving`, `error.validation`.
-- `actor.context.value`
-  - Arrow-reactive actor context/data from the owning actor instance.
-- `actor.sendMessage(name, payload)`
-  - Sends an input message to this widget's own actor instance.
-
-Deliberately not in the small widget file yet:
-
-- Canvas element/window APIs.
-- Output subscriptions.
-- UI props.
-- Raw actor ids/definition ids.
-- ORPC, Automerge, IPC, DB, Bun, or browser-global escape hatches.
-
-Those can be added later when there is a clear use case, but should not make `widget.ts` hard to read. Integration details belong in `widget-bridge.ts`.
-
-Current bridge direction:
-
-- `mount-arrow-sandbox.ts` rewrites guest imports from `@vibecanvas/sdk/widget` to `/__vibecanvas_sdk_bootstrap.js`.
-- The bootstrap module imports the real injected SDK module at `/__vibecanvas_sdk.js` and private host functions from `host-bridge:vibecanvas-widget`.
-- The bootstrap calls `getActorSnapshot()` once and applies it through `__setActorSnapshot`.
-- The bootstrap starts a `nextActorEvent({ cursor })` loop for future serialized snapshot updates.
-- Guest code never imports `host-bridge:*`; only the SDK/bootstrap does.
-- Keep all messages JSON-serializable.
-- Hide ORPC and canvas services from guest code.
-- Generate or provide types from `vibecanvas.json` so `sendMessage()` is typed.
-
-### `@vibecanvas/sdk/actor`
-
-For Bun-side actor guest code. It should preserve the function split but make the API clearer.
-
-Current exports:
-
-- `defineActorFunctions({ fn, fx, tx })`
-- `defineFn()`, `defineFx()`, `defineTx()` helpers for typing.
-- `TActorFn`, `TActorFx`, `TActorTx` function types.
-- `TFnPortal`, `TFxPortal`, `TTxPortal` portal types.
-- Manifest preparation types for resource kinds, permission scopes, schema-agnostic DB slots, named operations, and named parameters.
-- `portal.resources.kv(slot)`, `portal.resources.secretStore(slot)`, and `portal.resources.db(slot)` on effect-capable portals. `TFnPortal` intentionally has no `resources` field.
-
-Potential later exports:
-
-- `emit(type, payload)` helper to enforce output shape.
-- `setData(nextData)` / `patchData(patch)` helpers.
-- Type utilities generated from manifest schemas.
-
-Actor author model:
-
-- `fn.*` functions: deterministic pure logic, no side effects.
-- `fx.*` functions: impure reads through injected portal capabilities.
-- `tx.*` functions: writes through injected portal capabilities.
-- Pipelines use `await portal.next()` only when composition is desired.
-- Production actor function files must exist on disk at `actor.relFunctionPath` when loaded by the runtime, including compiled Vibecanvas binaries.
-- External actor `.ts` or `.js` modules should be self-contained or ship any runtime dependencies beside the widget, for example in the widget folder's `node_modules`. Type-only imports are erased and do not need runtime packages.
-
-### Manifest/type generation
-
-For guest authors, schemas should drive TypeScript types. The SDK can provide a generated module per widget such as:
-
-```ts
-import type { ActorInput, ActorOutput, ActorData } from '@vibecanvas/sdk/generated'
-```
-
-This should be generated from:
-
-- `actor.dataSchema`
-- `actor.inputMsgSchema`
-- `actor.outputMsgSchema`
-
-The generated API lets widget code call:
-
-```ts
-actor.sendMessage('addTodo', { title: '...' })
-```
-
-and actor code emit:
-
-```ts
-await portal.emit('todosChanged', payload)
-```
-
-without hand-written stringly typed maps.
-
-## Recommended interaction contract
-
-The clean conceptual contract is:
+Effective access is:
 
 ```text
-Widget UI --send(input message)--> Owning Actor Instance
-Actor Instance --state/context snapshot--> Widget UI
-Actor Instance --output message--> Actor Connections --> Target Actor Instance
+manifest scope ∩ binding scope ∩ function-class ceiling
 ```
 
-Important boundaries:
+| Function class | Resource authority |
+|---|---|
+| `fn.*` | No resource portal |
+| `fx.*` | Permitted reads only |
+| `tx.*` | Permitted reads and writes |
 
-- Widget UI talks only to its owning actor unless the SDK explicitly exposes other capabilities.
-- Actor-to-actor communication remains manifest/connection driven.
-- All payloads are JSON and schema-validated at host boundaries.
-- Guest code never receives raw DB, Automerge, child process, Bun, browser window, or service objects.
+A resource call resolves its binding when the call starts. A concurrent rebind does not switch an already-resolved call; later calls use the new binding.
 
-## Suggested next implementation steps
+### KV
 
-1. Expose actor output-message subscriptions to widget SDK only if a clear UI use case appears.
-2. Consider replacing the global actor event stream with an instance-scoped API, or keep global streaming with client-side routing if that remains simpler.
-3. Keep injecting the real `@vibecanvas/sdk/widget` module into `@arrow-js/sandbox` and keep host bridge details hidden behind the bootstrap module.
-4. Ensure guest code imports only `@vibecanvas/sdk/widget` or `@vibecanvas/sdk/actor`; do not use bare `@vibecanvas/sdk`.
-5. Generate TypeScript types from `vibecanvas.json` schemas for guest projects.
+- JSON-compatible values, isolated by resource ID and key.
+- `get`, `has`, and cursor `list` are reads.
+- `set`, `delete`, and `compareAndSet` are writes.
+- Plain `set` is last-write-wins.
+- Revisions plus `compareAndSet` support coordinated read-modify-write behavior.
+- Human management creates and updates through `actors.resources.dataSet` and deletes through `actors.resources.dataDelete`. Both require the expected revision; stale changes fail instead of overwriting concurrent actor writes.
+- Writes do not automatically rerun other actors; they observe new values on their next read.
+
+### Secret store
+
+- String values, currently plaintext at rest.
+- Explicit actor `get(name)` returns the value to the trusted actor child.
+- List/write/delete/conflict/control/management responses omit plaintext values.
+- The human Data workbench can create a secret or rotate an existing secret by supplying a new value. It never preloads the current plaintext, and the mutation response contains metadata only.
+- Never log, emit, or copy secrets into actor data unless a narrowly defined product flow requires it.
+- Current management inspection intentionally hides even secret names from the AI resource-inspection tool; the resource Data page exposes names to the human control UI but never values.
+
+### Database
+
+- Each DB resource owns a separate physical SQLite-compatible database.
+- It is never Vibecanvas's control `DbServiceTurso` database.
+- Named operations are preferred; `arbitrarySql` is false unless explicitly declared.
+- Named parameters are bound, never interpolated.
+- `query` is read-capable but is not presented as a hostile-SQL sandbox.
+- `execute` is always write-capable and available only to `tx.*` with effective write scope.
+- Ordered execute arrays share one resolved connection but are not automatically atomic; guest code must include `BEGIN`/`COMMIT` when required.
+- Guest SQL must use ordinary SQLite-compatible behavior, not Turso-only features or PRAGMAs.
+- Returned SQLite INTEGER cells are `bigint`. Convert to a decimal string for actor JSON, or range-check before converting to number.
+
+## Database workbench and coordinated drafts
+
+The DB resource UI has four URL-controlled tabs:
+
+- `Overview` — lifecycle, bindings, instances, apply history, retained backup.
+- `Schema` — live inspection or one active physical schema draft.
+- `Data` — bounded cursor row pages, optimistic edit/delete, lazy BLOB hydration.
+- `SQL` — live typed results; reads use a physically read-only connection and mutations require exact-SQL approval.
+
+Structure changes target a physical draft, not live. Coordinated apply:
+
+1. Previews SQL, warnings, definitions, slots, and persisted instances.
+2. Gates the resource and drains calls.
+3. Stops affected running actors.
+4. Applies and verifies the physical DB.
+5. Retains a restorable pre-apply backup.
+6. Records the database result separately from actor restart outcomes.
+7. Restarts actors whose admission succeeds.
+
+Do not use “compatible” for an actor after a DB change. Restart success is an observed runtime outcome, not proof of schema compatibility.
+
+## Persistence and ownership
+
+| Data | Owner | Storage |
+|---|---|---|
+| Wizard messages/candidates/approvals/selections/proposals | Agent service | Pi session files/custom entries |
+| Wizard draft source | Agent service | Wizard cwd |
+| Draft preview actor | Agent service | Memory only |
+| Published manifest/source | Actor service / filesystem | Widget directory |
+| Definitions, instances, connections, resource catalog/bindings | Control DB | `DbServiceTurso` |
+| Actor machine state/context | Actor supervisor | `actor_instances` plus live Actor memory |
+| Canvas widget element | Canvas/Automerge | Canvas document |
+| KV and secret entries | Resource providers | Resource-scoped control DB table |
+| DB live data | `DbResource` | Per-resource physical database |
+| DB schema draft and retained backup | `DbResource` / coordinator | Resource-local physical files plus control rows |
+
+## Trust boundaries
+
+### Widget sandbox
+
+Widget code runs in QuickJS/WASM. The host injects a small SDK bridge. Guest UI does not receive `window`, ORPC, Automerge, DB, filesystem, or host services.
+
+### Actor child process
+
+Actor functions run in a Bun child process. IPC requests carry derived run identity and requested slot/operation. The parent owns definition identity, binding resolution, lifecycle, and effective authority.
+
+The child never chooses a concrete resource ID. It chooses only a manifest slot.
+
+### Resources
+
+Providers enforce kind, lifecycle, operation effect, manifest scope, binding scope, and function class. Control errors are sanitized before crossing into guest code.
+
+### AI tools
+
+Resource discovery is metadata-only. DB inspection is schema-only. DB proposal is record-only. The model cannot convert its own proposal into approval.
+
+### Publish boundary
+
+Draft source is not a runtime definition until publish copies it to the widget directory and reloads the actor service. Preview must not be treated as proof that publish, binding, or persisted instance startup will succeed.
+
+## Main API surfaces
+
+All product clients use ORPC, normally over WebSocket.
+
+### Agent / Wizard
+
+- `agent.wizzard.connect`, `prompt`, `cancel`, `newSession`
+- `agent.wizzard.startWidgetEdit`
+- `agent.wizzard.previewSource`
+- `agent.wizzard.draftManifest.read`, `patch`
+- `agent.wizzard.draftActor.start`, `reload`, `reset`, `stop`, `inspect`, `send`
+- `agent.wizzard.dbChange.approve`, `reject`
+- `agent.wizzard.publish`
+- agent event stream for Pi events, candidate/widget updates, and draft actor events
+
+The code uses the historical spelling `wizzard` in API and class identifiers. Product copy says “Wizard”. Do not silently rename the API without a coordinated contract migration.
+
+### Actors and resources
+
+- `actors.definitions.list`, `get`, `delete`
+- `actors.instances.snapshot`, `sendMessage`
+- `actors.events`
+- `actors.resources.list`, `get`, `create`, `rename`, `delete`, `references`, `data`, `dataSet`, `dataDelete`
+- `actors.resources.definitionStatus`, `bind`, `unbind`
+- DB inspection/live SQL, row CRUD, schema drafts, applies, backups, and restore APIs in `packages/api-actors/src/contract.ts`
+
+## Important files
+
+### Wizard and generation
+
+- [`packages/service-agent/src/AgentService.ts`](../../packages/service-agent/src/AgentService.ts) — session, selection, draft actor, preview, DB approval, publish, edit flow.
+- [`packages/service-agent/src/tools/phase-tools.ts`](../../packages/service-agent/src/tools/phase-tools.ts) — authoritative tool set for both phases.
+- [`packages/service-agent/src/tools/tool.set-actor-candidate.ts`](../../packages/service-agent/src/tools/tool.set-actor-candidate.ts) — validates/stores candidates.
+- [`packages/service-agent/src/tools/tool.approve-actor-candidate.ts`](../../packages/service-agent/src/tools/tool.approve-actor-candidate.ts) — writes scaffold and changes phase.
+- [`packages/service-agent/src/tools/tool.validate-widget-files.ts`](../../packages/service-agent/src/tools/tool.validate-widget-files.ts) — validates draft files.
+- [`packages/service-agent/src/tools/tool.publish-widget.ts`](../../packages/service-agent/src/tools/tool.publish-widget.ts) — tool-driven publish/binding path.
+- [`packages/service-agent/src/tools/resource-bindings.ts`](../../packages/service-agent/src/tools/resource-bindings.ts) — explicit and implicit mapping policy.
+- [`packages/service-agent/src/tools/tool.list-resources.ts`](../../packages/service-agent/src/tools/tool.list-resources.ts), [`tool.inspect-resource.ts`](../../packages/service-agent/src/tools/tool.inspect-resource.ts), [`tool.propose-db-change.ts`](../../packages/service-agent/src/tools/tool.propose-db-change.ts) — AI resource capabilities.
+- [`packages/service-agent/src/core/fx.session-candidate.ts`](../../packages/service-agent/src/core/fx.session-candidate.ts), [`tx.session-candidate.ts`](../../packages/service-agent/src/core/tx.session-candidate.ts) — session custom-entry reads/writes.
+- [`packages/service-agent/src/prompts/`](../../packages/service-agent/src/prompts/) — AI authoring contract and guardrails.
+- [`packages/api-agent/src/contract.ts`](../../packages/api-agent/src/contract.ts), [`handlers.ts`](../../packages/api-agent/src/handlers.ts) — Wizard API.
+- [`packages/canvas/src/components/AiWizzard/`](../../packages/canvas/src/components/AiWizzard/) — Wizard UI, mentions, proposal approval, preview, manifest editor.
+
+### Actor runtime
+
+- [`packages/service-actor/src/ActorService.ts`](../../packages/service-actor/src/ActorService.ts) — public facade and resource/provider composition root.
+- [`packages/service-actor/src/ActorSupervisor.ts`](../../packages/service-actor/src/ActorSupervisor.ts) — definitions, persisted instances, admission, events, connections.
+- [`packages/service-actor/src/Actor.ts`](../../packages/service-actor/src/Actor.ts) — one actor instance and serialized state-machine lane.
+- [`packages/service-actor/src/icp-client.ts`](../../packages/service-actor/src/icp-client.ts) — child-process guest bridge and portals.
+- [`packages/service-actor/src/core/types.ts`](../../packages/service-actor/src/core/types.ts), [`vibecanvasjson.zod.ts`](../../packages/service-actor/src/core/vibecanvasjson.zod.ts) — manifest types and validation.
+
+### Resource runtime
+
+- [`packages/service-actor/src/resources/ActorResourceManager.ts`](../../packages/service-actor/src/resources/ActorResourceManager.ts) — catalog/binding lifecycle, start admission, dispatch, permission enforcement, drain.
+- [`packages/service-actor/src/resources/KvResource.ts`](../../packages/service-actor/src/resources/KvResource.ts) — KV provider.
+- [`packages/service-actor/src/resources/SecretStoreResource.ts`](../../packages/service-actor/src/resources/SecretStoreResource.ts) — secret provider.
+- [`packages/service-actor/src/resources/DbResource.ts`](../../packages/service-actor/src/resources/DbResource.ts) — physical DB, inspection, rows, SQL, drafts, backups.
+- [`packages/service-actor/src/resources/DbResourceCoordinator.ts`](../../packages/service-actor/src/resources/DbResourceCoordinator.ts) — apply/restore and actor stop/restart coordination.
+- [`packages/service-actor/src/resources/resource-types.ts`](../../packages/service-actor/src/resources/resource-types.ts) — resource and DB wire contracts.
+- [`packages/service-db/src/model.ts`](../../packages/service-db/src/model.ts) — persisted control models.
+- [`packages/api-actors/src/contract.ts`](../../packages/api-actors/src/contract.ts) — actor/resource management API.
+
+### Widget and canvas runtime
+
+- [`packages/sdk/src/widget.ts`](../../packages/sdk/src/widget.ts) — public widget SDK.
+- [`packages/sdk/src/actor.ts`](../../packages/sdk/src/actor.ts) — public actor SDK and resource portals.
+- [`packages/canvas/src/plugins/widget/Widget.plugin.ts`](../../packages/canvas/src/plugins/widget/Widget.plugin.ts) — definition registration.
+- [`packages/canvas/src/services/widget/WidgetManagerService.ts`](../../packages/canvas/src/services/widget/WidgetManagerService.ts) — widget registry and actor event fan-out.
+- [`packages/canvas/src/services/widget/fx.draw-host.ts`](../../packages/canvas/src/services/widget/fx.draw-host.ts) — canvas widget creation.
+- [`packages/canvas/src/services/widget/attach-dom-portal.ts`](../../packages/canvas/src/services/widget/attach-dom-portal.ts) — DOM portal lifecycle.
+- [`packages/canvas/src/services/widget/mount-arrow-sandbox.ts`](../../packages/canvas/src/services/widget/mount-arrow-sandbox.ts) — sandbox modules and host bridge.
+- [`apps/frontend/src/pages/resource.tsx`](../../apps/frontend/src/pages/resource.tsx) — resource-kind page dispatcher.
+- [`apps/frontend/src/feature/db-resource/`](../../apps/frontend/src/feature/db-resource/) — DB workbench.
+- [`apps/frontend/src/feature/resource/GenericResourcePage.tsx`](../../apps/frontend/src/feature/resource/GenericResourcePage.tsx) — KV/secret workbench.
+
+## Debugging traces
+
+### Widget button click does nothing
+
+Read in this order:
+
+1. Draft/published `widget/main.ts` — exact `actor.sendMessage` name and payload.
+2. `vibecanvas.json` — input schema and transition in the current state.
+3. `packages/sdk/src/widget.ts` — public send bridge.
+4. `mount-arrow-sandbox.ts` — actor instance discovery and host bridge.
+5. `api-actors` `instances.sendMessage` contract/handler.
+6. `ActorService.sendMessage` and `Actor.inbox`.
+7. `actor/functions.ts` registry and referenced guest function.
+
+### Preview works but published widget does not
+
+Check:
+
+1. Draft validation result.
+2. Publish result and destination.
+3. Definition reload and manifest path.
+4. Persisted definition resource bindings.
+5. `definitionStatus` and required-resource start admission.
+6. Canvas element `actorDefinitionName` and `actorInstanceId`.
+7. Actor instance status/error.
+
+Preview bindings are not persisted, so Preview success alone does not prove publish bindings exist.
+
+### Actor cannot use a resource
+
+Check:
+
+1. Manifest slot name, kind, required flag, and scope.
+2. Latest Wizard selection and publish binding plan.
+3. Persisted definition binding and reduced scope.
+4. Resource lifecycle status.
+5. Guest function class (`fx` versus `tx`).
+6. Operation effect (`read` versus `write`).
+7. Provider-specific argument validation.
+
+### AI cannot identify the database
+
+Check:
+
+1. The prompt contains a real mention node, not only typed `@name` text.
+2. `resourceIds` reached `agent.wizzard.prompt`.
+3. The latest selection custom entry contains the ID.
+4. `vc_list_resources` marks it `selected`.
+5. `vc_inspect_resource` was called with the exact returned ID.
+
+### DB change is pending forever
+
+Check:
+
+1. Proposal custom entry and status.
+2. Chat proposal card rendering.
+3. Risk checkbox state.
+4. `confirmedRisk: true` on approval.
+5. Active DB draft/apply conflicts.
+6. Coordinated apply record and separate actor restart outcomes.
+
+## Onboarding checklist for a new AI agent
+
+Before changing this system:
+
+1. Read this document.
+2. Read the nearest `AGENTS.md` for every package you will touch.
+3. Identify which artifact is changing: candidate, Wizard draft, DB draft, published definition, binding, canvas element, or actor instance.
+4. State whether the action is draft-only, persisted, externally visible, or destructive.
+5. Preserve the widget/actor sandbox boundary.
+6. Keep resource IDs and paths out of guest files.
+7. Decide whether authority comes from an explicit mention, an existing binding, or safe implicit single-resource mapping.
+8. For DB changes, identify the approval path before writing code.
+9. Test both draft Preview and a real published canvas instance when runtime behavior changes.
+10. Test required-resource admission and failure behavior, not only the happy path.
+11. Verify secret and large-payload redaction/bounding at every new API boundary.
+12. Update this document and `FILES.md` when architecture or file routes change.
+
+## Current limitations
+
+- Secret values are plaintext at rest; current protections reduce accidental disclosure but are not encryption or a hostile-process security boundary.
+- The widget SDK does not expose arbitrary actor output subscriptions; it receives state/context snapshots.
+- Actor event streaming is global at the API and filtered by `WidgetManagerService`.
+- Generated widget types are not yet derived automatically from manifest JSON schemas.
+- Resource bindings are definition-level, not instance-level.
+- Rebinding or resource writes do not automatically rerun actor logic.
+- DB arbitrary query guards are not a proven hostile-SQL sandbox.
+- Preview actors are ephemeral and do not prove persisted-instance admission or upgrade compatibility.
 
 ## Design principle
 
-The SDK should expose intent, not infrastructure:
+Expose intent, not infrastructure:
 
-- Widget authors should think: “render UI, send commands, react to actor state.”
-- Actor authors should think: “validate input, transform data, emit events.”
-- Vibecanvas internals should own: sandboxing, IPC, schema validation, persistence, canvas sync, actor routing, and security boundaries.
+- Widget authors: render UI, send commands, react to actor state/context.
+- Actor authors: validate messages, transform actor data, use declared capabilities, emit outputs.
+- Wizard agents: design, inspect safe metadata, implement in a draft, validate, request approvals, publish deliberately.
+- Vibecanvas host: own sandboxing, IPC, persistence, resource selection/binding, lifecycle coordination, and security boundaries.

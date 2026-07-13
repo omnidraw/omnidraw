@@ -5,6 +5,7 @@ import {
   ZActorEvent,
   ZActorResource,
   ZActorResourceDataPage,
+  ZActorResourceDataMutationResult,
   ZActorResourceScope,
   ZCreateActorResourceInput,
   ZDbBlobPreviewCellValue,
@@ -107,6 +108,16 @@ describe('actor resource contracts', () => {
         updatedAt: '2026-07-13T00:00:00.000Z',
       }],
       nextCursor: null,
+    }).success).toBe(false);
+    expect(ZActorResourceDataMutationResult.safeParse({
+      kind: 'secretStore',
+      entry: {
+        name: 'api-token',
+        value: 'must-not-cross-the-api',
+        revision: 2,
+        createdAt: '2026-07-13T00:00:00.000Z',
+        updatedAt: '2026-07-13T00:01:00.000Z',
+      },
     }).success).toBe(false);
   });
 

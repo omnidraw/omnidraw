@@ -1,5 +1,5 @@
 import type { TActorResourceKeyValue, TJson } from '@vibecanvas/service-db/model';
-import type { TActorResourceDataPage } from './resource-types';
+import type { TActorResourceDataMutationResult, TActorResourceDataPage } from './resource-types';
 
 const VALUE_PREVIEW_MAX_LENGTH = 4_096;
 
@@ -39,5 +39,34 @@ export function fnActorResourceDataPage(
       };
     }),
     nextCursor: page.nextCursor,
+  };
+}
+
+export function fnActorResourceDataMutationResult(
+  kind: 'kv' | 'secretStore',
+  entry: TActorResourceKeyValue,
+): TActorResourceDataMutationResult {
+  if (kind === 'secretStore') {
+    return {
+      kind,
+      entry: {
+        name: entry.key,
+        revision: entry.revision,
+        createdAt: entry.created_at,
+        updatedAt: entry.updated_at,
+      },
+    };
+  }
+  const value = fnJsonValuePreview(entry.value);
+  return {
+    kind,
+    entry: {
+      key: entry.key,
+      valuePreview: value.preview,
+      valueTruncated: value.truncated,
+      revision: entry.revision,
+      createdAt: entry.created_at,
+      updatedAt: entry.updated_at,
+    },
   };
 }

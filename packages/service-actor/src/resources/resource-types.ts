@@ -101,6 +101,16 @@ export type TActorResourceDataPage =
     readonly nextCursor: string | null;
   };
 
+export type TActorResourceDataMutationResult =
+  | {
+    readonly kind: 'kv';
+    readonly entry: TActorResourceKvDataEntry;
+  }
+  | {
+    readonly kind: 'secretStore';
+    readonly entry: TActorResourceSecretDataEntry;
+  };
+
 export type TActorStartAdmission = {
   readonly allowed: boolean;
   readonly hadBlocks: boolean;
