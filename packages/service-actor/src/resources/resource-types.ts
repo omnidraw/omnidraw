@@ -258,7 +258,7 @@ export type TDbColumnDefinition = {
 };
 
 export type TDbDraftOperation =
-  | { readonly kind: 'createTable'; readonly table: string; readonly columns: readonly TDbColumnDefinition[]; readonly withoutRowid?: boolean }
+  | { readonly kind: 'createTable'; readonly table: string; readonly columns: readonly TDbColumnDefinition[]; readonly strict?: boolean; readonly withoutRowid?: boolean }
   | { readonly kind: 'renameTable'; readonly table: string; readonly newName: string }
   | { readonly kind: 'dropTable'; readonly table: string }
   | { readonly kind: 'addColumn'; readonly table: string; readonly column: TDbColumnDefinition }

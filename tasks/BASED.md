@@ -134,6 +134,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B43](b/B43.md) - widgets: optimize Arrow sandbox dependency chain under TypeScript 7
 - [x]: [B44](b/B44.md) - ai wizard: preview loses mentioned resource after continuation prompt
 - [x]: [B45](b/B45.md) - image paste: pending local preview can persist without media upload
+- [x]: [B46](b/B46.md) - db resource: structured tables should default to SQLite STRICT mode
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
