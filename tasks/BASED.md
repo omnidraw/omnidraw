@@ -294,6 +294,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S79](s/S79.md) - migrate DOM tests to jsdom 29
 - [x]: [S80](s/S80.md) - migrate workspace to TypeScript 7
 - [ ]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
+- [ ]: [S82](s/S82.md) - replace the session-bound AI wizard with a shared multi-resource agent
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -327,11 +328,12 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 ## D eployable
 - [x]: [D1] - Generative UI with AI assits
 - [ ]: [D2] - Widget Resource Support
-- [ ]: [D3] - Actor system is attachable
-- [ ]: [D4] - AI Canvas Element
-- [ ]: [D5] - Widget filsystem resource
-- [ ]: [D6] - Gateway support
-- [ ]: [D7] - Auth support
+- [ ]: [D3] - Github Support
+- [ ]: [D4] - Actor system is attachable
+- [ ]: [D5] - AI Controlled Widget
+- [ ]: [D6] - Widget filsystem resource
+- [ ]: [D7] - Gateway support
+- [ ]: [D8] - Auth support
 
 ## Pragmatic Code Style
 
