@@ -1,8 +1,16 @@
-.page { height: 100%; overflow-y: auto; background: var(--background); color: var(--foreground); }
-.header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--card); }
+.page { min-width: 0; height: 100%; overflow: hidden; background: var(--background); color: var(--foreground); }
+.tabsRoot { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; height: 100%; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); background: var(--card); }
 .eyebrow { margin: 0 0 0.25rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 800; text-transform: uppercase; }
 .title { margin: 0; font-family: var(--font-display); font-size: 1.125rem; line-height: 1.4; }
 .headerActions, .actions { display: flex; align-items: center; gap: 0.5rem; }
+.tabsList { position: relative; display: flex; min-height: 2.25rem; padding: 0 1rem; border-bottom: 1px solid var(--border); background: var(--card); }
+.tab { position: relative; min-width: 6.5rem; padding: .5rem .75rem; color: var(--muted-foreground); font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
+.tab:hover, .tab[data-selected] { background: var(--accent); color: var(--foreground); }
+.tab:focus-visible { z-index: 1; outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
+.tabIndicator { position: absolute; bottom: -1px; height: 2px; background: var(--primary); transition: 120ms ease; }
+.tabContent { min-height: 0; overflow-y: auto; outline: none; }
+.tabContent:focus-visible { box-shadow: inset 0 0 0 2px var(--ring); }
 .content { display: grid; gap: 1rem; width: min(70rem, 100%); padding: 1.25rem; }
 .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); background: var(--card); }
 .summaryItem { min-width: 0; padding: 0.75rem; border-right: 1px solid var(--border); }
@@ -16,6 +24,13 @@
 .panelHeader { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.5rem; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); }
 .panelTitle { margin: 0; font-size: 0.8125rem; text-transform: uppercase; }
 .panelBody { padding: 0.75rem; }
+.dataToolbar { display: grid; grid-template-columns: minmax(12rem, 1fr) auto auto; align-items: end; gap: .5rem; padding: .75rem; border-bottom: 1px solid var(--border); }
+.searchField { min-width: 0; }
+.tableScroll { min-width: 0; overflow: auto; }
+.valuePreview { max-width: 36rem; }
+.valuePreview code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pagination { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; min-height: 3rem; padding: .5rem .75rem; border-top: 1px solid var(--border); }
+.pagination span { margin-right: auto; color: var(--muted-foreground); font-size: .6875rem; }
 .muted { margin: 0; color: var(--muted-foreground); font-size: 0.75rem; line-height: 1.5; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
 .table th, .table td { padding: 0.5rem 0.625rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
@@ -34,7 +49,9 @@
 .input, .textarea { width: 100%; padding: 0.5rem 0.625rem; border: 1px solid var(--input); border-radius: 0; background: var(--background); color: var(--foreground); font: inherit; font-size: 0.75rem; }
 .textarea { min-height: 9rem; resize: vertical; line-height: 1.5; }
 .twoColumn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.65fr); gap: 1rem; }
-.error { margin: 0; color: var(--destructive); font-size: 0.75rem; }
+.error { margin: 0; padding: .625rem .75rem; border-bottom: 1px solid var(--border); color: var(--destructive); font-size: 0.75rem; }
 .empty { padding: 1.5rem 0.75rem; text-align: center; }
 .code { margin: 0; padding: 0.625rem; overflow-x: auto; border: 1px solid var(--border); background: var(--background); font-size: 0.6875rem; white-space: pre-wrap; }
-@media (max-width: 56rem) { .summary { grid-template-columns: repeat(2, 1fr); } .summaryItem:nth-child(2) { border-right: 0; } .summaryItem:nth-child(-n+2) { border-bottom: 1px solid var(--border); } .twoColumn { grid-template-columns: 1fr; } }
+.dialogOverlay { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / .5); }
+.dialogContent { position: fixed; top: 50%; left: 50%; z-index: 50; display: grid; gap: 1rem; width: min(26rem, calc(100vw - 2rem)); padding: 1.25rem; transform: translate(-50%, -50%); border: 1px solid var(--border); background: var(--popover); color: var(--popover-foreground); box-shadow: 0 10px 24px rgb(0 0 0 / .18); }
+@media (max-width: 56rem) { .summary { grid-template-columns: repeat(2, 1fr); } .summaryItem:nth-child(2) { border-right: 0; } .summaryItem:nth-child(-n+2) { border-bottom: 1px solid var(--border); } .twoColumn { grid-template-columns: 1fr; } .dataToolbar { grid-template-columns: 1fr auto; } .searchField { grid-column: 1 / -1; } }

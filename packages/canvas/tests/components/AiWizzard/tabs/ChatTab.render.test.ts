@@ -128,7 +128,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}) {
+}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}, onApproveDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onRejectDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -143,6 +143,8 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     onPrompt: async () => {},
     onPreferenceChange,
     onInspectActor,
+    onApproveDbChange,
+    onRejectDbChange,
     settings,
   }), container)
 
@@ -218,6 +220,37 @@ describe("ChatTab rendered message history", () => {
     expect(message?.getAttribute("aria-expanded")).toBe("false")
     expect(message?.textContent).toContain("...")
     expect(message?.textContent).not.toContain("line 6")
+  })
+
+  it("requires a prominent risk checkbox before approving exact database SQL", async () => {
+    const proposal = {
+      id: "proposal-1",
+      resourceId: "db-1",
+      resourceName: "Notes Database",
+      sql: "ALTER TABLE notes ADD COLUMN title TEXT;",
+      reason: "Store note titles.",
+      status: "pending" as const,
+    }
+    const onApprove = vi.fn(async () => ({ ...proposal, status: "approved" as const }))
+    const root = renderChatTab(undefined, [{
+      role: "toolResult",
+      toolCallId: "call-db",
+      toolName: "vc_propose_db_change",
+      content: [{ type: "text", text: "No SQL was executed." }],
+      details: { kind: "db-change-proposal", proposal },
+    }], () => {}, () => {}, onApprove)
+    const checkbox = root.querySelector<HTMLInputElement>(".ai-chat-db-proposal__risk input")
+    const approve = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-db-proposal__actions button"))
+      .find((button) => button.textContent === "Approve database change")
+
+    expect(root.textContent).toContain(proposal.sql)
+    expect(checkbox).not.toBeNull()
+    expect(approve?.disabled).toBe(true)
+    checkbox?.click()
+    expect(approve?.disabled).toBe(false)
+    approve?.click()
+    await vi.waitFor(() => expect(onApprove).toHaveBeenCalledWith("proposal-1"))
+    expect(root.textContent).toContain("approved")
   })
 
   it("forwards vertical table wheel gestures to the chat scroller", () => {

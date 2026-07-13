@@ -158,6 +158,23 @@ function getEditorText(view: EditorView | undefined) {
   }).trim()
 }
 
+export function getEditorMentions(view: EditorView | undefined): TChatComposerMention[] {
+  if (!view) return []
+
+  const mentions: TChatComposerMention[] = []
+  view.state.doc.descendants((node) => {
+    if (node.type.name !== "mention") return true
+    const mention = {
+      id: String(node.attrs.id),
+      label: String(node.attrs.label),
+      kind: String(node.attrs.kind),
+    }
+    if (!mentions.some((existing) => existing.id === mention.id)) mentions.push(mention)
+    return false
+  })
+  return mentions
+}
+
 function hasEditorContent(view: EditorView | undefined) {
   if (!view) {
     return false
@@ -275,7 +292,6 @@ export function ChatComposer(props: TChatComposerProps) {
   let cleanupDocumentPointerdown: (() => void) | undefined
   const [suggestion, setSuggestion] = createSignal<TPromptSuggestion>()
   const [activeIndex, setActiveIndex] = createSignal(0)
-  const [mentions, setMentions] = createSignal<TChatComposerMention[]>([])
   const [command, setCommand] = createSignal<TChatComposerCommand>()
   const [images, setImages] = createSignal<TChatComposerImage[]>([])
   const [hasText, setHasText] = createSignal(false)
@@ -449,7 +465,6 @@ export function ChatComposer(props: TChatComposerProps) {
       tr.setSelection(TextSelection.near(tr.doc.resolve(activeSuggestion.from + node.nodeSize + 1)))
 
       view.dispatch(tr.scrollIntoView())
-      setMentions((current) => current.some((existing) => existing.id === mention.id) ? current : [...current, mention])
     } else {
       const nextCommand = item as TChatComposerCommand
       view.dispatch(view.state.tr.delete(activeSuggestion.from, activeSuggestion.to).scrollIntoView())
@@ -477,7 +492,7 @@ export function ChatComposer(props: TChatComposerProps) {
 
     const value: TChatComposerSubmit = {
       text,
-      mentions: mentions(),
+      mentions: getEditorMentions(view),
       command: command(),
       images: currentImages,
       model: selectedModel(),
@@ -486,7 +501,6 @@ export function ChatComposer(props: TChatComposerProps) {
 
     props.onSubmit?.(value)
     setCommand(undefined)
-    setMentions([])
     setImages([])
     currentImages.forEach((image) => URL.revokeObjectURL(image.previewUrl))
     clearEditor()

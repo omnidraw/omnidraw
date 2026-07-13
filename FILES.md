@@ -73,7 +73,22 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/components/ui/scroll-area.tsx](apps/frontend/src/components/ui/scroll-area.tsx) |  |
 | [apps/frontend/src/components/ui/Toast.module.css](apps/frontend/src/components/ui/Toast.module.css) |  |
 | [apps/frontend/src/components/ui/Toast.tsx](apps/frontend/src/components/ui/Toast.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/ConfirmActionDialog.tsx](apps/frontend/src/feature/db-resource/components/ConfirmActionDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/CoordinatedOperationDialog.tsx](apps/frontend/src/feature/db-resource/components/CoordinatedOperationDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/LiveSqlApprovalDialog.tsx](apps/frontend/src/feature/db-resource/components/LiveSqlApprovalDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/ObjectInspector.tsx](apps/frontend/src/feature/db-resource/components/ObjectInspector.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/RowEditorDialog.tsx](apps/frontend/src/feature/db-resource/components/RowEditorDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/components/StructureChangeDialog.tsx](apps/frontend/src/feature/db-resource/components/StructureChangeDialog.tsx) |  |
+| [apps/frontend/src/feature/db-resource/DbResourcePage.module.css](apps/frontend/src/feature/db-resource/DbResourcePage.module.css) |  |
+| [apps/frontend/src/feature/db-resource/DbResourcePage.tsx](apps/frontend/src/feature/db-resource/DbResourcePage.tsx) |  |
+| [apps/frontend/src/feature/db-resource/fn.db-resource.ts](apps/frontend/src/feature/db-resource/fn.db-resource.ts) |  |
+| [apps/frontend/src/feature/db-resource/fx.db-resource.ts](apps/frontend/src/feature/db-resource/fx.db-resource.ts) |  |
+| [apps/frontend/src/feature/db-resource/tx.db-resource.ts](apps/frontend/src/feature/db-resource/tx.db-resource.ts) |  |
+| [apps/frontend/src/feature/db-resource/types.ts](apps/frontend/src/feature/db-resource/types.ts) |  |
+| [apps/frontend/src/feature/resource/GenericResourcePage.tsx](apps/frontend/src/feature/resource/GenericResourcePage.tsx) |  |
+| [apps/frontend/src/feature/sidebar/components/CONSTANTS.ts](apps/frontend/src/feature/sidebar/components/CONSTANTS.ts) |  |
 | [apps/frontend/src/feature/sidebar/components/CreateCanvasDialog.tsx](apps/frontend/src/feature/sidebar/components/CreateCanvasDialog.tsx) |  |
+| [apps/frontend/src/feature/sidebar/components/CreateResourceDialog.tsx](apps/frontend/src/feature/sidebar/components/CreateResourceDialog.tsx) |  |
 | [apps/frontend/src/feature/sidebar/components/DeleteCanvasDialog.tsx](apps/frontend/src/feature/sidebar/components/DeleteCanvasDialog.tsx) |  |
 | [apps/frontend/src/feature/sidebar/components/index.ts](apps/frontend/src/feature/sidebar/components/index.ts) |  |
 | [apps/frontend/src/feature/sidebar/components/RenameDialog.tsx](apps/frontend/src/feature/sidebar/components/RenameDialog.tsx) |  |
@@ -88,6 +103,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
 | [apps/frontend/src/index.tsx](apps/frontend/src/index.tsx) |  |
 | [apps/frontend/src/pages/canvas.tsx](apps/frontend/src/pages/canvas.tsx) |  |
+| [apps/frontend/src/pages/resource.module.css](apps/frontend/src/pages/resource.module.css) |  |
+| [apps/frontend/src/pages/resource.tsx](apps/frontend/src/pages/resource.tsx) |  |
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
 | [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | Automerge Client Service |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
@@ -120,6 +137,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
 | [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
 | [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
+| [apps/web/.astro/dev.log](apps/web/.astro/dev.log) |  |
 | [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
 | [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
@@ -209,6 +227,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
 | [packages/api-agent/src/api.wizzard.cancel.ts](packages/api-agent/src/api.wizzard.cancel.ts) |  |
 | [packages/api-agent/src/api.wizzard.connect.ts](packages/api-agent/src/api.wizzard.connect.ts) |  |
+| [packages/api-agent/src/api.wizzard.dbChange.approve.ts](packages/api-agent/src/api.wizzard.dbChange.approve.ts) |  |
+| [packages/api-agent/src/api.wizzard.dbChange.reject.ts](packages/api-agent/src/api.wizzard.dbChange.reject.ts) |  |
 | [packages/api-agent/src/api.wizzard.draftActor.inspect.ts](packages/api-agent/src/api.wizzard.draftActor.inspect.ts) |  |
 | [packages/api-agent/src/api.wizzard.draftActor.reload.ts](packages/api-agent/src/api.wizzard.draftActor.reload.ts) |  |
 | [packages/api-agent/src/api.wizzard.draftActor.reset.ts](packages/api-agent/src/api.wizzard.draftActor.reset.ts) |  |
@@ -664,7 +684,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/resources/ActorResourceError.ts](packages/service-actor/src/resources/ActorResourceError.ts) |  |
 | [packages/service-actor/src/resources/ActorResourceManager.ts](packages/service-actor/src/resources/ActorResourceManager.ts) |  |
 | [packages/service-actor/src/resources/DbResource.ts](packages/service-actor/src/resources/DbResource.ts) |  |
-| [packages/service-actor/src/resources/DbResourceMigrationCoordinator.ts](packages/service-actor/src/resources/DbResourceMigrationCoordinator.ts) |  |
+| [packages/service-actor/src/resources/DbResourceCoordinator.ts](packages/service-actor/src/resources/DbResourceCoordinator.ts) |  |
+| [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
 | [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
 | [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) |  |
@@ -694,7 +715,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/tx.session-candidate.ts](packages/service-agent/src/core/tx.session-candidate.ts) |  |
 | [packages/service-agent/src/core/tx.validate-widget-files.ts](packages/service-agent/src/core/tx.validate-widget-files.ts) |  |
 | [packages/service-agent/src/core/types.ts](packages/service-agent/src/core/types.ts) |  |
-| [packages/service-agent/src/fx.db-schema-context.ts](packages/service-agent/src/fx.db-schema-context.ts) |  |
 | [packages/service-agent/src/index.ts](packages/service-agent/src/index.ts) |  |
 | [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
@@ -708,9 +728,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/prompts/prompt.widget-implementation.md](packages/service-agent/src/prompts/prompt.widget-implementation.md) |  |
 | [packages/service-agent/src/tools/CONSTANTS.ts](packages/service-agent/src/tools/CONSTANTS.ts) |  |
 | [packages/service-agent/src/tools/fn.candidate.ts](packages/service-agent/src/tools/fn.candidate.ts) |  |
-| [packages/service-agent/src/tools/fn.phase-tools.ts](packages/service-agent/src/tools/fn.phase-tools.ts) |  |
 | [packages/service-agent/src/tools/fn.result.ts](packages/service-agent/src/tools/fn.result.ts) |  |
+| [packages/service-agent/src/tools/phase-tools.ts](packages/service-agent/src/tools/phase-tools.ts) |  |
+| [packages/service-agent/src/tools/resource-bindings.ts](packages/service-agent/src/tools/resource-bindings.ts) |  |
 | [packages/service-agent/src/tools/tool.approve-actor-candidate.ts](packages/service-agent/src/tools/tool.approve-actor-candidate.ts) |  |
+| [packages/service-agent/src/tools/tool.inspect-resource.ts](packages/service-agent/src/tools/tool.inspect-resource.ts) |  |
+| [packages/service-agent/src/tools/tool.list-resources.ts](packages/service-agent/src/tools/tool.list-resources.ts) |  |
+| [packages/service-agent/src/tools/tool.propose-db-change.ts](packages/service-agent/src/tools/tool.propose-db-change.ts) |  |
 | [packages/service-agent/src/tools/tool.publish-widget.ts](packages/service-agent/src/tools/tool.publish-widget.ts) |  |
 | [packages/service-agent/src/tools/tool.set-actor-candidate.ts](packages/service-agent/src/tools/tool.set-actor-candidate.ts) |  |
 | [packages/service-agent/src/tools/tool.validate-widget-files.ts](packages/service-agent/src/tools/tool.validate-widget-files.ts) |  |
@@ -767,6 +791,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql](packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql](packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor-resource.ts](packages/service-db/src/DbServiceTurso/tx.actor-resource.ts) |  |

@@ -1,4 +1,4 @@
-import type { TChatComposerImage, TChatComposerModel, TChatComposerPreferenceChange, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
+import type { TChatComposerImage, TChatComposerMention, TChatComposerModel, TChatComposerPreferenceChange, TChatComposerSubmit, TChatComposerThinkingLevel, TChatPromptImage } from "../ChatComposer/interface"
 import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
@@ -38,11 +38,24 @@ interface IProps {
   draftText?: string
   onDraftTextChange?: (text: string) => void
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
-  onPrompt: (args: { text: string; images: TChatPromptImage[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
+  mentions?: TChatComposerMention[]
+  onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
+  onApproveDbChange: (proposalId: string) => Promise<TDbChangeProposal>
+  onRejectDbChange: (proposalId: string) => Promise<TDbChangeProposal>
   onCancel: () => void
   onNewWidget: () => void
   onEditExistingWidget: () => void
   onInspectActor: () => void
+}
+
+type TDbChangeProposal = {
+  id: string
+  resourceId: string
+  resourceName: string
+  sql: string
+  reason: string
+  status: "pending" | "approved" | "rejected"
+  warnings?: string[]
 }
 
 function getMessageKind(role: string) {
@@ -100,6 +113,25 @@ function isSetActorCandidateToolResult(message: unknown) {
 function isToolResultMessage(message: unknown) {
   const object = getMessageObject(message)
   return object?.role === "toolResult"
+}
+
+function getDbChangeProposal(message: unknown): TDbChangeProposal | undefined {
+  const object = getMessageObject(message)
+  const details = getMessageObject(object?.details)
+  const proposal = getMessageObject(details?.proposal)
+  if (details?.kind !== "db-change-proposal" || typeof proposal?.id !== "string") return undefined
+  if (typeof proposal.resourceId !== "string" || typeof proposal.resourceName !== "string") return undefined
+  if (typeof proposal.sql !== "string" || typeof proposal.reason !== "string") return undefined
+  if (proposal.status !== "pending" && proposal.status !== "approved" && proposal.status !== "rejected") return undefined
+  return {
+    id: proposal.id,
+    resourceId: proposal.resourceId,
+    resourceName: proposal.resourceName,
+    sql: proposal.sql,
+    reason: proposal.reason,
+    status: proposal.status,
+    warnings: Array.isArray(proposal.warnings) ? proposal.warnings.filter((warning): warning is string => typeof warning === "string") : undefined,
+  }
 }
 
 function truncateTextLines(text: string, lineLimit: number) {
@@ -422,13 +454,72 @@ function AssistantMessageParts(props: { parts: TChatMessagePart[] }) {
   )
 }
 
-function ChatHistoryMessage(props: { message: unknown; onInspectActor: () => void }) {
+function DbChangeProposalCard(props: {
+  proposal: TDbChangeProposal
+  onApprove: (proposalId: string) => Promise<TDbChangeProposal>
+  onReject: (proposalId: string) => Promise<TDbChangeProposal>
+}) {
+  const [confirmedRisk, setConfirmedRisk] = createSignal(false)
+  const [proposal, setProposal] = createSignal(props.proposal)
+  const [isResolving, setIsResolving] = createSignal(false)
+  const [error, setError] = createSignal<string>()
+
+  const resolve = async (decision: "approve" | "reject") => {
+    if (isResolving() || (decision === "approve" && !confirmedRisk())) return
+    setIsResolving(true)
+    setError(undefined)
+    try {
+      setProposal(await (decision === "approve" ? props.onApprove(proposal().id) : props.onReject(proposal().id)))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setIsResolving(false)
+    }
+  }
+
+  return (
+    <section class="ai-chat-db-proposal" aria-label="Database change approval" onClick={(event) => event.stopPropagation()}>
+      <header>
+        <strong>Database change requires your approval</strong>
+        <span class={`ai-chat-db-proposal__status ai-chat-db-proposal__status--${proposal().status}`}>{proposal().status}</span>
+      </header>
+      <p><strong>{proposal().resourceName}</strong> — {proposal().reason}</p>
+      <pre><code>{proposal().sql}</code></pre>
+      <Show when={proposal().status === "pending"}>
+        <label class="ai-chat-db-proposal__risk">
+          <input
+            type="checkbox"
+            checked={confirmedRisk()}
+            onChange={(event) => setConfirmedRisk(event.currentTarget.checked)}
+          />
+          <span>I reviewed the exact SQL and understand the coordinated operation and data-loss risk.</span>
+        </label>
+        <div class="ai-chat-db-proposal__actions">
+          <button type="button" disabled={isResolving()} onClick={() => void resolve("reject")}>Reject</button>
+          <button type="button" disabled={!confirmedRisk() || isResolving()} onClick={() => void resolve("approve")}>Approve database change</button>
+        </div>
+      </Show>
+      <Show when={(proposal().warnings?.length ?? 0) > 0}>
+        <ul><For each={proposal().warnings}>{(warning) => <li>{warning}</li>}</For></ul>
+      </Show>
+      <Show when={error()}>{(message) => <p class="ai-chat-db-proposal__error" role="alert">{message()}</p>}</Show>
+    </section>
+  )
+}
+
+function ChatHistoryMessage(props: {
+  message: unknown
+  onInspectActor: () => void
+  onApproveDbChange: (proposalId: string) => Promise<TDbChangeProposal>
+  onRejectDbChange: (proposalId: string) => Promise<TDbChangeProposal>
+}) {
   const [isExpanded, setIsExpanded] = createSignal(false)
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
   const kind = () => getMessageKind(role())
   const showInspectActor = () => isSetActorCandidateToolResult(props.message)
+  const dbChangeProposal = () => getDbChangeProposal(props.message)
   const isToolResult = () => isToolResultMessage(props.message)
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
   const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
@@ -438,7 +529,7 @@ function ChatHistoryMessage(props: { message: unknown; onInspectActor: () => voi
     }
   }
   const onMessageKeyDown = (event: KeyboardEvent) => {
-    if (!isToolResult() || (event.key !== "Enter" && event.key !== " ")) {
+    if (event.target !== event.currentTarget || !isToolResult() || (event.key !== "Enter" && event.key !== " ")) {
       return
     }
 
@@ -472,6 +563,9 @@ function ChatHistoryMessage(props: { message: unknown; onInspectActor: () => voi
         <div class="ai-chat-history__actions" onClick={(event) => event.stopPropagation()}>
           <button type="button" onClick={props.onInspectActor}>Inspect Actor</button>
         </div>
+      </Show>
+      <Show when={dbChangeProposal()}>
+        {(proposal) => <DbChangeProposalCard proposal={proposal()} onApprove={props.onApproveDbChange} onReject={props.onRejectDbChange} />}
       </Show>
     </article>
   )
@@ -520,7 +614,13 @@ export function ChatTab(props: IProps) {
       const images = await encodePromptImages(submit.images)
       if (!text && images.length === 0) return
 
-      await props.onPrompt({ text, images, model: submit.model, thinkingLevel: submit.thinkingLevel })
+      await props.onPrompt({
+        text,
+        images,
+        resourceIds: submit.mentions.map((mention) => mention.id),
+        model: submit.model,
+        thinkingLevel: submit.thinkingLevel,
+      })
     })().catch((error) => {
       console.error(error)
     })
@@ -581,7 +681,12 @@ export function ChatTab(props: IProps) {
           <div class="ai-chat-history" aria-live="polite">
             <For each={props.messageHistory}>
               {(message) => (
-                <ChatHistoryMessage message={message} onInspectActor={props.onInspectActor} />
+                <ChatHistoryMessage
+                  message={message}
+                  onInspectActor={props.onInspectActor}
+                  onApproveDbChange={props.onApproveDbChange}
+                  onRejectDbChange={props.onRejectDbChange}
+                />
               )}
             </For>
           </div>
@@ -592,6 +697,8 @@ export function ChatTab(props: IProps) {
       </div>
 
       <ChatComposer
+        placeholder="Ask for a widget. Type @ to mention a resource"
+        mentions={props.mentions}
         models={props.settings?.models}
         defaultModel={props.aiWizardPreference?.model?.modelId ?? props.settings?.defaultModel}
         defaultProvider={props.aiWizardPreference?.model?.provider ?? props.settings?.defaultProvider}

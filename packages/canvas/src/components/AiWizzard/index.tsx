@@ -12,6 +12,7 @@ import { ToolTab } from "./tabs/ToolTab"
 import "./index.css"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
 import type { TChatPromptImage } from "./ChatComposer/interface"
+import type { TChatComposerMention } from "./ChatComposer/interface"
 
 type TAiWizardThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
 type TAiWizardPreference = {
@@ -43,6 +44,12 @@ type TPublishedWidgetListItem = {
     version?: string
     description: string | null
     manifest_path: string
+}
+type TAiWizardResource = {
+    id: string
+    kind: "kv" | "secretStore" | "db"
+    name: string
+    status: "created" | "provisioning" | "ready" | "migrating" | "error" | "deleting"
 }
 
 function isAgentMessageRecord(message: unknown): message is TAgentMessageRecord {
@@ -162,6 +169,10 @@ export function AiWizzard(props: IProps) {
     const [toolGroupState] = createResource(() => props.apiService.api.tool.groups.list().then(([err, data]) => {
         if (err) return []
         return data.map((group) => group.name)
+    }))
+    const [resourceState] = createResource(() => props.apiService.api.actors.resources.list({}).then(([err, data]) => {
+        if (err) return []
+        return data as TAiWizardResource[]
     }))
     const [manifestState, setManifestState] = createSignal<TAiWizardManifestState>({
         manifest: null,
@@ -317,7 +328,7 @@ export function AiWizzard(props: IProps) {
         props.onAiWizardPreferenceChange?.(nextPreference)
     }
 
-    const prompt = async (args: { text: string; images: TChatPromptImage[]; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
+    const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
         const currentSessionId = sessionId()
         setIsRunning(true)
         setIsCanceling(false)
@@ -334,6 +345,7 @@ export function AiWizzard(props: IProps) {
             sessionId: currentSessionId,
             text: args.text,
             images: args.images,
+            resourceIds: args.resourceIds,
             model: args.model ? {
                 provider: args.model.provider,
                 modelId: args.model.id,
@@ -470,6 +482,32 @@ export function AiWizzard(props: IProps) {
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
     const activeTab = createMemo(() => selectedTab() ?? (aiAuthenticated() ? "chat" : "settings"))
+    const resourceMentions = createMemo<TChatComposerMention[]>(() => (resourceState.latest ?? []).map((resource) => ({
+        id: resource.id,
+        label: resource.name,
+        kind: resource.kind === "db" ? "Database" : resource.kind === "kv" ? "Key-value" : "Secret store",
+    })))
+
+    const approveDbChange = async (proposalId: string) => {
+        const [err, result] = await props.apiService.api.agent.wizzard.dbChange.approve({
+            widgetId: props.id,
+            sessionId: sessionId(),
+            proposalId,
+            confirmedRisk: true,
+        })
+        if (err) throw new Error(err.message)
+        return result
+    }
+
+    const rejectDbChange = async (proposalId: string) => {
+        const [err, result] = await props.apiService.api.agent.wizzard.dbChange.reject({
+            widgetId: props.id,
+            sessionId: sessionId(),
+            proposalId,
+        })
+        if (err) throw new Error(err.message)
+        return result
+    }
 
     return (
         <div class="ai-wizzard-shell" classList={{ "ai-wizzard-shell--actor": activeTab() === "actor" }}>
@@ -491,9 +529,12 @@ export function AiWizzard(props: IProps) {
                         isRunning={isRunning()}
                         isCanceling={isCanceling()}
                         draftText={chatDraftText()}
+                        mentions={resourceMentions()}
                         onDraftTextChange={setChatDraftText}
                         onPreferenceChange={updateAiWizardPreference}
                         onPrompt={prompt}
+                        onApproveDbChange={approveDbChange}
+                        onRejectDbChange={rejectDbChange}
                         onCancel={() => void cancelPrompt()}
                         onNewWidget={newWidget}
                         onEditExistingWidget={openEditPicker}

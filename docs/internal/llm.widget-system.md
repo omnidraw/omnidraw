@@ -279,7 +279,7 @@ For actor creation before UI send, also read:
 - `actor.states[state].activity` for one fixed-delay, non-overlapping state activity
 - `actor.inputMsgSchema`
 - `actor.outputMsgSchema`
-- optional `actor.resources`, a definition-level map of named `kv`, `secretStore`, and versioned `db` requirements
+- optional `actor.resources`, a definition-level map of named `kv`, `secretStore`, and schema-agnostic `db` requirements
 - `actor.relFunctionPath`
 - `widget.relWidgetDir`
 - `widget.tool`
@@ -312,6 +312,8 @@ The active model in `packages/service-db/src/model.ts` contains:
 
 Actor resources are neutral shared infrastructure. A manifest declares stable named slots and permissions; it never contains a concrete resource ID, local path, provider handle, or credential. Users bind a definition slot to a catalog resource, and every actor instance of that definition resolves the same binding. Multiple definitions may intentionally bind the same resource.
 
+Database INTEGER cells cross the actor resource boundary as `bigint` to preserve SQLite's signed 64-bit range. Because actor data and messages are JSON, guest code must convert them to decimal strings or explicitly range-check before converting to numbers.
+
 Effective access is the intersection of manifest scope, the persisted binding restriction, and the function-class ceiling:
 
 | Function class | Resource access |
@@ -333,7 +335,6 @@ Manifest examples:
       "kind": "db",
       "required": true,
       "scope": ["read", "write"],
-      "schema": { "id": "notes", "version": 2 },
       "operations": {
         "listNotes": { "effect": "read", "sql": "SELECT id, title FROM notes", "result": "rows" }
       }
@@ -346,11 +347,13 @@ Manifest examples:
 
 `SecretStoreResource` stores string values on the shared resource-key-value persistence layer but has a distinct public interface and kind. Values are plaintext at rest in this version. `list`, write, delete, conflict, control responses, logs, and ordinary errors omit plaintext values; an explicit `get` returns the value to the trusted actor child. This is accidental-disclosure hygiene, not encryption or a hostile-process boundary.
 
-`DbResource` is a separate host-managed local database, never Vibecanvas's application `DbServiceTurso`. DB slots declare an exact schema ID/version, named operations, and optional `arbitrarySql` (false by default). `db_resource_configurations` is authoritative for a resource's schema ID and applied/target versions; the physical database's `_vibecanvas_migrations` table is authoritative for its actual migration history. Version 0 means no host migrations have been applied, but the schema must still be published. Named parameters are bound rather than interpolated. `fx` can invoke reads/query when permitted; only `tx` can execute writes. Schema publication, migration, physical paths, and native handles are never actor capabilities.
+`DbResource` is a separate host-managed local database, never Vibecanvas's application `DbServiceTurso`. DB slots are schema-agnostic: they declare permissions, named operations, and optional `arbitrarySql` (false by default), but no schema ID, version, generation, compatibility range, or migration lineage. Named parameters are bound rather than interpolated. `fx` can invoke reads/query when permitted; only `tx` can execute writes. Structure drafting/apply coordination, physical paths, and native handles are never actor capabilities.
+
+Guest SQL is an ordinary SQLite-compatible language contract: tables, indexes, views, triggers, parameters, and transactions are supported. Turso is a host-private implementation detail. Guest code must not depend on Turso-only SQL or PRAGMAs, custom types, materialized views, extensions, remote synchronization, MVCC, or CDC. The host may replace its internal SQLite-compatible engine without changing actor APIs.
 
 Arbitrary `query(sql, parameters?)` accepts one row-producing statement. Arbitrary `execute(sql, parameters?)` accepts one write-capable statement, while `execute(operations)` accepts a bounded non-empty array of individually parameterized statements. An operation array runs in order through one IPC call, binding resolution, physical connection, and serialized resource write lane. The caller controls transaction flow by including `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, `ROLLBACK TO`, and `RELEASE`; arrays are not automatically atomic, and earlier operations may commit when no explicit transaction was opened. Execution stops on failure and the host defensively rolls back a transaction left open. Named manifest operations remain one statement.
 
-Arbitrary SQL remains a trusted-actor feature. The current Turso adapter has no proven read-only authorizer, and SQLite can report a mutating `INSERT`/`UPDATE`/`DELETE … RETURNING` statement as row-producing; therefore the `query` surface is not a hostile-code read boundary. The host still enforces declared/effective permissions, bounded actor statements/operation arrays, parameter/result/time limits, and rejects file-control/extension-loading forms such as `ATTACH`, `DETACH`, `VACUUM INTO`, and `load_extension`. These lexical guards reduce accidental host-path access but are not presented as a general SQL sandbox.
+Arbitrary SQL remains a trusted-actor feature. The host adapter has no proven read-only authorizer, and SQLite can report a mutating `INSERT`/`UPDATE`/`DELETE … RETURNING` statement as row-producing; therefore the `query` surface is not a hostile-code read boundary. The host still enforces declared/effective permissions, bounded actor statements/operation arrays, parameter/result/time limits, and rejects file-control/extension-loading forms such as `ATTACH`, `DETACH`, `VACUUM INTO`, and `load_extension`. These lexical guards reduce accidental host-path access but are not presented as a general SQL sandbox.
 
 ### Canvas document element
 
@@ -483,7 +486,7 @@ Current exports:
 - `defineFn()`, `defineFx()`, `defineTx()` helpers for typing.
 - `TActorFn`, `TActorFx`, `TActorTx` function types.
 - `TFnPortal`, `TFxPortal`, `TTxPortal` portal types.
-- Manifest preparation types for resource kinds, permission scopes, DB schemas, named operations, and named parameters.
+- Manifest preparation types for resource kinds, permission scopes, schema-agnostic DB slots, named operations, and named parameters.
 - `portal.resources.kv(slot)`, `portal.resources.secretStore(slot)`, and `portal.resources.db(slot)` on effect-capable portals. `TFnPortal` intentionally has no `resources` field.
 
 Potential later exports:

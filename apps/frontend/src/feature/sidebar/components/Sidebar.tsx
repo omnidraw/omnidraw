@@ -57,7 +57,6 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const [resourcesExpanded, setResourcesExpanded] = createSignal(true);
   const [createResourceDialogOpen, setCreateResourceDialogOpen] = createSignal(false);
   const [resources, setResources] = createSignal<Array<{ id: string; name: string; kind: "kv" | "secretStore" | "db"; status: string }>>([]);
-  const [dbSchemas, setDbSchemas] = createSignal<Array<{ id: string; name: string; version: number }>>([]);
   const [toolGroups, setToolGroups] = createSignal<TToolGroupValue[]>([]);
   const [groupDialogOpen, setGroupDialogOpen] = createSignal(false);
   const [selectedGroup, setSelectedGroup] = createSignal<TToolGroupValue | null>(null);
@@ -94,45 +93,17 @@ const Sidebar: Component<SidebarProps> = (props) => {
     setResources(result);
   };
 
-  const loadDbSchemas = async () => {
-    const [schemaError, schemas] = await orpcWebsocketService.apiService.api.actors.dbSchemas.list({ status: "published" });
-    if (schemaError) return;
-    const options = await Promise.all(schemas.map(async (schema) => {
-      const [migrationError, migrations] = await orpcWebsocketService.apiService.api.actors.dbMigrations.list({ schemaId: schema.id, status: "published" });
-      return { id: schema.id, name: schema.name, version: migrationError ? 0 : Math.max(0, ...migrations.map((migration) => migration.version)) };
-    }));
-    setDbSchemas(options);
-  };
-
   onMount(() => {
     void loadToolGroups();
     void loadWidgetGroups();
     void loadResources();
-    void loadDbSchemas();
     const handleResourceCatalogChange = () => void loadResources();
     window.addEventListener(RESOURCE_CATALOG_CHANGED_EVENT, handleResourceCatalogChange);
     onCleanup(() => window.removeEventListener(RESOURCE_CATALOG_CHANGED_EVENT, handleResourceCatalogChange));
   });
 
-  const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string; db?: { schemaId: string; version: number }; createSchema?: boolean }) => {
-    if (value.kind === "db" && value.db && value.createSchema) {
-      const [createSchemaError] = await orpcWebsocketService.apiService.api.actors.dbSchemas.create({
-        id: value.db.schemaId,
-        name: value.name,
-      });
-      if (createSchemaError) {
-        showErrorToast(createSchemaError.message);
-        return false;
-      }
-      const [publishSchemaError] = await orpcWebsocketService.apiService.api.actors.dbSchemas.publish({ id: value.db.schemaId });
-      if (publishSchemaError) {
-        showErrorToast(publishSchemaError.message);
-        return false;
-      }
-      await loadDbSchemas();
-    }
-    const { createSchema: _createSchema, ...resourceInput } = value;
-    const [err] = await orpcWebsocketService.apiService.api.actors.resources.create(resourceInput);
+  const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string }) => {
+    const [err] = await orpcWebsocketService.apiService.api.actors.resources.create(value);
     if (err) {
       showErrorToast(err.message);
       return false;
@@ -395,7 +366,6 @@ const Sidebar: Component<SidebarProps> = (props) => {
       <CreateResourceDialog
         open={createResourceDialogOpen()}
         onOpenChange={setCreateResourceDialogOpen}
-        schemas={dbSchemas()}
         onCreate={handleCreateResource}
       />
 

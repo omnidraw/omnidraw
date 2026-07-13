@@ -419,6 +419,101 @@
   box-shadow: 0 0 0 2px var(--ring);
 }
 
+.ai-chat-db-proposal {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  border: 2px solid #ff7a2f;
+  background: color-mix(in srgb, #ff7a2f 8%, var(--card));
+  cursor: default;
+  padding: 14px;
+}
+
+.ai-chat-db-proposal header,
+.ai-chat-db-proposal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-chat-db-proposal p,
+.ai-chat-db-proposal pre,
+.ai-chat-db-proposal ul {
+  margin: 0;
+}
+
+.ai-chat-db-proposal pre {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: var(--background);
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.ai-chat-db-proposal__status {
+  border: 1px solid currentColor;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 7px;
+  text-transform: uppercase;
+}
+
+.ai-chat-db-proposal__status--approved { color: #138a42; }
+.ai-chat-db-proposal__status--rejected,
+.ai-chat-db-proposal__error { color: var(--destructive); }
+
+.ai-chat-db-proposal__risk {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 2px solid var(--foreground);
+  background: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.ai-chat-db-proposal__risk input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: #ff7a2f;
+}
+
+.ai-chat-db-proposal__risk:focus-within {
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.ai-chat-db-proposal__actions {
+  justify-content: flex-end;
+}
+
+.ai-chat-db-proposal__actions button {
+  min-height: 38px;
+  border: 2px solid var(--foreground);
+  background: var(--background);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.ai-chat-db-proposal__actions button:last-child {
+  border-color: #ff7a2f;
+  background: #ff7a2f;
+  color: #111;
+}
+
+.ai-chat-db-proposal__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .ai-chat-history__parts--assistant {
   gap: 12px;
 }
