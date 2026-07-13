@@ -1,6 +1,7 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
+import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
 import { fxLatestWidgetResourceSelectionRecord } from '../core/fx.session-candidate';
@@ -22,17 +23,11 @@ export function createPublishWidgetTool(args: TCreatePublishWidgetToolArgs): TTo
     name: 'vc_publish_widget',
     label: 'Publish Widget',
     description: 'Publish the generated widget draft to the Vibecanvas widgets directory and reload the actor service definitions.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        confirm: {
-          type: 'boolean',
-          description: 'Must be true to publish generated files.',
-        },
-      },
-      required: ['confirm'],
-    } as any,
+    parameters: Type.Object({
+      confirm: Type.Boolean({
+        description: 'Must be true to publish generated files.',
+      }),
+    }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (params.confirm !== true) {
         return fnToolError('Publish requires confirm: true.', { published: false });

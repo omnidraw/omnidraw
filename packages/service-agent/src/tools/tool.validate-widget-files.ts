@@ -15,7 +15,7 @@ export function createValidateWidgetFilesTool(args: TCreateValidateWidgetFilesTo
     name: 'vc_validate_widget_files',
     label: 'Validate Widget Files',
     description: 'Validate generated Vibecanvas widget draft files, including vibecanvas.json, actor registry, and required widget files.',
-    parameters: OBJECT_PARAMETER_SCHEMA as any,
+    parameters: OBJECT_PARAMETER_SCHEMA,
     async execute() {
       const validation = await txValidateWidgetFiles({ readdir, readFile, join, relative }, { cwd: args.cwd });
       const status = validation.ok ? 'valid' : 'invalid';

@@ -1,4 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { fxLatestWidgetResourceSelectionRecord } from '../core/fx.session-candidate';
 import { txAppendWidgetDbChangeProposalRecord } from '../core/tx.session-candidate';
 import { fnToolError, fnToolSuccess } from './fn.result';
@@ -16,16 +17,23 @@ export function createProposeDbChangeTool(args: TCreateProposeDbChangeToolArgs):
     name: 'vc_propose_db_change',
     label: 'Propose Database Change',
     description: 'Propose SQL for an explicitly @mentioned database. This tool never executes SQL. A visible user approval with a risk checkbox is required before Vibecanvas creates and applies a coordinated draft.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        resourceId: { type: 'string', minLength: 1, maxLength: 128, description: 'ID of a database explicitly selected by the user.' },
-        sql: { type: 'string', minLength: 1, maxLength: 1_048_576, description: 'SQLite-compatible schema or data change SQL to propose. It is not executed by this tool.' },
-        reason: { type: 'string', minLength: 1, maxLength: 2_000, description: 'Plain-language reason the actor needs this database change.' },
-      },
-      required: ['resourceId', 'sql', 'reason'],
-    } as any,
+    parameters: Type.Object({
+      resourceId: Type.String({
+        minLength: 1,
+        maxLength: 128,
+        description: 'ID of a database explicitly selected by the user.',
+      }),
+      sql: Type.String({
+        minLength: 1,
+        maxLength: 1_048_576,
+        description: 'SQLite-compatible schema or data change SQL to propose. It is not executed by this tool.',
+      }),
+      reason: Type.String({
+        minLength: 1,
+        maxLength: 2_000,
+        description: 'Plain-language reason the actor needs this database change.',
+      }),
+    }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       const selected = fxLatestWidgetResourceSelectionRecord({ sessionManager: args.sessionManager }, {});
       const resourceSelection = selected?.resources.find((resource) => resource.id === params.resourceId && resource.kind === 'db');

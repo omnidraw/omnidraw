@@ -1,4 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import type { TToolDefinition } from './types';
 
@@ -24,42 +25,34 @@ const MAX_TIMEOUT_MS = 60_000;
 const MAX_MAX_BYTES = 10_000_000;
 const BROWSER_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 VibecanvasWebFetch/1.0';
 
-const WEB_FETCH_PARAMETER_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    url: {
-      type: 'string',
-      minLength: 1,
-      description: 'HTTP or HTTPS URL to fetch without browser rendering.',
-    },
-    format: {
-      type: 'string',
-      enum: ['raw', 'text', 'markdown'],
-      description: 'Output format. Defaults to markdown.',
-    },
-    timeoutMs: {
-      type: 'number',
-      minimum: 1,
-      maximum: MAX_TIMEOUT_MS,
-      description: 'Fetch timeout in milliseconds. Defaults to 8000.',
-    },
-    maxBytes: {
-      type: 'number',
-      minimum: 1,
-      maximum: MAX_MAX_BYTES,
-      description: 'Maximum response bytes to read. Defaults to 1000000.',
-    },
-  },
-  required: ['url'],
-};
+const WEB_FETCH_PARAMETER_SCHEMA = Type.Object({
+  url: Type.String({
+    minLength: 1,
+    description: 'HTTP or HTTPS URL to fetch without browser rendering.',
+  }),
+  format: Type.Optional(Type.Union([
+    Type.Literal('raw'),
+    Type.Literal('text'),
+    Type.Literal('markdown'),
+  ], { description: 'Output format. Defaults to markdown.' })),
+  timeoutMs: Type.Optional(Type.Number({
+    minimum: 1,
+    maximum: MAX_TIMEOUT_MS,
+    description: 'Fetch timeout in milliseconds. Defaults to 8000.',
+  })),
+  maxBytes: Type.Optional(Type.Number({
+    minimum: 1,
+    maximum: MAX_MAX_BYTES,
+    description: 'Maximum response bytes to read. Defaults to 1000000.',
+  })),
+}, { additionalProperties: false });
 
 export function createWebFetchTool(): TToolDefinition {
   return defineTool({
     name: 'web_fetch',
     label: 'Web Fetch',
     description: 'Fetch a URL without browser rendering and return raw, text, or markdown content. Detects likely SPA/app-shell pages instead of running JavaScript.',
-    parameters: WEB_FETCH_PARAMETER_SCHEMA as any,
+    parameters: WEB_FETCH_PARAMETER_SCHEMA,
     async execute(_toolCallId, params: any) {
       const normalized = fnNormalizeWebFetchParams(params);
       if (!normalized.ok) {

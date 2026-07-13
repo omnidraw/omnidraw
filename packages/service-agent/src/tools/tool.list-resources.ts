@@ -1,4 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { fxLatestWidgetResourceSelectionRecord } from '../core/fx.session-candidate';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import type { TActorServiceReloader, TCandidateSessionManager, TToolDefinition } from './types';
@@ -13,13 +14,13 @@ export function createListResourcesTool(args: TCreateListResourcesToolArgs): TTo
     name: 'vc_list_resources',
     label: 'List Vibecanvas Resources',
     description: 'List available host resources and mark resources explicitly selected with @mentions. Returns safe metadata only; never paths, credentials, or secret values.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        kind: { type: 'string', enum: ['kv', 'secretStore', 'db'], description: 'Optional resource-kind filter.' },
-      },
-    } as any,
+    parameters: Type.Object({
+      kind: Type.Optional(Type.Union([
+        Type.Literal('kv'),
+        Type.Literal('secretStore'),
+        Type.Literal('db'),
+      ], { description: 'Optional resource-kind filter.' })),
+    }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!args.actorService?.listResources) {
         return fnToolError('Resource discovery is unavailable in this host.', { resources: [] });

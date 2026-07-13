@@ -1,4 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import type { TActorServiceReloader, TToolDefinition } from './types';
 
@@ -11,14 +12,13 @@ export function createInspectResourceTool(args: TCreateInspectResourceToolArgs):
     name: 'vc_inspect_resource',
     label: 'Inspect Vibecanvas Resource',
     description: 'Inspect safe resource metadata. Database resources include their live schema, but never database paths, credentials, secret values, or table row data.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        resourceId: { type: 'string', minLength: 1, maxLength: 128, description: 'Resource ID returned by vc_list_resources.' },
-      },
-      required: ['resourceId'],
-    } as any,
+    parameters: Type.Object({
+      resourceId: Type.String({
+        minLength: 1,
+        maxLength: 128,
+        description: 'Resource ID returned by vc_list_resources.',
+      }),
+    }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!args.actorService?.getResource) {
         return fnToolError('Resource inspection is unavailable in this host.');

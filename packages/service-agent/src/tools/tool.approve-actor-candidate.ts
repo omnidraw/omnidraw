@@ -2,6 +2,7 @@ import { defineTool } from '@earendil-works/pi-coding-agent';
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Type } from 'typebox';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { fxLatestActorCandidateRecord } from '../core/fx.session-candidate';
 import { txAppendActorCandidateApprovalRecord } from '../core/tx.session-candidate';
@@ -21,17 +22,11 @@ export function createApproveActorCandidateTool(args: TCreateApproveActorCandida
     name: 'vc_approve_actor_candidate',
     label: 'Approve Actor Candidate',
     description: 'Approve the current actor candidate, write the deterministic Vibecanvas widget scaffold into the draft folder, and hand off to implementation phase.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        revision: {
-          type: 'number',
-          description: 'Candidate revision to approve. The tool refuses stale revisions.',
-        },
-      },
-      required: ['revision'],
-    } as any,
+    parameters: Type.Object({
+      revision: Type.Number({
+        description: 'Candidate revision to approve. The tool refuses stale revisions.',
+      }),
+    }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       const record = fxLatestActorCandidateRecord({ sessionManager: args.sessionManager });
 
