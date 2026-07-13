@@ -617,6 +617,91 @@ describe('DbResource schema-agnostic provider', () => {
     expect((await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.map((object) => object.name)).toEqual(['parents']);
   });
 
+  test('creates structured tables as STRICT by default', async () => {
+    const resource = await createBoundResource();
+    await provider.createDraft(resource.id, 'draft-default-strict');
+    const change = await provider.applyDraftChange('draft-default-strict', {
+      kind: 'createTable',
+      table: 'strict_by_default',
+      columns: [
+        { name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 },
+        { name: 'payload', declaredType: 'ANY' },
+      ],
+    });
+
+    expect(change.sql).toMatch(/\) STRICT;$/);
+    expect((await provider.inspect(resource.id, 'draft', 'draft-default-strict')).objects[0]?.createSql).toMatch(/\bSTRICT\s*$/i);
+  });
+
+  test('creates STRICT WITHOUT ROWID tables with valid combined table options', async () => {
+    const resource = await createBoundResource();
+    await provider.createDraft(resource.id, 'draft-strict-without-rowid');
+    const change = await provider.applyDraftChange('draft-strict-without-rowid', {
+      kind: 'createTable',
+      table: 'strict_keys',
+      columns: [
+        { name: 'namespace', declaredType: 'TEXT', nullable: false, primaryKeyOrder: 1 },
+        { name: 'key', declaredType: 'TEXT', nullable: false, primaryKeyOrder: 2 },
+        { name: 'value', declaredType: 'BLOB', nullable: false },
+      ],
+      strict: true,
+      withoutRowid: true,
+    });
+
+    expect(change.sql).toMatch(/\) STRICT, WITHOUT ROWID;$/);
+    expect((await provider.inspect(resource.id, 'draft', 'draft-strict-without-rowid')).objects[0]?.createSql)
+      .toMatch(/\bSTRICT\s*,\s*WITHOUT\s+ROWID\s*$/i);
+
+    await expect(provider.applyDraft({
+      resourceId: resource.id,
+      draftId: 'draft-strict-without-rowid',
+      applyId: 'apply-strict-without-rowid',
+      changes: [{
+        draft_id: 'draft-strict-without-rowid',
+        sequence: change.sequence,
+        kind: 'structure',
+        operation: null,
+        sql: change.sql,
+        created_at: new Date().toISOString(),
+      }],
+    })).resolves.toMatchObject({ outcome: 'succeeded' });
+    expect((await provider.inspect(resource.id, 'live')).objects[0]?.createSql)
+      .toMatch(/\bSTRICT\s*,\s*WITHOUT\s+ROWID\s*$/i);
+
+    await provider.createDraft(resource.id, 'draft-rebuild-strict-without-rowid');
+    const rebuild = await provider.applyDraftChange('draft-rebuild-strict-without-rowid', {
+      kind: 'alterColumn',
+      table: 'strict_keys',
+      column: 'value',
+      definition: { name: 'value', defaultSql: "x''" },
+    });
+    expect(rebuild.sql).toContain('STRICT, WITHOUT ROWID;');
+    expect((await provider.inspect(resource.id, 'draft', 'draft-rebuild-strict-without-rowid')).objects[0]?.createSql)
+      .toMatch(/\bSTRICT\s*,\s*WITHOUT\s+ROWID\s*$/i);
+  });
+
+  test('rejects unsupported declared types clearly for STRICT structured tables', async () => {
+    const resource = await createBoundResource();
+    await provider.createDraft(resource.id, 'draft-invalid-strict-type');
+
+    await expect(provider.applyDraftChange('draft-invalid-strict-type', {
+      kind: 'createTable',
+      table: 'invalid_strict_notes',
+      columns: [{ name: 'title', declaredType: 'VARCHAR(255)' }],
+    })).rejects.toMatchObject({
+      code: 'DB_RESOURCE_SCHEMA_OPERATION_INVALID',
+      message: expect.stringContaining('STRICT table column "title" must use INT, INTEGER, REAL, TEXT, BLOB, or ANY'),
+    });
+
+    const flexible = await provider.applyDraftChange('draft-invalid-strict-type', {
+      kind: 'createTable',
+      table: 'flexible_notes',
+      columns: [{ name: 'title', declaredType: 'VARCHAR(255)' }],
+      strict: false,
+    });
+    expect(flexible.sql).not.toMatch(/\bSTRICT\b/i);
+  });
+
   test('preserves STRICT rebuild options and rejects structure it cannot reproduce losslessly', async () => {
     const resource = await createBoundResource();
     await call('execute', { operations: [
@@ -633,6 +718,25 @@ describe('DbResource schema-agnostic provider', () => {
     await expect(provider.applyDraftChange('draft-lossless', {
       kind: 'alterColumn', table: 'collated_notes', column: 'title', definition: { name: 'title', nullable: false },
     })).rejects.toMatchObject({ code: 'DB_RESOURCE_SCHEMA_OPERATION_INVALID' });
+  });
+
+  test('keeps an existing non-STRICT table non-STRICT when a structured edit rebuilds it', async () => {
+    const resource = await createBoundResource();
+    await call('execute', {
+      sql: 'CREATE TABLE flexible_notes (id INTEGER PRIMARY KEY, "strict" VARCHAR(255), title VARCHAR(255))',
+    });
+    await provider.createDraft(resource.id, 'draft-flexible-rebuild');
+    const change = await provider.applyDraftChange('draft-flexible-rebuild', {
+      kind: 'alterColumn',
+      table: 'flexible_notes',
+      column: 'title',
+      definition: { name: 'title', nullable: false, defaultSql: "''" },
+    });
+    const createSql = (await provider.inspect(resource.id, 'draft', 'draft-flexible-rebuild')).objects[0]?.createSql ?? '';
+
+    expect(change.sql).not.toMatch(/CREATE TABLE[^;]+\)\s+STRICT;/i);
+    expect(createSql).not.toMatch(/\)\s*(?:WITHOUT\s+ROWID\s*,\s*)?STRICT\s*$/i);
+    expect(createSql).toContain('VARCHAR');
   });
 
   test('reconciles ready legacy physical resources without removing user tables or rows', async () => {

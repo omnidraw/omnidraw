@@ -12,6 +12,7 @@ import {
   ZDbCellValue,
   ZDbInspection,
   ZDbPreviewCellValue,
+  ZDbDraftOperation,
   ZDbRowIdentity,
 } from './contract';
 
@@ -151,6 +152,18 @@ describe('actor resource contracts', () => {
       }],
     };
     expect(ZDbInspection.safeParse(inspection).success).toBe(false);
+  });
+
+  test('accepts typed STRICT and WITHOUT ROWID structured table inputs', () => {
+    const operation = {
+      kind: 'createTable' as const,
+      table: 'notes',
+      columns: [{ name: 'id', declaredType: 'INTEGER', primaryKeyOrder: 1 }],
+      strict: true,
+      withoutRowid: true,
+    };
+    expect(ZDbDraftOperation.parse(operation)).toEqual(operation);
+    expect(ZDbDraftOperation.safeParse({ ...operation, strict: 'yes' }).success).toBe(false);
   });
 
   test('preserves stable safe resource codes through the ORPC error envelope', async () => {

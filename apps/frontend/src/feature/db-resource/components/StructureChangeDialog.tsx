@@ -34,7 +34,8 @@ export type TStructureChangeDialogProps = {
   onSubmit: (operation: Record<string, unknown>) => void;
 };
 
-const COLUMN_TYPES = ["TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC"];
+const COLUMN_TYPES = ["TEXT", "INTEGER", "REAL", "BLOB", "NUMERIC", "ANY"];
+const STRICT_COLUMN_TYPES = ["TEXT", "INTEGER", "REAL", "BLOB", "ANY"];
 
 const operationTitle = (kind: TStructureOperationKind) => ({
   createTable: "Create table",
@@ -59,6 +60,8 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
   const [nullable, setNullable] = createSignal(true);
   const [primaryKey, setPrimaryKey] = createSignal(false);
   const [unique, setUnique] = createSignal(false);
+  const [strict, setStrict] = createSignal(true);
+  const [withoutRowid, setWithoutRowid] = createSignal(false);
   const [defaultValue, setDefaultValue] = createSignal("");
   const [columns, setColumns] = createSignal("");
   const [referenceTable, setReferenceTable] = createSignal("");
@@ -74,9 +77,17 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
     setColumns(props.kind === "createTable" ? "id" : props.columnName ?? "");
     setPrimaryKey(props.kind === "createTable" || Boolean(props.column?.primaryKeyOrder));
     setUnique(false);
+    setStrict(true);
+    setWithoutRowid(false);
     setReferenceTable("");
     setReferenceColumns("");
   });
+
+  createEffect(() => {
+    if (props.kind === "createTable" && strict() && !STRICT_COLUMN_TYPES.includes(declaredType())) setDeclaredType("TEXT");
+  });
+
+  const columnTypes = () => props.kind === "createTable" && strict() ? STRICT_COLUMN_TYPES : COLUMN_TYPES;
 
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
@@ -86,6 +97,8 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
     if (props.kind === "createTable") Object.assign(base, {
       table: name().trim(),
       columns: [{ name: columns().trim(), declaredType: declaredType(), nullable: nullable(), primaryKeyOrder: primaryKey() ? 1 : null }],
+      strict: strict(),
+      withoutRowid: withoutRowid(),
     });
     if (props.kind === "renameTable") Object.assign(base, { newName: nextName().trim() });
     if (props.kind === "dropTable") Object.assign(base, { table: props.tableName });
@@ -131,7 +144,7 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
             </Show>
             <Show when={["createTable", "addColumn", "alterColumn"].includes(props.kind)}>
               <Select.Root<string>
-                options={COLUMN_TYPES}
+                options={columnTypes()}
                 value={declaredType()}
                 onChange={(value) => value && setDeclaredType(value)}
                 itemComponent={(itemProps) => (
@@ -163,6 +176,18 @@ export const StructureChangeDialog: Component<TStructureChangeDialogProps> = (pr
                 <Checkbox.Control class={styles.checkboxControl}><Checkbox.Indicator><Check size={12} /></Checkbox.Indicator></Checkbox.Control>
                 <Checkbox.Label>{props.kind === "createTable" ? "Initial column is primary key" : "Primary key column"}</Checkbox.Label>
               </Checkbox.Root>
+            </Show>
+            <Show when={props.kind === "createTable"}>
+              <Switch.Root checked={strict()} onChange={setStrict} class={styles.switchRoot}>
+                <Switch.Input />
+                <Switch.Control class={styles.switchControl}><Switch.Thumb class={styles.switchThumb} /></Switch.Control>
+                <Switch.Label class={styles.switchLabel}>STRICT table (recommended)</Switch.Label>
+              </Switch.Root>
+              <Switch.Root checked={withoutRowid()} onChange={setWithoutRowid} class={styles.switchRoot}>
+                <Switch.Input />
+                <Switch.Control class={styles.switchControl}><Switch.Thumb class={styles.switchThumb} /></Switch.Control>
+                <Switch.Label class={styles.switchLabel}>WITHOUT ROWID</Switch.Label>
+              </Switch.Root>
             </Show>
             <Show when={["createTable", "createIndex", "createForeignKey"].includes(props.kind)}>
               <TextField.Root value={columns()} onChange={setColumns}>

@@ -219,7 +219,7 @@ const ZDbColumnDefinition = z.object({
   primaryKeyOrder: z.number().int().positive().nullable().optional(),
 }).strict();
 export const ZDbDraftOperation = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('createTable'), table: ZObjectName, columns: z.array(ZDbColumnDefinition).min(1).max(128), withoutRowid: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal('createTable'), table: ZObjectName, columns: z.array(ZDbColumnDefinition).min(1).max(128), strict: z.boolean().optional(), withoutRowid: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal('renameTable'), table: ZObjectName, newName: ZObjectName }).strict(),
   z.object({ kind: z.literal('dropTable'), table: ZObjectName }).strict(),
   z.object({ kind: z.literal('addColumn'), table: ZObjectName, column: ZDbColumnDefinition }).strict(),

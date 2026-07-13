@@ -1,6 +1,7 @@
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
 import type { TActorResource, TDbResourceDraftChange } from '@vibecanvas/service-db/model';
+import { Database as SQLiteDatabase } from 'bun:sqlite';
 import { Buffer } from 'node:buffer';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
@@ -53,6 +54,7 @@ const INSPECTION_MEMBER_MAX = 512;
 const INSPECTION_SQL_MAX_LENGTH = 1_048_576;
 const SQLITE_INTEGER_MIN = -9_223_372_036_854_775_808n;
 const SQLITE_INTEGER_MAX = 9_223_372_036_854_775_807n;
+const SQLITE_STRICT_COLUMN_TYPES = ['INT', 'INTEGER', 'REAL', 'TEXT', 'BLOB', 'ANY'] as const;
 
 const APPLY_MARKER_SQL = `
 CREATE TABLE IF NOT EXISTS \`_vibecanvas_apply_markers\` (
@@ -454,6 +456,35 @@ function columnSql(column: TDbColumnDefinition, includePrimaryKey = true): strin
     .join(' ');
 }
 
+function tableOptions(createSql: string | null): { strict: boolean; withoutRowid: boolean } {
+  const suffix = createSql?.match(/\)\s*((?:STRICT|WITHOUT\s+ROWID)(?:\s*,\s*(?:STRICT|WITHOUT\s+ROWID))*)\s*;?\s*$/i)?.[1] ?? '';
+  return {
+    strict: /(?:^|,)\s*STRICT\s*(?:,|$)/i.test(suffix),
+    withoutRowid: /(?:^|,)\s*WITHOUT\s+ROWID\s*(?:,|$)/i.test(suffix),
+  };
+}
+
+function tableOptionsSql(options: { readonly strict: boolean; readonly withoutRowid: boolean }): string {
+  const values = [options.strict ? 'STRICT' : '', options.withoutRowid ? 'WITHOUT ROWID' : ''].filter(Boolean);
+  return values.length > 0 ? ` ${values.join(', ')}` : '';
+}
+
+function requiresCombinedTableOptionsCompatibility(sql: string): boolean {
+  return /\)\s*(?:STRICT\s*,\s*WITHOUT\s+ROWID|WITHOUT\s+ROWID\s*,\s*STRICT)\s*;/i.test(sql);
+}
+
+function validateStrictColumnTypes(columns: readonly TDbColumnDefinition[]): void {
+  for (const column of columns) {
+    const declaredType = (column.declaredType ?? '').trim().toUpperCase();
+    if (!(SQLITE_STRICT_COLUMN_TYPES as readonly string[]).includes(declaredType)) {
+      throw new ActorResourceError(
+        'DB_RESOURCE_SCHEMA_OPERATION_INVALID',
+        `STRICT table column "${column.name}" must use INT, INTEGER, REAL, TEXT, BLOB, or ANY; received ${declaredType || 'no declared type'}.`,
+      );
+    }
+  }
+}
+
 function referentialAction(value: string | undefined): string {
   const action = (value ?? 'NO ACTION').toUpperCase();
   if (!['NO ACTION', 'RESTRICT', 'SET NULL', 'SET DEFAULT', 'CASCADE'].includes(action)) {
@@ -809,8 +840,18 @@ export class DbResource implements IActorResourceProvider {
   async applyDraftChange(draftIdValue: string, operation: TDbDraftOperation): Promise<TDbDraftChangeEvidence> {
     const draftId = validateHostId(draftIdValue, 'DbResource draft');
     const path = this.#draftDatabasePath(draftId);
-    return this.#withDatabase(path, false, async (database) => {
+    const prepared = await this.#withDatabase(path, false, async (database) => {
       const sql = await this.#structuredSql(database, operation);
+      if (!requiresCombinedTableOptionsCompatibility(sql)) return { sql, baselineForeignKeys: null };
+      const baselineForeignKeys = await this.#foreignKeyViolations(database);
+      await database.exec('PRAGMA wal_checkpoint(TRUNCATE);', { queryTimeout: QUERY_TIMEOUT_MS });
+      return { sql, baselineForeignKeys };
+    });
+    if (prepared.baselineForeignKeys !== null) {
+      return this.#applyDraftChangeWithSqlite(path, prepared.sql, prepared.baselineForeignKeys);
+    }
+    return this.#withDatabase(path, false, async (database) => {
+      const sql = prepared.sql;
       const baselineForeignKeys = await this.#foreignKeyViolations(database);
       const rebuild = sql.includes('__vibecanvas_rebuild');
       if (rebuild) await database.exec('PRAGMA foreign_keys = OFF;');
@@ -833,6 +874,51 @@ export class DbResource implements IActorResourceProvider {
         if (rebuild) await database.exec('PRAGMA foreign_keys = ON;').catch(() => undefined);
       }
     });
+  }
+
+  async #applyDraftChangeWithSqlite(
+    databasePath: string,
+    sql: string,
+    baselineForeignKeys: ReadonlySet<string>,
+  ): Promise<TDbDraftChangeEvidence> {
+    const recoveryPath = `${databasePath}.combined-options-backup`;
+    await this.#copyDatabaseFiles(databasePath, recoveryPath);
+    try {
+      const database = new SQLiteDatabase(databasePath, { create: false, readwrite: true });
+      let evidence: TDbDraftChangeEvidence | null = null;
+      try {
+        database.exec(RESOURCE_PRAGMAS_SQL);
+        const rebuild = sql.includes('__vibecanvas_rebuild');
+        if (rebuild) database.exec('PRAGMA foreign_keys = OFF;');
+        const apply = database.transaction(() => {
+          database.exec(DRAFT_CHANGE_EVIDENCE_SQL);
+          const row = database.query('SELECT COALESCE(MAX(`sequence`), 0) + 1 AS `next_sequence` FROM `_vibecanvas_draft_change_evidence`').get() as { next_sequence?: number | bigint } | null;
+          const rawSequence = row?.next_sequence;
+          const sequence = typeof rawSequence === 'bigint' ? Number(rawSequence) : rawSequence;
+          if (!Number.isSafeInteger(sequence) || Number(sequence) < 1) throw new ActorResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft change evidence sequence is invalid.');
+          database.exec(sql);
+          database.query('INSERT INTO `_vibecanvas_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)').run(Number(sequence), 'structure', sql);
+          evidence = { sequence: Number(sequence), kind: 'structure', sql };
+        });
+        apply();
+        if (rebuild) database.exec('PRAGMA foreign_keys = ON;');
+      } finally {
+        database.close();
+      }
+      await this.#verifyDatabaseFile(databasePath, baselineForeignKeys);
+      if (evidence === null) throw new ActorResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft change evidence was not recorded.');
+      return evidence;
+    } catch (error) {
+      try {
+        await this.#copyDatabaseFiles(recoveryPath, databasePath);
+        await this.#verifyDatabaseFile(databasePath, baselineForeignKeys);
+      } catch {
+        throw new ActorResourceError('DB_RESOURCE_DRAFT_INVALID', 'Structure change failed and the physical draft could not be restored safely.', { uncertain: true });
+      }
+      throw toActorResourceError(error, 'DB_RESOURCE_SCHEMA_OPERATION_INVALID', 'Structure change could not be applied to the draft.');
+    } finally {
+      await this.#removeDatabaseFiles(recoveryPath).catch(() => undefined);
+    }
   }
 
   async executeDraftSql(draftIdValue: string, sqlValue: string): Promise<TDbDraftChangeEvidence> {
@@ -893,21 +979,27 @@ export class DbResource implements IActorResourceProvider {
         await this.#verifyDatabaseFile(backupPath, baselineForeignKeys);
         backupReady = true;
         try {
-          const database = await this.#open(resourceId, true);
           const rebuild = args.changes.some((change) => change.sql.includes('__vibecanvas_rebuild'));
-          if (rebuild) await database.exec('PRAGMA foreign_keys = OFF;');
-          const transaction = database.transaction(async () => {
-            for (const change of [...args.changes].sort((a, b) => a.sequence - b.sequence)) {
-              await database.exec(boundedDraftSql(change.sql), { queryTimeout: QUERY_TIMEOUT_MS });
+          const orderedChanges = [...args.changes].sort((a, b) => a.sequence - b.sequence);
+          if (orderedChanges.some((change) => requiresCombinedTableOptionsCompatibility(change.sql))) {
+            this.#applyChangesWithSqlite(livePath, orderedChanges, applyId, rebuild);
+          } else {
+            const database = await this.#open(resourceId, true);
+            if (rebuild) await database.exec('PRAGMA foreign_keys = OFF;');
+            const transaction = database.transaction(async () => {
+              for (const change of orderedChanges) {
+                await database.exec(boundedDraftSql(change.sql), { queryTimeout: QUERY_TIMEOUT_MS });
+              }
+              await database.exec(APPLY_MARKER_SQL);
+              await database.run('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
+            });
+            try {
+              await transaction();
+            } finally {
+              if (rebuild) await database.exec('PRAGMA foreign_keys = ON;').catch(() => undefined);
             }
-            await database.exec(APPLY_MARKER_SQL);
-            await database.run('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
-          });
-          try {
-            await transaction();
-          } finally {
-            if (rebuild) await database.exec('PRAGMA foreign_keys = ON;').catch(() => undefined);
           }
+          const database = await this.#open(resourceId, true);
           await this.#verifyDatabase(database, baselineForeignKeys);
           const marker = await this.#queryNative(database, 'SELECT `apply_id` FROM `_vibecanvas_apply_markers` WHERE `apply_id` = ?', [applyId]);
           if (marker.length !== 1) throw new ActorResourceError('DB_RESOURCE_APPLY_FAILED', 'Committed apply marker is missing.');
@@ -926,6 +1018,28 @@ export class DbResource implements IActorResourceProvider {
     } finally {
       if (!backupReady) await rm(dirname(backupPath), { recursive: true, force: true }).catch(() => undefined);
       this.#blocked.delete(resourceId);
+    }
+  }
+
+  #applyChangesWithSqlite(
+    databasePath: string,
+    changes: readonly TDbResourceDraftChange[],
+    applyId: string,
+    rebuild: boolean,
+  ): void {
+    const database = new SQLiteDatabase(databasePath, { create: false, readwrite: true });
+    try {
+      database.exec(RESOURCE_PRAGMAS_SQL);
+      if (rebuild) database.exec('PRAGMA foreign_keys = OFF;');
+      const apply = database.transaction(() => {
+        for (const change of changes) database.exec(boundedDraftSql(change.sql));
+        database.exec(APPLY_MARKER_SQL);
+        database.query('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)').run(applyId);
+      });
+      apply();
+      if (rebuild) database.exec('PRAGMA foreign_keys = ON;');
+    } finally {
+      database.close();
     }
   }
 
@@ -1344,7 +1458,7 @@ export class DbResource implements IActorResourceProvider {
       if (triggers.length > INSPECTION_MEMBER_MAX) throw new ActorResourceError('DB_RESULT_LIMIT_EXCEEDED', 'Database object has too many triggers to inspect safely.');
       const primaryKey = columns.filter((column) => column.primaryKeyOrder !== null).sort((a, b) => (a.primaryKeyOrder ?? 0) - (b.primaryKeyOrder ?? 0));
       const createSql = boundedInspectionSql(schemaRow.sql);
-      const withoutRowid = /\bWITHOUT\s+ROWID\b/i.test(createSql ?? '');
+      const options = tableOptions(createSql);
       const virtual = /^\s*CREATE\s+VIRTUAL\s+TABLE\b/i.test(createSql ?? '');
       const rowidAlias = primaryKey.length === 1
         && primaryKey[0].declaredType.trim().toUpperCase() === 'INTEGER'
@@ -1353,10 +1467,10 @@ export class DbResource implements IActorResourceProvider {
       const blobPrimaryKey = primaryKey.some((column) => /\bBLOB\b/i.test(column.declaredType));
       const identity = kind === 'view' || virtual ? null
         : safePrimaryKey && !blobPrimaryKey ? { kind: 'primaryKey' as const, columns: primaryKey.map((column) => column.name) }
-          : withoutRowid ? null : { kind: 'rowid' as const };
+          : options.withoutRowid ? null : { kind: 'rowid' as const };
       const readOnlyReason = kind === 'view' ? 'Views are read-only in the data workbench.'
         : virtual ? 'Virtual tables are read-only in the data workbench.'
-        : blobPrimaryKey && withoutRowid ? 'This WITHOUT ROWID table has a BLOB primary key that cannot be transported as a bounded editable identity.'
+        : blobPrimaryKey && options.withoutRowid ? 'This WITHOUT ROWID table has a BLOB primary key that cannot be transported as a bounded editable identity.'
         : identity === null ? 'This table has no safe primary-key or rowid identity.' : null;
       objects.push({ name, kind, columns, indexes, foreignKeys: [...foreignMap.values()], triggers, createSql, identity, editable: readOnlyReason === null, readOnlyReason });
     }
@@ -1478,14 +1592,21 @@ export class DbResource implements IActorResourceProvider {
   async #structuredSql(database: Database, operation: TDbDraftOperation): Promise<string> {
     if (operation.kind === 'createTable') {
       if (operation.columns.length < 1 || operation.columns.length > RESULT_COLUMN_MAX_COUNT) throw new ActorResourceError('DB_RESOURCE_SCHEMA_OPERATION_INVALID', 'A table requires a bounded non-empty column list.');
+      const strict = operation.strict ?? true;
+      if (strict) validateStrictColumnTypes(operation.columns);
       const primary = operation.columns.filter((column) => column.primaryKeyOrder).sort((a, b) => (a.primaryKeyOrder ?? 0) - (b.primaryKeyOrder ?? 0));
       const definitions = operation.columns.map((column) => columnSql(column, primary.length <= 1));
       if (primary.length > 1) definitions.push(`PRIMARY KEY (${primary.map((column) => quoteIdentifier(column.name)).join(', ')})`);
-      return `CREATE TABLE ${quoteIdentifier(operation.table)} (${definitions.join(', ')})${operation.withoutRowid ? ' WITHOUT ROWID' : ''};`;
+      return `CREATE TABLE ${quoteIdentifier(operation.table)} (${definitions.join(', ')})${tableOptionsSql({ strict, withoutRowid: operation.withoutRowid ?? false })};`;
     }
     if (operation.kind === 'renameTable') return `ALTER TABLE ${quoteIdentifier(operation.table)} RENAME TO ${quoteIdentifier(operation.newName)};`;
     if (operation.kind === 'dropTable') return `DROP TABLE ${quoteIdentifier(operation.table)};`;
-    if (operation.kind === 'addColumn') return `ALTER TABLE ${quoteIdentifier(operation.table)} ADD COLUMN ${columnSql(operation.column)};`;
+    if (operation.kind === 'addColumn') {
+      const table = await this.#requireObject(database, operation.table);
+      if (table.kind !== 'table') throw new ActorResourceError('DB_RESOURCE_SCHEMA_OPERATION_INVALID', 'Columns can only be added to tables.');
+      if (tableOptions(table.createSql).strict) validateStrictColumnTypes([operation.column]);
+      return `ALTER TABLE ${quoteIdentifier(operation.table)} ADD COLUMN ${columnSql(operation.column)};`;
+    }
     if (operation.kind === 'renameColumn') return `ALTER TABLE ${quoteIdentifier(operation.table)} RENAME COLUMN ${quoteIdentifier(operation.column)} TO ${quoteIdentifier(operation.newName)};`;
     if (operation.kind === 'dropColumn') return `ALTER TABLE ${quoteIdentifier(operation.table)} DROP COLUMN ${quoteIdentifier(operation.column)};`;
     if (operation.kind === 'createIndex') {
@@ -1503,6 +1624,7 @@ export class DbResource implements IActorResourceProvider {
     const object = await this.#requireObject(database, operation.table);
     if (object.kind !== 'table') throw new ActorResourceError('DB_RESOURCE_SCHEMA_OPERATION_INVALID', 'Only tables can be rebuilt.');
     const originalSql = object.createSql;
+    const originalOptions = tableOptions(originalSql);
     const originalTokens = originalSql === null ? [] : sqlSummary(originalSql).tokens;
     if (
       originalSql === null
@@ -1544,6 +1666,7 @@ export class DbResource implements IActorResourceProvider {
       if (before === foreignKeys.length) throw new ActorResourceError('DB_RESOURCE_SCHEMA_OPERATION_INVALID', 'Foreign key to drop was not found.');
     }
     const primary = columns.filter((column) => column.primaryKeyOrder).sort((a, b) => (a.primaryKeyOrder ?? 0) - (b.primaryKeyOrder ?? 0));
+    if (originalOptions.strict) validateStrictColumnTypes(columns);
     const definitions = columns.map((column) => columnSql(column, primary.length <= 1));
     if (primary.length > 1) definitions.push(`PRIMARY KEY (${primary.map((column) => quoteIdentifier(column.name)).join(', ')})`);
     for (const index of object.indexes.filter((candidate) => candidate.unique && candidate.origin === 'u')) {
@@ -1560,13 +1683,9 @@ export class DbResource implements IActorResourceProvider {
     const targets = columns.map((column) => column.name);
     const indexes = object.indexes.filter((index) => index.createSql).map((index) => `${index.createSql};`).join('\n');
     const triggers = object.triggers.map((trigger) => `${trigger.createSql};`).join('\n');
-    const tableOptions = [
-      /\bWITHOUT\s+ROWID\b/i.test(originalSql) ? 'WITHOUT ROWID' : '',
-      /\bSTRICT\b/i.test(originalSql) ? 'STRICT' : '',
-    ].filter(Boolean);
     return [
       `DROP TABLE IF EXISTS ${quoteIdentifier(temporary)};`,
-      `CREATE TABLE ${quoteIdentifier(temporary)} (${definitions.join(', ')})${tableOptions.length ? ` ${tableOptions.join(', ')}` : ''};`,
+      `CREATE TABLE ${quoteIdentifier(temporary)} (${definitions.join(', ')})${tableOptionsSql(originalOptions)};`,
       `INSERT INTO ${quoteIdentifier(temporary)} (${targets.map(quoteIdentifier).join(', ')}) SELECT ${targets.map((name) => quoteIdentifier(sourceByTarget.get(name) ?? name)).join(', ')} FROM ${quoteIdentifier(object.name)};`,
       `DROP TABLE ${quoteIdentifier(object.name)};`,
       `ALTER TABLE ${quoteIdentifier(temporary)} RENAME TO ${quoteIdentifier(object.name)};`,
@@ -1780,7 +1899,7 @@ export class DbResource implements IActorResourceProvider {
       fileMustExist: true,
       defaultQueryTimeout: QUERY_TIMEOUT_MS,
       // @ts-expect-error Turso runtime features are ahead of its public union.
-      experimental: ['custom_types', 'triggers', 'index_method', 'multiprocess_wal'],
+      experimental: ['custom_types', 'triggers', 'index_method', 'multiprocess_wal', 'strict', 'without_rowid'],
     });
     try {
       await database.connect();
@@ -1831,7 +1950,7 @@ export class DbResource implements IActorResourceProvider {
         defaultQueryTimeout: QUERY_TIMEOUT_MS,
         fileMustExist,
         // @ts-expect-error Turso runtime features are ahead of its public union.
-        experimental: ['custom_types', 'triggers', 'index_method', 'multiprocess_wal'],
+        experimental: ['custom_types', 'triggers', 'index_method', 'multiprocess_wal', 'strict', 'without_rowid'],
       });
       try { await database.connect(); await database.exec(RESOURCE_PRAGMAS_SQL); return database; }
       catch (error) { await database.close().catch(() => undefined); throw error; }
