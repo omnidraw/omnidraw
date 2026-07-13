@@ -90,7 +90,7 @@ Current custom tools:
   - Copies draft files to `<configPath>/widgets/<slug>` and reloads actor definitions when `actorService` is available.
 
 Phase selection:
-- `src/tools/fn.phase-tools.ts` chooses phase from Pi session history.
+- `src/tools/phase-tools.ts` chooses phase from Pi session history and assembles phase-specific tools.
 - No approval custom entry means phase 1 tools.
 - Latest approval custom entry means phase 2 tools plus built-in `read`, `edit`, and `grep`.
 - Phase 1 must not expose filesystem or bash tools.

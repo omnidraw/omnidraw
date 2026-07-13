@@ -18,6 +18,8 @@ export const ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE = 'vibecanvas.actorCandidate';
 export const ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE = 'vibecanvas.actorCandidateApproved';
 export const WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetEditSession';
 export const WIDGET_DRAFT_MANIFEST_PATH_CUSTOM_ENTRY_TYPE = 'vibejsonpath';
+export const WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetResourceSelection';
+export const WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE = 'vibecanvas.widgetDbChangeProposal';
 
 export const Z_ACTOR_CANDIDATE = z.object({
   slug: z.string().min(1).optional(),
@@ -121,20 +123,16 @@ const ACTOR_RESOURCES_SCHEMA = Type.Record(
       kind: Type.Literal('db'),
       required: Type.Boolean({ description: 'Use true by default so missing bindings are visible to control clients.' }),
       scope: ACTOR_RESOURCE_SCOPE_SCHEMA,
-      schema: Type.Object({
-        id: ACTOR_RESOURCE_IDENTIFIER_SCHEMA,
-        version: Type.Integer({ minimum: 0 }),
-      }),
       arbitrarySql: Type.Optional(Type.Boolean({
         default: false,
-        description: 'Defaults to false. Prefer named operations.',
+        description: 'Defaults to false. Prefer named SQLite-compatible operations. Never add schema IDs or versions.',
       })),
       operations: Type.Optional(Type.Record(
         ACTOR_RESOURCE_IDENTIFIER_SCHEMA,
         ACTOR_DB_NAMED_OPERATION_SCHEMA,
         { maxProperties: ACTOR_DB_NAMED_OPERATION_MAX_COUNT },
       )),
-    }),
+    }, { additionalProperties: false }),
   ]),
   {
     description: 'Definition-level named resource requirements. Never include concrete resource IDs, paths, handles, or credentials.',

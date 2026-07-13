@@ -63,6 +63,10 @@ export const txAddTodo = defineTx<TData, TMsg>(async (portal, args) => {
 
 # Shared actor resources
 
+Use vc_list_resources and vc_inspect_resource when resource context is needed. Do not invent table or column names. The concrete selected resource remains host-side and is bound during publish; actor code refers only to the manifest slot.
+
+Database structure and seed-data changes are outside ordinary actor generation. If a compatible selected database needs a change, call vc_propose_db_change with exact SQL and wait for explicit human approval. Do not work around this boundary with actor arbitrary SQL, generated startup migrations, or a model-supplied confirmation.
+
 Resource bindings belong to the widget definition, so all actor instances of that definition resolve the same bound resource. A rebind affects calls that start after it. Do not copy a complete shared resource into actor data unless the UI genuinely needs that data.
 
 KV reads are available in `fx` and `tx`; writes are `tx` only:
@@ -106,10 +110,12 @@ await portal.resources.db("notes").execute([
 ```
 
 - `invoke` calls only a manifest-declared named operation.
+- SQLite INTEGER columns in returned rows are `bigint`. Never discard them with a `typeof value === "number"` check and never put bigint directly into actor JSON data/messages. Prefer validating and converting them to decimal strings; convert to number only after an explicit safe-integer range check.
 - `query` requires declared arbitrary SQL plus effective read access and is available to `fx` and `tx`.
 - `execute` requires declared arbitrary SQL plus effective write access and is available only to `tx`; it is always treated as write-capable even when SQL happens to read.
 - `execute(sql, parameters?)` runs one statement. `execute(operations)` runs a non-empty ordered operation array on one resolved resource connection without interleaving.
 - Multi-operation execution is not automatically atomic. Include explicit `BEGIN`/`COMMIT` operations when atomicity is required; `SAVEPOINT`, `ROLLBACK TO`, `RELEASE`, and `ROLLBACK` are supported for caller-controlled flow.
 - Each operation contains exactly one SQL statement and its own parameters. Bind values through parameter objects; never interpolate actor values into SQL.
 - If an operation fails, execution stops and the host defensively rolls back any transaction left open. Without an explicit transaction, earlier successful operations may already be committed.
-- Actors cannot publish schemas, run host migrations, choose database files, or access Vibecanvas's application database.
+- Write ordinary SQLite-compatible SQL only: tables, indexes, views, triggers, parameters, and transactions. Do not use Turso-only syntax or PRAGMAs, custom types, materialized views, extensions, remote sync, MVCC, or CDC.
+- DB slots are schema-agnostic. Actors cannot coordinate structure changes, publish schemas, run host migrations, choose database files, or access Vibecanvas's application database. The host may replace its internal SQLite-compatible engine without changing actor APIs.

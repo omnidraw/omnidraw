@@ -4,11 +4,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
 import { txAppendActorCandidateApprovalRecord } from '../src/core/tx.session-candidate';
-import { sampleCandidate } from './tool.test-helpers';
+import { fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-candidate';
+import { executeTool, sampleCandidate } from './tool.test-helpers';
+import { createProposeDbChangeTool } from '../src/tools/tool.propose-db-change';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WIDGET_WIZZARD_SYSTEM_PROMPT } from '../src/prompts';
-import { fxBuildDbSchemaContextPrompt } from '../src/fx.db-schema-context';
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 
 class TestEventPublisherService implements IEventPublisherService {
   name = 'test-event-publisher';
@@ -32,7 +32,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function createService() {
+async function createService(actorService?: ConstructorParameters<typeof AgentService>[0]['actorService']) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-prompt-'));
   tempDirs.push(dataPath);
 
@@ -41,6 +41,7 @@ async function createService() {
     dataPath,
     configPath: join(dataPath, 'config'),
     eventPublisherService: new TestEventPublisherService(),
+    actorService,
   });
 }
 
@@ -56,47 +57,9 @@ describe('AgentService.promptWizzard', () => {
     expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('portal.resources.kv("slot")');
     expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('Secret values are currently stored as plaintext');
     expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
-  });
-
-  test('supplies exact published DbResource migrations through the declared version', async () => {
-    const base = sampleCandidate();
-    const manifest: TVibecanvasJson = {
-      slug: 'db-widget',
-      name: 'DB Widget',
-      actor: {
-        ...base.actor,
-        relFunctionPath: './actor/functions.ts',
-        resources: {
-          notes: {
-            kind: 'db',
-            required: true,
-            scope: ['read'],
-            schema: { id: 'notes', version: 2 },
-          },
-        },
-      },
-      widget: { relWidgetDir: './widget', tool: base.widget.tool },
-    };
-    const calls: Array<[string, number]> = [];
-    const sql = 'CREATE TABLE notes (id TEXT);\nINSERT INTO notes VALUES ("seed");';
-    const prompt = await fxBuildDbSchemaContextPrompt({
-      getDbSchemaContext: async (schemaId, version) => {
-        calls.push([schemaId, version]);
-        return {
-          schema: { id: schemaId, name: 'Notes', description: 'Shared notes.', status: 'published' },
-          migrations: [
-            { schema_id: schemaId, version: 1, name: 'initial', sql, checksum: 'sha256:first', status: 'published' },
-            { schema_id: schemaId, version: 2, name: 'index', sql: 'CREATE INDEX notes_id ON notes(id);', checksum: 'sha256:second', status: 'published' },
-          ],
-        };
-      },
-    }, { manifest });
-
-    expect(calls).toEqual([['notes', 2]]);
-    expect(prompt).toContain('# Host-published DbResource schema context');
-    expect(prompt).toContain('## notes@2 — Notes');
-    expect(prompt).toContain(JSON.stringify(sql));
-    expect(prompt).toContain('sha256:second');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
+    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).not.toContain('Host-published DbResource schema context');
   });
 
   test('passes image-only prompts to Pi with fallback text', async () => {
@@ -145,6 +108,53 @@ describe('AgentService.promptWizzard', () => {
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
   });
 
+  test('resolves typed resource IDs and persists trusted selection metadata', async () => {
+    const service = await createService({
+      reload: async () => {},
+      getResource: async (id) => ({
+        id,
+        kind: id === 'kv-1' ? 'kv' : 'db',
+        name: id === 'kv-1' ? 'Preferences' : 'Notes Database',
+        status: 'ready',
+        last_error: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+    const sessionManager = {
+      entries: [] as any[],
+      appendCustomEntry(customType: string, data?: unknown) {
+        this.entries.push({ type: 'custom', customType, data });
+        return String(this.entries.length);
+      },
+      getEntries() { return this.entries; },
+    };
+    service.sessionMap.widget = {
+      session: {
+        unsub: () => {},
+        sessionManager: sessionManager as never,
+        session: { prompt: async () => {} } as never,
+      },
+    };
+
+    await service.promptWizzard('widget', 'session', 'Use @Notes Database', { resourceIds: ['db-1'] });
+    expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})).toEqual({
+      resources: [{ id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' }],
+      selectedAt: expect.any(String),
+    });
+    await service.promptWizzard('widget', 'session', 'Do not use a resource now', { resourceIds: [] });
+    expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([]);
+    const proposal = await executeTool(createProposeDbChangeTool({
+      sessionManager: sessionManager as never,
+      actorService: {
+        reload: async () => {},
+        getResource: async () => null,
+      },
+    }), { resourceId: 'db-1', sql: 'DROP TABLE notes;', reason: 'No longer authorized.' });
+    expect(proposal.isError).toBe(true);
+    expect(proposal.content[0].text).toContain('@mention');
+  });
+
   test('refreshes phase tools after approval before the next prompt', async () => {
     const service = await createService();
     const widgetId = 'widget-tools';
@@ -152,7 +162,7 @@ describe('AgentService.promptWizzard', () => {
     await service.connectWizzard(widgetId, sessionId);
 
     const phaseOneTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_set_actor_candidate', 'web_fetch']);
+    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_set_actor_candidate', 'web_fetch']);
 
     const manifest = {
       slug: 'counter-widget',
@@ -180,6 +190,6 @@ describe('AgentService.promptWizzard', () => {
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
 
     const phaseTwoTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
+    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
   });
 });

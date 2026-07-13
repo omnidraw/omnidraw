@@ -1,5 +1,5 @@
-import type { TActorCandidateApprovalRecord, TActorCandidateRecord, TCandidateSessionManager, TWidgetEditSessionRecord } from '../tools/types';
-import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
+import type { TActorCandidateApprovalRecord, TActorCandidateRecord, TCandidateSessionManager, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelectionRecord } from '../tools/types';
+import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE, WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE, WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
 
 export type TPortal = {
   sessionManager: Pick<TCandidateSessionManager, 'getEntries'>;
@@ -37,4 +37,24 @@ export function fxLatestActorCandidateApprovalRecord(portal: TPortal, args?: TAr
 export function fxLatestWidgetEditSessionRecord(portal: TPortal, args?: TArgs): TWidgetEditSessionRecord | null {
   void args;
   return fxLatestCustomEntryData<TWidgetEditSessionRecord>(portal, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE);
+}
+
+export function fxLatestWidgetResourceSelectionRecord(portal: TPortal, args: TArgs): TWidgetResourceSelectionRecord | null {
+  void args;
+  return fxLatestCustomEntryData<TWidgetResourceSelectionRecord>(portal, WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE);
+}
+
+export type TArgsWidgetDbChangeProposal = {
+  proposalId: string;
+};
+
+export function fxLatestWidgetDbChangeProposalRecord(portal: TPortal, args: TArgsWidgetDbChangeProposal): TWidgetDbChangeProposalRecord | null {
+  const entries = portal.sessionManager.getEntries();
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.type !== 'custom' || entry.customType !== WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE) continue;
+    const record = entry.data as TWidgetDbChangeProposalRecord | undefined;
+    if (record?.id === args.proposalId) return record;
+  }
+  return null;
 }

@@ -41,6 +41,32 @@ export type TWidgetEditSessionRecord = {
   startedAt: string;
 };
 
+export type TWidgetResourceSelection = {
+  id: string;
+  kind: 'kv' | 'secretStore' | 'db';
+  name: string;
+  status: 'created' | 'provisioning' | 'ready' | 'migrating' | 'error' | 'deleting';
+};
+
+export type TWidgetResourceSelectionRecord = {
+  resources: TWidgetResourceSelection[];
+  selectedAt: string;
+};
+
+export type TWidgetDbChangeProposalRecord = {
+  id: string;
+  resourceId: string;
+  resourceName: string;
+  sql: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  proposedAt: string;
+  resolvedAt?: string;
+  draftId?: string;
+  applyId?: string;
+  warnings?: string[];
+};
+
 export type TToolEvent =
   | { type: 'actorCandidateChanged'; cwd: string; revision: number; candidate: TActorCandidate; manifest: TVibecanvasJson; validation: TValidationResult }
   | { type: 'widgetupdate'; cwd: string; files: string[] };

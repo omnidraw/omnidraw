@@ -1,6 +1,6 @@
 export { AgentService } from './AgentService';
 export { createApproveActorCandidateTool } from './tools/tool.approve-actor-candidate';
-export { fnCreateWidgetWizardPhaseTools } from './tools/fn.phase-tools';
+export { createWidgetWizardPhaseTools } from './tools/phase-tools';
 export { createPublishWidgetTool } from './tools/tool.publish-widget';
 export { createSetActorCandidateTool } from './tools/tool.set-actor-candidate';
 export { createValidateWidgetFilesTool } from './tools/tool.validate-widget-files';

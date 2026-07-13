@@ -133,7 +133,6 @@ describe('vc_set_actor_candidate', () => {
             kind: 'db',
             required: true,
             scope: ['read'],
-            schema: { id: 'notes', version: 0 },
             operations: {
               listNotes: {
                 effect: 'read',
@@ -156,7 +155,6 @@ describe('vc_set_actor_candidate', () => {
         kind: 'db',
         required: true,
         scope: ['read'],
-        schema: { id: 'notes', version: 0 },
         arbitrarySql: false,
         operations: {
           listNotes: {
@@ -182,7 +180,6 @@ describe('vc_set_actor_candidate', () => {
             kind: 'db',
             required: true,
             scope: ['read'],
-            schema: { id: 'notes', version: 1 },
             operations: {
               mutate: {
                 effect: 'write',
