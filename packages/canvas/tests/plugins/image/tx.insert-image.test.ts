@@ -1,7 +1,7 @@
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../../src/core/CONSTANTS";
+import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR, VC_PENDING_PERSISTENCE_ATTR } from "../../../src/core/CONSTANTS";
 import { txInsertImage, type TPendingImageInsertToken } from "../../../src/plugins/image/tx.insert-image";
 import { txDeleteSelection } from "../../../src/plugins/select/tx.delete-selection";
 import { createTestContainer } from "../../test-setup";
@@ -122,6 +122,7 @@ function createHarness() {
     }),
     registerPendingInsert: (id: string, token: TPendingImageInsertToken, node: Konva.Image) => {
       pending = { id, token, node };
+      node.setAttr(VC_PENDING_PERSISTENCE_ATTR, true);
       node.setAttr(VC_ON_REMOVE_ATTR, () => {
         token.cancelled = true;
         pending = null;
@@ -130,8 +131,15 @@ function createHarness() {
     isPendingInsertActive: (id: string, token: TPendingImageInsertToken, node: Konva.Image) => {
       return pending?.id === id && pending.token === token && pending.node === node && !token.cancelled;
     },
+    promotePendingInsert: (id: string, token: TPendingImageInsertToken, node: Konva.Image) => {
+      if (pending?.id !== id || pending.token !== token || pending.node !== node || token.cancelled) return false;
+      node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
+      return true;
+    },
     releasePendingInsert: (id: string, token: TPendingImageInsertToken) => {
-      if (pending?.id === id && pending.token === token) pending = null;
+      if (pending?.id !== id || pending.token !== token) return;
+      pending.node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
+      pending = null;
     },
   };
 
@@ -169,6 +177,7 @@ describe("txInsertImage", () => {
       expect(preview.image()).toBe(harness.decodedImage);
       expect(preview.width()).toBe(300);
       expect(preview.height()).toBe(150);
+      expect(preview.getAttr(VC_PENDING_PERSISTENCE_ATTR)).toBe(true);
       expect(harness.patchElement).not.toHaveBeenCalled();
       expect(harness.historyRecord).not.toHaveBeenCalled();
       expect(harness.portal.revokeObjectUrl).toHaveBeenCalledWith("blob:preview");
@@ -183,6 +192,7 @@ describe("txInsertImage", () => {
       expect(harness.commit).toHaveBeenCalledOnce();
       expect(harness.historyRecord).toHaveBeenCalledOnce();
       expect(harness.portal.setupRuntimeNode).toHaveBeenCalledWith(preview);
+      expect(preview.getAttr(VC_PENDING_PERSISTENCE_ATTR)).toBeUndefined();
       expect(harness.getPending()).toBeNull();
     } finally {
       harness.destroy();

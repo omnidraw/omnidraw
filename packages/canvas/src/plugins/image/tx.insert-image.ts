@@ -40,6 +40,7 @@ export type TPortalInsertImage = {
   toElement: (node: Konva.Image) => TElement;
   registerPendingInsert: (id: string, token: TPendingImageInsertToken, node: Konva.Image) => void;
   isPendingInsertActive: (id: string, token: TPendingImageInsertToken, node: Konva.Image) => boolean;
+  promotePendingInsert: (id: string, token: TPendingImageInsertToken, node: Konva.Image) => boolean;
   releasePendingInsert: (id: string, token: TPendingImageInsertToken) => void;
 };
 
@@ -161,6 +162,12 @@ export async function txInsertImage(
   }
 
   try {
+    if (!portal.promotePendingInsert(id, token, node)) {
+      portal.releasePendingInsert(id, token);
+      token.cancelled = true;
+      return;
+    }
+
     const persistedMetadata = fnCreateImageElement({
       id,
       center,

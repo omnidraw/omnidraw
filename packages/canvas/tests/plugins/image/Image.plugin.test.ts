@@ -209,7 +209,11 @@ describe("Image plugin", () => {
     const originalFileReader = globalThis.FileReader;
     const originalWindowFileReader = window.FileReader;
     const originalWindowImage = window.Image;
-    const uploadImage = vi.fn(async () => [null, { url: "https://cdn.test/pasted.png" }] as const);
+    let resolveUpload!: (value: readonly [null, { url: string }]) => void;
+    const uploadResult = new Promise<readonly [null, { url: string }]>((resolve) => {
+      resolveUpload = resolve;
+    });
+    const uploadImage = vi.fn(() => uploadResult);
 
     class MockFileReader {
       result: string | ArrayBuffer | null = null;
@@ -261,10 +265,19 @@ describe("Image plugin", () => {
       });
 
       document.dispatchEvent(pasteEvent);
-      await waitForAsyncImageInsert();
+      await vi.waitFor(() => {
+        expect(harness.scene.staticForegroundLayer.getChildren((node) => node instanceof Konva.Image)).toHaveLength(1);
+      });
 
+      const preview = harness.scene.staticForegroundLayer.getChildren((node) => node instanceof Konva.Image)[0];
       expect(uploadImage).toHaveBeenCalledOnce();
-      expect(harness.scene.staticForegroundLayer.getChildren((node) => node instanceof Konva.Image)).toHaveLength(1);
+      expect(harness.element.toElement(preview as Konva.Image)).toBeNull();
+
+      resolveUpload([null, { url: "https://cdn.test/pasted.png" }] as const);
+      await waitForAsyncImageInsert();
+      expect(harness.element.toElement(preview as Konva.Image)).toMatchObject({
+        data: { type: "image", url: "https://cdn.test/pasted.png" },
+      });
     } finally {
       harness.destroy();
       vi.stubGlobal("FileReader", originalFileReader);

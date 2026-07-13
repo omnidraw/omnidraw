@@ -1,6 +1,7 @@
 import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import { VC_PENDING_PERSISTENCE_ATTR } from "../../src/core/CONSTANTS";
 import { ElementService } from "../../src/services/element/ElementService";
 
 function createElement(args?: { id?: string; type?: "text" }) : TElement {
@@ -74,6 +75,26 @@ describe("ElementService", () => {
       data: { type: "text" },
     });
     expect(calls).toEqual(["base:shape-1", "base-after:shape-1", "after:shape-1"]);
+  });
+
+  test("does not serialize runtime nodes while persistence is pending", () => {
+    const service = new ElementService();
+    const node = new Konva.Rect({ id: "pending-image" });
+    const toElement = vi.fn(() => createElement({ id: node.id(), type: "text" }));
+
+    service.registerElement({
+      id: "pending-base",
+      matchesNode: () => true,
+      toElement,
+    });
+
+    node.setAttr(VC_PENDING_PERSISTENCE_ATTR, true);
+    expect(service.toElement(node)).toBeNull();
+    expect(toElement).not.toHaveBeenCalled();
+
+    node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
+    expect(service.toElement(node)).toMatchObject({ id: "pending-image" });
+    expect(toElement).toHaveBeenCalledOnce();
   });
 
   test("creates nodes, runs modifiers and listeners, and aggregates update results", () => {

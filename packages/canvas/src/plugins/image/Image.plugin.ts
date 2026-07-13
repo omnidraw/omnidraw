@@ -3,7 +3,7 @@ import type { IPlugin } from "@vibecanvas/runtime";
 import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import ImageIcon from "lucide-static/icons/image.svg?raw";
-import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
+import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR, VC_PENDING_PERSISTENCE_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
 import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
 import { fnFilterSelection } from "../../core/fn.filter-selection";
 import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
@@ -362,13 +362,13 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
         return node;
       };
 
+      // Pending previews must not receive image persistence listeners until upload succeeds.
       const createRuntimeImageNode = (element: TElement) => {
-        const node = elementService.createNodeFromElement(element);
-        if (!(node instanceof Konva.Image)) {
+        if (element.data.type !== "image") {
           throw new Error("Failed to create image runtime node");
         }
 
-        return node;
+        return createImageNode(element);
       };
 
       const cloneDragPortal = {
@@ -430,6 +430,7 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
           toElement,
           registerPendingInsert: (id, token, node) => {
             pendingInserts.set(id, { token, node });
+            node.setAttr(VC_PENDING_PERSISTENCE_ATTR, true);
             node.setAttr(VC_ON_REMOVE_ATTR, () => {
               const pending = pendingInserts.get(id);
               if (pending?.token !== token) {
@@ -447,12 +448,22 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
               && pending.node === node
               && node.getLayer() === render.staticForegroundLayer;
           },
+          promotePendingInsert: (id, token, node) => {
+            const pending = pendingInserts.get(id);
+            if (token.cancelled || pending?.token !== token || pending.node !== node) {
+              return false;
+            }
+
+            node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
+            return true;
+          },
           releasePendingInsert: (id, token) => {
             const pending = pendingInserts.get(id);
             if (pending?.token !== token) {
               return;
             }
 
+            pending.node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
             pending.node.setAttr(VC_ON_REMOVE_ATTR, undefined);
             pendingInserts.delete(id);
           },

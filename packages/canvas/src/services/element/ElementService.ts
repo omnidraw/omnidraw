@@ -3,7 +3,7 @@ import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.ty
 import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import type Konva from "konva";
-import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
+import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR, VC_PENDING_PERSISTENCE_ATTR } from "../../core/CONSTANTS";
 import { fnSortByPriority } from "../../core/fn.sort-by-priority";
 import { isCanvasElementNode } from "../../core/GUARDS";
 import type { TCanvasNodeKind, TNodeOnRemove } from "../../core/types";
@@ -92,9 +92,14 @@ export class ElementService implements IService<TElementServiceHooks> {
 
   /**
    * Serializes one runtime node into one persisted element.
+   * Runtime-only pending nodes are intentionally invisible to every generic persistence path.
    * Uses the first matching base serializer, then runs all matching serialize modifiers.
    */
   toElement(node: Konva.Node) {
+    if (node.getAttr(VC_PENDING_PERSISTENCE_ATTR) === true) {
+      return null;
+    }
+
     const definitions = this.getMatchingElementDefinitionsByNode(node);
     const baseDefinition = definitions.find((definition) => definition.toElement);
     if (!baseDefinition?.toElement) {
