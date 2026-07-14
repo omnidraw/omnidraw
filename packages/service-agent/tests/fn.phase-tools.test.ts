@@ -16,6 +16,7 @@ describe('createWidgetWizardPhaseTools', () => {
       'vc_inspect_resource',
       'vc_list_resources',
       'vc_propose_db_change',
+      'vc_query_db_readonly',
       'vc_set_actor_candidate',
       'web_fetch',
     ]);
@@ -28,6 +29,7 @@ describe('createWidgetWizardPhaseTools', () => {
       'vc_list_resources',
       'vc_propose_db_change',
       'vc_publish_widget',
+      'vc_query_db_readonly',
       'vc_validate_widget_files',
       'web_fetch',
     ]);

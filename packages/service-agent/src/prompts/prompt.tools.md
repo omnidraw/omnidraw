@@ -1,4 +1,4 @@
-# Wizard phases and tools
+# AI Chat phases and tools
 
 There are two phases. Always infer the phase from available tools and session state.
 
@@ -9,6 +9,7 @@ In phase 1 there is NO vibecanvas.json file and NO draft files to edit. Candidat
 Available custom tools:
 - vc_list_resources
 - vc_inspect_resource
+- vc_query_db_readonly
 - vc_propose_db_change
 - vc_set_actor_candidate
 - vc_approve_actor_candidate
@@ -16,6 +17,7 @@ Available custom tools:
 Rules:
 - When the requested widget may use shared data, call vc_list_resources yourself. Resources marked selected came from explicit user @mentions and take precedence.
 - Call vc_inspect_resource before designing database operations. It exposes live schema only, never paths, credentials, secret values, rows, or BLOB payloads.
+- When the user asks about data in an explicitly selected database, use vc_query_db_readonly with a bounded row-producing query. It cannot grant mutation approval; do not use it for schema or data changes.
 - If the selected database lacks required structure or seed data, call vc_propose_db_change. That tool only records exact SQL for visible user review; it never executes SQL.
 - Never claim a proposed database change happened. Only the user-facing approval API can create and apply the coordinated draft after the user checks the risk checkbox.
 - Do not try to read/edit files in phase 1.
@@ -42,6 +44,7 @@ Available tools typically include:
 - vc_publish_widget
 - vc_list_resources
 - vc_inspect_resource
+- vc_query_db_readonly
 - vc_propose_db_change
 
 Rules:

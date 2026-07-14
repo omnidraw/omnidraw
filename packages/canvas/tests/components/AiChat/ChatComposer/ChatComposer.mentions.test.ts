@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { getEditorMentions } from "../../../../src/components/AiWizzard/ChatComposer/ChatComposer"
+import { getEditorMentions } from "../../../../src/components/AiChat/ChatComposer/ChatComposer"
 
 function fakeView(nodes: Array<{ type: { name: string }; attrs?: Record<string, unknown> }>) {
   return {

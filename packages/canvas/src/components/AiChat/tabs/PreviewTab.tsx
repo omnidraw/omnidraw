@@ -243,7 +243,7 @@ export function PreviewTab(props: IProps) {
     setMessage(mode === "start" ? "Loading preview." : mode === "reload" ? "Reloading files." : "Resetting actor.")
 
     try {
-      const [draftManifestError, draftManifestResult] = await props.apiService.api.agent.wizzard.draftManifest.read({
+      const [draftManifestError, draftManifestResult] = await props.apiService.api.agent.chat.draftManifest.read({
         widgetId: props.widgetId,
         sessionId: props.sessionId,
       })
@@ -266,7 +266,7 @@ export function PreviewTab(props: IProps) {
 
       setCanPreview(true)
 
-      const [sourceError, sourceResult] = await props.apiService.api.agent.wizzard.previewSource({
+      const [sourceError, sourceResult] = await props.apiService.api.agent.chat.previewSource({
         widgetId: props.widgetId,
         sessionId: props.sessionId,
       })
@@ -293,10 +293,10 @@ export function PreviewTab(props: IProps) {
       }
 
       const actorCall = mode === "reset"
-        ? props.apiService.api.agent.wizzard.draftActor.reset
+        ? props.apiService.api.agent.chat.draftActor.reset
         : mode === "reload"
-          ? props.apiService.api.agent.wizzard.draftActor.reload
-          : props.apiService.api.agent.wizzard.draftActor.start
+          ? props.apiService.api.agent.chat.draftActor.reload
+          : props.apiService.api.agent.chat.draftActor.start
       const [actorError, actorResult] = await actorCall({
         widgetId: props.widgetId,
         sessionId: props.sessionId,
@@ -319,7 +319,7 @@ export function PreviewTab(props: IProps) {
       setStatus("ready")
       setMessage(`Previewing ${sourceResult.manifest.name}.`)
 
-      HTML`<section class="ai-wizzard-preview-sandbox-shell">
+      HTML`<section class="ai-chat-preview-sandbox-shell">
         ${SANDBOX({
           source: getSandboxSource(sandboxSource),
         }, {
@@ -332,7 +332,7 @@ export function PreviewTab(props: IProps) {
             async getActorSnapshot() {
               if (currentSnapshot) return currentSnapshot
 
-              const [inspectError, inspectResult] = await props.apiService.api.agent.wizzard.draftActor.inspect({
+              const [inspectError, inspectResult] = await props.apiService.api.agent.chat.draftActor.inspect({
                 widgetId: props.widgetId,
                 sessionId: props.sessionId,
               })
@@ -358,7 +358,7 @@ export function PreviewTab(props: IProps) {
                 }
               }
 
-              const [sendError, sendResult] = await props.apiService.api.agent.wizzard.draftActor.send({
+              const [sendError, sendResult] = await props.apiService.api.agent.chat.draftActor.send({
                 widgetId: props.widgetId,
                 sessionId: props.sessionId,
                 name: actorMessage.name,
@@ -441,7 +441,7 @@ export function PreviewTab(props: IProps) {
     onCleanup(() => {
       disposed = true
       disposeCurrentSandbox()
-      void props.apiService.api.agent.wizzard.draftActor.stop({ widgetId, sessionId })
+      void props.apiService.api.agent.chat.draftActor.stop({ widgetId, sessionId })
     })
   })
 
@@ -451,7 +451,7 @@ export function PreviewTab(props: IProps) {
     setIsPublishing(true)
     setPublishMessage(undefined)
 
-    const [error, result] = await props.apiService.api.agent.wizzard.publish({
+    const [error, result] = await props.apiService.api.agent.chat.publish({
       widgetId: props.widgetId,
       sessionId: props.sessionId,
     })
@@ -481,80 +481,80 @@ export function PreviewTab(props: IProps) {
   }
 
   return (
-    <div class="ai-wizzard-tab ai-wizzard-tab--preview">
-      <section class="ai-wizzard-preview-card ai-wizzard-preview-card--toolbar">
-        <div class="ai-wizzard-preview-header">
+    <div class="ai-chat-tab ai-chat-tab--preview">
+      <section class="ai-chat-preview-card ai-chat-preview-card--toolbar">
+        <div class="ai-chat-preview-header">
           <div>
             <span>Preview</span>
             <strong>{actorState()}</strong>
           </div>
-          <div class="ai-wizzard-preview-actions">
-            <button type="button" class="ai-wizzard-secondary-button" disabled={isReloading() || isResetting()} onClick={() => void loadPreview("reload")}>
+          <div class="ai-chat-preview-actions">
+            <button type="button" class="ai-chat-secondary-button" disabled={isReloading() || isResetting()} onClick={() => void loadPreview("reload")}>
               {isReloading() ? "Reloading" : "Reload"}
             </button>
-            <button type="button" class="ai-wizzard-secondary-button" disabled={isReloading() || isResetting()} onClick={() => void loadPreview("reset")}>
+            <button type="button" class="ai-chat-secondary-button" disabled={isReloading() || isResetting()} onClick={() => void loadPreview("reset")}>
               {isResetting() ? "Resetting" : "Reset"}
             </button>
-            <button type="button" class="ai-wizzard-primary-button ai-wizzard-primary-button--compact" disabled={status() !== "ready"} onClick={() => setIsPublishDialogOpen(true)}>
+            <button type="button" class="ai-chat-primary-button ai-chat-primary-button--compact" disabled={status() !== "ready"} onClick={() => setIsPublishDialogOpen(true)}>
               Publish
             </button>
           </div>
         </div>
-        <div class="ai-wizzard-preview-row">
+        <div class="ai-chat-preview-row">
           <span>{message()}</span>
-          <span class="ai-wizzard-status" classList={{
-            "ai-wizzard-status--good": status() === "ready",
-            "ai-wizzard-status--bad": status() === "error",
+          <span class="ai-chat-status" classList={{
+            "ai-chat-status--good": status() === "ready",
+            "ai-chat-status--bad": status() === "error",
           }}>{status()}</span>
         </div>
         <Show when={sourceCount() > 0}>
-          <div class="ai-wizzard-preview-row">
+          <div class="ai-chat-preview-row">
             <span>Widget source files</span>
             <span>{sourceCount()}</span>
           </div>
         </Show>
       </section>
-      <div class="ai-wizzard-preview-sandbox" ref={root} />
+      <div class="ai-chat-preview-sandbox" ref={root} />
       <Show when={canPreview()} fallback={
-        <div class="ai-wizzard-preview-card ai-wizzard-preview-card--toolbar">
-          <div class="ai-wizzard-preview-header">
+        <div class="ai-chat-preview-card ai-chat-preview-card--toolbar">
+          <div class="ai-chat-preview-header">
             <div>
               <span>Preview</span>
               <strong>Actor approval needed</strong>
             </div>
           </div>
-          <div class="ai-wizzard-preview-row">
+          <div class="ai-chat-preview-row">
             <span>Approve the actor candidate to unlock preview and test the widget.</span>
           </div>
         </div>
       }>
       <Dialog open={isPublishDialogOpen()} onOpenChange={setIsPublishDialogOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay class="ai-wizzard-dialog-overlay" />
-          <Dialog.Content class="ai-wizzard-dialog">
-            <header class="ai-wizzard-dialog__header">
+          <Dialog.Overlay class="ai-chat-dialog-overlay" />
+          <Dialog.Content class="ai-chat-dialog">
+            <header class="ai-chat-dialog__header">
               <div>
-                <Dialog.Title class="ai-wizzard-dialog__title">Publish widget</Dialog.Title>
-                <Dialog.Description class="ai-wizzard-dialog__description">
+                <Dialog.Title class="ai-chat-dialog__title">Publish widget</Dialog.Title>
+                <Dialog.Description class="ai-chat-dialog__description">
                   Publish the current draft as a new canvas app.
                 </Dialog.Description>
               </div>
-              <Dialog.CloseButton class="ai-wizzard-dialog__close">Close</Dialog.CloseButton>
+              <Dialog.CloseButton class="ai-chat-dialog__close">Close</Dialog.CloseButton>
             </header>
-            <div class="ai-wizzard-dialog__body">
+            <div class="ai-chat-dialog__body">
               <p>
                 The new app will be available in {toolLocation()}.
               </p>
               <p>
-                Published apps get their own identity. To edit a published app later, open a new wizard for that app instead of continuing in this draft.
+                Published apps get their own identity. To edit a published app later, open a new chat for that app instead of continuing in this draft.
               </p>
               <Show when={publishMessage()}>
-                {(currentMessage) => <pre class="ai-wizzard-dialog__message">{currentMessage()}</pre>}
+                {(currentMessage) => <pre class="ai-chat-dialog__message">{currentMessage()}</pre>}
               </Show>
             </div>
-            <footer class="ai-wizzard-dialog__actions">
-              <Dialog.CloseButton class="ai-wizzard-secondary-button">Cancel</Dialog.CloseButton>
-              <button type="button" class="ai-wizzard-primary-button" disabled={isPublishing()} onClick={() => void publish()}>
+            <footer class="ai-chat-dialog__actions">
+              <Dialog.CloseButton class="ai-chat-secondary-button">Cancel</Dialog.CloseButton>
+              <button type="button" class="ai-chat-primary-button" disabled={isPublishing()} onClick={() => void publish()}>
                 {isPublishing() ? "Publishing" : "Publish"}
               </button>
             </footer>

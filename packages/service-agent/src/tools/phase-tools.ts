@@ -5,6 +5,7 @@ import { createInspectResourceTool } from './tool.inspect-resource';
 import { createListResourcesTool } from './tool.list-resources';
 import { createPublishWidgetTool } from './tool.publish-widget';
 import { createProposeDbChangeTool } from './tool.propose-db-change';
+import { createQueryDbReadonlyTool } from './tool.query-db-readonly';
 import { createSetActorCandidateTool } from './tool.set-actor-candidate';
 import { createValidateWidgetFilesTool } from './tool.validate-widget-files';
 import { createWebFetchTool } from './tool.web-fetch';
@@ -38,6 +39,7 @@ export function createWidgetWizardPhaseTools(args: TCreateWidgetWizardPhaseTools
         createWebFetchTool(),
         createListResourcesTool({ actorService: args.actorService, sessionManager: args.sessionManager }),
         createInspectResourceTool({ actorService: args.actorService }),
+        createQueryDbReadonlyTool({ actorService: args.actorService, sessionManager: args.sessionManager }),
         createProposeDbChangeTool({ actorService: args.actorService, sessionManager: args.sessionManager }),
         createSetActorCandidateTool({ cwd: args.cwd, sessionManager: args.sessionManager, onEvent: args.onEvent }),
         createApproveActorCandidateTool({ cwd: args.cwd, sessionManager: args.sessionManager, onEvent: args.onEvent }),
@@ -51,6 +53,7 @@ export function createWidgetWizardPhaseTools(args: TCreateWidgetWizardPhaseTools
       createWebFetchTool(),
       createListResourcesTool({ actorService: args.actorService, sessionManager: args.sessionManager }),
       createInspectResourceTool({ actorService: args.actorService }),
+      createQueryDbReadonlyTool({ actorService: args.actorService, sessionManager: args.sessionManager }),
       createProposeDbChangeTool({ actorService: args.actorService, sessionManager: args.sessionManager }),
       createValidateWidgetFilesTool({ cwd: args.cwd }),
       createPublishWidgetTool({

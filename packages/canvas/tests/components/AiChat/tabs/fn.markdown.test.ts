@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fnNormalizeAssistantMarkdown } from "../../../../src/components/AiWizzard/tabs/fn.markdown"
+import { fnNormalizeAssistantMarkdown } from "../../../../src/components/AiChat/tabs/fn.markdown"
 
 describe("fnNormalizeAssistantMarkdown", () => {
   it("unwraps a full md fence", () => {

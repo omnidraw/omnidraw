@@ -4,8 +4,9 @@ import Konva from "konva";
 import { render } from "solid-js/web";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
 import { isKonvaGroup } from "../../core/GUARDS";
-import { AiWizzard } from "../../components/AiWizzard";
+import { AiChat } from "../../components/AiChat";
 import type { CrdtService, SceneService, ToolService } from "../../services";
+import type { TWidgetTitleBarPortal } from "../../services/widget/interface";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
 
 const AI_WIDGET_KIND = "ai";
@@ -84,7 +85,7 @@ function mountAiWidget(portal: {
   scene: SceneService;
   tool: ToolService;
   createSessionId: () => string;
-}, args: { root: HTMLDivElement; element: TElement, id: string }) {
+}, args: { root: HTMLDivElement; element: TElement, id: string; titleBar: TWidgetTitleBarPortal }) {
   args.root.replaceChildren();
 
   const initialSessionId = getAiSessionId({ element: args.element }) ?? portal.createSessionId();
@@ -98,12 +99,13 @@ function mountAiWidget(portal: {
     });
   }
 
-  render(() => AiWizzard({
+  const dispose = render(() => AiChat({
     apiService: portal.apiService,
     id: args.id,
+    titleBar: args.titleBar,
     sessionId: initialSessionId,
-    aiWizardPreference: getAiWidgetPayload({ element: args.element }),
-    onAiWizardPreferenceChange: (preference) => {
+    aiChatPreference: getAiWidgetPayload({ element: args.element }),
+    onAiChatPreferenceChange: (preference) => {
       persistAiPayload({
         crdt: portal.crdt,
         scene: portal.scene,
@@ -128,6 +130,7 @@ function mountAiWidget(portal: {
   }), args.root)
 
   return () => {
+    dispose();
     args.root.replaceChildren();
   };
 }
@@ -145,19 +148,23 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
         id: AI_WIDGET_KIND,
         dataType: "ui-widget",
         tool: {
-          label: "Widget AI Wizzard",
+          label: "AI Chat",
           icon: AI_WIDGET_ICON,
           shortcuts: ["Q"],
           priority: 5,
         },
         initialPayload: { sessionId: crypto.randomUUID() } satisfies TAiWidgetPayload,
-        renderDom: ({ root, element }) => mountAiWidget({
-          apiService: ctx.config.apiService,
-          crdt,
-          scene,
-          tool,
-          createSessionId: () => crypto.randomUUID(),
-        }, { root, element, id: element.id }),
+        titleBarActions: [{ id: "settings", label: "Settings" }],
+        renderDom: ({ root, element, titleBar }) => {
+          if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");
+          return mountAiWidget({
+            apiService: ctx.config.apiService,
+            crdt,
+            scene,
+            tool,
+            createSessionId: () => crypto.randomUUID(),
+          }, { root, element, id: element.id, titleBar });
+        },
       });
 
       ctx.hooks.destroy.tap(() => {

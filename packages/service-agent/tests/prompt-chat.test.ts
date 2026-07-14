@@ -8,7 +8,7 @@ import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetRes
 import { createFakeSessionManager, executeTool, sampleCandidate } from './tool.test-helpers';
 import { createProposeDbChangeTool } from '../src/tools/tool.propose-db-change';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { WIDGET_WIZZARD_SYSTEM_PROMPT } from '../src/prompts';
+import { WIDGET_CHAT_SYSTEM_PROMPT } from '../src/prompts';
 
 class TestEventPublisherService implements IEventPublisherService {
   name = 'test-event-publisher';
@@ -45,21 +45,21 @@ async function createService(actorService?: ConstructorParameters<typeof AgentSe
   });
 }
 
-describe('AgentService.promptWizzard', () => {
+describe('AgentService.promptChat', () => {
   test('teaches widget agents the actor lifecycle and activity contract', () => {
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('New transitions use `{ func: ["tx.name"], targetState: "ready" }`');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('Never write a loop or sleep/retry cycle inside it');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('args.msg.kind === "activity.tick"');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('recover: { targetState: "ready" }');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('accepted only so existing widgets keep working');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('widget.tool.group: omit by default');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('actor.resources: optional definition-level map');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('portal.resources.kv("slot")');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('Secret values are currently stored as plaintext');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
-    expect(WIDGET_WIZZARD_SYSTEM_PROMPT).not.toContain('Host-published DbResource schema context');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('New transitions use `{ func: ["tx.name"], targetState: "ready" }`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Never write a loop or sleep/retry cycle inside it');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('args.msg.kind === "activity.tick"');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('recover: { targetState: "ready" }');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('accepted only so existing widgets keep working');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('widget.tool.group: omit by default');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('actor.resources: optional definition-level map');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.kv("slot")');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Secret values are currently stored as plaintext');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Host-published DbResource schema context');
   });
 
   test('passes image-only prompts to Pi with fallback text', async () => {
@@ -78,7 +78,7 @@ describe('AgentService.promptWizzard', () => {
       },
     };
 
-    await service.promptWizzard('widget', 'session', '', {
+    await service.promptChat('widget', 'session', '', {
       images: [{ name: 'reference.png', mimeType: 'image/png', data: 'aW1hZ2U=' }],
     });
 
@@ -103,7 +103,7 @@ describe('AgentService.promptWizzard', () => {
       },
     };
 
-    await expect(service.promptWizzard('widget', 'session', 'describe this', {
+    await expect(service.promptChat('widget', 'session', 'describe this', {
       images: [{ mimeType: 'image/svg+xml', data: 'PHN2Zy8+' }],
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
   });
@@ -137,12 +137,12 @@ describe('AgentService.promptWizzard', () => {
       },
     };
 
-    await service.promptWizzard('widget', 'session', 'Use @Notes Database', { resourceIds: ['db-1'] });
+    await service.promptChat('widget', 'session', 'Use @Notes Database', { resourceIds: ['db-1'] });
     expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})).toEqual({
       resources: [{ id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' }],
       selectedAt: expect.any(String),
     });
-    await service.promptWizzard('widget', 'session', 'Do not use a resource now', { resourceIds: [] });
+    await service.promptChat('widget', 'session', 'Do not use a resource now', { resourceIds: [] });
     expect(fxLatestWidgetResourceSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([]);
     expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
       { id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' },
@@ -186,14 +186,14 @@ describe('AgentService.promptWizzard', () => {
       },
     };
 
-    await service.promptWizzard('widget', 'session', 'Use these resources', { resourceIds: ['db-1', 'kv-1'] });
-    await service.promptWizzard('widget', 'session', 'Switch to @Manual QA Database', { resourceIds: ['db-2'] });
+    await service.promptChat('widget', 'session', 'Use these resources', { resourceIds: ['db-1', 'kv-1'] });
+    await service.promptChat('widget', 'session', 'Switch to @Manual QA Database', { resourceIds: ['db-2'] });
     expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
       { id: 'kv-1', kind: 'kv', name: 'Preferences', status: 'ready' },
       { id: 'db-2', kind: 'db', name: 'Manual QA Database', status: 'ready' },
     ]);
 
-    expect(service.clearDraftResourceBindingsWizzard('widget', 'session')).toEqual({ cleared: true });
+    expect(service.clearDraftResourceBindingsChat('widget', 'session')).toEqual({ cleared: true });
     expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})).toMatchObject({
       resources: [],
       source: 'explicit-clear',
@@ -204,10 +204,10 @@ describe('AgentService.promptWizzard', () => {
     const service = await createService();
     const widgetId = 'widget-tools';
     const sessionId = 'session-tools';
-    await service.connectWizzard(widgetId, sessionId);
+    await service.connectChat(widgetId, sessionId);
 
     const phaseOneTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_set_actor_candidate', 'web_fetch']);
+    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_query_db_readonly', 'vc_set_actor_candidate', 'web_fetch']);
 
     const manifest = {
       slug: 'counter-widget',
@@ -230,11 +230,11 @@ describe('AgentService.promptWizzard', () => {
       approvedAt: new Date().toISOString(),
     });
 
-    await expect(service.promptWizzard(widgetId, sessionId, 'implement this', {
+    await expect(service.promptChat(widgetId, sessionId, 'implement this', {
       images: [{ mimeType: 'image/svg+xml', data: 'PHN2Zy8+' }],
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
 
     const phaseTwoTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
+    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_query_db_readonly', 'vc_validate_widget_files', 'web_fetch']);
   });
 });

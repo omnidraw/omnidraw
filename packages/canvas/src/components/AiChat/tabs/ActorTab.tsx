@@ -84,7 +84,7 @@ export function ActorTab(props: IProps) {
 
     setLoadError(undefined)
 
-    void props.apiService.api.agent.wizzard.draftManifest.read({
+    void props.apiService.api.agent.chat.draftManifest.read({
       widgetId,
       sessionId,
     }).then(([err, result]) => {
@@ -159,7 +159,7 @@ export function ActorTab(props: IProps) {
     setSaveStatus("saving")
     setSaveError(undefined)
 
-    const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.patch({
+    const [err, result] = await props.apiService.api.agent.chat.draftManifest.patch({
       widgetId: props.widgetId,
       sessionId: props.sessionId,
       patch: {
@@ -189,9 +189,9 @@ export function ActorTab(props: IProps) {
   }
 
   const noActorLoaded = () => (
-    <div class="ai-wizzard-tab">
-      <section class="ai-wizzard-option-card ai-wizzard-option-card--selected">
-        <span class="ai-wizzard-kicker">Actor</span>
+    <div class="ai-chat-tab">
+      <section class="ai-chat-option-card ai-chat-option-card--selected">
+        <span class="ai-chat-kicker">Actor</span>
         <strong>No actor loaded</strong>
         <p>{loadError() ?? "Ask the chat to generate an actor/widget first. Once an actor candidate exists, this tab will show the manifest for inspection."}</p>
       </section>
@@ -200,11 +200,11 @@ export function ActorTab(props: IProps) {
 
   return (
     <Show when={manifest() !== null} fallback={noActorLoaded()}>
-      <div class="ai-wizzard-tab ai-wizzard-tab--actor">
+      <div class="ai-chat-tab ai-chat-tab--actor">
         <section class="ai-actor-editor">
           <header class="ai-actor-editor__header">
             <div>
-              <span class="ai-wizzard-kicker">{isCandidate() ? "Draft actor candidate" : "Actor manifest"}</span>
+              <span class="ai-chat-kicker">{isCandidate() ? "Draft actor candidate" : "Actor manifest"}</span>
               <strong>{manifest()?.name}</strong>
               <p>
                 {isCandidate()
@@ -305,7 +305,7 @@ export function ActorTab(props: IProps) {
             <Show
               when={isCandidate()}
               fallback={
-                <button type="button" class="ai-wizzard-primary-button" disabled={!canSave()} onClick={() => void saveManifest()}>
+                <button type="button" class="ai-chat-primary-button" disabled={!canSave()} onClick={() => void saveManifest()}>
                   {saveStatus() === "saving" ? "Saving" : "Save manifest"}
                 </button>
               }

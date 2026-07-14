@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createInspectResourceTool } from '../src/tools/tool.inspect-resource';
 import { createListResourcesTool } from '../src/tools/tool.list-resources';
 import { createProposeDbChangeTool } from '../src/tools/tool.propose-db-change';
+import { createQueryDbReadonlyTool } from '../src/tools/tool.query-db-readonly';
 import { txAppendWidgetResourceSelectionRecord } from '../src/core/tx.session-candidate';
 import { createFakeSessionManager, executeTool } from './tool.test-helpers';
 
@@ -79,6 +80,61 @@ describe('Wizard resource tools', () => {
     expect(JSON.stringify(result.details)).not.toContain('rows');
     expect(result.content[0].text).not.toContain('base64');
     expect(result.content[0].text).not.toContain('"rows":');
+  });
+
+  test('queries bounded rows only for an explicitly selected database', async () => {
+    const sessionManager = createFakeSessionManager();
+    const calls: unknown[] = [];
+    const tool = createQueryDbReadonlyTool({
+      sessionManager,
+      actorService: {
+        reload: async () => {},
+        getResource: async () => database,
+        executeDbLiveSql: async (args) => {
+          calls.push(args);
+          return {
+            kind: 'rows',
+            columns: ['id', 'title'],
+            rows: [{
+              id: { type: 'integer', value: '1' },
+              title: { type: 'text', value: 'First note' },
+            }],
+            rowCount: 1,
+            rowsAffected: 0,
+            truncated: false,
+          };
+        },
+      },
+    });
+
+    const refused = await executeTool(tool, { resourceId: database.id, sql: 'SELECT id, title FROM notes' });
+    expect(refused.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+
+    txAppendWidgetResourceSelectionRecord({ sessionManager }, {
+      resources: [{ id: database.id, kind: database.kind, name: database.name, status: database.status }],
+      selectedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const result = await executeTool(tool, { resourceId: database.id, sql: 'SELECT id, title FROM notes' });
+
+    expect(result.isError).toBeUndefined();
+    expect(calls).toEqual([{
+      resourceId: database.id,
+      sql: 'SELECT id, title FROM notes',
+      approved: false,
+    }]);
+    expect(result.details).toMatchObject({
+      kind: 'db-query-result',
+      columns: ['id', 'title'],
+      rows: [{
+        id: { type: 'integer', value: '1' },
+        title: { type: 'text', value: 'First note' },
+      }],
+      rowCount: 1,
+      rowsAffected: 0,
+      truncated: false,
+    });
+    expect(result.content[0].text).toContain("Queried database 'Notes Database'");
   });
 
   test('only records DB SQL proposals for explicitly selected resources', async () => {

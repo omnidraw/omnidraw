@@ -186,50 +186,50 @@ export function SettingsTab(props: IProps) {
   })
 
   return (
-    <div class="ai-wizzard-tab ai-wizzard-tab--settings">
+    <div class="ai-chat-tab ai-chat-tab--settings">
       <Show when={!hasCredentials()}>
-        <section class="ai-wizzard-auth-callout" aria-live="polite">
+        <section class="ai-chat-auth-callout" aria-live="polite">
           <strong>Login to an AI provider to start chatting</strong>
           <p>Connect a Pi subscription provider or add an API key for one of the supported providers.</p>
         </section>
       </Show>
 
-      <section class="ai-wizzard-settings-section">
-        <div class="ai-wizzard-settings-header">
-          <span class="ai-wizzard-kicker">Subscriptions</span>
+      <section class="ai-chat-settings-section">
+        <div class="ai-chat-settings-header">
+          <span class="ai-chat-kicker">Subscriptions</span>
           <p>Use OAuth-based Pi subscriptions for providers that support browser login.</p>
         </div>
 
-        <div class="ai-wizzard-provider-grid">
+        <div class="ai-chat-provider-grid">
           <For each={subscriptionProviders()}>
             {(provider) => {
               const configured = () => configuredProviders().has(provider)
               const state = () => loginStateByProvider()[provider]?.status ?? { status: "idle" } as TLoginStatus
               const active = () => state().status === "pending" || state().status === "device-code" || state().status === "progress"
               return (
-                <article classList={{ "ai-wizzard-provider-card": true, "ai-wizzard-provider-card--expanded": active() || state().status === "success" || state().status === "error" || state().status === "aborted" }}>
-                  <div class="ai-wizzard-provider-card__main">
+                <article classList={{ "ai-chat-provider-card": true, "ai-chat-provider-card--expanded": active() || state().status === "success" || state().status === "error" || state().status === "aborted" }}>
+                  <div class="ai-chat-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "Connected subscription" : "No subscription connected"}</small>
                   </div>
-                  <div class="ai-wizzard-provider-card__actions">
-                    <button class="ai-wizzard-secondary-button" type="button" disabled={active()} onClick={() => void startLogin(provider)}>
+                  <div class="ai-chat-provider-card__actions">
+                    <button class="ai-chat-secondary-button" type="button" disabled={active()} onClick={() => void startLogin(provider)}>
                       {configured() ? "Reconnect" : "Log in"}
                     </button>
                     <Show when={configured() && !active()}>
-                      <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" onClick={() => void logout(provider)}>
+                      <button class="ai-chat-secondary-button ai-chat-secondary-button--danger" type="button" onClick={() => void logout(provider)}>
                         Logout
                       </button>
                     </Show>
                     <Show when={active()}>
-                      <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" onClick={() => void abortLogin(provider)}>
+                      <button class="ai-chat-secondary-button ai-chat-secondary-button--danger" type="button" onClick={() => void abortLogin(provider)}>
                         Cancel
                       </button>
                     </Show>
                   </div>
 
                   <Show when={state().status !== "idle"}>
-                    <div class="ai-wizzard-login-box" aria-live="polite">
+                    <div class="ai-chat-login-box" aria-live="polite">
                       <SwitchLoginStatus status={state()} />
                     </div>
                   </Show>
@@ -240,13 +240,13 @@ export function SettingsTab(props: IProps) {
         </div>
       </section>
 
-      <section class="ai-wizzard-settings-section">
-        <div class="ai-wizzard-settings-header">
-          <span class="ai-wizzard-kicker">API keys</span>
+      <section class="ai-chat-settings-section">
+        <div class="ai-chat-settings-header">
+          <span class="ai-chat-kicker">API keys</span>
           <p>API keys are stored by Pi. Existing keys are never displayed here.</p>
         </div>
 
-        <div class="ai-wizzard-provider-grid">
+        <div class="ai-chat-provider-grid">
           <For each={apiKeyProviders()}>
             {(provider) => {
               const configured = () => configuredProviders().has(provider)
@@ -255,28 +255,28 @@ export function SettingsTab(props: IProps) {
               const expanded = () => expandedApiKeyProviderMap()[provider] ?? false
               const busy = () => status().status === "saving" || status().status === "removing"
               return (
-                <article classList={{ "ai-wizzard-provider-card": true, "ai-wizzard-provider-card--api-key": true, "ai-wizzard-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
-                  <div class="ai-wizzard-provider-card__main">
+                <article classList={{ "ai-chat-provider-card": true, "ai-chat-provider-card--api-key": true, "ai-chat-provider-card--expanded": expanded() || status().status === "success" || status().status === "error" }}>
+                  <div class="ai-chat-provider-card__main">
                     <strong>{providerLabel(provider)}</strong>
                     <small>{configured() ? "API key configured" : "No API key configured"}</small>
                   </div>
-                  <div class="ai-wizzard-provider-card__actions">
-                    <button class="ai-wizzard-secondary-button" type="button" disabled={busy()} onClick={() => setApiKeyExpanded(provider, !expanded())}>
+                  <div class="ai-chat-provider-card__actions">
+                    <button class="ai-chat-secondary-button" type="button" disabled={busy()} onClick={() => setApiKeyExpanded(provider, !expanded())}>
                       {expanded() ? "Close" : configured() ? "Update key" : "Add API key"}
                     </button>
                     <Show when={configured()}>
-                      <button class="ai-wizzard-secondary-button ai-wizzard-secondary-button--danger" type="button" disabled={busy()} onClick={() => void removeApiKey(provider)}>
+                      <button class="ai-chat-secondary-button ai-chat-secondary-button--danger" type="button" disabled={busy()} onClick={() => void removeApiKey(provider)}>
                         Remove
                       </button>
                     </Show>
                   </div>
 
                   <Show when={expanded()}>
-                    <div class="ai-wizzard-api-key-box">
-                      <label class="ai-wizzard-api-key-field">
+                    <div class="ai-chat-api-key-box">
+                      <label class="ai-chat-api-key-field">
                         <span>{configured() ? "Paste a replacement API key" : "Paste API key"}</span>
                         <input
-                          class="ai-wizzard-api-key-input"
+                          class="ai-chat-api-key-input"
                           type="password"
                           autocomplete="off"
                           spellcheck={false}
@@ -286,8 +286,8 @@ export function SettingsTab(props: IProps) {
                           onInput={(event) => setApiKeyDraft(provider, event.currentTarget.value)}
                         />
                       </label>
-                      <div class="ai-wizzard-provider-card__actions">
-                        <button class="ai-wizzard-secondary-button" type="button" disabled={busy() || draft().trim().length === 0} onClick={() => void saveApiKey(provider)}>
+                      <div class="ai-chat-provider-card__actions">
+                        <button class="ai-chat-secondary-button" type="button" disabled={busy() || draft().trim().length === 0} onClick={() => void saveApiKey(provider)}>
                           {configured() ? "Save new key" : "Save key"}
                         </button>
                       </div>
@@ -295,7 +295,7 @@ export function SettingsTab(props: IProps) {
                   </Show>
 
                   <Show when={status().status !== "idle"}>
-                    <div class="ai-wizzard-login-box" aria-live="polite">
+                    <div class="ai-chat-login-box" aria-live="polite">
                       <ApiKeyStatus status={status()} />
                     </div>
                   </Show>
@@ -335,7 +335,7 @@ function SwitchLoginStatus(props: { status: TLoginStatus }) {
         <p>{"message" in props.status ? props.status.message : "Waiting for authorization…"}</p>
       </Show>
       <Show when={props.status.status === "device-code" && "verificationUri" in props.status}>
-        <div class="ai-wizzard-device-flow">
+        <div class="ai-chat-device-flow">
           <span>Open this page and enter the code:</span>
           <a href={"verificationUri" in props.status ? props.status.verificationUri : "#"} target="_blank" rel="noopener noreferrer">
             {"verificationUri" in props.status ? props.status.verificationUri : ""}

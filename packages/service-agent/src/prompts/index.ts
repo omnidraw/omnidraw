@@ -9,7 +9,7 @@ import styleGuidePrompt from './prompt.style-guide.md' with { type: 'text' };
 import toolsPrompt from './prompt.tools.md' with { type: 'text' };
 import widgetImplementationPrompt from './prompt.widget-implementation.md' with { type: 'text' };
 
-const WIDGET_WIZZARD_SYSTEM_PROMPT_SECTIONS = [
+const WIDGET_CHAT_SYSTEM_PROMPT_SECTIONS = [
   productAndManifestPrompt.replace('{{LUCIDE_STATIC_ICON_KEYS}}', LUCIDE_STATIC_ICON_KEYS.join(', ')),
   actorLifecycleAndActivityPrompt,
   toolsPrompt,
@@ -19,4 +19,4 @@ const WIDGET_WIZZARD_SYSTEM_PROMPT_SECTIONS = [
   styleGuidePrompt,
 ];
 
-export const WIDGET_WIZZARD_SYSTEM_PROMPT = `\n${WIDGET_WIZZARD_SYSTEM_PROMPT_SECTIONS.map((section) => section.trim()).join('\n\n')}\n`;
+export const WIDGET_CHAT_SYSTEM_PROMPT = `\n${WIDGET_CHAT_SYSTEM_PROMPT_SECTIONS.map((section) => section.trim()).join('\n\n')}\n`;

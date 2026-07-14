@@ -2,7 +2,7 @@ import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
 import { createSignal } from "solid-js"
 import { render } from "solid-js/web"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ActorTab } from "../../../../src/components/AiWizzard/tabs/ActorTab"
+import { ActorTab } from "../../../../src/components/AiChat/tabs/ActorTab"
 
 vi.mock("@vibecanvas/actor-ui", () => ({
   ActorStateMachineView: (props: { manifest?: TVibecanvasJson }) => {
@@ -68,7 +68,7 @@ function createApiService() {
   return {
     api: {
       agent: {
-        wizzard: {
+        chat: {
           draftManifest: {
             read: vi.fn(() => new Promise<never>(() => {})),
             patch: vi.fn(),
@@ -130,7 +130,7 @@ describe("ActorTab rendered manifest", () => {
     const apiService = {
       api: {
         agent: {
-          wizzard: {
+          chat: {
             draftManifest: {
               read: () => new Promise(() => {}),
               patch: async () => [undefined, { ok: true, manifest: MANIFEST }],

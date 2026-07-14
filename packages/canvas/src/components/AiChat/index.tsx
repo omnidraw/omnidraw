@@ -1,6 +1,5 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client"
 import { Dialog } from "@kobalte/core/dialog"
-import { Tabs } from "@kobalte/core/tabs"
 import { For, Match, Show, Switch, createEffect, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
@@ -8,32 +7,33 @@ import { ActorTab } from "./tabs/ActorTab"
 import { PreviewTab } from "./tabs/PreviewTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { ChatTab } from "./tabs/ChatTab"
-import { ToolTab } from "./tabs/ToolTab"
 import "./index.css"
 import type { TVibecanvasJson } from "@vibecanvas/service-actor/core/types"
+import type { TWidgetTitleBarPortal } from "../../services/widget/interface"
 import type { TChatPromptImage } from "./ChatComposer/interface"
 import type { TChatComposerMention } from "./ChatComposer/interface"
 
-type TAiWizardThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
-type TAiWizardPreference = {
+type TAiChatThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
+type TAiChatPreference = {
     model?: {
         provider: string
         modelId: string
     }
-    thinkingLevel?: TAiWizardThinkingLevel
+    thinkingLevel?: TAiChatThinkingLevel
 }
-type TAiWizardManifestSource = "file" | "actor-candidate" | "connected"
-type TAiWizardManifestState = {
+type TAiChatManifestSource = "file" | "actor-candidate" | "connected"
+type TAiChatManifestState = {
     manifest: TVibecanvasJson | null
-    source: TAiWizardManifestSource
+    source: TAiChatManifestSource
 }
 
 interface IProps {
     id: string
     apiService: TOrpcSafeClient
+    titleBar: TWidgetTitleBarPortal
     sessionId: string
-    aiWizardPreference?: TAiWizardPreference
-    onAiWizardPreferenceChange?: (preference: TAiWizardPreference) => void
+    aiChatPreference?: TAiChatPreference
+    onAiChatPreferenceChange?: (preference: TAiChatPreference) => void
     onResetSessionId: () => string
 }
 
@@ -45,7 +45,7 @@ type TPublishedWidgetListItem = {
     description: string | null
     manifest_path: string
 }
-type TAiWizardResource = {
+type TAiChatResource = {
     id: string
     kind: "kv" | "secretStore" | "db"
     name: string
@@ -105,7 +105,7 @@ function hasSetActorCandidateToolResult(messages: readonly unknown[]) {
     return messages.some((message) => isSetActorCandidateToolResult(message))
 }
 
-function getConnectedManifestState(data: { vcJson: TVibecanvasJson | null; actorCandidate?: { manifest: TVibecanvasJson } | null }): TAiWizardManifestState {
+function getConnectedManifestState(data: { vcJson: TVibecanvasJson | null; actorCandidate?: { manifest: TVibecanvasJson } | null }): TAiChatManifestState {
     if (data.vcJson) {
         return {
             manifest: data.vcJson,
@@ -126,7 +126,7 @@ function getConnectedManifestState(data: { vcJson: TVibecanvasJson | null; actor
     }
 }
 
-function getPreferencePromptModel(preference: TAiWizardPreference) {
+function getPreferencePromptModel(preference: TAiChatPreference) {
     return preference.model ? {
         id: preference.model.modelId,
         provider: preference.model.provider,
@@ -147,15 +147,17 @@ const IMPLEMENT_APPROVED_ACTOR_PROMPT = [
     "After editing, run vc_validate_widget_files and fix validation errors. Do not publish unless I explicitly ask for publishing.",
 ].join("\n")
 
-export function AiWizzard(props: IProps) {
+export function AiChat(props: IProps) {
     let draftManifestRefreshRequestId = 0
-    const [selectedTab, setSelectedTab] = createSignal<string>()
+    const [selectedView, setSelectedView] = createSignal<"chat" | "settings">()
+    const [isActorDialogOpen, setIsActorDialogOpen] = createSignal(false)
+    const [isPreviewDialogOpen, setIsPreviewDialogOpen] = createSignal(false)
     const [sessionId, setSessionId] = createSignal(props.sessionId)
     const [isRunning, setIsRunning] = createSignal(false)
     const [isCanceling, setIsCanceling] = createSignal(false)
     const [chatDraftText, setChatDraftText] = createSignal("")
-    const [localAiWizardPreference, setLocalAiWizardPreference] = createSignal<TAiWizardPreference>(props.aiWizardPreference ?? {})
-    const [wizzardConnectNonce, setWizzardConnectNonce] = createSignal(0)
+    const [localAiChatPreference, setLocalAiChatPreference] = createSignal<TAiChatPreference>(props.aiChatPreference ?? {})
+    const [chatConnectNonce, setChatConnectNonce] = createSignal(0)
     const [isEditPickerOpen, setIsEditPickerOpen] = createSignal(false)
     const [editPickerNonce, setEditPickerNonce] = createSignal(0)
     const [selectedPublishedWidgetName, setSelectedPublishedWidgetName] = createSignal<string>()
@@ -166,15 +168,11 @@ export function AiWizzard(props: IProps) {
         if (err) throw err.message
         return data
     }))
-    const [toolGroupState] = createResource(() => props.apiService.api.tool.groups.list().then(([err, data]) => {
-        if (err) return []
-        return data.map((group) => group.name)
-    }))
     const [resourceState] = createResource(() => props.apiService.api.actors.resources.list({}).then(([err, data]) => {
         if (err) return []
-        return data as TAiWizardResource[]
+        return data as TAiChatResource[]
     }))
-    const [manifestState, setManifestState] = createSignal<TAiWizardManifestState>({
+    const [manifestState, setManifestState] = createSignal<TAiChatManifestState>({
         manifest: null,
         source: "connected",
     })
@@ -187,20 +185,20 @@ export function AiWizzard(props: IProps) {
     )
 
     createEffect(() => {
-        setLocalAiWizardPreference(props.aiWizardPreference ?? {})
+        setLocalAiChatPreference(props.aiChatPreference ?? {})
     })
 
     createEffect(() => {
-        const currentConnectNonce = wizzardConnectNonce()
+        const currentConnectNonce = chatConnectNonce()
         const currentSessionId = sessionId()
         setIsRunning(false)
         setIsCanceling(false)
 
-        void props.apiService.api.agent.wizzard.connect({
+        void props.apiService.api.agent.chat.connect({
             sessionId: currentSessionId,
             widgetId: props.id
         }).then(([err, data]) => {
-            if (sessionId() !== currentSessionId || wizzardConnectNonce() !== currentConnectNonce) {
+            if (sessionId() !== currentSessionId || chatConnectNonce() !== currentConnectNonce) {
                 return
             }
 
@@ -213,13 +211,13 @@ export function AiWizzard(props: IProps) {
         })
     })
 
-    const setWizardManifest = (manifest: TVibecanvasJson | null, source: TAiWizardManifestSource = "connected") => {
+    const setChatManifest = (manifest: TVibecanvasJson | null, source: TAiChatManifestSource = "connected") => {
         setManifestState({ manifest, source })
     }
 
     const refreshDraftManifest = async (args: { currentSessionId: string }) => {
         const requestId = ++draftManifestRefreshRequestId
-        const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.read({
+        const [err, result] = await props.apiService.api.agent.chat.draftManifest.read({
             widgetId: props.id,
             sessionId: args.currentSessionId,
         })
@@ -232,7 +230,7 @@ export function AiWizzard(props: IProps) {
             return
         }
 
-        setWizardManifest(result.manifest, result.source)
+        setChatManifest(result.manifest, result.source)
     }
 
 
@@ -318,21 +316,21 @@ export function AiWizzard(props: IProps) {
         })
     })
 
-    const updateAiWizardPreference = (preference: TAiWizardPreference) => {
+    const updateAiChatPreference = (preference: TAiChatPreference) => {
         const nextPreference = {
-            ...localAiWizardPreference(),
+            ...localAiChatPreference(),
             ...preference,
         }
 
-        setLocalAiWizardPreference(nextPreference)
-        props.onAiWizardPreferenceChange?.(nextPreference)
+        setLocalAiChatPreference(nextPreference)
+        props.onAiChatPreferenceChange?.(nextPreference)
     }
 
-    const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: { id: string; provider: string }; thinkingLevel: TAiWizardThinkingLevel }) => {
+    const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
         const currentSessionId = sessionId()
         setIsRunning(true)
         setIsCanceling(false)
-        updateAiWizardPreference({
+        updateAiChatPreference({
             model: args.model ? {
                 provider: args.model.provider,
                 modelId: args.model.id,
@@ -340,7 +338,7 @@ export function AiWizzard(props: IProps) {
             thinkingLevel: args.thinkingLevel,
         })
 
-        const [err] = await props.apiService.api.agent.wizzard.prompt({
+        const [err] = await props.apiService.api.agent.chat.prompt({
             widgetId: props.id,
             sessionId: currentSessionId,
             text: args.text,
@@ -360,15 +358,15 @@ export function AiWizzard(props: IProps) {
     }
 
     const clearResourceBindings = async () => {
-        const [err] = await props.apiService.api.agent.wizzard.resourceBindings.clear({
+        const [err] = await props.apiService.api.agent.chat.resourceBindings.clear({
             widgetId: props.id,
             sessionId: sessionId(),
         })
         if (err) throw err
     }
 
-    const reconnectWizzard = async () => {
-        const [err, data] = await props.apiService.api.agent.wizzard.connect({
+    const reconnectChat = async () => {
+        const [err, data] = await props.apiService.api.agent.chat.connect({
             sessionId: sessionId(),
             widgetId: props.id
         })
@@ -381,13 +379,13 @@ export function AiWizzard(props: IProps) {
         return data
     }
 
-    const refreshSettingsAndReconnectWizzard = async () => {
+    const refreshSettingsAndReconnectChat = async () => {
         await refetch()
-        setWizzardConnectNonce((nonce) => nonce + 1)
+        setChatConnectNonce((nonce) => nonce + 1)
     }
 
     const approveActorCandidate = async () => {
-        const currentPreference = localAiWizardPreference()
+        const currentPreference = localAiChatPreference()
 
         await prompt({
             text: APPROVE_ACTOR_CANDIDATE_PROMPT,
@@ -396,18 +394,18 @@ export function AiWizzard(props: IProps) {
             thinkingLevel: currentPreference.thinkingLevel ?? settingState.latest?.defaultThinkingLevel ?? "minimal",
         })
 
-        await reconnectWizzard()
+        await reconnectChat()
 
-        const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.read({
+        const [err, result] = await props.apiService.api.agent.chat.draftManifest.read({
             widgetId: props.id,
             sessionId: sessionId(),
         })
 
         if (!err && result.ready) {
-            setWizardManifest(result.manifest, result.source)
+            setChatManifest(result.manifest, result.source)
         }
 
-        const nextPreference = localAiWizardPreference()
+        const nextPreference = localAiChatPreference()
 
         await prompt({
             text: IMPLEMENT_APPROVED_ACTOR_PROMPT,
@@ -423,7 +421,7 @@ export function AiWizzard(props: IProps) {
         const currentSessionId = sessionId()
         setIsCanceling(true)
 
-        const [err, data] = await props.apiService.api.agent.wizzard.cancel({
+        const [err, data] = await props.apiService.api.agent.chat.cancel({
             widgetId: props.id,
             sessionId: currentSessionId,
         })
@@ -436,12 +434,12 @@ export function AiWizzard(props: IProps) {
         }
     }
 
-    const newWidget = () => {
+    const newChat = () => {
         setIsRunning(false)
         setIsCanceling(false)
         setChatDraftText("")
         setMessageHistory(reconcile([]))
-        setWizardManifest(null)
+        setChatManifest(null)
         setSessionId(props.onResetSessionId())
     }
 
@@ -464,7 +462,7 @@ export function AiWizzard(props: IProps) {
         setIsCanceling(false)
         setChatDraftText("")
 
-        const [err, result] = await props.apiService.api.agent.wizzard.startWidgetEdit({
+        const [err, result] = await props.apiService.api.agent.chat.startWidgetEdit({
             widgetId: props.id,
             sessionId: nextSessionId,
             definitionName,
@@ -481,15 +479,24 @@ export function AiWizzard(props: IProps) {
             return
         }
 
-        setWizardManifest(result.vcJson, "file")
+        setChatManifest(result.vcJson, "file")
         setMessageHistory(reconcile(result.messageHistory.map((message) => withAgentMessageFinished(message, true))))
         setSessionId(nextSessionId)
-        setSelectedTab("actor")
+        setIsActorDialogOpen(true)
         setIsEditPickerOpen(false)
     }
 
     const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
-    const activeTab = createMemo(() => selectedTab() ?? (aiAuthenticated() ? "chat" : "settings"))
+    const activeView = createMemo(() => selectedView() ?? (aiAuthenticated() ? "chat" : "settings"))
+    onMount(() => {
+        const removeSettingsAction = props.titleBar.onAction("settings", () => {
+            setSelectedView(activeView() === "settings" ? "chat" : "settings")
+        })
+        onCleanup(removeSettingsAction)
+    })
+    createEffect(() => {
+        props.titleBar.setActionState("settings", { pressed: activeView() === "settings" })
+    })
     const resourceMentions = createMemo<TChatComposerMention[]>(() => (resourceState.latest ?? []).map((resource) => ({
         id: resource.id,
         label: resource.name,
@@ -497,7 +504,7 @@ export function AiWizzard(props: IProps) {
     })))
 
     const approveDbChange = async (proposalId: string) => {
-        const [err, result] = await props.apiService.api.agent.wizzard.dbChange.approve({
+        const [err, result] = await props.apiService.api.agent.chat.dbChange.approve({
             widgetId: props.id,
             sessionId: sessionId(),
             proposalId,
@@ -508,7 +515,7 @@ export function AiWizzard(props: IProps) {
     }
 
     const rejectDbChange = async (proposalId: string) => {
-        const [err, result] = await props.apiService.api.agent.wizzard.dbChange.reject({
+        const [err, result] = await props.apiService.api.agent.chat.dbChange.reject({
             widgetId: props.id,
             sessionId: sessionId(),
             proposalId,
@@ -518,75 +525,49 @@ export function AiWizzard(props: IProps) {
     }
 
     return (
-        <div class="ai-wizzard-shell" classList={{ "ai-wizzard-shell--actor": activeTab() === "actor" }}>
-            <Switch fallback={<Tabs aria-label="Main navigation" class="ai-wizzard-tabs" value={activeTab()} onChange={setSelectedTab}>
-                <Tabs.List class="ai-wizzard-tabs__list">
-                    <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="chat">Chat</Tabs.Trigger>
-                    <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="actor">Actor</Tabs.Trigger>
-                    <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="tool">Tool</Tabs.Trigger>
-                    <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="preview">Preview</Tabs.Trigger>
-                    <Tabs.Trigger class="ai-wizzard-tabs__trigger" value="settings">Settings</Tabs.Trigger>
-                    <Tabs.Indicator class="ai-wizzard-tabs__indicator" />
-                </Tabs.List>
+        <div class="ai-chat-shell">
+            <Switch fallback={(
+                <div class="ai-chat-surface">
+                    <main class="ai-chat-body">
+                        <section class="ai-chat-view" hidden={activeView() !== "chat"} aria-hidden={activeView() !== "chat"}>
+                            <Show when={sessionId()} keyed>
+                                {(_activeSessionId) => (
+                                    <ChatTab
+                                        settings={settingState.latest}
+                                        aiChatPreference={localAiChatPreference()}
+                                        messageHistory={messageHistory}
+                                        isRunning={isRunning()}
+                                        isCanceling={isCanceling()}
+                                        draftText={chatDraftText()}
+                                        mentions={resourceMentions()}
+                                        onDraftTextChange={setChatDraftText}
+                                        onPreferenceChange={updateAiChatPreference}
+                                        onPrompt={prompt}
+                                        onApproveDbChange={approveDbChange}
+                                        onRejectDbChange={rejectDbChange}
+                                        onCancel={() => void cancelPrompt()}
+                                        onNewChat={newChat}
+                                        onEditExistingWidget={openEditPicker}
+                                        onClearResourceBindings={clearResourceBindings}
+                                        onInspectActor={() => setIsActorDialogOpen(true)}
+                                        onOpenPreview={() => setIsPreviewDialogOpen(true)}
+                                    />
+                                )}
+                            </Show>
+                        </section>
 
-                <Tabs.Content class="ai-wizzard-tabs__content" value="chat">
-                    <ChatTab
-                        settings={settingState.latest}
-                        aiWizardPreference={localAiWizardPreference()}
-                        messageHistory={messageHistory}
-                        isRunning={isRunning()}
-                        isCanceling={isCanceling()}
-                        draftText={chatDraftText()}
-                        mentions={resourceMentions()}
-                        onDraftTextChange={setChatDraftText}
-                        onPreferenceChange={updateAiWizardPreference}
-                        onPrompt={prompt}
-                        onApproveDbChange={approveDbChange}
-                        onRejectDbChange={rejectDbChange}
-                        onCancel={() => void cancelPrompt()}
-                        onNewWidget={newWidget}
-                        onEditExistingWidget={openEditPicker}
-                        onClearResourceBindings={clearResourceBindings}
-                        onInspectActor={() => setSelectedTab("actor")}
-                    />
-                </Tabs.Content>
-                <Tabs.Content class="ai-wizzard-tabs__content ai-wizzard-tabs__content--actor" value="actor">
-                    <ActorTab
-                        actor={manifestState().manifest}
-                        actorSource={manifestState().source}
-                        apiService={props.apiService}
-                        isApproving={isRunning()}
-                        sessionId={sessionId()}
-                        widgetId={props.id}
-                        onApprove={approveActorCandidate}
-                        onManifestChange={setWizardManifest}
-                    />
-                </Tabs.Content>
-                <Tabs.Content class="ai-wizzard-tabs__content" value="tool">
-                    <ToolTab
-                        manifest={manifestState().manifest}
-                        apiService={props.apiService}
-                        sessionId={sessionId()}
-                        existingGroups={toolGroupState() ?? []}
-                        widgetId={props.id}
-                        onManifestChange={setWizardManifest}
-                    />
-                </Tabs.Content>
-                <Tabs.Content class="ai-wizzard-tabs__content" value="preview">
-                    <PreviewTab
-                        apiService={props.apiService}
-                        sessionId={sessionId()}
-                        widgetId={props.id}
-                    />
-                </Tabs.Content>
-                <Tabs.Content class="ai-wizzard-tabs__content" value="settings">
-                    <SettingsTab settings={settingState.latest} apiService={props.apiService} onSettingsChanged={() => void refreshSettingsAndReconnectWizzard()} />
-                </Tabs.Content>
-            </Tabs>}>
+                        <Show when={activeView() === "settings"}>
+                            <section class="ai-chat-view ai-chat-view--settings">
+                                <SettingsTab settings={settingState.latest} apiService={props.apiService} onSettingsChanged={() => void refreshSettingsAndReconnectChat()} />
+                            </section>
+                        </Show>
+                    </main>
+                </div>
+            )}>
                 <Match when={settingState.loading}>
                     <AsyncStateView
                         variant="loading"
-                        title="Loading AI wizard"
+                        title="Loading AI chat"
                         message="Fetching the agent settings before opening the workspace."
                     />
                 </Match>
@@ -594,7 +575,7 @@ export function AiWizzard(props: IProps) {
                     {(error) => (
                         <AsyncStateView
                             variant="error"
-                            title="Could not load AI wizard"
+                            title="Could not load AI chat"
                             message={String(error())}
                             actionLabel="Try again"
                             onAction={() => void refetch()}
@@ -602,29 +583,70 @@ export function AiWizzard(props: IProps) {
                     )}
                 </Match>
             </Switch>
+            <Dialog open={isActorDialogOpen()} onOpenChange={setIsActorDialogOpen}>
+                <Dialog.Portal>
+                    <Dialog.Overlay class="ai-chat-dialog-overlay" />
+                    <Dialog.Content class="ai-chat-dialog ai-chat-dialog--workspace">
+                        <header class="ai-chat-dialog__header">
+                            <Dialog.Title class="ai-chat-dialog__title">Actor details</Dialog.Title>
+                            <Dialog.CloseButton class="ai-chat-dialog__close">Close</Dialog.CloseButton>
+                        </header>
+                        <div class="ai-chat-dialog__body ai-chat-dialog__body--workspace">
+                            <ActorTab
+                                actor={manifestState().manifest}
+                                actorSource={manifestState().source}
+                                apiService={props.apiService}
+                                isApproving={isRunning()}
+                                sessionId={sessionId()}
+                                widgetId={props.id}
+                                onApprove={approveActorCandidate}
+                                onManifestChange={setChatManifest}
+                            />
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog>
+            <Dialog open={isPreviewDialogOpen()} onOpenChange={setIsPreviewDialogOpen}>
+                <Dialog.Portal>
+                    <Dialog.Overlay class="ai-chat-dialog-overlay" />
+                    <Dialog.Content class="ai-chat-dialog ai-chat-dialog--workspace">
+                        <header class="ai-chat-dialog__header">
+                            <Dialog.Title class="ai-chat-dialog__title">Widget preview</Dialog.Title>
+                            <Dialog.CloseButton class="ai-chat-dialog__close">Close</Dialog.CloseButton>
+                        </header>
+                        <div class="ai-chat-dialog__body ai-chat-dialog__body--workspace">
+                            <PreviewTab
+                                apiService={props.apiService}
+                                sessionId={sessionId()}
+                                widgetId={props.id}
+                            />
+                        </div>
+                    </Dialog.Content>
+                </Dialog.Portal>
+            </Dialog>
             <Dialog open={isEditPickerOpen()} onOpenChange={setIsEditPickerOpen}>
                 <Dialog.Portal>
-                    <Dialog.Overlay class="ai-wizzard-dialog-overlay" />
-                    <Dialog.Content class="ai-wizzard-dialog ai-wizzard-dialog--wide">
-                        <header class="ai-wizzard-dialog__header">
+                    <Dialog.Overlay class="ai-chat-dialog-overlay" />
+                    <Dialog.Content class="ai-chat-dialog ai-chat-dialog--wide">
+                        <header class="ai-chat-dialog__header">
                             <div>
-                                <Dialog.Title class="ai-wizzard-dialog__title">Edit existing widget</Dialog.Title>
-                                <Dialog.Description class="ai-wizzard-dialog__description">
+                                <Dialog.Title class="ai-chat-dialog__title">Edit existing widget</Dialog.Title>
+                                <Dialog.Description class="ai-chat-dialog__description">
                                     Choose a published widget. Vibecanvas copies it into a draft and leaves the published folder unchanged until publish.
                                 </Dialog.Description>
                             </div>
-                            <Dialog.CloseButton class="ai-wizzard-dialog__close">Close</Dialog.CloseButton>
+                            <Dialog.CloseButton class="ai-chat-dialog__close">Close</Dialog.CloseButton>
                         </header>
-                        <div class="ai-wizzard-dialog__body">
+                        <div class="ai-chat-dialog__body">
                             <Switch>
                                 <Match when={publishedWidgetState.loading}>
                                     <p>Loading published widgets...</p>
                                 </Match>
                                 <Match when={publishedWidgetState.error}>
                                     {(error) => (
-                                        <div class="ai-wizzard-picker-state">
+                                        <div class="ai-chat-picker-state">
                                             <p>{String(error())}</p>
-                                            <button type="button" class="ai-wizzard-secondary-button" onClick={() => void refetchPublishedWidgets()}>
+                                            <button type="button" class="ai-chat-secondary-button" onClick={() => void refetchPublishedWidgets()}>
                                                 Try again
                                             </button>
                                         </div>
@@ -634,20 +656,20 @@ export function AiWizzard(props: IProps) {
                                     <p>No published widgets are available yet.</p>
                                 </Match>
                                 <Match when={(publishedWidgetState.latest?.length ?? 0) > 0}>
-                                    <div class="ai-wizzard-widget-picker-list">
+                                    <div class="ai-chat-widget-picker-list">
                                         <For each={publishedWidgetState.latest ?? []}>
                                             {(widget) => (
                                                 <button
                                                     type="button"
-                                                    class="ai-wizzard-widget-picker-item"
-                                                    classList={{ "ai-wizzard-widget-picker-item--selected": selectedPublishedWidgetName() === widget.name }}
+                                                    class="ai-chat-widget-picker-item"
+                                                    classList={{ "ai-chat-widget-picker-item--selected": selectedPublishedWidgetName() === widget.name }}
                                                     onClick={() => setSelectedPublishedWidgetName(widget.name)}
                                                 >
-                                                    <span class="ai-wizzard-widget-picker-item__main">
+                                                    <span class="ai-chat-widget-picker-item__main">
                                                         <strong>{widget.name}</strong>
                                                         <span>{widget.description ?? "No description"}</span>
                                                     </span>
-                                                    <span class="ai-wizzard-widget-picker-item__meta">
+                                                    <span class="ai-chat-widget-picker-item__meta">
                                                         <span>{widget.slug}</span>
                                                         <span>v{widget.version ?? "unknown"}</span>
                                                         <span>{widget.manifest_path}</span>
@@ -659,14 +681,14 @@ export function AiWizzard(props: IProps) {
                                 </Match>
                             </Switch>
                             <Show when={editPickerError()}>
-                                {(message) => <pre class="ai-wizzard-dialog__message">{message()}</pre>}
+                                {(message) => <pre class="ai-chat-dialog__message">{message()}</pre>}
                             </Show>
                         </div>
-                        <footer class="ai-wizzard-dialog__actions">
-                            <Dialog.CloseButton class="ai-wizzard-secondary-button">Cancel</Dialog.CloseButton>
+                        <footer class="ai-chat-dialog__actions">
+                            <Dialog.CloseButton class="ai-chat-secondary-button">Cancel</Dialog.CloseButton>
                             <button
                                 type="button"
-                                class="ai-wizzard-primary-button"
+                                class="ai-chat-primary-button"
                                 disabled={!selectedPublishedWidgetName() || isStartingWidgetEdit()}
                                 onClick={() => void startWidgetEdit()}
                             >

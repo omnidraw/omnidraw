@@ -17,7 +17,7 @@ import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestActorCand
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txReconcileResourceBindings } from './core/tx.reconcile-resource-bindings';
 import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-candidate';
-import { WIDGET_WIZZARD_SYSTEM_PROMPT } from './prompts/index';
+import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { fnValidateCandidate } from './tools/fn.candidate';
 import { createWidgetWizardPhaseTools } from './tools/phase-tools';
 import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from './tools/resource-bindings';
@@ -83,7 +83,7 @@ type TAgentCancelResult = {
   canceled: boolean;
   running: boolean;
 };
-type TWizzardSessionEntry = {
+type TChatSessionEntry = {
   unsub: () => void;
   session: AgentSession;
   sessionManager: SessionManager;
@@ -158,11 +158,11 @@ type TAgentDraftManifestPatchResult =
   | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
-type TAgentWizzardPublishResult =
+type TAgentChatPublishResult =
   | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
   | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
 
-type TAgentWizzardStartWidgetEditResult =
+type TAgentChatStartWidgetEditResult =
   | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: TWidgetEditSessionRecord; messageHistory: AgentSession['messages'] }
   | { ok: false; message: string };
 
@@ -180,7 +180,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, TWizzardSessionEntry>> = {}
+  sessionMap: Record<TWidgetId, Record<TSessionId, TChatSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
   #dbChangeProposalResolutions = new Set<string>();
@@ -201,14 +201,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async stop(): Promise<void> {
     for (const [id, sessions] of Object.entries(this.sessionMap)) {
       for (const sessionId of Object.keys(sessions)) {
-        this.#disposeWizzardSession(id, sessionId)
+        this.#disposeChatSession(id, sessionId)
       }
     }
     this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
 
-  async connectWizzard(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
+  async connectChat(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
     this.#disposeAgentSession(id, sessionId)
 
     const cwd = this.#getWizardCwd(id, sessionId)
@@ -223,7 +223,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       } catch { }
     }
 
-    const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
+    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
     const actorCandidate = fxLatestActorCandidateRecord({ sessionManager })
     if (!this.sessionMap[id]) {
       this.sessionMap[id] = {}
@@ -239,11 +239,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  newWizzardSession(id: TWidgetId, sessionId: string): void {
-    this.#disposeWizzardSession(id, sessionId)
+  newChatSession(id: TWidgetId, sessionId: string): void {
+    this.#disposeChatSession(id, sessionId)
   }
 
-  async startWidgetEditWizzard(id: TWidgetId, sessionId: string, definitionName: string): Promise<TAgentWizzardStartWidgetEditResult> {
+  async startWidgetEditChat(id: TWidgetId, sessionId: string, definitionName: string): Promise<TAgentChatStartWidgetEditResult> {
     const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
     if (!sourceManifest) {
       return { ok: false, message: `Published widget definition not found: ${definitionName}` }
@@ -257,7 +257,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       return { ok: false, message: `Published widget folder does not exist: ${sourceDir}` }
     }
 
-    this.#disposeWizzardSession(id, sessionId)
+    this.#disposeChatSession(id, sessionId)
     await rm(draftDir, { recursive: true, force: true })
     await mkdir(draftDir, { recursive: true })
     await cp(sourceDir, draftDir, {
@@ -301,7 +301,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     )
     this.#flushSessionManager(sessionManager)
 
-    const sessionEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionManager)
+    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
     if (!this.sessionMap[id]) {
       this.sessionMap[id] = {}
     }
@@ -316,13 +316,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async promptWizzard(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
+  async promptChat(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
     const connectedEntry = this.sessionMap[id]?.[sessionId]
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
     if (promptSelection?.resourceIds !== undefined) {
-      const resources = await this.#resolveWizzardResourceSelections(promptSelection?.resourceIds ?? [])
+      const resources = await this.#resolveChatResourceSelections(promptSelection?.resourceIds ?? [])
       txAppendWidgetResourceSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
         resources,
         selectedAt: new Date().toISOString(),
@@ -337,7 +337,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
-    await this.#refreshWizzardSessionToolsIfNeeded(id, sessionId)
+    await this.#refreshChatSessionToolsIfNeeded(id, sessionId)
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
@@ -367,7 +367,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
   }
 
-  clearDraftResourceBindingsWizzard(id: TWidgetId, sessionId: string): { cleared: true } {
+  clearDraftResourceBindingsChat(id: TWidgetId, sessionId: string): { cleared: true } {
     const connectedEntry = this.sessionMap[id]?.[sessionId]
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
@@ -380,7 +380,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { cleared: true }
   }
 
-  async approveWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
+  async approveChatDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
     const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
       const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -394,7 +394,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         throw new Error('Coordinated database changes are unavailable in this host.')
       }
 
-      const details = await actorService.createDbDraft(proposal.resourceId, `AI Wizard: ${proposal.reason}`)
+      const details = await actorService.createDbDraft(proposal.resourceId, `AI Chat: ${proposal.reason}`)
       const draftId = details.draft.id
       let preview: { warnings: string[] }
       let apply: Awaited<ReturnType<NonNullable<TActorServiceReloader['confirmDbApply']>>>
@@ -421,7 +421,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  rejectWizzardDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): TWidgetDbChangeProposalRecord {
+  rejectChatDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): TWidgetDbChangeProposalRecord {
     const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
       const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -442,7 +442,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async cancelWizzard(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
+  async cancelChat(id: TWidgetId, sessionId: string): Promise<TAgentCancelResult> {
     const session = this.sessionMap[id]?.[sessionId]?.session
     if (!session || !session.isStreaming) {
       return { canceled: false, running: false }
@@ -453,7 +453,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { canceled: true, running: session.isStreaming }
   }
 
-  inspectDraftActorWizzard(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
+  inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
     const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
     if (!entry) {
       return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
@@ -466,7 +466,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async startDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
+  async startDraftActorChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
       return this.#draftActorNotReady(id, sessionId, 'session-missing')
@@ -487,7 +487,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     this.#disposeDraftActor(id, sessionId)
 
-    const bindingPlan = await this.#wizzardResourceBindingPlan(manifestResult.manifest, sessionEntry.sessionManager)
+    const bindingPlan = await this.#chatResourceBindingPlan(manifestResult.manifest, sessionEntry.sessionManager)
     if (!bindingPlan.ok) {
       return { ready: false, reason: 'resource-binding-invalid', message: bindingPlan.message }
     }
@@ -541,15 +541,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async reloadDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
-    return this.startDraftActorWizzard(id, sessionId)
+  async reloadDraftActorChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
+    return this.startDraftActorChat(id, sessionId)
   }
 
-  async resetDraftActorWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
-    return this.startDraftActorWizzard(id, sessionId)
+  async resetDraftActorChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
+    return this.startDraftActorChat(id, sessionId)
   }
 
-  stopDraftActorWizzard(id: TWidgetId, sessionId: string): TAgentDraftActorStopResult {
+  stopDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorStopResult {
     const key = this.#draftActorKey(id, sessionId)
     const stopped = this.#draftActorMap.has(key)
 
@@ -558,7 +558,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { stopped }
   }
 
-  sendDraftActorWizzard(id: TWidgetId, sessionId: string, name: string, payload: unknown): TAgentDraftActorSendResult {
+  sendDraftActorChat(id: TWidgetId, sessionId: string, name: string, payload: unknown): TAgentDraftActorSendResult {
     const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
     if (!entry) {
       return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
@@ -573,7 +573,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async previewSourceWizzard(id: TWidgetId, sessionId: string): Promise<TAgentPreviewSourceResult> {
+  async previewSourceChat(id: TWidgetId, sessionId: string): Promise<TAgentPreviewSourceResult> {
     if (!this.sessionMap[id]?.[sessionId]) {
       return this.#draftActorNotReady(id, sessionId, 'session-missing')
     }
@@ -589,7 +589,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async readDraftManifestWizzard(id: TWidgetId, sessionId: string): Promise<TAgentDraftManifestReadResult> {
+  async readDraftManifestChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftManifestReadResult> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
       return {
@@ -627,7 +627,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async patchDraftManifestWizzard(id: TWidgetId, sessionId: string, patch: TAgentDraftManifestPatch): Promise<TAgentDraftManifestPatchResult> {
+  async patchDraftManifestChat(id: TWidgetId, sessionId: string, patch: TAgentDraftManifestPatch): Promise<TAgentDraftManifestPatchResult> {
     if (!this.sessionMap[id]?.[sessionId]) {
       return {
         ok: false,
@@ -705,7 +705,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async publishWizzard(id: TWidgetId, sessionId: string): Promise<TAgentWizzardPublishResult> {
+  async publishChat(id: TWidgetId, sessionId: string): Promise<TAgentChatPublishResult> {
     if (!this.sessionMap[id]?.[sessionId]) {
       return {
         published: false,
@@ -727,7 +727,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     const editSession = fxLatestWidgetEditSessionRecord({ sessionManager: this.sessionMap[id][sessionId].sessionManager })
-    const bindingPlan = await this.#wizzardResourceBindingPlan(manifestResult.manifest, this.sessionMap[id][sessionId].sessionManager)
+    const bindingPlan = await this.#chatResourceBindingPlan(manifestResult.manifest, this.sessionMap[id][sessionId].sessionManager)
     if (!bindingPlan.ok) {
       return {
         published: false,
@@ -1081,7 +1081,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  async #createWizzardSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TWizzardSessionEntry> {
+  async #createChatSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TChatSessionEntry> {
     const cwd = this.#getWizardCwd(id, sessionId)
     const manifestResult = await this.#readDraftActorManifest(cwd)
     if (manifestResult.ready) {
@@ -1107,7 +1107,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       modelRegistry: this.modelRegistry,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
-        systemPrompt: WIDGET_WIZZARD_SYSTEM_PROMPT
+        systemPrompt: WIDGET_CHAT_SYSTEM_PROMPT
       }
     });
     const { session } = await createAgentSessionFromServices({
@@ -1115,7 +1115,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       sessionManager,
       model: previousSession?.model,
       thinkingLevel: previousSession?.thinkingLevel,
-      tools: this.#wizzardToolNames(phaseTools),
+      tools: this.#chatToolNames(phaseTools),
       customTools: phaseTools.customTools,
     })
     const unsub = session.subscribe((event) => {
@@ -1146,7 +1146,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     writableSessionManager._rewriteFile?.()
   }
 
-  #wizzardToolNames(phaseTools: ReturnType<typeof createWidgetWizardPhaseTools>): string[] {
+  #chatToolNames(phaseTools: ReturnType<typeof createWidgetWizardPhaseTools>): string[] {
     return [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)]
   }
 
@@ -1169,7 +1169,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return right.every((tool) => leftSet.has(tool))
   }
 
-  async #refreshWizzardSessionToolsIfNeeded(id: TWidgetId, sessionId: TSessionId): Promise<void> {
+  async #refreshChatSessionToolsIfNeeded(id: TWidgetId, sessionId: TSessionId): Promise<void> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry || sessionEntry.session.isStreaming) return
     if (typeof sessionEntry.session.getActiveToolNames !== 'function') return
@@ -1181,20 +1181,20 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       sessionManager: sessionEntry.sessionManager,
       actorService: this.#config.actorService,
     })
-    const desiredTools = this.#wizzardToolNames(phaseTools)
+    const desiredTools = this.#chatToolNames(phaseTools)
     const activeTools = sessionEntry.session.getActiveToolNames()
 
     if (this.#sameToolSet(activeTools, desiredTools)) return
 
     const previousSession = sessionEntry.session
-    const nextEntry = await this.#createWizzardSessionEntry(id, sessionId, sessionEntry.sessionManager, previousSession)
+    const nextEntry = await this.#createChatSessionEntry(id, sessionId, sessionEntry.sessionManager, previousSession)
 
     sessionEntry.unsub()
     previousSession.dispose()
     this.sessionMap[id][sessionId] = nextEntry
   }
 
-  async #resolveWizzardResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
+  async #resolveChatResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
     if (resourceIds.length > 16) throw new Error('A prompt can select at most 16 resources.')
     const ids = [...new Set(resourceIds)]
     if (!this.#config.actorService?.getResource) throw new Error('Resource selection is unavailable in this host.')
@@ -1213,16 +1213,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return selected
   }
 
-  async #wizzardResourceBindingPlan(manifest: TVibecanvasJson, sessionManager: SessionManager): Promise<{ ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string }> {
+  async #chatResourceBindingPlan(manifest: TVibecanvasJson, sessionManager: SessionManager): Promise<{ ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string }> {
     const requirements = Object.keys(manifest.actor.resources ?? {})
     if (requirements.length === 0) return { ok: true, bindings: [] }
 
     const selectedRecord = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
     let selected = selectedRecord?.resources ?? []
     if (!selectedRecord) {
-      const listResources = this.#config.actorService?.listResources
-      if (!listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
-      const available = await listResources({ status: 'ready' })
+      const actorService = this.#config.actorService
+      if (!actorService?.listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
+      const available = await actorService.listResources({ status: 'ready' })
       const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
         id: resource.id,
         kind: resource.kind,
@@ -1261,7 +1261,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     })
   }
 
-  #disposeWizzardSession(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeChatSession(id: TWidgetId, sessionId: TSessionId): void {
     this.#disposeDraftActor(id, sessionId)
     this.#disposeAgentSession(id, sessionId)
   }

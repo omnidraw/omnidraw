@@ -173,7 +173,7 @@ export function ToolTab(props: IProps) {
     setSaveStatus("saving")
     setSaveError(undefined)
 
-    const [err, result] = await props.apiService.api.agent.wizzard.draftManifest.patch({
+    const [err, result] = await props.apiService.api.agent.chat.draftManifest.patch({
       widgetId: props.widgetId,
       sessionId: props.sessionId,
       patch: {
@@ -200,9 +200,9 @@ export function ToolTab(props: IProps) {
 
   if (!props.manifest) {
     return (
-      <div class="ai-wizzard-tab">
-        <section class="ai-wizzard-option-card ai-wizzard-option-card--selected">
-          <span class="ai-wizzard-kicker">Tool</span>
+      <div class="ai-chat-tab">
+        <section class="ai-chat-option-card ai-chat-option-card--selected">
+          <span class="ai-chat-kicker">Tool</span>
           <strong>No widget loaded</strong>
           <p>Ask the chat to generate an actor/widget first, then open this tab to edit widget tool metadata.</p>
         </section>
@@ -211,17 +211,17 @@ export function ToolTab(props: IProps) {
   }
 
   return (
-    <div class="ai-wizzard-tab">
-      <section class="ai-wizzard-option-card ai-wizzard-tool-card">
-        <div class="ai-wizzard-tool-card__header">
+    <div class="ai-chat-tab">
+      <section class="ai-chat-option-card ai-chat-tool-card">
+        <div class="ai-chat-tool-card__header">
           <div>
-            <span class="ai-wizzard-kicker">Widget tool</span>
+            <span class="ai-chat-kicker">Widget tool</span>
             <strong>Configure toolbar metadata</strong>
           </div>
-          <div class="ai-wizzard-icon-preview ai-wizzard-icon-preview--header" aria-hidden="true">
+          <div class="ai-chat-icon-preview ai-chat-icon-preview--header" aria-hidden="true">
             <Show when={previewIcon()}>
               {(icon) => (
-                <div class="ai-wizzard-icon-preview__svg">
+                <div class="ai-chat-icon-preview__svg">
                   <ToolIconGlyph icon={icon()} />
                 </div>
               )}
@@ -229,23 +229,23 @@ export function ToolTab(props: IProps) {
           </div>
         </div>
 
-        <div class="ai-wizzard-tool-form">
+        <div class="ai-chat-tool-form">
           <TextField
-            class="ai-wizzard-kobalte-field"
+            class="ai-chat-kobalte-field"
             value={label()}
             onChange={(next) => {
               setLabel(next)
               markDirty()
             }}
           >
-            <TextField.Label class="ai-wizzard-label">Label</TextField.Label>
-            <TextField.Input class="ai-wizzard-kobalte-input" />
+            <TextField.Label class="ai-chat-label">Label</TextField.Label>
+            <TextField.Input class="ai-chat-kobalte-input" />
           </TextField>
 
-          <label class="ai-wizzard-kobalte-field">
-            <span class="ai-wizzard-label">Group</span>
+          <label class="ai-chat-kobalte-field">
+            <span class="ai-chat-label">Group</span>
             <select
-              class="ai-wizzard-native-select"
+              class="ai-chat-native-select"
               value={groupId()}
               onChange={(event) => {
                 setGroupId(event.currentTarget.value)
@@ -259,7 +259,7 @@ export function ToolTab(props: IProps) {
           </label>
 
           <NumberField
-            class="ai-wizzard-kobalte-field"
+            class="ai-chat-kobalte-field"
             value={priorityText()}
             minValue={0}
             maxValue={MAX_PRIORITY}
@@ -270,18 +270,18 @@ export function ToolTab(props: IProps) {
               markDirty()
             }}
           >
-            <NumberField.Label class="ai-wizzard-label">Priority</NumberField.Label>
-            <div class="ai-wizzard-number-control">
-              <NumberField.Input class="ai-wizzard-kobalte-input ai-wizzard-number-input" />
-              <NumberField.DecrementTrigger class="ai-wizzard-number-stepper">-</NumberField.DecrementTrigger>
-              <NumberField.IncrementTrigger class="ai-wizzard-number-stepper">+</NumberField.IncrementTrigger>
+            <NumberField.Label class="ai-chat-label">Priority</NumberField.Label>
+            <div class="ai-chat-number-control">
+              <NumberField.Input class="ai-chat-kobalte-input ai-chat-number-input" />
+              <NumberField.DecrementTrigger class="ai-chat-number-stepper">-</NumberField.DecrementTrigger>
+              <NumberField.IncrementTrigger class="ai-chat-number-stepper">+</NumberField.IncrementTrigger>
             </div>
-            <NumberField.ErrorMessage class="ai-wizzard-field-error">
+            <NumberField.ErrorMessage class="ai-chat-field-error">
               Priority must be between 0 and {MAX_PRIORITY}.
             </NumberField.ErrorMessage>
           </NumberField>
 
-          <div class="ai-wizzard-kobalte-field ai-wizzard-tool-form__wide">
+          <div class="ai-chat-kobalte-field ai-chat-tool-form__wide">
             <ToolIconPicker value={iconValue()} onChange={(next) => {
               if (!next) { setIconId(ICON_NONE_ID); setCustomIconSvg("") }
               else if (next.svgIcon) { setIconId(ICON_SVG_ID); setCustomIconSvg(next.svgIcon) }
@@ -295,10 +295,10 @@ export function ToolTab(props: IProps) {
           <p class="ai-actor-editor__error">{saveError()}</p>
         </Show>
 
-        <div class="ai-wizzard-actions">
+        <div class="ai-chat-actions">
           <button
             type="button"
-            class="ai-wizzard-primary-button ai-wizzard-primary-button--compact"
+            class="ai-chat-primary-button ai-chat-primary-button--compact"
             disabled={!canSave()}
             onClick={() => void save()}
           >

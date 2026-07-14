@@ -1,8 +1,8 @@
 # Vibecanvas Widget System
 
-This is the onboarding map for AI agents and engineers working on widgets, actors, resources, Wizard drafts, preview, publishing, and runtime instances.
+This is the onboarding map for AI agents and engineers working on widgets, actors, resources, AI Chat drafts, preview, publishing, and runtime instances.
 
-It describes the implemented system as of 2026-07-13. The code and tests remain authoritative when this document and implementation disagree. Update this document whenever a lifecycle boundary, persisted artifact, permission rule, or Wizard tool changes.
+It describes the implemented system as of 2026-07-13. The code and tests remain authoritative when this document and implementation disagree. Update this document whenever a lifecycle boundary, persisted artifact, permission rule, or AI Chat tool changes.
 
 ## The mental model
 
@@ -13,12 +13,12 @@ A Vibecanvas widget is not one process. It is a published definition with two gu
 
 The UI talks only to its owning actor instance. The actor may use host-managed resources through manifest-declared slots. Concrete resource IDs are selected and bound by the host; they never belong in guest files.
 
-The AI Widget Wizard creates a **draft definition** before anything is published. A draft can run an ephemeral preview actor with temporary resource bindings. Publishing installs the definition, creates durable definition-level resource bindings, and makes the widget available to the canvas. Creating that widget on a canvas creates a persisted actor instance.
+Vibecanvas AI Chat creates a **draft definition** before anything is published. A draft can run an ephemeral preview actor with temporary resource bindings. Publishing installs the definition, creates durable definition-level resource bindings, and makes the widget available to the canvas. Creating that widget on a canvas creates a persisted actor instance.
 
 ```mermaid
 flowchart LR
-  U["User + AI Widget Wizard"] --> C["Actor candidate in session history"]
-  C --> D["Draft files in Wizard cwd"]
+  U["User + Vibecanvas AI Chat"] --> C["Actor candidate in session history"]
+  C --> D["Draft files in AI Chat cwd"]
   R["Resource catalog"] --> M["Prompt-local @mention authority"]
   M --> C
   M --> I["Persistent draft binding intent"]
@@ -47,21 +47,21 @@ flowchart LR
 |---|---|---|
 | Widget definition | Published manifest plus widget and actor source files | `<configPath>/widgets/<slug>` and `actor_definitions` |
 | Actor candidate | Validated phase-one design before files exist | Pi session custom entry |
-| Wizard draft | Private working directory containing generated files | `<dataPath>/pi/agent/widget-cwd/<widgetId><sessionId>` |
+| AI Chat draft | Private working directory containing generated files | `<dataPath>/pi/agent/widget-cwd/<widgetId><sessionId>` |
 | Draft actor | Ephemeral `Actor` used by Preview | In memory only; ID starts with `draft:` |
 | Widget UI | Arrow template mounted in a browser sandbox | One mounted canvas widget |
 | Actor instance | One stateful backend belonging to one canvas element | `actor_instances` plus an in-memory `Actor` while running |
 | Resource catalog entry | Host-managed `kv`, `secretStore`, or `db` resource | `actor_resources`; DB data lives separately |
 | Resource requirement / slot | Manifest declaration of kind, requiredness, and scope | `vibecanvas.json` |
-| Prompt resource authority | Resources explicitly `@mentioned` in the current Wizard prompt; an empty prompt selection revokes it | Pi session `vibecanvas.widgetResourceSelection` entry |
-| Draft binding intent | Concrete resources intended for this Wizard draft across continuation prompts | Pi session `vibecanvas.widgetDraftResourceBindingSelection` entry |
+| Prompt resource authority | Resources explicitly `@mentioned` in the current AI Chat prompt; an empty prompt selection revokes it | Pi session `vibecanvas.widgetResourceSelection` entry |
+| Draft binding intent | Concrete resources intended for this AI Chat draft across continuation prompts | Pi session `vibecanvas.widgetDraftResourceBindingSelection` entry |
 | Resource binding | Definition slot mapped to a concrete resource and scope | `actor_resource_bindings` |
 | DB schema draft | Physical copy used to stage database structure/SQL changes | Resource-local draft DB plus control rows |
 | Canvas widget element | Automerge element that hosts UI and points at an actor definition/instance | Canvas document |
 
 Do not confuse these three uses of “draft”:
 
-1. A **Wizard draft** is a folder of unpublished widget files.
+1. An **AI Chat draft** is a folder of unpublished widget files.
 2. A **draft actor** runs those files temporarily for Preview.
 3. A **DB schema draft** is a physical database copy used for coordinated database changes.
 
@@ -77,7 +77,7 @@ New agents should preserve these rules unless a task explicitly changes the prod
 4. Resource authority is `manifest requirement ∩ binding scope ∩ function-class ceiling`.
 5. `fn.*` has no resources, `fx.*` can read, and only `tx.*` can write.
 6. A required unbound, mismatched, non-ready, or over-scoped resource blocks actor start admission.
-7. Wizard preview bindings are scoped and ephemeral; publish bindings are persisted at definition level.
+7. AI Chat preview bindings are scoped and ephemeral; publish bindings are persisted at definition level.
 8. Prompt-local AI authority and persistent draft binding intent are separate. A continuation prompt may revoke AI mutation authority without changing Preview/Publish intent.
 9. Secret values are never returned by list/control/management surfaces. An explicit actor `get` is the intentional value-bearing operation.
 10. AI-proposed DB changes never execute from the model tool call. Exact SQL requires a visible human risk acknowledgement and approval.
@@ -103,16 +103,17 @@ Management pages currently provide:
 - KV: `Overview` and `Data`, with debounced key-prefix cursor pagination, bounded JSON previews, and revision-aware create/update/delete controls.
 - Secret store: `Overview` and `Data`, with debounced name-prefix cursor pagination and revision-aware create/rotate/delete controls. Only names, revisions, and timestamps are returned; management secret values are write-only.
 
-The Wizard can discover safe metadata with:
+The AI Chat agent can discover safe metadata with:
 
 - `vc_list_resources` — up to 100 catalog entries; marks the latest explicitly selected resources.
 - `vc_inspect_resource` — safe metadata; DB resources include bounded live schema. It never returns DB rows, BLOB payloads, secret names/values, credentials, or physical paths.
+- `vc_query_db_readonly` — bounded row-producing SQL for an explicitly selected DB. It uses the host's read-only live connection and never grants mutation approval.
 
 ### 2. `@mention` authority and draft binding intent
 
-The chat composer represents a resource mention as a typed ProseMirror node containing the resource ID, label, and kind. On submit it sends the unique mention IDs as `resourceIds` to `agent.wizzard.prompt`.
+The chat composer represents a resource mention as a typed ProseMirror node containing the resource ID, label, and kind. On submit it sends the unique mention IDs as `resourceIds` to `agent.chat.prompt`.
 
-`AgentService.promptWizzard` resolves every ID against the live resource catalog. It always appends a prompt-local selection record before prompting the model, including an empty record when the prompt contains no mentions.
+`AgentService.promptChat` resolves every ID against the live resource catalog. It always appends a prompt-local selection record before prompting the model, including an empty record when the prompt contains no mentions.
 
 Prompt-local selection is intentionally **latest-prompt scoped**:
 
@@ -120,12 +121,13 @@ Prompt-local selection is intentionally **latest-prompt scoped**:
 - A prompt with no mentions sends `resourceIds: []` and revokes previous explicit selection authority.
 - The model can list all resources, but a resource marked `selected` is the one the user explicitly authorized for that prompt.
 - `vc_propose_db_change` accepts only a DB in the latest explicit selection record.
+- `vc_query_db_readonly` accepts only a DB in the latest explicit selection record.
 
 The host also maintains separate **persistent draft binding intent**:
 
 - A non-empty mention updates binding intent; same-kind mentions replace the previous same-kind resources while unrelated kinds remain.
 - A normal mentionless continuation such as `yes continue` does not change binding intent.
-- `Clear resource bindings` in the Chat actions menu calls `agent.wizzard.resourceBindings.clear` and writes an authoritative empty intent.
+- `Clear resource context` in the Chat actions menu calls `agent.chat.resourceBindings.clear` and writes an authoritative empty intent.
 - Preview and both publish paths consume binding intent, never prompt-local authority.
 - Existing sessions created before this split recover the latest historical non-empty mention only until a new binding-intent record is written.
 - When no intent record exists, unique-resource inference remains allowed; an explicit clear does not fall back to inference.
@@ -141,6 +143,7 @@ Phase-one tools are assembled by `createWidgetWizardPhaseTools`:
 - `web_fetch`
 - `vc_list_resources`
 - `vc_inspect_resource`
+- `vc_query_db_readonly`
 - `vc_propose_db_change`
 - `vc_set_actor_candidate`
 - `vc_approve_actor_candidate`
@@ -150,7 +153,7 @@ Phase-one tools are assembled by `createWidgetWizardPhaseTools`:
 1. Validates the complete candidate.
 2. Normalizes it into a final manifest shape.
 3. Appends a revisioned candidate record to session history.
-4. Emits `actorCandidateChanged` for the Wizard UI.
+4. Emits `actorCandidateChanged` for the AI Chat UI.
 5. Does **not** write files.
 
 The candidate defines:
@@ -166,7 +169,7 @@ The candidate defines:
 
 `vc_approve_actor_candidate` refuses missing, invalid, or stale candidate revisions. Approval:
 
-1. Writes a deterministic scaffold into the Wizard cwd.
+1. Writes a deterministic scaffold into the AI Chat cwd.
 2. Creates `vibecanvas.json`, `package.json`, `tsconfig.json`, actor files, `widget/main.ts`, and `widget/main.css`.
 3. Pins the draft SDK dependency to the current workspace SDK package so authoring declarations match the runtime contract.
 4. Attempts `npm install`; install failure is reported but does not erase the approved draft.
@@ -174,15 +177,16 @@ The candidate defines:
 6. Emits a `widgetupdate` event.
 7. Moves the session into implementation phase.
 
-This approval changes only the unpublished Wizard draft. It is not the DB-change approval and it does not publish a widget.
+This approval changes only the unpublished AI Chat draft. It is not the DB-change approval and it does not publish a widget.
 
 ### 5. Phase two: implementation
 
-After candidate approval, draft files exist in the Wizard cwd. Implementation phase exposes built-in `read`, `edit`, and `grep` plus:
+After candidate approval, draft files exist in the AI Chat cwd. Implementation phase exposes built-in `read`, `edit`, and `grep` plus:
 
 - `web_fetch`
 - `vc_list_resources`
 - `vc_inspect_resource`
+- `vc_query_db_readonly`
 - `vc_propose_db_change`
 - `vc_validate_widget_files`
 - `vc_publish_widget`
@@ -200,8 +204,8 @@ The AI implements:
 
 Preview has two cooperating parts:
 
-- `previewSourceWizzard` reads the draft manifest and widget source map for the browser sandbox.
-- `startDraftActorWizzard` starts an in-memory `Actor` from the draft cwd.
+- `previewSourceChat` reads the draft manifest and widget source map for the browser sandbox.
+- `startDraftActorChat` starts an in-memory `Actor` from the draft cwd.
 
 The draft actor:
 
@@ -227,7 +231,7 @@ This lets a draft widget exercise real selected resources without prematurely pu
 
 The model calls `vc_propose_db_change({ resourceId, sql, reason })` only for an explicitly selected, ready DB. The tool appends a `pending` proposal record and returns it to the chat UI. It never executes SQL.
 
-The UI renders the exact SQL, reason, and a prominent risk checkbox. Approval calls `agent.wizzard.dbChange.approve` with `confirmedRisk: true`.
+The UI renders the exact SQL, reason, and a prominent risk checkbox. Approval calls `agent.chat.dbChange.approve` with `confirmedRisk: true`.
 
 Approval performs a coordinated host workflow:
 
@@ -248,7 +252,7 @@ This gate is for AI-originated database change proposals. It is separate from:
 
 ### 8. Publish
 
-Publish validates and copies the Wizard draft to `<configPath>/widgets/<slug>`, reloads actor definitions, and persists resource bindings.
+Publish validates and copies the AI Chat draft to `<configPath>/widgets/<slug>`, reloads actor definitions, and persists resource bindings.
 
 Binding planning uses this order:
 
@@ -301,10 +305,10 @@ Actor output events can route through persisted actor connections to other actor
 
 ### 11. Editing a published widget
 
-`startWidgetEditWizzard`:
+`startWidgetEditChat`:
 
 1. Resolves an existing published definition.
-2. Copies its folder into a fresh Wizard cwd, excluding `node_modules`, `.git`, and Wizard metadata.
+2. Copies its folder into a fresh AI Chat cwd, excluding `node_modules`, `.git`, and the retained `.vibecanvas-wizard` compatibility metadata directory.
 3. Bumps the manifest version.
 4. Records an edit session and draft manifest path.
 5. Enters implementation phase directly.
@@ -435,8 +439,8 @@ Do not use “compatible” for an actor after a DB change. Restart success is a
 
 | Data | Owner | Storage |
 |---|---|---|
-| Wizard messages/candidates/approvals/prompt authority/draft binding intent/proposals | Agent service | Pi session files/custom entries |
-| Wizard draft source | Agent service | Wizard cwd |
+| AI Chat messages/candidates/approvals/prompt authority/draft binding intent/proposals | Agent service | Pi session files/custom entries |
+| AI Chat draft source | Agent service | AI Chat cwd |
 | Draft preview actor | Agent service | Memory only |
 | Published manifest/source | Actor service / filesystem | Widget directory |
 | Definitions, instances, connections, resource catalog/bindings | Control DB | `DbServiceTurso` |
@@ -474,19 +478,19 @@ Draft source is not a runtime definition until publish copies it to the widget d
 
 All product clients use ORPC, normally over WebSocket.
 
-### Agent / Wizard
+### Agent / AI Chat
 
-- `agent.wizzard.connect`, `prompt`, `cancel`, `newSession`
-- `agent.wizzard.resourceBindings.clear`
-- `agent.wizzard.startWidgetEdit`
-- `agent.wizzard.previewSource`
-- `agent.wizzard.draftManifest.read`, `patch`
-- `agent.wizzard.draftActor.start`, `reload`, `reset`, `stop`, `inspect`, `send`
-- `agent.wizzard.dbChange.approve`, `reject`
-- `agent.wizzard.publish`
+- `agent.chat.connect`, `prompt`, `cancel`, `newSession`
+- `agent.chat.resourceBindings.clear`
+- `agent.chat.startWidgetEdit`
+- `agent.chat.previewSource`
+- `agent.chat.draftManifest.read`, `patch`
+- `agent.chat.draftActor.start`, `reload`, `reset`, `stop`, `inspect`, `send`
+- `agent.chat.dbChange.approve`, `reject`
+- `agent.chat.publish`
 - agent event stream for Pi events, candidate/widget updates, and draft actor events
 
-The code uses the historical spelling `wizzard` in API and class identifiers. Product copy says “Wizard”. Do not silently rename the API without a coordinated contract migration.
+The public API namespace and canvas component use `chat` / `AiChat`. The historical misspelled namespace was removed through a coordinated contract migration; persisted draft directory names remain unchanged for data compatibility.
 
 ### Actors and resources
 
@@ -499,7 +503,7 @@ The code uses the historical spelling `wizzard` in API and class identifiers. Pr
 
 ## Important files
 
-### Wizard and generation
+### AI Chat and generation
 
 - [`packages/service-agent/src/AgentService.ts`](../../packages/service-agent/src/AgentService.ts) — session, selection, draft actor, preview, DB approval, publish, edit flow.
 - [`packages/service-agent/src/tools/phase-tools.ts`](../../packages/service-agent/src/tools/phase-tools.ts) — authoritative tool set for both phases.
@@ -511,8 +515,8 @@ The code uses the historical spelling `wizzard` in API and class identifiers. Pr
 - [`packages/service-agent/src/tools/tool.list-resources.ts`](../../packages/service-agent/src/tools/tool.list-resources.ts), [`tool.inspect-resource.ts`](../../packages/service-agent/src/tools/tool.inspect-resource.ts), [`tool.propose-db-change.ts`](../../packages/service-agent/src/tools/tool.propose-db-change.ts) — AI resource capabilities.
 - [`packages/service-agent/src/core/fx.session-candidate.ts`](../../packages/service-agent/src/core/fx.session-candidate.ts), [`tx.session-candidate.ts`](../../packages/service-agent/src/core/tx.session-candidate.ts) — session custom-entry reads/writes.
 - [`packages/service-agent/src/prompts/`](../../packages/service-agent/src/prompts/) — AI authoring contract and guardrails.
-- [`packages/api-agent/src/contract.ts`](../../packages/api-agent/src/contract.ts), [`handlers.ts`](../../packages/api-agent/src/handlers.ts) — Wizard API.
-- [`packages/canvas/src/components/AiWizzard/`](../../packages/canvas/src/components/AiWizzard/) — Wizard UI, mentions, proposal approval, preview, manifest editor.
+- [`packages/api-agent/src/contract.ts`](../../packages/api-agent/src/contract.ts), [`handlers.ts`](../../packages/api-agent/src/handlers.ts) — AI Chat API.
+- [`packages/canvas/src/components/AiChat/`](../../packages/canvas/src/components/AiChat/) — AI Chat UI, mentions, proposal approval, preview, manifest editor.
 
 ### Actor runtime
 
@@ -591,7 +595,7 @@ Check:
 Check:
 
 1. The prompt contains a real mention node, not only typed `@name` text.
-2. `resourceIds` reached `agent.wizzard.prompt`.
+2. `resourceIds` reached `agent.chat.prompt`.
 3. The latest prompt-local selection custom entry contains the ID.
 4. `vc_list_resources` marks it `selected`.
 5. `vc_inspect_resource` was called with the exact returned ID.
@@ -615,7 +619,7 @@ Before changing this system:
 
 1. Read this document.
 2. Read the nearest `AGENTS.md` for every package you will touch.
-3. Identify which artifact is changing: candidate, Wizard draft, DB draft, published definition, binding, canvas element, or actor instance.
+3. Identify which artifact is changing: candidate, AI Chat draft, DB draft, published definition, binding, canvas element, or actor instance.
 4. State whether the action is draft-only, persisted, externally visible, or destructive.
 5. Preserve the widget/actor sandbox boundary.
 6. Keep resource IDs and paths out of guest files.
@@ -643,5 +647,5 @@ Expose intent, not infrastructure:
 
 - Widget authors: render UI, send commands, react to actor state/context.
 - Actor authors: validate messages, transform actor data, use declared capabilities, emit outputs.
-- Wizard agents: design, inspect safe metadata, implement in a draft, validate, request approvals, publish deliberately.
+- AI Chat agents: design, inspect safe metadata, implement in a draft, validate, request approvals, publish deliberately.
 - Vibecanvas host: own sandboxing, IPC, persistence, resource selection/binding, lifecycle coordination, and security boundaries.

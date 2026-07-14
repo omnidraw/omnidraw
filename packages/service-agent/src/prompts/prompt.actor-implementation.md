@@ -63,7 +63,7 @@ export const txAddTodo = defineTx<TData, TMsg>(async (portal, args) => {
 
 # Shared actor resources
 
-Use vc_list_resources and vc_inspect_resource when resource context is needed. Do not invent table or column names. The concrete selected resource remains host-side and is bound during publish; actor code refers only to the manifest slot.
+Use vc_list_resources and vc_inspect_resource when resource context is needed. Use vc_query_db_readonly for bounded row inspection when the user explicitly selected the database. Do not invent table or column names. The concrete selected resource remains host-side and is bound during publish; actor code refers only to the manifest slot.
 
 Database structure and seed-data changes are outside ordinary actor generation. If a compatible selected database needs a change, call vc_propose_db_change with exact SQL and wait for explicit human approval. Do not work around this boundary with actor arbitrary SQL, generated startup migrations, or a model-supplied confirmation.
 

@@ -238,20 +238,20 @@ describe('AgentService draft actor runtime', () => {
     await writeFile(join(cwd, 'widget', 'main.ts'), 'export default null;\n', 'utf8');
     await writeFile(join(cwd, 'widget', 'main.css'), ':root {}\n', 'utf8');
 
-    await service.promptWizzard(widgetId, sessionId, 'Use @Manual QA Database', {
+    await service.promptChat(widgetId, sessionId, 'Use @Manual QA Database', {
       resourceIds: ['manual-qa-database'],
     });
-    await service.promptWizzard(widgetId, sessionId, 'yes continue', { resourceIds: [] });
+    await service.promptChat(widgetId, sessionId, 'yes continue', { resourceIds: [] });
 
-    const startResult = await service.startDraftActorWizzard(widgetId, sessionId);
+    const startResult = await service.startDraftActorChat(widgetId, sessionId);
     expect(startResult.ready).toBe(true);
     if (!startResult.ready) throw new Error(startResult.message);
 
-    let snapshot = service.inspectDraftActorWizzard(widgetId, sessionId);
+    let snapshot = service.inspectDraftActorChat(widgetId, sessionId);
     for (let attempt = 0; attempt < 200; attempt += 1) {
       if (snapshot.ready && (snapshot.snapshot.context as { loaded?: boolean }).loaded === true) break;
       await Bun.sleep(10);
-      snapshot = service.inspectDraftActorWizzard(widgetId, sessionId);
+      snapshot = service.inspectDraftActorChat(widgetId, sessionId);
     }
 
     expect(snapshot).toMatchObject({
@@ -276,7 +276,7 @@ describe('AgentService draft actor runtime', () => {
         scope: ['read'],
       },
     });
-    const publishResult = await service.publishWizzard(widgetId, sessionId);
+    const publishResult = await service.publishChat(widgetId, sessionId);
     if (!publishResult.published) throw new Error(publishResult.message);
     expect(publishResult.published).toBe(true);
     expect(persistedBindings).toEqual([{
@@ -285,6 +285,70 @@ describe('AgentService draft actor runtime', () => {
       resourceId: 'manual-qa-database',
       scope: ['read'],
     }]);
+  });
+
+  test('preserves the actor-service receiver during implicit Preview resource discovery', async () => {
+    const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-resource-receiver-'));
+    tempDirs.push(dataPath);
+    const widgetId = 'implicit-resource-widget';
+    const sessionId = 'implicit-resource-session';
+    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+    await mkdir(join(cwd, 'actor'), { recursive: true });
+    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
+      slug: 'implicit-resource-widget',
+      name: 'Implicit Resource Widget',
+      actor: {
+        relFunctionPath: './actor/functions.ts',
+        initialState: 'ready',
+        initialData: {},
+        resources: {
+          store: { kind: 'kv', required: true, scope: ['read', 'write'] },
+        },
+        states: { ready: { on: {} }, error: { on: {} } },
+        inputMsgSchema: {},
+        outputMsgSchema: {},
+      },
+      widget: { relWidgetDir: './widget', tool: { label: 'Implicit resource', behavior: { type: 'action' } } },
+    }, null, 2)}\n`, 'utf8');
+    await writeFile(join(cwd, 'actor', 'functions.ts'), 'export default { fn: {}, fx: {}, tx: {} };\n', 'utf8');
+
+    class StatefulActorService {
+      readonly resources = [{
+        id: 'only-kv',
+        kind: 'kv' as const,
+        name: 'Only KV',
+        status: 'ready' as const,
+        last_error: null,
+        created_at: '2026-07-14T00:00:00.000Z',
+        updated_at: '2026-07-14T00:00:00.000Z',
+      }];
+
+      async reload() {}
+      async listResources() { return this.resources; }
+      async callWithDirectResourceBinding() {}
+    }
+
+    const service = new AgentService({
+      cachePath: join(dataPath, 'cache'),
+      dataPath,
+      configPath: join(dataPath, 'config'),
+      eventPublisherService: new TestEventPublisherService(),
+      actorService: new StatefulActorService(),
+    });
+    service.sessionMap[widgetId] = {
+      [sessionId]: {
+        unsub: () => {},
+        session: {} as never,
+        sessionManager: createFakeSessionManager() as never,
+      },
+    };
+
+    try {
+      const result = await service.startDraftActorChat(widgetId, sessionId);
+      expect(result.ready).toBe(true);
+    } finally {
+      service.stopDraftActorChat(widgetId, sessionId);
+    }
   });
 
   test('refuses Preview before actor startup when required binding intent is ambiguous', async () => {
@@ -339,14 +403,14 @@ describe('AgentService draft actor runtime', () => {
       },
     };
 
-    const result = await service.startDraftActorWizzard(widgetId, sessionId);
+    const result = await service.startDraftActorChat(widgetId, sessionId);
     expect(result).toMatchObject({
       ready: false,
       reason: 'resource-binding-invalid',
     });
     if (result.ready) throw new Error('Expected ambiguous binding to block Preview');
     expect(result.message).toContain('@mention');
-    expect(service.inspectDraftActorWizzard(widgetId, sessionId)).toMatchObject({ ready: false, reason: 'actor-not-running' });
+    expect(service.inspectDraftActorChat(widgetId, sessionId)).toMatchObject({ ready: false, reason: 'actor-not-running' });
     expect(gatewayCalls).toBe(0);
   });
 
@@ -392,7 +456,7 @@ describe('AgentService draft actor runtime', () => {
       },
     });
 
-    const result = await service.startWidgetEditWizzard('widget-edit', 'session-edit', 'Counter Widget');
+    const result = await service.startWidgetEditChat('widget-edit', 'session-edit', 'Counter Widget');
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.message);
     expect(result.phase).toBe('implementation');
@@ -403,7 +467,7 @@ describe('AgentService draft actor runtime', () => {
       const record = message as unknown as Record<string, unknown>;
       return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
     })).toBe(true);
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_query_db_readonly', 'vc_validate_widget_files', 'web_fetch']);
 
     const draftRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'widget-editsession-edit');
     const draftManifest = JSON.parse(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
@@ -416,12 +480,12 @@ describe('AgentService draft actor runtime', () => {
     const entries = service.sessionMap['widget-edit']['session-edit'].sessionManager.getEntries();
     expect(entries.some((entry) => entry.type === 'custom' && entry.customType === ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE)).toBe(true);
 
-    const reconnectResult = await service.connectWizzard('widget-edit', 'session-edit');
+    const reconnectResult = await service.connectChat('widget-edit', 'session-edit');
     expect(reconnectResult.messageHistory.some((message) => {
       const record = message as unknown as Record<string, unknown>;
       return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
     })).toBe(true);
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_validate_widget_files', 'web_fetch']);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_query_db_readonly', 'vc_validate_widget_files', 'web_fetch']);
   });
 
   test('reads and patches phase 1 manifest from actor candidate, then patches phase 2 vibecanvas.json', async () => {
@@ -467,8 +531,8 @@ describe('AgentService draft actor runtime', () => {
       [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: sessionManager as never },
     };
 
-    expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest });
-    const candidatePatchResult = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+    expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest });
+    const candidatePatchResult = await service.patchDraftManifestChat(widgetId, sessionId, {
       tool: {
         label: 'Saved Candidate Tool',
         group: 'Saved',
@@ -483,63 +547,63 @@ describe('AgentService draft actor runtime', () => {
     expect(candidatePatchResult.manifest.widget.tool.priority).toBe(3);
     expect(candidatePatchResult.manifest.actor.resources).toEqual(resources);
     expect(await readFile(join(cwd, 'vibecanvas.json'), 'utf8').catch(() => null)).toBe(null);
-    expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest: candidatePatchResult.manifest });
+    expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest: candidatePatchResult.manifest });
 
     await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify(candidatePatchResult.manifest, null, 2)}\n`, 'utf8');
-    const patchResult = await service.patchDraftManifestWizzard(widgetId, sessionId, { name: 'Patched Test', initialData: { count: 1 } });
+    const patchResult = await service.patchDraftManifestChat(widgetId, sessionId, { name: 'Patched Test', initialData: { count: 1 } });
     expect(patchResult.ok).toBe(true);
     if (!patchResult.ok) throw new Error(patchResult.message);
     expect(patchResult.source).toBe('file');
     expect(patchResult.manifest.name).toBe('Patched Test');
     expect(patchResult.manifest.actor.initialData).toEqual({ count: 1 });
     expect(patchResult.manifest.actor.resources).toEqual(resources);
-    expect(await service.readDraftManifestWizzard(widgetId, sessionId)).toEqual({ ready: true, source: 'file', manifest: patchResult.manifest });
+    expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'file', manifest: patchResult.manifest });
   });
 
   test('starts, inspects, sends, resets, reloads, and stops a draft actor', async () => {
     const { service, eventPublisher, widgetId, sessionId } = await createServiceFixture();
 
-    const startResult = await service.startDraftActorWizzard(widgetId, sessionId);
+    const startResult = await service.startDraftActorChat(widgetId, sessionId);
     expect(startResult.ready).toBe(true);
     if (!startResult.ready) throw new Error(startResult.message);
     expect(startResult.snapshot).toEqual({ state: 'ready', context: { count: 0 } });
 
-    const inspectResult = service.inspectDraftActorWizzard(widgetId, sessionId);
+    const inspectResult = service.inspectDraftActorChat(widgetId, sessionId);
     expect(inspectResult.ready).toBe(true);
     if (!inspectResult.ready) throw new Error(inspectResult.message);
     expect(inspectResult.snapshot).toEqual({ state: 'ready', context: { count: 0 } });
 
-    const sendResult = service.sendDraftActorWizzard(widgetId, sessionId, 'ping', {});
+    const sendResult = service.sendDraftActorChat(widgetId, sessionId, 'ping', {});
     expect(sendResult.ready).toBe(true);
     if (!sendResult.ready) throw new Error(sendResult.message);
     expect(sendResult.messageId.length).toBeGreaterThan(0);
 
     await Bun.sleep(300);
-    const afterSend = service.inspectDraftActorWizzard(widgetId, sessionId);
+    const afterSend = service.inspectDraftActorChat(widgetId, sessionId);
     expect(afterSend.ready).toBe(true);
     if (!afterSend.ready) throw new Error(afterSend.message);
     expect(afterSend.snapshot).toEqual({ state: 'ready', context: { count: 1 } });
     expect(eventPublisher.agentEvents.some((event) => 'kind' in event && event.kind === 'draft-actor')).toBe(true);
 
-    const resetResult = await service.resetDraftActorWizzard(widgetId, sessionId);
+    const resetResult = await service.resetDraftActorChat(widgetId, sessionId);
     expect(resetResult.ready).toBe(true);
     if (!resetResult.ready) throw new Error(resetResult.message);
     expect(resetResult.snapshot).toEqual({ state: 'ready', context: { count: 0 } });
 
-    const reloadResult = await service.reloadDraftActorWizzard(widgetId, sessionId);
+    const reloadResult = await service.reloadDraftActorChat(widgetId, sessionId);
     expect(reloadResult.ready).toBe(true);
     if (!reloadResult.ready) throw new Error(reloadResult.message);
     expect(reloadResult.snapshot).toEqual({ state: 'ready', context: { count: 0 } });
 
-    expect(service.stopDraftActorWizzard(widgetId, sessionId)).toEqual({ stopped: true });
-    const stoppedInspect = service.inspectDraftActorWizzard(widgetId, sessionId);
+    expect(service.stopDraftActorChat(widgetId, sessionId)).toEqual({ stopped: true });
+    const stoppedInspect = service.inspectDraftActorChat(widgetId, sessionId);
     expect(stoppedInspect.ready).toBe(false);
   });
 
   test('returns widget source files as filename to content map', async () => {
     const { service, widgetId, sessionId } = await createServiceFixture();
 
-    const result = await service.previewSourceWizzard(widgetId, sessionId);
+    const result = await service.previewSourceChat(widgetId, sessionId);
     expect(result.ready).toBe(true);
     if (!result.ready) throw new Error(result.message);
 
@@ -551,7 +615,7 @@ describe('AgentService draft actor runtime', () => {
   test('emits widget update event after publishing draft', async () => {
     const { service, eventPublisher, widgetId, sessionId } = await createServiceFixture();
 
-    const result = await service.publishWizzard(widgetId, sessionId);
+    const result = await service.publishChat(widgetId, sessionId);
     expect(result.published).toBe(true);
     if (!result.published) throw new Error(result.message);
 
@@ -573,7 +637,7 @@ describe('AgentService draft actor runtime', () => {
       unbindResource: async ({ slot }) => persistedBindings.delete(slot),
     });
 
-    const result = await service.publishWizzard(widgetId, sessionId);
+    const result = await service.publishChat(widgetId, sessionId);
 
     expect(result.published).toBe(true);
     expect(persistedBindings.size).toBe(0);
@@ -582,21 +646,21 @@ describe('AgentService draft actor runtime', () => {
   test('patches draft tool icon metadata and rejects invalid lucid keys', async () => {
     const { service, widgetId, sessionId } = await createServiceFixture();
 
-    const validLucid = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+    const validLucid = await service.patchDraftManifestChat(widgetId, sessionId, {
       tool: { icon: { lucidIcon: 'Activity' } },
     });
     expect(validLucid.ok).toBe(true);
     if (!validLucid.ok) throw new Error(validLucid.message);
     expect(validLucid.manifest.widget.tool.icon).toEqual({ lucidIcon: 'Activity' });
 
-    const customText = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+    const customText = await service.patchDraftManifestChat(widgetId, sessionId, {
       tool: { icon: { svgIcon: '🔢' } },
     });
     expect(customText.ok).toBe(true);
     if (!customText.ok) throw new Error(customText.message);
     expect(customText.manifest.widget.tool.icon).toEqual({ svgIcon: '🔢' });
 
-    const invalidLucid = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+    const invalidLucid = await service.patchDraftManifestChat(widgetId, sessionId, {
       tool: { icon: { lucidIcon: 'not-a-lucide-icon' } },
     });
     expect(invalidLucid.ok).toBe(false);
@@ -604,7 +668,7 @@ describe('AgentService draft actor runtime', () => {
     expect(invalidLucid.reason).toBe('edit-invalid');
     expect(invalidLucid.issues?.some((issue) => issue.includes('widget.tool.icon.lucidIcon'))).toBe(true);
 
-    const cleared = await service.patchDraftManifestWizzard(widgetId, sessionId, {
+    const cleared = await service.patchDraftManifestChat(widgetId, sessionId, {
       tool: { icon: null },
     });
     expect(cleared.ok).toBe(true);
@@ -625,7 +689,7 @@ describe('AgentService draft actor runtime', () => {
       session: { unsub: () => {}, session: {} as never, sessionManager: {} as never },
     };
 
-    const result = await service.startDraftActorWizzard('widget', 'session');
+    const result = await service.startDraftActorChat('widget', 'session');
     expect(result).toEqual({
       ready: false,
       reason: 'manifest-missing',

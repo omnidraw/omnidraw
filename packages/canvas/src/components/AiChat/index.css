@@ -1,5 +1,6 @@
-.ai-wizzard-shell {
+.ai-chat-shell {
   display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -11,35 +12,61 @@
   font-family: var(--vc-terminal-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
 }
 
-.ai-wizzard-shell--actor {
+.ai-chat-surface {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+.ai-chat-body,
+.ai-chat-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.ai-chat-view[hidden] {
+  display: none;
+}
+
+.ai-chat-view--settings {
+  overflow: auto;
+  padding: 30px 26px 20px;
+}
+
+.ai-chat-shell--actor {
   display: block;
   height: max-content;
   min-height: 100%;
   overflow: visible;
 }
 
-.ai-wizzard-shell::-webkit-scrollbar,
-.ai-wizzard-tabs__content::-webkit-scrollbar {
+.ai-chat-shell::-webkit-scrollbar,
+.ai-chat-tabs__content::-webkit-scrollbar {
   width: 10px;
 }
 
-.ai-wizzard-shell::-webkit-scrollbar-track,
-.ai-wizzard-tabs__content::-webkit-scrollbar-track {
+.ai-chat-shell::-webkit-scrollbar-track,
+.ai-chat-tabs__content::-webkit-scrollbar-track {
   background: var(--background);
 }
 
-.ai-wizzard-shell::-webkit-scrollbar-thumb,
-.ai-wizzard-tabs__content::-webkit-scrollbar-thumb {
+.ai-chat-shell::-webkit-scrollbar-thumb,
+.ai-chat-tabs__content::-webkit-scrollbar-thumb {
   border: 2px solid var(--background);
   background: var(--border);
 }
 
-.ai-wizzard-shell::-webkit-scrollbar-thumb:hover,
-.ai-wizzard-tabs__content::-webkit-scrollbar-thumb:hover {
+.ai-chat-shell::-webkit-scrollbar-thumb:hover,
+.ai-chat-tabs__content::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
 
-.ai-wizzard-tabs {
+.ai-chat-tabs {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -47,7 +74,7 @@
   min-height: 0;
 }
 
-.ai-wizzard-shell--actor .ai-wizzard-tabs {
+.ai-chat-shell--actor .ai-chat-tabs {
   height: max-content;
   min-height: 100%;
   overflow: visible;
@@ -140,7 +167,7 @@
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-tabs__list {
+.ai-chat-tabs__list {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -151,7 +178,7 @@
   background: color-mix(in srgb, var(--card) 92%, var(--background));
 }
 
-.ai-wizzard-tabs__trigger {
+.ai-chat-tabs__trigger {
   appearance: none;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -166,46 +193,46 @@
   text-align: center;
 }
 
-.ai-wizzard-tabs__trigger:hover {
+.ai-chat-tabs__trigger:hover {
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
-.ai-wizzard-tabs__trigger:focus-visible {
+.ai-chat-tabs__trigger:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-tabs__trigger[data-selected] {
+.ai-chat-tabs__trigger[data-selected] {
   background: color-mix(in srgb, var(--primary) 18%, var(--card));
   color: var(--foreground);
   font-weight: 700;
 }
 
-.ai-wizzard-tabs__trigger[data-selected]:focus-visible {
+.ai-chat-tabs__trigger[data-selected]:focus-visible {
   background: var(--primary);
   color: var(--primary-foreground);
 }
 
-.ai-wizzard-tabs__indicator {
+.ai-chat-tabs__indicator {
   position: absolute;
   background: var(--primary);
   transition: all 180ms ease;
 }
 
-.ai-wizzard-tabs__indicator[data-orientation="horizontal"] {
+.ai-chat-tabs__indicator[data-orientation="horizontal"] {
   bottom: -1px;
   height: 2px;
 }
 
-.ai-wizzard-tabs__content {
+.ai-chat-tabs__content {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 30px 26px 20px;
 }
 
-.ai-wizzard-tabs__content--actor {
+.ai-chat-tabs__content--actor {
   display: block;
   flex: 0 0 auto;
   height: auto;
@@ -213,14 +240,14 @@
   overflow: visible;
 }
 
-.ai-wizzard-tab {
+.ai-chat-tab {
   display: flex;
   flex-direction: column;
   gap: 26px;
   min-height: 100%;
 }
 
-.ai-wizzard-tab--chat {
+.ai-chat-tab--chat {
   align-items: center;
   justify-content: flex-start;
   gap: 18px;
@@ -847,12 +874,11 @@
   white-space: nowrap;
 }
 
-.ai-chat-composer__suggestions button:hover,
 .ai-chat-composer__suggestion--active,
 .ai-chat-composer__suggestions button[aria-selected="true"],
 .ai-chat-composer__suggestions button[data-active="true"] {
-  border-color: #ff7a2f;
-  background: #ff7a2f;
+  border-color: #c84f19;
+  background: #d85e20;
   color: #111;
 }
 
@@ -1111,14 +1137,14 @@
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-field {
+.ai-chat-field {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
 }
 
-.ai-wizzard-kobalte-field {
+.ai-chat-kobalte-field {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1126,14 +1152,14 @@
   min-width: 0;
 }
 
-.ai-wizzard-label {
+.ai-chat-label {
   color: var(--foreground);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0;
 }
 
-.ai-wizzard-kobalte-input {
+.ai-chat-kobalte-input {
   height: 38px;
   border: 1px solid var(--input);
   background: var(--background);
@@ -1144,20 +1170,20 @@
   padding: 0 12px;
 }
 
-.ai-wizzard-kobalte-input:focus-visible,
-.ai-wizzard-native-select:focus-visible,
-.ai-wizzard-number-stepper:focus-visible {
+.ai-chat-kobalte-input:focus-visible,
+.ai-chat-native-select:focus-visible,
+.ai-chat-number-stepper:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-field-error {
+.ai-chat-field-error {
   color: var(--destructive);
   font-size: 12px;
   margin: 0;
 }
 
-.ai-wizzard-icon-preview {
+.ai-chat-icon-preview {
   width: 44px;
   height: 44px;
   flex: 0 0 auto;
@@ -1168,7 +1194,7 @@
   justify-content: center;
 }
 
-.ai-wizzard-icon-preview__svg {
+.ai-chat-icon-preview__svg {
   width: 28px;
   height: 28px;
   color: var(--foreground);
@@ -1177,34 +1203,34 @@
   justify-content: center;
 }
 
-.ai-wizzard-tool-card {
+.ai-chat-tool-card {
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.ai-wizzard-tool-card__header {
+.ai-chat-tool-card__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
 
-.ai-wizzard-icon-preview--header {
+.ai-chat-icon-preview--header {
   box-shadow: 4px 4px 0 color-mix(in srgb, var(--foreground) 72%, var(--background));
 }
 
-.ai-wizzard-tool-form {
+.ai-chat-tool-form {
   display: grid;
   gap: 14px 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.ai-wizzard-tool-form__wide {
+.ai-chat-tool-form__wide {
   grid-column: 1 / -1;
 }
 
-.ai-wizzard-native-select {
+.ai-chat-native-select {
   width: 100%;
   height: 38px;
   border: 1px solid var(--input);
@@ -1214,20 +1240,20 @@
   font-size: 13px;
 }
 
-.ai-wizzard-native-select {
+.ai-chat-native-select {
   padding: 0 10px;
 }
 
-.ai-wizzard-number-control {
+.ai-chat-number-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 36px 36px;
 }
 
-.ai-wizzard-number-input {
+.ai-chat-number-input {
   width: 100%;
 }
 
-.ai-wizzard-number-stepper {
+.ai-chat-number-stepper {
   border: 1px solid var(--input);
   border-left: 0;
   background: var(--background);
@@ -1237,12 +1263,12 @@
   font-weight: 800;
 }
 
-.ai-wizzard-number-stepper:hover {
+.ai-chat-number-stepper:hover {
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
-.ai-wizzard-kobalte-textarea {
+.ai-chat-kobalte-textarea {
   min-height: 104px;
   resize: vertical;
   border: 1px solid var(--input);
@@ -1254,12 +1280,12 @@
   padding: 12px;
 }
 
-.ai-wizzard-kobalte-textarea:focus-visible {
+.ai-chat-kobalte-textarea:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-textarea {
+.ai-chat-textarea {
   flex: 1 1 132px;
   min-height: 132px;
   resize: vertical;
@@ -1272,25 +1298,25 @@
   padding: 18px;
 }
 
-.ai-wizzard-textarea:focus-visible {
+.ai-chat-textarea:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-summary-grid {
+.ai-chat-summary-grid {
   display: grid;
   gap: 24px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.ai-wizzard-option-card,
-.ai-wizzard-preview-card,
-.ai-wizzard-check-card {
+.ai-chat-option-card,
+.ai-chat-preview-card,
+.ai-chat-check-card {
   border: 1px dashed var(--border);
   background: color-mix(in srgb, var(--card) 88%, var(--background));
 }
 
-.ai-wizzard-summary-card {
+.ai-chat-summary-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1298,7 +1324,7 @@
   padding: 0;
 }
 
-.ai-wizzard-summary-title {
+.ai-chat-summary-title {
   align-items: center;
   color: var(--muted-foreground);
   display: flex;
@@ -1307,7 +1333,7 @@
   font-weight: 700;
 }
 
-.ai-wizzard-summary-card p {
+.ai-chat-summary-card p {
   margin: 0;
   min-height: 72px;
   border: 1px dashed var(--border);
@@ -1318,7 +1344,7 @@
   line-height: 1.55;
 }
 
-.ai-wizzard-text-note {
+.ai-chat-text-note {
   border: 1px dashed var(--border);
   color: var(--foreground);
   display: block;
@@ -1327,18 +1353,18 @@
   background: color-mix(in srgb, var(--card) 88%, var(--background));
 }
 
-.ai-wizzard-text-note--warning {
+.ai-chat-text-note--warning {
   border-color: color-mix(in srgb, var(--destructive) 40%, var(--border));
   color: color-mix(in srgb, var(--destructive) 80%, var(--foreground));
 }
 
-.ai-wizzard-actions {
+.ai-chat-actions {
   display: flex;
   justify-content: flex-end;
   margin-top: auto;
 }
 
-.ai-wizzard-primary-button {
+.ai-chat-primary-button {
   align-items: center;
   border: 1px solid var(--border);
   background: var(--primary);
@@ -1353,27 +1379,27 @@
   padding: 0 22px;
 }
 
-.ai-wizzard-primary-button--compact {
+.ai-chat-primary-button--compact {
   font-size: 13px;
   min-height: 34px;
   padding: 0 14px;
 }
 
-.ai-wizzard-primary-button:hover {
+.ai-chat-primary-button:hover {
   background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
 }
 
-.ai-wizzard-primary-button:focus-visible {
+.ai-chat-primary-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-primary-button:disabled {
+.ai-chat-primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.ai-wizzard-secondary-button {
+.ai-chat-secondary-button {
   align-items: center;
   border: 1px solid var(--border);
   background: var(--background);
@@ -1387,28 +1413,28 @@
   padding: 0 14px;
 }
 
-.ai-wizzard-secondary-button:hover {
+.ai-chat-secondary-button:hover {
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
-.ai-wizzard-secondary-button:focus-visible {
+.ai-chat-secondary-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-secondary-button:disabled {
+.ai-chat-secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-.ai-wizzard-section-grid {
+.ai-chat-section-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.ai-wizzard-tab--actor {
+.ai-chat-tab--actor {
   gap: 22px;
   height: auto;
   min-height: 0;
@@ -1587,7 +1613,7 @@
   justify-content: flex-end;
 }
 
-.ai-actor-editor__actions .ai-wizzard-primary-button:disabled {
+.ai-actor-editor__actions .ai-chat-primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
@@ -1598,51 +1624,51 @@
   line-height: 1.45;
 }
 
-.ai-wizzard-tab--settings {
+.ai-chat-tab--settings {
   gap: 22px;
 }
 
-.ai-wizzard-auth-callout {
+.ai-chat-auth-callout {
   border: 2px solid #ff7a2f;
   background: color-mix(in srgb, #ff7a2f 18%, var(--card));
   box-shadow: 6px 6px 0 color-mix(in srgb, var(--foreground) 78%, var(--background));
   padding: 18px;
 }
 
-.ai-wizzard-auth-callout strong {
+.ai-chat-auth-callout strong {
   color: var(--foreground);
   display: block;
   font-size: 18px;
   margin-bottom: 8px;
 }
 
-.ai-wizzard-auth-callout p,
-.ai-wizzard-settings-header p {
+.ai-chat-auth-callout p,
+.ai-chat-settings-header p {
   color: var(--muted-foreground);
   font-size: 13px;
   line-height: 1.55;
   margin: 0;
 }
 
-.ai-wizzard-settings-section {
+.ai-chat-settings-section {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.ai-wizzard-settings-header {
+.ai-chat-settings-header {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.ai-wizzard-provider-grid {
+.ai-chat-provider-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
 }
 
-.ai-wizzard-provider-card {
+.ai-chat-provider-card {
   align-items: center;
   border: 1px dashed var(--border);
   background: color-mix(in srgb, var(--card) 88%, var(--background));
@@ -1653,16 +1679,16 @@
   padding: 16px;
 }
 
-.ai-wizzard-provider-card--expanded {
+.ai-chat-provider-card--expanded {
   align-items: stretch;
   flex-wrap: wrap;
 }
 
-.ai-wizzard-provider-card__main {
+.ai-chat-provider-card__main {
   min-width: 0;
 }
 
-.ai-wizzard-provider-card__actions {
+.ai-chat-provider-card__actions {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
@@ -1670,33 +1696,33 @@
   gap: 8px;
 }
 
-.ai-wizzard-provider-card--api-key .ai-wizzard-provider-card__actions {
+.ai-chat-provider-card--api-key .ai-chat-provider-card__actions {
   flex: 1 0 100%;
   justify-content: flex-start;
 }
 
 @media (min-width: 980px) {
-  .ai-wizzard-provider-card--api-key:not(.ai-wizzard-provider-card--expanded) .ai-wizzard-provider-card__actions {
+  .ai-chat-provider-card--api-key:not(.ai-chat-provider-card--expanded) .ai-chat-provider-card__actions {
     flex: 0 0 auto;
     justify-content: flex-end;
   }
 }
 
-.ai-wizzard-provider-card strong {
+.ai-chat-provider-card strong {
   color: var(--foreground);
   display: block;
   font-size: 14px;
   margin-bottom: 6px;
 }
 
-.ai-wizzard-provider-card small {
+.ai-chat-provider-card small {
   color: var(--muted-foreground);
   display: block;
   font-size: 12px;
   line-height: 1.45;
 }
 
-.ai-wizzard-secondary-button {
+.ai-chat-secondary-button {
   align-items: center;
   border: 1px solid var(--border);
   background: var(--background);
@@ -1712,28 +1738,28 @@
   padding: 0 12px;
 }
 
-.ai-wizzard-secondary-button:hover {
+.ai-chat-secondary-button:hover {
   border-color: var(--foreground);
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
-.ai-wizzard-secondary-button:focus-visible {
+.ai-chat-secondary-button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-secondary-button:disabled {
+.ai-chat-secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
 
-.ai-wizzard-secondary-button--danger:hover {
+.ai-chat-secondary-button--danger:hover {
   border-color: var(--destructive);
   color: var(--destructive);
 }
 
-.ai-wizzard-api-key-box {
+.ai-chat-api-key-box {
   border-top: 1px dashed var(--border);
   display: flex;
   flex: 1 0 100%;
@@ -1742,18 +1768,18 @@
   padding-top: 14px;
 }
 
-.ai-wizzard-api-key-field {
+.ai-chat-api-key-field {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.ai-wizzard-api-key-field span {
+.ai-chat-api-key-field span {
   color: var(--muted-foreground);
   font-size: 12px;
 }
 
-.ai-wizzard-api-key-input {
+.ai-chat-api-key-input {
   border: 1px solid var(--input);
   background: var(--background);
   color: var(--foreground);
@@ -1763,17 +1789,17 @@
   padding: 0 10px;
 }
 
-.ai-wizzard-api-key-input:focus-visible {
+.ai-chat-api-key-input:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-api-key-input:disabled {
+.ai-chat-api-key-input:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
 
-.ai-wizzard-login-box {
+.ai-chat-login-box {
   border-top: 1px dashed var(--border);
   color: var(--muted-foreground);
   display: flex;
@@ -1785,23 +1811,23 @@
   padding-top: 14px;
 }
 
-.ai-wizzard-login-box p {
+.ai-chat-login-box p {
   margin: 0;
 }
 
-.ai-wizzard-device-flow {
+.ai-chat-device-flow {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.ai-wizzard-device-flow a {
+.ai-chat-device-flow a {
   color: var(--foreground);
   overflow-wrap: anywhere;
   text-decoration: underline;
 }
 
-.ai-wizzard-device-flow code {
+.ai-chat-device-flow code {
   align-self: flex-start;
   border: 2px solid var(--foreground);
   background: var(--background);
@@ -1813,18 +1839,18 @@
   padding: 8px 10px;
 }
 
-.ai-wizzard-option-card,
-.ai-wizzard-check-card,
-.ai-wizzard-preview-card {
+.ai-chat-option-card,
+.ai-chat-check-card,
+.ai-chat-preview-card {
   padding: 18px;
 }
 
-.ai-wizzard-option-card--selected {
+.ai-chat-option-card--selected {
   border-style: solid;
   border-color: var(--primary);
 }
 
-.ai-wizzard-kicker {
+.ai-chat-kicker {
   color: var(--muted-foreground);
   display: block;
   font-size: 12px;
@@ -1832,16 +1858,16 @@
   text-transform: uppercase;
 }
 
-.ai-wizzard-option-card strong,
-.ai-wizzard-check-card strong {
+.ai-chat-option-card strong,
+.ai-chat-check-card strong {
   color: var(--foreground);
   display: block;
   font-size: 15px;
   margin-bottom: 8px;
 }
 
-.ai-wizzard-option-card p,
-.ai-wizzard-check-card small {
+.ai-chat-option-card p,
+.ai-chat-check-card small {
   color: var(--muted-foreground);
   display: block;
   font-size: 13px;
@@ -1849,65 +1875,65 @@
   margin: 0;
 }
 
-.ai-wizzard-preview-card {
+.ai-chat-preview-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.ai-wizzard-preview-header,
-.ai-wizzard-preview-row {
+.ai-chat-preview-header,
+.ai-chat-preview-row {
   align-items: center;
   display: flex;
   justify-content: space-between;
 }
 
-.ai-wizzard-preview-header {
+.ai-chat-preview-header {
   border-bottom: 1px solid var(--border);
   padding-bottom: 14px;
 }
 
-.ai-wizzard-preview-row {
+.ai-chat-preview-row {
   background: var(--background);
   border: 1px solid var(--border);
   gap: 14px;
   padding: 12px 14px;
 }
 
-.ai-wizzard-tab--preview {
+.ai-chat-tab--preview {
   gap: 14px;
   height: 100%;
   min-height: 0;
 }
 
-.ai-wizzard-preview-card--toolbar {
+.ai-chat-preview-card--toolbar {
   flex: 0 0 auto;
 }
 
-.ai-wizzard-preview-header > div:first-child {
+.ai-chat-preview-header > div:first-child {
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
 }
 
-.ai-wizzard-preview-header strong {
+.ai-chat-preview-header strong {
   color: var(--foreground);
   font-size: 15px;
 }
 
-.ai-wizzard-preview-actions {
+.ai-chat-preview-actions {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
 }
 
-.ai-wizzard-preview-row > span:first-child {
+.ai-chat-preview-row > span:first-child {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.ai-wizzard-preview-sandbox {
+.ai-chat-preview-sandbox {
   border: 1px solid var(--border);
   background: var(--background);
   flex: 1 1 auto;
@@ -1917,7 +1943,7 @@
   scrollbar-gutter: stable;
 }
 
-.ai-wizzard-preview-sandbox:empty::before {
+.ai-chat-preview-sandbox:empty::before {
   align-items: center;
   color: var(--muted-foreground);
   content: "Preview sandbox";
@@ -1927,8 +1953,8 @@
   min-height: 360px;
 }
 
-.ai-wizzard-preview-sandbox-shell,
-.ai-wizzard-preview-sandbox-shell > arrow-sandbox {
+.ai-chat-preview-sandbox-shell,
+.ai-chat-preview-sandbox-shell > arrow-sandbox {
   display: block;
   height: auto;
   min-height: 0;
@@ -1937,22 +1963,22 @@
   width: 100%;
 }
 
-.ai-wizzard-preview-sandbox-shell {
+.ai-chat-preview-sandbox-shell {
   min-height: 100%;
 }
 
-.ai-wizzard-preview-sandbox-shell > arrow-sandbox {
+.ai-chat-preview-sandbox-shell > arrow-sandbox {
   min-height: 100%;
 }
 
-.ai-wizzard-dialog-overlay {
+.ai-chat-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 40;
   background: rgb(0 0 0 / 0.42);
 }
 
-.ai-wizzard-dialog {
+.ai-chat-dialog {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -1967,11 +1993,25 @@
   box-shadow: 0 18px 48px rgb(0 0 0 / 0.22);
 }
 
-.ai-wizzard-dialog--wide {
+.ai-chat-dialog--wide {
   width: min(720px, calc(100vw - 24px));
 }
 
-.ai-wizzard-dialog__header {
+.ai-chat-dialog--workspace {
+  display: flex;
+  flex-direction: column;
+  height: min(820px, calc(100vh - 32px));
+  max-height: calc(100vh - 32px);
+  width: min(1080px, calc(100vw - 32px));
+}
+
+.ai-chat-dialog__body.ai-chat-dialog__body--workspace {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 0;
+}
+
+.ai-chat-dialog__header {
   align-items: flex-start;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -1980,21 +2020,21 @@
   padding: 18px 20px;
 }
 
-.ai-wizzard-dialog__title {
+.ai-chat-dialog__title {
   color: var(--foreground);
   font-size: 18px;
   font-weight: 800;
   line-height: 1.2;
 }
 
-.ai-wizzard-dialog__description {
+.ai-chat-dialog__description {
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.45;
   margin-top: 4px;
 }
 
-.ai-wizzard-dialog__close {
+.ai-chat-dialog__close {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--muted-foreground);
@@ -2006,12 +2046,12 @@
   padding: 0 12px;
 }
 
-.ai-wizzard-dialog__close:hover {
+.ai-chat-dialog__close:hover {
   background: var(--accent);
   color: var(--accent-foreground);
 }
 
-.ai-wizzard-dialog__body {
+.ai-chat-dialog__body {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2020,14 +2060,14 @@
   padding: 18px 20px;
 }
 
-.ai-wizzard-dialog__body p {
+.ai-chat-dialog__body p {
   color: var(--foreground);
   font-size: 13px;
   line-height: 1.55;
   margin: 0;
 }
 
-.ai-wizzard-dialog__message {
+.ai-chat-dialog__message {
   border: 1px solid var(--border);
   background: var(--background);
   color: var(--foreground);
@@ -2041,7 +2081,7 @@
   white-space: pre-wrap;
 }
 
-.ai-wizzard-dialog__actions {
+.ai-chat-dialog__actions {
   align-items: center;
   border-top: 1px solid var(--border);
   display: flex;
@@ -2050,20 +2090,20 @@
   padding: 14px 20px;
 }
 
-.ai-wizzard-picker-state {
+.ai-chat-picker-state {
   align-items: flex-start;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.ai-wizzard-widget-picker-list {
+.ai-chat-widget-picker-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.ai-wizzard-widget-picker-item {
+.ai-chat-widget-picker-item {
   align-items: stretch;
   border: 1px solid var(--border);
   background: var(--background);
@@ -2078,83 +2118,83 @@
   text-align: left;
 }
 
-.ai-wizzard-widget-picker-item:hover,
-.ai-wizzard-widget-picker-item--selected {
+.ai-chat-widget-picker-item:hover,
+.ai-chat-widget-picker-item--selected {
   border-color: #ff7a2f;
   background: color-mix(in srgb, #ff7a2f 12%, var(--background));
 }
 
-.ai-wizzard-widget-picker-item:focus-visible {
+.ai-chat-widget-picker-item:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.ai-wizzard-widget-picker-item__main,
-.ai-wizzard-widget-picker-item__meta {
+.ai-chat-widget-picker-item__main,
+.ai-chat-widget-picker-item__meta {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 5px;
 }
 
-.ai-wizzard-widget-picker-item__main strong {
+.ai-chat-widget-picker-item__main strong {
   color: var(--foreground);
   font-size: 14px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
-.ai-wizzard-widget-picker-item__main span {
+.ai-chat-widget-picker-item__main span {
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.ai-wizzard-widget-picker-item__meta {
+.ai-chat-widget-picker-item__meta {
   color: var(--muted-foreground);
   font-size: 11px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
-.ai-wizzard-status {
+.ai-chat-status {
   color: var(--muted-foreground);
   font-size: 12px;
   text-transform: uppercase;
 }
 
-.ai-wizzard-status--bad {
+.ai-chat-status--bad {
   color: var(--destructive);
 }
 
-.ai-wizzard-status--good {
+.ai-chat-status--good {
   color: var(--success);
 }
 
-.ai-wizzard-check-card {
+.ai-chat-check-card {
   align-items: flex-start;
   cursor: pointer;
   display: flex;
   gap: 12px;
 }
 
-.ai-wizzard-check-card input {
+.ai-chat-check-card input {
   accent-color: var(--primary);
   margin-top: 2px;
 }
 
-.ai-wizzard-check-card:focus-within {
+.ai-chat-check-card:focus-within {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
 @media (max-width: 720px) {
-  .ai-wizzard-summary-grid,
+  .ai-chat-summary-grid,
   .ai-actor-editor__grid,
-  .ai-wizzard-section-grid,
-  .ai-wizzard-tool-form,
-  .ai-wizzard-provider-grid,
-  .ai-wizzard-widget-picker-item {
+  .ai-chat-section-grid,
+  .ai-chat-tool-form,
+  .ai-chat-provider-grid,
+  .ai-chat-widget-picker-item {
     grid-template-columns: 1fr;
   }
 
@@ -2162,11 +2202,11 @@
     flex-direction: column;
   }
 
-  .ai-wizzard-tabs__content {
+  .ai-chat-tabs__content {
     padding: 18px 14px;
   }
 
-  .ai-wizzard-tab--chat {
+  .ai-chat-tab--chat {
     justify-content: flex-start;
     padding: 0;
   }

@@ -4,6 +4,7 @@ import { SyncHook } from "@vibecanvas/tapable";
 import Konva from "konva";
 import { describe, expect, test } from "vitest";
 import type { CameraService, WidgetManagerService } from "../../../src/services";
+import type { TWidgetTitleBarPortal } from "../../../src/services/widget/interface";
 import { WIDGET_HOST_HEADER_HEIGHT } from "../../../src/services/widget/CONSTANTS";
 import { fnCreateWidgetNode } from "../../../src/services/widget/fn.create-widget-node";
 import { fnGetHostThemeColors } from "../../../src/services/widget/fn.get-host-theme-colors";
@@ -11,7 +12,7 @@ import { txAttachDomPortal } from "../../../src/services/widget/attach-dom-porta
 import { txResizeWidgetHost } from "../../../src/services/widget/tx.resize-widget-host";
 import { createTestContainer, ensureDom } from "../../test-setup";
 
-function createWidgetElement(): TElement {
+function createWidgetElement(type: "widget" | "ui-widget" = "widget"): TElement {
   return {
     id: "widget-1",
     x: 10,
@@ -27,7 +28,7 @@ function createWidgetElement(): TElement {
     updatedAt: 1,
     style: {},
     data: {
-      type: "widget",
+      type,
       kind: "example",
       w: 160,
       h: 120,
@@ -46,10 +47,10 @@ function createCameraService() {
   } as unknown as CameraService;
 }
 
-function createMountedWidget() {
+function createMountedWidget(type: "widget" | "ui-widget" = "widget") {
   ensureDom();
 
-  const element = createWidgetElement();
+  const element = createWidgetElement(type);
   const container = createTestContainer();
   const stage = new Konva.Stage({
     container,
@@ -83,6 +84,48 @@ function firstPortalDiv(widgetPortal: HTMLDivElement) {
 }
 
 describe("txAttachDomPortal", () => {
+  test("bridges ui-widget title bar buttons to the mounted renderer", () => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget("ui-widget");
+    let titleBar: TWidgetTitleBarPortal | undefined;
+    let settingsCalls = 0;
+    const removeListener = txAttachDomPortal({
+      node: group,
+      document,
+      widgetServie: {} as WidgetManagerService,
+      widgetPortal,
+      cameraService,
+      widgetConfig: {
+        id: "example",
+        dataType: "ui-widget",
+        titleBarActions: [{ id: "settings", label: "Settings" }],
+        renderDom: (args) => {
+          titleBar = args.titleBar;
+        },
+      },
+    }, { element });
+
+    cameraService.hooks.change.call();
+    const actionRoot = widgetPortal.querySelector<HTMLElement>("[data-widget-title-actions-for='widget-1']");
+    const settingsButton = actionRoot?.querySelector<HTMLButtonElement>("[data-widget-title-action-id='settings']");
+
+    expect(titleBar).toBeDefined();
+    expect(actionRoot?.style.transform).toBe("matrix(1,0,0,1,10,20)");
+    expect(settingsButton?.textContent).toBe("Settings");
+
+    titleBar?.onAction("settings", () => { settingsCalls += 1; });
+    settingsButton?.click();
+    expect(settingsCalls).toBe(1);
+
+    titleBar?.setActionState("settings", { pressed: true });
+    expect(settingsButton?.getAttribute("aria-pressed")).toBe("true");
+    expect(settingsButton?.style.background).not.toBe("transparent");
+
+    removeListener?.();
+    expect(actionRoot?.isConnected).toBe(false);
+    stage.destroy();
+    widgetPortal.remove();
+  });
+
   test("shows loading instead of a definition error while widget discovery is pending", () => {
     const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
     const removeListener = txAttachDomPortal({

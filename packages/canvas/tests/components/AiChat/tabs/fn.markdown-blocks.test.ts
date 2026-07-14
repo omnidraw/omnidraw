@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fnParseMarkdownBlocks, fnParseMarkdownInline } from "../../../../src/components/AiWizzard/tabs/fn.markdown-blocks"
+import { fnParseMarkdownBlocks, fnParseMarkdownInline } from "../../../../src/components/AiChat/tabs/fn.markdown-blocks"
 
 describe("fnParseMarkdownInline", () => {
   it("parses inline code, strong text, and safe links", () => {

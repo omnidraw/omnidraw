@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fnGetChatMessageParts } from "../../../../src/components/AiWizzard/tabs/fn.chat-message-parts"
+import { fnGetChatMessageParts } from "../../../../src/components/AiChat/tabs/fn.chat-message-parts"
 
 describe("fnGetChatMessageParts", () => {
   it("extracts text from structured chat content", () => {

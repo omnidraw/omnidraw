@@ -40,9 +40,25 @@ export interface IWidgetManagerServiceProps {
 export type TWidgetRenderArgs = {
   root: HTMLDivElement;
   element: TElement;
+  titleBar?: TWidgetTitleBarPortal;
 };
 
 export type TWidgetRenderCleanup = () => void;
+
+export type TWidgetTitleBarAction = {
+  id: string;
+  label: string;
+};
+
+export type TWidgetTitleBarActionState = {
+  pressed?: boolean;
+  disabled?: boolean;
+};
+
+export type TWidgetTitleBarPortal = {
+  onAction: (id: string, handler: () => void) => () => void;
+  setActionState: (id: string, state: TWidgetTitleBarActionState) => void;
+};
 
 export interface IWidgetConfig {
   id: string;
@@ -52,6 +68,7 @@ export interface IWidgetConfig {
   actor?: {
     actorDefinitionName: string;
   };
+  titleBarActions?: readonly TWidgetTitleBarAction[];
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
   sandbox?: IWidgetSandboxConfig;
 }

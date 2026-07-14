@@ -14,7 +14,7 @@ Current dependencies and responsibilities:
 - Uses `@earendil-works/pi-coding-agent` for auth, models, settings, sessions, and custom tools.
 - Stores Pi data under `join(config.dataPath, 'pi')`.
 - Owns login sessions, abort controllers, model registry, settings manager, and widget/session managers.
-- Owns AI widget wizard tool orchestration and phase-specific tool loading.
+- Owns AI chat tool orchestration and phase-specific tool loading.
 - May publish service events through `eventPublisherService` when agent runtime events are implemented.
 
 ## Known consumers
@@ -33,11 +33,11 @@ Important files to inspect before changing public service behavior:
 - `packages/api-agent/src/api.auth.login.ts`
 - `packages/api-agent/src/api.auth.status.ts`
 - `packages/api-agent/src/api.auth.abort.ts`
-- `packages/canvas/src/components/AiWizzard/index.tsx`
-- `packages/canvas/src/components/AiWizzard/tabs/SettingsTab.tsx`
+- `packages/canvas/src/components/AiChat/index.tsx`
+- `packages/canvas/src/components/AiChat/tabs/SettingsTab.tsx`
 
 Frontend entrypoint currently using this stack:
-- `packages/canvas/src/components/AiWizzard/index.tsx`
+- `packages/canvas/src/components/AiChat/index.tsx`
   - fetches `apiService.api.agent.settings.get({})`
   - treats `providersWithCredentials.length > 0` as authenticated
   - uses the settings response to choose default tab and render settings state
@@ -48,9 +48,9 @@ Keep `AgentService` return values aligned with `packages/api-agent/src/contract.
 
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
-- `wizzard.connect` returns `{ vcJson, actorCandidate, messageHistory }` for the requested widget/session.
+- `chat.connect` returns `{ vcJson, actorCandidate, messageHistory }` for the requested widget/session.
 - `actorCandidate` is `null` on first connect and otherwise the latest actor candidate custom entry saved in the Pi session.
-- `wizzard.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
+- `chat.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
 - `auth.login` accepts only `openai-codex` or `github-copilot` and returns `{ loginId }`.
 - `auth.logout` accepts only `openai-codex` or `github-copilot` and removes stored OAuth credentials.
 - `auth.status` returns a discriminated login status.
@@ -61,14 +61,14 @@ Current contract shape includes:
 
 When changing service public methods:
 - update `api-agent` handlers and contract together
-- consider frontend expectations in `AiWizzard`
+- consider frontend expectations in `AiChat`
 - prefer additive changes when possible
 - never return secrets or raw credentials to the API/frontend
 - preserve discriminated union fields exactly; frontend and ORPC validation depend on them
 
-## AI widget wizard tools
+## AI chat widget tools
 
-Custom wizard tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
+Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
 Current custom tools:
 - `vc_set_actor_candidate`
@@ -151,4 +151,4 @@ Known current caveat:
 
 Also run/check API/frontend callers when public behavior changes:
 - `packages/api-agent` typecheck/tests if available
-- canvas/frontend typecheck if changing shapes consumed by `AiWizzard`
+- canvas/frontend typecheck if changing shapes consumed by `AiChat`

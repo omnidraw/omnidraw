@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fnSerializeChatMessagesAsMarkdown } from "../../../../src/components/AiWizzard/tabs/fn.chat-message-markdown"
+import { fnSerializeChatMessagesAsMarkdown } from "../../../../src/components/AiChat/tabs/fn.chat-message-markdown"
 
 describe("fnSerializeChatMessagesAsMarkdown", () => {
   it("serializes visible message parts as markdown sections", () => {

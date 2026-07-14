@@ -52,10 +52,10 @@ describe('AgentService database change approval', () => {
       },
     });
 
-    const result = await service.approveWizzardDbChange('widget', 'session', 'proposal-1');
+    const result = await service.approveChatDbChange('widget', 'session', 'proposal-1');
     expect(calls).toEqual(['create', `execute:${proposal.sql}`, 'preview', 'confirm']);
     expect(result).toMatchObject({ status: 'approved', draftId: 'draft-1', applyId: 'apply-1' });
-    await expect(service.approveWizzardDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('already approved');
+    await expect(service.approveChatDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('already approved');
   });
 
   test('discards a created draft when SQL validation or apply preparation fails', async () => {
@@ -69,7 +69,7 @@ describe('AgentService database change approval', () => {
       confirmDbApply: async () => { throw new Error('not reached'); },
     });
 
-    await expect(service.approveWizzardDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('invalid SQL');
+    await expect(service.approveChatDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('invalid SQL');
     expect(calls).toEqual(['create', 'execute', 'discard:draft-1']);
   });
 
@@ -100,12 +100,12 @@ describe('AgentService database change approval', () => {
       },
     });
 
-    const approving = service.approveWizzardDbChange('widget', 'session', 'proposal-1');
+    const approving = service.approveChatDbChange('widget', 'session', 'proposal-1');
     await draftCreationStarted;
-    await expect(service.approveWizzardDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('being resolved');
+    await expect(service.approveChatDbChange('widget', 'session', 'proposal-1')).rejects.toThrow('being resolved');
     let rejectError: unknown;
     try {
-      service.rejectWizzardDbChange('widget', 'session', 'proposal-1');
+      service.rejectChatDbChange('widget', 'session', 'proposal-1');
     } catch (error) {
       rejectError = error;
     } finally {

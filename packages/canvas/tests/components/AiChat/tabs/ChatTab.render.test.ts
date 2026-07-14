@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { render } from "solid-js/web"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { ChatTab } from "../../../../src/components/AiWizzard/tabs/ChatTab"
-import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../../src/components/AiWizzard/ChatComposer/interface"
+import { ChatTab } from "../../../../src/components/AiChat/tabs/ChatTab"
+import type { TChatComposerModel, TChatComposerThinkingLevel } from "../../../../src/components/AiChat/ChatComposer/interface"
 
-const AI_WIZARD_CSS_PATH = resolve(process.cwd(), "src/components/AiWizzard/index.css")
+const AI_CHAT_CSS_PATH = resolve(process.cwd(), "src/components/AiChat/index.css")
 
 type TRenderChatTabSettings = {
   defaultModel?: string
@@ -128,7 +128,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}, onApproveDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onRejectDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onClearResourceBindings: () => Promise<void> = async () => {}) {
+}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}, onApproveDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onRejectDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onClearResourceBindings: () => Promise<void> = async () => {}, onOpenPreview = () => {}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -138,22 +138,24 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     isRunning: false,
     messageHistory,
     onCancel: () => {},
-    onNewWidget: () => {},
+    onNewChat: () => {},
     onEditExistingWidget: () => {},
     onClearResourceBindings,
     onPrompt: async () => {},
     onPreferenceChange,
     onInspectActor,
+    onOpenPreview,
     onApproveDbChange,
     onRejectDbChange,
     settings,
+    mentions: [{ id: "db-1", label: "db", kind: "Database" }],
   }), container)
 
   return container
 }
 
 function readAiChatComposerEditorCssRule() {
-  const css = readFileSync(AI_WIZARD_CSS_PATH, "utf8")
+  const css = readFileSync(AI_CHAT_CSS_PATH, "utf8")
   return css.match(/\.ai-chat-composer__editor\s*\{[^}]*\}/)?.[0] ?? ""
 }
 
@@ -279,6 +281,70 @@ describe("ChatTab rendered message history", () => {
     expect(scroller?.scrollTop).toBe(0)
   })
 
+  it("forwards vertical tool-result wheel gestures to the chat scroller", () => {
+    const root = renderChatTab(undefined, [
+      {
+        role: "toolResult",
+        toolCallId: "call_read",
+        toolName: "read",
+        content: [{ type: "text", text: "read result" }],
+      },
+    ])
+    const scroller = root.querySelector<HTMLElement>(".ai-chat-content")
+    const toolResult = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
+
+    expect(scroller).not.toBeNull()
+    expect(toolResult).not.toBeNull()
+
+    const vertical = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 72 })
+    const verticalResult = toolResult?.dispatchEvent(vertical)
+
+    expect(verticalResult).toBe(false)
+    expect(scroller?.scrollTop).toBe(72)
+  })
+
+  it("keeps mention suggestions dismissed until the trigger changes", async () => {
+    const root = renderChatTab()
+    const editor = root.querySelector<HTMLElement>(".ai-chat-composer__editor")
+    const history = root.querySelector<HTMLElement>(".ai-chat-content")
+    const controls = root.querySelector<HTMLElement>(".ai-chat-composer__controls")
+
+    expect(editor).not.toBeNull()
+    expect(history).not.toBeNull()
+    expect(controls).not.toBeNull()
+
+    const setEditorText = (textValue: string) => {
+      if (!editor) return
+
+      editor.innerHTML = `<p>${textValue}</p>`
+      const text = editor.querySelector("p")?.firstChild
+      if (text) {
+        const range = document.createRange()
+        range.setStart(text, textValue.length)
+        range.collapse(true)
+        document.getSelection()?.removeAllRanges()
+        document.getSelection()?.addRange(range)
+      }
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, data: textValue, inputType: "insertText" }))
+    }
+
+    editor?.focus()
+    setEditorText("@")
+    await vi.waitFor(() => expect(root.querySelector("[role='listbox']")).not.toBeNull())
+
+    history?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))
+
+    expect(root.querySelector("[role='listbox']")).toBeNull()
+
+    setEditorText("@d")
+    await vi.waitFor(() => expect(root.querySelector("[role='listbox']")).not.toBeNull())
+
+    controls?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }))
+    controls?.click()
+
+    await vi.waitFor(() => expect(root.querySelector("[role='listbox']")).toBeNull())
+  })
+
   it("opens a thinking level menu before provider model options", () => {
     const root = renderChatTab()
     const modelButton = root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")
@@ -328,7 +394,7 @@ describe("ChatTab rendered message history", () => {
 
     root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
     Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
-      .find((button) => button.textContent?.trim() === "Clear resource bindings")
+      .find((button) => button.textContent?.trim() === "Clear resource context")
       ?.click()
 
     expect(onClearResourceBindings).toHaveBeenCalledTimes(1)
@@ -374,7 +440,7 @@ describe("ChatTab rendered message history", () => {
     expect(onPreferenceChange).toHaveBeenCalledWith({ thinkingLevel: "high" })
   })
 
-  it("shows Inspect Actor for successful vc_set_actor_candidate tool results", () => {
+  it("shows Review design for successful vc_set_actor_candidate tool results", () => {
     const onInspectActor = vi.fn()
 
     const successfulActorToolResult = {
@@ -387,12 +453,12 @@ describe("ChatTab rendered message history", () => {
     }
 
     const root = renderChatTab(undefined, [successfulActorToolResult], onInspectActor)
-    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Inspect Actor")
+    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Review design")
 
     expect(buttons).toHaveLength(1)
   })
 
-  it("does not show Inspect Actor for failed vc_set_actor_candidate tool results", () => {
+  it("does not show Review design for failed vc_set_actor_candidate tool results", () => {
     const onInspectActor = vi.fn()
 
     const failedActorToolResult = {
@@ -405,8 +471,59 @@ describe("ChatTab rendered message history", () => {
     }
 
     const root = renderChatTab(undefined, [failedActorToolResult], onInspectActor)
-    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Inspect Actor")
+    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Review design")
 
     expect(buttons).toHaveLength(0)
+  })
+
+  it("opens preview from a successful validation tool result", () => {
+    const onOpenPreview = vi.fn()
+    const validationResult = {
+      role: "toolResult",
+      toolCallId: "call-preview",
+      toolName: "vc_validate_widget_files",
+      content: [{ type: "text", text: "Widget files are valid." }],
+      details: { ok: true },
+    }
+    const root = renderChatTab(
+      undefined,
+      [validationResult],
+      () => {},
+      () => {},
+      async () => { throw new Error("not configured") },
+      async () => { throw new Error("not configured") },
+      async () => {},
+      onOpenPreview,
+    )
+
+    Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent === "Open preview")
+      ?.click()
+
+    expect(onOpenPreview).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not open preview from a failed validation result", () => {
+    const onOpenPreview = vi.fn()
+    const validationResult = {
+      role: "toolResult",
+      toolCallId: "call-preview-failed",
+      toolName: "vc_validate_widget_files",
+      content: [{ type: "text", text: "Widget draft files are invalid." }],
+      details: { ok: false, errors: ["widget/main.ts is missing"] },
+    }
+    const root = renderChatTab(
+      undefined,
+      [validationResult],
+      () => {},
+      () => {},
+      async () => { throw new Error("not configured") },
+      async () => { throw new Error("not configured") },
+      async () => {},
+      onOpenPreview,
+    )
+
+    expect(Array.from(root.querySelectorAll("button")).some((button) => button.textContent === "Open preview")).toBe(false)
+    expect(onOpenPreview).not.toHaveBeenCalled()
   })
 })

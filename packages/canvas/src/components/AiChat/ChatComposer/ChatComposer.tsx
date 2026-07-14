@@ -229,6 +229,14 @@ function isKeyboardEvent(event: Event): event is KeyboardEvent {
   return "key" in event
 }
 
+function getSuggestionKey(suggestion: TPromptSuggestion | undefined) {
+  if (!suggestion) {
+    return undefined
+  }
+
+  return `${suggestion.kind}:${suggestion.from}:${suggestion.to}:${suggestion.query}`
+}
+
 const providerLabel = (provider: string) => provider
   .split("-")
   .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -290,6 +298,7 @@ export function ChatComposer(props: TChatComposerProps) {
   let view: EditorView | undefined
   let cleanupDocumentKeydown: (() => void) | undefined
   let cleanupDocumentPointerdown: (() => void) | undefined
+  let dismissedSuggestionKey: string | undefined
   const [suggestion, setSuggestion] = createSignal<TPromptSuggestion>()
   const [activeIndex, setActiveIndex] = createSignal(0)
   const [command, setCommand] = createSignal<TChatComposerCommand>()
@@ -403,6 +412,11 @@ export function ChatComposer(props: TChatComposerProps) {
 
   const syncHasText = () => setHasText(hasEditorContent(view))
   const shouldShowPlaceholder = () => !hasText() && !hasFocus() && !suggestion()
+  const dismissSuggestion = () => {
+    dismissedSuggestionKey = getSuggestionKey(suggestion())
+    setSuggestion(undefined)
+    setActiveIndex(0)
+  }
 
   const clearEditor = () => {
     if (!view) {
@@ -683,8 +697,7 @@ export function ChatComposer(props: TChatComposerProps) {
 
     if (event.key === "Escape") {
       event.preventDefault()
-      setSuggestion(undefined)
-      setActiveIndex(0)
+      dismissSuggestion()
       return true
     }
 
@@ -723,7 +736,14 @@ export function ChatComposer(props: TChatComposerProps) {
     }
 
     const handleDocumentPointerdown = (event: PointerEvent) => {
-      if (root?.contains(event.target as Node)) {
+      const target = event.target as Node
+      const suggestionMenu = root?.querySelector(".ai-chat-composer__suggestions")
+
+      if (suggestion() && !suggestionMenu?.contains(target)) {
+        dismissSuggestion()
+      }
+
+      if (root?.contains(target)) {
         return
       }
 
@@ -742,6 +762,14 @@ export function ChatComposer(props: TChatComposerProps) {
       plugins: [
         history(),
         createSuggestionPlugin((nextSuggestion) => {
+          const nextSuggestionKey = getSuggestionKey(nextSuggestion)
+
+          if (nextSuggestionKey && nextSuggestionKey === dismissedSuggestionKey) {
+            setSuggestion(undefined)
+            return
+          }
+
+          dismissedSuggestionKey = undefined
           setSuggestion((previousSuggestion) => {
             if (
               previousSuggestion?.kind !== nextSuggestion?.kind ||
@@ -938,11 +966,11 @@ export function ChatComposer(props: TChatComposerProps) {
                     role="menuitem"
                     onClick={() => {
                       setActionMenuOpen(false)
-                      props.onNewWidget?.()
+                      props.onNewChat?.()
                       view?.focus()
                     }}
                   >
-                    New widget
+                    New chat
                   </button>
                   <button
                     type="button"
@@ -975,7 +1003,7 @@ export function ChatComposer(props: TChatComposerProps) {
                       view?.focus()
                     }}
                   >
-                    Clear resource bindings
+                    Clear resource context
                   </button>
                 </div>
               </Show>

@@ -3,17 +3,21 @@ import type { TOrpcSafeClient } from '@vibecanvas/orpc-client';
 import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { CameraService, SelectionService, WidgetManagerService, TWidgetActorEvent } from '..';
 import { ELEMENT_DATA_ATTR } from '../../core/CONSTANTS';
-import { isKonvaGroup, isKonvaRect } from '../../core/GUARDS';
+import { isKonvaGroup, isKonvaRect, isKonvaText } from '../../core/GUARDS';
 import {
   WIDGET_DOM_CONTENT_SCALE,
   WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX,
   WIDGET_HOST_BODY_ID,
   WIDGET_HOST_BORDER_ID,
   WIDGET_HOST_HEADER_HEIGHT,
+  WIDGET_HOST_MENU_BUTTON_RIGHT_INSET,
+  WIDGET_HOST_MENU_BUTTON_SIZE,
+  WIDGET_HOST_TITLE_ID,
+  WIDGET_HOST_TITLE_MENU_GAP,
   WIDGET_WINDOW_CONTAINED,
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
-import type { IWidgetConfig, TWidgetRenderCleanup } from './interface';
+import type { IWidgetConfig, TWidgetRenderCleanup, TWidgetTitleBarActionState, TWidgetTitleBarPortal } from './interface';
 import type { TWidgetError } from '@vibecanvas/service-db/model';
 import { txRenderWidgetError } from './tx.render-widget-error';
 import { txRenderWidgetLoading } from './tx.render-widget-loading';
@@ -36,6 +40,18 @@ type TArgs = {
 };
 
 type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
+
+const WIDGET_TITLE_ACTION_GAP = 4;
+const WIDGET_TITLE_ACTION_HORIZONTAL_PADDING = 8;
+const WIDGET_TITLE_ACTION_MIN_WIDTH = 44;
+const WIDGET_TITLE_ACTION_CHARACTER_WIDTH = 7;
+
+function titleActionWidth(label: string) {
+  return Math.max(
+    WIDGET_TITLE_ACTION_MIN_WIDTH,
+    label.length * WIDGET_TITLE_ACTION_CHARACTER_WIDTH + WIDGET_TITLE_ACTION_HORIZONTAL_PADDING * 2,
+  );
+}
 
 function syncWidgetRootChildren(contentRoot: HTMLDivElement) {
   const view = contentRoot.ownerDocument.defaultView;
@@ -69,14 +85,94 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   const fullscreenHeader = portal.document.createElement('div');
   const fullscreenTitle = portal.document.createElement('div');
   const fullscreenWindowButton = portal.document.createElement('button');
+  const titleActionsRoot = portal.document.createElement('div');
   const view = portal.document.defaultView;
   const widgetLabel = portal.widgetConfig?.tool?.label
     ?? (args.element.data.type === 'widget' || args.element.data.type === 'ui-widget' ? args.element.data.kind : 'Widget');
+  const titleActions = args.element.data.type === 'ui-widget'
+    ? [...(portal.widgetConfig?.titleBarActions ?? [])]
+    : [];
+  const titleActionIds = new Set(titleActions.map((action) => action.id));
+  const titleActionHandlers = new Map<string, () => void>();
+  const titleActionButtons = new Map<string, HTMLButtonElement>();
 
   let disposed = false;
   let initialRenderTimer: number | null = null;
   let cleanupRender: TWidgetRenderCleanup | void = undefined;
   let hasNonRecoverableHostError = false;
+
+  const setTitleActionState = (id: string, state: TWidgetTitleBarActionState) => {
+    const button = titleActionButtons.get(id);
+    if (!button) return;
+
+    if (state.pressed !== undefined) {
+      button.setAttribute('aria-pressed', String(state.pressed));
+      button.style.background = state.pressed
+        ? 'color-mix(in srgb, currentColor 14%, transparent)'
+        : 'transparent';
+      button.style.boxShadow = state.pressed ? 'inset 0 0 0 1px currentColor' : 'none';
+    }
+    if (state.disabled !== undefined) {
+      button.disabled = state.disabled;
+      button.style.opacity = state.disabled ? '0.5' : '1';
+    }
+  };
+
+  const titleBarPortal: TWidgetTitleBarPortal | undefined = titleActions.length > 0
+    ? {
+      onAction(id, handler) {
+        if (!titleActionIds.has(id)) return () => undefined;
+        titleActionHandlers.set(id, handler);
+        return () => {
+          if (titleActionHandlers.get(id) === handler) titleActionHandlers.delete(id);
+        };
+      },
+      setActionState: setTitleActionState,
+    }
+    : undefined;
+
+  titleActionsRoot.dataset.hostedWidgetRoot = 'true';
+  titleActionsRoot.dataset.widgetTitleActionsFor = args.element.id;
+  titleActionsRoot.style.alignItems = 'center';
+  titleActionsRoot.style.boxSizing = 'border-box';
+  titleActionsRoot.style.display = titleActions.length > 0 ? 'flex' : 'none';
+  titleActionsRoot.style.gap = `${WIDGET_TITLE_ACTION_GAP}px`;
+  titleActionsRoot.style.justifyContent = 'flex-end';
+  titleActionsRoot.style.pointerEvents = 'none';
+  titleActionsRoot.style.transformOrigin = '0 0';
+
+  titleActions.forEach((action) => {
+    const button = portal.document.createElement('button');
+    button.dataset.widgetTitleActionId = action.id;
+    button.type = 'button';
+    button.textContent = action.label;
+    button.title = action.label;
+    button.setAttribute('aria-label', action.label);
+    button.style.alignItems = 'center';
+    button.style.appearance = 'none';
+    button.style.background = 'transparent';
+    button.style.border = '1px solid transparent';
+    button.style.borderRadius = '4px';
+    button.style.boxSizing = 'border-box';
+    button.style.color = 'inherit';
+    button.style.cursor = 'pointer';
+    button.style.display = 'inline-flex';
+    button.style.font = '600 12px/1 Inter, ui-sans-serif, system-ui, sans-serif';
+    button.style.height = '22px';
+    button.style.justifyContent = 'center';
+    button.style.minWidth = `${WIDGET_TITLE_ACTION_MIN_WIDTH}px`;
+    button.style.padding = `0 ${WIDGET_TITLE_ACTION_HORIZONTAL_PADDING}px`;
+    button.style.pointerEvents = 'auto';
+    button.style.whiteSpace = 'nowrap';
+    button.onpointerdown = (event) => event.stopPropagation();
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      titleActionHandlers.get(action.id)?.();
+    };
+    titleActionButtons.set(action.id, button);
+    titleActionsRoot.appendChild(button);
+  });
 
   const renderError = (error: TWidgetError, replaceContent = true) => {
     if (!error.retryable) hasNonRecoverableHostError = true;
@@ -101,6 +197,18 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     const isCollapsed = isWidgetHost && widgetData.expanded === false;
     const isFullscreen = isWidgetHost && widgetData.window === WIDGET_WINDOW_FULLSCREEN;
     const isActive = portal.selectionService?.focusedId === args.element.id;
+    const title = portal.node.findOne(`#${WIDGET_HOST_TITLE_ID}`);
+    const titleFill = isKonvaText(title) ? title.fill() : undefined;
+    const titleColor = typeof titleFill === 'string' ? titleFill : '#111827';
+    const actionWidth = titleActions.reduce((width, action) => {
+      return width + titleActionWidth(action.label);
+    }, Math.max(0, titleActions.length - 1) * WIDGET_TITLE_ACTION_GAP);
+
+    if (isKonvaText(title) && titleActions.length > 0) {
+      const menuButtonX = Math.max(0, portal.node.width() - WIDGET_HOST_MENU_BUTTON_RIGHT_INSET - WIDGET_HOST_MENU_BUTTON_SIZE);
+      title.width(Math.max(0, menuButtonX - actionWidth - WIDGET_HOST_TITLE_MENU_GAP * 2 - title.x()));
+      title.getLayer()?.batchDraw();
+    }
 
     div.style.display = isCollapsed ? 'none' : '';
     div.style.pointerEvents = isActive ? 'auto' : 'none';
@@ -125,6 +233,16 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       fullscreenHeader.style.width = `${fullscreenParent.clientWidth}px`;
       fullscreenHeader.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       fullscreenHeader.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
+      if (titleActions.length > 0) {
+        fullscreenHeader.insertBefore(titleActionsRoot, fullscreenWindowButton);
+        titleActionsRoot.style.position = 'static';
+        titleActionsRoot.style.width = 'auto';
+        titleActionsRoot.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
+        titleActionsRoot.style.marginLeft = '8px';
+        titleActionsRoot.style.padding = '0';
+        titleActionsRoot.style.transform = 'none';
+        titleActionsRoot.style.color = '#f9fafb';
+      }
       div.style.top = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       div.style.width = `${fullscreenParent.clientWidth}px`;
       div.style.height = `${Math.max(0, fullscreenParent.clientHeight - WIDGET_HOST_HEADER_HEIGHT)}px`;
@@ -142,6 +260,18 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     fullscreenHeader.style.zIndex = '';
     div.style.top = '0';
     div.style.zIndex = '';
+    if (titleActions.length > 0) {
+      if (titleActionsRoot.parentElement !== portal.widgetPortal) portal.widgetPortal.appendChild(titleActionsRoot);
+      titleActionsRoot.style.position = 'absolute';
+      titleActionsRoot.style.left = '0';
+      titleActionsRoot.style.top = '0';
+      titleActionsRoot.style.width = `${portal.node.width()}px`;
+      titleActionsRoot.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
+      titleActionsRoot.style.marginLeft = '0';
+      titleActionsRoot.style.padding = `0 ${WIDGET_HOST_MENU_BUTTON_RIGHT_INSET + WIDGET_HOST_MENU_BUTTON_SIZE + WIDGET_HOST_TITLE_MENU_GAP}px 0 0`;
+      titleActionsRoot.style.transform = `matrix(${portal.node.getAbsoluteTransform().getMatrix().join(',')})`;
+      titleActionsRoot.style.color = titleColor;
+    }
     div.style.width = `${body.width()}px`;
     div.style.height = `${body.height()}px`;
     contentRoot.style.width = `${body.width() / WIDGET_DOM_CONTENT_SCALE}px`;
@@ -177,6 +307,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     domEventTypes.forEach((eventType) => div.removeEventListener(eventType, stopActiveDomEvent));
     try { cleanupRender?.(); } catch { /* portal removal must remain reliable */ }
     cleanupRender = undefined;
+    titleActionHandlers.clear();
+    titleActionsRoot.remove();
     fullscreenHeader.remove();
     div.remove();
   }) as TWidgetDomPortalListener;
@@ -275,8 +407,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.appendChild(contentRoot);
   portal.widgetPortal.appendChild(fullscreenHeader);
   portal.widgetPortal.appendChild(div);
+  if (titleActions.length > 0) portal.widgetPortal.appendChild(titleActionsRoot);
   try {
-    cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element });
+    cleanupRender = portal.widgetConfig?.renderDom?.({ root: contentRoot, element: args.element, titleBar: titleBarPortal });
   } catch (error) {
     renderError({
       phase: 'dom-render',

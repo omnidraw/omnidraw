@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fnFindPromptTrigger } from "../../../../src/components/AiWizzard/ChatComposer/fn.trigger"
+import { fnFindPromptTrigger } from "../../../../src/components/AiChat/ChatComposer/fn.trigger"
 
 describe("fnFindPromptTrigger", () => {
   it("finds mention triggers after whitespace", () => {

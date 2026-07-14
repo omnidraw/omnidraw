@@ -16,7 +16,7 @@ type TAgentSettings = {
   models: TChatComposerModel[]
 }
 
-type TAiWizardPreference = {
+type TAiChatPreference = {
   model?: {
     provider: string
     modelId: string
@@ -31,7 +31,7 @@ const TOOL_RESULT_COLLAPSED_LINE_LIMIT = 5
 
 interface IProps {
   settings?: TAgentSettings
-  aiWizardPreference?: TAiWizardPreference
+  aiChatPreference?: TAiChatPreference
   messageHistory: readonly unknown[]
   isRunning: boolean
   isCanceling: boolean
@@ -43,10 +43,11 @@ interface IProps {
   onApproveDbChange: (proposalId: string) => Promise<TDbChangeProposal>
   onRejectDbChange: (proposalId: string) => Promise<TDbChangeProposal>
   onCancel: () => void
-  onNewWidget: () => void
+  onNewChat: () => void
   onEditExistingWidget: () => void
   onClearResourceBindings: () => Promise<void>
   onInspectActor: () => void
+  onOpenPreview: () => void
 }
 
 type TDbChangeProposal = {
@@ -109,6 +110,17 @@ function isSetActorCandidateToolResult(message: unknown) {
     && typeof object.toolName === "string"
     && object.toolName.toLowerCase() === "vc_set_actor_candidate"
     && !hasFailedActorCandidateToolResult(object)
+}
+
+function isPreviewReadyToolResult(message: unknown) {
+  const object = getMessageObject(message)
+  const details = getMessageObject(object?.details)
+
+  return object?.role === "toolResult"
+    && typeof object.toolName === "string"
+    && object.toolName.toLowerCase() === "vc_validate_widget_files"
+    && object.isError !== true
+    && details?.ok === true
 }
 
 function isToolResultMessage(message: unknown) {
@@ -301,7 +313,7 @@ function MarkdownHeading(props: { block: Extract<TMarkdownBlock, { kind: "headin
   }
 }
 
-function onHorizontalScrollBlockWheel(event: WheelEvent, block: HTMLElement) {
+function onNestedChatWheel(event: WheelEvent, block: HTMLElement) {
   if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
     return
   }
@@ -321,7 +333,7 @@ function MarkdownTable(props: { block: Extract<TMarkdownBlock, { kind: "table" }
   let tableWrap!: HTMLDivElement
 
   onMount(() => {
-    const listener = (event: WheelEvent) => onHorizontalScrollBlockWheel(event, tableWrap)
+    const listener = (event: WheelEvent) => onNestedChatWheel(event, tableWrap)
     tableWrap.addEventListener("wheel", listener, { passive: false })
     onCleanup(() => tableWrap.removeEventListener("wheel", listener))
   })
@@ -364,7 +376,7 @@ function MarkdownCode(props: { block: Extract<TMarkdownBlock, { kind: "code" }> 
   let codeBlock!: HTMLPreElement
 
   onMount(() => {
-    const listener = (event: WheelEvent) => onHorizontalScrollBlockWheel(event, codeBlock)
+    const listener = (event: WheelEvent) => onNestedChatWheel(event, codeBlock)
     codeBlock.addEventListener("wheel", listener, { passive: false })
     onCleanup(() => codeBlock.removeEventListener("wheel", listener))
   })
@@ -511,6 +523,7 @@ function DbChangeProposalCard(props: {
 function ChatHistoryMessage(props: {
   message: unknown
   onInspectActor: () => void
+  onOpenPreview: () => void
   onApproveDbChange: (proposalId: string) => Promise<TDbChangeProposal>
   onRejectDbChange: (proposalId: string) => Promise<TDbChangeProposal>
 }) {
@@ -520,6 +533,7 @@ function ChatHistoryMessage(props: {
   const parts = () => fnGetChatMessageParts(props.message)
   const kind = () => getMessageKind(role())
   const showInspectActor = () => isSetActorCandidateToolResult(props.message)
+  const showOpenPreview = () => isPreviewReadyToolResult(props.message)
   const dbChangeProposal = () => getDbChangeProposal(props.message)
   const isToolResult = () => isToolResultMessage(props.message)
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
@@ -550,6 +564,11 @@ function ChatHistoryMessage(props: {
       aria-expanded={isToolResult() ? isExpanded() : undefined}
       onClick={toggleToolResult}
       onKeyDown={onMessageKeyDown}
+      onWheel={(event) => {
+        if (isToolResult()) {
+          onNestedChatWheel(event, event.currentTarget)
+        }
+      }}
     >
       <Show when={kind() !== "assistant"}>
         <span class="ai-chat-history__role">{label()}</span>
@@ -562,7 +581,12 @@ function ChatHistoryMessage(props: {
       </Show>
       <Show when={showInspectActor()}>
         <div class="ai-chat-history__actions" onClick={(event) => event.stopPropagation()}>
-          <button type="button" onClick={props.onInspectActor}>Inspect Actor</button>
+          <button type="button" onClick={props.onInspectActor}>Review design</button>
+        </div>
+      </Show>
+      <Show when={showOpenPreview()}>
+        <div class="ai-chat-history__actions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" onClick={props.onOpenPreview}>Open preview</button>
         </div>
       </Show>
       <Show when={dbChangeProposal()}>
@@ -671,11 +695,11 @@ export function ChatTab(props: IProps) {
   })
 
   return (
-    <div class="ai-wizzard-tab ai-wizzard-tab--chat">
+    <div class="ai-chat-tab ai-chat-tab--chat">
       <div ref={contentRoot} class="ai-chat-content">
         <Show when={props.messageHistory.length === 0 && !props.isRunning}>
           <div class="ai-chat-empty" aria-live="polite">
-            Which Widget should AI build for you?
+            Ask about your canvas or describe what you want to build.
           </div>
         </Show>
         <Show when={props.messageHistory.length > 0}>
@@ -685,6 +709,7 @@ export function ChatTab(props: IProps) {
                 <ChatHistoryMessage
                   message={message}
                   onInspectActor={props.onInspectActor}
+                  onOpenPreview={props.onOpenPreview}
                   onApproveDbChange={props.onApproveDbChange}
                   onRejectDbChange={props.onRejectDbChange}
                 />
@@ -698,12 +723,12 @@ export function ChatTab(props: IProps) {
       </div>
 
       <ChatComposer
-        placeholder="Ask for a widget. Type @ to mention a resource"
+        placeholder="Ask about your canvas. Type @ to add context"
         mentions={props.mentions}
         models={props.settings?.models}
-        defaultModel={props.aiWizardPreference?.model?.modelId ?? props.settings?.defaultModel}
-        defaultProvider={props.aiWizardPreference?.model?.provider ?? props.settings?.defaultProvider}
-        defaultThinkingLevel={props.aiWizardPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
+        defaultModel={props.aiChatPreference?.model?.modelId ?? props.settings?.defaultModel}
+        defaultProvider={props.aiChatPreference?.model?.provider ?? props.settings?.defaultProvider}
+        defaultThinkingLevel={props.aiChatPreference?.thinkingLevel ?? props.settings?.defaultThinkingLevel}
         isRunning={props.isRunning}
         isCanceling={props.isCanceling}
         draftText={props.draftText}
@@ -711,7 +736,7 @@ export function ChatTab(props: IProps) {
         onPreferenceChange={props.onPreferenceChange}
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
-        onNewWidget={props.onNewWidget}
+        onNewChat={props.onNewChat}
         onEditExistingWidget={props.onEditExistingWidget}
         onCopyChat={copyChat}
         onClearResourceBindings={() => {
