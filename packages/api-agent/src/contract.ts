@@ -35,7 +35,7 @@ const ZAgentApiKeySetOutput = z.object({
   providerId: z.string(),
 })
 
-const ZAgentWizzardCancel = z.object({
+const ZAgentChatCancel = z.object({
   canceled: z.boolean(),
   running: z.boolean(),
 })
@@ -56,26 +56,26 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
   z.object({ status: z.literal('error'), message: z.string() }),
 ])
 
-const ZAgentWizzardScope = z.object({ widgetId: z.string(), sessionId: z.string() })
-const ZAgentWizzardStartWidgetEdit = ZAgentWizzardScope.extend({
+const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
+const ZAgentChatStartWidgetEdit = ZAgentChatScope.extend({
   definitionName: z.string().min(1),
 })
-const AGENT_WIZZARD_PROMPT_IMAGE_MAX_COUNT = 5;
-const AGENT_WIZZARD_PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
-const AGENT_WIZZARD_PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(AGENT_WIZZARD_PROMPT_IMAGE_MAX_BYTES / 3) * 4;
-const ZAgentWizzardPromptImage = z.object({
+const AGENT_CHAT_PROMPT_IMAGE_MAX_COUNT = 5;
+const AGENT_CHAT_PROMPT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const AGENT_CHAT_PROMPT_IMAGE_MAX_BASE64_LENGTH = Math.ceil(AGENT_CHAT_PROMPT_IMAGE_MAX_BYTES / 3) * 4;
+const ZAgentChatPromptImage = z.object({
   name: z.string().max(255).optional(),
   mimeType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']),
   data: z.string()
     .min(1)
-    .max(AGENT_WIZZARD_PROMPT_IMAGE_MAX_BASE64_LENGTH)
+    .max(AGENT_CHAT_PROMPT_IMAGE_MAX_BASE64_LENGTH)
     .regex(/^[A-Za-z0-9+/]+={0,2}$/),
 }).strict()
 
-const ZAgentWizzardPrompt = ZAgentWizzardScope.extend({
+const ZAgentChatPrompt = ZAgentChatScope.extend({
   text: z.string(),
   resourceIds: z.string().min(1).max(128).array().max(16).optional(),
-  images: ZAgentWizzardPromptImage.array().max(AGENT_WIZZARD_PROMPT_IMAGE_MAX_COUNT).optional(),
+  images: ZAgentChatPromptImage.array().max(AGENT_CHAT_PROMPT_IMAGE_MAX_COUNT).optional(),
   model: z.object({
     provider: z.string().min(1),
     modelId: z.string().min(1),
@@ -86,7 +86,7 @@ const ZAgentWizzardPrompt = ZAgentWizzardScope.extend({
   path: ['text'],
 })
 
-const ZAgentWizzardDbChangeProposal = z.object({
+const ZAgentChatDbChangeProposal = z.object({
   id: z.string(),
   resourceId: z.string(),
   resourceName: z.string(),
@@ -100,12 +100,12 @@ const ZAgentWizzardDbChangeProposal = z.object({
   warnings: z.string().array().optional(),
 })
 
-const ZAgentWizzardDraftActorSend = ZAgentWizzardScope.extend({
+const ZAgentChatDraftActorSend = ZAgentChatScope.extend({
   name: z.string().min(1),
   payload: z.unknown(),
 })
 
-const ZAgentWizzardDraftManifestPatch = ZAgentWizzardScope.extend({
+const ZAgentChatDraftManifestPatch = ZAgentChatScope.extend({
   patch: z.object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
@@ -122,7 +122,7 @@ const ZAgentWizzardDraftManifestPatch = ZAgentWizzardScope.extend({
 
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 
-export type TAgentWizzardConnect = {
+export type TAgentChatConnect = {
   vcJson: TVibecanvasJson | null;
   actorCandidate: TActorCandidateRecord | null;
   messageHistory: unknown[];
@@ -188,12 +188,12 @@ export type TAgentDraftManifestPatchResult =
   | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
-export type TAgentWizzardPublishResult =
+export type TAgentChatPublishResult =
   | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
   | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
 
-export type TAgentWizzardStartWidgetEditResult =
-  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: NonNullable<TAgentWizzardConnect['editSession']>; messageHistory: unknown[] }
+export type TAgentChatStartWidgetEditResult =
+  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: NonNullable<TAgentChatConnect['editSession']>; messageHistory: unknown[] }
   | { ok: false; message: string };
 
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
@@ -204,35 +204,35 @@ export const agentContract = oc.router({
     get: oc
       .output(ZAgentSettings),
   },
-  wizzard: {
-    connect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardConnect>()),
-    startWidgetEdit: oc.input(ZAgentWizzardStartWidgetEdit).output(orpcType<TAgentWizzardStartWidgetEditResult>()),
-    prompt: oc.input(ZAgentWizzardPrompt),
+  chat: {
+    connect: oc.input(ZAgentChatScope).output(orpcType<TAgentChatConnect>()),
+    startWidgetEdit: oc.input(ZAgentChatStartWidgetEdit).output(orpcType<TAgentChatStartWidgetEditResult>()),
+    prompt: oc.input(ZAgentChatPrompt),
     resourceBindings: {
-      clear: oc.input(ZAgentWizzardScope).output(z.object({ cleared: z.literal(true) })),
+      clear: oc.input(ZAgentChatScope).output(z.object({ cleared: z.literal(true) })),
     },
     dbChange: {
-      approve: oc.input(ZAgentWizzardScope.extend({
+      approve: oc.input(ZAgentChatScope.extend({
         proposalId: z.string().min(1),
         confirmedRisk: z.literal(true),
-      })).output(ZAgentWizzardDbChangeProposal),
-      reject: oc.input(ZAgentWizzardScope.extend({ proposalId: z.string().min(1) })).output(ZAgentWizzardDbChangeProposal),
+      })).output(ZAgentChatDbChangeProposal),
+      reject: oc.input(ZAgentChatScope.extend({ proposalId: z.string().min(1) })).output(ZAgentChatDbChangeProposal),
     },
-    cancel: oc.input(ZAgentWizzardScope).output(ZAgentWizzardCancel),
-    newSession: oc.input(ZAgentWizzardScope),
-    previewSource: oc.input(ZAgentWizzardScope).output(orpcType<TAgentPreviewSourceResult>()),
-    publish: oc.input(ZAgentWizzardScope).output(orpcType<TAgentWizzardPublishResult>()),
+    cancel: oc.input(ZAgentChatScope).output(ZAgentChatCancel),
+    newSession: oc.input(ZAgentChatScope),
+    previewSource: oc.input(ZAgentChatScope).output(orpcType<TAgentPreviewSourceResult>()),
+    publish: oc.input(ZAgentChatScope).output(orpcType<TAgentChatPublishResult>()),
     draftManifest: {
-      read: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftManifestReadResult>()),
-      patch: oc.input(ZAgentWizzardDraftManifestPatch).output(orpcType<TAgentDraftManifestPatchResult>()),
+      read: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftManifestReadResult>()),
+      patch: oc.input(ZAgentChatDraftManifestPatch).output(orpcType<TAgentDraftManifestPatchResult>()),
     },
     draftActor: {
-      start: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
-      reload: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
-      reset: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
-      stop: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorStopResult>()),
-      inspect: oc.input(ZAgentWizzardScope).output(orpcType<TAgentDraftActorResult>()),
-      send: oc.input(ZAgentWizzardDraftActorSend).output(orpcType<TAgentDraftActorSendResult>()),
+      start: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
+      reload: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
+      reset: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
+      stop: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorStopResult>()),
+      inspect: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
+      send: oc.input(ZAgentChatDraftActorSend).output(orpcType<TAgentDraftActorSendResult>()),
     },
   },
   auth: {
