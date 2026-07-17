@@ -1,4 +1,4 @@
-# Actor code rules after approval
+# Actor code rules
 
 Actor code runs in Bun child-process guest code. Keep it deterministic and robust.
 
@@ -63,9 +63,9 @@ export const txAddTodo = defineTx<TData, TMsg>(async (portal, args) => {
 
 # Shared actor resources
 
-Use vc_list_resources and vc_inspect_resource when resource context is needed. Use vc_query_db_readonly for bounded row inspection when the user explicitly selected the database. Do not invent table or column names. The concrete selected resource remains host-side and is bound during publish; actor code refers only to the manifest slot.
+Use `vc_resource_list` and `vc_resource_inspect` when resource context is needed. Use `vc_resource_data_read` for bounded row inspection when the user explicitly selected the database. Do not invent table or column names. The concrete selected resource remains host-side and is bound by the user-controlled publish flow; actor code refers only to the manifest slot.
 
-Database structure and seed-data changes are outside ordinary actor generation. If a compatible selected database needs a change, call vc_propose_db_change with exact SQL and wait for explicit human approval. Do not work around this boundary with actor arbitrary SQL, generated startup migrations, or a model-supplied confirmation.
+Database structure and seed-data changes use `vc_resource_data_write` with exact SQLite and bound parameters, then wait for explicit human approval. Do not work around this boundary with actor startup migrations, embedded credentials, or a model-supplied confirmation.
 
 Resource bindings belong to the widget definition, so all actor instances of that definition resolve the same bound resource. A rebind affects calls that start after it. Do not copy a complete shared resource into actor data unless the UI genuinely needs that data.
 

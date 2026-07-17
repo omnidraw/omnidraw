@@ -8,20 +8,24 @@ import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { execFile } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path';
-import { fnBumpWidgetVersion } from './core/fn.bump-widget-version';
+import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, join, relative as relativePath, resolve } from 'node:path';
 import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
-import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestActorCandidateApprovalRecord, fxLatestActorCandidateRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-candidate';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-records';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
+import { txNormalizeSessionCwd } from './core/tx.session-cwd';
 import { txReconcileResourceBindings } from './core/tx.reconcile-resource-bindings';
-import { txAppendActorCandidateApprovalRecord, txAppendActorCandidateRecord, txAppendDraftManifestPathRecord, txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-candidate';
+import { txValidateWidgetFiles } from './core/tx.validate-widget-files';
+import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
-import { fnValidateCandidate } from './tools/fn.candidate';
-import { createWidgetWizardPhaseTools } from './tools/phase-tools';
+import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
+import type { TApprovalDecision, TApprovalView, TToolAuthorizationContext, TToolAuthorizer } from './approval/types';
+import { createToolRegistry } from './tools/ToolRegistry';
+import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from './tools/resource-bindings';
-import type { TActorCandidate, TActorCandidateRecord, TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
+import type { TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
+import { WidgetWorkspace } from './workspace/WidgetWorkspace';
+import type { TWidgetMount } from './workspace/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -35,6 +39,8 @@ interface IActorServiceConfig {
   configPath: string;
   eventPublisherService: IEventPublisherService,
   actorService?: TActorServiceReloader;
+  authorizeToolCall?: TToolAuthorizer;
+  approvalTimeoutMs?: number;
 }
 
 type TWidgetId = string;
@@ -75,7 +81,6 @@ type TLoginSession = {
 
 type TAgentConnectResult = {
   vcJson: TVibecanvasJson | null;
-  actorCandidate: TActorCandidateRecord | null;
   messageHistory: AgentSession['messages'];
   editSession: TWidgetEditSessionRecord | null;
 };
@@ -138,7 +143,7 @@ type TAgentPreviewSourceResult =
   | TAgentDraftActorNotReadyResult;
 
 type TAgentDraftManifestReadResult =
-  | { ready: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
+  | { ready: true; source: 'file'; manifest: TVibecanvasJson }
   | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
 
 type TAgentDraftManifestPatch = {
@@ -155,7 +160,7 @@ type TAgentDraftManifestPatch = {
 };
 
 type TAgentDraftManifestPatchResult =
-  | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
+  | { ok: true; source: 'file'; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
 type TAgentChatPublishResult =
@@ -163,7 +168,7 @@ type TAgentChatPublishResult =
   | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
 
 type TAgentChatStartWidgetEditResult =
-  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: TWidgetEditSessionRecord; messageHistory: AgentSession['messages'] }
+  | { ok: true; vcJson: TVibecanvasJson; editSession: TWidgetEditSessionRecord; messageHistory: AgentSession['messages'] }
   | { ok: false; message: string };
 
 const PROMPT_IMAGE_FALLBACK_TEXT = 'Please use the attached image.'
@@ -184,10 +189,31 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
   #dbChangeProposalResolutions = new Set<string>();
+  #workspace: WidgetWorkspace;
+  #approvals: ApprovalCoordinator;
+  #chatWidgetIds = new Map<TSessionId, TWidgetId>();
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
+    this.#workspace = new WidgetWorkspace({ dataPath: config.dataPath, configPath: config.configPath })
+    this.#approvals = new ApprovalCoordinator({
+      timeoutMs: config.approvalTimeoutMs,
+      authorize: config.authorizeToolCall,
+      onChanged: (event) => {
+        const widgetId = this.#chatWidgetIds.get(event.approval.chatId)
+        if (!widgetId) return
+        this.#config.eventPublisherService.publishAgentEvent({
+          kind: 'approval',
+          widgetId,
+          sessionId: event.approval.chatId,
+          type: event.type,
+          approval: event.approval,
+          decision: event.decision,
+          reason: event.reason,
+        })
+      },
+    })
     this.authStorage = AuthStorage.create(join(this.#piAgentDir, 'auth.json'))
     this.modelRegistry = ModelRegistry.create(this.authStorage, join(this.#piAgentDir, 'models.json'))
     this.settingsManager = SettingsManager.create(this.#piAgentDir, this.#piAgentDir, { projectTrusted: true })
@@ -195,6 +221,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
     void ctx
+    await this.#workspace.init()
     console.log('start', this.name)
   }
 
@@ -204,113 +231,98 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         this.#disposeChatSession(id, sessionId)
       }
     }
+    this.#approvals.close()
     this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
 
-  async connectChat(id: TWidgetId, sessionId: string): Promise<TAgentConnectResult> {
-    this.#disposeAgentSession(id, sessionId)
+  async connectChat(id: TWidgetId, sessionId: string, authorization: TToolAuthorizationContext = {}): Promise<TAgentConnectResult> {
+    const previousWidgetId = this.#chatWidgetIds.get(sessionId)
+    if (previousWidgetId === id) this.#disposeAgentSession(previousWidgetId, sessionId)
+    else if (previousWidgetId) this.#disposeChatSession(previousWidgetId, sessionId)
+    this.#chatWidgetIds.set(sessionId, id)
 
-    const cwd = this.#getWizardCwd(id, sessionId)
-    mkdirSync(cwd, { recursive: true })
+    const cwd = await this.#workspace.ensureChat(sessionId)
     const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+    await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
-    const entry = sessionManager.getEntry('vibejsonpath')
-    let vcJson: TVibecanvasJson | null = null;
-    if (entry?.type === 'custom' && entry?.customType === 'vibejsonpath' && typeof entry.data === 'string') {
-      try {
-        vcJson = await Bun.file(entry.data).json()
-      } catch { }
-    }
-
-    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
-    const actorCandidate = fxLatestActorCandidateRecord({ sessionManager })
+    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
     if (!this.sessionMap[id]) {
       this.sessionMap[id] = {}
     }
 
     this.sessionMap[id][sessionId] = sessionEntry
+    const activeMount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    const vcJson = activeMount ? await this.#readMountedManifest(activeMount).catch(() => null) : null
 
     return {
       vcJson,
-      actorCandidate,
       messageHistory: sessionEntry.session.messages,
-      editSession: fxLatestWidgetEditSessionRecord({ sessionManager }),
+      editSession: null,
     }
   }
 
-  newChatSession(id: TWidgetId, sessionId: string): void {
+  async newChatSession(id: TWidgetId, sessionId: string): Promise<void> {
+    const currentWidgetId = this.#chatWidgetIds.get(sessionId)
+    if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
     this.#disposeChatSession(id, sessionId)
+    await this.#workspace.removeAllMounts(sessionId)
   }
 
-  async startWidgetEditChat(id: TWidgetId, sessionId: string, definitionName: string): Promise<TAgentChatStartWidgetEditResult> {
+  async startWidgetEditChat(
+    id: TWidgetId,
+    sessionId: string,
+    definitionName: string,
+    authorization: TToolAuthorizationContext = {},
+  ): Promise<TAgentChatStartWidgetEditResult> {
     const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
     if (!sourceManifest) {
       return { ok: false, message: `Published widget definition not found: ${definitionName}` }
     }
 
-    const sourceManifestPath = this.#resolveConfigPath(sourceManifest.manifest_path)
-    const sourceDir = dirname(sourceManifestPath)
-    const draftDir = this.#getWizardCwd(id, sessionId)
-    const sourceStat = await stat(sourceDir).catch(() => null)
-    if (!sourceStat?.isDirectory()) {
-      return { ok: false, message: `Published widget folder does not exist: ${sourceDir}` }
+    await this.#workspace.reconcilePublishedWidgets()
+    const mount = await this.#workspace.syncDraftFromPublished(sessionId, sourceManifest.name)
+    const previousWidgetId = this.#chatWidgetIds.get(sessionId)
+    if (previousWidgetId && previousWidgetId !== id) this.#disposeChatSession(previousWidgetId, sessionId)
+    this.#chatWidgetIds.set(sessionId, id)
+    let sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) {
+      const cwd = await this.#workspace.ensureChat(sessionId)
+      const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+      await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
+      const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
+      sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
+      if (!this.sessionMap[id]) this.sessionMap[id] = {}
+      this.sessionMap[id][sessionId] = sessionEntry
     }
-
-    this.#disposeChatSession(id, sessionId)
-    await rm(draftDir, { recursive: true, force: true })
-    await mkdir(draftDir, { recursive: true })
-    await cp(sourceDir, draftDir, {
-      recursive: true,
-      filter: (source) => this.#shouldCopyPublishedWidgetFile(sourceDir, source),
-    })
-
-    const nextVersion = fnBumpWidgetVersion(sourceManifest.version)
-    const draftManifest: TVibecanvasJson = {
-      ...sourceManifest,
-      version: nextVersion,
-    }
-    const draftManifestPath = join(draftDir, 'vibecanvas.json')
-    await writeFile(draftManifestPath, `${JSON.stringify(draftManifest, null, 2)}\n`, 'utf8')
-
-    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
-    const sessionManager = SessionManager.continueRecent(draftDir, sessionDir)
-    const draftFiles = await this.#listDraftFiles(draftDir)
+    this.#recordActiveMount(sessionEntry.sessionManager, mount)
     const editStartedAt = new Date().toISOString()
-    this.#ensureImplementationPhaseForDraftManifest(sessionManager, draftManifest, draftManifestPath, draftFiles, editStartedAt)
-    const editSession = txAppendWidgetEditSessionRecord({ sessionManager }, {
+    const editSession = txAppendWidgetEditSessionRecord({ sessionManager: sessionEntry.sessionManager }, {
       mode: 'edit-published-widget',
       sourceDefinitionName: definitionName,
       sourceSlug: sourceManifest.slug,
       sourceName: sourceManifest.name,
       sourceManifestPath: sourceManifest.manifest_path,
       previousVersion: sourceManifest.version,
-      nextVersion,
+      nextVersion: sourceManifest.version ?? '1',
       startedAt: editStartedAt,
     })
-    sessionManager.appendCustomMessageEntry(
+    sessionEntry.sessionManager.appendCustomMessageEntry(
       'vibecanvas.widgetLoaded',
-      `[Widget ${draftManifest.name} loaded]`,
+      `[Widget ${sourceManifest.name} loaded]`,
       true,
       {
         definitionName,
-        slug: draftManifest.slug,
+        slug: sourceManifest.slug,
         previousVersion: sourceManifest.version,
-        nextVersion,
+        source: 'draft-synced-from-published',
       },
     )
-    this.#flushSessionManager(sessionManager)
-
-    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager)
-    if (!this.sessionMap[id]) {
-      this.sessionMap[id] = {}
-    }
-    this.sessionMap[id][sessionId] = sessionEntry
+    this.#flushSessionManager(sessionEntry.sessionManager)
 
     return {
       ok: true,
-      vcJson: draftManifest,
-      phase: 'implementation',
+      vcJson: sourceManifest,
       editSession,
       messageHistory: sessionEntry.session.messages,
     }
@@ -336,8 +348,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         })
       }
     }
-
-    await this.#refreshChatSessionToolsIfNeeded(id, sessionId)
 
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
@@ -448,9 +458,31 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       return { canceled: false, running: false }
     }
 
+    this.#approvals.cancelChat(sessionId, 'Chat prompt was canceled before approval.')
     await session.abort()
 
     return { canceled: true, running: session.isStreaming }
+  }
+
+  listChatApprovals(id: TWidgetId, sessionId: TSessionId): TApprovalView[] {
+    this.#assertChatScope(id, sessionId)
+    return this.#approvals.list(sessionId)
+  }
+
+  getChatApproval(id: TWidgetId, sessionId: TSessionId, approvalId: string): TApprovalView | null {
+    this.#assertChatScope(id, sessionId)
+    return this.#approvals.get(sessionId, approvalId)
+  }
+
+  resolveChatApproval(
+    id: TWidgetId,
+    sessionId: TSessionId,
+    approvalId: string,
+    decision: TApprovalDecision,
+    authorization: TToolAuthorizationContext = {},
+  ): Promise<{ resolved: true; decision: TApprovalDecision }> {
+    this.#assertChatScope(id, sessionId)
+    return this.#approvals.resolve(sessionId, approvalId, decision, authorization)
   }
 
   inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
@@ -472,7 +504,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       return this.#draftActorNotReady(id, sessionId, 'session-missing')
     }
 
-    const rootDir = this.#getWizardCwd(id, sessionId)
+    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    if (!mount) return this.#draftActorNotReady(id, sessionId, 'manifest-missing')
+    const rootDir = mount.targetPath
     const manifestResult = await this.#readDraftActorManifest(rootDir)
     if (!manifestResult.ready) return manifestResult
 
@@ -578,7 +612,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       return this.#draftActorNotReady(id, sessionId, 'session-missing')
     }
 
-    const rootDir = this.#getWizardCwd(id, sessionId)
+    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    if (!mount) return this.#draftActorNotReady(id, sessionId, 'manifest-missing')
+    const rootDir = mount.targetPath
     const manifestResult = await this.#readDraftActorManifest(rootDir)
     if (!manifestResult.ready) return manifestResult
 
@@ -599,24 +635,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
-    const rootDir = this.#getWizardCwd(id, sessionId)
+    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    if (!mount) {
+      return {
+        ready: false,
+        reason: 'manifest-missing',
+        message: 'No widget is selected in this chat. Load or create a widget first.',
+      }
+    }
+    const rootDir = mount.targetPath
     const manifestResult = await this.#readDraftActorManifest(rootDir)
     if (manifestResult.ready) {
       return {
         ready: true,
         source: 'file',
         manifest: manifestResult.manifest,
-      }
-    }
-
-    if (manifestResult.reason === 'manifest-missing') {
-      const actorCandidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
-      if (actorCandidate) {
-        return {
-          ready: true,
-          source: 'actor-candidate',
-          manifest: actorCandidate.manifest,
-        }
       }
     }
 
@@ -645,46 +678,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
-    const currentManifest = await this.#readDraftActorManifest(this.#getWizardCwd(id, sessionId))
-    if (!currentManifest.ready && currentManifest.reason === 'manifest-missing') {
-      const actorCandidate = fxLatestActorCandidateRecord({ sessionManager: sessionEntry.sessionManager })
-
-      if (!actorCandidate) {
-        return {
-          ok: false,
-          reason: 'manifest-missing',
-          message: 'Draft vibecanvas.json does not exist yet. Approve the actor candidate first before editing the manifest file.',
-        }
-      }
-
-      const editResult = this.#applyDraftManifestPatch(actorCandidate.manifest, patch)
-      if (!editResult.ok) return editResult
-
-      const candidate = this.#createActorCandidateFromManifest(actorCandidate.candidate, editResult.manifest)
-      const validationResult = fnValidateCandidate(candidate)
-
-      if (!validationResult.candidate || !validationResult.manifest || !validationResult.validation.ok) {
-        return {
-          ok: false,
-          reason: 'manifest-invalid',
-          message: validationResult.validation.errors.join('; ') || 'Actor candidate is invalid.',
-          issues: validationResult.validation.errors,
-        }
-      }
-
-      const record = txAppendActorCandidateRecord({ sessionManager: sessionEntry.sessionManager }, {
-        candidate: validationResult.candidate,
-        manifest: validationResult.manifest,
-        validation: validationResult.validation,
-        updatedAt: new Date().toISOString(),
-      })
-
-      return {
-        ok: true,
-        source: 'actor-candidate',
-        manifest: record.manifest,
-      }
-    }
+    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    if (!mount) return { ok: false, reason: 'manifest-missing', message: 'No widget is selected in this chat. Load or create a widget first.' }
+    const currentManifest = await this.#readDraftActorManifest(mount.targetPath)
     if (!currentManifest.ready) {
       return {
         ok: false,
@@ -695,9 +691,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
     const editResult = this.#applyDraftManifestPatch(currentManifest.manifest, patch)
     if (!editResult.ok) return editResult
+    if (editResult.manifest.name !== mount.name) {
+      return {
+        ok: false,
+        reason: 'edit-invalid',
+        message: `Published identity is '${mount.name}'. Renaming requires creating and publishing a new widget.`,
+        issues: ['In-place widget rename is not supported.'],
+      }
+    }
 
-    const manifestPath = join(this.#getWizardCwd(id, sessionId), 'vibecanvas.json')
-    await writeFile(manifestPath, `${JSON.stringify(editResult.manifest, null, 2)}\n`, 'utf8')
+    await this.#workspace.writeMountedFileAtomic(sessionId, `widgets/${mount.name}/vibecanvas.json`, `${JSON.stringify(editResult.manifest, null, 2)}\n`)
 
     return {
       ...editResult,
@@ -715,7 +718,16 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
 
-    const rootDir = this.#getWizardCwd(id, sessionId)
+    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    if (!mount) {
+      return {
+        published: false,
+        manifest: null,
+        destination: null,
+        message: 'No widget is selected in this chat. Load or create a widget first.',
+      }
+    }
+    let rootDir = mount.targetPath
     const manifestResult = await this.#readDraftActorManifest(rootDir)
     if (!manifestResult.ready) {
       return {
@@ -723,6 +735,29 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         manifest: null,
         destination: null,
         message: manifestResult.message,
+      }
+    }
+    if (manifestResult.manifest.name !== mount.name) {
+      return {
+        published: false,
+        manifest: manifestResult.manifest,
+        destination: null,
+        message: `Published identity is '${mount.name}', but vibecanvas.json declares '${manifestResult.manifest.name}'. Create a new widget to rename it.`,
+      }
+    }
+
+    const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative: relativePath }, {
+      cwd: rootDir,
+      sdkActorTypePath: join(this.#workspace.sdkPackagePath, 'src', 'actor.ts'),
+    })
+    if (!validation.ok) {
+      return {
+        published: false,
+        manifest: manifestResult.manifest,
+        destination: null,
+        message: validation.errors.join('\n') || 'Widget is invalid and was not published.',
+        errors: validation.errors,
+        warnings: validation.warnings,
       }
     }
 
@@ -747,43 +782,62 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const shouldReloadEditedInstances = editSession !== null
       && editSession.sourceName === manifestResult.manifest.name
       && editSession.sourceSlug === manifestResult.manifest.slug
-    const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative: relativePath, resolve, basename }, {
-      cwd: rootDir,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      actorService: shouldReloadEditedInstances ? undefined : this.#config.actorService,
-      sdkActorTypePath: resolve(import.meta.dir, '../../sdk/src/actor.ts'),
-    })
-
-    if (!result.published) {
+    const finalWidgetsDir = join(this.#config.configPath, 'widgets')
+    const publishSnapshot = await this.#workspace.beginDraftPublish(mount.name, manifestResult.manifest.slug)
+    rootDir = publishSnapshot.canonicalPath
+    if (!publishSnapshot.wasExisting && await stat(join(finalWidgetsDir, manifestResult.manifest.slug)).catch(() => null)) {
+      await publishSnapshot.rollback()
       return {
         published: false,
-        manifest: result.manifest,
+        manifest: manifestResult.manifest,
         destination: null,
-        message: result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
-        errors: result.validation.errors,
-        warnings: result.validation.warnings,
+        message: `A published widget already uses slug '${manifestResult.manifest.slug}'.`,
       }
     }
 
-    this.#disposeDraftActor(id, sessionId)
-    await this.#config.actorService?.reload()
-    await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
-      definitionName: result.manifest.name,
-      bindings: bindingPlan.bindings.map((binding) => ({
-        slot: binding.slot,
-        resourceId: binding.resource.id,
-        scope: binding.scope,
-      })),
-    })
-    if (shouldReloadEditedInstances) {
-      await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
-    }
-    if (!result.destination) {
+    let result: Awaited<ReturnType<typeof txPublishWidgetDraft>>
+    try {
+      publishSnapshot.markInstalledMutation()
+      result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative: relativePath, resolve, basename }, {
+        cwd: rootDir,
+        finalWidgetsDir,
+        actorService: undefined,
+        sdkActorTypePath: join(this.#workspace.sdkPackagePath, 'src', 'actor.ts'),
+      })
+      if (!result.published) {
+        await publishSnapshot.rollback()
+        return {
+          published: false,
+          manifest: result.manifest,
+          destination: null,
+          message: result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
+          errors: result.validation.errors,
+          warnings: result.validation.warnings,
+        }
+      }
+      await this.#config.actorService?.reload()
+      this.#disposeDraftActor(id, sessionId)
+      await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
+        definitionName: result.manifest.name,
+        bindings: bindingPlan.bindings.map((binding) => ({
+          slot: binding.slot,
+          resourceId: binding.resource.id,
+          scope: binding.scope,
+        })),
+      })
+      if (shouldReloadEditedInstances) {
+        await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
+      }
+      if (!result.destination) throw new Error('Widget publish completed without a destination path.')
+      await publishSnapshot.commit()
+    } catch (error) {
+      await publishSnapshot.rollback().catch(() => undefined)
+      await this.#config.actorService?.reload().catch(() => undefined)
       return {
         published: false,
-        manifest: result.manifest,
+        manifest: manifestResult.manifest,
         destination: null,
-        message: 'Widget publish completed without a destination path.',
+        message: error instanceof Error ? error.message : String(error),
       }
     }
 
@@ -1024,81 +1078,33 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #createActorCandidateFromManifest(previousCandidate: TActorCandidate, manifest: TVibecanvasJson): TActorCandidate {
-    return {
-      ...previousCandidate,
-      slug: manifest.slug,
-      name: manifest.name,
-      description: manifest.description,
-      actor: {
-        ...previousCandidate.actor,
-        ...manifest.actor,
-      },
-      widget: {
-        ...previousCandidate.widget,
-        tool: manifest.widget.tool,
-      },
-    }
-  }
-
   #draftActorKey(id: TWidgetId, sessionId: TSessionId): TDraftActorKey {
     return `${id}:${sessionId}`;
   }
 
-  #getWizardCwd(id: TWidgetId, sessionId: TSessionId): string {
-    return join(this.#piAgentDir, 'widget-cwd', id + sessionId);
-  }
-
-  #resolveConfigPath(path: string): string {
-    return isAbsolute(path) ? path : join(this.#config.configPath, path)
-  }
-
-  #shouldCopyPublishedWidgetFile(sourceDir: string, source: string): boolean {
-    const relative = relativePath(sourceDir, source)
-    if (relative.length === 0) return true
-
-    const parts = relative.split(/[\\/]/)
-    return !parts.some((part) => part === 'node_modules' || part === '.git' || part === '.vibecanvas-wizard')
-  }
-
-  async #listDraftFiles(rootDir: string): Promise<string[]> {
-    const files: string[] = []
-    await this.#listDraftFilesRecursive(rootDir, rootDir, files)
-    return files
-  }
-
-  async #listDraftFilesRecursive(rootDir: string, dir: string, files: string[]): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const absPath = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await this.#listDraftFilesRecursive(rootDir, absPath, files)
-        continue
-      }
-      if (!entry.isFile()) continue
-
-      files.push(relativePath(rootDir, absPath))
-    }
-  }
-
-  async #createChatSessionEntry(id: TWidgetId, sessionId: TSessionId, sessionManager: SessionManager, previousSession?: AgentSession): Promise<TChatSessionEntry> {
-    const cwd = this.#getWizardCwd(id, sessionId)
-    const manifestResult = await this.#readDraftActorManifest(cwd)
-    if (manifestResult.ready) {
-      this.#ensureImplementationPhaseForDraftManifest(
-        sessionManager,
-        manifestResult.manifest,
-        join(cwd, 'vibecanvas.json'),
-        await this.#listDraftFiles(cwd),
-        new Date().toISOString(),
-      )
-    }
-    const phaseTools = createWidgetWizardPhaseTools({
+  async #createChatSessionEntry(
+    id: TWidgetId,
+    sessionId: TSessionId,
+    sessionManager: SessionManager,
+    previousSession?: AgentSession,
+    authorization: TToolAuthorizationContext = {},
+  ): Promise<TChatSessionEntry> {
+    const cwd = await this.#workspace.ensureChat(sessionId)
+    const sensitiveToolArgs = new Map<string, unknown>()
+    const registry = createToolRegistry({
+      chatId: sessionId,
       cwd,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      sessionManager,
+      authorization,
+      authorize: this.#config.authorizeToolCall,
+      workspace: this.#workspace,
+      approvals: this.#approvals,
       actorService: this.#config.actorService,
-      onEvent: (event) => this.#publishToolEvent(id, sessionId, event),
+      onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
+      takeSensitiveToolArgs: (toolCallId) => {
+        const stored = sensitiveToolArgs.get(toolCallId)
+        sensitiveToolArgs.delete(toolCallId)
+        return stored
+      },
     })
     const services = await createAgentSessionServices({
       cwd,
@@ -1107,7 +1113,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       modelRegistry: this.modelRegistry,
       settingsManager: this.settingsManager,
       resourceLoaderOptions: {
-        systemPrompt: WIDGET_CHAT_SYSTEM_PROMPT
+        systemPrompt: WIDGET_CHAT_SYSTEM_PROMPT,
+        noExtensions: true,
+        extensionFactories: [{
+          name: 'vibecanvas-secret-redaction',
+          factory: (pi) => {
+            pi.on('message_end', (event) => {
+              const redacted = fnRedactSecretResourceWriteMessage(event.message)
+              for (const captured of redacted.captured) sensitiveToolArgs.set(captured.toolCallId, captured.args)
+              return redacted.captured.length > 0 ? { message: redacted.message } : undefined
+            })
+            pi.on('tool_execution_end', (event) => {
+              sensitiveToolArgs.delete(event.toolCallId)
+            })
+          },
+        }],
       }
     });
     const { session } = await createAgentSessionFromServices({
@@ -1115,8 +1135,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       sessionManager,
       model: previousSession?.model,
       thinkingLevel: previousSession?.thinkingLevel,
-      tools: this.#chatToolNames(phaseTools),
-      customTools: phaseTools.customTools,
+      tools: registry.toolNames,
+      customTools: registry.customTools,
     })
     const unsub = session.subscribe((event) => {
       this.#config.eventPublisherService.publishAgentEvent({
@@ -1129,25 +1149,43 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { session, sessionManager, unsub }
   }
 
-  #ensureImplementationPhaseForDraftManifest(sessionManager: SessionManager, manifest: TVibecanvasJson, manifestPath: string, files: string[], timestamp: string): void {
-    if (!fxLatestActorCandidateApprovalRecord({ sessionManager })) {
-      txAppendActorCandidateApprovalRecord({ sessionManager }, {
-        candidateRevision: 0,
-        manifest,
-        files,
-        approvedAt: timestamp,
-      })
-    }
-    txAppendDraftManifestPathRecord({ sessionManager }, { manifestPath })
-  }
-
   #flushSessionManager(sessionManager: SessionManager): void {
     const writableSessionManager = sessionManager as unknown as { _rewriteFile?: () => void }
     writableSessionManager._rewriteFile?.()
   }
 
-  #chatToolNames(phaseTools: ReturnType<typeof createWidgetWizardPhaseTools>): string[] {
-    return [...phaseTools.builtInTools, ...phaseTools.customTools.map(tool => tool.name)]
+  #recordActiveMount(sessionManager: SessionManager, mount: TWidgetMount): void {
+    sessionManager.appendCustomEntry('vibecanvas.activeWidgetMount', {
+      name: mount.name,
+      selectedAt: new Date().toISOString(),
+    })
+    this.#flushSessionManager(sessionManager)
+  }
+
+  async #resolveActiveMount(id: TWidgetId, sessionId: TSessionId): Promise<TWidgetMount> {
+    const sessionEntry = this.sessionMap[id]?.[sessionId]
+    if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    const record = [...sessionEntry.sessionManager.getEntries()].reverse().find((entry) => (
+      entry.type === 'custom'
+      && entry.customType === 'vibecanvas.activeWidgetMount'
+      && entry.data
+      && typeof entry.data === 'object'
+      && typeof (entry.data as { name?: unknown }).name === 'string'
+    ))
+    const name = record?.type === 'custom' ? (record.data as { name: string }).name : undefined
+    return this.#workspace.findMountedWidget(sessionId, name)
+  }
+
+  async #readMountedManifest(mount: TWidgetMount): Promise<TVibecanvasJson> {
+    const parsed = ZVibecanvasJson.safeParse(JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')))
+    if (!parsed.success) throw new Error(parsed.error.message)
+    return parsed.data as TVibecanvasJson
+  }
+
+  #assertChatScope(id: TWidgetId, sessionId: TSessionId): void {
+    if (this.#chatWidgetIds.get(sessionId) !== id || !this.sessionMap[id]?.[sessionId]) {
+      throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
+    }
   }
 
   #publishToolEvent(id: TWidgetId, sessionId: TSessionId, event: TToolEvent): void {
@@ -1160,38 +1198,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       cwd: event.cwd,
       files: event.files,
     })
-  }
-
-  #sameToolSet(left: readonly string[], right: readonly string[]): boolean {
-    if (left.length !== right.length) return false
-
-    const leftSet = new Set(left)
-    return right.every((tool) => leftSet.has(tool))
-  }
-
-  async #refreshChatSessionToolsIfNeeded(id: TWidgetId, sessionId: TSessionId): Promise<void> {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry || sessionEntry.session.isStreaming) return
-    if (typeof sessionEntry.session.getActiveToolNames !== 'function') return
-
-    const cwd = this.#getWizardCwd(id, sessionId)
-    const phaseTools = createWidgetWizardPhaseTools({
-      cwd,
-      finalWidgetsDir: join(this.#config.configPath, 'widgets'),
-      sessionManager: sessionEntry.sessionManager,
-      actorService: this.#config.actorService,
-    })
-    const desiredTools = this.#chatToolNames(phaseTools)
-    const activeTools = sessionEntry.session.getActiveToolNames()
-
-    if (this.#sameToolSet(activeTools, desiredTools)) return
-
-    const previousSession = sessionEntry.session
-    const nextEntry = await this.#createChatSessionEntry(id, sessionId, sessionEntry.sessionManager, previousSession)
-
-    sessionEntry.unsub()
-    previousSession.dispose()
-    this.sessionMap[id][sessionId] = nextEntry
   }
 
   async #resolveChatResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
@@ -1279,8 +1285,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) return
 
+    this.#approvals.cancelChat(sessionId)
     sessionEntry.unsub()
     delete this.sessionMap[id][sessionId]
+    this.#chatWidgetIds.delete(sessionId)
 
     if (Object.keys(this.sessionMap[id]).length === 0) {
       delete this.sessionMap[id]

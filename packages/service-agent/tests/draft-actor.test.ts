@@ -1,13 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
-import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE } from '../src/tools/CONSTANTS';
-import { fnValidateCandidate } from '../src/tools/fn.candidate';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { createFakeSessionManager, sampleCandidate } from './tool.test-helpers';
+import { createFakeSessionManager } from './tool.test-helpers';
 
 class TestEventPublisherService implements IEventPublisherService {
   name = 'test-event-publisher';
@@ -34,6 +32,21 @@ afterEach(async () => {
   }
 });
 
+async function createMountedWidgetRoot(args: {
+  dataPath: string;
+  sessionId: string;
+  name: string;
+}): Promise<string> {
+  const root = join(args.dataPath, 'pi', 'agent', 'widget-drafts', args.name);
+  const widgetsRoot = join(args.dataPath, 'pi', 'agent', 'chat-cwd', args.sessionId, 'widgets');
+  await mkdir(join(args.dataPath, 'pi', 'agent', 'widget-cwd'), { recursive: true });
+  await mkdir(join(args.dataPath, 'pi', 'agent', 'widget-drafts'), { recursive: true });
+  await mkdir(root, { recursive: true });
+  await mkdir(widgetsRoot, { recursive: true });
+  await symlink(root, join(widgetsRoot, args.name), 'dir');
+  return root;
+}
+
 async function createServiceFixture(actorService?: ConstructorParameters<typeof AgentService>[0]['actorService']) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-'));
   tempDirs.push(dataPath);
@@ -49,7 +62,7 @@ async function createServiceFixture(actorService?: ConstructorParameters<typeof 
 
   const widgetId = 'widget-a';
   const sessionId = 'session-a';
-  const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+  const cwd = await createMountedWidgetRoot({ dataPath, sessionId, name: 'Draft Test' });
   await mkdir(join(cwd, 'actor'), { recursive: true });
   await mkdir(join(cwd, 'widget'), { recursive: true });
   await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
@@ -127,7 +140,7 @@ describe('AgentService draft actor runtime', () => {
     tempDirs.push(dataPath);
     const widgetId = 'manual-qa-data-viewer';
     const sessionId = 'resource-continuation';
-    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+    const cwd = await createMountedWidgetRoot({ dataPath, sessionId, name: 'Manual QA Data Viewer' });
     await mkdir(join(cwd, 'actor'), { recursive: true });
     await mkdir(join(cwd, 'widget'), { recursive: true });
 
@@ -292,7 +305,7 @@ describe('AgentService draft actor runtime', () => {
     tempDirs.push(dataPath);
     const widgetId = 'implicit-resource-widget';
     const sessionId = 'implicit-resource-session';
-    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+    const cwd = await createMountedWidgetRoot({ dataPath, sessionId, name: 'Implicit Resource Widget' });
     await mkdir(join(cwd, 'actor'), { recursive: true });
     await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
       slug: 'implicit-resource-widget',
@@ -356,7 +369,7 @@ describe('AgentService draft actor runtime', () => {
     tempDirs.push(dataPath);
     const widgetId = 'ambiguous-resource-widget';
     const sessionId = 'ambiguous-resource-session';
-    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
+    const cwd = await createMountedWidgetRoot({ dataPath, sessionId, name: 'Ambiguous Resource Widget' });
     await mkdir(join(cwd, 'actor'), { recursive: true });
     await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({
       slug: 'ambiguous-resource-widget',
@@ -414,7 +427,7 @@ describe('AgentService draft actor runtime', () => {
     expect(gatewayCalls).toBe(0);
   });
 
-  test('starts editing a published widget from a copied bumped draft', async () => {
+  test('starts editing a published widget through a synced shared draft mount', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-edit-'));
     tempDirs.push(dataPath);
     const configPath = join(dataPath, 'config');
@@ -459,36 +472,36 @@ describe('AgentService draft actor runtime', () => {
     const result = await service.startWidgetEditChat('widget-edit', 'session-edit', 'Counter Widget');
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.message);
-    expect(result.phase).toBe('implementation');
-    expect(result.vcJson.version).toBe('1.2.4');
+    expect(result.vcJson.version).toBe('1.2.3');
     expect(result.editSession.sourceName).toBe('Counter Widget');
     expect(result.editSession.previousVersion).toBe('1.2.3');
-    expect(result.messageHistory.some((message) => {
-      const record = message as unknown as Record<string, unknown>;
-      return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
-    })).toBe(true);
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_query_db_readonly', 'vc_validate_widget_files', 'web_fetch']);
+    expect(service.sessionMap['widget-edit']['session-edit'].sessionManager.getEntries().some((entry) => (
+      entry.type === 'custom' && entry.customType === 'vibecanvas.activeWidgetMount'
+    ))).toBe(true);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual([
+      'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
+      'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
+      'vc_resource_update', 'vc_widget_create', 'vc_widget_load', 'vc_widget_validate', 'web_fetch',
+    ]);
 
-    const draftRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'widget-editsession-edit');
-    const draftManifest = JSON.parse(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
-    expect(draftManifest.version).toBe('1.2.4');
-    await expect(readFile(join(draftRoot, 'node_modules', 'ignored', 'file.js'), 'utf8')).rejects.toThrow();
+    const canonicalRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'Counter Widget');
+    const draftRoot = join(dataPath, 'pi', 'agent', 'widget-drafts', 'Counter Widget');
+    const canonicalManifest = JSON.parse(await readFile(join(canonicalRoot, 'vibecanvas.json'), 'utf8'));
+    expect(canonicalManifest.version).toBe('1.2.3');
+    await expect(readFile(join(canonicalRoot, 'node_modules', 'ignored', 'file.js'), 'utf8')).rejects.toThrow();
+    expect(await readFile(join(dataPath, 'pi', 'agent', 'chat-cwd', 'session-edit', 'widgets', 'Counter Widget', 'vibecanvas.json'), 'utf8'))
+      .toBe(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
+    expect(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8')).toBe(await readFile(join(canonicalRoot, 'vibecanvas.json'), 'utf8'));
 
     const sourceManifest = JSON.parse(await readFile(join(publishedRoot, 'vibecanvas.json'), 'utf8'));
     expect(sourceManifest.version).toBe('1.2.3');
 
-    const entries = service.sessionMap['widget-edit']['session-edit'].sessionManager.getEntries();
-    expect(entries.some((entry) => entry.type === 'custom' && entry.customType === ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE)).toBe(true);
-
     const reconnectResult = await service.connectChat('widget-edit', 'session-edit');
-    expect(reconnectResult.messageHistory.some((message) => {
-      const record = message as unknown as Record<string, unknown>;
-      return record.role === 'custom' && record.content === '[Widget Counter Widget loaded]';
-    })).toBe(true);
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_query_db_readonly', 'vc_validate_widget_files', 'web_fetch']);
+    expect(reconnectResult.vcJson?.name).toBe('Counter Widget');
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames()).toHaveLength(15);
   });
 
-  test('reads and patches phase 1 manifest from actor candidate, then patches phase 2 vibecanvas.json', async () => {
+  test('reads and patches the mounted manifest as the only current authority', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-manifest-'));
     tempDirs.push(dataPath);
     const service = new AgentService({
@@ -499,65 +512,47 @@ describe('AgentService draft actor runtime', () => {
     });
     const widgetId = 'widget-manifest';
     const sessionId = 'session-manifest';
-    const cwd = join(dataPath, 'pi', 'agent', 'widget-cwd', widgetId + sessionId);
-    await mkdir(cwd, { recursive: true });
-
-    const base = sampleCandidate();
-    const resources = {
-      storage: { kind: 'kv' as const, required: true, scope: ['read', 'write'] as ('read' | 'write')[] },
-    };
-    const candidate = sampleCandidate({
+    const cwd = await createMountedWidgetRoot({ dataPath, sessionId, name: 'Candidate Test' });
+    const manifest: TVibecanvasJson = {
       slug: 'candidate-test',
       name: 'Candidate Test',
-      actor: { ...base.actor, resources },
-      widget: {
-        tool: { label: 'Candidate Test', behavior: { type: 'action' } },
+      actor: {
+        relFunctionPath: './actor/functions.ts',
+        initialState: 'ready',
+        initialData: { count: 0 },
+        resources: { storage: { kind: 'kv', required: true, scope: ['read', 'write'] } },
+        states: { ready: { on: {} }, error: { on: {} } },
+        inputMsgSchema: {},
+        outputMsgSchema: {},
       },
-    });
-    const candidateResult = fnValidateCandidate(candidate);
-    if (!candidateResult.candidate || !candidateResult.manifest || !candidateResult.validation.ok) {
-      throw new Error('sample candidate must be valid');
-    }
-    const manifest = candidateResult.manifest;
+      widget: { relWidgetDir: './widget', tool: { label: 'Candidate Test', behavior: { type: 'action' } } },
+    };
+    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
     const sessionManager = createFakeSessionManager();
-    sessionManager.appendCustomEntry(ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE, {
-      revision: 1,
-      candidate: candidateResult.candidate,
-      manifest,
-      validation: candidateResult.validation,
-      updatedAt: 'now',
-    });
     service.sessionMap[widgetId] = {
       [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: sessionManager as never },
     };
 
-    expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest });
-    const candidatePatchResult = await service.patchDraftManifestChat(widgetId, sessionId, {
+    expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'file', manifest });
+    const patchResult = await service.patchDraftManifestChat(widgetId, sessionId, {
       tool: {
-        label: 'Saved Candidate Tool',
+        label: 'Saved Mounted Tool',
         group: 'Saved',
         priority: 3,
       },
+      initialData: { count: 1 },
     });
-    expect(candidatePatchResult.ok).toBe(true);
-    if (!candidatePatchResult.ok) throw new Error(candidatePatchResult.message);
-    expect(candidatePatchResult.source).toBe('actor-candidate');
-    expect(candidatePatchResult.manifest.widget.tool.label).toBe('Saved Candidate Tool');
-    expect(candidatePatchResult.manifest.widget.tool.group).toBe('Saved');
-    expect(candidatePatchResult.manifest.widget.tool.priority).toBe(3);
-    expect(candidatePatchResult.manifest.actor.resources).toEqual(resources);
-    expect(await readFile(join(cwd, 'vibecanvas.json'), 'utf8').catch(() => null)).toBe(null);
-    expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'actor-candidate', manifest: candidatePatchResult.manifest });
-
-    await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify(candidatePatchResult.manifest, null, 2)}\n`, 'utf8');
-    const patchResult = await service.patchDraftManifestChat(widgetId, sessionId, { name: 'Patched Test', initialData: { count: 1 } });
     expect(patchResult.ok).toBe(true);
     if (!patchResult.ok) throw new Error(patchResult.message);
     expect(patchResult.source).toBe('file');
-    expect(patchResult.manifest.name).toBe('Patched Test');
+    expect(patchResult.manifest.widget.tool.label).toBe('Saved Mounted Tool');
+    expect(patchResult.manifest.widget.tool.group).toBe('Saved');
+    expect(patchResult.manifest.widget.tool.priority).toBe(3);
     expect(patchResult.manifest.actor.initialData).toEqual({ count: 1 });
-    expect(patchResult.manifest.actor.resources).toEqual(resources);
     expect(await service.readDraftManifestChat(widgetId, sessionId)).toEqual({ ready: true, source: 'file', manifest: patchResult.manifest });
+
+    const renameResult = await service.patchDraftManifestChat(widgetId, sessionId, { name: 'Patched Test' });
+    expect(renameResult).toMatchObject({ ok: false, reason: 'edit-invalid' });
   });
 
   test('starts, inspects, sends, resets, reloads, and stops a draft actor', async () => {
@@ -693,7 +688,7 @@ describe('AgentService draft actor runtime', () => {
     expect(result).toEqual({
       ready: false,
       reason: 'manifest-missing',
-      message: 'Draft vibecanvas.json does not exist yet.',
+      message: "Draft vibecanvas.json does not exist for widget 'widget' and session 'session'",
     });
   });
 });

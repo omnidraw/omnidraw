@@ -1,5 +1,5 @@
 import { baseAgentOs } from './orpc';
 
 export const apiChatNewSession = baseAgentOs.chat.newSession.handler(async ({ input, context }) => {
-  context.agent.newChatSession(input.widgetId, input.sessionId)
+  await context.agent.newChatSession(input.widgetId, input.sessionId)
 });

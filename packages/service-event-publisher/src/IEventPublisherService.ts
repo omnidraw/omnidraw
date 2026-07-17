@@ -43,7 +43,26 @@ export type TAgentWidgetUpdateEvent = {
   cwd: string;
   files: string[];
 };
-export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent | TAgentWidgetUpdateEvent;
+export type TAgentApprovalEvent = {
+  kind: 'approval';
+  widgetId: string;
+  sessionId: string;
+  type: 'created' | 'resolved' | 'canceled';
+  approval: {
+    id: string;
+    chatId: string;
+    kind: 'resource-create' | 'resource-update' | 'resource-delete' | 'resource-data-write';
+    summary: string;
+    risk: 'medium' | 'high';
+    warnings: string[];
+    details: unknown;
+    createdAt: string;
+    expiresAt: string;
+  };
+  decision?: 'approve' | 'reject';
+  reason?: string;
+};
+export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent | TAgentWidgetUpdateEvent | TAgentApprovalEvent;
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;

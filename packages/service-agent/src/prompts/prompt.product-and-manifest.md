@@ -19,16 +19,16 @@ A Vibecanvas widget has two guest-authored halves:
    - Updates data through portal.setData(nextData).
    - May emit output messages through portal.emitMessage({ type, payload }).
 
-The manifest vibecanvas.json is the source of truth after approval. It declares actor data, JSON schemas, states, message transitions, function names, and widget tool metadata.
+The mounted `vibecanvas.json` file is the source of truth. It declares actor data, JSON schemas, states, message transitions, function names, and widget tool metadata.
 
 # Manifest contract
 
-The actor candidate and vibecanvas.json must match this shape:
+`vibecanvas.json` must match this shape:
 
-- slug: optional in candidate; required in final manifest. Use lowercase URL/file-safe strings like "todo-list".
+- slug: required. Use lowercase URL/file-safe strings like "todo-list".
 - name: human-readable widget/actor name.
 - description: short plain-language description.
-- actor.relFunctionPath: usually "./actor/functions.ts". In phase 1 omit it unless needed; scaffold sets it.
+- actor.relFunctionPath: usually "./actor/functions.ts".
 - actor.initialState: an actor state string. Prefer "ready" for simple widgets.
 - actor.initialData: JSON-serializable initial data only. No functions, Date, Map, Set, undefined, symbols, classes, cyclic objects, or BigInt.
 - actor.dataSchema: JSON Schema for actor data. Keep it simple and accurate.
@@ -36,14 +36,14 @@ The actor candidate and vibecanvas.json must match this shape:
 - actor.states: map of state names to { on: { [inputMessageName]: transition } }.
 - actor.inputMsgSchema: map of input message names to JSON Schemas.
 - actor.outputMsgSchema: map of output message names to JSON Schemas. Use {} if no outputs.
-- widget.relWidgetDir: usually "./widget" in final manifest. In phase 1 candidate does not include relWidgetDir.
+- widget.relWidgetDir: usually "./widget".
 - widget.tool.label: label shown in the canvas tool UI.
 - widget.tool.icon: optional structured icon metadata: { "lucidIcon": "<allowed lucide-static key>" } or { "svgIcon": "<raw SVG XML, emoji, or text>" }. If both fields are present, svgIcon overrides lucidIcon. Prefer lucidIcon for common icons and use svgIcon only for custom raw SVG, emoji, or text. Allowed lucidIcon keys: {{LUCIDE_STATIC_ICON_KEYS}}.
 - widget.tool.group: omit by default. Do not infer or invent a group from the widget's purpose. Set it only when the user explicitly requests a specific group name.
 - widget.tool.behavior: usually { type: "mode", mode: "click-create" } for canvas-created widgets, or { type: "action" } only for action-like tools.
 
 Resource slot declarations:
-- Discover host resources with vc_list_resources instead of telling the user you cannot inspect them. Inspect a database schema with vc_inspect_resource before writing its named operations, and use vc_query_db_readonly for bounded row inspection when the user selected that database.
+- Discover host resources with `vc_resource_list` instead of inventing them. Inspect safe metadata with `vc_resource_inspect`, and use `vc_resource_data_read` for bounded row inspection when the user selected a database.
 - Treat an @mentioned resource as an explicit typed selection. Keep the concrete resource ID out of the manifest; publish maps the selection to a compatible slot and creates the host binding.
 - If exactly one ready resource matches a slot kind, publish can bind it without a mention. If multiple resources match, ask the user to @mention the intended one.
 - Every slot declares `required` explicitly. Use `true` by default. Missing bindings are reported to control clients; the generic actor can still start and a resource call fails safely.
@@ -57,7 +57,7 @@ Resource slot declarations:
 - SQLite INTEGER result cells arrive in actor code as `bigint`, not `number`. Actor data and messages are JSON and cannot contain bigint, so model identifiers/counters as decimal strings by default (or explicitly range-check before converting to a safe number).
 - Bind actor values as named parameters. Never interpolate values into SQL.
 - Guest SQL must use ordinary SQLite-compatible tables, indexes, views, triggers, parameters, and transactions. Do not use Turso-only SQL or PRAGMAs, custom types, materialized views, extensions, remote sync, MVCC, or CDC. The host may replace its internal SQLite-compatible engine without changing actor APIs.
-- The agent may never execute database changes from an ordinary prompt or model tool confirmation. vc_query_db_readonly is only for row-producing inspection queries. Use vc_propose_db_change for changes; the exact SQL remains pending until the human checks the visible risk checkbox and approves it.
+- Database changes use `vc_resource_data_write` with bound parameters. The exact server-held operation remains pending until the human approves it through the product approval flow; the agent cannot approve or bypass that boundary.
 
 Actor state strings must match:
 - "booting" or "booting.*"
@@ -77,7 +77,7 @@ Validation-critical rules:
 - actor.states should always include an "error" state with at least one recovery input message, for example "in.resetError" or "in.dismissError".
 - Every targetState value must also be a key in actor.states.
 - Every transition function name must start with fn., fx., or tx.
-- Every transition function named in the manifest must be registered in actor/functions.ts after approval.
+- Every transition function named in the manifest must be registered in actor/functions.ts.
 - Final drafts must include vibecanvas.json, actor/functions.ts, and widget/main.ts.
 
 Recommended naming:

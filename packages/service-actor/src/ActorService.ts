@@ -203,6 +203,35 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     })
   }
 
+  async getResourceDataEntry(args: { resourceId: string; key: string }): Promise<
+    | { kind: 'kv'; key: string; value: TJson; revision: number; createdAt: string; updatedAt: string }
+    | { kind: 'secretStore'; name: string; revision: number; createdAt: string; updatedAt: string }
+    | null
+  > {
+    return this.#withReadyDataResource(args.resourceId, async (kind) => {
+      const key = managementDataKey(kind, args.key)
+      const entry = await this.#config.db.actorResource.keyValue.get({ resourceId: args.resourceId, key })
+      if (!entry) return null
+      if (kind === 'secretStore') {
+        return {
+          kind,
+          name: entry.key,
+          revision: entry.revision,
+          createdAt: entry.created_at,
+          updatedAt: entry.updated_at,
+        }
+      }
+      return {
+        kind,
+        key: entry.key,
+        value: entry.value,
+        revision: entry.revision,
+        createdAt: entry.created_at,
+        updatedAt: entry.updated_at,
+      }
+    })
+  }
+
   async setResourceDataEntry(args: {
     resourceId: string
     key: string
@@ -294,7 +323,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.getRow(args))
   }
 
-  executeDbLiveSql(args: { resourceId: string; sql: string; parameters?: Readonly<Record<string, TDbCellValue>>; approved: boolean }) {
+  executeDbLiveSql(args: { resourceId: string; sql: string; parameters?: readonly TDbCellValue[] | Readonly<Record<string, TDbCellValue>>; approved: boolean }) {
     return this.#withReadyDbResource(args.resourceId, () => this.#dbResource.executeLiveSql(args))
   }
 
@@ -334,8 +363,8 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#dbResourceCoordinator.changeDraft(draftId, operation)
   }
 
-  executeDbDraftSql(draftId: string, sql: string) {
-    return this.#dbResourceCoordinator.executeDraftSql(draftId, sql)
+  executeDbDraftSql(draftId: string, sql: string, parameters?: readonly TDbCellValue[]) {
+    return this.#dbResourceCoordinator.executeDraftSql(draftId, sql, parameters)
   }
 
   discardDbDraft(draftId: string) {

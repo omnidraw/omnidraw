@@ -1,0 +1,686 @@
+import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import {
+  access,
+  cp,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fnAssertSafeFinalDestination } from '../core/fn.safe-destination';
+import { fnMatchesGlob } from './fn.glob';
+import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
+import { fnAssertSafeChatId, fnNormalizeWidgetName } from './fn.names';
+import { txMaterializeSdkPackage } from './tx.materialize-sdk-package';
+import type {
+  TResolvedMountedPath,
+  TWidgetCreateInput,
+  TWidgetMount,
+  TWorkspaceGrepResult,
+} from './types';
+
+type TWidgetWorkspaceConfig = {
+  dataPath: string;
+  configPath: string;
+  platform?: NodeJS.Platform;
+  createId?: () => string;
+};
+
+type TPublishSnapshot = {
+  name: string;
+  draftPath: string;
+  canonicalPath: string;
+  wasExisting: boolean;
+  wasInstalledExisting: boolean;
+  markInstalledMutation(): void;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+};
+
+type TScaffold = (args: TWidgetCreateInput & { cwd: string; name: string }) => Promise<string[]>;
+
+const GREP_FILE_LIMIT = 500;
+const GREP_BYTE_LIMIT = 2_000_000;
+const GREP_MATCH_LIMIT = 500;
+const MUTATION_FILE_BYTE_LIMIT = 5_000_000;
+
+export class WidgetWorkspace {
+  readonly agentRoot: string;
+  readonly chatRoot: string;
+  readonly publishedRoot: string;
+  readonly draftRoot: string;
+  readonly sdkPackagePath: string;
+  readonly installedWidgetsRoot: string;
+  readonly #platform: NodeJS.Platform;
+  readonly #createId: () => string;
+  readonly #writeQueues = new Map<string, Promise<unknown>>();
+  readonly #activePublishes = new Set<string>();
+
+  constructor(config: TWidgetWorkspaceConfig) {
+    this.agentRoot = join(config.dataPath, 'pi', 'agent');
+    this.chatRoot = join(this.agentRoot, 'chat-cwd');
+    this.publishedRoot = join(this.agentRoot, 'widget-cwd');
+    this.draftRoot = join(this.agentRoot, 'widget-drafts');
+    this.sdkPackagePath = join(this.agentRoot, 'sdk');
+    this.installedWidgetsRoot = join(config.configPath, 'widgets');
+    this.#platform = config.platform ?? process.platform;
+    this.#createId = config.createId ?? randomUUID;
+  }
+
+  async init(): Promise<void> {
+    await txMaterializeSdkPackage({ readFile, writeFile, mkdir, lstat, rename, rm, join, dirname, createId: this.#createId }, {
+      targetPath: this.sdkPackagePath,
+    });
+    await Promise.all([
+      mkdir(this.chatRoot, { recursive: true }),
+      mkdir(this.publishedRoot, { recursive: true }),
+      mkdir(this.draftRoot, { recursive: true }),
+    ]);
+    await this.reconcilePublishedWidgets();
+  }
+
+  getChatRoot(chatId: string): string {
+    return join(this.chatRoot, fnAssertSafeChatId(chatId));
+  }
+
+  async ensureChat(chatId: string): Promise<string> {
+    const root = this.getChatRoot(chatId);
+    await mkdir(join(root, 'widgets'), { recursive: true });
+    return root;
+  }
+
+  async reconcilePublishedWidgets(): Promise<{ created: string[]; preserved: string[] }> {
+    await Promise.all([
+      mkdir(this.publishedRoot, { recursive: true }),
+      mkdir(this.draftRoot, { recursive: true }),
+    ]);
+    const installed = await readdir(this.installedWidgetsRoot, { withFileTypes: true }).catch(() => []);
+    const created: string[] = [];
+    const preserved: string[] = [];
+
+    for (const entry of installed) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      const source = join(this.installedWidgetsRoot, entry.name);
+      const sourceStat = await stat(source).catch(() => null);
+      if (!sourceStat?.isDirectory()) continue;
+      const manifest = await this.#readManifest(source);
+      if (!manifest || typeof manifest.name !== 'string') continue;
+      const normalized = fnNormalizeWidgetName(manifest.name);
+      if (!normalized.ok) continue;
+
+      const target = join(this.publishedRoot, normalized.value);
+      const existing = await lstat(target).catch(() => null);
+      if (existing) {
+        preserved.push(normalized.value);
+        continue;
+      }
+      await this.#assertNoCaseCollision(this.publishedRoot, normalized.value);
+      await this.#assertNoCaseCollision(this.draftRoot, normalized.value);
+
+      const temporary = join(this.publishedRoot, `.reconcile-${this.#safeId()}`);
+      try {
+        await this.#copyWidgetFolder(source, temporary);
+        try {
+          await rename(temporary, target);
+          created.push(normalized.value);
+        } catch (error) {
+          if (!await lstat(target).catch(() => null)) throw error;
+          preserved.push(normalized.value);
+        }
+      } finally {
+        await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
+      }
+    }
+
+    return { created, preserved };
+  }
+
+  async createDraft(chatId: string, input: TWidgetCreateInput, scaffold: TScaffold): Promise<{ mount: TWidgetMount; files: string[] }> {
+    const normalized = this.#normalizeName(input.name);
+    await this.ensureChat(chatId);
+    await this.#assertNameAvailable(chatId, normalized);
+
+    const target = join(this.draftRoot, normalized);
+    const temporary = join(this.draftRoot, `.create-${this.#safeId()}`);
+    let promoted = false;
+    try {
+      await mkdir(temporary, { recursive: false });
+      const files = await scaffold({ ...input, name: normalized, cwd: temporary });
+      await rename(temporary, target);
+      promoted = true;
+      try {
+        const mount = await this.loadWidget(chatId, normalized);
+        return { mount, files };
+      } catch (error) {
+        await rm(target, { recursive: true, force: true });
+        throw error;
+      }
+    } finally {
+      if (!promoted) await rm(temporary, { recursive: true, force: true });
+    }
+  }
+
+  async loadWidget(chatId: string, requestedName: string): Promise<TWidgetMount> {
+    const name = this.#normalizeName(requestedName);
+    const chatRoot = await this.ensureChat(chatId);
+    await this.#assertNoCaseCollision(this.draftRoot, name);
+    const targetPath = await this.#resolveDraftTarget(name);
+    const mountPath = join(chatRoot, 'widgets', name);
+    await this.#assertNoCaseCollision(join(chatRoot, 'widgets'), name);
+
+    const existing = await lstat(mountPath).catch(() => null);
+    if (existing) {
+      if (!existing.isSymbolicLink()) throw new Error(`Widget mount '${name}' conflicts with an existing filesystem entry.`);
+      const existingTarget = await realpath(mountPath).catch(() => null);
+      if (existingTarget === targetPath) {
+        return { name, source: 'draft', chatRoot, mountPath, targetPath };
+      }
+      if (await this.#ownedMountKind(mountPath, name) === 'published') {
+        await rm(mountPath, { force: true });
+      } else {
+        throw new Error(`Widget mount '${name}' already points to a different target.`);
+      }
+    }
+
+    const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
+    await symlink(linkTarget, mountPath, this.#platform === 'win32' ? 'junction' : 'dir');
+    return { name, source: 'draft', chatRoot, mountPath, targetPath };
+  }
+
+  async syncDraftFromPublished(chatId: string, requestedName: string): Promise<TWidgetMount> {
+    const name = this.#normalizeName(requestedName);
+    await this.ensureChat(chatId);
+    const source = join(this.publishedRoot, name);
+    if (!await this.#isDirectDirectory(this.publishedRoot, source)) {
+      throw new Error(`Published widget '${name}' does not exist.`);
+    }
+    await this.#assertNoCaseCollision(this.draftRoot, name);
+    const target = join(this.draftRoot, name);
+
+    await this.#withWidgetWrite(target, async () => {
+      const temporary = join(this.draftRoot, `.sync-${this.#safeId()}`);
+      const backup = join(this.draftRoot, `.sync-backup-${this.#safeId()}`);
+      let movedExisting = false;
+      try {
+        await this.#copyWidgetFolder(source, temporary);
+        const existing = await lstat(target).catch(() => null);
+        if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
+          throw new Error(`Widget draft '${name}' is not a managed directory.`);
+        }
+        if (existing) {
+          await rename(target, backup);
+          movedExisting = true;
+        }
+        try {
+          await rename(temporary, target);
+        } catch (error) {
+          if (movedExisting && !await lstat(target).catch(() => null)) {
+            await rename(backup, target);
+            movedExisting = false;
+          }
+          throw error;
+        }
+        if (movedExisting) {
+          await rm(backup, { recursive: true, force: true }).catch(() => undefined);
+          movedExisting = false;
+        }
+      } finally {
+        await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
+        if (!movedExisting) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
+      }
+    });
+
+    return this.loadWidget(chatId, name);
+  }
+
+  async listMounts(chatId: string): Promise<TWidgetMount[]> {
+    const chatRoot = await this.ensureChat(chatId);
+    const widgetsRoot = join(chatRoot, 'widgets');
+    const entries = await readdir(widgetsRoot, { withFileTypes: true });
+    const mounts: TWidgetMount[] = [];
+    for (const entry of entries) {
+      if (!entry.isSymbolicLink()) continue;
+      const mount = await this.#inspectMount(chatRoot, entry.name).catch(() => null);
+      if (mount) mounts.push(mount);
+    }
+    return mounts.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async removeMount(chatId: string, requestedName: string): Promise<boolean> {
+    const name = this.#normalizeName(requestedName);
+    const chatRoot = await this.ensureChat(chatId);
+    const mountPath = join(chatRoot, 'widgets', name);
+    const entry = await lstat(mountPath).catch(() => null);
+    if (!entry) return false;
+    if (!entry.isSymbolicLink()) throw new Error(`Refusing to remove non-mount entry '${name}'.`);
+    await this.#assertOwnedMountLink(mountPath, name);
+    await rm(mountPath, { force: true });
+    return true;
+  }
+
+  async removeAllMounts(chatId: string): Promise<number> {
+    const chatRoot = await this.ensureChat(chatId);
+    const entries = await readdir(join(chatRoot, 'widgets'), { withFileTypes: true });
+    let removed = 0;
+    for (const entry of entries) {
+      if (!entry.isSymbolicLink()) continue;
+      const normalized = fnNormalizeWidgetName(entry.name);
+      if (!normalized.ok || !await this.#ownedMountKind(join(chatRoot, 'widgets', entry.name), normalized.value)) continue;
+      if (await this.removeMount(chatId, normalized.value)) removed += 1;
+    }
+    return removed;
+  }
+
+  async resolveMountedPath(chatId: string, lexicalPath: string, options: { allowMissing?: boolean } = {}): Promise<TResolvedMountedPath> {
+    if (isAbsolute(lexicalPath) || lexicalPath.includes('\\')) throw new Error('Widget file paths must be relative to the chat cwd.');
+    const parts = lexicalPath.split('/');
+    if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) throw new Error('Widget file path contains an unsafe segment.');
+    if (parts[0] !== 'widgets' || parts.length < 3) {
+      throw new Error("Widget files are accessible only through 'widgets/<mounted-name>/...'.");
+    }
+
+    const chatRoot = await this.ensureChat(chatId);
+    const mount = await this.#inspectMount(chatRoot, parts[1]);
+    const candidate = join(mount.targetPath, ...parts.slice(2));
+    const existing = await lstat(candidate).catch(() => null);
+    if (existing) {
+      const resolved = await realpath(candidate);
+      this.#assertInside(mount.targetPath, resolved);
+      return { absolutePath: resolved, widgetRoot: mount.targetPath, mount };
+    }
+    if (!options.allowMissing) throw new Error(`Mounted widget path does not exist: ${lexicalPath}`);
+
+    const resolvedParent = await realpath(dirname(candidate));
+    this.#assertInside(mount.targetPath, resolvedParent);
+    const parentStat = await stat(resolvedParent);
+    if (!parentStat.isDirectory()) throw new Error('Widget file parent is not a directory.');
+    return { absolutePath: join(resolvedParent, basename(candidate)), widgetRoot: mount.targetPath, mount };
+  }
+
+  async readMountedFile(chatId: string, lexicalPath: string): Promise<Buffer> {
+    const resolved = await this.resolveMountedPath(chatId, lexicalPath);
+    const fileStat = await stat(resolved.absolutePath);
+    if (!fileStat.isFile()) throw new Error('Mounted widget path is not a file.');
+    return readFile(resolved.absolutePath);
+  }
+
+  async assertMountedFileAccess(chatId: string, lexicalPath: string, mode: number): Promise<void> {
+    const resolved = await this.resolveMountedPath(chatId, lexicalPath);
+    await access(resolved.absolutePath, mode);
+  }
+
+  async writeMountedFileAtomic(chatId: string, lexicalPath: string, content: string): Promise<void> {
+    await this.updateMountedFileAtomic(chatId, lexicalPath, () => ({ content, value: undefined }), { allowMissing: true });
+  }
+
+  async updateMountedFileAtomic<T>(
+    chatId: string,
+    lexicalPath: string,
+    update: (content: string) => { content: string; value: T },
+    options: { allowMissing?: boolean } = {},
+  ): Promise<T> {
+    const resolved = await this.resolveMountedPath(chatId, lexicalPath, { allowMissing: options.allowMissing });
+    return this.#withWidgetWrite(resolved.widgetRoot, async () => {
+      const entry = await lstat(resolved.absolutePath).catch(() => null);
+      if (entry && (!entry.isFile() || entry.isSymbolicLink())) throw new Error('Mounted widget path is not a regular file.');
+      if (!entry && !options.allowMissing) throw new Error(`Mounted widget path does not exist: ${lexicalPath}`);
+      const sourceBuffer = entry ? await readFile(resolved.absolutePath) : Buffer.alloc(0);
+      if (sourceBuffer.byteLength > MUTATION_FILE_BYTE_LIMIT) throw new Error('Mounted widget file exceeds the mutation-size limit.');
+      const source = sourceBuffer.toString('utf8');
+      const next = update(source);
+      if (Buffer.byteLength(next.content, 'utf8') > MUTATION_FILE_BYTE_LIMIT) throw new Error('Edited widget file exceeds the mutation-size limit.');
+      const temporary = join(dirname(resolved.absolutePath), `.${basename(resolved.absolutePath)}.edit-${this.#safeId()}.tmp`);
+      try {
+        await writeFile(temporary, next.content, 'utf8');
+        await rename(temporary, resolved.absolutePath);
+        return next.value;
+      } finally {
+        await rm(temporary, { force: true }).catch(() => undefined);
+      }
+    });
+  }
+
+  async grepMountedFiles(chatId: string, args: {
+    pattern: string;
+    path?: string;
+    glob?: string;
+    ignoreCase?: boolean;
+    literal?: boolean;
+    limit?: number;
+  }): Promise<TWorkspaceGrepResult> {
+    const limit = Math.max(1, Math.min(GREP_MATCH_LIMIT, Math.floor(args.limit ?? 100)));
+    if (!args.literal) fnAssertSafeSearchPattern(args.pattern);
+    const matcher = args.literal
+      ? null
+      : new RegExp(args.pattern, args.ignoreCase ? 'i' : undefined);
+    const literal = args.ignoreCase ? args.pattern.toLocaleLowerCase('en-US') : args.pattern;
+    const roots = await this.#grepRoots(chatId, args.path);
+    const matches: TWorkspaceGrepResult['matches'] = [];
+    let filesSearched = 0;
+    let bytesRead = 0;
+    let truncated = false;
+
+    const walk = async (absoluteDir: string, displayDir: string, widgetRoot: string): Promise<void> => {
+      if (truncated) return;
+      const entries = await readdir(absoluteDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (truncated) return;
+        const absolutePath = join(absoluteDir, entry.name);
+        const displayPath = `${displayDir}/${entry.name}`;
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isDirectory()) {
+          await walk(absolutePath, displayPath, widgetRoot);
+          continue;
+        }
+        if (!entry.isFile() || !this.#matchesGlob(displayPath, args.glob)) continue;
+        if (filesSearched >= GREP_FILE_LIMIT || bytesRead >= GREP_BYTE_LIMIT) {
+          truncated = true;
+          return;
+        }
+        const resolved = await realpath(absolutePath);
+        this.#assertInside(widgetRoot, resolved);
+        const buffer = await readFile(resolved);
+        filesSearched += 1;
+        bytesRead += buffer.byteLength;
+        if (bytesRead > GREP_BYTE_LIMIT || buffer.includes(0)) {
+          if (bytesRead > GREP_BYTE_LIMIT) truncated = true;
+          continue;
+        }
+        const lines = buffer.toString('utf8').split(/\r?\n/);
+        for (let index = 0; index < lines.length; index += 1) {
+          const line = lines[index] ?? '';
+          const haystack = args.ignoreCase ? line.toLocaleLowerCase('en-US') : line;
+          if (matcher ? matcher.test(line) : haystack.includes(literal)) {
+            matches.push({ path: displayPath, line: index + 1, text: line.slice(0, 2_000) });
+            if (matches.length >= limit) {
+              truncated = true;
+              return;
+            }
+          }
+        }
+      }
+    };
+
+    for (const root of roots) {
+      const rootStat = await stat(root.absolutePath);
+      if (rootStat.isFile()) {
+        const buffer = await readFile(root.absolutePath);
+        filesSearched += 1;
+        bytesRead += buffer.byteLength;
+        if (bytesRead > GREP_BYTE_LIMIT || buffer.includes(0)) {
+          if (bytesRead > GREP_BYTE_LIMIT) truncated = true;
+          continue;
+        }
+        const lines = buffer.toString('utf8').split(/\r?\n/);
+        for (let index = 0; index < lines.length && matches.length < limit; index += 1) {
+          const line = lines[index] ?? '';
+          const haystack = args.ignoreCase ? line.toLocaleLowerCase('en-US') : line;
+          if (matcher ? matcher.test(line) : haystack.includes(literal)) matches.push({ path: root.displayPath, line: index + 1, text: line.slice(0, 2_000) });
+        }
+        if (matches.length >= limit) truncated = true;
+      } else if (rootStat.isDirectory()) {
+        await walk(root.absolutePath, root.displayPath, root.widgetRoot);
+      }
+      if (truncated) break;
+    }
+
+    return { matches, truncated, filesSearched };
+  }
+
+  async beginDraftPublish(requestedName: string, installedSlug?: string): Promise<TPublishSnapshot> {
+    const name = this.#normalizeName(requestedName);
+    const draftPath = join(this.draftRoot, name);
+    const canonicalPath = join(this.publishedRoot, name);
+    const installedPath = installedSlug === undefined
+      ? null
+      : fnAssertSafeFinalDestination({ finalWidgetsDir: this.installedWidgetsRoot, slug: installedSlug, basename, resolve });
+    await this.#assertNoCaseCollision(this.publishedRoot, name);
+    if (this.#activePublishes.has(name)) throw new Error(`Widget '${name}' is already being published.`);
+    this.#activePublishes.add(name);
+    const publishId = this.#safeId();
+    const temporary = join(this.publishedRoot, `.publish-${publishId}`);
+    const backup = join(this.publishedRoot, `.publish-backup-${publishId}`);
+    const installedBackup = installedPath === null ? null : join(this.installedWidgetsRoot, `.publish-backup-${publishId}`);
+    let wasExisting = false;
+    let wasInstalledExisting = false;
+    try {
+      if (installedPath !== null && installedBackup !== null) {
+        await mkdir(this.installedWidgetsRoot, { recursive: true });
+        const installedEntry = await lstat(installedPath).catch(() => null);
+        if (installedEntry) {
+          const installedTarget = await stat(installedPath).catch(() => null);
+          if (!installedTarget?.isDirectory()) throw new Error(`Installed widget '${installedSlug}' is not a managed directory.`);
+          await this.#copyWidgetFolder(installedPath, installedBackup);
+          wasInstalledExisting = true;
+        }
+      }
+      await this.#withWidgetWrite(draftPath, async () => {
+        if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
+        await this.#copyWidgetFolder(draftPath, temporary);
+        const existing = await lstat(canonicalPath).catch(() => null);
+        if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
+          throw new Error(`Published widget '${name}' is not a managed directory.`);
+        }
+        if (existing) {
+          await rename(canonicalPath, backup);
+          wasExisting = true;
+        }
+        try {
+          await rename(temporary, canonicalPath);
+        } catch (error) {
+          if (wasExisting && !await lstat(canonicalPath).catch(() => null)) await rename(backup, canonicalPath);
+          throw error;
+        }
+      });
+    } catch (error) {
+      await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
+      if (wasExisting && !await lstat(canonicalPath).catch(() => null)) {
+        await rename(backup, canonicalPath).catch(() => undefined);
+      }
+      if (installedBackup !== null) await rm(installedBackup, { recursive: true, force: true }).catch(() => undefined);
+      this.#activePublishes.delete(name);
+      throw error;
+    }
+
+    let settled = false;
+    let installedMutationStarted = false;
+    return {
+      name,
+      draftPath,
+      canonicalPath,
+      wasExisting,
+      wasInstalledExisting,
+      markInstalledMutation: () => {
+        installedMutationStarted = true;
+      },
+      commit: async () => {
+        if (settled) return;
+        try {
+          if (wasExisting) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
+          if (wasInstalledExisting && installedBackup !== null) {
+            await rm(installedBackup, { recursive: true, force: true }).catch(() => undefined);
+          }
+          settled = true;
+        } finally {
+          this.#activePublishes.delete(name);
+        }
+      },
+      rollback: async () => {
+        if (settled) return;
+        try {
+          await rm(canonicalPath, { recursive: true, force: true });
+          if (wasExisting) await rename(backup, canonicalPath);
+          if (installedMutationStarted && installedPath !== null) {
+            await rm(installedPath, { recursive: true, force: true });
+            if (wasInstalledExisting && installedBackup !== null) await rename(installedBackup, installedPath);
+          } else if (wasInstalledExisting && installedBackup !== null) {
+            await rm(installedBackup, { recursive: true, force: true });
+          }
+          settled = true;
+        } finally {
+          this.#activePublishes.delete(name);
+        }
+      },
+    };
+  }
+
+  async findMountedWidget(chatId: string, requestedName?: string): Promise<TWidgetMount> {
+    const mounts = await this.listMounts(chatId);
+    if (requestedName) {
+      const name = this.#normalizeName(requestedName);
+      const match = mounts.find((mount) => mount.name === name);
+      if (!match) throw new Error(`Widget '${name}' is not mounted in this chat.`);
+      return match;
+    }
+    if (mounts.length === 1) return mounts[0];
+    if (mounts.length === 0) throw new Error('No widget is mounted in this chat.');
+    throw new Error('More than one widget is mounted. Select a widget explicitly.');
+  }
+
+  async #resolveDraftTarget(name: string): Promise<string> {
+    const draft = join(this.draftRoot, name);
+    const draftExists = await this.#isDirectDirectory(this.draftRoot, draft);
+    if (!draftExists) {
+      if (await this.#isDirectDirectory(this.publishedRoot, join(this.publishedRoot, name))) {
+        throw new Error(`Widget draft '${name}' does not exist. Sync it from the published widget before loading.`);
+      }
+      throw new Error(`Widget draft '${name}' does not exist.`);
+    }
+    return realpath(draft);
+  }
+
+  async #inspectMount(chatRoot: string, requestedName: string): Promise<TWidgetMount> {
+    const name = this.#normalizeName(requestedName);
+    const mountPath = join(chatRoot, 'widgets', name);
+    const mountStat = await lstat(mountPath).catch(() => null);
+    if (!mountStat?.isSymbolicLink()) throw new Error(`Widget '${name}' is not a backend mount.`);
+    const targetPath = await realpath(mountPath);
+    const draftRoot = await realpath(this.draftRoot);
+    const targetParent = dirname(targetPath);
+    if (targetParent !== draftRoot || basename(targetPath) !== name) throw new Error(`Widget mount '${name}' does not point to a shared draft.`);
+    const targetStat = await lstat(targetPath);
+    if (!targetStat.isDirectory() || targetStat.isSymbolicLink()) throw new Error(`Widget mount '${name}' has an invalid target.`);
+    return { name, source: 'draft', chatRoot, mountPath, targetPath };
+  }
+
+  async #assertOwnedMountLink(mountPath: string, name: string): Promise<void> {
+    if (!await this.#ownedMountKind(mountPath, name)) throw new Error(`Widget mount '${name}' is not owned by the backend.`);
+  }
+
+  async #ownedMountKind(mountPath: string, name: string): Promise<'draft' | 'published' | null> {
+    const link = await readlink(mountPath);
+    const lexicalTarget = resolve(await realpath(dirname(mountPath)), link);
+    const linkedTarget = await realpath(mountPath).catch(() => lexicalTarget);
+    const [draftRoot, publishedRoot] = await Promise.all([realpath(this.draftRoot), realpath(this.publishedRoot)]);
+    if (linkedTarget === join(draftRoot, name)) return 'draft';
+    if (linkedTarget === join(publishedRoot, name)) return 'published';
+    return null;
+  }
+
+  async #grepRoots(chatId: string, lexicalPath?: string): Promise<{ absolutePath: string; displayPath: string; widgetRoot: string }[]> {
+    if (lexicalPath && lexicalPath !== 'widgets') {
+      const resolved = await this.resolveMountedPath(chatId, lexicalPath);
+      return [{ absolutePath: resolved.absolutePath, displayPath: lexicalPath, widgetRoot: resolved.widgetRoot }];
+    }
+    const mounts = await this.listMounts(chatId);
+    return mounts.map((mount) => ({ absolutePath: mount.targetPath, displayPath: `widgets/${mount.name}`, widgetRoot: mount.targetPath }));
+  }
+
+  async #assertNameAvailable(chatId: string, name: string): Promise<void> {
+    await Promise.all([
+      this.#assertNoCaseCollision(this.publishedRoot, name),
+      this.#assertNoCaseCollision(this.draftRoot, name),
+      this.#assertNoCaseCollision(join(this.getChatRoot(chatId), 'widgets'), name),
+    ]);
+    const paths = [join(this.publishedRoot, name), join(this.draftRoot, name), join(this.getChatRoot(chatId), 'widgets', name)];
+    if ((await Promise.all(paths.map((path) => lstat(path).catch(() => null)))).some(Boolean)) {
+      throw new Error(`Widget name '${name}' is already in use.`);
+    }
+  }
+
+  async #assertNoCaseCollision(root: string, name: string): Promise<void> {
+    const entries = await readdir(root).catch(() => []);
+    const caseKey = name.toLocaleLowerCase('en-US');
+    const collision = entries.find((entry) => entry !== name && entry.toLocaleLowerCase('en-US') === caseKey);
+    if (collision) throw new Error(`Widget name '${name}' collides with existing '${collision}' on a case-insensitive filesystem.`);
+  }
+
+  async #isDirectDirectory(root: string, candidate: string): Promise<boolean> {
+    const candidateStat = await lstat(candidate).catch(() => null);
+    if (!candidateStat?.isDirectory() || candidateStat.isSymbolicLink()) return false;
+    const [resolvedRoot, resolvedCandidate] = await Promise.all([realpath(root), realpath(candidate)]);
+    return dirname(resolvedCandidate) === resolvedRoot;
+  }
+
+  async #mountLinkTarget(mountPath: string, targetPath: string): Promise<string> {
+    if (this.#platform === 'win32') return targetPath;
+    return relative(await realpath(dirname(mountPath)), targetPath);
+  }
+
+  #assertInside(root: string, candidate: string): void {
+    const rel = relative(root, candidate);
+    if (rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))) return;
+    throw new Error('Mounted widget path resolves outside its registered widget folder.');
+  }
+
+  #matchesGlob(path: string, glob?: string): boolean {
+    if (!glob || glob === '**/*' || glob === '*') return true;
+    return fnMatchesGlob(glob, path) || fnMatchesGlob(glob, basename(path));
+  }
+
+  async #withWidgetWrite<T>(widgetRoot: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#writeQueues.get(widgetRoot) ?? Promise.resolve();
+    let settle: (() => void) | undefined;
+    const gate = new Promise<void>((resolveGate) => { settle = resolveGate; });
+    const tail = previous.catch(() => undefined).then(() => gate);
+    this.#writeQueues.set(widgetRoot, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      settle?.();
+      if (this.#writeQueues.get(widgetRoot) === tail) this.#writeQueues.delete(widgetRoot);
+    }
+  }
+
+  async #copyWidgetFolder(source: string, target: string): Promise<void> {
+    await cp(source, target, {
+      recursive: true,
+      dereference: true,
+      filter: (candidate) => {
+        const rel = relative(source, candidate);
+        return !rel.split(sep).some((part) => part === 'node_modules' || part === '.git' || part === '.vibecanvas-wizard');
+      },
+    });
+  }
+
+  async #readManifest(root: string): Promise<Record<string, unknown> | null> {
+    try {
+      const value: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
+      return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    } catch {
+      return null;
+    }
+  }
+
+  #normalizeName(input: string): string {
+    const normalized = fnNormalizeWidgetName(input);
+    if (!normalized.ok) throw new Error(normalized.message);
+    return normalized.value;
+  }
+
+  #safeId(): string {
+    return this.#createId().replace(/[^a-zA-Z0-9_-]/g, '');
+  }
+}
+
+export { constants as FILE_ACCESS_CONSTANTS };

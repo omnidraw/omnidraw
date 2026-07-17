@@ -1,8 +1,8 @@
-import type { TActorCandidateApprovalRecord, TActorCandidateRecord, TCandidateSessionManager, TWidgetDbChangeProposalRecord, TWidgetDraftResourceBindingSelectionRecord, TWidgetEditSessionRecord, TWidgetResourceSelectionRecord } from '../tools/types';
-import { ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE, WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE, WIDGET_DRAFT_RESOURCE_BINDING_SELECTION_CUSTOM_ENTRY_TYPE, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE, WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
+import type { TSessionEntryManager, TWidgetDbChangeProposalRecord, TWidgetDraftResourceBindingSelectionRecord, TWidgetEditSessionRecord, TWidgetResourceSelectionRecord } from '../tools/types';
+import { WIDGET_DB_CHANGE_PROPOSAL_CUSTOM_ENTRY_TYPE, WIDGET_DRAFT_RESOURCE_BINDING_SELECTION_CUSTOM_ENTRY_TYPE, WIDGET_EDIT_SESSION_CUSTOM_ENTRY_TYPE, WIDGET_RESOURCE_SELECTION_CUSTOM_ENTRY_TYPE } from '../tools/CONSTANTS';
 
 export type TPortal = {
-  sessionManager: Pick<TCandidateSessionManager, 'getEntries'>;
+  sessionManager: Pick<TSessionEntryManager, 'getEntries'>;
 };
 
 export type TArgs = Record<string, never>;
@@ -22,16 +22,6 @@ function fxLatestCustomEntryData<T>(portal: TPortal, customType: string): T | nu
   }
 
   return null;
-}
-
-export function fxLatestActorCandidateRecord(portal: TPortal, args?: TArgs): TActorCandidateRecord | null {
-  void args;
-  return fxLatestCustomEntryData<TActorCandidateRecord>(portal, ACTOR_CANDIDATE_CUSTOM_ENTRY_TYPE);
-}
-
-export function fxLatestActorCandidateApprovalRecord(portal: TPortal, args?: TArgs): TActorCandidateApprovalRecord | null {
-  void args;
-  return fxLatestCustomEntryData<TActorCandidateApprovalRecord>(portal, ACTOR_CANDIDATE_APPROVED_CUSTOM_ENTRY_TYPE);
 }
 
 export function fxLatestWidgetEditSessionRecord(portal: TPortal, args?: TArgs): TWidgetEditSessionRecord | null {

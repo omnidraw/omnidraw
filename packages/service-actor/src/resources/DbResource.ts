@@ -91,7 +91,7 @@ export type TDbResourceConfig = {
 };
 
 type TDbBindValue = null | string | number | bigint | Uint8Array;
-type TDbBindParameters = Record<string, TDbBindValue>;
+type TDbBindParameters = readonly TDbBindValue[] | Record<string, TDbBindValue>;
 type TDbExecuteOperation = { readonly sql: string; readonly parameters: TDbBindParameters };
 type TNativeRow = Record<string, null | string | number | bigint | Uint8Array>;
 export type TDbDraftChangeEvidence = { readonly sequence: number; readonly kind: 'structure' | 'sql'; readonly sql: string };
@@ -292,8 +292,16 @@ function bindParameters(value: unknown): TDbBindParameters {
 
 function bindWireParameters(value: unknown): TDbBindParameters {
   if (value === undefined) return {};
+  if (Array.isArray(value)) {
+    if (value.length > PARAMETER_MAX_COUNT) {
+      throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database parameters exceed the count limit.');
+    }
+    const result = value.map((raw) => fromWireValue(raw as TDbCellValue));
+    assertBoundBytes(result, 'Database parameters exceed the size limit.');
+    return result;
+  }
   if (!isPlainObject(value) || Object.keys(value).length > PARAMETER_MAX_COUNT) {
-    throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database parameters must be a bounded object.');
+    throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database parameters must be a bounded array or object.');
   }
   const result: TDbBindParameters = {};
   let bytes = 0;
@@ -307,6 +315,11 @@ function bindWireParameters(value: unknown): TDbBindParameters {
     result[name] = converted;
   }
   return result;
+}
+
+function draftSqlBindParameters(operation: TDbResourceDraftChange['operation']): TDbBindParameters | null {
+  if (!isPlainObject(operation) || operation.type !== 'boundSql' || !Array.isArray(operation.parameters)) return null;
+  return bindWireParameters(operation.parameters);
 }
 
 function bindNamedParameters(requirement: TActorDbResourceRequirement, operationName: string, value: unknown): TDbBindParameters {
@@ -703,7 +716,7 @@ export class DbResource implements IActorResourceProvider {
   async executeLiveSql(args: {
     resourceId: string;
     sql: string;
-    parameters?: Readonly<Record<string, TDbCellValue>>;
+    parameters?: readonly TDbCellValue[] | Readonly<Record<string, TDbCellValue>>;
     approved: boolean;
   }): Promise<TDbLiveSqlResult> {
     const resourceId = validateHostId(args.resourceId);
@@ -921,9 +934,17 @@ export class DbResource implements IActorResourceProvider {
     }
   }
 
-  async executeDraftSql(draftIdValue: string, sqlValue: string): Promise<TDbDraftChangeEvidence> {
+  async executeDraftSql(
+    draftIdValue: string,
+    sqlValue: string,
+    wireParameters?: readonly TDbCellValue[],
+  ): Promise<TDbDraftChangeEvidence> {
     const draftId = validateHostId(draftIdValue, 'DbResource draft');
     const sql = boundedDraftSql(sqlValue);
+    const parameters = wireParameters === undefined ? null : bindWireParameters(wireParameters);
+    if (sqlSummary(sql).statementCount !== 1) {
+      throw new ActorResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database write operations must contain exactly one SQLite statement.');
+    }
     return this.#withDatabase(this.#draftDatabasePath(draftId), false, async (database) => {
       const baselineForeignKeys = await this.#foreignKeyViolations(database);
       const apply = database.transaction(async (): Promise<TDbDraftChangeEvidence> => {
@@ -932,7 +953,11 @@ export class DbResource implements IActorResourceProvider {
         const rawSequence = rows[0]?.next_sequence;
         const sequence = typeof rawSequence === 'bigint' ? Number(rawSequence) : rawSequence;
         if (!Number.isSafeInteger(sequence) || Number(sequence) < 1) throw new ActorResourceError('DB_RESOURCE_DRAFT_INVALID', 'Draft change evidence sequence is invalid.');
-        await database.exec(sql, { queryTimeout: QUERY_TIMEOUT_MS });
+        if (parameters === null) {
+          await database.exec(sql, { queryTimeout: QUERY_TIMEOUT_MS });
+        } else {
+          await this.#runNative(database, sql, parameters);
+        }
         await this.#runNative(database, 'INSERT INTO `_vibecanvas_draft_change_evidence` (`sequence`, `kind`, `sql`) VALUES (?, ?, ?)', [Number(sequence), 'sql', sql]);
         await this.#verifyDatabase(database, baselineForeignKeys);
         return { sequence: Number(sequence), kind: 'sql', sql };
@@ -988,7 +1013,10 @@ export class DbResource implements IActorResourceProvider {
             if (rebuild) await database.exec('PRAGMA foreign_keys = OFF;');
             const transaction = database.transaction(async () => {
               for (const change of orderedChanges) {
-                await database.exec(boundedDraftSql(change.sql), { queryTimeout: QUERY_TIMEOUT_MS });
+                const sql = boundedDraftSql(change.sql);
+                const parameters = change.kind === 'sql' ? draftSqlBindParameters(change.operation) : null;
+                if (parameters === null) await database.exec(sql, { queryTimeout: QUERY_TIMEOUT_MS });
+                else await this.#runNative(database, sql, parameters);
               }
               await database.exec(APPLY_MARKER_SQL);
               await database.run('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)', applyId, { queryTimeout: QUERY_TIMEOUT_MS });
@@ -1032,7 +1060,16 @@ export class DbResource implements IActorResourceProvider {
       database.exec(RESOURCE_PRAGMAS_SQL);
       if (rebuild) database.exec('PRAGMA foreign_keys = OFF;');
       const apply = database.transaction(() => {
-        for (const change of changes) database.exec(boundedDraftSql(change.sql));
+        for (const change of changes) {
+          const sql = boundedDraftSql(change.sql);
+          const parameters = change.kind === 'sql' ? draftSqlBindParameters(change.operation) : null;
+          if (parameters === null) {
+            database.exec(sql);
+          } else {
+            const values = Array.isArray(parameters) ? parameters : Object.values(parameters);
+            database.query(sql).run(...values);
+          }
+        }
         database.exec(APPLY_MARKER_SQL);
         database.query('INSERT INTO `_vibecanvas_apply_markers` (`apply_id`) VALUES (?)').run(applyId);
       });

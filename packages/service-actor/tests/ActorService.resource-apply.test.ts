@@ -177,6 +177,58 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
     ]);
   });
 
+  test('persists bound SQLite parameters and commits them through the coordinated apply record', async () => {
+    const resource = await service.createResource({ kind: 'db', name: 'Bound Parameter Notes' });
+    const schemaDraft = await service.createDbDraft(resource.id, 'Create parameter notes');
+    await service.changeDbDraft(schemaDraft.draft.id, {
+      kind: 'createTable',
+      table: 'notes',
+      columns: [
+        { name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 },
+        { name: 'title', declaredType: 'TEXT', nullable: false },
+      ],
+    });
+    const schemaApply = await service.confirmDbApply(schemaDraft.draft.id);
+    expect((await waitForApply(schemaApply.id)).apply.status).toBe('succeeded');
+
+    const dataDraft = await service.createDbDraft(resource.id, 'Write parameter notes');
+    const parameters = [{ type: 'integer', value: '7' }, { type: 'text', value: 'Bound value' }] as const;
+    await service.executeDbDraftSql(dataDraft.draft.id, 'INSERT INTO notes(id, title) VALUES (?, ?)', parameters);
+    expect((await service.getDbDraft(dataDraft.draft.id)).changes).toEqual([
+      expect.objectContaining({
+        kind: 'sql',
+        sql: 'INSERT INTO notes(id, title) VALUES (?, ?)',
+        operation: { type: 'boundSql', parameters },
+      }),
+    ]);
+
+    const dataApply = await service.confirmDbApply(dataDraft.draft.id);
+    expect((await waitForApply(dataApply.id)).apply).toMatchObject({ status: 'succeeded', draft_id: dataDraft.draft.id });
+    await expect(service.executeDbLiveSql({
+      resourceId: resource.id,
+      sql: 'SELECT id, title FROM notes WHERE id = ?',
+      parameters: [{ type: 'integer', value: '7' }],
+      approved: false,
+    })).resolves.toMatchObject({
+      kind: 'rows',
+      rows: [{ id: { type: 'integer', value: '7' }, title: { type: 'text', value: 'Bound value' } }],
+    });
+  });
+
+  test('rejects multiple statements in one draft write with or without parameters', async () => {
+    const resource = await service.createResource({ kind: 'db', name: 'Single Statement Notes' });
+    const draft = await service.createDbDraft(resource.id, 'Reject compound writes');
+    const compoundSql = 'CREATE TABLE first_note(id INTEGER); CREATE TABLE second_note(id INTEGER);';
+
+    await expect(service.executeDbDraftSql(draft.draft.id, compoundSql)).rejects.toMatchObject({
+      code: 'DB_OPERATION_PARAMETERS_INVALID',
+    });
+    await expect(service.executeDbDraftSql(draft.draft.id, compoundSql, [])).rejects.toMatchObject({
+      code: 'DB_OPERATION_PARAMETERS_INVALID',
+    });
+    expect((await service.getDbDraft(draft.draft.id)).changes).toEqual([]);
+  });
+
   test('keeps a successful database outcome separate from an actor restart failure', async () => {
     await db.canvas.create({ id: 'restart-canvas', name: 'Restart Canvas', automerge_url: 'automerge:db-restart-test' });
     const resource = await service.createResource({ kind: 'db', name: 'Restart Outcome Notes' });

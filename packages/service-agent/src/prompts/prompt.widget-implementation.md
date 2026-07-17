@@ -1,4 +1,4 @@
-# Widget UI rules after approval
+# Widget UI rules
 
 Widget UI runs in `@arrow-js/sandbox`. It is not a normal browser app. Keep it simple.
 

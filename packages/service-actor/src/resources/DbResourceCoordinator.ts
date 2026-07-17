@@ -16,6 +16,7 @@ import type {
   TDbDraftDetails,
   TDbDraftOperation,
   TDbResourceImpact,
+  TDbCellValue,
 } from './resource-types';
 
 const COMPATIBILITY_NOTICE = 'Actor compatibility cannot be guaranteed. Restart results are observed runtime outcomes only.';
@@ -178,14 +179,15 @@ export class DbResourceCoordinator {
     }));
   }
 
-  async executeDraftSql(draftId: string, sqlValue: string) {
+  async executeDraftSql(draftId: string, sqlValue: string, parameters?: readonly TDbCellValue[]) {
     this.#assertOpen();
     const draft = await this.#requireEditingDraft(draftId);
     return this.#resourceManager.withReadyResource(draft.resource_id, () => this.#withResourceLane(draft.resource_id, async () => {
       await this.#requireValidatedEditingDraft(draftId);
       try {
-        const evidence = await this.#dbResource.executeDraftSql(draft.id, sqlValue);
-        return await this.#db.dbResource.draft.change.append({ draftId, sequence: evidence.sequence, kind: 'sql', operation: null, sql: evidence.sql });
+        const evidence = await this.#dbResource.executeDraftSql(draft.id, sqlValue, parameters);
+        const operation = parameters === undefined ? null : { type: 'boundSql', parameters } as TJson;
+        return await this.#db.dbResource.draft.change.append({ draftId, sequence: evidence.sequence, kind: 'sql', operation, sql: evidence.sql });
       } catch (error) {
         if (!(error instanceof ActorResourceError) || error.details?.uncertain === true) {
           await this.#markDraftError(draft.id, 'The draft may have changed physically but its SQL change is not safely recorded.');

@@ -295,7 +295,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S80](s/S80.md) - migrate workspace to TypeScript 7
 - [ ]: [S81](s/S81.md) - assess pre-1.0 dependency upgrades
 - [-]: [S82](s/S82.md) - replace the session-bound AI wizard with a shared multi-resource agent
-- [ ]: [S83](s/S83.md) - isolated AI Chat workspaces over shared widget folders
+- [x]: [S83](s/S83.md) - isolated AI Chat workspaces over shared widget folders
 - [ ]: [S84](s/S84.md) - simplify canvas AI frontend to chat, user preview, and user publish
 
 ## E xplorations

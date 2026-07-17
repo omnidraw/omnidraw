@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { AgentService } from '../src/AgentService';
-import { txAppendWidgetDbChangeProposalRecord } from '../src/core/tx.session-candidate';
+import { txAppendWidgetDbChangeProposalRecord } from '../src/core/tx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
 
 const proposal = {

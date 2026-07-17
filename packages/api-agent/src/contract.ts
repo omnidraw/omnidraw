@@ -2,7 +2,6 @@ import { eventIterator, oc, type as orpcType } from '@orpc/contract';
 import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { TActorCandidateRecord } from '@vibecanvas/service-agent';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { z } from 'zod';
 
@@ -100,6 +99,18 @@ const ZAgentChatDbChangeProposal = z.object({
   warnings: z.string().array().optional(),
 })
 
+const ZAgentApproval = z.object({
+  id: z.string(),
+  chatId: z.string(),
+  kind: z.enum(['resource-create', 'resource-update', 'resource-delete', 'resource-data-write']),
+  summary: z.string(),
+  risk: z.enum(['medium', 'high']),
+  warnings: z.string().array(),
+  details: z.unknown(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+})
+
 const ZAgentChatDraftActorSend = ZAgentChatScope.extend({
   name: z.string().min(1),
   payload: z.unknown(),
@@ -124,7 +135,6 @@ export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPubl
 
 export type TAgentChatConnect = {
   vcJson: TVibecanvasJson | null;
-  actorCandidate: TActorCandidateRecord | null;
   messageHistory: unknown[];
   editSession: {
     mode: 'edit-published-widget';
@@ -168,7 +178,7 @@ export type TAgentPreviewSourceResult =
   | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
 
 export type TAgentDraftManifestReadResult =
-  | { ready: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
+  | { ready: true; source: 'file'; manifest: TVibecanvasJson }
   | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
 
 export type TAgentDraftManifestPatch = {
@@ -185,7 +195,7 @@ export type TAgentDraftManifestPatch = {
 };
 
 export type TAgentDraftManifestPatchResult =
-  | { ok: true; source: 'file' | 'actor-candidate'; manifest: TVibecanvasJson }
+  | { ok: true; source: 'file'; manifest: TVibecanvasJson }
   | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
 
 export type TAgentChatPublishResult =
@@ -193,7 +203,7 @@ export type TAgentChatPublishResult =
   | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
 
 export type TAgentChatStartWidgetEditResult =
-  | { ok: true; vcJson: TVibecanvasJson; phase: 'implementation'; editSession: NonNullable<TAgentChatConnect['editSession']>; messageHistory: unknown[] }
+  | { ok: true; vcJson: TVibecanvasJson; editSession: NonNullable<TAgentChatConnect['editSession']>; messageHistory: unknown[] }
   | { ok: false; message: string };
 
 export type TAgentSettings = z.infer<typeof ZAgentSettings>
@@ -217,6 +227,14 @@ export const agentContract = oc.router({
         confirmedRisk: z.literal(true),
       })).output(ZAgentChatDbChangeProposal),
       reject: oc.input(ZAgentChatScope.extend({ proposalId: z.string().min(1) })).output(ZAgentChatDbChangeProposal),
+    },
+    approval: {
+      list: oc.input(ZAgentChatScope).output(ZAgentApproval.array()),
+      get: oc.input(ZAgentChatScope.extend({ approvalId: z.string().min(1) })).output(ZAgentApproval.nullable()),
+      resolve: oc.input(ZAgentChatScope.extend({
+        approvalId: z.string().min(1),
+        decision: z.enum(['approve', 'reject']),
+      })).output(z.object({ resolved: z.literal(true), decision: z.enum(['approve', 'reject']) })),
     },
     cancel: oc.input(ZAgentChatScope).output(ZAgentChatCancel),
     newSession: oc.input(ZAgentChatScope),

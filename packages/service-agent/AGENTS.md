@@ -14,7 +14,7 @@ Current dependencies and responsibilities:
 - Uses `@earendil-works/pi-coding-agent` for auth, models, settings, sessions, and custom tools.
 - Stores Pi data under `join(config.dataPath, 'pi')`.
 - Owns login sessions, abort controllers, model registry, settings manager, and widget/session managers.
-- Owns AI chat tool orchestration and phase-specific tool loading.
+- Owns isolated chat workspaces, shared widget mounts, and the fixed AI Chat tool registry.
 - May publish service events through `eventPublisherService` when agent runtime events are implemented.
 
 ## Known consumers
@@ -48,8 +48,8 @@ Keep `AgentService` return values aligned with `packages/api-agent/src/contract.
 
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
-- `chat.connect` returns `{ vcJson, actorCandidate, messageHistory }` for the requested widget/session.
-- `actorCandidate` is `null` on first connect and otherwise the latest actor candidate custom entry saved in the Pi session.
+- `chat.connect` returns `{ vcJson, messageHistory, editSession }` for the requested widget/session.
+- Current widget authority comes only from an explicitly mounted shared draft folder. Canonical published snapshots and historical candidate entries are never current chat authority.
 - `chat.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
 - `auth.login` accepts only `openai-codex` or `github-copilot` and returns `{ loginId }`.
 - `auth.logout` accepts only `openai-codex` or `github-copilot` and removes stored OAuth credentials.
@@ -70,35 +70,31 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Current custom tools:
-- `vc_set_actor_candidate`
-  - Phase 1 only.
-  - Accepts a full actor candidate and validates before saving.
-  - Saves candidates with `sessionManager.appendCustomEntry`; do not write candidate files to cwd.
-  - Uses a hand-authored TypeBox parameter schema in `src/tools/CONSTANTS.ts`; do not use `z.toJSONSchema` for this tool schema because model-facing constraints must be explicit.
-- `vc_approve_actor_candidate`
-  - Phase 1 only.
-  - Reads the latest candidate from Pi session custom entries.
-  - Writes scaffold files into the draft cwd, including `vibecanvas.json`, `package.json`, actor stubs, and widget files.
-  - Attempts `npm install` when `package.json` exists; install failure should be returned in tool details and should not silently drop approval state.
-  - Appends a `vibecanvas.actorCandidateApproved` custom entry when approval succeeds.
-- `vc_validate_widget_files`
-  - Phase 2 only.
-  - Validates generated draft files and actor registry shape.
-- `vc_publish_widget`
-  - Phase 2 only.
-  - Copies draft files to `<configPath>/widgets/<slug>` and reloads actor definitions when `actorService` is available.
+Every conversation receives exactly these 15 tools for its complete lifecycle:
 
-Phase selection:
-- `src/tools/phase-tools.ts` chooses phase from Pi session history and assembles phase-specific tools.
-- No approval custom entry means phase 1 tools.
-- Latest approval custom entry means phase 2 tools plus built-in `read`, `edit`, and `grep`.
-- Phase 1 must not expose filesystem or bash tools.
-- Phase 2 must not expose bash by default.
+- Widgets/files: `vc_widget_create`, `vc_widget_load`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
+- Network: `web_fetch`
 
-Shared candidate session helpers:
-- `src/core/fx.session-candidate.ts`
-- `src/core/tx.session-candidate.ts`
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, bash, or unrestricted write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call.
+
+Chat filesystem ownership:
+
+- `chat-cwd/<chat-id>/widgets` belongs to one conversation and contains only backend-created mounts.
+- `widget-cwd/<name>` is the canonical published snapshot and is never mounted into AI Chat.
+- `widget-drafts/<name>` is the shared editable folder mounted by AI Chat, whether newly created or explicitly synced from published.
+- `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
+- Generic file access must enter through a validated `widgets/<name>` mount. Direct access to either shared root is rejected.
+- `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
+
+Protected resource mutations use `src/approval/ApprovalCoordinator.ts`. The coordinator stores immutable exact arguments only in process memory, exposes a secret-safe approval view, rechecks authorization, and claims execution once. Secret-store set values are redacted before Pi event/transcript persistence and handed to the tool through a one-shot process-local vault.
+
+Publishing remains a user-controlled API operation in `AgentService`. Publish snapshots the selected draft into the canonical root while every chat stays mounted to the draft; failure restores the previous canonical and installed snapshots and leaves drafts and mounts intact.
+
+Shared current session-record helpers:
+
+- `src/core/fx.session-records.ts`
+- `src/core/tx.session-records.ts`
 
 ## Service-layer boundaries
 
@@ -145,9 +141,6 @@ Keep Pi-specific adapter behavior localized so the API contract remains stable i
 Useful commands from this package:
 - `bun run typecheck`
 - `bun test tests --timeout=20000`
-
-Known current caveat:
-- `bun run typecheck` may fail because of existing cross-package `service-db` SQL module/global typing issues. Still run it when touching public contracts and report whether failures are unrelated.
 
 Also run/check API/frontend callers when public behavior changes:
 - `packages/api-agent` typecheck/tests if available

@@ -3,10 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
-import { txAppendActorCandidateApprovalRecord } from '../src/core/tx.session-candidate';
-import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-candidate';
-import { createFakeSessionManager, executeTool, sampleCandidate } from './tool.test-helpers';
-import { createProposeDbChangeTool } from '../src/tools/tool.propose-db-change';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-records';
+import { createFakeSessionManager } from './tool.test-helpers';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from '../src/prompts';
 
@@ -147,15 +145,6 @@ describe('AgentService.promptChat', () => {
     expect(fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager: sessionManager as never }, {})?.resources).toEqual([
       { id: 'db-1', kind: 'db', name: 'Notes Database', status: 'ready' },
     ]);
-    const proposal = await executeTool(createProposeDbChangeTool({
-      sessionManager: sessionManager as never,
-      actorService: {
-        reload: async () => {},
-        getResource: async () => null,
-      },
-    }), { resourceId: 'db-1', sql: 'DROP TABLE notes;', reason: 'No longer authorized.' });
-    expect(proposal.isError).toBe(true);
-    expect(proposal.content[0].text).toContain('@mention');
   });
 
   test('replaces a same-kind draft binding on mention and clears it only through the explicit action', async () => {
@@ -200,41 +189,26 @@ describe('AgentService.promptChat', () => {
     });
   });
 
-  test('refreshes phase tools after approval before the next prompt', async () => {
+  test('keeps the exact phase-free registry across reconnect and continuation errors', async () => {
     const service = await createService();
     const widgetId = 'widget-tools';
     const sessionId = 'session-tools';
     await service.connectChat(widgetId, sessionId);
 
-    const phaseOneTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseOneTools.sort()).toEqual(['vc_approve_actor_candidate', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_query_db_readonly', 'vc_set_actor_candidate', 'web_fetch']);
-
-    const manifest = {
-      slug: 'counter-widget',
-      name: 'Counter Widget',
-      description: 'A generated counter widget.',
-      actor: {
-        ...sampleCandidate().actor,
-        relFunctionPath: './actor/functions.ts',
-      },
-      widget: {
-        relWidgetDir: './widget',
-        tool: sampleCandidate().widget.tool,
-      },
-    };
-
-    txAppendActorCandidateApprovalRecord({ sessionManager: service.sessionMap[widgetId][sessionId].sessionManager }, {
-      candidateRevision: 1,
-      manifest,
-      files: ['vibecanvas.json'],
-      approvedAt: new Date().toISOString(),
-    });
+    const expectedTools = [
+      'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
+      'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
+      'vc_resource_update', 'vc_widget_create', 'vc_widget_load', 'vc_widget_validate', 'web_fetch',
+    ];
+    expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
 
     await expect(service.promptChat(widgetId, sessionId, 'implement this', {
       images: [{ mimeType: 'image/svg+xml', data: 'PHN2Zy8+' }],
     })).rejects.toThrow('Unsupported prompt image MIME type: image/svg+xml');
 
-    const phaseTwoTools = service.sessionMap[widgetId][sessionId].session.getActiveToolNames();
-    expect(phaseTwoTools.sort()).toEqual(['edit', 'grep', 'read', 'vc_inspect_resource', 'vc_list_resources', 'vc_propose_db_change', 'vc_publish_widget', 'vc_query_db_readonly', 'vc_validate_widget_files', 'web_fetch']);
+    expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
+
+    await service.connectChat(widgetId, sessionId);
+    expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
   });
 });
