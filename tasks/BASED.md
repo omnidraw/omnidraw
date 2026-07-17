@@ -297,6 +297,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [-]: [S82](s/S82.md) - replace the session-bound AI wizard with a shared multi-resource agent
 - [x]: [S83](s/S83.md) - isolated AI Chat workspaces over shared widget folders
 - [ ]: [S84](s/S84.md) - simplify canvas AI frontend to chat, user preview, and user publish
+- [ ]: [S85](s/S85.md) - agent tools: name-addressed resources, visible results, and Pi Bash
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
