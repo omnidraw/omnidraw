@@ -303,6 +303,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S85](s/S85.md) - agent tools: name-addressed resources, visible results, and Pi Bash
 - [x]: [S86](s/S86.md) - human-readable dated AI chat storage and stable chat identity
 - [ ]: [S87](s/S87.md) - simplify vc_widget_create to one runnable construction scaffold
+- [ ]: [S88](s/S88.md) - extract AI Chat, widgets, and sidebar from canvas
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
