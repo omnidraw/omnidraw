@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
@@ -9,13 +9,15 @@ import { ActorResourceError } from '../src/resources/ActorResourceError';
 
 describe('ActorService KV and secret management', () => {
   let rootDir = '';
+  let configPath = '';
+  let dataRoot = '';
   let db: DbServiceTurso;
   let service: ActorService;
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-service-resource-data-'));
-    const configPath = join(rootDir, 'config');
-    const dataRoot = join(rootDir, 'data');
+    configPath = join(rootDir, 'config');
+    dataRoot = join(rootDir, 'data');
     await mkdir(join(configPath, 'widgets'), { recursive: true });
     await mkdir(dataRoot, { recursive: true });
     db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
@@ -92,5 +94,42 @@ describe('ActorService KV and secret management', () => {
     });
     await expect(invalid).rejects.toBeInstanceOf(ActorResourceError);
     await expect(invalid).rejects.toMatchObject({ code: 'SECRET_VALUE_INVALID' });
+  });
+
+  test('persists isolated KV and secret files across service reconstruction', async () => {
+    const kv = await service.createResource({ kind: 'kv', name: 'Restart KV' });
+    const secrets = await service.createResource({ kind: 'secretStore', name: 'Restart secrets' });
+    await service.setResourceDataEntry({ resourceId: kv.id, key: 'theme', expectedRevision: null, value: 'dark' });
+    await service.setResourceDataEntry({ resourceId: secrets.id, key: 'token', expectedRevision: null, value: 'persistent-secret' });
+
+    expect((await stat(join(dataRoot, 'actor-resources', 'kv', kv.id, 'data.db'))).isFile()).toBe(true);
+    expect((await stat(join(dataRoot, 'actor-resources', 'secret-store', secrets.id, 'data.db'))).isFile()).toBe(true);
+    await service.stop();
+    service = new ActorService({ db, configPath, dataRoot, eventPublisherService: new EventPublisherService() });
+    await service.start({} as never);
+
+    expect(await service.getResourceDataEntry({ resourceId: kv.id, key: 'theme' })).toMatchObject({
+      kind: 'kv',
+      value: 'dark',
+      revision: 1,
+    });
+    const secretMetadata = await service.getResourceDataEntry({ resourceId: secrets.id, key: 'token' });
+    expect(secretMetadata).toMatchObject({ kind: 'secretStore', name: 'token', revision: 1 });
+    expect(JSON.stringify(secretMetadata)).not.toContain('persistent-secret');
+  });
+
+  test('marks only a missing ready physical resource as error without recreating it', async () => {
+    const missing = await service.createResource({ kind: 'kv', name: 'Missing after restart' });
+    const healthy = await service.createResource({ kind: 'secretStore', name: 'Healthy after restart' });
+    await service.setResourceDataEntry({ resourceId: healthy.id, key: 'token', expectedRevision: null, value: 'healthy-secret' });
+    await service.stop();
+    const missingPath = join(dataRoot, 'actor-resources', 'kv', missing.id, 'data.db');
+    await rm(missingPath);
+
+    service = new ActorService({ db, configPath, dataRoot, eventPublisherService: new EventPublisherService() });
+    await service.start({} as never);
+    expect(await service.getResource(missing.id)).toMatchObject({ status: 'error' });
+    expect(await service.getResource(healthy.id)).toMatchObject({ status: 'ready' });
+    expect(await stat(missingPath).catch(() => null)).toBeNull();
   });
 });

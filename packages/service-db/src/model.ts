@@ -185,15 +185,6 @@ export const ZActorResourceBinding = z.object({
   updated_at: ZTimestamp,
 });
 
-export const ZActorResourceKeyValue = z.object({
-  resource_id: z.string(),
-  key: z.string(),
-  value: ZJson,
-  revision: z.number().int().positive(),
-  created_at: ZTimestamp,
-  updated_at: ZTimestamp,
-});
-
 export const ZDbResourceDraft = z.object({
   id: z.string(),
   resource_id: z.string(),
@@ -276,7 +267,6 @@ export type TActorInstance = z.infer<typeof ZActorInstance>;
 export type TActorConnection = z.infer<typeof ZActorConnection>;
 export type TActorResource = z.infer<typeof ZActorResource>;
 export type TActorResourceBinding = z.infer<typeof ZActorResourceBinding>;
-export type TActorResourceKeyValue = z.infer<typeof ZActorResourceKeyValue>;
 export type TDbResourceDraft = z.infer<typeof ZDbResourceDraft>;
 export type TDbResourceDraftChange = z.infer<typeof ZDbResourceDraftChange>;
 export type TDbResourceApplyRun = z.infer<typeof ZDbResourceApplyRun>;

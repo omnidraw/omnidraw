@@ -1,6 +1,12 @@
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { TActorResource, TJson } from '@vibecanvas/service-db/model';
 import { ActorResourceError, toActorResourceError } from './ActorResourceError';
+import type {
+  IActorResourceKeyValuePersistence,
+  TActorResourceKeyValueCompareAndSetResult,
+  TActorResourceKeyValueDeleteResult,
+  TActorResourceKeyValueEntry,
+  TActorResourceKeyValuePage,
+} from './ActorResourceKeyValuePersistence';
 import type { IActorResourceProvider, TActorResolvedResourceCall, TActorResourceProviderCreateArgs } from './resource-types';
 import type { TActorResourceRequirement } from '../core/types';
 
@@ -44,14 +50,37 @@ function expectedRevision(value: unknown): number | null {
   return value as number;
 }
 
+function optionalExpectedRevision(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new ActorResourceError('KV_OPERATION_FAILED', 'Expected revision must be a positive integer.');
+  }
+  return value as number;
+}
+
 export class KvResource implements IActorResourceProvider {
   readonly kind = 'kv' as const;
+  readonly reconcileReady = true;
 
-  constructor(private readonly persistence: DbServiceTurso['actorResource']['keyValue']) {}
+  constructor(private readonly persistence: IActorResourceKeyValuePersistence) {}
 
-  async provision(_resource: TActorResource, _args: TActorResourceProviderCreateArgs): Promise<void> {}
+  async provision(resource: TActorResource, _args: TActorResourceProviderCreateArgs): Promise<void> {
+    if (resource.kind !== this.kind) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'KV resource catalog kind is invalid.');
+    try {
+      await this.persistence.provision({ resourceId: resource.id, kind: this.kind });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_RESOURCE_UNAVAILABLE', 'KV resource provisioning failed.');
+    }
+  }
 
-  async delete(_resource: TActorResource): Promise<void> {}
+  async delete(resource: TActorResource): Promise<void> {
+    if (resource.kind !== this.kind) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'KV resource catalog kind is invalid.');
+    try {
+      await this.persistence.deleteResource({ resourceId: resource.id, kind: this.kind });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_RESOURCE_UNAVAILABLE', 'KV resource physical deletion failed.');
+    }
+  }
 
   async reconcile(resource: TActorResource) {
     if (resource.kind !== this.kind) {
@@ -60,13 +89,117 @@ export class KvResource implements IActorResourceProvider {
         lastError: { code: 'RESOURCE_KIND_MISMATCH', message: 'KV resource catalog kind is invalid.' },
       };
     }
-    return { status: 'ready' as const };
+    try {
+      await this.persistence.verify({ resourceId: resource.id, kind: this.kind });
+      return { status: 'ready' as const };
+    } catch {
+      return {
+        status: 'error' as const,
+        lastError: { code: 'KV_RESOURCE_UNAVAILABLE', message: 'KV resource physical state could not be verified safely.' },
+      };
+    }
+  }
+
+  close(): Promise<void> {
+    return this.persistence.close();
   }
 
   effect(operation: string, _requirement: TActorResourceRequirement): 'read' | 'write' | null {
     if (operation === 'get' || operation === 'has' || operation === 'list') return 'read';
     if (operation === 'set' || operation === 'delete' || operation === 'compareAndSet') return 'write';
     return null;
+  }
+
+  async countEntries(args: { resourceId: string; prefix?: string; search?: string }): Promise<number> {
+    try {
+      return await this.persistence.count({
+        resourceId: args.resourceId,
+        prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'KV list prefix', true),
+        search: args.search === undefined ? undefined : listTextArg(args.search, 'KV list search', true),
+      });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
+  }
+
+  async listEntries(args: {
+    resourceId: string;
+    prefix?: string;
+    search?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<TActorResourceKeyValuePage> {
+    try {
+      return await this.persistence.list({
+        resourceId: args.resourceId,
+        prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'KV list prefix', true),
+        search: args.search === undefined ? undefined : listTextArg(args.search, 'KV list search', true),
+        cursor: args.cursor === undefined ? undefined : listTextArg(args.cursor, 'KV list cursor', false),
+        limit: listLimit(args.limit),
+      });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
+  }
+
+  async getEntry(args: { resourceId: string; key: unknown }): Promise<TActorResourceKeyValueEntry | null> {
+    try {
+      return await this.persistence.get({ resourceId: args.resourceId, key: keyArg(args.key) });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
+  }
+
+  async hasEntry(args: { resourceId: string; key: unknown }): Promise<boolean> {
+    try {
+      return await this.persistence.has({ resourceId: args.resourceId, key: keyArg(args.key) });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
+  }
+
+  async setEntry(args: { resourceId: string; key: unknown; value: unknown }): Promise<TActorResourceKeyValueEntry> {
+    try {
+      return await this.persistence.set({ resourceId: args.resourceId, key: keyArg(args.key), value: args.value as TJson });
+    } catch (error) {
+      if (error instanceof TypeError) throw new ActorResourceError('KV_VALUE_INVALID', 'KV value is not JSON-compatible.');
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
+  }
+
+  async deleteEntry(args: {
+    resourceId: string;
+    key: unknown;
+    expectedRevision?: unknown;
+  }): Promise<TActorResourceKeyValueDeleteResult> {
+    try {
+      return await this.persistence.delete({
+        resourceId: args.resourceId,
+        key: keyArg(args.key),
+        expectedRevision: optionalExpectedRevision(args.expectedRevision),
+      });
+    } catch (error) {
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
+  }
+
+  async compareAndSetEntry(args: {
+    resourceId: string;
+    key: unknown;
+    expectedRevision: unknown;
+    value: unknown;
+  }): Promise<TActorResourceKeyValueCompareAndSetResult> {
+    try {
+      return await this.persistence.compareAndSet({
+        resourceId: args.resourceId,
+        key: keyArg(args.key),
+        expectedRevision: expectedRevision(args.expectedRevision),
+        value: args.value as TJson,
+      });
+    } catch (error) {
+      if (error instanceof TypeError) throw new ActorResourceError('KV_VALUE_INVALID', 'KV value is not JSON-compatible.');
+      throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
+    }
   }
 
   async dispatch(context: TActorResolvedResourceCall, operation: string, rawArgs: unknown): Promise<unknown> {
@@ -76,18 +209,18 @@ export class KvResource implements IActorResourceProvider {
       }
       const args = recordArgs(rawArgs);
       if (operation === 'get') {
-        const entry = await this.persistence.get({ resourceId: context.resource.id, key: keyArg(args.key) });
+        const entry = await this.getEntry({ resourceId: context.resource.id, key: args.key });
         return entry ? { value: entry.value, revision: entry.revision } : null;
       }
       if (operation === 'has') {
-        return this.persistence.has({ resourceId: context.resource.id, key: keyArg(args.key) });
+        return this.hasEntry({ resourceId: context.resource.id, key: args.key });
       }
       if (operation === 'list') {
-        const page = await this.persistence.list({
+        const page = await this.listEntries({
           resourceId: context.resource.id,
-          prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'KV list prefix', true),
-          cursor: args.cursor === undefined ? undefined : listTextArg(args.cursor, 'KV list cursor', false),
-          limit: listLimit(args.limit),
+          prefix: args.prefix as string | undefined,
+          cursor: args.cursor as string | undefined,
+          limit: args.limit as number | undefined,
         });
         return {
           items: page.entries.map((entry) => ({ key: entry.key, value: entry.value, revision: entry.revision })),
@@ -95,22 +228,18 @@ export class KvResource implements IActorResourceProvider {
         };
       }
       if (operation === 'set') {
-        const entry = await this.persistence.set({
-          resourceId: context.resource.id,
-          key: keyArg(args.key),
-          value: args.value as TJson,
-        });
+        const entry = await this.setEntry({ resourceId: context.resource.id, key: args.key, value: args.value });
         return { value: entry.value, revision: entry.revision };
       }
       if (operation === 'delete') {
-        return this.persistence.delete({ resourceId: context.resource.id, key: keyArg(args.key) });
+        return this.deleteEntry({ resourceId: context.resource.id, key: args.key });
       }
       if (operation === 'compareAndSet') {
-        const result = await this.persistence.compareAndSet({
+        const result = await this.compareAndSetEntry({
           resourceId: context.resource.id,
-          key: keyArg(args.key),
-          expectedRevision: expectedRevision(args.expectedRevision),
-          value: args.value as TJson,
+          key: args.key,
+          expectedRevision: args.expectedRevision,
+          value: args.value,
         });
         return result.ok
           ? { ok: true, entry: { value: result.entry.value, revision: result.entry.revision } }
@@ -118,9 +247,6 @@ export class KvResource implements IActorResourceProvider {
       }
       throw new ActorResourceError('KV_OPERATION_FAILED', `Unknown KV operation "${operation}".`);
     } catch (error) {
-      if (error instanceof TypeError) {
-        throw new ActorResourceError('KV_VALUE_INVALID', 'KV value is not JSON-compatible.');
-      }
       throw toActorResourceError(error, 'KV_OPERATION_FAILED', 'KV operation failed.');
     }
   }

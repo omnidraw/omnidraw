@@ -12,12 +12,11 @@ describe('resource management data previews', () => {
   test('never returns secret values', () => {
     const page = fnActorResourceDataPage('secretStore', {
       entries: [{
-        resource_id: 'secrets',
         key: 'token',
         value: 'must-not-leak',
         revision: 3,
-        created_at: 'created',
-        updated_at: 'updated',
+        createdAt: 'created',
+        updatedAt: 'updated',
       }],
       nextCursor: null,
     });
@@ -29,12 +28,11 @@ describe('resource management data previews', () => {
     expect(JSON.stringify(page)).not.toContain('must-not-leak');
 
     const mutation = fnActorResourceDataMutationResult('secretStore', {
-      resource_id: 'secrets',
       key: 'token',
       value: 'rotated-must-not-leak',
       revision: 4,
-      created_at: 'created',
-      updated_at: 'later',
+      createdAt: 'created',
+      updatedAt: 'later',
     });
     expect(mutation).toEqual({
       kind: 'secretStore',

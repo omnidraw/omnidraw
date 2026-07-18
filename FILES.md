@@ -146,15 +146,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
-| [apps/web/.astro/dev.log](apps/web/.astro/dev.log) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -720,9 +711,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/src/resources/ActorResourceError.ts](packages/service-actor/src/resources/ActorResourceError.ts) |  |
+| [packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts](packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts) | Actor-local contracts for independently persisted KV and secret-store entries. |
+| [packages/service-actor/src/resources/ActorResourceKeyValueStore.ts](packages/service-actor/src/resources/ActorResourceKeyValueStore.ts) | Host-owned bounded Turso file persistence for KV and secret-store resources. |
 | [packages/service-actor/src/resources/ActorResourceManager.ts](packages/service-actor/src/resources/ActorResourceManager.ts) |  |
 | [packages/service-actor/src/resources/DbResource.ts](packages/service-actor/src/resources/DbResource.ts) |  |
 | [packages/service-actor/src/resources/DbResourceCoordinator.ts](packages/service-actor/src/resources/DbResourceCoordinator.ts) |  |
+| [packages/service-actor/src/resources/fn.actor-resource-key-value.ts](packages/service-actor/src/resources/fn.actor-resource-key-value.ts) | Pure identity, JSON, pagination, and row helpers for physical actor key-value files. |
 | [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
 | [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
@@ -854,7 +848,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql](packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql](packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql](packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
@@ -873,7 +866,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

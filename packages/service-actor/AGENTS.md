@@ -2,7 +2,7 @@
 
 Host-side actor runtime for Vibecanvas widgets.
 
-Treat the implementation and tests together as the source of truth. Core runtime behavior is covered by `tests/Actor.test.ts`; resource behavior is covered by `tests/ActorResourceManager.test.ts`, `tests/Actor.resource-ipc.test.ts`, `tests/DbResource.test.ts`, and `tests/ActorService.resource-migration.test.ts`.
+Treat the implementation and tests together as the source of truth. Core runtime behavior is covered by `tests/Actor.test.ts`; resource behavior is covered by `tests/ActorResourceManager.test.ts`, `tests/Actor.resource-ipc.test.ts`, `tests/ActorResourceKeyValueStore.test.ts`, `tests/ActorService.resource-data.test.ts`, and `tests/DbResource.test.ts`.
 
 ## Current runtime model
 
@@ -88,6 +88,8 @@ All host-side resource implementation lives under `src/resources/`:
 - `ActorResourceManager.ts` — generic catalog, binding, permission, dispatch, lifecycle, drain, and shutdown coordination
 - `KvResource.ts` — resource-scoped JSON key/value operations
 - `SecretStoreResource.ts` — string secret operations with value-safe list/write/error surfaces
+- `ActorResourceKeyValueStore.ts` — bounded host-owned physical persistence shared by KV and secret-store providers
+- `ActorResourceKeyValuePersistence.ts` — actor-local entry, page, CAS, and lifecycle persistence contracts
 - `DbResource.ts` — physical SQLite-compatible database provisioning, inspection, live rows, draft copies, SQL dispatch, apply backups, and restore primitives
 - `DbResourceCoordinator.ts` — coordinates structure drafts/applies/restores with linked actor stop/restart and durable observed outcomes
 - `ActorResourceError.ts` — stable resource errors and safe serialization
@@ -105,13 +107,18 @@ Effective access is:
 manifest scope ∩ binding restriction ∩ function-class ceiling
 ```
 
-Resource persistence differs by kind:
+Every resource kind owns an independent host-derived physical file:
 
-- KV and secret entries currently use the resource-scoped `actor_resource_key_values` table in the Vibecanvas control database.
-- Each DbResource owns a separate physical database under `<dataRoot>/actor-resources/db/<resource-id>/data.db`.
+- KV: `<dataRoot>/actor-resources/kv/<resource-id>/data.db`
+- Secret store: `<dataRoot>/actor-resources/secret-store/<resource-id>/data.db`
+- DbResource: `<dataRoot>/actor-resources/db/<resource-id>/data.db`
+
+KV and secret-store files use a host-private format with exact resource ID, kind, and version metadata. Entry values use Turso's native `JSON` type in a `STRICT` table, so malformed JSON is rejected at the storage boundary. Ordinary opens verify that identity and schema and never initialize a missing file. Handles are lazy, bounded, and evicted only while idle; writes serialize per resource. Secret values are JSON-encoded plaintext at rest. Physical separation is an operational boundary, not encryption or a confidentiality claim.
+
+- The control database retains resource catalogs, lifecycle state, definition bindings, DbResource drafts/applies, and actor outcomes, but no KV or secret entry contents.
 - Arbitrary `query` is single-statement. Arbitrary `execute` is always tx/write-capable and accepts either one statement or an ordered operation array. Operation arrays use one connection without interleaving; callers explicitly provide transaction/savepoint control statements, and each operation binds its own parameters.
 - Named manifest DB operations remain single-statement.
-- Resource catalog, bindings, structure drafts, apply runs, and actor outcomes remain in `DbServiceTurso`.
+- Existing local development databases may retain the removed `actor_resource_key_values` table until reset; runtime code does not read it and fresh databases do not create it.
 
 Keep resource-specific helpers and types inside `src/resources/`. Prefer sibling `fn.*.ts`, `fx.*.ts`, and `tx.*.ts` files there when extracting provider-local logic. Move logic into `src/core/` only when it is genuinely shared with non-resource actor features.
 

@@ -13,6 +13,7 @@ import type { TActorResourceKind, TActorResourceStatus, TJson } from '@vibecanva
 import { DbResource, type TDatabaseFactory } from './resources/DbResource';
 import { KvResource } from './resources/KvResource';
 import { SecretStoreResource } from './resources/SecretStoreResource';
+import { ActorResourceKeyValueStore, type TActorResourceKeyValueDatabaseFactory } from './resources/ActorResourceKeyValueStore';
 import { DbResourceCoordinator } from './resources/DbResourceCoordinator';
 import type { TActorResourceCall, TActorResourceDataMutationResult, TActorResourceDataPage, TActorResourceDirectBinding, TDbCellValue, TDbDraftOperation, TDbRowCreate, TDbRowDelete, TDbRowIdentity, TDbRowUpdate } from './resources/resource-types';
 import { ActorResourceError } from './resources/ActorResourceError';
@@ -20,27 +21,6 @@ import { fnActorResourceDataMutationResult, fnActorResourceDataPage } from './re
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
-}
-
-const KV_KEY_MAX_LENGTH = 1_024
-const SECRET_NAME_MAX_LENGTH = 256
-const SECRET_VALUE_MAX_LENGTH = 1_048_576
-
-function managementDataKey(kind: 'kv' | 'secretStore', value: string): string {
-  const maxLength = kind === 'kv' ? KV_KEY_MAX_LENGTH : SECRET_NAME_MAX_LENGTH
-  if (value.trim().length === 0 || value.length > maxLength) {
-    const code = kind === 'kv' ? 'KV_KEY_INVALID' : 'SECRET_NAME_INVALID'
-    const label = kind === 'kv' ? 'KV keys' : 'Secret names'
-    throw new ActorResourceError(code, `${label} must be non-blank strings no longer than ${maxLength} characters.`)
-  }
-  return value
-}
-
-function managementDataValue(kind: 'kv' | 'secretStore', value: TJson): TJson {
-  if (kind === 'secretStore' && (typeof value !== 'string' || value.length === 0 || value.length > SECRET_VALUE_MAX_LENGTH)) {
-    throw new ActorResourceError('SECRET_VALUE_INVALID', `Secret values must be non-empty strings no longer than ${SECRET_VALUE_MAX_LENGTH} characters.`)
-  }
-  return value
 }
 
 interface IPublicMethods {
@@ -63,6 +43,8 @@ interface IActorServiceConfig {
   dataRoot: string;
   crypto?: Pick<Crypto, 'randomUUID'>;
   dbResourceDatabaseFactory?: TDatabaseFactory;
+  actorResourceKeyValueDatabaseFactory?: TActorResourceKeyValueDatabaseFactory;
+  actorResourceKeyValueMaxOpenHandles?: number;
   eventPublisherService: IEventPublisherService,
 }
 
@@ -71,6 +53,8 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   #config: IActorServiceConfig
   #supervisor: ActorSupervisor
   #resourceManager: ActorResourceManager
+  #kvResource: KvResource
+  #secretStoreResource: SecretStoreResource
   #dbResource: DbResource
   #dbResourceCoordinator: DbResourceCoordinator
 
@@ -85,8 +69,18 @@ export class ActorService implements IService, IStartableService, IStoppableServ
       actorStartAdmission: (args) => this.#resourceManager.getActorStartAdmission(args),
       actorStartCompleted: (args) => this.#resourceManager.completeActorStart(args),
     })
-    const kvResource = new KvResource(config.db.actorResource.keyValue)
-    const secretStoreResource = new SecretStoreResource(config.db.actorResource.keyValue)
+    this.#kvResource = new KvResource(new ActorResourceKeyValueStore({
+      dataRoot: config.dataRoot,
+      kind: 'kv',
+      databaseFactory: config.actorResourceKeyValueDatabaseFactory,
+      maxOpenHandles: config.actorResourceKeyValueMaxOpenHandles,
+    }))
+    this.#secretStoreResource = new SecretStoreResource(new ActorResourceKeyValueStore({
+      dataRoot: config.dataRoot,
+      kind: 'secretStore',
+      databaseFactory: config.actorResourceKeyValueDatabaseFactory,
+      maxOpenHandles: config.actorResourceKeyValueMaxOpenHandles,
+    }))
     this.#dbResource = new DbResource({
       db: config.db,
       dataRoot: config.dataRoot,
@@ -96,7 +90,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
       db: config.db,
       crypto: config.crypto ?? crypto,
       getDefinition: (definitionName) => this.#supervisor.vibecanvasDefMap[definitionName] ?? null,
-      providers: [kvResource, secretStoreResource, this.#dbResource],
+      providers: [this.#kvResource, this.#secretStoreResource, this.#dbResource],
     })
     this.#dbResourceCoordinator = new DbResourceCoordinator({
       db: config.db,
@@ -220,14 +214,16 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   }
 
   async countResourceData(args: { resourceId: string; prefix?: string; search?: string }): Promise<number> {
-    return this.#withReadyDataResource(args.resourceId, async () => (
-      this.#config.db.actorResource.keyValue.count(args)
+    return this.#withReadyDataResource(args.resourceId, (kind) => (
+      kind === 'kv' ? this.#kvResource.countEntries(args) : this.#secretStoreResource.countEntries(args)
     ))
   }
 
   async listResourceData(args: { resourceId: string; prefix?: string; search?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage> {
     return this.#withReadyDataResource(args.resourceId, async (kind) => {
-      const page = await this.#config.db.actorResource.keyValue.list(args)
+      const page = kind === 'kv'
+        ? await this.#kvResource.listEntries(args)
+        : await this.#secretStoreResource.listEntries(args)
       return fnActorResourceDataPage(kind, page)
     })
   }
@@ -238,25 +234,26 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     | null
   > {
     return this.#withReadyDataResource(args.resourceId, async (kind) => {
-      const key = managementDataKey(kind, args.key)
-      const entry = await this.#config.db.actorResource.keyValue.get({ resourceId: args.resourceId, key })
-      if (!entry) return null
       if (kind === 'secretStore') {
+        const entry = await this.#secretStoreResource.getEntryMetadata({ resourceId: args.resourceId, name: args.key })
+        if (!entry) return null
         return {
           kind,
           name: entry.key,
           revision: entry.revision,
-          createdAt: entry.created_at,
-          updatedAt: entry.updated_at,
+          createdAt: entry.createdAt,
+          updatedAt: entry.updatedAt,
         }
       }
+      const entry = await this.#kvResource.getEntry({ resourceId: args.resourceId, key: args.key })
+      if (!entry) return null
       return {
         kind,
         key: entry.key,
         value: entry.value,
         revision: entry.revision,
-        createdAt: entry.created_at,
-        updatedAt: entry.updated_at,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
       }
     })
   }
@@ -268,22 +265,19 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     value: TJson
   }): Promise<TActorResourceDataMutationResult> {
     return this.#withReadyDataResource(args.resourceId, async (kind) => {
-      const key = managementDataKey(kind, args.key)
-      const value = managementDataValue(kind, args.value)
-      let result
-      try {
-        result = await this.#config.db.actorResource.keyValue.compareAndSet({
+      const result = kind === 'kv'
+        ? await this.#kvResource.compareAndSetEntry({
           resourceId: args.resourceId,
-          key,
+          key: args.key,
           expectedRevision: args.expectedRevision,
-          value,
+          value: args.value,
         })
-      } catch (error) {
-        if (error instanceof TypeError) {
-          throw new ActorResourceError('KV_VALUE_INVALID', 'KV value is not JSON-compatible.')
-        }
-        throw error
-      }
+        : await this.#secretStoreResource.compareAndSetEntry({
+          resourceId: args.resourceId,
+          name: args.key,
+          expectedRevision: args.expectedRevision,
+          value: args.value,
+        })
       if (!result.ok) {
         throw new ActorResourceError(
           kind === 'kv' ? 'KV_ENTRY_CONFLICT' : 'SECRET_CONFLICT',
@@ -297,14 +291,21 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   async deleteResourceDataEntry(args: { resourceId: string; key: string; expectedRevision: number }): Promise<{ deleted: true }> {
     return this.#withReadyDataResource(args.resourceId, async (kind) => {
-      const key = managementDataKey(kind, args.key)
-      const result = await this.#config.db.actorResource.keyValue.delete({
-        resourceId: args.resourceId,
-        key,
-        expectedRevision: args.expectedRevision,
-      })
+      const result = kind === 'kv'
+        ? await this.#kvResource.deleteEntry({
+          resourceId: args.resourceId,
+          key: args.key,
+          expectedRevision: args.expectedRevision,
+        })
+        : await this.#secretStoreResource.deleteEntry({
+          resourceId: args.resourceId,
+          name: args.key,
+          expectedRevision: args.expectedRevision,
+        })
       if (!result.deleted) {
-        const current = await this.#config.db.actorResource.keyValue.get({ resourceId: args.resourceId, key })
+        const current = kind === 'kv'
+          ? await this.#kvResource.getEntry({ resourceId: args.resourceId, key: args.key })
+          : await this.#secretStoreResource.getEntryMetadata({ resourceId: args.resourceId, name: args.key })
         throw new ActorResourceError(
           kind === 'kv' ? 'KV_ENTRY_CONFLICT' : 'SECRET_CONFLICT',
           kind === 'kv' ? 'The value changed or was deleted before it could be removed.' : 'The secret changed or was deleted before it could be removed.',
