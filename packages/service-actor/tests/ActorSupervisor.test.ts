@@ -124,6 +124,34 @@ describe("ActorSupervisor", () => {
     await supervisor.closeActors();
   });
 
+  test("definition-only publication reload does not start instances before the transition completes", async () => {
+    const supervisor = createSupervisor(db, notifications);
+    await supervisor.init();
+    await db.canvas.create({
+      id: "publication-canvas",
+      name: "Publication Canvas",
+      automerge_url: "automerge:publication-canvas",
+    });
+    await db.actor.insertInstance({
+      id: "publication-instance",
+      canvas_id: "publication-canvas",
+      element_id: "publication-element",
+      actor_definition_name: "Account Funds Test",
+      filesystem_id: null,
+      display_name: "Publication instance",
+      status: "created",
+      machine_state: "ready",
+      machine_context: { balance: 0 },
+    });
+
+    await supervisor.reloadDefinitionsOnly();
+    expect(supervisor.actorMap["publication-instance"]).toBeUndefined();
+
+    await supervisor.completeDefinitionPublication("Account Funds Test", false);
+    expect(supervisor.actorMap["publication-instance"]).toBeDefined();
+    await supervisor.closeActors();
+  });
+
   test("init boots actor instances from db with saved state and data", async () => {
     await db.canvas.create({
       id: "canvas-1",

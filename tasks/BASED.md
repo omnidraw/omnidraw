@@ -136,7 +136,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B45](b/B45.md) - image paste: pending local preview can persist without media upload
 - [x]: [B46](b/B46.md) - db resource: structured tables should default to SQLite STRICT mode
 - [x]: [B47](b/B47.md) - image delete: remove media_files row
-- [!]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
+- [x]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
+- [ ]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -212,6 +213,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A73](a/A73.md) - startup: create an empty canvas when none exists
 - [x]: [A74](a/A74.md) - actor resources: replace versioned DbResource migrations with coordinated drafts and applies
 - [x]: [A75](a/A75.md) - DB Resource UI
+- [ ]: [A76](a/A76.md) - sidebar: replace Tool Groups with a version-aware Widgets catalog
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

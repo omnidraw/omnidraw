@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import {
   access,
@@ -39,6 +39,14 @@ type TWidgetWorkspaceConfig = {
   configPath: string;
   platform?: NodeJS.Platform;
   createId?: () => string;
+  copyDirectory?: typeof cp;
+};
+
+type TPreviewSnapshot = {
+  name: string;
+  revision: string;
+  rootPath: string;
+  dispose(): Promise<void>;
 };
 
 type TPublishSnapshot = {
@@ -64,10 +72,12 @@ export class WidgetWorkspace {
   readonly chatRoot: string;
   readonly publishedRoot: string;
   readonly draftRoot: string;
+  readonly previewSnapshotRoot: string;
   readonly sdkPackagePath: string;
   readonly installedWidgetsRoot: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
+  readonly #copyDirectory: typeof cp;
   readonly #writeQueues = new Map<string, Promise<unknown>>();
   readonly #activePublishes = new Set<string>();
   readonly #activeInstalledPublishes = new Set<string>();
@@ -77,10 +87,12 @@ export class WidgetWorkspace {
     this.chatRoot = join(this.agentRoot, 'chats');
     this.publishedRoot = join(this.agentRoot, 'widgets', 'published');
     this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
+    this.previewSnapshotRoot = join(this.agentRoot, 'preview-snapshots');
     this.sdkPackagePath = join(this.agentRoot, 'sdk');
     this.installedWidgetsRoot = join(config.configPath, 'widgets');
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
+    this.#copyDirectory = config.copyDirectory ?? cp;
   }
 
   async init(): Promise<void> {
@@ -91,6 +103,7 @@ export class WidgetWorkspace {
       mkdir(this.chatRoot, { recursive: true }),
       mkdir(this.publishedRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),
+      rm(this.previewSnapshotRoot, { recursive: true, force: true }).then(() => mkdir(this.previewSnapshotRoot, { recursive: true })),
     ]);
     await this.reconcilePublishedWidgets();
   }
@@ -617,6 +630,55 @@ export class WidgetWorkspace {
     };
   }
 
+  async createPreviewSnapshot(requestedName: string, expectedRevision: string): Promise<TPreviewSnapshot> {
+    const name = this.#normalizeName(requestedName);
+    const draftPath = join(this.draftRoot, name);
+    const rootPath = join(this.previewSnapshotRoot, `${this.#safeId()}-${name}`);
+    let settled = false;
+    try {
+      await this.#withWidgetWrite(draftPath, async () => {
+        if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+          throw new Error(`Widget draft '${name}' does not exist.`);
+        }
+        const before = await this.#readDraftRevision(draftPath);
+        if (before.value !== expectedRevision) {
+          throw Object.assign(
+            new Error(`Widget draft '${name}' changed. Expected revision '${expectedRevision}', current revision '${before.value}'.`),
+            { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision: before.value },
+          );
+        }
+        await this.#copyWidgetFolder(draftPath, rootPath);
+        const after = await this.#readDraftRevision(draftPath);
+        if (after.value !== before.value) {
+          throw Object.assign(
+            new Error(`Widget draft '${name}' changed while its Preview snapshot was being created.`),
+            { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision: after.value },
+          );
+        }
+        const snapshot = await this.#readDraftRevision(rootPath);
+        if (snapshot.value !== before.value) {
+          throw Object.assign(
+            new Error(`Widget draft '${name}' could not be copied into one coherent Preview snapshot.`),
+            { code: 'WIDGET_DRAFT_SNAPSHOT_MISMATCH', currentRevision: after.value },
+          );
+        }
+      });
+    } catch (error) {
+      await rm(rootPath, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+    return {
+      name,
+      revision: expectedRevision,
+      rootPath,
+      dispose: async () => {
+        if (settled) return;
+        await rm(rootPath, { recursive: true, force: true });
+        settled = true;
+      },
+    };
+  }
+
   async findMountedWidget(chatId: string, requestedName?: string): Promise<TWidgetMount> {
     const mounts = await this.listMounts(chatId);
     if (requestedName) {
@@ -761,42 +823,63 @@ export class WidgetWorkspace {
   }
 
   async #copyWidgetFolder(source: string, target: string): Promise<void> {
-    await cp(source, target, {
+    await this.#copyDirectory(source, target, {
       recursive: true,
       dereference: true,
       filter: (candidate) => {
         const rel = relative(source, candidate);
-        return !rel.split(sep).some((part) => part === 'node_modules' || part === '.git' || part === '.vibecanvas-wizard');
+        return !rel.split(sep).some((part) => (
+          part === 'node_modules'
+          || part === '.git'
+          || part === '.vibecanvas-wizard'
+          || part === '.vibecanvas-validate.tsconfig.json'
+        ));
       },
     });
   }
 
   async #readDraftRevision(root: string): Promise<{ value: string; updatedAtMs: number }> {
-    let fileCount = 0;
-    let totalBytes = 0;
+    const hash = createHash('sha256');
     let updatedAtMicros = 0;
+    const excluded = new Set(['node_modules', '.git', '.vibecanvas-wizard', '.vibecanvas-validate.tsconfig.json']);
+    const updatePath = (kind: 'directory' | 'file' | 'symlink', absolutePath: string) => {
+      const normalized = relative(root, absolutePath).split(sep).join('/');
+      hash.update(kind);
+      hash.update('\0');
+      hash.update(normalized);
+      hash.update('\0');
+    };
 
     const walk = async (dir: string): Promise<void> => {
-      const entries = await readdir(dir, { withFileTypes: true });
+      const entries = (await readdir(dir, { withFileTypes: true }))
+        .filter((entry) => !excluded.has(entry.name))
+        .sort((left, right) => left.name.localeCompare(right.name, 'en-US'));
       for (const entry of entries) {
-        if (entry.isSymbolicLink()) continue;
         const absolutePath = join(dir, entry.name);
+        if (entry.isSymbolicLink()) {
+          updatePath('symlink', absolutePath);
+          hash.update(await readlink(absolutePath));
+          hash.update('\0');
+          continue;
+        }
         if (entry.isDirectory()) {
-          if (entry.name === 'node_modules' || entry.name === '.git') continue;
+          updatePath('directory', absolutePath);
           await walk(absolutePath);
           continue;
         }
-        if (!entry.isFile() || entry.name === '.vibecanvas-validate.tsconfig.json') continue;
-        const details = await stat(absolutePath);
-        fileCount += 1;
-        totalBytes += details.size;
+        if (!entry.isFile()) continue;
+        updatePath('file', absolutePath);
+        const contents = await readFile(absolutePath);
+        hash.update(contents);
+        hash.update('\0');
+        const details = await lstat(absolutePath);
         updatedAtMicros = Math.max(updatedAtMicros, Math.round(details.mtimeMs * 1_000));
       }
     };
 
     await walk(root);
     return {
-      value: `${updatedAtMicros}-${fileCount}-${totalBytes}`,
+      value: hash.digest('hex'),
       updatedAtMs: updatedAtMicros / 1_000,
     };
   }

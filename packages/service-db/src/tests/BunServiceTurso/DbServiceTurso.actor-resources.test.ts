@@ -85,6 +85,48 @@ describe("DbServiceTurso actor resources", () => {
       .rejects.toThrow("RESOURCE_NAME_CONFLICT")
   })
 
+  test("replaces a complete binding set transactionally when a later resource is invalid", async () => {
+    await insertDefinition(db, "Atomic bindings", "atomic-bindings")
+    await db.actorResource.create({ id: "old-kv", kind: "kv", name: "Old KV", status: "ready" })
+    await db.actorResource.create({ id: "old-secret", kind: "secretStore", name: "Old secret", status: "ready" })
+    await db.actorResource.create({ id: "new-kv", kind: "kv", name: "New KV", status: "ready" })
+    await db.actorResource.upsertBinding({
+      definitionName: "Atomic bindings", slotName: "storage", resourceId: "old-kv", allowRead: true, allowWrite: false,
+    })
+    await db.actorResource.upsertBinding({
+      definitionName: "Atomic bindings", slotName: "credentials", resourceId: "old-secret", allowRead: true, allowWrite: true,
+    })
+
+    await expect(db.actorResource.replaceBindings({
+      definitionName: "Atomic bindings",
+      bindings: [
+        { slotName: "storage", resourceId: "new-kv", allowRead: true, allowWrite: true },
+        { slotName: "credentials", resourceId: "missing", allowRead: true, allowWrite: false },
+      ],
+    })).rejects.toThrow("not ready")
+
+    expect(await db.actorResource.listBindingsForDefinition({ definitionName: "Atomic bindings" })).toEqual([
+      expect.objectContaining({ slot_name: "credentials", resource_id: "old-secret", allow_read: true, allow_write: true }),
+      expect.objectContaining({ slot_name: "storage", resource_id: "old-kv", allow_read: true, allow_write: false }),
+    ])
+
+    await db.actorResource.upsertBinding({
+      definitionName: "Atomic bindings", slotName: "storage", resourceId: "new-kv", allowRead: true, allowWrite: false,
+    })
+    await expect(db.actorResource.replaceBindings({
+      definitionName: "Atomic bindings",
+      expectedBindings: [
+        { slotName: "credentials", resourceId: "old-secret", allowRead: true, allowWrite: true },
+        { slotName: "storage", resourceId: "old-kv", allowRead: true, allowWrite: false },
+      ],
+      bindings: [],
+    })).rejects.toMatchObject({ code: "RESOURCE_BINDING_CONFLICT" })
+    expect(await db.actorResource.listBindingsForDefinition({ definitionName: "Atomic bindings" })).toEqual([
+      expect.objectContaining({ slot_name: "credentials", resource_id: "old-secret" }),
+      expect.objectContaining({ slot_name: "storage", resource_id: "new-kv" }),
+    ])
+  })
+
   test("upserts definition-level bindings, blocks bound deletion, and cascades definition deletion", async () => {
     await insertDefinition(db, "Definition A", "definition-a")
     await insertDefinition(db, "Definition B", "definition-b")

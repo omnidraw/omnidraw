@@ -86,13 +86,14 @@ Chat filesystem ownership:
 - `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
 - `widgets/published/<name>` is the canonical published snapshot and is never mounted directly into AI Chat.
 - `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
+- `preview-snapshots/<snapshotId>` is a backend-owned immutable Preview root. Preview owns its snapshot until Actor shutdown and removes it on replacement, reset, close, or build failure.
 - `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
 - Generic file access must enter through a validated `widgets/<name>` mount. Direct access to either shared root is rejected.
 - `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
 
 Protected resource mutations use `src/approval/ApprovalCoordinator.ts`. The coordinator stores immutable exact arguments only in process memory, exposes a secret-safe approval view, rechecks authorization, and claims execution once. Secret-store set values are redacted before Pi event/transcript persistence and handed to the tool through a one-shot process-local vault.
 
-Publishing remains a user-controlled API operation in `AgentService`. Publish snapshots the selected draft into the canonical root while every chat stays mounted to the draft; failure restores the previous canonical and installed snapshots and leaves drafts and mounts intact.
+Publishing remains a user-controlled API operation in `AgentService`. Publish snapshots the selected draft into the canonical root while every chat stays mounted to the draft; failure restores the previous canonical and installed snapshots, complete resource bindings and scopes, and affected definitions/instances. Published slugs are immutable after the first successful publication.
 
 Shared current session-record helpers:
 

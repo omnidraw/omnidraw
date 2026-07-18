@@ -175,7 +175,10 @@ describe('AgentService draft actor runtime', () => {
         reload: async () => {},
         listResources: async () => resources,
         getResource: async (id) => resources.find((resource) => resource.id === id) ?? null,
-        bindResource: async (binding) => { persistedBindings.push(binding); return {}; },
+        listResourceBindingsForDefinition: async () => [],
+        transitionDefinitionPublication: async ({ definitionName, bindings }) => {
+          persistedBindings.push(...bindings.map((binding) => ({ definitionName, ...binding })));
+        },
         callWithDirectResourceBinding: async (call, binding) => {
           directCalls.push({ call, binding });
           return [
@@ -628,8 +631,16 @@ describe('AgentService draft actor runtime', () => {
     const persistedBindings = new Map([['removed-database', 'db-old']]);
     const { service, widgetId, sessionId } = await createServiceFixture({
       reload: async () => {},
-      listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({ slot_name, resource_id })),
-      unbindResource: async ({ slot }) => persistedBindings.delete(slot),
+      listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({
+        slot_name,
+        resource_id,
+        allow_read: true,
+        allow_write: true,
+      })),
+      transitionDefinitionPublication: async ({ bindings }) => {
+        persistedBindings.clear();
+        for (const binding of bindings) persistedBindings.set(binding.slot, binding.resourceId);
+      },
     });
 
     const result = await service.publishChat(widgetId, sessionId);

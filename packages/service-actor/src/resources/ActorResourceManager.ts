@@ -40,6 +40,20 @@ type TBindResourceArgs = {
   readonly scope?: TActorResourceScope;
 };
 
+type TReplaceResourceBindingsArgs = {
+  readonly definitionName: string;
+  readonly expectedBindings?: readonly {
+    readonly slot: string;
+    readonly resourceId: string;
+    readonly scope: TActorResourceScope;
+  }[];
+  readonly bindings: readonly {
+    readonly slot: string;
+    readonly resourceId: string;
+    readonly scope: TActorResourceScope;
+  }[];
+};
+
 type TActorStartReservation = {
   readonly admission: TActorStartAdmission;
   readonly definitionName: string;
@@ -66,6 +80,21 @@ function validateScope(scope: readonly string[], requirement: TActorResourceRequ
     }
   }
   return [...scope] as TActorResourceScope;
+}
+
+function bindingSetMatches(
+  current: readonly TActorResourceBinding[],
+  expected: NonNullable<TReplaceResourceBindingsArgs['expectedBindings']>,
+): boolean {
+  const sorted = [...expected].sort((left, right) => left.slot.localeCompare(right.slot, 'en-US'));
+  return current.length === sorted.length && current.every((binding, index) => {
+    const candidate = sorted[index];
+    return candidate !== undefined
+      && binding.slot_name === candidate.slot
+      && binding.resource_id === candidate.resourceId
+      && binding.allow_read === candidate.scope.includes('read')
+      && binding.allow_write === candidate.scope.includes('write');
+  });
 }
 
 function bindingScope(binding: TActorResourceBinding): TActorResourceScope {
@@ -369,6 +398,99 @@ export class ActorResourceManager {
           .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource binding could not be removed.'); });
       });
     }));
+  }
+
+  async replaceResourceBindings(args: TReplaceResourceBindingsArgs): Promise<TActorResourceBinding[]> {
+    return this.#replaceResourceBindings(args, async () => undefined);
+  }
+
+  async transitionResourceBindings(
+    args: TReplaceResourceBindingsArgs,
+    beforeReplace: () => Promise<void>,
+  ): Promise<TActorResourceBinding[]> {
+    return this.#replaceResourceBindings(args, beforeReplace);
+  }
+
+  async #replaceResourceBindings(
+    args: TReplaceResourceBindingsArgs,
+    beforeReplace: () => Promise<void>,
+  ): Promise<TActorResourceBinding[]> {
+    this.#assertOpen();
+    if (new Set(args.bindings.map((binding) => binding.slot)).size !== args.bindings.length) {
+      throw new ActorResourceError('RESOURCE_SCOPE_INVALID', 'Resource binding slots must be unique.');
+    }
+    if (args.expectedBindings && new Set(args.expectedBindings.map((binding) => binding.slot)).size !== args.expectedBindings.length) {
+      throw new ActorResourceError('RESOURCE_SCOPE_INVALID', 'Expected resource binding slots must be unique.');
+    }
+    const involvedResourceIds = [...new Set([
+      ...args.bindings.map((binding) => binding.resourceId),
+      ...(args.expectedBindings?.map((binding) => binding.resourceId) ?? []),
+    ])];
+    const releaseIntents = involvedResourceIds.map((resourceId) => this.#registerBindingIntent(resourceId));
+    try {
+      return await this.#trackLifecycle(this.#withDefinitionGate(args.definitionName, async () => {
+        await this.#drainDefinitionStarts(args.definitionName);
+        this.#assertOpen();
+        const existing = await this.#db.actorResource.listBindingsForDefinition({ definitionName: args.definitionName });
+        if (args.expectedBindings && !bindingSetMatches(existing, args.expectedBindings)) {
+          throw new ActorResourceError(
+            'RESOURCE_BINDING_CONFLICT',
+            `Resource bindings for definition '${args.definitionName}' changed concurrently.`,
+          );
+        }
+        const resourceIds = [...new Set([
+          ...existing.map((binding) => binding.resource_id),
+          ...involvedResourceIds,
+        ])];
+        return this.#withResourceGates(resourceIds, async () => {
+          await beforeReplace();
+          const validated: {
+            slotName: string;
+            resourceId: string;
+            allowRead: boolean;
+            allowWrite: boolean;
+          }[] = [];
+          for (const binding of args.bindings) {
+            const requirement = this.#requireRequirement(args.definitionName, binding.slot);
+            const resource = await this.#requireResource(binding.resourceId);
+            if (resource.status !== 'ready' || this.#blockedResources.has(resource.id)) this.#throwUnavailable(resource);
+            if (resource.kind !== requirement.kind) {
+              throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Slot "${binding.slot}" requires ${requirement.kind}, not ${resource.kind}.`, {
+                slot: binding.slot,
+                expectedKind: requirement.kind,
+                actualKind: resource.kind,
+              });
+            }
+            const scope = validateScope(binding.scope, requirement);
+            validated.push({
+              slotName: binding.slot,
+              resourceId: binding.resourceId,
+              allowRead: scope.includes('read'),
+              allowWrite: scope.includes('write'),
+            });
+          }
+          for (const resourceId of resourceIds) {
+            if (this.#blockedResources.has(resourceId)) {
+              throw new ActorResourceError('RESOURCE_NOT_READY', `Resource '${resourceId}' is busy with a lifecycle operation.`);
+            }
+          }
+          return this.#db.actorResource.replaceBindings({
+            definitionName: args.definitionName,
+            expectedBindings: args.expectedBindings?.map((binding) => ({
+              slotName: binding.slot,
+              resourceId: binding.resourceId,
+              allowRead: binding.scope.includes('read'),
+              allowWrite: binding.scope.includes('write'),
+            })),
+            bindings: validated,
+          }).catch((error) => {
+            throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource bindings could not be replaced.');
+          });
+        });
+      }));
+    } finally {
+      for (const release of releaseIntents) release();
+    }
   }
 
   async getDefinitionResourceStatus(definitionName: string): Promise<TActorResourceBindingStatus[]> {
@@ -968,4 +1090,4 @@ export class ActorResourceManager {
   }
 }
 
-export type { TBindResourceArgs, TCreateResourceArgs };
+export type { TBindResourceArgs, TCreateResourceArgs, TReplaceResourceBindingsArgs };

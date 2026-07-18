@@ -57,6 +57,22 @@ type TArgsRemoveBinding = {
   slotName: string
 }
 
+type TArgsReplaceBindings = {
+  definitionName: string
+  expectedBindings?: readonly {
+    slotName: string
+    resourceId: string
+    allowRead: boolean
+    allowWrite: boolean
+  }[]
+  bindings: readonly {
+    slotName: string
+    resourceId: string
+    allowRead: boolean
+    allowWrite: boolean
+  }[]
+}
+
 type TArgsKeyValueSet = {
   resourceId: string
   key: string
@@ -278,6 +294,77 @@ export async function txActorResourceRemoveBinding(portal: TPortal, args: TArgsR
     WHERE actor_definition_name = ? AND slot_name = ?
   `)).run(args.definitionName, args.slotName)
   return result.changes > 0
+}
+
+export async function txActorResourceReplaceBindings(
+  portal: TPortal,
+  args: TArgsReplaceBindings,
+): Promise<TActorResourceBinding[]> {
+  if (new Set(args.bindings.map((binding) => binding.slotName)).size !== args.bindings.length) {
+    throw new Error(`Definition '${args.definitionName}' has duplicate resource binding slots.`)
+  }
+  const replace = portal.db.transaction(async () => {
+    if (args.expectedBindings) {
+      const currentRows = await (await portal.db.prepare(`
+        SELECT *
+        FROM actor_resource_bindings
+        WHERE actor_definition_name = ?
+        ORDER BY slot_name ASC
+      `)).all(args.definitionName)
+      const current = currentRows.map(fnParseActorResourceBindingRow)
+      const expected = [...args.expectedBindings].sort((left, right) => left.slotName.localeCompare(right.slotName, "en-US"))
+      const matches = current.length === expected.length && current.every((binding, index) => {
+        const candidate = expected[index]
+        return candidate !== undefined
+          && binding.slot_name === candidate.slotName
+          && binding.resource_id === candidate.resourceId
+          && binding.allow_read === candidate.allowRead
+          && binding.allow_write === candidate.allowWrite
+      })
+      if (!matches) {
+        throw Object.assign(
+          new Error(`Resource bindings for definition '${args.definitionName}' changed concurrently.`),
+          { code: "RESOURCE_BINDING_CONFLICT" },
+        )
+      }
+    }
+    await (await portal.db.prepare(`
+      DELETE FROM actor_resource_bindings
+      WHERE actor_definition_name = ?
+    `)).run(args.definitionName)
+    const insert = await portal.db.prepare(`
+      INSERT INTO actor_resource_bindings (
+        actor_definition_name,
+        slot_name,
+        resource_id,
+        allow_read,
+        allow_write
+      )
+      SELECT ?, ?, id, ?, ?
+      FROM actor_resources
+      WHERE id = ? AND status = 'ready'
+    `)
+    for (const binding of args.bindings) {
+      const result = await insert.run(
+        args.definitionName,
+        binding.slotName,
+        binding.allowRead,
+        binding.allowWrite,
+        binding.resourceId,
+      )
+      if (result.changes === 0) {
+        throw new Error(`Resource '${binding.resourceId}' is not ready for binding.`)
+      }
+    }
+    const rows = await (await portal.db.prepare(`
+      SELECT *
+      FROM actor_resource_bindings
+      WHERE actor_definition_name = ?
+      ORDER BY slot_name ASC
+    `)).all(args.definitionName)
+    return rows.map(fnParseActorResourceBindingRow)
+  })
+  return replace()
 }
 
 export async function txActorResourceKeyValueSet(

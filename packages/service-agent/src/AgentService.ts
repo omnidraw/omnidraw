@@ -14,7 +14,6 @@ import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-binding
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-records';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txNormalizeSessionCwd } from './core/tx.session-cwd';
-import { txReconcileResourceBindings } from './core/tx.reconcile-resource-bindings';
 import { txValidateWidgetFiles } from './core/tx.validate-widget-files';
 import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
@@ -242,7 +241,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
     this.#approvals.close()
-    this.#widgetDrafts.close()
+    await this.#widgetDrafts.close()
     this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
@@ -817,14 +816,61 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         message: bindingPlan.message,
       }
     }
-    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.bindResource) {
+    if (this.#config.actorService && (
+      !this.#config.actorService.transitionDefinitionPublication
+      || !this.#config.actorService.listResourceBindingsForDefinition
+    )) {
       return {
         published: false,
         manifest: manifestResult.manifest,
         destination: null,
-        message: 'Selected resources cannot be persisted by Publish in this host.',
+        message: 'This host cannot coordinate definition, binding, and instance publication atomically.',
       }
     }
+    const previousCanonicalPath = join(this.#workspace.publishedRoot, mount.name)
+    if (await stat(previousCanonicalPath).catch(() => null)) {
+      const previousManifest = await this.#readDraftActorManifest(previousCanonicalPath)
+      if (!previousManifest.ready) {
+        return {
+          published: false,
+          manifest: manifestResult.manifest,
+          destination: null,
+          message: `The existing published manifest for '${mount.name}' is invalid: ${previousManifest.message}`,
+        }
+      }
+      if (previousManifest.manifest.slug !== manifestResult.manifest.slug) {
+        return {
+          published: false,
+          manifest: manifestResult.manifest,
+          destination: null,
+          message: `Published slug '${previousManifest.manifest.slug}' is immutable. Create a new widget to publish as '${manifestResult.manifest.slug}'.`,
+        }
+      }
+    }
+    let previousBindings: Awaited<ReturnType<NonNullable<TActorServiceReloader['listResourceBindingsForDefinition']>>> = []
+    try {
+      previousBindings = await this.#config.actorService?.listResourceBindingsForDefinition?.(manifestResult.manifest.name) ?? []
+    } catch (error) {
+      return {
+        published: false,
+        manifest: manifestResult.manifest,
+        destination: null,
+        message: error instanceof Error ? error.message : String(error),
+      }
+    }
+    const previousBindingSet = previousBindings.map((binding) => ({
+      slot: binding.slot_name,
+      resourceId: binding.resource_id,
+      scope: [
+        ...(binding.allow_read ? ['read' as const] : []),
+        ...(binding.allow_write ? ['write' as const] : []),
+      ],
+    }))
+    const desiredBindingSet = bindingPlan.bindings.map((binding) => ({
+      slot: binding.slot,
+      resourceId: binding.resource.id,
+      scope: binding.scope,
+    }))
     const shouldReloadEditedInstances = editSession !== null
       && editSession.sourceName === manifestResult.manifest.name
       && editSession.sourceSlug === manifestResult.manifest.slug
@@ -842,6 +888,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     let result: Awaited<ReturnType<typeof txPublishWidgetDraft>>
+    let transitionAttempted = false
+    let bindingReplacementCommitted = false
     try {
       publishSnapshot.markInstalledMutation()
       result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative: relativePath, resolve, basename }, {
@@ -861,29 +909,57 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           warnings: result.validation.warnings,
         }
       }
-      await this.#config.actorService?.reload()
-      this.#disposeDraftActor(id, sessionId)
-      await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
-        definitionName: result.manifest.name,
-        bindings: bindingPlan.bindings.map((binding) => ({
-          slot: binding.slot,
-          resourceId: binding.resource.id,
-          scope: binding.scope,
-        })),
-      })
-      if (shouldReloadEditedInstances) {
-        await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
+      if (this.#config.actorService) {
+        transitionAttempted = true
+        try {
+          await this.#config.actorService.transitionDefinitionPublication!({
+            definitionName: result.manifest.name,
+            expectedBindings: previousBindingSet,
+            bindings: desiredBindingSet,
+            reloadInstances: publishSnapshot.wasExisting || shouldReloadEditedInstances,
+          })
+          bindingReplacementCommitted = true
+        } catch (transitionError) {
+          bindingReplacementCommitted = Boolean(
+            typeof transitionError === 'object'
+            && transitionError !== null
+            && (transitionError as { bindingReplacementCommitted?: unknown }).bindingReplacementCommitted,
+          )
+          throw transitionError
+        }
       }
+      this.#disposeDraftActor(id, sessionId)
       if (!result.destination) throw new Error('Widget publish completed without a destination path.')
       await publishSnapshot.commit()
     } catch (error) {
-      await publishSnapshot.rollback().catch(() => undefined)
-      await this.#config.actorService?.reload().catch(() => undefined)
+      const recoveryErrors: string[] = []
+      try {
+        await publishSnapshot.rollback()
+      } catch (recoveryError) {
+        recoveryErrors.push(`filesystem rollback: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`)
+      }
+      if (transitionAttempted && this.#config.actorService?.transitionDefinitionPublication) {
+        try {
+          await this.#config.actorService.transitionDefinitionPublication({
+            definitionName: manifestResult.manifest.name,
+            expectedBindings: bindingReplacementCommitted ? desiredBindingSet : previousBindingSet,
+            bindings: previousBindingSet,
+            reloadInstances: publishSnapshot.wasExisting || shouldReloadEditedInstances,
+          })
+        } catch (recoveryError) {
+          recoveryErrors.push(`actor publication restore: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`)
+        }
+      }
+      const originalMessage = error instanceof Error ? error.message : String(error)
+      const recoveryMessage = recoveryErrors.length > 0
+        ? `Publication failed: ${originalMessage}. Recovery also failed: ${recoveryErrors.join('; ')}`
+        : originalMessage
       return {
         published: false,
         manifest: manifestResult.manifest,
         destination: null,
-        message: error instanceof Error ? error.message : String(error),
+        message: recoveryMessage,
+        errors: recoveryErrors.length > 0 ? [`PUBLISH_RECOVERY_FAILED: ${recoveryErrors.join('; ')}`] : undefined,
       }
     }
 

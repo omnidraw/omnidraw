@@ -195,14 +195,22 @@ describe('widget tools and publish integration', () => {
       dataPath,
       configPath,
       eventPublisherService: new TestEvents(),
-      actorService: { reload: async () => { throw new Error('reload failed'); } },
+      actorService: {
+        reload: async () => {},
+        listResourceBindingsForDefinition: async () => [],
+        transitionDefinitionPublication: async () => { throw new Error('reload failed'); },
+      },
     });
     service.sessionMap.widget = {
       'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },
     };
 
     const result = await service.publishChat('widget', 'chat-a');
-    expect(result).toMatchObject({ published: false, message: 'reload failed' });
+    expect(result).toMatchObject({
+      published: false,
+      message: expect.stringContaining('Recovery also failed: actor publication restore: reload failed'),
+      errors: [expect.stringContaining('PUBLISH_RECOVERY_FAILED')],
+    });
     expect((await stat(join(workspace.draftRoot, 'Rollback Timer'))).isDirectory()).toBe(true);
     await expect(lstat(join(workspace.publishedRoot, 'Rollback Timer'))).rejects.toThrow();
     await expect(lstat(join(configPath, 'widgets', 'rollback-timer'))).rejects.toThrow();
@@ -224,7 +232,8 @@ describe('widget tools and publish integration', () => {
       configPath,
       eventPublisherService: new TestEvents(),
       actorService: {
-        reload: async () => { reloads += 1; },
+        reload: async () => {},
+        transitionDefinitionPublication: async () => { reloads += 1; },
         listResourceBindingsForDefinition: async () => { throw new Error('binding reconciliation failed'); },
       },
     });
@@ -234,7 +243,7 @@ describe('widget tools and publish integration', () => {
 
     const result = await service.publishChat('widget', 'chat-a');
     expect(result).toMatchObject({ published: false, message: 'binding reconciliation failed' });
-    expect(reloads).toBe(2);
+    expect(reloads).toBe(0);
     expect((await stat(join(workspace.draftRoot, 'Binding Rollback'))).isDirectory()).toBe(true);
     await expect(lstat(join(workspace.publishedRoot, 'Binding Rollback'))).rejects.toThrow();
     await expect(lstat(join(configPath, 'widgets', 'binding-rollback'))).rejects.toThrow();
@@ -254,7 +263,11 @@ describe('widget tools and publish integration', () => {
       dataPath,
       configPath,
       eventPublisherService: new TestEvents(),
-      actorService: { reload: async () => {} },
+      actorService: {
+        reload: async () => {},
+        listResourceBindingsForDefinition: async () => [],
+        transitionDefinitionPublication: async () => {},
+      },
     });
     service.sessionMap.widget = {
       'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },
@@ -284,12 +297,21 @@ describe('widget tools and publish integration', () => {
       .find((tool) => tool.name === 'vc_widget_create')!;
     await executeTool(create, { name: 'Atomic Timer', kind: 'widget' });
     let rejectReload = false;
+    let rejectedOnce = false;
     const service = new AgentService({
       cachePath: join(dataPath, 'cache'),
       dataPath,
       configPath,
       eventPublisherService: new TestEvents(),
-      actorService: { reload: async () => { if (rejectReload) throw new Error('reload failed'); } },
+      actorService: {
+        reload: async () => {},
+        listResourceBindingsForDefinition: async () => [],
+        transitionDefinitionPublication: async () => {
+        if (rejectReload && !rejectedOnce) {
+          rejectedOnce = true;
+          throw new Error('reload failed');
+        }
+      } },
     });
     service.sessionMap.widget = {
       'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },

@@ -8,7 +8,7 @@ import { ActorSupervisor } from './ActorSupervisor';
 import { txGetWidgetCode } from './core/tx.actor-definitions';
 import type { TVibecanvasJson } from './core/types';
 import type { Actor, TActorEvent } from './Actor';
-import { ActorResourceManager, type TBindResourceArgs, type TCreateResourceArgs } from './resources/ActorResourceManager';
+import { ActorResourceManager, type TBindResourceArgs, type TCreateResourceArgs, type TReplaceResourceBindingsArgs } from './resources/ActorResourceManager';
 import type { TActorResourceKind, TActorResourceStatus, TJson } from '@vibecanvas/service-db/model';
 import { DbResource, type TDatabaseFactory } from './resources/DbResource';
 import { KvResource } from './resources/KvResource';
@@ -53,6 +53,7 @@ interface IPublicMethods {
   getWidgetCode(defId: string): Promise<{content: string, path: string}[] | null>
   reload(): Promise<void>
   reloadDefinitionInstances(defName: string): Promise<void>
+  transitionDefinitionPublication(args: TReplaceResourceBindingsArgs & { reloadInstances: boolean }): Promise<void>
   callWithDirectResourceBinding(call: TActorResourceCall, binding: TActorResourceDirectBinding): Promise<unknown>
 }
 
@@ -131,6 +132,24 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   async reloadDefinitionInstances(defName: string): Promise<void> {
     await this.#supervisor.reloadDefinitionInstances(defName)
+  }
+
+  async transitionDefinitionPublication(
+    args: TReplaceResourceBindingsArgs & { reloadInstances: boolean },
+  ): Promise<void> {
+    let bindingReplacementCommitted = false
+    try {
+      await this.#resourceManager.transitionResourceBindings(args, async () => {
+        await this.#supervisor.closeDefinitionActors(args.definitionName)
+        await this.#supervisor.reloadDefinitionsOnly()
+      })
+      bindingReplacementCommitted = true
+      await this.#supervisor.completeDefinitionPublication(args.definitionName, args.reloadInstances)
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error))
+      Object.assign(failure, { bindingReplacementCommitted })
+      throw failure
+    }
   }
 
   async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {
@@ -306,6 +325,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
 
   unbindResource(args: { definitionName: string; slot: string }) {
     return this.#resourceManager.unbindResource(args)
+  }
+
+  replaceResourceBindings(args: TReplaceResourceBindingsArgs) {
+    return this.#resourceManager.replaceResourceBindings(args)
   }
 
   dbResourceImpact(resourceId: string) {

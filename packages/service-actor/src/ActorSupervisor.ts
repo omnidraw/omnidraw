@@ -79,6 +79,12 @@ export class ActorSupervisor {
   }
 
   async reload() {
+    await this.reloadDefinitionsOnly()
+    await this.loadMissingActorInstances()
+    await this.reloadConnections()
+  }
+
+  async reloadDefinitionsOnly() {
     await this.reloadDefinitions()
     const definitionSyncErrors = await txSyncDbActorDefinitions({
       crypto,
@@ -94,7 +100,24 @@ export class ActorSupervisor {
         description: error instanceof Error ? error.message : String(error),
       })
     })
-    await this.loadMissingActorInstances()
+  }
+
+  async closeDefinitionActors(defName: string): Promise<void> {
+    const instances = await this.#config.db.actor.listInstances()
+    const matching = instances.filter((instance) => instance.actor_definition_name === defName)
+    for (const instance of matching) {
+      const actor = this.actorMap[instance.id]
+      if (!actor) continue
+      if (!await actor.closeAndWait()) {
+        throw new Error(`Actor instance '${instance.id}' did not stop for definition publication.`)
+      }
+      delete this.actorMap[instance.id]
+    }
+  }
+
+  async completeDefinitionPublication(defName: string, reloadInstances: boolean): Promise<void> {
+    if (reloadInstances) await this.reloadDefinitionInstances(defName)
+    else await this.loadMissingActorInstances()
     await this.reloadConnections()
   }
 

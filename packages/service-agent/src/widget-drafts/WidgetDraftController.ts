@@ -7,7 +7,6 @@ import { execFile } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
-import { txReconcileResourceBindings } from '../core/tx.reconcile-resource-bindings';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
 import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from '../tools/resource-bindings';
 import type { TActorServiceReloader, TValidationResult, TWidgetDraftChange } from '../tools/types';
@@ -36,6 +35,7 @@ type TPreviewEntry = {
   revision: string;
   manifest: TVibecanvasJson;
   sources: Record<string, string>;
+  snapshot: Awaited<ReturnType<WidgetWorkspace['createPreviewSnapshot']>>;
   unlisten: () => void;
 };
 
@@ -47,13 +47,18 @@ export class WidgetDraftController {
   readonly #config: TWidgetDraftControllerConfig;
   readonly #validationByDraft = new Map<string, TValidationCacheEntry>();
   readonly #previews = new Map<string, TPreviewEntry>();
+  readonly #previewBuildQueues = new Map<string, Promise<unknown>>();
+  readonly #previewBuilds = new Set<Promise<unknown>>();
+  #closing = false;
 
   constructor(config: TWidgetDraftControllerConfig) {
     this.#config = config;
   }
 
-  close(): void {
-    for (const name of this.#previews.keys()) this.#disposePreview(name);
+  async close(): Promise<void> {
+    this.#closing = true;
+    await Promise.allSettled([...this.#previewBuilds]);
+    await Promise.all([...this.#previews.keys()].map((name) => this.#disposePreview(name)));
   }
 
   async handleToolChange(change: TWidgetDraftChange): Promise<void> {
@@ -127,76 +132,104 @@ export class WidgetDraftController {
   async buildPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
     const draft = await this.#config.workspace.getDraft(name);
     if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+    if (this.#closing) {
+      return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
+    }
+    return this.#queuePreviewBuild(draft.name, () => this.#buildPreview(draft.name, expectedRevision));
+  }
+
+  async #buildPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
     if (draft.revision !== expectedRevision) {
       return this.#previewFailure(draft.name, 'stale-revision', 'The widget draft changed before Preview opened.', draft, expectedRevision);
     }
-
-    const summary = await this.validate(draft.name, expectedRevision);
-    const current = await this.#config.workspace.getDraft(draft.name);
-    if (!summary || !current) return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
-    if (current.revision !== expectedRevision) {
-      return this.#previewFailure(draft.name, 'stale-revision', 'The widget draft changed while Preview was building.', current, expectedRevision);
-    }
-    if (summary.validation.status !== 'valid') {
-      return this.#previewFailure(
-        draft.name,
-        'validation-failed',
-        'The widget draft must pass validation before it can be previewed.',
-        current,
-        expectedRevision,
-        summary.validation.errors,
-      );
-    }
-
-    const manifestResult = await this.#readManifest(current.draftPath);
-    if (!manifestResult.ok) {
-      return this.#previewFailure(draft.name, 'manifest-invalid', manifestResult.message, current, expectedRevision, [manifestResult.message]);
-    }
-    const sources = await this.#readWidgetSourceMap(current.draftPath, manifestResult.manifest.widget.relWidgetDir);
-    if (!sources['main.ts'] && !sources['main.js']) {
-      return this.#previewFailure(
-        draft.name,
-        'source-missing',
-        `Preview requires main.ts or main.js inside ${manifestResult.manifest.widget.relWidgetDir}.`,
-        current,
-        expectedRevision,
-      );
-    }
-
-    const bindingPlan = await this.#resourceBindingPlan(manifestResult.manifest);
-    if (!bindingPlan.ok) {
-      return this.#previewFailure(draft.name, 'resource-binding-invalid', bindingPlan.message, current, expectedRevision, [bindingPlan.message]);
-    }
-
-    this.#disposePreview(draft.name);
-    const directBindings = new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]));
-    const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
-      ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
-          const binding = directBindings.get(call.slot);
-          const requirement = manifestResult.manifest.actor.resources?.[call.slot];
-          if (!binding || !requirement) {
-            throw new ActorResourceError('RESOURCE_NOT_BOUND', `Preview resource slot '${call.slot}' is not bound.`);
-          }
-          return this.#config.actorService!.callWithDirectResourceBinding!(call, {
-            resourceId: binding.resource.id,
-            requirement,
-            scope: binding.scope,
-          });
-        }
-      : undefined;
-
+    await this.#disposePreview(draft.name);
+    let ownedSnapshot: Awaited<ReturnType<WidgetWorkspace['createPreviewSnapshot']>> | undefined;
     try {
+      ownedSnapshot = await this.#config.workspace.createPreviewSnapshot(draft.name, expectedRevision);
+      const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
+        cwd: ownedSnapshot.rootPath,
+        sdkActorTypePath: join(this.#config.workspace.sdkPackagePath, 'src', 'actor.ts'),
+      });
+      let current = await this.#config.workspace.getDraft(draft.name);
+      if (!current) {
+        await ownedSnapshot.dispose();
+        return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
+      }
+      if (current.revision === expectedRevision) {
+        this.#validationByDraft.set(draft.name, {
+          revision: expectedRevision,
+          ok: validation.ok,
+          errors: validation.errors.slice(0, 40),
+          warnings: validation.warnings.slice(0, 40),
+        });
+        this.#config.eventPublisher.publishAgentEvent({
+          kind: 'widget-draft',
+          type: 'validated',
+          draftId: current.name,
+          revision: current.revision,
+        });
+      }
+      if (!validation.ok) {
+        await ownedSnapshot.dispose();
+        return this.#previewFailure(
+          draft.name,
+          'validation-failed',
+          'The widget draft must pass validation before it can be previewed.',
+          current,
+          expectedRevision,
+          validation.errors,
+        );
+      }
+      const manifestResult = await this.#readManifest(ownedSnapshot.rootPath);
+      if (!manifestResult.ok) {
+        await ownedSnapshot.dispose();
+        return this.#previewFailure(draft.name, 'manifest-invalid', manifestResult.message, current, expectedRevision, [manifestResult.message]);
+      }
+      const sources = await this.#readWidgetSourceMap(ownedSnapshot.rootPath, manifestResult.manifest.widget.relWidgetDir);
+      if (!sources['main.ts'] && !sources['main.js']) {
+        await ownedSnapshot.dispose();
+        return this.#previewFailure(
+          draft.name,
+          'source-missing',
+          `Preview requires main.ts or main.js inside ${manifestResult.manifest.widget.relWidgetDir}.`,
+          current,
+          expectedRevision,
+        );
+      }
+      const bindingPlan = await this.#resourceBindingPlan(manifestResult.manifest);
+      if (!bindingPlan.ok) {
+        await ownedSnapshot.dispose();
+        return this.#previewFailure(draft.name, 'resource-binding-invalid', bindingPlan.message, current, expectedRevision, [bindingPlan.message]);
+      }
+      const directBindings = new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]));
+      const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
+        ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
+            const binding = directBindings.get(call.slot);
+            const requirement = manifestResult.manifest.actor.resources?.[call.slot];
+            if (!binding || !requirement) {
+              throw new ActorResourceError('RESOURCE_NOT_BOUND', `Preview resource slot '${call.slot}' is not bound.`);
+            }
+            return this.#config.actorService!.callWithDirectResourceBinding!(call, {
+              resourceId: binding.resource.id,
+              requirement,
+              scope: binding.scope,
+            });
+          }
+        : undefined;
       const actor = new Actor({
         id: `preview:${draft.name}`,
         vsJson: manifestResult.manifest,
-        rootDir: current.draftPath,
+        rootDir: ownedSnapshot.rootPath,
         resourceGateway,
       });
       const preview: TPreviewEntry = {
         actor,
-        revision: current.revision,
+        revision: expectedRevision,
         manifest: manifestResult.manifest,
         sources,
+        snapshot: ownedSnapshot,
         unlisten: () => undefined,
       };
       preview.unlisten = actor.listen(() => {
@@ -209,11 +242,27 @@ export class WidgetDraftController {
       });
       this.#previews.set(draft.name, preview);
       actor.start();
+      await actor.waitUntilReady();
+      current = await this.#config.workspace.getDraft(draft.name);
+      if (!current) {
+        await this.#disposePreview(draft.name);
+        return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
+      }
       return this.#previewReady(current, preview);
     } catch (error) {
-      this.#disposePreview(draft.name);
+      await this.#disposePreview(draft.name);
+      await ownedSnapshot?.dispose().catch(() => undefined);
       const message = error instanceof Error ? error.message : String(error);
-      return this.#previewFailure(draft.name, 'build-failed', message, current, expectedRevision, [message]);
+      const latest = await this.#config.workspace.getDraft(draft.name);
+      const stale = typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'WIDGET_DRAFT_REVISION_CHANGED';
+      return this.#previewFailure(
+        draft.name,
+        stale ? 'stale-revision' : 'build-failed',
+        message,
+        latest ?? undefined,
+        expectedRevision,
+        [message],
+      );
     }
   }
 
@@ -284,12 +333,40 @@ export class WidgetDraftController {
     if (!bindingPlan.ok) {
       return this.#publishFailure(draft.name, 'publication-failed', bindingPlan.message, current.revision, [bindingPlan.message]);
     }
-    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.bindResource) {
-      return this.#publishFailure(draft.name, 'publication-failed', 'Selected resources cannot be persisted by Publish in this host.', current.revision);
+    if (this.#config.actorService && (
+      !this.#config.actorService.transitionDefinitionPublication
+      || !this.#config.actorService.listResourceBindingsForDefinition
+    )) {
+      return this.#publishFailure(
+        draft.name,
+        'publication-failed',
+        'This host cannot coordinate definition, binding, and instance publication atomically.',
+        current.revision,
+      );
     }
 
     const finalWidgetsDir = join(this.#config.configPath, 'widgets');
     const installedPath = join(finalWidgetsDir, manifestResult.manifest.slug);
+    const canonicalEntry = await stat(join(this.#config.workspace.publishedRoot, current.name)).catch(() => null);
+    if (canonicalEntry) {
+      const previousManifest = await this.#readManifest(join(this.#config.workspace.publishedRoot, current.name));
+      if (!previousManifest.ok) {
+        return this.#publishFailure(
+          draft.name,
+          'publication-failed',
+          `The existing published manifest for '${current.name}' is invalid: ${previousManifest.message}`,
+          current.revision,
+        );
+      }
+      if (previousManifest.manifest.slug !== manifestResult.manifest.slug) {
+        return this.#publishFailure(
+          draft.name,
+          'publication-failed',
+          `Published slug '${previousManifest.manifest.slug}' is immutable. Create a new widget to publish as '${manifestResult.manifest.slug}'.`,
+          current.revision,
+        );
+      }
+    }
     if (await stat(installedPath).catch(() => null)) {
       const publishedManifest = await this.#readManifest(join(this.#config.workspace.publishedRoot, current.name));
       if (!publishedManifest.ok || publishedManifest.manifest.slug !== manifestResult.manifest.slug) {
@@ -301,7 +378,29 @@ export class WidgetDraftController {
         );
       }
     }
+    let previousBindings: Awaited<ReturnType<NonNullable<TActorServiceReloader['listResourceBindingsForDefinition']>>> = [];
+    try {
+      previousBindings = await this.#config.actorService?.listResourceBindingsForDefinition?.(manifestResult.manifest.name) ?? [];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return this.#publishFailure(draft.name, 'publication-failed', message, current.revision, [message]);
+    }
+    const previousBindingSet = previousBindings.map((binding) => ({
+      slot: binding.slot_name,
+      resourceId: binding.resource_id,
+      scope: [
+        ...(binding.allow_read ? ['read' as const] : []),
+        ...(binding.allow_write ? ['write' as const] : []),
+      ],
+    }));
+    const desiredBindingSet = bindingPlan.bindings.map((binding) => ({
+      slot: binding.slot,
+      resourceId: binding.resource.id,
+      scope: binding.scope,
+    }));
     let snapshot: Awaited<ReturnType<WidgetWorkspace['beginDraftPublish']>> | undefined;
+    let transitionAttempted = false;
+    let bindingReplacementCommitted = false;
     try {
       snapshot = await this.#config.workspace.beginDraftPublish(current.name, manifestResult.manifest.slug, expectedRevision);
       snapshot.markInstalledMutation();
@@ -323,16 +422,25 @@ export class WidgetDraftController {
         );
       }
 
-      await this.#config.actorService?.reload();
-      await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
-        definitionName: result.manifest.name,
-        bindings: bindingPlan.bindings.map((binding) => ({
-          slot: binding.slot,
-          resourceId: binding.resource.id,
-          scope: binding.scope,
-        })),
-      });
-      if (snapshot.wasExisting) await this.#config.actorService?.reloadDefinitionInstances?.(result.manifest.name);
+      if (this.#config.actorService) {
+        transitionAttempted = true;
+        try {
+          await this.#config.actorService.transitionDefinitionPublication!({
+            definitionName: result.manifest.name,
+            expectedBindings: previousBindingSet,
+            bindings: desiredBindingSet,
+            reloadInstances: snapshot.wasExisting,
+          });
+          bindingReplacementCommitted = true;
+        } catch (transitionError) {
+          bindingReplacementCommitted = Boolean(
+            typeof transitionError === 'object'
+            && transitionError !== null
+            && (transitionError as { bindingReplacementCommitted?: unknown }).bindingReplacementCommitted,
+          );
+          throw transitionError;
+        }
+      }
       await snapshot.commit();
 
       this.#config.eventPublisher.publishAgentEvent({
@@ -349,10 +457,36 @@ export class WidgetDraftController {
         manifest: result.manifest,
       };
     } catch (error) {
-      await snapshot?.rollback().catch(() => undefined);
-      await this.#config.actorService?.reload().catch(() => undefined);
+      const recoveryErrors: string[] = [];
+      try {
+        await snapshot?.rollback();
+      } catch (recoveryError) {
+        recoveryErrors.push(`filesystem rollback: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+      }
+      if (transitionAttempted && this.#config.actorService?.transitionDefinitionPublication) {
+        try {
+          await this.#config.actorService.transitionDefinitionPublication({
+            definitionName: manifestResult.manifest.name,
+            expectedBindings: bindingReplacementCommitted ? desiredBindingSet : previousBindingSet,
+            bindings: previousBindingSet,
+            reloadInstances: snapshot?.wasExisting ?? false,
+          });
+        } catch (recoveryError) {
+          recoveryErrors.push(`actor publication restore: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+        }
+      }
       const message = error instanceof Error ? error.message : String(error);
       const latest = await this.#config.workspace.getDraft(draft.name);
+      if (recoveryErrors.length > 0) {
+        const recoveryMessage = `Publication failed: ${message}. Recovery also failed: ${recoveryErrors.join('; ')}`;
+        return this.#publishFailure(
+          draft.name,
+          'recovery-failed',
+          recoveryMessage,
+          latest?.revision,
+          [`PUBLISH_RECOVERY_FAILED: ${recoveryErrors.join('; ')}`],
+        );
+      }
       const stale = latest !== null && latest.revision !== expectedRevision;
       return this.#publishFailure(
         draft.name,
@@ -503,11 +637,27 @@ export class WidgetDraftController {
     return { state: actor.getState(), context: actor.getData() };
   }
 
-  #disposePreview(name: string): void {
+  async #queuePreviewBuild<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.#previewBuildQueues.get(name) ?? Promise.resolve();
+    const running = previous.catch(() => undefined).then(operation);
+    this.#previewBuildQueues.set(name, running);
+    this.#previewBuilds.add(running);
+    try {
+      return await running;
+    } finally {
+      this.#previewBuilds.delete(running);
+      if (this.#previewBuildQueues.get(name) === running) this.#previewBuildQueues.delete(name);
+    }
+  }
+
+  async #disposePreview(name: string): Promise<void> {
     const preview = this.#previews.get(name);
     if (!preview) return;
     preview.unlisten();
-    preview.actor.close();
+    if (!await preview.actor.closeAndWait()) {
+      throw new Error(`Preview Actor '${name}' did not stop; its snapshot was retained.`);
+    }
+    await preview.snapshot.dispose();
     this.#previews.delete(name);
   }
 }

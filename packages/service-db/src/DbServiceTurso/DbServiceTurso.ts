@@ -14,7 +14,7 @@ import { fxKeyValueGet } from "./fx.keyValue";
 import { fxToolGroupGetByName, fxToolGroupListAll } from "./fx.tool-group";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceHealth, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
-import { txActorResourceAuditNames, txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceKeyValueCompareAndSet, txActorResourceKeyValueDelete, txActorResourceKeyValueSet, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
+import { txActorResourceAuditNames, txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceKeyValueCompareAndSet, txActorResourceKeyValueDelete, txActorResourceKeyValueSet, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceReplaceBindings, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyInstanceResultUpsert, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
@@ -203,6 +203,21 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       allowWrite: boolean;
     }) => this.#serializeActorWrite(() => txActorResourceUpsertBinding(this, args)),
     removeBinding: (args: { definitionName: string; slotName: string }) => this.#serializeActorWrite(() => txActorResourceRemoveBinding(this, args)),
+    replaceBindings: (args: {
+      definitionName: string;
+      expectedBindings?: readonly {
+        slotName: string;
+        resourceId: string;
+        allowRead: boolean;
+        allowWrite: boolean;
+      }[];
+      bindings: readonly {
+        slotName: string;
+        resourceId: string;
+        allowRead: boolean;
+        allowWrite: boolean;
+      }[];
+    }) => this.#serializeActorWrite(() => txActorResourceReplaceBindings(this, args)),
     keyValue: {
       get: (args: { resourceId: string; key: string }) => fxActorResourceKeyValueGet(this, args),
       has: (args: { resourceId: string; key: string }) => fxActorResourceKeyValueHas(this, args),
