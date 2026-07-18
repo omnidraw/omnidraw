@@ -211,7 +211,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A73](a/A73.md) - startup: create an empty canvas when none exists
 - [x]: [A74](a/A74.md) - actor resources: replace versioned DbResource migrations with coordinated drafts and applies
 - [x]: [A75](a/A75.md) - DB Resource UI
-- [ ]: [A76](a/A76.md) - sidebar: replace Tool Groups with a version-aware Widgets catalog
+- [x]: [A76](a/A76.md) - sidebar: replace Tool Groups with a version-aware Widgets catalog
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

@@ -3,6 +3,22 @@ import { RPCLink } from "@orpc/client/websocket";
 import { oc, populateContractRouterPaths, type ContractRouterClient } from "@orpc/contract";
 import { actorsContract } from "@vibecanvas/api-actors/contract";
 import { agentContract } from "@vibecanvas/api-agent/contract";
+export type {
+  TWidgetCatalog,
+  TWidgetCatalogEntry,
+  TWidgetCatalogGroup,
+  TWidgetCatalogProblem,
+  TWidgetDeleteResult,
+  TWidgetDetail,
+  TWidgetDraftMetadataPatch,
+  TWidgetDraftMetadataPatchResult,
+  TWidgetDraftToolPatch,
+  TWidgetFileEntry,
+  TWidgetFilePreview,
+  TWidgetRelation,
+  TWidgetSource,
+  TWidgetVariantSummary,
+} from "@vibecanvas/api-agent/contract";
 import { canvasContract } from "@vibecanvas/api-canvas/contract";
 import { dbContract } from "@vibecanvas/api-db/contract";
 import { fileContract } from "@vibecanvas/api-file/contract";

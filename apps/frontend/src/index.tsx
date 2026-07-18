@@ -11,6 +11,7 @@ import App from "./App";
 import CanvasPage from "./pages/canvas";
 import WelcomePage from "./pages/welcome";
 import ResourcePage from "./pages/resource";
+import WidgetPage from "./pages/widget";
 import { store } from "./store";
 import routeStateStyles from "./styles/route-state.module.css";
 
@@ -46,6 +47,7 @@ render(
       <Route path="/" component={WelcomePage} />
       <Route path="/c/:id" component={CanvasRoute} />
       <Route path="/resources/:id" component={ResourcePage} />
+      <Route path="/widgets/:source/:name" component={WidgetPage} />
     </Router>
   ),
   root!,

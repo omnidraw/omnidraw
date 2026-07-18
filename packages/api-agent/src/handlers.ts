@@ -40,6 +40,19 @@ import { apiWidgetPublishPublish } from './api.widgetPublish.publish';
 import { apiApprovalGet } from './api.approval.get';
 import { apiApprovalList } from './api.approval.list';
 import { apiApprovalResolve } from './api.approval.resolve';
+import {
+    apiWidgetsCatalog,
+    apiWidgetsDelete,
+    apiWidgetsDetail,
+    apiWidgetsEnsureDraft,
+    apiWidgetsFile,
+    apiWidgetsFiles,
+    apiWidgetsGroupsCreate,
+    apiWidgetsGroupsRemove,
+    apiWidgetsGroupsUpdate,
+    apiWidgetsPatchDraftTool,
+    apiWidgetsPatchDraftMetadata,
+} from './api.widgets';
 
 const agentHandlers = {
     settings: {
@@ -102,6 +115,21 @@ const agentHandlers = {
     },
     widgetPublish: {
         publish: apiWidgetPublishPublish,
+    },
+    widgets: {
+        catalog: apiWidgetsCatalog,
+        detail: apiWidgetsDetail,
+        files: apiWidgetsFiles,
+        file: apiWidgetsFile,
+        ensureDraft: apiWidgetsEnsureDraft,
+        patchDraftTool: apiWidgetsPatchDraftTool,
+        patchDraftMetadata: apiWidgetsPatchDraftMetadata,
+        delete: apiWidgetsDelete,
+        groups: {
+            create: apiWidgetsGroupsCreate,
+            update: apiWidgetsGroupsUpdate,
+            remove: apiWidgetsGroupsRemove,
+        },
     },
     approval: {
         list: apiApprovalList,

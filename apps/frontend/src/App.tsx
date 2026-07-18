@@ -2,6 +2,7 @@ import { useLocation, useNavigate, type RouteSectionProps } from "@solidjs/route
 import { onMount } from "solid-js";
 import { showErrorToast, Toaster } from "./components/ui/Toast";
 import { Sidebar } from "./feature/sidebar";
+import { WidgetCatalogProvider } from "./feature/widgets/WidgetCatalogProvider";
 import { orpcWebsocketService } from "./services/orpc-websocket";
 import { createStartupCanvasBootstrap } from "./startup-canvas";
 import { setStore, store } from "./store";
@@ -30,16 +31,18 @@ const App = (props: RouteSectionProps) => {
   });
 
   return (
-    <div class={styles.shell}>
-      <Sidebar
-        visible={sidebarVisible()}
-        onToggleSidebar={() => setStore("sidebarVisible", (visible) => !visible)}
-      />
-      <main id="main" class={styles.main}>
-        {props.children}
-      </main>
-      <Toaster />
-    </div>
+    <WidgetCatalogProvider>
+      <div class={styles.shell}>
+        <Sidebar
+          visible={sidebarVisible()}
+          onToggleSidebar={() => setStore("sidebarVisible", (visible) => !visible)}
+        />
+        <main id="main" class={styles.main}>
+          {props.children}
+        </main>
+        <Toaster />
+      </div>
+    </WidgetCatalogProvider>
   );
 };
 

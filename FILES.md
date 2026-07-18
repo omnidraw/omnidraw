@@ -23,8 +23,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -97,6 +99,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/feature/sidebar/components/SidebarItem.tsx](apps/frontend/src/feature/sidebar/components/SidebarItem.tsx) |  |
 | [apps/frontend/src/feature/sidebar/components/ToolGroupDialog.tsx](apps/frontend/src/feature/sidebar/components/ToolGroupDialog.tsx) |  |
 | [apps/frontend/src/feature/sidebar/index.ts](apps/frontend/src/feature/sidebar/index.ts) |  |
+| [apps/frontend/src/feature/widgets/components/WidgetIcon.tsx](apps/frontend/src/feature/widgets/components/WidgetIcon.tsx) |  |
+| [apps/frontend/src/feature/widgets/components/WidgetsSidebarSection.module.css](apps/frontend/src/feature/widgets/components/WidgetsSidebarSection.module.css) |  |
+| [apps/frontend/src/feature/widgets/components/WidgetsSidebarSection.tsx](apps/frontend/src/feature/widgets/components/WidgetsSidebarSection.tsx) |  |
+| [apps/frontend/src/feature/widgets/fn.widget-catalog.ts](apps/frontend/src/feature/widgets/fn.widget-catalog.ts) |  |
+| [apps/frontend/src/feature/widgets/fn.widget-manifest.ts](apps/frontend/src/feature/widgets/fn.widget-manifest.ts) |  |
+| [apps/frontend/src/feature/widgets/types.ts](apps/frontend/src/feature/widgets/types.ts) |  |
+| [apps/frontend/src/feature/widgets/WidgetCatalogProvider.tsx](apps/frontend/src/feature/widgets/WidgetCatalogProvider.tsx) |  |
+| [apps/frontend/src/feature/widgets/WidgetDetailPage.module.css](apps/frontend/src/feature/widgets/WidgetDetailPage.module.css) |  |
+| [apps/frontend/src/feature/widgets/WidgetDetailPage.tsx](apps/frontend/src/feature/widgets/WidgetDetailPage.tsx) |  |
 | [apps/frontend/src/fn.startup-canvas-navigation.ts](apps/frontend/src/fn.startup-canvas-navigation.ts) |  |
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
 | [apps/frontend/src/index.tsx](apps/frontend/src/index.tsx) |  |
@@ -105,6 +116,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/pages/resource.module.css](apps/frontend/src/pages/resource.module.css) |  |
 | [apps/frontend/src/pages/resource.tsx](apps/frontend/src/pages/resource.tsx) |  |
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
+| [apps/frontend/src/pages/widget.tsx](apps/frontend/src/pages/widget.tsx) |  |
 | [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | Automerge Client Service |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
@@ -136,6 +148,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
 | [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
 | [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
+| [apps/web/.astro/dev.log](apps/web/.astro/dev.log) |  |
 | [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
 | [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
@@ -256,8 +269,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.widgetPreview.reset.ts](packages/api-agent/src/api.widgetPreview.reset.ts) |  |
 | [packages/api-agent/src/api.widgetPreview.send.ts](packages/api-agent/src/api.widgetPreview.send.ts) |  |
 | [packages/api-agent/src/api.widgetPublish.publish.ts](packages/api-agent/src/api.widgetPublish.publish.ts) |  |
+| [packages/api-agent/src/api.widgets.ts](packages/api-agent/src/api.widgets.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
+| [packages/api-agent/src/fn.widget-groups.ts](packages/api-agent/src/fn.widget-groups.ts) |  |
 | [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
 | [packages/api-agent/src/orpc.ts](packages/api-agent/src/orpc.ts) |  |
 | [packages/api-agent/src/types.ts](packages/api-agent/src/types.ts) |  |
@@ -719,6 +734,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/approval/types.ts](packages/service-agent/src/approval/types.ts) |  |
 | [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
 | [packages/service-agent/src/core/fn.draft-resource-bindings.ts](packages/service-agent/src/core/fn.draft-resource-bindings.ts) |  |
+| [packages/service-agent/src/core/fn.patch-draft-manifest.ts](packages/service-agent/src/core/fn.patch-draft-manifest.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
 | [packages/service-agent/src/core/fx.session-records.ts](packages/service-agent/src/core/fx.session-records.ts) |  |
@@ -765,6 +781,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
 | [packages/service-agent/src/widget-drafts/types.ts](packages/service-agent/src/widget-drafts/types.ts) |  |
 | [packages/service-agent/src/widget-drafts/WidgetDraftController.ts](packages/service-agent/src/widget-drafts/WidgetDraftController.ts) |  |
+| [packages/service-agent/src/widget-management/CONSTANTS.ts](packages/service-agent/src/widget-management/CONSTANTS.ts) |  |
+| [packages/service-agent/src/widget-management/fn.widget-management.ts](packages/service-agent/src/widget-management/fn.widget-management.ts) |  |
+| [packages/service-agent/src/widget-management/types.ts](packages/service-agent/src/widget-management/types.ts) |  |
+| [packages/service-agent/src/widget-management/WidgetManagement.ts](packages/service-agent/src/widget-management/WidgetManagement.ts) |  |
 | [packages/service-agent/src/workspace/CONSTANTS.ts](packages/service-agent/src/workspace/CONSTANTS.ts) |  |
 | [packages/service-agent/src/workspace/fn.glob.ts](packages/service-agent/src/workspace/fn.glob.ts) |  |
 | [packages/service-agent/src/workspace/fn.names.ts](packages/service-agent/src/workspace/fn.names.ts) |  |
@@ -835,6 +855,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

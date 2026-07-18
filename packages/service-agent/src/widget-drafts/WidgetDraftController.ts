@@ -56,6 +56,11 @@ export class WidgetDraftController {
     for (const name of this.#previews.keys()) this.#disposePreview(name);
   }
 
+  forget(name: string): void {
+    this.#disposePreview(name);
+    this.#validationByDraft.delete(name);
+  }
+
   async handleToolChange(change: TWidgetDraftChange): Promise<void> {
     const draft = await this.#config.workspace.getDraft(change.name);
     if (!draft) return;

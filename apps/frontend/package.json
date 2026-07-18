@@ -34,6 +34,7 @@
     "@vibecanvas/api-notification": "workspace:*",
     "@vibecanvas/api-pty": "workspace:*",
     "@vibecanvas/api-tool": "workspace:*",
+    "@vibecanvas/actor-ui": "workspace:*",
     "@vibecanvas/canvas": "workspace:*",
     "@vibecanvas/orpc-client": "workspace:*",
     "@vibecanvas/service-automerge": "workspace:*",

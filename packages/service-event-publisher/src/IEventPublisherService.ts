@@ -81,6 +81,10 @@ export type TAgentWidgetPublishedEvent = {
   revision: string;
   definitionName: string;
 };
+export type TAgentWidgetCatalogEvent = {
+  kind: 'widget-catalog';
+  type: 'changed';
+};
 export type TAgentEvent =
   | TAgentChatEvent
   | TAgentDraftActorEvent
@@ -88,7 +92,8 @@ export type TAgentEvent =
   | TAgentApprovalEvent
   | TAgentWidgetDraftEvent
   | TAgentWidgetPreviewEvent
-  | TAgentWidgetPublishedEvent;
+  | TAgentWidgetPublishedEvent
+  | TAgentWidgetCatalogEvent;
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
