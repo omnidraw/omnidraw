@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "target": "ESNext",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "noEmit": true,
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["bun-types", "vite/client"]
+  },
+  "include": ["src", "../../global.d.ts"]
+}

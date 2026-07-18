@@ -1,5 +1,4 @@
 import type { DocHandle } from "@automerge/automerge-repo";
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
@@ -7,11 +6,30 @@ import type Konva from "konva";
 import type { Group } from "konva/lib/Group";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetManagerService } from "./services";
+import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService } from "./services";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
 export type TCloneImage = (body: { url: string }) => Promise<{ url: string }>;
+
+export type TCanvasImagePort = {
+  uploadImage(body: { data: Uint8Array; mime_type: TImageUploadFormat }): Promise<{ url: string }>;
+  cloneImage(body: { url: string }): Promise<{ url: string }>;
+  deleteImage(body: { url: string }): Promise<{ ok: true }>;
+};
+
+export type TCanvasToolbarGroup = {
+  name: string;
+  json?: {
+    svgIcon?: string | null;
+    lucidIcon?: string | null;
+  } | null;
+};
+
+export type TCanvasToolbarGroupsPort = {
+  list(): Promise<readonly TCanvasToolbarGroup[]>;
+  subscribe(listener: () => void): () => void;
+};
 
 export interface IRuntimeConfig {
   canvasId: string;
@@ -20,9 +38,8 @@ export interface IRuntimeConfig {
   onToggleSidebar: () => void;
   env: Pick<ImportMetaEnv, "DEV">;
   themeService: ThemeService;
-  apiService: TOrpcSafeClient;
-  onOpenResource?: (resourceId: string) => void;
-  onResourceCatalogChanged?: () => void;
+  image: TCanvasImagePort;
+  toolbarGroups?: TCanvasToolbarGroupsPort;
   notification?: {
     showSuccess(title: string, description?: string): void;
     showError(title: string, description?: string): void;
@@ -46,8 +63,8 @@ export type TWheelEvent = Konva.KonvaEventObject<WheelEvent>;
 
 export type TElementPointerEvent = KonvaEventObject<PointerEvent, Shape<ShapeConfig> | Group>;
 
-export type TWidgetRegistryEvent = {
-  kind: string;
+export type TElementDefinitionInvalidatedEvent = {
+  elementIds: readonly string[];
 };
 
 export interface IRuntimeServices {
@@ -64,7 +81,6 @@ export interface IRuntimeServices {
   tool: ToolService;
   element: ElementService;
   session: SessionService;
-  widgetManager: WidgetManagerService;
   group: GroupService;
 }
 
@@ -92,7 +108,7 @@ export interface IRuntimeHooks {
   keyup: SyncHook<[KeyboardEvent]>;
   gridVisible: SyncHook<[boolean]>;
   toolSelect: SyncHook<[string]>;
-  widgetRegister: SyncHook<[TWidgetRegistryEvent]>;
+  elementDefinitionInvalidated: SyncHook<[TElementDefinitionInvalidatedEvent]>;
   elementPointerClick: SyncExitHook<[TElementPointerEvent]>;
   elementPointerDown: SyncExitHook<[TElementPointerEvent]>;
   elementPointerDoubleClick: SyncExitHook<[TElementPointerEvent]>;

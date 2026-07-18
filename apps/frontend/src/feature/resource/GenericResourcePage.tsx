@@ -7,7 +7,7 @@ import { useNavigate, useSearchParams } from "@solidjs/router";
 import PanelLeft from "lucide-solid/icons/panel-left";
 import { For, Show, createEffect, createSignal, onCleanup, type Component } from "solid-js";
 import { showErrorToast, showSuccessToast } from "@/components/ui/Toast";
-import { RESOURCE_CATALOG_CHANGED_EVENT } from "@/feature/sidebar/components/CONSTANTS";
+import { catalogInvalidation } from "@/ai-chat-adapters";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { setStore } from "@/store";
 import type { TRouteResource } from "@/pages/resource";
@@ -243,7 +243,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     if (renameError) return showErrorToast(renameError.message);
     setDisplayName(value);
     showSuccessToast("Resource renamed");
-    window.dispatchEvent(new Event(RESOURCE_CATALOG_CHANGED_EVENT));
+    catalogInvalidation.invalidate("resources");
   };
 
   const remove = async () => {
@@ -252,7 +252,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     setBusy(false);
     if (deleteError) return showErrorToast(deleteError.message);
     showSuccessToast("Resource deleted");
-    window.dispatchEvent(new Event(RESOURCE_CATALOG_CHANGED_EVENT));
+    catalogInvalidation.invalidate("resources");
     navigate("/");
   };
 

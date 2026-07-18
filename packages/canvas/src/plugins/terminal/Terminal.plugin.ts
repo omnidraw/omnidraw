@@ -1,5 +1,6 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type Konva from "konva";
 import SquareTerminal from "lucide-static/icons/square-terminal.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
@@ -45,7 +46,18 @@ function persistTerminalPayload(args: {
     .commit();
 }
 
-export function createTerminalPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
+export function createTerminalPlugin(portal: {
+  apiService: TOrpcSafeClient;
+  widgetHost: {
+    registerWidget(config: {
+      id: string;
+      dataType: "ui-widget";
+      tool: { label: string; icon: string; shortcuts: string[]; priority: number };
+      initialPayload: Record<string, unknown>;
+      renderDom(args: { root: HTMLDivElement; element: TElement }): (() => void) | void;
+    }): void;
+  };
+}): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
 
   return {
     name: "terminal",
@@ -53,7 +65,7 @@ export function createTerminalPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks,
       const crdt = ctx.services.require("crdt");
       const scene = ctx.services.require("scene");
       const tool = ctx.services.require("tool");
-      const widgetManager = ctx.services.require("widgetManager");
+      const widgetManager = portal.widgetHost;
 
       widgetManager.registerWidget({
         id: TERMINAL_WIDGET_KIND,
@@ -72,7 +84,7 @@ export function createTerminalPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks,
           return mountTerminalWidget({
             root,
             element: widgetElement,
-            apiService: ctx.config.apiService,
+            apiService: portal.apiService,
             onPersist: (payload) => persistTerminalPayload({
               crdt,
               scene,

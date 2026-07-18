@@ -1,0 +1,133 @@
+import { showErrorToast, showSuccessToast } from "@/components/ui/Toast";
+import { removeFromCache } from "@/services/automerge";
+import { orpcWebsocketService } from "@/services/orpc-websocket";
+import { themeService, txSetThemeAppearance } from "@/services/theme";
+import { setStore, store } from "@/store";
+import {
+  createAiChatCanvasExtension,
+  createCatalogInvalidation,
+  type TAiChatApiPort,
+  type TAiChatBrowserPort,
+  type TSidebarApiPort,
+  type TSidebarController,
+  type TWidgetBrowserPort,
+  type TWidgetTransportPort,
+} from "@vibecanvas/ai-chat";
+import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "@vibecanvas/canvas";
+
+export const catalogInvalidation = createCatalogInvalidation();
+
+export const chatBrowserPort: TAiChatBrowserPort = {
+  document,
+  createId: () => crypto.randomUUID(),
+  createObjectUrl: (file) => URL.createObjectURL(file),
+  revokeObjectUrl: (url) => URL.revokeObjectURL(url),
+  readFileAsDataUrl: (file) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string"
+      ? resolve(reader.result)
+      : reject(new Error("Image file did not produce a data URL"));
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read image file"));
+    reader.readAsDataURL(file);
+  }),
+  writeClipboardText: (text) => navigator.clipboard.writeText(text),
+  formatTime: (value) => new Date(value).toLocaleTimeString(),
+  setInterval: (callback, timeout) => window.setInterval(callback, timeout),
+  clearInterval: (timer) => window.clearInterval(timer as number),
+  requestAnimationFrame: (callback) => window.requestAnimationFrame(callback),
+  cancelAnimationFrame: (handle) => window.cancelAnimationFrame(handle),
+};
+
+export const widgetBrowserPort: TWidgetBrowserPort = {
+  document,
+  createId: () => crypto.randomUUID(),
+  now: () => Date.now(),
+  nowDate: () => new Date(),
+  setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),
+  clearTimeout: (timer) => window.clearTimeout(timer as number),
+  setInterval: (callback, timeout) => window.setInterval(callback, timeout),
+  clearInterval: (timer) => window.clearInterval(timer as number),
+};
+
+const apiService = orpcWebsocketService.apiService;
+
+export const canvasImagePort: TCanvasImagePort = {
+  async uploadImage(body) {
+    const [error, result] = await apiService.api.file.put({
+      body: {
+        data: new Blob([new Uint8Array(body.data)], { type: body.mime_type }),
+        mime_type: body.mime_type,
+      },
+    });
+    if (error) throw error;
+    if (!result.url) throw new Error("Image upload returned no URL");
+    return { url: result.url };
+  },
+  async cloneImage(body) {
+    const [error, result] = await apiService.api.file.clone({ body });
+    if (error) throw error;
+    if (!result.url) throw new Error("Image clone returned no URL");
+    return { url: result.url };
+  },
+  async deleteImage(body) {
+    const [error, result] = await apiService.api.file.remove({ body });
+    if (error) throw error;
+    return result;
+  },
+};
+
+export const canvasToolbarGroupsPort: TCanvasToolbarGroupsPort = {
+  async list() {
+    const [error, groups] = await apiService.api.tool.groups.list();
+    if (error) throw error;
+    return groups;
+  },
+  subscribe(listener) {
+    return catalogInvalidation.subscribe("toolbar-groups", listener);
+  },
+};
+
+export function createFrontendAiChatExtension(args: { navigate(path: string): void }) {
+  return createAiChatCanvasExtension({
+    chatApi: apiService as TAiChatApiPort,
+    widgetTransport: apiService as TWidgetTransportPort,
+    chatBrowser: chatBrowserPort,
+    widgetBrowser: widgetBrowserPort,
+    application: {
+      openResource: (resourceId) => args.navigate(`/resources/${encodeURIComponent(resourceId)}`),
+      invalidateResourceCatalog: () => catalogInvalidation.invalidate("resources"),
+      logError: (error) => console.error(error),
+    },
+  });
+}
+
+export function createFrontendSidebarController(args: {
+  pathname(): string;
+  navigate(path: string, options?: { replace?: boolean }): void;
+}): TSidebarController {
+  return {
+    apiService: apiService as TSidebarApiPort,
+    browser: {
+      setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),
+      clearTimeout: (timer) => window.clearTimeout(timer as number),
+    },
+    invalidation: catalogInvalidation,
+    application: {
+      pathname: args.pathname,
+      canvases: () => store.canvases,
+      navigate: args.navigate,
+      canvasCreated: (canvas) => setStore("canvases", (current) => [...current, canvas]),
+      canvasUpdated: (canvas) => setStore("canvases", (current) => current.map((item) => item.id === canvas.id ? canvas : item)),
+      canvasDeleted: (canvas) => setStore("canvases", (current) => current.filter((item) => item.id !== canvas.id)),
+      evictCanvasDocument: removeFromCache,
+      themeAppearance: () => {
+        void store.theme;
+        return themeService.getTheme().appearance;
+      },
+      setThemeAppearance: txSetThemeAppearance,
+      toggleSidebar: () => setStore("sidebarVisible", (visible) => !visible),
+      notifyError: showErrorToast,
+      notifySuccess: showSuccessToast,
+    },
+  };
+}

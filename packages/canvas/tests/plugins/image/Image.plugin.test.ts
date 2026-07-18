@@ -102,8 +102,8 @@ function createImagePluginUnitHarness(args?: {
     ["tool", { registerTool: vi.fn(), unregisterTool: vi.fn() }],
   ]);
 
-  const uploadImage = args?.uploadImage ?? vi.fn(async () => [null, { url: "https://cdn.test/uploaded.png" }] as const);
-  const deleteImage = args?.deleteImage ?? vi.fn(async () => [null, { ok: true }] as const);
+  const uploadImage = args?.uploadImage ?? vi.fn(async () => ({ url: "https://cdn.test/uploaded.png" }));
+  const deleteImage = args?.deleteImage ?? vi.fn(async () => ({ ok: true } as const));
   const plugin = createImagePlugin();
   void plugin.apply({
     hooks,
@@ -119,14 +119,10 @@ function createImagePluginUnitHarness(args?: {
       provide: () => undefined,
     },
     config: {
-      apiService: {
-        api: {
-          file: {
-            put: uploadImage,
-            clone: vi.fn(),
-            remove: deleteImage,
-          },
-        },
+      image: {
+        uploadImage,
+        cloneImage: vi.fn(async ({ url }: { url: string }) => ({ url })),
+        deleteImage,
       },
       notification: { showError: vi.fn(), showInfo: vi.fn(), showSuccess: vi.fn() },
     },
@@ -208,7 +204,7 @@ describe("Image plugin", () => {
       expect(() => harness.element.removeElement(node, builder as never)).not.toThrow();
       expect(builder.deleteElement).toHaveBeenCalledWith(imageElement.id, expect.any(Object));
       await vi.waitFor(() => {
-        expect(harness.deleteImage).toHaveBeenCalledWith({ body: { url: imageElement.data.type === "image" ? imageElement.data.url : null } });
+        expect(harness.deleteImage).toHaveBeenCalledWith({ url: imageElement.data.type === "image" ? imageElement.data.url : null });
       });
     } finally {
       harness.destroy();
@@ -219,8 +215,8 @@ describe("Image plugin", () => {
     const originalFileReader = globalThis.FileReader;
     const originalWindowFileReader = window.FileReader;
     const originalWindowImage = window.Image;
-    let resolveUpload!: (value: readonly [null, { url: string }]) => void;
-    const uploadResult = new Promise<readonly [null, { url: string }]>((resolve) => {
+    let resolveUpload!: (value: { url: string }) => void;
+    const uploadResult = new Promise<{ url: string }>((resolve) => {
       resolveUpload = resolve;
     });
     const uploadImage = vi.fn(() => uploadResult);
@@ -283,7 +279,7 @@ describe("Image plugin", () => {
       expect(uploadImage).toHaveBeenCalledOnce();
       expect(harness.element.toElement(preview as Konva.Image)).toBeNull();
 
-      resolveUpload([null, { url: "https://cdn.test/pasted.png" }] as const);
+      resolveUpload({ url: "https://cdn.test/pasted.png" });
       await waitForAsyncImageInsert();
       expect(harness.element.toElement(preview as Konva.Image)).toMatchObject({
         data: { type: "image", url: "https://cdn.test/pasted.png" },

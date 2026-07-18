@@ -1,5 +1,6 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import Konva from "konva";
 import FolderCode from "lucide-static/icons/folder-code.svg?raw";
 import { ELEMENT_DATA_ATTR } from "../../core/CONSTANTS";
@@ -42,7 +43,18 @@ function persistFilesystemPayload(args: {
     .commit();
 }
 
-export function createFilesystemPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
+export function createFilesystemPlugin(portal: {
+  apiService: TOrpcSafeClient;
+  widgetHost: {
+    registerWidget(config: {
+      id: string;
+      dataType: "ui-widget";
+      tool: { label: string; icon: string; shortcuts: string[]; priority: number };
+      initialPayload: Record<string, unknown>;
+      renderDom(args: { root: HTMLDivElement; element: TElement }): (() => void) | void;
+    }): void;
+  };
+}): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
 
   return {
     name: "filesystem",
@@ -50,7 +62,7 @@ export function createFilesystemPlugin(): IPlugin<IRuntimeServices, IRuntimeHook
       const crdt = ctx.services.require("crdt");
       const scene = ctx.services.require("scene");
       const tool = ctx.services.require("tool");
-      const widgetManager = ctx.services.require("widgetManager");
+      const widgetManager = portal.widgetHost;
 
       widgetManager.registerWidget({
         id: FILESYSTEM_WIDGET_KIND,
@@ -69,7 +81,7 @@ export function createFilesystemPlugin(): IPlugin<IRuntimeServices, IRuntimeHook
           return mountFilesystemWidget({
             root,
             element: widgetElement,
-            apiService: ctx.config.apiService,
+            apiService: portal.apiService,
             onPersist: (payload) => persistFilesystemPayload({
               crdt,
               scene,
