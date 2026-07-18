@@ -190,38 +190,36 @@ function loadElementsTopDown(args: {
   return invalidElementIds;
 }
 
-function reloadElementsByWidgetKind(args: {
+function reloadElementsByIds(args: {
   crdt: CrdtService;
   element: ElementService;
   scene: SceneService;
   selection: SelectionService;
-  kind: string;
+  elementIds: readonly string[];
 }) {
   const doc = args.crdt.doc();
+  const elementIds = new Set(args.elementIds);
   const affectedParents = new Set<Konva.Layer | Konva.Group>();
   const snapshot = captureSceneState(args.selection);
 
   Object.values(doc.elements)
-    .filter((element) => {
-      return (element.data.type === "widget" || element.data.type === "ui-widget")
-        && element.data.kind === args.kind;
-    })
+    .filter((element) => elementIds.has(element.id))
     .sort(compareByPersistedOrder)
-    .forEach((widgetElement) => {
-      const existingNode = findSceneNodeById(args.scene, widgetElement.id);
-      const parent = resolveElementParent(args.scene, widgetElement) ?? existingNode?.getParent();
+    .forEach((persistedElement) => {
+      const existingNode = findSceneNodeById(args.scene, persistedElement.id);
+      const parent = resolveElementParent(args.scene, persistedElement) ?? existingNode?.getParent();
       if (!(parent instanceof Konva.Layer) && !(parent instanceof Konva.Group)) {
         return;
       }
 
       destroySceneNode(existingNode);
-      const nextNode = args.element.createNodeFromElement(widgetElement);
+      const nextNode = args.element.createNodeFromElement(persistedElement);
       if (!isKonvaGroup(nextNode) && !isKonvaShape(nextNode)) {
         return;
       }
 
       parent.add(nextNode);
-      args.element.updateElement(widgetElement);
+      args.element.updateElement(persistedElement);
       affectedParents.add(parent);
     });
 
@@ -416,13 +414,13 @@ export function createSceneHydratorPlugin(): IPlugin<IRuntimeServices, IRuntimeH
         loadCanvas({ crdt, element, group, scene });
       });
 
-      ctx.hooks.widgetRegister.tap((event) => {
-        reloadElementsByWidgetKind({
+      ctx.hooks.elementDefinitionInvalidated.tap((event) => {
+        reloadElementsByIds({
           crdt,
           element,
           scene,
           selection,
-          kind: event.kind,
+          elementIds: event.elementIds,
         });
       });
 

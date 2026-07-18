@@ -1,4 +1,3 @@
-export * from "./ai/Ai.plugin";
 export * from "./camera-control/CameraControl.plugin";
 export * from "./confirm-dialog/ConfirmDialog.plugin";
 export * from "./context-menu/ContextMenu.plugin";
@@ -18,5 +17,4 @@ export * from "./terminal/Terminal.plugin";
 export * from "./text/Text.plugin";
 export * from "./toolbar/Toolbar.plugin";
 export * from "./transform/Transform.plugin";
-export * from "./widget/Widget.plugin";
 export * from "./visual-debug/VisualDebug.plugin";

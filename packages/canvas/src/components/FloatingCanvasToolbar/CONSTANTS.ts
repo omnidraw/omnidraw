@@ -5,8 +5,6 @@ export const DEFAULT_TOOL_GROUP_DEFINITION: TToolGroupDefinition = {
   icon: LayoutGrid,
 };
 
-export const TOOL_GROUPS_CHANGED_EVENT = "vibecanvas:tool-groups-changed";
-
 export const TOOLBAR_MAX_COLUMNS = 3;
 export const TOOLBAR_VIEWPORT_GUTTER_PX = 12;
 export const TOOLBAR_HEADER_HEIGHT_PX = 23;

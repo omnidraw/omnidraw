@@ -13,7 +13,7 @@ import RefreshCw from "lucide-solid/icons/refresh-cw";
 import Trash2 from "lucide-solid/icons/trash-2";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Component } from "solid-js";
 import { showErrorToast, showSuccessToast } from "@/components/ui/Toast";
-import { RESOURCE_CATALOG_CHANGED_EVENT } from "@/feature/sidebar/components/CONSTANTS";
+import { catalogInvalidation } from "@/ai-chat-adapters";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { setStore } from "@/store";
 import { ConfirmActionDialog } from "./components/ConfirmActionDialog";
@@ -296,7 +296,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     setBusy(false);
     if (renameError) return showErrorToast(renameError.message);
     showSuccessToast("Resource renamed");
-    window.dispatchEvent(new Event(RESOURCE_CATALOG_CHANGED_EVENT));
+    catalogInvalidation.invalidate("resources");
     await loadMeta();
   };
 
@@ -305,7 +305,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     const [deleteError] = await txDeleteResource(portal, { resourceId: props.resourceId });
     setBusy(false);
     if (deleteError) return showErrorToast(deleteError.message);
-    window.dispatchEvent(new Event(RESOURCE_CATALOG_CHANGED_EVENT));
+    catalogInvalidation.invalidate("resources");
     showSuccessToast("Database resource deleted");
     navigate("/");
   };

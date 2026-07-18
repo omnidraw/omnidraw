@@ -1,5 +1,4 @@
 import DOMPurify from "dompurify";
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import * as LucideStatic from "lucide-static";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -12,12 +11,12 @@ import {
   TOOLBAR_TOOL_HEIGHT_PX,
   TOOLBAR_VIEWPORT_GUTTER_PX,
   TOOLBAR_WIDE_TOOL_HEIGHT_PX,
-  TOOL_GROUPS_CHANGED_EVENT,
 } from "./CONSTANTS";
 import { fnBuildToolbarColumns, fnBuildToolbarSlots, type TToolbarGroupSlot, type TToolGroupDefinition } from "./fn.runtime-toolbar";
 import "./styles.css";
 import { ToolButton } from "./ToolButton";
 import { ToolbarLabelPopover } from "./ToolbarLabelPopover";
+import type { TCanvasToolbarGroupsPort } from "../../types";
 
 export type TRuntimeToolbarTool = {
   id: string;
@@ -31,7 +30,7 @@ export type TRuntimeToolbarProps = {
   tool: ToolService;
   viewportElement: HTMLElement;
   onToolSelect: (toolId: string) => void;
-  apiService?: TOrpcSafeClient;
+  toolbarGroups?: TCanvasToolbarGroupsPort;
   groupDefinitions?: Readonly<Record<string, TToolGroupDefinition>>;
 };
 
@@ -287,11 +286,13 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
 
   let resizeObserver: ResizeObserver | undefined;
   const loadGroupDefinitions = async () => {
-    const toolGroupApi = props.apiService?.api.tool?.groups;
-    if (!toolGroupApi) return;
-
-    const [err, groups] = await toolGroupApi.list();
-    if (err) return;
+    if (!props.toolbarGroups) return;
+    let groups: Awaited<ReturnType<TCanvasToolbarGroupsPort["list"]>>;
+    try {
+      groups = await props.toolbarGroups.list();
+    } catch {
+      return;
+    }
     const definitions: Record<string, TToolGroupDefinition> = {};
     for (const group of groups) {
       const icon = group.json?.svgIcon?.trim()
@@ -301,13 +302,13 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
     }
     setGroupDefinitions(definitions);
   };
-  const handleToolGroupsChanged = () => {
-    void loadGroupDefinitions();
-  };
+  let unsubscribeToolbarGroups: (() => void) | undefined;
 
   onMount(() => {
     void loadGroupDefinitions();
-    props.viewportElement.ownerDocument.defaultView?.addEventListener(TOOL_GROUPS_CHANGED_EVENT, handleToolGroupsChanged);
+    unsubscribeToolbarGroups = props.toolbarGroups?.subscribe(() => {
+      void loadGroupDefinitions();
+    });
     setViewportHeight(props.viewportElement.clientHeight);
     resizeObserver = new ResizeObserver(() => {
       setViewportHeight(props.viewportElement.clientHeight);
@@ -316,7 +317,7 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
   });
 
   onCleanup(() => {
-    props.viewportElement.ownerDocument.defaultView?.removeEventListener(TOOL_GROUPS_CHANGED_EVENT, handleToolGroupsChanged);
+    unsubscribeToolbarGroups?.();
     resizeObserver?.disconnect();
     offToolsChange();
     offActiveToolChange();

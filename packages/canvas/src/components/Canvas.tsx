@@ -1,5 +1,4 @@
 import { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
-import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { IRuntime } from "@vibecanvas/runtime";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TCanvas } from "@vibecanvas/service-db/model";
@@ -7,12 +6,16 @@ import type { ThemeService } from "@vibecanvas/service-theme";
 import { createEffect, createResource, createSignal, Match, onCleanup, Switch } from "solid-js";
 import { findDocument } from "../automerge";
 import { buildRuntime } from "../runtime";
+import type { ICanvasRuntimeExtension } from "../extension";
+import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "../types";
 
 export type TBackendCanvas = TCanvas;
 
 type CanvasPageProps = {
-  apiService: TOrpcSafeClient;
   canvas: TBackendCanvas;
+  extensions?: readonly ICanvasRuntimeExtension[];
+  image: TCanvasImagePort;
+  toolbarGroups?: TCanvasToolbarGroupsPort;
   store: {
     sidebarVisible: () => boolean;
     onToggleSidebar: () => void;
@@ -23,8 +26,6 @@ type CanvasPageProps = {
     showInfo(title: string, description?: string): void
   }
   themeService: ThemeService;
-  onOpenResource?: (resourceId: string) => void;
-  onResourceCatalogChanged?: () => void;
 };
 
 
@@ -60,12 +61,11 @@ export function Canvas(props: CanvasPageProps) {
       env: {
         DEV: import.meta.env.DEV,
       },
-      apiService: props.apiService,
-      onOpenResource: props.onOpenResource,
-      onResourceCatalogChanged: props.onResourceCatalogChanged,
+      image: props.image,
+      toolbarGroups: props.toolbarGroups,
       notification: props.notification,
       themeService: props.themeService,
-    })
+    }, props.extensions)
     const bootingRuntime = runtime;
     setBootError(null);
     void bootingRuntime.boot().catch(async (error) => {

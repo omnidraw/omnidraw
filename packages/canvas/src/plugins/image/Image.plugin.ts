@@ -293,12 +293,7 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
       };
 
       const cloneBackendFileForElementPortal = {
-        cloneImage: ({ url }: { url: string }) => ctx.config.apiService.api.file.clone({ body: { url } }).then(([err, res]) => {
-          if (err) {
-            throw err;
-          }
-          return res;
-        }),
+        cloneImage: ({ url }: { url: string }) => ctx.config.image.cloneImage({ url }),
         crdt,
         findImageNodeById: (id: string) => {
           const node = render.staticForegroundLayer.findOne((candidate: Konva.Node) => {
@@ -312,12 +307,7 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
       };
 
       const deleteBackendFileForElementPortal = {
-        deleteImage: ({ url }: { url: string }) => ctx.config.apiService.api.file.remove({ body: { url } }).then(([err, res]) => {
-          if (err) {
-            throw err;
-          }
-          return res;
-        }),
+        deleteImage: ({ url }: { url: string }) => ctx.config.image.deleteImage({ url }),
         notification: getNotification(ctx.config),
       };
 
@@ -407,17 +397,7 @@ export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IR
           render,
           renderOrder,
           selection,
-          uploadImage: (body) => ctx.config.apiService.api.file.put({
-            body: {
-              data: new Blob([new Uint8Array(body.data)], { type: body.mime_type }),
-              mime_type: body.mime_type,
-            },
-          }).then(([err, res]) => {
-            if (err) {
-              throw err;
-            }
-            return res;
-          }),
+          uploadImage: (body) => ctx.config.image.uploadImage(body),
           notification: getNotification(ctx.config),
           createId: () => crypto.randomUUID(),
           now: () => Date.now(),

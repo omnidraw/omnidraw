@@ -8,7 +8,7 @@ import type { SelectionService } from "../../services/selection/SelectionService
 import type { IRuntimeHooks, TElementPointerEvent } from "../../types";
 import { fnSerializeSubtreeElements } from "./fn.serialize-subtree-elements";
 import type { ElementService } from "../element/ElementService";
-import { txSyncWidgetDomPortals } from "../widget/tx.sync-widget-dom-portals";
+import { txSyncElementDomPortals } from "./tx.sync-element-dom-portals";
 
 type TGroupDragMetrics = {
   startedAt: number;
@@ -282,7 +282,7 @@ export function txSetupGroupNode(
   });
 
   args.group.on("dragmove", () => {
-    txSyncWidgetDomPortals({}, { node: args.group });
+    txSyncElementDomPortals({}, { node: args.group });
 
     if (isCloneDrag) {
       isCloneDrag = false;
@@ -317,12 +317,12 @@ export function txSetupGroupNode(
   });
 
   args.group.on("transform", () => {
-    txSyncWidgetDomPortals({}, { node: args.group });
+    txSyncElementDomPortals({}, { node: args.group });
     portal.refreshBoundaries();
   });
 
   args.group.on("dragend", () => {
-    txSyncWidgetDomPortals({}, { node: args.group });
+    txSyncElementDomPortals({}, { node: args.group });
 
     if (isCloneDrag) {
       isCloneDrag = false;

@@ -2,7 +2,6 @@ import { createComponent } from "solid-js";
 import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeToolbar } from "../../../src/components/FloatingCanvasToolbar/RuntimeToolbar";
-import { TOOL_GROUPS_CHANGED_EVENT } from "../../../src/components/FloatingCanvasToolbar/CONSTANTS";
 import type { TTool } from "../../../src/services/tool/types";
 
 type TListener<TArgs extends unknown[]> = (...args: TArgs) => unknown;
@@ -98,10 +97,18 @@ describe("RuntimeToolbar", () => {
       tool("two", { group: "health" }),
     ]);
     let icon = "🩺";
-    const list = vi.fn().mockImplementation(async () => [null, [{ name: "health", json: { svgIcon: icon } }]]);
+    const listeners = new Set<() => void>();
+    const list = vi.fn().mockImplementation(async () => [{ name: "health", json: { svgIcon: icon } }]);
+    const toolbarGroups = {
+      list,
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
     dispose = render(() => createComponent(RuntimeToolbar, {
       tool: service as never,
-      apiService: { api: { tool: { groups: { list } } } } as never,
+      toolbarGroups,
       viewportElement: viewport!,
       onToolSelect: () => {},
     }), viewport!);
@@ -112,11 +119,46 @@ describe("RuntimeToolbar", () => {
     expect(list).toHaveBeenCalledOnce();
 
     icon = "♥";
-    window.dispatchEvent(new Event(TOOL_GROUPS_CHANGED_EVENT));
+    listeners.forEach((listener) => listener());
     await vi.waitFor(() => {
       expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='health']")?.textContent).toContain("♥");
     });
     expect(list).toHaveBeenCalledTimes(2);
+
+    dispose();
+    dispose = undefined;
+    expect(listeners.size).toBe(0);
+  });
+
+  it("keeps the last group definitions when a refresh fails", async () => {
+    const service = createToolService([
+      tool("one", { group: "health" }),
+      tool("two", { group: "health" }),
+    ]);
+    const listeners = new Set<() => void>();
+    const list = vi.fn()
+      .mockResolvedValueOnce([{ name: "health", json: { svgIcon: "🩺" } }])
+      .mockRejectedValueOnce(new Error("temporary catalog failure"));
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      toolbarGroups: {
+        list,
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      },
+      viewportElement: viewport!,
+      onToolSelect: () => {},
+    }), viewport!);
+
+    await vi.waitFor(() => {
+      expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='health']")?.textContent).toContain("🩺");
+    });
+
+    listeners.forEach((listener) => listener());
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='health']")?.textContent).toContain("🩺");
   });
 
   it("shows a tool label popover after hover and closes it on pointer leave", async () => {

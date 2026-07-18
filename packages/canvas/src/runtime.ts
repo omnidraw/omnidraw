@@ -2,7 +2,6 @@ import { createRuntime, createServiceRegistry, IServiceRegistry } from "@vibecan
 import { ThemeService } from "@vibecanvas/service-theme";
 import { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import {
-    createAiPlugin,
     createCameraControlPlugin, createConfirmDialogPlugin, createContextMenuPlugin, createEventListenerPlugin, createGridPlugin,
     createHistoryControlPlugin,
     createImagePlugin,
@@ -14,8 +13,7 @@ import {
     createShape1dPlugin,
     createShape2dPlugin,
     createTextPlugin,
-    createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin,
-    createWidgetPlugin
+    createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import { CameraService } from "./services/camera/CameraService";
 import { ConfirmDialogService } from "./services/confirm-dialog/ConfirmDialogService";
@@ -30,7 +28,7 @@ import { SceneService } from "./services/scene/SceneService";
 import { SelectionService } from "./services/selection/SelectionService";
 import { SessionService } from "./services/session/SessionService";
 import { ToolService } from "./services/tool/ToolService";
-import { WidgetManagerService } from "./services/widget/WidgetManagerService";
+import type { ICanvasRuntimeExtension, TCanvasRuntimePlugin } from "./extension";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
 
 declare module "@vibecanvas/runtime" {
@@ -48,7 +46,6 @@ declare module "@vibecanvas/runtime" {
     tool: ToolService;
     element: ElementService;
     session: SessionService;
-    widgetManager: WidgetManagerService;
     group: GroupService;
   }
 }
@@ -69,14 +66,14 @@ function createHooks(): IRuntimeHooks {
     keyup: new SyncHook(),
     gridVisible: new SyncHook(),
     toolSelect: new SyncHook(),
-    widgetRegister: new SyncHook(),
+    elementDefinitionInvalidated: new SyncHook(),
     elementPointerClick: new SyncExitHook(),
     elementPointerDown: new SyncExitHook(),
     elementPointerDoubleClick: new SyncExitHook(),
   };
 }
 
-function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" | "container" | "docHandle" | "notification" | "themeService">): IServiceRegistry {
+function createServices(config: Pick<IRuntimeConfig, "canvasId" | "container" | "docHandle" | "notification" | "themeService">): IServiceRegistry {
   const services = createServiceRegistry();
   const crdt = new CrdtService({ docHandle: config.docHandle });
   const element = new ElementService();
@@ -94,21 +91,6 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
     history,
     scene,
     contextMenu,
-  });
-  const widgetManager = new WidgetManagerService({
-    crdtService: crdt,
-    contextMenuService: contextMenu,
-    historyService: history,
-    loggingService: logging,
-    themeService: config.themeService,
-    selectionService: selection,
-    elementService: element,
-    toolService: tool,
-    sceneService: scene,
-    renderOrderService: renderOrder,
-    cameraService: camera,
-    confirmDialogService: confirmDialog,
-    apiService: config.apiService
   });
   const group = new GroupService(
     camera,
@@ -136,18 +118,45 @@ function createServices(config: Pick<IRuntimeConfig, "apiService" | "canvasId" |
   services.provide("tool", 90, tool);
   services.provide("renderOrder", 100, renderOrder);
   services.provide("theme", 110, config.themeService);
-  services.provide("widgetManager", 120, widgetManager);
   services.provide("session", 130, sessionService)
 
   return services;
 }
 
-export function buildRuntime(config: IRuntimeConfig) {
-  const plugins: Array<import("@vibecanvas/runtime").IPlugin<any, IRuntimeHooks, IRuntimeConfig>> = [
+export function buildRuntime(config: IRuntimeConfig, extensions: readonly ICanvasRuntimeExtension[] = []) {
+  const hooks = createHooks();
+  const services = createServices(config);
+  const extensionInstalls = extensions.map((extension) => extension.install({
+    config,
+    hooks,
+    services: {
+      camera: services.require("camera"),
+      confirmDialog: services.require("confirmDialog"),
+      contextMenu: services.require("contextMenu"),
+      crdt: services.require("crdt"),
+      history: services.require("history"),
+      logging: services.require("logging"),
+      scene: services.require("scene"),
+      renderOrder: services.require("renderOrder"),
+      selection: services.require("selection"),
+      theme: services.require("theme"),
+      tool: services.require("tool"),
+      element: services.require("element"),
+      session: services.require("session"),
+      group: services.require("group"),
+    },
+  }));
+
+  extensionInstalls.forEach((install) => {
+    install.services?.forEach((registration) => {
+      services.provide(registration.name as never, registration.startOrder, registration.service as never);
+    });
+  });
+
+  const pluginsBeforeHydration: TCanvasRuntimePlugin[] = [
     createEventListenerPlugin(),
     createConfirmDialogPlugin(),
     createGridPlugin(),
-    createAiPlugin(),
     createToolbarPlugin(),
     createSelectionStyleMenuPlugin(),
     createContextMenuPlugin(),
@@ -163,10 +172,14 @@ export function buildRuntime(config: IRuntimeConfig) {
     // createFilesystemPlugin(),
     // S60: Terminal widget surface is temporarily disabled; implementation remains under plugins/terminal.
     // createTerminalPlugin(),
+  ];
+  const extensionPlugins = extensionInstalls.flatMap((install) => [...(install.plugins ?? [])]);
+  const plugins: TCanvasRuntimePlugin[] = [
+    ...pluginsBeforeHydration,
+    ...extensionPlugins,
     createSceneHydratorPlugin(),
     createVisualDebugPlugin(),
     createCameraControlPlugin(),
-    createWidgetPlugin(),
   ];
 
   if (config.env.DEV) {
@@ -175,15 +188,18 @@ export function buildRuntime(config: IRuntimeConfig) {
 
   return createRuntime<IRuntimeHooks, IRuntimeConfig>({
     config,
-    hooks: createHooks(),
+    hooks,
     plugins,
-    services: createServices(config),
+    services,
     boot: async ({ services, hooks }) => {
       hooks.init.call();
       await hooks.initAsync.promise();
     },
     shutdown: async ({ services, hooks }) => {
       hooks.destroy.call();
+      for (const install of [...extensionInstalls].reverse()) {
+        await install.dispose?.();
+      }
     },
   })
 }

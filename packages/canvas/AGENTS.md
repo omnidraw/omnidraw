@@ -20,7 +20,7 @@ Runtime flow:
 ```text
 Canvas.tsx
   -> resolves Automerge DocHandle
-  -> buildRuntime(config)
+  -> buildRuntime(config, extensions)
   -> runtime boots scene/camera/crdt services
   -> plugins register tools, serializers, creators, listeners, overlays
   -> scene-hydrator loads groups/elements from CRDT doc
@@ -58,6 +58,7 @@ It defines:
 - service registry wiring
 - plugin list and order
 - boot/shutdown behavior
+- optional runtime extensions installed in order before scene hydration
 
 If you need shared runtime-wide wiring, this is the place.
 
@@ -75,10 +76,9 @@ Current stable services:
 - `logging` — logging service
 - `theme` — injected `ThemeService`
 
-WIP / ignore as architecture:
-- `widget`
-
 If state is shared across features, prefer a service over hiding it inside one plugin.
+
+Optional features such as AI Chat and published widgets live outside this package. They integrate through `src/extension.ts`; do not add their transports, browser effects, or concrete services back to the base runtime configuration.
 
 ### Plugins own feature behavior
 
@@ -134,10 +134,12 @@ This layer split is intentional. Keep it.
 12. `pen`
 13. `text`
 14. `image`
-15. `group`
+15. extension plugins, in injected extension order
 16. `scene-hydrator`
 17. `visual-debug`
 18. `camera-control`
+
+Extensions may register services and plugins before hydration and receive reverse-order cleanup during shutdown. Late element definitions notify `elementDefinitionInvalidated`; canvas must not introduce feature-specific invalidation hooks.
 19. `hosted-component` **(WIP; ignore unless task explicitly targets it)**
 
 In dev, `recorder` is inserted before `history-control`.
@@ -509,6 +511,7 @@ Preferred path:
 ### Core entry and runtime
 - `packages/canvas/src/index.ts`
 - `packages/canvas/src/components/Canvas.tsx`
+- `packages/canvas/src/extension.ts`
 - `packages/canvas/src/runtime.ts`
 
 ### Services
@@ -521,7 +524,6 @@ Preferred path:
 - `packages/canvas/src/services/render-order`
 - `packages/canvas/src/services/scene`
 - `packages/canvas/src/services/selection`
-- `packages/canvas/src/services/widget` **WIP / ignore**
 
 ### Plugins
 - `packages/canvas/src/plugins/camera-control`
@@ -571,5 +573,5 @@ When changing canvas code:
 
 And specifically:
 - do not reintroduce old migration language into docs
-- do not describe `src/services/widget` as stable
+- do not reintroduce AI Chat or widget ownership into canvas; use the public extension seam
 - do not describe `src/plugins/hosted-component` as stable
