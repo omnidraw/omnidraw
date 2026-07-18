@@ -6,6 +6,14 @@ export type TWidgetMount = {
   targetPath: string;
 };
 
+export type TWidgetDraftWorkspaceEntry = {
+  name: string;
+  draftPath: string;
+  published: boolean;
+  revision: string;
+  updatedAt: string;
+};
+
 export type TResolvedMountedPath = {
   absolutePath: string;
   widgetRoot: string;

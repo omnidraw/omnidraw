@@ -8,6 +8,9 @@ import { fnGetChatMessageParts } from "./fn.chat-message-parts"
 import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
+import { ApprovalList } from "../ApprovalList"
+import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource } from "./fn.tool-call"
+import type { TAiChatApproval } from "../types"
 
 type TAgentSettings = {
   defaultModel?: string
@@ -39,25 +42,13 @@ interface IProps {
   onDraftTextChange?: (text: string) => void
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   mentions?: TChatComposerMention[]
+  approvals: readonly TAiChatApproval[]
   onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
-  onApproveDbChange: (proposalId: string) => Promise<TDbChangeProposal>
-  onRejectDbChange: (proposalId: string) => Promise<TDbChangeProposal>
+  onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
+  onOpenResource?: (resourceId: string) => void
   onCancel: () => void
   onNewChat: () => void
-  onEditExistingWidget: () => void
   onClearResourceBindings: () => Promise<void>
-  onInspectActor: () => void
-  onOpenPreview: () => void
-}
-
-type TDbChangeProposal = {
-  id: string
-  resourceId: string
-  resourceName: string
-  sql: string
-  reason: string
-  status: "pending" | "approved" | "rejected"
-  warnings?: string[]
 }
 
 function getMessageKind(role: string) {
@@ -78,73 +69,9 @@ function getMessageObject(message: unknown) {
     : undefined
 }
 
-function getToolResultText(message: Record<string, unknown>) {
-  const content = message.content
-
-  if (!Array.isArray(content)) {
-    return ""
-  }
-
-  return content
-    .map((part) => {
-      const object = getMessageObject(part)
-      return typeof object?.text === "string" ? object.text : ""
-    })
-    .join("\n")
-}
-
-function hasFailedActorCandidateToolResult(message: Record<string, unknown>) {
-  const details = getMessageObject(message.details)
-  const validation = getMessageObject(details?.validation)
-  const contentText = getToolResultText(message).toLowerCase()
-
-  return message.isError === true
-    || validation?.ok === false
-    || contentText.includes("actor candidate is invalid")
-}
-
-function isSetActorCandidateToolResult(message: unknown) {
-  const object = getMessageObject(message)
-
-  return object?.role === "toolResult"
-    && typeof object.toolName === "string"
-    && object.toolName.toLowerCase() === "vc_set_actor_candidate"
-    && !hasFailedActorCandidateToolResult(object)
-}
-
-function isPreviewReadyToolResult(message: unknown) {
-  const object = getMessageObject(message)
-  const details = getMessageObject(object?.details)
-
-  return object?.role === "toolResult"
-    && typeof object.toolName === "string"
-    && object.toolName.toLowerCase() === "vc_validate_widget_files"
-    && object.isError !== true
-    && details?.ok === true
-}
-
 function isToolResultMessage(message: unknown) {
   const object = getMessageObject(message)
   return object?.role === "toolResult"
-}
-
-function getDbChangeProposal(message: unknown): TDbChangeProposal | undefined {
-  const object = getMessageObject(message)
-  const details = getMessageObject(object?.details)
-  const proposal = getMessageObject(details?.proposal)
-  if (details?.kind !== "db-change-proposal" || typeof proposal?.id !== "string") return undefined
-  if (typeof proposal.resourceId !== "string" || typeof proposal.resourceName !== "string") return undefined
-  if (typeof proposal.sql !== "string" || typeof proposal.reason !== "string") return undefined
-  if (proposal.status !== "pending" && proposal.status !== "approved" && proposal.status !== "rejected") return undefined
-  return {
-    id: proposal.id,
-    resourceId: proposal.resourceId,
-    resourceName: proposal.resourceName,
-    sql: proposal.sql,
-    reason: proposal.reason,
-    status: proposal.status,
-    warnings: Array.isArray(proposal.warnings) ? proposal.warnings.filter((warning): warning is string => typeof warning === "string") : undefined,
-  }
 }
 
 function truncateTextLines(text: string, lineLimit: number) {
@@ -467,74 +394,42 @@ function AssistantMessageParts(props: { parts: TChatMessagePart[] }) {
   )
 }
 
-function DbChangeProposalCard(props: {
-  proposal: TDbChangeProposal
-  onApprove: (proposalId: string) => Promise<TDbChangeProposal>
-  onReject: (proposalId: string) => Promise<TDbChangeProposal>
+function ToolCallRow(props: {
+  toolCall: { id: string; name: string }
+  approvals: readonly TAiChatApproval[]
+  onResolveApproval: IProps["onResolveApproval"]
+  onOpenResource?: IProps["onOpenResource"]
 }) {
-  const [confirmedRisk, setConfirmedRisk] = createSignal(false)
-  const [proposal, setProposal] = createSignal(props.proposal)
-  const [isResolving, setIsResolving] = createSignal(false)
-  const [error, setError] = createSignal<string>()
-
-  const resolve = async (decision: "approve" | "reject") => {
-    if (isResolving() || (decision === "approve" && !confirmedRisk())) return
-    setIsResolving(true)
-    setError(undefined)
-    try {
-      setProposal(await (decision === "approve" ? props.onApprove(proposal().id) : props.onReject(proposal().id)))
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setIsResolving(false)
-    }
-  }
-
   return (
-    <section class="ai-chat-db-proposal" aria-label="Database change approval" onClick={(event) => event.stopPropagation()}>
-      <header>
-        <strong>Database change requires your approval</strong>
-        <span class={`ai-chat-db-proposal__status ai-chat-db-proposal__status--${proposal().status}`}>{proposal().status}</span>
+    <section class="ai-chat-tool-call" aria-label={`Tool call ${props.toolCall.name}`}>
+      <header class="ai-chat-tool-call__header">
+        <span>Tool call</span>
+        <strong>{fnGetToolNameLabel(props.toolCall.name)}</strong>
+        <code>{props.toolCall.name}</code>
       </header>
-      <p><strong>{proposal().resourceName}</strong> — {proposal().reason}</p>
-      <pre><code>{proposal().sql}</code></pre>
-      <Show when={proposal().status === "pending"}>
-        <label class="ai-chat-db-proposal__risk">
-          <input
-            type="checkbox"
-            checked={confirmedRisk()}
-            onChange={(event) => setConfirmedRisk(event.currentTarget.checked)}
-          />
-          <span>I reviewed the exact SQL and understand the coordinated operation and data-loss risk.</span>
-        </label>
-        <div class="ai-chat-db-proposal__actions">
-          <button type="button" disabled={isResolving()} onClick={() => void resolve("reject")}>Reject</button>
-          <button type="button" disabled={!confirmedRisk() || isResolving()} onClick={() => void resolve("approve")}>Approve database change</button>
-        </div>
-      </Show>
-      <Show when={(proposal().warnings?.length ?? 0) > 0}>
-        <ul><For each={proposal().warnings}>{(warning) => <li>{warning}</li>}</For></ul>
-      </Show>
-      <Show when={error()}>{(message) => <p class="ai-chat-db-proposal__error" role="alert">{message()}</p>}</Show>
+      <ApprovalList
+        approvals={props.approvals}
+        onResolve={props.onResolveApproval}
+        onOpenResource={props.onOpenResource}
+        variant="inline"
+      />
     </section>
   )
 }
 
 function ChatHistoryMessage(props: {
   message: unknown
-  onInspectActor: () => void
-  onOpenPreview: () => void
-  onApproveDbChange: (proposalId: string) => Promise<TDbChangeProposal>
-  onRejectDbChange: (proposalId: string) => Promise<TDbChangeProposal>
+  approvals: readonly TAiChatApproval[]
+  onResolveApproval: IProps["onResolveApproval"]
+  onOpenResource?: IProps["onOpenResource"]
 }) {
   const [isExpanded, setIsExpanded] = createSignal(false)
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
   const kind = () => getMessageKind(role())
-  const showInspectActor = () => isSetActorCandidateToolResult(props.message)
-  const showOpenPreview = () => isPreviewReadyToolResult(props.message)
-  const dbChangeProposal = () => getDbChangeProposal(props.message)
+  const toolCalls = () => fnGetChatToolCalls(props.message)
+  const resource = () => props.onOpenResource ? fnGetToolResultResource(props.message) : undefined
   const isToolResult = () => isToolResultMessage(props.message)
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
   const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
@@ -543,15 +438,6 @@ function ChatHistoryMessage(props: {
       setIsExpanded((value) => !value)
     }
   }
-  const onMessageKeyDown = (event: KeyboardEvent) => {
-    if (event.target !== event.currentTarget || !isToolResult() || (event.key !== "Enter" && event.key !== " ")) {
-      return
-    }
-
-    event.preventDefault()
-    toggleToolResult()
-  }
-
   return (
     <article
       class={`ai-chat-history__message ai-chat-history__message--${kind()}`}
@@ -559,11 +445,7 @@ function ChatHistoryMessage(props: {
         "ai-chat-history__message--tool-result": isToolResult(),
         "ai-chat-history__message--tool-result-expanded": isToolResult() && isExpanded(),
       }}
-      role={isToolResult() ? "button" : undefined}
-      tabIndex={isToolResult() ? 0 : undefined}
-      aria-expanded={isToolResult() ? isExpanded() : undefined}
       onClick={toggleToolResult}
-      onKeyDown={onMessageKeyDown}
       onWheel={(event) => {
         if (isToolResult()) {
           onNestedChatWheel(event, event.currentTarget)
@@ -571,7 +453,22 @@ function ChatHistoryMessage(props: {
       }}
     >
       <Show when={kind() !== "assistant"}>
-        <span class="ai-chat-history__role">{label()}</span>
+        <div class="ai-chat-history__message-header">
+          <span class="ai-chat-history__role">{label()}</span>
+          <Show when={isToolResult() && (collapsedToolResult().truncated || isExpanded())}>
+            <button
+              type="button"
+              class="ai-chat-history__tool-result-toggle"
+              aria-expanded={isExpanded()}
+              onClick={(event) => {
+                event.stopPropagation()
+                toggleToolResult()
+              }}
+            >
+              {isExpanded() ? "Collapse" : "Expand"}
+            </button>
+          </Show>
+        </div>
       </Show>
       <Show
         when={kind() === "assistant"}
@@ -579,18 +476,30 @@ function ChatHistoryMessage(props: {
       >
         <AssistantMessageParts parts={parts()} />
       </Show>
-      <Show when={showInspectActor()}>
-        <div class="ai-chat-history__actions" onClick={(event) => event.stopPropagation()}>
-          <button type="button" onClick={props.onInspectActor}>Review design</button>
-        </div>
-      </Show>
-      <Show when={showOpenPreview()}>
-        <div class="ai-chat-history__actions" onClick={(event) => event.stopPropagation()}>
-          <button type="button" onClick={props.onOpenPreview}>Open preview</button>
-        </div>
-      </Show>
-      <Show when={dbChangeProposal()}>
-        {(proposal) => <DbChangeProposalCard proposal={proposal()} onApprove={props.onApproveDbChange} onReject={props.onRejectDbChange} />}
+      <For each={toolCalls()}>
+        {(toolCall) => (
+          <ToolCallRow
+            toolCall={toolCall}
+            approvals={props.approvals.filter((approval) => approval.toolCallId === toolCall.id)}
+            onResolveApproval={props.onResolveApproval}
+            onOpenResource={props.onOpenResource}
+          />
+        )}
+      </For>
+      <Show when={resource()}>
+        {(linkedResource) => (
+          <div class="ai-chat-history__resource-action">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onOpenResource?.(linkedResource().id)
+              }}
+            >
+              Open {linkedResource().name}
+            </button>
+          </div>
+        )}
       </Show>
     </article>
   )
@@ -613,6 +522,7 @@ export function ChatTab(props: IProps) {
   let contentRoot!: HTMLDivElement
   let shouldAutoScroll = true
   let scrollAnimationFrame: number | undefined
+  const pendingApprovals = () => props.approvals.filter((approval) => approval.status === "pending")
 
   const scrollToBottom = () => {
     contentRoot.scrollTop = contentRoot.scrollHeight
@@ -708,10 +618,9 @@ export function ChatTab(props: IProps) {
               {(message) => (
                 <ChatHistoryMessage
                   message={message}
-                  onInspectActor={props.onInspectActor}
-                  onOpenPreview={props.onOpenPreview}
-                  onApproveDbChange={props.onApproveDbChange}
-                  onRejectDbChange={props.onRejectDbChange}
+                  approvals={props.approvals}
+                  onResolveApproval={props.onResolveApproval}
+                  onOpenResource={props.onOpenResource}
                 />
               )}
             </For>
@@ -720,6 +629,15 @@ export function ChatTab(props: IProps) {
         <Show when={props.isRunning}>
           <ChatWorkingIndicator isCanceling={props.isCanceling} />
         </Show>
+      </div>
+
+      <div class="ai-chat-floating-approvals">
+        <ApprovalList
+          approvals={pendingApprovals()}
+          onResolve={props.onResolveApproval}
+          onOpenResource={props.onOpenResource}
+          variant="floating"
+        />
       </div>
 
       <ChatComposer
@@ -737,7 +655,6 @@ export function ChatTab(props: IProps) {
         onSubmit={submitPrompt}
         onCancel={props.onCancel}
         onNewChat={props.onNewChat}
-        onEditExistingWidget={props.onEditExistingWidget}
         onCopyChat={copyChat}
         onClearResourceBindings={() => {
           void props.onClearResourceBindings().catch((error) => console.error(error))

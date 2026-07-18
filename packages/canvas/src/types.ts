@@ -21,6 +21,8 @@ export interface IRuntimeConfig {
   env: Pick<ImportMetaEnv, "DEV">;
   themeService: ThemeService;
   apiService: TOrpcSafeClient;
+  onOpenResource?: (resourceId: string) => void;
+  onResourceCatalogChanged?: () => void;
   notification?: {
     showSuccess(title: string, description?: string): void;
     showError(title: string, description?: string): void;

@@ -266,7 +266,6 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
         <Tabs.List class={styles.tabsList} aria-label={`${props.resource.kind === "kv" ? "Key-value" : "Secret store"} resource workbench`}>
           <Tabs.Trigger class={styles.tab} value="overview">Overview</Tabs.Trigger>
           <Tabs.Trigger class={styles.tab} value="data">Data</Tabs.Trigger>
-          <Tabs.Indicator class={styles.tabIndicator} />
         </Tabs.List>
 
         <Tabs.Content value="overview" class={styles.tabContent}>

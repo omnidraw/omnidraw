@@ -318,13 +318,14 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       Type.Object({ kind: Type.Literal('secretStore'), name: Type.String({ minLength: 1, maxLength: 120 }) }, { additionalProperties: false }),
       Type.Object({ kind: Type.Literal('db'), name: Type.String({ minLength: 1, maxLength: 120 }), engine: Type.Optional(Type.Literal('sqlite')) }, { additionalProperties: false }),
     ]),
-    async execute(_toolCallId, params: any, signal?: AbortSignal) {
+    async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_create')) return fnToolError('This tool call is not authorized.');
       if (!args.actorService?.createResource) return fnToolError('Resource creation is unavailable in this host.');
       try {
         await assertUniqueResourceName(args.actorService, params.name);
         const resource = await args.approvals.request({
           chatId: args.chatId,
+          toolCallId,
           kind: 'resource-create',
           authorization: args.authorization,
           exactArgs: { kind: params.kind as TResourceKind, name: String(params.name) },
@@ -352,7 +353,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       resourceId: Type.String({ minLength: 1, maxLength: 128 }),
       name: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
     }, { additionalProperties: false, minProperties: 2 }),
-    async execute(_toolCallId, params: any, signal?: AbortSignal) {
+    async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_update')) return fnToolError('This tool call is not authorized.');
       if (!args.actorService?.renameResource || !params.name) return fnToolError('A mutable resource name is required.');
       try {
@@ -360,6 +361,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
         await assertUniqueResourceName(args.actorService, params.name, current.id);
         const resource = await args.approvals.request({
           chatId: args.chatId,
+          toolCallId,
           kind: 'resource-update',
           authorization: args.authorization,
           exactArgs: { resourceId: current.id, name: String(params.name) },
@@ -384,13 +386,14 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     label: 'Delete Resource',
     description: 'Request deletion of an unbound resource. The agent cannot force deletion or approve it.',
     parameters: Type.Object({ resourceId: Type.String({ minLength: 1, maxLength: 128 }) }, { additionalProperties: false }),
-    async execute(_toolCallId, params: any, signal?: AbortSignal) {
+    async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_delete')) return fnToolError('This tool call is not authorized.');
       if (!args.actorService?.deleteResource) return fnToolError('Resource deletion is unavailable in this host.');
       try {
         const current = await requireResource(args.actorService, params.resourceId);
         await args.approvals.request({
           chatId: args.chatId,
+          toolCallId,
           kind: 'resource-delete',
           authorization: args.authorization,
           exactArgs: { resourceId: current.id },
@@ -461,6 +464,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
         if (mismatch) throw new Error(`Operation kind '${mismatch.kind}' does not match resource kind '${resource.kind}'.`);
         const execution = await args.approvals.request({
           chatId: args.chatId,
+          toolCallId,
           kind: 'resource-data-write',
           authorization: args.authorization,
           exactArgs: { resourceId: resource.id, operations },

@@ -1,0 +1,513 @@
+import { Actor } from '@vibecanvas/service-actor/Actor';
+import { ActorResourceError } from '@vibecanvas/service-actor';
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { execFile } from 'node:child_process';
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
+import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
+import { txReconcileResourceBindings } from '../core/tx.reconcile-resource-bindings';
+import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
+import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from '../tools/resource-bindings';
+import type { TActorServiceReloader, TValidationResult, TWidgetDraftChange } from '../tools/types';
+import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
+import type { TWidgetDraftWorkspaceEntry } from '../workspace/types';
+import type {
+  TWidgetDraftSummary,
+  TWidgetPreviewFailureReason,
+  TWidgetPreviewReady,
+  TWidgetPreviewResult,
+  TWidgetPreviewSendResult,
+  TWidgetPublishResult,
+} from './types';
+
+type TWidgetDraftControllerConfig = {
+  configPath: string;
+  workspace: WidgetWorkspace;
+  eventPublisher: IEventPublisherService;
+  actorService?: TActorServiceReloader;
+};
+
+type TValidationCacheEntry = TValidationResult & { revision: string };
+
+type TPreviewEntry = {
+  actor: Actor;
+  revision: string;
+  manifest: TVibecanvasJson;
+  sources: Record<string, string>;
+  unlisten: () => void;
+};
+
+type TResourceBindingResult =
+  | { ok: true; bindings: TResourceBindingPlan[] }
+  | { ok: false; message: string };
+
+export class WidgetDraftController {
+  readonly #config: TWidgetDraftControllerConfig;
+  readonly #validationByDraft = new Map<string, TValidationCacheEntry>();
+  readonly #previews = new Map<string, TPreviewEntry>();
+
+  constructor(config: TWidgetDraftControllerConfig) {
+    this.#config = config;
+  }
+
+  close(): void {
+    for (const name of this.#previews.keys()) this.#disposePreview(name);
+  }
+
+  async handleToolChange(change: TWidgetDraftChange): Promise<void> {
+    const draft = await this.#config.workspace.getDraft(change.name);
+    if (!draft) return;
+
+    if (change.type === 'validated' && change.validation) {
+      this.#validationByDraft.set(change.name, { ...change.validation, revision: draft.revision });
+    } else {
+      this.#validationByDraft.delete(change.name);
+    }
+
+    this.#config.eventPublisher.publishAgentEvent({
+      kind: 'widget-draft',
+      type: change.type,
+      draftId: draft.name,
+      revision: draft.revision,
+    });
+  }
+
+  async list(): Promise<TWidgetDraftSummary[]> {
+    const drafts = await this.#config.workspace.listDrafts();
+    return Promise.all(drafts.map((draft) => this.#summary(draft)));
+  }
+
+  async get(name: string): Promise<TWidgetDraftSummary | null> {
+    const draft = await this.#config.workspace.getDraft(name);
+    return draft ? this.#summary(draft) : null;
+  }
+
+  async validate(name: string, expectedRevision?: string): Promise<TWidgetDraftSummary | null> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return null;
+    if (expectedRevision !== undefined && draft.revision !== expectedRevision) {
+      return this.#summary(draft);
+    }
+
+    const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
+      cwd: draft.draftPath,
+      sdkActorTypePath: join(this.#config.workspace.sdkPackagePath, 'src', 'actor.ts'),
+    });
+    const current = await this.#config.workspace.getDraft(name);
+    if (!current) return null;
+    if (current.revision === draft.revision) {
+      this.#validationByDraft.set(name, {
+        revision: current.revision,
+        ok: validation.ok,
+        errors: validation.errors.slice(0, 40),
+        warnings: validation.warnings.slice(0, 40),
+      });
+      this.#config.eventPublisher.publishAgentEvent({
+        kind: 'widget-draft',
+        type: 'validated',
+        draftId: current.name,
+        revision: current.revision,
+      });
+    }
+    return this.#summary(current);
+  }
+
+  async getPreview(name: string): Promise<TWidgetPreviewResult> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+    const preview = this.#previews.get(draft.name);
+    if (!preview) {
+      return this.#previewFailure(draft.name, 'not-built', 'Preview has not been built for this draft.', draft);
+    }
+    return this.#previewReady(draft, preview);
+  }
+
+  async buildPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+    if (draft.revision !== expectedRevision) {
+      return this.#previewFailure(draft.name, 'stale-revision', 'The widget draft changed before Preview opened.', draft, expectedRevision);
+    }
+
+    const summary = await this.validate(draft.name, expectedRevision);
+    const current = await this.#config.workspace.getDraft(draft.name);
+    if (!summary || !current) return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
+    if (current.revision !== expectedRevision) {
+      return this.#previewFailure(draft.name, 'stale-revision', 'The widget draft changed while Preview was building.', current, expectedRevision);
+    }
+    if (summary.validation.status !== 'valid') {
+      return this.#previewFailure(
+        draft.name,
+        'validation-failed',
+        'The widget draft must pass validation before it can be previewed.',
+        current,
+        expectedRevision,
+        summary.validation.errors,
+      );
+    }
+
+    const manifestResult = await this.#readManifest(current.draftPath);
+    if (!manifestResult.ok) {
+      return this.#previewFailure(draft.name, 'manifest-invalid', manifestResult.message, current, expectedRevision, [manifestResult.message]);
+    }
+    const sources = await this.#readWidgetSourceMap(current.draftPath, manifestResult.manifest.widget.relWidgetDir);
+    if (!sources['main.ts'] && !sources['main.js']) {
+      return this.#previewFailure(
+        draft.name,
+        'source-missing',
+        `Preview requires main.ts or main.js inside ${manifestResult.manifest.widget.relWidgetDir}.`,
+        current,
+        expectedRevision,
+      );
+    }
+
+    const bindingPlan = await this.#resourceBindingPlan(manifestResult.manifest);
+    if (!bindingPlan.ok) {
+      return this.#previewFailure(draft.name, 'resource-binding-invalid', bindingPlan.message, current, expectedRevision, [bindingPlan.message]);
+    }
+
+    this.#disposePreview(draft.name);
+    const directBindings = new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]));
+    const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
+      ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
+          const binding = directBindings.get(call.slot);
+          const requirement = manifestResult.manifest.actor.resources?.[call.slot];
+          if (!binding || !requirement) {
+            throw new ActorResourceError('RESOURCE_NOT_BOUND', `Preview resource slot '${call.slot}' is not bound.`);
+          }
+          return this.#config.actorService!.callWithDirectResourceBinding!(call, {
+            resourceId: binding.resource.id,
+            requirement,
+            scope: binding.scope,
+          });
+        }
+      : undefined;
+
+    try {
+      const actor = new Actor({
+        id: `preview:${draft.name}`,
+        vsJson: manifestResult.manifest,
+        rootDir: current.draftPath,
+        resourceGateway,
+      });
+      const preview: TPreviewEntry = {
+        actor,
+        revision: current.revision,
+        manifest: manifestResult.manifest,
+        sources,
+        unlisten: () => undefined,
+      };
+      preview.unlisten = actor.listen(() => {
+        this.#config.eventPublisher.publishAgentEvent({
+          kind: 'widget-preview',
+          type: 'changed',
+          draftId: draft.name,
+          revision: preview.revision,
+        });
+      });
+      this.#previews.set(draft.name, preview);
+      actor.start();
+      return this.#previewReady(current, preview);
+    } catch (error) {
+      this.#disposePreview(draft.name);
+      const message = error instanceof Error ? error.message : String(error);
+      return this.#previewFailure(draft.name, 'build-failed', message, current, expectedRevision, [message]);
+    }
+  }
+
+  async refreshPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    return this.buildPreview(name, expectedRevision);
+  }
+
+  async resetPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    return this.buildPreview(name, expectedRevision);
+  }
+
+  async sendPreview(name: string, expectedRevision: string, messageName: string, payload: unknown): Promise<TWidgetPreviewSendResult> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+    const preview = this.#previews.get(draft.name);
+    if (!preview) return this.#previewFailure(draft.name, 'not-built', 'Preview has not been built for this draft.', draft);
+    if (draft.revision !== expectedRevision || preview.revision !== expectedRevision) {
+      return this.#previewFailure(draft.name, 'stale-revision', 'Refresh Preview before interacting with this changed draft.', draft, expectedRevision);
+    }
+
+    const messageId = preview.actor.inbox(messageName, payload);
+    return {
+      ready: true,
+      revision: preview.revision,
+      messageId,
+      snapshot: this.#snapshot(preview.actor),
+    };
+  }
+
+  async publish(name: string, expectedRevision: string): Promise<TWidgetPublishResult> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return this.#publishFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+    if (draft.revision !== expectedRevision) {
+      return this.#publishFailure(draft.name, 'stale-revision', 'The widget draft changed before publication started.', draft.revision);
+    }
+
+    const summary = await this.validate(draft.name, expectedRevision);
+    const current = await this.#config.workspace.getDraft(draft.name);
+    if (!summary || !current) return this.#publishFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
+    if (current.revision !== expectedRevision) {
+      return this.#publishFailure(draft.name, 'stale-revision', 'The widget draft changed while publication was validating.', current.revision);
+    }
+    if (summary.validation.status !== 'valid') {
+      return this.#publishFailure(
+        draft.name,
+        'validation-failed',
+        'The widget draft must pass validation before publication.',
+        current.revision,
+        summary.validation.errors,
+        summary.validation.warnings,
+      );
+    }
+
+    const manifestResult = await this.#readManifest(current.draftPath);
+    if (!manifestResult.ok) {
+      return this.#publishFailure(draft.name, 'validation-failed', manifestResult.message, current.revision, [manifestResult.message]);
+    }
+    if (manifestResult.manifest.name !== current.name) {
+      return this.#publishFailure(
+        draft.name,
+        'validation-failed',
+        `Published identity is '${current.name}', but vibecanvas.json declares '${manifestResult.manifest.name}'.`,
+        current.revision,
+      );
+    }
+
+    const bindingPlan = await this.#resourceBindingPlan(manifestResult.manifest);
+    if (!bindingPlan.ok) {
+      return this.#publishFailure(draft.name, 'publication-failed', bindingPlan.message, current.revision, [bindingPlan.message]);
+    }
+    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.bindResource) {
+      return this.#publishFailure(draft.name, 'publication-failed', 'Selected resources cannot be persisted by Publish in this host.', current.revision);
+    }
+
+    const finalWidgetsDir = join(this.#config.configPath, 'widgets');
+    const installedPath = join(finalWidgetsDir, manifestResult.manifest.slug);
+    if (await stat(installedPath).catch(() => null)) {
+      const publishedManifest = await this.#readManifest(join(this.#config.workspace.publishedRoot, current.name));
+      if (!publishedManifest.ok || publishedManifest.manifest.slug !== manifestResult.manifest.slug) {
+        return this.#publishFailure(
+          draft.name,
+          'publication-failed',
+          `A published widget already uses slug '${manifestResult.manifest.slug}'.`,
+          current.revision,
+        );
+      }
+    }
+    let snapshot: Awaited<ReturnType<WidgetWorkspace['beginDraftPublish']>> | undefined;
+    try {
+      snapshot = await this.#config.workspace.beginDraftPublish(current.name, manifestResult.manifest.slug, expectedRevision);
+      snapshot.markInstalledMutation();
+      const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative, resolve, basename }, {
+        cwd: snapshot.canonicalPath,
+        finalWidgetsDir,
+        actorService: undefined,
+        sdkActorTypePath: join(this.#config.workspace.sdkPackagePath, 'src', 'actor.ts'),
+      });
+      if (!result.published) {
+        await snapshot.rollback();
+        return this.#publishFailure(
+          draft.name,
+          'validation-failed',
+          result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
+          current.revision,
+          result.validation.errors,
+          result.validation.warnings,
+        );
+      }
+
+      await this.#config.actorService?.reload();
+      await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
+        definitionName: result.manifest.name,
+        bindings: bindingPlan.bindings.map((binding) => ({
+          slot: binding.slot,
+          resourceId: binding.resource.id,
+          scope: binding.scope,
+        })),
+      });
+      if (snapshot.wasExisting) await this.#config.actorService?.reloadDefinitionInstances?.(result.manifest.name);
+      await snapshot.commit();
+
+      this.#config.eventPublisher.publishAgentEvent({
+        kind: 'widget-published',
+        draftId: current.name,
+        revision: current.revision,
+        definitionName: result.manifest.name,
+      });
+      return {
+        published: true,
+        draftId: current.name,
+        revision: current.revision,
+        definitionName: result.manifest.name,
+        manifest: result.manifest,
+      };
+    } catch (error) {
+      await snapshot?.rollback().catch(() => undefined);
+      await this.#config.actorService?.reload().catch(() => undefined);
+      const message = error instanceof Error ? error.message : String(error);
+      const latest = await this.#config.workspace.getDraft(draft.name);
+      const stale = latest !== null && latest.revision !== expectedRevision;
+      return this.#publishFailure(
+        draft.name,
+        stale ? 'stale-revision' : /permission|authoriz/i.test(message) ? 'permission-failed' : 'publication-failed',
+        message,
+        latest?.revision,
+      );
+    }
+  }
+
+  async #summary(draft: TWidgetDraftWorkspaceEntry): Promise<TWidgetDraftSummary> {
+    const manifest = await this.#readManifest(draft.draftPath);
+    const validation = this.#validationByDraft.get(draft.name);
+    const currentValidation = validation?.revision === draft.revision ? validation : undefined;
+    const previewAvailable = manifest.ok && await this.#hasPreviewEntry(draft.draftPath, manifest.manifest.widget.relWidgetDir);
+
+    return {
+      draftId: draft.name,
+      name: draft.name,
+      displayName: manifest.ok ? manifest.manifest.name : draft.name,
+      state: draft.published ? 'modified' : 'new',
+      revision: draft.revision,
+      updatedAt: draft.updatedAt,
+      validation: currentValidation ? {
+        status: currentValidation.ok ? 'valid' : 'invalid',
+        errors: currentValidation.errors,
+        warnings: currentValidation.warnings,
+        validatedRevision: currentValidation.revision,
+      } : {
+        status: 'unknown',
+        errors: [],
+        warnings: [],
+      },
+      previewAvailable,
+      publishReady: currentValidation?.ok === true,
+    };
+  }
+
+  async #readManifest(root: string): Promise<{ ok: true; manifest: TVibecanvasJson } | { ok: false; message: string }> {
+    try {
+      const parsed = ZVibecanvasJson.safeParse(JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8')));
+      if (!parsed.success) {
+        return { ok: false, message: parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') };
+      }
+      return { ok: true, manifest: parsed.data as TVibecanvasJson };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  async #hasPreviewEntry(root: string, relWidgetDir: string): Promise<boolean> {
+    const widgetRoot = resolve(root, relWidgetDir);
+    if (!this.#isInside(root, widgetRoot)) return false;
+    return Boolean(
+      await stat(join(widgetRoot, 'main.ts')).catch(() => null)
+      ?? await stat(join(widgetRoot, 'main.js')).catch(() => null),
+    );
+  }
+
+  async #readWidgetSourceMap(root: string, relWidgetDir: string): Promise<Record<string, string>> {
+    const widgetRoot = resolve(root, relWidgetDir);
+    if (!this.#isInside(root, widgetRoot)) return {};
+    const details = await stat(widgetRoot).catch(() => null);
+    if (!details?.isDirectory()) return {};
+    const sources: Record<string, string> = {};
+
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const absolutePath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(absolutePath);
+        } else if (entry.isFile()) {
+          sources[relative(widgetRoot, absolutePath)] = await readFile(absolutePath, 'utf8');
+        }
+      }
+    };
+    await walk(widgetRoot);
+    return sources;
+  }
+
+  #isInside(root: string, candidate: string): boolean {
+    const rel = relative(resolve(root), candidate);
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  }
+
+  async #resourceBindingPlan(manifest: TVibecanvasJson): Promise<TResourceBindingResult> {
+    const requirements = Object.keys(manifest.actor.resources ?? {});
+    if (requirements.length === 0) return { ok: true, bindings: [] };
+    const actorService = this.#config.actorService;
+    if (!actorService?.listResources) return { ok: false, message: 'Resources cannot be discovered in this host.' };
+    const available = await actorService.listResources({ status: 'ready' });
+    const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
+      id: resource.id,
+      kind: resource.kind,
+      name: resource.name,
+      status: resource.status,
+    })));
+    if (!implicit.ok) return implicit;
+    return planSelectedResourceBindings(manifest, implicit.resources);
+  }
+
+  #previewReady(draft: TWidgetDraftWorkspaceEntry, preview: TPreviewEntry): TWidgetPreviewReady {
+    return {
+      ready: true,
+      draftId: draft.name,
+      name: preview.manifest.name,
+      revision: preview.revision,
+      currentRevision: draft.revision,
+      stale: preview.revision !== draft.revision,
+      manifest: preview.manifest,
+      sources: preview.sources,
+      snapshot: this.#snapshot(preview.actor),
+      diagnostics: [],
+    };
+  }
+
+  #previewFailure(
+    draftId: string,
+    reason: TWidgetPreviewFailureReason,
+    message: string,
+    draft?: TWidgetDraftWorkspaceEntry,
+    revision?: string,
+    diagnostics: string[] = [],
+  ): Exclude<TWidgetPreviewResult, { ready: true }> {
+    return {
+      ready: false,
+      draftId,
+      revision,
+      currentRevision: draft?.revision,
+      reason,
+      message,
+      diagnostics,
+    };
+  }
+
+  #publishFailure(
+    draftId: string,
+    reason: Exclude<TWidgetPublishResult, { published: true }>['reason'],
+    message: string,
+    currentRevision?: string,
+    errors: string[] = [],
+    warnings: string[] = [],
+  ): Exclude<TWidgetPublishResult, { published: true }> {
+    return { published: false, draftId, reason, message, currentRevision, errors, warnings };
+  }
+
+  #snapshot(actor: Actor): TWidgetPreviewReady['snapshot'] {
+    return { state: actor.getState(), context: actor.getData() };
+  }
+
+  #disposePreview(name: string): void {
+    const preview = this.#previews.get(name);
+    if (!preview) return;
+    preview.unlisten();
+    preview.actor.close();
+    this.#previews.delete(name);
+  }
+}

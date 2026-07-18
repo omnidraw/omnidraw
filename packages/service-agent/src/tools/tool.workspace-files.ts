@@ -6,14 +6,20 @@ import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import { fnApplyExactEdits } from './fn.apply-exact-edits';
 import { fnApplyUnifiedPatch } from './fn.apply-unified-patch';
 import { fnToolError, fnToolSuccess } from './fn.result';
-import type { TToolDefinition } from './types';
+import type { TToolDefinition, TWidgetDraftChange } from './types';
 
 type TCreateWorkspaceFileToolsArgs = {
   workspace: WidgetWorkspace;
   chatId: string;
   cwd: string;
   authorize: (toolName: 'read' | 'edit' | 'patch' | 'grep') => Promise<boolean>;
+  onDraftChanged?: (change: TWidgetDraftChange) => void | Promise<void>;
 };
+
+function mountedWidgetName(path: string): string | undefined {
+  const [root, name] = path.split('/');
+  return root === 'widgets' && name ? name : undefined;
+}
 
 function lexicalPath(cwd: string, absolutePath: string): string {
   return relative(cwd, absolutePath).split(sep).join('/');
@@ -58,6 +64,8 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
           if (!result.ok) throw new Error(result.message);
           return { content: result.content, value: undefined };
         });
+        const name = mountedWidgetName(params.path);
+        if (name) await args.onDraftChanged?.({ name, type: 'changed' });
         return fnToolSuccess(`Successfully replaced ${params.edits.length} block(s) in ${params.path}.`, {
           path: params.path,
           replacements: params.edits.length,
@@ -84,6 +92,8 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
           if (!result.ok) throw new Error(result.message);
           return { content: result.content, value: undefined };
         }, { allowMissing: true });
+        const name = mountedWidgetName(params.path);
+        if (name) await args.onDraftChanged?.({ name, type: 'changed' });
         return fnToolSuccess(`Applied patch to ${params.path}.`, { path: params.path });
       } catch (error) {
         return fnToolError(error instanceof Error ? error.message : String(error));

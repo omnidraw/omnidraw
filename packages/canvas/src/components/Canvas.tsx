@@ -23,6 +23,8 @@ type CanvasPageProps = {
     showInfo(title: string, description?: string): void
   }
   themeService: ThemeService;
+  onOpenResource?: (resourceId: string) => void;
+  onResourceCatalogChanged?: () => void;
 };
 
 
@@ -59,6 +61,8 @@ export function Canvas(props: CanvasPageProps) {
         DEV: import.meta.env.DEV,
       },
       apiService: props.apiService,
+      onOpenResource: props.onOpenResource,
+      onResourceCatalogChanged: props.onResourceCatalogChanged,
       notification: props.notification,
       themeService: props.themeService,
     })

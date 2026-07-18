@@ -116,6 +116,11 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       button.disabled = state.disabled;
       button.style.opacity = state.disabled ? '0.5' : '1';
     }
+    if (state.label !== undefined) {
+      button.textContent = state.label;
+      button.title = state.label;
+      button.setAttribute('aria-label', state.label);
+    }
   };
 
   const titleBarPortal: TWidgetTitleBarPortal | undefined = titleActions.length > 0
@@ -201,7 +206,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     const titleFill = isKonvaText(title) ? title.fill() : undefined;
     const titleColor = typeof titleFill === 'string' ? titleFill : '#111827';
     const actionWidth = titleActions.reduce((width, action) => {
-      return width + titleActionWidth(action.label);
+      return width + titleActionWidth(titleActionButtons.get(action.id)?.textContent ?? action.label);
     }, Math.max(0, titleActions.length - 1) * WIDGET_TITLE_ACTION_GAP);
 
     if (isKonvaText(title) && titleActions.length > 0) {

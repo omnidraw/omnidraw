@@ -26,6 +26,7 @@ import { planImplicitResourceSelections, planSelectedResourceBindings, type TRes
 import type { TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
+import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -190,6 +191,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
+  #widgetDrafts: WidgetDraftController;
   #approvals: ApprovalCoordinator;
   #chatWidgetIds = new Map<TSessionId, TWidgetId>();
 
@@ -197,6 +199,12 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#config = config
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
     this.#workspace = new WidgetWorkspace({ dataPath: config.dataPath, configPath: config.configPath })
+    this.#widgetDrafts = new WidgetDraftController({
+      configPath: config.configPath,
+      workspace: this.#workspace,
+      eventPublisher: config.eventPublisherService,
+      actorService: config.actorService,
+    })
     this.#approvals = new ApprovalCoordinator({
       timeoutMs: config.approvalTimeoutMs,
       authorize: config.authorizeToolCall,
@@ -232,6 +240,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
     this.#approvals.close()
+    this.#widgetDrafts.close()
     this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
@@ -266,7 +275,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const currentWidgetId = this.#chatWidgetIds.get(sessionId)
     if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
     this.#disposeChatSession(id, sessionId)
-    await this.#workspace.removeAllMounts(sessionId)
   }
 
   async startWidgetEditChat(
@@ -483,6 +491,42 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   ): Promise<{ resolved: true; decision: TApprovalDecision }> {
     this.#assertChatScope(id, sessionId)
     return this.#approvals.resolve(sessionId, approvalId, decision, authorization)
+  }
+
+  listWidgetDrafts() {
+    return this.#widgetDrafts.list()
+  }
+
+  getWidgetDraft(name: string) {
+    return this.#widgetDrafts.get(name)
+  }
+
+  validateWidgetDraft(name: string, expectedRevision?: string) {
+    return this.#widgetDrafts.validate(name, expectedRevision)
+  }
+
+  getWidgetPreview(name: string) {
+    return this.#widgetDrafts.getPreview(name)
+  }
+
+  buildWidgetPreview(name: string, expectedRevision: string) {
+    return this.#widgetDrafts.buildPreview(name, expectedRevision)
+  }
+
+  refreshWidgetPreview(name: string, expectedRevision: string) {
+    return this.#widgetDrafts.refreshPreview(name, expectedRevision)
+  }
+
+  resetWidgetPreview(name: string, expectedRevision: string) {
+    return this.#widgetDrafts.resetPreview(name, expectedRevision)
+  }
+
+  sendWidgetPreview(name: string, expectedRevision: string, messageName: string, payload: unknown) {
+    return this.#widgetDrafts.sendPreview(name, expectedRevision, messageName, payload)
+  }
+
+  publishWidgetDraft(name: string, expectedRevision: string) {
+    return this.#widgetDrafts.publish(name, expectedRevision)
   }
 
   inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
@@ -1100,6 +1144,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       approvals: this.#approvals,
       actorService: this.#config.actorService,
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
+      onDraftChanged: (change) => this.#widgetDrafts.handleToolChange(change),
       takeSensitiveToolArgs: (toolCallId) => {
         const stored = sensitiveToolArgs.get(toolCallId)
         sensitiveToolArgs.delete(toolCallId)

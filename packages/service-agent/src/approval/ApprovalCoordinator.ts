@@ -29,6 +29,7 @@ type TApprovalCoordinatorConfig = {
 
 type TRequestApprovalArgs<TArgs, TResult> = {
   chatId: string;
+  toolCallId: string;
   kind: TProtectedApprovalKind;
   authorization: TToolAuthorizationContext;
   exactArgs: TArgs;
@@ -85,6 +86,7 @@ export class ApprovalCoordinator {
     const view: TApprovalView = this.#deepFreeze({
       id,
       chatId: args.chatId,
+      toolCallId: args.toolCallId,
       kind: args.kind,
       summary: args.summary,
       risk: args.risk,

@@ -9,6 +9,7 @@ export type TApprovalDecision = 'approve' | 'reject';
 export type TApprovalView = {
   id: string;
   chatId: string;
+  toolCallId: string;
   kind: TProtectedApprovalKind;
   summary: string;
   risk: 'medium' | 'high';

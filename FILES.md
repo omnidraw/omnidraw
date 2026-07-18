@@ -23,10 +23,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -217,6 +215,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/api-agent/package.json](packages/api-agent/package.json) |  |
+| [packages/api-agent/src/api.approval.get.ts](packages/api-agent/src/api.approval.get.ts) |  |
+| [packages/api-agent/src/api.approval.list.ts](packages/api-agent/src/api.approval.list.ts) |  |
+| [packages/api-agent/src/api.approval.resolve.ts](packages/api-agent/src/api.approval.resolve.ts) |  |
 | [packages/api-agent/src/api.auth.abort.ts](packages/api-agent/src/api.auth.abort.ts) |  |
 | [packages/api-agent/src/api.auth.apiKey.remove.ts](packages/api-agent/src/api.auth.apiKey.remove.ts) |  |
 | [packages/api-agent/src/api.auth.apiKey.set.ts](packages/api-agent/src/api.auth.apiKey.set.ts) |  |
@@ -246,6 +247,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.chat.startWidgetEdit.ts](packages/api-agent/src/api.chat.startWidgetEdit.ts) |  |
 | [packages/api-agent/src/api.events.ts](packages/api-agent/src/api.events.ts) |  |
 | [packages/api-agent/src/api.setting.get.ts](packages/api-agent/src/api.setting.get.ts) |  |
+| [packages/api-agent/src/api.widgetDraft.get.ts](packages/api-agent/src/api.widgetDraft.get.ts) |  |
+| [packages/api-agent/src/api.widgetDraft.list.ts](packages/api-agent/src/api.widgetDraft.list.ts) |  |
+| [packages/api-agent/src/api.widgetDraft.validate.ts](packages/api-agent/src/api.widgetDraft.validate.ts) |  |
+| [packages/api-agent/src/api.widgetPreview.build.ts](packages/api-agent/src/api.widgetPreview.build.ts) |  |
+| [packages/api-agent/src/api.widgetPreview.get.ts](packages/api-agent/src/api.widgetPreview.get.ts) |  |
+| [packages/api-agent/src/api.widgetPreview.refresh.ts](packages/api-agent/src/api.widgetPreview.refresh.ts) |  |
+| [packages/api-agent/src/api.widgetPreview.reset.ts](packages/api-agent/src/api.widgetPreview.reset.ts) |  |
+| [packages/api-agent/src/api.widgetPreview.send.ts](packages/api-agent/src/api.widgetPreview.send.ts) |  |
+| [packages/api-agent/src/api.widgetPublish.publish.ts](packages/api-agent/src/api.widgetPublish.publish.ts) |  |
 | [packages/api-agent/src/CONSTANTS.ts](packages/api-agent/src/CONSTANTS.ts) |  |
 | [packages/api-agent/src/contract.ts](packages/api-agent/src/contract.ts) |  |
 | [packages/api-agent/src/handlers.ts](packages/api-agent/src/handlers.ts) |  |
@@ -384,22 +394,23 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
 | [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Automerge Client Service |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
+| [packages/canvas/src/components/AiChat/ApprovalList.tsx](packages/canvas/src/components/AiChat/ApprovalList.tsx) |  |
 | [packages/canvas/src/components/AiChat/AsyncStateView.tsx](packages/canvas/src/components/AiChat/AsyncStateView.tsx) |  |
 | [packages/canvas/src/components/AiChat/ChatComposer/ChatComposer.tsx](packages/canvas/src/components/AiChat/ChatComposer/ChatComposer.tsx) |  |
 | [packages/canvas/src/components/AiChat/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiChat/ChatComposer/fn.trigger.ts) |  |
 | [packages/canvas/src/components/AiChat/ChatComposer/interface.ts](packages/canvas/src/components/AiChat/ChatComposer/interface.ts) |  |
+| [packages/canvas/src/components/AiChat/fn.approval-details.ts](packages/canvas/src/components/AiChat/fn.approval-details.ts) |  |
 | [packages/canvas/src/components/AiChat/index.css](packages/canvas/src/components/AiChat/index.css) |  |
 | [packages/canvas/src/components/AiChat/index.tsx](packages/canvas/src/components/AiChat/index.tsx) |  |
-| [packages/canvas/src/components/AiChat/tabs/ActorTab.tsx](packages/canvas/src/components/AiChat/tabs/ActorTab.tsx) |  |
 | [packages/canvas/src/components/AiChat/tabs/ChatTab.tsx](packages/canvas/src/components/AiChat/tabs/ChatTab.tsx) |  |
 | [packages/canvas/src/components/AiChat/tabs/fn.chat-message-label.ts](packages/canvas/src/components/AiChat/tabs/fn.chat-message-label.ts) |  |
 | [packages/canvas/src/components/AiChat/tabs/fn.chat-message-markdown.ts](packages/canvas/src/components/AiChat/tabs/fn.chat-message-markdown.ts) |  |
 | [packages/canvas/src/components/AiChat/tabs/fn.chat-message-parts.ts](packages/canvas/src/components/AiChat/tabs/fn.chat-message-parts.ts) |  |
 | [packages/canvas/src/components/AiChat/tabs/fn.markdown-blocks.ts](packages/canvas/src/components/AiChat/tabs/fn.markdown-blocks.ts) |  |
 | [packages/canvas/src/components/AiChat/tabs/fn.markdown.ts](packages/canvas/src/components/AiChat/tabs/fn.markdown.ts) |  |
-| [packages/canvas/src/components/AiChat/tabs/PreviewTab.tsx](packages/canvas/src/components/AiChat/tabs/PreviewTab.tsx) |  |
+| [packages/canvas/src/components/AiChat/tabs/fn.tool-call.ts](packages/canvas/src/components/AiChat/tabs/fn.tool-call.ts) |  |
 | [packages/canvas/src/components/AiChat/tabs/SettingsTab.tsx](packages/canvas/src/components/AiChat/tabs/SettingsTab.tsx) |  |
-| [packages/canvas/src/components/AiChat/tabs/ToolTab.tsx](packages/canvas/src/components/AiChat/tabs/ToolTab.tsx) |  |
+| [packages/canvas/src/components/AiChat/types.ts](packages/canvas/src/components/AiChat/types.ts) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/styles.css](packages/canvas/src/components/CanvasConfirmDialog/styles.css) |  |
@@ -600,6 +611,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/widget/attach-dom-portal.ts](packages/canvas/src/services/widget/attach-dom-portal.ts) |  |
 | [packages/canvas/src/services/widget/CONSTANTS.ts](packages/canvas/src/services/widget/CONSTANTS.ts) |  |
 | [packages/canvas/src/services/widget/fn.actor-event-snapshot.ts](packages/canvas/src/services/widget/fn.actor-event-snapshot.ts) |  |
+| [packages/canvas/src/services/widget/fn.create-cloned-widget-element.ts](packages/canvas/src/services/widget/fn.create-cloned-widget-element.ts) |  |
 | [packages/canvas/src/services/widget/fn.create-widget-node.ts](packages/canvas/src/services/widget/fn.create-widget-node.ts) |  |
 | [packages/canvas/src/services/widget/fn.get-host-theme-colors.ts](packages/canvas/src/services/widget/fn.get-host-theme-colors.ts) |  |
 | [packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts](packages/canvas/src/services/widget/fn.resolve-widget-tool-icon.ts) |  |
@@ -751,6 +763,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/tools/tx.npm-install.ts](packages/service-agent/src/tools/tx.npm-install.ts) |  |
 | [packages/service-agent/src/tools/tx.scaffold.ts](packages/service-agent/src/tools/tx.scaffold.ts) |  |
 | [packages/service-agent/src/tools/types.ts](packages/service-agent/src/tools/types.ts) |  |
+| [packages/service-agent/src/widget-drafts/types.ts](packages/service-agent/src/widget-drafts/types.ts) |  |
+| [packages/service-agent/src/widget-drafts/WidgetDraftController.ts](packages/service-agent/src/widget-drafts/WidgetDraftController.ts) |  |
 | [packages/service-agent/src/workspace/CONSTANTS.ts](packages/service-agent/src/workspace/CONSTANTS.ts) |  |
 | [packages/service-agent/src/workspace/fn.glob.ts](packages/service-agent/src/workspace/fn.glob.ts) |  |
 | [packages/service-agent/src/workspace/fn.names.ts](packages/service-agent/src/workspace/fn.names.ts) |  |
@@ -821,7 +835,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

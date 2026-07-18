@@ -53,12 +53,26 @@ describe('widget names', () => {
 });
 
 describe('WidgetWorkspace', () => {
-  test('creates an empty persistent chat workspace independent of widget identity', async () => {
+  test('uses one empty persistent workspace independent of conversation identity', async () => {
     const { workspace } = await createWorkspace();
     const first = await workspace.ensureChat('chat-a');
     expect(await readdir(join(first, 'widgets'))).toEqual([]);
     expect(await workspace.ensureChat('chat-a')).toBe(first);
-    expect(first).toEndWith(join('chat-cwd', 'chat-a'));
+    expect(await workspace.ensureChat('chat-b')).toBe(first);
+    expect(first).toEndWith('shared-cwd');
+  });
+
+  test('serializes concurrent shared workspace reconciliation', async () => {
+    const { workspace } = await createWorkspace();
+    await createWidgetFolder(workspace.draftRoot, 'Weather');
+    const roots = await Promise.all([
+      workspace.ensureChat('chat-a'),
+      workspace.ensureChat('chat-b'),
+      workspace.ensureChat('chat-c'),
+    ]);
+    expect(new Set(roots).size).toBe(1);
+    expect(await readdir(join(roots[0], 'widgets'))).toEqual(['Weather']);
+    expect(await realpath(join(roots[0], 'widgets', 'Weather'))).toBe(await realpath(join(workspace.draftRoot, 'Weather')));
   });
 
   test('reconciles a missing canonical published folder without overwriting it later', async () => {
@@ -172,14 +186,16 @@ describe('WidgetWorkspace', () => {
     const published = await createWidgetFolder(workspace.publishedRoot, 'Weather', 'published');
     await createWidgetFolder(workspace.draftRoot, 'Weather', 'draft');
     const firstChat = await workspace.ensureChat('chat-a');
+    await rm(join(firstChat, 'widgets', 'Weather'));
     await symlink(published, join(firstChat, 'widgets', 'Weather'), 'dir');
 
-    await expect(workspace.resolveMountedPath('chat-a', 'widgets/Weather/widget/main.ts')).rejects.toThrow('shared draft');
+    const resolved = await workspace.resolveMountedPath('chat-a', 'widgets/Weather/widget/main.ts');
+    expect(await readFile(resolved.absolutePath, 'utf8')).toBe('draft');
     const mount = await workspace.loadWidget('chat-a', 'Weather');
     expect(await realpath(mount.mountPath)).toBe(await realpath(join(workspace.draftRoot, 'Weather')));
 
     const secondChat = await workspace.ensureChat('chat-b');
-    await symlink(published, join(secondChat, 'widgets', 'Weather'), 'dir');
+    expect(secondChat).toBe(firstChat);
     expect(await workspace.removeAllMounts('chat-b')).toBe(1);
     expect(await readdir(join(secondChat, 'widgets'))).toEqual([]);
   });
@@ -241,6 +257,17 @@ describe('WidgetWorkspace', () => {
     await snapshot.rollback();
     expect(await readFile(join(workspace.draftRoot, 'Timer', 'widget', 'main.ts'), 'utf8')).toBe('initial');
     await expect(lstat(snapshot.canonicalPath)).rejects.toThrow();
+  });
+
+  test('prevents concurrent publishes from claiming the same installed slug', async () => {
+    const { workspace } = await createWorkspace();
+    await createWidgetFolder(workspace.draftRoot, 'Timer');
+    await createWidgetFolder(workspace.draftRoot, 'Clock');
+    const timer = await workspace.beginDraftPublish('Timer', 'shared-slug');
+    await expect(workspace.beginDraftPublish('Clock', 'shared-slug')).rejects.toThrow('already being published');
+    await timer.rollback();
+    const clock = await workspace.beginDraftPublish('Clock', 'shared-slug');
+    await clock.rollback();
   });
 
   test('restores the previous canonical snapshot when a publish rolls back', async () => {

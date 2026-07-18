@@ -1,4 +1,5 @@
 import type { SessionManager, ToolDefinition } from '@earendil-works/pi-coding-agent';
+import type { TValidationResult } from '../core/types';
 export type { TActorServiceReloader, TValidationResult } from '../core/types';
 
 export type TWidgetEditSessionRecord = {
@@ -48,6 +49,12 @@ export type TToolEvent =
   { type: 'widgetupdate'; cwd: string; files: string[] };
 
 export type TToolEventSink = (event: TToolEvent) => void | Promise<void>;
+
+export type TWidgetDraftChange = {
+  name: string;
+  type: 'created' | 'changed' | 'validated';
+  validation?: TValidationResult;
+};
 
 export type TToolDefinition = ToolDefinition<any, unknown, any>;
 

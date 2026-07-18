@@ -286,7 +286,12 @@ const Sidebar: Component<SidebarProps> = (props) => {
               <div class={styles.resourceList}>
                 <For each={resources()} fallback={<p class={styles.emptyGroup}>No resources.</p>}>
                   {(resource) => (
-                    <Button class={`${styles.resourceItem} ${activeResourceId() === resource.id ? styles.resourceItemSelected : ""}`} title={`${resource.kind} · ${resource.status}`} onClick={() => navigate(`/resources/${resource.id}`)}>
+                    <Button
+                      class={`${styles.resourceItem} ${activeResourceId() === resource.id ? styles.resourceItemSelected : ""}`}
+                      title={`${resource.kind} · ${resource.status}`}
+                      aria-current={activeResourceId() === resource.id ? "page" : undefined}
+                      onClick={() => navigate(`/resources/${resource.id}`)}
+                    >
                       <span class={`${styles.resourceStatus} ${resource.status === "ready" ? styles.resourceStatusReady : ""}`} aria-hidden="true" />
                       <span class={styles.resourceName}>{resource.name}</span>
                       <span class={styles.resourceKind}>{resource.kind === "secretStore" ? "SECRET" : resource.kind.toUpperCase()}</span>

@@ -977,17 +977,6 @@ export function ChatComposer(props: TChatComposerProps) {
                     role="menuitem"
                     onClick={() => {
                       setActionMenuOpen(false)
-                      props.onEditExistingWidget?.()
-                      view?.focus()
-                    }}
-                  >
-                    Edit existing widget
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setActionMenuOpen(false)
                       props.onCopyChat?.()
                       view?.focus()
                     }}

@@ -145,7 +145,7 @@ function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TUiWidg
     window: 'contained',
     h: WIDGET_HOST_MIN_HEIGHT,
     w: WIDGET_HOST_MIN_WIDTH,
-    payload: args.widgetConfig.initialPayload ?? {},
+    payload: args.widgetConfig.createInitialPayload?.() ?? args.widgetConfig.initialPayload ?? {},
   }
 }
 

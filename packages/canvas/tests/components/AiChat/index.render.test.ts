@@ -50,6 +50,10 @@ function createApiService() {
         },
       },
       agent: {
+        approval: {
+          list: async () => [undefined, []],
+          resolve: async () => [undefined, { resolved: true }],
+        },
         settings: {
           get: async () => [undefined, {
             defaultThinkingLevel: "minimal",
@@ -65,6 +69,17 @@ function createApiService() {
             messageHistory: [],
             vcJson: null,
           }],
+          newSession: async () => [undefined, { started: true }],
+          resourceBindings: {
+            clear: async () => [undefined, { cleared: true }],
+          },
+        },
+        widgetDraft: {
+          list: async () => [undefined, []],
+          validate: async () => [undefined, null],
+        },
+        widgetPublish: {
+          publish: async () => [undefined, { published: false, message: "not configured" }],
         },
         events: async () => [undefined, {
           async *[Symbol.asyncIterator]() {},
@@ -83,6 +98,42 @@ afterEach(() => {
 })
 
 describe("AiChat shell", () => {
+  it("closes the agent event stream when the chat is disposed", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    let resolveNext: ((result: IteratorResult<never>) => void) | undefined
+    const returnEventStream = vi.fn(async () => {
+      resolveNext?.({ done: true, value: undefined as never })
+      return { done: true, value: undefined }
+    })
+    const eventIterator = {
+      next: vi.fn(() => new Promise<IteratorResult<never>>((resolve) => { resolveNext = resolve })),
+      return: returnEventStream,
+    }
+    apiService.api.agent.events = async () => [undefined, {
+      [Symbol.asyncIterator]: () => eventIterator,
+    }]
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(eventIterator.next).toHaveBeenCalledTimes(1))
+    disposeRendered()
+    disposeRendered = undefined
+
+    await vi.waitFor(() => expect(returnEventStream).toHaveBeenCalledTimes(1))
+  })
+
   it("uses the widget title action for Settings and restores the mounted chat", async () => {
     ensureComponentDomMocks()
     container = document.createElement("div")
@@ -124,14 +175,14 @@ describe("AiChat shell", () => {
     expect(chatView?.hidden).toBe(true)
     expect(settingsView).not.toBeNull()
     expect(container.querySelector(".ai-chat-view:not(.ai-chat-view--settings)")).toBe(chatView)
-    expect(setActionState).toHaveBeenLastCalledWith("settings", { pressed: true })
+    expect(setActionState).toHaveBeenLastCalledWith("settings", { pressed: true, label: "Back to chat" })
 
     settingsAction?.()
 
     expect(chatView?.hidden).toBe(false)
     expect(container.querySelector(".ai-chat-view--settings")).toBeNull()
     expect(container.querySelector(".ai-chat-view:not(.ai-chat-view--settings)")).toBe(chatView)
-    expect(setActionState).toHaveBeenLastCalledWith("settings", { pressed: false })
+    expect(setActionState).toHaveBeenLastCalledWith("settings", { pressed: false, label: "Settings" })
     expect(container.textContent).not.toContain("AI Wizard")
 
     const firstChatTab = container.querySelector(".ai-chat-tab--chat")
@@ -143,5 +194,68 @@ describe("AiChat shell", () => {
     await vi.waitFor(() => {
       expect(container?.querySelector(".ai-chat-tab--chat")).not.toBe(firstChatTab)
     })
+  })
+
+  it("refreshes resources after approval and exposes the created resource action", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const listResources = vi.fn(async () => [undefined, [{
+      id: "kv-1",
+      kind: "kv",
+      name: "Cache",
+      status: "ready",
+    }]]);
+    apiService.api.actors.resources.list = listResources
+    apiService.api.agent.approval.list = async () => [undefined, [{
+      id: "approval-1",
+      chatId: "conversation-1",
+      toolCallId: "tool-call-1",
+      kind: "resource-create",
+      summary: "Create kv resource 'Cache'",
+      risk: "medium",
+      warnings: [],
+      details: { kind: "kv", name: "Cache" },
+      createdAt: new Date(0).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }]];
+    apiService.api.agent.chat.connect = async () => [undefined, {
+      actorCandidate: null,
+      editSession: null,
+      messageHistory: [{
+        role: "assistant",
+        content: [{ type: "toolCall", id: "tool-call-1", name: "vc_resource_create", arguments: { kind: "kv", name: "Cache" } }],
+      }],
+      vcJson: null,
+    }];
+    const onResourceCatalogChanged = vi.fn()
+    const onOpenResource = vi.fn()
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+      onResourceCatalogChanged,
+      onOpenResource,
+    }), container)
+
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-tool-call .ai-chat-approval")).not.toBeNull())
+    Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-tool-call .ai-chat-approval__actions button"))
+      .find((button) => button.textContent === "Approve")
+      ?.click()
+
+    await vi.waitFor(() => expect(onResourceCatalogChanged).toHaveBeenCalledTimes(1))
+    expect(listResources).toHaveBeenCalledTimes(2)
+    const openResource = Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-tool-call button"))
+      .find((button) => button.textContent === "Open resource")
+    expect(openResource).not.toBeUndefined()
+    openResource?.click()
+    expect(onOpenResource).toHaveBeenCalledWith("kv-1")
   })
 })

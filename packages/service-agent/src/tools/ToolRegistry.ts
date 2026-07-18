@@ -8,7 +8,7 @@ import { createResourceTools } from './tool.resources';
 import { createWebFetchTool } from './tool.web-fetch';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
 import { createWorkspaceFileTools } from './tool.workspace-files';
-import type { TActorServiceReloader, TToolDefinition } from './types';
+import type { TActorServiceReloader, TToolDefinition, TWidgetDraftChange } from './types';
 
 type TCreateToolRegistryArgs = {
   chatId: string;
@@ -19,6 +19,7 @@ type TCreateToolRegistryArgs = {
   approvals: ApprovalCoordinator;
   actorService?: TActorServiceReloader;
   onMounted?: (mount: TWidgetMount) => void;
+  onDraftChanged?: (change: TWidgetDraftChange) => void | Promise<void>;
   takeSensitiveToolArgs?: (toolCallId: string) => unknown;
 };
 
@@ -43,12 +44,14 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       chatId: args.chatId,
       authorize: (toolName) => authorize(toolName),
       onMounted: args.onMounted,
+      onDraftChanged: args.onDraftChanged,
     }),
     ...createWorkspaceFileTools({
       workspace: args.workspace,
       chatId: args.chatId,
       cwd: args.cwd,
       authorize: (toolName) => authorize(toolName),
+      onDraftChanged: args.onDraftChanged,
     }),
     ...createResourceTools({
       chatId: args.chatId,

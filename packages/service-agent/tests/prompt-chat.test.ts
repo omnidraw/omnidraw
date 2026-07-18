@@ -198,7 +198,7 @@ describe('AgentService.promptChat', () => {
     const expectedTools = [
       'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
       'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
-      'vc_resource_update', 'vc_widget_create', 'vc_widget_load', 'vc_widget_validate', 'web_fetch',
+      'vc_resource_update', 'vc_widget_create', 'vc_widget_validate', 'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
 

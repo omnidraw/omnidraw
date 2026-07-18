@@ -96,7 +96,7 @@ export function createWidgetPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, I
 
           for await (const event of events) {
             if (disposed) break
-            if (!('kind' in event) || event.kind !== 'widgetupdate') continue
+            if (!('kind' in event) || (event.kind !== 'widgetupdate' && event.kind !== 'widget-published')) continue
 
             await registerPublishedWidgets()
           }

@@ -3,6 +3,7 @@ import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-ic
 import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { TWidgetDraftSummary, TWidgetPreviewResult, TWidgetPreviewSendResult, TWidgetPublishResult } from '@vibecanvas/service-agent/widget-drafts/types';
 import { z } from 'zod';
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
@@ -56,6 +57,8 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 ])
 
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
+const ZAgentWidgetDraftRef = z.object({ draftId: z.string().min(1).max(120) })
+const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({ expectedRevision: z.string().min(1).max(256) })
 const ZAgentChatStartWidgetEdit = ZAgentChatScope.extend({
   definitionName: z.string().min(1),
 })
@@ -102,6 +105,7 @@ const ZAgentChatDbChangeProposal = z.object({
 const ZAgentApproval = z.object({
   id: z.string(),
   chatId: z.string(),
+  toolCallId: z.string(),
   kind: z.enum(['resource-create', 'resource-update', 'resource-delete', 'resource-data-write']),
   summary: z.string(),
   risk: z.enum(['medium', 'high']),
@@ -252,6 +256,32 @@ export const agentContract = oc.router({
       inspect: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
       send: oc.input(ZAgentChatDraftActorSend).output(orpcType<TAgentDraftActorSendResult>()),
     },
+  },
+  widgetDraft: {
+    list: oc.input(z.object({})).output(orpcType<TWidgetDraftSummary[]>()),
+    get: oc.input(ZAgentWidgetDraftRef).output(orpcType<TWidgetDraftSummary | null>()),
+    validate: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetDraftSummary | null>()),
+  },
+  widgetPreview: {
+    get: oc.input(ZAgentWidgetDraftRef).output(orpcType<TWidgetPreviewResult>()),
+    build: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPreviewResult>()),
+    refresh: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPreviewResult>()),
+    reset: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPreviewResult>()),
+    send: oc.input(ZAgentWidgetDraftRevisionRef.extend({
+      name: z.string().min(1).max(120),
+      payload: z.unknown(),
+    })).output(orpcType<TWidgetPreviewSendResult>()),
+  },
+  widgetPublish: {
+    publish: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPublishResult>()),
+  },
+  approval: {
+    list: oc.input(ZAgentChatScope).output(ZAgentApproval.array()),
+    get: oc.input(ZAgentChatScope.extend({ approvalId: z.string().min(1) })).output(ZAgentApproval.nullable()),
+    resolve: oc.input(ZAgentChatScope.extend({
+      approvalId: z.string().min(1),
+      decision: z.enum(['approve', 'reject']),
+    })).output(z.object({ resolved: z.literal(true), decision: z.enum(['approve', 'reject']) })),
   },
   auth: {
     login: oc

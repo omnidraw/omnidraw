@@ -12,6 +12,7 @@ describe('process-local approvals', () => {
     const input = { resourceId: 'kv-1', operation: { kind: 'kv', operation: 'set', key: 'theme', value: 'dark' } };
     const toolResult = coordinator.request({
       chatId: 'chat-a',
+      toolCallId: 'tool-call-1',
       kind: 'resource-data-write',
       authorization: { accountId: 'user-a' },
       exactArgs: input,
@@ -39,6 +40,7 @@ describe('process-local approvals', () => {
     const coordinator = new ApprovalCoordinator({ createId: () => `approval-${++id}`, timeoutMs: 10 });
     const request = (signal?: AbortSignal) => coordinator.request({
       chatId: 'chat-a',
+      toolCallId: `tool-call-${id + 1}`,
       kind: 'resource-delete',
       authorization: {},
       exactArgs: { resourceId: 'kv-1' },
@@ -75,6 +77,7 @@ describe('process-local approvals', () => {
     });
     const result = coordinator.request({
       chatId: 'chat-a',
+      toolCallId: 'tool-call-secret',
       kind: 'resource-data-write',
       authorization: { accountId: 'user-a' },
       exactArgs: { resourceId: 'secret-1', operation: { kind: 'secretStore', operation: 'set', key: 'TOKEN', value: 'plaintext' } },
@@ -100,6 +103,7 @@ describe('process-local approvals', () => {
     });
     const failedResult = failed.request({
       chatId: 'chat-a',
+      toolCallId: 'tool-call-auth-error',
       kind: 'resource-create',
       authorization: {},
       exactArgs: { kind: 'kv', name: 'Cache' },
@@ -122,6 +126,7 @@ describe('process-local approvals', () => {
     const executing = new ApprovalCoordinator({ createId: () => 'approval-executing' });
     const result = executing.request({
       chatId: 'chat-a',
+      toolCallId: 'tool-call-executing',
       kind: 'resource-delete',
       authorization: {},
       exactArgs: { resourceId: 'kv-1' },
@@ -142,6 +147,7 @@ describe('process-local approvals', () => {
     const first = new ApprovalCoordinator({ createId: () => 'approval-1' });
     const pending = first.request({
       chatId: 'chat-a',
+      toolCallId: 'tool-call-restart',
       kind: 'resource-create',
       authorization: {},
       exactArgs: { kind: 'kv', name: 'Preferences' },

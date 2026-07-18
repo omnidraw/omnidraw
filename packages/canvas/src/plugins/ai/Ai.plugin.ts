@@ -81,6 +81,8 @@ function persistAiPayload(args: {
 
 function mountAiWidget(portal: {
   apiService: IRuntimeConfig['apiService'];
+  onOpenResource: IRuntimeConfig['onOpenResource'];
+  onResourceCatalogChanged: IRuntimeConfig['onResourceCatalogChanged'];
   crdt: CrdtService;
   scene: SceneService;
   tool: ToolService;
@@ -127,6 +129,8 @@ function mountAiWidget(portal: {
       });
       return sessionId;
     },
+    onOpenResource: portal.onOpenResource,
+    onResourceCatalogChanged: portal.onResourceCatalogChanged,
   }), args.root)
 
   return () => {
@@ -153,12 +157,14 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
           shortcuts: ["Q"],
           priority: 5,
         },
-        initialPayload: { sessionId: crypto.randomUUID() } satisfies TAiWidgetPayload,
+        createInitialPayload: () => ({ sessionId: crypto.randomUUID() } satisfies TAiWidgetPayload),
         titleBarActions: [{ id: "settings", label: "Settings" }],
         renderDom: ({ root, element, titleBar }) => {
           if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");
           return mountAiWidget({
             apiService: ctx.config.apiService,
+            onOpenResource: ctx.config.onOpenResource,
+            onResourceCatalogChanged: ctx.config.onResourceCatalogChanged,
             crdt,
             scene,
             tool,

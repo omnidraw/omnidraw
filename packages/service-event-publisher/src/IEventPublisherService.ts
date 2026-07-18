@@ -51,6 +51,7 @@ export type TAgentApprovalEvent = {
   approval: {
     id: string;
     chatId: string;
+    toolCallId: string;
     kind: 'resource-create' | 'resource-update' | 'resource-delete' | 'resource-data-write';
     summary: string;
     risk: 'medium' | 'high';
@@ -62,7 +63,32 @@ export type TAgentApprovalEvent = {
   decision?: 'approve' | 'reject';
   reason?: string;
 };
-export type TAgentEvent = TAgentChatEvent | TAgentDraftActorEvent | TAgentWidgetUpdateEvent | TAgentApprovalEvent;
+export type TAgentWidgetDraftEvent = {
+  kind: 'widget-draft';
+  type: 'created' | 'changed' | 'validated';
+  draftId: string;
+  revision: string;
+};
+export type TAgentWidgetPreviewEvent = {
+  kind: 'widget-preview';
+  type: 'changed';
+  draftId: string;
+  revision: string;
+};
+export type TAgentWidgetPublishedEvent = {
+  kind: 'widget-published';
+  draftId: string;
+  revision: string;
+  definitionName: string;
+};
+export type TAgentEvent =
+  | TAgentChatEvent
+  | TAgentDraftActorEvent
+  | TAgentWidgetUpdateEvent
+  | TAgentApprovalEvent
+  | TAgentWidgetDraftEvent
+  | TAgentWidgetPreviewEvent
+  | TAgentWidgetPublishedEvent;
 export interface IEventPublisherService extends IService {
   publishDbEvent(canvasId: string, event: TDbEvent): void;
   subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;

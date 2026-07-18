@@ -128,7 +128,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
   models: [
     { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
   ],
-}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, onInspectActor = () => {}, onPreferenceChange = () => {}, onApproveDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onRejectDbChange: (proposalId: string) => Promise<any> = async () => { throw new Error("not configured") }, onClearResourceBindings: () => Promise<void> = async () => {}, onOpenPreview = () => {}) {
+}, messageHistory: readonly unknown[] = MOCK_MESSAGE_HISTORY, overrides: Record<string, unknown> = {}) {
   ensureComponentDomMocks()
 
   container = document.createElement("div")
@@ -137,18 +137,16 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     isCanceling: false,
     isRunning: false,
     messageHistory,
+    approvals: [],
     onCancel: () => {},
     onNewChat: () => {},
-    onEditExistingWidget: () => {},
-    onClearResourceBindings,
+    onClearResourceBindings: async () => {},
     onPrompt: async () => {},
-    onPreferenceChange,
-    onInspectActor,
-    onOpenPreview,
-    onApproveDbChange,
-    onRejectDbChange,
+    onPreferenceChange: () => {},
+    onResolveApproval: async () => {},
     settings,
     mentions: [{ id: "db-1", label: "db", kind: "Database" }],
+    ...overrides,
   }), container)
 
   return container
@@ -203,57 +201,85 @@ describe("ChatTab rendered message history", () => {
       },
     ])
     const message = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
+    const toggle = () => root.querySelector<HTMLButtonElement>(".ai-chat-history__tool-result-toggle")
 
     expect(message).not.toBeNull()
-    expect(message?.getAttribute("aria-expanded")).toBe("false")
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
     expect(message?.textContent).toContain("line 1")
     expect(message?.textContent).toContain("line 5")
     expect(message?.textContent).toContain("...")
     expect(message?.textContent).not.toContain("line 6")
 
-    message?.click()
+    toggle()?.click()
 
-    expect(message?.getAttribute("aria-expanded")).toBe("true")
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("true")
     expect(message?.textContent).toContain("line 6")
     expect(message?.textContent).toContain("line 7")
     expect(message?.textContent).not.toContain("...")
 
-    message?.click()
+    toggle()?.click()
 
-    expect(message?.getAttribute("aria-expanded")).toBe("false")
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
     expect(message?.textContent).toContain("...")
     expect(message?.textContent).not.toContain("line 6")
   })
 
-  it("requires a prominent risk checkbox before approving exact database SQL", async () => {
-    const proposal = {
-      id: "proposal-1",
-      resourceId: "db-1",
-      resourceName: "Notes Database",
-      sql: "ALTER TABLE notes ADD COLUMN title TEXT;",
-      reason: "Store note titles.",
-      status: "pending" as const,
-    }
-    const onApprove = vi.fn(async () => ({ ...proposal, status: "approved" as const }))
+  it("renders generic protected resource approvals with redacted structured details", async () => {
+    const onResolveApproval = vi.fn(async () => {})
+    const root = renderChatTab(undefined, [{
+      role: "assistant",
+      content: [{ type: "toolCall", id: "tool-call-1", name: "vc_resource_data_write", arguments: {} }],
+    }], {
+      approvals: [{
+        id: "approval-1",
+        chatId: "chat-1",
+        toolCallId: "tool-call-1",
+        kind: "resource-data-write",
+        summary: "Write deployment configuration",
+        risk: "high",
+        warnings: ["This changes shared data."],
+        details: { resource: "Production", value: "must-not-render", operation: "set" },
+        createdAt: new Date(0).toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        status: "pending",
+      }],
+      onResolveApproval,
+    })
+
+    expect(root.textContent).toContain("Write deployment configuration")
+    expect(root.querySelectorAll(".ai-chat-tool-call .ai-chat-approval")).toHaveLength(1)
+    expect(root.querySelectorAll(".ai-chat-approvals--floating .ai-chat-approval")).toHaveLength(1)
+    root.querySelector<HTMLButtonElement>(".ai-chat-tool-call .ai-chat-approval__details-toggle")?.click()
+    expect(root.textContent).toContain("[redacted]")
+    expect(root.textContent).not.toContain("must-not-render")
+    Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-approval__actions button"))
+      .find((button) => button.textContent === "Approve")
+      ?.click()
+    await vi.waitFor(() => expect(onResolveApproval).toHaveBeenCalledWith("approval-1", "approve"))
+  })
+
+  it("opens the resource detail page from a resource tool result", () => {
+    const onOpenResource = vi.fn()
     const root = renderChatTab(undefined, [{
       role: "toolResult",
-      toolCallId: "call-db",
-      toolName: "vc_propose_db_change",
-      content: [{ type: "text", text: "No SQL was executed." }],
-      details: { kind: "db-change-proposal", proposal },
-    }], () => {}, () => {}, onApprove)
-    const checkbox = root.querySelector<HTMLInputElement>(".ai-chat-db-proposal__risk input")
-    const approve = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-db-proposal__actions button"))
-      .find((button) => button.textContent === "Approve database change")
+      toolCallId: "call-create",
+      toolName: "vc_resource_create",
+      content: [{ type: "text", text: "Created resource 'Cache'." }],
+      details: { resource: { id: "kv-1", kind: "kv", name: "Cache" } },
+      isError: false,
+    }], { onOpenResource })
 
-    expect(root.textContent).toContain(proposal.sql)
-    expect(checkbox).not.toBeNull()
-    expect(approve?.disabled).toBe(true)
-    checkbox?.click()
-    expect(approve?.disabled).toBe(false)
-    approve?.click()
-    await vi.waitFor(() => expect(onApprove).toHaveBeenCalledWith("proposal-1"))
-    expect(root.textContent).toContain("approved")
+    const openButton = Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-history__resource-action button"))
+      .find((button) => button.textContent === "Open Cache")
+    expect(openButton).not.toBeUndefined()
+    openButton?.click()
+    expect(onOpenResource).toHaveBeenCalledWith("kv-1")
+  })
+
+  it("does not render the removed widget draft strip", () => {
+    const root = renderChatTab()
+    expect(root.querySelector(".ai-chat-drafts")).toBeNull()
+    expect(root.textContent).not.toContain("Widget drafts")
   })
 
   it("forwards vertical table wheel gestures to the chat scroller", () => {
@@ -382,15 +408,7 @@ describe("ChatTab rendered message history", () => {
 
   it("exposes an explicit action that clears persistent draft resource bindings", () => {
     const onClearResourceBindings = vi.fn(async () => {})
-    const root = renderChatTab(
-      undefined,
-      MOCK_MESSAGE_HISTORY,
-      () => {},
-      () => {},
-      async () => { throw new Error("not configured") },
-      async () => { throw new Error("not configured") },
-      onClearResourceBindings,
-    )
+    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, { onClearResourceBindings })
 
     root.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
     Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
@@ -410,7 +428,7 @@ describe("ChatTab rendered message history", () => {
         { id: "gpt-test", input: ["text" as const], provider: "openai-codex", name: "GPT Test" },
         { id: "gpt-next", input: ["text" as const], provider: "openai-codex", name: "GPT Next" },
       ],
-    }, MOCK_MESSAGE_HISTORY, () => {}, onPreferenceChange)
+    }, MOCK_MESSAGE_HISTORY, { onPreferenceChange })
 
     root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")?.click()
     Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-option"))
@@ -427,7 +445,7 @@ describe("ChatTab rendered message history", () => {
 
   it("forwards selected thinking level changes as chat preference changes", () => {
     const onPreferenceChange = vi.fn()
-    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, () => {}, onPreferenceChange)
+    const root = renderChatTab(undefined, MOCK_MESSAGE_HISTORY, { onPreferenceChange })
 
     root.querySelector<HTMLButtonElement>(".ai-chat-composer__pill")?.click()
     Array.from(root.querySelectorAll<HTMLButtonElement>(".ai-chat-composer__model-provider"))
@@ -440,90 +458,4 @@ describe("ChatTab rendered message history", () => {
     expect(onPreferenceChange).toHaveBeenCalledWith({ thinkingLevel: "high" })
   })
 
-  it("shows Review design for successful vc_set_actor_candidate tool results", () => {
-    const onInspectActor = vi.fn()
-
-    const successfulActorToolResult = {
-      role: "toolResult",
-      toolCallId: "call-ok",
-      toolName: "vc_set_actor_candidate",
-      content: [
-        { type: "text", text: "Actor candidate saved as revision 1." },
-      ],
-    }
-
-    const root = renderChatTab(undefined, [successfulActorToolResult], onInspectActor)
-    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Review design")
-
-    expect(buttons).toHaveLength(1)
-  })
-
-  it("does not show Review design for failed vc_set_actor_candidate tool results", () => {
-    const onInspectActor = vi.fn()
-
-    const failedActorToolResult = {
-      role: "toolResult",
-      toolCallId: "call-fail",
-      toolName: "vc_set_actor_candidate",
-      content: [
-        { type: "text", text: "Actor candidate is invalid." },
-      ],
-    }
-
-    const root = renderChatTab(undefined, [failedActorToolResult], onInspectActor)
-    const buttons = Array.from(root.querySelectorAll("button")).filter((button) => button.textContent === "Review design")
-
-    expect(buttons).toHaveLength(0)
-  })
-
-  it("opens preview from a successful validation tool result", () => {
-    const onOpenPreview = vi.fn()
-    const validationResult = {
-      role: "toolResult",
-      toolCallId: "call-preview",
-      toolName: "vc_validate_widget_files",
-      content: [{ type: "text", text: "Widget files are valid." }],
-      details: { ok: true },
-    }
-    const root = renderChatTab(
-      undefined,
-      [validationResult],
-      () => {},
-      () => {},
-      async () => { throw new Error("not configured") },
-      async () => { throw new Error("not configured") },
-      async () => {},
-      onOpenPreview,
-    )
-
-    Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
-      .find((button) => button.textContent === "Open preview")
-      ?.click()
-
-    expect(onOpenPreview).toHaveBeenCalledTimes(1)
-  })
-
-  it("does not open preview from a failed validation result", () => {
-    const onOpenPreview = vi.fn()
-    const validationResult = {
-      role: "toolResult",
-      toolCallId: "call-preview-failed",
-      toolName: "vc_validate_widget_files",
-      content: [{ type: "text", text: "Widget draft files are invalid." }],
-      details: { ok: false, errors: ["widget/main.ts is missing"] },
-    }
-    const root = renderChatTab(
-      undefined,
-      [validationResult],
-      () => {},
-      () => {},
-      async () => { throw new Error("not configured") },
-      async () => { throw new Error("not configured") },
-      async () => {},
-      onOpenPreview,
-    )
-
-    expect(Array.from(root.querySelectorAll("button")).some((button) => button.textContent === "Open preview")).toBe(false)
-    expect(onOpenPreview).not.toHaveBeenCalled()
-  })
 })

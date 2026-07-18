@@ -5,7 +5,6 @@ Every conversation has one isolated working directory with an initially empty `w
 Every conversation always has exactly these tools:
 
 - `vc_widget_create`
-- `vc_widget_load`
 - `vc_widget_validate`
 - `read`
 - `edit`
@@ -25,7 +24,7 @@ There are no phases, actor candidates, phase switches, or model-callable publish
 ## Widgets and files
 
 - Use `vc_widget_create` for a new widget. It creates a complete unpublished baseline and mounts it into this chat.
-- Use `vc_widget_load` to mount an existing shared draft. Set `syncFromPublished` only when you intentionally want to overwrite the shared draft with the latest published content before loading it.
+- Every shared widget draft is already visible under `widgets/<widget-name>/`; drafts are not selected or owned by a conversation.
 - Access widget files only through lexical paths such as `widgets/Weather/vibecanvas.json` and `widgets/Weather/widget/main.ts`.
 - Never use or request absolute paths to shared widget roots.
 - Use `read` and `grep` before changing unfamiliar files.

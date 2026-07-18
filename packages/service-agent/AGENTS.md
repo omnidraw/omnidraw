@@ -14,7 +14,7 @@ Current dependencies and responsibilities:
 - Uses `@earendil-works/pi-coding-agent` for auth, models, settings, sessions, and custom tools.
 - Stores Pi data under `join(config.dataPath, 'pi')`.
 - Owns login sessions, abort controllers, model registry, settings manager, and widget/session managers.
-- Owns isolated chat workspaces, shared widget mounts, and the fixed AI Chat tool registry.
+- Owns independent chat transcripts, one shared widget-draft workspace, and the fixed AI Chat tool registry.
 - May publish service events through `eventPublisherService` when agent runtime events are implemented.
 
 ## Known consumers
@@ -49,7 +49,7 @@ Keep `AgentService` return values aligned with `packages/api-agent/src/contract.
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
 - `chat.connect` returns `{ vcJson, messageHistory, editSession }` for the requested widget/session.
-- Current widget authority comes only from an explicitly mounted shared draft folder. Canonical published snapshots and historical candidate entries are never current chat authority.
+- Current widget authority comes only from the shared draft folder. Canonical published snapshots and historical candidate entries are never current chat authority.
 - `chat.prompt` sends user text to the connected widget/session and relies on `events` for streamed/results updates.
 - `auth.login` accepts only `openai-codex` or `github-copilot` and returns `{ loginId }`.
 - `auth.logout` accepts only `openai-codex` or `github-copilot` and removes stored OAuth credentials.
@@ -70,9 +70,9 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Every conversation receives exactly these 15 tools for its complete lifecycle:
+Every conversation receives exactly these 14 tools for its complete lifecycle:
 
-- Widgets/files: `vc_widget_create`, `vc_widget_load`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Widgets/files: `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
 - Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
 - Network: `web_fetch`
 
@@ -80,7 +80,7 @@ There are no phases and no model-callable publish, approval, rejection, widget-d
 
 Chat filesystem ownership:
 
-- `chat-cwd/<chat-id>/widgets` belongs to one conversation and contains only backend-created mounts.
+- `shared-cwd/widgets` is the backend-owned shared draft view used by every independent conversation.
 - `widget-cwd/<name>` is the canonical published snapshot and is never mounted into AI Chat.
 - `widget-drafts/<name>` is the shared editable folder mounted by AI Chat, whether newly created or explicitly synced from published.
 - `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.

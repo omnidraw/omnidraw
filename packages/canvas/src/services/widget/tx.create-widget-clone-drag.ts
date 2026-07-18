@@ -2,6 +2,7 @@ import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.ty
 import type Konva from "konva";
 import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../../core/CONSTANTS";
 import type { CrdtService, ElementService, HistoryService, RenderOrderService, SceneService, SelectionService } from "..";
+import { fnCreateClonedWidgetElement } from "./fn.create-cloned-widget-element";
 
 type TNodeOnRemove = (args: { node: unknown }) => void;
 
@@ -18,6 +19,7 @@ type TPortal = {
   now: () => number;
   setupNode: (node: Konva.Group) => boolean;
   clone: <T>(value: T) => T;
+  createUiWidgetPayload?: () => Record<string, any>;
 }
 
 type TArgs = {
@@ -32,25 +34,6 @@ function stopDragSafely(node: Konva.Node) {
   } catch {
     return;
   }
-}
-
-function createClonedElement(portal: TPortal, sourceElement: TElement) {
-  const timestamp = portal.now();
-  const clone = portal.clone(sourceElement);
-  if (clone.data.type === 'widget') {
-    const { actorInstanceId, ...dataWithoutInstance } = clone.data;
-    void actorInstanceId;
-    clone.data = dataWithoutInstance;
-  }
-
-  return {
-    ...clone,
-    id: portal.createId(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    parentGroupId: null,
-    zIndex: "",
-  } satisfies TElement;
 }
 
 function findWidgetNodeById(portal: TPortal, id: string) {
@@ -76,7 +59,7 @@ export function txCreateWidgetCloneDrag(portal: TPortal, args: TArgs) {
     return false;
   }
 
-  const previewClone = portal.createNode(createClonedElement(portal, sourceElement));
+  const previewClone = portal.createNode(fnCreateClonedWidgetElement(portal, { sourceElement }));
   if (!(previewClone instanceof portal.Group)) {
     return false;
   }

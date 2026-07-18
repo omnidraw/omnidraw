@@ -116,8 +116,11 @@ describe("txAttachDomPortal", () => {
     settingsButton?.click();
     expect(settingsCalls).toBe(1);
 
-    titleBar?.setActionState("settings", { pressed: true });
+    titleBar?.setActionState("settings", { pressed: true, label: "Back to chat" });
     expect(settingsButton?.getAttribute("aria-pressed")).toBe("true");
+    expect(settingsButton?.getAttribute("aria-label")).toBe("Back to chat");
+    expect(settingsButton?.title).toBe("Back to chat");
+    expect(settingsButton?.textContent).toBe("Back to chat");
     expect(settingsButton?.style.background).not.toBe("transparent");
 
     removeListener?.();

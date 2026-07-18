@@ -7,8 +7,8 @@
 .tabsList { position: relative; display: flex; min-height: 2.25rem; padding: 0 1rem; border-bottom: 1px solid var(--border); background: var(--card); }
 .tab { position: relative; min-width: 6.5rem; padding: .5rem .75rem; color: var(--muted-foreground); font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
 .tab:hover, .tab[data-selected] { background: var(--accent); color: var(--foreground); }
+.tab[data-selected]::after { content: ""; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--primary); }
 .tab:focus-visible { z-index: 1; outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
-.tabIndicator { position: absolute; bottom: -1px; height: 2px; background: var(--primary); transition: 120ms ease; }
 .tabContent { min-height: 0; overflow-y: auto; outline: none; }
 .dataTabContent { overflow: hidden; }
 .tabContent:focus-visible { box-shadow: inset 0 0 0 2px var(--ring); }

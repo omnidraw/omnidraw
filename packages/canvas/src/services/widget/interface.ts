@@ -53,6 +53,7 @@ export type TWidgetTitleBarAction = {
 export type TWidgetTitleBarActionState = {
   pressed?: boolean;
   disabled?: boolean;
+  label?: string;
 };
 
 export type TWidgetTitleBarPortal = {
@@ -65,6 +66,7 @@ export interface IWidgetConfig {
   dataType?: "widget" | "ui-widget";
   tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
   initialPayload?: Record<string, any>;
+  createInitialPayload?: () => Record<string, any>;
   actor?: {
     actorDefinitionName: string;
   };

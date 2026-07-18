@@ -28,6 +28,18 @@ import { apiChatPrompt } from "./api.chat.prompt";
 import { apiChatResourceBindingsClear } from "./api.chat.resourceBindings.clear";
 import { apiChatStartWidgetEdit } from "./api.chat.startWidgetEdit";
 import { baseAgentOs } from './orpc';
+import { apiWidgetDraftGet } from './api.widgetDraft.get';
+import { apiWidgetDraftList } from './api.widgetDraft.list';
+import { apiWidgetDraftValidate } from './api.widgetDraft.validate';
+import { apiWidgetPreviewBuild } from './api.widgetPreview.build';
+import { apiWidgetPreviewGet } from './api.widgetPreview.get';
+import { apiWidgetPreviewRefresh } from './api.widgetPreview.refresh';
+import { apiWidgetPreviewReset } from './api.widgetPreview.reset';
+import { apiWidgetPreviewSend } from './api.widgetPreview.send';
+import { apiWidgetPublishPublish } from './api.widgetPublish.publish';
+import { apiApprovalGet } from './api.approval.get';
+import { apiApprovalList } from './api.approval.list';
+import { apiApprovalResolve } from './api.approval.resolve';
 
 const agentHandlers = {
     settings: {
@@ -75,6 +87,26 @@ const agentHandlers = {
             inspect: apiChatDraftActorInspect,
             send: apiChatDraftActorSend,
         },
+    },
+    widgetDraft: {
+        list: apiWidgetDraftList,
+        get: apiWidgetDraftGet,
+        validate: apiWidgetDraftValidate,
+    },
+    widgetPreview: {
+        get: apiWidgetPreviewGet,
+        build: apiWidgetPreviewBuild,
+        refresh: apiWidgetPreviewRefresh,
+        reset: apiWidgetPreviewReset,
+        send: apiWidgetPreviewSend,
+    },
+    widgetPublish: {
+        publish: apiWidgetPublishPublish,
+    },
+    approval: {
+        list: apiApprovalList,
+        get: apiApprovalGet,
+        resolve: apiApprovalResolve,
     },
     events: apiAgentEvents,
 };

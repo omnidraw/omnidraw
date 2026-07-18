@@ -156,6 +156,7 @@ describe('resource tools', () => {
     ]) {
       const pending = executeTool(byName.get('vc_resource_create')!, input);
       const approval = await pendingApproval(approvals);
+      expect(approval.toolCallId).toBe('tool-call');
       await approvals.resolve('chat-a', approval.id, 'approve', { accountId: 'user-a' });
       expect((await pending).details.resource).toMatchObject({ kind: input.kind, name: input.name });
     }

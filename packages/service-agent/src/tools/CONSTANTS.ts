@@ -14,7 +14,6 @@ addFormats(AJV);
 
 export const AI_CHAT_TOOL_NAMES = [
   'vc_widget_create',
-  'vc_widget_load',
   'vc_widget_validate',
   'read',
   'edit',

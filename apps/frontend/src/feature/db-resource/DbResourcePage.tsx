@@ -645,7 +645,6 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
             </header>
             <Tabs.List class={styles.tabsList} aria-label="Database resource workbench">
               <For each={TAB_VALUES}>{(tab) => <Tabs.Trigger class={styles.tab} value={tab}>{fnWorkbenchTabLabel(tab)}</Tabs.Trigger>}</For>
-              <Tabs.Indicator class={styles.tabIndicator} />
             </Tabs.List>
 
             <Tabs.Content value="overview" class={styles.tabContent}>

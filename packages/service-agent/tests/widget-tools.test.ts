@@ -38,7 +38,7 @@ async function fixture() {
 }
 
 describe('widget tools and publish integration', () => {
-  test('creates a complete draft, loads it in another chat, and validates only through mounts', async () => {
+  test('creates a complete shared draft that another chat can validate without loading it', async () => {
     const { workspace } = await fixture();
     const mounted: string[] = [];
     const firstTools = createWidgetWorkspaceTools({
@@ -48,7 +48,6 @@ describe('widget tools and publish integration', () => {
       onMounted: (mount) => mounted.push(mount.name),
     });
     const create = firstTools.find((tool) => tool.name === 'vc_widget_create')!;
-    const validate = firstTools.find((tool) => tool.name === 'vc_widget_validate')!;
     const created = await executeTool(create, { name: 'Shared Timer', kind: 'actor-widget', description: 'A shared timer.' });
     expect(created.isError).toBeUndefined();
     expect(created.details.files).toEqual(expect.arrayContaining([
@@ -64,13 +63,14 @@ describe('widget tools and publish integration', () => {
     expect((await stat(join(workspace.sdkPackagePath, 'src', 'actor.ts'))).isFile()).toBe(true);
 
     const secondTools = createWidgetWorkspaceTools({ workspace, chatId: 'chat-b', authorize: async () => true });
-    const load = secondTools.find((tool) => tool.name === 'vc_widget_load')!;
-    const loaded = await executeTool(load, { name: 'Shared Timer' });
-    expect(loaded.details).toMatchObject({ name: 'Shared Timer', source: 'draft', syncedFromPublished: false });
+    expect(secondTools.map((tool) => tool.name)).toEqual(['vc_widget_create', 'vc_widget_validate']);
     expect(await realpath(join(workspace.getChatRoot('chat-a'), 'widgets', 'Shared Timer')))
       .toBe(await realpath(join(workspace.getChatRoot('chat-b'), 'widgets', 'Shared Timer')));
 
-    const validation = await executeTool(validate, { name: 'Shared Timer' });
+    const validation = await executeTool(
+      secondTools.find((tool) => tool.name === 'vc_widget_validate')!,
+      { name: 'Shared Timer' },
+    );
     expect(validation.details).toMatchObject({ name: 'Shared Timer', source: 'draft', ok: true });
     const unmounted = await executeTool(
       secondTools.find((tool) => tool.name === 'vc_widget_validate')!,
@@ -79,28 +79,23 @@ describe('widget tools and publish integration', () => {
     expect(unmounted.isError).toBe(true);
   });
 
-  test('loads drafts only and overwrites from published content only when requested', async () => {
+  test('does not expose published widgets until a backend draft exists', async () => {
     const { workspace } = await fixture();
     const published = join(workspace.publishedRoot, 'Weather');
     await mkdir(join(published, 'widget'), { recursive: true });
     await writeFile(join(published, 'vibecanvas.json'), `${JSON.stringify({ name: 'Weather' })}\n`, 'utf8');
     await writeFile(join(published, 'widget', 'main.ts'), 'published', 'utf8');
-    const load = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
-      .find((tool) => tool.name === 'vc_widget_load')!;
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true });
+    const validate = tools.find((tool) => tool.name === 'vc_widget_validate')!;
 
-    const missingDraft = await executeTool(load, { name: 'Weather' });
+    const missingDraft = await executeTool(validate, { name: 'Weather' });
     expect(missingDraft.isError).toBe(true);
-    expect(missingDraft.content[0]?.text).toContain('Sync it from the published widget');
+    expect(tools.some((tool) => tool.name === 'vc_widget_load')).toBe(false);
 
-    const synced = await executeTool(load, { name: 'Weather', syncFromPublished: true });
-    expect(synced.details).toMatchObject({ name: 'Weather', source: 'draft', syncedFromPublished: true });
+    await workspace.syncDraftFromPublished('chat-a', 'Weather');
     expect(await readFile(join(workspace.draftRoot, 'Weather', 'widget', 'main.ts'), 'utf8')).toBe('published');
-
-    await writeFile(join(workspace.draftRoot, 'Weather', 'widget', 'main.ts'), 'draft change', 'utf8');
-    await executeTool(load, { name: 'Weather' });
-    expect(await readFile(join(workspace.draftRoot, 'Weather', 'widget', 'main.ts'), 'utf8')).toBe('draft change');
-    await executeTool(load, { name: 'Weather', syncFromPublished: true });
-    expect(await readFile(join(workspace.draftRoot, 'Weather', 'widget', 'main.ts'), 'utf8')).toBe('published');
+    expect(await realpath(join(workspace.getChatRoot('chat-a'), 'widgets', 'Weather')))
+      .toBe(await realpath(join(workspace.draftRoot, 'Weather')));
   });
 
   test('rolls back failed first publish and preserves every draft mount', async () => {
