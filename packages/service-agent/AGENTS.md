@@ -70,13 +70,13 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Every conversation receives exactly these 14 tools for its complete lifecycle:
+Every conversation receives exactly these 16 tools for its complete lifecycle:
 
-- Widgets/files: `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Widgets/files: `vc_widget_list`, `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
 - Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
-- Network: `web_fetch`
+- General: `web_fetch`, `bash`
 
-There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, bash, or unrestricted write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call.
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat cwd but is not filesystem-isolated there.
 
 Chat filesystem ownership:
 

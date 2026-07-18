@@ -16,13 +16,16 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import { fnAssertSafeFinalDestination } from '../core/fn.safe-destination';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
 import { fnAssertSafeChatId, fnNormalizeWidgetName } from './fn.names';
+import { fxWidgetCatalog } from './fx.widget-catalog';
 import { txMaterializeSdkPackage } from './tx.materialize-sdk-package';
 import type {
   TResolvedMountedPath,
+  TAvailableWidget,
   TWidgetCreateInput,
   TWidgetDraftWorkspaceEntry,
   TWidgetMount,
@@ -291,6 +294,28 @@ export class WidgetWorkspace {
       revision: revision.value,
       updatedAt: new Date(revision.updatedAtMs).toISOString(),
     };
+  }
+
+  async listAvailableWidgets(chatId: string): Promise<TAvailableWidget[]> {
+    const mounts = await this.listMounts(chatId);
+    return fxWidgetCatalog({
+      readdir,
+      lstat,
+      readFile,
+      realpath,
+      join,
+      dirname,
+      parseManifest: (value) => {
+        const parsed = ZVibecanvasJson.safeParse(value);
+        return parsed.success
+          ? { ok: true as const, name: parsed.data.name, kind: parsed.data.kind ?? null }
+          : { ok: false as const };
+      },
+    }, {
+      draftRoot: this.draftRoot,
+      publishedRoot: this.publishedRoot,
+      mountedNames: mounts.map((mount) => mount.name),
+    });
   }
 
   async removeMount(chatId: string, requestedName: string): Promise<boolean> {

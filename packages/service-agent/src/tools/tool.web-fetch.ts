@@ -56,18 +56,25 @@ export function createWebFetchTool(): TToolDefinition {
     async execute(_toolCallId, params: any) {
       const normalized = fnNormalizeWebFetchParams(params);
       if (!normalized.ok) {
-        return fnToolError(normalized.error, { likelySpa: false });
+        const modelData = { likelySpa: false };
+        return fnToolError({ code: 'WEB_FETCH_INVALID_INPUT', message: normalized.error, modelData, details: modelData });
       }
 
       try {
         const result = await fnFetchUrl(normalized.value);
-        return fnToolSuccess(fnRenderWebFetchToolText(result), result);
+        return fnToolSuccess({ summary: fnRenderWebFetchToolText(result), modelData: result, details: result });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return fnToolError(`web_fetch failed: ${message}`, {
+        const modelData = {
           url: normalized.value.url,
           format: normalized.value.format,
           likelySpa: false,
+        };
+        return fnToolError({
+          code: 'WEB_FETCH_FAILED',
+          message: `web_fetch failed: ${message}`,
+          modelData,
+          details: modelData,
         });
       }
     },

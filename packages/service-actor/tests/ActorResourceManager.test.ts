@@ -64,9 +64,14 @@ describe('ActorResourceManager', () => {
     await db.db.close();
   });
 
-  test('creates duplicate display names and shares a definition binding across actor calls', async () => {
+  test('enforces normalized names, resolves them case-insensitively, and shares bindings across actor calls', async () => {
     const first = await manager.createResource({ kind: 'kv', name: 'Preferences' });
-    const second = await manager.createResource({ kind: 'kv', name: 'Preferences' });
+    await expect(manager.createResource({ kind: 'secretStore', name: ' preferences ' }))
+      .rejects.toMatchObject({ code: 'RESOURCE_NAME_CONFLICT' });
+    expect(await manager.resolveResourceByName('pReFeReNcEs', { requireReady: true })).toMatchObject({ id: first.id });
+    await expect(manager.resolveResourceByName('Preferences', { requireReady: true, kind: 'db' }))
+      .rejects.toMatchObject({ code: 'RESOURCE_KIND_MISMATCH' });
+    const second = await manager.createResource({ kind: 'kv', name: 'Alternate preferences' });
     expect(first.id).not.toBe(second.id);
     expect(first.status).toBe('ready');
 
@@ -86,6 +91,19 @@ describe('ActorResourceManager', () => {
       actorId: 'actor-b', definitionName, runId: 3, functionClass: 'fx', slot: 'storage', kind: 'kv',
       operation: 'get', args: { key: 'theme' },
     })).toBeNull();
+  });
+
+  test('reports legacy normalized-name collisions as ambiguous without choosing a row', async () => {
+    await (await db.db.prepare('DROP TRIGGER IF EXISTS actor_resources_name_key_before_insert')).run();
+    await (await db.db.prepare(`
+      INSERT INTO actor_resources (id, kind, name, name_key, status)
+      VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+    `)).run(
+      'legacy-a', 'kv', 'Legacy', 'legacy', 'ready',
+      'legacy-b', 'secretStore', 'legacy', 'legacy', 'ready',
+    );
+    await expect(manager.resolveResourceByName('LEGACY', { requireReady: false }))
+      .rejects.toMatchObject({ code: 'RESOURCE_NAME_AMBIGUOUS' });
   });
 
   test('dispatches a draft-preview call through an explicit scoped binding without persisting it', async () => {

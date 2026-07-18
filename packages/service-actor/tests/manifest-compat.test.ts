@@ -36,6 +36,15 @@ describe("actor manifest compatibility", () => {
     if (parsed.success) expect(parsed.data.actor.resources).toBeUndefined();
   });
 
+  test("accepts optional persisted widget kind while keeping legacy manifests compatible", () => {
+    const legacy = manifestWithTransition({ func: [], targetState: "busy" });
+    const typed = { ...legacy, kind: "actor-widget" as const };
+
+    expect(ZVibecanvasJson.safeParse(legacy).success).toBe(true);
+    expect(ZVibecanvasJson.safeParse(typed)).toMatchObject({ success: true, data: { kind: "actor-widget" } });
+    expect(ZVibecanvasJson.safeParse({ ...legacy, kind: "unknown" }).success).toBe(false);
+  });
+
   test("normalizes new and single-target legacy transitions", () => {
     const modern = fnNormalizeVibecanvasJson(manifestWithTransition({ func: [], targetState: "busy" }));
     const legacy = fnNormalizeVibecanvasJson(manifestWithTransition({ func: [], allowedTargetStates: ["busy"] }));

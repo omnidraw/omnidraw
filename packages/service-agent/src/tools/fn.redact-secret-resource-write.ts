@@ -11,20 +11,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isSecretSetOperation(value: unknown): value is Record<string, unknown> {
+function isSensitiveSetOperation(value: unknown): value is Record<string, unknown> {
   return isRecord(value)
-    && value.kind === 'secretStore'
     && value.operation === 'set'
-    && typeof value.value === 'string';
+    && 'value' in value;
 }
 
 function containsSecretSet(args: Record<string, unknown>): boolean {
-  const operations = Array.isArray(args.operation) ? args.operation : [args.operation];
-  return operations.some(isSecretSetOperation);
+  const operations = Array.isArray(args.operations) ? args.operations : [];
+  return operations.some(isSensitiveSetOperation);
 }
 
 function redactOperation(value: unknown): unknown {
-  return isSecretSetOperation(value) ? { ...value, value: '[redacted]' } : value;
+  return isSensitiveSetOperation(value) ? { ...value, value: '[redacted]' } : value;
 }
 
 export function fnRedactSecretResourceWriteMessage(message: TAgentMessage): {
@@ -39,10 +38,10 @@ export function fnRedactSecretResourceWriteMessage(message: TAgentMessage): {
       return block;
     }
     captured.push({ toolCallId: block.id, args: block.arguments });
-    const operation = Array.isArray(block.arguments.operation)
-      ? block.arguments.operation.map(redactOperation)
-      : redactOperation(block.arguments.operation);
-    return { ...block, arguments: { ...block.arguments, operation } };
+    const operations = Array.isArray(block.arguments.operations)
+      ? block.arguments.operations.map(redactOperation)
+      : [];
+    return { ...block, arguments: { ...block.arguments, operations } };
   });
 
   return captured.length === 0 ? { message, captured } : { message: { ...message, content }, captured };

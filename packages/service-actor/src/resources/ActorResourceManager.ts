@@ -1,4 +1,5 @@
 import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import { fnNormalizeResourceName } from '@vibecanvas/service-db/core/fn.resource-name';
 import type {
   TActorResource,
   TActorResourceBinding,
@@ -18,7 +19,6 @@ import type {
 } from './resource-types';
 import type { TActorResourceRequirement, TActorResourceScope } from '../core/types';
 
-const RESOURCE_NAME_MAX_LENGTH = 256;
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 2_000;
 
 type TActorResourceManagerConfig = {
@@ -47,11 +47,10 @@ type TActorStartReservation = {
   readonly settled: Promise<void>;
 };
 
-function validateResourceName(name: string): string {
-  if (typeof name !== 'string' || name.trim().length === 0 || name.length > RESOURCE_NAME_MAX_LENGTH) {
-    throw new ActorResourceError('RESOURCE_NOT_READY', `Resource names must be non-blank strings no longer than ${RESOURCE_NAME_MAX_LENGTH} characters.`);
-  }
-  return name;
+function normalizedResourceName(name: unknown): { name: string; key: string } {
+  const result = fnNormalizeResourceName(name);
+  if (!result.ok) throw new ActorResourceError(result.code, result.message);
+  return result.value;
 }
 
 function validateScope(scope: readonly string[], requirement: TActorResourceRequirement): TActorResourceScope {
@@ -124,6 +123,35 @@ export class ActorResourceManager {
     return this.#readResource(id);
   }
 
+  async resolveResourceByName(
+    resourceName: string,
+    options: { requireReady: boolean; kind?: TActorResourceKind },
+  ): Promise<TActorResource> {
+    const normalized = normalizedResourceName(resourceName);
+    const matches = await this.#db.actorResource.findByNameKey({ nameKey: normalized.key })
+      .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource name lookup failed.'); });
+    if (matches.length === 0) {
+      throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource '${normalized.name}' was not found.`);
+    }
+    if (matches.length > 1) {
+      throw new ActorResourceError(
+        'RESOURCE_NAME_AMBIGUOUS',
+        `Resource name '${normalized.name}' matches multiple legacy resources and must be repaired by the host.`,
+      );
+    }
+    const resource = matches[0]!;
+    if (options.kind && resource.kind !== options.kind) {
+      throw new ActorResourceError(
+        'RESOURCE_KIND_MISMATCH',
+        `Resource '${resource.name}' is ${resource.kind}, not ${options.kind}.`,
+      );
+    }
+    if (options.requireReady && resource.status !== 'ready') {
+      throw new ActorResourceError('RESOURCE_NOT_READY', `Resource '${resource.name}' is not ready (status: ${resource.status}).`);
+    }
+    return resource;
+  }
+
   reconcileStartup(): Promise<void> {
     this.#assertOpen();
     return this.#trackLifecycle(this.#reconcileStartup());
@@ -183,17 +211,17 @@ export class ActorResourceManager {
     const provider = this.#provider(args.kind);
     const id = this.#crypto.randomUUID();
     try {
-      await this.#db.actorResource.create({ id, kind: args.kind, name: validateResourceName(args.name), status: 'created' });
+      await this.#db.actorResource.create({ id, kind: args.kind, name: normalizedResourceName(args.name).name, status: 'created' });
     } catch (error) {
       throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', `Failed to create ${args.kind} resource catalog entry.`);
     }
     const provisioning = await this.#db.actorResource.updateProviderState({ id, status: 'provisioning', lastError: null })
       .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', `Failed to begin ${args.kind} resource provisioning.`); });
-    if (!provisioning) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${id}" disappeared during provisioning.`);
+    if (!provisioning) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource '${args.name}' disappeared during provisioning.`);
     try {
       await provider.provision(provisioning, args);
       const ready = await this.#db.actorResource.updateProviderState({ id, status: 'ready', lastError: null });
-      if (!ready) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${id}" disappeared during provisioning.`);
+      if (!ready) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource '${args.name}' disappeared during provisioning.`);
       return ready;
     } catch (error) {
       await this.#markResourceError(id, error);
@@ -211,9 +239,9 @@ export class ActorResourceManager {
       if (this.#blockedResources.has(args.id)) {
         throw new ActorResourceError('RESOURCE_NOT_READY', `Resource "${current.name}" is busy with a lifecycle operation.`);
       }
-      const resource = await this.#db.actorResource.rename({ id: args.id, name: validateResourceName(args.name) })
+      const resource = await this.#db.actorResource.rename({ id: args.id, name: normalizedResourceName(args.name).name })
         .catch((error) => { throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', 'Resource rename failed.'); });
-      if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${args.id}" was not found.`);
+      if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', 'Resource was not found.');
       return resource;
     }));
   }
@@ -261,7 +289,7 @@ export class ActorResourceManager {
         try {
           await this.#provider(resource.kind).delete(deleting);
           const deleted = await this.#db.actorResource.delete({ id });
-          if (!deleted) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${id}" was not deleted.`);
+          if (!deleted) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource '${resource.name}' was not deleted.`);
         } catch (error) {
           await this.#markResourceError(id, error);
           throw toActorResourceError(error, 'RESOURCE_PROVIDER_UNAVAILABLE', `Failed to delete ${resource.kind} resource.`);
@@ -617,7 +645,7 @@ export class ActorResourceManager {
     return this.#withResourceGate(resourceId, async () => {
       const resource = await this.#requireResource(resourceId);
       if (resource.kind !== 'db') {
-        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource "${resourceId}" is not a DbResource.`);
+        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource '${resource.name}' is not a DbResource.`);
       }
       if (resource.status !== 'ready' || this.#blockedResources.has(resourceId)) {
         this.#throwUnavailable(resource);
@@ -807,7 +835,7 @@ export class ActorResourceManager {
 
   async #requireResource(id: string): Promise<TActorResource> {
     const resource = await this.#readResource(id);
-    if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', `Resource "${id}" was not found.`);
+    if (!resource) throw new ActorResourceError('RESOURCE_NOT_FOUND', 'Resource was not found.');
     return resource;
   }
 

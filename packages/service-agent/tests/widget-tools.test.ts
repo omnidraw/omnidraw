@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { AgentService } from '../src/AgentService';
+import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { createFakeSessionManager, executeTool } from './tool.test-helpers';
@@ -37,7 +38,86 @@ async function fixture() {
   return { root, dataPath, configPath, workspace };
 }
 
+async function createDiscoverableWidget(
+  root: string,
+  name: string,
+  manifest: unknown = { name, kind: 'widget' },
+) {
+  const folder = join(root, name);
+  await mkdir(folder, { recursive: true });
+  const value = manifest as { name?: unknown; kind?: unknown };
+  const content = typeof manifest === 'string'
+    ? manifest
+    : JSON.stringify(fnBuildWidgetCreateManifest({
+        name: typeof value.name === 'string' ? value.name : name,
+        kind: value.kind === 'actor-widget' ? value.kind : 'widget',
+      }));
+  await writeFile(join(folder, 'vibecanvas.json'), content, 'utf8');
+}
+
+function providerModelData(result: any): any {
+  const text = result.content[0]?.text ?? '';
+  const marker = 'Model data:\n';
+  const start = text.indexOf(marker);
+  if (start < 0) throw new Error(`Missing model data in: ${text}`);
+  return JSON.parse(text.slice(start + marker.length));
+}
+
 describe('widget tools and publish integration', () => {
+  test('lists drafts and published widgets with availability booleans, problems, and opaque stale cursors', async () => {
+    const { workspace } = await fixture();
+    await createDiscoverableWidget(workspace.draftRoot, 'Timer', { name: 'Timer', kind: 'actor-widget' });
+    await createDiscoverableWidget(workspace.draftRoot, 'Weather', { name: 'Weather', kind: 'widget' });
+    await createDiscoverableWidget(workspace.publishedRoot, 'Weather', { name: 'Weather', kind: 'widget' });
+    await createDiscoverableWidget(workspace.publishedRoot, 'Published Only', { name: 'Published Only', kind: 'widget' });
+    await createDiscoverableWidget(workspace.publishedRoot, 'Broken', '{bad json');
+    await createDiscoverableWidget(workspace.draftRoot, 'Case', { name: 'Case', kind: 'widget' });
+    await createDiscoverableWidget(workspace.publishedRoot, 'case', { name: 'case', kind: 'widget' });
+    await workspace.loadWidget('chat-a', 'Timer');
+
+    const list = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
+      .find((tool) => tool.name === 'vc_widget_list')!;
+    expect(Object.keys((list.parameters as any).properties)).toEqual(['cursor', 'limit']);
+    const first = await executeTool(list, { limit: 2 });
+    const firstData = providerModelData(first);
+    expect(firstData.totalCount).toBe(5);
+    expect(firstData.widgets).toEqual([
+      {
+        name: 'Broken', kind: null, hasDraft: false, hasPublished: true, mountedInThisChat: false,
+        problemCode: 'WIDGET_MANIFEST_INVALID',
+      },
+      {
+        name: 'Case', kind: 'widget', hasDraft: true, hasPublished: true, mountedInThisChat: true,
+        problemCode: 'WIDGET_NAME_AMBIGUOUS',
+      },
+    ]);
+    expect(firstData.nextCursor).toStartWith('vw1.');
+    expect(firstData.nextCursor).not.toContain('Case');
+    expect(JSON.stringify(first)).not.toContain(workspace.draftRoot);
+    expect(JSON.stringify(first)).not.toContain('vibecanvas.json');
+
+    const all = providerModelData(await executeTool(list, { limit: 10 }));
+    expect(all.widgets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Timer', hasDraft: true, hasPublished: false }),
+      expect.objectContaining({ name: 'Published Only', hasDraft: false, hasPublished: true }),
+      expect.objectContaining({ name: 'Weather', hasDraft: true, hasPublished: true }),
+    ]));
+    expect(all.totalCount).toBe(5);
+
+    await createDiscoverableWidget(workspace.draftRoot, 'Added Later');
+    const stale = await executeTool(list, { cursor: firstData.nextCursor, limit: 2 });
+    expect(providerModelData(stale)).toMatchObject({ error: { code: 'WIDGET_CURSOR_INVALID' } });
+
+    let calls = 0;
+    const denied = createWidgetWorkspaceTools({
+      workspace,
+      chatId: 'chat-a',
+      authorize: async (name) => { calls += 1; return name !== 'vc_widget_list'; },
+    }).find((tool) => tool.name === 'vc_widget_list')!;
+    expect((await executeTool(denied, {})).isError).toBe(true);
+    expect(calls).toBe(1);
+  });
+
   test('creates a complete shared draft that another chat can validate without loading it', async () => {
     const { workspace } = await fixture();
     const mounted: string[] = [];
@@ -50,12 +130,14 @@ describe('widget tools and publish integration', () => {
     const create = firstTools.find((tool) => tool.name === 'vc_widget_create')!;
     const created = await executeTool(create, { name: 'Shared Timer', kind: 'actor-widget', description: 'A shared timer.' });
     expect(created.isError).toBeUndefined();
+    expect(created.content[0]?.text).toContain('"mountPath": "widgets/Shared Timer"');
+    expect(created.content[0]?.text).toContain('"draft": true');
     expect(created.details.files).toEqual(expect.arrayContaining([
       'vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts', 'widget/main.ts', 'widget/main.css',
     ]));
     expect(mounted).toEqual(['Shared Timer']);
     expect(JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'vibecanvas.json'), 'utf8'))).toMatchObject({
-      slug: 'shared-timer', name: 'Shared Timer', description: 'A shared timer.',
+      slug: 'shared-timer', name: 'Shared Timer', kind: 'actor-widget', description: 'A shared timer.',
     });
     expect(JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'package.json'), 'utf8'))).toMatchObject({
       dependencies: { '@vibecanvas/sdk': `file:${workspace.sdkPackagePath}` },
@@ -63,7 +145,7 @@ describe('widget tools and publish integration', () => {
     expect((await stat(join(workspace.sdkPackagePath, 'src', 'actor.ts'))).isFile()).toBe(true);
 
     const secondTools = createWidgetWorkspaceTools({ workspace, chatId: 'chat-b', authorize: async () => true });
-    expect(secondTools.map((tool) => tool.name)).toEqual(['vc_widget_create', 'vc_widget_validate']);
+    expect(secondTools.map((tool) => tool.name)).toEqual(['vc_widget_list', 'vc_widget_create', 'vc_widget_validate']);
     expect(await realpath(join(workspace.getChatRoot('chat-a'), 'widgets', 'Shared Timer')))
       .toBe(await realpath(join(workspace.getChatRoot('chat-b'), 'widgets', 'Shared Timer')));
 
@@ -72,6 +154,8 @@ describe('widget tools and publish integration', () => {
       { name: 'Shared Timer' },
     );
     expect(validation.details).toMatchObject({ name: 'Shared Timer', source: 'draft', ok: true });
+    expect(validation.content[0]?.text).toContain('"ok": true');
+    expect(validation.content[0]?.text).toContain('"errors": []');
     const unmounted = await executeTool(
       secondTools.find((tool) => tool.name === 'vc_widget_validate')!,
       { name: 'Not Loaded' },

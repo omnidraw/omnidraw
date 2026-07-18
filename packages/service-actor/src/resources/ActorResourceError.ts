@@ -2,6 +2,9 @@ export type TActorResourceErrorCode =
   | 'RESOURCE_DEFINITION_NOT_FOUND'
   | 'RESOURCE_SLOT_UNKNOWN'
   | 'RESOURCE_NOT_FOUND'
+  | 'RESOURCE_NAME_INVALID'
+  | 'RESOURCE_NAME_CONFLICT'
+  | 'RESOURCE_NAME_AMBIGUOUS'
   | 'RESOURCE_NOT_BOUND'
   | 'RESOURCE_KIND_MISMATCH'
   | 'RESOURCE_SCOPE_INVALID'
@@ -71,6 +74,13 @@ export class ActorResourceError extends Error {
 
 export function toActorResourceError(error: unknown, fallbackCode: TActorResourceErrorCode, fallbackMessage: string): ActorResourceError {
   if (error instanceof ActorResourceError) return error;
+  const coded = error as { code?: unknown; message?: unknown };
+  if (
+    (coded?.code === 'RESOURCE_NAME_INVALID' || coded?.code === 'RESOURCE_NAME_CONFLICT')
+    && typeof coded.message === 'string'
+  ) {
+    return new ActorResourceError(coded.code, coded.message);
+  }
   return new ActorResourceError(fallbackCode, fallbackMessage);
 }
 

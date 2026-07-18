@@ -62,7 +62,16 @@ describe('ActorService KV and secret management', () => {
     expect(created).toMatchObject({ kind: 'secretStore', entry: { name: 'api-token', revision: 1 } });
     expect(JSON.stringify(created)).not.toContain('must-not-leak');
 
-    const page = await service.listResourceData({ resourceId: resource.id });
+    await service.setResourceDataEntry({
+      resourceId: resource.id,
+      key: 'api-user',
+      expectedRevision: null,
+      value: 'also-must-not-leak',
+    });
+    await expect(service.countResourceData({ resourceId: resource.id })).resolves.toBe(2);
+    await expect(service.countResourceData({ resourceId: resource.id, search: 'token' })).resolves.toBe(1);
+
+    const page = await service.listResourceData({ resourceId: resource.id, search: 'token' });
     expect(page).toMatchObject({ kind: 'secretStore', entries: [{ name: 'api-token', revision: 1 }] });
     expect(JSON.stringify(page)).not.toContain('must-not-leak');
 

@@ -4,6 +4,7 @@ import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
 import { AI_CHAT_TOOL_NAMES } from './CONSTANTS';
 import { fnToolError } from './fn.result';
+import { createBashTool } from './tool.bash';
 import { createResourceTools } from './tool.resources';
 import { createWebFetchTool } from './tool.web-fetch';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
@@ -28,7 +29,7 @@ function wrapAuthorized(tool: TToolDefinition, authorize: () => Promise<boolean>
   return {
     ...tool,
     async execute(...args: any[]) {
-      if (!await authorize()) return fnToolError('This tool call is not authorized.');
+      if (!await authorize()) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       return (execute as (...executeArgs: any[]) => unknown)(...args);
     },
   } as TToolDefinition;
@@ -62,12 +63,22 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       takeSensitiveToolArgs: args.takeSensitiveToolArgs,
     }),
     wrapAuthorized(createWebFetchTool(), () => authorize('web_fetch')),
+    createBashTool({ cwd: args.cwd, authorize: () => authorize('bash') }),
   ];
   const definitions = new Map(tools.map((tool) => [tool.name, tool]));
   const missing = AI_CHAT_TOOL_NAMES.filter((name) => !definitions.has(name));
   const extra = tools.filter((tool) => !AI_CHAT_TOOL_NAMES.includes(tool.name as typeof AI_CHAT_TOOL_NAMES[number]));
-  if (missing.length > 0 || extra.length > 0 || definitions.size !== AI_CHAT_TOOL_NAMES.length) {
-    throw new Error(`Invalid AI Chat tool registry. Missing: ${missing.join(', ') || 'none'}; extra: ${extra.map((tool) => tool.name).join(', ') || 'none'}.`);
+  const duplicates = tools
+    .filter((tool, index) => tools.findIndex((candidate) => candidate.name === tool.name) !== index)
+    .map((tool) => tool.name);
+  if (
+    missing.length > 0
+    || extra.length > 0
+    || duplicates.length > 0
+    || tools.length !== AI_CHAT_TOOL_NAMES.length
+    || definitions.size !== AI_CHAT_TOOL_NAMES.length
+  ) {
+    throw new Error(`Invalid AI Chat tool registry. Missing: ${missing.join(', ') || 'none'}; extra: ${extra.map((tool) => tool.name).join(', ') || 'none'}; duplicates: ${duplicates.join(', ') || 'none'}.`);
   }
   return {
     toolNames: [...AI_CHAT_TOOL_NAMES],

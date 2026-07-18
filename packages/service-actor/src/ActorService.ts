@@ -176,6 +176,10 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#resourceManager.getResource(id)
   }
 
+  resolveResourceByName(resourceName: string, options: { requireReady: boolean; kind?: TActorResourceKind }) {
+    return this.#resourceManager.resolveResourceByName(resourceName, options)
+  }
+
   createResource(args: TCreateResourceArgs) {
     return this.#resourceManager.createResource(args)
   }
@@ -196,7 +200,13 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     return this.#resourceManager.listResourceBindingsForDefinition(definitionName)
   }
 
-  async listResourceData(args: { resourceId: string; prefix?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage> {
+  async countResourceData(args: { resourceId: string; prefix?: string; search?: string }): Promise<number> {
+    return this.#withReadyDataResource(args.resourceId, async () => (
+      this.#config.db.actorResource.keyValue.count(args)
+    ))
+  }
+
+  async listResourceData(args: { resourceId: string; prefix?: string; search?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage> {
     return this.#withReadyDataResource(args.resourceId, async (kind) => {
       const page = await this.#config.db.actorResource.keyValue.list(args)
       return fnActorResourceDataPage(kind, page)
@@ -410,7 +420,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
   #withReadyDbResource<T>(resourceId: string, operation: () => Promise<T>): Promise<T> {
     return this.#resourceManager.withReadyResource(resourceId, (resource) => {
       if (resource.kind !== 'db') {
-        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource "${resourceId}" is not a DbResource.`)
+        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', `Resource '${resource.name}' is not a DbResource.`)
       }
       return operation()
     })

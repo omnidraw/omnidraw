@@ -14,6 +14,7 @@ import migration010 from "./DbServiceTurso/migration-files/010-add-actor-resourc
 import migration011 from "./DbServiceTurso/migration-files/011-add-db-resources.sql" with { type: "file" }
 import migration012 from "./DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql" with { type: "file" }
 import migration013 from "./DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql" with { type: "file" }
+import migration014 from "./DbServiceTurso/migration-files/014-add-actor-resource-name-keys.sql" with { type: "file" }
 
 const embeddedMigrationPaths = new Map<string, string>([
   ["000-add-automerge.sql", migration000],
@@ -30,6 +31,7 @@ const embeddedMigrationPaths = new Map<string, string>([
   ["011-add-db-resources.sql", migration011],
   ["012-replace-db-resource-migrations.sql", migration012],
   ["013-add-db-resource-restore-source.sql", migration013],
+  ["014-add-actor-resource-name-keys.sql", migration014],
 ])
 
 export function getEmbeddedMigrationPath(relativePath: string): string | null {

@@ -26,6 +26,15 @@ export type TWidgetCreateInput = {
   description?: string;
 };
 
+export type TAvailableWidget = {
+  name: string;
+  kind: 'widget' | 'actor-widget' | null;
+  hasDraft: boolean;
+  hasPublished: boolean;
+  mountedInThisChat: boolean;
+  problemCode: string | null;
+};
+
 export type TWorkspaceGrepMatch = {
   path: string;
   line: number;

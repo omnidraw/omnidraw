@@ -479,9 +479,9 @@ describe('AgentService draft actor runtime', () => {
       entry.type === 'custom' && entry.customType === 'vibecanvas.activeWidgetMount'
     ))).toBe(true);
     expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual([
-      'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
+      'bash', 'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
       'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
-      'vc_resource_update', 'vc_widget_create', 'vc_widget_validate', 'web_fetch',
+      'vc_resource_update', 'vc_widget_create', 'vc_widget_list', 'vc_widget_validate', 'web_fetch',
     ]);
 
     const canonicalRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'Counter Widget');
@@ -498,7 +498,7 @@ describe('AgentService draft actor runtime', () => {
 
     const reconnectResult = await service.connectChat('widget-edit', 'session-edit');
     expect(reconnectResult.vcJson?.name).toBe('Counter Widget');
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames()).toHaveLength(14);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames()).toHaveLength(16);
   });
 
   test('reads and patches the mounted manifest as the only current authority', async () => {

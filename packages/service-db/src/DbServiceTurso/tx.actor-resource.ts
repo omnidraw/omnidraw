@@ -7,6 +7,7 @@ import type {
   TActorResourceStatus,
   TJson,
 } from "../model"
+import { fnNormalizeResourceName, fnResourceNameKey } from "../core/fn.resource-name"
 import {
   fnParseActorResourceBindingRow,
   fnParseActorResourceRow,
@@ -25,6 +26,8 @@ type TArgsCreate = {
   status?: TActorResourceStatus
   lastError?: TJson | null
 }
+
+type TArgsAuditNames = Record<never, never>
 
 type TArgsRename = {
   id: string
@@ -78,30 +81,109 @@ export type TActorResourceKeyValueCompareAndSetResult =
   | { ok: true; entry: TActorResourceKeyValue }
   | { ok: false; expectedRevision: number | null; currentRevision: number | null }
 
+function resourceNameConflictError(name: string): Error & { code: string } {
+  return Object.assign(new Error(`Resource name '${name}' is already in use.`), { code: "RESOURCE_NAME_CONFLICT" })
+}
+
+function rethrowResourceNameMutationError(error: unknown, name: string): never {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes("RESOURCE_NAME_CONFLICT")) {
+    throw resourceNameConflictError(name)
+  }
+  throw error
+}
+
 export async function txActorResourceCreate(portal: TPortal, args: TArgsCreate): Promise<TActorResource> {
+  const normalized = fnNormalizeResourceName(args.name)
+  if (!normalized.ok) throw Object.assign(new Error(normalized.message), { code: normalized.code })
   const insert = await portal.db.prepare(`
-    INSERT INTO actor_resources (id, kind, name, status, last_error)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO actor_resources (id, kind, name, name_key, status, last_error)
+    SELECT ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM actor_resources WHERE name_key = ?
+    )
   `)
-  await insert.run(
+  const result = await insert.run(
     args.id,
     args.kind,
-    args.name,
+    normalized.value.name,
+    normalized.value.key,
     args.status ?? "created",
     args.lastError === undefined || args.lastError === null ? null : fnSerializeJsonValue(args.lastError),
-  )
+    normalized.value.key,
+  ).catch((error) => rethrowResourceNameMutationError(error, normalized.value.name))
+  if (result.changes === 0) {
+    throw resourceNameConflictError(normalized.value.name)
+  }
   const created = await fxActorResourceGet(portal, { id: args.id })
-  if (!created) throw new Error(`Failed to create actor resource "${args.id}"`)
+  if (!created) throw new Error("Failed to create actor resource")
   return created
 }
 
 export async function txActorResourceRename(portal: TPortal, args: TArgsRename): Promise<TActorResource | null> {
-  await (await portal.db.prepare(`
+  const normalized = fnNormalizeResourceName(args.name)
+  if (!normalized.ok) throw Object.assign(new Error(normalized.message), { code: normalized.code })
+  const result = await (await portal.db.prepare(`
     UPDATE actor_resources
-    SET name = ?
+    SET name = ?, name_key = ?
     WHERE id = ?
-  `)).run(args.name, args.id)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM actor_resources AS collision
+        WHERE collision.name_key = ? AND collision.id <> ?
+      )
+  `)).run(normalized.value.name, normalized.value.key, args.id, normalized.value.key, args.id)
+    .catch((error) => rethrowResourceNameMutationError(error, normalized.value.name))
+  if (result.changes === 0) {
+    const current = await fxActorResourceGet(portal, { id: args.id })
+    if (!current) return null
+    throw resourceNameConflictError(normalized.value.name)
+  }
   return fxActorResourceGet(portal, { id: args.id })
+}
+
+export async function txActorResourceAuditNames(portal: TPortal, args: TArgsAuditNames): Promise<void> {
+  void args
+  const rows = await (await portal.db.prepare(`
+    SELECT id, name
+    FROM actor_resources
+    ORDER BY id ASC
+  `)).all() as { id: string; name: string }[]
+  const update = await portal.db.prepare(`
+    UPDATE actor_resources
+    SET name_key = ?
+    WHERE id = ?
+  `)
+  for (const row of rows) {
+    await update.run(fnResourceNameKey(row.name), row.id)
+  }
+  await (await portal.db.prepare(`
+    CREATE TRIGGER IF NOT EXISTS actor_resources_name_key_before_insert
+    BEFORE INSERT ON actor_resources
+    FOR EACH ROW
+    WHEN NEW.name_key IS NULL OR EXISTS (
+      SELECT 1 FROM actor_resources WHERE name_key = NEW.name_key
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'RESOURCE_NAME_CONFLICT');
+    END
+  `)).run()
+  await (await portal.db.prepare(`
+    CREATE TRIGGER IF NOT EXISTS actor_resources_name_key_before_update
+    BEFORE UPDATE OF name_key ON actor_resources
+    FOR EACH ROW
+    WHEN NEW.name_key IS NULL OR (
+      NEW.name_key IS NOT OLD.name_key
+      AND EXISTS (
+        SELECT 1
+        FROM actor_resources AS collision
+        WHERE collision.name_key = NEW.name_key AND collision.id <> OLD.id
+      )
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'RESOURCE_NAME_CONFLICT');
+    END
+  `)).run()
 }
 
 export async function txActorResourceUpdateProviderState(
