@@ -82,4 +82,13 @@ describe("startup canvas bootstrap", () => {
     expect(harness.navigate).not.toHaveBeenCalled();
     expect(harness.setCanvases).toHaveBeenCalledWith([linked]);
   });
+
+  test("creates the first canvas without replacing a widget management route", async () => {
+    const harness = createHarness();
+
+    await harness.bootstrap({ pathname: "/widgets/published/Camera" });
+
+    expect(harness.createCanvas).toHaveBeenCalledWith("Untitled Canvas");
+    expect(harness.navigate).not.toHaveBeenCalled();
+  });
 });

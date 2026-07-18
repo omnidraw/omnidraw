@@ -1,9 +1,8 @@
 import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
 import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
 import { ActorResourceError } from '@vibecanvas/service-actor';
-import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
-import type { TActorData, TActorState, TJsonSchema, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZActorData, ZJsonSchema, ZVibecanvasJson, ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
@@ -11,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join, relative as relativePath, resolve } from 'node:path';
 import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
+import { fnPatchDraftManifest, type TWidgetManifestPatch } from './core/fn.patch-draft-manifest';
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-records';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txNormalizeSessionCwd } from './core/tx.session-cwd';
@@ -26,6 +26,8 @@ import type { TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, 
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
+import { WidgetManagement } from './widget-management/WidgetManagement';
+import type { TWidgetCatalogGroup, TWidgetDraftMetadataPatch, TWidgetDraftToolPatch, TWidgetSource } from './widget-management/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -148,18 +150,7 @@ type TAgentDraftManifestReadResult =
   | { ready: true; source: 'file'; manifest: TVibecanvasJson }
   | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
 
-type TAgentDraftManifestPatch = {
-  name?: string;
-  description?: string;
-  initialData?: unknown;
-  dataSchema?: unknown;
-  tool?: {
-    label?: string;
-    icon?: TVibecanvasToolIcon | null;
-    group?: string | null;
-    priority?: number | null;
-  };
-};
+type TAgentDraftManifestPatch = TWidgetManifestPatch;
 
 type TAgentDraftManifestPatchResult =
   | { ok: true; source: 'file'; manifest: TVibecanvasJson }
@@ -193,6 +184,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
   #widgetDrafts: WidgetDraftController;
+  #widgetManagement: WidgetManagement;
   #approvals: ApprovalCoordinator;
   #chatWidgetIds = new Map<TVibecanvasChatId, TWidgetId>();
 
@@ -205,6 +197,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       workspace: this.#workspace,
       eventPublisher: config.eventPublisherService,
       actorService: config.actorService,
+    })
+    this.#widgetManagement = new WidgetManagement({
+      workspace: this.#workspace,
+      drafts: this.#widgetDrafts,
+      deletePublishedDefinition: config.actorService?.deleteDefinition
+        ? (name) => config.actorService!.deleteDefinition!(name)
+        : undefined,
     })
     this.#approvals = new ApprovalCoordinator({
       timeoutMs: config.approvalTimeoutMs,
@@ -528,6 +527,38 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   publishWidgetDraft(name: string, expectedRevision: string) {
     return this.#widgetDrafts.publish(name, expectedRevision)
+  }
+
+  getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
+    return this.#widgetManagement.catalog(groups)
+  }
+
+  getWidgetDetail(name: string, source: TWidgetSource) {
+    return this.#widgetManagement.detail(name, source)
+  }
+
+  listWidgetFiles(name: string, source: TWidgetSource) {
+    return this.#widgetManagement.files(name, source)
+  }
+
+  readWidgetFile(name: string, source: TWidgetSource, path: string) {
+    return this.#widgetManagement.file(name, source, path)
+  }
+
+  ensureWidgetDraft(name: string, expectedPublishedFingerprint?: string) {
+    return this.#widgetManagement.ensureDraft(name, expectedPublishedFingerprint)
+  }
+
+  patchWidgetDraftTool(name: string, expectedRevision: string, patch: TWidgetDraftToolPatch) {
+    return this.#widgetManagement.patchDraftTool(name, expectedRevision, patch)
+  }
+
+  patchWidgetDraftMetadata(name: string, expectedRevision: string, patch: TWidgetDraftMetadataPatch) {
+    return this.#widgetManagement.patchDraftMetadata(name, expectedRevision, patch)
+  }
+
+  deleteWidget(name: string, source: TWidgetSource) {
+    return this.#widgetManagement.delete(name, source)
   }
 
   inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
@@ -1064,130 +1095,24 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   #applyDraftManifestPatch(manifest: TVibecanvasJson, patch: TAgentDraftManifestPatch): TAgentDraftManifestPatchResult {
-    const issues: string[] = []
-    let initialData = manifest.actor.initialData
-    let dataSchema = manifest.actor.dataSchema
-    let tool = manifest.widget.tool
-
-    if ('initialData' in patch) {
-      const parsed = ZActorData.safeParse(patch.initialData)
-      if (!parsed.success) {
-        issues.push(...parsed.error.issues.map((issue) => `actor.initialData.${issue.path.join('.')}: ${issue.message}`))
-      } else {
-        initialData = parsed.data
-      }
-    }
-
-    if ('dataSchema' in patch) {
-      const parsed = ZJsonSchema.safeParse(patch.dataSchema)
-      if (!parsed.success) {
-        issues.push(...parsed.error.issues.map((issue) => `actor.dataSchema.${issue.path.join('.')}: ${issue.message}`))
-      } else {
-        dataSchema = parsed.data as TJsonSchema
-      }
-    }
-
-    if ('tool' in patch && patch.tool) {
-      if (typeof patch.tool.label === 'string') {
-        tool = {
-          ...tool,
-          label: patch.tool.label,
-        }
-      }
-
-      if ('icon' in patch.tool) {
-        if (patch.tool.icon === null) {
-          tool = {
-            ...tool,
-            icon: undefined,
-          }
-        } else {
-          const parsedIcon = ZVibecanvasToolIcon.safeParse(patch.tool.icon)
-          if (!parsedIcon.success) {
-            issues.push(...parsedIcon.error.issues.map((issue) => {
-              const path = ['widget', 'tool', 'icon', ...issue.path].join('.')
-              return `${path}: ${issue.message}`
-            }))
-          } else {
-            tool = {
-              ...tool,
-              icon: parsedIcon.data,
-            }
-          }
-        }
-      }
-
-      if ('group' in patch.tool) {
-        if (patch.tool.group === null) {
-          tool = {
-            ...tool,
-            group: undefined,
-          }
-        } else if (typeof patch.tool.group !== 'string') {
-          issues.push('widget.tool.group: expected a string')
-        } else {
-          tool = {
-            ...tool,
-            group: patch.tool.group,
-          }
-        }
-      }
-
-      if ('priority' in patch.tool) {
-        if (patch.tool.priority === null) {
-          tool = {
-            ...tool,
-            priority: undefined,
-          }
-        } else if (typeof patch.tool.priority !== 'number' || Number.isNaN(patch.tool.priority)) {
-          issues.push('widget.tool.priority: expected a number')
-        } else {
-          tool = {
-            ...tool,
-            priority: patch.tool.priority,
-          }
-        }
-      }
-
-      if (patch.tool.label === undefined
-        && !('icon' in patch.tool)
-        && !('group' in patch.tool)
-        && !('priority' in patch.tool)
-      ) {
-        issues.push('widget.tool: no editable field supplied')
-      }
-    }
-
-    if (issues.length > 0) {
+    const plan = fnPatchDraftManifest({ manifest, patch })
+    if (plan.issues.length > 0) {
       return {
         ok: false,
         reason: 'edit-invalid',
-        message: issues.join('; '),
-        issues,
+        message: plan.issues.join('; '),
+        issues: plan.issues,
       }
     }
-
-    const nextManifest = {
-      ...manifest,
-      name: patch.name ?? manifest.name,
-      description: patch.description ?? manifest.description,
-      actor: {
-        ...manifest.actor,
-        initialData,
-        dataSchema,
-      },
-      widget: {
-        ...manifest.widget,
-        tool,
-      },
-    }
-
-    const parsedManifest = ZVibecanvasJson.safeParse(nextManifest)
+    const parsedManifest = ZVibecanvasJson.safeParse(plan.manifest)
     if (!parsedManifest.success) {
       const manifestIssues = parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      const reason = 'initialData' in patch || 'dataSchema' in patch || patch.tool !== undefined
+        ? 'edit-invalid' as const
+        : 'manifest-invalid' as const
       return {
         ok: false,
-        reason: 'manifest-invalid',
+        reason,
         message: manifestIssues.join('; '),
         issues: manifestIssues,
       }

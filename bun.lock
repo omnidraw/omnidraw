@@ -59,6 +59,7 @@
         "@solid-primitives/scheduled": "^1.5.3",
         "@solid-primitives/storage": "^4.4.0",
         "@solidjs/router": "^0.15.4",
+        "@vibecanvas/actor-ui": "workspace:*",
         "@vibecanvas/api-canvas": "workspace:*",
         "@vibecanvas/api-db": "workspace:*",
         "@vibecanvas/api-file": "workspace:*",

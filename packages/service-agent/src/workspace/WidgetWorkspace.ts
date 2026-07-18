@@ -232,6 +232,127 @@ export class WidgetWorkspace {
   async syncDraftFromPublished(chatId: string, requestedName: string): Promise<TWidgetMount> {
     const name = this.#normalizeName(requestedName);
     await this.ensureChat(chatId);
+    await this.#syncDraftFromPublished(name, false);
+    return this.loadWidget(chatId, name);
+  }
+
+  async ensureDraftFromPublished(requestedName: string): Promise<TWidgetDraftWorkspaceEntry> {
+    const name = this.#normalizeName(requestedName);
+    const existing = await this.getDraft(name);
+    if (existing) return existing;
+    await this.#syncDraftFromPublished(name, true);
+    const draft = await this.getDraft(name);
+    if (!draft) throw new Error(`Widget draft '${name}' could not be created.`);
+    return draft;
+  }
+
+  async updateDraftManifestAtomic<T>(
+    requestedName: string,
+    expectedRevision: string,
+    update: (manifest: unknown) => T,
+  ): Promise<{ manifest: T; revision: string }> {
+    const name = this.#normalizeName(requestedName);
+    const draftPath = join(this.draftRoot, name);
+    return this.#withWidgetWrite(draftPath, async () => {
+      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
+      const currentRevision = await this.#readDraftRevision(draftPath);
+      if (currentRevision.value !== expectedRevision) {
+        throw new Error(`STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`);
+      }
+      const manifestPath = join(draftPath, 'vibecanvas.json');
+      const entry = await lstat(manifestPath).catch(() => null);
+      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: vibecanvas.json is not a regular file.');
+      const manifest = update(JSON.parse(await readFile(manifestPath, 'utf8')));
+      const temporary = join(draftPath, `.vibecanvas.json.edit-${this.#safeId()}.tmp`);
+      try {
+        await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+        await rename(temporary, manifestPath);
+      } finally {
+        await rm(temporary, { force: true }).catch(() => undefined);
+      }
+      return { manifest, revision: (await this.#readDraftRevision(draftPath)).value };
+    });
+  }
+
+  async updateDraftManifestAndNameAtomic<T>(
+    requestedName: string,
+    requestedNextName: string,
+    expectedRevision: string,
+    update: (manifest: unknown) => T,
+  ): Promise<{ name: string; manifest: T; revision: string }> {
+    const name = this.#normalizeName(requestedName);
+    const nextName = this.#normalizeName(requestedNextName);
+    const draftPath = join(this.draftRoot, name);
+    const nextDraftPath = join(this.draftRoot, nextName);
+    return this.#withWidgetWrite(draftPath, async () => {
+      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
+      const currentRevision = await this.#readDraftRevision(draftPath);
+      if (currentRevision.value !== expectedRevision) {
+        throw new Error(`STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`);
+      }
+      if (nextName !== name) {
+        await Promise.all([
+          this.#assertNoCaseCollision(this.draftRoot, nextName),
+          this.#assertNoCaseCollision(this.publishedRoot, nextName),
+        ]);
+        if (await lstat(nextDraftPath).catch(() => null) || await lstat(join(this.publishedRoot, nextName)).catch(() => null)) {
+          throw new Error(`NAME_IN_USE: Widget name '${nextName}' is already in use.`);
+        }
+      }
+
+      const manifestPath = join(draftPath, 'vibecanvas.json');
+      const entry = await lstat(manifestPath).catch(() => null);
+      if (!entry || entry.isSymbolicLink() || !entry.isFile()) throw new Error('INVALID_MANIFEST: vibecanvas.json is not a regular file.');
+      const previousManifestText = await readFile(manifestPath, 'utf8');
+      const manifest = update(JSON.parse(previousManifestText));
+      const temporary = join(draftPath, `.vibecanvas.json.edit-${this.#safeId()}.tmp`);
+      let renamed = false;
+      try {
+        await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+        await rename(temporary, manifestPath);
+        if (nextName !== name) {
+          await rename(draftPath, nextDraftPath);
+          renamed = true;
+          await this.#moveDraftMount(name, nextName, nextDraftPath);
+        }
+      } catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        if (renamed && !await lstat(draftPath).catch(() => null)) {
+          await rename(nextDraftPath, draftPath).catch(() => undefined);
+        }
+        await writeFile(join(draftPath, 'vibecanvas.json'), previousManifestText, 'utf8').catch(() => undefined);
+        throw error;
+      }
+      return {
+        name: nextName,
+        manifest,
+        revision: (await this.#readDraftRevision(nextDraftPath)).value,
+      };
+    });
+  }
+
+  async removeDraft(requestedName: string): Promise<boolean> {
+    const name = this.#normalizeName(requestedName);
+    const draftPath = join(this.draftRoot, name);
+    return this.#withWidgetWrite(draftPath, async () => {
+      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return false;
+      await rm(draftPath, { recursive: true, force: false });
+      await this.#removeDraftMount(name);
+      return true;
+    });
+  }
+
+  async removePublished(requestedName: string): Promise<boolean> {
+    const name = this.#normalizeName(requestedName);
+    const publishedPath = join(this.publishedRoot, name);
+    return this.#withWidgetWrite(publishedPath, async () => {
+      if (!await this.#isDirectDirectory(this.publishedRoot, publishedPath)) return false;
+      await rm(publishedPath, { recursive: true, force: false });
+      return true;
+    });
+  }
+
+  async #syncDraftFromPublished(name: string, onlyIfMissing: boolean): Promise<void> {
     const source = join(this.publishedRoot, name);
     if (!await this.#isDirectDirectory(this.publishedRoot, source)) {
       throw new Error(`Published widget '${name}' does not exist.`);
@@ -240,6 +361,7 @@ export class WidgetWorkspace {
     const target = join(this.draftRoot, name);
 
     await this.#withWidgetWrite(target, async () => {
+      if (onlyIfMissing && await this.#isDirectDirectory(this.draftRoot, target)) return;
       const temporary = join(this.draftRoot, `.sync-${this.#safeId()}`);
       const backup = join(this.draftRoot, `.sync-backup-${this.#safeId()}`);
       let movedExisting = false;
@@ -271,8 +393,6 @@ export class WidgetWorkspace {
         if (!movedExisting) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
       }
     });
-
-    return this.loadWidget(chatId, name);
   }
 
   async listMounts(chatId: string): Promise<TWidgetMount[]> {
@@ -706,6 +826,18 @@ export class WidgetWorkspace {
 
   async #reconcileSharedMounts(root: string): Promise<void> {
     const widgetsRoot = join(root, 'widgets');
+    const mounts = await readdir(widgetsRoot, { withFileTypes: true }).catch(() => []);
+    for (const entry of mounts) {
+      if (!entry.isSymbolicLink()) continue;
+      const normalized = fnNormalizeWidgetName(entry.name);
+      if (!normalized.ok || normalized.value !== entry.name) continue;
+      const mountPath = join(widgetsRoot, entry.name);
+      const ownedKind = await this.#ownedMountKind(mountPath, entry.name).catch(() => null);
+      if (ownedKind !== 'draft') continue;
+      if (await this.#isDirectDirectory(this.draftRoot, join(this.draftRoot, entry.name))) continue;
+      await rm(mountPath, { force: true });
+    }
+
     const drafts = await readdir(this.draftRoot, { withFileTypes: true }).catch(() => []);
     for (const entry of drafts) {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
@@ -794,6 +926,70 @@ export class WidgetWorkspace {
   async #mountLinkTarget(mountPath: string, targetPath: string): Promise<string> {
     if (this.#platform === 'win32') return targetPath;
     return relative(await realpath(dirname(mountPath)), targetPath);
+  }
+
+  async #removeDraftMount(name: string): Promise<void> {
+    for (const root of await this.#existingChatWorkspaceRoots()) {
+      await this.#withWidgetWrite(root, async () => {
+        const mountPath = join(root, 'widgets', name);
+        const entry = await lstat(mountPath).catch(() => null);
+        if (!entry?.isSymbolicLink()) return;
+        if (await this.#ownedMountKind(mountPath, name).catch(() => null) !== 'draft') return;
+        await rm(mountPath, { force: true });
+      });
+    }
+  }
+
+  async #moveDraftMount(name: string, nextName: string, nextDraftPath: string): Promise<void> {
+    const moves: { mountPath: string; nextMountPath: string; root: string }[] = [];
+    for (const root of await this.#existingChatWorkspaceRoots()) {
+      const mountPath = join(root, 'widgets', name);
+      const entry = await lstat(mountPath).catch(() => null);
+      if (!entry?.isSymbolicLink()) continue;
+      if (await this.#ownedMountKind(mountPath, name).catch(() => null) !== 'draft') continue;
+      const nextMountPath = join(root, 'widgets', nextName);
+      if (await lstat(nextMountPath).catch(() => null)) throw new Error(`Widget mount '${nextName}' already exists.`);
+      moves.push({ mountPath, nextMountPath, root });
+    }
+
+    const completed: typeof moves = [];
+    try {
+      for (const move of moves) {
+        await this.#withWidgetWrite(move.root, async () => {
+          await rm(move.mountPath, { force: true });
+          const linkTarget = await this.#mountLinkTarget(move.nextMountPath, nextDraftPath);
+          await symlink(linkTarget, move.nextMountPath, this.#platform === 'win32' ? 'junction' : 'dir');
+        });
+        completed.push(move);
+      }
+    } catch (error) {
+      const draftPath = join(this.draftRoot, name);
+      for (const move of completed.reverse()) {
+        await this.#withWidgetWrite(move.root, async () => {
+          await rm(move.nextMountPath, { force: true }).catch(() => undefined);
+          const linkTarget = await this.#mountLinkTarget(move.mountPath, draftPath);
+          await symlink(linkTarget, move.mountPath, this.#platform === 'win32' ? 'junction' : 'dir').catch(() => undefined);
+        });
+      }
+      throw error;
+    }
+  }
+
+  async #existingChatWorkspaceRoots(): Promise<string[]> {
+    const roots: string[] = [];
+    const groups = await readdir(this.chatRoot, { withFileTypes: true }).catch(() => []);
+    for (const group of groups) {
+      if (!group.isDirectory() || group.isSymbolicLink()) continue;
+      const groupRoot = join(this.chatRoot, group.name);
+      const chats = await readdir(groupRoot, { withFileTypes: true }).catch(() => []);
+      for (const chat of chats) {
+        if (!chat.isDirectory() || chat.isSymbolicLink()) continue;
+        const workspaceRoot = join(groupRoot, chat.name, 'workspace');
+        const entry = await lstat(workspaceRoot).catch(() => null);
+        if (entry?.isDirectory() && !entry.isSymbolicLink()) roots.push(workspaceRoot);
+      }
+    }
+    return roots;
   }
 
   #assertInside(root: string, candidate: string): void {

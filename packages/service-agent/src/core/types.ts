@@ -10,6 +10,7 @@ export type TValidationResult = {
 
 export type TActorServiceReloader = {
   reload(): Promise<void>;
+  deleteDefinition?(definitionName: string): Promise<boolean>;
   getVibecanvasJson?(defId: string): (TVibecanvasJson & { manifest_path: string }) | null;
   reloadDefinitionInstances?(definitionName: string): Promise<void>;
   listResources?(filter?: { kind?: TActorResource['kind']; status?: TActorResource['status'] }): Promise<TActorResource[]>;

@@ -4,6 +4,7 @@ import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/servi
 import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { TWidgetDraftSummary, TWidgetPreviewResult, TWidgetPreviewSendResult, TWidgetPublishResult } from '@vibecanvas/service-agent/widget-drafts/types';
+import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
 import { z } from 'zod';
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
@@ -59,6 +60,24 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
 const ZAgentWidgetDraftRef = z.object({ draftId: z.string().min(1).max(120) })
 const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({ expectedRevision: z.string().min(1).max(256) })
+const ZWidgetName = z.string().min(1).max(120).refine((value) => value.trim() === value && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !value.includes('\0'), 'Unsafe widget name')
+const ZWidgetSource = z.enum(['published', 'draft'])
+const ZWidgetVariantRef = z.object({ name: ZWidgetName, source: ZWidgetSource })
+const ZWidgetGroup = z.object({ name: z.string().trim().min(1).max(120), icon: ZVibecanvasToolIcon.nullable() })
+const ZWidgetDraftToolPatch = z.object({
+  icon: ZVibecanvasToolIcon.nullable().optional(),
+  group: z.string().trim().min(1).max(120).nullable().optional(),
+}).strict().refine((patch) => Object.prototype.hasOwnProperty.call(patch, 'icon') || Object.prototype.hasOwnProperty.call(patch, 'group'), 'At least one tool field is required')
+const ZWidgetDraftMetadataPatch = z.object({
+  name: ZWidgetName.optional(),
+  description: z.string().max(4_000).optional(),
+  tool: z.object({
+    label: z.string().min(1).max(120).optional(),
+    icon: ZVibecanvasToolIcon.nullable().optional(),
+    group: z.string().trim().min(1).max(120).nullable().optional(),
+    priority: z.number().finite().nullable().optional(),
+  }).strict().optional(),
+}).strict().refine((patch) => Object.keys(patch).length > 0, 'At least one metadata field is required')
 const ZAgentChatStartWidgetEdit = ZAgentChatScope.extend({
   definitionName: z.string().min(1),
 })
@@ -136,6 +155,22 @@ const ZAgentChatDraftManifestPatch = ZAgentChatScope.extend({
 })
 
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+export type {
+  TWidgetCatalog,
+  TWidgetCatalogEntry,
+  TWidgetCatalogGroup,
+  TWidgetCatalogProblem,
+  TWidgetDeleteResult,
+  TWidgetDetail,
+  TWidgetDraftMetadataPatch,
+  TWidgetDraftMetadataPatchResult,
+  TWidgetDraftToolPatch,
+  TWidgetFileEntry,
+  TWidgetFilePreview,
+  TWidgetRelation,
+  TWidgetSource,
+  TWidgetVariantSummary,
+} from '@vibecanvas/service-agent/widget-management/types';
 
 export type TAgentChatConnect = {
   vcJson: TVibecanvasJson | null;
@@ -274,6 +309,32 @@ export const agentContract = oc.router({
   },
   widgetPublish: {
     publish: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPublishResult>()),
+  },
+  widgets: {
+    catalog: oc.input(z.object({})).output(orpcType<TWidgetCatalog>()),
+    detail: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetDetail | null>()),
+    files: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetFileEntry[] | null>()),
+    file: oc.input(ZWidgetVariantRef.extend({ path: z.string().min(1).max(1_000) })).output(orpcType<TWidgetFilePreview | null>()),
+    ensureDraft: oc.input(z.object({
+      name: ZWidgetName,
+      expectedPublishedFingerprint: z.string().length(64).optional(),
+    })).output(orpcType<TWidgetVariantSummary>()),
+    patchDraftTool: oc.input(z.object({
+      name: ZWidgetName,
+      expectedRevision: z.string().min(1).max(256),
+      patch: ZWidgetDraftToolPatch,
+    })).output(orpcType<TWidgetVariantSummary>()),
+    patchDraftMetadata: oc.input(z.object({
+      name: ZWidgetName,
+      expectedRevision: z.string().min(1).max(256),
+      patch: ZWidgetDraftMetadataPatch,
+    })).output(orpcType<TWidgetDraftMetadataPatchResult>()),
+    delete: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetDeleteResult>()),
+    groups: {
+      create: oc.input(ZWidgetGroup).output(orpcType<TWidgetCatalogGroup>()),
+      update: oc.input(z.object({ currentName: z.string().trim().min(1).max(120), group: ZWidgetGroup })).output(orpcType<TWidgetCatalogGroup>()),
+      remove: oc.input(z.object({ name: z.string().trim().min(1).max(120) })).output(orpcType<TWidgetCatalogGroup>()),
+    },
   },
   approval: {
     list: oc.input(ZAgentChatScope).output(ZAgentApproval.array()),
