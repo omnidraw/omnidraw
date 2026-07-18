@@ -63,7 +63,7 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("tool_groups");
     expect(tNames).toContain("actor_resources");
     expect(tNames).toContain("actor_resource_bindings");
-    expect(tNames).toContain("actor_resource_key_values");
+    expect(tNames).not.toContain("actor_resource_key_values");
     expect(tNames).toContain("db_resource_drafts");
     expect(tNames).toContain("db_resource_draft_changes");
     expect(tNames).toContain("db_resource_apply_runs");
@@ -251,9 +251,10 @@ describe("tx.migrations", () => {
 
   test("migrations 012 and 013 replace legacy metadata and add restore provenance", async () => {
     const migrationFiles = listMigrationFiles();
-    const legacyFiles = migrationFiles.slice(0, 12);
+    const legacyFiles = migrationFiles.filter((migration): migration is Extract<TMigration, { type: 'sql' }> => (
+      migration.type === 'sql' && migration.name <= '011-add-db-resources.sql'
+    ));
     for (const file of legacyFiles) {
-      if (file.type !== 'sql') throw new Error('Expected a SQL migration.');
       await db.exec(await Bun.file(file.path).text());
     }
     await db.exec(`
@@ -312,7 +313,7 @@ describe("tx.migrations", () => {
     expect(applyColumns.map((column) => column.name)).toContain("source_apply_id");
   });
 
-  test("actor and db resource tables enforce domains and strict entry constraints", async () => {
+  test("actor and db resource tables enforce domains and omit resource entry persistence", async () => {
     await txRunMigrations({ db, Bun, path }, {});
 
     const actorResourceColumns = await (await db.prepare("pragma table_info(actor_resources)")).all() as { name: string }[];
@@ -321,12 +322,10 @@ describe("tx.migrations", () => {
     await insertResource.run("kv-ok", "kv", "KV", "ready");
     await expectSqlConstraintFailure(() => insertResource.run("kind-bad", "store", "Bad", "ready"));
     await expectSqlConstraintFailure(() => insertResource.run("status-bad", "kv", "Bad", "online"));
-
-    const insertEntry = await db.prepare("insert into actor_resource_key_values (resource_id, key, value, revision) values (?, ?, ?, ?)");
-    await insertEntry.run("kv-ok", "valid", "null", 1);
-    await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "   ", "null", 1));
-    await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "negative", "null", 0));
-    await expectSqlConstraintFailure(() => insertEntry.run("kv-ok", "invalid-json", "not-json", 1));
+    const resourceEntryTable = await (await db.prepare(`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'actor_resource_key_values'
+    `)).get();
+    expect(resourceEntryTable).toBeUndefined();
 
     await insertResource.run("db-ok", "db", "DB", "ready");
     const insertDraft = await db.prepare("insert into db_resource_drafts (id, resource_id, name, status) values (?, ?, ?, ?)");

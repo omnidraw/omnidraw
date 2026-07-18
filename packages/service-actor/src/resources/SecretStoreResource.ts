@@ -1,12 +1,22 @@
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import type { TActorResource, TJson } from '@vibecanvas/service-db/model';
+import type { TActorResource } from '@vibecanvas/service-db/model';
 import { ActorResourceError, toActorResourceError } from './ActorResourceError';
+import type {
+  IActorResourceKeyValuePersistence,
+  TActorResourceKeyValueDeleteResult,
+  TActorResourceKeyValueEntry,
+  TActorResourceKeyValueEntryMetadata,
+  TActorResourceKeyValuePage,
+} from './ActorResourceKeyValuePersistence';
 import type { IActorResourceProvider, TActorResolvedResourceCall, TActorResourceProviderCreateArgs } from './resource-types';
 import type { TActorResourceRequirement } from '../core/types';
 
 const SECRET_NAME_MAX_LENGTH = 256;
 const SECRET_VALUE_MAX_LENGTH = 1_048_576;
 const LIST_MAX_LIMIT = 500;
+
+export type TSecretStoreCompareAndSetResult =
+  | { readonly ok: true; readonly entry: TActorResourceKeyValueEntryMetadata }
+  | { readonly ok: false; readonly expectedRevision: number | null; readonly currentRevision: number | null };
 
 function recordArgs(args: unknown): Record<string, unknown> {
   if (typeof args !== 'object' || args === null || Array.isArray(args)) {
@@ -52,14 +62,46 @@ function expectedRevision(value: unknown): number | null {
   return value as number;
 }
 
+function optionalExpectedRevision(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Expected revision must be a positive integer.');
+  }
+  return value as number;
+}
+
+function entryMetadata(entry: TActorResourceKeyValueEntry): TActorResourceKeyValueEntryMetadata {
+  return {
+    key: entry.key,
+    revision: entry.revision,
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  };
+}
+
 export class SecretStoreResource implements IActorResourceProvider {
   readonly kind = 'secretStore' as const;
+  readonly reconcileReady = true;
 
-  constructor(private readonly persistence: DbServiceTurso['actorResource']['keyValue']) {}
+  constructor(private readonly persistence: IActorResourceKeyValuePersistence) {}
 
-  async provision(_resource: TActorResource, _args: TActorResourceProviderCreateArgs): Promise<void> {}
+  async provision(resource: TActorResource, _args: TActorResourceProviderCreateArgs): Promise<void> {
+    if (resource.kind !== this.kind) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource catalog kind is invalid.');
+    try {
+      await this.persistence.provision({ resourceId: resource.id, kind: this.kind });
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Secret-store resource provisioning failed.');
+    }
+  }
 
-  async delete(_resource: TActorResource): Promise<void> {}
+  async delete(resource: TActorResource): Promise<void> {
+    if (resource.kind !== this.kind) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource catalog kind is invalid.');
+    try {
+      await this.persistence.deleteResource({ resourceId: resource.id, kind: this.kind });
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Secret-store physical deletion failed.');
+    }
+  }
 
   async reconcile(resource: TActorResource) {
     if (resource.kind !== this.kind) {
@@ -68,7 +110,19 @@ export class SecretStoreResource implements IActorResourceProvider {
         lastError: { code: 'RESOURCE_KIND_MISMATCH', message: 'Secret-store resource catalog kind is invalid.' },
       };
     }
-    return { status: 'ready' as const };
+    try {
+      await this.persistence.verify({ resourceId: resource.id, kind: this.kind });
+      return { status: 'ready' as const };
+    } catch {
+      return {
+        status: 'error' as const,
+        lastError: { code: 'SECRET_STORE_UNAVAILABLE', message: 'Secret-store physical state could not be verified safely.' },
+      };
+    }
+  }
+
+  close(): Promise<void> {
+    return this.persistence.close();
   }
 
   effect(operation: string, _requirement: TActorResourceRequirement): 'read' | 'write' | null {
@@ -77,56 +131,162 @@ export class SecretStoreResource implements IActorResourceProvider {
     return null;
   }
 
+  async countEntries(args: { resourceId: string; prefix?: string; search?: string }): Promise<number> {
+    try {
+      return await this.persistence.count({
+        resourceId: args.resourceId,
+        prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'Secret list prefix', true),
+        search: args.search === undefined ? undefined : listTextArg(args.search, 'Secret list search', true),
+      });
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async listEntries(args: {
+    resourceId: string;
+    prefix?: string;
+    search?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<TActorResourceKeyValuePage<TActorResourceKeyValueEntryMetadata>> {
+    try {
+      const page = await this.persistence.list({
+        resourceId: args.resourceId,
+        prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'Secret list prefix', true),
+        search: args.search === undefined ? undefined : listTextArg(args.search, 'Secret list search', true),
+        cursor: args.cursor === undefined ? undefined : listTextArg(args.cursor, 'Secret list cursor', false),
+        limit: listLimit(args.limit),
+      });
+      return { entries: page.entries.map(entryMetadata), nextCursor: page.nextCursor };
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async getEntryMetadata(args: { resourceId: string; name: unknown }): Promise<TActorResourceKeyValueEntryMetadata | null> {
+    const entry = await this.#getPlaintextEntry(args);
+    return entry ? entryMetadata(entry) : null;
+  }
+
+  async hasEntry(args: { resourceId: string; name: unknown }): Promise<boolean> {
+    try {
+      return await this.persistence.has({ resourceId: args.resourceId, key: secretName(args.name) });
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async setEntryMetadata(args: {
+    resourceId: string;
+    name: unknown;
+    value: unknown;
+  }): Promise<TActorResourceKeyValueEntryMetadata> {
+    try {
+      const entry = await this.persistence.set({
+        resourceId: args.resourceId,
+        key: secretName(args.name),
+        value: secretValue(args.value),
+      });
+      return entryMetadata(entry);
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async deleteEntry(args: {
+    resourceId: string;
+    name: unknown;
+    expectedRevision?: unknown;
+  }): Promise<TActorResourceKeyValueDeleteResult> {
+    try {
+      return await this.persistence.delete({
+        resourceId: args.resourceId,
+        key: secretName(args.name),
+        expectedRevision: optionalExpectedRevision(args.expectedRevision),
+      });
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async compareAndSetEntry(args: {
+    resourceId: string;
+    name: unknown;
+    expectedRevision: unknown;
+    value: unknown;
+  }): Promise<TSecretStoreCompareAndSetResult> {
+    try {
+      const result = await this.persistence.compareAndSet({
+        resourceId: args.resourceId,
+        key: secretName(args.name),
+        expectedRevision: expectedRevision(args.expectedRevision),
+        value: secretValue(args.value),
+      });
+      return result.ok ? { ok: true, entry: entryMetadata(result.entry) } : result;
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async #getPlaintextEntry(args: { resourceId: string; name: unknown }): Promise<TActorResourceKeyValueEntry | null> {
+    try {
+      const entry = await this.persistence.get({ resourceId: args.resourceId, key: secretName(args.name) });
+      if (entry && typeof entry.value !== 'string') {
+        throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Stored secret value has an invalid type.');
+      }
+      return entry;
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
   async dispatch(context: TActorResolvedResourceCall, operation: string, rawArgs: unknown): Promise<unknown> {
-    const args = recordArgs(rawArgs);
     try {
       if (context.resource.kind !== this.kind || context.requirement.kind !== this.kind) {
         throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource kind does not match the resolved slot.');
       }
+      const args = recordArgs(rawArgs);
       if (operation === 'get') {
-        const entry = await this.persistence.get({ resourceId: context.resource.id, key: secretName(args.name) });
-        if (!entry) return null;
-        if (typeof entry.value !== 'string') throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Stored secret value has an invalid type.');
-        return { value: entry.value, revision: entry.revision };
+        const entry = await this.#getPlaintextEntry({ resourceId: context.resource.id, name: args.name });
+        return entry ? { value: entry.value, revision: entry.revision } : null;
       }
       if (operation === 'has') {
-        return this.persistence.has({ resourceId: context.resource.id, key: secretName(args.name) });
+        return this.hasEntry({ resourceId: context.resource.id, name: args.name });
       }
       if (operation === 'list') {
-        const page = await this.persistence.list({
+        const page = await this.listEntries({
           resourceId: context.resource.id,
-          prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'Secret list prefix', true),
-          cursor: args.cursor === undefined ? undefined : listTextArg(args.cursor, 'Secret list cursor', false),
-          limit: listLimit(args.limit),
+          prefix: args.prefix as string | undefined,
+          cursor: args.cursor as string | undefined,
+          limit: args.limit as number | undefined,
         });
         return {
           items: page.entries.map((entry) => ({
             name: entry.key,
             revision: entry.revision,
-            createdAt: entry.created_at,
-            updatedAt: entry.updated_at,
+            createdAt: entry.createdAt,
+            updatedAt: entry.updatedAt,
           })),
           ...(page.nextCursor === null ? {} : { nextCursor: page.nextCursor }),
         };
       }
       if (operation === 'set') {
-        const name = secretName(args.name);
-        const entry = await this.persistence.set({ resourceId: context.resource.id, key: name, value: secretValue(args.value) });
-        return { name, revision: entry.revision };
+        const entry = await this.setEntryMetadata({ resourceId: context.resource.id, name: args.name, value: args.value });
+        return { name: entry.key, revision: entry.revision };
       }
       if (operation === 'delete') {
-        return this.persistence.delete({ resourceId: context.resource.id, key: secretName(args.name) });
+        return this.deleteEntry({ resourceId: context.resource.id, name: args.name });
       }
       if (operation === 'compareAndSet') {
-        const name = secretName(args.name);
-        const result = await this.persistence.compareAndSet({
+        const result = await this.compareAndSetEntry({
           resourceId: context.resource.id,
-          key: name,
-          expectedRevision: expectedRevision(args.expectedRevision),
-          value: secretValue(args.value),
+          name: args.name,
+          expectedRevision: args.expectedRevision,
+          value: args.value,
         });
         return result.ok
-          ? { ok: true, entry: { name, revision: result.entry.revision } }
+          ? { ok: true, entry: { name: result.entry.key, revision: result.entry.revision } }
           : { ok: false, currentRevision: result.currentRevision };
       }
       throw new ActorResourceError('SECRET_OPERATION_FAILED', `Unknown secret-store operation "${operation}".`);

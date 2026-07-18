@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ZActorDefinition, ZActorResource, ZActorResourceBinding, ZActorResourceKeyValue, ZDbResourceApplyInstanceResult, ZDbResourceApplyRun, ZDbResourceDraft, ZDbResourceDraftChange } from "../model";
+import { ZActorDefinition, ZActorResource, ZActorResourceBinding, ZDbResourceApplyInstanceResult, ZDbResourceApplyRun, ZDbResourceDraft, ZDbResourceDraftChange } from "../model";
 
 describe("model", () => {
   test("accepts relative manifest paths", () => {
@@ -77,13 +77,6 @@ describe("model", () => {
       allow_write: 0,
       ...timestamps,
     })).toMatchObject({ allow_read: true, allow_write: false });
-    expect(ZActorResourceKeyValue.safeParse({
-      resource_id: "resource",
-      key: "token",
-      value: null,
-      revision: 1,
-      ...timestamps,
-    }).success).toBe(true);
     expect(ZDbResourceDraft.safeParse({
       id: "draft",
       resource_id: "resource",
@@ -123,15 +116,8 @@ describe("model", () => {
     })).toMatchObject({ was_running: true });
   });
 
-  test("rejects invalid resource revisions, versions, and lifecycle discriminants", () => {
+  test("rejects invalid versions and lifecycle discriminants", () => {
     const timestamps = { created_at: "2026-01-01 00:00:00", updated_at: "2026-01-01 00:00:00" };
-    expect(ZActorResourceKeyValue.safeParse({
-      resource_id: "resource",
-      key: "key",
-      value: true,
-      revision: 0,
-      ...timestamps,
-    }).success).toBe(false);
     expect(ZDbResourceDraftChange.safeParse({
       draft_id: "draft",
       sequence: 0,

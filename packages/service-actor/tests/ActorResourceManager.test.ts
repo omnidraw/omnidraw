@@ -4,16 +4,30 @@ import { ActorResourceError, toSafeActorResourceError } from '../src/resources/A
 import { ActorResourceManager } from '../src/resources/ActorResourceManager';
 import { KvResource } from '../src/resources/KvResource';
 import { SecretStoreResource } from '../src/resources/SecretStoreResource';
+import { ActorResourceKeyValueStore } from '../src/resources/ActorResourceKeyValueStore';
 import type { TVibecanvasJson } from '../src/core/types';
 import type { IActorResourceProvider } from '../src/resources/resource-types';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const definitionName = 'Resource Test';
 
-function defaultProviders(db: DbServiceTurso): IActorResourceProvider[] {
-  return [
-    new KvResource(db.actorResource.keyValue),
-    new SecretStoreResource(db.actorResource.keyValue),
-  ];
+function defaultProviders(dataRoot: string): {
+  providers: IActorResourceProvider[];
+  kvStore: ActorResourceKeyValueStore;
+  kvResource: KvResource;
+} {
+  const kvStore = new ActorResourceKeyValueStore({ dataRoot, kind: 'kv' });
+  const kvResource = new KvResource(kvStore);
+  return {
+    providers: [
+      kvResource,
+      new SecretStoreResource(new ActorResourceKeyValueStore({ dataRoot, kind: 'secretStore' })),
+    ],
+    kvStore,
+    kvResource,
+  };
 }
 
 const manifest: TVibecanvasJson & { manifest_path: string } = {
@@ -40,8 +54,12 @@ const manifest: TVibecanvasJson & { manifest_path: string } = {
 describe('ActorResourceManager', () => {
   let db: DbServiceTurso;
   let manager: ActorResourceManager;
+  let rootDir: string;
+  let kvStore: ActorResourceKeyValueStore;
+  let kvResource: KvResource;
 
   beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-resource-manager-'));
     db = new DbServiceTurso({ databasePath: ':memory:', dataDir: import.meta.dir, cacheDir: import.meta.dir });
     await db.start();
     await db.actor.insertDefinition({
@@ -51,17 +69,21 @@ describe('ActorResourceManager', () => {
       description: null,
       manifest_path: manifest.manifest_path,
     });
+    const physical = defaultProviders(rootDir);
+    kvStore = physical.kvStore;
+    kvResource = physical.kvResource;
     manager = new ActorResourceManager({
       db,
       crypto,
       getDefinition: (name) => name === definitionName ? manifest : null,
-      providers: defaultProviders(db),
+      providers: physical.providers,
     });
   });
 
   afterEach(async () => {
     await manager.close();
     await db.db.close();
+    await rm(rootDir, { recursive: true, force: true });
   });
 
   test('enforces normalized names, resolves them case-insensitively, and shares bindings across actor calls', async () => {
@@ -506,9 +528,14 @@ describe('ActorResourceManager', () => {
       actorId: 'actor-b', definitionName, runId: 3, functionClass: 'tx', slot: 'credentials', kind: 'secretStore',
       operation: 'compareAndSet', args: { name: 'token', expectedRevision: 99, value: sentinel },
     });
+    const authorizedRead = await manager.call({
+      actorId: 'actor-b', definitionName, runId: 4, functionClass: 'fx', slot: 'credentials', kind: 'secretStore',
+      operation: 'get', args: { name: 'token' },
+    });
     expect(JSON.stringify({ write, list, conflict })).not.toContain(sentinel);
     expect(write).toEqual({ name: 'token', revision: 1 });
     expect(conflict).toEqual({ ok: false, currentRevision: 1 });
+    expect(authorizedRead).toEqual({ value: sentinel, revision: 1 });
   });
 
   test('uses stable errors for unknown slots and kind mismatches', async () => {
@@ -523,15 +550,17 @@ describe('ActorResourceManager', () => {
     const resource = await manager.createResource({ kind: 'kv', name: 'Drain test' });
     await manager.bindResource({ definitionName, slot: 'storage', resourceId: resource.id });
 
-    const originalGet = db.actorResource.keyValue.get;
+    const originalDispatch = kvResource.dispatch.bind(kvResource);
     let release!: () => void;
     let markStarted!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const started = new Promise<void>((resolve) => { markStarted = resolve; });
-    db.actorResource.keyValue.get = async (args) => {
-      markStarted();
-      await gate;
-      return originalGet(args);
+    kvResource.dispatch = async (context, operation, args) => {
+      if (operation === 'get') {
+        markStarted();
+        await gate;
+      }
+      return originalDispatch(context, operation, args);
     };
 
     const call = manager.call({
@@ -602,15 +631,17 @@ describe('ActorResourceManager', () => {
     const resource = await manager.createResource({ kind: 'kv', name: 'Close cancellation test' });
     await manager.bindResource({ definitionName, slot: 'storage', resourceId: resource.id });
 
-    const originalGet = db.actorResource.keyValue.get;
+    const originalDispatch = kvResource.dispatch.bind(kvResource);
     let release!: () => void;
     let markStarted!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const started = new Promise<void>((resolve) => { markStarted = resolve; });
-    db.actorResource.keyValue.get = async (args) => {
-      markStarted();
-      await gate;
-      return originalGet(args);
+    kvResource.dispatch = async (context, operation, args) => {
+      if (operation === 'get') {
+        markStarted();
+        await gate;
+      }
+      return originalDispatch(context, operation, args);
     };
 
     const call = manager.call({
@@ -644,13 +675,21 @@ describe('ActorResourceManager', () => {
       status: 'provisioning',
       lastError: { code: 'INTERRUPTED', message: 'Previous startup stopped.' },
     });
+    await kvStore.provision({ resourceId: 'recover-kv', kind: 'kv' });
     await db.actorResource.create({
       id: 'delete-kv',
       kind: 'kv',
       name: 'Delete KV',
       status: 'deleting',
     });
-    await db.actorResource.keyValue.set({ resourceId: 'delete-kv', key: 'stale', value: true });
+    await kvStore.provision({ resourceId: 'delete-kv', kind: 'kv' });
+    await kvStore.set({ resourceId: 'delete-kv', key: 'stale', value: true });
+    await db.actorResource.create({
+      id: 'already-removed-kv',
+      kind: 'kv',
+      name: 'Already removed KV',
+      status: 'deleting',
+    });
 
     await manager.reconcileStartup();
 
@@ -659,7 +698,8 @@ describe('ActorResourceManager', () => {
       last_error: null,
     });
     expect(await manager.getResource('delete-kv')).toBeNull();
-    expect(await db.actorResource.keyValue.get({ resourceId: 'delete-kv', key: 'stale' })).toBeNull();
+    expect(await manager.getResource('already-removed-kv')).toBeNull();
+    expect(await stat(join(rootDir, 'actor-resources', 'kv', 'delete-kv')).catch(() => null)).toBeNull();
   });
 
   test('leaves migrating database resources blocked for apply recovery', async () => {
@@ -801,11 +841,14 @@ describe('ActorResourceManager', () => {
         resources: {},
       },
     };
+    const physical = defaultProviders(rootDir);
+    kvStore = physical.kvStore;
+    kvResource = physical.kvResource;
     manager = new ActorResourceManager({
       db,
       crypto,
       getDefinition: (name) => name === definitionName ? staleManifest : null,
-      providers: defaultProviders(db),
+      providers: physical.providers,
     });
 
     expect(await manager.unbindResource({ definitionName, slot: 'storage' })).toBe(true);

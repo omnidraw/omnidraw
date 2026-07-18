@@ -138,6 +138,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B47](b/B47.md) - image delete: remove media_files row
 - [x]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
 - [x]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
+- [ ]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -306,9 +307,11 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S86](s/S86.md) - human-readable dated AI chat storage and stable chat identity
 - [x]: [S87](s/S87.md) - simplify vc_widget_create to one runnable construction scaffold
 - [ ]: [S88](s/S88.md) - extract AI Chat, widgets, and sidebar from canvas
-- [ ]: [S89](s/S89.md) - actor resources: add independent key-value file persistence
-- [ ]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
-- [ ]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
+- [x]: [S89](s/S89.md) - actor resources: add independent key-value file persistence
+- [x]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
+- [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
+- [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
+- [ ]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

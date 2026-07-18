@@ -10,7 +10,6 @@ import path006 from "./migration-files/006-add-key-value.sql" with { type: "file
 import path007 from "./migration-files/007-add-actor-instance-error.sql" with { type: "file" }
 import path008 from "./migration-files/008-add-tool-groups.sql" with { type: "file" }
 import path009 from "./migration-files/009-add-actor-resources.sql" with { type: "file" }
-import path010 from "./migration-files/010-add-actor-resource-key-values.sql" with { type: "file" }
 import path011 from "./migration-files/011-add-db-resources.sql" with { type: "file" }
 import path012 from "./migration-files/012-replace-db-resource-migrations.sql" with { type: "file" }
 import path013 from "./migration-files/013-add-db-resource-restore-source.sql" with { type: "file" }
@@ -31,7 +30,6 @@ export function listMigrationFiles(): TMigration[] {
     { type: 'sql', name: '007-add-actor-instance-error.sql', path: path007 },
     { type: 'sql', name: '008-add-tool-groups.sql', path: path008 },
     { type: 'sql', name: '009-add-actor-resources.sql', path: path009 },
-    { type: 'sql', name: '010-add-actor-resource-key-values.sql', path: path010 },
     { type: 'sql', name: '011-add-db-resources.sql', path: path011 },
     { type: 'sql', name: '012-replace-db-resource-migrations.sql', path: path012 },
     { type: 'sql', name: '013-add-db-resource-restore-source.sql', path: path013 },

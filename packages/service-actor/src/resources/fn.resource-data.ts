@@ -1,4 +1,5 @@
-import type { TActorResourceKeyValue, TJson } from '@vibecanvas/service-db/model';
+import type { TJson } from '@vibecanvas/service-db/model';
+import type { TActorResourceKeyValueEntryMetadata } from './ActorResourceKeyValuePersistence';
 import type { TActorResourceDataMutationResult, TActorResourceDataPage } from './resource-types';
 
 const VALUE_PREVIEW_MAX_LENGTH = 4_096;
@@ -11,7 +12,10 @@ export function fnJsonValuePreview(value: TJson): { preview: string; truncated: 
 
 export function fnActorResourceDataPage(
   kind: 'kv' | 'secretStore',
-  page: { entries: readonly TActorResourceKeyValue[]; nextCursor: string | null },
+  page: {
+    entries: readonly (TActorResourceKeyValueEntryMetadata & { readonly value?: TJson })[];
+    nextCursor: string | null;
+  },
 ): TActorResourceDataPage {
   if (kind === 'secretStore') {
     return {
@@ -19,8 +23,8 @@ export function fnActorResourceDataPage(
       entries: page.entries.map((entry) => ({
         name: entry.key,
         revision: entry.revision,
-        createdAt: entry.created_at,
-        updatedAt: entry.updated_at,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
       })),
       nextCursor: page.nextCursor,
     };
@@ -28,14 +32,14 @@ export function fnActorResourceDataPage(
   return {
     kind,
     entries: page.entries.map((entry) => {
-      const value = fnJsonValuePreview(entry.value);
+      const value = fnJsonValuePreview(entry.value ?? null);
       return {
         key: entry.key,
         valuePreview: value.preview,
         valueTruncated: value.truncated,
         revision: entry.revision,
-        createdAt: entry.created_at,
-        updatedAt: entry.updated_at,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
       };
     }),
     nextCursor: page.nextCursor,
@@ -44,7 +48,7 @@ export function fnActorResourceDataPage(
 
 export function fnActorResourceDataMutationResult(
   kind: 'kv' | 'secretStore',
-  entry: TActorResourceKeyValue,
+  entry: TActorResourceKeyValueEntryMetadata & { readonly value?: TJson },
 ): TActorResourceDataMutationResult {
   if (kind === 'secretStore') {
     return {
@@ -52,12 +56,12 @@ export function fnActorResourceDataMutationResult(
       entry: {
         name: entry.key,
         revision: entry.revision,
-        createdAt: entry.created_at,
-        updatedAt: entry.updated_at,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
       },
     };
   }
-  const value = fnJsonValuePreview(entry.value);
+  const value = fnJsonValuePreview(entry.value ?? null);
   return {
     kind,
     entry: {
@@ -65,8 +69,8 @@ export function fnActorResourceDataMutationResult(
       valuePreview: value.preview,
       valueTruncated: value.truncated,
       revision: entry.revision,
-      createdAt: entry.created_at,
-      updatedAt: entry.updated_at,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
     },
   };
 }

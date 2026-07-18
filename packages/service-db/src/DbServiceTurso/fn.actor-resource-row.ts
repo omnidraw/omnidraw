@@ -2,13 +2,8 @@ import type {
   TActorInstance,
   TActorResource,
   TActorResourceBinding,
-  TActorResourceKeyValue,
   TJson,
 } from "../model"
-import {
-  ACTOR_RESOURCE_KEY_VALUE_LIST_DEFAULT_LIMIT,
-  ACTOR_RESOURCE_KEY_VALUE_LIST_MAX_LIMIT,
-} from "../CONSTANTS"
 
 function isPlainRecord(value: object): value is Record<string, unknown> {
   const prototype = Object.getPrototypeOf(value)
@@ -48,14 +43,6 @@ export function fnSerializeJsonValue(value: unknown): string {
   return JSON.stringify(value)
 }
 
-export function fnActorResourceKeyValueListLimit(limit: number | undefined): number {
-  const resolved = limit ?? ACTOR_RESOURCE_KEY_VALUE_LIST_DEFAULT_LIMIT
-  if (!Number.isInteger(resolved) || resolved < 1 || resolved > ACTOR_RESOURCE_KEY_VALUE_LIST_MAX_LIMIT) {
-    throw new RangeError(`Actor resource key-value list limit must be between 1 and ${ACTOR_RESOURCE_KEY_VALUE_LIST_MAX_LIMIT}`)
-  }
-  return resolved
-}
-
 export function fnParseActorResourceRow(row: unknown): TActorResource {
   const value = row as Omit<TActorResource, "last_error"> & {
     last_error: unknown | null
@@ -74,14 +61,6 @@ export function fnParseActorResourceBindingRow(row: unknown): TActorResourceBind
     ...value,
     allow_read: Boolean(value.allow_read),
     allow_write: Boolean(value.allow_write),
-  }
-}
-
-export function fnParseActorResourceKeyValueRow(row: unknown): TActorResourceKeyValue {
-  const value = row as Omit<TActorResourceKeyValue, "value"> & { value: unknown }
-  return {
-    ...value,
-    value: fnParseJsonValue(value.value),
   }
 }
 

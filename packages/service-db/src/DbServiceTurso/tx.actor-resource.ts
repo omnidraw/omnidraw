@@ -2,7 +2,6 @@ import type { Database } from "@tursodatabase/database"
 import type {
   TActorResource,
   TActorResourceBinding,
-  TActorResourceKeyValue,
   TActorResourceKind,
   TActorResourceStatus,
   TJson,
@@ -13,7 +12,7 @@ import {
   fnParseActorResourceRow,
   fnSerializeJsonValue,
 } from "./fn.actor-resource-row"
-import { fxActorResourceGet, fxActorResourceKeyValueGet } from "./fx.actor-resource"
+import { fxActorResourceGet } from "./fx.actor-resource"
 
 type TPortal = {
   db: Database
@@ -72,30 +71,6 @@ type TArgsReplaceBindings = {
     allowWrite: boolean
   }[]
 }
-
-type TArgsKeyValueSet = {
-  resourceId: string
-  key: string
-  value: TJson
-}
-
-type TArgsKeyValueDelete = {
-  resourceId: string
-  key: string
-  expectedRevision?: number
-}
-
-type TArgsKeyValueCompareAndSet = TArgsKeyValueSet & {
-  expectedRevision: number | null
-}
-
-export type TActorResourceKeyValueDeleteResult = {
-  deleted: boolean
-}
-
-export type TActorResourceKeyValueCompareAndSetResult =
-  | { ok: true; entry: TActorResourceKeyValue }
-  | { ok: false; expectedRevision: number | null; currentRevision: number | null }
 
 function resourceNameConflictError(name: string): Error & { code: string } {
   return Object.assign(new Error(`Resource name '${name}' is already in use.`), { code: "RESOURCE_NAME_CONFLICT" })
@@ -365,68 +340,4 @@ export async function txActorResourceReplaceBindings(
     return rows.map(fnParseActorResourceBindingRow)
   })
   return replace()
-}
-
-export async function txActorResourceKeyValueSet(
-  portal: TPortal,
-  args: TArgsKeyValueSet,
-): Promise<TActorResourceKeyValue> {
-  await (await portal.db.prepare(`
-    INSERT INTO actor_resource_key_values (resource_id, key, value)
-    VALUES (?, ?, ?)
-    ON CONFLICT (resource_id, key) DO UPDATE SET
-      value = excluded.value,
-      revision = actor_resource_key_values.revision + 1
-  `)).run(args.resourceId, args.key, fnSerializeJsonValue(args.value))
-  const entry = await fxActorResourceKeyValueGet(portal, args)
-  if (!entry) throw new Error("Failed to set actor resource key-value entry")
-  return entry
-}
-
-export async function txActorResourceKeyValueDelete(
-  portal: TPortal,
-  args: TArgsKeyValueDelete,
-): Promise<TActorResourceKeyValueDeleteResult> {
-  if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision < 1)) {
-    throw new RangeError("Expected revision must be a positive integer")
-  }
-  const result = await (await portal.db.prepare(`
-    DELETE FROM actor_resource_key_values
-    WHERE resource_id = ? AND key = ?
-      AND (? IS NULL OR revision = ?)
-  `)).run(args.resourceId, args.key, args.expectedRevision ?? null, args.expectedRevision ?? null)
-  return { deleted: result.changes > 0 }
-}
-
-export async function txActorResourceKeyValueCompareAndSet(
-  portal: TPortal,
-  args: TArgsKeyValueCompareAndSet,
-): Promise<TActorResourceKeyValueCompareAndSetResult> {
-  if (args.expectedRevision !== null && (!Number.isInteger(args.expectedRevision) || args.expectedRevision < 1)) {
-    throw new RangeError("Expected revision must be null or a positive integer")
-  }
-
-  const serialized = fnSerializeJsonValue(args.value)
-  const result = args.expectedRevision === null
-    ? await (await portal.db.prepare(`
-        INSERT INTO actor_resource_key_values (resource_id, key, value)
-        VALUES (?, ?, ?)
-        ON CONFLICT (resource_id, key) DO NOTHING
-      `)).run(args.resourceId, args.key, serialized)
-    : await (await portal.db.prepare(`
-        UPDATE actor_resource_key_values
-        SET value = ?, revision = revision + 1
-        WHERE resource_id = ? AND key = ? AND revision = ?
-      `)).run(serialized, args.resourceId, args.key, args.expectedRevision)
-
-  const current = await fxActorResourceKeyValueGet(portal, args)
-  if (result.changes === 0) {
-    return {
-      ok: false,
-      expectedRevision: args.expectedRevision,
-      currentRevision: current?.revision ?? null,
-    }
-  }
-  if (!current) throw new Error("Actor resource key-value CAS succeeded without a persisted entry")
-  return { ok: true, entry: current }
 }

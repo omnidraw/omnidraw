@@ -143,6 +143,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -736,9 +738,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
 | [packages/service-actor/src/resources/ActorResourceError.ts](packages/service-actor/src/resources/ActorResourceError.ts) |  |
+| [packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts](packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts) | Actor-local contracts for independently persisted KV and secret-store entries. |
+| [packages/service-actor/src/resources/ActorResourceKeyValueStore.ts](packages/service-actor/src/resources/ActorResourceKeyValueStore.ts) | Host-owned bounded Turso file persistence for KV and secret-store resources. |
 | [packages/service-actor/src/resources/ActorResourceManager.ts](packages/service-actor/src/resources/ActorResourceManager.ts) |  |
 | [packages/service-actor/src/resources/DbResource.ts](packages/service-actor/src/resources/DbResource.ts) |  |
 | [packages/service-actor/src/resources/DbResourceCoordinator.ts](packages/service-actor/src/resources/DbResourceCoordinator.ts) |  |
+| [packages/service-actor/src/resources/fn.actor-resource-key-value.ts](packages/service-actor/src/resources/fn.actor-resource-key-value.ts) | Pure identity, JSON, pagination, and row helpers for physical actor key-value files. |
 | [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
 | [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
@@ -870,7 +875,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql](packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql](packages/service-db/src/DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql](packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
@@ -889,6 +893,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

@@ -9,11 +9,10 @@ import migration6 from './DbServiceTurso/migration-files/006-add-key-value.sql' 
 import migration7 from './DbServiceTurso/migration-files/007-add-actor-instance-error.sql' with { type: "file" };
 import migration8 from './DbServiceTurso/migration-files/008-add-tool-groups.sql' with { type: "file" };
 import migration9 from './DbServiceTurso/migration-files/009-add-actor-resources.sql' with { type: "file" };
-import migration10 from './DbServiceTurso/migration-files/010-add-actor-resource-key-values.sql' with { type: "file" };
-import migration11 from './DbServiceTurso/migration-files/011-add-db-resources.sql' with { type: "file" };
-import migration12 from './DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql' with { type: "file" };
-import migration13 from './DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql' with { type: "file" };
-import migration14 from './DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql' with { type: "file" };
+import migration10 from './DbServiceTurso/migration-files/011-add-db-resources.sql' with { type: "file" };
+import migration11 from './DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql' with { type: "file" };
+import migration12 from './DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql' with { type: "file" };
+import migration13 from './DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql' with { type: "file" };
 
 const embeddedMigrationPaths = new Map<string, string>([
   ["000-add-automerge.sql", migration0],
@@ -26,11 +25,10 @@ const embeddedMigrationPaths = new Map<string, string>([
   ["007-add-actor-instance-error.sql", migration7],
   ["008-add-tool-groups.sql", migration8],
   ["009-add-actor-resources.sql", migration9],
-  ["010-add-actor-resource-key-values.sql", migration10],
-  ["011-add-db-resources.sql", migration11],
-  ["012-replace-db-resource-migrations.sql", migration12],
-  ["013-add-db-resource-restore-source.sql", migration13],
-  ["015-add-actor-resource-name-keys.sql", migration14],
+  ["011-add-db-resources.sql", migration10],
+  ["012-replace-db-resource-migrations.sql", migration11],
+  ["013-add-db-resource-restore-source.sql", migration12],
+  ["015-add-actor-resource-name-keys.sql", migration13],
 ]);
 
 export function listEmbeddedMigrationFiles(): string[] {

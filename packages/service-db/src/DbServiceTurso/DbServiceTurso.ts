@@ -5,7 +5,7 @@ import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
-import { fxActorResourceFindByNameKey, fxActorResourceGet, fxActorResourceKeyValueCount, fxActorResourceKeyValueGet, fxActorResourceKeyValueHas, fxActorResourceKeyValueList, fxActorResourceList, fxActorResourceListBindingsForDefinition, fxActorResourceListBindingsForResource, fxActorResourceListDefinitionsReferencingResource } from "./fx.actor-resource";
+import { fxActorResourceFindByNameKey, fxActorResourceGet, fxActorResourceList, fxActorResourceListBindingsForDefinition, fxActorResourceListBindingsForResource, fxActorResourceListDefinitionsReferencingResource } from "./fx.actor-resource";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxDbResourceApplyGet, fxDbResourceApplyInstanceResultListByApply, fxDbResourceApplyInstanceResultListByInstance, fxDbResourceApplyList, fxDbResourceDraftChangeList, fxDbResourceDraftGet, fxDbResourceDraftGetActive, fxDbResourceDraftList, fxDbResourceListAffectedInstances } from "./fx.db-resource";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
@@ -14,7 +14,7 @@ import { fxKeyValueGet } from "./fx.keyValue";
 import { fxToolGroupGetByName, fxToolGroupListAll } from "./fx.tool-group";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceHealth, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
-import { txActorResourceAuditNames, txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceKeyValueCompareAndSet, txActorResourceKeyValueDelete, txActorResourceKeyValueSet, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceReplaceBindings, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
+import { txActorResourceAuditNames, txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceReplaceBindings, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyInstanceResultUpsert, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
@@ -218,15 +218,6 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         allowWrite: boolean;
       }[];
     }) => this.#serializeActorWrite(() => txActorResourceReplaceBindings(this, args)),
-    keyValue: {
-      get: (args: { resourceId: string; key: string }) => fxActorResourceKeyValueGet(this, args),
-      has: (args: { resourceId: string; key: string }) => fxActorResourceKeyValueHas(this, args),
-      count: (args: { resourceId: string; prefix?: string; search?: string }) => fxActorResourceKeyValueCount(this, args),
-      list: (args: { resourceId: string; prefix?: string; search?: string; cursor?: string; limit?: number }) => fxActorResourceKeyValueList(this, args),
-      set: (args: { resourceId: string; key: string; value: TJson }) => this.#serializeActorWrite(() => txActorResourceKeyValueSet(this, args)),
-      delete: (args: { resourceId: string; key: string; expectedRevision?: number }) => this.#serializeActorWrite(() => txActorResourceKeyValueDelete(this, args)),
-      compareAndSet: (args: { resourceId: string; key: string; expectedRevision: number | null; value: TJson }) => this.#serializeActorWrite(() => txActorResourceKeyValueCompareAndSet(this, args)),
-    },
   };
 
   dbResource = {
