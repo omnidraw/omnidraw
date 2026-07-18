@@ -3,7 +3,7 @@ import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.ty
 type TPortal = {
   clone: <T>(value: T) => T
   createId: () => string
-  createUiWidgetPayload?: () => Record<string, any>
+  cloneUiWidgetPayload?: (sourcePayload: Record<string, any>) => Record<string, any>
   now: () => number
 }
 
@@ -18,10 +18,10 @@ export function fnCreateClonedWidgetElement(portal: TPortal, args: TArgs) {
     const { actorInstanceId, ...dataWithoutInstance } = clone.data
     void actorInstanceId
     clone.data = dataWithoutInstance
-  } else if (clone.data.type === "ui-widget" && portal.createUiWidgetPayload) {
+  } else if (clone.data.type === "ui-widget" && portal.cloneUiWidgetPayload) {
     clone.data = {
       ...clone.data,
-      payload: portal.createUiWidgetPayload(),
+      payload: portal.cloneUiWidgetPayload(clone.data.payload ?? {}),
     }
   }
 

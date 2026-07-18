@@ -320,6 +320,9 @@ try {
     name: "web",
     cwd: webDir,
     cmd: [bunExec, "run", "dev"],
+    // Astro 7 otherwise detaches automatically when it detects an agentic
+    // environment, which makes this supervisor think the web process exited.
+    env: { ASTRO_DEV_BACKGROUND: "1" },
   }))
 
   for (const child of processes) {

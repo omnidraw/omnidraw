@@ -70,7 +70,7 @@ export type TWidgetPublishResult =
   | {
       published: false;
       draftId: string;
-      reason: 'not-found' | 'stale-revision' | 'validation-failed' | 'permission-failed' | 'publication-failed';
+      reason: 'not-found' | 'stale-revision' | 'validation-failed' | 'permission-failed' | 'publication-failed' | 'recovery-failed';
       message: string;
       currentRevision?: string;
       errors: string[];

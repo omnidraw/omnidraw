@@ -3,8 +3,17 @@ import { connect, Database } from "@tursodatabase/database";
 import { listMigrationFiles } from "../../../src/DbServiceTurso/list-migration-files";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
 import { listEmbeddedMigrationFiles } from "../../../src/_embedded-migrations";
+import { runAgentStorageMigration } from '../../../src/DbServiceTurso/migration-files/014-migrate-agent-storage';
+import type { TMigration } from '../../../src/DbServiceTurso/migration-types';
 import path from "node:path"
-import { readdir } from "node:fs/promises";
+import * as fs from "node:fs/promises";
+import { tmpdir } from 'node:os';
+
+const temporaryRoots: string[] = [];
+
+async function migrationPortal(dataDir: string, database: Database) {
+  return { db: database, dataDir, fs, path, platform: process.platform } as const;
+}
 
 async function inMemoryDb() {
   // @ts-expect-error custom_types not typed yet
@@ -33,6 +42,7 @@ describe("tx.migrations", () => {
 
   afterEach(async () => {
     await db.close();
+    await Promise.all(temporaryRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
   });
 
   test("test tables are present", async () => {
@@ -69,7 +79,7 @@ describe("tx.migrations", () => {
     const migrationFiles = listMigrationFiles();
     expect(migrations).toHaveLength(migrationFiles.length);
     expect(migrations.map((migration) => migration.name)).toEqual(
-      migrationFiles.map((file) => path.basename(file.path)).sort(),
+      migrationFiles.map((file) => file.name).sort(),
     );
     for (const migration of migrations) {
       expect(migration.hash_hex).toEqual(expect.any(String));
@@ -80,19 +90,170 @@ describe("tx.migrations", () => {
 
   test("source migration registration matches every discovered SQL file in order", async () => {
     const migrationDirectory = new URL("../../../src/DbServiceTurso/migration-files/", import.meta.url).pathname;
-    const discovered = (await readdir(migrationDirectory))
+    const discovered = (await fs.readdir(migrationDirectory))
       .filter((file) => file.endsWith(".sql"))
       .sort();
-    const registered = listMigrationFiles().map((file) => path.basename(file.path));
+    const registered = listMigrationFiles().filter((file) => file.type === 'sql').map((file) => file.name);
 
     expect(registered).toEqual(discovered);
     expect(listEmbeddedMigrationFiles()).toEqual(discovered);
+    expect(listMigrationFiles().map((migration) => migration.name).slice(-3)).toEqual([
+      '013-add-db-resource-restore-source.sql',
+      '014-migrate-agent-storage.ts',
+      '015-add-actor-resource-name-keys.sql',
+    ]);
+  });
+
+  test('repairs the former unreleased name-key migration record without rerunning its SQL', async () => {
+    const migrations = listMigrationFiles();
+    const prior = migrations.filter((migration): migration is Extract<TMigration, { type: 'sql' }> => (
+      migration.type === 'sql' && migration.name < '014'
+    ));
+    await db.exec(`CREATE TABLE migrations (
+      name TEXT NOT NULL,
+      hash_hex TEXT NOT NULL,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    const insert = await db.prepare('INSERT INTO migrations (name, hash_hex) VALUES (?, ?)');
+    for (const migration of prior) {
+      const sql = await Bun.file(migration.path).text();
+      await db.exec(sql);
+      await insert.run(migration.name, Bun.hash(sql).toString(16));
+    }
+    const renamed = migrations.find((migration): migration is Extract<TMigration, { type: 'sql' }> => (
+      migration.type === 'sql' && migration.name === '015-add-actor-resource-name-keys.sql'
+    ));
+    expect(renamed).toBeDefined();
+    const renamedSql = await Bun.file(renamed!.path).text();
+    await db.exec(renamedSql);
+    await insert.run('014-add-actor-resource-name-keys.sql', Bun.hash(renamedSql).toString(16));
+
+    await txRunMigrations({ db, Bun, path }, {});
+
+    const records = await (await db.prepare("SELECT name FROM migrations WHERE name LIKE '%actor-resource-name-keys.sql' ORDER BY name")).all();
+    expect(records).toEqual([{ name: '015-add-actor-resource-name-keys.sql' }]);
+    const columns = await (await db.prepare('PRAGMA table_info(actor_resources)')).all();
+    expect(columns.filter((column) => column.name === 'name_key')).toHaveLength(1);
+  });
+
+  test('migrates the released v0.4.7 history and concatenated workspace without changing Pi identity', async () => {
+    const dataDir = await fs.mkdtemp(path.join(tmpdir(), 'vc-migration-014-release-'));
+    temporaryRoots.push(dataDir);
+    const chatId = '4464085d-66d8-4baf-bbab-2c8574e4bd2f';
+    const widgetId = '7f5a8541-65e7-48ec-85c4-440e5c007d88';
+    const agentRoot = path.join(dataDir, 'pi', 'agent');
+    const oldHistory = path.join(agentRoot, 'sessions', chatId);
+    const oldWorkspace = path.join(agentRoot, 'widget-cwd', `${widgetId}${chatId}`);
+    await fs.mkdir(oldHistory, { recursive: true });
+    await fs.mkdir(oldWorkspace, { recursive: true });
+    await fs.writeFile(path.join(oldHistory, 'latest.jsonl'), `${JSON.stringify({ type: 'session', id: 'pi-owned-id', cwd: oldWorkspace })}\n${JSON.stringify({ type: 'message', text: 'keep' })}\n`);
+    await fs.writeFile(path.join(oldHistory, 'older.jsonl'), `${JSON.stringify({ type: 'session', id: 'older-pi-id', cwd: oldWorkspace })}\n`);
+    await fs.writeFile(path.join(oldWorkspace, 'bash-note.txt'), 'preserved');
+
+    expect(await runAgentStorageMigration(await migrationPortal(dataDir, db))).toEqual({ warnings: [] });
+    const chatRoot = path.join(agentRoot, 'chats', 'legacy', chatId);
+    const workspace = path.join(chatRoot, 'workspace');
+    expect(await fs.readFile(path.join(workspace, 'bash-note.txt'), 'utf8')).toBe('preserved');
+    const header = JSON.parse((await fs.readFile(path.join(chatRoot, 'history', 'latest.jsonl'), 'utf8')).split('\n')[0]!);
+    expect(header).toEqual({ type: 'session', id: 'pi-owned-id', cwd: workspace });
+    expect(await fs.readFile(path.join(chatRoot, 'history', 'older.jsonl'), 'utf8')).toContain('older-pi-id');
+    expect(JSON.parse(await fs.readFile(path.join(chatRoot, 'chat.json'), 'utf8'))).toEqual({ version: 1, sessionId: chatId, legacy: true });
+    await expect(fs.lstat(path.join(agentRoot, 'sessions'))).rejects.toThrow();
+    await expect(fs.lstat(path.join(agentRoot, 'widget-cwd'))).rejects.toThrow();
+
+    expect(await runAgentStorageMigration(await migrationPortal(dataDir, db))).toEqual({ warnings: [] });
+  });
+
+  test('moves development roots, recreates owned mounts, and preserves unknown and colliding entries', async () => {
+    const dataDir = await fs.mkdtemp(path.join(tmpdir(), 'vc-migration-014-dev-'));
+    temporaryRoots.push(dataDir);
+    const agentRoot = path.join(dataDir, 'pi', 'agent');
+    const oldDraft = path.join(agentRoot, 'widget-drafts', 'Weather');
+    const oldWorkspace = path.join(agentRoot, 'chat-cwd', 'chat-a');
+    await fs.mkdir(oldDraft, { recursive: true });
+    await fs.mkdir(path.join(oldWorkspace, 'widgets'), { recursive: true });
+    await fs.writeFile(path.join(oldDraft, 'vibecanvas.json'), '{}');
+    await fs.writeFile(path.join(agentRoot, 'widget-drafts', 'manual.txt'), 'unknown');
+    await fs.writeFile(path.join(oldWorkspace, 'notes.txt'), 'keep me');
+    await fs.symlink(path.relative(path.join(oldWorkspace, 'widgets'), oldDraft), path.join(oldWorkspace, 'widgets', 'Weather'), 'dir');
+    const outside = path.join(dataDir, 'outside');
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(outside, 'private.txt'), 'untouched');
+    await fs.symlink(outside, path.join(oldWorkspace, 'widgets', 'Escape'), 'dir');
+    await fs.writeFile(path.join(agentRoot, 'chat-cwd', '.DS_Store'), 'unknown');
+    const collisionSource = path.join(agentRoot, 'widget-cwd', 'Published');
+    const collisionTarget = path.join(agentRoot, 'widgets', 'published', 'Published');
+    await fs.mkdir(collisionSource, { recursive: true });
+    await fs.mkdir(collisionTarget, { recursive: true });
+    await fs.writeFile(path.join(collisionSource, 'source.txt'), 'source');
+    await fs.writeFile(path.join(collisionTarget, 'target.txt'), 'target');
+
+    const result = await runAgentStorageMigration(await migrationPortal(dataDir, db));
+    const workspace = path.join(agentRoot, 'chats', 'legacy', 'chat-a', 'workspace');
+    const migratedDraft = path.join(agentRoot, 'widgets', 'drafts', 'Weather');
+    expect(await fs.readFile(path.join(workspace, 'notes.txt'), 'utf8')).toBe('keep me');
+    expect(await fs.realpath(path.join(workspace, 'widgets', 'Weather'))).toBe(await fs.realpath(migratedDraft));
+    expect(await fs.realpath(path.join(workspace, 'widgets', 'Escape'))).toBe(await fs.realpath(outside));
+    expect(await fs.readFile(path.join(outside, 'private.txt'), 'utf8')).toBe('untouched');
+    expect(await fs.readFile(path.join(agentRoot, 'chat-cwd', '.DS_Store'), 'utf8')).toBe('unknown');
+    expect(await fs.readFile(path.join(collisionSource, 'source.txt'), 'utf8')).toBe('source');
+    expect(await fs.readFile(path.join(collisionTarget, 'target.txt'), 'utf8')).toBe('target');
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      expect.stringContaining('PRESERVED_UNKNOWN_WIDGET_ENTRY'),
+      expect.stringContaining('DESTINATION_COLLISION'),
+      expect.stringContaining('UNOWNED_MOUNT'),
+    ]));
+  });
+
+  test('handles transcript-only, workspace-only, and empty legacy chats', async () => {
+    const dataDir = await fs.mkdtemp(path.join(tmpdir(), 'vc-migration-014-partial-'));
+    temporaryRoots.push(dataDir);
+    const agentRoot = path.join(dataDir, 'pi', 'agent');
+    await fs.mkdir(path.join(agentRoot, 'sessions', 'transcript-only'), { recursive: true });
+    await fs.writeFile(path.join(agentRoot, 'sessions', 'transcript-only', 'one.jsonl'), `${JSON.stringify({ type: 'session', id: 'pi-one', cwd: '/old' })}\n`);
+    await fs.mkdir(path.join(agentRoot, 'sessions', 'empty-chat'), { recursive: true });
+    await fs.mkdir(path.join(agentRoot, 'chat-cwd', 'workspace-only'), { recursive: true });
+    await fs.writeFile(path.join(agentRoot, 'chat-cwd', 'workspace-only', 'note.txt'), 'workspace');
+
+    await runAgentStorageMigration(await migrationPortal(dataDir, db));
+    expect(await fs.readFile(path.join(agentRoot, 'chats', 'legacy', 'transcript-only', 'history', 'one.jsonl'), 'utf8')).toContain('pi-one');
+    expect(await fs.readFile(path.join(agentRoot, 'chats', 'legacy', 'workspace-only', 'workspace', 'note.txt'), 'utf8')).toBe('workspace');
+    expect(JSON.parse(await fs.readFile(path.join(agentRoot, 'chats', 'legacy', 'empty-chat', 'chat.json'), 'utf8'))).toMatchObject({ sessionId: 'empty-chat' });
+  });
+
+  test('records the TypeScript migration only after filesystem success and retries cleanly', async () => {
+    const dataDir = await fs.mkdtemp(path.join(tmpdir(), 'vc-migration-014-retry-'));
+    temporaryRoots.push(dataDir);
+    const prior = listMigrationFiles().filter((migration): migration is Extract<TMigration, { type: 'sql' }> => migration.type === 'sql' && migration.name < '014');
+    for (const migration of prior) await db.exec(await Bun.file(migration.path).text());
+    await db.exec('CREATE TABLE migrations (name TEXT NOT NULL, hash_hex TEXT NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
+    const insert = await db.prepare("INSERT INTO migrations (name, hash_hex) VALUES (?, 'prior')");
+    for (const migration of prior) await insert.run(migration.name);
+    const source = path.join(dataDir, 'pi', 'agent', 'sessions', 'chat-a');
+    await fs.mkdir(source, { recursive: true });
+    await fs.writeFile(path.join(source, 'history.jsonl'), `${JSON.stringify({ type: 'session', id: 'pi-id', cwd: '/old' })}\n`);
+    let failed = false;
+    const failingFs = {
+      ...fs,
+      rename: async (from: any, to: any) => {
+        if (!failed) { failed = true; throw Object.assign(new Error('transient rename failure'), { code: 'EIO' }); }
+        return fs.rename(from, to);
+      },
+    };
+
+    await expect(txRunMigrations({ db, Bun, path, dataDir, fs: failingFs, platform: process.platform }, {})).rejects.toThrow('transient');
+    expect(await (await db.prepare("SELECT name FROM migrations WHERE name = '014-migrate-agent-storage.ts'")).get()).toBeUndefined();
+
+    await txRunMigrations({ db, Bun, path, dataDir, fs, platform: process.platform }, {});
+    expect(await (await db.prepare("SELECT name FROM migrations WHERE name = '014-migrate-agent-storage.ts'")).get()).toEqual({ name: '014-migrate-agent-storage.ts' });
+    expect(await fs.readFile(path.join(dataDir, 'pi', 'agent', 'chats', 'legacy', 'chat-a', 'history', 'history.jsonl'), 'utf8')).toContain('pi-id');
   });
 
   test("migrations 012 and 013 replace legacy metadata and add restore provenance", async () => {
     const migrationFiles = listMigrationFiles();
     const legacyFiles = migrationFiles.slice(0, 12);
     for (const file of legacyFiles) {
+      if (file.type !== 'sql') throw new Error('Expected a SQL migration.');
       await db.exec(await Bun.file(file.path).text());
     }
     await db.exec(`
@@ -104,7 +265,7 @@ describe("tx.migrations", () => {
     `);
     const recordMigration = await db.prepare("INSERT INTO migrations (name, hash_hex) VALUES (?, 'legacy')");
     for (const file of legacyFiles) {
-      await recordMigration.run(path.basename(file.path));
+      await recordMigration.run(file.name);
     }
 
     await db.exec(`

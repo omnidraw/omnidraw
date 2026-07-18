@@ -14,6 +14,7 @@ export function fnBuildWidgetCreateManifest(args: { name: string; kind: 'widget'
   const manifest = {
     slug: slugify(args.name),
     name: args.name,
+    kind: args.kind,
     description: args.description ?? `A ${args.kind === 'actor-widget' ? 'stateful actor widget' : 'Vibecanvas widget'} named ${args.name}.`,
     actor: {
       relFunctionPath: './actor/functions.ts',

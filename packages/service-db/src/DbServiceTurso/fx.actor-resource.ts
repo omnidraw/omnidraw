@@ -27,6 +27,10 @@ type TArgsList = {
   status?: TActorResourceStatus
 }
 
+type TArgsFindByNameKey = {
+  nameKey: string
+}
+
 type TArgsListBindingsForDefinition = {
   definitionName: string
 }
@@ -43,8 +47,15 @@ type TArgsKeyValueGet = {
 type TArgsKeyValueList = {
   resourceId: string
   prefix?: string
+  search?: string
   cursor?: string
   limit?: number
+}
+
+type TArgsKeyValueCount = {
+  resourceId: string
+  prefix?: string
+  search?: string
 }
 
 export type TActorResourceKeyValuePage = {
@@ -94,6 +105,19 @@ export async function fxActorResourceList(portal: TPortal, args: TArgsList): Pro
     FROM actor_resources
     ORDER BY created_at ASC, id ASC
   `)).all()
+  return rows.map(fnParseActorResourceRow)
+}
+
+export async function fxActorResourceFindByNameKey(
+  portal: TPortal,
+  args: TArgsFindByNameKey,
+): Promise<TActorResource[]> {
+  const rows = await (await portal.db.prepare(`
+    SELECT *
+    FROM actor_resources
+    WHERE name_key = ?
+    ORDER BY kind ASC, id ASC
+  `)).all(args.nameKey)
   return rows.map(fnParseActorResourceRow)
 }
 
@@ -165,44 +189,29 @@ export async function fxActorResourceKeyValueList(
 ): Promise<TActorResourceKeyValuePage> {
   const limit = fnActorResourceKeyValueListLimit(args.limit)
   const queryLimit = limit + 1
-  let rows: unknown[]
-
-  if (args.prefix !== undefined && args.cursor !== undefined) {
-    rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resource_key_values
-      WHERE resource_id = ?
-        AND substr(key, 1, length(?)) = ?
-        AND key > ?
-      ORDER BY key ASC
-      LIMIT ?
-    `)).all(args.resourceId, args.prefix, args.prefix, args.cursor, queryLimit)
-  } else if (args.prefix !== undefined) {
-    rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resource_key_values
-      WHERE resource_id = ?
-        AND substr(key, 1, length(?)) = ?
-      ORDER BY key ASC
-      LIMIT ?
-    `)).all(args.resourceId, args.prefix, args.prefix, queryLimit)
-  } else if (args.cursor !== undefined) {
-    rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resource_key_values
-      WHERE resource_id = ? AND key > ?
-      ORDER BY key ASC
-      LIMIT ?
-    `)).all(args.resourceId, args.cursor, queryLimit)
-  } else {
-    rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resource_key_values
-      WHERE resource_id = ?
-      ORDER BY key ASC
-      LIMIT ?
-    `)).all(args.resourceId, queryLimit)
-  }
+  const prefix = args.prefix ?? null
+  const search = args.search ?? null
+  const cursor = args.cursor ?? null
+  const rows = await (await portal.db.prepare(`
+    SELECT *
+    FROM actor_resource_key_values
+    WHERE resource_id = ?
+      AND (? IS NULL OR substr(key, 1, length(?)) = ?)
+      AND (? IS NULL OR instr(key, ?) > 0)
+      AND (? IS NULL OR key > ?)
+    ORDER BY key ASC
+    LIMIT ?
+  `)).all(
+    args.resourceId,
+    prefix,
+    prefix,
+    prefix,
+    search,
+    search,
+    cursor,
+    cursor,
+    queryLimit,
+  )
 
   const parsed = rows.map(fnParseActorResourceKeyValueRow)
   const entries = parsed.slice(0, limit)
@@ -210,4 +219,20 @@ export async function fxActorResourceKeyValueList(
     entries,
     nextCursor: parsed.length > limit ? entries.at(-1)?.key ?? null : null,
   }
+}
+
+export async function fxActorResourceKeyValueCount(
+  portal: TPortal,
+  args: TArgsKeyValueCount,
+): Promise<number> {
+  const prefix = args.prefix ?? null
+  const search = args.search ?? null
+  const row = await (await portal.db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM actor_resource_key_values
+    WHERE resource_id = ?
+      AND (? IS NULL OR substr(key, 1, length(?)) = ?)
+      AND (? IS NULL OR instr(key, ?) > 0)
+  `)).get(args.resourceId, prefix, prefix, prefix, search, search) as { count: number } | null | undefined
+  return row?.count ?? 0
 }

@@ -14,7 +14,6 @@ import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-binding
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-records';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
 import { txNormalizeSessionCwd } from './core/tx.session-cwd';
-import { txReconcileResourceBindings } from './core/tx.reconcile-resource-bindings';
 import { txValidateWidgetFiles } from './core/tx.validate-widget-files';
 import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
@@ -45,7 +44,9 @@ interface IActorServiceConfig {
 }
 
 type TWidgetId = string;
-type TSessionId = string;
+// Persisted/API `sessionId` is the Vibecanvas chat identity. Pi owns a separate
+// session ID inside each JSONL transcript header and filename.
+type TVibecanvasChatId = string;
 type TLoginId = string;
 type TPromptModel = {
   provider: string;
@@ -95,7 +96,7 @@ type TChatSessionEntry = {
   sessionManager: SessionManager;
 };
 
-type TDraftActorKey = `${TWidgetId}:${TSessionId}`;
+type TDraftActorKey = `${TWidgetId}:${TVibecanvasChatId}`;
 
 type TAgentDraftActorSnapshot = {
   state: TActorState;
@@ -186,14 +187,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, TChatSessionEntry>> = {}
+  sessionMap: Record<TWidgetId, Record<TVibecanvasChatId, TChatSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
   #widgetDrafts: WidgetDraftController;
   #approvals: ApprovalCoordinator;
-  #chatWidgetIds = new Map<TSessionId, TWidgetId>();
+  #chatWidgetIds = new Map<TVibecanvasChatId, TWidgetId>();
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -240,7 +241,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }
     }
     this.#approvals.close()
-    this.#widgetDrafts.close()
+    await this.#widgetDrafts.close()
     this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
@@ -252,7 +253,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#chatWidgetIds.set(sessionId, id)
 
     const cwd = await this.#workspace.ensureChat(sessionId)
-    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+    const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
     await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
     const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
@@ -296,7 +297,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     let sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
       const cwd = await this.#workspace.ensureChat(sessionId)
-      const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+      const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
       await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
       const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
       sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
@@ -398,7 +399,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { cleared: true }
   }
 
-  async approveChatDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
+  async approveChatDbChange(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
     const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
       const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -439,7 +440,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  rejectChatDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): TWidgetDbChangeProposalRecord {
+  rejectChatDbChange(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): TWidgetDbChangeProposalRecord {
     const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
       const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -472,19 +473,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { canceled: true, running: session.isStreaming }
   }
 
-  listChatApprovals(id: TWidgetId, sessionId: TSessionId): TApprovalView[] {
+  listChatApprovals(id: TWidgetId, sessionId: TVibecanvasChatId): TApprovalView[] {
     this.#assertChatScope(id, sessionId)
     return this.#approvals.list(sessionId)
   }
 
-  getChatApproval(id: TWidgetId, sessionId: TSessionId, approvalId: string): TApprovalView | null {
+  getChatApproval(id: TWidgetId, sessionId: TVibecanvasChatId, approvalId: string): TApprovalView | null {
     this.#assertChatScope(id, sessionId)
     return this.#approvals.get(sessionId, approvalId)
   }
 
   resolveChatApproval(
     id: TWidgetId,
-    sessionId: TSessionId,
+    sessionId: TVibecanvasChatId,
     approvalId: string,
     decision: TApprovalDecision,
     authorization: TToolAuthorizationContext = {},
@@ -815,14 +816,61 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         message: bindingPlan.message,
       }
     }
-    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.bindResource) {
+    if (this.#config.actorService && (
+      !this.#config.actorService.transitionDefinitionPublication
+      || !this.#config.actorService.listResourceBindingsForDefinition
+    )) {
       return {
         published: false,
         manifest: manifestResult.manifest,
         destination: null,
-        message: 'Selected resources cannot be persisted by Publish in this host.',
+        message: 'This host cannot coordinate definition, binding, and instance publication atomically.',
       }
     }
+    const previousCanonicalPath = join(this.#workspace.publishedRoot, mount.name)
+    if (await stat(previousCanonicalPath).catch(() => null)) {
+      const previousManifest = await this.#readDraftActorManifest(previousCanonicalPath)
+      if (!previousManifest.ready) {
+        return {
+          published: false,
+          manifest: manifestResult.manifest,
+          destination: null,
+          message: `The existing published manifest for '${mount.name}' is invalid: ${previousManifest.message}`,
+        }
+      }
+      if (previousManifest.manifest.slug !== manifestResult.manifest.slug) {
+        return {
+          published: false,
+          manifest: manifestResult.manifest,
+          destination: null,
+          message: `Published slug '${previousManifest.manifest.slug}' is immutable. Create a new widget to publish as '${manifestResult.manifest.slug}'.`,
+        }
+      }
+    }
+    let previousBindings: Awaited<ReturnType<NonNullable<TActorServiceReloader['listResourceBindingsForDefinition']>>> = []
+    try {
+      previousBindings = await this.#config.actorService?.listResourceBindingsForDefinition?.(manifestResult.manifest.name) ?? []
+    } catch (error) {
+      return {
+        published: false,
+        manifest: manifestResult.manifest,
+        destination: null,
+        message: error instanceof Error ? error.message : String(error),
+      }
+    }
+    const previousBindingSet = previousBindings.map((binding) => ({
+      slot: binding.slot_name,
+      resourceId: binding.resource_id,
+      scope: [
+        ...(binding.allow_read ? ['read' as const] : []),
+        ...(binding.allow_write ? ['write' as const] : []),
+      ],
+    }))
+    const desiredBindingSet = bindingPlan.bindings.map((binding) => ({
+      slot: binding.slot,
+      resourceId: binding.resource.id,
+      scope: binding.scope,
+    }))
     const shouldReloadEditedInstances = editSession !== null
       && editSession.sourceName === manifestResult.manifest.name
       && editSession.sourceSlug === manifestResult.manifest.slug
@@ -840,6 +888,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     let result: Awaited<ReturnType<typeof txPublishWidgetDraft>>
+    let transitionAttempted = false
+    let bindingReplacementCommitted = false
     try {
       publishSnapshot.markInstalledMutation()
       result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative: relativePath, resolve, basename }, {
@@ -859,29 +909,57 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           warnings: result.validation.warnings,
         }
       }
-      await this.#config.actorService?.reload()
-      this.#disposeDraftActor(id, sessionId)
-      await txReconcileResourceBindings({ actorService: this.#config.actorService }, {
-        definitionName: result.manifest.name,
-        bindings: bindingPlan.bindings.map((binding) => ({
-          slot: binding.slot,
-          resourceId: binding.resource.id,
-          scope: binding.scope,
-        })),
-      })
-      if (shouldReloadEditedInstances) {
-        await this.#config.actorService?.reloadDefinitionInstances?.(editSession.sourceDefinitionName)
+      if (this.#config.actorService) {
+        transitionAttempted = true
+        try {
+          await this.#config.actorService.transitionDefinitionPublication!({
+            definitionName: result.manifest.name,
+            expectedBindings: previousBindingSet,
+            bindings: desiredBindingSet,
+            reloadInstances: publishSnapshot.wasExisting || shouldReloadEditedInstances,
+          })
+          bindingReplacementCommitted = true
+        } catch (transitionError) {
+          bindingReplacementCommitted = Boolean(
+            typeof transitionError === 'object'
+            && transitionError !== null
+            && (transitionError as { bindingReplacementCommitted?: unknown }).bindingReplacementCommitted,
+          )
+          throw transitionError
+        }
       }
+      this.#disposeDraftActor(id, sessionId)
       if (!result.destination) throw new Error('Widget publish completed without a destination path.')
       await publishSnapshot.commit()
     } catch (error) {
-      await publishSnapshot.rollback().catch(() => undefined)
-      await this.#config.actorService?.reload().catch(() => undefined)
+      const recoveryErrors: string[] = []
+      try {
+        await publishSnapshot.rollback()
+      } catch (recoveryError) {
+        recoveryErrors.push(`filesystem rollback: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`)
+      }
+      if (transitionAttempted && this.#config.actorService?.transitionDefinitionPublication) {
+        try {
+          await this.#config.actorService.transitionDefinitionPublication({
+            definitionName: manifestResult.manifest.name,
+            expectedBindings: bindingReplacementCommitted ? desiredBindingSet : previousBindingSet,
+            bindings: previousBindingSet,
+            reloadInstances: publishSnapshot.wasExisting || shouldReloadEditedInstances,
+          })
+        } catch (recoveryError) {
+          recoveryErrors.push(`actor publication restore: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`)
+        }
+      }
+      const originalMessage = error instanceof Error ? error.message : String(error)
+      const recoveryMessage = recoveryErrors.length > 0
+        ? `Publication failed: ${originalMessage}. Recovery also failed: ${recoveryErrors.join('; ')}`
+        : originalMessage
       return {
         published: false,
         manifest: manifestResult.manifest,
         destination: null,
-        message: error instanceof Error ? error.message : String(error),
+        message: recoveryMessage,
+        errors: recoveryErrors.length > 0 ? [`PUBLISH_RECOVERY_FAILED: ${recoveryErrors.join('; ')}`] : undefined,
       }
     }
 
@@ -1122,13 +1200,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #draftActorKey(id: TWidgetId, sessionId: TSessionId): TDraftActorKey {
+  #draftActorKey(id: TWidgetId, sessionId: TVibecanvasChatId): TDraftActorKey {
     return `${id}:${sessionId}`;
   }
 
   async #createChatSessionEntry(
     id: TWidgetId,
-    sessionId: TSessionId,
+    sessionId: TVibecanvasChatId,
     sessionManager: SessionManager,
     previousSession?: AgentSession,
     authorization: TToolAuthorizationContext = {},
@@ -1207,7 +1285,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#flushSessionManager(sessionManager)
   }
 
-  async #resolveActiveMount(id: TWidgetId, sessionId: TSessionId): Promise<TWidgetMount> {
+  async #resolveActiveMount(id: TWidgetId, sessionId: TVibecanvasChatId): Promise<TWidgetMount> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     const record = [...sessionEntry.sessionManager.getEntries()].reverse().find((entry) => (
@@ -1227,13 +1305,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return parsed.data as TVibecanvasJson
   }
 
-  #assertChatScope(id: TWidgetId, sessionId: TSessionId): void {
+  #assertChatScope(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     if (this.#chatWidgetIds.get(sessionId) !== id || !this.sessionMap[id]?.[sessionId]) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
   }
 
-  #publishToolEvent(id: TWidgetId, sessionId: TSessionId, event: TToolEvent): void {
+  #publishToolEvent(id: TWidgetId, sessionId: TVibecanvasChatId, event: TToolEvent): void {
     if (event.type !== 'widgetupdate') return
 
     this.#config.eventPublisherService.publishAgentEvent({
@@ -1312,12 +1390,12 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     })
   }
 
-  #disposeChatSession(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeChatSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     this.#disposeDraftActor(id, sessionId)
     this.#disposeAgentSession(id, sessionId)
   }
 
-  #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TSessionId, proposalId: string): () => void {
+  #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): () => void {
     const key = JSON.stringify([id, sessionId, proposalId])
     if (this.#dbChangeProposalResolutions.has(key)) {
       throw new Error('Database change proposal is already being resolved.')
@@ -1326,7 +1404,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return () => { this.#dbChangeProposalResolutions.delete(key) }
   }
 
-  #disposeAgentSession(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeAgentSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) return
 
@@ -1340,7 +1418,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #disposeDraftActor(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeDraftActor(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     const key = this.#draftActorKey(id, sessionId);
     const entry = this.#draftActorMap.get(key);
     if (!entry) return;
@@ -1434,7 +1512,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #draftActorNotReady(id: TWidgetId, sessionId: TSessionId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
+  #draftActorNotReady(id: TWidgetId, sessionId: TVibecanvasChatId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
     const label = `widget '${id}' and session '${sessionId}'`
     const messageMap: Record<TDraftActorNotReadyReason, string> = {
       'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
@@ -1452,7 +1530,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #draftManifestMessage(id: TWidgetId, sessionId: TSessionId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
+  #draftManifestMessage(id: TWidgetId, sessionId: TVibecanvasChatId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
     const label = `widget '${id}' and session '${sessionId}'`
     const messageMap: Record<typeof reason, string> = {
       'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
@@ -1463,7 +1541,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return messageMap[reason]
   }
 
-  #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
+  #publishDraftActorEvent(id: TWidgetId, sessionId: TVibecanvasChatId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
     const publishEvent: TAgentDraftActorEvent = {
       kind: 'draft-actor',
       widgetId: id,

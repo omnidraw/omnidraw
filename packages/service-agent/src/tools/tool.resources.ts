@@ -2,25 +2,37 @@ import { defineTool } from '@earendil-works/pi-coding-agent';
 import type { TDbCellValue } from '@vibecanvas/service-actor/resources/resource-types';
 import type { TActorResource, TJson } from '@vibecanvas/service-db/model';
 import { Type } from 'typebox';
-import { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
+import type { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
 import type { TToolAuthorizationContext } from '../approval/types';
+import {
+  fnDbSchemaFingerprint,
+  fnCreateResourceListCursor,
+  fnParseDbSchemaCursor,
+  fnParseResourceListCursor,
+  fnRedactResourceError,
+  fnResourceListFingerprint,
+  fnResourceCapabilities,
+  fnSafeDbSchemaObject,
+  fnSafeDbSchemaOverview,
+  fnSafeResource,
+  fnSafeResourceError,
+  fnSafeResourceMetadata,
+  fnSortResources,
+} from './fn.resource-tools';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import type { TActorServiceReloader, TToolDefinition } from './types';
 
 type TResourceKind = TActorResource['kind'];
 type TDbParameter = string | number | boolean | null | { type: 'integer'; value: string } | { type: 'blob'; base64: string };
 type TResourceDataReadQuery =
-  | { kind: 'kv'; operation: 'get' | 'has'; key: string }
-  | { kind: 'kv'; operation: 'list'; prefix?: string; cursor?: string; limit?: number }
-  | { kind: 'secretStore'; operation: 'has'; key: string }
-  | { kind: 'secretStore'; operation: 'list'; prefix?: string; cursor?: string; limit?: number }
-  | { kind: 'db'; sql: string; parameters?: TDbParameter[] };
+  | { operation: 'get' | 'has'; key: string }
+  | { operation: 'list'; prefix?: string; search?: string; cursor?: string; limit?: number }
+  | { operation: 'sql'; sql: string; parameters?: TDbParameter[] }
+  | { operation: 'schema'; object?: string; cursor?: string; limit?: number };
 type TResourceDataWriteOperation =
-  | { kind: 'kv'; operation: 'set'; key: string; value: TJson }
-  | { kind: 'kv'; operation: 'delete'; key: string }
-  | { kind: 'secretStore'; operation: 'set'; key: string; value: string }
-  | { kind: 'secretStore'; operation: 'delete'; key: string }
-  | { kind: 'db'; sql: string; parameters?: TDbParameter[] };
+  | { operation: 'set'; key: string; value: TJson | string }
+  | { operation: 'delete'; key: string }
+  | { operation: 'sql'; sql: string; parameters?: TDbParameter[] };
 
 type TCreateResourceToolsArgs = {
   chatId: string;
@@ -32,7 +44,7 @@ type TCreateResourceToolsArgs = {
 };
 
 const RESOURCE_BATCH_SERIALIZED_LIMIT = 2_000_000;
-
+const RESOURCE_NAME_SCHEMA = Type.String({ minLength: 1, maxLength: 120 });
 const RESOURCE_KIND_SCHEMA = Type.Union([Type.Literal('kv'), Type.Literal('secretStore'), Type.Literal('db')]);
 const DB_PARAMETER_SCHEMA = Type.Union([
   Type.String(),
@@ -42,79 +54,54 @@ const DB_PARAMETER_SCHEMA = Type.Union([
   Type.Object({ type: Type.Literal('integer'), value: Type.String({ pattern: '^-?[0-9]+$' }) }, { additionalProperties: false }),
   Type.Object({ type: Type.Literal('blob'), base64: Type.String({ maxLength: 1_400_000 }) }, { additionalProperties: false }),
 ]);
-const DB_QUERY_SCHEMA = Type.Object({
-  kind: Type.Literal('db'),
+const DB_READ_SCHEMA = Type.Object({
+  operation: Type.Literal('sql'),
   sql: Type.String({ minLength: 1, maxLength: 1_048_576 }),
   parameters: Type.Optional(Type.Array(DB_PARAMETER_SCHEMA, { maxItems: 256 })),
 }, { additionalProperties: false });
-const KV_READ_SCHEMA = Type.Union([
-  Type.Object({ kind: Type.Literal('kv'), operation: Type.Union([Type.Literal('get'), Type.Literal('has')]), key: Type.String({ minLength: 1, maxLength: 1_024 }) }, { additionalProperties: false }),
+const DATA_READ_QUERY_SCHEMA = Type.Union([
+  Type.Object({ operation: Type.Union([Type.Literal('get'), Type.Literal('has')]), key: Type.String({ minLength: 1, maxLength: 1_024 }) }, { additionalProperties: false }),
   Type.Object({
-    kind: Type.Literal('kv'),
     operation: Type.Literal('list'),
     prefix: Type.Optional(Type.String({ maxLength: 1_024 })),
+    search: Type.Optional(Type.String({ minLength: 1, maxLength: 1_024, description: 'Case-sensitive substring to find anywhere in a KV or secret key.' })),
     cursor: Type.Optional(Type.String({ maxLength: 4_096 })),
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   }, { additionalProperties: false }),
-]);
-const SECRET_READ_SCHEMA = Type.Union([
-  Type.Object({ kind: Type.Literal('secretStore'), operation: Type.Literal('has'), key: Type.String({ minLength: 1, maxLength: 256 }) }, { additionalProperties: false }),
+  DB_READ_SCHEMA,
   Type.Object({
-    kind: Type.Literal('secretStore'),
-    operation: Type.Literal('list'),
-    prefix: Type.Optional(Type.String({ maxLength: 256 })),
-    cursor: Type.Optional(Type.String({ maxLength: 4_096 })),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    operation: Type.Literal('schema'),
+    object: Type.Optional(Type.String({ minLength: 1, maxLength: 1_024, description: 'Exact table or view name. Omit for a dense paginated schema catalog.' })),
+    cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 256, description: 'Opaque continuation cursor returned by an earlier schema catalog page.' })),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: 'Maximum schema objects to return. Defaults to 100.' })),
   }, { additionalProperties: false }),
 ]);
-const DATA_READ_QUERY_SCHEMA = Type.Union([KV_READ_SCHEMA, SECRET_READ_SCHEMA, DB_QUERY_SCHEMA]);
 const DATA_WRITE_OPERATION_SCHEMA = Type.Union([
-  Type.Object({ kind: Type.Literal('kv'), operation: Type.Literal('set'), key: Type.String({ minLength: 1, maxLength: 1_024 }), value: Type.Any() }, { additionalProperties: false }),
-  Type.Object({ kind: Type.Literal('kv'), operation: Type.Literal('delete'), key: Type.String({ minLength: 1, maxLength: 1_024 }) }, { additionalProperties: false }),
-  Type.Object({ kind: Type.Literal('secretStore'), operation: Type.Literal('set'), key: Type.String({ minLength: 1, maxLength: 256 }), value: Type.String({ minLength: 1, maxLength: 1_048_576 }) }, { additionalProperties: false }),
-  Type.Object({ kind: Type.Literal('secretStore'), operation: Type.Literal('delete'), key: Type.String({ minLength: 1, maxLength: 256 }) }, { additionalProperties: false }),
-  DB_QUERY_SCHEMA,
+  Type.Object({ operation: Type.Literal('set'), key: Type.String({ minLength: 1, maxLength: 1_024 }), value: Type.Any() }, { additionalProperties: false }),
+  Type.Object({ operation: Type.Literal('delete'), key: Type.String({ minLength: 1, maxLength: 1_024 }) }, { additionalProperties: false }),
+  DB_READ_SCHEMA,
 ]);
 
-function safeResource(resource: TActorResource) {
-  return {
-    id: resource.id,
-    kind: resource.kind,
-    name: resource.name,
-    status: resource.status,
-    createdAt: resource.created_at,
-    updatedAt: resource.updated_at,
-  };
+function toolUnavailable(code: string, message: string) {
+  return fnToolError({ code, message });
 }
 
-function safeError(error: unknown) {
-  const value = error as { code?: unknown; message?: unknown };
-  return {
-    code: typeof value?.code === 'string' ? value.code : 'RESOURCE_OPERATION_FAILED',
-    message: typeof value?.message === 'string' ? value.message : 'Resource operation failed.',
-  };
-}
-
-function safeWriteError(error: unknown, operations: readonly TResourceDataWriteOperation[]) {
-  const safe = safeError(error);
-  const secretValues = operations.flatMap((operation) => (
-    operation.kind === 'secretStore' && operation.operation === 'set' ? [operation.value] : []
-  ));
-  for (const value of secretValues) {
-    safe.code = safe.code.split(value).join('[redacted]');
-    safe.message = safe.message.split(value).join('[redacted]');
-  }
-  return safe;
-}
-
-function asArray<T>(value: T | T[]): T[] {
-  return Array.isArray(value) ? value : [value];
+function toolResourceError(error: unknown, secretValues: readonly string[] = [], modelData?: unknown) {
+  const safe = fnRedactResourceError(fnSafeResourceError(error), secretValues);
+  return fnToolError({
+    code: safe.code,
+    message: safe.message,
+    ...(modelData === undefined ? {} : { modelData }),
+    details: { error: safe },
+  });
 }
 
 function assertBatchBound(value: unknown): void {
   const serialized = JSON.stringify(value);
   if (serialized.length > RESOURCE_BATCH_SERIALIZED_LIMIT) {
-    throw new Error('Resource operation batch exceeds the total request-size limit.');
+    throw Object.assign(new Error('Resource operation batch exceeds the total request-size limit.'), {
+      code: 'RESOURCE_BATCH_TOO_LARGE',
+    });
   }
 }
 
@@ -124,7 +111,7 @@ function toWireParameters(parameters: TDbParameter[] | undefined): TDbCellValue[
     if (typeof value === 'string') return { type: 'text', value };
     if (typeof value === 'boolean') return { type: 'integer', value: value ? '1' : '0' };
     if (typeof value === 'number') {
-      if (!Number.isFinite(value)) throw new Error('Database parameters must be finite numbers.');
+      if (!Number.isFinite(value)) throw Object.assign(new Error('Database parameters must be finite numbers.'), { code: 'DB_OPERATION_PARAMETERS_INVALID' });
       return Number.isSafeInteger(value) ? { type: 'integer', value: String(value) } : { type: 'real', value };
     }
     return value.type === 'integer'
@@ -133,50 +120,119 @@ function toWireParameters(parameters: TDbParameter[] | undefined): TDbCellValue[
   });
 }
 
-async function requireResource(actorService: TActorServiceReloader | undefined, resourceId: string): Promise<TActorResource> {
-  const resource = await actorService?.getResource?.(resourceId);
-  if (!resource) throw new Error('Resource was not found.');
-  if (resource.status !== 'ready') throw new Error(`Resource '${resource.name}' is not ready.`);
-  return resource;
-}
-
-async function assertUniqueResourceName(actorService: TActorServiceReloader | undefined, name: string, excludeId?: string): Promise<void> {
-  const resources = await actorService?.listResources?.({}) ?? [];
-  const collision = resources.find((resource) => resource.id !== excludeId && resource.name.toLocaleLowerCase('en-US') === name.toLocaleLowerCase('en-US'));
-  if (collision) throw new Error(`Resource name '${name}' is already in use.`);
-}
-
-async function executeReadQuery(actorService: TActorServiceReloader | undefined, resource: TActorResource, query: TResourceDataReadQuery): Promise<unknown> {
-  if (query.kind !== resource.kind) throw new Error(`Query kind '${query.kind}' does not match resource kind '${resource.kind}'.`);
-  if (query.kind === 'kv') {
-    if (query.operation === 'list') {
-      if (!actorService?.listResourceData) throw new Error('Resource data listing is unavailable in this host.');
-      return actorService.listResourceData({ resourceId: resource.id, prefix: query.prefix, cursor: query.cursor, limit: query.limit });
-    }
-    if (!actorService?.getResourceDataEntry) throw new Error('Resource data reads are unavailable in this host.');
-    const entry = await actorService.getResourceDataEntry({ resourceId: resource.id, key: query.key });
-    return query.operation === 'has' ? { exists: entry !== null } : entry;
+async function resolveResource(
+  actorService: TActorServiceReloader | undefined,
+  resourceName: string,
+  requireReady: boolean,
+): Promise<TActorResource> {
+  if (!actorService?.resolveResourceByName) {
+    throw Object.assign(new Error('Resource name resolution is unavailable in this host.'), { code: 'RESOURCE_LOOKUP_UNAVAILABLE' });
   }
-  if (query.kind === 'secretStore') {
-    if (query.operation === 'has') {
-      if (!actorService?.getResourceDataEntry) throw new Error('Secret metadata reads are unavailable in this host.');
-      return { exists: await actorService.getResourceDataEntry({ resourceId: resource.id, key: query.key }) !== null };
-    }
-    if (!actorService?.listResourceData) throw new Error('Secret metadata listing is unavailable in this host.');
-    return actorService.listResourceData({ resourceId: resource.id, prefix: query.prefix, cursor: query.cursor, limit: query.limit });
-  }
-  if (!actorService?.executeDbLiveSql) throw new Error('Database queries are unavailable in this host.');
-  return actorService.executeDbLiveSql({
-    resourceId: resource.id,
-    sql: query.sql,
-    parameters: toWireParameters(query.parameters),
-    approved: false,
-  });
+  return actorService.resolveResourceByName(resourceName, { requireReady });
 }
 
-async function executeWriteOperation(actorService: TActorServiceReloader | undefined, resource: TActorResource, operation: TResourceDataWriteOperation): Promise<unknown> {
-  if (operation.kind !== resource.kind) throw new Error(`Operation kind '${operation.kind}' does not match resource kind '${resource.kind}'.`);
-  if (operation.kind === 'db') throw new Error('Database writes must use the durable coordinated apply path.');
+async function executeReadQuery(
+  actorService: TActorServiceReloader | undefined,
+  resource: TActorResource,
+  query: TResourceDataReadQuery,
+): Promise<unknown> {
+  if (query.operation === 'schema') {
+    if (resource.kind !== 'db') {
+      throw Object.assign(new Error(`Schema inspection is unsupported for ${resource.kind} resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
+    }
+    if (!actorService?.inspectDbResource) throw new Error('Database schema inspection is unavailable in this host.');
+    const inspection = await actorService.inspectDbResource({ resourceId: resource.id, target: 'live' });
+    if (!query.object) {
+      const fingerprint = fnDbSchemaFingerprint(inspection?.objects ?? []);
+      const parsedCursor = query.cursor
+        ? fnParseDbSchemaCursor(query.cursor, fingerprint)
+        : { ok: true as const, offset: 0 };
+      if (!parsedCursor.ok || parsedCursor.offset > (inspection?.objects.length ?? 0)) {
+        throw Object.assign(new Error('Database schema cursor is stale or invalid. Start a new schema request without a cursor.'), {
+          code: 'DB_SCHEMA_CURSOR_INVALID',
+        });
+      }
+      return { schema: fnSafeDbSchemaOverview(inspection, { offset: parsedCursor.offset, limit: query.limit }) };
+    }
+    if (query.cursor !== undefined || query.limit !== undefined) {
+      throw Object.assign(new Error('Schema cursor and limit are supported only when object is omitted.'), {
+        code: 'DB_SCHEMA_QUERY_INVALID',
+      });
+    }
+    const object = inspection?.objects.find((candidate) => candidate.name.toLowerCase() === query.object!.toLowerCase());
+    if (!object) {
+      throw Object.assign(new Error(`Database schema object '${query.object}' was not found.`), { code: 'DB_SCHEMA_OBJECT_NOT_FOUND' });
+    }
+    return { schemaObject: fnSafeDbSchemaObject(object), rowsRead: false };
+  }
+  if (query.operation === 'sql') {
+    if (resource.kind !== 'db') {
+      throw Object.assign(new Error(`SQL reads are unsupported for ${resource.kind} resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
+    }
+    if (!actorService?.executeDbLiveSql) throw new Error('Database queries are unavailable in this host.');
+    return actorService.executeDbLiveSql({
+      resourceId: resource.id,
+      sql: query.sql,
+      parameters: toWireParameters(query.parameters),
+      approved: false,
+    });
+  }
+  if (resource.kind === 'db') {
+    throw Object.assign(new Error(`Operation '${query.operation}' is unsupported for db resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
+  }
+  if (query.operation === 'get' && resource.kind === 'secretStore') {
+    throw Object.assign(new Error('Secret plaintext reads are unsupported. Use has or list for key metadata.'), { code: 'SECRET_READ_UNSUPPORTED' });
+  }
+  if (query.operation === 'list') {
+    if (!actorService?.listResourceData || !actorService.countResourceData) {
+      throw new Error('Resource key discovery is unavailable in this host.');
+    }
+    const filter = { resourceId: resource.id, prefix: query.prefix, search: query.search };
+    const [page, matchingCount] = await Promise.all([
+      actorService.listResourceData({ ...filter, cursor: query.cursor, limit: query.limit ?? 20 }),
+      actorService.countResourceData(filter),
+    ]);
+    const entries = page.kind === 'kv'
+      ? page.entries.map(({ key, revision, createdAt, updatedAt }) => ({ key, revision, createdAt, updatedAt }))
+      : page.entries;
+    return {
+      kind: page.kind,
+      entries,
+      matchingCount,
+      nextCursor: page.nextCursor,
+    };
+  }
+  if (!actorService?.getResourceDataEntry) throw new Error('Resource data reads are unavailable in this host.');
+  const entry = await actorService.getResourceDataEntry({ resourceId: resource.id, key: query.key });
+  return query.operation === 'has' ? { exists: entry !== null } : entry;
+}
+
+function validateWriteOperation(resource: TActorResource, operation: TResourceDataWriteOperation): void {
+  if (resource.kind === 'db') {
+    if (operation.operation !== 'sql') {
+      throw Object.assign(new Error(`Operation '${operation.operation}' is unsupported for db resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
+    }
+    return;
+  }
+  if (operation.operation === 'sql') {
+    throw Object.assign(new Error(`SQL writes are unsupported for ${resource.kind} resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
+  }
+  const maxKeyLength = resource.kind === 'secretStore' ? 256 : 1_024;
+  if (operation.key.trim().length === 0 || operation.key.length > maxKeyLength) {
+    throw Object.assign(new Error(`${resource.kind === 'secretStore' ? 'Secret names' : 'KV keys'} must be non-blank strings no longer than ${maxKeyLength} characters.`), {
+      code: resource.kind === 'secretStore' ? 'SECRET_NAME_INVALID' : 'KV_KEY_INVALID',
+    });
+  }
+  if (operation.operation === 'set' && resource.kind === 'secretStore' && (typeof operation.value !== 'string' || operation.value.length === 0)) {
+    throw Object.assign(new Error('Secret set values must be non-empty strings.'), { code: 'SECRET_VALUE_INVALID' });
+  }
+}
+
+async function executeWriteOperation(
+  actorService: TActorServiceReloader | undefined,
+  resource: TActorResource,
+  operation: Exclude<TResourceDataWriteOperation, { operation: 'sql' }>,
+): Promise<unknown> {
   if (!actorService?.getResourceDataEntry || !actorService.setResourceDataEntry || !actorService.deleteResourceDataEntry) {
     throw new Error('Resource data writes are unavailable in this host.');
   }
@@ -197,7 +253,7 @@ async function executeWriteOperation(actorService: TActorServiceReloader | undef
 async function executeDbWriteBatch(
   actorService: TActorServiceReloader | undefined,
   resource: TActorResource,
-  operations: Extract<TResourceDataWriteOperation, { kind: 'db' }>[],
+  operations: Extract<TResourceDataWriteOperation, { operation: 'sql' }>[],
 ): Promise<{ results: unknown[]; atomicity: string; apply: unknown }> {
   if (!actorService?.createDbDraft || !actorService.executeDbDraftSql || !actorService.previewDbApply || !actorService.confirmDbApply || !actorService.discardDbDraft) {
     throw new Error('Durable database writes are unavailable in this host.');
@@ -212,10 +268,15 @@ async function executeDbWriteBatch(
     const preview = await actorService.previewDbApply(draftId);
     const apply = await actorService.confirmDbApply(draftId);
     applyStarted = true;
+    const warnings = preview.warnings.slice(0, 40);
     return {
-      results: operations.map(() => ({ ok: true, value: { staged: true, applyId: apply.id } })),
+      results: operations.map((_, index) => ({ index, ok: true, value: { staged: true, applyStatus: apply.status } })),
       atomicity: 'All statements are staged and committed through one durable SQLite draft/apply transaction.',
-      apply: { id: apply.id, status: apply.status, warnings: preview.warnings },
+      apply: {
+        status: apply.status,
+        warnings,
+        warningsTruncated: preview.warnings.length > warnings.length,
+      },
     };
   } catch (error) {
     if (!applyStarted) await actorService.discardDbDraft(draftId).catch(() => undefined);
@@ -223,13 +284,24 @@ async function executeDbWriteBatch(
   }
 }
 
-function safeWriteDetails(resource: TActorResource, operations: TResourceDataWriteOperation[]) {
+function secretWriteValues(resource: TActorResource | undefined, operations: readonly TResourceDataWriteOperation[]): string[] {
+  if (resource?.kind !== 'secretStore') return [];
+  return operations.flatMap((operation) => (
+    operation.operation === 'set' && typeof operation.value === 'string' ? [operation.value] : []
+  ));
+}
+
+function safeWriteApprovalDetails(resource: TActorResource, operations: readonly TResourceDataWriteOperation[]) {
   return {
-    resource: safeResource(resource),
-    operations: operations.map((operation) => operation.kind === 'secretStore' && operation.operation === 'set'
-      ? { ...operation, value: '[redacted]' }
-      : operation),
-    atomicity: 'Operations execute sequentially. Each individual provider operation is atomic; the batch is not a cross-operation transaction.',
+    resource: fnSafeResource(resource),
+    operations: operations.map((operation, index) => (
+      resource.kind === 'secretStore' && operation.operation === 'set'
+        ? { index, operation: 'set', key: operation.key, value: '[redacted]' }
+        : { index, ...operation }
+    )),
+    atomicity: resource.kind === 'db'
+      ? 'All statements use one durable SQLite draft/apply transaction.'
+      : 'Operations execute sequentially. Each provider operation is atomic; the batch is not a cross-operation transaction.',
   };
 }
 
@@ -237,74 +309,88 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const list = defineTool({
     name: 'vc_resource_list',
     label: 'List Resources',
-    description: 'List a bounded stable page of safe resource metadata. Values, rows, paths, and native configuration are never returned.',
+    description: 'Discover resources by public name. Follow with vc_resource_inspect using resourceName; internal IDs are never returned.',
     parameters: Type.Object({
       kind: Type.Optional(RESOURCE_KIND_SCHEMA),
       cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_resource_list')) return fnToolError('This tool call is not authorized.');
-      if (!args.actorService?.listResources) return fnToolError('Resource discovery is unavailable in this host.');
-      const resources = (await args.actorService.listResources(params.kind ? { kind: params.kind } : {}))
-        .sort((left, right) => left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id));
-      const start = params.cursor ? resources.findIndex((resource) => resource.id === params.cursor) + 1 : 0;
-      if (params.cursor && start === 0) return fnToolError('Resource cursor is stale or invalid.');
-      const limit = params.limit ?? 20;
-      const page = resources.slice(start, start + limit);
-      const nextCursor = start + page.length < resources.length ? page.at(-1)?.id ?? null : null;
-      return fnToolSuccess(`Found ${page.length} resource${page.length === 1 ? '' : 's'} in this page.`, {
-        resources: page.map(safeResource),
-        nextCursor,
-      });
+      if (!await args.authorize('vc_resource_list')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!args.actorService?.listResources) return toolUnavailable('RESOURCE_LIST_UNAVAILABLE', 'Resource discovery is unavailable in this host.');
+      try {
+        const resources = fnSortResources(await args.actorService.listResources(params.kind ? { kind: params.kind } : {}));
+        const fingerprint = fnResourceListFingerprint(resources);
+        const parsedCursor = params.cursor
+          ? fnParseResourceListCursor(params.cursor, fingerprint, params.kind)
+          : { ok: true as const, offset: 0 };
+        if (!parsedCursor.ok || parsedCursor.offset > resources.length) {
+          return toolUnavailable('RESOURCE_CURSOR_INVALID', 'Resource cursor is stale or invalid. Start a new list request without a cursor.');
+        }
+        const limit = params.limit ?? 20;
+        const page = resources.slice(parsedCursor.offset, parsedCursor.offset + limit);
+        const nextOffset = parsedCursor.offset + page.length;
+        const modelData = {
+          resources: page.map(fnSafeResource),
+          nextCursor: nextOffset < resources.length ? fnCreateResourceListCursor(nextOffset, fingerprint, params.kind) : null,
+        };
+        return fnToolSuccess({
+          summary: `Found ${page.length} resource${page.length === 1 ? '' : 's'} in this page.`,
+          modelData,
+          details: modelData,
+        });
+      } catch (error) {
+        return toolResourceError(error);
+      }
     },
   }) as TToolDefinition;
 
   const inspect = defineTool({
     name: 'vc_resource_inspect',
     label: 'Inspect Resource',
-    description: 'Inspect kind-specific safe metadata. Secret plaintext and database rows are never returned.',
-    parameters: Type.Object({ resourceId: Type.String({ minLength: 1, maxLength: 128 }) }, { additionalProperties: false }),
+    description: 'Inspect compact safe metadata by resourceName, including status, bindings, deletability, KV/secret key count only, or the first dense database schema page. Continue a database schema cursor with vc_resource_data_read.',
+    parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_resource_inspect')) return fnToolError('This tool call is not authorized.');
+      if (!await args.authorize('vc_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      let internalResourceId: string | undefined;
       try {
-        const resource = await requireResource(args.actorService, params.resourceId);
+        const resource = await resolveResource(args.actorService, params.resourceName, false);
+        internalResourceId = resource.id;
         const bindings = await args.actorService?.listResourceReferences?.(resource.id) ?? [];
-        if (resource.kind === 'db') {
-          const inspection = await args.actorService?.inspectDbResource?.({ resourceId: resource.id, target: 'live' });
-          if (!inspection) throw new Error('Database schema inspection is unavailable.');
-          const objects = inspection.objects.slice(0, 64).map((object) => ({
-            name: object.name,
-            kind: object.kind,
-            columns: object.columns.slice(0, 128),
-            indexes: object.indexes.slice(0, 64),
-            foreignKeys: object.foreignKeys.slice(0, 64),
-            triggers: object.triggers.slice(0, 64),
-            createSql: object.createSql?.slice(0, 8_000) ?? null,
-            identity: object.identity,
-            editable: object.editable,
-            readOnlyReason: object.readOnlyReason,
-          }));
-          return fnToolSuccess(`Inspected database schema for '${resource.name}'. No rows were read.`, {
-            resource: safeResource(resource),
-            bindingCount: bindings.length,
-            objects,
-            truncated: inspection.objects.length > objects.length,
-          });
-        }
-        const page = await args.actorService?.listResourceData?.({ resourceId: resource.id, limit: 100 });
-        const entries = page?.kind === 'kv'
-          ? page.entries.map(({ key, revision, createdAt, updatedAt }) => ({ key, revision, createdAt, updatedAt }))
-          : page?.kind === 'secretStore' ? page.entries : [];
-        return fnToolSuccess(`Inspected safe metadata for '${resource.name}'.`, {
-          resource: safeResource(resource),
+        const lifecycle = fnResourceCapabilities(resource, bindings.length);
+        const base = {
+          resource: fnSafeResourceMetadata(resource),
+          ready: lifecycle.ready,
           bindingCount: bindings.length,
-          entries,
-          approximateEntryCount: entries.length,
-          truncated: page?.nextCursor !== null,
+          currentlyDeletable: lifecycle.currentlyDeletable,
+          deleteBlockedReason: lifecycle.deleteBlockedReason,
+          capabilities: lifecycle.capabilities,
+        };
+        let modelData: Record<string, unknown>;
+        if (resource.kind === 'db') {
+          const inspection = resource.status === 'ready'
+            ? await args.actorService?.inspectDbResource?.({ resourceId: resource.id, target: 'live' })
+            : null;
+          modelData = {
+            ...base,
+            schema: fnSafeDbSchemaOverview(inspection),
+          };
+        } else {
+          const count = resource.status === 'ready'
+            ? await args.actorService?.countResourceData?.({ resourceId: resource.id }) ?? null
+            : null;
+          modelData = {
+            ...base,
+            keys: { count },
+          };
+        }
+        return fnToolSuccess({
+          summary: `Inspected safe metadata for '${resource.name}'.${resource.kind === 'db' ? ' No rows were read.' : ''}`,
+          modelData,
+          details: modelData,
         });
       } catch (error) {
-        return fnToolError(safeError(error).message, { error: safeError(error) });
+        return toolResourceError(error, internalResourceId ? [internalResourceId] : []);
       }
     },
   }) as TToolDefinition;
@@ -312,17 +398,16 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const create = defineTool({
     name: 'vc_resource_create',
     label: 'Create Resource',
-    description: 'Request creation of a KV, secret-store, or SQLite database resource. Execution pauses for direct user approval.',
+    description: 'Request creation of a named KV, secret-store, or SQLite database resource. Direct user approval is required; follow success with vc_resource_inspect using the returned name.',
     parameters: Type.Union([
-      Type.Object({ kind: Type.Literal('kv'), name: Type.String({ minLength: 1, maxLength: 120 }) }, { additionalProperties: false }),
-      Type.Object({ kind: Type.Literal('secretStore'), name: Type.String({ minLength: 1, maxLength: 120 }) }, { additionalProperties: false }),
-      Type.Object({ kind: Type.Literal('db'), name: Type.String({ minLength: 1, maxLength: 120 }), engine: Type.Optional(Type.Literal('sqlite')) }, { additionalProperties: false }),
+      Type.Object({ kind: Type.Literal('kv'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
+      Type.Object({ kind: Type.Literal('secretStore'), name: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
+      Type.Object({ kind: Type.Literal('db'), name: RESOURCE_NAME_SCHEMA, engine: Type.Optional(Type.Literal('sqlite')) }, { additionalProperties: false }),
     ]),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_create')) return fnToolError('This tool call is not authorized.');
-      if (!args.actorService?.createResource) return fnToolError('Resource creation is unavailable in this host.');
+      if (!await args.authorize('vc_resource_create')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!args.actorService?.createResource) return toolUnavailable('RESOURCE_CREATE_UNAVAILABLE', 'Resource creation is unavailable in this host.');
       try {
-        await assertUniqueResourceName(args.actorService, params.name);
         const resource = await args.approvals.request({
           chatId: args.chatId,
           toolCallId,
@@ -333,50 +418,47 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           risk: 'medium',
           safeDetails: { kind: params.kind, name: params.name, engine: params.kind === 'db' ? 'sqlite' : undefined },
           signal,
-          execute: async (stored) => {
-            await assertUniqueResourceName(args.actorService, stored.name);
-            return args.actorService!.createResource!({ kind: stored.kind, name: stored.name });
-          },
+          execute: async (stored) => args.actorService!.createResource!({ kind: stored.kind, name: stored.name }),
         });
-        return fnToolSuccess(`Created resource '${resource.name}'.`, { resource: safeResource(resource) });
+        const modelData = { resource: fnSafeResource(resource) };
+        return fnToolSuccess({ summary: `Created resource '${resource.name}'.`, modelData, details: modelData });
       } catch (error) {
-        return fnToolError(safeError(error).message, { error: safeError(error) });
+        return toolResourceError(error);
       }
     },
   }) as TToolDefinition;
 
   const update = defineTool({
     name: 'vc_resource_update',
-    label: 'Update Resource',
-    description: 'Request a safe resource metadata update. Resource kind, storage path, and database engine cannot be changed. Execution pauses for user approval.',
+    label: 'Rename Resource',
+    description: 'Rename a resource by its current public resourceName. The stable internal target is frozen before direct user approval; use newName for subsequent calls.',
     parameters: Type.Object({
-      resourceId: Type.String({ minLength: 1, maxLength: 128 }),
-      name: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
-    }, { additionalProperties: false, minProperties: 2 }),
+      resourceName: RESOURCE_NAME_SCHEMA,
+      newName: RESOURCE_NAME_SCHEMA,
+    }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_update')) return fnToolError('This tool call is not authorized.');
-      if (!args.actorService?.renameResource || !params.name) return fnToolError('A mutable resource name is required.');
+      if (!await args.authorize('vc_resource_update')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!args.actorService?.renameResource) return toolUnavailable('RESOURCE_UPDATE_UNAVAILABLE', 'Resource rename is unavailable in this host.');
+      let internalResourceId: string | undefined;
       try {
-        const current = await requireResource(args.actorService, params.resourceId);
-        await assertUniqueResourceName(args.actorService, params.name, current.id);
+        const current = await resolveResource(args.actorService, params.resourceName, false);
+        internalResourceId = current.id;
         const resource = await args.approvals.request({
           chatId: args.chatId,
           toolCallId,
           kind: 'resource-update',
           authorization: args.authorization,
-          exactArgs: { resourceId: current.id, name: String(params.name) },
-          summary: `Rename resource '${current.name}' to '${params.name}'`,
+          exactArgs: { resourceId: current.id, newName: String(params.newName) },
+          summary: `Rename resource '${current.name}' to '${params.newName}'`,
           risk: 'medium',
-          safeDetails: { resource: safeResource(current), name: params.name },
+          safeDetails: { resource: fnSafeResource(current), newName: params.newName },
           signal,
-          execute: async (stored) => {
-            await assertUniqueResourceName(args.actorService, stored.name, stored.resourceId);
-            return args.actorService!.renameResource!({ id: stored.resourceId, name: stored.name });
-          },
+          execute: async (stored) => args.actorService!.renameResource!({ id: stored.resourceId, name: stored.newName }),
         });
-        return fnToolSuccess(`Updated resource '${resource.name}'.`, { resource: safeResource(resource) });
+        const modelData = { resource: fnSafeResource(resource) };
+        return fnToolSuccess({ summary: `Renamed resource to '${resource.name}'.`, modelData, details: modelData });
       } catch (error) {
-        return fnToolError(safeError(error).message, { error: safeError(error) });
+        return toolResourceError(error, internalResourceId ? [internalResourceId] : []);
       }
     },
   }) as TToolDefinition;
@@ -384,13 +466,15 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const remove = defineTool({
     name: 'vc_resource_delete',
     label: 'Delete Resource',
-    description: 'Request deletion of an unbound resource. The agent cannot force deletion or approve it.',
-    parameters: Type.Object({ resourceId: Type.String({ minLength: 1, maxLength: 128 }) }, { additionalProperties: false }),
+    description: 'Request deletion by resourceName. The stable internal target is frozen before approval and binding safety is rechecked during execution.',
+    parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_delete')) return fnToolError('This tool call is not authorized.');
-      if (!args.actorService?.deleteResource) return fnToolError('Resource deletion is unavailable in this host.');
+      if (!await args.authorize('vc_resource_delete')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      if (!args.actorService?.deleteResource) return toolUnavailable('RESOURCE_DELETE_UNAVAILABLE', 'Resource deletion is unavailable in this host.');
+      let internalResourceId: string | undefined;
       try {
-        const current = await requireResource(args.actorService, params.resourceId);
+        const current = await resolveResource(args.actorService, params.resourceName, false);
+        internalResourceId = current.id;
         await args.approvals.request({
           chatId: args.chatId,
           toolCallId,
@@ -400,13 +484,14 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           summary: `Delete ${current.kind} resource '${current.name}'`,
           risk: 'high',
           warnings: ['Deletion fails while live widget bindings still reference this resource.'],
-          safeDetails: { resource: safeResource(current) },
+          safeDetails: { resource: fnSafeResource(current) },
           signal,
           execute: async (stored) => args.actorService!.deleteResource!(stored.resourceId),
         });
-        return fnToolSuccess(`Deleted resource '${current.name}'.`, { deleted: true, resourceId: current.id });
+        const modelData = { deleted: true, resourceName: current.name };
+        return fnToolSuccess({ summary: `Deleted resource '${current.name}'.`, modelData, details: modelData });
       } catch (error) {
-        return fnToolError(safeError(error).message, { error: safeError(error) });
+        return toolResourceError(error, internalResourceId ? [internalResourceId] : []);
       }
     },
   }) as TToolDefinition;
@@ -414,31 +499,33 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const dataRead = defineTool({
     name: 'vc_resource_data_read',
     label: 'Read Resource Data',
-    description: 'Run one or more bounded kind-specific reads. Results remain ordered and each query has its own status. Secret plaintext is never returned.',
+    description: 'Run ordered reads against resourceName. KV/secret list supports prefix, substring search, pagination, and returns key metadata only; get reads one KV value. Database schema returns dense catalogs of up to 100 objects with cursor pagination or one detailed table/view definition, while sql runs a bounded read-only statement.',
     parameters: Type.Object({
-      resourceId: Type.String({ minLength: 1, maxLength: 128 }),
-      query: Type.Union([DATA_READ_QUERY_SCHEMA, Type.Array(DATA_READ_QUERY_SCHEMA, { minItems: 1, maxItems: 20 })]),
+      resourceName: RESOURCE_NAME_SCHEMA,
+      queries: Type.Array(DATA_READ_QUERY_SCHEMA, { minItems: 1, maxItems: 20 }),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('vc_resource_data_read')) return fnToolError('This tool call is not authorized.');
+      if (!await args.authorize('vc_resource_data_read')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       try {
-        const resource = await requireResource(args.actorService, params.resourceId);
-        const queries = asArray(params.query as TResourceDataReadQuery | TResourceDataReadQuery[]);
+        const resource = await resolveResource(args.actorService, params.resourceName, true);
+        const queries = params.queries as TResourceDataReadQuery[];
         assertBatchBound(queries);
         const results = [];
-        for (const query of queries) {
+        for (const [index, query] of queries.entries()) {
           try {
-            results.push({ ok: true, value: await executeReadQuery(args.actorService, resource, query) });
+            results.push({ index, ok: true, value: await executeReadQuery(args.actorService, resource, query) });
           } catch (error) {
-            results.push({ ok: false, error: safeError(error) });
+            results.push({ index, ok: false, error: fnRedactResourceError(fnSafeResourceError(error), [resource.id]) });
           }
         }
-        return fnToolSuccess(`Completed ${results.length} ordered resource read${results.length === 1 ? '' : 's'}.`, {
-          resource: safeResource(resource),
-          results,
+        const modelData = { resource: fnSafeResource(resource), results };
+        return fnToolSuccess({
+          summary: `Completed ${results.length} ordered resource read${results.length === 1 ? '' : 's'}.`,
+          modelData,
+          details: modelData,
         });
       } catch (error) {
-        return fnToolError(safeError(error).message, { error: safeError(error) });
+        return toolResourceError(error);
       }
     },
   }) as TToolDefinition;
@@ -446,22 +533,37 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
   const dataWrite = defineTool({
     name: 'vc_resource_data_write',
     label: 'Write Resource Data',
-    description: 'Request one or more kind-specific KV, secret-store, or SQLite writes. Exact server-held arguments execute only after direct user approval.',
+    description: 'Request an ordered array of writes against resourceName. The stable internal target and exact server-held arguments execute only after direct user approval.',
     parameters: Type.Object({
-      resourceId: Type.String({ minLength: 1, maxLength: 128 }),
-      operation: Type.Union([DATA_WRITE_OPERATION_SCHEMA, Type.Array(DATA_WRITE_OPERATION_SCHEMA, { minItems: 1, maxItems: 20 })]),
+      resourceName: RESOURCE_NAME_SCHEMA,
+      operations: Type.Array(DATA_WRITE_OPERATION_SCHEMA, { minItems: 1, maxItems: 20 }),
     }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
-      if (!await args.authorize('vc_resource_data_write')) return fnToolError('This tool call is not authorized.');
-      let protectedOperations: TResourceDataWriteOperation[] = [];
+      if (!await args.authorize('vc_resource_data_write')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
+      let resource: TActorResource | undefined;
+      let operations: TResourceDataWriteOperation[] = [];
       try {
         params = args.takeSensitiveToolArgs?.(toolCallId) ?? params;
-        const resource = await requireResource(args.actorService, params.resourceId);
-        const operations = asArray(params.operation as TResourceDataWriteOperation | TResourceDataWriteOperation[]);
-        protectedOperations = operations;
+        resource = await resolveResource(args.actorService, params.resourceName, true);
+        operations = params.operations as TResourceDataWriteOperation[];
         assertBatchBound(operations);
-        const mismatch = operations.find((operation) => operation.kind !== resource.kind);
-        if (mismatch) throw new Error(`Operation kind '${mismatch.kind}' does not match resource kind '${resource.kind}'.`);
+        const invalidResults = operations.flatMap((operation, index) => {
+          try {
+            validateWriteOperation(resource!, operation);
+            return [];
+          } catch (error) {
+            return [{ index, ok: false as const, error: fnSafeResourceError(error) }];
+          }
+        });
+        if (invalidResults.length > 0) {
+          const modelData = { resource: fnSafeResource(resource), results: invalidResults };
+          return fnToolError({
+            code: 'RESOURCE_WRITE_INVALID',
+            message: 'One or more resource write operations are invalid for the resolved resource kind.',
+            modelData,
+            details: modelData,
+          });
+        }
         const execution = await args.approvals.request({
           chatId: args.chatId,
           toolCallId,
@@ -470,23 +572,37 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           exactArgs: { resourceId: resource.id, operations },
           summary: `Execute ${operations.length} protected ${resource.kind} write${operations.length === 1 ? '' : 's'} on '${resource.name}'`,
           risk: 'high',
-          safeDetails: safeWriteDetails(resource, operations),
+          safeDetails: safeWriteApprovalDetails(resource, operations),
           signal,
           execute: async (stored) => {
-            const current = await requireResource(args.actorService, stored.resourceId);
+            const current = await args.actorService?.getResource?.(stored.resourceId);
+            if (!current) throw Object.assign(new Error('The approved resource no longer exists.'), { code: 'RESOURCE_NOT_FOUND' });
+            if (current.status !== 'ready') throw Object.assign(new Error(`Resource '${current.name}' is not ready.`), { code: 'RESOURCE_NOT_READY' });
             if (current.kind === 'db') {
               return executeDbWriteBatch(
                 args.actorService,
                 current,
-                stored.operations as Extract<TResourceDataWriteOperation, { kind: 'db' }>[],
+                stored.operations as Extract<TResourceDataWriteOperation, { operation: 'sql' }>[],
               );
             }
             const output = [];
-            for (const operation of stored.operations) {
+            for (const [index, operation] of stored.operations.entries()) {
               try {
-                output.push({ ok: true, value: await executeWriteOperation(args.actorService, current, operation) });
+                output.push({
+                  index,
+                  ok: true,
+                  value: await executeWriteOperation(
+                    args.actorService,
+                    current,
+                    operation as Exclude<TResourceDataWriteOperation, { operation: 'sql' }>,
+                  ),
+                });
               } catch (error) {
-                output.push({ ok: false, error: safeWriteError(error, stored.operations) });
+                output.push({
+                  index,
+                  ok: false,
+                  error: fnRedactResourceError(fnSafeResourceError(error), [current.id, ...secretWriteValues(current, stored.operations)]),
+                });
               }
             }
             return {
@@ -496,15 +612,22 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
             };
           },
         });
-        return fnToolSuccess(`Completed ${execution.results.length} protected resource write${execution.results.length === 1 ? '' : 's'}.`, {
-          resource: safeResource(resource),
+        const modelData = {
+          resource: fnSafeResource(resource),
           results: execution.results,
           atomicity: execution.atomicity,
           apply: execution.apply,
+        };
+        return fnToolSuccess({
+          summary: `Completed ${execution.results.length} protected resource write${execution.results.length === 1 ? '' : 's'}.`,
+          modelData,
+          details: modelData,
         });
       } catch (error) {
-        const safe = safeWriteError(error, protectedOperations);
-        return fnToolError(safe.message, { error: safe });
+        return toolResourceError(error, [
+          ...(resource ? [resource.id] : []),
+          ...secretWriteValues(resource, operations),
+        ]);
       }
     },
   }) as TToolDefinition;

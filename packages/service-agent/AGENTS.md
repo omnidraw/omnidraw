@@ -70,26 +70,30 @@ When changing service public methods:
 
 Custom chat tools live in `src/tools/tool.*.ts`; only actual `defineTool(...)` factories should use the `tool.*.ts` prefix.
 
-Every conversation receives exactly these 14 tools for its complete lifecycle:
+Every conversation receives exactly these 16 tools for its complete lifecycle:
 
-- Widgets/files: `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
+- Widgets/files: `vc_widget_list`, `vc_widget_create`, `vc_widget_validate`, `read`, `edit`, `patch`, `grep`
 - Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
-- Network: `web_fetch`
+- General: `web_fetch`, `bash`
 
-There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, bash, or unrestricted write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call.
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there.
 
 Chat filesystem ownership:
 
-- `shared-cwd/widgets` is the backend-owned shared draft view used by every independent conversation.
-- `widget-cwd/<name>` is the canonical published snapshot and is never mounted into AI Chat.
-- `widget-drafts/<name>` is the shared editable folder mounted by AI Chat, whether newly created or explicitly synced from published.
+- `chats/<UTC-date>/<sessionId>/` owns `chat.json`, Pi `history/`, and one `workspace/` for a dated Vibecanvas chat ID.
+- `chats/legacy/<sessionId>/` provides the same layout for existing safe IDs whose creation date is not encoded.
+- Canvas/API field `sessionId` is the stable Vibecanvas chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
+- `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
+- `widgets/published/<name>` is the canonical published snapshot and is never mounted directly into AI Chat.
+- `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
+- `preview-snapshots/<snapshotId>` is a backend-owned immutable Preview root. Preview owns its snapshot until Actor shutdown and removes it on replacement, reset, close, or build failure.
 - `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
 - Generic file access must enter through a validated `widgets/<name>` mount. Direct access to either shared root is rejected.
 - `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.
 
 Protected resource mutations use `src/approval/ApprovalCoordinator.ts`. The coordinator stores immutable exact arguments only in process memory, exposes a secret-safe approval view, rechecks authorization, and claims execution once. Secret-store set values are redacted before Pi event/transcript persistence and handed to the tool through a one-shot process-local vault.
 
-Publishing remains a user-controlled API operation in `AgentService`. Publish snapshots the selected draft into the canonical root while every chat stays mounted to the draft; failure restores the previous canonical and installed snapshots and leaves drafts and mounts intact.
+Publishing remains a user-controlled API operation in `AgentService`. Publish snapshots the selected draft into the canonical root while every chat stays mounted to the draft; failure restores the previous canonical and installed snapshots, complete resource bindings and scopes, and affected definitions/instances. Published slugs are immutable after the first successful publication.
 
 Shared current session-record helpers:
 

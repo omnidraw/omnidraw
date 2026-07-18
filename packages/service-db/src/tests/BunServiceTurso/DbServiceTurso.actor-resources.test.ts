@@ -27,24 +27,25 @@ describe("DbServiceTurso actor resources", () => {
     await db.db.close()
   })
 
-  test("persists catalog lifecycle state, duplicate display names, filters, and provider errors", async () => {
+  test("persists normalized unique names across kinds, filters, and provider errors", async () => {
     await db.actorResource.create({
       id: "kv-a",
       kind: "kv",
-      name: "Shared",
+      name: "  ShÁred  ",
       status: "ready",
     })
-    await db.actorResource.create({
+    await expect(db.actorResource.create({
       id: "secret-a",
       kind: "secretStore",
-      name: "Shared",
+      name: "sha\u0301RED",
       status: "ready",
-    })
+    })).rejects.toMatchObject({ code: "RESOURCE_NAME_CONFLICT" })
 
     await expect(db.actorResource.list({ kind: "kv" })).resolves.toMatchObject([
-      { id: "kv-a", kind: "kv" },
+      { id: "kv-a", kind: "kv", name: "ShÁred" },
     ])
-    await expect(db.actorResource.list({ status: "ready" })).resolves.toHaveLength(2)
+    await expect(db.actorResource.list({ status: "ready" })).resolves.toHaveLength(1)
+    await expect(db.actorResource.findByNameKey({ nameKey: "sháred" })).resolves.toMatchObject([{ id: "kv-a" }])
     await expect(db.actorResource.rename({ id: "kv-a", name: "Preferences" })).resolves.toMatchObject({
       id: "kv-a",
       name: "Preferences",
@@ -62,6 +63,68 @@ describe("DbServiceTurso actor resources", () => {
       status: "ready",
       last_error: null,
     })
+    await expect(db.actorResource.create({
+      id: "secret-a",
+      kind: "secretStore",
+      name: "Shared",
+      status: "ready",
+    })).resolves.toMatchObject({ id: "secret-a" })
+    await expect(db.actorResource.rename({ id: "secret-a", name: " preferences " }))
+      .rejects.toMatchObject({ code: "RESOURCE_NAME_CONFLICT" })
+  })
+
+  test("guards normalized name keys at the database boundary outside the service write queue", async () => {
+    const insert = await db.db.prepare(`
+      INSERT INTO actor_resources (id, kind, name, name_key, status)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    await insert.run("raw-a", "kv", "Guarded", "guarded", "ready")
+    await expect(insert.run("raw-b", "db", "guarded", "guarded", "ready"))
+      .rejects.toThrow("RESOURCE_NAME_CONFLICT")
+    await expect(insert.run("raw-null", "db", "Missing key", null, "ready"))
+      .rejects.toThrow("RESOURCE_NAME_CONFLICT")
+  })
+
+  test("replaces a complete binding set transactionally when a later resource is invalid", async () => {
+    await insertDefinition(db, "Atomic bindings", "atomic-bindings")
+    await db.actorResource.create({ id: "old-kv", kind: "kv", name: "Old KV", status: "ready" })
+    await db.actorResource.create({ id: "old-secret", kind: "secretStore", name: "Old secret", status: "ready" })
+    await db.actorResource.create({ id: "new-kv", kind: "kv", name: "New KV", status: "ready" })
+    await db.actorResource.upsertBinding({
+      definitionName: "Atomic bindings", slotName: "storage", resourceId: "old-kv", allowRead: true, allowWrite: false,
+    })
+    await db.actorResource.upsertBinding({
+      definitionName: "Atomic bindings", slotName: "credentials", resourceId: "old-secret", allowRead: true, allowWrite: true,
+    })
+
+    await expect(db.actorResource.replaceBindings({
+      definitionName: "Atomic bindings",
+      bindings: [
+        { slotName: "storage", resourceId: "new-kv", allowRead: true, allowWrite: true },
+        { slotName: "credentials", resourceId: "missing", allowRead: true, allowWrite: false },
+      ],
+    })).rejects.toThrow("not ready")
+
+    expect(await db.actorResource.listBindingsForDefinition({ definitionName: "Atomic bindings" })).toEqual([
+      expect.objectContaining({ slot_name: "credentials", resource_id: "old-secret", allow_read: true, allow_write: true }),
+      expect.objectContaining({ slot_name: "storage", resource_id: "old-kv", allow_read: true, allow_write: false }),
+    ])
+
+    await db.actorResource.upsertBinding({
+      definitionName: "Atomic bindings", slotName: "storage", resourceId: "new-kv", allowRead: true, allowWrite: false,
+    })
+    await expect(db.actorResource.replaceBindings({
+      definitionName: "Atomic bindings",
+      expectedBindings: [
+        { slotName: "credentials", resourceId: "old-secret", allowRead: true, allowWrite: true },
+        { slotName: "storage", resourceId: "old-kv", allowRead: true, allowWrite: false },
+      ],
+      bindings: [],
+    })).rejects.toMatchObject({ code: "RESOURCE_BINDING_CONFLICT" })
+    expect(await db.actorResource.listBindingsForDefinition({ definitionName: "Atomic bindings" })).toEqual([
+      expect.objectContaining({ slot_name: "credentials", resource_id: "old-secret" }),
+      expect.objectContaining({ slot_name: "storage", resource_id: "new-kv" }),
+    ])
   })
 
   test("upserts definition-level bindings, blocks bound deletion, and cascades definition deletion", async () => {
@@ -155,7 +218,7 @@ describe("DbServiceTurso actor resources", () => {
     await expect(db.actorResource.keyValue.get({ resourceId: "kv-b", key: "same" })).resolves.toMatchObject({ value: "B1", revision: 1 })
   })
 
-  test("lists literal prefixes in key order with bounded cursor pages", async () => {
+  test("counts and searches keys while preserving literal prefixes and bounded cursor pages", async () => {
     await db.actorResource.create({ id: "kv-a", kind: "kv", name: "A", status: "ready" })
     for (const key of ["plain", "todo%1", "todo%2", "todo_3", "todoX4"]) {
       await db.actorResource.keyValue.set({ resourceId: "kv-a", key, value: key })
@@ -172,6 +235,11 @@ describe("DbServiceTurso actor resources", () => {
     })
     expect(second.entries.map((entry) => entry.key)).toEqual(["todo%2"])
     expect(second.nextCursor).toBeNull()
+    await expect(db.actorResource.keyValue.count({ resourceId: "kv-a" })).resolves.toBe(5)
+    await expect(db.actorResource.keyValue.count({ resourceId: "kv-a", prefix: "todo%" })).resolves.toBe(2)
+    await expect(db.actorResource.keyValue.count({ resourceId: "kv-a", search: "%" })).resolves.toBe(2)
+    await expect(db.actorResource.keyValue.list({ resourceId: "kv-a", search: "_", limit: 10 }))
+      .resolves.toMatchObject({ entries: [{ key: "todo_3" }], nextCursor: null })
     await expect(db.actorResource.keyValue.list({ resourceId: "kv-a", limit: 501 })).rejects.toBeInstanceOf(RangeError)
   })
 

@@ -1,4 +1,5 @@
 import type { IPlugin } from "@vibecanvas/runtime";
+import { fnCreateChatId } from "@vibecanvas/shared-functions/chat/fn.chat-id";
 import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Konva from "konva";
 import { render } from "solid-js/web";
@@ -30,6 +31,14 @@ const AI_WIDGET_ICON = `
   <path d="M15 13v2" />
 </svg>
 `;
+
+function createAiSessionId(): string {
+  return fnCreateChatId({ now: new Date(), uuid: crypto.randomUUID() });
+}
+
+function createAiWidgetPayload(): TAiWidgetPayload {
+  return { sessionId: createAiSessionId() };
+}
 
 function getAiSessionId(args: { element: TElement }) {
   if (args.element.data.type !== "ui-widget") {
@@ -157,7 +166,11 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
           shortcuts: ["Q"],
           priority: 5,
         },
-        createInitialPayload: () => ({ sessionId: crypto.randomUUID() } satisfies TAiWidgetPayload),
+        createInitialPayload: createAiWidgetPayload,
+        createClonePayload: (sourcePayload) => ({
+          ...sourcePayload,
+          sessionId: createAiSessionId(),
+        } satisfies TAiWidgetPayload),
         titleBarActions: [{ id: "settings", label: "Settings" }],
         renderDom: ({ root, element, titleBar }) => {
           if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");
@@ -168,7 +181,7 @@ export function createAiPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRunt
             crdt,
             scene,
             tool,
-            createSessionId: () => crypto.randomUUID(),
+            createSessionId: createAiSessionId,
           }, { root, element, id: element.id, titleBar });
         },
       });

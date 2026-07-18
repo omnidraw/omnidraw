@@ -57,6 +57,8 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Search, Plus, Minus, Check');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Accessibility,');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Host-published DbResource schema context');
   });
 
@@ -196,9 +198,9 @@ describe('AgentService.promptChat', () => {
     await service.connectChat(widgetId, sessionId);
 
     const expectedTools = [
-      'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
+      'bash', 'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
       'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
-      'vc_resource_update', 'vc_widget_create', 'vc_widget_validate', 'web_fetch',
+      'vc_resource_update', 'vc_widget_create', 'vc_widget_list', 'vc_widget_validate', 'web_fetch',
     ];
     expect(service.sessionMap[widgetId][sessionId].session.getActiveToolNames().sort()).toEqual(expectedTools);
 

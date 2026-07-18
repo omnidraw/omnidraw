@@ -13,10 +13,10 @@ describe('fnRedactSecretResourceWriteMessage', () => {
         id: 'call-1',
         name: 'vc_resource_data_write',
         arguments: {
-          resourceId: 'secret-1',
-          operation: [
-            { kind: 'secretStore', operation: 'set', key: 'TOKEN', value: 'plaintext-secret' },
-            { kind: 'secretStore', operation: 'delete', key: 'OLD_TOKEN' },
+          resourceName: 'Credentials',
+          operations: [
+            { operation: 'set', key: 'TOKEN', value: 'plaintext-secret' },
+            { operation: 'delete', key: 'OLD_TOKEN' },
           ],
         },
       }],
@@ -25,10 +25,10 @@ describe('fnRedactSecretResourceWriteMessage', () => {
     const result = fnRedactSecretResourceWriteMessage(message);
 
     expect(result.captured).toEqual([{ toolCallId: 'call-1', args: {
-      resourceId: 'secret-1',
-      operation: [
-        { kind: 'secretStore', operation: 'set', key: 'TOKEN', value: 'plaintext-secret' },
-        { kind: 'secretStore', operation: 'delete', key: 'OLD_TOKEN' },
+      resourceName: 'Credentials',
+      operations: [
+        { operation: 'set', key: 'TOKEN', value: 'plaintext-secret' },
+        { operation: 'delete', key: 'OLD_TOKEN' },
       ],
     } }]);
     expect(JSON.stringify(result.message)).not.toContain('plaintext-secret');

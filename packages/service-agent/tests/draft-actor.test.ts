@@ -37,10 +37,10 @@ async function createMountedWidgetRoot(args: {
   sessionId: string;
   name: string;
 }): Promise<string> {
-  const root = join(args.dataPath, 'pi', 'agent', 'widget-drafts', args.name);
-  const widgetsRoot = join(args.dataPath, 'pi', 'agent', 'shared-cwd', 'widgets');
-  await mkdir(join(args.dataPath, 'pi', 'agent', 'widget-cwd'), { recursive: true });
-  await mkdir(join(args.dataPath, 'pi', 'agent', 'widget-drafts'), { recursive: true });
+  const root = join(args.dataPath, 'pi', 'agent', 'widgets', 'drafts', args.name);
+  const widgetsRoot = join(args.dataPath, 'pi', 'agent', 'chats', 'legacy', args.sessionId, 'workspace', 'widgets');
+  await mkdir(join(args.dataPath, 'pi', 'agent', 'widgets', 'published'), { recursive: true });
+  await mkdir(join(args.dataPath, 'pi', 'agent', 'widgets', 'drafts'), { recursive: true });
   await mkdir(root, { recursive: true });
   await mkdir(widgetsRoot, { recursive: true });
   await symlink(root, join(widgetsRoot, args.name), 'dir');
@@ -175,7 +175,10 @@ describe('AgentService draft actor runtime', () => {
         reload: async () => {},
         listResources: async () => resources,
         getResource: async (id) => resources.find((resource) => resource.id === id) ?? null,
-        bindResource: async (binding) => { persistedBindings.push(binding); return {}; },
+        listResourceBindingsForDefinition: async () => [],
+        transitionDefinitionPublication: async ({ definitionName, bindings }) => {
+          persistedBindings.push(...bindings.map((binding) => ({ definitionName, ...binding })));
+        },
         callWithDirectResourceBinding: async (call, binding) => {
           directCalls.push({ call, binding });
           return [
@@ -479,17 +482,17 @@ describe('AgentService draft actor runtime', () => {
       entry.type === 'custom' && entry.customType === 'vibecanvas.activeWidgetMount'
     ))).toBe(true);
     expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames().sort()).toEqual([
-      'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
+      'bash', 'edit', 'grep', 'patch', 'read', 'vc_resource_create', 'vc_resource_data_read',
       'vc_resource_data_write', 'vc_resource_delete', 'vc_resource_inspect', 'vc_resource_list',
-      'vc_resource_update', 'vc_widget_create', 'vc_widget_validate', 'web_fetch',
+      'vc_resource_update', 'vc_widget_create', 'vc_widget_list', 'vc_widget_validate', 'web_fetch',
     ]);
 
-    const canonicalRoot = join(dataPath, 'pi', 'agent', 'widget-cwd', 'Counter Widget');
-    const draftRoot = join(dataPath, 'pi', 'agent', 'widget-drafts', 'Counter Widget');
+    const canonicalRoot = join(dataPath, 'pi', 'agent', 'widgets', 'published', 'Counter Widget');
+    const draftRoot = join(dataPath, 'pi', 'agent', 'widgets', 'drafts', 'Counter Widget');
     const canonicalManifest = JSON.parse(await readFile(join(canonicalRoot, 'vibecanvas.json'), 'utf8'));
     expect(canonicalManifest.version).toBe('1.2.3');
     await expect(readFile(join(canonicalRoot, 'node_modules', 'ignored', 'file.js'), 'utf8')).rejects.toThrow();
-    expect(await readFile(join(dataPath, 'pi', 'agent', 'shared-cwd', 'widgets', 'Counter Widget', 'vibecanvas.json'), 'utf8'))
+    expect(await readFile(join(dataPath, 'pi', 'agent', 'chats', 'legacy', 'session-edit', 'workspace', 'widgets', 'Counter Widget', 'vibecanvas.json'), 'utf8'))
       .toBe(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8'));
     expect(await readFile(join(draftRoot, 'vibecanvas.json'), 'utf8')).toBe(await readFile(join(canonicalRoot, 'vibecanvas.json'), 'utf8'));
 
@@ -498,7 +501,7 @@ describe('AgentService draft actor runtime', () => {
 
     const reconnectResult = await service.connectChat('widget-edit', 'session-edit');
     expect(reconnectResult.vcJson?.name).toBe('Counter Widget');
-    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames()).toHaveLength(14);
+    expect(service.sessionMap['widget-edit']['session-edit'].session.getActiveToolNames()).toHaveLength(16);
   });
 
   test('reads and patches the mounted manifest as the only current authority', async () => {
@@ -628,8 +631,16 @@ describe('AgentService draft actor runtime', () => {
     const persistedBindings = new Map([['removed-database', 'db-old']]);
     const { service, widgetId, sessionId } = await createServiceFixture({
       reload: async () => {},
-      listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({ slot_name, resource_id })),
-      unbindResource: async ({ slot }) => persistedBindings.delete(slot),
+      listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({
+        slot_name,
+        resource_id,
+        allow_read: true,
+        allow_write: true,
+      })),
+      transitionDefinitionPublication: async ({ bindings }) => {
+        persistedBindings.clear();
+        for (const binding of bindings) persistedBindings.set(binding.slot, binding.resourceId);
+      },
     });
 
     const result = await service.publishChat(widgetId, sessionId);

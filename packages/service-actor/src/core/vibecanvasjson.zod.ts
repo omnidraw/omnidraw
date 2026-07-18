@@ -360,6 +360,7 @@ export const ZVibecanvasActorWidget = z.object({
 export const ZVibecanvasJson = z.object({
   slug: z.string(),
   name: z.string(),
+  kind: z.enum(['widget', 'actor-widget']).optional(),
   url: z.url().optional(),
   version: z.string().optional(),
   description: z.string().optional(),

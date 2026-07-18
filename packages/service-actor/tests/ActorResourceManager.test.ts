@@ -64,9 +64,14 @@ describe('ActorResourceManager', () => {
     await db.db.close();
   });
 
-  test('creates duplicate display names and shares a definition binding across actor calls', async () => {
+  test('enforces normalized names, resolves them case-insensitively, and shares bindings across actor calls', async () => {
     const first = await manager.createResource({ kind: 'kv', name: 'Preferences' });
-    const second = await manager.createResource({ kind: 'kv', name: 'Preferences' });
+    await expect(manager.createResource({ kind: 'secretStore', name: ' preferences ' }))
+      .rejects.toMatchObject({ code: 'RESOURCE_NAME_CONFLICT' });
+    expect(await manager.resolveResourceByName('pReFeReNcEs', { requireReady: true })).toMatchObject({ id: first.id });
+    await expect(manager.resolveResourceByName('Preferences', { requireReady: true, kind: 'db' }))
+      .rejects.toMatchObject({ code: 'RESOURCE_KIND_MISMATCH' });
+    const second = await manager.createResource({ kind: 'kv', name: 'Alternate preferences' });
     expect(first.id).not.toBe(second.id);
     expect(first.status).toBe('ready');
 
@@ -86,6 +91,19 @@ describe('ActorResourceManager', () => {
       actorId: 'actor-b', definitionName, runId: 3, functionClass: 'fx', slot: 'storage', kind: 'kv',
       operation: 'get', args: { key: 'theme' },
     })).toBeNull();
+  });
+
+  test('reports legacy normalized-name collisions as ambiguous without choosing a row', async () => {
+    await (await db.db.prepare('DROP TRIGGER IF EXISTS actor_resources_name_key_before_insert')).run();
+    await (await db.db.prepare(`
+      INSERT INTO actor_resources (id, kind, name, name_key, status)
+      VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+    `)).run(
+      'legacy-a', 'kv', 'Legacy', 'legacy', 'ready',
+      'legacy-b', 'secretStore', 'legacy', 'legacy', 'ready',
+    );
+    await expect(manager.resolveResourceByName('LEGACY', { requireReady: false }))
+      .rejects.toMatchObject({ code: 'RESOURCE_NAME_AMBIGUOUS' });
   });
 
   test('dispatches a draft-preview call through an explicit scoped binding without persisting it', async () => {
@@ -124,6 +142,101 @@ describe('ActorResourceManager', () => {
       actorId: 'actor-a', definitionName, runId: 2, functionClass: 'fn', slot: 'storage', kind: 'kv',
       operation: 'get', args: { key: 'x' },
     })).rejects.toMatchObject({ code: 'RESOURCE_READ_NOT_ALLOWED' });
+  });
+
+  test('validates a complete replacement before atomically changing any binding', async () => {
+    const oldStorage = await manager.createResource({ kind: 'kv', name: 'Old replacement storage' });
+    const newStorage = await manager.createResource({ kind: 'kv', name: 'New replacement storage' });
+    const credentials = await manager.createResource({ kind: 'secretStore', name: 'Replacement credentials' });
+    await manager.bindResource({ definitionName, slot: 'storage', resourceId: oldStorage.id, scope: ['read'] });
+    await manager.bindResource({ definitionName, slot: 'credentials', resourceId: credentials.id, scope: ['read', 'write'] });
+
+    await expect(manager.replaceResourceBindings({
+      definitionName,
+      bindings: [
+        { slot: 'storage', resourceId: newStorage.id, scope: ['read', 'write'] },
+        { slot: 'credentials', resourceId: newStorage.id, scope: ['read'] },
+      ],
+    })).rejects.toMatchObject({ code: 'RESOURCE_KIND_MISMATCH' });
+
+    expect(await manager.listResourceBindingsForDefinition(definitionName)).toEqual([
+      expect.objectContaining({ slot_name: 'credentials', resource_id: credentials.id, allow_read: true, allow_write: true }),
+      expect.objectContaining({ slot_name: 'storage', resource_id: oldStorage.id, allow_read: true, allow_write: false }),
+    ]);
+
+    await manager.replaceResourceBindings({
+      definitionName,
+      bindings: [{ slot: 'storage', resourceId: newStorage.id, scope: ['read'] }],
+    });
+    expect(await manager.listResourceBindingsForDefinition(definitionName)).toEqual([
+      expect.objectContaining({ slot_name: 'storage', resource_id: newStorage.id, allow_read: true, allow_write: false }),
+    ]);
+
+    await manager.bindResource({ definitionName, slot: 'storage', resourceId: oldStorage.id, scope: ['read'] });
+    let definitionReloaded = false;
+    await expect(manager.transitionResourceBindings({
+      definitionName,
+      expectedBindings: [{ slot: 'storage', resourceId: newStorage.id, scope: ['read'] }],
+      bindings: [],
+    }, async () => { definitionReloaded = true; })).rejects.toMatchObject({ code: 'RESOURCE_BINDING_CONFLICT' });
+    expect(definitionReloaded).toBe(false);
+    expect(await manager.listResourceBindingsForDefinition(definitionName)).toEqual([
+      expect.objectContaining({ slot_name: 'storage', resource_id: oldStorage.id, allow_read: true, allow_write: false }),
+    ]);
+
+    let publicationReloaded = false;
+    await expect(manager.transitionResourceBindings({
+      definitionName,
+      expectedBindings: [{ slot: 'storage', resourceId: oldStorage.id, scope: ['read'] }],
+      bindings: [],
+    }, async () => {
+      publicationReloaded = true;
+      await db.actorResource.upsertBinding({
+        definitionName,
+        slotName: 'storage',
+        resourceId: newStorage.id,
+        allowRead: true,
+        allowWrite: false,
+      });
+    })).rejects.toMatchObject({ code: 'RESOURCE_BINDING_CONFLICT' });
+    expect(publicationReloaded).toBe(true);
+    expect(await manager.listResourceBindingsForDefinition(definitionName)).toEqual([
+      expect.objectContaining({ slot_name: 'storage', resource_id: newStorage.id, allow_read: true, allow_write: false }),
+    ]);
+  });
+
+  test('keeps the complete binding set stable until an admitted actor start finishes', async () => {
+    const original = await manager.createResource({ kind: 'kv', name: 'Atomic start original' });
+    const replacement = await manager.createResource({ kind: 'kv', name: 'Atomic start replacement' });
+    const credentials = await manager.createResource({ kind: 'secretStore', name: 'Atomic start credentials' });
+    await manager.bindResource({ definitionName, slot: 'storage', resourceId: original.id });
+    await manager.bindResource({ definitionName, slot: 'credentials', resourceId: credentials.id });
+    expect(await manager.getActorStartAdmission({
+      definitionName,
+      actorInstanceId: 'atomic-replacement-start',
+      restartIfCompatible: true,
+    })).toMatchObject({ allowed: true });
+
+    let settled = false;
+    const replacing = manager.replaceResourceBindings({
+      definitionName,
+      bindings: [
+        { slot: 'storage', resourceId: replacement.id, scope: ['read'] },
+        { slot: 'credentials', resourceId: credentials.id, scope: ['read'] },
+      ],
+    }).then((bindings) => {
+      settled = true;
+      return bindings;
+    });
+    await Bun.sleep(10);
+    expect(settled).toBe(false);
+    expect(await manager.listResourceReferences(original.id)).toHaveLength(1);
+    expect(await manager.listResourceReferences(replacement.id)).toHaveLength(0);
+
+    await manager.completeActorStart({ actorInstanceId: 'atomic-replacement-start', resourceIds: [], succeeded: true });
+    await replacing;
+    expect(await manager.listResourceReferences(original.id)).toHaveLength(0);
+    expect(await manager.listResourceReferences(replacement.id)).toHaveLength(1);
   });
 
   test('blocks deletion while bound and reports actionable binding status', async () => {

@@ -30,7 +30,7 @@ function wrapAuthorized(tool: TToolDefinition, authorize: () => Promise<boolean>
   return {
     ...tool,
     async execute(...args: any[]) {
-      if (!await authorize()) return fnToolError('This tool call is not authorized.');
+      if (!await authorize()) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       return (execute as (...executeArgs: any[]) => unknown)(...args);
     },
   } as TToolDefinition;
@@ -56,7 +56,7 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
       }, { additionalProperties: false }), { minItems: 1, maxItems: 100 }),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('edit')) return fnToolError('This tool call is not authorized.');
+      if (!await args.authorize('edit')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         if (JSON.stringify(params.edits).length > 2_000_000) throw new Error('Edit batch exceeds the total request-size limit.');
         await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
@@ -66,12 +66,17 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
         });
         const name = mountedWidgetName(params.path);
         if (name) await args.onDraftChanged?.({ name, type: 'changed' });
-        return fnToolSuccess(`Successfully replaced ${params.edits.length} block(s) in ${params.path}.`, {
+        const modelData = {
           path: params.path,
           replacements: params.edits.length,
+        };
+        return fnToolSuccess({
+          summary: `Successfully replaced ${params.edits.length} block(s) in ${params.path}.`,
+          modelData,
+          details: modelData,
         });
       } catch (error) {
-        return fnToolError(error instanceof Error ? error.message : String(error));
+        return fnToolError({ code: 'EDIT_FAILED', message: error instanceof Error ? error.message : String(error) });
       }
     },
   }) as TToolDefinition;
@@ -85,7 +90,7 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
       patch: Type.String({ minLength: 1, maxLength: 1_000_000 }),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('patch')) return fnToolError('This tool call is not authorized.');
+      if (!await args.authorize('patch')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         await args.workspace.updateMountedFileAtomic(args.chatId, params.path, (source) => {
           const result = fnApplyUnifiedPatch(source, params.patch);
@@ -94,9 +99,10 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
         }, { allowMissing: true });
         const name = mountedWidgetName(params.path);
         if (name) await args.onDraftChanged?.({ name, type: 'changed' });
-        return fnToolSuccess(`Applied patch to ${params.path}.`, { path: params.path });
+        const modelData = { path: params.path };
+        return fnToolSuccess({ summary: `Applied patch to ${params.path}.`, modelData, details: modelData });
       } catch (error) {
-        return fnToolError(error instanceof Error ? error.message : String(error));
+        return fnToolError({ code: 'PATCH_FAILED', message: error instanceof Error ? error.message : String(error) });
       }
     },
   }) as TToolDefinition;
@@ -114,15 +120,19 @@ export function createWorkspaceFileTools(args: TCreateWorkspaceFileToolsArgs): T
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
-      if (!await args.authorize('grep')) return fnToolError('This tool call is not authorized.');
+      if (!await args.authorize('grep')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
       try {
         const result = await args.workspace.grepMountedFiles(args.chatId, params);
         const text = result.matches.length === 0
           ? 'No matches found.'
           : result.matches.map((match) => `${match.path}:${match.line}: ${match.text}`).join('\n');
-        return fnToolSuccess(`${text}${result.truncated ? '\n\n[Results truncated by host bounds.]' : ''}`, result);
+        return fnToolSuccess({
+          summary: `${text}${result.truncated ? '\n\n[Results truncated by host bounds.]' : ''}`,
+          modelData: result,
+          details: result,
+        });
       } catch (error) {
-        return fnToolError(error instanceof Error ? error.message : String(error));
+        return fnToolError({ code: 'GREP_FAILED', message: error instanceof Error ? error.message : String(error) });
       }
     },
   }) as TToolDefinition;

@@ -147,6 +147,7 @@ export type TVibecanvasActorWidget = {
 export type TVibecanvasJson = {
   readonly slug: string;
   readonly name: string;
+  readonly kind?: 'widget' | 'actor-widget';
   readonly url?: string;
   readonly version?: string;
   readonly description?: string;

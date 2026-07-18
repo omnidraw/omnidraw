@@ -38,7 +38,7 @@ The mounted `vibecanvas.json` file is the source of truth. It declares actor dat
 - actor.outputMsgSchema: map of output message names to JSON Schemas. Use {} if no outputs.
 - widget.relWidgetDir: usually "./widget".
 - widget.tool.label: label shown in the canvas tool UI.
-- widget.tool.icon: optional structured icon metadata: { "lucidIcon": "<allowed lucide-static key>" } or { "svgIcon": "<raw SVG XML, emoji, or text>" }. If both fields are present, svgIcon overrides lucidIcon. Prefer lucidIcon for common icons and use svgIcon only for custom raw SVG, emoji, or text. Allowed lucidIcon keys: {{LUCIDE_STATIC_ICON_KEYS}}.
+- widget.tool.icon: optional structured icon metadata: { "lucidIcon": "<lucide-static key>" } or { "svgIcon": "<raw SVG XML, emoji, or text>" }. If both fields are present, svgIcon overrides lucidIcon. Prefer these recommended common keys: {{LUCIDE_STATIC_ICON_KEYS}}. Other valid keys supported by the installed lucide-static package remain allowed; use svgIcon only for custom raw SVG, emoji, or text.
 - widget.tool.group: omit by default. Do not infer or invent a group from the widget's purpose. Set it only when the user explicitly requests a specific group name.
 - widget.tool.behavior: usually { type: "mode", mode: "click-create" } for canvas-created widgets, or { type: "action" } only for action-like tools.
 

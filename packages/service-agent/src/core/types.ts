@@ -14,11 +14,13 @@ export type TActorServiceReloader = {
   reloadDefinitionInstances?(definitionName: string): Promise<void>;
   listResources?(filter?: { kind?: TActorResource['kind']; status?: TActorResource['status'] }): Promise<TActorResource[]>;
   getResource?(id: string): Promise<TActorResource | null>;
+  resolveResourceByName?(resourceName: string, options: { requireReady: boolean; kind?: TActorResource['kind'] }): Promise<TActorResource>;
   createResource?(args: { kind: TActorResource['kind']; name: string }): Promise<TActorResource>;
   renameResource?(args: { id: string; name: string }): Promise<TActorResource>;
   deleteResource?(id: string): Promise<void>;
   listResourceReferences?(resourceId: string): Promise<unknown[]>;
-  listResourceData?(args: { resourceId: string; prefix?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage>;
+  countResourceData?(args: { resourceId: string; prefix?: string; search?: string }): Promise<number>;
+  listResourceData?(args: { resourceId: string; prefix?: string; search?: string; cursor?: string; limit?: number }): Promise<TActorResourceDataPage>;
   getResourceDataEntry?(args: { resourceId: string; key: string }): Promise<
     | { kind: 'kv'; key: string; value: TJson; revision: number; createdAt: string; updatedAt: string }
     | { kind: 'secretStore'; name: string; revision: number; createdAt: string; updatedAt: string }
@@ -28,9 +30,20 @@ export type TActorServiceReloader = {
   deleteResourceDataEntry?(args: { resourceId: string; key: string; expectedRevision: number }): Promise<{ deleted: true }>;
   inspectDbResource?(args: { resourceId: string; target: 'live'; draftId?: never }): Promise<TDbInspection | null>;
   executeDbLiveSql?(args: { resourceId: string; sql: string; parameters?: readonly TDbCellValue[] | Readonly<Record<string, TDbCellValue>>; approved: boolean }): Promise<TDbLiveSqlResult>;
-  listResourceBindingsForDefinition?(definitionName: string): Promise<Pick<TActorResourceBinding, 'slot_name' | 'resource_id'>[]>;
+  listResourceBindingsForDefinition?(definitionName: string): Promise<Pick<TActorResourceBinding, 'slot_name' | 'resource_id' | 'allow_read' | 'allow_write'>[]>;
   bindResource?(args: { definitionName: string; slot: string; resourceId: string; scope?: ('read' | 'write')[] }): Promise<unknown>;
   unbindResource?(args: { definitionName: string; slot: string }): Promise<unknown>;
+  replaceResourceBindings?(args: {
+    definitionName: string;
+    expectedBindings?: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
+    bindings: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
+  }): Promise<TActorResourceBinding[]>;
+  transitionDefinitionPublication?(args: {
+    definitionName: string;
+    expectedBindings: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
+    bindings: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
+    reloadInstances: boolean;
+  }): Promise<void>;
   createDbDraft?(resourceId: string, name: string): Promise<{ draft: { id: string } }>;
   executeDbDraftSql?(draftId: string, sql: string, parameters?: readonly TDbCellValue[]): Promise<unknown>;
   discardDbDraft?(draftId: string): Promise<unknown>;

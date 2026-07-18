@@ -67,6 +67,7 @@ export interface IWidgetConfig {
   tool?: Pick<TTool, "group" | "icon" | "label" | "priority" | "shortcuts" >
   initialPayload?: Record<string, any>;
   createInitialPayload?: () => Record<string, any>;
+  createClonePayload?: (sourcePayload: Record<string, any>) => Record<string, any>;
   actor?: {
     actorDefinitionName: string;
   };
