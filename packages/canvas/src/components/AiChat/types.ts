@@ -22,3 +22,26 @@ export type TAiChatApproval = {
   statusMessage?: string
   resourceId?: string
 }
+
+export type TAiChatWidgetErrorKind =
+  | "connection"
+  | "stream"
+  | "prompt"
+  | "cancel"
+  | "attachment"
+  | "resource-context"
+
+export type TAiChatWidgetError = {
+  kind: TAiChatWidgetErrorKind
+  title: string
+  message: string
+  isAuthenticationError: boolean
+}
+
+export type TAiChatAssistantError = {
+  message: string
+  provider?: string
+  model?: string
+  diagnosticCode?: string
+  isAuthenticationError: boolean
+}

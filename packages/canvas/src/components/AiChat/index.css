@@ -516,6 +516,129 @@
   gap: 12px;
 }
 
+.ai-chat-message-error {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+  border: 1px solid var(--destructive);
+  border-left-width: 4px;
+  background: color-mix(in srgb, var(--destructive) 8%, var(--card));
+  color: var(--foreground);
+  padding: 12px 14px;
+}
+
+.ai-chat-message-error header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-chat-message-error header span {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--destructive);
+  color: var(--destructive);
+  font-weight: 900;
+}
+
+.ai-chat-message-error p {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ai-chat-message-error__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.ai-chat-message-error__context code {
+  color: inherit;
+  font: inherit;
+}
+
+.ai-chat-message-error button,
+.ai-chat-widget-error__actions button:not(.ai-chat-widget-error__dismiss) {
+  justify-self: start;
+  min-height: 30px;
+  border: 1px solid var(--foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.ai-chat-widget-error {
+  display: flex;
+  width: min(calc(100% - 24px), 980px);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 9%, var(--card));
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--destructive) 30%, var(--background));
+  padding: 10px 12px;
+}
+
+.ai-chat-widget-error__body {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.ai-chat-widget-error__body strong {
+  color: var(--destructive);
+  font-size: 12px;
+}
+
+.ai-chat-widget-error__body p {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.ai-chat-widget-error__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-chat-widget-error__dismiss {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+}
+
+.ai-chat-message-error button:focus-visible,
+.ai-chat-widget-error button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
 .ai-chat-history__plain {
   color: var(--foreground);
   font-size: 12px;

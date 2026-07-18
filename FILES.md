@@ -415,6 +415,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/AiChat/ChatComposer/fn.trigger.ts](packages/canvas/src/components/AiChat/ChatComposer/fn.trigger.ts) |  |
 | [packages/canvas/src/components/AiChat/ChatComposer/interface.ts](packages/canvas/src/components/AiChat/ChatComposer/interface.ts) |  |
 | [packages/canvas/src/components/AiChat/fn.approval-details.ts](packages/canvas/src/components/AiChat/fn.approval-details.ts) |  |
+| [packages/canvas/src/components/AiChat/fn.error.ts](packages/canvas/src/components/AiChat/fn.error.ts) |  |
 | [packages/canvas/src/components/AiChat/index.css](packages/canvas/src/components/AiChat/index.css) |  |
 | [packages/canvas/src/components/AiChat/index.tsx](packages/canvas/src/components/AiChat/index.tsx) |  |
 | [packages/canvas/src/components/AiChat/tabs/ChatTab.tsx](packages/canvas/src/components/AiChat/tabs/ChatTab.tsx) |  |

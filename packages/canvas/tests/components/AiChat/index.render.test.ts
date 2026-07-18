@@ -98,6 +98,41 @@ afterEach(() => {
 })
 
 describe("AiChat shell", () => {
+  it("surfaces a connection failure and retries it from the widget", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const connect = vi.fn()
+      .mockResolvedValueOnce([{ message: "WebSocket handshake failed" }, undefined])
+      .mockResolvedValueOnce([undefined, {
+        actorCandidate: null,
+        editSession: null,
+        messageHistory: [],
+        vcJson: null,
+      }])
+    apiService.api.agent.chat.connect = connect
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.textContent).toContain("WebSocket handshake failed"))
+    Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-widget-error button"))
+      .find((button) => button.textContent === "Try again")
+      ?.click()
+
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-widget-error")).toBeNull())
+  })
+
   it("closes the agent event stream when the chat is disposed", async () => {
     ensureComponentDomMocks()
     container = document.createElement("div")

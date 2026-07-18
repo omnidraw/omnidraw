@@ -3,6 +3,7 @@ import type { TChatMessagePart } from "./fn.chat-message-parts"
 import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
+import { fnGetAiChatAssistantError } from "../fn.error"
 import { fnGetChatMessageLabel, fnGetChatMessageRole } from "./fn.chat-message-label"
 import { fnGetChatMessageParts } from "./fn.chat-message-parts"
 import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
@@ -10,7 +11,7 @@ import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 import { ApprovalList } from "../ApprovalList"
 import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource } from "./fn.tool-call"
-import type { TAiChatApproval } from "../types"
+import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
 
 type TAgentSettings = {
   defaultModel?: string
@@ -38,6 +39,7 @@ interface IProps {
   messageHistory: readonly unknown[]
   isRunning: boolean
   isCanceling: boolean
+  widgetError?: TAiChatWidgetError
   draftText?: string
   onDraftTextChange?: (text: string) => void
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
@@ -47,6 +49,10 @@ interface IProps {
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
   onOpenResource?: (resourceId: string) => void
   onCancel: () => void
+  onDismissError: () => void
+  onOpenSettings: () => void
+  onReportError: (kind: TAiChatWidgetErrorKind, error: unknown) => void
+  onRetryError: () => void
   onNewChat: () => void
   onClearResourceBindings: () => Promise<void>
 }
@@ -394,6 +400,56 @@ function AssistantMessageParts(props: { parts: TChatMessagePart[] }) {
   )
 }
 
+function AssistantErrorCard(props: { error: TAiChatAssistantError; onOpenSettings: () => void }) {
+  const context = () => [props.error.provider, props.error.model].filter(Boolean).join(" / ")
+
+  return (
+    <section class="ai-chat-message-error" aria-label="AI response failed">
+      <header>
+        <span aria-hidden="true">!</span>
+        <strong>AI response failed</strong>
+      </header>
+      <p>{props.error.message}</p>
+      <Show when={context() || props.error.diagnosticCode}>
+        <div class="ai-chat-message-error__context">
+          <Show when={context()}>{(value) => <span>{value()}</span>}</Show>
+          <Show when={props.error.diagnosticCode}>{(code) => <code>{code()}</code>}</Show>
+        </div>
+      </Show>
+      <Show when={props.error.isAuthenticationError}>
+        <button type="button" onClick={props.onOpenSettings}>Open settings</button>
+      </Show>
+    </section>
+  )
+}
+
+function ChatWidgetErrorBanner(props: {
+  error: TAiChatWidgetError
+  onDismiss: () => void
+  onOpenSettings: () => void
+  onRetry: () => void
+}) {
+  const canRetry = () => props.error.kind === "connection" || props.error.kind === "stream"
+
+  return (
+    <section class="ai-chat-widget-error" role="alert">
+      <div class="ai-chat-widget-error__body">
+        <strong>{props.error.title}</strong>
+        <p>{props.error.message}</p>
+      </div>
+      <div class="ai-chat-widget-error__actions">
+        <Show when={props.error.isAuthenticationError}>
+          <button type="button" onClick={props.onOpenSettings}>Open settings</button>
+        </Show>
+        <Show when={!props.error.isAuthenticationError && canRetry()}>
+          <button type="button" onClick={props.onRetry}>Try again</button>
+        </Show>
+        <button type="button" class="ai-chat-widget-error__dismiss" aria-label="Dismiss error" onClick={props.onDismiss}>×</button>
+      </div>
+    </section>
+  )
+}
+
 function ToolCallRow(props: {
   toolCall: { id: string; name: string }
   approvals: readonly TAiChatApproval[]
@@ -422,11 +478,13 @@ function ChatHistoryMessage(props: {
   approvals: readonly TAiChatApproval[]
   onResolveApproval: IProps["onResolveApproval"]
   onOpenResource?: IProps["onOpenResource"]
+  onOpenSettings: IProps["onOpenSettings"]
 }) {
   const [isExpanded, setIsExpanded] = createSignal(false)
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
+  const assistantError = () => fnGetAiChatAssistantError(props.message)
   const kind = () => getMessageKind(role())
   const toolCalls = () => fnGetChatToolCalls(props.message)
   const resource = () => props.onOpenResource ? fnGetToolResultResource(props.message) : undefined
@@ -475,6 +533,9 @@ function ChatHistoryMessage(props: {
         fallback={<PlainMessageParts parts={renderedPlainParts()} />}
       >
         <AssistantMessageParts parts={parts()} />
+      </Show>
+      <Show when={assistantError()}>
+        {(error) => <AssistantErrorCard error={error()} onOpenSettings={props.onOpenSettings} />}
       </Show>
       <For each={toolCalls()}>
         {(toolCall) => (
@@ -546,7 +607,13 @@ export function ChatTab(props: IProps) {
     if (!text && !hasImages) return
 
     void (async () => {
-      const images = await encodePromptImages(submit.images)
+      let images: TChatPromptImage[]
+      try {
+        images = await encodePromptImages(submit.images)
+      } catch (error) {
+        props.onReportError("attachment", error)
+        return
+      }
       if (!text && images.length === 0) return
 
       await props.onPrompt({
@@ -557,7 +624,7 @@ export function ChatTab(props: IProps) {
         thinkingLevel: submit.thinkingLevel,
       })
     })().catch((error) => {
-      console.error(error)
+      props.onReportError("prompt", error)
     })
   }
 
@@ -621,6 +688,7 @@ export function ChatTab(props: IProps) {
                   approvals={props.approvals}
                   onResolveApproval={props.onResolveApproval}
                   onOpenResource={props.onOpenResource}
+                  onOpenSettings={props.onOpenSettings}
                 />
               )}
             </For>
@@ -640,6 +708,17 @@ export function ChatTab(props: IProps) {
         />
       </div>
 
+      <Show when={props.widgetError}>
+        {(error) => (
+          <ChatWidgetErrorBanner
+            error={error()}
+            onDismiss={props.onDismissError}
+            onOpenSettings={props.onOpenSettings}
+            onRetry={props.onRetryError}
+          />
+        )}
+      </Show>
+
       <ChatComposer
         placeholder="Ask about your canvas. Type @ to add context"
         mentions={props.mentions}
@@ -657,7 +736,7 @@ export function ChatTab(props: IProps) {
         onNewChat={props.onNewChat}
         onCopyChat={copyChat}
         onClearResourceBindings={() => {
-          void props.onClearResourceBindings().catch((error) => console.error(error))
+          void props.onClearResourceBindings().catch((error) => props.onReportError("resource-context", error))
         }}
       />
     </div>

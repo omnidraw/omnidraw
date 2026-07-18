@@ -139,7 +139,11 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     messageHistory,
     approvals: [],
     onCancel: () => {},
+    onDismissError: () => {},
     onNewChat: () => {},
+    onOpenSettings: () => {},
+    onReportError: () => {},
+    onRetryError: () => {},
     onClearResourceBindings: async () => {},
     onPrompt: async () => {},
     onPreferenceChange: () => {},
@@ -165,6 +169,74 @@ afterEach(() => {
 })
 
 describe("ChatTab rendered message history", () => {
+  it("renders partial assistant content followed by a durable Pi error without exposing diagnostics", () => {
+    const onOpenSettings = vi.fn()
+    const root = renderChatTab(undefined, [{
+      role: "assistant",
+      content: [{ type: "text", text: "I started the response." }],
+      stopReason: "error",
+      errorMessage: "No API key for provider: openai-codex",
+      provider: "openai-codex",
+      model: "gpt-test",
+      diagnostics: [{
+        type: "provider-error",
+        error: { code: "AUTH_1", stack: "secret stack", message: "internal" },
+        details: { token: "must-not-render" },
+      }],
+    }], { onOpenSettings })
+
+    const errorCard = root.querySelector<HTMLElement>(".ai-chat-message-error")
+    expect(root.textContent).toContain("I started the response.")
+    expect(errorCard?.textContent).toContain("AI response failed")
+    expect(errorCard?.textContent).toContain("No API key for provider: openai-codex")
+    expect(errorCard?.textContent).toContain("openai-codex / gpt-test")
+    expect(errorCard?.textContent).toContain("AUTH_1")
+    expect(errorCard?.textContent).not.toContain("secret stack")
+    expect(errorCard?.textContent).not.toContain("must-not-render")
+
+    Array.from(errorCard?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+      .find((button) => button.textContent === "Open settings")
+      ?.click()
+    expect(onOpenSettings).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not present an aborted assistant turn as an error", () => {
+    const root = renderChatTab(undefined, [{
+      role: "assistant",
+      content: [],
+      stopReason: "aborted",
+      errorMessage: "Canceled by user",
+    }])
+
+    expect(root.querySelector(".ai-chat-message-error")).toBeNull()
+    expect(root.textContent).not.toContain("AI response failed")
+  })
+
+  it("renders transient widget errors with retry and dismiss actions", () => {
+    const onDismissError = vi.fn()
+    const onRetryError = vi.fn()
+    const root = renderChatTab(undefined, [], {
+      widgetError: {
+        kind: "connection",
+        title: "Could not connect to AI chat",
+        message: "WebSocket unavailable",
+        isAuthenticationError: false,
+      },
+      onDismissError,
+      onRetryError,
+    })
+
+    const banner = root.querySelector<HTMLElement>(".ai-chat-widget-error")
+    expect(banner?.getAttribute("role")).toBe("alert")
+    expect(banner?.textContent).toContain("WebSocket unavailable")
+    Array.from(banner?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+      .find((button) => button.textContent === "Try again")
+      ?.click()
+    banner?.querySelector<HTMLButtonElement>("[aria-label='Dismiss error']")?.click()
+    expect(onRetryError).toHaveBeenCalledTimes(1)
+    expect(onDismissError).toHaveBeenCalledTimes(1)
+  })
+
   it("renders structured text, images, markdown, tables, and links without JSON payloads", () => {
     const root = renderChatTab()
     const text = root.textContent ?? ""

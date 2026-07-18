@@ -4,8 +4,9 @@ import { createStore, reconcile } from "solid-js/store"
 import { AsyncStateView } from "./AsyncStateView"
 import { ChatTab } from "./tabs/ChatTab"
 import { SettingsTab } from "./tabs/SettingsTab"
+import { fnCreateAiChatWidgetError } from "./fn.error"
 import { fnFindApprovalResourceId, fnGetApprovalResourceId } from "./tabs/fn.tool-call"
-import type { TAiChatApproval, TAiChatApprovalStatus } from "./types"
+import type { TAiChatApproval, TAiChatApprovalStatus, TAiChatWidgetError, TAiChatWidgetErrorKind } from "./types"
 import type { TWidgetTitleBarPortal } from "../../services/widget/interface"
 import type { TChatComposerMention, TChatPromptImage } from "./ChatComposer/interface"
 import "./index.css"
@@ -68,6 +69,8 @@ export function AiChat(props: IProps) {
   const [chatDraftText, setChatDraftText] = createSignal("")
   const [localAiChatPreference, setLocalAiChatPreference] = createSignal<TAiChatPreference>(props.aiChatPreference ?? {})
   const [chatConnectNonce, setChatConnectNonce] = createSignal(0)
+  const [eventStreamNonce, setEventStreamNonce] = createSignal(0)
+  const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
   const [approvals, setApprovals] = createSignal<TAiChatApproval[]>([])
   const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
   const [settingState, { refetch: refetchSettings }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([error, data]) => {
@@ -94,6 +97,14 @@ export function AiChat(props: IProps) {
     setApprovals((current) => current.map((approval) => approval.id === approvalId ? { ...approval, status, statusMessage } : approval))
   }
 
+  const reportWidgetError = (kind: TAiChatWidgetErrorKind, error: unknown) => {
+    setWidgetError(fnCreateAiChatWidgetError(kind, error))
+  }
+
+  const clearWidgetError = (...kinds: TAiChatWidgetErrorKind[]) => {
+    setWidgetError((current) => current && kinds.includes(current.kind) ? undefined : current)
+  }
+
   const refreshResourceCatalog = async (approvalId: string) => {
     if (refreshedApprovalIds.has(approvalId)) return
     refreshedApprovalIds.add(approvalId)
@@ -116,14 +127,20 @@ export function AiChat(props: IProps) {
     const currentSessionId = sessionId()
     setIsRunning(false)
     setIsCanceling(false)
+    clearWidgetError("connection")
     void apiService.api.agent.chat.connect({ sessionId: currentSessionId, widgetId: props.id }).then(([error, data]) => {
       if (sessionId() !== currentSessionId || chatConnectNonce() !== currentConnectNonce) return
       if (error) {
-        console.error(error)
+        reportWidgetError("connection", error)
         return
       }
+      clearWidgetError("connection")
       setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
       void refreshApprovals(currentSessionId)
+    }).catch((error) => {
+      if (sessionId() === currentSessionId && chatConnectNonce() === currentConnectNonce) {
+        reportWidgetError("connection", error)
+      }
     })
   })
 
@@ -137,14 +154,16 @@ export function AiChat(props: IProps) {
   createEffect(() => {
     const apiService = props.apiService
     const currentSessionId = sessionId()
+    const currentEventStreamNonce = eventStreamNonce()
     let disposed = false
     let closeEventStream: (() => void) | undefined
 
     void apiService.api.agent.events({}).then(async ([error, events]) => {
       if (error) {
-        if (!disposed) console.error(error)
+        if (!disposed) reportWidgetError("stream", error)
         return
       }
+      clearWidgetError("stream")
       const iterator = events[Symbol.asyncIterator]()
       let eventStreamClosed = false
       closeEventStream = () => {
@@ -205,7 +224,9 @@ export function AiChat(props: IProps) {
         }
       }
     }).catch((error) => {
-      if (!disposed) console.error(error)
+      if (!disposed && eventStreamNonce() === currentEventStreamNonce) {
+        reportWidgetError("stream", error)
+      }
     })
 
     onCleanup(() => {
@@ -229,36 +250,49 @@ export function AiChat(props: IProps) {
 
   const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
     const currentSessionId = sessionId()
+    clearWidgetError("prompt", "attachment")
     setIsRunning(true)
     setIsCanceling(false)
     updateAiChatPreference({
       model: args.model ? { provider: args.model.provider, modelId: args.model.id } : undefined,
       thinkingLevel: args.thinkingLevel,
     })
-    const [error] = await props.apiService.api.agent.chat.prompt({
-      widgetId: props.id,
-      sessionId: currentSessionId,
-      text: args.text,
-      images: args.images,
-      resourceIds: args.resourceIds,
-      model: args.model ? { provider: args.model.provider, modelId: args.model.id } : undefined,
-      thinkingLevel: args.thinkingLevel,
-    })
+    let error: unknown
+    try {
+      [error] = await props.apiService.api.agent.chat.prompt({
+        widgetId: props.id,
+        sessionId: currentSessionId,
+        text: args.text,
+        images: args.images,
+        resourceIds: args.resourceIds,
+        model: args.model ? { provider: args.model.provider, modelId: args.model.id } : undefined,
+        thinkingLevel: args.thinkingLevel,
+      })
+    } catch (caughtError) {
+      error = caughtError
+    }
     if (sessionId() !== currentSessionId) return
     setIsRunning(false)
     setIsCanceling(false)
-    if (error) throw error
+    if (error) reportWidgetError("prompt", error)
   }
 
   const cancelPrompt = async () => {
     if (isCanceling()) return
     const currentSessionId = sessionId()
     setIsCanceling(true)
-    const [error, data] = await props.apiService.api.agent.chat.cancel({ widgetId: props.id, sessionId: currentSessionId })
+    let error: unknown
+    let data: { running: boolean } | undefined
+    try {
+      [error, data] = await props.apiService.api.agent.chat.cancel({ widgetId: props.id, sessionId: currentSessionId })
+    } catch (caughtError) {
+      error = caughtError
+    }
     if (sessionId() !== currentSessionId) return
     setIsCanceling(false)
-    setIsRunning(error ? false : data.running)
-    if (error) console.error(error)
+    setIsRunning(error ? false : data?.running ?? false)
+    if (error) reportWidgetError("cancel", error)
+    else clearWidgetError("cancel")
   }
 
   const newChat = () => {
@@ -269,14 +303,20 @@ export function AiChat(props: IProps) {
     setChatDraftText("")
     setMessageHistory(reconcile([]))
     setApprovals([])
+    setWidgetError(undefined)
     refreshedApprovalIds.clear()
     setSessionId(nextSessionId)
     void props.apiService.api.agent.chat.newSession({ widgetId: props.id, sessionId: previousSessionId })
   }
 
   const clearResourceBindings = async () => {
-    const [error] = await props.apiService.api.agent.chat.resourceBindings.clear({ widgetId: props.id, sessionId: sessionId() })
-    if (error) throw error
+    try {
+      const [error] = await props.apiService.api.agent.chat.resourceBindings.clear({ widgetId: props.id, sessionId: sessionId() })
+      if (error) reportWidgetError("resource-context", error)
+      else clearWidgetError("resource-context")
+    } catch (error) {
+      reportWidgetError("resource-context", error)
+    }
   }
 
   const resolveApproval = async (approvalId: string, decision: "approve" | "reject") => {
@@ -299,6 +339,16 @@ export function AiChat(props: IProps) {
   const refreshSettingsAndReconnectChat = async () => {
     await refetchSettings()
     setChatConnectNonce((nonce) => nonce + 1)
+  }
+
+  const openSettings = () => {
+    setSelectedView("settings")
+  }
+
+  const retryWidgetError = () => {
+    const currentError = widgetError()
+    if (currentError?.kind === "connection") setChatConnectNonce((nonce) => nonce + 1)
+    if (currentError?.kind === "stream") setEventStreamNonce((nonce) => nonce + 1)
   }
 
   const aiAuthenticated = () => (settingState.latest?.providersWithCredentials.length ?? 0) > 0
@@ -330,6 +380,7 @@ export function AiChat(props: IProps) {
                     approvals={approvals()}
                     isRunning={isRunning()}
                     isCanceling={isCanceling()}
+                    widgetError={widgetError()}
                     draftText={chatDraftText()}
                     mentions={resourceMentions()}
                     onDraftTextChange={setChatDraftText}
@@ -338,6 +389,10 @@ export function AiChat(props: IProps) {
                     onResolveApproval={resolveApproval}
                     onOpenResource={props.onOpenResource}
                     onCancel={() => void cancelPrompt()}
+                    onDismissError={() => setWidgetError(undefined)}
+                    onOpenSettings={openSettings}
+                    onReportError={reportWidgetError}
+                    onRetryError={retryWidgetError}
                     onNewChat={newChat}
                     onClearResourceBindings={clearResourceBindings}
                   />
