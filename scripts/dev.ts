@@ -320,6 +320,11 @@ try {
     name: "web",
     cwd: webDir,
     cmd: [bunExec, "run", "dev"],
+    // Astro automatically detaches in agentic environments. This marks it as
+    // an already-managed child so this launcher retains ownership of its lifecycle.
+    env: {
+      ASTRO_DEV_BACKGROUND: "1",
+    },
   }))
 
   for (const child of processes) {
