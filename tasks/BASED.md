@@ -136,6 +136,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B45](b/B45.md) - image paste: pending local preview can persist without media upload
 - [x]: [B46](b/B46.md) - db resource: structured tables should default to SQLite STRICT mode
 - [x]: [B47](b/B47.md) - image delete: remove media_files row
+- [!]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -298,6 +299,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S83](s/S83.md) - isolated AI Chat workspaces over shared widget folders
 - [x]: [S84](s/S84.md) - simplify canvas AI frontend to chat, user preview, and user publish
 - [x]: [S85](s/S85.md) - agent tools: name-addressed resources, visible results, and Pi Bash
+- [x]: [S86](s/S86.md) - human-readable dated AI chat storage and stable chat identity
+- [ ]: [S87](s/S87.md) - simplify vc_widget_create to one runnable construction scaffold
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

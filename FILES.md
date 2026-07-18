@@ -772,7 +772,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/workspace/fn.glob.ts](packages/service-agent/src/workspace/fn.glob.ts) |  |
 | [packages/service-agent/src/workspace/fn.names.ts](packages/service-agent/src/workspace/fn.names.ts) |  |
 | [packages/service-agent/src/workspace/fn.safe-search-pattern.ts](packages/service-agent/src/workspace/fn.safe-search-pattern.ts) |  |
+| [packages/service-agent/src/workspace/fx.chat-metadata.ts](packages/service-agent/src/workspace/fx.chat-metadata.ts) |  |
 | [packages/service-agent/src/workspace/fx.widget-catalog.ts](packages/service-agent/src/workspace/fx.widget-catalog.ts) |  |
+| [packages/service-agent/src/workspace/tx.chat-storage.ts](packages/service-agent/src/workspace/tx.chat-storage.ts) |  |
 | [packages/service-agent/src/workspace/tx.materialize-sdk-package.ts](packages/service-agent/src/workspace/tx.materialize-sdk-package.ts) |  |
 | [packages/service-agent/src/workspace/types.ts](packages/service-agent/src/workspace/types.ts) |  |
 | [packages/service-agent/src/workspace/WidgetWorkspace.ts](packages/service-agent/src/workspace/WidgetWorkspace.ts) |  |
@@ -828,7 +830,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql](packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/014-add-actor-resource-name-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/014-add-actor-resource-name-keys.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts](packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-types.ts](packages/service-db/src/DbServiceTurso/migration-types.ts) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.actor-resource.ts](packages/service-db/src/DbServiceTurso/tx.actor-resource.ts) |  |
@@ -907,6 +911,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/shared-functions/package.json](packages/shared-functions/package.json) |  |
+| [packages/shared-functions/src/chat/fn.chat-id.ts](packages/shared-functions/src/chat/fn.chat-id.ts) |  |
 | [packages/shared-functions/src/functional/fn.compose.ts](packages/shared-functions/src/functional/fn.compose.ts) |  |
 | [packages/shared-functions/src/functional/fn.curry.ts](packages/shared-functions/src/functional/fn.curry.ts) |  |
 | [packages/shared-functions/src/functional/fn.debounce.ts](packages/shared-functions/src/functional/fn.debounce.ts) |  |

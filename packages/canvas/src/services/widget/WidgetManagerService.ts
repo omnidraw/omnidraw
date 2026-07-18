@@ -646,7 +646,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           },
           now: () => Date.now(),
           clone: <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T,
-          createUiWidgetPayload: wConfig.createInitialPayload,
+          cloneUiWidgetPayload: wConfig.createClonePayload,
           setupNode: (candidateNode) => {
             return fxAttachWidgetListener({
               node: candidateNode,

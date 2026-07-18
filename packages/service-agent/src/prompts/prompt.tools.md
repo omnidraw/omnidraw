@@ -66,7 +66,7 @@ Example name handoff:
 
 ## Bash
 
-- Bash starts in this conversation's chat cwd. That cwd is a starting directory, not a filesystem sandbox: normal shell commands can traverse relative or absolute paths, spawn subprocesses, use the network, and use inherited executable lookup with the host process's authority.
+- Bash starts in this conversation's `workspace` directory. The workspace is a starting directory, not a filesystem sandbox: normal shell commands can traverse relative or absolute paths, spawn subprocesses, use the network, and use inherited executable lookup with the host process's authority.
 - Prefer `read`, `edit`, `patch`, and `grep` for normal mounted-widget inspection and changes because they are precise and produce clear edit activity.
 - Use `bash` for builds, tests, formatting, package commands, and work the structured tools do not cover. It uses Pi's normal shell lifecycle, output streaming/truncation, exit reporting, cancellation, and bounded timeout behavior.
 - Quote paths. Avoid destructive commands unless the user explicitly requested them.

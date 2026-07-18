@@ -45,7 +45,9 @@ interface IActorServiceConfig {
 }
 
 type TWidgetId = string;
-type TSessionId = string;
+// Persisted/API `sessionId` is the Vibecanvas chat identity. Pi owns a separate
+// session ID inside each JSONL transcript header and filename.
+type TVibecanvasChatId = string;
 type TLoginId = string;
 type TPromptModel = {
   provider: string;
@@ -95,7 +97,7 @@ type TChatSessionEntry = {
   sessionManager: SessionManager;
 };
 
-type TDraftActorKey = `${TWidgetId}:${TSessionId}`;
+type TDraftActorKey = `${TWidgetId}:${TVibecanvasChatId}`;
 
 type TAgentDraftActorSnapshot = {
   state: TActorState;
@@ -186,14 +188,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
-  sessionMap: Record<TWidgetId, Record<TSessionId, TChatSessionEntry>> = {}
+  sessionMap: Record<TWidgetId, Record<TVibecanvasChatId, TChatSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
   #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
   #widgetDrafts: WidgetDraftController;
   #approvals: ApprovalCoordinator;
-  #chatWidgetIds = new Map<TSessionId, TWidgetId>();
+  #chatWidgetIds = new Map<TVibecanvasChatId, TWidgetId>();
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -252,7 +254,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#chatWidgetIds.set(sessionId, id)
 
     const cwd = await this.#workspace.ensureChat(sessionId)
-    const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+    const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
     await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
     const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
     const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
@@ -296,7 +298,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     let sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) {
       const cwd = await this.#workspace.ensureChat(sessionId)
-      const sessionDir = join(this.#piAgentDir, 'sessions', sessionId)
+      const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
       await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
       const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
       sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
@@ -398,7 +400,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { cleared: true }
   }
 
-  async approveChatDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
+  async approveChatDbChange(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): Promise<TWidgetDbChangeProposalRecord> {
     const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
       const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -439,7 +441,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  rejectChatDbChange(id: TWidgetId, sessionId: TSessionId, proposalId: string): TWidgetDbChangeProposalRecord {
+  rejectChatDbChange(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): TWidgetDbChangeProposalRecord {
     const releaseResolution = this.#claimDbChangeProposalResolution(id, sessionId, proposalId)
     try {
       const sessionEntry = this.sessionMap[id]?.[sessionId]
@@ -472,19 +474,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return { canceled: true, running: session.isStreaming }
   }
 
-  listChatApprovals(id: TWidgetId, sessionId: TSessionId): TApprovalView[] {
+  listChatApprovals(id: TWidgetId, sessionId: TVibecanvasChatId): TApprovalView[] {
     this.#assertChatScope(id, sessionId)
     return this.#approvals.list(sessionId)
   }
 
-  getChatApproval(id: TWidgetId, sessionId: TSessionId, approvalId: string): TApprovalView | null {
+  getChatApproval(id: TWidgetId, sessionId: TVibecanvasChatId, approvalId: string): TApprovalView | null {
     this.#assertChatScope(id, sessionId)
     return this.#approvals.get(sessionId, approvalId)
   }
 
   resolveChatApproval(
     id: TWidgetId,
-    sessionId: TSessionId,
+    sessionId: TVibecanvasChatId,
     approvalId: string,
     decision: TApprovalDecision,
     authorization: TToolAuthorizationContext = {},
@@ -1122,13 +1124,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #draftActorKey(id: TWidgetId, sessionId: TSessionId): TDraftActorKey {
+  #draftActorKey(id: TWidgetId, sessionId: TVibecanvasChatId): TDraftActorKey {
     return `${id}:${sessionId}`;
   }
 
   async #createChatSessionEntry(
     id: TWidgetId,
-    sessionId: TSessionId,
+    sessionId: TVibecanvasChatId,
     sessionManager: SessionManager,
     previousSession?: AgentSession,
     authorization: TToolAuthorizationContext = {},
@@ -1207,7 +1209,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     this.#flushSessionManager(sessionManager)
   }
 
-  async #resolveActiveMount(id: TWidgetId, sessionId: TSessionId): Promise<TWidgetMount> {
+  async #resolveActiveMount(id: TWidgetId, sessionId: TVibecanvasChatId): Promise<TWidgetMount> {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     const record = [...sessionEntry.sessionManager.getEntries()].reverse().find((entry) => (
@@ -1227,13 +1229,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return parsed.data as TVibecanvasJson
   }
 
-  #assertChatScope(id: TWidgetId, sessionId: TSessionId): void {
+  #assertChatScope(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     if (this.#chatWidgetIds.get(sessionId) !== id || !this.sessionMap[id]?.[sessionId]) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
   }
 
-  #publishToolEvent(id: TWidgetId, sessionId: TSessionId, event: TToolEvent): void {
+  #publishToolEvent(id: TWidgetId, sessionId: TVibecanvasChatId, event: TToolEvent): void {
     if (event.type !== 'widgetupdate') return
 
     this.#config.eventPublisherService.publishAgentEvent({
@@ -1312,12 +1314,12 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     })
   }
 
-  #disposeChatSession(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeChatSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     this.#disposeDraftActor(id, sessionId)
     this.#disposeAgentSession(id, sessionId)
   }
 
-  #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TSessionId, proposalId: string): () => void {
+  #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): () => void {
     const key = JSON.stringify([id, sessionId, proposalId])
     if (this.#dbChangeProposalResolutions.has(key)) {
       throw new Error('Database change proposal is already being resolved.')
@@ -1326,7 +1328,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return () => { this.#dbChangeProposalResolutions.delete(key) }
   }
 
-  #disposeAgentSession(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeAgentSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
     if (!sessionEntry) return
 
@@ -1340,7 +1342,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #disposeDraftActor(id: TWidgetId, sessionId: TSessionId): void {
+  #disposeDraftActor(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     const key = this.#draftActorKey(id, sessionId);
     const entry = this.#draftActorMap.get(key);
     if (!entry) return;
@@ -1434,7 +1436,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #draftActorNotReady(id: TWidgetId, sessionId: TSessionId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
+  #draftActorNotReady(id: TWidgetId, sessionId: TVibecanvasChatId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
     const label = `widget '${id}' and session '${sessionId}'`
     const messageMap: Record<TDraftActorNotReadyReason, string> = {
       'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
@@ -1452,7 +1454,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #draftManifestMessage(id: TWidgetId, sessionId: TSessionId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
+  #draftManifestMessage(id: TWidgetId, sessionId: TVibecanvasChatId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
     const label = `widget '${id}' and session '${sessionId}'`
     const messageMap: Record<typeof reason, string> = {
       'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
@@ -1463,7 +1465,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return messageMap[reason]
   }
 
-  #publishDraftActorEvent(id: TWidgetId, sessionId: TSessionId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
+  #publishDraftActorEvent(id: TWidgetId, sessionId: TVibecanvasChatId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
     const publishEvent: TAgentDraftActorEvent = {
       kind: 'draft-actor',
       widgetId: id,

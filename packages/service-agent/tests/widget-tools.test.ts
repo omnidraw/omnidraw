@@ -146,6 +146,7 @@ describe('widget tools and publish integration', () => {
 
     const secondTools = createWidgetWorkspaceTools({ workspace, chatId: 'chat-b', authorize: async () => true });
     expect(secondTools.map((tool) => tool.name)).toEqual(['vc_widget_list', 'vc_widget_create', 'vc_widget_validate']);
+    await workspace.ensureChat('chat-b');
     expect(await realpath(join(workspace.getChatRoot('chat-a'), 'widgets', 'Shared Timer')))
       .toBe(await realpath(join(workspace.getChatRoot('chat-b'), 'widgets', 'Shared Timer')));
 

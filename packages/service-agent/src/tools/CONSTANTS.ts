@@ -12,7 +12,7 @@ export const Z_VIBECANVAS_JSON = ZVibecanvasJson;
 export const AJV = new Ajv({ allErrors: true, strict: false });
 addFormats(AJV);
 
-// Bash starts in the chat cwd but is not filesystem-isolated there. Pi's shell can
+// Bash starts in the chat workspace but is not filesystem-isolated there. Pi's shell can
 // traverse paths, spawn subprocesses, use inherited executable lookup, and access
 // the network with the same authority as the Vibecanvas host process.
 export const BASH_DEFAULT_TIMEOUT_SECONDS = 120;

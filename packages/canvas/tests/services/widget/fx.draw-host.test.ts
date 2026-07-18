@@ -18,6 +18,24 @@ function createPoint(x: number, y: number) {
 }
 
 describe("widget draw host", () => {
+  test('creates fresh initial payload for each UI widget instance', () => {
+    ensureDom();
+    let sequence = 0;
+    const widgetConfig = {
+      id: 'ai',
+      createInitialPayload: () => ({ sessionId: `chat-${++sequence}` }),
+    };
+    const portal = {
+      konva: Konva,
+      themeService: new ThemeService(),
+      crypto: { randomUUID: () => `widget-${sequence}` } as unknown as Crypto,
+    };
+    const first = fxDrawHost(portal, { event: {} as never, point: createPoint(10, 20), widgetConfig });
+    const second = fxDrawHost(portal, { event: {} as never, point: createPoint(30, 40), widgetConfig });
+    expect((first?.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData).payload).toEqual({ sessionId: 'chat-1' });
+    expect((second?.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData).payload).toEqual({ sessionId: 'chat-2' });
+  });
+
   test("starts with an expanded body-visible minimum height", () => {
     ensureDom();
 

@@ -76,13 +76,16 @@ Every conversation receives exactly these 16 tools for its complete lifecycle:
 - Resources: `vc_resource_list`, `vc_resource_inspect`, `vc_resource_create`, `vc_resource_update`, `vc_resource_delete`, `vc_resource_data_read`, `vc_resource_data_write`
 - General: `web_fetch`, `bash`
 
-There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat cwd but is not filesystem-isolated there.
+There are no phases and no model-callable publish, approval, rejection, widget-delete, unload, symlink, or unrestricted file-write tools. `src/tools/ToolRegistry.ts` enforces the exact set. Authorization is checked on every call. Bash starts in the chat workspace but is not filesystem-isolated there.
 
 Chat filesystem ownership:
 
-- `shared-cwd/widgets` is the backend-owned shared draft view used by every independent conversation.
-- `widget-cwd/<name>` is the canonical published snapshot and is never mounted into AI Chat.
-- `widget-drafts/<name>` is the shared editable folder mounted by AI Chat, whether newly created or explicitly synced from published.
+- `chats/<UTC-date>/<sessionId>/` owns `chat.json`, Pi `history/`, and one `workspace/` for a dated Vibecanvas chat ID.
+- `chats/legacy/<sessionId>/` provides the same layout for existing safe IDs whose creation date is not encoded.
+- Canvas/API field `sessionId` is the stable Vibecanvas chat ID and directory leaf. Pi transcript headers contain a separate Pi-owned session ID.
+- `workspace/widgets/<name>` contains backend-owned links to shared drafts and remains the structured file-tool boundary.
+- `widgets/published/<name>` is the canonical published snapshot and is never mounted directly into AI Chat.
+- `widgets/drafts/<name>` is the shared editable folder mounted by independent chat workspaces.
 - `sdk` is the host-materialized `@vibecanvas/sdk` package used by generated drafts and trusted validation in both source and compiled runtimes.
 - Generic file access must enter through a validated `widgets/<name>` mount. Direct access to either shared root is rejected.
 - `edit` and `patch` serialize a complete read/transform/atomic-rename transaction per real widget root.

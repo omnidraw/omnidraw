@@ -343,7 +343,7 @@ async function collectMigrationFiles(): Promise<string[]> {
   for await (const file of migrationGlob.scan(serviceDbMigrationsDir)) {
     const filePath = path.join(serviceDbMigrationsDir, file)
     const stat = await Bun.file(filePath).stat()
-    if (stat.isFile()) {
+    if (stat.isFile() && file.endsWith('.sql')) {
       migrationFiles.push(file)
     }
   }
@@ -373,7 +373,7 @@ export function getEmbeddedMigrationPath(relativePath: string): string | null {
 }
 `
 
-  await Bun.write(path.join(rootDir, "packages/service-db/src/embedded-migrations.ts"), embeddedMigrationsCode)
+  await Bun.write(path.join(rootDir, "packages/service-db/src/_embedded-migrations.ts"), embeddedMigrationsCode)
   console.log(`   Generated embedded-migrations.ts (${migrationFiles.length} files)`)
 }
 

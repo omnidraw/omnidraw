@@ -57,6 +57,8 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Search, Plus, Minus, Check');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Accessibility,');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Host-published DbResource schema context');
   });
 

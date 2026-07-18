@@ -17,11 +17,13 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
 import { fnAssertSafeFinalDestination } from '../core/fn.safe-destination';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
-import { fnAssertSafeChatId, fnNormalizeWidgetName } from './fn.names';
+import { fnNormalizeWidgetName } from './fn.names';
 import { fxWidgetCatalog } from './fx.widget-catalog';
+import { txEnsureChatStorage } from './tx.chat-storage';
 import { txMaterializeSdkPackage } from './tx.materialize-sdk-package';
 import type {
   TResolvedMountedPath,
@@ -60,7 +62,6 @@ const MUTATION_FILE_BYTE_LIMIT = 5_000_000;
 export class WidgetWorkspace {
   readonly agentRoot: string;
   readonly chatRoot: string;
-  readonly sharedRoot: string;
   readonly publishedRoot: string;
   readonly draftRoot: string;
   readonly sdkPackagePath: string;
@@ -73,10 +74,9 @@ export class WidgetWorkspace {
 
   constructor(config: TWidgetWorkspaceConfig) {
     this.agentRoot = join(config.dataPath, 'pi', 'agent');
-    this.chatRoot = join(this.agentRoot, 'chat-cwd');
-    this.sharedRoot = join(this.agentRoot, 'shared-cwd');
-    this.publishedRoot = join(this.agentRoot, 'widget-cwd');
-    this.draftRoot = join(this.agentRoot, 'widget-drafts');
+    this.chatRoot = join(this.agentRoot, 'chats');
+    this.publishedRoot = join(this.agentRoot, 'widgets', 'published');
+    this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
     this.sdkPackagePath = join(this.agentRoot, 'sdk');
     this.installedWidgetsRoot = join(config.configPath, 'widgets');
     this.#platform = config.platform ?? process.platform;
@@ -89,7 +89,6 @@ export class WidgetWorkspace {
     });
     await Promise.all([
       mkdir(this.chatRoot, { recursive: true }),
-      mkdir(join(this.sharedRoot, 'widgets'), { recursive: true }),
       mkdir(this.publishedRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),
     ]);
@@ -97,12 +96,21 @@ export class WidgetWorkspace {
   }
 
   getChatRoot(chatId: string): string {
-    fnAssertSafeChatId(chatId);
-    return this.sharedRoot;
+    const segments = fnChatStorageSegments(chatId);
+    return join(this.agentRoot, ...segments.workspace);
+  }
+
+  getChatHistoryRoot(chatId: string): string {
+    const segments = fnChatStorageSegments(chatId);
+    return join(this.agentRoot, ...segments.history);
   }
 
   async ensureChat(chatId: string): Promise<string> {
-    const root = this.getChatRoot(chatId);
+    const storage = await txEnsureChatStorage({ join, mkdir, readFile, writeFile }, {
+      agentRoot: this.agentRoot,
+      sessionId: chatId,
+    });
+    const root = storage.workspace;
     await this.#withWidgetWrite(root, async () => {
       await mkdir(join(root, 'widgets'), { recursive: true });
       await this.#reconcileSharedMounts(root);
@@ -344,7 +352,7 @@ export class WidgetWorkspace {
   }
 
   async resolveMountedPath(chatId: string, lexicalPath: string, options: { allowMissing?: boolean } = {}): Promise<TResolvedMountedPath> {
-    if (isAbsolute(lexicalPath) || lexicalPath.includes('\\')) throw new Error('Widget file paths must be relative to the chat cwd.');
+    if (isAbsolute(lexicalPath) || lexicalPath.includes('\\')) throw new Error('Widget file paths must be relative to the chat workspace.');
     const parts = lexicalPath.split('/');
     if (parts.some((part) => part.length === 0 || part === '.' || part === '..')) throw new Error('Widget file path contains an unsafe segment.');
     if (parts[0] !== 'widgets' || parts.length < 3) {
@@ -645,11 +653,11 @@ export class WidgetWorkspace {
       const mountPath = join(widgetsRoot, entry.name);
       const existing = await lstat(mountPath).catch(() => null);
       if (existing) {
-        if (!existing.isSymbolicLink()) throw new Error(`Widget mount '${entry.name}' conflicts with an existing filesystem entry.`);
+        if (!existing.isSymbolicLink()) continue;
         const existingTarget = await realpath(mountPath).catch(() => null);
         if (existingTarget === targetPath) continue;
         if (await this.#ownedMountKind(mountPath, entry.name) !== 'published') {
-          throw new Error(`Widget mount '${entry.name}' points to an unexpected target.`);
+          continue;
         }
         await rm(mountPath);
       }

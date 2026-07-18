@@ -53,16 +53,37 @@ describe('widget names', () => {
 });
 
 describe('WidgetWorkspace', () => {
-  test('uses one empty persistent workspace independent of conversation identity', async () => {
+  test('uses one persistent workspace per chat with stable identity metadata', async () => {
     const { workspace } = await createWorkspace();
     const first = await workspace.ensureChat('chat-a');
     expect(await readdir(join(first, 'widgets'))).toEqual([]);
     expect(await workspace.ensureChat('chat-a')).toBe(first);
-    expect(await workspace.ensureChat('chat-b')).toBe(first);
-    expect(first).toEndWith('shared-cwd');
+    const second = await workspace.ensureChat('chat-b');
+    expect(second).not.toBe(first);
+    expect(first).toEndWith('chats/legacy/chat-a/workspace');
+    expect(JSON.parse(await readFile(join(first, '..', 'chat.json'), 'utf8'))).toEqual({
+      version: 1, sessionId: 'chat-a', legacy: true,
+    });
   });
 
-  test('serializes concurrent shared workspace reconciliation', async () => {
+  test('groups dated chat IDs directly and fails closed on metadata mismatch', async () => {
+    const { workspace } = await createWorkspace();
+    const sessionId = '2026-07-18T07-51-37-118Z--cebc287c-52c5-4658-a3ff-6f968af1401e';
+    const root = await workspace.ensureChat(sessionId);
+    expect(root).toEndWith(`chats/2026-07-18/${sessionId}/workspace`);
+    const metadataPath = join(root, '..', 'chat.json');
+    expect(JSON.parse(await readFile(metadataPath, 'utf8'))).toEqual({
+      version: 1,
+      sessionId,
+      createdAt: '2026-07-18T07:51:37.118Z',
+      legacy: false,
+    });
+    await writeFile(metadataPath, `${JSON.stringify({ version: 1, sessionId: 'other', legacy: false })}\n`, 'utf8');
+    await expect(workspace.ensureChat(sessionId)).rejects.toThrow('does not match');
+    await expect(workspace.ensureChat('2026-02-30T07-51-37-118Z--cebc287c-52c5-4658-a3ff-6f968af1401e')).rejects.toThrow('invalid');
+  });
+
+  test('reconciles shared drafts into concurrent independent chat workspaces', async () => {
     const { workspace } = await createWorkspace();
     await createWidgetFolder(workspace.draftRoot, 'Weather');
     const roots = await Promise.all([
@@ -70,9 +91,11 @@ describe('WidgetWorkspace', () => {
       workspace.ensureChat('chat-b'),
       workspace.ensureChat('chat-c'),
     ]);
-    expect(new Set(roots).size).toBe(1);
-    expect(await readdir(join(roots[0], 'widgets'))).toEqual(['Weather']);
-    expect(await realpath(join(roots[0], 'widgets', 'Weather'))).toBe(await realpath(join(workspace.draftRoot, 'Weather')));
+    expect(new Set(roots).size).toBe(3);
+    for (const root of roots) {
+      expect(await readdir(join(root, 'widgets'))).toEqual(['Weather']);
+      expect(await realpath(join(root, 'widgets', 'Weather'))).toBe(await realpath(join(workspace.draftRoot, 'Weather')));
+    }
   });
 
   test('reconciles a missing canonical published folder without overwriting it later', async () => {
@@ -195,9 +218,10 @@ describe('WidgetWorkspace', () => {
     expect(await realpath(mount.mountPath)).toBe(await realpath(join(workspace.draftRoot, 'Weather')));
 
     const secondChat = await workspace.ensureChat('chat-b');
-    expect(secondChat).toBe(firstChat);
+    expect(secondChat).not.toBe(firstChat);
     expect(await workspace.removeAllMounts('chat-b')).toBe(1);
     expect(await readdir(join(secondChat, 'widgets'))).toEqual([]);
+    expect(await readdir(join(firstChat, 'widgets'))).toEqual(['Weather']);
   });
 
   test('rejects root collisions, case collisions, conflicting mounts, and direct access', async () => {

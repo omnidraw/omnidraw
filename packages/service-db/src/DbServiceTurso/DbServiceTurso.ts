@@ -1,5 +1,6 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import path from "node:path";
+import * as fs from 'node:fs/promises';
 import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
@@ -111,7 +112,17 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   async start(_ctx?: Parameters<IStartableService["start"]>[0]): Promise<void> {
     await this.db.connect()
     await txDefaultRunPragmas({ db: this.db }, {})
-    await txRunMigrations({ db: this.db, Bun, path }, {})
+    const migrationResult = await txRunMigrations({
+      db: this.db,
+      Bun,
+      path,
+      fs,
+      dataDir: this.config.dataDir,
+      platform: process.platform,
+    }, {})
+    if (!this.config.silentMigrations) {
+      for (const warning of migrationResult.warnings) console.warn(`[migration] ${warning}`)
+    }
     await txActorResourceAuditNames(this, {})
   }
 

@@ -14,7 +14,7 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
   const execute = definition.execute.bind(definition);
   return {
     ...definition,
-    description: `Execute a normal Pi bash command starting in the chat cwd. The cwd is not a filesystem sandbox. Defaults to ${BASH_DEFAULT_TIMEOUT_SECONDS} seconds and accepts at most ${BASH_MAX_TIMEOUT_SECONDS} seconds. Use structured read, edit, patch, and grep for normal mounted-widget changes.`,
+    description: `Execute a normal Pi bash command starting in the chat workspace. The workspace is not a filesystem sandbox. Defaults to ${BASH_DEFAULT_TIMEOUT_SECONDS} seconds and accepts at most ${BASH_MAX_TIMEOUT_SECONDS} seconds. Use structured read, edit, patch, and grep for normal mounted-widget changes.`,
     parameters: Type.Object({
       command: Type.String({ minLength: 1, description: 'Bash command to execute.' }),
       timeout: Type.Optional(Type.Number({

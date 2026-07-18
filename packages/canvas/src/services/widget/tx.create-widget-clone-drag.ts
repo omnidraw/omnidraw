@@ -19,7 +19,7 @@ type TPortal = {
   now: () => number;
   setupNode: (node: Konva.Group) => boolean;
   clone: <T>(value: T) => T;
-  createUiWidgetPayload?: () => Record<string, any>;
+  cloneUiWidgetPayload?: (sourcePayload: Record<string, any>) => Record<string, any>;
 }
 
 type TArgs = {
