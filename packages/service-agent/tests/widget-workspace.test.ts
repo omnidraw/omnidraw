@@ -232,7 +232,7 @@ describe('WidgetWorkspace', () => {
     await expect(workspace.loadWidget('chat-a', 'weather')).rejects.toThrow('case-insensitive');
     await expect(workspace.resolveMountedPath('chat-a', workspace.publishedRoot)).rejects.toThrow('relative');
     await expect(workspace.resolveMountedPath('chat-a', 'widget-cwd/Weather/widget/main.ts')).rejects.toThrow('only through');
-    await expect(workspace.createDraft('chat-a', { name: 'Timer', kind: 'widget' }, async () => [])).rejects.toThrow('already in use');
+    await expect(workspace.createDraft('chat-a', { name: 'Timer' }, async () => [])).rejects.toThrow('already in use');
   });
 
   test('rejects an injected mount and a nested symlink escaping its registered widget', async () => {
@@ -252,13 +252,13 @@ describe('WidgetWorkspace', () => {
 
   test('rolls back partial draft scaffolds and atomically mounts complete drafts', async () => {
     const { workspace } = await createWorkspace();
-    await expect(workspace.createDraft('chat-a', { name: 'Broken', kind: 'widget' }, async ({ cwd }) => {
+    await expect(workspace.createDraft('chat-a', { name: 'Broken' }, async ({ cwd }) => {
       await writeFile(join(cwd, 'partial.txt'), 'partial', 'utf8');
       throw new Error('scaffold failed');
     })).rejects.toThrow('scaffold failed');
     expect(await readdir(workspace.draftRoot)).toEqual([]);
 
-    const created = await workspace.createDraft('chat-a', { name: 'Timer', kind: 'actor-widget' }, async ({ cwd, name }) => {
+    const created = await workspace.createDraft('chat-a', { name: 'Timer' }, async ({ cwd, name }) => {
       await mkdir(join(cwd, 'widget'), { recursive: true });
       await writeFile(join(cwd, 'vibecanvas.json'), `${JSON.stringify({ name })}\n`, 'utf8');
       await writeFile(join(cwd, 'widget', 'main.ts'), 'complete', 'utf8');

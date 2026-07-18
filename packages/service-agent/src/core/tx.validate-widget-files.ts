@@ -1,6 +1,7 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TValidationResult } from './types';
 import { fxWalkFiles } from './fx.walk-files';
+import { fnWidgetTypescriptCommand } from './fn.widget-typescript-command';
 import { fnLintActorRegistry } from './lint/fn.actor-registry';
 import { fnLintRequiredWidgetFiles, fnNormalizeRelativeFilePath } from './lint/fn.required-widget-files';
 import { fnValidateManifest } from './lint/fn.validate-manifest';
@@ -33,6 +34,7 @@ export type TArgsValidateWidgetFiles = {
 
 function txCompileActorTypescript(portal: TPortalValidateWidgetFiles, args: TArgsValidateWidgetFiles): Promise<string[]> {
   const configPath = portal.join(args.cwd, '.vibecanvas-validate.tsconfig.json');
+  const command = fnWidgetTypescriptCommand(configPath);
   const config = `${JSON.stringify({
     compilerOptions: {
       target: 'ES2022',
@@ -49,7 +51,7 @@ function txCompileActorTypescript(portal: TPortalValidateWidgetFiles, args: TArg
   }, null, 2)}\n`;
 
   return portal.writeFile(configPath, config, 'utf8').then(() => new Promise<string[]>((resolve) => {
-    portal.execFile('bun', ['x', 'tsc', '--pretty', 'false', '--noEmit', '-p', configPath], {
+    portal.execFile(command.file, command.args, {
       cwd: args.cwd,
       timeout: 30_000,
       maxBuffer: 1_000_000,

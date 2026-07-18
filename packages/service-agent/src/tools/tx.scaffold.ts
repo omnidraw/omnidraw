@@ -1,4 +1,5 @@
-import type { TFunctionName, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { WIDGET_TYPESCRIPT_VERSION } from '../core/CONSTANTS';
 import { fnWidgetDraftFilesFromManifest } from '../core/fn.widget-draft-files';
 
 type TPortal = {
@@ -20,22 +21,16 @@ function toExportName(functionName: string) {
   return `${prefix}${pascal}`;
 }
 
-function functionStub(functionName: TFunctionName) {
-  const exportName = toExportName(functionName);
-  const prefix = functionName.split('.', 1)[0];
-  const shouldContinue = prefix === 'fn' || prefix === 'fx';
-  const portalType = prefix === 'fn' ? 'TFnPortal' : prefix === 'fx' ? 'TFxPortal' : 'TTxPortal';
-  const argsType = prefix === 'fn' ? 'TFnArgs' : prefix === 'fx' ? 'TFxArgs' : 'TTxArgs';
-
+function resetErrorTransaction() {
   return [
-    `import type { ${argsType}, ${portalType} } from "@vibecanvas/sdk/actor";`,
+    'import type { TTxArgs, TTxPortal } from "@vibecanvas/sdk/actor";',
     ``,
-    `type TPortal = ${portalType};`,
-    `type TArgs = ${argsType};`,
+    'type TPortal = TTxPortal;',
+    'type TArgs = TTxArgs;',
     ``,
-    `export async function ${exportName}(portal: TPortal, args: TArgs) {`,
+    'export async function txResetError(portal: TPortal, args: TArgs) {',
     `  void args;`,
-    shouldContinue ? `  return portal.next();` : `  throw new Error("${functionName} is not implemented yet");`,
+    `  await portal.next();`,
     `}`,
     ``,
   ].join('\n');
@@ -48,7 +43,7 @@ function actorTypes(manifest: TVibecanvasJson) {
     : 'never';
 
   return [
-    `export type TActorData = ${JSON.stringify(manifest.actor.initialData, null, 2)};`,
+    `export type TActorData = Record<string, never>;`,
     `export type TActorResourceSlot = ${resourceSlotType};`,
     '',
   ].join('\n');
@@ -94,7 +89,7 @@ function packageJson(manifest: TVibecanvasJson, sdkDependency: string) {
       '@vibecanvas/sdk': sdkDependency,
     },
     devDependencies: {
-      typescript: '^5.9.3',
+      typescript: `^${WIDGET_TYPESCRIPT_VERSION}`,
     },
   }, null, 2)}\n`;
 }
@@ -115,7 +110,7 @@ function tsconfigJson() {
 }
 
 export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs) {
-  const changedFiles = ['vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts', 'widget/main.ts', 'widget/main.css'];
+  const changedFiles = ['vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts', 'actor/tx.resetError.ts', 'widget/main.ts', 'widget/main.css'];
   await portal.mkdir(portal.join(args.cwd, 'actor'), { recursive: true });
   await portal.mkdir(portal.join(args.cwd, 'widget'), { recursive: true });
   await portal.writeFile(portal.join(args.cwd, 'vibecanvas.json'), `${JSON.stringify(args.manifest, null, 2)}\n`, 'utf8');
@@ -123,24 +118,82 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs) {
   await portal.writeFile(portal.join(args.cwd, 'tsconfig.json'), tsconfigJson(), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'actor', 'functions.ts'), functionsRegistry(args.manifest), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'actor', 'types.ts'), actorTypes(args.manifest), 'utf8');
+  await portal.writeFile(portal.join(args.cwd, 'actor', 'tx.resetError.ts'), resetErrorTransaction(), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'widget', 'main.ts'), [
     'import { html } from "@arrow-js/core";',
     'import { actor } from "@vibecanvas/sdk/widget";',
     '',
-    'export default html`<section class="vibecanvas-widget">',
-    `  <h1>${args.manifest.widget.tool.label}</h1>`,
-    '  <p>Actor state: ${() => actor.state.value}</p>',
-    '  <pre>${() => JSON.stringify(actor.context.value, null, 2)}</pre>',
-    '</section>`;',
+    'const isStateFamily = (family: "booting" | "error") => {',
+    '  const state = actor.state.value;',
+    '  return state === family || state.startsWith(`${family}.`);',
+    '};',
+    '',
+    'const resetError = () => {',
+    '  void actor.sendMessage("in.resetError", {});',
+    '};',
+    '',
+    'const viewForState = () => {',
+    '  if (isStateFamily("booting")) {',
+    '    return html`<div class="widget-status"><p>Starting widget...</p></div>`;',
+    '  }',
+    '  if (isStateFamily("error")) {',
+    '    return html`',
+    '      <div class="widget-status widget-status--error">',
+    '        <p>Widget encountered an error.</p>',
+    '        <button type="button" @click="${resetError}">Reset</button>',
+    '      </div>',
+    '    `;',
+    '  }',
+    '  return html`<div class="widget-status"><p>Widget under construction...</p></div>`;',
+    '};',
+    '',
+    'export default html`',
+    '  <section class="vibecanvas-widget" aria-live="polite">',
+    '    ${viewForState}',
+    '  </section>',
+    '`;',
     '',
   ].join('\n'), 'utf8');
-  await portal.writeFile(portal.join(args.cwd, 'widget', 'main.css'), '.vibecanvas-widget { font: 14px system-ui; padding: 12px; }\n', 'utf8');
-
-  for (const functionName of fnWidgetDraftFilesFromManifest(args.manifest)) {
-    const relPath = `actor/${functionName}.ts`;
-    await portal.writeFile(portal.join(args.cwd, relPath), functionStub(functionName), 'utf8');
-    changedFiles.push(relPath);
-  }
+  await portal.writeFile(portal.join(args.cwd, 'widget', 'main.css'), [
+    '.vibecanvas-widget {',
+    '  box-sizing: border-box;',
+    '  display: grid;',
+    '  min-height: 100%;',
+    '  place-items: center;',
+    '  padding: 20px;',
+    '  background: #ffffff;',
+    '  color: #1f2937;',
+    '  font: 14px/1.5 system-ui, sans-serif;',
+    '}',
+    '',
+    '.widget-status {',
+    '  text-align: center;',
+    '}',
+    '',
+    '.widget-status p {',
+    '  margin: 0;',
+    '}',
+    '',
+    '.widget-status--error {',
+    '  color: #991b1b;',
+    '}',
+    '',
+    '.widget-status button {',
+    '  margin-top: 12px;',
+    '  padding: 6px 12px;',
+    '  border: 1px solid currentColor;',
+    '  background: transparent;',
+    '  color: inherit;',
+    '  font: inherit;',
+    '  cursor: pointer;',
+    '}',
+    '',
+    '.widget-status button:focus-visible {',
+    '  outline: 2px solid #2563eb;',
+    '  outline-offset: 2px;',
+    '}',
+    '',
+  ].join('\n'), 'utf8');
 
   return changedFiles;
 }

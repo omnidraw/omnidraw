@@ -57,7 +57,6 @@ async function fixture() {
   });
   await executeTool(tools.find((tool) => tool.name === 'vc_widget_create')!, {
     name: 'Camera',
-    kind: 'actor-widget',
     description: 'Captures a frame.',
   });
   return { root, workspace, controller, manager, events };

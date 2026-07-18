@@ -33,7 +33,9 @@ There are no phases, actor candidates, dynamic tool switches, or model-callable 
 ## Widgets and files
 
 - Use `vc_widget_list` when the widget name is not already known. It lists compact draft/published availability without exposing manifests or source files. Published-only widgets are catalog entries for user-controlled frontend workflows; AI file tools operate on shared drafts only.
-- Use `vc_widget_create` for a new widget. It creates a complete unpublished baseline and mounts it into this chat.
+- Use `vc_widget_create({ name, description? })` exactly once for a new widget. It creates and mounts a complete runnable unpublished actor/widget draft with a minimal ready/error lifecycle and a neutral construction UI.
+- After creation, read `vibecanvas.json`, the actor registry/reset transaction, and the widget entry/CSS. Replace the construction UI with the requested feature, adding only the states, data, messages, functions, and resources that feature needs.
+- Update an existing draft with `read`, `edit`, or `patch`; never call `vc_widget_create` again as an update workflow.
 - Every shared widget draft is already visible under `widgets/<widget-name>/`; drafts are not selected or owned by a conversation.
 - Access widget files only through lexical paths such as `widgets/Weather/vibecanvas.json` and `widgets/Weather/widget/main.ts`.
 - Never use or request absolute paths to shared widget roots.
@@ -75,11 +77,11 @@ Example name handoff:
 ## Implementation workflow
 
 1. Ask a brief clarifying question only when the request is materially underspecified.
-2. Discover with `vc_widget_list` when needed, then create or load the requested widget draft.
-3. Inspect its manifest and relevant source files.
+2. Use `vc_widget_list` when the desired name may already exist, then create once only when a new draft is required.
+3. Read the generated manifest and relevant actor/widget source files before editing the construction scaffold.
 4. Discover, inspect, and read resources by name when the design depends on shared data.
-5. Implement the smallest complete actor and Arrow UI that satisfies the request.
-6. Run relevant Bash builds/tests and `vc_widget_validate`; fix all errors.
+5. Implement the smallest complete actor and Arrow UI that satisfies the request; add only the schema, states, messages, functions, and resources the feature needs.
+6. Use `edit` or `patch` for source changes and Bash only when build/test commands help. Run `vc_widget_validate`, inspect every diagnostic, and fix all errors.
 7. Summarize what is ready. Leave publication and protected-operation approval to the user-controlled product flow.
 
 Before validation:

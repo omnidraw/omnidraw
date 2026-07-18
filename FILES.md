@@ -733,11 +733,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/AgentService.ts](packages/service-agent/src/AgentService.ts) |  |
 | [packages/service-agent/src/approval/ApprovalCoordinator.ts](packages/service-agent/src/approval/ApprovalCoordinator.ts) |  |
 | [packages/service-agent/src/approval/types.ts](packages/service-agent/src/approval/types.ts) |  |
+| [packages/service-agent/src/core/CONSTANTS.ts](packages/service-agent/src/core/CONSTANTS.ts) |  |
 | [packages/service-agent/src/core/fn.bump-widget-version.ts](packages/service-agent/src/core/fn.bump-widget-version.ts) |  |
 | [packages/service-agent/src/core/fn.draft-resource-bindings.ts](packages/service-agent/src/core/fn.draft-resource-bindings.ts) |  |
 | [packages/service-agent/src/core/fn.patch-draft-manifest.ts](packages/service-agent/src/core/fn.patch-draft-manifest.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
+| [packages/service-agent/src/core/fn.widget-typescript-command.ts](packages/service-agent/src/core/fn.widget-typescript-command.ts) |  |
 | [packages/service-agent/src/core/fx.session-records.ts](packages/service-agent/src/core/fx.session-records.ts) |  |
 | [packages/service-agent/src/core/fx.walk-files.ts](packages/service-agent/src/core/fx.walk-files.ts) |  |
 | [packages/service-agent/src/core/lint/fn.actor-registry.ts](packages/service-agent/src/core/lint/fn.actor-registry.ts) |  |

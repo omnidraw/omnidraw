@@ -1,0 +1,1 @@
+export const WIDGET_TYPESCRIPT_VERSION = '5.9.3';

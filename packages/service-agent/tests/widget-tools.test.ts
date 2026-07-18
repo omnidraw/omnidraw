@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { lstat, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { Check } from 'typebox/value';
 import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { AgentService } from '../src/AgentService';
 import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
@@ -48,10 +50,10 @@ async function createDiscoverableWidget(
   const value = manifest as { name?: unknown; kind?: unknown };
   const content = typeof manifest === 'string'
     ? manifest
-    : JSON.stringify(fnBuildWidgetCreateManifest({
-        name: typeof value.name === 'string' ? value.name : name,
-        kind: value.kind === 'actor-widget' ? value.kind : 'widget',
-      }));
+    : JSON.stringify({
+        ...fnBuildWidgetCreateManifest({ name: typeof value.name === 'string' ? value.name : name }),
+        ...(value.kind === 'widget' || value.kind === 'actor-widget' ? { kind: value.kind } : {}),
+      });
   await writeFile(join(folder, 'vibecanvas.json'), content, 'utf8');
 }
 
@@ -128,17 +130,75 @@ describe('widget tools and publish integration', () => {
       onMounted: (mount) => mounted.push(mount.name),
     });
     const create = firstTools.find((tool) => tool.name === 'vc_widget_create')!;
-    const created = await executeTool(create, { name: 'Shared Timer', kind: 'actor-widget', description: 'A shared timer.' });
+    expect(Object.keys((create.parameters as any).properties)).toEqual(['name', 'description']);
+    expect(Check(create.parameters as any, { name: 'Shared Timer' })).toBe(true);
+    expect(Check(create.parameters as any, { name: 'Shared Timer', description: 'A shared timer.' })).toBe(true);
+    expect(Check(create.parameters as any, { name: 'Shared Timer', kind: 'actor-widget' })).toBe(false);
+    expect(fnBuildWidgetCreateManifest({ name: 'Minimal Draft' })).not.toHaveProperty('description');
+    expect(fnBuildWidgetCreateManifest({ name: 'Minimal Draft' })).not.toHaveProperty('kind');
+    const rejectedKind = await executeTool(create, { name: 'Legacy Choice', kind: 'actor-widget' });
+    expect(providerModelData(rejectedKind)).toMatchObject({ error: { code: 'WIDGET_CREATE_INPUT_INVALID' } });
+    await expect(lstat(join(workspace.draftRoot, 'Legacy Choice'))).rejects.toThrow();
+
+    const created = await executeTool(create, { name: 'Shared Timer', description: 'A shared timer.' });
     expect(created.isError).toBeUndefined();
     expect(created.content[0]?.text).toContain('"mountPath": "widgets/Shared Timer"');
     expect(created.content[0]?.text).toContain('"draft": true');
-    expect(created.details.files).toEqual(expect.arrayContaining([
-      'vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts', 'widget/main.ts', 'widget/main.css',
-    ]));
-    expect(mounted).toEqual(['Shared Timer']);
-    expect(JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'vibecanvas.json'), 'utf8'))).toMatchObject({
-      slug: 'shared-timer', name: 'Shared Timer', kind: 'actor-widget', description: 'A shared timer.',
+    expect(created.details).toEqual({
+      name: 'Shared Timer',
+      mountPath: 'widgets/Shared Timer',
+      source: 'draft',
+      draft: true,
+      files: [
+        'vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts',
+        'actor/tx.resetError.ts', 'widget/main.ts', 'widget/main.css',
+      ],
     });
+    expect(JSON.stringify(created)).not.toContain('"kind"');
+    expect(JSON.stringify(created)).not.toContain(workspace.draftRoot);
+    expect(mounted).toEqual(['Shared Timer']);
+    const manifest = JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'vibecanvas.json'), 'utf8'));
+    expect(manifest).toMatchObject({
+      slug: 'shared-timer', name: 'Shared Timer', description: 'A shared timer.',
+      actor: {
+        initialState: 'ready',
+        initialData: {},
+        dataSchema: { type: 'object', properties: {}, additionalProperties: false },
+        resources: {},
+        states: {
+          ready: { on: {} },
+          error: { on: { 'in.resetError': { func: ['tx.resetError'], targetState: 'ready' } } },
+        },
+        inputMsgSchema: {
+          'in.resetError': { type: 'object', properties: {}, additionalProperties: false },
+        },
+        outputMsgSchema: {},
+      },
+    });
+    expect(manifest.kind).toBeUndefined();
+    expect(JSON.stringify(manifest)).not.toContain('in.update');
+    expect(JSON.stringify(manifest)).not.toContain('tx.update');
+    const resetSource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'actor', 'tx.resetError.ts'), 'utf8');
+    expect(resetSource).toContain('export async function txResetError(portal: TPortal, args: TArgs)');
+    expect(resetSource).toContain('await portal.next();');
+    const resetModule = await import(pathToFileURL(join(workspace.draftRoot, 'Shared Timer', 'actor', 'tx.resetError.ts')).href);
+    let resetTransitions = 0;
+    await resetModule.txResetError({ next: async () => { resetTransitions += 1; } } as never, {} as never);
+    expect(resetTransitions).toBe(1);
+    const registrySource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'actor', 'functions.ts'), 'utf8');
+    expect(registrySource).toContain('"tx.resetError": txResetError');
+    expect(registrySource).not.toContain('tx.update');
+    const widgetSource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'widget', 'main.ts'), 'utf8');
+    expect(widgetSource).toContain('state === family || state.startsWith(`${family}.`)');
+    expect(widgetSource).toContain('Starting widget...');
+    expect(widgetSource).toContain('Widget under construction...');
+    expect(widgetSource).toContain('Widget encountered an error.');
+    expect(widgetSource).toContain('actor.sendMessage("in.resetError", {})');
+    expect(widgetSource).toContain('>Reset</button>');
+    const generatedSources = await Promise.all(created.details.files.map((file: string) => (
+      readFile(join(workspace.draftRoot, 'Shared Timer', file), 'utf8')
+    )));
+    expect(generatedSources.every((source) => !source.includes('not implemented yet'))).toBe(true);
     expect(JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'package.json'), 'utf8'))).toMatchObject({
       dependencies: { '@vibecanvas/sdk': `file:${workspace.sdkPackagePath}` },
     });
@@ -187,7 +247,7 @@ describe('widget tools and publish integration', () => {
     const { dataPath, configPath, workspace } = await fixture();
     const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
       .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Rollback Timer', kind: 'widget' });
+    await executeTool(create, { name: 'Rollback Timer' });
     await workspace.loadWidget('chat-b', 'Rollback Timer');
 
     const service = new AgentService({
@@ -222,7 +282,7 @@ describe('widget tools and publish integration', () => {
     const { dataPath, configPath, workspace } = await fixture();
     const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
       .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Binding Rollback', kind: 'widget' });
+    await executeTool(create, { name: 'Binding Rollback' });
     await workspace.loadWidget('chat-b', 'Binding Rollback');
     let reloads = 0;
 
@@ -255,7 +315,7 @@ describe('widget tools and publish integration', () => {
     const { dataPath, configPath, workspace } = await fixture();
     const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
       .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Published Timer', kind: 'widget' });
+    await executeTool(create, { name: 'Published Timer' });
     await workspace.loadWidget('chat-b', 'Published Timer');
 
     const service = new AgentService({
@@ -295,7 +355,7 @@ describe('widget tools and publish integration', () => {
     const { dataPath, configPath, workspace } = await fixture();
     const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
       .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Atomic Timer', kind: 'widget' });
+    await executeTool(create, { name: 'Atomic Timer' });
     let rejectReload = false;
     let rejectedOnce = false;
     const service = new AgentService({

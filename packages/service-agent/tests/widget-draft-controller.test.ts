@@ -57,7 +57,7 @@ describe("WidgetDraftController", () => {
 
     const created = await executeTool(
       tools.find((tool) => tool.name === "vc_widget_create")!,
-      { name: "Shared Clock", kind: "widget", description: "A shared clock." },
+      { name: "Shared Clock", description: "A shared clock." },
     )
     expect(created.isError).toBeUndefined()
 
@@ -109,7 +109,6 @@ describe("WidgetDraftController", () => {
     })
     await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
       name: "Snapshot Clock",
-      kind: "actor-widget",
       description: "A snapshot-backed clock.",
     })
 
@@ -190,7 +189,6 @@ describe("WidgetDraftController", () => {
     const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
     await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
       name: "Closing Preview",
-      kind: "actor-widget",
     })
     const draft = await controller.get("Closing Preview")
 
@@ -229,7 +227,6 @@ describe("WidgetDraftController", () => {
     const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
     await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
       name: "Racing Clock",
-      kind: "actor-widget",
     })
     const initial = await controller.get("Racing Clock")
     mutateDuringCopy = true
@@ -275,12 +272,17 @@ describe("WidgetDraftController", () => {
     const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
     await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
       name: "Causal Preview",
-      kind: "actor-widget",
     })
     const draftRoot = join(workspace.draftRoot, "Causal Preview")
     const manifestPath = join(draftRoot, "vibecanvas.json")
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"))
     manifest.actor.initialData = { version: "initial" }
+    manifest.actor.dataSchema = {
+      type: "object",
+      properties: { version: { type: "string" } },
+      required: ["version"],
+      additionalProperties: false,
+    }
     manifest.actor.states.ready.onEnter = ["fx.loadVersion"]
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
     await writeFile(join(draftRoot, "actor", "fx.loadVersion.ts"), [
@@ -295,11 +297,10 @@ describe("WidgetDraftController", () => {
     await writeFile(join(draftRoot, "actor", "functions.ts"), [
       "import { fxLoadVersion } from './fx.loadVersion';",
       "import { txResetError } from './tx.resetError';",
-      "import { txUpdate } from './tx.update';",
       "export default {",
       "  fn: {},",
       "  fx: { 'fx.loadVersion': fxLoadVersion },",
-      "  tx: { 'tx.resetError': txResetError, 'tx.update': txUpdate },",
+      "  tx: { 'tx.resetError': txResetError },",
       "};",
       "",
     ].join("\n"), "utf8")
@@ -332,7 +333,6 @@ describe("WidgetDraftController", () => {
     const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
     await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
       name: "Stable Slug",
-      kind: "widget",
     })
 
     const initial = await controller.get("Stable Slug")
@@ -374,7 +374,6 @@ describe("WidgetDraftController", () => {
     const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
     await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
       name: "Binding Compensation",
-      kind: "actor-widget",
     })
     const initial = await firstController.get("Binding Compensation")
     expect((await firstController.publish("Binding Compensation", initial!.revision)).published).toBe(true)

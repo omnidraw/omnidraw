@@ -38,10 +38,12 @@ describe("actor manifest compatibility", () => {
 
   test("accepts optional persisted widget kind while keeping legacy manifests compatible", () => {
     const legacy = manifestWithTransition({ func: [], targetState: "busy" });
-    const typed = { ...legacy, kind: "actor-widget" as const };
+    const widget = { ...legacy, kind: "widget" as const };
+    const actorWidget = { ...legacy, kind: "actor-widget" as const };
 
     expect(ZVibecanvasJson.safeParse(legacy).success).toBe(true);
-    expect(ZVibecanvasJson.safeParse(typed)).toMatchObject({ success: true, data: { kind: "actor-widget" } });
+    expect(ZVibecanvasJson.safeParse(widget)).toMatchObject({ success: true, data: { kind: "widget" } });
+    expect(ZVibecanvasJson.safeParse(actorWidget)).toMatchObject({ success: true, data: { kind: "actor-widget" } });
     expect(ZVibecanvasJson.safeParse({ ...legacy, kind: "unknown" }).success).toBe(false);
   });
 

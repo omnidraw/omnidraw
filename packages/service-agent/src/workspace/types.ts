@@ -22,7 +22,6 @@ export type TResolvedMountedPath = {
 
 export type TWidgetCreateInput = {
   name: string;
-  kind: 'widget' | 'actor-widget';
   description?: string;
 };
 

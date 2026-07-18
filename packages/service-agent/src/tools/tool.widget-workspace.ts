@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { Type } from 'typebox';
+import { Check } from 'typebox/value';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
@@ -24,6 +25,11 @@ type TCreateWidgetWorkspaceToolsArgs = {
   onMounted?: (mount: TWidgetMount) => void;
   onDraftChanged?: (change: TWidgetDraftChange) => void | Promise<void>;
 };
+
+const WIDGET_CREATE_PARAMETERS = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 120 }),
+  description: Type.Optional(Type.String({ maxLength: 2_000 })),
+}, { additionalProperties: false });
 
 export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs): TToolDefinition[] {
   const list = defineTool({
@@ -70,22 +76,32 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   const create = defineTool({
     name: 'vc_widget_create',
     label: 'Create Widget Draft',
-    description: 'Create a complete unpublished widget draft in the shared draft workspace. It becomes visible to every conversation under widgets/<name>. Use edit and patch afterward to implement product-specific behavior.',
-    parameters: Type.Object({
-      name: Type.String({ minLength: 1, maxLength: 120 }),
-      kind: Type.Union([Type.Literal('widget'), Type.Literal('actor-widget')]),
-      description: Type.Optional(Type.String({ maxLength: 2_000 })),
-    }, { additionalProperties: false }),
+    description: 'Create and mount one complete runnable unpublished actor/widget draft. Continue by reading the generated files, editing or patching the construction scaffold, then call vc_widget_validate. Create is not an update workflow.',
+    parameters: WIDGET_CREATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('vc_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
+      if (!Check(WIDGET_CREATE_PARAMETERS, params)) {
+        return fnToolError({
+          code: 'WIDGET_CREATE_INPUT_INVALID',
+          message: 'Widget creation accepts only a name and optional description.',
+        });
+      }
       try {
-        const created = await args.workspace.createDraft(args.chatId, params, async ({ cwd, name, kind, description }) => {
-          const manifest = fnBuildWidgetCreateManifest({ name, kind, description });
-          return txWriteWidgetScaffold({ mkdir, writeFile, join }, {
+        const created = await args.workspace.createDraft(args.chatId, params, async ({ cwd, name, description }) => {
+          const manifest = fnBuildWidgetCreateManifest({ name, description });
+          const files = await txWriteWidgetScaffold({ mkdir, writeFile, join }, {
             cwd,
             manifest,
             sdkDependency: `file:${args.workspace.sdkPackagePath}`,
           });
+          const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
+            cwd,
+            sdkActorTypePath: join(args.workspace.sdkPackagePath, 'src', 'actor.ts'),
+          });
+          if (!validation.ok) {
+            throw new Error(`Generated widget scaffold is invalid: ${validation.errors.join('; ')}`);
+          }
+          return files;
         });
         args.onMounted?.(created.mount);
         await args.onDraftChanged?.({ name: created.mount.name, type: 'created' });
@@ -97,7 +113,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           files: created.files,
         };
         return fnToolSuccess({
-          summary: `Created and mounted unpublished widget draft '${created.mount.name}'.`,
+          summary: `Created and mounted runnable unpublished widget draft '${created.mount.name}'. Read and edit its construction scaffold, then validate it.`,
           modelData,
           details: modelData,
         });

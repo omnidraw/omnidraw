@@ -10,26 +10,19 @@ function slugify(name: string): string {
   return slug || 'widget';
 }
 
-export function fnBuildWidgetCreateManifest(args: { name: string; kind: 'widget' | 'actor-widget'; description?: string }): TVibecanvasJson {
+export function fnBuildWidgetCreateManifest(args: { name: string; description?: string }): TVibecanvasJson {
   const manifest = {
     slug: slugify(args.name),
     name: args.name,
-    kind: args.kind,
-    description: args.description ?? `A ${args.kind === 'actor-widget' ? 'stateful actor widget' : 'Vibecanvas widget'} named ${args.name}.`,
+    ...(args.description === undefined ? {} : { description: args.description }),
     actor: {
       relFunctionPath: './actor/functions.ts',
       initialState: 'ready',
       initialData: {},
-      dataSchema: { type: 'object', additionalProperties: true },
+      dataSchema: { type: 'object', properties: {}, additionalProperties: false },
+      resources: {},
       states: {
-        ready: {
-          on: {
-            'in.update': {
-              func: ['tx.update'],
-              targetState: 'ready',
-            },
-          },
-        },
+        ready: { on: {} },
         error: {
           on: {
             'in.resetError': {
@@ -40,7 +33,6 @@ export function fnBuildWidgetCreateManifest(args: { name: string; kind: 'widget'
         },
       },
       inputMsgSchema: {
-        'in.update': {},
         'in.resetError': { type: 'object', properties: {}, additionalProperties: false },
       },
       outputMsgSchema: {},
