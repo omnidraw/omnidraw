@@ -181,13 +181,13 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [A41] - image delete from db -> use cron job if image is longer 7 days orphan
 - [x]: [A42](a/A42.md) - codex hooks: reuse functional-core checks
 - [ ]: [A43](a/A43.md) - db: add authz for public DB methods
-- [ ]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
+- [-]: [A44] - use to convert json schema to typescript types https://www.npmjs.com/package/json-schema-to-typescript
 - [x]: [A45](a/A45.md) - eslint functional-core rules plus Pi/Codex post-turn hooks
-- [~]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
+- [x]: [A46](a/A46.md) - add widget wizard for AI-created widgets using pi.dev SDK harness
 - [x]: [A47](a/A47.md) - ai wizard: replace widget tab with prosemirror chat input
 - [x]: [A48](a/A48.md) - chat-render-output: assistant markdown without boxes
 - [x]: [A49](a/A49.md) - ai wizard: cancel ongoing agent run
-- [~]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
+- [x]: [A50](a/A50.md) - ai wizard: chat-driven widget generation flow
 - [x]: [A51](a/A51.md) - ai wizard: chat UI actions and model-aware prompts
 - [x]: [A52](a/A52.md) - ai wizard: thinking level model menu
 - [x]: [A53](a/A53.md) - ai wizard: draft Actor runtime API setup
@@ -269,7 +269,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S49] - TODO [S49]: add onRemove to some callback later
 - [x]: [S50](s/S50.md) - remove legacy hosted file, filetree, terminal element code
 - [x]: [S51](s/S51.md) - add canvas performance - tested in worktree
-- [~]: [S52] - remove drizzle use turso + raw sqlite
+- [x]: [S52] - remove drizzle use turso + raw sqlite
 - [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 - [x]: [S54](s/S54.md) - simplify widget system
 - [x]: [S55](s/S55.md) - store images as blob not base64
@@ -306,6 +306,9 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S86](s/S86.md) - human-readable dated AI chat storage and stable chat identity
 - [x]: [S87](s/S87.md) - simplify vc_widget_create to one runnable construction scaffold
 - [ ]: [S88](s/S88.md) - extract AI Chat, widgets, and sidebar from canvas
+- [ ]: [S89](s/S89.md) - actor resources: add independent key-value file persistence
+- [ ]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
+- [ ]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -324,16 +327,16 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [?]: [E18] - replace iframe with bun.webview??
 - [-]: [E19](e/E19.md) - canvas performance longterm: worker automerge + incremental notifications
 - [x]: [E20](e/E20.md) - improvement crdt updates
-- [?]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
+- [-]: [E21] - explore ways to extend arrowjs to allow safe dom and canvas api access for codemirror and threejs
 - [x]: [E22](e/E22.md) - canvas performance: widget mesh drag work
 - [ ]: [E23](e/E23.md) - actor output log pruning compatibility
 - [x]: [E24](e/E24.md) - canvas services/plugins rendering responsibility split
 - [x]: [E25](e/E25.md) - spawn actor IPC with same compiled binary
-- [ ]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
-- [ ]: [E27](e/E27.md) - reuse sidebar for canvas detail page
+- [x]: [E26](e/E26.md) - widget ideas: fun actor/widget examples
+- [?]: [E27](e/E27.md) - reuse sidebar for canvas detail page
 - [x]: [E28](e/E28.md) - codex workspace copy: local-volume and actor manifest path rewrite
 - [x]: [E29](e/E29.md) - create minimal repro repo at /Users/omarezzat/Workspace/vibecanvas/vibecanvas/.tmp/turso-actor-write-race to validate actor/widget clone DB concurrency hypothesis: scaffold minimal CLI+Turso service, run actor insert/update/delete write bursts, reproduce Turso pager `cell_get` panic, capture lock/error behavior, and compare serialized-write baseline
-- [ ]: [E30](e/E30.md) - actor resources: evaluate independent files for KV and secret stores
+- [x]: [E30](e/E30.md) - actor resources: evaluate independent files for KV and secret stores
 - [ ]: [E31](e/E31.md) - Turso schema to TypeScript type generation
 - [x]: [E32](e/E32.md) - Capsule migration: compiled, actor-native widget sandbox
 
