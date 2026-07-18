@@ -6,6 +6,7 @@
 
 import path from "path"
 import net from "node:net"
+import { chmod, mkdir } from "node:fs/promises"
 import { Glob } from "bun"
 
 type TArgs = {
@@ -13,6 +14,7 @@ type TArgs = {
   port: number
   startupTimeoutMs: number
   requestTimeoutMs: number
+  widgetPrerequisitesOnly: boolean
 }
 
 type TBinaryScenario = {
@@ -53,8 +55,9 @@ function parseArgs(): TArgs {
   const port = Number(getArg("--port") ?? "3339")
   const startupTimeoutMs = Number(getArg("--startup-timeout") ?? "45000")
   const requestTimeoutMs = Number(getArg("--request-timeout") ?? "15000")
+  const widgetPrerequisitesOnly = args.includes("--widget-prerequisites-only")
 
-  return { binaryPath, port, startupTimeoutMs, requestTimeoutMs }
+  return { binaryPath, port, startupTimeoutMs, requestTimeoutMs, widgetPrerequisitesOnly }
 }
 
 async function resolveBinaryPath(inputPath?: string): Promise<string> {
@@ -139,6 +142,24 @@ async function waitForHttpReady(baseUrl: string, timeoutMs: number): Promise<voi
   throw new Error(`Server did not become ready in ${timeoutMs}ms. Last error: ${String(lastError)}`)
 }
 
+async function waitForHttpReachable(baseUrl: string, timeoutMs: number): Promise<void> {
+  const startedAt = Date.now()
+  let lastError: unknown = null
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      await fetch(`${baseUrl}/`, { method: "GET" })
+      return
+    } catch (error) {
+      lastError = error
+    }
+
+    await Bun.sleep(100)
+  }
+
+  throw new Error(`Server did not become reachable in ${timeoutMs}ms. Last error: ${String(lastError)}`)
+}
+
 function extractAssetUrls(html: string): string[] {
   const urls = new Set<string>()
   const regex = /(?:src|href)="([^"]+)"/g
@@ -209,6 +230,67 @@ async function assertPathExists(targetPath: string, label: string): Promise<void
 async function assertPathMissing(targetPath: string, label: string): Promise<void> {
   if (await Bun.file(targetPath).exists()) {
     throw new Error(`${label} unexpectedly exists: ${targetPath}`)
+  }
+}
+
+async function createWidgetToolchainFixtures(tempRoot: string): Promise<{ availablePath: string; missingPath: string }> {
+  const availablePath = path.join(tempRoot, "widget-toolchain-available")
+  const missingPath = path.join(tempRoot, "widget-toolchain-missing")
+  await Promise.all([mkdir(availablePath, { recursive: true }), mkdir(missingPath, { recursive: true })])
+
+  const nodePath = path.join(availablePath, "node")
+  const npmPath = path.join(availablePath, "npm")
+  await Promise.all([
+    Bun.write(nodePath, "#!/bin/sh\nprintf 'v22.0.0\\n'\n"),
+    Bun.write(npmPath, "#!/bin/sh\nprintf '10.8.0\\n'\n"),
+  ])
+  await Promise.all([chmod(nodePath, 0o755), chmod(npmPath, 0o755)])
+
+  return { availablePath, missingPath }
+}
+
+async function assertWidgetPrerequisiteBinaryScenario(args: {
+  binaryPath: string
+  configPath: string
+  path: string
+  port: number
+  warningExpected: boolean
+  timeoutMs: number
+}): Promise<void> {
+  const proc = Bun.spawn({
+    cmd: [args.binaryPath, "serve", "--port", String(args.port)],
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      PATH: args.path,
+      VIBECANVAS_CONFIG: args.configPath,
+    },
+  })
+  const stdoutPromise = new Response(proc.stdout).text()
+  const stderrPromise = new Response(proc.stderr).text()
+
+  try {
+    await waitForHttpReachable(`http://127.0.0.1:${args.port}`, args.timeoutMs)
+    await Bun.sleep(250)
+  } finally {
+    proc.kill()
+    await proc.exited
+  }
+
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
+  const warningText = "Widget tooling prerequisites unavailable"
+  if (!stdout.includes(`Server listening on http://localhost:${args.port}`)) {
+    throw new Error(`Widget prerequisite binary server did not finish startup: ${stdout || "<empty>"}`)
+  }
+  if (args.warningExpected) {
+    for (const expected of [warningText, "Node.js (missing), npm (missing)", "https://nodejs.org/"]) {
+      if (!stderr.includes(expected)) {
+        throw new Error(`Widget prerequisite binary stderr did not include ${JSON.stringify(expected)}: ${stderr || "<empty>"}`)
+      }
+    }
+  } else if (stderr.includes(warningText)) {
+    throw new Error(`Widget prerequisite binary emitted an unexpected warning: ${stderr}`)
   }
 }
 
@@ -592,11 +674,37 @@ async function main() {
   const tempDbDir = path.join(tempRoot, "db-mode")
   const explicitDbPath = path.join(tempDbDir, "nested", "binary-test.sqlite")
   const xdgRoot = path.join(tempRoot, "xdg-root")
+  const widgetToolchains = await createWidgetToolchainFixtures(tempRoot)
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
+
+  await assertWidgetPrerequisiteBinaryScenario({
+    binaryPath,
+    configPath: path.join(tempRoot, "widget-toolchain-available-config"),
+    path: widgetToolchains.availablePath,
+    port: args.port,
+    warningExpected: false,
+    timeoutMs: args.startupTimeoutMs,
+  })
+  console.log("[test-binary] PASS compiled widget prerequisite check with external Node.js/npm")
+
+  await assertWidgetPrerequisiteBinaryScenario({
+    binaryPath,
+    configPath: path.join(tempRoot, "widget-toolchain-missing-config"),
+    path: widgetToolchains.missingPath,
+    port: args.port + 1,
+    warningExpected: true,
+    timeoutMs: args.startupTimeoutMs,
+  })
+  console.log("[test-binary] PASS compiled widget prerequisite warning with empty PATH")
+
+  if (args.widgetPrerequisitesOnly) {
+    await Bun.$`rm -rf ${tempRoot}`.quiet()
+    return
+  }
 
   await assertActorIpcBinary(binaryPath, tempRoot, args.requestTimeoutMs)
 

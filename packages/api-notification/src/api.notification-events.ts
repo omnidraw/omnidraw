@@ -1,14 +1,8 @@
 import { baseNotificationOs } from './orpc';
+import { fxNotificationEvents } from './fx.notification-events';
 
 const apiNotificationEvents = baseNotificationOs.events.handler(async function* ({ context }) {
-  const latest = context.eventPublisher.getLatestNotification();
-  if (latest) {
-    yield latest;
-  }
-
-  for await (const event of context.eventPublisher.subscribeNotifications()) {
-    yield event;
-  }
+  yield* fxNotificationEvents(context.eventPublisher, {});
 });
 
 export { apiNotificationEvents };

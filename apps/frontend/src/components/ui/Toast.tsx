@@ -15,7 +15,7 @@ export function Toaster() {
   );
 }
 
-type ToastVariant = "default" | "error" | "success";
+type ToastVariant = "default" | "error" | "success" | "warning";
 
 type ToastProps = {
   toastId: number;
@@ -39,6 +39,11 @@ const variantStyles: Record<ToastVariant, { container: string; progress: string;
     container: styles.success,
     progress: styles.progressSuccess,
     title: styles.titleSuccess,
+  },
+  warning: {
+    container: styles.warning,
+    progress: styles.progressWarning,
+    title: styles.titleWarning,
   },
 };
 
@@ -98,5 +103,11 @@ export function showErrorToast(title: string, description?: string) {
 export function showSuccessToast(title: string, description?: string) {
   return toaster.show((props) => (
     <Toast toastId={props.toastId} title={title} description={description} variant="success" />
+  ));
+}
+
+export function showWarningToast(title: string, description?: string) {
+  return toaster.show((props) => (
+    <Toast toastId={props.toastId} title={title} description={description} variant="warning" />
   ));
 }

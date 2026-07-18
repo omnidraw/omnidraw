@@ -55,6 +55,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
+| [apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts](apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts) |  |
+| [apps/cli/src/widget-prerequisites/fx.probe-widget-executable.ts](apps/cli/src/widget-prerequisites/fx.probe-widget-executable.ts) |  |
+| [apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts](apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts) |  |
 | [apps/cli/tsconfig.json](apps/cli/tsconfig.json) |  |
 
 ## apps/frontend
@@ -121,6 +124,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
 | [apps/frontend/src/services/theme.ts](apps/frontend/src/services/theme.ts) |  |
+| [apps/frontend/src/services/tx.route-notification-toast.ts](apps/frontend/src/services/tx.route-notification-toast.ts) |  |
 | [apps/frontend/src/startup-canvas.ts](apps/frontend/src/startup-canvas.ts) |  |
 | [apps/frontend/src/store.ts](apps/frontend/src/store.ts) |  |
 | [apps/frontend/src/styles/route-state.module.css](apps/frontend/src/styles/route-state.module.css) |  |
@@ -356,6 +360,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-notification/package.json](packages/api-notification/package.json) |  |
 | [packages/api-notification/src/api.notification-events.ts](packages/api-notification/src/api.notification-events.ts) |  |
 | [packages/api-notification/src/contract.ts](packages/api-notification/src/contract.ts) |  |
+| [packages/api-notification/src/fx.notification-events.ts](packages/api-notification/src/fx.notification-events.ts) |  |
 | [packages/api-notification/src/handlers.ts](packages/api-notification/src/handlers.ts) |  |
 | [packages/api-notification/src/orpc.ts](packages/api-notification/src/orpc.ts) |  |
 | [packages/api-notification/src/types.ts](packages/api-notification/src/types.ts) |  |

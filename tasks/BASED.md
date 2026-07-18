@@ -215,7 +215,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A75](a/A75.md) - DB Resource UI
 - [x]: [A76](a/A76.md) - sidebar: replace Tool Groups with a version-aware Widgets catalog
 - [x]: [A77](a/A77.md) - AI chat: surface assistant and widget-level errors
-- [ ]: [A78](a/A78.md) - startup: warn when Node.js or npm is unavailable for widgets
+- [x]: [A78](a/A78.md) - startup: warn when Node.js or npm is unavailable for widgets
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port

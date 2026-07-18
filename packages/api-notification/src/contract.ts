@@ -2,12 +2,12 @@ import { eventIterator, oc } from '@orpc/contract';
 import { z } from 'zod';
 
 export const ZNotificationEvent = z.object({
-  type: z.enum(['info', 'success', 'error']),
+  type: z.enum(['info', 'success', 'warning', 'error']),
   title: z.string(),
   description: z.string().optional(),
 });
 
-export type TNotificationEvent = z.infer<typeof ZNotificationEvent>
+export type TNotificationEvent = z.infer<typeof ZNotificationEvent>;
 
 const notificationContract = oc.router({
   events: oc
