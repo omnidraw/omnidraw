@@ -58,6 +58,7 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 ])
 
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
+const ZAgentChatConnectInput = ZAgentChatScope.extend({ mode: z.enum(['reuse', 'replace']).optional() })
 const ZAgentWidgetDraftRef = z.object({ draftId: z.string().min(1).max(120) })
 const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({ expectedRevision: z.string().min(1).max(256) })
 const ZWidgetName = z.string().min(1).max(120).refine((value) => value.trim() === value && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !value.includes('\0'), 'Unsafe widget name')
@@ -254,7 +255,7 @@ export const agentContract = oc.router({
       .output(ZAgentSettings),
   },
   chat: {
-    connect: oc.input(ZAgentChatScope).output(orpcType<TAgentChatConnect>()),
+    connect: oc.input(ZAgentChatConnectInput).output(orpcType<TAgentChatConnect>()),
     startWidgetEdit: oc.input(ZAgentChatStartWidgetEdit).output(orpcType<TAgentChatStartWidgetEditResult>()),
     prompt: oc.input(ZAgentChatPrompt),
     resourceBindings: {

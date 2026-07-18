@@ -137,7 +137,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B46](b/B46.md) - db resource: structured tables should default to SQLite STRICT mode
 - [x]: [B47](b/B47.md) - image delete: remove media_files row
 - [x]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
-- [ ]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
+- [x]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

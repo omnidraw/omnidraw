@@ -29,6 +29,7 @@ export type TAiChatWidgetErrorKind =
   | "prompt"
   | "cancel"
   | "attachment"
+  | "approval"
   | "resource-context"
 
 export type TAiChatWidgetError = {

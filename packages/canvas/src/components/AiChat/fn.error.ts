@@ -45,6 +45,7 @@ export function fnCreateAiChatWidgetError(kind: TAiChatWidgetErrorKind, error: u
     prompt: ["Could not send message", "The message was not accepted by the AI service."],
     cancel: ["Could not stop response", "The stop request could not be completed."],
     attachment: ["Could not attach image", "The selected image could not be prepared for the message."],
+    approval: ["Could not load approvals", "Pending approval requests could not be loaded."],
     "resource-context": ["Could not update chat context", "The chat resource context could not be updated."],
   } satisfies Record<TAiChatWidgetErrorKind, readonly [string, string]>
   const [title, fallback] = details[kind]

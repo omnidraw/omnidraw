@@ -98,6 +98,189 @@ afterEach(() => {
 })
 
 describe("AiChat shell", () => {
+  it("uses an explicit replacement connect only after settings credentials change", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    const connect = vi.fn(async () => [undefined, {
+      actorCandidate: null,
+      editSession: null,
+      messageHistory: [],
+      vcJson: null,
+    }])
+    apiService.api.agent.chat.connect = connect
+    apiService.api.agent.settings.get = async () => [undefined, {
+      defaultThinkingLevel: "minimal",
+      models: [],
+      providers: ["test-provider"],
+      providersWithCredentials: ["test-provider"],
+    }]
+    apiService.api.agent.auth = {
+      apiKey: {
+        set: vi.fn(async () => [undefined, { providerId: "test-provider" }]),
+        remove: vi.fn(async () => [undefined, { providerId: "test-provider" }]),
+      },
+    }
+    let settingsAction: (() => void) | undefined
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: (id, handler) => {
+          if (id === "settings") settingsAction = handler
+          return () => {}
+        },
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(settingsAction).toBeTypeOf("function"))
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-tab--chat")).not.toBeNull())
+    expect(connect.mock.calls[0]?.[0]).toMatchObject({ mode: "reuse" })
+    settingsAction?.()
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-tab--settings")).not.toBeNull())
+    Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-provider-card--api-key button"))
+      .find((button) => button.textContent === "Update key")
+      ?.click()
+    const input = container.querySelector<HTMLInputElement>(".ai-chat-api-key-input")
+    if (!input) throw new Error("API key input was not rendered")
+    input.value = "replacement-key"
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, data: "replacement-key", inputType: "insertText" }))
+    Array.from(container.querySelectorAll<HTMLButtonElement>(".ai-chat-provider-card--api-key button"))
+      .find((button) => button.textContent === "Save new key")
+      ?.click()
+
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2))
+    expect(connect.mock.calls[1]?.[0]).toMatchObject({
+      sessionId: "conversation-1",
+      widgetId: "surface-1",
+      mode: "replace",
+    })
+  })
+
+  it("ignores a stale connect completion and refreshes approvals only for the latest exact request", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    let resolveFirstConnect: ((value: unknown) => void) | undefined
+    const firstConnect = new Promise((resolve) => { resolveFirstConnect = resolve })
+    const connect = vi.fn((input: { sessionId: string }) => input.sessionId === "conversation-1"
+      ? firstConnect
+      : Promise.resolve([undefined, {
+        actorCandidate: null,
+        editSession: null,
+        messageHistory: [{ role: "assistant", content: [{ type: "text", text: "latest session" }] }],
+        vcJson: null,
+      }]))
+    const listApprovals = vi.fn(async () => [undefined, []])
+    apiService.api.agent.chat.connect = connect
+    apiService.api.agent.approval.list = listApprovals
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-tab--chat")).not.toBeNull())
+    container.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
+    Array.from(container.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .find((button) => button.textContent?.trim() === "New chat")
+      ?.click()
+
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(listApprovals).toHaveBeenCalledTimes(1))
+    expect(connect.mock.calls[0]?.[0]).toMatchObject({ sessionId: "conversation-1", mode: "reuse" })
+    expect(connect.mock.calls[1]?.[0]).toMatchObject({ sessionId: "conversation-2", mode: "reuse" })
+    expect(listApprovals).toHaveBeenCalledWith({ widgetId: "surface-1", sessionId: "conversation-2" })
+
+    resolveFirstConnect?.([undefined, {
+      actorCandidate: null,
+      editSession: null,
+      messageHistory: [{ role: "assistant", content: [{ type: "text", text: "stale session" }] }],
+      vcJson: null,
+    }])
+    await Promise.resolve()
+
+    expect(listApprovals).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain("latest session")
+    expect(container.textContent).not.toContain("stale session")
+  })
+
+  it("suppresses a superseded approval-list failure", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    let resolveFirstApprovalList: ((value: unknown) => void) | undefined
+    const firstApprovalList = new Promise((resolve) => { resolveFirstApprovalList = resolve })
+    apiService.api.agent.chat.connect = async () => [undefined, {
+      actorCandidate: null,
+      editSession: null,
+      messageHistory: [],
+      vcJson: null,
+    }]
+    const listApprovals = vi.fn((input: { sessionId: string }) => input.sessionId === "conversation-1"
+      ? firstApprovalList
+      : Promise.resolve([undefined, []]))
+    apiService.api.agent.approval.list = listApprovals
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(listApprovals).toHaveBeenCalledTimes(1))
+    container.querySelector<HTMLButtonElement>("[aria-label='Chat actions']")?.click()
+    Array.from(container.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .find((button) => button.textContent?.trim() === "New chat")
+      ?.click()
+    await vi.waitFor(() => expect(listApprovals).toHaveBeenCalledTimes(2))
+
+    resolveFirstApprovalList?.([{ message: "No connected agent session for stale scope" }, undefined])
+    await Promise.resolve()
+    expect(container.querySelector(".ai-chat-widget-error")).toBeNull()
+  })
+
+  it("surfaces an approval-list failure from the current connection", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    apiService.api.agent.approval.list = async () => [{ message: "Approval backend unavailable" }, undefined]
+
+    disposeRendered = render(() => AiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.textContent).toContain("Could not load approvals"))
+    expect(container.textContent).toContain("Approval backend unavailable")
+  })
+
   it("surfaces a connection failure and retries it from the widget", async () => {
     ensureComponentDomMocks()
     container = document.createElement("div")

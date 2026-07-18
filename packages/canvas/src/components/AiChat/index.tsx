@@ -16,6 +16,7 @@ type TAiChatPreference = {
   model?: { provider: string; modelId: string }
   thinkingLevel?: TAiChatThinkingLevel
 }
+type TChatConnectIntent = { request: number; mode: "reuse" | "replace"; sessionId?: string }
 
 interface IProps {
   id: string
@@ -61,6 +62,7 @@ function withAgentMessageFinished(message: unknown, finished: boolean) {
 
 export function AiChat(props: IProps) {
   let approvalRequestId = 0
+  let chatConnectRequestId = 0
   const refreshedApprovalIds = new Set<string>()
   const [selectedView, setSelectedView] = createSignal<"chat" | "settings">()
   const [sessionId, setSessionId] = createSignal(props.sessionId)
@@ -68,7 +70,7 @@ export function AiChat(props: IProps) {
   const [isCanceling, setIsCanceling] = createSignal(false)
   const [chatDraftText, setChatDraftText] = createSignal("")
   const [localAiChatPreference, setLocalAiChatPreference] = createSignal<TAiChatPreference>(props.aiChatPreference ?? {})
-  const [chatConnectNonce, setChatConnectNonce] = createSignal(0)
+  const [chatConnectIntent, setChatConnectIntent] = createSignal<TChatConnectIntent>({ request: 0, mode: "reuse" })
   const [eventStreamNonce, setEventStreamNonce] = createSignal(0)
   const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
   const [approvals, setApprovals] = createSignal<TAiChatApproval[]>([])
@@ -82,10 +84,15 @@ export function AiChat(props: IProps) {
     return data as TAiChatResource[]
   }))
 
-  const refreshApprovals = async (currentSessionId: string) => {
+  const refreshApprovals = async (currentSessionId: string, connectRequestId: number) => {
     const requestId = ++approvalRequestId
     const [error, data] = await props.apiService.api.agent.approval.list({ widgetId: props.id, sessionId: currentSessionId })
-    if (error || requestId !== approvalRequestId || sessionId() !== currentSessionId) return
+    if (requestId !== approvalRequestId || connectRequestId !== chatConnectRequestId || sessionId() !== currentSessionId) return
+    if (error) {
+      reportWidgetError("approval", error)
+      return
+    }
+    clearWidgetError("approval")
     setApprovals(data.map((approval) => ({
       ...approval,
       resourceId: fnGetApprovalResourceId(approval.details),
@@ -123,22 +130,25 @@ export function AiChat(props: IProps) {
 
   createEffect(() => {
     const apiService = props.apiService
-    const currentConnectNonce = chatConnectNonce()
+    const connectIntent = chatConnectIntent()
+    const currentConnectRequestId = ++chatConnectRequestId
     const currentSessionId = sessionId()
+    const connectMode = connectIntent.sessionId === currentSessionId ? connectIntent.mode : "reuse"
+    approvalRequestId += 1
     setIsRunning(false)
     setIsCanceling(false)
     clearWidgetError("connection")
-    void apiService.api.agent.chat.connect({ sessionId: currentSessionId, widgetId: props.id }).then(([error, data]) => {
-      if (sessionId() !== currentSessionId || chatConnectNonce() !== currentConnectNonce) return
+    void apiService.api.agent.chat.connect({ sessionId: currentSessionId, widgetId: props.id, mode: connectMode }).then(([error, data]) => {
+      if (sessionId() !== currentSessionId || chatConnectRequestId !== currentConnectRequestId) return
       if (error) {
         reportWidgetError("connection", error)
         return
       }
       clearWidgetError("connection")
       setMessageHistory(reconcile(data.messageHistory.map((message) => withAgentMessageFinished(message, true))))
-      void refreshApprovals(currentSessionId)
+      void refreshApprovals(currentSessionId, currentConnectRequestId)
     }).catch((error) => {
-      if (sessionId() === currentSessionId && chatConnectNonce() === currentConnectNonce) {
+      if (sessionId() === currentSessionId && chatConnectRequestId === currentConnectRequestId) {
         reportWidgetError("connection", error)
       }
     })
@@ -338,7 +348,7 @@ export function AiChat(props: IProps) {
 
   const refreshSettingsAndReconnectChat = async () => {
     await refetchSettings()
-    setChatConnectNonce((nonce) => nonce + 1)
+    setChatConnectIntent((current) => ({ request: current.request + 1, mode: "replace", sessionId: sessionId() }))
   }
 
   const openSettings = () => {
@@ -347,7 +357,7 @@ export function AiChat(props: IProps) {
 
   const retryWidgetError = () => {
     const currentError = widgetError()
-    if (currentError?.kind === "connection") setChatConnectNonce((nonce) => nonce + 1)
+    if (currentError?.kind === "connection") setChatConnectIntent((current) => ({ request: current.request + 1, mode: "reuse", sessionId: sessionId() }))
     if (currentError?.kind === "stream") setEventStreamNonce((nonce) => nonce + 1)
   }
 

@@ -50,6 +50,7 @@ type TWidgetId = string;
 // session ID inside each JSONL transcript header and filename.
 type TVibecanvasChatId = string;
 type TLoginId = string;
+type TChatConnectMode = 'reuse' | 'replace';
 type TPromptModel = {
   provider: string;
   modelId: string;
@@ -96,7 +97,11 @@ type TChatSessionEntry = {
   unsub: () => void;
   session: AgentSession;
   sessionManager: SessionManager;
+  authorizationContext?: TToolAuthorizationContext;
 };
+type TChatConnectGenerationResult =
+  | { status: 'connected'; result: TAgentConnectResult }
+  | { status: 'superseded' };
 
 type TDraftActorKey = `${TWidgetId}:${TVibecanvasChatId}`;
 
@@ -187,6 +192,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #widgetManagement: WidgetManagement;
   #approvals: ApprovalCoordinator;
   #chatWidgetIds = new Map<TVibecanvasChatId, TWidgetId>();
+  #chatConnectionGenerations = new Map<TVibecanvasChatId, number>();
+  #chatConnectionLanes = new Map<TVibecanvasChatId, Promise<void>>();
+  #chatReplacementGenerations = new Map<TVibecanvasChatId, number>();
+  #isStopping = false;
 
   constructor(config: IActorServiceConfig) {
     this.#config = config
@@ -229,52 +238,69 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async start(ctx: IServiceContext<object, object>): Promise<void> {
     void ctx
+    this.#isStopping = false
     await this.#workspace.init()
     console.log('start', this.name)
   }
 
   async stop(): Promise<void> {
+    this.#isStopping = true
+    for (const sessionId of this.#chatConnectionGenerations.keys()) {
+      this.#chatConnectionGenerations.set(sessionId, (this.#chatConnectionGenerations.get(sessionId) ?? 0) + 1)
+    }
+    await Promise.all(this.#chatConnectionLanes.values())
     for (const [id, sessions] of Object.entries(this.sessionMap)) {
       for (const sessionId of Object.keys(sessions)) {
         this.#disposeChatSession(id, sessionId)
       }
     }
+    this.#chatWidgetIds.clear()
+    this.#chatConnectionGenerations.clear()
+    this.#chatConnectionLanes.clear()
+    this.#chatReplacementGenerations.clear()
     this.#approvals.close()
     await this.#widgetDrafts.close()
     this.#disposeAllDraftActors()
     console.log('stop', this.name)
   }
 
-  async connectChat(id: TWidgetId, sessionId: string, authorization: TToolAuthorizationContext = {}): Promise<TAgentConnectResult> {
-    const previousWidgetId = this.#chatWidgetIds.get(sessionId)
-    if (previousWidgetId === id) this.#disposeAgentSession(previousWidgetId, sessionId)
-    else if (previousWidgetId) this.#disposeChatSession(previousWidgetId, sessionId)
-    this.#chatWidgetIds.set(sessionId, id)
+  async connectChat(
+    id: TWidgetId,
+    sessionId: string,
+    authorization: TToolAuthorizationContext = {},
+    mode: TChatConnectMode = 'reuse',
+  ): Promise<TAgentConnectResult> {
+    const existingEntry = this.#chatSessionEntry(sessionId)
+    if (existingEntry) this.#assertChatAuthorizationOwner(existingEntry, authorization)
+    const generation = this.#nextChatConnectionGeneration(sessionId)
+    if (mode === 'replace') this.#chatReplacementGenerations.set(sessionId, generation)
+    const outcome = await this.#runChatConnectionLane(sessionId, () => this.#connectChatGeneration(id, sessionId, authorization, generation))
+    if (outcome.status === 'connected') return outcome.result
 
-    const cwd = await this.#workspace.ensureChat(sessionId)
-    const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
-    await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
-    const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
-    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
-    if (!this.sessionMap[id]) {
-      this.sessionMap[id] = {}
+    await this.#waitForChatConnectionLaneIdle(sessionId)
+    if (this.#isStopping) throw this.#chatConnectionError('CHAT_SERVICE_STOPPING', 'Agent service is stopping.')
+    if (this.#chatReplacementGenerations.has(sessionId)) {
+      throw this.#chatConnectionError('CHAT_REPLACEMENT_INCOMPLETE', 'The chat runtime replacement did not complete.')
     }
-
-    this.sessionMap[id][sessionId] = sessionEntry
-    const activeMount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
-    const vcJson = activeMount ? await this.#readMountedManifest(activeMount).catch(() => null) : null
-
-    return {
-      vcJson,
-      messageHistory: sessionEntry.session.messages,
-      editSession: null,
+    const committedEntry = this.#chatWidgetIds.get(sessionId) === id
+      ? this.sessionMap[id]?.[sessionId]
+      : undefined
+    if (!committedEntry) {
+      throw this.#chatConnectionError('CHAT_CONNECTION_SUPERSEDED', 'The chat connection was superseded by another owner.')
     }
+    this.#assertChatAuthorizationOwner(committedEntry, authorization)
+    return this.#chatConnectResult(id, sessionId, committedEntry)
   }
 
   async newChatSession(id: TWidgetId, sessionId: string): Promise<void> {
-    const currentWidgetId = this.#chatWidgetIds.get(sessionId)
-    if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
-    this.#disposeChatSession(id, sessionId)
+    const generation = this.#nextChatConnectionGeneration(sessionId)
+    await this.#runChatConnectionLane(sessionId, async () => {
+      if (generation !== this.#chatConnectionGenerations.get(sessionId)) return
+      const currentWidgetId = this.#chatWidgetIds.get(sessionId)
+      if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
+      this.#disposeChatSession(id, sessionId)
+      this.#chatReplacementGenerations.delete(sessionId)
+    })
   }
 
   async startWidgetEditChat(
@@ -283,57 +309,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     definitionName: string,
     authorization: TToolAuthorizationContext = {},
   ): Promise<TAgentChatStartWidgetEditResult> {
-    const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
-    if (!sourceManifest) {
-      return { ok: false, message: `Published widget definition not found: ${definitionName}` }
-    }
-
-    await this.#workspace.reconcilePublishedWidgets()
-    const mount = await this.#workspace.syncDraftFromPublished(sessionId, sourceManifest.name)
-    const previousWidgetId = this.#chatWidgetIds.get(sessionId)
-    if (previousWidgetId && previousWidgetId !== id) this.#disposeChatSession(previousWidgetId, sessionId)
-    this.#chatWidgetIds.set(sessionId, id)
-    let sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      const cwd = await this.#workspace.ensureChat(sessionId)
-      const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
-      await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
-      const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
-      sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
-      if (!this.sessionMap[id]) this.sessionMap[id] = {}
-      this.sessionMap[id][sessionId] = sessionEntry
-    }
-    this.#recordActiveMount(sessionEntry.sessionManager, mount)
-    const editStartedAt = new Date().toISOString()
-    const editSession = txAppendWidgetEditSessionRecord({ sessionManager: sessionEntry.sessionManager }, {
-      mode: 'edit-published-widget',
-      sourceDefinitionName: definitionName,
-      sourceSlug: sourceManifest.slug,
-      sourceName: sourceManifest.name,
-      sourceManifestPath: sourceManifest.manifest_path,
-      previousVersion: sourceManifest.version,
-      nextVersion: sourceManifest.version ?? '1',
-      startedAt: editStartedAt,
-    })
-    sessionEntry.sessionManager.appendCustomMessageEntry(
-      'vibecanvas.widgetLoaded',
-      `[Widget ${sourceManifest.name} loaded]`,
-      true,
-      {
-        definitionName,
-        slug: sourceManifest.slug,
-        previousVersion: sourceManifest.version,
-        source: 'draft-synced-from-published',
-      },
-    )
-    this.#flushSessionManager(sessionEntry.sessionManager)
-
-    return {
-      ok: true,
-      vcJson: sourceManifest,
-      editSession,
-      messageHistory: sessionEntry.session.messages,
-    }
+    const existingEntry = this.#chatSessionEntry(sessionId)
+    if (existingEntry) this.#assertChatAuthorizationOwner(existingEntry, authorization)
+    const generation = this.#nextChatConnectionGeneration(sessionId)
+    return this.#runChatConnectionLane(sessionId, () => this.#startWidgetEditChatGeneration(id, sessionId, definitionName, authorization, generation))
   }
 
   async promptChat(id: TWidgetId, sessionId: string, text: string, promptSelection?: TPromptSelection): Promise<void> {
@@ -1129,6 +1108,206 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return `${id}:${sessionId}`;
   }
 
+  #nextChatConnectionGeneration(sessionId: TVibecanvasChatId): number {
+    const generation = (this.#chatConnectionGenerations.get(sessionId) ?? 0) + 1
+    this.#chatConnectionGenerations.set(sessionId, generation)
+    return generation
+  }
+
+  async #runChatConnectionLane<TResult>(sessionId: TVibecanvasChatId, operation: () => Promise<TResult>): Promise<TResult> {
+    const previous = this.#chatConnectionLanes.get(sessionId) ?? Promise.resolve()
+    let release = () => {}
+    const gate = new Promise<void>((resolveGate) => { release = resolveGate })
+    const tail = previous.catch(() => undefined).then(() => gate)
+    this.#chatConnectionLanes.set(sessionId, tail)
+
+    await previous.catch(() => undefined)
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (this.#chatConnectionLanes.get(sessionId) === tail) this.#chatConnectionLanes.delete(sessionId)
+    }
+  }
+
+  async #waitForChatConnectionLaneIdle(sessionId: TVibecanvasChatId): Promise<void> {
+    while (true) {
+      const tail = this.#chatConnectionLanes.get(sessionId)
+      if (!tail) return
+      await tail.catch(() => undefined)
+    }
+  }
+
+  async #connectChatGeneration(
+    id: TWidgetId,
+    sessionId: TVibecanvasChatId,
+    authorization: TToolAuthorizationContext,
+    generation: number,
+  ): Promise<TChatConnectGenerationResult> {
+    if (this.#isStopping) throw new Error('Agent service is stopping.')
+    if (generation !== this.#chatConnectionGenerations.get(sessionId)) return { status: 'superseded' }
+
+    const connectedEntry = this.#chatWidgetIds.get(sessionId) === id
+      ? this.sessionMap[id]?.[sessionId]
+      : undefined
+    const replacementGeneration = this.#chatReplacementGenerations.get(sessionId)
+    if (connectedEntry && replacementGeneration === undefined) {
+      this.#assertChatAuthorizationOwner(connectedEntry, authorization)
+      this.#updateChatAuthorizationContext(connectedEntry, authorization)
+      return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, connectedEntry) }
+    }
+
+    const cwd = await this.#workspace.ensureChat(sessionId)
+    const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
+    await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
+    const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
+    const sessionEntry = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
+
+    if (this.#isStopping) {
+      this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+      throw new Error('Agent service is stopping.')
+    }
+    if (generation !== this.#chatConnectionGenerations.get(sessionId)) {
+      this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+      return { status: 'superseded' }
+    }
+
+    this.#installChatSessionEntry(id, sessionId, sessionEntry, replacementGeneration !== undefined
+      ? 'Chat runtime was intentionally replaced.'
+      : 'Chat ownership changed before approval.')
+    if (replacementGeneration !== undefined && replacementGeneration <= generation) {
+      this.#chatReplacementGenerations.delete(sessionId)
+    }
+    return { status: 'connected', result: await this.#chatConnectResult(id, sessionId, sessionEntry) }
+  }
+
+  async #startWidgetEditChatGeneration(
+    id: TWidgetId,
+    sessionId: TVibecanvasChatId,
+    definitionName: string,
+    authorization: TToolAuthorizationContext,
+    generation: number,
+  ): Promise<TAgentChatStartWidgetEditResult> {
+    if (this.#isStopping) return { ok: false, message: 'Agent service is stopping.' }
+    const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
+    if (!sourceManifest) return { ok: false, message: `Published widget definition not found: ${definitionName}` }
+
+    await this.#workspace.reconcilePublishedWidgets()
+    const mount = await this.#workspace.syncDraftFromPublished(sessionId, sourceManifest.name)
+    if (generation !== this.#chatConnectionGenerations.get(sessionId)) {
+      return { ok: false, message: 'Widget edit connection was superseded by a newer request.' }
+    }
+
+    let sessionEntry = this.#chatWidgetIds.get(sessionId) === id
+      ? this.sessionMap[id]?.[sessionId]
+      : undefined
+    const replacementGeneration = this.#chatReplacementGenerations.get(sessionId)
+    if (sessionEntry) this.#assertChatAuthorizationOwner(sessionEntry, authorization)
+    if (!sessionEntry || replacementGeneration !== undefined) {
+      const cwd = await this.#workspace.ensureChat(sessionId)
+      const sessionDir = this.#workspace.getChatHistoryRoot(sessionId)
+      await txNormalizeSessionCwd({ readdir, readFile, writeFile, rename, rm, join }, { sessionDir, cwd })
+      const sessionManager = SessionManager.continueRecent(cwd, sessionDir)
+      const candidate = await this.#createChatSessionEntry(id, sessionId, sessionManager, undefined, authorization)
+      if (this.#isStopping || generation !== this.#chatConnectionGenerations.get(sessionId)) {
+        this.#releaseUnpublishedChatSessionEntry(candidate)
+        return { ok: false, message: this.#isStopping ? 'Agent service is stopping.' : 'Widget edit connection was superseded by a newer request.' }
+      }
+      this.#installChatSessionEntry(id, sessionId, candidate, replacementGeneration !== undefined
+        ? 'Chat runtime was intentionally replaced.'
+        : 'Chat ownership changed before approval.')
+      if (replacementGeneration !== undefined && replacementGeneration <= generation) {
+        this.#chatReplacementGenerations.delete(sessionId)
+      }
+      sessionEntry = candidate
+    } else {
+      this.#updateChatAuthorizationContext(sessionEntry, authorization)
+    }
+
+    this.#recordActiveMount(sessionEntry.sessionManager, mount)
+    const editStartedAt = new Date().toISOString()
+    const editSession = txAppendWidgetEditSessionRecord({ sessionManager: sessionEntry.sessionManager }, {
+      mode: 'edit-published-widget',
+      sourceDefinitionName: definitionName,
+      sourceSlug: sourceManifest.slug,
+      sourceName: sourceManifest.name,
+      sourceManifestPath: sourceManifest.manifest_path,
+      previousVersion: sourceManifest.version,
+      nextVersion: sourceManifest.version ?? '1',
+      startedAt: editStartedAt,
+    })
+    sessionEntry.sessionManager.appendCustomMessageEntry(
+      'vibecanvas.widgetLoaded',
+      `[Widget ${sourceManifest.name} loaded]`,
+      true,
+      {
+        definitionName,
+        slug: sourceManifest.slug,
+        previousVersion: sourceManifest.version,
+        source: 'draft-synced-from-published',
+      },
+    )
+    this.#flushSessionManager(sessionEntry.sessionManager)
+
+    return {
+      ok: true,
+      vcJson: sourceManifest,
+      editSession,
+      messageHistory: sessionEntry.session.messages,
+    }
+  }
+
+  async #chatConnectResult(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry): Promise<TAgentConnectResult> {
+    const activeMount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
+    const vcJson = activeMount ? await this.#readMountedManifest(activeMount).catch(() => null) : null
+    return {
+      vcJson,
+      messageHistory: sessionEntry.session.messages,
+      editSession: null,
+    }
+  }
+
+  #chatSessionEntry(sessionId: TVibecanvasChatId): TChatSessionEntry | undefined {
+    const widgetId = this.#chatWidgetIds.get(sessionId)
+    return widgetId ? this.sessionMap[widgetId]?.[sessionId] : undefined
+  }
+
+  #assertChatAuthorizationOwner(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
+    const connectedAccountId = sessionEntry.authorizationContext?.accountId
+    if (connectedAccountId === authorization.accountId) return
+    if (connectedAccountId === undefined && authorization.accountId === undefined) return
+    throw this.#chatConnectionError('CHAT_AUTHORIZATION_CHANGED', 'This chat belongs to a different authorization context.')
+  }
+
+  #updateChatAuthorizationContext(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
+    if (!sessionEntry.authorizationContext) {
+      sessionEntry.authorizationContext = { ...authorization }
+      return
+    }
+    sessionEntry.authorizationContext.accountId = authorization.accountId
+    sessionEntry.authorizationContext.requestId = authorization.requestId
+  }
+
+  #chatConnectionError(code: string, message: string): Error & { code: string } {
+    return Object.assign(new Error(message), { code })
+  }
+
+  #installChatSessionEntry(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry, approvalReason: string): void {
+    const previousWidgetId = this.#chatWidgetIds.get(sessionId)
+    const previousEntry = previousWidgetId ? this.sessionMap[previousWidgetId]?.[sessionId] : undefined
+
+    if (previousEntry) this.#approvals.cancelChat(sessionId, approvalReason)
+    if (previousWidgetId && previousWidgetId !== id) this.#disposeDraftActor(previousWidgetId, sessionId)
+
+    if (!this.sessionMap[id]) this.sessionMap[id] = {}
+    this.sessionMap[id][sessionId] = sessionEntry
+    this.#chatWidgetIds.set(sessionId, id)
+
+    if (previousWidgetId && previousEntry) {
+      this.#releaseChatSessionEntry(previousWidgetId, sessionId, previousEntry)
+    }
+  }
+
   async #createChatSessionEntry(
     id: TWidgetId,
     sessionId: TVibecanvasChatId,
@@ -1138,10 +1317,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   ): Promise<TChatSessionEntry> {
     const cwd = await this.#workspace.ensureChat(sessionId)
     const sensitiveToolArgs = new Map<string, unknown>()
+    const authorizationContext = { ...authorization }
     const registry = createToolRegistry({
       chatId: sessionId,
       cwd,
-      authorization,
+      authorization: authorizationContext,
       authorize: this.#config.authorizeToolCall,
       workspace: this.#workspace,
       approvals: this.#approvals,
@@ -1194,7 +1374,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       })
     })
 
-    return { session, sessionManager, unsub }
+    return { session, sessionManager, unsub, authorizationContext }
   }
 
   #flushSessionManager(sessionManager: SessionManager): void {
@@ -1331,16 +1511,31 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   #disposeAgentSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) return
-
     this.#approvals.cancelChat(sessionId)
-    sessionEntry.unsub()
-    delete this.sessionMap[id][sessionId]
-    this.#chatWidgetIds.delete(sessionId)
+    if (!sessionEntry) {
+      if (this.#chatWidgetIds.get(sessionId) === id) this.#chatWidgetIds.delete(sessionId)
+      return
+    }
+    this.#releaseChatSessionEntry(id, sessionId, sessionEntry)
+  }
 
-    if (Object.keys(this.sessionMap[id]).length === 0) {
+  #releaseChatSessionEntry(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry): void {
+    sessionEntry.unsub()
+    sessionEntry.session.dispose()
+
+    if (this.sessionMap[id]?.[sessionId] === sessionEntry) {
+      delete this.sessionMap[id][sessionId]
+      if (this.#chatWidgetIds.get(sessionId) === id) this.#chatWidgetIds.delete(sessionId)
+    }
+
+    if (this.sessionMap[id] && Object.keys(this.sessionMap[id]).length === 0) {
       delete this.sessionMap[id]
     }
+  }
+
+  #releaseUnpublishedChatSessionEntry(sessionEntry: TChatSessionEntry): void {
+    sessionEntry.unsub()
+    sessionEntry.session.dispose()
   }
 
   #disposeDraftActor(id: TWidgetId, sessionId: TVibecanvasChatId): void {
