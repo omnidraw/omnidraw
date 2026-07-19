@@ -214,6 +214,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/src/chat/components/tabs/SettingsTab.tsx](packages/ai-chat/src/chat/components/tabs/SettingsTab.tsx) |  |
 | [packages/ai-chat/src/chat/components/types.ts](packages/ai-chat/src/chat/components/types.ts) |  |
 | [packages/ai-chat/src/chat/index.tsx](packages/ai-chat/src/chat/index.tsx) |  |
+| [packages/ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts](packages/ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts) |  |
+| [packages/ai-chat/src/chat/mention-catalog/index.ts](packages/ai-chat/src/chat/mention-catalog/index.ts) |  |
 | [packages/ai-chat/src/index.ts](packages/ai-chat/src/index.ts) |  |
 | [packages/ai-chat/src/ports.ts](packages/ai-chat/src/ports.ts) |  |
 | [packages/ai-chat/src/sidebar/components/CreateCanvasDialog.tsx](packages/ai-chat/src/sidebar/components/CreateCanvasDialog.tsx) |  |
@@ -766,6 +768,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/core/fn.patch-draft-manifest.ts](packages/service-agent/src/core/fn.patch-draft-manifest.ts) |  |
 | [packages/service-agent/src/core/fn.safe-destination.ts](packages/service-agent/src/core/fn.safe-destination.ts) |  |
 | [packages/service-agent/src/core/fn.widget-draft-files.ts](packages/service-agent/src/core/fn.widget-draft-files.ts) |  |
+| [packages/service-agent/src/core/fn.widget-mention-context.ts](packages/service-agent/src/core/fn.widget-mention-context.ts) |  |
 | [packages/service-agent/src/core/fn.widget-typescript-command.ts](packages/service-agent/src/core/fn.widget-typescript-command.ts) |  |
 | [packages/service-agent/src/core/fx.session-records.ts](packages/service-agent/src/core/fx.session-records.ts) |  |
 | [packages/service-agent/src/core/fx.walk-files.ts](packages/service-agent/src/core/fx.walk-files.ts) |  |

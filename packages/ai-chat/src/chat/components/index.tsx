@@ -9,6 +9,8 @@ import type { TAiChatApproval, TAiChatApprovalStatus, TAiChatWidgetError, TAiCha
 import type { TWidgetTitleBarPortal } from "../../widget/interface"
 import type { TChatComposerMention, TChatPromptImage } from "./ChatComposer/interface"
 import type { TAiChatApiPort, TAiChatApplicationPort, TAiChatBrowserPort } from "../../ports"
+import { refreshMentionCatalog, subscribeMentionCatalog } from "../mention-catalog"
+import { fnIsWidgetCatalogEventKind } from "../mention-catalog/fn.mention-catalog"
 import "./index.css"
 
 type TAiChatThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -31,13 +33,6 @@ interface IProps {
 }
 
 type TAgentMessageRecord = Record<string, unknown>
-type TAiChatResource = {
-  id: string
-  kind: "kv" | "secretStore" | "db"
-  name: string
-  status: "created" | "provisioning" | "ready" | "migrating" | "error" | "deleting"
-}
-
 function isAgentMessageRecord(message: unknown): message is TAgentMessageRecord {
   return typeof message === "object" && message !== null
 }
@@ -73,15 +68,12 @@ export function AiChat(props: IProps) {
   const [chatConnectIntent, setChatConnectIntent] = createSignal<TChatConnectIntent>({ request: 0, mode: "reuse" })
   const [eventStreamNonce, setEventStreamNonce] = createSignal(0)
   const [widgetError, setWidgetError] = createSignal<TAiChatWidgetError>()
+  const [mentions, setMentions] = createSignal<TChatComposerMention[]>([])
   const [approvals, setApprovals] = createSignal<TAiChatApproval[]>([])
   const [messageHistory, setMessageHistory] = createStore<unknown[]>([])
   const [settingState, { refetch: refetchSettings }] = createResource(() => props.apiService.api.agent.settings.get({}).then(async ([error, data]) => {
     if (error) throw error.message
     return data
-  }))
-  const [resourceState, { refetch: refetchResources }] = createResource(() => props.apiService.api.actors.resources.list({}).then(([error, data]) => {
-    if (error) return []
-    return data as TAiChatResource[]
   }))
 
   const refreshApprovals = async (currentSessionId: string, connectRequestId: number) => {
@@ -115,13 +107,11 @@ export function AiChat(props: IProps) {
   const refreshResourceCatalog = async (approvalId: string) => {
     if (refreshedApprovalIds.has(approvalId)) return
     refreshedApprovalIds.add(approvalId)
-    const resources = await refetchResources()
-    if (resources) {
-      setApprovals((current) => current.map((approval) => approval.id === approvalId
-        ? { ...approval, resourceId: fnFindApprovalResourceId(approval.details, resources) }
-        : approval))
-    }
     props.application.invalidateResourceCatalog()
+    const catalog = await refreshMentionCatalog(props.apiService)
+    setApprovals((current) => current.map((approval) => approval.id === approvalId
+      ? { ...approval, resourceId: fnFindApprovalResourceId(approval.details, catalog.resources) }
+      : approval))
   }
 
   createEffect(() => {
@@ -232,6 +222,7 @@ export function AiChat(props: IProps) {
           }
           continue
         }
+        if (fnIsWidgetCatalogEventKind(event.kind)) void refreshMentionCatalog(props.apiService)
       }
     }).catch((error) => {
       if (!disposed && eventStreamNonce() === currentEventStreamNonce) {
@@ -246,10 +237,22 @@ export function AiChat(props: IProps) {
   })
 
   onMount(() => {
+    const unsubscribeMentions = subscribeMentionCatalog(props.apiService, (catalog) => setMentions(catalog.mentions))
+    const unsubscribeResources = props.application.subscribeCatalogInvalidation?.("resources", () => {
+      void refreshMentionCatalog(props.apiService)
+    })
+    const unsubscribeWidgets = props.application.subscribeCatalogInvalidation?.("widgets", () => {
+      void refreshMentionCatalog(props.apiService)
+    })
     const removeSettingsAction = props.titleBar.onAction("settings", () => {
       setSelectedView(activeView() === "settings" ? "chat" : "settings")
     })
-    onCleanup(removeSettingsAction)
+    onCleanup(() => {
+      removeSettingsAction()
+      unsubscribeMentions()
+      unsubscribeResources?.()
+      unsubscribeWidgets?.()
+    })
   })
 
   const updateAiChatPreference = (preference: TAiChatPreference) => {
@@ -258,7 +261,7 @@ export function AiChat(props: IProps) {
     props.onAiChatPreferenceChange?.(nextPreference)
   }
 
-  const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
+  const prompt = async (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: { id: string; provider: string }; thinkingLevel: TAiChatThinkingLevel }) => {
     const currentSessionId = sessionId()
     clearWidgetError("prompt", "attachment")
     setIsRunning(true)
@@ -275,6 +278,7 @@ export function AiChat(props: IProps) {
         text: args.text,
         images: args.images,
         resourceIds: args.resourceIds,
+        widgetRefs: args.widgetRefs,
         model: args.model ? { provider: args.model.provider, modelId: args.model.id } : undefined,
         thinkingLevel: args.thinkingLevel,
       })
@@ -369,12 +373,6 @@ export function AiChat(props: IProps) {
       label: activeView() === "settings" ? "Back to chat" : "Settings",
     })
   })
-  const resourceMentions = createMemo<TChatComposerMention[]>(() => (resourceState.latest ?? []).map((resource) => ({
-    id: resource.id,
-    label: resource.name,
-    kind: resource.kind === "db" ? "Database" : resource.kind === "kv" ? "Key-value" : "Secret store",
-  })))
-
   return (
     <div class="ai-chat-shell">
       <Switch fallback={(
@@ -392,7 +390,7 @@ export function AiChat(props: IProps) {
                     isCanceling={isCanceling()}
                     widgetError={widgetError()}
                     draftText={chatDraftText()}
-                    mentions={resourceMentions()}
+                    mentions={mentions()}
                     onDraftTextChange={setChatDraftText}
                     onPreferenceChange={updateAiChatPreference}
                     onPrompt={prompt}

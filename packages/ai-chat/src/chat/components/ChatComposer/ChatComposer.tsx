@@ -12,8 +12,11 @@ import type {
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import ArrowUp from "lucide-solid/icons/arrow-up"
 import ChevronDown from "lucide-solid/icons/chevron-down"
+import Database from "lucide-solid/icons/database"
 import FileText from "lucide-solid/icons/file-text"
 import ImageIcon from "lucide-solid/icons/image"
+import KeyRound from "lucide-solid/icons/key-round"
+import LockKeyhole from "lucide-solid/icons/lock-keyhole"
 import Square from "lucide-solid/icons/square"
 import X from "lucide-solid/icons/x"
 import Zap from "lucide-solid/icons/zap"
@@ -24,6 +27,7 @@ import { Schema } from "prosemirror-model"
 import { EditorState, Plugin, PluginKey, TextSelection } from "prosemirror-state"
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view"
 import { fnFindPromptTrigger } from "./fn.trigger"
+import { WidgetIcon } from "../../../sidebar/widgets/components/WidgetIcon"
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
 const MAX_PROMPT_IMAGE_COUNT = 5
@@ -52,6 +56,10 @@ const promptSchema = new Schema({
         id: {},
         label: {},
         kind: {},
+        targetType: { default: null },
+        resourceId: { default: null },
+        widgetName: { default: null },
+        widgetSource: { default: null },
       },
       group: "inline",
       inline: true,
@@ -63,6 +71,10 @@ const promptSchema = new Schema({
           class: "ai-chat-composer__mention",
           "data-id": node.attrs.id,
           "data-kind": node.attrs.kind,
+          "data-target-type": node.attrs.targetType,
+          "data-resource-id": node.attrs.resourceId,
+          "data-widget-name": node.attrs.widgetName,
+          "data-widget-source": node.attrs.widgetSource,
         },
         `@${node.attrs.label}`,
       ],
@@ -78,6 +90,10 @@ const promptSchema = new Schema({
               id: dom.getAttribute("data-id"),
               label: dom.textContent?.replace(/^@/, "") ?? "",
               kind: dom.getAttribute("data-kind"),
+              targetType: dom.getAttribute("data-target-type"),
+              resourceId: dom.getAttribute("data-resource-id"),
+              widgetName: dom.getAttribute("data-widget-name"),
+              widgetSource: dom.getAttribute("data-widget-source"),
             }
           },
         },
@@ -164,10 +180,18 @@ export function getEditorMentions(view: EditorView | undefined): TChatComposerMe
   const mentions: TChatComposerMention[] = []
   view.state.doc.descendants((node) => {
     if (node.type.name !== "mention") return true
-    const mention = {
+    const targetType = String(node.attrs.targetType ?? "")
+    const widgetSource = String(node.attrs.widgetSource ?? "")
+    const target = targetType === "widget" && (widgetSource === "draft" || widgetSource === "published")
+      ? { type: "widget" as const, name: String(node.attrs.widgetName ?? ""), source: widgetSource as "draft" | "published" }
+      : targetType === "resource"
+        ? { type: "resource" as const, resourceId: String(node.attrs.resourceId ?? node.attrs.id) }
+        : undefined
+    const mention: TChatComposerMention = {
       id: String(node.attrs.id),
       label: String(node.attrs.label),
       kind: String(node.attrs.kind),
+      ...(target ? { target } : {}),
     }
     if (!mentions.some((existing) => existing.id === mention.id)) mentions.push(mention)
     return false
@@ -291,6 +315,34 @@ function getModelSelectionKeyOrId(models: readonly TChatComposerModel[], key?: s
   return resolved ? getModelSelectionKey(resolved) : undefined
 }
 
+function MentionIcon(props: { mention: TChatComposerMention }) {
+  const icon = () => props.mention.icon
+  const resourceKind = () => {
+    const value = icon()
+    return value?.type === "resource" ? value.kind : undefined
+  }
+  const widgetIcon = () => {
+    const value = icon()
+    return value?.type === "widget" ? value.icon : null
+  }
+  const isWidget = () => icon()?.type === "widget"
+  return (
+    <Show when={icon()} fallback={<FileText size={15} aria-hidden="true" />}>
+      <Show when={isWidget()} fallback={(
+        <Show when={resourceKind() === "db"} fallback={(
+          <Show when={resourceKind() === "secretStore"} fallback={<KeyRound size={15} aria-hidden="true" />}>
+            <LockKeyhole size={15} aria-hidden="true" />
+          </Show>
+        )}>
+          <Database size={15} aria-hidden="true" />
+        </Show>
+      )}>
+        <WidgetIcon icon={widgetIcon()} />
+      </Show>
+    </Show>
+  )
+}
+
 export function ChatComposer(props: TChatComposerProps) {
   let root!: HTMLElement
   let editorRoot!: HTMLDivElement
@@ -339,8 +391,17 @@ export function ChatComposer(props: TChatComposerProps) {
     const query = activeSuggestion.query.toLocaleLowerCase()
     const source = activeSuggestion.kind === "mention" ? availableMentions() : availableCommands()
 
-    return source.filter((item) => item.label.toLocaleLowerCase().includes(query)).slice(0, 6)
+    return source.filter((item) => (
+      item.label.toLocaleLowerCase().includes(query)
+      || (activeSuggestion.kind === "mention" && (item as TChatComposerMention).kind.toLocaleLowerCase().includes(query))
+    )).slice(0, 6)
   }
+
+  createEffect(() => {
+    const count = suggestions().length
+    if (count === 0 || activeIndex() < count) return
+    setActiveIndex(0)
+  })
 
   createEffect(() => {
     const nextDefault = getDefaultModel(models(), props.defaultModel, props.defaultProvider)
@@ -474,7 +535,12 @@ export function ChatComposer(props: TChatComposerProps) {
 
     if (activeSuggestion.kind === "mention") {
       const mention = item as TChatComposerMention
-      const node = promptSchema.nodes.mention.create(mention)
+      const targetAttrs = mention.target?.type === "resource"
+        ? { targetType: "resource", resourceId: mention.target.resourceId }
+        : mention.target?.type === "widget"
+          ? { targetType: "widget", widgetName: mention.target.name, widgetSource: mention.target.source }
+          : {}
+      const node = promptSchema.nodes.mention.create({ ...mention, ...targetAttrs })
       const tr = view.state.tr.replaceWith(activeSuggestion.from, activeSuggestion.to, node).insertText(" ")
       tr.setSelection(TextSelection.near(tr.doc.resolve(activeSuggestion.from + node.nodeSize + 1)))
 
@@ -904,7 +970,7 @@ export function ChatComposer(props: TChatComposerProps) {
         </Show>
 
         <Show when={suggestion() && suggestions().length > 0}>
-          <div class="ai-chat-composer__suggestions" role="listbox">
+          <div class="ai-chat-composer__suggestions" role="listbox" aria-label={suggestion()?.kind === "mention" ? "Mention suggestions" : "Command suggestions"}>
             <For each={suggestions()}>
               {(item, index) => (
                 <button
@@ -912,13 +978,18 @@ export function ChatComposer(props: TChatComposerProps) {
                   classList={{ "ai-chat-composer__suggestion--active": index() === activeIndex() }}
                   data-active={index() === activeIndex() ? "true" : undefined}
                   role="option"
+                  aria-label={suggestion()?.kind === "mention" ? `${item.label}, ${(item as TChatComposerMention).kind}` : `${item.label}, ${(item as TChatComposerCommand).description}`}
                   aria-selected={index() === activeIndex()}
                   onMouseDown={(event) => {
                     event.preventDefault()
                     acceptSuggestion(index())
                   }}
                 >
-                  <span>{suggestion()?.kind === "mention" ? "@" : "/"}</span>
+                  <span class="ai-chat-composer__suggestion-icon">
+                    <Show when={suggestion()?.kind === "mention"} fallback={<span aria-hidden="true">/</span>}>
+                      <MentionIcon mention={item as TChatComposerMention} />
+                    </Show>
+                  </span>
                   <strong>{item.label}</strong>
                   <small>{suggestion()?.kind === "mention" ? (item as TChatComposerMention).kind : (item as TChatComposerCommand).description}</small>
                 </button>

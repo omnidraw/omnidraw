@@ -24,6 +24,12 @@ describe("fnSerializeChatMessagesAsMarkdown", () => {
         role: "assistant",
         content: [{ type: "thinking", thinking: "hidden" }],
       },
+      {
+        role: "custom",
+        customType: "vibecanvas.widgetMentions",
+        display: false,
+        content: "hidden widget identity",
+      },
     ])).toBe([
       "## user",
       "",

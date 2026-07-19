@@ -25,4 +25,23 @@ describe("ChatComposer resource mention authority", () => {
   it("does not submit a resource after its mention node is removed", () => {
     expect(getEditorMentions(fakeView([{ type: { name: "text" } }]))).toEqual([])
   })
+
+  it("keeps an inserted widget bound to its exact source and stale name snapshot", () => {
+    expect(getEditorMentions(fakeView([{
+      type: { name: "mention" },
+      attrs: {
+        id: "widget:draft:Weather",
+        label: "Weather dashboard",
+        kind: "Draft widget · Weather",
+        targetType: "widget",
+        widgetName: "Weather",
+        widgetSource: "draft",
+      },
+    }]))).toEqual([{
+      id: "widget:draft:Weather",
+      label: "Weather dashboard",
+      kind: "Draft widget · Weather",
+      target: { type: "widget", name: "Weather", source: "draft" },
+    }])
+  })
 })

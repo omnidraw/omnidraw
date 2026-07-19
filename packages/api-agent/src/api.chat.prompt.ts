@@ -5,6 +5,7 @@ export const apiChatPrompt = baseAgentOs.chat.prompt.handler(async ({ input, con
     images: input.images,
     model: input.model,
     resourceIds: input.resourceIds,
+    widgetRefs: input.widgetRefs,
     thinkingLevel: input.thinkingLevel,
   })
 });

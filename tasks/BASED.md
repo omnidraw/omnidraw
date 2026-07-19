@@ -341,7 +341,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
 - [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
-- [ ]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
+- [x]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
 - [x]: [S97](s/S97.md) - compress task reference images
 
 ## E xplorations

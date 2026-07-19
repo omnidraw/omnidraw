@@ -20,6 +20,11 @@ export function fnGetChatMessageRole(message: unknown) {
   return fnGetString(object.role) ?? "message"
 }
 
+export function fnIsChatMessageVisible(message: unknown) {
+  const object = fnGetObject(message)
+  return fnGetChatMessageRole(message) !== "custom" || object?.display !== false
+}
+
 export function fnGetChatMessageLabel(message: unknown) {
   const role = fnGetChatMessageRole(message)
   const object = fnGetObject(message)

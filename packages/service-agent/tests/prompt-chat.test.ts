@@ -169,6 +169,99 @@ describe('AgentService.promptChat', () => {
     ]);
   });
 
+  test('rejects a stale widget mention instead of resolving a replacement by display name', async () => {
+    let resourceRead = false;
+    const service = await createService({
+      reload: async () => {},
+      getResource: async (id) => {
+        resourceRead = true;
+        return {
+          id,
+          kind: 'db',
+          name: 'Notes',
+          status: 'ready',
+          last_error: null,
+          created_at: '2026-07-19T00:00:00.000Z',
+          updated_at: '2026-07-19T00:00:00.000Z',
+        };
+      },
+    });
+    let prompted = false;
+    let thinkingChanged = false;
+    const sessionManager = createFakeSessionManager();
+    service.sessionMap.widget = {
+      session: {
+        unsub: () => {},
+        sessionManager: sessionManager as never,
+        session: {
+          prompt: async () => { prompted = true; },
+          setThinkingLevel: () => { thinkingChanged = true; },
+        } as never,
+      },
+    };
+
+    await expect(service.promptChat('widget', 'session', 'Update @Weather', {
+      resourceIds: ['db-1'],
+      thinkingLevel: 'high',
+      widgetRefs: [{ name: 'DeletedWeatherDraft', source: 'draft' }],
+    })).rejects.toThrow('Selected draft widget was not found: DeletedWeatherDraft');
+    expect(prompted).toBe(false);
+    expect(thinkingChanged).toBe(false);
+    expect(resourceRead).toBe(false);
+    expect(sessionManager.getEntries()).toEqual([]);
+  });
+
+  test('delivers widget identity as hidden next-turn context without changing the user prompt', async () => {
+    const service = await createService();
+    service.getWidgetDetail = async (name, source) => ({
+      name,
+      source,
+      relation: 'draft-only',
+      variant: {
+        source,
+        displayName: 'Weather dashboard',
+        kind: 'actor-widget',
+        slug: 'weather',
+        description: null,
+        revision: 'rev-2',
+        contentFingerprint: null,
+        updatedAt: null,
+        tool: { label: 'Weather dashboard', icon: null, group: null, priority: null, behaviorType: 'action' },
+        validation: { status: 'valid', errors: [], warnings: [] },
+      },
+      sibling: null,
+      manifest: null,
+      problem: null,
+    }) as never;
+    const customMessages: Array<{ message: unknown; options: unknown }> = [];
+    const prompts: string[] = [];
+    service.sessionMap.widget = {
+      session: {
+        unsub: () => {},
+        sessionManager: createFakeSessionManager() as never,
+        session: {
+          sendCustomMessage: async (message: unknown, options: unknown) => { customMessages.push({ message, options }); },
+          prompt: async (text: string) => { prompts.push(text); },
+        } as never,
+      },
+    };
+
+    await service.promptChat('widget', 'session', 'Update @Weather', {
+      widgetRefs: [{ name: 'Weather', source: 'draft' }],
+    });
+
+    expect(prompts).toEqual(['Update @Weather']);
+    expect(customMessages).toEqual([{
+      message: {
+        customType: 'vibecanvas.widgetMentions',
+        content: expect.stringContaining('"name":"Weather"'),
+        display: false,
+        details: { widgets: [{ name: 'Weather', source: 'draft', displayName: 'Weather dashboard', revision: 'rev-2' }] },
+      },
+      options: { deliverAs: 'nextTurn' },
+    }]);
+  });
+
   test('replaces a same-kind draft binding on mention and clears it only through the explicit action', async () => {
     const resources = [
       { id: 'db-1', kind: 'db' as const, name: 'QA Database' },

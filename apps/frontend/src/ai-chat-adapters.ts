@@ -96,6 +96,7 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
     application: {
       openResource: (resourceId) => args.navigate(`/resources/${encodeURIComponent(resourceId)}`),
       invalidateResourceCatalog: () => catalogInvalidation.invalidate("resources"),
+      subscribeCatalogInvalidation: (kind, listener) => catalogInvalidation.subscribe(kind, listener),
       logError: (error) => console.error(error),
     },
   });
