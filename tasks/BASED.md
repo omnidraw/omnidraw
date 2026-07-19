@@ -161,6 +161,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
 - [ ]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
 - [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
+- [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
