@@ -7,6 +7,7 @@ import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import { ActorService } from '../src/ActorService';
 import type { TDatabaseFactory } from '../src/resources/DbResource';
+import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
 
 const DEFINITION_NAME = 'Structure Draft Notes Test';
 
@@ -66,7 +67,14 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       }) as typeof database.run;
       return database;
     };
-    service = new ActorService({ db, configPath, dataRoot, dbResourceDatabaseFactory: databaseFactory, eventPublisherService: new EventPublisherService() });
+    service = new ActorService({
+      db,
+      configPath,
+      dataRoot,
+      dbResourceDatabaseFactory: databaseFactory,
+      secretStoreKeyProvider: testSecretStoreKeyProvider,
+      eventPublisherService: new EventPublisherService(),
+    });
     await service.start({} as never);
   });
 
@@ -472,6 +480,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       db,
       configPath: join(rootDir, 'config'),
       dataRoot,
+      secretStoreKeyProvider: testSecretStoreKeyProvider,
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);
@@ -512,6 +521,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       db,
       configPath: join(rootDir, 'config'),
       dataRoot,
+      secretStoreKeyProvider: testSecretStoreKeyProvider,
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);

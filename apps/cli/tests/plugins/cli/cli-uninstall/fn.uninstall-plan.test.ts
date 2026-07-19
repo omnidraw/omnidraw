@@ -79,4 +79,37 @@ describe('fnBuildUninstallPlan', () => {
       { kind: 'migrations-dir', path: '/opt/vibecanvas/migrations', missingOk: true },
     ]));
   });
+
+  test('never removes only one half of the secret-store key and data backup unit', () => {
+    for (const xdgPaths of [
+      {
+        dataDirPath: '/projects/custom-data',
+        configDirPath: '/home/tester/.config/vibecanvas',
+        stateDirPath: '/home/tester/.local/state/vibecanvas',
+        cacheDirPath: '/home/tester/.cache/vibecanvas',
+      },
+      {
+        dataDirPath: '/home/tester/.local/share/vibecanvas',
+        configDirPath: '/projects/custom-config',
+        stateDirPath: '/home/tester/.local/state/vibecanvas',
+        cacheDirPath: '/home/tester/.cache/vibecanvas',
+      },
+    ]) {
+      const plan = fnBuildUninstallPlan(portal, {
+        homedir: '/home/tester',
+        env: {},
+        execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
+        dbPath: `${xdgPaths.dataDirPath}/vibecanvas.turso`,
+        xdgPaths,
+      });
+
+      expect(plan.removeTargets.some((target) => target.kind === 'config-dir')).toBe(false);
+      expect(plan.removeTargets.some((target) => target.kind === 'data-dir')).toBe(false);
+      expect(plan.skippedTargets).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          reason: 'configuration and data roots must be removed together',
+        }),
+      ]));
+    }
+  });
 });

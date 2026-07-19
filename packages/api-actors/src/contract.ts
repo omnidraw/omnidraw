@@ -78,6 +78,13 @@ export const ZActorResourceDataMutationResult = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('secretStore'), entry: ZActorResourceSecretDataEntry }).strict(),
 ]);
 
+export const ZActorResourceSecretReveal = z.object({
+  kind: z.literal('secretStore'),
+  name: z.string().min(1).max(256).refine((value) => value.trim().length > 0, 'Value must not be blank.'),
+  value: z.string().min(1).max(1_048_576),
+  revision: z.number().int().positive(),
+}).strict();
+
 const ZActorResourceDataValue = ZJson.refine((value) => {
   try {
     return (JSON.stringify(value)?.length ?? 0) <= 1_048_576;
@@ -409,6 +416,13 @@ export const actorsContract = oc.errors({
       }).strict())
       .route({ method: 'DELETE' })
       .output(z.object({ deleted: z.literal(true) }).strict()),
+    dataRevealSecret: oc
+      .input(z.object({
+        resourceId: ZResourceId,
+        name: ZResourceName,
+      }).strict())
+      .route({ method: 'POST' })
+      .output(ZActorResourceSecretReveal),
     definitionStatus: oc
       .input(z.object({ definitionName: ZDefinitionName }))
       .output(ZActorResourceBindingStatus.array()),

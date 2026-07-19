@@ -92,4 +92,12 @@ Good actor behavior is predictable:
 - Data updates happen through the actor runtime.
 - Output messages are JSON-serializable.
 
+## Using secret stores
+
+Secret stores hold credentials that an explicitly bound actor may need. Secret values are masked by default in the resource workspace. You can show or hide a value while adding or rotating it, or deliberately reveal one stored row; a revealed value is cleared when hidden, when you leave or refresh the view, and after 30 seconds without activity.
+
+Secret-store database pages and write-ahead logs are encrypted at rest. This protects copied database files and data-directory-only backups, but it does not protect plaintext displayed on screen, plaintext used by an authorized actor, or a machine/process compromise. Secret names, resource directories, and database headers are not confidential.
+
+AI resource tools can create and rotate secrets with approval, but they cannot reveal or read secret plaintext. Lists, mutation results, approvals, chat history, events, and logs remain value-free. A bound actor can still read a secret through its declared resource slot when its scope permits it.
+
 That structure makes generated widgets easier to inspect, regenerate, connect, and reuse.

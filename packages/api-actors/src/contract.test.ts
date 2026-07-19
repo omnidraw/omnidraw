@@ -2,10 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { ActorResourceError } from '@vibecanvas/service-actor/resources/ActorResourceError';
 import { withActorResourceApiError } from './api.resource-error';
 import {
+  actorsContract,
   ZActorEvent,
   ZActorResource,
   ZActorResourceDataPage,
   ZActorResourceDataMutationResult,
+  ZActorResourceSecretReveal,
   ZActorResourceScope,
   ZCreateActorResourceInput,
   ZDbBlobPreviewCellValue,
@@ -119,6 +121,34 @@ describe('actor resource contracts', () => {
         createdAt: '2026-07-13T00:00:00.000Z',
         updatedAt: '2026-07-13T00:01:00.000Z',
       },
+    }).success).toBe(false);
+  });
+
+  test('allows plaintext only in the strict one-secret reveal response', () => {
+    expect(actorsContract.resources.dataRevealSecret['~orpc'].route).toEqual({ method: 'POST' });
+    expect(ZActorResourceSecretReveal.parse({
+      kind: 'secretStore',
+      name: 'api-token',
+      value: 'operator-only-secret',
+      revision: 3,
+    })).toEqual({
+      kind: 'secretStore',
+      name: 'api-token',
+      value: 'operator-only-secret',
+      revision: 3,
+    });
+    expect(ZActorResourceSecretReveal.safeParse({
+      kind: 'secretStore',
+      name: 'api-token',
+      value: 'operator-only-secret',
+      revision: 3,
+      createdAt: '2026-07-19T00:00:00.000Z',
+    }).success).toBe(false);
+    expect(ZActorResourceSecretReveal.safeParse({
+      kind: 'kv',
+      name: 'api-token',
+      value: 'operator-only-secret',
+      revision: 3,
     }).success).toBe(false);
   });
 

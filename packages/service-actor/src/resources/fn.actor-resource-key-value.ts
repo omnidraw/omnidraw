@@ -2,18 +2,24 @@
  * @file Pure identity, JSON, pagination, and row helpers for physical actor key-value files.
  */
 import type { TJson } from '@vibecanvas/service-db/model';
-import type { TActorResourceKeyValueEntry } from './ActorResourceKeyValuePersistence';
+import type {
+  TActorResourceKeyValueEntry,
+  TActorResourceKeyValueEntryMetadata,
+} from './ActorResourceKeyValuePersistence';
 
 const RESOURCE_ID_MAX_LENGTH = 128;
 const LIST_DEFAULT_LIMIT = 50;
 const LIST_MAX_LIMIT = 500;
 
-type TNativeEntryRow = {
+type TNativeEntryMetadataRow = {
   readonly key: unknown;
-  readonly value: unknown;
   readonly revision: unknown;
   readonly created_at: unknown;
   readonly updated_at: unknown;
+};
+
+type TNativeEntryRow = TNativeEntryMetadataRow & {
+  readonly value: unknown;
 };
 
 function isPlainRecord(value: object): value is Record<string, unknown> {
@@ -76,6 +82,14 @@ export function fnActorResourceKeyValueListLimit(limit: number | undefined): num
 
 export function fnActorResourceKeyValueEntry(row: unknown): TActorResourceKeyValueEntry {
   const value = row as TNativeEntryRow;
+  return {
+    ...fnActorResourceKeyValueEntryMetadata(value),
+    value: fnActorResourceKeyValueParse(value.value),
+  };
+}
+
+export function fnActorResourceKeyValueEntryMetadata(row: unknown): TActorResourceKeyValueEntryMetadata {
+  const value = row as TNativeEntryMetadataRow;
   const revision = Number(value.revision);
   if (
     typeof value.key !== 'string'
@@ -88,7 +102,6 @@ export function fnActorResourceKeyValueEntry(row: unknown): TActorResourceKeyVal
   }
   return {
     key: value.key,
-    value: fnActorResourceKeyValueParse(value.value),
     revision,
     createdAt: value.created_at,
     updatedAt: value.updated_at,

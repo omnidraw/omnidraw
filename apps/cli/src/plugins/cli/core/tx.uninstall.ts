@@ -10,6 +10,7 @@ type TPortal = {
 
 type TArgs = {
   paths: string[];
+  stopOnFailure?: boolean;
 };
 
 type TRemoveResult = {
@@ -24,8 +25,15 @@ function txRemoveUninstallTargets(portal: TPortal, args: TArgs): TRemoveResult {
   const failed: Array<{ path: string; message: string }> = [];
 
   for (const path of args.paths) {
-    if (!portal.existsSync(path)) {
-      missing.push(path);
+    try {
+      portal.lstatSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        missing.push(path);
+        continue;
+      }
+      failed.push({ path, message: error instanceof Error ? error.message : String(error) });
+      if (args.stopOnFailure) break;
       continue;
     }
 
@@ -34,6 +42,7 @@ function txRemoveUninstallTargets(portal: TPortal, args: TArgs): TRemoveResult {
       removed.push(path);
     } catch (error) {
       failed.push({ path, message: error instanceof Error ? error.message : String(error) });
+      if (args.stopOnFailure) break;
     }
   }
 

@@ -89,6 +89,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/feature/db-resource/fx.db-resource.ts](apps/frontend/src/feature/db-resource/fx.db-resource.ts) |  |
 | [apps/frontend/src/feature/db-resource/tx.db-resource.ts](apps/frontend/src/feature/db-resource/tx.db-resource.ts) |  |
 | [apps/frontend/src/feature/db-resource/types.ts](apps/frontend/src/feature/db-resource/types.ts) |  |
+| [apps/frontend/src/feature/resource/fn.secret-reveal.ts](apps/frontend/src/feature/resource/fn.secret-reveal.ts) |  |
 | [apps/frontend/src/feature/resource/GenericResourcePage.tsx](apps/frontend/src/feature/resource/GenericResourcePage.tsx) |  |
 | [apps/frontend/src/fn.startup-canvas-navigation.ts](apps/frontend/src/fn.startup-canvas-navigation.ts) |  |
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
@@ -129,9 +130,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
 | [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
 | [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
 | [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
@@ -748,6 +746,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
 | [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
+| [packages/service-actor/src/resources/SecretStoreKeyProvider.ts](packages/service-actor/src/resources/SecretStoreKeyProvider.ts) | Host-owned custody and per-resource derivation for secret-store database keys. |
 | [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
@@ -894,7 +893,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

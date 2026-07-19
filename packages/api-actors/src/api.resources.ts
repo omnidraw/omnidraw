@@ -41,6 +41,10 @@ export const apiDeleteActorResourceData = baseActorsOs.resources.dataDelete.hand
   return withActorResourceApiError(() => context.actor.deleteResourceDataEntry(input));
 });
 
+export const apiRevealActorResourceSecret = baseActorsOs.resources.dataRevealSecret.handler(async ({ input, context }) => {
+  return withActorResourceApiError(() => context.actor.revealResourceSecret(input));
+});
+
 export const apiActorDefinitionResourceStatus = baseActorsOs.resources.definitionStatus.handler(async ({ input, context }) => {
   return withActorResourceApiError(() => context.actor.getDefinitionResourceStatus(input.definitionName));
 });

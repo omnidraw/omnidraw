@@ -10,6 +10,7 @@ import type { IActorResourceProvider } from '../src/resources/resource-types';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
 
 const definitionName = 'Resource Test';
 
@@ -23,7 +24,11 @@ function defaultProviders(dataRoot: string): {
   return {
     providers: [
       kvResource,
-      new SecretStoreResource(new ActorResourceKeyValueStore({ dataRoot, kind: 'secretStore' })),
+      new SecretStoreResource(new ActorResourceKeyValueStore({
+        dataRoot,
+        kind: 'secretStore',
+        secretStoreKeyProvider: testSecretStoreKeyProvider,
+      })),
     ],
     kvStore,
     kvResource,

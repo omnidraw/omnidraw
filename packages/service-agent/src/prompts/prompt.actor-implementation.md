@@ -93,7 +93,7 @@ const token = await portal.resources.secretStore("credentials").get("accessToken
 await portal.resources.secretStore("credentials").set({ name: "accessToken", value: nextToken });
 ```
 
-Secret values are currently stored as plaintext. Retrieve them only when needed. Never log, emit, or copy a token into actor data. Secret `list`, `set`, and `delete` results intentionally omit plaintext values.
+Secret-store database pages are encrypted at rest, but authorized reads still produce plaintext in memory. Retrieve values only when needed. Never log, emit, or copy a token into actor data. Secret `list`, `set`, and `delete` results intentionally omit plaintext values.
 
 DB named operations are preferred and arbitrary SQL exists only when the manifest explicitly enables it:
 

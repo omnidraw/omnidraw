@@ -7,7 +7,10 @@
 import path from "path"
 import net from "node:net"
 import { chmod, mkdir } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { Glob } from "bun"
+
+const require = createRequire(import.meta.url)
 
 type TArgs = {
   binaryPath?: string
@@ -230,6 +233,19 @@ async function assertPathExists(targetPath: string, label: string): Promise<void
 async function assertPathMissing(targetPath: string, label: string): Promise<void> {
   if (await Bun.file(targetPath).exists()) {
     throw new Error(`${label} unexpectedly exists: ${targetPath}`)
+  }
+}
+
+async function assertNativeEncryptionSupport(nativeAddonPath: string): Promise<void> {
+  const nativeAddon = Buffer.from(await Bun.file(nativeAddonPath).arrayBuffer()).toString("latin1")
+  if (!nativeAddon.includes("EncryptionCipher") || !nativeAddon.includes("Aegis256")) {
+    throw new Error(`Compiled Turso native addon does not expose AEGIS-256 encryption: ${nativeAddonPath}`)
+  }
+  const nativeBinding = require(nativeAddonPath) as {
+    EncryptionCipher?: { Aegis256?: unknown };
+  }
+  if (nativeBinding.EncryptionCipher?.Aegis256 === undefined) {
+    throw new Error(`Compiled Turso native addon does not export EncryptionCipher.Aegis256: ${nativeAddonPath}`)
   }
 }
 
@@ -678,6 +694,7 @@ async function main() {
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
+  await assertNativeEncryptionSupport(expectedNativeAddonPath)
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
 

@@ -11,7 +11,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
 | [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings |
 | [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, messages, states, files, draft editing |
-| [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate secret |
+| [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
 | [Public website](#public-website) | `/`, `/docs`, `/docs/*` | Landing page, documentation index, article layout |
 
@@ -69,7 +69,7 @@ The widget route provides one tabbed workspace for published and draft widget de
 
 ## Key-value and secret resources
 
-Key-value and secret resources share the same overview/data shell. Secret plaintext is write-only: the UI shows names and metadata after creation, then accepts replacement plaintext only during rotation.
+Key-value and secret resources share the same overview/data shell. Secret values are encrypted at rest and masked by default. The local operator can show or hide a draft value and deliberately reveal or hide one stored row; generic lists still contain names and metadata only.
 
 | Key-value overview | Empty key-value data |
 | --- | --- |
@@ -83,8 +83,10 @@ Key-value and secret resources share the same overview/data shell. Secret plaint
 
 | Add secret | Rotate secret |
 | --- | --- |
-| ![Add secret dialog with name and write-only value fields](assets/34-resource-secret-add.webp) | ![Rotate secret dialog with replacement value](assets/35-resource-secret-rotate.webp) |
-| **Secret `?tab=data` — Add.** Stores a named secret without exposing the plaintext again. | **Secret `?tab=data` — Rotate.** Replaces the write-only plaintext for an existing secret. |
+| ![Add secret dialog with a masked value field](assets/34-resource-secret-add.webp) | ![Rotate secret dialog with replacement value](assets/35-resource-secret-rotate.webp) |
+| **Secret `?tab=data` — Add.** Stores a named secret; Show/Hide changes only the current draft field and closing clears it. | **Secret `?tab=data` — Rotate.** Replaces the value without fetching the current plaintext; the replacement field also has Show/Hide. |
+
+Stored rows add an explicit Reveal/Hide action. Reveal fetches only that row, discards stale responses, and clears plaintext after 30 seconds without activity or whenever the row, page, filter, resource, tab, refresh, visibility, or navigation state changes.
 
 ## Database resources
 

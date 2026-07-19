@@ -42,6 +42,10 @@ export interface IActorResourceKeyValuePersistence {
   verify(identity: TActorResourceKeyValueIdentity): Promise<void>;
   deleteResource(identity: TActorResourceKeyValueIdentity): Promise<void>;
   get(args: { readonly resourceId: string; readonly key: string }): Promise<TActorResourceKeyValueEntry | null>;
+  getMetadata(args: {
+    readonly resourceId: string;
+    readonly key: string;
+  }): Promise<TActorResourceKeyValueEntryMetadata | null>;
   has(args: { readonly resourceId: string; readonly key: string }): Promise<boolean>;
   count(args: {
     readonly resourceId: string;
@@ -55,6 +59,13 @@ export interface IActorResourceKeyValuePersistence {
     readonly cursor?: string;
     readonly limit?: number;
   }): Promise<TActorResourceKeyValuePage>;
+  listMetadata(args: {
+    readonly resourceId: string;
+    readonly prefix?: string;
+    readonly search?: string;
+    readonly cursor?: string;
+    readonly limit?: number;
+  }): Promise<TActorResourceKeyValuePage<TActorResourceKeyValueEntryMetadata>>;
   set(args: {
     readonly resourceId: string;
     readonly key: string;

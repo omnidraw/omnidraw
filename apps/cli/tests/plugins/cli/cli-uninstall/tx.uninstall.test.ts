@@ -55,4 +55,53 @@ describe('txRemoveUninstallTargets', () => {
     expect(result.removed).toEqual([installRoot]);
     expect(existsSync(installRoot)).toBe(false);
   });
+
+  test('retains the configuration key when data removal fails', async () => {
+    const root = await createTempRoot();
+    const dataDir = join(root, 'data', 'vibecanvas');
+    const configDir = join(root, 'config', 'vibecanvas');
+    const keyPath = join(configDir, 'keys', 'secret-store-master-key.v1.hex');
+    mkdirSync(dataDir, { recursive: true });
+    mkdirSync(join(configDir, 'keys'), { recursive: true });
+    writeFileSync(join(dataDir, 'data.db'), 'encrypted-data');
+    writeFileSync(keyPath, 'master-key');
+    const attempted: string[] = [];
+    const failingPortal = {
+      ...portal,
+      rmSync(path: string, options: Parameters<typeof rmSync>[1]) {
+        attempted.push(path);
+        if (path === dataDir) throw new Error('injected data removal failure');
+        rmSync(path, options);
+      },
+    };
+
+    const result = txRemoveUninstallTargets(failingPortal, {
+      paths: [dataDir, configDir],
+      stopOnFailure: true,
+    });
+
+    expect(result.failed).toEqual([{ path: dataDir, message: 'injected data removal failure' }]);
+    expect(attempted).toEqual([dataDir]);
+    expect(existsSync(keyPath)).toBe(true);
+    expect(existsSync(join(dataDir, 'data.db'))).toBe(true);
+  });
+
+  test('removes the configuration key only after data is confirmed absent', async () => {
+    const root = await createTempRoot();
+    const dataDir = join(root, 'missing-data', 'vibecanvas');
+    const configDir = join(root, 'config', 'vibecanvas');
+    const keyPath = join(configDir, 'keys', 'secret-store-master-key.v1.hex');
+    mkdirSync(join(configDir, 'keys'), { recursive: true });
+    writeFileSync(keyPath, 'master-key');
+
+    const result = txRemoveUninstallTargets(portal, {
+      paths: [dataDir, configDir],
+      stopOnFailure: true,
+    });
+
+    expect(result.failed).toEqual([]);
+    expect(result.missing).toEqual([dataDir]);
+    expect(result.removed).toEqual([configDir]);
+    expect(existsSync(configDir)).toBe(false);
+  });
 });
