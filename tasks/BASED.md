@@ -220,6 +220,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A78](a/A78.md) - startup: warn when Node.js or npm is unavailable for widgets
 - [ ]: [A79](a/A79.md) - onboarding: welcome canvas with inline tutorial
 - [x]: [A80](a/A80.md) - codex: prompt for a branch in fresh worktrees
+- [x]: [A81](a/A81.md) - docs: comprehensive UI screen atlas
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -318,6 +319,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
 - [ ]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
+- [x]: [S97](s/S97.md) - compress task reference images
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
