@@ -11,6 +11,8 @@ packages/functional-core -> shared logic, types, utils
 packages/imperative-shell -> stateful services, db, crdt, pty, fs
 
 We use @tasks/BASED.md to manage our work.
+When you are tasks to generate new task plans. Think if a mockup img is useful.
+When you have a skill to generate images use it. Orient yourself with what we already have in SCREENS.md
 
 Notes:
 - Root `package.json` has a `postinstall` hook for `scripts/patch-automerge-repo-throttle.mjs`.
@@ -111,3 +113,9 @@ Do not guess. Use these rules.
 
 ## IMPORTANT
 All files are indexed in `@FILES.md`. Read if you need overview.
+
+## Refs (Only read when needed)
+UI overview: docs/internal/screens/SCREENS.md
+
+docs/internal/llm.migrate-turso.md
+docs/internal/llm.widget-system.md

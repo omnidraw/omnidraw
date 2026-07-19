@@ -372,6 +372,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [E31](e/E31.md) - Turso schema to TypeScript type generation
 - [x]: [E32](e/E32.md) - Capsule migration: compiled, actor-native widget sandbox
 - [ ]: [E33](e/E33.md) - widget drafts: clarify when edits take effect
+- [ ]: [E34](e/E34.md) - Capsule-only Vibecanvas manifest v1 and artifact boundary
 
 ## D eployable
 - [x]: [D1] - Generative UI with AI assits
