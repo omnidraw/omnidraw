@@ -164,6 +164,11 @@ function readAiChatComposerEditorCssRule() {
   return css.match(/\.ai-chat-composer__editor\s*\{[^}]*\}/)?.[0] ?? ""
 }
 
+function readAiChatComposerSuggestionCssRule() {
+  const css = readFileSync(AI_CHAT_CSS_PATH, "utf8")
+  return css.match(/\.ai-chat-composer__suggestions button\s*\{[^}]*\}/)?.[0] ?? ""
+}
+
 afterEach(() => {
   disposeRendered?.()
   disposeRendered = undefined
@@ -213,6 +218,19 @@ describe("ChatTab rendered message history", () => {
 
     expect(root.querySelector(".ai-chat-message-error")).toBeNull()
     expect(root.textContent).not.toContain("AI response failed")
+  })
+
+  it("does not render hidden custom context messages", () => {
+    const root = renderChatTab(undefined, [{
+      role: "custom",
+      customType: "vibecanvas.widgetMentions",
+      display: false,
+      content: "hidden widget identity",
+    }])
+
+    expect(root.textContent).not.toContain("hidden widget identity")
+    expect(root.querySelectorAll(".ai-chat-history__message")).toHaveLength(0)
+    expect(root.textContent).toContain("Ask about your canvas")
   })
 
   it("renders transient widget errors with retry and dismiss actions", () => {
@@ -444,6 +462,73 @@ describe("ChatTab rendered message history", () => {
     controls?.click()
 
     await vi.waitFor(() => expect(root.querySelector("[role='listbox']")).toBeNull())
+  })
+
+  it("renders typed mention icons, preserves keyboard navigation, and submits widget identity", async () => {
+    const onPrompt = vi.fn(async () => {})
+    const root = renderChatTab(undefined, [], {
+      onPrompt,
+      mentions: [
+        {
+          id: "widget:draft:Weather",
+          label: "Weather",
+          kind: "Draft widget",
+          target: { type: "widget", name: "Weather", source: "draft" },
+          icon: { type: "widget", icon: { svgIcon: "<svg viewBox='0 0 10 10'><circle cx='5' cy='5' r='4'/></svg>" } },
+        },
+        {
+          id: "resource:db-1",
+          label: "Weather",
+          kind: "Database resource",
+          target: { type: "resource", resourceId: "db-1" },
+          icon: { type: "resource", kind: "db" },
+        },
+      ],
+    })
+    const editor = root.querySelector<HTMLElement>(".ai-chat-composer__editor")
+    expect(editor).not.toBeNull()
+    editor?.focus()
+    if (editor) {
+      editor.innerHTML = "<p>@</p>"
+      const text = editor.querySelector("p")?.firstChild
+      if (text) {
+        const range = document.createRange()
+        range.setStart(text, 1)
+        range.collapse(true)
+        document.getSelection()?.removeAllRanges()
+        document.getSelection()?.addRange(range)
+      }
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, data: "@", inputType: "insertText" }))
+    }
+
+    await vi.waitFor(() => expect(root.querySelectorAll("[role='option']")).toHaveLength(2))
+    const options = Array.from(root.querySelectorAll<HTMLButtonElement>("[role='option']"))
+    expect(options.map((option) => option.getAttribute("aria-label"))).toEqual([
+      "Weather, Draft widget",
+      "Weather, Database resource",
+    ])
+    expect(options[0]?.querySelector(".ai-chat-composer__suggestion-icon svg")).not.toBeNull()
+    expect(options[0]?.getAttribute("aria-selected")).toBe("true")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }))
+    expect(options[1]?.getAttribute("aria-selected")).toBe("true")
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }))
+    expect(options[0]?.getAttribute("aria-selected")).toBe("true")
+
+    options[0]?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }))
+    root.querySelector<HTMLButtonElement>("[aria-label='Send prompt']")?.click()
+    await vi.waitFor(() => expect(onPrompt).toHaveBeenCalledOnce())
+    expect(onPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      resourceIds: [],
+      widgetRefs: [{ name: "Weather", source: "draft" }],
+    }))
+  })
+
+  it("keeps suggestion rows on one compact line", () => {
+    const rule = readAiChatComposerSuggestionCssRule()
+    expect(rule).toContain("display: flex")
+    expect(rule).toContain("align-items: center")
+    expect(rule).toContain("white-space: nowrap")
   })
 
   it("opens a thinking level menu before provider model options", () => {

@@ -1,4 +1,4 @@
-import { fnGetChatMessageLabel } from "./fn.chat-message-label"
+import { fnGetChatMessageLabel, fnIsChatMessageVisible } from "./fn.chat-message-label"
 import { fnGetChatMessageParts } from "./fn.chat-message-parts"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 
@@ -23,6 +23,7 @@ function fnGetImagePartMarkdown(args: { alt: string; src: string }) {
 export function fnSerializeChatMessagesAsMarkdown(messages: readonly unknown[]) {
   return messages
     .flatMap((message) => {
+      if (!fnIsChatMessageVisible(message)) return []
       const parts = fnGetChatMessageParts(message)
 
       if (parts.length === 0) {

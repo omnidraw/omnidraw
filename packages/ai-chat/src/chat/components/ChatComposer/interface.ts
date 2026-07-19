@@ -1,7 +1,19 @@
+import type { TWidgetSource, TWidgetVariantSummary } from "@vibecanvas/orpc-client"
+
+export type TChatComposerMentionTarget =
+  | { type: "resource"; resourceId: string }
+  | { type: "widget"; name: string; source: TWidgetSource }
+
+export type TChatComposerMentionIcon =
+  | { type: "resource"; kind: "kv" | "secretStore" | "db" }
+  | { type: "widget"; icon: TWidgetVariantSummary["tool"]["icon"] }
+
 export type TChatComposerMention = {
   id: string
   label: string
   kind: string
+  target?: TChatComposerMentionTarget
+  icon?: TChatComposerMentionIcon
 }
 
 export type TChatComposerCommand = {

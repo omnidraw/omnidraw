@@ -97,6 +97,7 @@ const ZAgentChatPromptImage = z.object({
 const ZAgentChatPrompt = ZAgentChatScope.extend({
   text: z.string(),
   resourceIds: z.string().min(1).max(128).array().max(16).optional(),
+  widgetRefs: ZWidgetVariantRef.array().max(16).optional(),
   images: ZAgentChatPromptImage.array().max(AGENT_CHAT_PROMPT_IMAGE_MAX_COUNT).optional(),
   model: z.object({
     provider: z.string().min(1),

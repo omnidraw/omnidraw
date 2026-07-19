@@ -930,30 +930,42 @@
 }
 
 .ai-chat-composer__suggestions button {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 2px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border: 1px solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--foreground);
   cursor: pointer;
   font: inherit;
-  min-height: 48px;
-  padding: 8px 10px;
+  min-height: 34px;
+  padding: 5px 8px;
   text-align: left;
+  white-space: nowrap;
 }
 
-.ai-chat-composer__suggestions button > span {
-  grid-row: 1 / 3;
+.ai-chat-composer__suggestion-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   color: #ff7a2f;
-  font-size: 20px;
-  line-height: 1.45;
-  text-align: center;
+}
+
+.ai-chat-composer__suggestion-icon > span,
+.ai-chat-composer__suggestion-icon svg {
+  display: block;
+  width: 15px;
+  height: 15px;
 }
 
 .ai-chat-composer__suggestions strong {
+  min-width: 0;
   overflow: hidden;
+  flex: 1 1 auto;
   font-size: 13px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -961,7 +973,9 @@
 }
 
 .ai-chat-composer__suggestions small {
+  max-width: 48%;
   overflow: hidden;
+  flex: 0 1 auto;
   color: var(--muted-foreground);
   font-size: 12px;
   text-overflow: ellipsis;
@@ -982,9 +996,9 @@
   color: #111;
 }
 
-.ai-chat-composer__suggestion--active > span,
-.ai-chat-composer__suggestions button[aria-selected="true"] > span,
-.ai-chat-composer__suggestions button[data-active="true"] > span {
+.ai-chat-composer__suggestion--active .ai-chat-composer__suggestion-icon,
+.ai-chat-composer__suggestions button[aria-selected="true"] .ai-chat-composer__suggestion-icon,
+.ai-chat-composer__suggestions button[data-active="true"] .ai-chat-composer__suggestion-icon {
   color: #111;
 }
 

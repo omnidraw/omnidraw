@@ -4,7 +4,7 @@ import type { TMarkdownBlock, TMarkdownInline } from "./fn.markdown-blocks"
 import { For, createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { ChatComposer } from "../ChatComposer/ChatComposer"
 import { fnGetAiChatAssistantError } from "../fn.error"
-import { fnGetChatMessageLabel, fnGetChatMessageRole } from "./fn.chat-message-label"
+import { fnGetChatMessageLabel, fnGetChatMessageRole, fnIsChatMessageVisible } from "./fn.chat-message-label"
 import { fnGetChatMessageParts } from "./fn.chat-message-parts"
 import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
@@ -48,7 +48,7 @@ interface IProps {
   onPreferenceChange?: (preference: TChatComposerPreferenceChange) => void
   mentions?: TChatComposerMention[]
   approvals: readonly TAiChatApproval[]
-  onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
+  onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
   onOpenResource?: (resourceId: string) => void
   onCancel: () => void
@@ -582,6 +582,7 @@ export function ChatTab(props: IProps) {
   let shouldAutoScroll = true
   let scrollAnimationFrame: number | undefined
   const pendingApprovals = () => props.approvals.filter((approval) => approval.status === "pending")
+  const visibleMessageHistory = createMemo(() => props.messageHistory.filter(fnIsChatMessageVisible))
 
   const scrollToBottom = () => {
     contentRoot.scrollTop = contentRoot.scrollHeight
@@ -617,7 +618,12 @@ export function ChatTab(props: IProps) {
       await props.onPrompt({
         text,
         images,
-        resourceIds: submit.mentions.map((mention) => mention.id),
+        resourceIds: submit.mentions.flatMap((mention) => mention.target?.type === "widget"
+          ? []
+          : [mention.target?.type === "resource" ? mention.target.resourceId : mention.id]),
+        widgetRefs: submit.mentions.flatMap((mention) => mention.target?.type === "widget"
+          ? [{ name: mention.target.name, source: mention.target.source }]
+          : []),
         model: submit.model,
         thinkingLevel: submit.thinkingLevel,
       })
@@ -639,7 +645,7 @@ export function ChatTab(props: IProps) {
   }
 
   const getChatScrollSignal = () => [
-    getChatHistoryScrollKey(props.messageHistory),
+    getChatHistoryScrollKey(visibleMessageHistory()),
     props.isRunning ? "running" : "idle",
     props.isCanceling ? "canceling" : "active",
   ].join(":")
@@ -672,14 +678,14 @@ export function ChatTab(props: IProps) {
   return (
     <div class="ai-chat-tab ai-chat-tab--chat">
       <div ref={contentRoot} class="ai-chat-content">
-        <Show when={props.messageHistory.length === 0 && !props.isRunning}>
+        <Show when={visibleMessageHistory().length === 0 && !props.isRunning}>
           <div class="ai-chat-empty" aria-live="polite">
             Ask about your canvas or describe what you want to build.
           </div>
         </Show>
-        <Show when={props.messageHistory.length > 0}>
+        <Show when={visibleMessageHistory().length > 0}>
           <div class="ai-chat-history" aria-live="polite">
-            <For each={props.messageHistory}>
+            <For each={visibleMessageHistory()}>
               {(message) => (
                 <ChatHistoryMessage
                   browser={props.browser}

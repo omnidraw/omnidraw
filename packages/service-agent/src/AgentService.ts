@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join, relative as relativePath, resolve } from 'node:path';
 import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
+import { fnWidgetMentionContext, type TWidgetMentionContextItem } from './core/fn.widget-mention-context';
 import { fnPatchDraftManifest, type TWidgetManifestPatch } from './core/fn.patch-draft-manifest';
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-records';
 import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
@@ -69,9 +70,11 @@ type TPromptSelection = {
   images?: TPromptInputImage[];
   model?: TPromptModel;
   resourceIds?: string[];
+  widgetRefs?: Array<{ name: string; source: TWidgetSource }>;
   thinkingLevel?: TThinkingLevel;
 };
 type TThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+const WIDGET_MENTION_CONTEXT_CUSTOM_TYPE = 'vibecanvas.widgetMentions';
 type TAgentLoginStatus =
   | { status: 'pending' }
   | { status: 'device-code'; userCode: string; verificationUri: string; intervalSeconds?: number; expiresInSeconds?: number; message?: string }
@@ -320,6 +323,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (!connectedEntry) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
+    const selectedWidgets = promptSelection?.widgetRefs
+      ? await this.#resolveChatWidgetSelections(promptSelection.widgetRefs)
+      : []
     if (promptSelection?.resourceIds !== undefined) {
       const resources = await this.#resolveChatResourceSelections(promptSelection?.resourceIds ?? [])
       txAppendWidgetResourceSelectionRecord({ sessionManager: connectedEntry.sessionManager }, {
@@ -359,6 +365,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     const images = this.#normalizePromptImages(promptSelection?.images)
+    const widgetContext = fnWidgetMentionContext({ widgets: selectedWidgets })
+    if (widgetContext) {
+      await session.sendCustomMessage({
+        customType: WIDGET_MENTION_CONTEXT_CUSTOM_TYPE,
+        content: widgetContext,
+        display: false,
+        details: { widgets: selectedWidgets },
+      }, { deliverAs: 'nextTurn' })
+    }
     const promptText = text.trim().length > 0 ? text : PROMPT_IMAGE_FALLBACK_TEXT
 
     await session.prompt(promptText, images.length > 0 ? { images } : undefined)
@@ -1442,6 +1457,25 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         kind: resource.kind,
         name: resource.name,
         status: resource.status,
+      })
+    }
+    return selected
+  }
+
+  async #resolveChatWidgetSelections(
+    refs: readonly { name: string; source: TWidgetSource }[],
+  ): Promise<TWidgetMentionContextItem[]> {
+    if (refs.length > 16) throw new Error('A prompt can select at most 16 widgets.')
+    const unique = [...new Map(refs.map((ref) => [`${ref.source}\u0000${ref.name}`, ref])).values()]
+    const selected: TWidgetMentionContextItem[] = []
+    for (const ref of unique) {
+      const detail = await this.getWidgetDetail(ref.name, ref.source)
+      if (!detail) throw new Error(`Selected ${ref.source} widget was not found: ${ref.name}`)
+      selected.push({
+        name: detail.name,
+        source: detail.source,
+        displayName: detail.variant.displayName,
+        revision: detail.variant.revision,
       })
     }
     return selected
