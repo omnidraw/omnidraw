@@ -162,6 +162,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
 - [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
 - [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
+- [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

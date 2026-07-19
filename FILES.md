@@ -727,6 +727,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
 | [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
 | [packages/service-actor/src/core/fn.normalize-actor-manifest.ts](packages/service-actor/src/core/fn.normalize-actor-manifest.ts) |  |
+| [packages/service-actor/src/core/fn.select-actor-definitions.ts](packages/service-actor/src/core/fn.select-actor-definitions.ts) |  |
 | [packages/service-actor/src/core/fn.widget-error.ts](packages/service-actor/src/core/fn.widget-error.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
 | [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |

@@ -4,7 +4,7 @@ import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
 import type { TActorStartAdmission } from "../src/resources/resource-types";
 import path from "node:path";
-import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import fundActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
 
@@ -150,6 +150,109 @@ describe("ActorSupervisor", () => {
     await supervisor.completeDefinitionPublication("Account Funds Test", false);
     expect(supervisor.actorMap["publication-instance"]).toBeDefined();
     await supervisor.closeActors();
+  });
+
+  test("definition reload prefers the canonical slug directory over a legacy duplicate", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-duplicate-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const canonicalDir = path.join(tempWidgetDir, "todo-actor-system");
+    const legacyDir = path.join(tempWidgetDir, "sdk-test");
+    await mkdir(canonicalDir, { recursive: true });
+    await mkdir(legacyDir, { recursive: true });
+
+    const identity = {
+      name: "Todo Actor System",
+      slug: "todo-actor-system",
+    };
+    const canonicalManifest = {
+      ...fundActorConfigJson,
+      ...identity,
+      version: "0.2.0",
+      actor: {
+        ...fundActorConfigJson.actor,
+        resources: {
+          todos: { kind: "kv", required: true, scope: ["read", "write"] },
+        },
+      },
+    };
+    const legacyManifest = {
+      ...fundActorConfigJson,
+      ...identity,
+      version: "0.1.0",
+    };
+    await writeFile(path.join(canonicalDir, "vibecanvas.json"), JSON.stringify(canonicalManifest), "utf8");
+    await writeFile(path.join(legacyDir, "vibecanvas.json"), JSON.stringify(legacyManifest), "utf8");
+
+    const supervisor = createSupervisorWithPaths({
+      db,
+      notifications,
+      absWidgetDir: tempWidgetDir,
+      configPath: tempConfigPath,
+    });
+
+    try {
+      await supervisor.reloadDefinitionsOnly();
+
+      expect(supervisor.vibecanvasDefMap[identity.name]).toMatchObject({
+        version: "0.2.0",
+        manifest_path: "widgets/todo-actor-system/vibecanvas.json",
+        actor: {
+          resources: {
+            todos: { kind: "kv", required: true, scope: ["read", "write"] },
+          },
+        },
+      });
+      await expect(db.actor.getDefinition(identity.name)).resolves.toMatchObject({
+        manifest_path: "widgets/todo-actor-system/vibecanvas.json",
+      });
+      expect(notifications).toContainEqual({
+        type: "warning",
+        title: "Ignored duplicate actor definition",
+        description: expect.stringContaining("widgets/sdk-test/vibecanvas.json"),
+      });
+    } finally {
+      await supervisor.closeActors();
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
+  });
+
+  test("definition reload excludes duplicate names without one canonical slug directory", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-ambiguous-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const firstDir = path.join(tempWidgetDir, "legacy-first");
+    const secondDir = path.join(tempWidgetDir, "legacy-second");
+    await mkdir(firstDir, { recursive: true });
+    await mkdir(secondDir, { recursive: true });
+
+    const manifest = {
+      ...fundActorConfigJson,
+      name: "Ambiguous Actor",
+      slug: "ambiguous-actor",
+    };
+    await writeFile(path.join(firstDir, "vibecanvas.json"), JSON.stringify(manifest), "utf8");
+    await writeFile(path.join(secondDir, "vibecanvas.json"), JSON.stringify(manifest), "utf8");
+
+    const supervisor = createSupervisorWithPaths({
+      db,
+      notifications,
+      absWidgetDir: tempWidgetDir,
+      configPath: tempConfigPath,
+    });
+
+    try {
+      await supervisor.reloadDefinitionsOnly();
+
+      expect(supervisor.vibecanvasDefMap[manifest.name]).toBeUndefined();
+      expect(await db.actor.getDefinition(manifest.name)).toBeUndefined();
+      expect(notifications).toContainEqual({
+        type: "error",
+        title: "Ambiguous actor definition",
+        description: expect.stringContaining("widgets/legacy-first/vibecanvas.json"),
+      });
+    } finally {
+      await supervisor.closeActors();
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
   });
 
   test("init boots actor instances from db with saved state and data", async () => {

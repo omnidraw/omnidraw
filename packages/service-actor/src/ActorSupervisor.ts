@@ -9,6 +9,7 @@ import { existsSync, mkdirSync } from 'fs';
 import type { TActorData, TActorState, TVibecanvasJson } from "./core/types";
 import { fnCanRouteActorConnectionMessage, fnIsActorConnectionEnabled } from "./core/fn.actor-connections";
 import { fnToActorData } from "./core/fn.actor-data";
+import { fnSelectActorDefinitions, type TActorDefinitionCandidate } from "./core/fn.select-actor-definitions";
 import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
 import { fnNormalizeWidgetError } from './core/fn.widget-error';
@@ -166,8 +167,8 @@ export class ActorSupervisor {
   }
 
   private async reloadDefinitions() {
-    const nextDefMap: { [name: string]: TVibecanvasJson & { manifest_path: string } } = {}
     const defs = await fxListVibecanvasJsons({ Bun, readdir, join, exists }, { widgetDir: this.#config.absWidgetDir })
+    const candidates: TActorDefinitionCandidate[] = []
 
     defs.forEach(def => {
       if (def.error !== null) {
@@ -183,13 +184,30 @@ export class ActorSupervisor {
         })
       })
 
-      nextDefMap[def.vibecanvasJson.name] = {
+      candidates.push({
         ...def.vibecanvasJson,
         manifest_path: makeManifestPathConfigRelative(this.#config.configPath, def.vibecanvasJsonPath),
-      }
+      })
     })
 
-    this.vibecanvasDefMap = nextDefMap
+    const selection = fnSelectActorDefinitions({ candidates })
+    selection.duplicates.forEach((duplicate) => {
+      if (duplicate.selectedManifestPath) {
+        this.#config.eventPublisherService.publishNotification({
+          type: 'warning',
+          title: 'Ignored duplicate actor definition',
+          description: `Actor definition "${duplicate.name}" is declared by multiple manifests. Using canonical manifest "${duplicate.selectedManifestPath}" and ignoring ${duplicate.ignoredManifestPaths.map((path) => `"${path}"`).join(', ')}.`,
+        })
+        return
+      }
+
+      this.#config.eventPublisherService.publishNotification({
+        type: 'error',
+        title: 'Ambiguous actor definition',
+        description: `Actor definition "${duplicate.name}" is declared by multiple manifests without one unique canonical slug directory: ${duplicate.candidateManifestPaths.map((path) => `"${path}"`).join(', ')}.`,
+      })
+    })
+    this.vibecanvasDefMap = selection.definitions
   }
 
   private async loadMissingActorInstances() {
