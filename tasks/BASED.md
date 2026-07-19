@@ -217,6 +217,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A76](a/A76.md) - sidebar: replace Tool Groups with a version-aware Widgets catalog
 - [x]: [A77](a/A77.md) - AI chat: surface assistant and widget-level errors
 - [x]: [A78](a/A78.md) - startup: warn when Node.js or npm is unavailable for widgets
+- [ ]: [A79](a/A79.md) - onboarding: welcome canvas with inline tutorial
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -312,6 +313,8 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
 - [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
 - [ ]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
+- [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
+- [ ]: [S95](s/S95.md) - sidebar: unify selected widget highlight
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
@@ -342,6 +345,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [E30](e/E30.md) - actor resources: evaluate independent files for KV and secret stores
 - [ ]: [E31](e/E31.md) - Turso schema to TypeScript type generation
 - [x]: [E32](e/E32.md) - Capsule migration: compiled, actor-native widget sandbox
+- [ ]: [E33](e/E33.md) - widget drafts: clarify when edits take effect
 
 ## D eployable
 - [x]: [D1] - Generative UI with AI assits
