@@ -41,6 +41,14 @@ export function fnProjectWidgetCatalog(catalog: TWidgetCatalog): TWidgetSidebarP
   };
 }
 
+export function fnFindWidgetSelectionGroup(
+  projection: TWidgetSidebarProjection,
+  source: TWidgetSource,
+  name: string,
+): string | null {
+  return projection.groups.find((group) => group.rows.some((row) => row.source === source && row.name === name))?.name ?? null;
+}
+
 export function fnWidgetSelection(pathname: string): { source: TWidgetSource; encodedName: string } | null {
   const match = pathname.match(/^\/widgets\/(published|draft)\/([^/]+)$/);
   return match ? { source: match[1] as TWidgetSource, encodedName: match[2] ?? '' } : null;

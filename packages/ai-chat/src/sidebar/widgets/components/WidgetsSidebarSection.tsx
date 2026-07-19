@@ -4,9 +4,9 @@ import ChevronRight from 'lucide-solid/icons/chevron-right';
 import MoreHorizontal from 'lucide-solid/icons/more-horizontal';
 import Pencil from 'lucide-solid/icons/pencil';
 import TriangleAlert from 'lucide-solid/icons/triangle-alert';
-import { For, Show, createMemo, createSignal, type Component } from 'solid-js';
+import { For, Show, createEffect, createMemo, createSignal, type Component } from 'solid-js';
 import { ToolGroupDialog, type TToolGroupValue } from '../../components/ToolGroupDialog';
-import { fnProjectWidgetCatalog, fnWidgetSelection } from '../fn.widget-catalog';
+import { fnFindWidgetSelectionGroup, fnProjectWidgetCatalog, fnWidgetSelection } from '../fn.widget-catalog';
 import { useWidgetCatalog } from '../WidgetCatalogProvider';
 import type { TWidgetSidebarGroup, TWidgetSidebarRow } from '../types';
 import { WidgetIcon } from './WidgetIcon';
@@ -23,11 +23,11 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
   const projection = createMemo(() => catalogState.catalog() ? fnProjectWidgetCatalog(catalogState.catalog()!) : null);
   const selection = createMemo(() => fnWidgetSelection(application.pathname()));
 
-  const selectedName = () => {
+  const selectedName = createMemo(() => {
     const selected = selection();
     if (!selected) return null;
     try { return decodeURIComponent(selected.encodedName); } catch { return null; }
-  };
+  });
   const isSelected = (row: TWidgetSidebarRow) => selection()?.source === row.source && selectedName() === row.name;
   const openRow = (row: TWidgetSidebarRow) => application.navigate(`/widgets/${row.source}/${encodeURIComponent(row.name)}?tab=overview`);
   const toggleGroup = (name: string) => setExpandedGroups((current) => {
@@ -37,6 +37,22 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
   });
   const openCreate = () => { setSelectedGroup(null); setDialogOpen(true); };
   const openEdit = (group: TWidgetSidebarGroup) => { setSelectedGroup(group); setDialogOpen(true); };
+
+  createEffect(() => {
+    const selected = selection();
+    const name = selectedName();
+    const projected = projection();
+    if (!selected || !name || !projected) return;
+    const groupName = fnFindWidgetSelectionGroup(projected, selected.source, name);
+    if (!groupName) return;
+    setExpandedGroups((current) => {
+      if (current.has(groupName)) return current;
+      const next = new Set(current);
+      next.add(groupName);
+      return next;
+    });
+  });
+
   const linkedWidgets = () => {
     const selected = selectedGroup();
     if (!selected) return [];

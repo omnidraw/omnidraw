@@ -314,7 +314,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
 - [ ]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
 - [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
-- [ ]: [S95](s/S95.md) - sidebar: unify selected widget highlight
+- [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
