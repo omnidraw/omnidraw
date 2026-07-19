@@ -192,10 +192,11 @@ describe("DbServiceTurso actor writes", () => {
     expect(persistedMedium?.id).toBe("actor-medium-c");
   });
 
-  test("updates actor definitions without UPDATE RETURNING on the self-triggered table", async () => {
+  test("updates actor definition identity without UPDATE RETURNING on the self-triggered table", async () => {
     const updated = await db.actor.updateDefinition({
+      currentSlug: "counter",
       name: ACTOR_DEFINITION_NAME,
-      slug: "counter",
+      slug: "counter-v2",
       url: "https://example.com/counter",
       description: "Updated counter",
       manifest_path: "/actors/counter-renamed/vibecanvas.json",
@@ -203,11 +204,12 @@ describe("DbServiceTurso actor writes", () => {
 
     expect(updated).toMatchObject({
       name: ACTOR_DEFINITION_NAME,
-      slug: "counter",
+      slug: "counter-v2",
       url: "https://example.com/counter",
       description: "Updated counter",
       manifest_path: "/actors/counter-renamed/vibecanvas.json",
     });
+    await expect(db.actor.listDefinitions()).resolves.toHaveLength(1);
   });
 
   test("persists and clears actor infrastructure errors without changing machine context", async () => {

@@ -139,6 +139,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
 - [x]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
 - [ ]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
+- [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -218,6 +219,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [x]: [A77](a/A77.md) - AI chat: surface assistant and widget-level errors
 - [x]: [A78](a/A78.md) - startup: warn when Node.js or npm is unavailable for widgets
 - [ ]: [A79](a/A79.md) - onboarding: welcome canvas with inline tutorial
+- [x]: [A80](a/A80.md) - codex: prompt for a branch in fresh worktrees
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -315,6 +317,7 @@ Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
 - [ ]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
 - [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
+- [ ]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

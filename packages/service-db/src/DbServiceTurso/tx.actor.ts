@@ -7,7 +7,7 @@ type TPortal = {
 
 type TArgsDefinitionCreate = Omit<TActorDefinition, "created_at" | "updated_at">
 type TArgsDefinitionDelete = { name: string }
-type TArgsDefinitionUpdate = Omit<TActorDefinition, "created_at" | "updated_at">
+type TArgsDefinitionUpdate = Omit<TActorDefinition, "created_at" | "updated_at"> & { currentSlug?: string }
 type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context" | "last_error"> & { machine_context: TJson; last_error?: TActorInstance['last_error'] }
 type TArgsInstanceUpdateStatus = Pick<TActorInstance, "id" | "status">
 type TArgsInstanceUpdateHealth = Pick<TActorInstance, "id" | "status" | "last_error">
@@ -68,10 +68,10 @@ export async function txActorDeleteDefinition(portal: TPortal, args: TArgsDefini
 export async function txActorUpdateDefinition(portal: TPortal, args: TArgsDefinitionUpdate): Promise<TActorDefinition> {
   const updateStmt = await portal.db.prepare(`
     UPDATE actor_definitions
-    SET name = ?, url = ?, description = ?, manifest_path = ?
+    SET name = ?, slug = ?, url = ?, description = ?, manifest_path = ?
     WHERE slug = ?
   `)
-  await updateStmt.run(args.name, args.url, args.description, args.manifest_path, args.slug)
+  await updateStmt.run(args.name, args.slug, args.url, args.description, args.manifest_path, args.currentSlug ?? args.slug)
 
   const selectStmt = await portal.db.prepare(`
     SELECT *

@@ -78,34 +78,35 @@ export async function txDeleteActorDefinitionFiles(portal: TPortalDeleteActorDef
 
 export async function txSyncDbActorDefinitions(portal: TPortalSyncDbActorDefinitions, args: TArgsSyncDbActorDefinitions) {
   const definitionsInDb = await portal.db.actor.listDefinitions()
-  const defsToInsert: Set<TVibecanvasDefinition> = new Set()
-  const defsToUpdate: Set<TVibecanvasDefinition> = new Set()
-  const manifestPathsInDb = new Set(definitionsInDb.map(definition => manifestPathToRelativeConfigPath(portal, definition.manifest_path)))
+  const definitionsByManifestPath = new Map(definitionsInDb.map(definition => [
+    manifestPathToRelativeConfigPath(portal, definition.manifest_path),
+    definition,
+  ]))
+  const definitionsBySlug = new Map(definitionsInDb.map(definition => [definition.slug, definition]))
+  const definitionsByName = new Map(definitionsInDb.map(definition => [definition.name, definition]))
   const defsWithRelativeManifestPath = args.defs.map(definition => ({
     ...definition,
     manifest_path: manifestPathToRelativeConfigPath(portal, definition.manifest_path),
   }))
+  const promises: Promise<unknown>[] = []
 
   defsWithRelativeManifestPath.forEach(def => {
-    if(manifestPathsInDb.has(def.manifest_path))
-      defsToUpdate.add(def)
-    else defsToInsert.add(def)
-  })
+    const existingDefinition = definitionsByManifestPath.get(def.manifest_path)
+      ?? definitionsBySlug.get(def.slug)
+      ?? definitionsByName.get(def.name)
 
-  const promises: Promise<any>[] = []
+    if (existingDefinition) {
+      promises.push(portal.db.actor.updateDefinition({
+        currentSlug: existingDefinition.slug,
+        manifest_path: def.manifest_path,
+        name: def.name,
+        slug: def.slug,
+        description: def.description ?? null,
+        url: def.url ?? null,
+      }))
+      return
+    }
 
-  defsToUpdate.forEach(def => {
-    const p = portal.db.actor.updateDefinition({
-      manifest_path: def.manifest_path,
-      name: def.name,
-      slug: def.slug,
-      description: def.description ?? null,
-      url: def.url ?? null,
-    })
-    promises.push(p)
-  })
-
-  defsToInsert.forEach(def => {
     const p = portal.db.actor.insertDefinition({
       description: def.description ?? null,
       manifest_path: def.manifest_path,
