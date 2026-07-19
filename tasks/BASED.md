@@ -3,15 +3,14 @@
 ## Introduction
 
 Building software is explorative, creative and sometimes dull and repetitive.
-This document outline the how build software in a highly technical,
+This document outline the how to build software in a highly technical,
 small and motivated team. The goal is to minimize management
-and maximize throughput. The idea behind Based is that programming is 90% context loading and 10% actual solving and coding. Therefore we should batch work for context loading and minimize context switching.
-Based skips the traditional agile ceremonies and focuses on the codebase and a glorified todo list.
+and maximize throughput. The idea behind `BASED` is that programming is 90% context loading and 10% actual solving and coding. Therefore we should batch work for context loading and minimize context switching.
+`BASED` skips the traditional agile ceremonies and focuses on the codebase and a glorified todo list.
 The todo list is the heart of the project. No tickets, no boards, no sprints, no backlog.
-Just a list of things to do. The list is grouped into 5 and ordered by importance within each group.
+Just a list of things to do. The list is grouped into 5 and ordered by number.
 Every dev opens a branch and picks a set of items they want to work on. They open a file based on
-their branch and copy the items and explain what they are doing. Once merged the items are removed
-from the list the branch file is kept.
+their branch and copy the items and explain what they are doing. Once merged the items are checked or removed from the list the branch is kept.
 
 Every change in the codebase can be grouped into one of the following categories:
 
@@ -19,7 +18,7 @@ B ugs: Something is not working as expected.
 A dditions: New features or improvements.
 S ubtractions: Removing or simplifing parts of the codebase.
 E xplorations: Researching new technologies or ideas.
-D eployable: Important changes that are ready to be deployed.
+D eployable: Notable changes.
 
 The status are tagged:
 - [ ]: open
@@ -34,7 +33,7 @@ Remember to keep the codebase small. Small is clean, small is fast. Delete often
 
 ## Structure
 
-Based now lives at the repository root in `tasks/`.
+`BASED.md` now lives at the repository root in `tasks/`.
 
 - `tasks/BASED.md`: overview, active index, and conventions.
 - `tasks/b/`: bug files.
@@ -59,7 +58,7 @@ Leaf files use this format:
 
 ```md
 # B1 - text: edit jumping
-[Overview](../../BASED.md)
+[Overview](../../`BASED`.md)
 
 <Short summary - This is read by humans. Keep it short>
 
@@ -87,7 +86,29 @@ Use the overview for scanning.
 Use the leaf files for execution history and local context.
 Never put detailed plan in this file
 Never put leaf notes, lane breakdowns, execution history, or detailed task plans in this file.
-Editing `tasks/BASED.md` alone does not require a `FILES.md` bookkeeping update.
+Editing `tasks/`BASED`.md` alone does not require a `FILES.md` bookkeeping update.
+
+## Inline Plan Visuals
+
+Task markdown renders images and Mermaid diagrams inline, so visuals belong in
+the leaf task's `## Plan` instead of living as detached references.
+
+- Every supplied, external, or generated image used by a task must be copied
+  next to that task's markdown file and embedded inside its `## Plan` with
+  normal Markdown image syntax.
+- Name the first image with the exact task id: `A100.md` -> `A100.png`. Name
+  additional images `A100-2.png`, `A100-3.png`, and so on. Other task types use
+  the same rule, for example `B12.png` or `E5-2.png`. Do not hotlink an external
+  asset when a local task-owned copy can be stored.
+- Use an inline fenced `mermaid` diagram in `## Plan` for flows, ownership,
+  state transitions, service relationships, or multi-step interactions.
+- Substantial Addition and Exploration plans should normally include at least
+  one useful inline image or Mermaid diagram. Simple one-step tasks may omit a
+  visual when it would add no information.
+- Visuals supplement the written plan and acceptance criteria; when they
+  disagree, the written task contract is authoritative.
+- When images where added from the user and they are still relevant (e.g. Bugreport) keep the images in the plan files you create / edit
+- All images just be compressed in size. Use cli tools
 
 ## B ugs
 - [x]: [B1](b/B1.md) - text: edit jumping
