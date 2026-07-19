@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { TWidgetCatalog, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
-import { fnProjectWidgetCatalog, fnWidgetSelection } from '../../src/sidebar/widgets/fn.widget-catalog';
+import { fnFindWidgetSelectionGroup, fnProjectWidgetCatalog, fnWidgetSelection } from '../../src/sidebar/widgets/fn.widget-catalog';
 
 function variant(source: 'published' | 'draft', group: string | null): TWidgetVariantSummary {
   return {
@@ -37,6 +37,14 @@ describe('widget catalog projection', () => {
     const projection = fnProjectWidgetCatalog(catalog);
     expect(projection.groups[0]?.rows[0]?.source).toBe('published');
     expect(projection.ungrouped[0]).toMatchObject({ source: 'draft', missingGroup: 'Missing' });
+    expect(fnFindWidgetSelectionGroup(projection, 'published', 'Camera')).toBe('Media');
+    expect(fnFindWidgetSelectionGroup(projection, 'draft', 'Camera')).toBeNull();
     expect(fnWidgetSelection('/widgets/draft/Camera')).toEqual({ source: 'draft', encodedName: 'Camera' });
+  });
+
+  test('matches only exact published and draft detail routes', () => {
+    expect(fnWidgetSelection('/widgets/published/Camera%20Feed')).toEqual({ source: 'published', encodedName: 'Camera%20Feed' });
+    expect(fnWidgetSelection('/widgets/preview/Camera')).toBeNull();
+    expect(fnWidgetSelection('/widgets/draft/Camera/files')).toBeNull();
   });
 });
