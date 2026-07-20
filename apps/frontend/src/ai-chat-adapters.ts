@@ -19,6 +19,7 @@ export const catalogInvalidation = createCatalogInvalidation();
 
 export const chatBrowserPort: TAiChatBrowserPort = {
   document,
+  createResizeObserver: (callback) => new ResizeObserver(callback),
   createId: () => crypto.randomUUID(),
   createObjectUrl: (file) => URL.createObjectURL(file),
   revokeObjectUrl: (url) => URL.revokeObjectURL(url),

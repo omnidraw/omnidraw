@@ -196,6 +196,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/src/chat/components/ApprovalList.tsx](packages/ai-chat/src/chat/components/ApprovalList.tsx) |  |
 | [packages/ai-chat/src/chat/components/AsyncStateView.tsx](packages/ai-chat/src/chat/components/AsyncStateView.tsx) |  |
 | [packages/ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx](packages/ai-chat/src/chat/components/ChatComposer/ChatComposer.tsx) |  |
+| [packages/ai-chat/src/chat/components/ChatComposer/fn.suggestion-navigation.ts](packages/ai-chat/src/chat/components/ChatComposer/fn.suggestion-navigation.ts) |  |
 | [packages/ai-chat/src/chat/components/ChatComposer/fn.trigger.ts](packages/ai-chat/src/chat/components/ChatComposer/fn.trigger.ts) |  |
 | [packages/ai-chat/src/chat/components/ChatComposer/interface.ts](packages/ai-chat/src/chat/components/ChatComposer/interface.ts) |  |
 | [packages/ai-chat/src/chat/components/fn.approval-details.ts](packages/ai-chat/src/chat/components/fn.approval-details.ts) |  |

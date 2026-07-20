@@ -920,7 +920,10 @@
   display: flex;
   width: min(420px, calc(100% - 48px));
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 2px solid var(--foreground);
   border-radius: 0;
   background: var(--card);

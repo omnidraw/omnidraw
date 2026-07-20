@@ -20,6 +20,7 @@ export type TWidgetTransportPort = {
 
 export type TAiChatBrowserPort = {
   document: Document;
+  createResizeObserver(callback: ResizeObserverCallback): Pick<ResizeObserver, "observe" | "disconnect">;
   createId(): string;
   createObjectUrl(file: File): string;
   revokeObjectUrl(url: string): void;

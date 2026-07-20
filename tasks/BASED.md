@@ -160,7 +160,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B47](b/B47.md) - image delete: remove media_files row
 - [x]: [B48](b/B48.md) - AI widgets: pin Preview revisions and make Publish rollback complete
 - [x]: [B49](b/B49.md) - AI chat: reconnect race drops approval session scope
-- [ ]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
+- [x]: [B50](b/B50.md) - AI chat: keyboard navigation cannot reach or scroll long mention and slash lists
 - [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
 - [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
 - [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots

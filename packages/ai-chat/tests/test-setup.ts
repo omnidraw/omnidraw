@@ -67,6 +67,10 @@ export function createTestContainer(args?: { width?: number; height?: number }) 
 export function createTestChatBrowser(): TAiChatBrowserPort {
   return {
     document,
+    createResizeObserver: () => ({
+      observe: () => {},
+      disconnect: () => {},
+    }),
     createId: () => "00000000-0000-4000-8000-000000000001",
     createObjectUrl: () => "blob:test",
     revokeObjectUrl: () => {},
