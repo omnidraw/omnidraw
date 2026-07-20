@@ -345,6 +345,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
 - [x]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
 - [x]: [S97](s/S97.md) - compress task reference images
+- [ ]: [S98](s/S98.md) - widgets: replace fullscreen header with SolidJS host chrome
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
