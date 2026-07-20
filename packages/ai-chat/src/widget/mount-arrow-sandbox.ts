@@ -271,11 +271,8 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
   let hasSandboxError = false;
   let unsubscribeActorEvents: (() => void) | undefined;
   let disposed = false;
-  let cursor = 0;
   let currentSnapshot: TActorSnapshot | null = null;
-  let unbindSandboxFormSubmitGuards: (() => void) | undefined;
-  const queuedEvents: TWidgetHostActorEventResult[] = [];
-  const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = [];
+  let snapshotHandler: ((snapshot: TActorSnapshot) => void) | undefined;
   const actorPortal: TPortal = {
     ...portal,
     onRecovered: () => {
@@ -283,101 +280,45 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
     },
   };
 
-  function pushActorEvent(event: TWidgetHostActorEventResult) {
-    if (disposed) return;
-
-    const resolve = pendingResolvers.shift();
-    if (resolve) {
-      resolve(event);
-      return;
-    }
-
-    queuedEvents.push(event);
-  }
-
-  function pushSnapshot(snapshot: TActorSnapshot) {
-    currentSnapshot = snapshot;
-    cursor += 1;
-    pushActorEvent({ type: 'snapshot', cursor: String(cursor), snapshot });
-  }
-
   function handleActorEvent(event: TWidgetActorEvent) {
     const result = fnActorEventSnapshot({ snapshot: currentSnapshot, event });
     if (!result) return;
     if (result.error) actorPortal.onError(result.error);
     else if (result.recovered) actorPortal.onRecovered();
-    pushSnapshot(result.snapshot);
+    currentSnapshot = result.snapshot;
+    snapshotHandler?.(result.snapshot);
   }
 
-  function subscribeActorEvents(nextActorInstanceId: string) {
-    if (unsubscribeActorEvents || disposed) return;
-    actorInstanceId = nextActorInstanceId;
-    unsubscribeActorEvents = portal.subscribeActorInstanceEvents(nextActorInstanceId, handleActorEvent);
+  function subscribeActorEvents() {
+    if (unsubscribeActorEvents || disposed || !actorInstanceId || !snapshotHandler) return;
+    unsubscribeActorEvents = portal.subscribeActorInstanceEvents(actorInstanceId, handleActorEvent);
   }
 
   async function ensureActorInstanceId(): Promise<string | null> {
-    if (actorInstanceId) {
-      subscribeActorEvents(actorInstanceId);
-      return actorInstanceId;
-    }
+    if (actorInstanceId) return actorInstanceId;
 
     const nextActorInstanceId = await waitForActorInstanceId(portal);
-    if (!nextActorInstanceId) return null;
-    subscribeActorEvents(nextActorInstanceId);
-    return nextActorInstanceId;
+    if (disposed || !nextActorInstanceId) return null;
+    actorInstanceId = nextActorInstanceId;
+    subscribeActorEvents();
+    return actorInstanceId;
   }
 
-  if (actorInstanceId) {
-    subscribeActorEvents(actorInstanceId);
-  }
-
-  HTML`<section class="vc-widget-sandbox-shell">
-    <style>
-      .vc-widget-sandbox-shell,
-      .vc-widget-sandbox-shell > arrow-sandbox {
-        display: block;
-        width: 100%;
-        height: 100%;
-        min-width: 0;
-        min-height: 0;
-        overflow: hidden;
-      }
-    </style>
-    ${SANDBOX({
-    source: getSandboxSource(args.sandbox.arrowjs),
+  const cleanupSandbox = mountArrowSandboxBridge({
+    root: portal.root,
     onError(error) {
       hasSandboxError = true;
-      portal.onError(getSandboxHostError(error));
+      portal.onError(error);
     },
   }, {
-    output(payload) {
-      const message = getSandboxOutputError(payload);
-      if (!message) return;
-      hasSandboxError = true;
-      portal.onError({
-        phase: 'sandbox-runtime',
-        code: 'WIDGET_SANDBOX_RUNTIME_FAILED',
-        message,
-        retryable: false,
-      });
-    },
-  }, {
-    [SDK_HOST_BRIDGE_MODULE]: {
-      async getActorSnapshot() {
+    sources: args.sandbox.arrowjs,
+    bridge: {
+      async getSnapshot() {
         const readyActorInstanceId = await ensureActorInstanceId();
         currentSnapshot = await getInitialActorSnapshot(actorPortal, readyActorInstanceId, args.element.id);
         return currentSnapshot;
       },
-      async sendActorMessage(args: unknown) {
-        const message = getActorMessageFromBridgeArgs(args);
-        if (!message) {
-          return {
-            ok: false,
-            code: 'INVALID_WIDGET_MESSAGE',
-            message: 'Widget actor message must be { name: string, payload: unknown }',
-          };
-        }
-
+      async sendMessage(message) {
         const readyActorInstanceId = await ensureActorInstanceId();
         if (!readyActorInstanceId) {
           return {
@@ -403,10 +344,148 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
 
         return { ok: true, messageId: result.messageId };
       },
-      nextActorEvent(args: unknown) {
+      subscribeSnapshots(handler) {
+        snapshotHandler = handler;
+        subscribeActorEvents();
+        return () => {
+          if (snapshotHandler === handler) snapshotHandler = undefined;
+          unsubscribeActorEvents?.();
+          unsubscribeActorEvents = undefined;
+        };
+      },
+    },
+  });
+
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    cleanupSandbox();
+    unsubscribeActorEvents?.();
+    unsubscribeActorEvents = undefined;
+  };
+}
+
+export type TArrowSandboxBridge = {
+  getSnapshot: () => Promise<TActorSnapshot>;
+  sendMessage: (message: TWidgetActorMessageAction) => Promise<
+    | { ok: true; messageId?: string }
+    | { ok: false; code: string; message: string }
+  >;
+  subscribeSnapshots: (handler: (snapshot: TActorSnapshot) => void) => () => void;
+};
+
+type TArrowSandboxBridgePortal = {
+  root: HTMLElement;
+  onError: (error: TWidgetError) => void;
+};
+
+type TArrowSandboxBridgeArgs = {
+  sources: Record<string, string | undefined>;
+  bridge: TArrowSandboxBridge;
+};
+
+/**
+ * Mounts the shared Arrow sandbox and SDK bootstrap against an injected actor
+ * bridge. Published widgets keep their actor-instance adapter above; draft
+ * Previews inject their revision-pinned Preview adapter here.
+ */
+export function mountArrowSandboxBridge(portal: TArrowSandboxBridgePortal, args: TArrowSandboxBridgeArgs) {
+  let disposed = false;
+  let cursor = 0;
+  let currentSnapshot: TActorSnapshot | null = null;
+  let unbindSandboxFormSubmitGuards: (() => void) | undefined;
+  const queuedEvents: TWidgetHostActorEventResult[] = [];
+  const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = [];
+
+  const pushActorEvent = (event: TWidgetHostActorEventResult) => {
+    if (disposed) return;
+
+    const resolve = pendingResolvers.shift();
+    if (resolve) {
+      resolve(event);
+      return;
+    }
+
+    queuedEvents.push(event);
+  };
+
+  const pushSnapshot = (snapshot: TActorSnapshot) => {
+    currentSnapshot = snapshot;
+    cursor += 1;
+    pushActorEvent({ type: 'snapshot', cursor: String(cursor), snapshot });
+  };
+
+  const unsubscribeSnapshots = args.bridge.subscribeSnapshots(pushSnapshot);
+
+  const disposeBridge = () => {
+    if (disposed) return;
+    disposed = true;
+    try {
+      unbindSandboxFormSubmitGuards?.();
+    } finally {
+      try {
+        unsubscribeSnapshots();
+      } finally {
+        while (pendingResolvers.length > 0) {
+          pendingResolvers.shift()?.({ type: 'noop', cursor: String(cursor) });
+        }
+
+        queuedEvents.length = 0;
+      }
+    }
+  };
+
+  try {
+    HTML`<section class="vc-widget-sandbox-shell">
+    <style>
+      .vc-widget-sandbox-shell,
+      .vc-widget-sandbox-shell > arrow-sandbox {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+    </style>
+    ${SANDBOX({
+    source: getSandboxSource(args.sources),
+    onError(error) {
+      portal.onError(getSandboxHostError(error));
+    },
+  }, {
+    output(payload) {
+      const message = getSandboxOutputError(payload);
+      if (!message) return;
+      portal.onError({
+        phase: 'sandbox-runtime',
+        code: 'WIDGET_SANDBOX_RUNTIME_FAILED',
+        message,
+        retryable: false,
+      });
+    },
+  }, {
+    [SDK_HOST_BRIDGE_MODULE]: {
+      async getActorSnapshot() {
+        currentSnapshot = await args.bridge.getSnapshot();
+        return currentSnapshot;
+      },
+      async sendActorMessage(value: unknown) {
+        const message = getActorMessageFromBridgeArgs(value);
+        if (!message) {
+          return {
+            ok: false,
+            code: 'INVALID_WIDGET_MESSAGE',
+            message: 'Widget actor message must be { name: string, payload: unknown }',
+          };
+        }
+
+        return args.bridge.sendMessage(message);
+      },
+      nextActorEvent(value: unknown) {
         if (disposed) return { type: 'noop', cursor: String(cursor) };
 
-        const requestedCursor = getCursorFromBridgeArgs(args);
+        const requestedCursor = getCursorFromBridgeArgs(value);
         const queuedEvent = queuedEvents.shift();
         if (queuedEvent && queuedEvent.cursor !== requestedCursor) return queuedEvent;
         if (queuedEvent) queuedEvents.unshift(queuedEvent);
@@ -417,19 +496,18 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
       },
     },
   })}
-  </section>`(portal.root);
+    </section>`(portal.root);
 
-  unbindSandboxFormSubmitGuards = bindSandboxFormSubmitGuards(portal.root);
-
-  return () => {
-    disposed = true;
-    unbindSandboxFormSubmitGuards?.();
-    unsubscribeActorEvents?.();
-
-    while (pendingResolvers.length > 0) {
-      pendingResolvers.shift()?.({ type: 'noop', cursor: String(cursor) });
+    unbindSandboxFormSubmitGuards = bindSandboxFormSubmitGuards(portal.root);
+  } catch (error) {
+    try {
+      disposeBridge();
+    } catch {
+      // Preserve the mount error after best-effort bridge cleanup.
     }
+    portal.root.replaceChildren();
+    throw error;
+  }
 
-    queuedEvents.length = 0;
-  };
+  return disposeBridge;
 }

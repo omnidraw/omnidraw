@@ -18,6 +18,10 @@ export type {
   TWidgetRelation,
   TWidgetSource,
   TWidgetVariantSummary,
+  TWidgetDraftSummary,
+  TWidgetPreviewCloseResult,
+  TWidgetPreviewResult,
+  TWidgetPreviewSendResult,
 } from "@vibecanvas/api-agent/contract";
 import { canvasContract } from "@vibecanvas/api-canvas/contract";
 import { dbContract } from "@vibecanvas/api-db/contract";

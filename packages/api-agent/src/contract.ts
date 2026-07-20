@@ -3,7 +3,7 @@ import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-ic
 import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { TWidgetDraftSummary, TWidgetPreviewResult, TWidgetPreviewSendResult, TWidgetPublishResult } from '@vibecanvas/service-agent/widget-drafts/types';
+import type { TWidgetDraftSummary, TWidgetPreviewCloseResult, TWidgetPreviewResult, TWidgetPreviewSendResult, TWidgetPublishResult } from '@vibecanvas/service-agent/widget-drafts/types';
 import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
 import { z } from 'zod';
 
@@ -59,9 +59,12 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
 const ZAgentChatConnectInput = ZAgentChatScope.extend({ mode: z.enum(['reuse', 'replace']).optional() })
-const ZAgentWidgetDraftRef = z.object({ draftId: z.string().min(1).max(120) })
-const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({ expectedRevision: z.string().min(1).max(256) })
 const ZWidgetName = z.string().min(1).max(120).refine((value) => value.trim() === value && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !value.includes('\0'), 'Unsafe widget name')
+const ZCanonicalWidgetName = ZWidgetName.refine((value) => value.normalize('NFKC').replace(/\s+/g, ' ') === value, 'Non-canonical widget name')
+const ZAgentWidgetDraftRef = z.object({ draftId: ZCanonicalWidgetName })
+const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({ expectedRevision: z.string().min(1).max(256) })
+const ZAgentWidgetPreviewRef = ZAgentWidgetDraftRef.extend({ previewId: z.string().min(1).max(256) })
+const ZAgentWidgetPreviewRevisionRef = ZAgentWidgetPreviewRef.extend({ expectedRevision: z.string().min(1).max(256) })
 const ZWidgetSource = z.enum(['published', 'draft'])
 const ZWidgetVariantRef = z.object({ name: ZWidgetName, source: ZWidgetSource })
 const ZWidgetGroup = z.object({ name: z.string().trim().min(1).max(120), icon: ZVibecanvasToolIcon.nullable() })
@@ -156,6 +159,12 @@ const ZAgentChatDraftManifestPatch = ZAgentChatScope.extend({
 })
 
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+export type {
+  TWidgetDraftSummary,
+  TWidgetPreviewCloseResult,
+  TWidgetPreviewResult,
+  TWidgetPreviewSendResult,
+} from '@vibecanvas/service-agent/widget-drafts/types';
 export type {
   TWidgetCatalog,
   TWidgetCatalogEntry,
@@ -299,11 +308,12 @@ export const agentContract = oc.router({
     validate: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetDraftSummary | null>()),
   },
   widgetPreview: {
-    get: oc.input(ZAgentWidgetDraftRef).output(orpcType<TWidgetPreviewResult>()),
-    build: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPreviewResult>()),
-    refresh: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPreviewResult>()),
-    reset: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPreviewResult>()),
-    send: oc.input(ZAgentWidgetDraftRevisionRef.extend({
+    get: oc.input(ZAgentWidgetPreviewRef).output(orpcType<TWidgetPreviewResult>()),
+    build: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewResult>()),
+    refresh: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewResult>()),
+    reset: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewResult>()),
+    close: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewCloseResult>()),
+    send: oc.input(ZAgentWidgetPreviewRevisionRef.extend({
       name: z.string().min(1).max(120),
       payload: z.unknown(),
     })).output(orpcType<TWidgetPreviewSendResult>()),

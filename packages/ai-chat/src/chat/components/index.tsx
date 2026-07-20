@@ -27,6 +27,7 @@ interface IProps {
   sessionId: string
   aiChatPreference?: TAiChatPreference
   onAiChatPreferenceChange?: (preference: TAiChatPreference) => void
+  onOpenWidgetPreview: (draftName: string) => Promise<void>
   onResetSessionId: () => string
 }
 
@@ -355,6 +356,15 @@ export function AiChat(props: IProps) {
     setSelectedView("settings")
   }
 
+  const openWidgetPreview = async (draftName: string) => {
+    clearWidgetError("preview")
+    try {
+      await props.onOpenWidgetPreview(draftName)
+    } catch (error) {
+      reportWidgetError("preview", error)
+    }
+  }
+
   const retryWidgetError = () => {
     const currentError = widgetError()
     if (currentError?.kind === "connection") setChatConnectIntent((current) => ({ request: current.request + 1, mode: "reuse", sessionId: sessionId() }))
@@ -397,6 +407,7 @@ export function AiChat(props: IProps) {
                     onPreferenceChange={updateAiChatPreference}
                     onPrompt={prompt}
                     onResolveApproval={resolveApproval}
+                    onOpenWidgetPreview={openWidgetPreview}
                     onOpenResource={props.application.openResource}
                     browser={props.browser}
                     onLogError={props.application.logError}

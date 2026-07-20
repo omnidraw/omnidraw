@@ -13,6 +13,35 @@ export type TChatResourceSummary = TChatResourceLink & {
   status?: string
 }
 
+export type TChatWidgetDraftReference = {
+  name: string
+}
+
+const RESERVED_WINDOWS_WIDGET_NAMES = new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9",
+])
+
 function getObject(value: unknown) {
   return typeof value === "object" && value !== null
     ? value as Record<string, unknown>
@@ -21,6 +50,16 @@ function getObject(value: unknown) {
 
 function getString(value: unknown) {
   return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+function getSafeWidgetDraftName(value: unknown) {
+  if (typeof value !== "string" || value.length === 0 || value.length > 120) return undefined
+  if (value.normalize("NFKC").trim().replace(/\s+/g, " ") !== value) return undefined
+  if (value === "." || value === ".." || /[\/\\\u0000-\u001f\u007f<>:\"|?*]/.test(value)) return undefined
+  if (/[. ]$/.test(value)) return undefined
+
+  const reservedStem = value.split(".", 1)[0]?.toLocaleLowerCase("en-US") ?? ""
+  return RESERVED_WINDOWS_WIDGET_NAMES.has(reservedStem) ? undefined : value
 }
 
 function getResource(value: unknown): TChatResourceLink | undefined {
@@ -55,6 +94,19 @@ export function fnGetToolResultResource(message: unknown): TChatResourceLink | u
   const object = getObject(message)
   if (object?.role !== "toolResult" || object.isError === true) return undefined
   return getResource(getObject(object.details)?.resource)
+}
+
+export function fnGetWidgetCreateDraftReference(message: unknown): TChatWidgetDraftReference | undefined {
+  const object = getObject(message)
+  if (object?.role !== "toolResult" || object.toolName !== "vc_widget_create" || object.isError === true) {
+    return undefined
+  }
+
+  const details = getObject(object.details)
+  const name = getSafeWidgetDraftName(details?.name)
+  if (!name || details?.source !== "draft" || details.draft !== true) return undefined
+
+  return { name }
 }
 
 export function fnGetApprovalResourceId(details: unknown): string | undefined {

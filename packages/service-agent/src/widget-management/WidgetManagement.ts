@@ -225,23 +225,32 @@ export class WidgetManagement {
       && patch.tool === undefined) {
       throw new Error('INVALID_MANIFEST: No editable metadata field was supplied.');
     }
-    const result = await this.#workspace.updateDraftManifestAndNameAtomic(name, nextName, expectedRevision, (manifestValue) => {
-      const parsed = ZVibecanvasJson.safeParse(manifestValue);
-      if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
-      const plan = fnPatchDraftManifest({
-        manifest: parsed.data as TVibecanvasJson,
-        patch: {
-          ...patch,
-          name: nextName,
-          tool: patch.tool ? { ...patch.tool, group: patch.tool.group?.trim() || patch.tool.group } : undefined,
-        },
-      });
-      if (plan.issues.length > 0) throw new Error(`INVALID_MANIFEST: ${plan.issues.join('; ')}`);
-      const validated = ZVibecanvasJson.safeParse(plan.manifest);
-      if (!validated.success) throw new Error('INVALID_MANIFEST: The requested widget metadata is invalid.');
-      return validated.data as TVibecanvasJson;
-    });
-    if (result.name !== name) this.#drafts.forget(name);
+    const updateDraft = (coordinateCommit?: (commit: () => Promise<void>) => Promise<void>) => {
+      return this.#workspace.updateDraftManifestAndNameAtomic(name, nextName, expectedRevision, (manifestValue) => {
+        const parsed = ZVibecanvasJson.safeParse(manifestValue);
+        if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
+        const plan = fnPatchDraftManifest({
+          manifest: parsed.data as TVibecanvasJson,
+          patch: {
+            ...patch,
+            name: nextName,
+            tool: patch.tool ? { ...patch.tool, group: patch.tool.group?.trim() || patch.tool.group } : undefined,
+          },
+        });
+        if (plan.issues.length > 0) throw new Error(`INVALID_MANIFEST: ${plan.issues.join('; ')}`);
+        const validated = ZVibecanvasJson.safeParse(plan.manifest);
+        if (!validated.success) throw new Error('INVALID_MANIFEST: The requested widget metadata is invalid.');
+        return validated.data as TVibecanvasJson;
+      }, coordinateCommit);
+    };
+    const result = nextName === name
+      ? await updateDraft()
+      : await this.#drafts.withPreviewRenameCleanup(name, nextName, (cleanup) => {
+          return updateDraft(async (commit) => {
+            await cleanup();
+            await commit();
+          });
+        });
     await this.#drafts.handleToolChange({ name: result.name, type: 'changed' });
     return { name: result.name, variant: (await this.#readVariant(result.name, 'draft')).summary };
   }
@@ -250,9 +259,12 @@ export class WidgetManagement {
     this.#assertName(name);
     if (!await this.#hasVariant(name, source)) return null;
     if (source === 'draft') {
-      this.#drafts.forget(name);
+      let deletedDraft = false;
       try {
-        const deletedDraft = await this.#workspace.removeDraft(name);
+        await this.#drafts.withPreviewCleanup(name, async (cleanup) => {
+          await cleanup();
+          deletedDraft = await this.#workspace.removeDraft(name);
+        });
         return {
           name,
           source,
@@ -281,33 +293,34 @@ export class WidgetManagement {
     const issues: TWidgetDeleteResult['issues'] = [];
     let deletedDefinition = false;
 
-    if (this.#deletePublishedDefinition) {
-      try {
-        deletedDefinition = await this.#deletePublishedDefinition(definitionName);
-        if (!deletedDefinition) {
+    const [publishedCleanup, draftCleanup] = await this.#drafts.withPreviewCleanup(name, async (cleanup) => {
+      await cleanup();
+      if (this.#deletePublishedDefinition) {
+        try {
+          deletedDefinition = await this.#deletePublishedDefinition(definitionName);
+          if (!deletedDefinition) {
+            issues.push({
+              target: 'runtime-definition',
+              message: 'No matching runtime definition was found, so no associated instances could be identified.',
+            });
+          }
+        } catch {
           issues.push({
             target: 'runtime-definition',
-            message: 'No matching runtime definition was found, so no associated instances could be identified.',
+            message: 'The runtime definition and its instances could not be fully removed.',
           });
         }
-      } catch {
+      } else {
         issues.push({
           target: 'runtime-definition',
-          message: 'The runtime definition and its instances could not be fully removed.',
+          message: 'Runtime cleanup is unavailable in this host.',
         });
       }
-    } else {
-      issues.push({
-        target: 'runtime-definition',
-        message: 'Runtime cleanup is unavailable in this host.',
-      });
-    }
-
-    this.#drafts.forget(name);
-    const [publishedCleanup, draftCleanup] = await Promise.allSettled([
-      this.#workspace.removePublished(name),
-      this.#workspace.removeDraft(name),
-    ]);
+      return Promise.allSettled([
+        this.#workspace.removePublished(name),
+        this.#workspace.removeDraft(name),
+      ]);
+    });
     if (publishedCleanup.status === 'rejected') {
       issues.push({ target: 'published-source', message: 'The published widget source could not be removed.' });
     }

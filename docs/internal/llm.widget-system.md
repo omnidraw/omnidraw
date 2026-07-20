@@ -147,7 +147,7 @@ Renaming a published widget in place is unsupported. A new name means creating a
 
 ## Preview, actors, and resources
 
-Preview is a direct user action. It validates and pins one draft revision, then starts an ephemeral `Actor` from that draft. Preview actor IDs begin with `preview:` and state exists in memory only. A changed draft revision marks the preview stale until the user refreshes it.
+Preview is a direct user action. It validates and pins one draft revision, then starts an ephemeral `Actor` from that draft. Preview actor IDs begin with `preview:` and state exists in memory only. Each mounted client runtime creates a fresh ephemeral owner `previewId` that is never persisted in canvas data, so simultaneous clients hold independent actors and immutable snapshots. Draft Preview frames use one merge-stable element identity per draft to prevent collaborator-created duplicates. A changed draft revision marks the preview stale until the user refreshes it; revision-aware close releases only that owner's matching build.
 
 Actor functions execute in a child Bun process. The host derives definition/run identity, resource binding, effective scope, and lifecycle. Guest code chooses a logical manifest slot, never a concrete resource ID or native handle.
 
@@ -172,7 +172,7 @@ Product clients use the typed ORPC agent contract:
 
 - `agent.chat.connect`, `prompt`, `cancel`, `newSession`
 - `agent.widgetDraft.list`, `get`, `validate`
-- `agent.widgetPreview.get`, `build`, `refresh`, `reset`, `send`
+- `agent.widgetPreview.get`, `build`, `refresh`, `reset`, `send`, `close`
 - `agent.widgetPublish.publish`
 - `agent.approval.list`, `get`, `resolve`
 - `agent.chat.resourceBindings.clear`

@@ -484,24 +484,28 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetDrafts.validate(name, expectedRevision)
   }
 
-  getWidgetPreview(name: string) {
-    return this.#widgetDrafts.getPreview(name)
+  getWidgetPreview(name: string, previewId: string) {
+    return this.#widgetDrafts.getPreview(name, previewId)
   }
 
-  buildWidgetPreview(name: string, expectedRevision: string) {
-    return this.#widgetDrafts.buildPreview(name, expectedRevision)
+  buildWidgetPreview(name: string, previewId: string, expectedRevision: string) {
+    return this.#widgetDrafts.buildPreview(name, previewId, expectedRevision)
   }
 
-  refreshWidgetPreview(name: string, expectedRevision: string) {
-    return this.#widgetDrafts.refreshPreview(name, expectedRevision)
+  refreshWidgetPreview(name: string, previewId: string, expectedRevision: string) {
+    return this.#widgetDrafts.refreshPreview(name, previewId, expectedRevision)
   }
 
-  resetWidgetPreview(name: string, expectedRevision: string) {
-    return this.#widgetDrafts.resetPreview(name, expectedRevision)
+  resetWidgetPreview(name: string, previewId: string, expectedRevision: string) {
+    return this.#widgetDrafts.resetPreview(name, previewId, expectedRevision)
   }
 
-  sendWidgetPreview(name: string, expectedRevision: string, messageName: string, payload: unknown) {
-    return this.#widgetDrafts.sendPreview(name, expectedRevision, messageName, payload)
+  closeWidgetPreview(name: string, previewId: string, expectedRevision: string) {
+    return this.#widgetDrafts.closePreview(name, previewId, expectedRevision)
+  }
+
+  sendWidgetPreview(name: string, previewId: string, expectedRevision: string, messageName: string, payload: unknown) {
+    return this.#widgetDrafts.sendPreview(name, previewId, expectedRevision, messageName, payload)
   }
 
   publishWidgetDraft(name: string, expectedRevision: string) {

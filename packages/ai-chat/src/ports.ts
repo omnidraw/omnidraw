@@ -4,7 +4,10 @@ type TApi = TOrpcSafeClient["api"];
 
 export type TAiChatApiPort = {
   api: {
-    agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events">;
+    agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events"> & {
+      widgetDraft: Pick<TApi["agent"]["widgetDraft"], "get">;
+      widgetPreview: Pick<TApi["agent"]["widgetPreview"], "get" | "build" | "refresh" | "reset" | "close" | "send">;
+    };
     actors: {
       resources: TApi["actors"]["resources"];
     };

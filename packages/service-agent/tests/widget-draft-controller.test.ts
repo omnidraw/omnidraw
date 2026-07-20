@@ -32,6 +32,7 @@ class TestEvents implements IEventPublisherService {
 }
 
 const roots: string[] = []
+const PREVIEW_ID = "preview-owner-a"
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
@@ -70,7 +71,7 @@ describe("WidgetDraftController", () => {
       publishReady: false,
     })
     expect(JSON.stringify(initial)).not.toContain(root)
-    expect(await controller.getPreview("Shared Clock")).toMatchObject({ ready: false, reason: "not-built" })
+    expect(await controller.getPreview("Shared Clock", PREVIEW_ID)).toMatchObject({ ready: false, reason: "not-built" })
 
     const validated = await controller.validate("Shared Clock", initial!.revision)
     expect(validated?.validation).toMatchObject({ status: "valid", validatedRevision: initial!.revision })
@@ -113,7 +114,7 @@ describe("WidgetDraftController", () => {
     })
 
     const initial = await controller.get("Snapshot Clock")
-    const first = await controller.buildPreview("Snapshot Clock", initial!.revision)
+    const first = await controller.buildPreview("Snapshot Clock", PREVIEW_ID, initial!.revision)
     expect(first.ready).toBe(true)
     if (!first.ready) throw new Error(first.message)
     const firstSnapshot = (await readdir(workspace.previewSnapshotRoot))[0]!
@@ -127,26 +128,26 @@ describe("WidgetDraftController", () => {
     )
     await controller.handleToolChange({ name: "Snapshot Clock", type: "changed" })
     const changed = await controller.get("Snapshot Clock")
-    const stale = await controller.getPreview("Snapshot Clock")
+    const stale = await controller.getPreview("Snapshot Clock", PREVIEW_ID)
     expect(stale).toMatchObject({ ready: true, revision: initial!.revision, currentRevision: changed!.revision, stale: true })
     if (!stale.ready) throw new Error(stale.message)
     expect(stale.sources["main.ts"]).not.toContain("shared draft changed")
 
-    expect((await controller.refreshPreview("Snapshot Clock", changed!.revision)).ready).toBe(true)
+    expect((await controller.refreshPreview("Snapshot Clock", PREVIEW_ID, changed!.revision)).ready).toBe(true)
     const refreshedSnapshots = await readdir(workspace.previewSnapshotRoot)
     expect(refreshedSnapshots).toHaveLength(1)
     expect(refreshedSnapshots[0]).not.toBe(firstSnapshot)
     await expect(lstat(join(workspace.previewSnapshotRoot, firstSnapshot))).rejects.toThrow()
 
     const beforeReset = refreshedSnapshots[0]!
-    expect((await controller.resetPreview("Snapshot Clock", changed!.revision)).ready).toBe(true)
+    expect((await controller.resetPreview("Snapshot Clock", PREVIEW_ID, changed!.revision)).ready).toBe(true)
     const resetSnapshots = await readdir(workspace.previewSnapshotRoot)
     expect(resetSnapshots).toHaveLength(1)
     expect(resetSnapshots[0]).not.toBe(beforeReset)
 
     const concurrent = await Promise.all([
-      controller.refreshPreview("Snapshot Clock", changed!.revision),
-      controller.refreshPreview("Snapshot Clock", changed!.revision),
+      controller.refreshPreview("Snapshot Clock", PREVIEW_ID, changed!.revision),
+      controller.refreshPreview("Snapshot Clock", PREVIEW_ID, changed!.revision),
     ])
     expect(concurrent.every((result) => result.ready)).toBe(true)
     expect(await readdir(workspace.previewSnapshotRoot)).toHaveLength(1)
@@ -157,13 +158,425 @@ describe("WidgetDraftController", () => {
     )
     const renamed = await controller.get("Snapshot Clock")
     expect(renamed!.revision).not.toBe(changed!.revision)
-    expect(await controller.getPreview("Snapshot Clock")).toMatchObject({ ready: true, stale: true })
+    expect(await controller.getPreview("Snapshot Clock", PREVIEW_ID)).toMatchObject({ ready: true, stale: true })
 
     await rm(join(workspace.draftRoot, "Snapshot Clock", "widget", "main.ts"))
     const broken = await controller.get("Snapshot Clock")
-    expect((await controller.buildPreview("Snapshot Clock", broken!.revision)).ready).toBe(false)
+    expect((await controller.buildPreview("Snapshot Clock", PREVIEW_ID, broken!.revision)).ready).toBe(false)
     expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
     await controller.close()
+  })
+
+  test("closes only the active Preview revision and treats missing or obsolete closes as no-ops", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-user-close-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({
+      workspace,
+      chatId: "chat-a",
+      authorize: async () => true,
+      onDraftChanged: (change) => controller.handleToolChange(change),
+    })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Owned Preview",
+    })
+
+    const initial = await controller.get("Owned Preview")
+    expect((await controller.buildPreview("Owned Preview", PREVIEW_ID, initial!.revision)).ready).toBe(true)
+    await workspace.writeMountedFileAtomic(
+      "chat-a",
+      "widgets/Owned Preview/widget/main.css",
+      ".changed { color: green; }\n",
+    )
+    await controller.handleToolChange({ name: "Owned Preview", type: "changed" })
+    const changed = await controller.get("Owned Preview")
+    expect(changed!.revision).not.toBe(initial!.revision)
+
+    expect(await controller.closePreview("Owned Preview", PREVIEW_ID, initial!.revision)).toEqual({
+      closed: true,
+      draftId: "Owned Preview",
+      revision: initial!.revision,
+    })
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+
+    expect((await controller.buildPreview("Owned Preview", PREVIEW_ID, changed!.revision)).ready).toBe(true)
+    expect(await controller.closePreview("Owned Preview", PREVIEW_ID, initial!.revision)).toEqual({
+      closed: false,
+      draftId: "Owned Preview",
+      revision: initial!.revision,
+    })
+    expect(await controller.getPreview("Owned Preview", PREVIEW_ID)).toMatchObject({
+      ready: true,
+      revision: changed!.revision,
+    })
+    expect(await readdir(workspace.previewSnapshotRoot)).toHaveLength(1)
+
+    expect(await controller.closePreview("Owned Preview", PREVIEW_ID, changed!.revision)).toEqual({
+      closed: true,
+      draftId: "Owned Preview",
+      revision: changed!.revision,
+    })
+    expect(await controller.closePreview("Owned Preview", PREVIEW_ID, changed!.revision)).toEqual({
+      closed: false,
+      draftId: "Owned Preview",
+      revision: changed!.revision,
+    })
+    expect(await controller.getPreview("Owned Preview", PREVIEW_ID)).toMatchObject({ ready: false, reason: "not-built" })
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    await controller.close()
+  })
+
+  test("keeps same-revision Preview owners independent when one owner closes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-owner-isolation-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Shared Owner Preview",
+    })
+    const draft = await controller.get("Shared Owner Preview")
+    const ownerA = "canvas-a-element"
+    const ownerB = "canvas-b-element"
+
+    expect((await controller.buildPreview("Shared Owner Preview", ownerA, draft!.revision)).ready).toBe(true)
+    expect((await controller.buildPreview("Shared Owner Preview", ownerB, draft!.revision)).ready).toBe(true)
+    expect(await readdir(workspace.previewSnapshotRoot)).toHaveLength(2)
+    expect(await controller.getPreview("Shared Owner Preview", ownerA)).toMatchObject({
+      ready: true,
+      revision: draft!.revision,
+    })
+    expect(await controller.getPreview("Shared Owner Preview", ownerB)).toMatchObject({
+      ready: true,
+      revision: draft!.revision,
+    })
+
+    expect(await controller.closePreview("Shared Owner Preview", ownerA, draft!.revision)).toEqual({
+      closed: true,
+      draftId: "Shared Owner Preview",
+      revision: draft!.revision,
+    })
+    expect(await controller.getPreview("Shared Owner Preview", ownerA)).toMatchObject({
+      ready: false,
+      reason: "not-built",
+    })
+    expect(await controller.getPreview("Shared Owner Preview", ownerB)).toMatchObject({
+      ready: true,
+      revision: draft!.revision,
+    })
+    expect(await readdir(workspace.previewSnapshotRoot)).toHaveLength(1)
+
+    expect(await controller.closePreview("Shared Owner Preview", ownerB, draft!.revision)).toMatchObject({ closed: true })
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    await controller.close()
+  })
+
+  test("serializes forgotten Preview disposal before rebuilding the same owner", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-forget-race-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Forgotten Preview",
+    })
+    const draft = await controller.get("Forgotten Preview")
+    expect((await controller.buildPreview("Forgotten Preview", PREVIEW_ID, draft!.revision)).ready).toBe(true)
+
+    const forgetting = controller.forget("Forgotten Preview")
+    const rebuilding = controller.buildPreview("Forgotten Preview", PREVIEW_ID, draft!.revision)
+    await forgetting
+    expect((await rebuilding).ready).toBe(true)
+    expect(await controller.getPreview("Forgotten Preview", PREVIEW_ID)).toMatchObject({
+      ready: true,
+      revision: draft!.revision,
+    })
+    expect(await readdir(workspace.previewSnapshotRoot)).toHaveLength(1)
+
+    await controller.close()
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+  })
+
+  test("drains an in-flight build and blocks later builds through destructive draft cleanup", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-destructive-race-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    let releaseCopy!: () => void
+    let markCopyStarted!: () => void
+    let releaseRemoval!: () => void
+    let markCleanupDone!: () => void
+    const copyStarted = new Promise<void>((resolve) => { markCopyStarted = resolve })
+    const copyReleased = new Promise<void>((resolve) => { releaseCopy = resolve })
+    const cleanupDone = new Promise<void>((resolve) => { markCleanupDone = resolve })
+    const removalReleased = new Promise<void>((resolve) => { releaseRemoval = resolve })
+    const copyDirectory = (async (source, destination, options) => {
+      if (String(destination).includes("preview-snapshots")) {
+        markCopyStarted()
+        await copyReleased
+      }
+      await cp(source, destination, options)
+    }) as typeof cp
+    const workspace = new WidgetWorkspace({ dataPath, configPath, copyDirectory })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Destructive Preview",
+    })
+    await expect(workspace.getDraft("destructive preview")).rejects.toThrow("collides with existing")
+    const draft = await controller.get("Destructive Preview")
+
+    const building = controller.buildPreview("Destructive Preview", "owner-building", draft!.revision)
+    await copyStarted
+    const removing = controller.withPreviewCleanup("Destructive Preview", async (cleanup) => {
+      await cleanup()
+      markCleanupDone()
+      await removalReleased
+      return workspace.removeDraft("Destructive Preview")
+    })
+    let lateBuildSettled = false
+    const lateBuild = controller.buildPreview("  Destructive   Preview  ", "owner-late", draft!.revision)
+      .finally(() => { lateBuildSettled = true })
+
+    releaseCopy()
+    expect((await building).ready).toBe(true)
+    await cleanupDone
+    expect(lateBuildSettled).toBe(false)
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    releaseRemoval()
+    expect(await removing).toBe(true)
+    expect(await lateBuild).toMatchObject({ ready: false, reason: "not-found" })
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    await controller.close()
+  })
+
+  test("uses one deterministic lock order for distinct Unicode draft identities", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-lock-order-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    let markFirstStarted!: () => void
+    let releaseFirst!: () => void
+    const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve })
+    const firstReleased = new Promise<void>((resolve) => { releaseFirst = resolve })
+
+    const first = controller.withPreviewRenameCleanup("ab", "a\u200bb", async () => {
+      markFirstStarted()
+      await firstReleased
+    })
+    await firstStarted
+    let secondStarted = false
+    const second = controller.withPreviewRenameCleanup("a\u200bb", "ab", async () => {
+      secondStarted = true
+    })
+    await Promise.resolve()
+    expect(secondStarted).toBe(false)
+
+    releaseFirst()
+    await first
+    await second
+    expect(secondStarted).toBe(true)
+    await controller.close()
+  })
+
+  test("locks both draft identities while a visible rename is rolled back", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-rename-rollback-race-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Rename Source",
+    })
+    const draft = await controller.get("Rename Source")
+    let markRenamed!: () => void
+    let releaseRollback!: () => void
+    const renamed = new Promise<void>((resolve) => { markRenamed = resolve })
+    const rollbackReleased = new Promise<void>((resolve) => { releaseRollback = resolve })
+    const sourcePath = join(workspace.draftRoot, "Rename Source")
+    const nextPath = join(workspace.draftRoot, "Rename Target")
+
+    const rollingBack = controller.withPreviewRenameCleanup("Rename Source", "Rename Target", async (cleanup) => {
+      await cleanup()
+      await rename(sourcePath, nextPath)
+      markRenamed()
+      await rollbackReleased
+      await rename(nextPath, sourcePath)
+      throw new Error("Simulated mount migration rollback.")
+    })
+    await renamed
+    let buildSettled = false
+    const building = controller.buildPreview("Rename Target", "rename-target-owner", draft!.revision)
+      .finally(() => { buildSettled = true })
+    await Promise.resolve()
+    expect(buildSettled).toBe(false)
+
+    releaseRollback()
+    await expect(rollingBack).rejects.toThrow("mount migration rollback")
+    expect(await building).toMatchObject({ ready: false, reason: "not-found" })
+    expect(await workspace.getDraft("Rename Source")).not.toBeNull()
+    expect(await workspace.getDraft("Rename Target")).toBeNull()
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    await controller.close()
+  })
+
+  test("queues a user close behind an in-flight Preview build", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-user-close-race-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    let releaseCopy!: () => void
+    let markCopyStarted!: () => void
+    const copyStarted = new Promise<void>((resolve) => { markCopyStarted = resolve })
+    const copyReleased = new Promise<void>((resolve) => { releaseCopy = resolve })
+    const copyDirectory = (async (source, destination, options) => {
+      if (String(destination).includes("preview-snapshots")) {
+        markCopyStarted()
+        await copyReleased
+      }
+      await cp(source, destination, options)
+    }) as typeof cp
+    const workspace = new WidgetWorkspace({ dataPath, configPath, copyDirectory })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Queued Close",
+    })
+    const draft = await controller.get("Queued Close")
+
+    const building = controller.buildPreview("Queued Close", PREVIEW_ID, draft!.revision)
+    await copyStarted
+    const closing = controller.closePreview("Queued Close", PREVIEW_ID, draft!.revision)
+    releaseCopy()
+    expect((await building).ready).toBe(true)
+    expect(await closing).toEqual({
+      closed: true,
+      draftId: "Queued Close",
+      revision: draft!.revision,
+    })
+    expect(await controller.getPreview("Queued Close", PREVIEW_ID)).toMatchObject({ ready: false, reason: "not-built" })
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    await controller.close()
+  })
+
+  test("registers build ownership before draft lookup so response-loss cleanup cannot overtake it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-initial-read-race-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Initial Read Preview",
+    })
+    const draft = await controller.get("Initial Read Preview")
+    const originalGetDraft = workspace.getDraft.bind(workspace)
+    let releaseRead!: () => void
+    let markReadStarted!: () => void
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve })
+    const readReleased = new Promise<void>((resolve) => { releaseRead = resolve })
+    let delayNextRead = true
+    workspace.getDraft = async (name) => {
+      if (delayNextRead && name === "Initial Read Preview") {
+        delayNextRead = false
+        markReadStarted()
+        await readReleased
+      }
+      return originalGetDraft(name)
+    }
+
+    const building = controller.buildPreview("Initial Read Preview", PREVIEW_ID, draft!.revision)
+    await readStarted
+    const closing = controller.closePreview("Initial Read Preview", PREVIEW_ID, draft!.revision)
+    releaseRead()
+
+    expect((await building).ready).toBe(true)
+    expect(await closing).toEqual({
+      closed: true,
+      draftId: "Initial Read Preview",
+      revision: draft!.revision,
+    })
+    expect(await controller.getPreview("Initial Read Preview", PREVIEW_ID)).toMatchObject({ ready: false, reason: "not-built" })
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+    await controller.close()
+  })
+
+  test("queues actor messages behind a same-owner Preview replacement", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-send-race-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    let blockPreviewCopy = false
+    let releaseCopy!: () => void
+    let markCopyStarted!: () => void
+    const copyStarted = new Promise<void>((resolve) => { markCopyStarted = resolve })
+    const copyReleased = new Promise<void>((resolve) => { releaseCopy = resolve })
+    const copyDirectory = (async (source, destination, options) => {
+      if (blockPreviewCopy && String(destination).includes("preview-snapshots")) {
+        markCopyStarted()
+        await copyReleased
+      }
+      await cp(source, destination, options)
+    }) as typeof cp
+    const workspace = new WidgetWorkspace({ dataPath, configPath, copyDirectory })
+    await workspace.init()
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Queued Message",
+    })
+    const draft = await controller.get("Queued Message")
+    expect((await controller.buildPreview("Queued Message", PREVIEW_ID, draft!.revision)).ready).toBe(true)
+
+    blockPreviewCopy = true
+    const resetting = controller.resetPreview("Queued Message", PREVIEW_ID, draft!.revision)
+    await copyStarted
+    const sending = controller.sendPreview("Queued Message", PREVIEW_ID, draft!.revision, "tick", { by: 1 })
+    const earlyResult = await Promise.race([
+      sending.then(() => "settled" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 20)),
+    ])
+    expect(earlyResult).toBe("pending")
+
+    releaseCopy()
+    expect((await resetting).ready).toBe(true)
+    expect(await sending).toMatchObject({ ready: true, revision: draft!.revision })
+    expect(await controller.getPreview("Queued Message", PREVIEW_ID)).toMatchObject({
+      ready: true,
+      revision: draft!.revision,
+    })
+
+    await controller.close()
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
   })
 
   test("close drains an in-flight Preview build before deleting its snapshot", async () => {
@@ -192,17 +605,135 @@ describe("WidgetDraftController", () => {
     })
     const draft = await controller.get("Closing Preview")
 
-    const building = controller.buildPreview("Closing Preview", draft!.revision)
+    const building = controller.buildPreview("Closing Preview", PREVIEW_ID, draft!.revision)
     await copyStarted
     const closing = controller.close()
+    let destructiveOperationRan = false
+    await expect(controller.withPreviewCleanup("Closing Preview", async () => {
+      destructiveOperationRan = true
+    })).rejects.toThrow("Preview service is closing")
+    expect(destructiveOperationRan).toBe(false)
     releaseCopy()
     expect((await building).ready).toBe(true)
     await closing
     expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
-    expect(await controller.buildPreview("Closing Preview", draft!.revision)).toMatchObject({
+    expect(await controller.buildPreview("Closing Preview", PREVIEW_ID, draft!.revision)).toMatchObject({
       ready: false,
       reason: "build-failed",
     })
+  })
+
+  test("close drains every Preview owner before surfacing a cleanup failure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-close-failure-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const createPreviewSnapshot = workspace.createPreviewSnapshot.bind(workspace)
+    let snapshotIndex = 0
+    let markFastDispose!: () => void
+    let markSlowDispose!: () => void
+    let releaseSlowDispose!: () => void
+    const fastDisposeStarted = new Promise<void>((resolve) => { markFastDispose = resolve })
+    const slowDisposeStarted = new Promise<void>((resolve) => { markSlowDispose = resolve })
+    const slowDisposeReleased = new Promise<void>((resolve) => { releaseSlowDispose = resolve })
+    workspace.createPreviewSnapshot = async (name, revision) => {
+      const snapshot = await createPreviewSnapshot(name, revision)
+      const currentIndex = snapshotIndex++
+      return {
+        ...snapshot,
+        dispose: async () => {
+          if (currentIndex === 0) {
+            await snapshot.dispose()
+            markFastDispose()
+            throw new Error("Simulated owner cleanup failure.")
+          }
+          markSlowDispose()
+          await slowDisposeReleased
+          await snapshot.dispose()
+        },
+      }
+    }
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Close Failure Preview",
+    })
+    const draft = await controller.get("Close Failure Preview")
+    expect((await controller.buildPreview("Close Failure Preview", "owner-fast", draft!.revision)).ready).toBe(true)
+    expect((await controller.buildPreview("Close Failure Preview", "owner-slow", draft!.revision)).ready).toBe(true)
+
+    let closeSettled = false
+    const closing = controller.close()
+    closing.then(() => { closeSettled = true }, () => { closeSettled = true })
+    await Promise.all([fastDisposeStarted, slowDisposeStarted])
+    await Promise.resolve()
+    expect(closeSettled).toBe(false)
+
+    releaseSlowDispose()
+    await expect(closing).rejects.toThrow("Simulated owner cleanup failure")
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
+  })
+
+  test("destructive cleanup drains every Preview owner before surfacing a failure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-transaction-failure-"))
+    roots.push(root)
+    const dataPath = join(root, "data")
+    const configPath = join(root, "config")
+    await mkdir(join(configPath, "widgets"), { recursive: true })
+    const workspace = new WidgetWorkspace({ dataPath, configPath })
+    await workspace.init()
+    const createPreviewSnapshot = workspace.createPreviewSnapshot.bind(workspace)
+    let snapshotIndex = 0
+    let markFastDispose!: () => void
+    let markSlowDispose!: () => void
+    let releaseSlowDispose!: () => void
+    const fastDisposeStarted = new Promise<void>((resolve) => { markFastDispose = resolve })
+    const slowDisposeStarted = new Promise<void>((resolve) => { markSlowDispose = resolve })
+    const slowDisposeReleased = new Promise<void>((resolve) => { releaseSlowDispose = resolve })
+    workspace.createPreviewSnapshot = async (name, revision) => {
+      const snapshot = await createPreviewSnapshot(name, revision)
+      const currentIndex = snapshotIndex++
+      return {
+        ...snapshot,
+        dispose: async () => {
+          if (currentIndex === 0) {
+            await snapshot.dispose()
+            markFastDispose()
+            throw new Error("Simulated transaction cleanup failure.")
+          }
+          markSlowDispose()
+          await slowDisposeReleased
+          await snapshot.dispose()
+        },
+      }
+    }
+    const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
+    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
+    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
+      name: "Transaction Failure Preview",
+    })
+    const draft = await controller.get("Transaction Failure Preview")
+    expect((await controller.buildPreview("Transaction Failure Preview", "owner-fast", draft!.revision)).ready).toBe(true)
+    expect((await controller.buildPreview("Transaction Failure Preview", "owner-slow", draft!.revision)).ready).toBe(true)
+
+    let transactionSettled = false
+    const transaction = controller.withPreviewCleanup("Transaction Failure Preview", async (cleanup) => {
+      await cleanup()
+      return workspace.removeDraft("Transaction Failure Preview")
+    })
+    transaction.then(() => { transactionSettled = true }, () => { transactionSettled = true })
+    await Promise.all([fastDisposeStarted, slowDisposeStarted])
+    await Promise.resolve()
+    expect(transactionSettled).toBe(false)
+    expect(await workspace.getDraft("Transaction Failure Preview")).not.toBeNull()
+
+    releaseSlowDispose()
+    await expect(transaction).rejects.toThrow("Simulated transaction cleanup failure")
+    expect(await workspace.getDraft("Transaction Failure Preview")).not.toBeNull()
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
   })
 
   test("rejects and cleans a Preview snapshot when an external edit lands during its copy", async () => {
@@ -231,7 +762,7 @@ describe("WidgetDraftController", () => {
     const initial = await controller.get("Racing Clock")
     mutateDuringCopy = true
 
-    expect(await controller.buildPreview("Racing Clock", initial!.revision)).toMatchObject({
+    expect(await controller.buildPreview("Racing Clock", PREVIEW_ID, initial!.revision)).toMatchObject({
       ready: false,
       reason: "stale-revision",
     })
@@ -308,7 +839,7 @@ describe("WidgetDraftController", () => {
     const accepted = await controller.get("Causal Preview")
     mutateAfterSnapshot = true
 
-    const preview = await controller.buildPreview("Causal Preview", accepted!.revision)
+    const preview = await controller.buildPreview("Causal Preview", PREVIEW_ID, accepted!.revision)
     expect(preview).toMatchObject({
       ready: true,
       revision: accepted!.revision,

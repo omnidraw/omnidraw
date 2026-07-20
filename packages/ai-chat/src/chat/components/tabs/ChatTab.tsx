@@ -10,7 +10,7 @@ import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 import { ApprovalList } from "../ApprovalList"
-import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource } from "./fn.tool-call"
+import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetWidgetCreateDraftReference } from "./fn.tool-call"
 import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
 import type { TAiChatBrowserPort } from "../../../ports"
 
@@ -50,6 +50,7 @@ interface IProps {
   approvals: readonly TAiChatApproval[]
   onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
+  onOpenWidgetPreview: (draftName: string) => Promise<void>
   onOpenResource?: (resourceId: string) => void
   onCancel: () => void
   onDismissError: () => void
@@ -474,10 +475,13 @@ function ChatHistoryMessage(props: {
   message: unknown
   approvals: readonly TAiChatApproval[]
   onResolveApproval: IProps["onResolveApproval"]
+  onOpenWidgetPreview: IProps["onOpenWidgetPreview"]
   onOpenResource?: IProps["onOpenResource"]
+  onReportError: IProps["onReportError"]
   onOpenSettings: IProps["onOpenSettings"]
 }) {
   const [isExpanded, setIsExpanded] = createSignal(false)
+  const [isOpeningPreview, setIsOpeningPreview] = createSignal(false)
   const role = () => fnGetChatMessageRole(props.message)
   const label = () => fnGetChatMessageLabel(props.message)
   const parts = () => fnGetChatMessageParts(props.message)
@@ -485,12 +489,25 @@ function ChatHistoryMessage(props: {
   const kind = () => getMessageKind(role())
   const toolCalls = () => fnGetChatToolCalls(props.message)
   const resource = () => props.onOpenResource ? fnGetToolResultResource(props.message) : undefined
+  const widgetDraftReference = () => fnGetWidgetCreateDraftReference(props.message)
   const isToolResult = () => isToolResultMessage(props.message)
   const collapsedToolResult = createMemo(() => collapseToolResultParts(parts(), TOOL_RESULT_COLLAPSED_LINE_LIMIT))
   const renderedPlainParts = () => isToolResult() && !isExpanded() ? collapsedToolResult().parts : parts()
   const toggleToolResult = () => {
     if (isToolResult()) {
       setIsExpanded((value) => !value)
+    }
+  }
+  const openWidgetPreview = async (draftName: string) => {
+    if (isOpeningPreview()) return
+
+    setIsOpeningPreview(true)
+    try {
+      await props.onOpenWidgetPreview(draftName)
+    } catch (error) {
+      props.onReportError("preview", error)
+    } finally {
+      setIsOpeningPreview(false)
     }
   }
   return (
@@ -545,6 +562,23 @@ function ChatHistoryMessage(props: {
           />
         )}
       </For>
+      <Show when={widgetDraftReference()}>
+        {(draftReference) => (
+          <div class="ai-chat-history__preview-action">
+            <button
+              type="button"
+              aria-busy={isOpeningPreview() ? "true" : undefined}
+              disabled={isOpeningPreview()}
+              onClick={(event) => {
+                event.stopPropagation()
+                void openWidgetPreview(draftReference().name)
+              }}
+            >
+              Open Preview
+            </button>
+          </div>
+        )}
+      </Show>
       <Show when={resource()}>
         {(linkedResource) => (
           <div class="ai-chat-history__resource-action">
@@ -686,7 +720,9 @@ export function ChatTab(props: IProps) {
                   message={message}
                   approvals={props.approvals}
                   onResolveApproval={props.onResolveApproval}
+                  onOpenWidgetPreview={props.onOpenWidgetPreview}
                   onOpenResource={props.onOpenResource}
+                  onReportError={props.onReportError}
                   onOpenSettings={props.onOpenSettings}
                 />
               )}

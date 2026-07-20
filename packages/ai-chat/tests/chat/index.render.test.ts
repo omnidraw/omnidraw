@@ -7,11 +7,16 @@ let disposeRendered: (() => void) | undefined
 let container: HTMLDivElement | undefined
 
 type TAiChatProps = Parameters<typeof AiChat>[0]
-type TTestAiChatProps = Omit<TAiChatProps, "application" | "browser"> & Partial<Pick<TAiChatProps, "application" | "browser">>
+type TTestAiChatProps = Omit<TAiChatProps, "application" | "browser" | "onOpenWidgetPreview"> & Partial<Pick<TAiChatProps, "application" | "browser" | "onOpenWidgetPreview">>
 
 function renderAiChat(props: TTestAiChatProps) {
-  const { application = createTestApplication(), browser = createTestChatBrowser(), ...rest } = props
-  return AiChat({ ...rest, application, browser })
+  const {
+    application = createTestApplication(),
+    browser = createTestChatBrowser(),
+    onOpenWidgetPreview = async () => {},
+    ...rest
+  } = props
+  return AiChat({ ...rest, application, browser, onOpenWidgetPreview })
 }
 
 function ensureComponentDomMocks() {
@@ -487,5 +492,49 @@ describe("AiChat shell", () => {
     expect(openResource).not.toBeUndefined()
     openResource?.click()
     expect(onOpenResource).toHaveBeenCalledWith("kv-1")
+  })
+
+  it("surfaces an Open Preview callback rejection in the originating chat", async () => {
+    ensureComponentDomMocks()
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    const apiService = createApiService() as any
+    apiService.api.agent.chat.connect = async () => [undefined, {
+      actorCandidate: null,
+      editSession: null,
+      messageHistory: [{
+        role: "toolResult",
+        toolCallId: "call-widget-create",
+        toolName: "vc_widget_create",
+        content: [{ type: "text", text: "Created Shared Timer." }],
+        details: { name: "Shared Timer", source: "draft", draft: true },
+      }],
+      vcJson: null,
+    }]
+    const onOpenWidgetPreview = vi.fn()
+      .mockRejectedValueOnce(new Error("Widget draft 'Shared Timer' no longer exists."))
+      .mockResolvedValue(undefined)
+
+    disposeRendered = render(() => renderAiChat({
+      apiService: apiService as never,
+      id: "surface-1",
+      titleBar: {
+        onAction: () => () => {},
+        setActionState: () => {},
+      },
+      onOpenWidgetPreview,
+      onResetSessionId: () => "conversation-2",
+      sessionId: "conversation-1",
+    }), container)
+
+    await vi.waitFor(() => expect(container?.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")).not.toBeNull())
+    container.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")?.click()
+
+    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith("Shared Timer"))
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-widget-error")?.textContent).toContain("Widget draft 'Shared Timer' no longer exists."))
+
+    container.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")?.click()
+    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(container?.querySelector(".ai-chat-widget-error")).toBeNull())
   })
 })

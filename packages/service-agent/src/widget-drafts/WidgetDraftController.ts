@@ -11,9 +11,11 @@ import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
 import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from '../tools/resource-bindings';
 import type { TActorServiceReloader, TValidationResult, TWidgetDraftChange } from '../tools/types';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
+import { fnNormalizeWidgetName } from '../workspace/fn.names';
 import type { TWidgetDraftWorkspaceEntry } from '../workspace/types';
 import type {
   TWidgetDraftSummary,
+  TWidgetPreviewCloseResult,
   TWidgetPreviewFailureReason,
   TWidgetPreviewReady,
   TWidgetPreviewResult,
@@ -32,6 +34,8 @@ type TValidationCacheEntry = TValidationResult & { revision: string };
 
 type TPreviewEntry = {
   actor: Actor;
+  draftId: string;
+  previewId: string;
   revision: string;
   manifest: TVibecanvasJson;
   sources: Record<string, string>;
@@ -43,10 +47,27 @@ type TResourceBindingResult =
   | { ok: true; bindings: TResourceBindingPlan[] }
   | { ok: false; message: string };
 
+function previewOwnerKey(draftId: string, previewId: string): string {
+  return JSON.stringify([draftId, previewId]);
+}
+
+function previewDraftQueueKey(draftId: string): string {
+  const normalized = fnNormalizeWidgetName(draftId);
+  return normalized.ok ? normalized.caseKey : draftId.normalize('NFKC').toLocaleLowerCase('en-US');
+}
+
+async function waitForPreviewCleanups(operations: Promise<unknown>[]): Promise<void> {
+  const results = await Promise.allSettled(operations);
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failure) throw failure.reason;
+}
+
 export class WidgetDraftController {
   readonly #config: TWidgetDraftControllerConfig;
   readonly #validationByDraft = new Map<string, TValidationCacheEntry>();
   readonly #previews = new Map<string, TPreviewEntry>();
+  readonly #previewDraftQueues = new Map<string, Promise<unknown>>();
+  readonly #previewDraftOperations = new Set<Promise<unknown>>();
   readonly #previewBuildQueues = new Map<string, Promise<unknown>>();
   readonly #previewBuilds = new Set<Promise<unknown>>();
   #closing = false;
@@ -57,13 +78,50 @@ export class WidgetDraftController {
 
   async close(): Promise<void> {
     this.#closing = true;
+    await Promise.allSettled([...this.#previewDraftOperations]);
     await Promise.allSettled([...this.#previewBuilds]);
-    await Promise.all([...this.#previews.keys()].map((name) => this.#disposePreview(name)));
+    await waitForPreviewCleanups([...this.#previews.values()].map((preview) => {
+      return this.#disposePreview(preview.draftId, preview.previewId);
+    }));
   }
 
-  forget(name: string): void {
-    this.#disposePreview(name);
-    this.#validationByDraft.delete(name);
+  async forget(name: string): Promise<void> {
+    await this.withPreviewCleanup(name, async (cleanup) => cleanup());
+  }
+
+  async withPreviewCleanup<T>(name: string, operation: (cleanup: () => Promise<void>) => Promise<T>): Promise<T> {
+    return this.#withPreviewCleanup([name], operation);
+  }
+
+  async withPreviewRenameCleanup<T>(name: string, nextName: string, operation: (cleanup: () => Promise<void>) => Promise<T>): Promise<T> {
+    return this.#withPreviewCleanup([name, nextName], operation);
+  }
+
+  async #withPreviewCleanup<T>(names: string[], operation: (cleanup: () => Promise<void>) => Promise<T>): Promise<T> {
+    if (this.#closing) throw new Error('Preview service is closing.');
+    const draftIdsByQueueKey = new Map(names.map((draftId) => [previewDraftQueueKey(draftId), draftId]));
+    const draftQueueKeys = [...draftIdsByQueueKey.keys()].sort();
+    const draftIds = draftQueueKeys.map((queueKey) => draftIdsByQueueKey.get(queueKey)!);
+    const draftQueueKeySet = new Set(draftQueueKeys);
+    return this.#queueDraftPreviews(draftIds, async () => {
+      let cleaned = false;
+      const cleanup = async () => {
+        if (cleaned) return;
+        cleaned = true;
+        for (const draftId of this.#validationByDraft.keys()) {
+          if (draftQueueKeySet.has(previewDraftQueueKey(draftId))) this.#validationByDraft.delete(draftId);
+        }
+        const previews = [...this.#previews.values()].filter((preview) => {
+          return draftQueueKeySet.has(previewDraftQueueKey(preview.draftId));
+        });
+        await waitForPreviewCleanups(previews.map((preview) => {
+          return this.#queuePreviewBuild(preview.draftId, preview.previewId, () => {
+            return this.#disposePreview(preview.draftId, preview.previewId);
+          });
+        }));
+      };
+      return operation(cleanup);
+    });
   }
 
   async handleToolChange(change: TWidgetDraftChange): Promise<void> {
@@ -124,32 +182,37 @@ export class WidgetDraftController {
     return this.#summary(current);
   }
 
-  async getPreview(name: string): Promise<TWidgetPreviewResult> {
+  async getPreview(name: string, previewId: string): Promise<TWidgetPreviewResult> {
     const draft = await this.#config.workspace.getDraft(name);
     if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-    const preview = this.#previews.get(draft.name);
+    const preview = this.#previews.get(previewOwnerKey(draft.name, previewId));
     if (!preview) {
       return this.#previewFailure(draft.name, 'not-built', 'Preview has not been built for this draft.', draft);
     }
     return this.#previewReady(draft, preview);
   }
 
-  async buildPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+  async buildPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    return this.#queueDraftPreview(name, async () => {
+      const draft = await this.#config.workspace.getDraft(name);
+      if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+      if (this.#closing) {
+        return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
+      }
+      return this.#queuePreviewBuild(draft.name, previewId, () => this.#buildPreview(draft.name, previewId, expectedRevision));
+    });
+  }
+
+  async #buildPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
     const draft = await this.#config.workspace.getDraft(name);
     if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
     if (this.#closing) {
       return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
     }
-    return this.#queuePreviewBuild(draft.name, () => this.#buildPreview(draft.name, expectedRevision));
-  }
-
-  async #buildPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
     if (draft.revision !== expectedRevision) {
       return this.#previewFailure(draft.name, 'stale-revision', 'The widget draft changed before Preview opened.', draft, expectedRevision);
     }
-    await this.#disposePreview(draft.name);
+    await this.#disposePreview(draft.name, previewId);
     let ownedSnapshot: Awaited<ReturnType<WidgetWorkspace['createPreviewSnapshot']>> | undefined;
     try {
       ownedSnapshot = await this.#config.workspace.createPreviewSnapshot(draft.name, expectedRevision);
@@ -224,13 +287,15 @@ export class WidgetDraftController {
           }
         : undefined;
       const actor = new Actor({
-        id: `preview:${draft.name}`,
+        id: `preview:${previewOwnerKey(draft.name, previewId)}`,
         vsJson: manifestResult.manifest,
         rootDir: ownedSnapshot.rootPath,
         resourceGateway,
       });
       const preview: TPreviewEntry = {
         actor,
+        draftId: draft.name,
+        previewId,
         revision: expectedRevision,
         manifest: manifestResult.manifest,
         sources,
@@ -245,17 +310,17 @@ export class WidgetDraftController {
           revision: preview.revision,
         });
       });
-      this.#previews.set(draft.name, preview);
+      this.#previews.set(previewOwnerKey(draft.name, previewId), preview);
       actor.start();
       await actor.waitUntilReady();
       current = await this.#config.workspace.getDraft(draft.name);
       if (!current) {
-        await this.#disposePreview(draft.name);
+        await this.#disposePreview(draft.name, previewId);
         return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
       }
       return this.#previewReady(current, preview);
     } catch (error) {
-      await this.#disposePreview(draft.name);
+      await this.#disposePreview(draft.name, previewId);
       await ownedSnapshot?.dispose().catch(() => undefined);
       const message = error instanceof Error ? error.message : String(error);
       const latest = await this.#config.workspace.getDraft(draft.name);
@@ -271,18 +336,49 @@ export class WidgetDraftController {
     }
   }
 
-  async refreshPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    return this.buildPreview(name, expectedRevision);
+  async refreshPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    return this.buildPreview(name, previewId, expectedRevision);
   }
 
-  async resetPreview(name: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    return this.buildPreview(name, expectedRevision);
+  async resetPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
+    return this.buildPreview(name, previewId, expectedRevision);
   }
 
-  async sendPreview(name: string, expectedRevision: string, messageName: string, payload: unknown): Promise<TWidgetPreviewSendResult> {
+  async closePreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewCloseResult> {
+    return this.#queueDraftPreview(name, async () => {
+      const draft = await this.#config.workspace.getDraft(name);
+      const draftId = draft?.name ?? name;
+      const result = { draftId, revision: expectedRevision };
+      if (this.#closing) return { ...result, closed: false };
+      return this.#queuePreviewBuild(draftId, previewId, async () => {
+        const preview = this.#previews.get(previewOwnerKey(draftId, previewId));
+        if (!preview || preview.revision !== expectedRevision) return { ...result, closed: false };
+        await this.#disposePreview(draftId, previewId);
+        return { ...result, closed: true };
+      });
+    });
+  }
+
+  async sendPreview(name: string, previewId: string, expectedRevision: string, messageName: string, payload: unknown): Promise<TWidgetPreviewSendResult> {
+    return this.#queueDraftPreview(name, async () => {
+      const draft = await this.#config.workspace.getDraft(name);
+      if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+      if (this.#closing) {
+        return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
+      }
+      return this.#queuePreviewBuild(draft.name, previewId, () => {
+        return this.#sendPreview(draft.name, previewId, expectedRevision, messageName, payload);
+      });
+    });
+  }
+
+  async #sendPreview(name: string, previewId: string, expectedRevision: string, messageName: string, payload: unknown): Promise<TWidgetPreviewSendResult> {
     const draft = await this.#config.workspace.getDraft(name);
     if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-    const preview = this.#previews.get(draft.name);
+    if (this.#closing) {
+      return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
+    }
+    const preview = this.#previews.get(previewOwnerKey(draft.name, previewId));
     if (!preview) return this.#previewFailure(draft.name, 'not-built', 'Preview has not been built for this draft.', draft);
     if (draft.revision !== expectedRevision || preview.revision !== expectedRevision) {
       return this.#previewFailure(draft.name, 'stale-revision', 'Refresh Preview before interacting with this changed draft.', draft, expectedRevision);
@@ -642,27 +738,49 @@ export class WidgetDraftController {
     return { state: actor.getState(), context: actor.getData() };
   }
 
-  async #queuePreviewBuild<T>(name: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.#previewBuildQueues.get(name) ?? Promise.resolve();
+  #queueDraftPreviews<T>(draftIds: string[], operation: () => Promise<T>): Promise<T> {
+    const [draftId, ...rest] = draftIds;
+    if (!draftId) return operation();
+    return this.#queueDraftPreview(draftId, () => this.#queueDraftPreviews(rest, operation));
+  }
+
+  async #queueDraftPreview<T>(draftId: string, operation: () => Promise<T>): Promise<T> {
+    const queueKey = previewDraftQueueKey(draftId);
+    const previous = this.#previewDraftQueues.get(queueKey) ?? Promise.resolve();
     const running = previous.catch(() => undefined).then(operation);
-    this.#previewBuildQueues.set(name, running);
+    this.#previewDraftQueues.set(queueKey, running);
+    this.#previewDraftOperations.add(running);
+    try {
+      return await running;
+    } finally {
+      this.#previewDraftOperations.delete(running);
+      if (this.#previewDraftQueues.get(queueKey) === running) this.#previewDraftQueues.delete(queueKey);
+    }
+  }
+
+  async #queuePreviewBuild<T>(draftId: string, previewId: string, operation: () => Promise<T>): Promise<T> {
+    const ownerKey = previewOwnerKey(draftId, previewId);
+    const previous = this.#previewBuildQueues.get(ownerKey) ?? Promise.resolve();
+    const running = previous.catch(() => undefined).then(operation);
+    this.#previewBuildQueues.set(ownerKey, running);
     this.#previewBuilds.add(running);
     try {
       return await running;
     } finally {
       this.#previewBuilds.delete(running);
-      if (this.#previewBuildQueues.get(name) === running) this.#previewBuildQueues.delete(name);
+      if (this.#previewBuildQueues.get(ownerKey) === running) this.#previewBuildQueues.delete(ownerKey);
     }
   }
 
-  async #disposePreview(name: string): Promise<void> {
-    const preview = this.#previews.get(name);
+  async #disposePreview(draftId: string, previewId: string): Promise<void> {
+    const ownerKey = previewOwnerKey(draftId, previewId);
+    const preview = this.#previews.get(ownerKey);
     if (!preview) return;
     preview.unlisten();
     if (!await preview.actor.closeAndWait()) {
-      throw new Error(`Preview Actor '${name}' did not stop; its snapshot was retained.`);
+      throw new Error(`Preview Actor '${draftId}' for owner '${previewId}' did not stop; its snapshot was retained.`);
     }
     await preview.snapshot.dispose();
-    this.#previews.delete(name);
+    if (this.#previews.get(ownerKey) === preview) this.#previews.delete(ownerKey);
   }
 }

@@ -13,6 +13,7 @@ describe('agent chat contract', () => {
     expect(apiContract.api.agent.chat.draftActor.start['~orpc'].route.path).toBe('/api/agent/chat/draftActor/start');
     expect(apiContract.api.agent.widgetDraft.list['~orpc'].route.path).toBe('/api/agent/widgetDraft/list');
     expect(apiContract.api.agent.widgetPreview.build['~orpc'].route.path).toBe('/api/agent/widgetPreview/build');
+    expect(apiContract.api.agent.widgetPreview.close['~orpc'].route.path).toBe('/api/agent/widgetPreview/close');
     expect(apiContract.api.agent.widgetPublish.publish['~orpc'].route.path).toBe('/api/agent/widgetPublish/publish');
     expect(apiContract.api.agent.widgets.catalog['~orpc'].route.path).toBe('/api/agent/widgets/catalog');
     expect(apiContract.api.agent.widgets.detail['~orpc'].route.path).toBe('/api/agent/widgets/detail');
@@ -28,9 +29,34 @@ describe('agent chat contract', () => {
     expect(Object.hasOwn(agentHandlers, 'chat')).toBe(true);
     expect(Object.hasOwn(agentHandlers, 'widgetDraft')).toBe(true);
     expect(Object.hasOwn(agentHandlers, 'widgetPreview')).toBe(true);
+    expect(Object.hasOwn(agentHandlers.widgetPreview, 'close')).toBe(true);
     expect(Object.hasOwn(agentHandlers, 'widgetPublish')).toBe(true);
     expect(Object.hasOwn(agentHandlers, 'widgets')).toBe(true);
     expect(Object.hasOwn(agentHandlers, 'approval')).toBe(true);
     expect(Object.hasOwn(agentHandlers, legacyNamespace)).toBe(false);
+  });
+
+  test('requires an owner previewId on every widget Preview operation', () => {
+    const contract = oc.router({ agent: agentContract });
+    const apiContract = populateContractRouterPaths(oc.router({ api: contract }));
+    const preview = apiContract.api.agent.widgetPreview;
+    const cases = [
+      [preview.get, { draftId: 'Weather' }],
+      [preview.build, { draftId: 'Weather', expectedRevision: 'revision-1' }],
+      [preview.refresh, { draftId: 'Weather', expectedRevision: 'revision-1' }],
+      [preview.reset, { draftId: 'Weather', expectedRevision: 'revision-1' }],
+      [preview.close, { draftId: 'Weather', expectedRevision: 'revision-1' }],
+      [preview.send, { draftId: 'Weather', expectedRevision: 'revision-1', name: 'tick', payload: null }],
+    ] as const;
+
+    for (const [procedure, inputWithoutOwner] of cases) {
+      const inputSchema = procedure['~orpc'].inputSchema as {
+        safeParse: (input: unknown) => { success: boolean };
+      };
+      expect(inputSchema.safeParse(inputWithoutOwner).success).toBe(false);
+      expect(inputSchema.safeParse({ ...inputWithoutOwner, previewId: 'canvas-element-1' }).success).toBe(true);
+      expect(inputSchema.safeParse({ ...inputWithoutOwner, draftId: '  Weather ', previewId: 'canvas-element-1' }).success).toBe(false);
+      expect(inputSchema.safeParse({ ...inputWithoutOwner, draftId: 'Weather  Report', previewId: 'canvas-element-1' }).success).toBe(false);
+    }
   });
 });
