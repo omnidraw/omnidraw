@@ -26,6 +26,12 @@ import { keymap } from "prosemirror-keymap"
 import { Schema } from "prosemirror-model"
 import { EditorState, Plugin, PluginKey, TextSelection } from "prosemirror-state"
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view"
+import {
+  fnClampSuggestionIndex,
+  fnGetSuggestionMenuMaxHeight,
+  fnGetSuggestionPageSize,
+  fnGetSuggestionScrollTop,
+} from "./fn.suggestion-navigation"
 import { fnFindPromptTrigger } from "./fn.trigger"
 import { WidgetIcon } from "../../../sidebar/widgets/components/WidgetIcon"
 
@@ -33,6 +39,9 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif"
 const MAX_PROMPT_IMAGE_COUNT = 5
 const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024
 const THINKING_LEVELS: TChatComposerThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"]
+const SUGGESTION_MENU_BOUNDARY_GAP = 8
+const SUGGESTION_MENU_MIN_HEIGHT = 34
+const SUGGESTION_MENU_MAX_HEIGHT = 240
 
 const promptSchema = new Schema({
   nodes: {
@@ -351,8 +360,12 @@ export function ChatComposer(props: TChatComposerProps) {
   let cleanupDocumentKeydown: (() => void) | undefined
   let cleanupDocumentPointerdown: (() => void) | undefined
   let dismissedSuggestionKey: string | undefined
+  let suggestionMenu: HTMLDivElement | undefined
+  let suggestionResizeObserver: Pick<ResizeObserver, "observe" | "disconnect"> | undefined
+  let suggestionScrollAnimationFrame: number | undefined
   const [suggestion, setSuggestion] = createSignal<TPromptSuggestion>()
   const [activeIndex, setActiveIndex] = createSignal(0)
+  const [suggestionMenuMaxHeight, setSuggestionMenuMaxHeight] = createSignal(SUGGESTION_MENU_MAX_HEIGHT)
   const [command, setCommand] = createSignal<TChatComposerCommand>()
   const [images, setImages] = createSignal<TChatComposerImage[]>([])
   const [hasText, setHasText] = createSignal(false)
@@ -368,6 +381,7 @@ export function ChatComposer(props: TChatComposerProps) {
   const [modelMenuColumn, setModelMenuColumn] = createSignal<"category" | "model" | "thinking">("model")
   const [hasManualModelSelection, setHasManualModelSelection] = createSignal(false)
   const [hasManualThinkingSelection, setHasManualThinkingSelection] = createSignal(false)
+  const suggestionListboxId = `ai-chat-composer-suggestions-${props.browser.createId()}`
 
   const availableMentions = () => props.mentions ?? []
   const availableCommands = () => props.commands ?? []
@@ -394,13 +408,110 @@ export function ChatComposer(props: TChatComposerProps) {
     return source.filter((item) => (
       item.label.toLocaleLowerCase().includes(query)
       || (activeSuggestion.kind === "mention" && (item as TChatComposerMention).kind.toLocaleLowerCase().includes(query))
-    )).slice(0, 6)
+    ))
+  }
+
+  const resolvedActiveIndex = () => fnClampSuggestionIndex(activeIndex(), suggestions().length)
+  const getSuggestionOptionId = (item: TChatComposerMention | TChatComposerCommand) => (
+    `${suggestionListboxId}-${suggestion()?.kind ?? "suggestion"}-${encodeURIComponent(item.id)}`
+  )
+
+  const updateSuggestionMenuMaxHeight = () => {
+    const menu = suggestionMenu
+    const boundary = root?.closest<HTMLElement>(".ai-chat-tab--chat")
+      ?? root?.closest<HTMLElement>(".ai-chat-shell")
+
+    if (!menu || !boundary) {
+      return
+    }
+
+    const nextMaxHeight = fnGetSuggestionMenuMaxHeight({
+      boundaryTop: boundary.getBoundingClientRect().top,
+      menuBottom: menu.getBoundingClientRect().bottom,
+      boundaryGap: SUGGESTION_MENU_BOUNDARY_GAP,
+      minHeight: SUGGESTION_MENU_MIN_HEIGHT,
+      maxHeight: SUGGESTION_MENU_MAX_HEIGHT,
+    })
+
+    setSuggestionMenuMaxHeight(nextMaxHeight)
+  }
+
+  const scrollActiveSuggestionIntoView = () => {
+    const menu = suggestionMenu
+
+    if (!menu) {
+      return
+    }
+
+    const index = resolvedActiveIndex()
+    const option = menu.children.item(index) as HTMLElement | null
+
+    if (!option) {
+      return
+    }
+
+    if (index === 0) {
+      menu.scrollTop = 0
+      return
+    }
+
+    if (index === suggestions().length - 1) {
+      menu.scrollTop = Math.max(0, menu.scrollHeight - menu.clientHeight)
+      return
+    }
+
+    menu.scrollTop = fnGetSuggestionScrollTop({
+      currentScrollTop: menu.scrollTop,
+      viewportHeight: menu.clientHeight,
+      optionTop: option.offsetTop,
+      optionHeight: option.offsetHeight,
+    })
+  }
+
+  const scheduleActiveSuggestionScroll = () => {
+    if (suggestionScrollAnimationFrame !== undefined) {
+      props.browser.cancelAnimationFrame(suggestionScrollAnimationFrame)
+    }
+
+    suggestionScrollAnimationFrame = props.browser.requestAnimationFrame(() => {
+      suggestionScrollAnimationFrame = undefined
+      scrollActiveSuggestionIntoView()
+    })
+  }
+
+  const attachSuggestionMenu = (element: HTMLDivElement) => {
+    suggestionMenu = element
+    updateSuggestionMenuMaxHeight()
+    scheduleActiveSuggestionScroll()
   }
 
   createEffect(() => {
-    const count = suggestions().length
-    if (count === 0 || activeIndex() < count) return
-    setActiveIndex(0)
+    const items = suggestions()
+    const count = items.length
+    const nextActiveIndex = fnClampSuggestionIndex(activeIndex(), count)
+
+    if (nextActiveIndex !== activeIndex()) {
+      setActiveIndex(nextActiveIndex)
+    }
+
+    const editor = view?.dom
+    const isOpen = suggestion() !== undefined && count > 0
+    editor?.setAttribute("aria-expanded", String(isOpen))
+    if (isOpen) {
+      editor?.setAttribute("aria-controls", suggestionListboxId)
+      editor?.setAttribute("aria-activedescendant", getSuggestionOptionId(items[nextActiveIndex]))
+    } else {
+      editor?.removeAttribute("aria-controls")
+      editor?.removeAttribute("aria-activedescendant")
+    }
+
+    if (count === 0 || !suggestion()) {
+      suggestionMenu = undefined
+      return
+    }
+
+    updateSuggestionMenuMaxHeight()
+    scheduleActiveSuggestionScroll()
   })
 
   createEffect(() => {
@@ -525,7 +636,7 @@ export function ChatComposer(props: TChatComposerProps) {
     setImages((current) => current.filter((item) => item.id !== image.id))
   }
 
-  const acceptSuggestion = (index = activeIndex()) => {
+  const acceptSuggestion = (index = resolvedActiveIndex()) => {
     const activeSuggestion = suggestion()
     const item = suggestions()[index]
 
@@ -595,6 +706,22 @@ export function ChatComposer(props: TChatComposerProps) {
     submit()
   }
 
+  const setActiveSuggestionIndex = (index: number) => {
+    const count = suggestions().length
+
+    if (count === 0) {
+      return
+    }
+
+    const nextIndex = fnClampSuggestionIndex(index, count)
+    if (nextIndex === activeIndex()) {
+      scheduleActiveSuggestionScroll()
+      return
+    }
+
+    setActiveIndex(nextIndex)
+  }
+
   const moveSuggestion = (direction: 1 | -1) => {
     const count = suggestions().length
 
@@ -602,7 +729,28 @@ export function ChatComposer(props: TChatComposerProps) {
       return
     }
 
-    setActiveIndex((current) => (current + direction + count) % count)
+    const current = resolvedActiveIndex()
+    const next = (current + direction + count) % count
+    setActiveSuggestionIndex(next)
+  }
+
+  const moveSuggestionPage = (direction: 1 | -1) => {
+    const menu = suggestionMenu
+    const count = suggestions().length
+
+    if (!menu || count === 0) {
+      return
+    }
+
+    const pageSize = fnGetSuggestionPageSize({
+      rows: Array.from(menu.children).map((option) => ({
+        top: (option as HTMLElement).offsetTop,
+        height: (option as HTMLElement).offsetHeight,
+      })),
+      scrollTop: menu.scrollTop,
+      viewportHeight: menu.clientHeight,
+    })
+    setActiveSuggestionIndex(resolvedActiveIndex() + direction * pageSize)
   }
 
   const openModelMenu = () => {
@@ -783,10 +931,45 @@ export function ChatComposer(props: TChatComposerProps) {
       return true
     }
 
+    if (event.key === "PageDown") {
+      event.preventDefault()
+      moveSuggestionPage(1)
+      return true
+    }
+
+    if (event.key === "PageUp") {
+      event.preventDefault()
+      moveSuggestionPage(-1)
+      return true
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault()
+      setActiveSuggestionIndex(0)
+      return true
+    }
+
+    if (event.key === "End") {
+      event.preventDefault()
+      setActiveSuggestionIndex(suggestions().length - 1)
+      return true
+    }
+
     return false
   }
 
   onMount(() => {
+    suggestionResizeObserver = props.browser.createResizeObserver(() => {
+      updateSuggestionMenuMaxHeight()
+      scheduleActiveSuggestionScroll()
+    })
+    const suggestionBoundary = root.closest<HTMLElement>(".ai-chat-tab--chat")
+      ?? root.closest<HTMLElement>(".ai-chat-shell")
+    suggestionResizeObserver.observe(root)
+    if (suggestionBoundary && suggestionBoundary !== root) {
+      suggestionResizeObserver.observe(suggestionBoundary)
+    }
+
     const handleDocumentKeydown = (event: KeyboardEvent) => {
       if (handleModelMenuKey(event)) {
         event.preventDefault()
@@ -915,7 +1098,11 @@ export function ChatComposer(props: TChatComposerProps) {
       },
       attributes: {
         "aria-label": placeholder(),
+        "aria-autocomplete": "list",
+        "aria-expanded": "false",
+        "aria-haspopup": "listbox",
         class: "ai-chat-composer__editor",
+        role: "combobox",
       },
     })
 
@@ -941,6 +1128,10 @@ export function ChatComposer(props: TChatComposerProps) {
   onCleanup(() => {
     cleanupDocumentKeydown?.()
     cleanupDocumentPointerdown?.()
+    suggestionResizeObserver?.disconnect()
+    if (suggestionScrollAnimationFrame !== undefined) {
+      props.browser.cancelAnimationFrame(suggestionScrollAnimationFrame)
+    }
     view?.destroy()
     images().forEach((image) => props.browser.revokeObjectUrl(image.previewUrl))
   })
@@ -970,16 +1161,26 @@ export function ChatComposer(props: TChatComposerProps) {
         </Show>
 
         <Show when={suggestion() && suggestions().length > 0}>
-          <div class="ai-chat-composer__suggestions" role="listbox" aria-label={suggestion()?.kind === "mention" ? "Mention suggestions" : "Command suggestions"}>
+          <div
+            ref={attachSuggestionMenu}
+            id={suggestionListboxId}
+            class="ai-chat-composer__suggestions"
+            role="listbox"
+            aria-label={suggestion()?.kind === "mention" ? "Mention suggestions" : "Command suggestions"}
+            style={{ "max-block-size": `${suggestionMenuMaxHeight()}px` }}
+            onWheel={(event) => event.stopPropagation()}
+          >
             <For each={suggestions()}>
               {(item, index) => (
                 <button
+                  id={getSuggestionOptionId(item)}
                   type="button"
-                  classList={{ "ai-chat-composer__suggestion--active": index() === activeIndex() }}
-                  data-active={index() === activeIndex() ? "true" : undefined}
+                  classList={{ "ai-chat-composer__suggestion--active": index() === resolvedActiveIndex() }}
+                  data-active={index() === resolvedActiveIndex() ? "true" : undefined}
                   role="option"
                   aria-label={suggestion()?.kind === "mention" ? `${item.label}, ${(item as TChatComposerMention).kind}` : `${item.label}, ${(item as TChatComposerCommand).description}`}
-                  aria-selected={index() === activeIndex()}
+                  aria-selected={index() === resolvedActiveIndex()}
+                  tabIndex={-1}
                   onMouseDown={(event) => {
                     event.preventDefault()
                     acceptSuggestion(index())
