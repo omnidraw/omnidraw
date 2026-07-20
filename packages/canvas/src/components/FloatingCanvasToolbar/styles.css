@@ -131,12 +131,31 @@
 
 .vc-toolbar-label-popover {
   z-index: 70;
-  pointer-events: none !important;
+  pointer-events: auto;
   border: 1px solid var(--border);
   background: var(--popover);
   color: var(--popover-foreground);
   padding: 0.25rem 0.5rem;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+.vc-toolbar-label-popover__action {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.25rem;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.vc-toolbar-label-popover__action:hover,
+.vc-toolbar-label-popover__action:focus-visible {
+  color: var(--primary);
+  outline: none;
 }
 
 .vc-toolbar-label-popover[data-closed] {

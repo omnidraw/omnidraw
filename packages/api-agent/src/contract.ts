@@ -4,7 +4,7 @@ import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/servi
 import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { TWidgetDraftSummary, TWidgetPreviewCloseResult, TWidgetPreviewResult, TWidgetPreviewSendResult, TWidgetPublishResult } from '@vibecanvas/service-agent/widget-drafts/types';
-import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
+import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetPlacementResolveResult, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
 import { z } from 'zod';
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
@@ -67,6 +67,11 @@ const ZAgentWidgetPreviewRef = ZAgentWidgetDraftRef.extend({ previewId: z.string
 const ZAgentWidgetPreviewRevisionRef = ZAgentWidgetPreviewRef.extend({ expectedRevision: z.string().min(1).max(256) })
 const ZWidgetSource = z.enum(['published', 'draft'])
 const ZWidgetVariantRef = z.object({ name: ZWidgetName, source: ZWidgetSource })
+const ZWidgetPlacementRef = z.object({
+  source: z.enum(['published', 'draft', 'preview']),
+  name: ZWidgetName,
+  revision: z.string().min(1).max(256),
+})
 const ZWidgetGroup = z.object({ name: z.string().trim().min(1).max(120), icon: ZVibecanvasToolIcon.nullable() })
 const ZWidgetDraftToolPatch = z.object({
   icon: ZVibecanvasToolIcon.nullable().optional(),
@@ -181,7 +186,11 @@ export type {
   TWidgetRelation,
   TWidgetSource,
   TWidgetVariantSummary,
+  TWidgetPlacementResolveResult,
+  TWidgetPlacementSummary,
+  TWidgetCatalogPreviewSummary,
 } from '@vibecanvas/service-agent/widget-management/types';
+export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/service-actor/core/fn.widget-frame';
 
 export type TAgentChatConnect = {
   vcJson: TVibecanvasJson | null;
@@ -342,6 +351,10 @@ export const agentContract = oc.router({
       patch: ZWidgetDraftMetadataPatch,
     })).output(orpcType<TWidgetDraftMetadataPatchResult>()),
     delete: oc.input(ZWidgetVariantRef).output(orpcType<TWidgetDeleteResult>()),
+    resolvePlacement: oc.input(z.object({
+      reference: ZWidgetPlacementRef,
+      previewId: z.string().min(1).max(256).optional(),
+    })).output(orpcType<TWidgetPlacementResolveResult>()),
     groups: {
       create: oc.input(ZWidgetGroup).output(orpcType<TWidgetCatalogGroup>()),
       update: oc.input(z.object({ currentName: z.string().trim().min(1).max(120), group: ZWidgetGroup })).output(orpcType<TWidgetCatalogGroup>()),

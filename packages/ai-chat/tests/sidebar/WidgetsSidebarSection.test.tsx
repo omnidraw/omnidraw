@@ -22,6 +22,10 @@ function variant(source: 'published' | 'draft'): TWidgetVariantSummary {
     updatedAt: null,
     tool: { label: 'Camera', icon: null, group: 'Media', priority: null, behaviorType: 'action' },
     validation: source === 'draft' ? { status: 'unknown', errors: [], warnings: [] } : null,
+    placement: {
+      reference: { source, name: 'Camera', revision: source },
+      bounds: { width: 360, height: 320 },
+    },
   };
 }
 
@@ -91,5 +95,76 @@ describe('WidgetsSidebarSection selection', () => {
     expect(draft?.classList.contains(styles.selected)).toBe(true);
     expect(published?.hasAttribute('aria-current')).toBe(false);
     expect(published?.classList.contains(styles.selected)).toBe(false);
+  });
+
+  test('preserves row navigation around a drag and exposes the keyboard Add action', async () => {
+    const navigate = vi.fn();
+    let activePlacement: { onDragStart?: () => void; onDragEnd?: () => void } | undefined;
+    const beginPointerSession = vi.fn((args) => {
+      activePlacement = args;
+      return true;
+    });
+    const addToCanvas = vi.fn(async () => undefined);
+    const controller = {
+      apiService: {
+        api: {
+          agent: {
+            events: vi.fn(async () => [null, { async *[Symbol.asyncIterator]() {} }]),
+            widgets: { catalog: vi.fn(async () => [null, catalog()]) },
+          },
+        },
+      },
+      browser: {
+        setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
+        clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
+      },
+      invalidation: createCatalogInvalidation(),
+      widgetPlacement: {
+        available: () => true,
+        beginPointerSession,
+        addToCanvas,
+      },
+      application: {
+        pathname: () => '/widgets/published/Camera',
+        navigate,
+        notifyError: vi.fn(),
+      },
+    } as never;
+    const container = document.createElement('div');
+    host = container;
+    document.body.appendChild(container);
+    dispose = render(() => (
+      <WidgetCatalogProvider controller={controller}>
+        <WidgetsSidebarSection controller={controller} />
+      </WidgetCatalogProvider>
+    ), container);
+
+    const published = await vi.waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('button[aria-label^="Camera, published."]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    published.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    expect(beginPointerSession).toHaveBeenCalledOnce();
+    published.click();
+    expect(navigate).toHaveBeenCalledOnce();
+
+    activePlacement?.onDragStart?.();
+    published.click();
+    expect(navigate).toHaveBeenCalledOnce();
+    activePlacement?.onDragEnd?.();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    published.click();
+    expect(navigate).toHaveBeenCalledTimes(2);
+
+    const add = container.querySelector<HTMLButtonElement>('button[aria-label="Add Camera published to canvas"]');
+    expect(add?.disabled).toBe(false);
+    add?.click();
+    await vi.waitFor(() => expect(addToCanvas).toHaveBeenCalledOnce());
+    expect(addToCanvas).toHaveBeenCalledWith({
+      reference: { source: 'published', name: 'Camera', revision: 'published' },
+      bounds: { width: 360, height: 320 },
+      label: 'Camera',
+    });
   });
 });

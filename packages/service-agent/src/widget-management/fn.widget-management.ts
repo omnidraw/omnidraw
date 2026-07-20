@@ -1,4 +1,5 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import { fnNormalizeWidgetFrame } from '@vibecanvas/service-actor/core/fn.widget-frame';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 import { fnNormalizeWidgetName } from '../workspace/fn.names';
 import type {
@@ -60,6 +61,14 @@ export function fnWidgetVariantSummary(args: {
       behaviorType: tool?.behavior.type ?? null,
     },
     validation: args.validation,
+    placement: args.manifest ? {
+      reference: {
+        source: args.source,
+        name: args.fallbackName,
+        revision: args.revision,
+      },
+      bounds: fnNormalizeWidgetFrame(args.manifest.widget.frame),
+    } : null,
   };
 }
 

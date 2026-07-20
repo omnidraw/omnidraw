@@ -23,8 +23,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
+| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
+| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -142,6 +144,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
+| [apps/web/public/install](apps/web/public/install) |  |
+| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -247,14 +251,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/src/sidebar/widgets/WidgetCatalogProvider.tsx](packages/ai-chat/src/sidebar/widgets/WidgetCatalogProvider.tsx) |  |
 | [packages/ai-chat/src/sidebar/widgets/WidgetDetailPage.module.css](packages/ai-chat/src/sidebar/widgets/WidgetDetailPage.module.css) |  |
 | [packages/ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx](packages/ai-chat/src/sidebar/widgets/WidgetDetailPage.tsx) |  |
+| [packages/ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts](packages/ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts) |  |
+| [packages/ai-chat/src/widget-placement/WidgetPlacementService.ts](packages/ai-chat/src/widget-placement/WidgetPlacementService.ts) |  |
 | [packages/ai-chat/src/widget/attach-dom-portal.ts](packages/ai-chat/src/widget/attach-dom-portal.ts) |  |
 | [packages/ai-chat/src/widget/CONSTANTS.ts](packages/ai-chat/src/widget/CONSTANTS.ts) |  |
 | [packages/ai-chat/src/widget/fn.actor-event-snapshot.ts](packages/ai-chat/src/widget/fn.actor-event-snapshot.ts) |  |
 | [packages/ai-chat/src/widget/fn.create-cloned-widget-element.ts](packages/ai-chat/src/widget/fn.create-cloned-widget-element.ts) |  |
+| [packages/ai-chat/src/widget/fn.create-widget-element.ts](packages/ai-chat/src/widget/fn.create-widget-element.ts) |  |
 | [packages/ai-chat/src/widget/fn.create-widget-node.ts](packages/ai-chat/src/widget/fn.create-widget-node.ts) |  |
 | [packages/ai-chat/src/widget/fn.get-host-theme-colors.ts](packages/ai-chat/src/widget/fn.get-host-theme-colors.ts) |  |
 | [packages/ai-chat/src/widget/fn.resolve-widget-tool-icon.ts](packages/ai-chat/src/widget/fn.resolve-widget-tool-icon.ts) |  |
 | [packages/ai-chat/src/widget/fn.to-widget-element.ts](packages/ai-chat/src/widget/fn.to-widget-element.ts) |  |
+| [packages/ai-chat/src/widget/fn.widget-errors-equal.ts](packages/ai-chat/src/widget/fn.widget-errors-equal.ts) |  |
 | [packages/ai-chat/src/widget/FullscreenWidgetHeader.module.css](packages/ai-chat/src/widget/FullscreenWidgetHeader.module.css) |  |
 | [packages/ai-chat/src/widget/FullscreenWidgetHeader.tsx](packages/ai-chat/src/widget/FullscreenWidgetHeader.tsx) | SolidJS presentation chrome for widgets hosted in fullscreen mode. |
 | [packages/ai-chat/src/widget/fx.attach-widget-listener.ts](packages/ai-chat/src/widget/fx.attach-widget-listener.ts) |  |
@@ -678,6 +686,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/services/tool/fx.get-canvas-point.ts](packages/canvas/src/services/tool/fx.get-canvas-point.ts) |  |
 | [packages/canvas/src/services/tool/ToolService.ts](packages/canvas/src/services/tool/ToolService.ts) |  |
 | [packages/canvas/src/services/tool/types.ts](packages/canvas/src/services/tool/types.ts) |  |
+| [packages/canvas/src/services/widget-placement/fn.widget-placement.ts](packages/canvas/src/services/widget-placement/fn.widget-placement.ts) |  |
+| [packages/canvas/src/services/widget-placement/types.ts](packages/canvas/src/services/widget-placement/types.ts) |  |
+| [packages/canvas/src/services/widget-placement/WidgetDropPlacementService.ts](packages/canvas/src/services/widget-placement/WidgetDropPlacementService.ts) |  |
 | [packages/canvas/src/types.ts](packages/canvas/src/types.ts) |  |
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
@@ -734,11 +745,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/Actor.ts](packages/service-actor/src/Actor.ts) | Runs one in-memory widget actor instance through a Bun child process. |
 | [packages/service-actor/src/ActorService.ts](packages/service-actor/src/ActorService.ts) |  |
 | [packages/service-actor/src/ActorSupervisor.ts](packages/service-actor/src/ActorSupervisor.ts) |  |
+| [packages/service-actor/src/core/CONSTANTS.ts](packages/service-actor/src/core/CONSTANTS.ts) |  |
 | [packages/service-actor/src/core/fn.actor-connections.ts](packages/service-actor/src/core/fn.actor-connections.ts) |  |
 | [packages/service-actor/src/core/fn.actor-data.ts](packages/service-actor/src/core/fn.actor-data.ts) |  |
 | [packages/service-actor/src/core/fn.normalize-actor-manifest.ts](packages/service-actor/src/core/fn.normalize-actor-manifest.ts) |  |
 | [packages/service-actor/src/core/fn.select-actor-definitions.ts](packages/service-actor/src/core/fn.select-actor-definitions.ts) |  |
 | [packages/service-actor/src/core/fn.widget-error.ts](packages/service-actor/src/core/fn.widget-error.ts) |  |
+| [packages/service-actor/src/core/fn.widget-frame.ts](packages/service-actor/src/core/fn.widget-frame.ts) |  |
 | [packages/service-actor/src/core/fx.vibecanvas-actors.ts](packages/service-actor/src/core/fx.vibecanvas-actors.ts) |  |
 | [packages/service-actor/src/core/tool-icon.ts](packages/service-actor/src/core/tool-icon.ts) |  |
 | [packages/service-actor/src/core/tx.actor-definitions.ts](packages/service-actor/src/core/tx.actor-definitions.ts) |  |
@@ -909,6 +922,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
+| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

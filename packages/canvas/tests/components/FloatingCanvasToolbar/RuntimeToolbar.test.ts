@@ -3,6 +3,7 @@ import { render } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RuntimeToolbar } from "../../../src/components/FloatingCanvasToolbar/RuntimeToolbar";
 import type { TTool } from "../../../src/services/tool/types";
+import type { TWidgetDropRequest } from "../../../src/services/widget-placement/types";
 
 type TListener<TArgs extends unknown[]> = (...args: TArgs) => unknown;
 
@@ -197,6 +198,50 @@ describe("RuntimeToolbar", () => {
     expect(document.querySelector(".vc-toolbar-label-popover")?.textContent).toBe("Hand tool");
   });
 
+  it("starts widget placement without consuming clicks and exposes the keyboard Add action", async () => {
+    vi.useFakeTimers();
+    const request = {
+      reference: { source: "published" as const, name: "Weather", revision: "revision-1" },
+      bounds: { width: 360, height: 320 },
+      label: "Weather",
+      onCommit: vi.fn(),
+    };
+    let activeRequest: TWidgetDropRequest | undefined;
+    const beginPointerSession = vi.fn((nextRequest: TWidgetDropRequest) => {
+      activeRequest = nextRequest;
+      return true;
+    });
+    const addAtViewportCenter = vi.fn();
+    const onToolSelect = vi.fn();
+    const service = createToolService([tool("weather", { label: "Weather", widgetPlacement: request })]);
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      viewportElement: viewport!,
+      widgetPlacement: { beginPointerSession, addAtViewportCenter } as never,
+      onToolSelect,
+    }), viewport!);
+
+    const button = viewport?.querySelector<HTMLButtonElement>("button[aria-label='Weather']");
+    button?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    expect(beginPointerSession).toHaveBeenCalledOnce();
+    button?.click();
+    expect(onToolSelect).toHaveBeenCalledOnce();
+
+    activeRequest?.onDragStart?.();
+    button?.click();
+    expect(onToolSelect).toHaveBeenCalledOnce();
+    activeRequest?.onDragEnd?.();
+    await vi.runAllTimersAsync();
+    button?.click();
+    expect(onToolSelect).toHaveBeenCalledTimes(2);
+
+    button?.focus();
+    const add = document.querySelector<HTMLButtonElement>(".vc-toolbar-label-popover__action");
+    expect(add?.textContent).toBe("Add to canvas");
+    add?.click();
+    expect(addAtViewportCenter).toHaveBeenCalledWith(request);
+  });
+
   it("opens grouped tools on focus, selects a member, and closes the flyout", () => {
     const service = createToolService([
       tool("select"),
@@ -224,6 +269,43 @@ describe("RuntimeToolbar", () => {
     expect(onToolSelect).toHaveBeenCalledWith("video");
     expect(groupButton?.getAttribute("aria-expanded")).toBe("false");
     expect(viewport?.querySelector("[role='menu'][aria-label='media']")).toBeNull();
+  });
+
+  it("keeps a grouped widget flyout mounted for its active drag", () => {
+    const placement = {
+      reference: { source: "draft" as const, name: "Weather", revision: "revision-2" },
+      bounds: { width: 360, height: 320 },
+      label: "Weather Draft",
+      onCommit: vi.fn(),
+    };
+    let activeRequest: TWidgetDropRequest | undefined;
+    const service = createToolService([
+      tool("weather-draft", { group: "widgets", widgetPlacement: placement }),
+      tool("weather-published", { group: "widgets" }),
+    ]);
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      viewportElement: viewport!,
+      widgetPlacement: {
+        beginPointerSession(nextRequest: TWidgetDropRequest) {
+          activeRequest = nextRequest;
+          return true;
+        },
+        addAtViewportCenter: vi.fn(),
+      } as never,
+      onToolSelect: vi.fn(),
+      groupDefinitions: { widgets: { icon: "W", label: "widgets" } },
+    }), viewport!);
+
+    const groupButton = viewport?.querySelector<HTMLButtonElement>("button[aria-label='widgets']");
+    groupButton?.focus();
+    const member = viewport?.querySelector<HTMLButtonElement>("button[aria-label='WEATHER-DRAFT']");
+    member?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    activeRequest?.onDragStart?.();
+    expect(viewport?.querySelector("[role='menu'][aria-label='widgets']")).not.toBeNull();
+
+    activeRequest?.onDragEnd?.();
+    expect(viewport?.querySelector("[role='menu'][aria-label='widgets']")).toBeNull();
   });
 
   it("dismisses an open group with Escape", () => {

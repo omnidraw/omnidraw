@@ -1,6 +1,6 @@
 # Vibecanvas screen atlas
 
-This is the desktop visual reference for Vibecanvas. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-07-19. The local product data shown here is illustrative and contains no real secrets.
+This is the desktop visual reference for Vibecanvas. It covers the active app shell, canvas, widget inspector, resource workspaces, and public website as of 2026-07-20. The local product data shown here is illustrative and contains no real secrets.
 
 All screenshots are optimized WebP files under [`assets/`](assets/). Capture a new image when a route, workspace, modal, or interaction state changes meaningfully; avoid adding cosmetic duplicates.
 
@@ -9,7 +9,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | Area | Routes | Representative states |
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
-| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings, draft Preview |
+| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings, draft Preview, direct widget placement |
 | [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, messages, states, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
@@ -52,6 +52,11 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
 | **AI assistant — Draft Preview.** A trusted widget-create result opens one revision-pinned interactive Preview beside its originating chat. |
+
+| Direct widget placement |
+| --- |
+| ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
+| **Sidebar/toolbar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances; Preview readiness stays internal. Every successful Draft drop builds the exact revision into a new independently owned pinned Preview frame at the world-space drop point. |
 
 ## Widget inspector
 

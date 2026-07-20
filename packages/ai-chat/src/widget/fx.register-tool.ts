@@ -20,7 +20,7 @@ export function fxRegisterWidgetTool(portal: TPortalRegisterWidgetTool, args: TA
   if (!args.widgetConfig.tool) return
 
   portal.toolService.registerTool({
-    id: args.widgetConfig.id,
+    id: args.widgetConfig.toolId ?? args.widgetConfig.id,
     label: args.widgetConfig.tool.label,
     icon: args.widgetConfig.tool.icon,
     shortcuts: args.widgetConfig.tool.shortcuts,
@@ -38,5 +38,6 @@ export function fxRegisterWidgetTool(portal: TPortalRegisterWidgetTool, args: TA
         fxUpdateHost({ konva: portal.konva, group: previewNode, themeService: portal.themeService }, localArgs)
       },
     },
+    widgetPlacement: args.widgetConfig.widgetPlacement,
   })
 }

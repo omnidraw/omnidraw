@@ -3,6 +3,7 @@ import * as LucideStatic from "lucide-static";
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { ToolService } from "../../services/tool/ToolService";
+import type { WidgetDropPlacementService } from "../../services/widget-placement/WidgetDropPlacementService";
 import type { TTool, TToolIcon } from "../../services/tool/types";
 import {
   DEFAULT_TOOL_GROUP_DEFINITION,
@@ -31,6 +32,7 @@ export type TRuntimeToolbarProps = {
   viewportElement: HTMLElement;
   onToolSelect: (toolId: string) => void;
   toolbarGroups?: TCanvasToolbarGroupsPort;
+  widgetPlacement: WidgetDropPlacementService;
   groupDefinitions?: Readonly<Record<string, TToolGroupDefinition>>;
 };
 
@@ -74,11 +76,19 @@ function RuntimeToolButton(props: {
   onSelect: (toolId: string) => void;
   role?: "menuitem";
   labelPlacement?: "left" | "top";
+  widgetPlacement: WidgetDropPlacementService;
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
   const shortcutParts = createMemo(() => getShortcutParts(props.tool.shortcuts));
+  let suppressClick = false;
+  const placement = () => props.tool.widgetPlacement;
 
   return (
-    <ToolbarLabelPopover label={props.tool.label} placement={props.labelPlacement}>
+    <ToolbarLabelPopover
+      label={props.tool.label}
+      placement={props.labelPlacement}
+      onAddToCanvas={placement() ? () => void props.widgetPlacement.addAtViewportCenter(placement()!) : undefined}
+    >
       <ToolButton
         icon={<ToolIcon icon={props.tool.icon} fallback={props.tool.id} />}
         shortcut={shortcutParts().shortcut}
@@ -86,7 +96,30 @@ function RuntimeToolButton(props: {
         ariaLabel={props.tool.label}
         role={props.role}
         isActive={props.activeToolId === props.tool.id || Boolean(props.tool.active)}
-        onClick={() => props.onSelect(props.tool.id)}
+        onClick={() => {
+          if (suppressClick) {
+            suppressClick = false;
+            return;
+          }
+          props.onSelect(props.tool.id);
+        }}
+        onPointerDown={placement() ? (event) => {
+          const request = placement();
+          if (!request) return;
+          props.widgetPlacement.beginPointerSession({
+            ...request,
+            onDragStart: () => {
+              suppressClick = true;
+              request.onDragStart?.();
+              props.onDragStateChange?.(true);
+            },
+            onDragEnd: () => {
+              request.onDragEnd?.();
+              props.onDragStateChange?.(false);
+              setTimeout(() => { suppressClick = false; }, 0);
+            },
+          }, event);
+        } : undefined}
       />
     </ToolbarLabelPopover>
   );
@@ -97,6 +130,7 @@ function RuntimeToolGroup(props: {
   activeToolId: string;
   viewportElement: HTMLElement;
   onSelect: (toolId: string) => void;
+  widgetPlacement: WidgetDropPlacementService;
 }) {
   let anchorElement: HTMLDivElement | undefined;
   let groupButton: HTMLButtonElement | undefined;
@@ -104,6 +138,7 @@ function RuntimeToolGroup(props: {
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   let wasOpenBeforePointerDown = false;
   const [isOpen, setIsOpen] = createSignal(false);
+  const [isDraggingMember, setIsDraggingMember] = createSignal(false);
   const [flyoutPosition, setFlyoutPosition] = createSignal({ left: 0, top: 0, maxWidth: 0 });
 
   const cancelClose = () => {
@@ -145,7 +180,7 @@ function RuntimeToolGroup(props: {
       const hasPointer = Boolean(
         anchorElement?.matches(":hover") || flyoutElement?.matches(":hover"),
       );
-      if (!hasFocus && !hasPointer) {
+      if (!hasFocus && !hasPointer && !isDraggingMember()) {
         setIsOpen(false);
       }
     }, 0);
@@ -240,6 +275,11 @@ function RuntimeToolGroup(props: {
                     onSelect={selectMember}
                     role="menuitem"
                     labelPlacement="top"
+                    widgetPlacement={props.widgetPlacement}
+                    onDragStateChange={(dragging) => {
+                      setIsDraggingMember(dragging);
+                      if (!dragging) closeFlyout();
+                    }}
                   />
                 </div>
               )}
@@ -352,6 +392,7 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
                             tool={slot.tool}
                             activeToolId={activeToolId()}
                             onSelect={props.onToolSelect}
+                            widgetPlacement={props.widgetPlacement}
                           />
                         ) : null}
                       >
@@ -362,6 +403,7 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
                               activeToolId={activeToolId()}
                               viewportElement={props.viewportElement}
                               onSelect={props.onToolSelect}
+                              widgetPlacement={props.widgetPlacement}
                             />
                           </ToolbarLabelPopover>
                         )}

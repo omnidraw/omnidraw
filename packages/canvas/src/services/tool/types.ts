@@ -1,6 +1,7 @@
 import type Konva from "konva";
 import type { SyncHook } from "@vibecanvas/tapable";
 import type { KonvaEventObject, Node, NodeConfig } from "konva/lib/Node";
+import type { TWidgetDropRequest } from "../widget-placement/types";
 
 /**
  * Runtime mode for a registered editor tool.
@@ -58,4 +59,5 @@ export type TTool = {
     | { type: "action" }
     | { type: "modal" };
   drawCreate?: TToolDrawCreateBehavior;
+  widgetPlacement?: TWidgetDropRequest;
 };

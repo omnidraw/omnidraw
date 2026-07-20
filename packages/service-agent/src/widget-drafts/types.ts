@@ -65,6 +65,11 @@ export type TWidgetPreviewCloseResult = {
   revision: string;
 };
 
+export type TWidgetPreviewCatalogState =
+  | { status: 'ready'; revision: string }
+  | { status: 'failed'; revision: string; message: string }
+  | { status: 'not-ready'; revision: string; message: string | null };
+
 export type TWidgetPublishResult =
   | {
       published: true;

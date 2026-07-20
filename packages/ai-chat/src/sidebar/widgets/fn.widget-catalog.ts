@@ -23,7 +23,7 @@ export function fnProjectWidgetCatalog(catalog: TWidgetCatalog): TWidgetSidebarP
   const add = (name: string, source: TWidgetSource, variant: TWidgetVariantSummary, problem: TWidgetSidebarRow['problem']) => {
     const groupName = variant.tool.group;
     const missingGroup = groupName && !groupMap.has(groupName) ? groupName : null;
-    const row = { name, source, variant, problem, missingGroup };
+    const row = { name, source, managementSource: source, variant, placement: variant.placement ?? null, problem, missingGroup };
     if (groupName && groupMap.has(groupName)) groupMap.get(groupName)?.rows.push(row);
     else ungrouped.push(row);
   };
@@ -46,7 +46,7 @@ export function fnFindWidgetSelectionGroup(
   source: TWidgetSource,
   name: string,
 ): string | null {
-  return projection.groups.find((group) => group.rows.some((row) => row.source === source && row.name === name))?.name ?? null;
+  return projection.groups.find((group) => group.rows.some((row) => row.managementSource === source && row.name === name))?.name ?? null;
 }
 
 export function fnWidgetSelection(pathname: string): { source: TWidgetSource; encodedName: string } | null {

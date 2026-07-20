@@ -12,6 +12,12 @@ import type {
   TVibecanvasJson,
 } from './types';
 import type { TVibecanvasToolIcon } from './tool-icon';
+import {
+  WIDGET_FRAME_MAX_HEIGHT,
+  WIDGET_FRAME_MAX_WIDTH,
+  WIDGET_FRAME_MIN_HEIGHT,
+  WIDGET_FRAME_MIN_WIDTH,
+} from './CONSTANTS';
 
 export const ACTOR_RESOURCE_SLOT_NAME_MAX_LENGTH = 128;
 export const ACTOR_RESOURCE_IDENTIFIER_MAX_LENGTH = 128;
@@ -337,6 +343,10 @@ export const ZVibecanvasActor = z.object({
 
 export const ZVibecanvasActorWidget = z.object({
   relWidgetDir: z.string(),
+  frame: z.object({
+    width: z.number().finite().int().min(WIDGET_FRAME_MIN_WIDTH).max(WIDGET_FRAME_MAX_WIDTH),
+    height: z.number().finite().int().min(WIDGET_FRAME_MIN_HEIGHT).max(WIDGET_FRAME_MAX_HEIGHT),
+  }).strict().optional(),
   tool: z.object({
     label: z.string(),
     icon: ZVibecanvasToolIcon.optional(),

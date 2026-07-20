@@ -38,6 +38,9 @@ import type { TActorEvent } from "@vibecanvas/api-actors/contract";
 import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { TWidgetError } from '@vibecanvas/service-db/model';
 import type { TWidgetBrowserPort, TWidgetTransportPort } from "../ports";
+import type { TWidgetDropRequest, TWidgetWorldBounds } from "@vibecanvas/canvas/services";
+import { fnCreateWidgetElement } from "./fn.create-widget-element";
+import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
 
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
@@ -67,6 +70,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #actorEventSubscribers = new Map<string, Set<TWidgetActorEventHandler>>();
   #isActorEventListenerRunning = false;
   #registeredWidgetKinds = new Set<string>();
+  #registeredWidgetConfigs = new Map<string, IWidgetConfig>();
+  #registeredToolIdsByKind = new Map<string, string>();
   #definitionErrors = new Map<string, TWidgetError>();
   #elementErrors = new Map<string, TWidgetError>();
   #globalDefinitionError: TWidgetError | null = null;
@@ -203,7 +208,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
   #removeWidgetRegistration(kind: string) {
     this.#registeredWidgetKinds.delete(kind);
-    this.#toolService.unregisterTool(kind);
+    this.#registeredWidgetConfigs.delete(kind);
+    this.#toolService.unregisterTool(this.#registeredToolIdsByKind.get(kind) ?? kind);
+    this.#registeredToolIdsByKind.delete(kind);
     this.#elementService.unregisterElement(kind);
   }
 
@@ -224,6 +231,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
   setGlobalDefinitionError(error: TWidgetError | null) {
+    if (fnWidgetErrorsEqual(this.#globalDefinitionError, error)) return;
     this.#globalDefinitionError = error;
     this.#invalidateElements(this.#getWidgetElementIds());
   }
@@ -621,6 +629,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   registerWidget(wConfig: IWidgetConfig) {
     this.#removeWidgetRegistration(wConfig.id);
     this.#registeredWidgetKinds.add(wConfig.id);
+    this.#registeredWidgetConfigs.set(wConfig.id, wConfig);
+    this.#registeredToolIdsByKind.set(wConfig.id, wConfig.toolId ?? wConfig.id);
     this.clearDefinitionError(wConfig.id);
 
     if (wConfig.tool) {
@@ -805,6 +815,97 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       this.#invalidateElements(this.#getWidgetElementIds(wConfig.id));
     }
 
+  }
+
+  registerPlacementTool(args: {
+    id: string;
+    label: string;
+    icon?: string;
+    group?: string;
+    priority?: number;
+    placement: TWidgetDropRequest;
+  }) {
+    this.#toolService.registerTool({
+      id: args.id,
+      label: args.label,
+      icon: args.icon,
+      group: args.group,
+      priority: args.priority,
+      behavior: { type: "mode", mode: "draw-create" },
+      widgetPlacement: args.placement,
+    });
+  }
+
+  unregisterPlacementTool(id: string) {
+    this.#toolService.unregisterTool(id);
+  }
+
+  placePublishedWidget(kind: string, bounds: TWidgetWorldBounds) {
+    const config = this.#registeredWidgetConfigs.get(kind);
+    if (!config || config.dataType !== "widget" || !config.actor) {
+      throw new Error(`Published widget definition '${kind}' is unavailable.`);
+    }
+    const timestamp = this.#browser.now();
+    const element = fnCreateWidgetElement({
+      id: this.#browser.createId(),
+      kind,
+      dataType: "widget",
+      actorDefinitionName: config.actor.actorDefinitionName,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      now: timestamp,
+    });
+    const node = this.#elementService.createNodeFromElement(element);
+    if (!(node instanceof Konva.Group)) throw new Error(`Published widget '${kind}' could not be created.`);
+    this.#sceneService.staticForegroundLayer.add(node);
+    this.#renderOrderService.assignOrderOnInsert({
+      parent: this.#sceneService.staticForegroundLayer,
+      nodes: [node],
+      position: "front",
+    });
+    const persisted = this.#elementService.toElement(node);
+    if (!persisted) {
+      node.destroy();
+      throw new Error(`Published widget '${kind}' could not be persisted.`);
+    }
+    const commitResult = this.#crdtService.build().patchElement(persisted.id, persisted).commit();
+    this.#toolService.setActiveTool("select");
+    this.#selectionService.setSelection([node]);
+    this.#selectionService.setFocusedNode(node);
+    this.#sceneService.staticForegroundLayer.batchDraw();
+    if (this.#historyService) {
+      let currentNode: Konva.Group | undefined = node;
+      this.#historyService.record({
+        label: "create-widget",
+        undo: () => {
+          const candidate = currentNode ?? this.#findWidgetNodeById(persisted.id) ?? undefined;
+          if (candidate) {
+            const onRemove = candidate.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
+            onRemove?.({ node: candidate });
+            candidate.destroy();
+          }
+          currentNode = undefined;
+          commitResult.rollback();
+          this.#selectionService.clear();
+          this.#sceneService.staticForegroundLayer.batchDraw();
+        },
+        redo: () => {
+          const restored = this.#elementService.createNodeFromElement(persisted);
+          if (!(restored instanceof Konva.Group)) return;
+          this.#sceneService.staticForegroundLayer.add(restored);
+          this.#elementService.updateElement(persisted);
+          this.#renderOrderService.sortChildren(this.#sceneService.staticForegroundLayer);
+          this.#crdtService.applyOps({ ops: commitResult.redoOps });
+          this.#selectionService.setSelection([restored]);
+          this.#selectionService.setFocusedNode(restored);
+          this.#sceneService.staticForegroundLayer.batchDraw();
+          currentNode = restored;
+        },
+      });
+    }
+    return persisted;
   }
 
 }

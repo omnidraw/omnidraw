@@ -559,6 +559,59 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetManagement.delete(name, source)
   }
 
+  async resolveWidgetPlacement(
+    reference: import('@vibecanvas/service-actor/core/fn.widget-frame').TWidgetPlacementRef,
+    previewId?: string,
+  ): Promise<import('./widget-management/types').TWidgetPlacementResolveResult> {
+    const resolved = await this.#widgetManagement.resolvePlacementReference(reference)
+    if (!resolved.ok) return resolved
+    if (reference.source === 'published') {
+      const definitionName = resolved.descriptor.definitionName
+      const runtimeManifest = definitionName
+        ? this.#config.actorService?.getVibecanvasJson?.(definitionName)
+        : null
+      if (!runtimeManifest) {
+        return {
+          ok: false,
+          code: 'NOT_FOUND',
+          message: `Published widget '${reference.name}' is not available in the actor runtime.`,
+        }
+      }
+      return resolved
+    }
+    if (!previewId) {
+      return { ok: false, code: 'UNSUPPORTED_BEHAVIOR', message: 'Preview placement requires an owner identity.' }
+    }
+    if (reference.source === 'preview') {
+      const state = await this.#widgetDrafts.getPreviewCatalogState(reference.name)
+      if (!state || state.status !== 'ready' || state.revision !== reference.revision) {
+        return {
+          ok: false,
+          code: state && state.revision !== reference.revision ? 'STALE_REVISION' : 'PREVIEW_NOT_READY',
+          message: state && state.revision !== reference.revision
+            ? `Widget Preview '${reference.name}' changed before placement.`
+            : `Widget Preview '${reference.name}' is not ready.`,
+          ...(state ? { currentRevision: state.revision } : {}),
+        }
+      }
+    }
+    const preview = await this.#widgetDrafts.buildPreview(reference.name, previewId, reference.revision)
+    if (!preview.ready) {
+      const code = preview.reason === 'stale-revision'
+        ? 'STALE_REVISION'
+        : preview.reason === 'resource-binding-invalid'
+          ? 'MISSING_RESOURCE_BINDING'
+          : preview.reason === 'manifest-invalid' || preview.reason === 'validation-failed'
+            ? 'INVALID_MANIFEST'
+            : 'PREVIEW_BUILD_FAILED'
+      return { ok: false, code, message: preview.message, ...(preview.currentRevision ? { currentRevision: preview.currentRevision } : {}) }
+    }
+    return {
+      ok: true,
+      descriptor: { ...resolved.descriptor, previewId },
+    }
+  }
+
   inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
     const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
     if (!entry) {

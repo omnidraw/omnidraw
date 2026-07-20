@@ -1,5 +1,6 @@
 import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/service-actor/core/fn.widget-frame';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 
 export type TWidgetSource = 'published' | 'draft';
@@ -13,6 +14,11 @@ export type TWidgetCatalogProblem = {
 export type TWidgetCatalogGroup = {
   name: string;
   icon: TVibecanvasToolIcon | null;
+};
+
+export type TWidgetPlacementSummary = {
+  reference: TWidgetPlacementRef;
+  bounds: TWidgetFrameBounds;
 };
 
 export type TWidgetVariantSummary = {
@@ -32,13 +38,28 @@ export type TWidgetVariantSummary = {
     behaviorType: 'mode' | 'action' | 'modal' | null;
   };
   validation: TWidgetDraftValidation | null;
+  placement?: TWidgetPlacementSummary | null;
 };
+
+export type TWidgetCatalogPreviewSummary =
+  | {
+      status: 'ready';
+      revision: string;
+      placement: TWidgetPlacementSummary;
+    }
+  | {
+      status: 'not-ready' | 'failed';
+      revision: string;
+      message: string | null;
+      placement: null;
+    };
 
 export type TWidgetCatalogEntry = {
   name: string;
   relation: TWidgetRelation;
   published: TWidgetVariantSummary | null;
   draft: TWidgetVariantSummary | null;
+  preview?: TWidgetCatalogPreviewSummary | null;
   problem: TWidgetCatalogProblem | null;
 };
 
@@ -105,3 +126,30 @@ export type TWidgetDeleteResult = {
     message: string;
   }[];
 };
+
+export type TWidgetPlacementErrorCode =
+  | 'NOT_FOUND'
+  | 'INVALID_MANIFEST'
+  | 'STALE_REVISION'
+  | 'PREVIEW_NOT_READY'
+  | 'PREVIEW_BUILD_FAILED'
+  | 'MISSING_RESOURCE_BINDING'
+  | 'UNSUPPORTED_BEHAVIOR'
+  | 'INVALID_FRAME_BOUNDS';
+
+export type TWidgetPlacementDescriptor = {
+  reference: TWidgetPlacementRef;
+  bounds: TWidgetFrameBounds;
+  kind: 'published' | 'preview';
+  definitionName: string | null;
+  previewId: string | null;
+};
+
+export type TWidgetPlacementResolveResult =
+  | { ok: true; descriptor: TWidgetPlacementDescriptor }
+  | {
+      ok: false;
+      code: TWidgetPlacementErrorCode;
+      message: string;
+      currentRevision?: string;
+    };

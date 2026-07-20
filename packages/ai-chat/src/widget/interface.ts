@@ -12,6 +12,7 @@ import type {
   SceneService,
   SelectionService,
   TTool,
+  TWidgetDropRequest,
   ToolService,
 } from "@vibecanvas/canvas/services";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
@@ -72,9 +73,11 @@ export type TWidgetFullscreenHostActions = {
 
 export interface IWidgetConfig {
   id: string;
+  toolId?: string;
   dataType?: "widget" | "ui-widget";
   cloneable?: boolean;
   tool?: Pick<TTool, "label"> & Partial<Pick<TTool, "group" | "icon" | "priority" | "shortcuts">>
+  widgetPlacement?: TWidgetDropRequest;
   getTitle?: (element: TElement) => string;
   initialPayload?: Record<string, any>;
   createInitialPayload?: () => Record<string, any>;

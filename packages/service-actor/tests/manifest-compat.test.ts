@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { fnNormalizeVibecanvasJson } from "../src/core/fn.normalize-actor-manifest";
 import type { TTransition, TVibecanvasJson } from "../src/core/types";
 import { ZVibecanvasJson } from "../src/core/vibecanvasjson.zod";
+import { fnNormalizeWidgetFrame, fnWidgetPlacementToolId } from "../src/core/fn.widget-frame";
 
 function manifestWithTransition(transition: TTransition): TVibecanvasJson {
   return {
@@ -45,6 +46,33 @@ describe("actor manifest compatibility", () => {
     expect(ZVibecanvasJson.safeParse(widget)).toMatchObject({ success: true, data: { kind: "widget" } });
     expect(ZVibecanvasJson.safeParse(actorWidget)).toMatchObject({ success: true, data: { kind: "actor-widget" } });
     expect(ZVibecanvasJson.safeParse({ ...legacy, kind: "unknown" }).success).toBe(false);
+  });
+
+  test("accepts bounded initial widget frames and keeps a useful legacy fallback", () => {
+    const legacy = manifestWithTransition({ func: [], targetState: "busy" });
+    expect(fnNormalizeWidgetFrame(legacy.widget.frame)).toEqual({ width: 360, height: 320 });
+    expect(ZVibecanvasJson.safeParse({
+      ...legacy,
+      widget: { ...legacy.widget, frame: { width: 640, height: 480 } },
+    }).success).toBe(true);
+    expect(ZVibecanvasJson.safeParse({
+      ...legacy,
+      widget: { ...legacy.widget, frame: { width: 99, height: 320 } },
+    }).success).toBe(false);
+    expect(ZVibecanvasJson.safeParse({
+      ...legacy,
+      widget: { ...legacy.widget, frame: { width: 360.5, height: 320 } },
+    }).success).toBe(false);
+    expect(ZVibecanvasJson.safeParse({
+      ...legacy,
+      widget: { ...legacy.widget, frame: { width: 360, height: 2_049 } },
+    }).success).toBe(false);
+  });
+
+  test("keeps source identity in stable widget placement tool IDs", () => {
+    expect(fnWidgetPlacementToolId({ source: "published", name: "Weather Map" })).toBe("widget-placement:published:Weather%20Map");
+    expect(fnWidgetPlacementToolId({ source: "draft", name: "Weather Map" })).toBe("widget-placement:draft:Weather%20Map");
+    expect(fnWidgetPlacementToolId({ source: "preview", name: "Weather Map" })).toBe("widget-placement:preview:Weather%20Map");
   });
 
   test("normalizes new and single-target legacy transitions", () => {

@@ -9,7 +9,7 @@ import type { TArrowSandboxBridge, mountArrowSandboxBridge } from "../widget/mou
 export type TDraftPreviewPayload = {
   draftId: string
   pinnedRevision: string
-  originChatElementId: string
+  originChatElementId?: string
 }
 
 export type TDraftPreviewSummary = Pick<TWidgetDraftSummary, "draftId" | "name" | "displayName" | "revision">

@@ -4,7 +4,7 @@
 .sectionToggle { min-width: 0; gap: .25rem; padding: .25rem; font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
 .menuTrigger, .groupMenuTrigger { width: 1.75rem; height: 1.75rem; }
 .sectionToggle:hover, .menuTrigger:hover, .groupToggle:hover, .groupMenuTrigger:hover { background: var(--accent); color: var(--foreground); }
-.sectionToggle:focus-visible, .menuTrigger:focus-visible, .groupToggle:focus-visible, .groupMenuTrigger:focus-visible, .widgetRow:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.sectionToggle:focus-visible, .menuTrigger:focus-visible, .groupToggle:focus-visible, .groupMenuTrigger:focus-visible, .widgetRowMain:focus-visible, .addButton:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
 .chevron, .groupToggle svg { transition: transform 150ms ease; }
 .sectionToggle[aria-expanded="true"] .chevron, .groupToggle[aria-expanded="true"] svg { transform: rotate(90deg); }
 .body { display: flex; flex-direction: column; padding-left: .375rem; }
@@ -13,7 +13,11 @@
 .groupToggle { width: 1.5rem; height: 1.5rem; }
 .groupName, .widgetName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; font-weight: 700; }
 .groupChildren { display: flex; flex-direction: column; padding-left: 1.375rem; }
-.widgetRow { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; width: 100%; min-height: 1.875rem; padding: .3125rem .625rem .3125rem 1.5rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); text-align: left; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+.widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+.widgetRowMain { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto auto; align-items: center; gap: .4rem; min-width: 0; padding: .3125rem .25rem .3125rem 1.5rem; color: inherit; text-align: left; }
+.addButton { display: inline-flex; align-items: center; justify-content: center; color: var(--muted-foreground); }
+.addButton:hover { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); }
+.addButton:disabled { cursor: not-allowed; opacity: .35; }
 .widgetRow:hover { background: var(--accent); }
 .selected, .selected:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--background)); color: var(--foreground); }
 .icon { display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--muted-foreground); }

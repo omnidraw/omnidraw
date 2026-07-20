@@ -85,6 +85,7 @@ function mountToolbar(args: {
   toolbarGroups: IRuntimeConfig["toolbarGroups"];
   scene: SceneService;
   tool: ToolService;
+  widgetPlacement: IRuntimeServices["widgetPlacement"];
   onToolSelect: (toolId: string) => void;
 }) {
   const mountElement = document.createElement("div");
@@ -95,6 +96,7 @@ function mountToolbar(args: {
     return createComponent(RuntimeToolbar, {
       tool: args.tool,
       toolbarGroups: args.toolbarGroups,
+      widgetPlacement: args.widgetPlacement,
       viewportElement: args.scene.stage.container(),
       onToolSelect: args.onToolSelect,
     });
@@ -123,6 +125,7 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
       const tool = ctx.services.require("tool");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
+      const widgetPlacement = ctx.services.require("widgetPlacement");
 
       tool.registerTool({
         id: "sidebar",
@@ -157,6 +160,7 @@ export function createToolbarPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, 
           toolbarGroups: ctx.config.toolbarGroups,
           scene,
           tool,
+          widgetPlacement,
           onToolSelect: (toolId) => {
             txSelectTool({ toolService: tool }, { toolId });
           },
