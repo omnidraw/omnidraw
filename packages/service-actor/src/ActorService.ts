@@ -14,6 +14,7 @@ import { DbResource, type TDatabaseFactory } from './resources/DbResource';
 import { KvResource } from './resources/KvResource';
 import { SecretStoreResource } from './resources/SecretStoreResource';
 import { ActorResourceKeyValueStore, type TActorResourceKeyValueDatabaseFactory } from './resources/ActorResourceKeyValueStore';
+import type { ISecretStoreKeyProvider } from './resources/SecretStoreKeyProvider';
 import { DbResourceCoordinator } from './resources/DbResourceCoordinator';
 import type { TActorResourceCall, TActorResourceDataMutationResult, TActorResourceDataPage, TActorResourceDirectBinding, TDbCellValue, TDbDraftOperation, TDbRowCreate, TDbRowDelete, TDbRowIdentity, TDbRowUpdate } from './resources/resource-types';
 import { ActorResourceError } from './resources/ActorResourceError';
@@ -37,7 +38,7 @@ interface IPublicMethods {
   callWithDirectResourceBinding(call: TActorResourceCall, binding: TActorResourceDirectBinding): Promise<unknown>
 }
 
-interface IActorServiceConfig {
+export interface IActorServiceConfig {
   db: DbServiceTurso;
   configPath: string;
   dataRoot: string;
@@ -45,6 +46,7 @@ interface IActorServiceConfig {
   dbResourceDatabaseFactory?: TDatabaseFactory;
   actorResourceKeyValueDatabaseFactory?: TActorResourceKeyValueDatabaseFactory;
   actorResourceKeyValueMaxOpenHandles?: number;
+  secretStoreKeyProvider: ISecretStoreKeyProvider;
   eventPublisherService: IEventPublisherService,
 }
 
@@ -78,6 +80,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     this.#secretStoreResource = new SecretStoreResource(new ActorResourceKeyValueStore({
       dataRoot: config.dataRoot,
       kind: 'secretStore',
+      secretStoreKeyProvider: config.secretStoreKeyProvider,
       databaseFactory: config.actorResourceKeyValueDatabaseFactory,
       maxOpenHandles: config.actorResourceKeyValueMaxOpenHandles,
     }))
@@ -256,6 +259,42 @@ export class ActorService implements IService, IStartableService, IStoppableServ
         updatedAt: entry.updatedAt,
       }
     })
+  }
+
+  async revealResourceSecret(args: { resourceId: string; name: string }): Promise<{
+    kind: 'secretStore'
+    name: string
+    value: string
+    revision: number
+  }> {
+    try {
+      return await this.#resourceManager.withReadyResource(args.resourceId, async (resource) => {
+        if (resource.kind !== 'secretStore') {
+          throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Resource is not a secret store.')
+        }
+        const entry = await this.#secretStoreResource.revealEntry({
+          resourceId: resource.id,
+          name: args.name,
+        })
+        if (!entry) {
+          throw new ActorResourceError('SECRET_NOT_FOUND', 'Secret was not found.')
+        }
+        return {
+          kind: 'secretStore',
+          name: entry.key,
+          value: entry.value,
+          revision: entry.revision,
+        }
+      })
+    } catch (error) {
+      if (
+        error instanceof ActorResourceError
+        && (error.code === 'RESOURCE_NOT_READY' || error.code === 'RESOURCE_MIGRATING')
+      ) {
+        throw new ActorResourceError('SECRET_STORE_UNAVAILABLE', 'Secret-store resource is unavailable.')
+      }
+      throw error
+    }
   }
 
   async setResourceDataEntry(args: {

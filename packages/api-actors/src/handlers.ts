@@ -16,6 +16,7 @@ import {
     apiListActorResourceReferences,
     apiListActorResources,
     apiRenameActorResource,
+    apiRevealActorResourceSecret,
     apiSetActorResourceData,
     apiUnbindActorResource,
 } from './api.resources';
@@ -69,6 +70,7 @@ const actorsHandlers = {
         data: apiListActorResourceData,
         dataSet: apiSetActorResourceData,
         dataDelete: apiDeleteActorResourceData,
+        dataRevealSecret: apiRevealActorResourceSecret,
         definitionStatus: apiActorDefinitionResourceStatus,
         bind: apiBindActorResource,
         unbind: apiUnbindActorResource,

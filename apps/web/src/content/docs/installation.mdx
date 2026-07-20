@@ -89,7 +89,15 @@ If you need the full command list:
 vibecanvas --help
 ```
 
-## 8) Uninstall
+## 8) Back up encrypted secret stores
+
+Vibecanvas stores one independent AEGIS-256 database key per secret store in the main control database's general-purpose `encryption_keys` table. A separate link table associates each actor resource with its key. Encrypted secret databases remain separate actor-resource files. A usable restore needs both the main-database backup and the corresponding actor-resource data; losing one linked key makes that secret store unreadable.
+
+In the default local setup, the main database and actor-resource files can live under the same data root, so a complete copy contains both encrypted data and its keys. In a managed deployment, the main database can live on a separate server from the actor-resource files. This design favors simple operation; protect access to the main database accordingly.
+
+The current release does not provide key export or rotation. At-rest encryption prevents casual plaintext inspection of a secret database or WAL copied without the main database, but it is not a substitute for database access control, host security, API authorization, or careful handling of plaintext after an operator or authorized actor reveals it.
+
+## 9) Uninstall
 
 To remove the curl-installed binary and local Vibecanvas config/data/state/cache:
 
@@ -97,6 +105,8 @@ To remove the curl-installed binary and local Vibecanvas config/data/state/cache
 vibecanvas uninstall --dry-run
 vibecanvas uninstall --yes
 ```
+
+A full uninstall removes the local main database and encrypted actor-resource data together with the rest of Vibecanvas's local data.
 
 If one of these fails, ask in Discussions:
 

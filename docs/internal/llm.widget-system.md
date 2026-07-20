@@ -103,12 +103,18 @@ Every conversation receives the same exact registry from connect through reconne
 
 Resources are host-global catalog entries of kind `kv`, `secretStore`, or `db`. Tool responses expose stable IDs and safe metadata, never provider handles, physical paths, native configuration, or secret plaintext.
 
+Secret-store Turso files use native AEGIS-256 page encryption. The main database keeps the actual independent database keys in a general-purpose `encryption_keys` table with no actor columns. A separate `actor_resource_encryption_keys` table links each secret resource to one key. The persistence interface atomically creates or reads that link but exposes no key listing or transport API.
+
+This deliberately favors operational simplicity over local ciphertext/key separation. Anyone who can read both the main database and actor-resource files can recover the secrets. Encryption still protects an individual secret database/WAL copied without the main database and supports managed deployments where the control database lives on another server. A usable restore requires the main database and corresponding actor-resource data; plaintext in memory and a host/account compromise remain outside this protection.
+
 - `vc_resource_list` returns stable bounded cursor pages.
 - `vc_resource_inspect` returns KV/secret key metadata or bounded SQLite schema metadata. It returns no DB rows or secret values.
 - Create, rename, and binding-aware delete require protected approval.
 - `vc_resource_data_read` accepts one query or an ordered query array. It returns one success/error result per query.
 - KV supports get/has/list; secret stores support has/list only; SQLite reads are parameterized, bounded, single-statement, and read-only.
 - `vc_resource_data_write` accepts one operation or a same-resource ordered batch. KV and secret operations use provider revisions. SQLite writes use one durable DB draft/apply path with bound parameters.
+
+The resource-management UI has a separate, explicit one-secret reveal operation for the local human operator. It is not registered as an AI tool, actor IPC operation, SDK resource method, or generic resource-data read. Bound actor code retains its existing authorized secret `get` capability; model-facing management tools do not.
 
 Result metadata states the applicable atomicity. S84 does not claim a cross-provider or cross-operation transaction for KV and secret batches.
 
@@ -225,6 +231,6 @@ Before changing this system:
 2. Preserve the exact 14-tool registry and per-call authorization unless a later task explicitly replaces S84.
 3. Keep mounted path validation at the backend boundary.
 4. Keep model-authored files away from host compiler/executable selection.
-5. Keep secret plaintext out of reads, approval views, events, transcripts, logs, and results.
+5. Keep secret plaintext out of model-facing and generic reads, approval views, events, transcripts, logs, and results; the dedicated human reveal handler is the only management exception.
 6. Keep publishing and approval user-controlled.
 7. Add focused tests for persistence, rollback, lifecycle, authorization, and concurrency behavior.

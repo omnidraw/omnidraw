@@ -89,6 +89,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/feature/db-resource/fx.db-resource.ts](apps/frontend/src/feature/db-resource/fx.db-resource.ts) |  |
 | [apps/frontend/src/feature/db-resource/tx.db-resource.ts](apps/frontend/src/feature/db-resource/tx.db-resource.ts) |  |
 | [apps/frontend/src/feature/db-resource/types.ts](apps/frontend/src/feature/db-resource/types.ts) |  |
+| [apps/frontend/src/feature/resource/fn.secret-reveal.ts](apps/frontend/src/feature/resource/fn.secret-reveal.ts) |  |
 | [apps/frontend/src/feature/resource/GenericResourcePage.tsx](apps/frontend/src/feature/resource/GenericResourcePage.tsx) |  |
 | [apps/frontend/src/fn.startup-canvas-navigation.ts](apps/frontend/src/fn.startup-canvas-navigation.ts) |  |
 | [apps/frontend/src/index.css](apps/frontend/src/index.css) |  |
@@ -129,9 +130,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
 | [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
 | [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
 | [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
@@ -750,6 +748,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
 | [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
+| [packages/service-actor/src/resources/SecretStoreKeyProvider.ts](packages/service-actor/src/resources/SecretStoreKeyProvider.ts) | Database-backed per-resource encryption-key custody for secret stores. |
 | [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
@@ -864,6 +863,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.encryption-key.ts](packages/service-db/src/DbServiceTurso/fx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
@@ -884,6 +884,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts](packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/016-add-encryption-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/016-add-encryption-keys.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-types.ts](packages/service-db/src/DbServiceTurso/migration-types.ts) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
@@ -891,13 +892,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.encryption-key.ts](packages/service-db/src/DbServiceTurso/tx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
-| [packages/service-db/src/embedded-migrations.ts](packages/service-db/src/embedded-migrations.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |

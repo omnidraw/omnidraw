@@ -2,27 +2,36 @@
  * @file Host-owned bounded Turso file persistence for KV and secret-store resources.
  */
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, mkdir, open, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   IActorResourceKeyValuePersistence,
   TActorResourceKeyValueCompareAndSetResult,
   TActorResourceKeyValueDeleteResult,
   TActorResourceKeyValueEntry,
+  TActorResourceKeyValueEntryMetadata,
   TActorResourceKeyValueIdentity,
   TActorResourceKeyValueKind,
   TActorResourceKeyValuePage,
 } from './ActorResourceKeyValuePersistence';
 import {
   fnActorResourceKeyValueEntry,
+  fnActorResourceKeyValueEntryMetadata,
   fnActorResourceKeyValueHostId,
   fnActorResourceKeyValueListLimit,
   fnActorResourceKeyValueSerialize,
 } from './fn.actor-resource-key-value';
 import type { TJson } from '@vibecanvas/service-db/model';
+import { ActorResourceError } from './ActorResourceError';
+import type { ISecretStoreKeyProvider } from './SecretStoreKeyProvider';
 
-const FORMAT_VERSION = 1;
+const KV_FORMAT_VERSION = 1;
+const SECRET_STORE_FORMAT_VERSION = 2;
 const DEFAULT_QUERY_TIMEOUT_MS = 5_000;
+const COPY_PAGE_SIZE = 100;
+const SQLITE_HEADER = Buffer.from('SQLite format 3\0', 'ascii');
+const TURSO_ENCRYPTED_HEADER = Buffer.from('Turso\0', 'ascii');
 
 export const ACTOR_RESOURCE_KEY_VALUE_DEFAULT_MAX_OPEN_HANDLES = 32;
 
@@ -33,20 +42,26 @@ PRAGMA synchronous = FULL;
 PRAGMA temp_store = 2;
 `;
 
-const RESOURCE_SCHEMA_SQL = `
+const RESOURCE_METADATA_SCHEMA_SQL = `
 CREATE TABLE \`_vibecanvas_resource_metadata\` (
   \`singleton\` INTEGER PRIMARY KEY CHECK (\`singleton\` = 1),
   \`resource_id\` TEXT NOT NULL,
   \`resource_kind\` TEXT NOT NULL CHECK (\`resource_kind\` IN ('kv', 'secretStore')),
   \`format_version\` INTEGER NOT NULL CHECK (\`format_version\` >= 1)
-) STRICT;
+) STRICT
+`;
+
+const RESOURCE_ENTRIES_SCHEMA_SQL = `
 CREATE TABLE \`actor_resource_entries\` (
   \`key\` TEXT PRIMARY KEY,
   \`value\` JSON NOT NULL,
   \`revision\` INTEGER NOT NULL DEFAULT 1 CHECK (\`revision\` >= 1),
   \`created_at\` TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   \`updated_at\` TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-) STRICT;
+) STRICT
+`;
+
+const RESOURCE_UPDATED_AT_TRIGGER_SQL = `
 CREATE TRIGGER \`actor_resource_entries_updated_at_after_update\`
 AFTER UPDATE OF \`value\`, \`revision\` ON \`actor_resource_entries\`
 FOR EACH ROW
@@ -59,17 +74,50 @@ BEGIN
     ELSE strftime('%Y-%m-%dT%H:%M:%fZ', OLD.\`updated_at\`, '+0.001 seconds')
   END
   WHERE \`key\` = OLD.\`key\`;
-END;
+END
 `;
+
+const RESOURCE_SCHEMA_SQL = `
+${RESOURCE_METADATA_SCHEMA_SQL};
+${RESOURCE_ENTRIES_SCHEMA_SQL};
+${RESOURCE_UPDATED_AT_TRIGGER_SQL};
+`;
+
+function normalizeSchemaSql(sql: string): string {
+  return sql
+    .replace(/[`\"]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([(),=])\s*/g, '$1')
+    .replace(/\s*;\s*/g, ';')
+    .trim()
+    .replace(/;$/, '')
+    .toLowerCase();
+}
 
 export type TActorResourceKeyValueDatabaseFactory = (
   databasePath: string,
   options: ConstructorParameters<typeof Database>[1],
 ) => Database;
 
+export type TSecretStoreConversionCheckpoint =
+  | 'temporary-created'
+  | 'entries-copied'
+  | 'temporary-checkpointed'
+  | 'temporary-verified'
+  | 'source-closed'
+  | 'plaintext-renamed'
+  | 'encrypted-renamed'
+  | 'final-reopened'
+  | 'before-recovery-cleanup';
+
 export type TActorResourceKeyValueStoreConfig = {
   readonly dataRoot: string;
   readonly kind: TActorResourceKeyValueKind;
+  readonly secretStoreKeyProvider?: ISecretStoreKeyProvider;
+  readonly secretStoreConversionCheckpoint?: (
+    checkpoint: TSecretStoreConversionCheckpoint,
+    resourceId: string,
+  ) => void | Promise<void>;
   readonly databaseFactory?: TActorResourceKeyValueDatabaseFactory;
   readonly maxOpenHandles?: number;
   readonly queryTimeoutMs?: number;
@@ -93,12 +141,38 @@ type TTableInfoRow = {
   readonly name: unknown;
   readonly type: unknown;
   readonly notnull: unknown;
+  readonly pk: unknown;
 };
+
+type TTableListRow = {
+  readonly name: unknown;
+  readonly strict: unknown;
+  readonly wr: unknown;
+};
+
+type TSchemaObjectRow = {
+  readonly type: unknown;
+  readonly name: unknown;
+  readonly tbl_name: unknown;
+  readonly sql: unknown;
+};
+
+type TCopyEntryRow = {
+  readonly key: unknown;
+  readonly serialized_value: unknown;
+  readonly revision: unknown;
+  readonly created_at: unknown;
+  readonly updated_at: unknown;
+};
+
+type TDatabaseFileState = 'missing' | 'plaintext' | 'encrypted' | 'unknown';
 
 export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersistence {
   readonly #dataRoot: string;
   readonly #kind: TActorResourceKeyValueKind;
   readonly #pathSegment: 'kv' | 'secret-store';
+  readonly #secretStoreKeyProvider: ISecretStoreKeyProvider | undefined;
+  readonly #secretStoreConversionCheckpoint: TActorResourceKeyValueStoreConfig['secretStoreConversionCheckpoint'];
   readonly #databaseFactory: TActorResourceKeyValueDatabaseFactory;
   readonly #maxOpenHandles: number;
   readonly #queryTimeoutMs: number;
@@ -108,7 +182,8 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
   readonly #pendingWrites = new Map<string, number>();
   readonly #inFlight = new Map<string, Set<Promise<unknown>>>();
   readonly #lifecycle = new Set<Promise<unknown>>();
-  readonly #blocked = new Set<string>();
+  readonly #resourceLifecycleTails = new Map<string, Promise<void>>();
+  readonly #blockedLifecycleCounts = new Map<string, number>();
   #lastUse = 0;
   #closed = false;
   #closePromise: Promise<void> | null = null;
@@ -125,6 +200,11 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     this.#dataRoot = config.dataRoot;
     this.#kind = config.kind;
     this.#pathSegment = config.kind === 'kv' ? 'kv' : 'secret-store';
+    this.#secretStoreKeyProvider = config.secretStoreKeyProvider;
+    this.#secretStoreConversionCheckpoint = config.secretStoreConversionCheckpoint;
+    if (config.kind === 'secretStore' && !this.#secretStoreKeyProvider) {
+      throw new TypeError('Secret-store persistence requires a host key provider.');
+    }
     this.#databaseFactory = config.databaseFactory ?? ((databasePath, options) => new Database(databasePath, options));
     this.#maxOpenHandles = maxOpenHandles;
     this.#queryTimeoutMs = queryTimeoutMs;
@@ -137,7 +217,7 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
   async provision(identity: TActorResourceKeyValueIdentity): Promise<void> {
     this.#assertAvailable();
     this.#assertIdentity(identity);
-    return this.#trackLifecycle(this.#provision(identity.resourceId));
+    return this.#scheduleLifecycle(identity.resourceId, (resourceId) => this.#provision(resourceId));
   }
 
   async #provision(resourceIdValue: string): Promise<void> {
@@ -145,10 +225,14 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     const directory = this.#resourceDirectory(resourceId);
     let directoryCreated = false;
     try {
+      const databaseHexKey = await this.#databaseHexKey(resourceId, true);
       await mkdir(this.#kindRoot(), { recursive: true });
       await mkdir(directory);
       directoryCreated = true;
-      const database = this.#databaseFactory(this.#databasePath(resourceId), this.#databaseOptions(false));
+      const database = this.#databaseFactory(
+        this.#databasePath(resourceId),
+        this.#databaseOptions(false, databaseHexKey),
+      );
       try {
         await database.connect();
         await database.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
@@ -156,11 +240,12 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
         await (await database.prepare(`
           INSERT INTO _vibecanvas_resource_metadata (singleton, resource_id, resource_kind, format_version)
           VALUES (1, ?, ?, ?)
-        `)).run(resourceId, this.#kind, FORMAT_VERSION);
+        `)).run(resourceId, this.#kind, this.#formatVersion());
       } finally {
         await this.#closeDatabase(database);
       }
-      await this.#verifyStandalone(resourceId);
+      if (this.#kind === 'secretStore') await this.#syncResourceDirectory(resourceId);
+      await this.#verifyStandalone(resourceId, databaseHexKey);
     } catch (error) {
       if (directoryCreated) await rm(directory, { recursive: true, force: true }).catch(() => undefined);
       throw error;
@@ -170,43 +255,41 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
   async verify(identity: TActorResourceKeyValueIdentity): Promise<void> {
     this.#assertAvailable();
     this.#assertIdentity(identity);
-    return this.#trackLifecycle(this.#verifyResource(identity.resourceId));
+    return this.#scheduleLifecycle(identity.resourceId, (resourceId) => this.#verifyResource(resourceId));
   }
 
   async #verifyResource(resourceIdValue: string): Promise<void> {
     const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
-    this.#blocked.add(resourceId);
-    try {
-      await this.#drain(resourceId);
-      await this.#closeHandle(resourceId);
-      await this.#verifyStandalone(resourceId);
-    } finally {
-      this.#blocked.delete(resourceId);
-    }
+    await this.#drain(resourceId);
+    await this.#closeHandle(resourceId);
+    await this.#verifyStandalone(resourceId);
   }
 
   async deleteResource(identity: TActorResourceKeyValueIdentity): Promise<void> {
     this.#assertAvailable();
     this.#assertIdentity(identity);
-    return this.#trackLifecycle(this.#deleteResource(identity.resourceId));
+    return this.#scheduleLifecycle(identity.resourceId, (resourceId) => this.#deleteResource(resourceId));
   }
 
   async #deleteResource(resourceIdValue: string): Promise<void> {
     const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
-    this.#blocked.add(resourceId);
-    try {
-      await this.#drain(resourceId);
-      await this.#writeTails.get(resourceId);
-      await this.#closeHandle(resourceId);
-      await rm(this.#resourceDirectory(resourceId), { recursive: true, force: true });
-    } finally {
-      this.#blocked.delete(resourceId);
-    }
+    await this.#drain(resourceId);
+    await this.#writeTails.get(resourceId);
+    await this.#closeHandle(resourceId);
+    await rm(this.#resourceDirectory(resourceId), { recursive: true, force: true });
   }
 
   async get(args: { readonly resourceId: string; readonly key: string }): Promise<TActorResourceKeyValueEntry | null> {
     const resourceId = this.#operationResourceId(args.resourceId);
     return this.#track(resourceId, this.#getEntry(resourceId, args.key));
+  }
+
+  async getMetadata(args: {
+    readonly resourceId: string;
+    readonly key: string;
+  }): Promise<TActorResourceKeyValueEntryMetadata | null> {
+    const resourceId = this.#operationResourceId(args.resourceId);
+    return this.#track(resourceId, this.#getEntryMetadata(resourceId, args.key));
   }
 
   async has(args: { readonly resourceId: string; readonly key: string }): Promise<boolean> {
@@ -259,6 +342,37 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
         LIMIT ?
       `)).all(prefix, prefix, prefix, search, search, cursor, cursor, limit + 1);
       const parsed = rows.map(fnActorResourceKeyValueEntry);
+      const entries = parsed.slice(0, limit);
+      return {
+        entries,
+        nextCursor: parsed.length > limit ? entries.at(-1)?.key ?? null : null,
+      };
+    }));
+  }
+
+  async listMetadata(args: {
+    readonly resourceId: string;
+    readonly prefix?: string;
+    readonly search?: string;
+    readonly cursor?: string;
+    readonly limit?: number;
+  }): Promise<TActorResourceKeyValuePage<TActorResourceKeyValueEntryMetadata>> {
+    const resourceId = this.#operationResourceId(args.resourceId);
+    const limit = fnActorResourceKeyValueListLimit(args.limit);
+    return this.#track(resourceId, this.#withHandle(resourceId, async (database) => {
+      const prefix = args.prefix ?? null;
+      const search = args.search ?? null;
+      const cursor = args.cursor ?? null;
+      const rows = await (await database.prepare(`
+        SELECT key, revision, created_at, updated_at
+        FROM actor_resource_entries
+        WHERE (? IS NULL OR substr(key, 1, length(?)) = ?)
+          AND (? IS NULL OR instr(key, ?) > 0)
+          AND (? IS NULL OR key > ?)
+        ORDER BY key ASC
+        LIMIT ?
+      `)).all(prefix, prefix, prefix, search, search, cursor, cursor, limit + 1);
+      const parsed = rows.map(fnActorResourceKeyValueEntryMetadata);
       const entries = parsed.slice(0, limit);
       return {
         entries,
@@ -367,19 +481,25 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     return this.#closePromise;
   }
 
-  async #verifyStandalone(resourceId: string): Promise<void> {
+  async #verifyStandalone(resourceId: string, knownDatabaseHexKey?: string): Promise<void> {
+    if (this.#kind === 'secretStore') {
+      const databaseHexKey = knownDatabaseHexKey
+        ?? await this.#databaseHexKey(resourceId, await this.#canCreateSecretDatabaseKey(resourceId));
+      await this.#reconcileSecretDatabase(resourceId, databaseHexKey!);
+      return;
+    }
     await this.#assertDatabaseFile(resourceId);
     const database = this.#databaseFactory(this.#databasePath(resourceId), this.#databaseOptions(true));
     try {
       await database.connect();
       await database.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
-      await this.#verifyDatabase(database, resourceId);
+      await this.#verifyDatabase(database, resourceId, KV_FORMAT_VERSION);
     } finally {
       await this.#closeDatabase(database);
     }
   }
 
-  async #verifyDatabase(database: Database, resourceId: string): Promise<void> {
+  async #verifyDatabase(database: Database, resourceId: string, formatVersion: number): Promise<void> {
     const health = await (await database.prepare('PRAGMA quick_check;')).all();
     if (health.length !== 1 || !Object.values(health[0] ?? {}).some((value) => value === 'ok')) {
       throw new Error('Actor resource key-value database health check failed.');
@@ -395,7 +515,7 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
       || Number(row?.singleton) !== 1
       || row?.resource_id !== resourceId
       || row?.resource_kind !== this.#kind
-      || Number(row?.format_version) !== FORMAT_VERSION
+      || Number(row?.format_version) !== formatVersion
     ) {
       throw new Error('Actor resource key-value physical identity does not match its catalog resource.');
     }
@@ -404,17 +524,471 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
       FROM actor_resource_entries
       LIMIT 0
     `)).all();
+    const metadataColumns = await (await database.prepare('PRAGMA table_info(_vibecanvas_resource_metadata);')).all() as TTableInfoRow[];
     const entryColumns = await (await database.prepare('PRAGMA table_info(actor_resource_entries);')).all() as TTableInfoRow[];
-    const valueColumn = entryColumns.find((column) => column.name === 'value');
-    if (valueColumn?.type !== 'JSON' || Number(valueColumn.notnull) !== 1) {
-      throw new Error('Actor resource key-value value column must be required JSON.');
+    const columnsMatch = (actual: readonly TTableInfoRow[], expected: readonly (readonly [string, string, number, number])[]) => (
+      actual.length === expected.length
+      && expected.every(([name, type, notnull, pk], index) => (
+        actual[index]?.name === name
+        && actual[index]?.type === type
+        && Number(actual[index]?.notnull) === notnull
+        && Number(actual[index]?.pk) === pk
+      ))
+    );
+    if (!columnsMatch(metadataColumns, [
+      ['singleton', 'INTEGER', 0, 1],
+      ['resource_id', 'TEXT', 1, 0],
+      ['resource_kind', 'TEXT', 1, 0],
+      ['format_version', 'INTEGER', 1, 0],
+    ]) || !columnsMatch(entryColumns, [
+      ['key', 'TEXT', 0, 1],
+      ['value', 'JSON', 1, 0],
+      ['revision', 'INTEGER', 1, 0],
+      ['created_at', 'TEXT', 1, 0],
+      ['updated_at', 'TEXT', 1, 0],
+    ])) {
+      throw new Error('Actor resource key-value physical columns are invalid.');
     }
-    const trigger = await (await database.prepare(`
-      SELECT name
+    const tableList = await (await database.prepare('PRAGMA table_list;')).all() as TTableListRow[];
+    for (const tableName of ['_vibecanvas_resource_metadata', 'actor_resource_entries']) {
+      const table = tableList.find((candidate) => candidate.name === tableName);
+      if (Number(table?.strict) !== 1 || Number(table?.wr) !== 0) {
+        throw new Error('Actor resource key-value physical tables must use strict rowid storage.');
+      }
+    }
+    const schemaObjects = await (await database.prepare(`
+      SELECT type, name, tbl_name, sql
       FROM sqlite_master
-      WHERE type = 'trigger' AND name = 'actor_resource_entries_updated_at_after_update'
-    `)).get();
-    if (!trigger) throw new Error('Actor resource key-value physical schema is incomplete.');
+      WHERE name NOT LIKE 'sqlite_%'
+      ORDER BY type, name
+    `)).all() as TSchemaObjectRow[];
+    const expectedSchemaObjects = [
+      ['table', '_vibecanvas_resource_metadata', '_vibecanvas_resource_metadata', RESOURCE_METADATA_SCHEMA_SQL],
+      ['table', 'actor_resource_entries', 'actor_resource_entries', RESOURCE_ENTRIES_SCHEMA_SQL],
+      ['trigger', 'actor_resource_entries_updated_at_after_update', 'actor_resource_entries', RESOURCE_UPDATED_AT_TRIGGER_SQL],
+    ] as const;
+    if (
+      schemaObjects.length !== expectedSchemaObjects.length
+      || expectedSchemaObjects.some(([type, name, tableName, sql], index) => (
+        schemaObjects[index]?.type !== type
+        || schemaObjects[index]?.name !== name
+        || schemaObjects[index]?.tbl_name !== tableName
+        || typeof schemaObjects[index]?.sql !== 'string'
+        || normalizeSchemaSql(schemaObjects[index].sql) !== normalizeSchemaSql(sql)
+      ))
+    ) {
+      throw new Error('Actor resource key-value physical schema is incomplete.');
+    }
+  }
+
+  async #reconcileSecretDatabase(resourceId: string, databaseHexKey: string): Promise<void> {
+    const databasePath = this.#databasePath(resourceId);
+    const temporaryPath = this.#encryptedTemporaryPath(resourceId);
+    const recoveryPath = this.#plaintextRecoveryPath(resourceId);
+    const state = await this.#databaseFileState(databasePath);
+
+    if (state === 'encrypted') {
+      await this.#recoverPromotedSidecars(temporaryPath, databasePath);
+      await this.#verifyEncryptedPath(databasePath, resourceId, databaseHexKey);
+      const recoveryState = await this.#databaseFileState(recoveryPath);
+      if (recoveryState === 'plaintext') {
+        await this.#assertEncryptedMatchesRecovery(databasePath, recoveryPath, resourceId, databaseHexKey);
+      } else if (recoveryState !== 'missing') {
+        throw this.#decryptionFailed();
+      }
+      await this.#removeDatabaseArtifacts(temporaryPath);
+      await this.#removeDatabaseArtifacts(recoveryPath);
+      await this.#syncResourceDirectory(resourceId);
+      return;
+    }
+
+    if (state === 'plaintext') {
+      await this.#convertPlaintextDatabase(resourceId, databaseHexKey);
+      return;
+    }
+
+    if (state === 'missing') {
+      const temporaryState = await this.#databaseFileState(temporaryPath);
+      if (temporaryState === 'encrypted') {
+        const recoveryState = await this.#databaseFileState(recoveryPath);
+        if (recoveryState !== 'plaintext') throw this.#decryptionFailed();
+        await this.#recoverPromotedSidecars(databasePath, recoveryPath);
+        await this.#assertEncryptedMatchesRecovery(temporaryPath, recoveryPath, resourceId, databaseHexKey);
+        await this.#assertEncryptedAccessRejected(temporaryPath, resourceId, databaseHexKey);
+        await this.#moveDatabaseArtifacts(temporaryPath, databasePath);
+        await this.#syncResourceDirectory(resourceId);
+        await this.#verifyEncryptedPath(databasePath, resourceId, databaseHexKey);
+        await this.#assertEncryptedMatchesRecovery(databasePath, recoveryPath, resourceId, databaseHexKey);
+        await this.#removeDatabaseArtifacts(recoveryPath);
+        await this.#syncResourceDirectory(resourceId);
+        return;
+      }
+      if (temporaryState !== 'missing') throw this.#decryptionFailed();
+
+      const recoveryState = await this.#databaseFileState(recoveryPath);
+      if (recoveryState !== 'plaintext') throw this.#decryptionFailed();
+      await this.#recoverPromotedSidecars(databasePath, recoveryPath);
+      const recovery = await this.#openVerifiedPlaintextDatabase(recoveryPath, resourceId);
+      await this.#closeDatabase(recovery);
+      await this.#moveDatabaseArtifacts(recoveryPath, databasePath);
+      await this.#syncResourceDirectory(resourceId);
+      await this.#convertPlaintextDatabase(resourceId, databaseHexKey);
+      return;
+    }
+
+    throw this.#decryptionFailed();
+  }
+
+  async #convertPlaintextDatabase(resourceId: string, databaseHexKey: string): Promise<void> {
+    const databasePath = this.#databasePath(resourceId);
+    const temporaryPath = this.#encryptedTemporaryPath(resourceId);
+    const recoveryPath = this.#plaintextRecoveryPath(resourceId);
+    let source: Database | null = await this.#openVerifiedPlaintextDatabase(databasePath, resourceId);
+
+    try {
+      await source.exec('PRAGMA wal_checkpoint(TRUNCATE);', { queryTimeout: this.#queryTimeoutMs });
+      await this.#removeDatabaseArtifacts(temporaryPath);
+      await this.#removeDatabaseArtifacts(recoveryPath);
+
+      const destination = this.#databaseFactory(
+        temporaryPath,
+        this.#databaseOptions(false, databaseHexKey),
+      );
+      try {
+        await destination.connect();
+        await destination.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
+        await destination.exec(RESOURCE_SCHEMA_SQL, { queryTimeout: this.#queryTimeoutMs });
+        await (await destination.prepare(`
+          INSERT INTO _vibecanvas_resource_metadata (singleton, resource_id, resource_kind, format_version)
+          VALUES (1, ?, 'secretStore', ?)
+        `)).run(resourceId, SECRET_STORE_FORMAT_VERSION);
+        await this.#conversionCheckpoint('temporary-created', resourceId);
+        await destination.exec('BEGIN IMMEDIATE;', { queryTimeout: this.#queryTimeoutMs });
+        try {
+          await this.#copyEntries(source, destination);
+          await destination.exec('COMMIT;', { queryTimeout: this.#queryTimeoutMs });
+          await this.#conversionCheckpoint('entries-copied', resourceId);
+        } catch (error) {
+          await destination.exec('ROLLBACK;', { queryTimeout: this.#queryTimeoutMs }).catch(() => undefined);
+          throw error;
+        }
+        await destination.exec('PRAGMA wal_checkpoint(TRUNCATE);', { queryTimeout: this.#queryTimeoutMs });
+        await this.#conversionCheckpoint('temporary-checkpointed', resourceId);
+      } finally {
+        await this.#closeDatabase(destination);
+      }
+
+      const encryptedCopy = await this.#openVerifiedEncryptedDatabase(
+        temporaryPath,
+        resourceId,
+        databaseHexKey,
+      );
+      try {
+        await this.#assertSameEntries(source, encryptedCopy);
+      } finally {
+        await this.#closeDatabase(encryptedCopy);
+      }
+      await this.#assertEncryptedAccessRejected(temporaryPath, resourceId, databaseHexKey);
+      await this.#conversionCheckpoint('temporary-verified', resourceId);
+    } finally {
+      if (source) {
+        const closing = source;
+        source = null;
+        await this.#closeDatabase(closing);
+      }
+    }
+
+    await this.#conversionCheckpoint('source-closed', resourceId);
+
+    await this.#moveDatabaseArtifacts(databasePath, recoveryPath);
+    await this.#syncResourceDirectory(resourceId);
+    await this.#conversionCheckpoint('plaintext-renamed', resourceId);
+    await this.#moveDatabaseArtifacts(temporaryPath, databasePath);
+    await this.#syncResourceDirectory(resourceId);
+    await this.#conversionCheckpoint('encrypted-renamed', resourceId);
+    await this.#verifyEncryptedPath(databasePath, resourceId, databaseHexKey);
+    await this.#conversionCheckpoint('final-reopened', resourceId);
+    await this.#assertEncryptedMatchesRecovery(databasePath, recoveryPath, resourceId, databaseHexKey);
+    await this.#conversionCheckpoint('before-recovery-cleanup', resourceId);
+    await this.#removeDatabaseArtifacts(recoveryPath);
+    await this.#syncResourceDirectory(resourceId);
+  }
+
+  async #copyEntries(source: Database, destination: Database): Promise<void> {
+    let cursor: string | null = null;
+    const insert = await destination.prepare(`
+      INSERT INTO actor_resource_entries (key, value, revision, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    while (true) {
+      const rows = await this.#copyEntryPage(source, cursor);
+      for (const row of rows) {
+        await insert.run(
+          row.key,
+          row.serializedValue,
+          row.revision,
+          row.createdAt,
+          row.updatedAt,
+        );
+      }
+      if (rows.length < COPY_PAGE_SIZE) return;
+      cursor = rows.at(-1)!.key;
+    }
+  }
+
+  async #assertSameEntries(source: Database, destination: Database): Promise<void> {
+    let cursor: string | null = null;
+    while (true) {
+      const sourceRows = await this.#copyEntryPage(source, cursor);
+      const destinationRows = await this.#copyEntryPage(destination, cursor);
+      if (sourceRows.length !== destinationRows.length) throw this.#decryptionFailed();
+      for (const [index, sourceRow] of sourceRows.entries()) {
+        const destinationRow = destinationRows[index];
+        if (
+          !destinationRow
+          || sourceRow.key !== destinationRow.key
+          || sourceRow.serializedValue !== destinationRow.serializedValue
+          || sourceRow.revision !== destinationRow.revision
+          || sourceRow.createdAt !== destinationRow.createdAt
+          || sourceRow.updatedAt !== destinationRow.updatedAt
+        ) {
+          throw this.#decryptionFailed();
+        }
+      }
+      if (sourceRows.length < COPY_PAGE_SIZE) return;
+      cursor = sourceRows.at(-1)!.key;
+    }
+  }
+
+  async #assertEncryptedMatchesRecovery(
+    encryptedPath: string,
+    recoveryPath: string,
+    resourceId: string,
+    databaseHexKey: string,
+  ): Promise<void> {
+    const recovery = await this.#openVerifiedPlaintextDatabase(recoveryPath, resourceId);
+    try {
+      const encrypted = await this.#openVerifiedEncryptedDatabase(encryptedPath, resourceId, databaseHexKey);
+      try {
+        await this.#assertSameEntries(recovery, encrypted);
+      } finally {
+        await this.#closeDatabase(encrypted);
+      }
+    } finally {
+      await this.#closeDatabase(recovery);
+    }
+  }
+
+  async #copyEntryPage(database: Database, cursor: string | null): Promise<readonly {
+    readonly key: string;
+    readonly serializedValue: string;
+    readonly revision: number;
+    readonly createdAt: string;
+    readonly updatedAt: string;
+  }[]> {
+    const rows = await (await database.prepare(`
+      SELECT key, CAST(value AS TEXT) AS serialized_value, revision, created_at, updated_at
+      FROM actor_resource_entries
+      WHERE (? IS NULL OR key > ?)
+      ORDER BY key ASC
+      LIMIT ?
+    `)).all(cursor, cursor, COPY_PAGE_SIZE) as TCopyEntryRow[];
+    return rows.map((row) => {
+      if (
+        typeof row.key !== 'string'
+        || typeof row.serialized_value !== 'string'
+        || !Number.isInteger(Number(row.revision))
+        || Number(row.revision) < 1
+        || typeof row.created_at !== 'string'
+        || typeof row.updated_at !== 'string'
+      ) {
+        throw this.#decryptionFailed();
+      }
+      return {
+        key: row.key,
+        serializedValue: row.serialized_value,
+        revision: Number(row.revision),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    });
+  }
+
+  async #verifyEncryptedPath(
+    databasePath: string,
+    resourceId: string,
+    databaseHexKey: string,
+    proveRejected = false,
+  ): Promise<void> {
+    const database = await this.#openVerifiedEncryptedDatabase(databasePath, resourceId, databaseHexKey);
+    await this.#closeDatabase(database);
+    if (proveRejected) await this.#assertEncryptedAccessRejected(databasePath, resourceId, databaseHexKey);
+  }
+
+  async #openVerifiedEncryptedDatabase(
+    databasePath: string,
+    resourceId: string,
+    databaseHexKey: string,
+  ): Promise<Database> {
+    const database = this.#databaseFactory(databasePath, this.#databaseOptions(true, databaseHexKey));
+    try {
+      await database.connect();
+      await this.#verifyDatabase(database, resourceId, SECRET_STORE_FORMAT_VERSION);
+      await database.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
+      return database;
+    } catch {
+      await this.#closeDatabase(database).catch(() => undefined);
+      throw this.#decryptionFailed();
+    }
+  }
+
+  async #openVerifiedPlaintextDatabase(databasePath: string, resourceId: string): Promise<Database> {
+    const database = this.#databaseFactory(databasePath, this.#unencryptedDatabaseOptions(true));
+    try {
+      await database.connect();
+      await this.#verifyDatabase(database, resourceId, KV_FORMAT_VERSION);
+      await database.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
+      return database;
+    } catch {
+      await this.#closeDatabase(database).catch(() => undefined);
+      throw this.#decryptionFailed();
+    }
+  }
+
+  async #assertEncryptedAccessRejected(
+    databasePath: string,
+    resourceId: string,
+    databaseHexKey: string,
+  ): Promise<void> {
+    const wrongDatabaseHexKey = `${databaseHexKey[0] === '0' ? '1' : '0'}${databaseHexKey.slice(1)}`;
+    for (const options of [
+      this.#unencryptedDatabaseOptions(true),
+      this.#databaseOptions(true, wrongDatabaseHexKey),
+    ]) {
+      const database = this.#databaseFactory(databasePath, options);
+      let accessRejected = false;
+      try {
+        await database.connect();
+        await (await database.prepare(`
+          SELECT resource_id
+          FROM _vibecanvas_resource_metadata
+          WHERE singleton = 1 AND resource_id = ?
+        `)).get(resourceId);
+      } catch {
+        accessRejected = true;
+      } finally {
+        await this.#closeDatabase(database).catch(() => undefined);
+      }
+      if (!accessRejected) throw this.#decryptionFailed();
+    }
+  }
+
+  async #databaseFileState(databasePath: string): Promise<TDatabaseFileState> {
+    let before;
+    try {
+      before = await lstat(databasePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return 'missing';
+      throw error;
+    }
+    if (before.isSymbolicLink() || !before.isFile()) return 'unknown';
+    const databaseFile = await open(databasePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    const header = Buffer.alloc(SQLITE_HEADER.length);
+    try {
+      const opened = await databaseFile.stat();
+      if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) return 'unknown';
+      const { bytesRead } = await databaseFile.read(header, 0, header.length, 0);
+      const contents = header.subarray(0, bytesRead);
+      if (contents.length >= TURSO_ENCRYPTED_HEADER.length
+        && contents.subarray(0, TURSO_ENCRYPTED_HEADER.length).equals(TURSO_ENCRYPTED_HEADER)) {
+        return 'encrypted';
+      }
+      if (contents.length >= SQLITE_HEADER.length && contents.equals(SQLITE_HEADER)) return 'plaintext';
+      return 'unknown';
+    } finally {
+      header.fill(0);
+      await databaseFile.close().catch(() => undefined);
+    }
+  }
+
+  async #canCreateSecretDatabaseKey(resourceId: string): Promise<boolean> {
+    const state = await this.#databaseFileState(this.#databasePath(resourceId));
+    if (state === 'plaintext') return true;
+    if (state !== 'missing') return false;
+
+    const temporaryState = await this.#databaseFileState(this.#encryptedTemporaryPath(resourceId));
+    if (temporaryState !== 'missing') return false;
+    return await this.#databaseFileState(this.#plaintextRecoveryPath(resourceId)) === 'plaintext';
+  }
+
+  async #removeDatabaseArtifacts(databasePath: string): Promise<void> {
+    await this.#removeDatabaseSidecars(databasePath);
+    await rm(databasePath, { force: true });
+  }
+
+  async #removeDatabaseSidecars(databasePath: string): Promise<void> {
+    await Promise.all([
+      rm(`${databasePath}-wal`, { force: true }),
+      rm(`${databasePath}-shm`, { force: true }),
+      rm(`${databasePath}-tshm`, { force: true }),
+    ]);
+  }
+
+  async #moveDatabaseArtifacts(fromPath: string, toPath: string): Promise<void> {
+    await rename(fromPath, toPath);
+    for (const suffix of ['-wal', '-shm', '-tshm']) {
+      await this.#renameIfPresent(`${fromPath}${suffix}`, `${toPath}${suffix}`);
+    }
+  }
+
+  async #recoverPromotedSidecars(fromPath: string, toPath: string): Promise<void> {
+    for (const suffix of ['-wal', '-shm', '-tshm']) {
+      const from = `${fromPath}${suffix}`;
+      const to = `${toPath}${suffix}`;
+      if (await this.#pathExists(to)) continue;
+      await this.#renameIfPresent(from, to);
+    }
+  }
+
+  async #renameIfPresent(fromPath: string, toPath: string): Promise<void> {
+    try {
+      await rename(fromPath, toPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+    }
+  }
+
+  async #pathExists(path: string): Promise<boolean> {
+    try {
+      await lstat(path);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  async #syncResourceDirectory(resourceId: string): Promise<void> {
+    const directory = await open(this.#resourceDirectory(resourceId), fsConstants.O_RDONLY);
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close().catch(() => undefined);
+    }
+  }
+
+  #decryptionFailed(): ActorResourceError {
+    return new ActorResourceError(
+      'SECRET_STORE_DECRYPTION_FAILED',
+      'The secret-store database could not be decrypted or verified.',
+    );
+  }
+
+  async #conversionCheckpoint(
+    checkpoint: TSecretStoreConversionCheckpoint,
+    resourceId: string,
+  ): Promise<void> {
+    await this.#secretStoreConversionCheckpoint?.(checkpoint, resourceId);
   }
 
   #withHandle<T>(resourceId: string, operation: (database: Database) => Promise<T>): Promise<T> {
@@ -443,11 +1017,14 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     };
     const opening = (async () => {
       await this.#assertDatabaseFile(resourceId);
-      const database = this.#databaseFactory(this.#databasePath(resourceId), this.#databaseOptions(true));
+      const database = this.#databaseFactory(
+        this.#databasePath(resourceId),
+        this.#databaseOptions(true, await this.#databaseHexKey(resourceId)),
+      );
       try {
         await database.connect();
         await database.exec(RESOURCE_PRAGMAS_SQL, { queryTimeout: this.#queryTimeoutMs });
-        await this.#verifyDatabase(database, resourceId);
+        await this.#verifyDatabase(database, resourceId, this.#formatVersion());
         state.database = database;
         return database;
       } catch (error) {
@@ -532,6 +1109,34 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     return operation;
   }
 
+  #scheduleLifecycle<T>(
+    resourceIdValue: string,
+    operation: (resourceId: string) => Promise<T>,
+  ): Promise<T> {
+    const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
+    this.#blockedLifecycleCounts.set(
+      resourceId,
+      (this.#blockedLifecycleCounts.get(resourceId) ?? 0) + 1,
+    );
+    const previous = this.#resourceLifecycleTails.get(resourceId) ?? Promise.resolve();
+    const result = previous.then(
+      () => operation(resourceId),
+      () => operation(resourceId),
+    ).finally(() => {
+      const remaining = (this.#blockedLifecycleCounts.get(resourceId) ?? 1) - 1;
+      if (remaining === 0) this.#blockedLifecycleCounts.delete(resourceId);
+      else this.#blockedLifecycleCounts.set(resourceId, remaining);
+    });
+    const tail = result.then(() => undefined, () => undefined);
+    this.#resourceLifecycleTails.set(resourceId, tail);
+    void tail.finally(() => {
+      if (this.#resourceLifecycleTails.get(resourceId) === tail) {
+        this.#resourceLifecycleTails.delete(resourceId);
+      }
+    }).catch(() => undefined);
+    return this.#trackLifecycle(result);
+  }
+
   async #drain(resourceId: string): Promise<void> {
     const calls = this.#inFlight.get(resourceId);
     if (calls?.size) await Promise.allSettled([...calls]);
@@ -545,6 +1150,17 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
         WHERE key = ?
       `)).get(key);
       return row ? fnActorResourceKeyValueEntry(row) : null;
+    });
+  }
+
+  #getEntryMetadata(resourceId: string, key: string): Promise<TActorResourceKeyValueEntryMetadata | null> {
+    return this.#withHandle(resourceId, async (database) => {
+      const row = await (await database.prepare(`
+        SELECT key, revision, created_at, updated_at
+        FROM actor_resource_entries
+        WHERE key = ?
+      `)).get(key);
+      return row ? fnActorResourceKeyValueEntryMetadata(row) : null;
     });
   }
 
@@ -562,10 +1178,24 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
 
   #assertAvailable(resourceId?: string): void {
     if (this.#closed) throw new Error('Actor resource key-value store is closed.');
-    if (resourceId && this.#blocked.has(resourceId)) throw new Error('Actor resource key-value store is unavailable during lifecycle work.');
+    if (resourceId && (this.#blockedLifecycleCounts.get(resourceId) ?? 0) > 0) {
+      throw new Error('Actor resource key-value store is unavailable during lifecycle work.');
+    }
   }
 
-  #databaseOptions(fileMustExist: boolean): ConstructorParameters<typeof Database>[1] {
+  #databaseOptions(
+    fileMustExist: boolean,
+    databaseHexKey?: string,
+  ): ConstructorParameters<typeof Database>[1] {
+    return {
+      ...this.#unencryptedDatabaseOptions(fileMustExist),
+      ...(this.#kind === 'secretStore'
+        ? { encryption: { cipher: 'aegis256' as const, hexkey: databaseHexKey! } }
+        : {}),
+    };
+  }
+
+  #unencryptedDatabaseOptions(fileMustExist: boolean): ConstructorParameters<typeof Database>[1] {
     return {
       fileMustExist,
       defaultQueryTimeout: this.#queryTimeoutMs,
@@ -574,9 +1204,32 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     };
   }
 
+  #formatVersion(): number {
+    return this.#kind === 'secretStore' ? SECRET_STORE_FORMAT_VERSION : KV_FORMAT_VERSION;
+  }
+
+  async #databaseHexKey(resourceId: string, createIfMissing = false): Promise<string | undefined> {
+    if (this.#kind === 'kv') return undefined;
+    try {
+      const databaseHexKey = createIfMissing
+        ? await this.#secretStoreKeyProvider!.getOrCreateDatabaseHexKey(resourceId)
+        : await this.#secretStoreKeyProvider!.getDatabaseHexKey(resourceId);
+      if (!/^[0-9a-f]{64}$/.test(databaseHexKey)) throw new Error('Invalid secret-store database key.');
+      return databaseHexKey;
+    } catch (error) {
+      if (error instanceof ActorResourceError && error.code === 'SECRET_STORE_KEY_UNAVAILABLE') throw error;
+      throw new ActorResourceError(
+        'SECRET_STORE_KEY_UNAVAILABLE',
+        'The secret-store database encryption key is unavailable or invalid.',
+      );
+    }
+  }
+
   async #assertDatabaseFile(resourceId: string): Promise<void> {
-    const details = await stat(this.#databasePath(resourceId));
-    if (!details.isFile()) throw new Error('Actor resource key-value database file is missing.');
+    const details = await lstat(this.#databasePath(resourceId));
+    if (details.isSymbolicLink() || !details.isFile()) {
+      throw new Error('Actor resource key-value database file is missing.');
+    }
   }
 
   #kindRoot(): string {
@@ -589,5 +1242,13 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
 
   #databasePath(resourceId: string): string {
     return join(this.#resourceDirectory(resourceId), 'data.db');
+  }
+
+  #encryptedTemporaryPath(resourceId: string): string {
+    return `${this.#databasePath(resourceId)}.encryption-v2.tmp`;
+  }
+
+  #plaintextRecoveryPath(resourceId: string): string {
+    return `${this.#databasePath(resourceId)}.plaintext-v1.recovery`;
   }
 }

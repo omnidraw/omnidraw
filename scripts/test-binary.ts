@@ -7,7 +7,11 @@
 import path from "path"
 import net from "node:net"
 import { chmod, mkdir } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { Glob } from "bun"
+import { Database } from "../packages/service-db/src/DbServiceTurso/turso-native"
+
+const require = createRequire(import.meta.url)
 
 type TArgs = {
   binaryPath?: string
@@ -230,6 +234,43 @@ async function assertPathExists(targetPath: string, label: string): Promise<void
 async function assertPathMissing(targetPath: string, label: string): Promise<void> {
   if (await Bun.file(targetPath).exists()) {
     throw new Error(`${label} unexpectedly exists: ${targetPath}`)
+  }
+}
+
+async function assertEncryptionKeyTables(databasePath: string): Promise<void> {
+  const database = new Database(databasePath, {
+    // @ts-expect-error multiprocess_wal is ahead of the public experimental feature union.
+    experimental: ["custom_types", "triggers", "index_method", "multiprocess_wal"],
+  })
+  try {
+    await database.connect()
+    const statement = await database.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name IN ('encryption_keys', 'actor_resource_encryption_keys')
+      ORDER BY name
+    `)
+    const rows = await statement.all()
+    const names = rows.map((row) => row.name)
+    if (names.join(',') !== 'actor_resource_encryption_keys,encryption_keys') {
+      throw new Error(`Compiled control database is missing encryption-key tables: ${databasePath}`)
+    }
+  } finally {
+    await database.close()
+  }
+}
+
+async function assertNativeEncryptionSupport(nativeAddonPath: string): Promise<void> {
+  const nativeAddon = Buffer.from(await Bun.file(nativeAddonPath).arrayBuffer()).toString("latin1")
+  if (!nativeAddon.includes("EncryptionCipher") || !nativeAddon.includes("Aegis256")) {
+    throw new Error(`Compiled Turso native addon does not expose AEGIS-256 encryption: ${nativeAddonPath}`)
+  }
+  const nativeBinding = require(nativeAddonPath) as {
+    EncryptionCipher?: { Aegis256?: unknown };
+  }
+  if (nativeBinding.EncryptionCipher?.Aegis256 === undefined) {
+    throw new Error(`Compiled Turso native addon does not export EncryptionCipher.Aegis256: ${nativeAddonPath}`)
   }
 }
 
@@ -625,6 +666,8 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
     if (scenario.expectedDbPath) {
       await assertPathExists(scenario.expectedDbPath, `${scenario.name} db path`)
       console.log(`[test-binary] PASS ${scenario.name} db path ${scenario.expectedDbPath}`)
+      await assertEncryptionKeyTables(scenario.expectedDbPath)
+      console.log(`[test-binary] PASS ${scenario.name} encryption-key tables migration`)
     }
 
     for (const missingPath of scenario.expectedAbsentPaths ?? []) {
@@ -678,6 +721,7 @@ async function main() {
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
+  await assertNativeEncryptionSupport(expectedNativeAddonPath)
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
 

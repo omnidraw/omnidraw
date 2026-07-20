@@ -49,7 +49,7 @@ Resource slot declarations:
 - Every slot declares `required` explicitly. Use `true` by default. Missing bindings are reported to control clients; the generic actor can still start and a resource call fails safely.
 - `scope` is a non-empty duplicate-free list containing `read`, `write`, or both. It controls permission, not actor-instance or row isolation.
 - KV slot: `{ "kind": "kv", "required": true, "scope": ["read", "write"] }`.
-- Secret slot: `{ "kind": "secretStore", "required": true, "scope": ["read"] }`. Secret values are currently plaintext at rest; never put them in actor data, logs, or output messages unless the user flow strictly requires it.
+- Secret slot: `{ "kind": "secretStore", "required": true, "scope": ["read"] }`. Secret-store database pages are encrypted at rest, but plaintext exists in the authorized actor process when read; never put it in actor data, logs, or output messages unless the user flow strictly requires it.
 - DB slot: `{ "kind": "db", "required": true, "scope": ["read"] }`. DB slots are schema-agnostic: never add schema IDs, versions, migrations, generations, or compatibility ranges.
 - DB `arbitrarySql` defaults to false. Prefer named operations under `operations`.
 - A named DB operation declares `effect`, one SQL statement, optional named parameter declarations, and `result: "rows" | "execute"`. A read operation requires read scope; a write operation requires write scope. Named operations remain single-statement; when `arbitrarySql` is enabled, actor `tx` code may pass an ordered operation array to `execute` and explicitly control `BEGIN`, `COMMIT`, rollback, and savepoints.

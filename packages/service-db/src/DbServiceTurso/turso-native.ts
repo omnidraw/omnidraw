@@ -91,7 +91,12 @@ function getCipherValue(cipher: EncryptionCipher, nativeCipher: TNativeEncryptio
     aegis128x4: nativeCipher.Aegis128x4,
   } satisfies Record<EncryptionCipher, unknown>;
 
-  return cipherMap[cipher];
+  const value = cipherMap[cipher];
+  if (value === undefined) {
+    throw new Error(`Turso encryption cipher ${cipher} is not supported by this native addon`);
+  }
+
+  return value;
 }
 
 const nativeBinding = loadNativeBinding();

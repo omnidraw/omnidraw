@@ -113,7 +113,16 @@ export class SecretStoreResource implements IActorResourceProvider {
     try {
       await this.persistence.verify({ resourceId: resource.id, kind: this.kind });
       return { status: 'ready' as const };
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof ActorResourceError
+        && (error.code === 'SECRET_STORE_KEY_UNAVAILABLE' || error.code === 'SECRET_STORE_DECRYPTION_FAILED')
+      ) {
+        return {
+          status: 'error' as const,
+          lastError: { code: error.code, message: error.message },
+        };
+      }
       return {
         status: 'error' as const,
         lastError: { code: 'SECRET_STORE_UNAVAILABLE', message: 'Secret-store physical state could not be verified safely.' },
@@ -151,22 +160,42 @@ export class SecretStoreResource implements IActorResourceProvider {
     limit?: number;
   }): Promise<TActorResourceKeyValuePage<TActorResourceKeyValueEntryMetadata>> {
     try {
-      const page = await this.persistence.list({
+      return await this.persistence.listMetadata({
         resourceId: args.resourceId,
         prefix: args.prefix === undefined ? undefined : listTextArg(args.prefix, 'Secret list prefix', true),
         search: args.search === undefined ? undefined : listTextArg(args.search, 'Secret list search', true),
         cursor: args.cursor === undefined ? undefined : listTextArg(args.cursor, 'Secret list cursor', false),
         limit: listLimit(args.limit),
       });
-      return { entries: page.entries.map(entryMetadata), nextCursor: page.nextCursor };
     } catch (error) {
       throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
   async getEntryMetadata(args: { resourceId: string; name: unknown }): Promise<TActorResourceKeyValueEntryMetadata | null> {
-    const entry = await this.#getPlaintextEntry(args);
-    return entry ? entryMetadata(entry) : null;
+    try {
+      return await this.persistence.getMetadata({ resourceId: args.resourceId, key: secretName(args.name) });
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async revealEntry(args: { resourceId: string; name: unknown }): Promise<{
+    readonly key: string;
+    readonly value: string;
+    readonly revision: number;
+  } | null> {
+    const name = secretName(args.name);
+    try {
+      const entry = await this.persistence.get({ resourceId: args.resourceId, key: name });
+      if (!entry) return null;
+      if (typeof entry.value !== 'string') {
+        throw new TypeError('Stored secret value has an invalid type.');
+      }
+      return { key: entry.key, value: entry.value, revision: entry.revision };
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Stored secret could not be revealed.');
+    }
   }
 
   async hasEntry(args: { resourceId: string; name: unknown }): Promise<boolean> {

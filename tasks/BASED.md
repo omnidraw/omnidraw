@@ -340,7 +340,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S90](s/S90.md) - actor resources: move KvResource out of the control database
 - [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
 - [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
-- [ ]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
+- [x]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
 - [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
 - [x]: [S96](s/S96.md) - AI mentions: live resource and widget catalog

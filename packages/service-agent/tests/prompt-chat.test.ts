@@ -66,7 +66,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('widget.tool.group: omit by default');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('actor.resources: optional definition-level map');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.kv("slot")');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Secret values are currently stored as plaintext');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Secret-store database pages are encrypted at rest');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
