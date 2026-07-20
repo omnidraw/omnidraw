@@ -128,6 +128,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
 | [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
 | [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
 | [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
@@ -252,6 +255,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/src/widget/fn.get-host-theme-colors.ts](packages/ai-chat/src/widget/fn.get-host-theme-colors.ts) |  |
 | [packages/ai-chat/src/widget/fn.resolve-widget-tool-icon.ts](packages/ai-chat/src/widget/fn.resolve-widget-tool-icon.ts) |  |
 | [packages/ai-chat/src/widget/fn.to-widget-element.ts](packages/ai-chat/src/widget/fn.to-widget-element.ts) |  |
+| [packages/ai-chat/src/widget/FullscreenWidgetHeader.module.css](packages/ai-chat/src/widget/FullscreenWidgetHeader.module.css) |  |
+| [packages/ai-chat/src/widget/FullscreenWidgetHeader.tsx](packages/ai-chat/src/widget/FullscreenWidgetHeader.tsx) | SolidJS presentation chrome for widgets hosted in fullscreen mode. |
 | [packages/ai-chat/src/widget/fx.attach-widget-listener.ts](packages/ai-chat/src/widget/fx.attach-widget-listener.ts) |  |
 | [packages/ai-chat/src/widget/fx.draw-host.ts](packages/ai-chat/src/widget/fx.draw-host.ts) |  |
 | [packages/ai-chat/src/widget/fx.register-tool.ts](packages/ai-chat/src/widget/fx.register-tool.ts) |  |

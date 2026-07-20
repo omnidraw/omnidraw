@@ -40,8 +40,8 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 | Widget actions | Widget fullscreen |
 | --- | --- |
-| ![Canvas widget window actions menu](assets/12-canvas-widget-actions.webp) | ![Todo Actor widget in fullscreen mode](assets/13-canvas-widget-fullscreen.webp) |
-| **Window menu.** Minimize, fullscreen, delete instance, and delete widget actions. | **Fullscreen.** The hosted widget expands to the available application workspace. |
+| ![Canvas widget window actions menu](assets/12-canvas-widget-actions.webp) | ![AI Chat widget in fullscreen with traffic-light host chrome](assets/13-canvas-widget-fullscreen.webp) |
+| **Window menu.** Minimize, fullscreen, delete instance, and delete widget actions. | **Fullscreen.** The hosted widget expands to the available workspace while preserving the same traffic lights, title actions, and window menu as its contained frame. |
 
 | AI chat | AI settings |
 | --- | --- |

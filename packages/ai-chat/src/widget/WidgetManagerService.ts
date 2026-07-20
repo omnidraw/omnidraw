@@ -24,7 +24,12 @@ import { fnGetHostThemeColors } from "./fn.get-host-theme-colors";
 import { fnToWidgetElement } from "./fn.to-widget-element";
 import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
 import { fxRegisterWidgetTool } from "./fx.register-tool";
-import type { IWidgetConfig, IWidgetManagerServiceHooks, IWidgetManagerServiceProps } from "./interface";
+import type {
+  IWidgetConfig,
+  IWidgetManagerServiceHooks,
+  IWidgetManagerServiceProps,
+  TWidgetFullscreenHostActions,
+} from "./interface";
 import { txAttachDomPortal } from "./attach-dom-portal";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
@@ -272,7 +277,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           browser: this.#browser,
           widgetServie: this,
           cameraService: this.#cameraService,
+          sceneService: this.#sceneService,
           selectionService: this.#selectionService,
+          themeService: this.#themeService,
+          hostColors: colors,
+          fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
           transport: this.#transport,
         }, { element });
         if (node && onRemove) {
@@ -500,6 +509,29 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     node.getLayer()?.batchDraw();
   }
 
+  #minimizeFullscreenWidget(node: Konva.Group) {
+    this.#contextMenuService.close();
+    this.#setWidgetWindowMode(node, WIDGET_WINDOW_CONTAINED);
+    this.#setWidgetExpanded(node, false);
+  }
+
+  #exitWidgetFullscreen(node: Konva.Group) {
+    this.#contextMenuService.close();
+    this.#setWidgetWindowMode(node, WIDGET_WINDOW_CONTAINED);
+  }
+
+  #createFullscreenHostActions(node: Konva.Group): TWidgetFullscreenHostActions {
+    return {
+      close: () => {
+        this.#removeWidgetNode(node, { recordHistory: true });
+      },
+      minimize: () => this.#minimizeFullscreenWidget(node),
+      exitFullscreen: () => this.#exitWidgetFullscreen(node),
+      openMenu: ({ anchor }) => this.#openWidgetHeaderMenu({ node, anchor }),
+      closeMenu: () => this.#contextMenuService.close(),
+    };
+  }
+
   #openWidgetHeaderMenu(args: {
     node: Konva.Group;
     anchor: {
@@ -553,6 +585,10 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           priority: 10,
           onSelect: () => {
             this.#contextMenuService.close();
+            if (widgetData.window === WIDGET_WINDOW_FULLSCREEN && widgetData.expanded !== false) {
+              this.#minimizeFullscreenWidget(args.node);
+              return;
+            }
             this.#setWidgetExpanded(args.node, widgetData.expanded === false);
           },
         },
@@ -617,7 +653,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           browser: this.#browser,
           widgetServie: this,
           cameraService: this.#cameraService,
+          sceneService: this.#sceneService,
           selectionService: this.#selectionService,
+          themeService: this.#themeService,
+          hostColors: colors,
+          fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
           widgetConfig: wConfig,
           transport: this.#transport,
         }, {element})

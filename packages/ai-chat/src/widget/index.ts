@@ -3,6 +3,7 @@ export type {
   IWidgetConfig,
   TWidgetRenderArgs,
   TWidgetRenderCleanup,
+  TWidgetFullscreenHostActions,
   TWidgetTitleBarAction,
   TWidgetTitleBarActionState,
   TWidgetTitleBarPortal,

@@ -62,6 +62,14 @@ export type TWidgetTitleBarPortal = {
   setActionState: (id: string, state: TWidgetTitleBarActionState) => void;
 };
 
+export type TWidgetFullscreenHostActions = {
+  close: () => void;
+  minimize: () => void;
+  exitFullscreen: () => void;
+  openMenu: (args: { anchor: { x: number; y: number } }) => void;
+  closeMenu: () => void;
+};
+
 export interface IWidgetConfig {
   id: string;
   dataType?: "widget" | "ui-widget";

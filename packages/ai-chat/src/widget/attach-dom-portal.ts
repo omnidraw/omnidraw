@@ -1,8 +1,11 @@
 // NOTE: do not rename to tx.* this file is exception to rule because of './mount-arrow-sandbox' import
 import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
-import type { CameraService, SelectionService } from '@vibecanvas/canvas/services';
+import type { CameraService, SceneService, SelectionService } from '@vibecanvas/canvas/services';
+import { ThemeService } from '@vibecanvas/service-theme';
 import { ELEMENT_DATA_ATTR } from '@vibecanvas/canvas/core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect, isKonvaText } from '@vibecanvas/canvas/core/GUARDS';
+import { createSignal } from 'solid-js';
+import { createComponent, render } from 'solid-js/web';
 import type { WidgetManagerService, TWidgetActorEvent } from './WidgetManagerService';
 import type { TWidgetBrowserPort, TWidgetTransportPort } from '../ports';
 import {
@@ -15,11 +18,22 @@ import {
   WIDGET_HOST_MENU_BUTTON_SIZE,
   WIDGET_HOST_TITLE_ID,
   WIDGET_HOST_TITLE_MENU_GAP,
-  WIDGET_WINDOW_CONTAINED,
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS';
-import type { IWidgetConfig, TWidgetRenderCleanup, TWidgetTitleBarActionState, TWidgetTitleBarPortal } from './interface';
+import type {
+  IWidgetConfig,
+  TWidgetFullscreenHostActions,
+  TWidgetRenderCleanup,
+  TWidgetTitleBarActionState,
+  TWidgetTitleBarPortal,
+} from './interface';
 import type { TWidgetError } from '@vibecanvas/service-db/model';
+import type { THostThemeColors } from './types';
+import {
+  FullscreenWidgetHeader,
+  type TFullscreenWidgetTitleAction,
+} from './FullscreenWidgetHeader';
+import { fnGetHostThemeColors } from './fn.get-host-theme-colors';
 import { txRenderWidgetError } from './tx.render-widget-error';
 import { txRenderWidgetLoading } from './tx.render-widget-loading';
 // @ts-ignore keep this way as rules should not applied for this import
@@ -32,7 +46,11 @@ type TPortal = {
   widgetServie: WidgetManagerService;
   widgetPortal: HTMLDivElement;
   cameraService: CameraService;
+  sceneService?: SceneService;
   selectionService?: SelectionService;
+  themeService?: ThemeService;
+  hostColors?: THostThemeColors;
+  fullscreenHostActions?: TWidgetFullscreenHostActions;
   widgetConfig?: IWidgetConfig;
   transport?: TWidgetTransportPort
 };
@@ -84,9 +102,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   const div = portal.document.createElement('div');
   const contentRoot = portal.document.createElement('div');
-  const fullscreenHeader = portal.document.createElement('div');
-  const fullscreenTitle = portal.document.createElement('div');
-  const fullscreenWindowButton = portal.document.createElement('button');
+  const fullscreenHeaderRoot = portal.document.createElement('div');
   const titleActionsRoot = portal.document.createElement('div');
   const widgetLabel = portal.widgetConfig?.getTitle?.(args.element)
     ?? portal.widgetConfig?.tool?.label
@@ -97,6 +113,21 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   const titleActionIds = new Set(titleActions.map((action) => action.id));
   const titleActionHandlers = new Map<string, () => void>();
   const titleActionButtons = new Map<string, HTMLButtonElement>();
+  const titleActionStates = new Map<string, TFullscreenWidgetTitleAction>(
+    titleActions.map((action) => [action.id, { ...action }]),
+  );
+  const widgetType = args.element.data.type === 'ui-widget' ? 'ui-widget' : 'widget';
+  const themeService = portal.themeService;
+  const initialHostColors = portal.hostColors
+    ?? fnGetHostThemeColors(themeService ?? new ThemeService(), widgetType);
+
+  const [fullscreenPresentation, setFullscreenPresentation] = createSignal({
+    visible: false,
+    width: 0,
+    label: widgetLabel,
+    colors: initialHostColors,
+    titleActions: [...titleActionStates.values()],
+  });
 
   let disposed = false;
   let initialRenderTimer: unknown | null = null;
@@ -106,6 +137,14 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   const setTitleActionState = (id: string, state: TWidgetTitleBarActionState) => {
     const button = titleActionButtons.get(id);
     if (!button) return;
+
+    const previousState = titleActionStates.get(id);
+    if (!previousState) return;
+    titleActionStates.set(id, { ...previousState, ...state });
+    setFullscreenPresentation((presentation) => ({
+      ...presentation,
+      titleActions: titleActions.map((action) => titleActionStates.get(action.id) ?? action),
+    }));
 
     if (state.pressed !== undefined) {
       button.setAttribute('aria-pressed', String(state.pressed));
@@ -137,6 +176,28 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       setActionState: setTitleActionState,
     }
     : undefined;
+
+  fullscreenHeaderRoot.dataset.hostedWidgetRoot = 'true';
+  fullscreenHeaderRoot.dataset.widgetFullscreenHeaderRootFor = args.element.id;
+
+  const disposeFullscreenHeader = render(() => createComponent(FullscreenWidgetHeader, {
+    widgetId: args.element.id,
+    get visible() { return fullscreenPresentation().visible; },
+    get width() { return fullscreenPresentation().width; },
+    get label() { return fullscreenPresentation().label; },
+    get colors() { return fullscreenPresentation().colors; },
+    get titleActions() { return fullscreenPresentation().titleActions; },
+    onClose: () => portal.fullscreenHostActions?.close(),
+    onMinimize: () => portal.fullscreenHostActions?.minimize(),
+    onExitFullscreen: () => portal.fullscreenHostActions?.exitFullscreen(),
+    onOpenMenu: (button) => {
+      const rect = button.getBoundingClientRect();
+      portal.fullscreenHostActions?.openMenu({
+        anchor: { x: rect.right, y: rect.bottom },
+      });
+    },
+    onTitleAction: (id) => titleActionHandlers.get(id)?.(),
+  }), fullscreenHeaderRoot);
 
   titleActionsRoot.dataset.hostedWidgetRoot = 'true';
   titleActionsRoot.dataset.widgetTitleActionsFor = args.element.id;
@@ -207,9 +268,28 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     const title = portal.node.findOne(`#${WIDGET_HOST_TITLE_ID}`);
     const titleFill = isKonvaText(title) ? title.fill() : undefined;
     const titleColor = typeof titleFill === 'string' ? titleFill : '#111827';
+    const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
+    const currentLabel = isKonvaText(title) ? title.text() : widgetLabel;
     const actionWidth = titleActions.reduce((width, action) => {
       return width + titleActionWidth(titleActionButtons.get(action.id)?.textContent ?? action.label);
     }, Math.max(0, titleActions.length - 1) * WIDGET_TITLE_ACTION_GAP);
+
+    setFullscreenPresentation((presentation) => {
+      if (
+        presentation.visible === isFullscreen
+        && presentation.width === fullscreenParent.clientWidth
+        && presentation.label === currentLabel
+      ) {
+        return presentation;
+      }
+
+      return {
+        ...presentation,
+        visible: isFullscreen,
+        width: fullscreenParent.clientWidth,
+        label: currentLabel,
+      };
+    });
 
     if (isKonvaText(title) && titleActions.length > 0) {
       const menuButtonX = Math.max(0, portal.node.width() - WIDGET_HOST_MENU_BUTTON_RIGHT_INSET - WIDGET_HOST_MENU_BUTTON_SIZE);
@@ -234,21 +314,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     }
 
     if (isFullscreen) {
-      const fullscreenParent = portal.widgetPortal.parentElement ?? portal.widgetPortal;
       portal.widgetPortal.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
-      fullscreenHeader.style.display = '';
-      fullscreenHeader.style.width = `${fullscreenParent.clientWidth}px`;
-      fullscreenHeader.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
-      fullscreenHeader.style.zIndex = WIDGET_DOM_PORTAL_FULLSCREEN_Z_INDEX;
       if (titleActions.length > 0) {
-        fullscreenHeader.insertBefore(titleActionsRoot, fullscreenWindowButton);
-        titleActionsRoot.style.position = 'static';
-        titleActionsRoot.style.width = 'auto';
-        titleActionsRoot.style.height = `${WIDGET_HOST_HEADER_HEIGHT}px`;
-        titleActionsRoot.style.marginLeft = '8px';
-        titleActionsRoot.style.padding = '0';
-        titleActionsRoot.style.transform = 'none';
-        titleActionsRoot.style.color = '#f9fafb';
+        titleActionsRoot.style.display = 'none';
       }
       div.style.top = `${WIDGET_HOST_HEADER_HEIGHT}px`;
       div.style.width = `${fullscreenParent.clientWidth}px`;
@@ -263,12 +331,10 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     }
 
     portal.widgetPortal.style.zIndex = '';
-    fullscreenHeader.style.display = 'none';
-    fullscreenHeader.style.zIndex = '';
     div.style.top = '0';
     div.style.zIndex = '';
     if (titleActions.length > 0) {
-      if (titleActionsRoot.parentElement !== portal.widgetPortal) portal.widgetPortal.appendChild(titleActionsRoot);
+      titleActionsRoot.style.display = 'flex';
       titleActionsRoot.style.position = 'absolute';
       titleActionsRoot.style.left = '0';
       titleActionsRoot.style.top = '0';
@@ -289,7 +355,13 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   };
 
   const removeCameraListener = portal.cameraService.hooks.change.tap(syncDiv);
+  const removeSceneResizeListener = portal.sceneService?.hooks.resize.tap(syncDiv) ?? (() => undefined);
   const removeSelectionListener = portal.selectionService?.hooks.change.tap(syncDiv) ?? (() => undefined);
+  const removeThemeListener = themeService?.hooks.change.tap(() => {
+    const colors = fnGetHostThemeColors(themeService, widgetType);
+    setFullscreenPresentation((presentation) => ({ ...presentation, colors }));
+    div.style.backgroundColor = colors.bodyFill;
+  }) ?? (() => undefined);
   const stopActiveDomEvent = (event: Event) => {
     if (div.style.pointerEvents !== 'auto') return;
     event.stopPropagation();
@@ -305,7 +377,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
     disposed = true;
     removeCameraListener();
+    removeSceneResizeListener();
     removeSelectionListener();
+    removeThemeListener();
     if (initialRenderTimer !== null) {
       portal.browser.clearTimeout(initialRenderTimer);
     }
@@ -316,82 +390,14 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     cleanupRender = undefined;
     titleActionHandlers.clear();
     titleActionsRoot.remove();
-    fullscreenHeader.remove();
+    portal.fullscreenHostActions?.closeMenu();
+    disposeFullscreenHeader();
+    fullscreenHeaderRoot.remove();
     div.remove();
   }) as TWidgetDomPortalListener;
   removeListener.syncDiv = syncDiv;
   const onNodeDestroy = () => removeListener();
   portal.node.on('destroy', onNodeDestroy);
-
-  fullscreenHeader.dataset.widgetFullscreenHeaderId = args.element.id;
-  fullscreenHeader.style.position = 'absolute';
-  fullscreenHeader.style.left = '0';
-  fullscreenHeader.style.top = '0';
-  fullscreenHeader.style.display = 'none';
-  fullscreenHeader.style.alignItems = 'center';
-  fullscreenHeader.style.justifyContent = 'space-between';
-  fullscreenHeader.style.boxSizing = 'border-box';
-  fullscreenHeader.style.padding = '0 10px';
-  fullscreenHeader.style.backgroundColor = '#111827';
-  fullscreenHeader.style.borderBottom = '1px solid #374151';
-  fullscreenHeader.style.pointerEvents = 'auto';
-
-  fullscreenTitle.textContent = widgetLabel;
-  fullscreenTitle.style.flex = '1 1 auto';
-  fullscreenTitle.style.minWidth = '0';
-  fullscreenTitle.style.overflow = 'hidden';
-  fullscreenTitle.style.textOverflow = 'ellipsis';
-  fullscreenTitle.style.whiteSpace = 'nowrap';
-  fullscreenTitle.style.color = '#f9fafb';
-  fullscreenTitle.style.fontSize = '12px';
-  fullscreenTitle.style.fontWeight = '600';
-
-  const windowIcon = portal.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  windowIcon.setAttribute('viewBox', '0 0 24 24');
-  windowIcon.setAttribute('width', '16');
-  windowIcon.setAttribute('height', '16');
-  windowIcon.setAttribute('aria-hidden', 'true');
-  windowIcon.innerHTML = '<path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Zm2 0v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9H6V7Zm11-1H7a1 1 0 0 0-1 1v1h12V7a1 1 0 0 0-1-1Z" fill="currentColor" />';
-
-  fullscreenWindowButton.dataset.widgetFullscreenWindowButtonId = args.element.id;
-  fullscreenWindowButton.type = 'button';
-  const windowButtonLabel = portal.document.createElement('span');
-  windowButtonLabel.textContent = 'Exit Fullscreen';
-
-  fullscreenWindowButton.title = 'Exit Fullscreen';
-  fullscreenWindowButton.setAttribute('aria-label', 'Exit Fullscreen');
-  fullscreenWindowButton.style.display = 'inline-flex';
-  fullscreenWindowButton.style.flex = '0 0 auto';
-  fullscreenWindowButton.style.whiteSpace = 'nowrap';
-  fullscreenWindowButton.style.alignItems = 'center';
-  fullscreenWindowButton.style.justifyContent = 'center';
-  fullscreenWindowButton.style.gap = '6px';
-  fullscreenWindowButton.style.height = '24px';
-  fullscreenWindowButton.style.border = '1px solid #4b5563';
-  fullscreenWindowButton.style.borderRadius = '6px';
-  fullscreenWindowButton.style.backgroundColor = '#1f2937';
-  fullscreenWindowButton.style.color = '#f9fafb';
-  fullscreenWindowButton.style.cursor = 'pointer';
-  fullscreenWindowButton.style.fontSize = '12px';
-  fullscreenWindowButton.style.fontWeight = '600';
-  fullscreenWindowButton.style.lineHeight = '1';
-  fullscreenWindowButton.style.padding = '0 8px';
-  fullscreenWindowButton.appendChild(windowIcon);
-  fullscreenWindowButton.appendChild(windowButtonLabel);
-  fullscreenWindowButton.onclick = () => {
-    if (!isKonvaGroup(portal.node)) return;
-
-    const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
-    if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
-      portal.node.setAttr(ELEMENT_DATA_ATTR, {
-        ...widgetData,
-        window: WIDGET_WINDOW_CONTAINED,
-      });
-    }
-    syncDiv();
-  };
-  fullscreenHeader.appendChild(fullscreenTitle);
-  fullscreenHeader.appendChild(fullscreenWindowButton);
 
   div.dataset.widgetElementId = args.element.id;
   div.dataset.hostedWidgetRoot = 'true';
@@ -399,7 +405,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   div.style.left = '0';
   div.style.top = '0';
   div.style.transformOrigin = '0 0';
-  div.style.backgroundColor = 'white';
+  div.style.backgroundColor = initialHostColors.bodyFill;
   div.style.pointerEvents = 'none';
   div.style.overflow = 'hidden';
   div.style.contain = 'layout paint size';
@@ -412,7 +418,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   contentRoot.style.overflow = 'auto';
 
   div.appendChild(contentRoot);
-  portal.widgetPortal.appendChild(fullscreenHeader);
+  portal.widgetPortal.appendChild(fullscreenHeaderRoot);
   portal.widgetPortal.appendChild(div);
   if (titleActions.length > 0) portal.widgetPortal.appendChild(titleActionsRoot);
   try {
