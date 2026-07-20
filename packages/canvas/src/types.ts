@@ -6,7 +6,7 @@ import type Konva from "konva";
 import type { Group } from "konva/lib/Group";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService } from "./services";
+import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetDropPlacementService } from "./services";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
@@ -82,6 +82,7 @@ export interface IRuntimeServices {
   element: ElementService;
   session: SessionService;
   group: GroupService;
+  widgetPlacement: WidgetDropPlacementService;
 }
 
 export interface IRuntimeHooks {

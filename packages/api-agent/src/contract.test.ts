@@ -23,6 +23,7 @@ describe('agent chat contract', () => {
     expect(apiContract.api.agent.widgets.patchDraftTool['~orpc'].route.path).toBe('/api/agent/widgets/patchDraftTool');
     expect(apiContract.api.agent.widgets.patchDraftMetadata['~orpc'].route.path).toBe('/api/agent/widgets/patchDraftMetadata');
     expect(apiContract.api.agent.widgets.delete['~orpc'].route.path).toBe('/api/agent/widgets/delete');
+    expect(apiContract.api.agent.widgets.resolvePlacement['~orpc'].route.path).toBe('/api/agent/widgets/resolvePlacement');
     expect(apiContract.api.agent.widgets.groups.update['~orpc'].route.path).toBe('/api/agent/widgets/groups/update');
     expect(apiContract.api.agent.approval.resolve['~orpc'].route.path).toBe('/api/agent/approval/resolve');
     expect(Object.hasOwn(apiContract.api.agent, legacyNamespace)).toBe(false);
@@ -34,6 +35,19 @@ describe('agent chat contract', () => {
     expect(Object.hasOwn(agentHandlers, 'widgets')).toBe(true);
     expect(Object.hasOwn(agentHandlers, 'approval')).toBe(true);
     expect(Object.hasOwn(agentHandlers, legacyNamespace)).toBe(false);
+  });
+
+  test('validates source-explicit placement identities and Preview owners', () => {
+    const contract = oc.router({ agent: agentContract });
+    const apiContract = populateContractRouterPaths(oc.router({ api: contract }));
+    const schema = apiContract.api.agent.widgets.resolvePlacement['~orpc'].inputSchema as {
+      safeParse: (input: unknown) => { success: boolean };
+    };
+    expect(schema.safeParse({ reference: { source: 'published', name: 'Weather', revision: 'r1' } }).success).toBe(true);
+    expect(schema.safeParse({ reference: { source: 'draft', name: 'Weather', revision: 'r1' }, previewId: 'drop-1' }).success).toBe(true);
+    expect(schema.safeParse({ reference: { source: 'preview', name: 'Weather', revision: 'r1' }, previewId: 'drop-1' }).success).toBe(true);
+    expect(schema.safeParse({ reference: { source: 'mutable', name: 'Weather', revision: 'r1' } }).success).toBe(false);
+    expect(schema.safeParse({ reference: { source: 'draft', name: '../Weather', revision: 'r1' }, previewId: 'drop-1' }).success).toBe(false);
   });
 
   test('requires an owner previewId on every widget Preview operation', () => {

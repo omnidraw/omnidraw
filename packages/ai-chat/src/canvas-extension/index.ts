@@ -11,6 +11,8 @@ import type {
 } from "../ports";
 import { WidgetManagerService } from "../widget/WidgetManagerService";
 import { DraftPreviewFrameService } from "../draft-preview/DraftPreviewFrameService";
+import { WidgetPlacementService } from "../widget-placement/WidgetPlacementService";
+import { createWidgetPlacementCoordinator, type TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -18,12 +20,14 @@ export type TCreateAiChatCanvasExtensionArgs = {
   chatBrowser: TAiChatBrowserPort;
   widgetBrowser: TWidgetBrowserPort;
   application: TAiChatApplicationPort;
+  widgetPlacement?: TWidgetPlacementCoordinator;
 };
 
 export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionArgs): ICanvasRuntimeExtension {
   return {
     name: "ai-chat",
     install(context) {
+      const placementCoordinator = args.widgetPlacement ?? createWidgetPlacementCoordinator();
       const widgetManager = new WidgetManagerService({
         crdtService: context.services.crdt,
         contextMenuService: context.services.contextMenu,
@@ -52,11 +56,20 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
         selection: context.services.selection,
         tool: context.services.tool,
       });
+      const widgetPlacement = new WidgetPlacementService({
+        api: args.chatApi,
+        browser: args.widgetBrowser,
+        coordinator: placementCoordinator,
+        dropPlacement: context.services.widgetPlacement,
+        previewFrames,
+        widgetManager,
+      });
 
       return {
         services: [
           { name: "ai-chat-widget-manager", startOrder: 120, service: widgetManager },
           { name: "draft-preview-frame", startOrder: 121, service: previewFrames },
+          { name: "widget-placement", startOrder: 122, service: widgetPlacement },
         ],
         plugins: [
           createDraftPreviewPlugin({ previewFrames, widgetManager }),
@@ -73,6 +86,7 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
             application: args.application,
             transport: args.widgetTransport,
             widgetManager,
+            widgetPlacement,
           }),
         ],
       };
@@ -87,3 +101,5 @@ export type {
   TWidgetBrowserPort,
   TWidgetTransportPort,
 } from "../ports";
+export { createWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
+export type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";

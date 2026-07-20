@@ -1,4 +1,5 @@
 import type { TVibecanvasToolIcon } from './tool-icon';
+import type { TWidgetFrameBounds } from './fn.widget-frame';
 
 export type TActorData = string | number | boolean | null | TActorData[] | { [key: string]: TActorData | undefined };
 
@@ -128,6 +129,8 @@ export type TResolvedVibecanvasActor = Omit<TVibecanvasActor, 'states'> & {
 
 export type TVibecanvasActorWidget = {
   readonly relWidgetDir: string;
+  /** Initial direct-placement size in canvas world units, including frame chrome. Defaults to 360×320. */
+  readonly frame?: TWidgetFrameBounds;
   readonly tool: {
     readonly label: string;
     readonly icon?: TVibecanvasToolIcon;

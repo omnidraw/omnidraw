@@ -29,6 +29,7 @@ import type {
   TWidgetCatalogEntry,
   TWidgetCatalogGroup,
   TWidgetCatalogProblem,
+  TWidgetPlacementResolveResult,
   TWidgetDetail,
   TWidgetDeleteResult,
   TWidgetDraftMetadataPatch,
@@ -103,6 +104,35 @@ export class WidgetManagement {
       sibling,
       manifest: selected.manifest,
       problem: selected.problem ?? entry.problem,
+    };
+  }
+
+  async resolvePlacementReference(reference: import('@vibecanvas/service-actor/core/fn.widget-frame').TWidgetPlacementRef): Promise<TWidgetPlacementResolveResult> {
+    const source: TWidgetSource = reference.source === 'published' ? 'published' : 'draft';
+    const detail = await this.detail(reference.name, source);
+    if (!detail) {
+      return { ok: false, code: 'NOT_FOUND', message: `Widget ${reference.source} '${reference.name}' was not found.` };
+    }
+    if (detail.problem || !detail.manifest || !detail.variant.placement) {
+      return { ok: false, code: 'INVALID_MANIFEST', message: detail.problem?.message ?? 'The widget manifest is invalid.' };
+    }
+    if (detail.variant.revision !== reference.revision) {
+      return {
+        ok: false,
+        code: 'STALE_REVISION',
+        message: `Widget ${reference.source} '${reference.name}' changed before placement.`,
+        currentRevision: detail.variant.revision,
+      };
+    }
+    return {
+      ok: true,
+      descriptor: {
+        reference,
+        bounds: detail.variant.placement.bounds,
+        kind: reference.source === 'published' ? 'published' : 'preview',
+        definitionName: reference.source === 'published' ? detail.manifest.name : null,
+        previewId: null,
+      },
     };
   }
 
@@ -353,9 +383,10 @@ export class WidgetManagement {
   }
 
   async #catalogEntry(name: string, hasPublished: boolean, hasDraft: boolean): Promise<TWidgetCatalogEntry> {
-    const [published, draft] = await Promise.all([
+    const [published, draft, previewState] = await Promise.all([
       hasPublished ? this.#readVariant(name, 'published') : Promise.resolve(null),
       hasDraft ? this.#readVariant(name, 'draft') : Promise.resolve(null),
+      hasDraft ? this.#drafts.getPreviewCatalogState(name) : Promise.resolve(null),
     ]);
     let problem = published?.problem ?? draft?.problem ?? null;
     if (!problem && published?.manifest && published.manifest.name !== name) {
@@ -376,6 +407,18 @@ export class WidgetManagement {
       relation,
       published: published?.summary ?? null,
       draft: draft?.summary ?? null,
+      preview: previewState && draft?.summary.placement
+        ? previewState.status === 'ready'
+          ? {
+              status: 'ready',
+              revision: previewState.revision,
+              placement: {
+                reference: { source: 'preview', name, revision: previewState.revision },
+                bounds: draft.summary.placement.bounds,
+              },
+            }
+          : { status: previewState.status, revision: previewState.revision, message: previewState.message, placement: null }
+        : null,
       problem,
     };
   }

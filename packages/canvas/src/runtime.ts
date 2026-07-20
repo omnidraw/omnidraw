@@ -28,6 +28,7 @@ import { SceneService } from "./services/scene/SceneService";
 import { SelectionService } from "./services/selection/SelectionService";
 import { SessionService } from "./services/session/SessionService";
 import { ToolService } from "./services/tool/ToolService";
+import { WidgetDropPlacementService } from "./services/widget-placement/WidgetDropPlacementService";
 import type { ICanvasRuntimeExtension, TCanvasRuntimePlugin } from "./extension";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
 
@@ -47,6 +48,7 @@ declare module "@vibecanvas/runtime" {
     element: ElementService;
     session: SessionService;
     group: GroupService;
+    widgetPlacement: WidgetDropPlacementService;
   }
 }
 
@@ -85,6 +87,7 @@ function createServices(config: Pick<IRuntimeConfig, "canvasId" | "container" | 
   const history = new HistoryService();
   const selection = new SelectionService();
   const tool = new ToolService(scene, element, crdt, selection);
+  const widgetPlacement = new WidgetDropPlacementService({ camera, scene });
   const logging = new LoggingService();
   const renderOrder = new RenderOrderService({
     crdt,
@@ -117,6 +120,7 @@ function createServices(config: Pick<IRuntimeConfig, "canvasId" | "container" | 
   services.provide("logging", 80, logging);
   services.provide("tool", 90, tool);
   services.provide("renderOrder", 100, renderOrder);
+  services.provide("widgetPlacement", 105, widgetPlacement);
   services.provide("theme", 110, config.themeService);
   services.provide("session", 130, sessionService)
 
@@ -144,6 +148,7 @@ export function buildRuntime(config: IRuntimeConfig, extensions: readonly ICanva
       element: services.require("element"),
       session: services.require("session"),
       group: services.require("group"),
+      widgetPlacement: services.require("widgetPlacement"),
     },
   }));
 

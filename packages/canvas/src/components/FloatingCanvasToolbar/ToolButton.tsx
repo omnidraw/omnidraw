@@ -12,6 +12,7 @@ interface ToolButtonProps {
   letterShortcut?: string;
   isActive: boolean;
   onClick: () => void;
+  onPointerDown?: (event: PointerEvent) => void;
   ariaLabel?: string;
   ariaHasPopup?: "menu";
   ariaExpanded?: boolean;
@@ -25,6 +26,7 @@ export function ToolButton(props: ToolButtonProps) {
     <button
       type="button"
       onClick={props.onClick}
+      onPointerDown={props.onPointerDown}
       aria-label={props.ariaLabel}
       aria-haspopup={props.ariaHasPopup}
       aria-expanded={props.ariaExpanded}

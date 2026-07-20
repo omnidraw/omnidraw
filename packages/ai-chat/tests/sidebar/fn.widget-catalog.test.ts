@@ -42,6 +42,39 @@ describe('widget catalog projection', () => {
     expect(fnWidgetSelection('/widgets/draft/Camera')).toEqual({ source: 'draft', encodedName: 'Camera' });
   });
 
+  test('keeps a ready Preview internal and exposes only its draft as a placement row', () => {
+    const draft = variant('draft', 'Media');
+    draft.placement = {
+      reference: { source: 'draft', name: 'Camera', revision: 'draft' },
+      bounds: { width: 360, height: 320 },
+    };
+    const projection = fnProjectWidgetCatalog({
+      generation: 'preview',
+      groups: [{ name: 'Media', icon: null }],
+      widgets: [{
+        name: 'Camera',
+        relation: 'draft-only',
+        published: null,
+        draft,
+        preview: {
+          status: 'ready',
+          revision: 'draft',
+          placement: {
+            reference: { source: 'preview', name: 'Camera', revision: 'draft' },
+            bounds: { width: 360, height: 320 },
+          },
+        },
+        problem: null,
+      }],
+    });
+    expect(projection.groups[0]?.rows).toHaveLength(1);
+    expect(projection.groups[0]?.rows[0]).toMatchObject({
+      source: 'draft',
+      managementSource: 'draft',
+      placement: { reference: { source: 'draft', revision: 'draft' } },
+    });
+  });
+
   test('matches only exact published and draft detail routes', () => {
     expect(fnWidgetSelection('/widgets/published/Camera%20Feed')).toEqual({ source: 'published', encodedName: 'Camera%20Feed' });
     expect(fnWidgetSelection('/widgets/preview/Camera')).toBeNull();

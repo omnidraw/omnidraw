@@ -11,3 +11,5 @@ export * from "./session/SessionService";
 export * from "./tool/ToolService";
 export * from "./element/ElementService";
 export * from "./group/GroupService";
+export * from "./widget-placement/WidgetDropPlacementService";
+export * from "./widget-placement/types";

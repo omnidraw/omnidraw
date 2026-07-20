@@ -70,7 +70,8 @@ export const WidgetCatalogProvider: ParentComponent<{ controller: TSidebarContro
           const event = next.value;
           if (event && typeof event === 'object' && 'kind' in event) {
             const kind = (event as { kind?: string }).kind;
-            if (kind === 'widget-draft' || kind === 'widget-published' || kind === 'widgetupdate' || kind === 'widget-catalog') scheduleRefresh();
+            const type = (event as { type?: string }).type;
+            if (kind === 'widget-draft' || (kind === 'widget-preview' && type === 'catalog-changed') || kind === 'widget-published' || kind === 'widgetupdate' || kind === 'widget-catalog') scheduleRefresh();
           }
         }
       } catch {

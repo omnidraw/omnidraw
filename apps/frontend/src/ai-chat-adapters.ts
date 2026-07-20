@@ -6,6 +6,7 @@ import { setStore, store } from "@/store";
 import {
   createAiChatCanvasExtension,
   createCatalogInvalidation,
+  createWidgetPlacementCoordinator,
   type TAiChatApiPort,
   type TAiChatBrowserPort,
   type TSidebarApiPort,
@@ -16,6 +17,7 @@ import {
 import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "@vibecanvas/canvas";
 
 export const catalogInvalidation = createCatalogInvalidation();
+export const widgetPlacementCoordinator = createWidgetPlacementCoordinator();
 
 export const chatBrowserPort: TAiChatBrowserPort = {
   document,
@@ -100,6 +102,7 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
       subscribeCatalogInvalidation: (kind, listener) => catalogInvalidation.subscribe(kind, listener),
       logError: (error) => console.error(error),
     },
+    widgetPlacement: widgetPlacementCoordinator,
   });
 }
 
@@ -114,6 +117,7 @@ export function createFrontendSidebarController(args: {
       clearTimeout: (timer) => window.clearTimeout(timer as number),
     },
     invalidation: catalogInvalidation,
+    widgetPlacement: widgetPlacementCoordinator,
     application: {
       pathname: args.pathname,
       canvases: () => store.canvases,

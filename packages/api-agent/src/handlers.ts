@@ -53,6 +53,7 @@ import {
     apiWidgetsGroupsUpdate,
     apiWidgetsPatchDraftTool,
     apiWidgetsPatchDraftMetadata,
+    apiWidgetsResolvePlacement,
 } from './api.widgets';
 
 const agentHandlers = {
@@ -127,6 +128,7 @@ const agentHandlers = {
         patchDraftTool: apiWidgetsPatchDraftTool,
         patchDraftMetadata: apiWidgetsPatchDraftMetadata,
         delete: apiWidgetsDelete,
+        resolvePlacement: apiWidgetsResolvePlacement,
         groups: {
             create: apiWidgetsGroupsCreate,
             update: apiWidgetsGroupsUpdate,

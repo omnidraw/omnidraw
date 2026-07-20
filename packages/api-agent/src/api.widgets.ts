@@ -107,6 +107,10 @@ export const apiWidgetsDelete = baseAgentOs.widgets.delete.handler(async ({ cont
   }
 });
 
+export const apiWidgetsResolvePlacement = baseAgentOs.widgets.resolvePlacement.handler(async ({ context, input }) => {
+  return context.agent.resolveWidgetPlacement(input.reference, input.previewId);
+});
+
 export const apiWidgetsGroupsCreate = baseAgentOs.widgets.groups.create.handler(async ({ context, input }) => {
   try {
     const group = await context.db.toolGroup.create({ name: input.name, json: input.icon as TJson | null });

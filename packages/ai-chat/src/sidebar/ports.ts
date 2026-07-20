@@ -1,5 +1,6 @@
 import type { TOrpcSafeClient } from "@vibecanvas/orpc-client";
 import type { TCanvas } from "@vibecanvas/service-db/model";
+import type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
 
 type TApi = TOrpcSafeClient["api"];
 
@@ -53,6 +54,7 @@ export type TSidebarController = {
   application: TSidebarApplicationPort;
   browser: TSidebarBrowserPort;
   invalidation: TCatalogInvalidationPort;
+  widgetPlacement?: TWidgetPlacementCoordinator;
 };
 
 export function createCatalogInvalidation(): TCatalogInvalidationPort {

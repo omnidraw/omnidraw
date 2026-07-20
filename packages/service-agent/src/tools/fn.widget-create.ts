@@ -39,6 +39,7 @@ export function fnBuildWidgetCreateManifest(args: { name: string; description?: 
     },
     widget: {
       relWidgetDir: './widget',
+      frame: { width: 360, height: 320 },
       tool: {
         label: args.name,
         behavior: { type: 'mode', mode: 'draw-create' },

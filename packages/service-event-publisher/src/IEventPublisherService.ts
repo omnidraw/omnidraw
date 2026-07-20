@@ -71,7 +71,7 @@ export type TAgentWidgetDraftEvent = {
 };
 export type TAgentWidgetPreviewEvent = {
   kind: 'widget-preview';
-  type: 'changed';
+  type: 'changed' | 'catalog-changed';
   draftId: string;
   revision: string;
 };

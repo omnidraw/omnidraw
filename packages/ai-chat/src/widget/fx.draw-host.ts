@@ -1,5 +1,5 @@
-import type { TElement, TElementData, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import type { ThemeService } from '@vibecanvas/service-theme'
+import type { TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import type Konva from 'konva'
 import { ELEMENT_DATA_ATTR } from "@vibecanvas/canvas/core/CONSTANTS"
 import {
@@ -22,6 +22,7 @@ import { fnCreateWidgetNode } from './fn.create-widget-node'
 import { fnGetHostThemeColors } from './fn.get-host-theme-colors'
 import type { TToolCanvasPoint, TToolDrawCreateStartDraftArgs } from '@vibecanvas/canvas/services/tool/types'
 import type { IWidgetConfig } from './interface'
+import { fnCreateWidgetElement } from './fn.create-widget-element'
 
 type TPortalUpdateHost = {
   konva: typeof Konva;
@@ -119,56 +120,22 @@ type TPortalCreateHost = {
 
 type TArgsCreateHost = { widgetConfig: IWidgetConfig } & TToolDrawCreateStartDraftArgs
 
-function createWidgetElementData(args: { widgetConfig: IWidgetConfig }): TUiWidgetData | TWidgetData {
-  const widgetType = args.widgetConfig.dataType ?? 'ui-widget'
-
-  if (widgetType === 'widget') {
-    const actor = args.widgetConfig.actor
-    if (!actor) {
-      throw new Error('Actor widget config requires actor metadata')
-    }
-
-    return {
-      type: 'widget',
-      expanded: true,
-      kind: args.widgetConfig.id,
-      window: 'contained',
-      h: WIDGET_HOST_MIN_HEIGHT,
-      w: WIDGET_HOST_MIN_WIDTH,
-      actorDefinitionName: actor.actorDefinitionName,
-    }
-  }
-
-  return {
-    type: 'ui-widget',
-    expanded: true,
-    kind: args.widgetConfig.id,
-    window: 'contained',
-    h: WIDGET_HOST_MIN_HEIGHT,
-    w: WIDGET_HOST_MIN_WIDTH,
-    payload: args.widgetConfig.createInitialPayload?.() ?? args.widgetConfig.initialPayload ?? {},
-  }
-}
-
 export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
-  const elementData = createWidgetElementData({ widgetConfig: args.widgetConfig })
-  const hostThemeColors = fnGetHostThemeColors(portal.themeService, elementData.type)
-
-
-  const element: TElement = {
+  const dataType = args.widgetConfig.dataType ?? 'ui-widget'
+  if (dataType === 'widget' && !args.widgetConfig.actor) throw new Error('Actor widget config requires actor metadata')
+  const hostThemeColors = fnGetHostThemeColors(portal.themeService, dataType)
+  const element = fnCreateWidgetElement({
     id: portal.createId(),
+    kind: args.widgetConfig.id,
+    dataType,
+    actorDefinitionName: args.widgetConfig.actor?.actorDefinitionName,
+    payload: args.widgetConfig.createInitialPayload?.() ?? args.widgetConfig.initialPayload ?? {},
     x: args.point.x,
     y: args.point.y,
-    rotation: 0,
-    zIndex: '',
-    parentGroupId: null,
-    bindings: [],
-    locked: false,
-    createdAt: portal.now(),
-    updatedAt: portal.now(),
-    data: elementData,
-    style: {}
-  }
+    width: WIDGET_HOST_MIN_WIDTH,
+    height: WIDGET_HOST_MIN_HEIGHT,
+    now: portal.now(),
+  })
 
   const group = fnCreateWidgetNode(portal.konva, hostThemeColors, element, { label: args.widgetConfig.tool?.label })
 

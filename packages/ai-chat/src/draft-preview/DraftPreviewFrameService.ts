@@ -28,6 +28,7 @@ import type {
   TDraftPreviewRuntime,
   TDraftPreviewSummary,
 } from "./typed"
+import type { TWidgetWorldBounds } from "@vibecanvas/canvas/services"
 
 type TDraftPreviewFrameServiceArgs = {
   api: TAiChatApiPort
@@ -61,18 +62,22 @@ export function getDraftPreviewPayload(element: TElement): TDraftPreviewPayload 
   const originChatElementId = payload?.originChatElementId
   if (typeof draftId !== "string" || !draftId.trim()) return undefined
   if (typeof pinnedRevision !== "string" || !pinnedRevision.trim()) return undefined
-  if (typeof originChatElementId !== "string" || !originChatElementId.trim()) return undefined
-  return { draftId, pinnedRevision, originChatElementId }
+  if (originChatElementId !== undefined && (typeof originChatElementId !== "string" || !originChatElementId.trim())) return undefined
+  return { draftId, pinnedRevision, ...(originChatElementId ? { originChatElementId } : {}) }
 }
 
 export class DraftPreviewFrameService implements IService, IStoppableService {
   readonly name = "draft-preview-frame"
   readonly #args: TDraftPreviewFrameServiceArgs
-  readonly #initialResults = new Map<string, { previewId: string; result: TDraftPreviewResult }>()
+  readonly #initialResults = new Map<string, {
+    previewId: string
+    result?: TDraftPreviewResult
+    ownedRevision?: { draftId: string; revision: string }
+  }>()
   readonly #runtimes = new Map<string, { payload: TDraftPreviewPayload; runtime: TDraftPreviewRuntime }>()
   readonly #pendingReleases = new Map<string, { timer: unknown; draftId: string; revision: string }>()
-  readonly #openQueues = new Map<string, Promise<void>>()
-  readonly #openPromises = new Set<Promise<void>>()
+  readonly #frameQueues = new Map<string, Promise<unknown>>()
+  readonly #framePromises = new Set<Promise<unknown>>()
   readonly #cleanupPromises = new Set<Promise<unknown>>()
   #stopping = false
 
@@ -83,8 +88,11 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
   async stop() {
     this.#stopping = true
 
-    this.#initialResults.forEach(({ previewId, result }) => {
-      if (result.ready) this.#trackCleanup(this.#closePreview(previewId, result.draftId, result.revision))
+    this.#initialResults.forEach(({ previewId, result, ownedRevision }) => {
+      const owned = result?.ready
+        ? { draftId: result.draftId, revision: result.revision }
+        : ownedRevision
+      if (owned) this.#trackCleanup(this.#closePreview(previewId, owned.draftId, owned.revision))
     })
     this.#initialResults.clear()
 
@@ -97,7 +105,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     const runtimeDisposals = [...this.#runtimes.values()].map(({ runtime }) => runtime.dispose())
     this.#runtimes.clear()
 
-    await Promise.allSettled([...this.#openPromises, ...runtimeDisposals])
+    await Promise.allSettled([...this.#framePromises, ...runtimeDisposals])
     while (this.#cleanupPromises.size > 0) {
       await Promise.allSettled([...this.#cleanupPromises])
     }
@@ -161,21 +169,100 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     if (this.#stopping) {
       return Promise.reject(new Error("Draft Preview opening was cancelled because the canvas is stopping."))
     }
-    const previous = this.#openQueues.get(args.draftName) ?? Promise.resolve()
-    let opening!: Promise<void>
-    opening = previous
+    return this.#queueFrame(args.draftName, () => this.#open(args))
+  }
+
+  place(args: {
+    draftName: string
+    expectedRevision: string
+    previewId: string
+    bounds: TWidgetWorldBounds
+  }) {
+    if (this.#stopping) {
+      return Promise.reject(new Error("Draft Preview placement was cancelled because the canvas is stopping."))
+    }
+    return this.#queueFrame(args.draftName, () => this.#place(args))
+  }
+
+  async #place(args: {
+    draftName: string
+    expectedRevision: string
+    previewId: string
+    bounds: TWidgetWorldBounds
+  }) {
+    this.#throwIfStopping()
+    const timestamp = this.#args.browser.now()
+    const element: TElement = {
+      id: fnDraftPreviewElementId(args.draftName, args.previewId),
+      x: args.bounds.x,
+      y: args.bounds.y,
+      rotation: 0,
+      zIndex: "",
+      parentGroupId: null,
+      bindings: [],
+      locked: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      data: {
+        type: "ui-widget",
+        kind: DRAFT_PREVIEW_WIDGET_KIND,
+        w: args.bounds.width,
+        h: args.bounds.height,
+        expanded: true,
+        window: "contained",
+        payload: {
+          draftId: args.draftName,
+          pinnedRevision: args.expectedRevision,
+        } satisfies TDraftPreviewPayload,
+      },
+      style: {},
+    }
+    this.#initialResults.set(element.id, {
+      previewId: args.previewId,
+      ownedRevision: { draftId: args.draftName, revision: args.expectedRevision },
+    })
+    let node: Konva.Group | undefined
+    try {
+      const createdNode = this.#args.element.createNodeFromElement(element)
+      if (!isKonvaGroup(createdNode)) throw new Error("The draft Preview frame could not be created.")
+      node = createdNode
+      this.#args.scene.staticForegroundLayer.add(node)
+      this.#args.renderOrder.assignOrderOnInsert({
+        parent: this.#args.scene.staticForegroundLayer,
+        nodes: [node],
+        position: "front",
+      })
+      const persisted = this.#args.element.toElement(node)
+      if (!persisted) throw new Error("The draft Preview frame could not be persisted.")
+      const commitResult = this.#args.crdt.build().patchElement(persisted.id, persisted).commit()
+      this.#focusNode(node)
+      this.#args.scene.staticForegroundLayer.batchDraw()
+      this.#recordCreateHistory(persisted, node, commitResult)
+      return persisted
+    } catch (error) {
+      node?.destroy()
+      this.#initialResults.delete(element.id)
+      this.#scheduleRelease(args.previewId, args.draftName, args.expectedRevision)
+      throw error
+    }
+  }
+
+  #queueFrame<TResult>(draftName: string, operation: () => Promise<TResult>): Promise<TResult> {
+    const previous = this.#frameQueues.get(draftName) ?? Promise.resolve()
+    let queued!: Promise<TResult>
+    queued = previous
       .catch(() => undefined)
       .then(() => {
         this.#throwIfStopping()
-        return this.#open(args)
+        return operation()
       })
       .finally(() => {
-        this.#openPromises.delete(opening)
-        if (this.#openQueues.get(args.draftName) === opening) this.#openQueues.delete(args.draftName)
+        this.#framePromises.delete(queued)
+        if (this.#frameQueues.get(draftName) === queued) this.#frameQueues.delete(draftName)
       })
-    this.#openQueues.set(args.draftName, opening)
-    this.#openPromises.add(opening)
-    return opening
+    this.#frameQueues.set(draftName, queued)
+    this.#framePromises.add(queued)
+    return queued
   }
 
   async #open(args: { draftName: string; originChatElementId: string }) {

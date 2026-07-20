@@ -1,9 +1,11 @@
-import type { TWidgetCatalogProblem, TWidgetSource, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
+import type { TWidgetCatalogProblem, TWidgetPlacementSummary, TWidgetSource, TWidgetVariantSummary } from '@vibecanvas/orpc-client';
 
 export type TWidgetSidebarRow = {
   name: string;
   source: TWidgetSource;
+  managementSource: TWidgetSource;
   variant: TWidgetVariantSummary;
+  placement: TWidgetPlacementSummary | null;
   problem: TWidgetCatalogProblem | null;
   missingGroup: string | null;
 };

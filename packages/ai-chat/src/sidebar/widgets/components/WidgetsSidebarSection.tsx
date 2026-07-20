@@ -3,6 +3,7 @@ import { DropdownMenu } from '@kobalte/core/dropdown-menu';
 import ChevronRight from 'lucide-solid/icons/chevron-right';
 import MoreHorizontal from 'lucide-solid/icons/more-horizontal';
 import Pencil from 'lucide-solid/icons/pencil';
+import Plus from 'lucide-solid/icons/plus';
 import TriangleAlert from 'lucide-solid/icons/triangle-alert';
 import { For, Show, createEffect, createMemo, createSignal, type Component } from 'solid-js';
 import { ToolGroupDialog, type TToolGroupValue } from '../../components/ToolGroupDialog';
@@ -28,8 +29,8 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
     if (!selected) return null;
     try { return decodeURIComponent(selected.encodedName); } catch { return null; }
   });
-  const isSelected = (row: TWidgetSidebarRow) => selection()?.source === row.source && selectedName() === row.name;
-  const openRow = (row: TWidgetSidebarRow) => application.navigate(`/widgets/${row.source}/${encodeURIComponent(row.name)}?tab=overview`);
+  const isSelected = (row: TWidgetSidebarRow) => selection()?.source === row.managementSource && selectedName() === row.name;
+  const openRow = (row: TWidgetSidebarRow) => application.navigate(`/widgets/${row.managementSource}/${encodeURIComponent(row.name)}?tab=overview`);
   const toggleGroup = (name: string) => setExpandedGroups((current) => {
     const next = new Set(current);
     if (next.has(name)) next.delete(name); else next.add(name);
@@ -82,19 +83,74 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
     return true;
   };
 
-  const row = (value: TWidgetSidebarRow) => (
-    <Button
-      class={`${styles.widgetRow} ${isSelected(value) ? styles.selected : ''}`}
-      aria-current={isSelected(value) ? 'page' : undefined}
-      title={value.problem?.message ?? (value.missingGroup ? `Missing tool group: ${value.missingGroup}` : undefined)}
-      onClick={() => openRow(value)}
-    >
-      <WidgetIcon icon={value.variant.tool.icon} class={styles.icon} />
-      <span class={styles.widgetName}>{value.variant.displayName}</span>
-      <Show when={value.source === 'draft'}><span class={styles.draftBadge}><Pencil size={9} /> Draft</span></Show>
-      <Show when={value.problem || value.missingGroup}><TriangleAlert class={styles.warning} size={12} aria-label={value.problem ? 'Widget problem' : 'Missing tool group'} /></Show>
-    </Button>
-  );
+  const row = (value: TWidgetSidebarRow) => {
+    let suppressClick = false;
+    const disabledReason = value.problem?.message
+      ?? (value.missingGroup ? `Missing tool group: ${value.missingGroup}` : null)
+      ?? (!value.placement ? 'Widget placement is unavailable.' : null);
+    const label = value.variant.tool.label ?? value.variant.displayName;
+    const addToCanvas = async () => {
+      if (!value.placement) return;
+      try {
+        if (!props.controller.widgetPlacement) throw new Error('Open a canvas before placing a widget.');
+        await props.controller.widgetPlacement.addToCanvas({
+          reference: value.placement.reference,
+          bounds: value.placement.bounds,
+          label,
+        });
+      } catch (error) {
+        application.notifyError(error instanceof Error ? error.message : String(error));
+      }
+    };
+    return (
+      <div class={`${styles.widgetRow} ${isSelected(value) ? styles.selected : ''}`}>
+        <Button
+          class={`${styles.widgetRowMain} ${isSelected(value) ? styles.selected : ''}`}
+          aria-current={isSelected(value) ? 'page' : undefined}
+          aria-label={`${value.variant.displayName}, ${value.source}. ${value.source === 'draft' ? 'Dragging builds a pinned Preview.' : 'Drag to place on canvas.'}`}
+          title={disabledReason ?? `Drag ${label} to the canvas`}
+          onPointerDown={(event) => {
+            if (!value.placement || !props.controller.widgetPlacement?.available()) return;
+            props.controller.widgetPlacement.beginPointerSession({
+              reference: value.placement.reference,
+              bounds: value.placement.bounds,
+              label,
+              event,
+              onDragStart: () => { suppressClick = true; },
+              onDragEnd: () => {
+                props.controller.browser.setTimeout(() => { suppressClick = false; }, 0);
+              },
+            });
+          }}
+          onClick={() => {
+            if (suppressClick) {
+              suppressClick = false;
+              return;
+            }
+            openRow(value);
+          }}
+        >
+          <WidgetIcon icon={value.variant.tool.icon} class={styles.icon} />
+          <span class={styles.widgetName}>{value.variant.displayName}</span>
+          <Show when={value.source === 'draft'}><span class={styles.draftBadge}><Pencil size={9} /> Draft</span></Show>
+          <Show when={value.problem || value.missingGroup}><TriangleAlert class={styles.warning} size={12} aria-label={value.problem ? 'Widget problem' : 'Missing tool group'} /></Show>
+        </Button>
+        <Button
+          class={styles.addButton}
+          aria-label={`Add ${label} ${value.source} to canvas`}
+          title={disabledReason ?? 'Add to canvas'}
+          disabled={!value.placement}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            void addToCanvas();
+          }}
+        >
+          <Plus size={12} />
+        </Button>
+      </div>
+    );
+  };
 
   return (
     <section class={styles.section}>

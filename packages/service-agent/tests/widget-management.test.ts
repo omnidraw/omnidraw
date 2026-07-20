@@ -71,6 +71,10 @@ describe('WidgetManagement', () => {
     expect(same.widgets[0]).toMatchObject({ name: 'Camera', relation: 'same' });
     expect(same.widgets[0]?.published?.contentFingerprint).toBe(same.widgets[0]?.draft?.contentFingerprint);
     expect(JSON.stringify(same)).not.toContain(workspace.draftRoot);
+    expect(same.widgets[0]?.draft?.placement).toMatchObject({
+      reference: { source: 'draft', name: 'Camera' },
+      bounds: { width: 360, height: 320 },
+    });
 
     await writeFile(join(workspace.draftRoot, 'Camera', 'widget', 'main.css'), '.draft-change {}\n', 'utf8');
     await controller.handleToolChange({ name: 'Camera', type: 'changed' });
@@ -78,6 +82,44 @@ describe('WidgetManagement', () => {
     expect(different.widgets[0]?.relation).toBe('different');
     expect(different.generation).not.toBe(same.generation);
     controller.close();
+  });
+
+  test('uses fallback placement bounds and exposes only a ready current Preview', async () => {
+    const { workspace, controller, manager } = await fixture();
+    const manifestPath = join(workspace.draftRoot, 'Camera', 'vibecanvas.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    delete manifest.widget.frame;
+    await writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
+    await controller.handleToolChange({ name: 'Camera', type: 'changed' });
+    const before = await manager.catalog([]);
+    expect(before.widgets[0]?.draft?.placement?.bounds).toEqual({ width: 360, height: 320 });
+    expect(before.widgets[0]?.preview).toMatchObject({ status: 'not-ready', placement: null });
+
+    await controller.handleToolChange({
+      name: 'Camera',
+      type: 'validated',
+      validation: { ok: false, errors: ['private diagnostic'], warnings: [] },
+    });
+    expect((await manager.catalog([])).widgets[0]?.preview).toEqual({
+      status: 'failed',
+      revision: before.widgets[0]!.draft!.revision,
+      message: 'Draft validation failed. Open the draft for diagnostics.',
+      placement: null,
+    });
+    await controller.handleToolChange({ name: 'Camera', type: 'changed' });
+
+    const revision = before.widgets[0]!.draft!.revision;
+    expect(await controller.buildPreview('Camera', 'catalog-owner', revision)).toMatchObject({ ready: true, revision });
+    const ready = await manager.catalog([]);
+    expect(ready.widgets[0]?.preview).toMatchObject({
+      status: 'ready',
+      revision,
+      placement: {
+        reference: { source: 'preview', name: 'Camera', revision },
+        bounds: { width: 360, height: 320 },
+      },
+    });
+    await controller.close();
   });
 
   test('inspects only managed relative files and reads text lazily', async () => {

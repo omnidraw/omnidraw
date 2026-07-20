@@ -192,6 +192,24 @@ export class WidgetDraftController {
     return this.#previewReady(draft, preview);
   }
 
+  async getPreviewCatalogState(name: string): Promise<import('./types').TWidgetPreviewCatalogState | null> {
+    const draft = await this.#config.workspace.getDraft(name);
+    if (!draft) return null;
+    const ready = [...this.#previews.values()].find((preview) => {
+      return preview.draftId === draft.name && preview.revision === draft.revision;
+    });
+    if (ready) return { status: 'ready', revision: ready.revision };
+    const validation = this.#validationByDraft.get(draft.name);
+    if (validation?.revision === draft.revision && !validation.ok) {
+      return {
+        status: 'failed',
+        revision: draft.revision,
+        message: 'Draft validation failed. Open the draft for diagnostics.',
+      };
+    }
+    return { status: 'not-ready', revision: draft.revision, message: null };
+  }
+
   async buildPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
     return this.#queueDraftPreview(name, async () => {
       const draft = await this.#config.workspace.getDraft(name);
@@ -312,6 +330,12 @@ export class WidgetDraftController {
       });
       this.#previews.set(previewOwnerKey(draft.name, previewId), preview);
       actor.start();
+      this.#config.eventPublisher.publishAgentEvent({
+        kind: 'widget-preview',
+        type: 'catalog-changed',
+        draftId: draft.name,
+        revision: preview.revision,
+      });
       await actor.waitUntilReady();
       current = await this.#config.workspace.getDraft(draft.name);
       if (!current) {
@@ -781,6 +805,14 @@ export class WidgetDraftController {
       throw new Error(`Preview Actor '${draftId}' for owner '${previewId}' did not stop; its snapshot was retained.`);
     }
     await preview.snapshot.dispose();
-    if (this.#previews.get(ownerKey) === preview) this.#previews.delete(ownerKey);
+    if (this.#previews.get(ownerKey) === preview) {
+      this.#previews.delete(ownerKey);
+      this.#config.eventPublisher.publishAgentEvent({
+        kind: 'widget-preview',
+        type: 'catalog-changed',
+        draftId,
+        revision: preview.revision,
+      });
+    }
   }
 }

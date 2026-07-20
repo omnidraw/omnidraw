@@ -356,6 +356,16 @@
       "required": ["relWidgetDir", "tool"],
       "properties": {
         "relWidgetDir": { "type": "string", "minLength": 1 },
+        "frame": {
+          "description": "Initial direct-placement size in canvas world units, including frame chrome. Omit for the backward-compatible 360 by 320 fallback.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 100, "maximum": 2048 },
+            "height": { "type": "integer", "minimum": 76, "maximum": 2048 }
+          }
+        },
         "tool": { "$ref": "#/$defs/tool" }
       }
     }
