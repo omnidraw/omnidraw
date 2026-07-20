@@ -18,7 +18,7 @@ B ugs: Something is not working as expected.
 A dditions: New features or improvements.
 S ubtractions: Removing or simplifing parts of the codebase.
 E xplorations: Researching new technologies or ideas.
-D eployable: Notable changes.
+D ebt: Internal engineering work such as CI, scripts, test automation, developer tooling, maintenance, refactoring, and technical debt.
 
 The status are tagged:
 - [ ]: open
@@ -40,7 +40,7 @@ Remember to keep the codebase small. Small is clean, small is fast. Delete often
 - `tasks/a/`: addition files.
 - `tasks/s/`: subtraction files.
 - `tasks/e/`: exploration files.
-- `tasks/d/`: deployable files.
+- `tasks/d/`: debt task files.
 
 Each line in the overview stays short and links to one dedicated file.
 Each dedicated file stores the task context, TODOs, notes, and logs.
@@ -53,6 +53,7 @@ Overview entries use this format:
 `- [x]: [B1](b/B1.md) - text: edit jumping`
 
 Humans usually don't create leaf files. But agents do.
+Agents may create leaf files for every category, including D debt tasks.
 
 Leaf files use this format:
 
@@ -378,16 +379,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [E34](e/E34.md) - Capsule-only Vibecanvas manifest v1 and artifact boundary
 - [ ]: [E35] - Markdown Notes support
 
-## D eployable
-- [x]: [D1] - Generative UI with AI assits
-- [~]: [D2] - Widget Resource Support
-- [ ]: [D3] - Github Support
-- [ ]: [D4] - Actor system is attachable
-- [ ]: [D5] - AI Controlled Widget
-- [ ]: [D6] - Widget filsystem resource
-- [ ]: [D7] - Gateway support
-- [ ]: [D8] - Auth support
-
+## D ebt
+- [ ]: [D1] -
 ## Pragmatic Code Style
 
 Long code line for lookup / easy parts.
