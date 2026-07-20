@@ -32,6 +32,7 @@ import { apiWidgetDraftGet } from './api.widgetDraft.get';
 import { apiWidgetDraftList } from './api.widgetDraft.list';
 import { apiWidgetDraftValidate } from './api.widgetDraft.validate';
 import { apiWidgetPreviewBuild } from './api.widgetPreview.build';
+import { apiWidgetPreviewClose } from './api.widgetPreview.close';
 import { apiWidgetPreviewGet } from './api.widgetPreview.get';
 import { apiWidgetPreviewRefresh } from './api.widgetPreview.refresh';
 import { apiWidgetPreviewReset } from './api.widgetPreview.reset';
@@ -111,6 +112,7 @@ const agentHandlers = {
         build: apiWidgetPreviewBuild,
         refresh: apiWidgetPreviewRefresh,
         reset: apiWidgetPreviewReset,
+        close: apiWidgetPreviewClose,
         send: apiWidgetPreviewSend,
     },
     widgetPublish: {

@@ -88,7 +88,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   const fullscreenTitle = portal.document.createElement('div');
   const fullscreenWindowButton = portal.document.createElement('button');
   const titleActionsRoot = portal.document.createElement('div');
-  const widgetLabel = portal.widgetConfig?.tool?.label
+  const widgetLabel = portal.widgetConfig?.getTitle?.(args.element)
+    ?? portal.widgetConfig?.tool?.label
     ?? (args.element.data.type === 'widget' || args.element.data.type === 'ui-widget' ? args.element.data.kind : 'Widget');
   const titleActions = args.element.data.type === 'ui-widget'
     ? [...(portal.widgetConfig?.titleBarActions ?? [])]

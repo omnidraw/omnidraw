@@ -279,6 +279,7 @@ export class WidgetWorkspace {
     requestedNextName: string,
     expectedRevision: string,
     update: (manifest: unknown) => T,
+    coordinateCommit?: (commit: () => Promise<void>) => Promise<void>,
   ): Promise<{ name: string; manifest: T; revision: string }> {
     const name = this.#normalizeName(requestedName);
     const nextName = this.#normalizeName(requestedNextName);
@@ -307,20 +308,28 @@ export class WidgetWorkspace {
       const manifest = update(JSON.parse(previousManifestText));
       const temporary = join(draftPath, `.vibecanvas.json.edit-${this.#safeId()}.tmp`);
       let renamed = false;
-      try {
+      let manifestReplaced = false;
+      const commit = async () => {
         await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
         await rename(temporary, manifestPath);
+        manifestReplaced = true;
         if (nextName !== name) {
           await rename(draftPath, nextDraftPath);
           renamed = true;
           await this.#moveDraftMount(name, nextName, nextDraftPath);
         }
+      };
+      try {
+        if (coordinateCommit) await coordinateCommit(commit);
+        else await commit();
       } catch (error) {
         await rm(temporary, { force: true }).catch(() => undefined);
         if (renamed && !await lstat(draftPath).catch(() => null)) {
           await rename(nextDraftPath, draftPath).catch(() => undefined);
         }
-        await writeFile(join(draftPath, 'vibecanvas.json'), previousManifestText, 'utf8').catch(() => undefined);
+        if (manifestReplaced) {
+          await writeFile(join(draftPath, 'vibecanvas.json'), previousManifestText, 'utf8').catch(() => undefined);
+        }
         throw error;
       }
       return {
@@ -424,6 +433,7 @@ export class WidgetWorkspace {
 
   async getDraft(requestedName: string): Promise<TWidgetDraftWorkspaceEntry | null> {
     const name = this.#normalizeName(requestedName);
+    await this.#assertNoCaseCollision(this.draftRoot, name);
     const draftPath = join(this.draftRoot, name);
     if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return null;
 

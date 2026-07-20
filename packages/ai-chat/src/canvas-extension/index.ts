@@ -1,5 +1,6 @@
 import type { ICanvasRuntimeExtension } from "@vibecanvas/canvas";
 import { createAiPlugin } from "./Ai.plugin";
+import { createDraftPreviewPlugin } from "./DraftPreview.plugin";
 import { createWidgetPlugin } from "./Widget.plugin";
 import type {
   TAiChatApiPort,
@@ -9,6 +10,7 @@ import type {
   TWidgetTransportPort,
 } from "../ports";
 import { WidgetManagerService } from "../widget/WidgetManagerService";
+import { DraftPreviewFrameService } from "../draft-preview/DraftPreviewFrameService";
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -38,10 +40,26 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
         browser: args.widgetBrowser,
         transport: args.widgetTransport,
       });
+      const previewFrames = new DraftPreviewFrameService({
+        api: args.chatApi,
+        application: args.application,
+        browser: args.widgetBrowser,
+        crdt: context.services.crdt,
+        element: context.services.element,
+        history: context.services.history,
+        renderOrder: context.services.renderOrder,
+        scene: context.services.scene,
+        selection: context.services.selection,
+        tool: context.services.tool,
+      });
 
       return {
-        services: [{ name: "ai-chat-widget-manager", startOrder: 120, service: widgetManager }],
+        services: [
+          { name: "ai-chat-widget-manager", startOrder: 120, service: widgetManager },
+          { name: "draft-preview-frame", startOrder: 121, service: previewFrames },
+        ],
         plugins: [
+          createDraftPreviewPlugin({ previewFrames, widgetManager }),
           createAiPlugin({
             api: args.chatApi,
             application: args.application,
@@ -49,6 +67,7 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
             createId: args.widgetBrowser.createId,
             nowDate: args.widgetBrowser.nowDate,
             widgetManager,
+            openWidgetPreview: (openArgs) => previewFrames.open(openArgs),
           }),
           createWidgetPlugin({
             application: args.application,

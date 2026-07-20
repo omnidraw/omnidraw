@@ -325,11 +325,13 @@
   white-space: nowrap;
 }
 
-.ai-chat-history__resource-action {
+.ai-chat-history__resource-action,
+.ai-chat-history__preview-action {
   display: flex;
   margin-top: 10px;
 }
 
+.ai-chat-history__preview-action button,
 .ai-chat-history__resource-action button,
 .ai-chat-approval__resource-action button {
   border: 1px solid var(--foreground);
@@ -341,6 +343,16 @@
   font-weight: 800;
   min-height: 30px;
   padding: 0 10px;
+}
+
+.ai-chat-history__preview-action button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ai-chat-history__preview-action button:disabled {
+  cursor: progress;
+  opacity: 0.58;
 }
 
 .ai-chat-history__message--tool-result {

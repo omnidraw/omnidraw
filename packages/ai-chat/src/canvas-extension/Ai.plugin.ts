@@ -98,6 +98,7 @@ function mountAiWidget(portal: {
   scene: SceneService;
   tool: ToolService;
   createSessionId: () => string;
+  openWidgetPreview: (args: { draftName: string; originChatElementId: string }) => Promise<void>;
 }, args: { root: HTMLDivElement; element: TElement, id: string; titleBar: TWidgetTitleBarPortal }) {
   args.root.replaceChildren();
 
@@ -142,6 +143,10 @@ function mountAiWidget(portal: {
       });
       return sessionId;
     },
+    onOpenWidgetPreview: (draftName) => portal.openWidgetPreview({
+      draftName,
+      originChatElementId: args.id,
+    }),
   }), args.root)
 
   return () => {
@@ -157,6 +162,7 @@ export function createAiPlugin(portal: {
   createId: () => string;
   nowDate: () => Date;
   widgetManager: WidgetManagerService;
+  openWidgetPreview: (args: { draftName: string; originChatElementId: string }) => Promise<void>;
 }): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   const createSessionId = () => createAiSessionId({ createId: portal.createId, nowDate: portal.nowDate });
   return {
@@ -192,6 +198,7 @@ export function createAiPlugin(portal: {
             scene,
             tool,
             createSessionId,
+            openWidgetPreview: portal.openWidgetPreview,
           }, { root, element, id: element.id, titleBar });
         },
       });

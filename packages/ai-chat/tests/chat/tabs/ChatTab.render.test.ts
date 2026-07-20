@@ -151,6 +151,7 @@ function renderChatTab(settings: TRenderChatTabSettings = {
     onPrompt: async () => {},
     onPreferenceChange: () => {},
     onResolveApproval: async () => {},
+    onOpenWidgetPreview: async () => {},
     settings,
     mentions: [{ id: "db-1", label: "db", kind: "Database" }],
     ...overrides,
@@ -315,6 +316,105 @@ describe("ChatTab rendered message history", () => {
     expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
     expect(message?.textContent).toContain("...")
     expect(message?.textContent).not.toContain("line 6")
+  })
+
+  it("keeps Open Preview visible for a trusted widget-create result without expanding the card", async () => {
+    let completeOpenPreview!: () => void
+    const pendingOpenPreview = new Promise<void>((resolve) => {
+      completeOpenPreview = () => resolve()
+    })
+    const onOpenWidgetPreview = vi.fn((_draftName: string) => pendingOpenPreview)
+    const root = renderChatTab(undefined, [{
+      role: "toolResult",
+      toolCallId: "call-widget-create",
+      toolName: "vc_widget_create",
+      content: [{ type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7" }],
+      details: {
+        name: "Shared Timer",
+        mountPath: "widgets/Shared Timer",
+        source: "draft",
+        draft: true,
+        files: ["vibecanvas.json", "widget/main.ts"],
+      },
+    }], { onOpenWidgetPreview })
+    const message = root.querySelector<HTMLElement>(".ai-chat-history__message--tool-result")
+    const toggle = () => root.querySelector<HTMLButtonElement>(".ai-chat-history__tool-result-toggle")
+    const openPreview = () => root.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")
+
+    expect(openPreview()?.textContent?.trim()).toBe("Open Preview")
+    expect(openPreview()?.closest(".ai-chat-history__plain")).toBeNull()
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
+    expect(message?.textContent).not.toContain("line 6")
+
+    openPreview()?.click()
+
+    expect(onOpenWidgetPreview).toHaveBeenCalledWith("Shared Timer")
+    expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1)
+    expect(openPreview()?.disabled).toBe(true)
+    expect(openPreview()?.getAttribute("aria-busy")).toBe("true")
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
+    expect(message?.textContent).not.toContain("line 6")
+
+    openPreview()?.click()
+    expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1)
+
+    completeOpenPreview()
+    await vi.waitFor(() => expect(openPreview()?.disabled).toBe(false))
+
+    toggle()?.click()
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("true")
+    expect(message?.textContent).toContain("line 6")
+    expect(openPreview()?.textContent?.trim()).toBe("Open Preview")
+
+    toggle()?.click()
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false")
+    expect(message?.textContent).not.toContain("line 6")
+    expect(openPreview()?.textContent?.trim()).toBe("Open Preview")
+  })
+
+  it("does not offer Open Preview for failed, malformed, prose-derived, or unrelated results", () => {
+    const trustedDetails = { name: "Shared Timer", source: "draft", draft: true }
+    const root = renderChatTab(undefined, [
+      {
+        role: "toolResult",
+        toolName: "vc_widget_create",
+        isError: true,
+        content: [{ type: "text", text: "failed" }],
+        details: trustedDetails,
+      },
+      {
+        role: "toolResult",
+        toolName: "vc_widget_create",
+        content: [{ type: "text", text: "created" }],
+        details: { ...trustedDetails, name: "../Shared Timer" },
+      },
+      {
+        role: "toolResult",
+        toolName: "vc_widget_create_preview",
+        content: [{ type: "text", text: "created" }],
+        details: trustedDetails,
+      },
+      {
+        role: "toolResult",
+        toolName: "vc_resource_create",
+        content: [{ type: "text", text: "created" }],
+        details: trustedDetails,
+      },
+      {
+        role: "toolResult",
+        toolName: "vc_widget_create",
+        content: [{ type: "text", text: JSON.stringify(trustedDetails) }],
+      },
+      {
+        role: "assistant",
+        toolName: "vc_widget_create",
+        content: [{ type: "text", text: "Created Shared Timer" }],
+        details: trustedDetails,
+      },
+    ])
+
+    expect(root.querySelectorAll(".ai-chat-history__preview-action button")).toHaveLength(0)
+    expect(root.textContent).not.toContain("Open Preview")
   })
 
   it("renders generic protected resource approvals with redacted structured details", async () => {

@@ -245,7 +245,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [A79](a/A79.md) - onboarding: welcome canvas with inline tutorial
 - [x]: [A80](a/A80.md) - codex: prompt for a branch in fresh worktrees
 - [x]: [A81](a/A81.md) - docs: comprehensive UI screen atlas
-- [ ]: [A82](a/A82.md) - AI chat: open draft Preview frame from widget-create result
+- [x]: [A82](a/A82.md) - AI chat: open draft Preview frame from widget-create result
 - [ ]: [A83](a/A83.md) - widgets: drag published, draft, and Preview variants onto canvas
 
 ## S ubtractions

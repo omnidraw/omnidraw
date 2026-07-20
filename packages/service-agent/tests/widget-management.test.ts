@@ -162,6 +162,46 @@ describe('WidgetManagement', () => {
     controller.close();
   });
 
+  test('does not commit a rename when Preview cleanup fails', async () => {
+    const { workspace, controller, manager } = await fixture();
+    const detail = await manager.detail('Camera', 'draft');
+    controller.withPreviewRenameCleanup = async (_name, _nextName, operation) => {
+      return operation(async () => {
+        throw new Error('Preview Actor did not stop.');
+      });
+    };
+
+    await expect(manager.patchDraftMetadata('Camera', detail!.variant.revision, {
+      name: 'Renamed Camera',
+    })).rejects.toThrow('Preview Actor did not stop.');
+    expect(await workspace.getDraft('Camera')).not.toBeNull();
+    expect(await workspace.getDraft('Renamed Camera')).toBeNull();
+    await controller.close();
+  });
+
+  test('validates a rename before cleaning up its active Preview', async () => {
+    const { workspace, controller, manager } = await fixture();
+    const detail = await manager.detail('Camera', 'draft');
+    expect((await controller.buildPreview('Camera', 'rename-owner', detail!.variant.revision)).ready).toBe(true);
+    const original = controller.withPreviewRenameCleanup.bind(controller);
+    let cleanupCalls = 0;
+    controller.withPreviewRenameCleanup = (name, nextName, operation) => {
+      return original(name, nextName, (cleanup) => operation(async () => {
+        cleanupCalls += 1;
+        await cleanup();
+      }));
+    };
+
+    await expect(manager.patchDraftMetadata('Camera', 'stale-revision', {
+      name: 'Renamed Camera',
+    })).rejects.toThrow('STALE_REVISION');
+
+    expect(cleanupCalls).toBe(0);
+    expect(await workspace.getDraft('Camera')).not.toBeNull();
+    expect(await controller.getPreview('Camera', 'rename-owner')).toMatchObject({ ready: true });
+    await controller.close();
+  });
+
   test('deletes only a draft from the draft route and both variants from the published route', async () => {
     const first = await fixture();
     await first.workspace.ensureChat('second-catalog-test');
@@ -196,6 +236,31 @@ describe('WidgetManagement', () => {
     expect(await second.workspace.getDraft('Camera')).toBeNull();
     expect(await manager.detail('Camera', 'published')).toBeNull();
     second.controller.close();
+  });
+
+  test('does not delete a published definition or source when Preview cleanup fails', async () => {
+    const { workspace, controller } = await fixture();
+    await cp(join(workspace.draftRoot, 'Camera'), join(workspace.publishedRoot, 'Camera'), { recursive: true });
+    const deletedDefinitions: string[] = [];
+    const manager = new WidgetManagement({
+      workspace,
+      drafts: controller,
+      deletePublishedDefinition: async (name) => {
+        deletedDefinitions.push(name);
+        return true;
+      },
+    });
+    controller.withPreviewCleanup = async (_name, operation) => {
+      return operation(async () => {
+        throw new Error('Preview cleanup failed.');
+      });
+    };
+
+    await expect(manager.delete('Camera', 'published')).rejects.toThrow('Preview cleanup failed');
+    expect(deletedDefinitions).toEqual([]);
+    expect(await workspace.getDraft('Camera')).not.toBeNull();
+    expect(await manager.detail('Camera', 'published')).not.toBeNull();
+    await controller.close();
   });
 
   test('removes orphaned published sources and drafts when no runtime definition exists', async () => {

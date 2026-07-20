@@ -23,10 +23,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -141,8 +139,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/web/public/gabriele-d.ttf](apps/web/public/gabriele-d.ttf) |  |
 | [apps/web/public/hero.png](apps/web/public/hero.png) |  |
 | [apps/web/public/hero.webp](apps/web/public/hero.webp) |  |
-| [apps/web/public/install](apps/web/public/install) |  |
-| [apps/web/public/install.sh](apps/web/public/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [apps/web/public/seo.png](apps/web/public/seo.png) |  |
 | [apps/web/README.md](apps/web/README.md) |  |
 | [apps/web/src/components/CommandTabs.tsx](apps/web/src/components/CommandTabs.tsx) |  |
@@ -191,6 +187,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/package.json](packages/ai-chat/package.json) |  |
 | [packages/ai-chat/README.md](packages/ai-chat/README.md) |  |
 | [packages/ai-chat/src/canvas-extension/Ai.plugin.ts](packages/ai-chat/src/canvas-extension/Ai.plugin.ts) |  |
+| [packages/ai-chat/src/canvas-extension/DraftPreview.plugin.ts](packages/ai-chat/src/canvas-extension/DraftPreview.plugin.ts) |  |
 | [packages/ai-chat/src/canvas-extension/index.ts](packages/ai-chat/src/canvas-extension/index.ts) |  |
 | [packages/ai-chat/src/canvas-extension/Widget.plugin.ts](packages/ai-chat/src/canvas-extension/Widget.plugin.ts) |  |
 | [packages/ai-chat/src/chat/components/ApprovalList.tsx](packages/ai-chat/src/chat/components/ApprovalList.tsx) |  |
@@ -215,6 +212,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/src/chat/index.tsx](packages/ai-chat/src/chat/index.tsx) |  |
 | [packages/ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts](packages/ai-chat/src/chat/mention-catalog/fn.mention-catalog.ts) |  |
 | [packages/ai-chat/src/chat/mention-catalog/index.ts](packages/ai-chat/src/chat/mention-catalog/index.ts) |  |
+| [packages/ai-chat/src/draft-preview/CONSTANTS.ts](packages/ai-chat/src/draft-preview/CONSTANTS.ts) |  |
+| [packages/ai-chat/src/draft-preview/DraftPreviewFrameService.ts](packages/ai-chat/src/draft-preview/DraftPreviewFrameService.ts) |  |
+| [packages/ai-chat/src/draft-preview/fn.element-id.ts](packages/ai-chat/src/draft-preview/fn.element-id.ts) |  |
+| [packages/ai-chat/src/draft-preview/mount.ts](packages/ai-chat/src/draft-preview/mount.ts) |  |
+| [packages/ai-chat/src/draft-preview/typed.ts](packages/ai-chat/src/draft-preview/typed.ts) |  |
+| [packages/ai-chat/src/draft-preview/widget.css](packages/ai-chat/src/draft-preview/widget.css) |  |
 | [packages/ai-chat/src/index.ts](packages/ai-chat/src/index.ts) |  |
 | [packages/ai-chat/src/ports.ts](packages/ai-chat/src/ports.ts) |  |
 | [packages/ai-chat/src/sidebar/components/CreateCanvasDialog.tsx](packages/ai-chat/src/sidebar/components/CreateCanvasDialog.tsx) |  |
@@ -328,6 +331,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api-agent/src/api.widgetDraft.list.ts](packages/api-agent/src/api.widgetDraft.list.ts) |  |
 | [packages/api-agent/src/api.widgetDraft.validate.ts](packages/api-agent/src/api.widgetDraft.validate.ts) |  |
 | [packages/api-agent/src/api.widgetPreview.build.ts](packages/api-agent/src/api.widgetPreview.build.ts) |  |
+| [packages/api-agent/src/api.widgetPreview.close.ts](packages/api-agent/src/api.widgetPreview.close.ts) |  |
 | [packages/api-agent/src/api.widgetPreview.get.ts](packages/api-agent/src/api.widgetPreview.get.ts) |  |
 | [packages/api-agent/src/api.widgetPreview.refresh.ts](packages/api-agent/src/api.widgetPreview.refresh.ts) |  |
 | [packages/api-agent/src/api.widgetPreview.reset.ts](packages/api-agent/src/api.widgetPreview.reset.ts) |  |

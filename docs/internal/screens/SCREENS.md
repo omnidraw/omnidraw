@@ -9,7 +9,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | Area | Routes | Representative states |
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
-| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings |
+| [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings, draft Preview |
 | [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, messages, states, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
@@ -47,6 +47,11 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | --- | --- |
 | ![AI Chat window open over a Vibecanvas canvas](assets/14-canvas-ai-chat.webp) | ![AI Chat settings showing provider connections](assets/15-canvas-ai-settings.webp) |
 | **AI assistant — Chat.** Conversation history, model selector, prompt input, and canvas context. | **AI assistant — Settings.** Provider connection status and API-key actions. |
+
+| AI draft Preview |
+| --- |
+| ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
+| **AI assistant — Draft Preview.** A trusted widget-create result opens one revision-pinned interactive Preview beside its originating chat. |
 
 ## Widget inspector
 

@@ -59,6 +59,12 @@ export type TWidgetPreviewSendResult =
   | { ready: true; revision: string; messageId: string; snapshot: TWidgetPreviewReady['snapshot'] }
   | Exclude<TWidgetPreviewResult, { ready: true }>;
 
+export type TWidgetPreviewCloseResult = {
+  closed: boolean;
+  draftId: string;
+  revision: string;
+};
+
 export type TWidgetPublishResult =
   | {
       published: true;
