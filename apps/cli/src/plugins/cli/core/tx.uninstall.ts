@@ -10,7 +10,6 @@ type TPortal = {
 
 type TArgs = {
   paths: string[];
-  stopOnFailure?: boolean;
 };
 
 type TRemoveResult = {
@@ -33,7 +32,6 @@ function txRemoveUninstallTargets(portal: TPortal, args: TArgs): TRemoveResult {
         continue;
       }
       failed.push({ path, message: error instanceof Error ? error.message : String(error) });
-      if (args.stopOnFailure) break;
       continue;
     }
 
@@ -42,7 +40,6 @@ function txRemoveUninstallTargets(portal: TPortal, args: TArgs): TRemoveResult {
       removed.push(path);
     } catch (error) {
       failed.push({ path, message: error instanceof Error ? error.message : String(error) });
-      if (args.stopOnFailure) break;
     }
   }
 

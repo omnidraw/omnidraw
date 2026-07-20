@@ -1,279 +1,248 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { hkdfSync } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
+import { describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ActorResourceError } from '../src/resources/ActorResourceError';
+import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import {
-  SECRET_STORE_MASTER_KEY_RELATIVE_PATH,
-  SecretStoreMasterKeyProvider,
+  SECRET_STORE_DATABASE_KEY_ALGORITHM,
+  SECRET_STORE_DATABASE_KEY_PURPOSE,
+  SecretStoreDatabaseKeyProvider,
+  type IActorResourceEncryptionKeyStore,
+  type TStoredEncryptionKey,
 } from '../src/resources/SecretStoreKeyProvider';
 
-describe('SecretStoreMasterKeyProvider', () => {
-  let rootDir = '';
-  let configRoot = '';
-  let dataRoot = '';
+function memoryKeyStore(initial: Array<{ resourceId: string; key: TStoredEncryptionKey }> = []): (
+  IActorResourceEncryptionKeyStore & {
+    readonly rows: Map<string, TStoredEncryptionKey>;
+    readonly links: Map<string, string>;
+  }
+) {
+  const rows = new Map<string, TStoredEncryptionKey>();
+  const links = new Map<string, string>();
+  for (const item of initial) {
+    rows.set(item.key.id, item.key);
+    links.set(item.resourceId, item.key.id);
+  }
+  return {
+    rows,
+    links,
+    async get(args) {
+      const keyId = links.get(args.resourceId);
+      return keyId === undefined ? null : rows.get(keyId) ?? null;
+    },
+    async getOrCreate(args) {
+      const existingId = links.get(args.resourceId);
+      if (existingId !== undefined) return rows.get(existingId)!;
+      const created = {
+        id: args.keyId,
+        purpose: args.purpose,
+        algorithm: args.algorithm,
+        key_hex: args.keyHex,
+        created_at: '2026-07-20T00:00:00.000Z',
+      };
+      rows.set(created.id, created);
+      links.set(args.resourceId, created.id);
+      return created;
+    },
+  };
+}
 
-  beforeEach(async () => {
-    rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-secret-store-key-'));
-    configRoot = join(rootDir, 'config');
-    dataRoot = join(rootDir, 'data');
-    await mkdir(dataRoot, { recursive: true });
-  });
+function storedDatabaseKey(
+  keyHex: string,
+  overrides: Partial<TStoredEncryptionKey> = {},
+): TStoredEncryptionKey {
+  return {
+    id: 'key-one',
+    purpose: SECRET_STORE_DATABASE_KEY_PURPOSE,
+    algorithm: SECRET_STORE_DATABASE_KEY_ALGORITHM,
+    key_hex: keyHex,
+    created_at: '2026-07-20T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
-  afterEach(async () => {
-    await rm(rootDir, { recursive: true, force: true });
-  });
-
-  test('atomically creates one private installation key and derives distinct deterministic resource keys', async () => {
-    const masterKey = Buffer.alloc(32, 0x5a);
-    const provider = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => masterKey,
+describe('SecretStoreDatabaseKeyProvider', () => {
+  test('stores and returns one actual independent database key per resource', async () => {
+    const encryptionKeys = memoryKeyStore();
+    let byte = 0x10;
+    let id = 0;
+    const provider = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys,
+      randomBytes: () => Buffer.alloc(32, ++byte),
+      randomUUID: () => `key-${++id}`,
     });
-    const first = await provider.getDatabaseHexKey('resource-a');
-    const second = await provider.getDatabaseHexKey('resource-b');
-    const restarted = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => Buffer.alloc(32, 0xff),
-    });
 
-    expect(first).toHaveLength(64);
-    expect(first).not.toBe(second);
-    expect(await restarted.getDatabaseHexKey('resource-a')).toBe(first);
-    expect(first).toBe(Buffer.from(hkdfSync(
-      'sha256',
-      masterKey,
-      Buffer.from('resource-a'),
-      Buffer.from('vibecanvas/secret-store/turso/aegis256/v1'),
-      32,
-    )).toString('hex'));
+    const first = await provider.getOrCreateDatabaseHexKey('resource-a');
+    const second = await provider.getOrCreateDatabaseHexKey('resource-b');
 
-    const keyPath = join(configRoot, SECRET_STORE_MASTER_KEY_RELATIVE_PATH);
-    expect(await readFile(keyPath, 'utf8')).toBe(masterKey.toString('hex'));
-    expect((await stat(keyPath)).mode & 0o777).toBe(0o600);
-    expect((await stat(join(configRoot, 'keys'))).mode & 0o777).toBe(0o700);
+    expect(first).toBe('11'.repeat(32));
+    expect(second).toBe('12'.repeat(32));
+    expect(encryptionKeys.rows).toHaveLength(2);
+    expect(encryptionKeys.links).toEqual(new Map([
+      ['resource-a', 'key-1'],
+      ['resource-b', 'key-2'],
+    ]));
   });
 
-  test('separate providers racing first use load the single atomically published winner', async () => {
-    const first = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
+  test('reuses the linked database key across provider restart without generating another', async () => {
+    const encryptionKeys = memoryKeyStore();
+    const first = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys,
+      randomBytes: () => Buffer.alloc(32, 0x6b),
+      randomUUID: () => 'persisted-key',
+    });
+    const key = await first.getOrCreateDatabaseHexKey('resource');
+
+    let generated = false;
+    const restarted = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys,
+      randomBytes: () => {
+        generated = true;
+        return Buffer.alloc(32, 0xff);
+      },
+      randomUUID: () => 'unused-key',
+    });
+
+    expect(await restarted.getDatabaseHexKey('resource')).toBe(key);
+    expect(generated).toBe(false);
+    expect(encryptionKeys.rows).toHaveLength(1);
+  });
+
+  test('separate providers racing one resource converge on the linked database key', async () => {
+    const encryptionKeys = memoryKeyStore();
+    const first = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys,
       randomBytes: () => Buffer.alloc(32, 0x11),
+      randomUUID: () => 'key-one',
     });
-    const second = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
+    const second = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys,
       randomBytes: () => Buffer.alloc(32, 0x22),
+      randomUUID: () => 'key-two',
     });
 
     const [firstKey, secondKey] = await Promise.all([
-      first.getDatabaseHexKey('shared-resource'),
-      second.getDatabaseHexKey('shared-resource'),
+      first.getOrCreateDatabaseHexKey('shared-resource'),
+      second.getOrCreateDatabaseHexKey('shared-resource'),
     ]);
+
     expect(firstKey).toBe(secondKey);
-    const persisted = await readFile(join(configRoot, SECRET_STORE_MASTER_KEY_RELATIVE_PATH), 'utf8');
-    expect([Buffer.alloc(32, 0x11).toString('hex'), Buffer.alloc(32, 0x22).toString('hex')]).toContain(persisted);
+    expect(encryptionKeys.rows).toHaveLength(1);
+    expect(['11'.repeat(32), '22'.repeat(32)]).toContain(firstKey);
   });
 
-  test('syncs the config root when creating the keys directory but not when it already exists', async () => {
-    const firstSyncs: string[] = [];
-    const first = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => Buffer.alloc(32, 0x23),
-      syncDirectory: async (directoryPath) => {
-        firstSyncs.push(directoryPath);
-      },
-    });
-    await first.getDatabaseHexKey('resource');
-
-    const keyDirectory = join(configRoot, 'keys');
-    expect(firstSyncs).toEqual([configRoot, keyDirectory, keyDirectory]);
-
-    const existingSyncs: string[] = [];
-    const restarted = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      syncDirectory: async (directoryPath) => {
-        existingSyncs.push(directoryPath);
-      },
-    });
-    await restarted.getDatabaseHexKey('resource');
-    expect(existingSyncs).toEqual([]);
+  test('rejects invalid stored database-key material or metadata', async () => {
+    for (const stored of [
+      storedDatabaseKey('aa'.repeat(31)),
+      storedDatabaseKey('AA'.repeat(32)),
+      storedDatabaseKey('aa'.repeat(32), { id: '' }),
+      storedDatabaseKey('aa'.repeat(32), { purpose: 'wrong' }),
+      storedDatabaseKey('aa'.repeat(32), { algorithm: 'wrong' }),
+    ]) {
+      const provider = new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: memoryKeyStore([{ resourceId: 'resource', key: stored }]),
+      });
+      await expect(provider.getDatabaseHexKey('resource'))
+        .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
+    }
   });
 
-  test('re-reads a key published while a stale provider is rejecting new key creation', async () => {
-    const secretRoot = join(dataRoot, 'actor-resources', 'secret-store');
-    let releaseScan: () => void = () => undefined;
-    let markScanStarted: () => void = () => undefined;
-    const scanStarted = new Promise<void>((resolve) => {
-      markScanStarted = resolve;
-    });
-    const scanReleased = new Promise<void>((resolve) => {
-      releaseScan = resolve;
-    });
-    let paused = false;
-    let staleGenerated = false;
-    const stale = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
+  test('does not create a replacement when a resource has no linked key', async () => {
+    const encryptionKeys = memoryKeyStore();
+    let generated = false;
+    const provider = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys,
       randomBytes: () => {
-        staleGenerated = true;
-        return Buffer.alloc(32, 0x77);
+        generated = true;
+        return Buffer.alloc(32, 0x11);
       },
-      readDirectory: async (directoryPath) => {
-        if (!paused && directoryPath === secretRoot) {
-          paused = true;
-          markScanStarted();
-          await scanReleased;
-        }
-        return readdir(directoryPath, { withFileTypes: true });
-      },
-    });
-    const staleKeyPromise = stale.getDatabaseHexKey('shared-resource');
-    await scanStarted;
-
-    const winner = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => Buffer.alloc(32, 0x88),
-    });
-    const winnerKey = await winner.getDatabaseHexKey('shared-resource');
-    const secretDirectory = join(secretRoot, 'encrypted-resource');
-    await mkdir(secretDirectory, { recursive: true });
-    await writeFile(join(secretDirectory, 'data.db'), Buffer.from('Turso\0encrypted'));
-    releaseScan();
-
-    await expect(staleKeyPromise).resolves.toBe(winnerKey);
-    expect(staleGenerated).toBe(false);
-  });
-
-  test('ignores an unpublished partial crash candidate without exposing a partial final key', async () => {
-    const keyDirectory = join(configRoot, 'keys');
-    await mkdir(keyDirectory, { recursive: true, mode: 0o700 });
-    await writeFile(
-      join(keyDirectory, 'secret-store-master-key.v1.hex.123.crashed.pending'),
-      'partial',
-      { mode: 0o600 },
-    );
-    const provider = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => Buffer.alloc(32, 0x33),
+      randomUUID: () => 'must-not-be-used',
     });
 
-    await expect(provider.getDatabaseHexKey('resource')).resolves.toMatch(/^[0-9a-f]{64}$/);
-    expect(await readFile(join(configRoot, SECRET_STORE_MASTER_KEY_RELATIVE_PATH), 'utf8'))
-      .toBe(Buffer.alloc(32, 0x33).toString('hex'));
+    await expect(provider.getDatabaseHexKey('existing-resource'))
+      .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
+    expect(generated).toBe(false);
+    expect(encryptionKeys.rows).toHaveLength(0);
+    expect(encryptionKeys.links).toHaveLength(0);
+
+    await expect(provider.getOrCreateDatabaseHexKey('existing-resource'))
+      .resolves.toBe('11'.repeat(32));
   });
 
-  test('fails closed for malformed keys, permission drift, symlinks, and unenforceable ACL platforms', async () => {
-    const keyPath = join(configRoot, SECRET_STORE_MASTER_KEY_RELATIVE_PATH);
-    await mkdir(join(configRoot, 'keys'), { recursive: true, mode: 0o700 });
-    await writeFile(keyPath, 'not-a-key', { mode: 0o600 });
-    await expect(new SecretStoreMasterKeyProvider({ configRoot, dataRoot }).getDatabaseHexKey('resource'))
-      .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-
-    await writeFile(keyPath, 'aa'.repeat(32), { mode: 0o600 });
-    await chmod(keyPath, 0o644);
-    await expect(new SecretStoreMasterKeyProvider({ configRoot, dataRoot }).getDatabaseHexKey('resource'))
-      .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-
-    await unlink(keyPath);
-    const targetPath = join(rootDir, 'symlink-target');
-    await writeFile(targetPath, 'aa'.repeat(32), { mode: 0o600 });
-    await symlink(targetPath, keyPath);
-    await expect(new SecretStoreMasterKeyProvider({ configRoot, dataRoot }).getDatabaseHexKey('resource'))
-      .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-
-    await expect(new SecretStoreMasterKeyProvider({ configRoot, dataRoot, platform: 'win32' }).getDatabaseHexKey('resource'))
-      .rejects.toBeInstanceOf(ActorResourceError);
-  });
-
-  test('rejects short randomness and refuses to replace a missing key beside encrypted files', async () => {
-    const short = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
+  test('rejects invalid randomness, empty resource IDs, and persistence failures without leaking details', async () => {
+    const short = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys: memoryKeyStore(),
       randomBytes: () => Buffer.alloc(31),
     });
-    await expect(short.getDatabaseHexKey('resource')).rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-
-    await rm(configRoot, { recursive: true, force: true });
-    const secretDirectory = join(dataRoot, 'actor-resources', 'secret-store', 'encrypted-resource');
-    await mkdir(secretDirectory, { recursive: true });
-    await writeFile(join(secretDirectory, 'data.db'), Buffer.from('Turso\0encrypted'));
-    let generated = false;
-    const missing = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => {
-        generated = true;
-        return Buffer.alloc(32, 0x44);
-      },
-    });
-    await expect(missing.getDatabaseHexKey('resource')).rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-    expect(generated).toBe(false);
-
-    await rm(join(secretDirectory, 'data.db'));
-    await writeFile(join(secretDirectory, 'data.db-wal'), Buffer.from('encrypted-or-unknown-wal'));
-    const orphanedWal = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => {
-        generated = true;
-        return Buffer.alloc(32, 0x45);
-      },
-    });
-    await expect(orphanedWal.getDatabaseHexKey('resource'))
+    await expect(short.getOrCreateDatabaseHexKey('resource'))
       .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-    expect(generated).toBe(false);
-  });
+    await expect(short.getOrCreateDatabaseHexKey(''))
+      .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
 
-  test('permits first-upgrade key creation only when existing database candidates are plaintext', async () => {
-    const secretDirectory = join(dataRoot, 'actor-resources', 'secret-store', 'legacy-resource');
-    await mkdir(secretDirectory, { recursive: true });
-    await writeFile(join(secretDirectory, 'data.db'), Buffer.from('SQLite format 3\0legacy'));
-    const provider = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => Buffer.alloc(32, 0x55),
-    });
-    await expect(provider.getDatabaseHexKey('legacy-resource')).resolves.toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test('refuses key creation for an empty pre-existing secret resource directory', async () => {
-    await mkdir(join(dataRoot, 'actor-resources', 'secret-store', 'unknown-resource'), { recursive: true });
-    let generated = false;
-    const provider = new SecretStoreMasterKeyProvider({
-      configRoot,
-      dataRoot,
-      randomBytes: () => {
-        generated = true;
-        return Buffer.alloc(32, 0x66);
+    const failed = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys: {
+        async get() {
+          throw new Error('sensitive database details');
+        },
+        async getOrCreate() {
+          throw new Error('unreachable');
+        },
       },
     });
-    await expect(provider.getDatabaseHexKey('unknown-resource'))
-      .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
-    expect(generated).toBe(false);
+    await expect(failed.getDatabaseHexKey('resource')).rejects.toMatchObject({
+      code: 'SECRET_STORE_KEY_UNAVAILABLE',
+      message: 'The secret-store database encryption key is unavailable or invalid.',
+    });
   });
 
-  test('keeps the key outside the data root, including canonical symlink nesting', async () => {
-    const nestedConfig = join(dataRoot, 'config');
-    await expect(new SecretStoreMasterKeyProvider({
-      configRoot: nestedConfig,
-      dataRoot,
-    }).getDatabaseHexKey('resource')).rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
+  test('persists the linked key through the public main-database interface across restart', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-database-key-provider-'));
+    const databasePath = join(root, 'vibecanvas.turso');
+    const config = {
+      databasePath,
+      dataDir: join(root, 'data'),
+      cacheDir: join(root, 'cache'),
+      silentMigrations: true,
+    };
+    const firstDb = new DbServiceTurso(config);
+    try {
+      await firstDb.start();
+      await firstDb.actorResource.create({
+        id: 'resource',
+        kind: 'secretStore',
+        name: 'Secret resource',
+        status: 'ready',
+      });
+      const first = new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: firstDb.actorResourceEncryptionKey,
+        randomBytes: () => Buffer.alloc(32, 0x6b),
+        randomUUID: () => 'persisted-key',
+      });
+      const key = await first.getOrCreateDatabaseHexKey('resource');
+      await expect(firstDb.actorResourceEncryptionKey.get({ resourceId: 'resource' }))
+        .resolves.toMatchObject({ id: 'persisted-key', key_hex: '6b'.repeat(32) });
+      await firstDb.db.close();
 
-    const canonicalNested = join(dataRoot, 'canonical-config');
-    await mkdir(canonicalNested, { recursive: true });
-    const linkedConfig = join(rootDir, 'linked-config');
-    await symlink(canonicalNested, linkedConfig);
-    await expect(new SecretStoreMasterKeyProvider({
-      configRoot: linkedConfig,
-      dataRoot,
-    }).getDatabaseHexKey('resource')).rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
+      const restartedDb = new DbServiceTurso(config);
+      try {
+        await restartedDb.start();
+        let generated = false;
+        const restarted = new SecretStoreDatabaseKeyProvider({
+          encryptionKeys: restartedDb.actorResourceEncryptionKey,
+          randomBytes: () => {
+            generated = true;
+            return Buffer.alloc(32, 0xff);
+          },
+          randomUUID: () => 'unused-key',
+        });
+        expect(await restarted.getDatabaseHexKey('resource')).toBe(key);
+        expect(generated).toBe(false);
+      } finally {
+        await restartedDb.db.close();
+      }
+    } finally {
+      await firstDb.db.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

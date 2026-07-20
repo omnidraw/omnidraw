@@ -1,5 +1,5 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
-import { ActorService, SecretStoreMasterKeyProvider } from '@vibecanvas/service-actor';
+import { ActorService, SecretStoreDatabaseKeyProvider } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { AgentService } from '@vibecanvas/service-agent';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
@@ -107,9 +107,8 @@ function setupServices(config: ICliConfig) {
   services.provide('automerge', 50, automergeService);
 
   if (config.command === 'serve') {
-    const secretStoreKeyProvider = new SecretStoreMasterKeyProvider({
-      configRoot: config.xdgPaths.configDirPath,
-      dataRoot: config.xdgPaths.dataDirPath,
+    const secretStoreKeyProvider = new SecretStoreDatabaseKeyProvider({
+      encryptionKeys: dbService.actorResourceEncryptionKey,
     });
     const actorService = new ActorService({
       db: dbService,

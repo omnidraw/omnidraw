@@ -453,7 +453,10 @@ describe('ActorResourceKeyValueStore', () => {
     const wrongKeyStore = new ActorResourceKeyValueStore({
       dataRoot: rootDir,
       kind: 'secretStore',
-      secretStoreKeyProvider: { getDatabaseHexKey: async () => '00'.repeat(32) },
+      secretStoreKeyProvider: {
+        getDatabaseHexKey: async () => '00'.repeat(32),
+        getOrCreateDatabaseHexKey: async () => '00'.repeat(32),
+      },
     });
     stores.push(wrongKeyStore);
     await expect(wrongKeyStore.verify({ resourceId: 'wrong-key', kind: 'secretStore' })).rejects.toMatchObject({

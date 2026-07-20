@@ -115,18 +115,6 @@ function fnBuildUninstallPlan(portal: TPortal, args: TArgs): TUninstallPlan {
     fnPushUniqueTarget(removeTargets, { kind: target.kind, path, missingOk: true });
   }
 
-  const configTarget = removeTargets.find((target) => target.kind === 'config-dir');
-  const dataTarget = removeTargets.find((target) => target.kind === 'data-dir');
-  if (Boolean(configTarget) !== Boolean(dataTarget)) {
-    const retainedTarget = configTarget ?? dataTarget!;
-    removeTargets.splice(removeTargets.indexOf(retainedTarget), 1);
-    fnPushUniqueSkip(skippedTargets, {
-      kind: retainedTarget.kind,
-      path: retainedTarget.path,
-      reason: 'configuration and data roots must be removed together',
-    });
-  }
-
   const dbPath = fnNormalizePath(portal, args.dbPath);
   const removableDataDirs = removeTargets
     .filter((target) => target.kind === 'data-dir')

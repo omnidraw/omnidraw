@@ -13,6 +13,7 @@ import migration10 from './DbServiceTurso/migration-files/011-add-db-resources.s
 import migration11 from './DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql' with { type: "file" };
 import migration12 from './DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql' with { type: "file" };
 import migration13 from './DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql' with { type: "file" };
+import migration14 from './DbServiceTurso/migration-files/016-add-encryption-keys.sql' with { type: "file" };
 
 const embeddedMigrationPaths = new Map<string, string>([
   ["000-add-automerge.sql", migration0],
@@ -29,6 +30,7 @@ const embeddedMigrationPaths = new Map<string, string>([
   ["012-replace-db-resource-migrations.sql", migration11],
   ["013-add-db-resource-restore-source.sql", migration12],
   ["015-add-actor-resource-name-keys.sql", migration13],
+  ["016-add-encryption-keys.sql", migration14],
 ]);
 
 export function listEmbeddedMigrationFiles(): string[] {

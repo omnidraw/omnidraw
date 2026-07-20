@@ -215,17 +215,40 @@ export async function txActorResourceBeginDelete(portal: TPortal, args: TArgsRes
 }
 
 export async function txActorResourceDelete(portal: TPortal, args: TArgsResourceId): Promise<boolean> {
-  const result = await (await portal.db.prepare(`
-    DELETE FROM actor_resources
-    WHERE id = ?
-      AND status = 'deleting'
-      AND NOT EXISTS (
-        SELECT 1
-        FROM actor_resource_bindings
-        WHERE resource_id = actor_resources.id
-      )
-  `)).run(args.id)
-  return result.changes > 0
+  await portal.db.exec("BEGIN IMMEDIATE")
+  try {
+    const linkedKey = await (await portal.db.prepare(`
+      SELECT encryption_key_id
+      FROM actor_resource_encryption_keys
+      WHERE actor_resource_id = ?
+    `)).get(args.id) as { encryption_key_id?: unknown } | undefined
+    const result = await (await portal.db.prepare(`
+      DELETE FROM actor_resources
+      WHERE id = ?
+        AND status = 'deleting'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM actor_resource_bindings
+          WHERE resource_id = actor_resources.id
+        )
+    `)).run(args.id)
+    if (result.changes > 0 && typeof linkedKey?.encryption_key_id === "string") {
+      await (await portal.db.prepare(`
+        DELETE FROM encryption_keys
+        WHERE id = ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM actor_resource_encryption_keys
+            WHERE encryption_key_id = encryption_keys.id
+          )
+      `)).run(linkedKey.encryption_key_id)
+    }
+    await portal.db.exec("COMMIT")
+    return result.changes > 0
+  } catch (error) {
+    await portal.db.exec("ROLLBACK").catch(() => undefined)
+    throw error
+  }
 }
 
 export async function txActorResourceUpsertBinding(

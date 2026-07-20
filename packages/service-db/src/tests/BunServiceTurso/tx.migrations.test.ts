@@ -63,6 +63,8 @@ describe("tx.migrations", () => {
     expect(tNames).toContain("tool_groups");
     expect(tNames).toContain("actor_resources");
     expect(tNames).toContain("actor_resource_bindings");
+    expect(tNames).toContain("encryption_keys");
+    expect(tNames).toContain("actor_resource_encryption_keys");
     expect(tNames).not.toContain("actor_resource_key_values");
     expect(tNames).toContain("db_resource_drafts");
     expect(tNames).toContain("db_resource_draft_changes");
@@ -97,10 +99,11 @@ describe("tx.migrations", () => {
 
     expect(registered).toEqual(discovered);
     expect(listEmbeddedMigrationFiles()).toEqual(discovered);
-    expect(listMigrationFiles().map((migration) => migration.name).slice(-3)).toEqual([
+    expect(listMigrationFiles().map((migration) => migration.name).slice(-4)).toEqual([
       '013-add-db-resource-restore-source.sql',
       '014-migrate-agent-storage.ts',
       '015-add-actor-resource-name-keys.sql',
+      '016-add-encryption-keys.sql',
     ]);
   });
 

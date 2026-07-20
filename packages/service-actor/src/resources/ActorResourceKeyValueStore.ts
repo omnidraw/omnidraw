@@ -225,7 +225,7 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     const directory = this.#resourceDirectory(resourceId);
     let directoryCreated = false;
     try {
-      const databaseHexKey = await this.#databaseHexKey(resourceId);
+      const databaseHexKey = await this.#databaseHexKey(resourceId, true);
       await mkdir(this.#kindRoot(), { recursive: true });
       await mkdir(directory);
       directoryCreated = true;
@@ -483,7 +483,8 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
 
   async #verifyStandalone(resourceId: string, knownDatabaseHexKey?: string): Promise<void> {
     if (this.#kind === 'secretStore') {
-      const databaseHexKey = knownDatabaseHexKey ?? await this.#databaseHexKey(resourceId);
+      const databaseHexKey = knownDatabaseHexKey
+        ?? await this.#databaseHexKey(resourceId, await this.#canCreateSecretDatabaseKey(resourceId));
       await this.#reconcileSecretDatabase(resourceId, databaseHexKey!);
       return;
     }
@@ -910,6 +911,16 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     }
   }
 
+  async #canCreateSecretDatabaseKey(resourceId: string): Promise<boolean> {
+    const state = await this.#databaseFileState(this.#databasePath(resourceId));
+    if (state === 'plaintext') return true;
+    if (state !== 'missing') return false;
+
+    const temporaryState = await this.#databaseFileState(this.#encryptedTemporaryPath(resourceId));
+    if (temporaryState !== 'missing') return false;
+    return await this.#databaseFileState(this.#plaintextRecoveryPath(resourceId)) === 'plaintext';
+  }
+
   async #removeDatabaseArtifacts(databasePath: string): Promise<void> {
     await this.#removeDatabaseSidecars(databasePath);
     await rm(databasePath, { force: true });
@@ -1197,17 +1208,19 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     return this.#kind === 'secretStore' ? SECRET_STORE_FORMAT_VERSION : KV_FORMAT_VERSION;
   }
 
-  async #databaseHexKey(resourceId: string): Promise<string | undefined> {
+  async #databaseHexKey(resourceId: string, createIfMissing = false): Promise<string | undefined> {
     if (this.#kind === 'kv') return undefined;
     try {
-      const databaseHexKey = await this.#secretStoreKeyProvider!.getDatabaseHexKey(resourceId);
+      const databaseHexKey = createIfMissing
+        ? await this.#secretStoreKeyProvider!.getOrCreateDatabaseHexKey(resourceId)
+        : await this.#secretStoreKeyProvider!.getDatabaseHexKey(resourceId);
       if (!/^[0-9a-f]{64}$/.test(databaseHexKey)) throw new Error('Invalid secret-store database key.');
       return databaseHexKey;
     } catch (error) {
       if (error instanceof ActorResourceError && error.code === 'SECRET_STORE_KEY_UNAVAILABLE') throw error;
       throw new ActorResourceError(
         'SECRET_STORE_KEY_UNAVAILABLE',
-        'The installation secret-store key is unavailable or unsafe.',
+        'The secret-store database encryption key is unavailable or invalid.',
       );
     }
   }

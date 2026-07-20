@@ -6,7 +6,7 @@ import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceT
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import { ActorService } from '../src/ActorService';
 import { ActorResourceError } from '../src/resources/ActorResourceError';
-import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
+import { SecretStoreDatabaseKeyProvider } from '../src/resources/SecretStoreKeyProvider';
 
 describe('ActorService KV and secret management', () => {
   let rootDir = '';
@@ -27,7 +27,11 @@ describe('ActorService KV and secret management', () => {
       db,
       configPath,
       dataRoot,
-      secretStoreKeyProvider: testSecretStoreKeyProvider,
+      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: db.actorResourceEncryptionKey,
+        randomBytes: () => Buffer.alloc(32, 0x5c),
+        randomUUID: () => 'test-key-initial',
+      }),
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);
@@ -171,7 +175,11 @@ describe('ActorService KV and secret management', () => {
       db,
       configPath,
       dataRoot,
-      secretStoreKeyProvider: testSecretStoreKeyProvider,
+      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: db.actorResourceEncryptionKey,
+        randomBytes: () => Buffer.alloc(32, 0xff),
+        randomUUID: () => 'test-key-restart',
+      }),
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);
@@ -201,7 +209,10 @@ describe('ActorService KV and secret management', () => {
       db,
       configPath,
       dataRoot,
-      secretStoreKeyProvider: { getDatabaseHexKey: async () => '00'.repeat(32) },
+      secretStoreKeyProvider: {
+        getDatabaseHexKey: async () => '00'.repeat(32),
+        getOrCreateDatabaseHexKey: async () => '00'.repeat(32),
+      },
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);
@@ -225,18 +236,19 @@ describe('ActorService KV and secret management', () => {
       value: 'missing-key-startup-sentinel',
     });
     await service.stop();
+    await (await db.db.prepare(`
+      DELETE FROM actor_resource_encryption_keys
+      WHERE actor_resource_id = ?
+    `)).run(secrets.id);
     service = new ActorService({
       db,
       configPath,
       dataRoot,
-      secretStoreKeyProvider: {
-        async getDatabaseHexKey() {
-          throw new ActorResourceError(
-            'SECRET_STORE_KEY_UNAVAILABLE',
-            'The installation secret-store key is unavailable or unsafe.',
-          );
-        },
-      },
+      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: db.actorResourceEncryptionKey,
+        randomBytes: () => Buffer.alloc(32, 0xff),
+        randomUUID: () => 'replacement-key-must-not-be-created',
+      }),
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);
@@ -245,10 +257,13 @@ describe('ActorService KV and secret management', () => {
       status: 'error',
       last_error: {
         code: 'SECRET_STORE_KEY_UNAVAILABLE',
-        message: 'The installation secret-store key is unavailable or unsafe.',
+        message: 'The secret-store database encryption key is unavailable or invalid.',
       },
     });
     expect(JSON.stringify(await service.getResource(secrets.id))).not.toContain('missing-key-startup-sentinel');
+    await expect(db.actorResourceEncryptionKey.get({ resourceId: secrets.id })).resolves.toBeNull();
+    const keyCount = await (await db.db.prepare('SELECT COUNT(*) AS count FROM encryption_keys')).get();
+    expect(Number(keyCount?.count)).toBe(1);
   });
 
   test('marks only a missing ready physical resource as error without recreating it', async () => {
@@ -263,7 +278,11 @@ describe('ActorService KV and secret management', () => {
       db,
       configPath,
       dataRoot,
-      secretStoreKeyProvider: testSecretStoreKeyProvider,
+      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: db.actorResourceEncryptionKey,
+        randomBytes: () => Buffer.alloc(32, 0xff),
+        randomUUID: () => 'test-key-healthy-restart',
+      }),
       eventPublisherService: new EventPublisherService(),
     });
     await service.start({} as never);

@@ -103,9 +103,9 @@ Every conversation receives the same exact registry from connect through reconne
 
 Resources are host-global catalog entries of kind `kv`, `secretStore`, or `db`. Tool responses expose stable IDs and safe metadata, never provider handles, physical paths, native configuration, or secret plaintext.
 
-Secret-store Turso files use native AEGIS-256 page encryption. The host keeps one installation master key under the configuration root and derives a distinct database key from the immutable resource ID with HKDF-SHA-256. The key file and encrypted secret-store data must be backed up together; either half alone is unusable. This protects copied database/WAL files and data-only backups, not plaintext in memory or a host/account compromise.
+Secret-store Turso files use native AEGIS-256 page encryption. The main database keeps the actual independent database keys in a general-purpose `encryption_keys` table with no actor columns. A separate `actor_resource_encryption_keys` table links each secret resource to one key. The persistence interface atomically creates or reads that link but exposes no key listing or transport API.
 
-The configuration and data roots must remain separate, and the host fails secret-store operations closed if it cannot enforce owner-only key custody. The current Node composition intentionally disables secret stores on Windows until it has a current-user-only ACL implementation.
+This deliberately favors operational simplicity over local ciphertext/key separation. Anyone who can read both the main database and actor-resource files can recover the secrets. Encryption still protects an individual secret database/WAL copied without the main database and supports managed deployments where the control database lives on another server. A usable restore requires the main database and corresponding actor-resource data; plaintext in memory and a host/account compromise remain outside this protection.
 
 - `vc_resource_list` returns stable bounded cursor pages.
 - `vc_resource_inspect` returns KV/secret key metadata or bounded SQLite schema metadata. It returns no DB rows or secret values.

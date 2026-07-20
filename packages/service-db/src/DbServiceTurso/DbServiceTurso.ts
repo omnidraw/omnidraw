@@ -2,12 +2,13 @@ import type { IService, IStartableService, IStoppableService } from "@vibecanvas
 import path from "node:path";
 import * as fs from 'node:fs/promises';
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TEncryptionKey, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxActorResourceFindByNameKey, fxActorResourceGet, fxActorResourceList, fxActorResourceListBindingsForDefinition, fxActorResourceListBindingsForResource, fxActorResourceListDefinitionsReferencingResource } from "./fx.actor-resource";
 import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMembers } from "./fx.canvas";
 import { fxDbResourceApplyGet, fxDbResourceApplyInstanceResultListByApply, fxDbResourceApplyInstanceResultListByInstance, fxDbResourceApplyList, fxDbResourceDraftChangeList, fxDbResourceDraftGet, fxDbResourceDraftGetActive, fxDbResourceDraftList, fxDbResourceListAffectedInstances } from "./fx.db-resource";
+import { fxActorResourceEncryptionKeyGet } from "./fx.encryption-key";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { fxKeyValueGet } from "./fx.keyValue";
@@ -17,6 +18,7 @@ import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDe
 import { txActorResourceAuditNames, txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceReplaceBindings, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyInstanceResultUpsert, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
+import { txActorResourceEncryptionKeyGetOrCreate } from "./tx.encryption-key";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
 import { txFilesystemCreate } from "./tx.filesystem";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
@@ -67,6 +69,16 @@ interface IPublicMethods {
     add(args: TKeyValue): Promise<TKeyValue>;
     remove(args: { name: string }): Promise<void>;
     get(args: { name: string }): Promise<TKeyValue | null>;
+  };
+  actorResourceEncryptionKey: {
+    get(args: { resourceId: string }): Promise<TEncryptionKey | null>;
+    getOrCreate(args: {
+      resourceId: string;
+      keyId: string;
+      purpose: string;
+      algorithm: string;
+      keyHex: string;
+    }): Promise<TEncryptionKey>;
   };
   toolGroup: {
     listAll(): Promise<TToolGroup[]>;
@@ -171,6 +183,19 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     add: (args: TKeyValue) => txKeyValueAdd(this, args),
     remove: (args: { name: string }) => txKeyValueRemove(this, args),
     get: (args: { name: string }) => fxKeyValueGet(this, args),
+  };
+
+  actorResourceEncryptionKey = {
+    get: (args: { resourceId: string }) => fxActorResourceEncryptionKeyGet(this, args),
+    getOrCreate: (args: {
+      resourceId: string;
+      keyId: string;
+      purpose: string;
+      algorithm: string;
+      keyHex: string;
+    }) => this.#serializeActorWrite(() => (
+      txActorResourceEncryptionKeyGetOrCreate(this, args)
+    )),
   };
 
   actorResource = {

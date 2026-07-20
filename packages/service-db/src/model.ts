@@ -238,6 +238,13 @@ export type TKeyValue =
   | { name: string; type: "json"; value: TJson }
   | { name: string; type: "number"; value: number }
   | { name: string; type: "bool"; value: boolean };
+export type TEncryptionKey = {
+  id: string;
+  purpose: string;
+  algorithm: string;
+  key_hex: string;
+  created_at: string;
+};
 export type TTimestamp = z.infer<typeof ZTimestamp>;
 export type TBlob = z.infer<typeof ZBlob>;
 export type TSqlBoolean = z.infer<typeof ZSqlBoolean>;

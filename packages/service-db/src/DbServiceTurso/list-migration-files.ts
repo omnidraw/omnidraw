@@ -15,6 +15,7 @@ import path012 from "./migration-files/012-replace-db-resource-migrations.sql" w
 import path013 from "./migration-files/013-add-db-resource-restore-source.sql" with { type: "file" }
 import { AGENT_STORAGE_MIGRATION_NAME, AGENT_STORAGE_MIGRATION_VERSION, runAgentStorageMigration } from './migration-files/014-migrate-agent-storage';
 import path015 from "./migration-files/015-add-actor-resource-name-keys.sql" with { type: "file" }
+import path016 from "./migration-files/016-add-encryption-keys.sql" with { type: "file" }
 import type { TMigration } from './migration-types';
 
 export function listMigrationFiles(): TMigration[] {
@@ -40,5 +41,6 @@ export function listMigrationFiles(): TMigration[] {
       path: path015,
       legacyNames: ['014-add-actor-resource-name-keys.sql'],
     },
+    { type: 'sql', name: '016-add-encryption-keys.sql', path: path016 },
   ]
 }

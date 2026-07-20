@@ -89,12 +89,6 @@ async function txCmdUninstall(args: TRunUninstallArgs): Promise<void> {
   });
 
   printPlan(plan, dryRun);
-  if (
-    plan.removeTargets.some((target) => target.kind === 'config-dir')
-    && plan.removeTargets.some((target) => target.kind === 'data-dir')
-  ) {
-    console.log('[Uninstall] Full removal deletes the secret-store encryption key and encrypted databases; without a backup of both, secret access is permanently lost.');
-  }
 
   if (dryRun) {
     process.exit(0);
@@ -109,21 +103,8 @@ async function txCmdUninstall(args: TRunUninstallArgs): Promise<void> {
     }
   }
 
-  const dataTarget = plan.removeTargets.find((target) => target.kind === 'data-dir');
-  const configTarget = plan.removeTargets.find((target) => target.kind === 'config-dir');
-  const pairedBackupUnit = dataTarget !== undefined && configTarget !== undefined;
-  const removalPaths = pairedBackupUnit
-    ? [
-      dataTarget.path,
-      configTarget.path,
-      ...plan.removeTargets
-        .filter((target) => target !== dataTarget && target !== configTarget)
-        .map((target) => target.path),
-    ]
-    : plan.removeTargets.map((target) => target.path);
   const removal = txRemoveUninstallTargets({ existsSync, lstatSync, readdirSync, rmSync, rmdirSync }, {
-    paths: removalPaths,
-    stopOnFailure: pairedBackupUnit,
+    paths: plan.removeTargets.map((target) => target.path),
   });
   const emptyDirRemoval = txRemoveEmptyDirs({ existsSync, lstatSync, readdirSync, rmSync, rmdirSync }, {
     paths: [plan.installRoot],

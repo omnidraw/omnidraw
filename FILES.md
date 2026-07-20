@@ -746,7 +746,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
 | [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
-| [packages/service-actor/src/resources/SecretStoreKeyProvider.ts](packages/service-actor/src/resources/SecretStoreKeyProvider.ts) | Host-owned custody and per-resource derivation for secret-store database keys. |
+| [packages/service-actor/src/resources/SecretStoreKeyProvider.ts](packages/service-actor/src/resources/SecretStoreKeyProvider.ts) | Database-backed per-resource encryption-key custody for secret stores. |
 | [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) |  |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
@@ -860,6 +860,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.encryption-key.ts](packages/service-db/src/DbServiceTurso/fx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
@@ -880,6 +881,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts](packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts) |  |
 | [packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql) |  |
+| [packages/service-db/src/DbServiceTurso/migration-files/016-add-encryption-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/016-add-encryption-keys.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-types.ts](packages/service-db/src/DbServiceTurso/migration-types.ts) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
@@ -887,6 +889,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.actor.ts](packages/service-db/src/DbServiceTurso/tx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.canvas.ts](packages/service-db/src/DbServiceTurso/tx.canvas.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/tx.encryption-key.ts](packages/service-db/src/DbServiceTurso/tx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |

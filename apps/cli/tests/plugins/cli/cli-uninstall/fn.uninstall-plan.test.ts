@@ -80,36 +80,49 @@ describe('fnBuildUninstallPlan', () => {
     ]));
   });
 
-  test('never removes only one half of the secret-store key and data backup unit', () => {
-    for (const xdgPaths of [
-      {
+  test('evaluates configuration and data roots independently', () => {
+    const unsafeDataPlan = fnBuildUninstallPlan(portal, {
+      homedir: '/home/tester',
+      env: {},
+      execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
+      dbPath: '/projects/custom-data/vibecanvas.turso',
+      xdgPaths: {
         dataDirPath: '/projects/custom-data',
         configDirPath: '/home/tester/.config/vibecanvas',
         stateDirPath: '/home/tester/.local/state/vibecanvas',
         cacheDirPath: '/home/tester/.cache/vibecanvas',
       },
-      {
+    });
+
+    expect(unsafeDataPlan.removeTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'config-dir', path: '/home/tester/.config/vibecanvas' }),
+    ]));
+    expect(unsafeDataPlan.removeTargets.some((target) => target.kind === 'data-dir')).toBe(false);
+    expect(unsafeDataPlan.skippedTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'data-dir', path: '/projects/custom-data' }),
+      expect.objectContaining({ kind: 'database-file', path: '/projects/custom-data/vibecanvas.turso' }),
+    ]));
+
+    const unsafeConfigPlan = fnBuildUninstallPlan(portal, {
+      homedir: '/home/tester',
+      env: {},
+      execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
+      dbPath: '/home/tester/.local/share/vibecanvas/vibecanvas.turso',
+      xdgPaths: {
         dataDirPath: '/home/tester/.local/share/vibecanvas',
         configDirPath: '/projects/custom-config',
         stateDirPath: '/home/tester/.local/state/vibecanvas',
         cacheDirPath: '/home/tester/.cache/vibecanvas',
       },
-    ]) {
-      const plan = fnBuildUninstallPlan(portal, {
-        homedir: '/home/tester',
-        env: {},
-        execPath: '/home/tester/.vibecanvas/bin/vibecanvas',
-        dbPath: `${xdgPaths.dataDirPath}/vibecanvas.turso`,
-        xdgPaths,
-      });
+    });
 
-      expect(plan.removeTargets.some((target) => target.kind === 'config-dir')).toBe(false);
-      expect(plan.removeTargets.some((target) => target.kind === 'data-dir')).toBe(false);
-      expect(plan.skippedTargets).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          reason: 'configuration and data roots must be removed together',
-        }),
-      ]));
-    }
+    expect(unsafeConfigPlan.removeTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'data-dir', path: '/home/tester/.local/share/vibecanvas' }),
+      expect.objectContaining({ kind: 'database-file', path: '/home/tester/.local/share/vibecanvas/vibecanvas.turso' }),
+    ]));
+    expect(unsafeConfigPlan.removeTargets.some((target) => target.kind === 'config-dir')).toBe(false);
+    expect(unsafeConfigPlan.skippedTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'config-dir', path: '/projects/custom-config' }),
+    ]));
   });
 });

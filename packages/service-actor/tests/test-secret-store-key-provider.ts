@@ -9,4 +9,7 @@ export const testSecretStoreKeyProvider: ISecretStoreKeyProvider = {
   async getDatabaseHexKey(resourceId) {
     return testSecretStoreDatabaseHexKey(resourceId);
   },
+  async getOrCreateDatabaseHexKey(resourceId) {
+    return testSecretStoreDatabaseHexKey(resourceId);
+  },
 };
