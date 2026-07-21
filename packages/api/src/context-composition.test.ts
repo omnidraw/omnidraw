@@ -18,6 +18,13 @@ function unusedCapability(): never {
 }
 
 const fakeActorCapability = {
+  deleteDefinition: unusedCapability,
+  getVibecanvasJson: unusedCapability,
+  getWidgetCode: unusedCapability,
+  sendMessage: unusedCapability,
+} satisfies TApiContext['actor'];
+
+const fakeResourceCapability = {
   bindResource: unusedCapability,
   bulkDbRows: unusedCapability,
   changeDbDraft: unusedCapability,
@@ -27,7 +34,6 @@ const fakeActorCapability = {
   createResource: unusedCapability,
   dbResourceImpact: unusedCapability,
   deleteDbRow: unusedCapability,
-  deleteDefinition: unusedCapability,
   deleteResource: unusedCapability,
   deleteResourceDataEntry: unusedCapability,
   discardDbBackup: unusedCapability,
@@ -42,8 +48,6 @@ const fakeActorCapability = {
   getDbRow: unusedCapability,
   getDefinitionResourceStatus: unusedCapability,
   getResource: unusedCapability,
-  getVibecanvasJson: unusedCapability,
-  getWidgetCode: unusedCapability,
   inspectDbResource: unusedCapability,
   listDbApplies: unusedCapability,
   listDbDrafts: unusedCapability,
@@ -55,12 +59,14 @@ const fakeActorCapability = {
   previewDbBackupRestore: unusedCapability,
   renameResource: unusedCapability,
   restoreDbBackup: unusedCapability,
-  revealResourceSecret: unusedCapability,
-  sendMessage: unusedCapability,
   setResourceDataEntry: unusedCapability,
   unbindResource: unusedCapability,
   updateDbRow: unusedCapability,
-} satisfies TApiContext['actor'];
+} satisfies TApiContext['resource'];
+
+const fakeHumanResourceSecretCapability = {
+  revealSecret: unusedCapability,
+} satisfies TApiContext['humanResourceSecret'];
 
 const fakeAgentCapability = {
   abortLogin: unusedCapability,
@@ -150,7 +156,9 @@ const fakeContext = {
     subscribeNotificationRecords: async function* () {},
   },
   filesystem: fakeCapability<TApiContext['filesystem']>(),
+  humanResourceSecret: fakeHumanResourceSecretCapability,
   pty: fakeCapability<TApiContext['pty']>(),
+  resource: fakeResourceCapability,
 } satisfies TApiContext;
 
 describe('API context composition', () => {
@@ -168,6 +176,7 @@ describe('API context composition', () => {
       'filesystem',
       'notification',
       'pty',
+      'resource',
       'tool',
     ]);
   });

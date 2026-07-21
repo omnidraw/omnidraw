@@ -1,5 +1,15 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import type { TActorResourceCall, TActorResourceDataMutationResult, TActorResourceDataPage, TActorResourceDirectBinding, TDbCellValue, TDbInspection, TDbLiveSqlResult } from '@vibecanvas/service-actor/resources/resource-types';
+import type {
+  TDbCellValue,
+  TDbInspection,
+  TDbLiveSqlResult,
+} from '@vibecanvas/resource-runtime';
+import type {
+  TActorResourceCall,
+  TActorResourceDataMutationResult,
+  TActorResourceDataPage,
+  TActorResourceDirectBinding,
+} from '@vibecanvas/service-actor/resources/resource-types';
 import type { TActorResource, TActorResourceBinding, TDbResourceApplyRun, TJson } from '@vibecanvas/service-db/model';
 
 export type TValidationResult = {

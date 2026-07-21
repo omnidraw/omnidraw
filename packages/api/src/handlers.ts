@@ -6,6 +6,7 @@ import { fileHandlers } from './file/handlers';
 import { filesystemHandlers } from './filesystem/handlers';
 import { notificationHandlers } from './notification/handlers';
 import { ptyHandlers } from './pty/handlers';
+import { resourceHandlers } from './resource/handlers';
 import { toolHandlers } from './tool/handlers';
 
 const handlers = {
@@ -17,6 +18,7 @@ const handlers = {
   filesystem: filesystemHandlers,
   notification: notificationHandlers,
   pty: ptyHandlers,
+  resource: resourceHandlers,
   tool: toolHandlers,
 };
 
@@ -30,5 +32,6 @@ export {
   handlers,
   notificationHandlers,
   ptyHandlers,
+  resourceHandlers,
   toolHandlers,
 };

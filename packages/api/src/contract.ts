@@ -7,6 +7,7 @@ import { fileContract } from './file/contract';
 import { filesystemContract } from './filesystem/contract';
 import { notificationContract } from './notification/contract';
 import { ptyContract } from './pty/contract';
+import { resourceContract } from './resource/contract';
 import { toolContract } from './tool/contract';
 
 const contract = oc.router({
@@ -18,6 +19,7 @@ const contract = oc.router({
   filesystem: filesystemContract,
   notification: notificationContract,
   pty: ptyContract,
+  resource: resourceContract,
   tool: toolContract,
 });
 
@@ -36,5 +38,6 @@ export {
   filesystemContract,
   notificationContract,
   ptyContract,
+  resourceContract,
   toolContract,
 };

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { ActorService } from '../src/ActorService';
+import { ActorService, type IActorResourceService } from '../src/ActorService';
 import { ActorResourceError } from '../src/resources/ActorResourceError';
 import { SecretStoreDatabaseKeyProvider } from '../src/resources/SecretStoreKeyProvider';
 import { createTestCrypto, testUuid } from './test-uuid';
@@ -47,6 +47,28 @@ describe('ActorService KV and secret management', () => {
     await service.stop().catch(() => undefined);
     await db.db.close().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
+  });
+
+  test('rejects a second legacy ActorService owner for the same resource root', async () => {
+    const competing = new ActorService({
+      db,
+      crypto: testCrypto,
+      configPath,
+      dataRoot,
+      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
+        encryptionKeys: db.actorResourceEncryptionKey,
+        randomBytes: () => Buffer.alloc(32, 0x6d),
+        randomUUID: () => testUuid('competing-test-key'),
+      }),
+      eventPublisherService: createTestTenantEvents(),
+    });
+    try {
+      await expect(competing.start({} as never)).rejects.toMatchObject({
+        code: 'RESOURCE_OWNER_CONFLICT',
+      });
+    } finally {
+      await competing.stop().catch(() => undefined);
+    }
   });
 
   test('uses expected revisions for KV writes and deletes', async () => {
@@ -113,59 +135,16 @@ describe('ActorService KV and secret management', () => {
     await expect(invalid).rejects.toMatchObject({ code: 'SECRET_VALUE_INVALID' });
   });
 
-  test('reveals one ready secret through the dedicated operator-management method', async () => {
-    const sentinel = 'operator-only-sentinel-secret';
-    const resource = await service.createResource({ kind: 'secretStore', name: 'Reveal secrets' });
-    await service.setResourceDataEntry({
-      resourceId: resource.id,
-      key: 'api-token',
-      expectedRevision: null,
-      value: sentinel,
-    });
+  test('does not expose plaintext secret reveal through actor surfaces', () => {
+    type TActorServiceHasNoReveal = 'revealResourceSecret' extends keyof ActorService ? false : true;
+    type TActorResourceServiceHasNoReveal = 'revealResourceSecret' extends keyof IActorResourceService ? false : true;
+    const actorServiceHasNoReveal: TActorServiceHasNoReveal = true;
+    const actorResourceServiceHasNoReveal: TActorResourceServiceHasNoReveal = true;
 
-    await expect(service.revealResourceSecret({ resourceId: resource.id, name: 'api-token' })).resolves.toEqual({
-      kind: 'secretStore',
-      name: 'api-token',
-      value: sentinel,
-      revision: 1,
-    });
-    await service.setResourceDataEntry({
-      resourceId: resource.id,
-      key: 'api-token',
-      expectedRevision: 1,
-      value: 'rotated-operator-only-secret',
-    });
-    await expect(service.revealResourceSecret({ resourceId: resource.id, name: 'api-token' })).resolves.toEqual({
-      kind: 'secretStore',
-      name: 'api-token',
-      value: 'rotated-operator-only-secret',
-      revision: 2,
-    });
-
-    await expect(service.revealResourceSecret({ resourceId: resource.id, name: 'missing' }))
-      .rejects.toMatchObject({ code: 'SECRET_NOT_FOUND', message: 'Secret was not found.' });
-    const kv = await service.createResource({ kind: 'kv', name: 'Wrong reveal kind' });
-    await expect(service.revealResourceSecret({ resourceId: kv.id, name: 'api-token' }))
-      .rejects.toMatchObject({ code: 'RESOURCE_KIND_MISMATCH' });
-    await expect(service.revealResourceSecret({ resourceId: 'missing-resource', name: 'api-token' }))
-      .rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND' });
-  });
-
-  test('returns a value-free stable error when a secret store is unavailable', async () => {
-    const sentinel = 'native-decryption-detail-must-not-leak';
-    const resource = await service.createResource({ kind: 'secretStore', name: 'Unavailable secrets' });
-    await db.actorResource.updateProviderState({
-      id: resource.id,
-      status: 'error',
-      lastError: { code: 'SECRET_STORE_DECRYPTION_FAILED', message: sentinel },
-    });
-
-    const reveal = service.revealResourceSecret({ resourceId: resource.id, name: 'api-token' });
-    await expect(reveal).rejects.toMatchObject({
-      code: 'SECRET_STORE_UNAVAILABLE',
-      message: 'Secret-store resource is unavailable.',
-    });
-    await expect(reveal.catch((error) => JSON.stringify(error))).resolves.not.toContain(sentinel);
+    expect(actorServiceHasNoReveal).toBe(true);
+    expect(actorResourceServiceHasNoReveal).toBe(true);
+    expect('revealResourceSecret' in service).toBe(false);
+    expect('revealSecret' in service).toBe(false);
   });
 
   test('persists isolated KV and secret files across service reconstruction', async () => {

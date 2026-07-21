@@ -1,110 +1,110 @@
 import { ORPCError } from '@orpc/contract';
-import { baseActorsOs } from '../actor/orpc';
-import { withActorResourceApiError } from './api.resource-error';
+import { withResourceApiError } from './api.resource-error';
+import { baseResourceOs } from './orpc';
 
-export const apiDbResourceImpact = baseActorsOs.dbResources.impact.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.dbResourceImpact(input.resourceId))
+export const apiDbResourceImpact = baseResourceOs.dbResources.impact.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.dbResourceImpact(context.tenant, input.resourceId))
 ));
 
-export const apiInspectDbResource = baseActorsOs.dbResources.inspect.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.inspectDbResource(input))
+export const apiInspectDbResource = baseResourceOs.dbResources.inspect.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.inspectDbResource(context.tenant, input))
 ));
 
-export const apiExecuteDbLiveSql = baseActorsOs.dbResources.executeSql.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.executeDbLiveSql(input))
+export const apiExecuteDbLiveSql = baseResourceOs.dbResources.executeSql.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.executeDbLiveSql(context.tenant, input))
 ));
 
-export const apiListDbRows = baseActorsOs.dbRows.list.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.listDbRows(input))
+export const apiListDbRows = baseResourceOs.dbRows.list.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.listDbRows(context.tenant, input))
 ));
 
-export const apiGetDbRow = baseActorsOs.dbRows.get.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.getDbRow(input))
+export const apiGetDbRow = baseResourceOs.dbRows.get.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.getDbRow(context.tenant, input))
 ));
 
-export const apiCreateDbRow = baseActorsOs.dbRows.create.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.createDbRow(input))
+export const apiCreateDbRow = baseResourceOs.dbRows.create.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.createDbRow(context.tenant, input))
 ));
 
-export const apiUpdateDbRow = baseActorsOs.dbRows.update.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.updateDbRow(input))
+export const apiUpdateDbRow = baseResourceOs.dbRows.update.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.updateDbRow(context.tenant, input))
 ));
 
-export const apiDeleteDbRow = baseActorsOs.dbRows.delete.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.deleteDbRow(input))
+export const apiDeleteDbRow = baseResourceOs.dbRows.delete.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.deleteDbRow(context.tenant, input))
 ));
 
-export const apiBulkDbRows = baseActorsOs.dbRows.bulk.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.bulkDbRows(input))
+export const apiBulkDbRows = baseResourceOs.dbRows.bulk.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.bulkDbRows(context.tenant, input))
 ));
 
-export const apiCreateDbDraft = baseActorsOs.dbDrafts.create.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.createDbDraft(input.resourceId, input.name))
+export const apiCreateDbDraft = baseResourceOs.dbDrafts.create.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.createDbDraft(context.tenant, input.resourceId, input.name))
 ));
 
-export const apiListDbDrafts = baseActorsOs.dbDrafts.list.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.listDbDrafts(input))
+export const apiListDbDrafts = baseResourceOs.dbDrafts.list.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.listDbDrafts(context.tenant, input))
 ));
 
-export const apiGetDbDraft = baseActorsOs.dbDrafts.get.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.getDbDraft(input.draftId))
+export const apiGetDbDraft = baseResourceOs.dbDrafts.get.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.getDbDraft(context.tenant, input.draftId))
 ));
 
-export const apiGetActiveDbDraft = baseActorsOs.dbDrafts.active.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.getActiveDbDraft(input.resourceId))
+export const apiGetActiveDbDraft = baseResourceOs.dbDrafts.active.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.getActiveDbDraft(context.tenant, input.resourceId))
 ));
 
-export const apiInspectDbDraft = baseActorsOs.dbDrafts.inspect.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.inspectDbResource({ ...input, target: 'draft' }))
+export const apiInspectDbDraft = baseResourceOs.dbDrafts.inspect.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.inspectDbResource(context.tenant, { ...input, target: 'draft' }))
 ));
 
-export const apiChangeDbDraft = baseActorsOs.dbDrafts.change.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.changeDbDraft(input.draftId, input.operation))
+export const apiChangeDbDraft = baseResourceOs.dbDrafts.change.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.changeDbDraft(context.tenant, input.draftId, input.operation))
 ));
 
-export const apiExecuteDbDraftSql = baseActorsOs.dbDrafts.executeSql.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.executeDbDraftSql(input.draftId, input.sql))
+export const apiExecuteDbDraftSql = baseResourceOs.dbDrafts.executeSql.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.executeDbDraftSql(context.tenant, input.draftId, input.sql))
 ));
 
-export const apiDiscardDbDraft = baseActorsOs.dbDrafts.discard.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.discardDbDraft(input.draftId))
+export const apiDiscardDbDraft = baseResourceOs.dbDrafts.discard.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.discardDbDraft(context.tenant, input.draftId))
 ));
 
-export const apiPreviewDbApply = baseActorsOs.dbApplies.preview.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.previewDbApply(input.draftId))
+export const apiPreviewDbApply = baseResourceOs.dbApplies.preview.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.previewDbApply(context.tenant, input.draftId))
 ));
 
-export const apiConfirmDbApply = baseActorsOs.dbApplies.confirm.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.confirmDbApply(input.draftId))
+export const apiConfirmDbApply = baseResourceOs.dbApplies.confirm.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.confirmDbApply(context.tenant, input.draftId))
 ));
 
-export const apiGetDbApply = baseActorsOs.dbApplies.get.handler(async ({ input, context }) => {
-  const result = await withActorResourceApiError(() => context.actor.getDbApply(input.applyId));
+export const apiGetDbApply = baseResourceOs.dbApplies.get.handler(async ({ input, context }) => {
+  const result = await withResourceApiError(() => context.resource.getDbApply(context.tenant, input.applyId));
   if (!result) throw new ORPCError('NOT_FOUND');
   return result;
 });
 
-export const apiListDbApplies = baseActorsOs.dbApplies.list.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.listDbApplies(input))
+export const apiListDbApplies = baseResourceOs.dbApplies.list.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.listDbApplies(context.tenant, input))
 ));
 
-export const apiGetDbBackup = baseActorsOs.dbBackups.get.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.getDbBackup(input.resourceId))
+export const apiGetDbBackup = baseResourceOs.dbBackups.get.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.getDbBackup(context.tenant, input.resourceId))
 ));
 
-export const apiDiscardDbBackup = baseActorsOs.dbBackups.discard.handler(async ({ input, context }) => {
-  await withActorResourceApiError(() => context.actor.discardDbBackup(input.resourceId, input.applyId));
+export const apiDiscardDbBackup = baseResourceOs.dbBackups.discard.handler(async ({ input, context }) => {
+  await withResourceApiError(() => context.resource.discardDbBackup(context.tenant, input.resourceId, input.applyId));
   return { discarded: true };
 });
 
-export const apiPreviewDbBackupRestore = baseActorsOs.dbBackups.previewRestore.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.previewDbBackupRestore(input.resourceId, input.applyId))
+export const apiPreviewDbBackupRestore = baseResourceOs.dbBackups.previewRestore.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.previewDbBackupRestore(context.tenant, input.resourceId, input.applyId))
 ));
 
-export const apiRestoreDbBackup = baseActorsOs.dbBackups.restore.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.restoreDbBackup(input.resourceId, input.applyId))
+export const apiRestoreDbBackup = baseResourceOs.dbBackups.restore.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.restoreDbBackup(context.tenant, input.resourceId, input.applyId))
 ));
 
-export const apiGetDbRestoreStatus = baseActorsOs.dbBackups.restoreStatus.handler(({ input, context }) => (
-  withActorResourceApiError(() => context.actor.getDbRestoreStatus(input.restoreId))
+export const apiGetDbRestoreStatus = baseResourceOs.dbBackups.restoreStatus.handler(({ input, context }) => (
+  withResourceApiError(() => context.resource.getDbRestoreStatus(context.tenant, input.restoreId))
 ));

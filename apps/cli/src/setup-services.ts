@@ -1,9 +1,10 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
-import { ActorService, SecretStoreDatabaseKeyProvider } from '@vibecanvas/service-actor';
+import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { AgentService } from '@vibecanvas/service-agent';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { FilesystemServiceNode } from '@vibecanvas/service-filesystem/FilesystemServiceNode';
@@ -12,8 +13,20 @@ import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'path';
+import { fnScopedKey } from '@vibecanvas/tenant-core';
+import type {
+  IHumanResourceSecretService,
+  TResourceApiCapability,
+} from '@vibecanvas/api/resource/types';
 import type { ICliConfig } from './config';
+import { ResourceService } from './services/ResourceService';
+import {
+  createResourceServiceCapabilities,
+  ResourceServicePool,
+} from './services/ResourceServicePool';
+import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorBridge';
 import { TenantServicePool } from './services/TenantServicePool';
+import { TenantResourceService } from './services/TenantResourceService';
 
 export interface IRuntimeServices {
   automerge: IAutomergeService;
@@ -21,6 +34,9 @@ export interface IRuntimeServices {
   eventPublisher: IEventPublisherService;
   filesystem: IFilesystemService;
   pty: IPtyService;
+  resourceOwner: ResourceServicePool;
+  resource: TResourceApiCapability;
+  humanResourceSecret: IHumanResourceSecretService;
   actor: TenantServicePool<ActorService>;
   agent: TenantServicePool<AgentService>;
 }
@@ -57,26 +73,49 @@ function setupServices(config: ICliConfig) {
   services.provide('filesystem', 30, filesystemService);
   services.provide('pty', 40, ptyService);
 
-  const actorService = new TenantServicePool<ActorService>('actor-service-pool', {
+  const resourceBridgeKey = (tenant: Parameters<DbServiceTurso['forTenant']>[0]) => fnScopedKey(
+    'resource-store',
+    [tenant.orgId, tenant.cellId, String(tenant.placementEpoch)],
+  );
+  const resourceUseBridges = new Map<string, ResourceUseCoordinatorBridge>();
+  let actorService: TenantServicePool<ActorService>;
+  const resourceService = new ResourceServicePool({
+    create: async (tenant) => {
+      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
+      const resourcesRoot = join(organizationRoot, 'resources');
+      await mkdir(resourcesRoot, { recursive: true });
+      const useCoordinator = new ResourceUseCoordinatorBridge();
+      resourceUseBridges.set(resourceBridgeKey(tenant), useCoordinator);
+      return new ResourceService({
+        tenant,
+        db: dbService.forTenant(tenant),
+        controlStore: new ResourceControlStoreTurso(dbService.db),
+        dataRoot: resourcesRoot,
+        useCoordinator,
+        resolveConsumer: () => actorService.forTenant(tenant),
+      });
+    },
+  });
+  const resourceCapabilities = createResourceServiceCapabilities(resourceService);
+  actorService = new TenantServicePool<ActorService>('actor-service-pool', {
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
       const artifactsRoot = join(organizationRoot, 'artifacts');
-      const resourcesRoot = join(organizationRoot, 'resources');
-      await Promise.all([
-        mkdir(artifactsRoot, { recursive: true }),
-        mkdir(resourcesRoot, { recursive: true }),
-      ]);
+      await mkdir(artifactsRoot, { recursive: true });
       const tenantDb = dbService.forTenant(tenant);
-      const secretStoreKeyProvider = new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: tenantDb.actorResourceEncryptionKey,
-      });
-      return new ActorService({
+      const sharedResources = new TenantResourceService(
+        await resourceService.forTenant(tenant),
+        tenant,
+      );
+      const service = new ActorService({
         db: tenantDb,
         configPath: artifactsRoot,
-        dataRoot: resourcesRoot,
-        secretStoreKeyProvider,
+        resourceService: sharedResources,
         eventPublisherService: eventPublisher.forTenant(tenant),
       });
+      const detachUseCoordinator = resourceUseBridges.get(resourceBridgeKey(tenant))?.attach(service);
+      if (detachUseCoordinator) service.addStopCleanup(detachUseCoordinator);
+      return service;
     },
   });
   const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
@@ -155,10 +194,21 @@ function setupServices(config: ICliConfig) {
   },
   );
   services.provide('automerge', 50, automergeService);
+  services.provide('resourceOwner', 58, resourceService);
+  services.provide('resource', 59, resourceCapabilities.resource);
+  services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);
   services.provide('actor', 60, actorService);
   services.provide('agent', 62, agentService);
 
-  return { services, automergeService, dbService, eventPublisher, filesystemService, ptyService };
+  return {
+    services,
+    automergeService,
+    dbService,
+    eventPublisher,
+    filesystemService,
+    ptyService,
+    resourceService,
+  };
 }
 
 export { setupServices };

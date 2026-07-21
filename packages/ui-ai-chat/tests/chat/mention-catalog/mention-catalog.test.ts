@@ -10,7 +10,7 @@ describe("shared mention catalog", () => {
     const listWidgets = vi.fn(async () => [undefined, catalog] as const)
     const api = {
       api: {
-        actors: { resources: { list: listResources } },
+        resource: { resources: { list: listResources } },
         agent: { widgets: { catalog: listWidgets } },
       },
     } as never

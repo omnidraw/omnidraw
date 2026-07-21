@@ -16,6 +16,7 @@
     "@orpc/server": "catalog:",
     "@tursodatabase/database": "catalog:",
     "@vibecanvas/api": "workspace:*",
+    "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/service-automerge": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-agent": "workspace:*",

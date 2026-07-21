@@ -1,12 +1,12 @@
 import { ORPCError } from '@orpc/contract';
-import { toSafeActorResourceError } from '@vibecanvas/service-actor/resources/ActorResourceError';
+import { toSafeResourceError } from '@vibecanvas/resource-runtime';
 
-export async function withActorResourceApiError<T>(operation: () => T): Promise<Awaited<T>> {
+export async function withResourceApiError<T>(operation: () => T): Promise<Awaited<T>> {
   try {
     return await operation();
   } catch (error) {
     if (error instanceof ORPCError) throw error;
-    const safe = toSafeActorResourceError(error);
+    const safe = toSafeResourceError(error);
     throw new ORPCError('ACTOR_RESOURCE_ERROR', {
       message: safe.message,
       data: {
@@ -16,3 +16,5 @@ export async function withActorResourceApiError<T>(operation: () => T): Promise<
     });
   }
 }
+
+export const withActorResourceApiError = withResourceApiError;

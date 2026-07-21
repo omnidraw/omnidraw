@@ -58,6 +58,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/check-update.ts](apps/cli/src/plugins/server/check-update.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
+| [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
+| [apps/cli/src/services/LazyTenantServiceCapability.ts](apps/cli/src/services/LazyTenantServiceCapability.ts) | Builds a method-only capability whose tenant service is resolved on first use. |
+| [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
+| [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
+| [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
+| [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
+| [apps/cli/src/services/TenantResourceService.ts](apps/cli/src/services/TenantResourceService.ts) |  |
 | [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
@@ -315,7 +322,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/resource/api.db-resources.ts](packages/api/src/resource/api.db-resources.ts) |  |
 | [packages/api/src/resource/api.resource-error.ts](packages/api/src/resource/api.resource-error.ts) |  |
 | [packages/api/src/resource/api.resources.ts](packages/api/src/resource/api.resources.ts) |  |
+| [packages/api/src/resource/contract.ts](packages/api/src/resource/contract.ts) |  |
+| [packages/api/src/resource/handlers.ts](packages/api/src/resource/handlers.ts) |  |
 | [packages/api/src/resource/index.ts](packages/api/src/resource/index.ts) |  |
+| [packages/api/src/resource/orpc.ts](packages/api/src/resource/orpc.ts) |  |
+| [packages/api/src/resource/types.ts](packages/api/src/resource/types.ts) |  |
 | [packages/api/src/router.ts](packages/api/src/router.ts) |  |
 | [packages/api/src/tool/api.create-tool-group.ts](packages/api/src/tool/api.create-tool-group.ts) |  |
 | [packages/api/src/tool/api.get-tool-group.ts](packages/api/src/tool/api.get-tool-group.ts) |  |
@@ -584,10 +595,28 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/resource-runtime/package.json](packages/resource-runtime/package.json) |  |
 | [packages/resource-runtime/src/core/fn.resource-access.ts](packages/resource-runtime/src/core/fn.resource-access.ts) | Evaluates logical resource requirements and bindings without provider state. |
+| [packages/resource-runtime/src/core/fn.resource-lifecycle.ts](packages/resource-runtime/src/core/fn.resource-lifecycle.ts) | Defines deterministic resource catalog lifecycle transitions. |
 | [packages/resource-runtime/src/core/fn.write-capability.ts](packages/resource-runtime/src/core/fn.write-capability.ts) | Matches decoded resource write-capability claims to a fenced operation. |
-| [packages/resource-runtime/src/index.ts](packages/resource-runtime/src/index.ts) | Public logical resource runtime contract surface. |
-| [packages/resource-runtime/src/interface.ts](packages/resource-runtime/src/interface.ts) | Public resource gateway, provider, binding, and active-use capabilities. |
-| [packages/resource-runtime/src/types.ts](packages/resource-runtime/src/types.ts) | Logical resource contracts shared by hosts, gateways, and providers. |
+| [packages/resource-runtime/src/index.ts](packages/resource-runtime/src/index.ts) | Public actor-independent resource runtime contract surface. |
+| [packages/resource-runtime/src/interface.ts](packages/resource-runtime/src/interface.ts) | Public resource gateway, Resource Store, provider, management, and control-store SPIs. |
+| [packages/resource-runtime/src/local/DbResource.ts](packages/resource-runtime/src/local/DbResource.ts) |  |
+| [packages/resource-runtime/src/local/DbResourceCoordinator.ts](packages/resource-runtime/src/local/DbResourceCoordinator.ts) |  |
+| [packages/resource-runtime/src/local/fn.resource-data.ts](packages/resource-runtime/src/local/fn.resource-data.ts) |  |
+| [packages/resource-runtime/src/local/fn.resource-key-value.ts](packages/resource-runtime/src/local/fn.resource-key-value.ts) | Pure identity, JSON, pagination, and row helpers for physical resource key-value files. |
+| [packages/resource-runtime/src/local/fn.resource-manager-gateway.ts](packages/resource-runtime/src/local/fn.resource-manager-gateway.ts) | Pure conversion from the legacy-neutral manager model to public gateway contracts. |
+| [packages/resource-runtime/src/local/index.ts](packages/resource-runtime/src/local/index.ts) | Node-local Resource Store implementation boundary. |
+| [packages/resource-runtime/src/local/KvResource.ts](packages/resource-runtime/src/local/KvResource.ts) |  |
+| [packages/resource-runtime/src/local/ResourceKeyValuePersistence.ts](packages/resource-runtime/src/local/ResourceKeyValuePersistence.ts) | Neutral contracts for independently persisted KV and secret-store entries. |
+| [packages/resource-runtime/src/local/ResourceKeyValueStore.ts](packages/resource-runtime/src/local/ResourceKeyValueStore.ts) | Host-owned bounded Turso file persistence for KV and secret-store resources. |
+| [packages/resource-runtime/src/local/ResourceManager.ts](packages/resource-runtime/src/local/ResourceManager.ts) | Local resource catalog, gateway, lifecycle, and consumer-use coordination. |
+| [packages/resource-runtime/src/local/ResourceManagerGateway.ts](packages/resource-runtime/src/local/ResourceManagerGateway.ts) | Compatibility bridge from legacy-neutral manager calls into the canonical gateway/store path. |
+| [packages/resource-runtime/src/local/ResourceOwnerLock.ts](packages/resource-runtime/src/local/ResourceOwnerLock.ts) | Cross-process ownership fence for one local Resource Store root. |
+| [packages/resource-runtime/src/local/ResourceProviderTypes.ts](packages/resource-runtime/src/local/ResourceProviderTypes.ts) | Structural local-provider contracts independent of consumer and transport packages. |
+| [packages/resource-runtime/src/local/ResourceStoreService.ts](packages/resource-runtime/src/local/ResourceStoreService.ts) | Single-owner local Resource Store and location-transparent gateway. |
+| [packages/resource-runtime/src/local/SecretStoreKeyProvider.ts](packages/resource-runtime/src/local/SecretStoreKeyProvider.ts) | Database-backed per-resource encryption-key custody for secret stores. |
+| [packages/resource-runtime/src/local/SecretStoreResource.ts](packages/resource-runtime/src/local/SecretStoreResource.ts) |  |
+| [packages/resource-runtime/src/ResourceError.ts](packages/resource-runtime/src/ResourceError.ts) | Stable resource-domain errors and safe serialization at transport boundaries. |
+| [packages/resource-runtime/src/types.ts](packages/resource-runtime/src/types.ts) | Actor-independent resource catalog, capability, data, and lifecycle types. |
 | [packages/resource-runtime/tsconfig.json](packages/resource-runtime/tsconfig.json) |  |
 
 ## packages/runtime
@@ -650,18 +679,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-actor/src/fn.actor-runtime.ts](packages/service-actor/src/fn.actor-runtime.ts) |  |
 | [packages/service-actor/src/icp-client.ts](packages/service-actor/src/icp-client.ts) | Used to inject for actor code run in new process to communicate with parent. |
 | [packages/service-actor/src/index.ts](packages/service-actor/src/index.ts) |  |
-| [packages/service-actor/src/resources/ActorResourceError.ts](packages/service-actor/src/resources/ActorResourceError.ts) |  |
-| [packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts](packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts) | Actor-local contracts for independently persisted KV and secret-store entries. |
-| [packages/service-actor/src/resources/ActorResourceKeyValueStore.ts](packages/service-actor/src/resources/ActorResourceKeyValueStore.ts) | Host-owned bounded Turso file persistence for KV and secret-store resources. |
-| [packages/service-actor/src/resources/ActorResourceManager.ts](packages/service-actor/src/resources/ActorResourceManager.ts) |  |
-| [packages/service-actor/src/resources/DbResource.ts](packages/service-actor/src/resources/DbResource.ts) |  |
-| [packages/service-actor/src/resources/DbResourceCoordinator.ts](packages/service-actor/src/resources/DbResourceCoordinator.ts) |  |
-| [packages/service-actor/src/resources/fn.actor-resource-key-value.ts](packages/service-actor/src/resources/fn.actor-resource-key-value.ts) | Pure identity, JSON, pagination, and row helpers for physical actor key-value files. |
-| [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) |  |
-| [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) |  |
+| [packages/service-actor/src/resources/ActorResourceError.ts](packages/service-actor/src/resources/ActorResourceError.ts) | Legacy actor-resource error aliases. New code imports the neutral resource runtime. |
+| [packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts](packages/service-actor/src/resources/ActorResourceKeyValuePersistence.ts) | Legacy actor-resource aliases for neutral KV and secret-store persistence contracts. |
+| [packages/service-actor/src/resources/ActorResourceKeyValueStore.ts](packages/service-actor/src/resources/ActorResourceKeyValueStore.ts) | Legacy actor-resource adapter that injects the host Turso database implementation. |
+| [packages/service-actor/src/resources/ActorResourceManager.ts](packages/service-actor/src/resources/ActorResourceManager.ts) | Legacy actor compatibility adapter for the neutral local ResourceManager. |
+| [packages/service-actor/src/resources/DbResource.ts](packages/service-actor/src/resources/DbResource.ts) | Legacy actor adapter for the neutral local DbResource provider. |
+| [packages/service-actor/src/resources/DbResourceCoordinator.ts](packages/service-actor/src/resources/DbResourceCoordinator.ts) | Compatibility composition for the actor-independent DbResource coordinator. |
+| [packages/service-actor/src/resources/fn.actor-resource-key-value.ts](packages/service-actor/src/resources/fn.actor-resource-key-value.ts) | Legacy actor-resource aliases for neutral key-value functions. |
+| [packages/service-actor/src/resources/fn.resource-data.ts](packages/service-actor/src/resources/fn.resource-data.ts) | Legacy actor-resource aliases for neutral resource-data projection functions. |
+| [packages/service-actor/src/resources/KvResource.ts](packages/service-actor/src/resources/KvResource.ts) | Legacy export for the neutral local KV provider. |
 | [packages/service-actor/src/resources/resource-types.ts](packages/service-actor/src/resources/resource-types.ts) |  |
-| [packages/service-actor/src/resources/SecretStoreKeyProvider.ts](packages/service-actor/src/resources/SecretStoreKeyProvider.ts) | Database-backed per-resource encryption-key custody for secret stores. |
-| [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) |  |
+| [packages/service-actor/src/resources/SecretStoreKeyProvider.ts](packages/service-actor/src/resources/SecretStoreKeyProvider.ts) | Legacy actor-resource aliases for neutral secret-store key custody. |
+| [packages/service-actor/src/resources/SecretStoreResource.ts](packages/service-actor/src/resources/SecretStoreResource.ts) | Legacy export for the neutral local secret-store provider. |
 | [packages/service-actor/tsconfig.json](packages/service-actor/tsconfig.json) |  |
 
 ## packages/service-agent
@@ -805,6 +834,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps the raw baseline SQL asset on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
+| [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
+| [packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts](packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts) |  |
 | [packages/service-db/src/schema/expected-schema.ts](packages/service-db/src/schema/expected-schema.ts) |  |
 | [packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts](packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
@@ -1055,6 +1086,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
 | [scripts/fixtures/managed-architecture-baseline.v1.json](scripts/fixtures/managed-architecture-baseline.v1.json) |  |
+| [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
 | [scripts/managed-architecture-baseline-fixture.ts](scripts/managed-architecture-baseline-fixture.ts) | Deterministic M0 fixture shared by the baseline harness and its contract test. |
@@ -1068,4 +1100,5 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable M0 gate for renderer, widget-host, collaboration, and actor compatibility behavior. |
 | [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
+| [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the actor-independent, single-owner resource runtime. |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

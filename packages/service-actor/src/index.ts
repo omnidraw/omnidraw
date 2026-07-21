@@ -1,4 +1,8 @@
-export { ActorService, type IActorServiceConfig } from './ActorService';
+export {
+  ActorService,
+  type IActorResourceService,
+  type IActorServiceConfig,
+} from './ActorService';
 export * from './resources/ActorResourceError';
 export * from './resources/ActorResourceManager';
 export * from './resources/KvResource';

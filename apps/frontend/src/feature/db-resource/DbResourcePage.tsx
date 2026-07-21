@@ -100,7 +100,7 @@ type TConfirmState = "resource" | "draft" | "backup" | "row" | "bulk" | "structu
 
 export type TDbResourcePageProps = { resourceId: string };
 
-const API = orpcWebsocketService.apiService.api.actors as unknown as TDbResourceApi;
+const API = orpcWebsocketService.apiService.api.resource as unknown as TDbResourceApi;
 const portal: TDbApiPortal = { api: API };
 const TAB_VALUES: TWorkbenchTab[] = ["overview", "schema", "data", "sql"];
 

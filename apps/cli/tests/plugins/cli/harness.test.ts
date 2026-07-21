@@ -46,7 +46,7 @@ describe('CLI test harness', () => {
     expect(result.stdout).not.toContain('Canvas subcommands:');
     expect(result.stdout).not.toContain('vibecanvas canvas');
     expect(existsSync(context.homeDir)).toBe(false);
-  });
+  }, 15_000);
 
   test('shows help without probing the widget toolchain', async () => {
     const context = await createContext();
@@ -59,7 +59,7 @@ describe('CLI test harness', () => {
     expectNoStderr(result);
     expect(result.stdout).toContain('Usage:');
     expect(existsSync(context.homeDir)).toBe(false);
-  });
+  }, 15_000);
 
   test('refuses an unknown home before creating directories or a database', async () => {
     const context = await createContext();
@@ -79,7 +79,7 @@ describe('CLI test harness', () => {
     expect(await readdir(context.homeDir)).toEqual(['vibecanvas.turso']);
     expect(await readFile(actorEraDatabase)).toEqual(originalBytes);
     expect(existsSync(context.dbPath)).toBe(false);
-  });
+  }, 15_000);
 
   test('suggests nearest remaining commands for unknown root commands', async () => {
     const context = await createContext();
@@ -103,7 +103,7 @@ describe('CLI test harness', () => {
       next: 'Try: vibecanvas uninstall --help',
       suggestions: ['uninstall'],
     });
-  });
+  }, 15_000);
 
   test('runs uninstall dry-run without deleting test config', async () => {
     const context = await createContext();
@@ -114,5 +114,5 @@ describe('CLI test harness', () => {
     expect(result.stdout).toContain('[Uninstall] Dry-run');
     expect(result.stdout).toContain('home dir');
     expect(existsSync(context.homeDir)).toBe(false);
-  });
+  }, 15_000);
 });

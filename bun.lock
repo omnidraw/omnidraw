@@ -24,6 +24,7 @@
         "@orpc/server": "catalog:",
         "@tursodatabase/database": "catalog:",
         "@vibecanvas/api": "workspace:*",
+        "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-agent": "workspace:*",
@@ -105,6 +106,7 @@
       "dependencies": {
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
+        "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-agent": "workspace:*",
         "@vibecanvas/service-automerge": "workspace:*",
@@ -202,6 +204,9 @@
       "dependencies": {
         "@vibecanvas/tenant-core": "workspace:*",
       },
+      "devDependencies": {
+        "@tursodatabase/database": "catalog:",
+      },
     },
     "packages/runtime": {
       "name": "@vibecanvas/runtime",
@@ -222,6 +227,7 @@
     "packages/service-actor": {
       "name": "@vibecanvas/service-actor",
       "dependencies": {
+        "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
@@ -238,6 +244,7 @@
       "name": "@vibecanvas/service-agent",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
+        "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
@@ -269,6 +276,7 @@
       "dependencies": {
         "@tursodatabase/database": "catalog:",
         "@tursodatabase/database-common": "0.6.1",
+        "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
         "@vibecanvas/tenant-core": "workspace:*",

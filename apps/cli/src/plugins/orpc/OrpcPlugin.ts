@@ -1,10 +1,14 @@
 import { onError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/bun-ws';
 import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
+import type { TActorApiCapability } from '@vibecanvas/api/actor/types';
+import type { TAgentApiCapability } from '@vibecanvas/api/agent/types';
+import type { TApiContext } from '@vibecanvas/api/context';
 import type { IPlugin } from '@vibecanvas/runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
+import { createLazyTenantServiceCapability } from '../../services/LazyTenantServiceCapability';
 import { baseOs } from './orpc.base';
 import { router } from './router';
 
@@ -14,6 +18,40 @@ type TOrpcWebSocketData = {
   requestId: string;
   tenant: TTenantContext;
 };
+
+type TOrpcTenantContextServices = Pick<IRuntimeServices,
+  | 'actor'
+  | 'agent'
+  | 'automerge'
+  | 'db'
+  | 'eventPublisher'
+  | 'filesystem'
+  | 'humanResourceSecret'
+  | 'pty'
+  | 'resource'
+>;
+
+function createOrpcTenantContext(
+  tenant: TTenantContext,
+  services: TOrpcTenantContextServices,
+): TApiContext {
+  return {
+    tenant,
+    automerge: services.automerge,
+    db: services.db,
+    eventPublisher: services.eventPublisher,
+    filesystem: services.filesystem,
+    humanResourceSecret: services.humanResourceSecret,
+    pty: services.pty,
+    resource: services.resource,
+    actor: createLazyTenantServiceCapability<TActorApiCapability>(
+      () => services.actor.forTenant(tenant),
+    ),
+    agent: createLazyTenantServiceCapability<TAgentApiCapability>(
+      () => services.agent.forTenant(tenant),
+    ),
+  };
+}
 
 function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
@@ -27,7 +65,9 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const db = ctx.services.require('db');
       const eventPublisher = ctx.services.require('eventPublisher');
       const filesystem = ctx.services.require('filesystem');
+      const humanResourceSecret = ctx.services.require('humanResourceSecret');
       const pty = ctx.services.require('pty');
+      const resource = ctx.services.require('resource');
       const actor = ctx.services.require('actor');
       const agent = ctx.services.require('agent');
       const handler = new RPCHandler(baseOs.router(router), {
@@ -47,21 +87,20 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         const socket = ws as WebSocket & { data?: TOrpcWebSocketData };
         if (socket.data?.path !== '/api') return;
 
-        void Promise.all([
-          actor.forTenant(socket.data.tenant),
-          agent.forTenant(socket.data.tenant),
-        ]).then(([tenantActor, tenantAgent]) => handler.message(ws as never, message, {
-          context: {
-            tenant: socket.data!.tenant,
+        const tenant = socket.data.tenant;
+        void handler.message(ws as never, message, {
+          context: createOrpcTenantContext(tenant, {
             automerge,
             db,
             eventPublisher,
             filesystem,
+            humanResourceSecret,
             pty,
-            actor: tenantActor,
-            agent: tenantAgent,
-          },
-        })).catch((error) => {
+            resource,
+            actor,
+            agent,
+          }),
+        }).catch((error) => {
           console.error(error);
         });
       });
@@ -76,5 +115,5 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   };
 }
 
-export { createOrpcPlugin };
-export type { TOrpcWebSocketData };
+export { createOrpcPlugin, createOrpcTenantContext };
+export type { TOrpcTenantContextServices, TOrpcWebSocketData };

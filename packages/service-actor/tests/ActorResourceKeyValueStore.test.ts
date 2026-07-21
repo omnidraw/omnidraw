@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
+import type { TResourceIdleSweepScheduler } from '@vibecanvas/resource-runtime/local';
 import {
   ActorResourceKeyValueStore,
   type TActorResourceKeyValueDatabaseFactory,
@@ -32,6 +33,9 @@ describe('ActorResourceKeyValueStore', () => {
 
   function store(kind: 'kv' | 'secretStore', options: {
     maxOpenHandles?: number;
+    idleHandleTimeoutMs?: number;
+    nowMs?: () => number;
+    scheduleIdleSweep?: TResourceIdleSweepScheduler;
     databaseFactory?: TActorResourceKeyValueDatabaseFactory;
     secretStoreConversionCheckpoint?: (
       checkpoint: TSecretStoreConversionCheckpoint,
@@ -46,6 +50,33 @@ describe('ActorResourceKeyValueStore', () => {
     });
     stores.push(value);
     return value;
+  }
+
+  function manualIdleClock() {
+    let nowMs = 0;
+    let scheduled: Readonly<{
+      callback: () => void | Promise<void>;
+      dueAtMs: number;
+    }> | null = null;
+    const scheduleIdleSweep: TResourceIdleSweepScheduler = (callback, delayMs) => {
+      const next = { callback, dueAtMs: nowMs + delayMs };
+      scheduled = next;
+      return () => {
+        if (scheduled === next) scheduled = null;
+      };
+    };
+    return {
+      nowMs: () => nowMs,
+      scheduleIdleSweep,
+      async advance(milliseconds: number) {
+        nowMs += milliseconds;
+        while (scheduled && scheduled.dueAtMs <= nowMs) {
+          const current = scheduled;
+          scheduled = null;
+          await current.callback();
+        }
+      },
+    };
   }
 
   async function createLegacySecretDatabase(args: {
@@ -698,6 +729,74 @@ describe('ActorResourceKeyValueStore', () => {
     expect(kv.openHandleCount).toBeLessThanOrEqual(2);
   });
 
+  for (const kind of ['kv', 'secretStore'] as const) {
+    test(`closes expired idle ${kind} handles without another resource call`, async () => {
+      const clock = manualIdleClock();
+      const persistence = store(kind, {
+        idleHandleTimeoutMs: 100,
+        nowMs: clock.nowMs,
+        scheduleIdleSweep: clock.scheduleIdleSweep,
+      });
+      const resourceId = `idle-${kind}`;
+      await persistence.provision({ resourceId, kind });
+      await persistence.set({ resourceId, key: 'value', value: kind });
+
+      expect(persistence.openHandleCount).toBe(1);
+      await clock.advance(99);
+      expect(persistence.openHandleCount).toBe(1);
+      await clock.advance(1);
+      expect(persistence.openHandleCount).toBe(0);
+    });
+  }
+
+  test('counts opening handles against the configured maximum', async () => {
+    const setup = store('kv');
+    for (const resourceId of ['opening-one', 'opening-two', 'opening-three']) {
+      await setup.provision({ resourceId, kind: 'kv' });
+      await setup.set({ resourceId, key: 'value', value: resourceId });
+    }
+    await setup.close();
+
+    let releaseConnects!: () => void;
+    let markCapacityReached!: () => void;
+    const connectGate = new Promise<void>((resolve) => { releaseConnects = resolve; });
+    const capacityReached = new Promise<void>((resolve) => { markCapacityReached = resolve; });
+    let connectStarts = 0;
+    let concurrentConnects = 0;
+    let maximumConcurrentConnects = 0;
+    const databaseFactory: TActorResourceKeyValueDatabaseFactory = (databasePath, options) => {
+      const database = new Database(databasePath, options);
+      const connect = database.connect.bind(database);
+      database.connect = async () => {
+        connectStarts += 1;
+        concurrentConnects += 1;
+        maximumConcurrentConnects = Math.max(maximumConcurrentConnects, concurrentConnects);
+        if (connectStarts === 2) markCapacityReached();
+        await connectGate;
+        try {
+          await connect();
+        } finally {
+          concurrentConnects -= 1;
+        }
+      };
+      return database;
+    };
+    const bounded = store('kv', { databaseFactory, maxOpenHandles: 2 });
+    const reads = Promise.all(['opening-one', 'opening-two', 'opening-three'].map((resourceId) => (
+      bounded.get({ resourceId, key: 'value' })
+    )));
+
+    await capacityReached;
+    await Promise.resolve();
+    expect(connectStarts).toBe(2);
+    expect(bounded.openHandleCount).toBe(2);
+    releaseConnects();
+
+    await expect(reads).resolves.toHaveLength(3);
+    expect(maximumConcurrentConnects).toBeLessThanOrEqual(2);
+    expect(bounded.openHandleCount).toBeLessThanOrEqual(2);
+  });
+
   test('drains accepted running and queued writes before closing handles', async () => {
     let releaseWrite!: () => void;
     let markWriteStarted!: () => void;
@@ -750,8 +849,8 @@ describe('ActorResourceKeyValueStore', () => {
       const close = database.close.bind(database);
       database.close = async () => {
         closeAttempts.push(databasePath);
-        await close();
         if (injectCloseFailure && databasePath.includes('/bad/')) throw new Error('injected close failure');
+        await close();
       };
       return database;
     };
@@ -769,5 +868,9 @@ describe('ActorResourceKeyValueStore', () => {
     expect(closeAttempts.filter((path) => path.includes('/bad/')).length).toBeGreaterThanOrEqual(2);
     expect(kv.openHandleCount).toBe(1);
     await expect(kv.get({ resourceId: 'good', key: 'none' })).rejects.toThrow('closed');
+
+    injectCloseFailure = false;
+    await expect(kv.close()).resolves.toBeUndefined();
+    expect(kv.openHandleCount).toBe(0);
   });
 });

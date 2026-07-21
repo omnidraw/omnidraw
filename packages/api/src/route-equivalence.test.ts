@@ -12,6 +12,7 @@ const ROUTE_KEYS = [
   'filesystem',
   'notification',
   'pty',
+  'resource',
   'tool',
 ];
 
@@ -24,18 +25,18 @@ function collectProcedurePaths(node: object, prefix = ''): string[] {
 }
 
 describe('unified API route equivalence', () => {
-  test('preserves the nine public route keys in their existing order', () => {
+  test('preserves the existing route keys and adds the neutral resource route', () => {
     expect(Object.keys(contract)).toEqual(ROUTE_KEYS);
     expect(Object.keys(apiContract.api)).toEqual(ROUTE_KEYS);
     expect(Object.keys(handlers)).toEqual(ROUTE_KEYS);
     expect(Object.keys(router.api)).toEqual(ROUTE_KEYS);
   });
 
-  test('implements every one of the 131 existing public procedures', () => {
+  test('implements all 131 existing procedures plus 39 neutral resource aliases', () => {
     const contractProcedures = collectProcedurePaths(apiContract);
     const handlerProcedures = collectProcedurePaths(router);
 
-    expect(contractProcedures).toHaveLength(131);
+    expect(contractProcedures).toHaveLength(170);
     expect(handlerProcedures.toSorted()).toEqual(contractProcedures.toSorted());
   });
 });

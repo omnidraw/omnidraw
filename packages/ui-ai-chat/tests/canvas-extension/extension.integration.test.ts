@@ -227,7 +227,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {
@@ -457,7 +457,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {
@@ -605,7 +605,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {
@@ -755,7 +755,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {
@@ -902,7 +902,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {
@@ -1056,7 +1056,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {
@@ -1201,7 +1201,7 @@ describe("AI Chat canvas extension", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: { list: async () => [undefined, []] } },
+          resource: { resources: { list: async () => [undefined, []] } },
         },
       } as never,
       widgetTransport: {

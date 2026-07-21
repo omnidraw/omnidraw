@@ -3,14 +3,43 @@ import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
+import type { TResourceIdleSweepScheduler } from '@vibecanvas/resource-runtime/local';
 import type { TDbResourceDraftChange } from '@vibecanvas/service-db/model';
 import type { TVibecanvasJson } from '../src/core/types';
 import { ActorResourceManager } from '../src/resources/ActorResourceManager';
-import { DbResource } from '../src/resources/DbResource';
+import { DbResource, type TDatabaseFactory } from '../src/resources/DbResource';
 import { createTestCrypto, testUuid } from './test-uuid';
 import { bindTestTenantDb, type TActorTestDb } from './tenant.fixture';
 
 const definitionName = 'Notes Widget';
+
+function manualIdleClock() {
+  let nowMs = 0;
+  let scheduled: Readonly<{
+    callback: () => void | Promise<void>;
+    dueAtMs: number;
+  }> | null = null;
+  const scheduleIdleSweep: TResourceIdleSweepScheduler = (callback, delayMs) => {
+    const next = { callback, dueAtMs: nowMs + delayMs };
+    scheduled = next;
+    return () => {
+      if (scheduled === next) scheduled = null;
+    };
+  };
+  return {
+    nowMs: () => nowMs,
+    scheduleIdleSweep,
+    async advance(milliseconds: number) {
+      nowMs += milliseconds;
+      while (scheduled && scheduled.dueAtMs <= nowMs) {
+        const current = scheduled;
+        scheduled = null;
+        await current.callback();
+      }
+    },
+  };
+}
 
 function manifest(): TVibecanvasJson & { manifest_path: string } {
   return {
@@ -759,5 +788,276 @@ describe('DbResource schema-agnostic provider', () => {
     await manager.reconcileStartup();
     await expect(call('query', { sql: "SELECT name FROM sqlite_schema WHERE name = '_vibecanvas_migrations'", parameters: {} }, 'fx')).resolves.toEqual([]);
     await expect(call('query', { sql: 'SELECT id, title FROM notes', parameters: {} }, 'fx')).resolves.toEqual([{ id: 1n, title: 'preserved' }]);
+  });
+
+  test('keeps the global open-handle count bounded across many inactive databases', async () => {
+    const bounded = new DbResource({
+      db,
+      dataRoot: join(dataRoot, 'bounded'),
+      maxOpenHandles: 2,
+    });
+    try {
+      for (let index = 0; index < 12; index += 1) {
+        const resource = { id: `resource-${index}`, kind: 'db' as const };
+        await bounded.provision(resource, {});
+        await bounded.dispatch({
+          resource,
+          requirement: {
+            kind: 'db',
+            required: true,
+            scope: ['write'],
+            arbitrarySql: true,
+          },
+          canRead: false,
+          canWrite: true,
+        }, 'execute', { sql: 'CREATE TABLE bounded_probe (id INTEGER PRIMARY KEY)' });
+        expect(bounded.openHandleCount).toBeLessThanOrEqual(2);
+      }
+      expect(bounded.openHandleCount).toBe(2);
+    } finally {
+      await bounded.close();
+    }
+  });
+
+  test('bounds concurrent temporary management connections with cached handles', async () => {
+    const resource = { id: 'management-bounded', kind: 'db' as const };
+    await provider.provision(resource, {});
+
+    let activeConnections = 0;
+    let peakConnections = 0;
+    let readonlyConnections = 0;
+    let releaseReads!: () => void;
+    let resolveFirstTwo!: () => void;
+    const readsReleased = new Promise<void>((resolve) => { releaseReads = resolve; });
+    const firstTwoConnected = new Promise<void>((resolve) => { resolveFirstTwo = resolve; });
+    const databaseFactory: TDatabaseFactory = (databasePath, options) => {
+      const database = new Database(databasePath, options);
+      const connect = database.connect.bind(database);
+      const close = database.close.bind(database);
+      let connected = false;
+      database.connect = async () => {
+        await connect();
+        connected = true;
+        activeConnections += 1;
+        peakConnections = Math.max(peakConnections, activeConnections);
+        if (options?.readonly) {
+          readonlyConnections += 1;
+          if (readonlyConnections === 2) resolveFirstTwo();
+          await readsReleased;
+        }
+      };
+      database.close = async () => {
+        try {
+          await close();
+        } finally {
+          if (connected) {
+            connected = false;
+            activeConnections -= 1;
+          }
+        }
+      };
+      return database;
+    };
+    const bounded = new DbResource({
+      db,
+      dataRoot,
+      databaseFactory,
+      maxOpenHandles: 2,
+    });
+    await bounded.dispatch({
+      resource,
+      requirement: {
+        kind: 'db',
+        required: true,
+        scope: ['write'],
+        arbitrarySql: true,
+      },
+      canRead: false,
+      canWrite: true,
+    }, 'execute', { sql: 'CREATE TABLE management_probe (id INTEGER PRIMARY KEY)' });
+    expect(bounded.openHandleCount).toBe(1);
+    const reads = Array.from({ length: 8 }, () => bounded.inspect(resource.id, 'live'));
+
+    try {
+      await firstTwoConnected;
+      expect(activeConnections).toBe(2);
+      expect(peakConnections).toBe(2);
+      expect(bounded.openHandleCount).toBe(2);
+
+      releaseReads();
+      await expect(Promise.all(reads)).resolves.toHaveLength(8);
+      expect(peakConnections).toBe(2);
+      expect(activeConnections).toBe(0);
+      expect(bounded.openHandleCount).toBe(0);
+    } finally {
+      releaseReads();
+      await Promise.allSettled(reads);
+      await bounded.close();
+    }
+  });
+
+  test('admits a tracked readonly call after evicting its idle cached handle', async () => {
+    const resource = { id: 'single-slot-read', kind: 'db' as const };
+    const bounded = new DbResource({
+      db,
+      dataRoot: join(dataRoot, 'single-slot-read'),
+      maxOpenHandles: 1,
+    });
+    const context = {
+      resource,
+      requirement: {
+        kind: 'db' as const,
+        required: true,
+        scope: ['read', 'write'] as const,
+        arbitrarySql: true,
+      },
+      canRead: true,
+      canWrite: true,
+    };
+
+    try {
+      await bounded.provision(resource, {});
+      await bounded.dispatch(context, 'execute', {
+        sql: 'CREATE TABLE single_slot_probe (id INTEGER PRIMARY KEY)',
+      });
+      await bounded.dispatch(context, 'execute', {
+        sql: 'INSERT INTO single_slot_probe (id) VALUES (1)',
+      });
+      expect(bounded.openHandleCount).toBe(1);
+
+      await expect(bounded.dispatch(context, 'query', {
+        sql: 'SELECT id FROM single_slot_probe',
+      })).resolves.toEqual([{ id: 1n }]);
+      expect(bounded.openHandleCount).toBe(0);
+    } finally {
+      await bounded.close();
+    }
+  });
+
+  test('surfaces and counts a temporary management connection close failure', async () => {
+    const resource = { id: 'temporary-close-failure', kind: 'db' as const };
+    await provider.provision(resource, {});
+
+    let failClose = true;
+    let createdConnections = 0;
+    const databaseFactory: TDatabaseFactory = (databasePath, options) => {
+      createdConnections += 1;
+      const database = new Database(databasePath, options);
+      const close = database.close.bind(database);
+      database.close = async () => {
+        if (failClose) throw new Error('injected temporary close failure');
+        await close();
+      };
+      return database;
+    };
+    const bounded = new DbResource({
+      db,
+      dataRoot,
+      databaseFactory,
+      maxOpenHandles: 1,
+    });
+
+    try {
+      await expect(bounded.inspect(resource.id, 'live'))
+        .rejects.toThrow('injected temporary close failure');
+      expect(bounded.openHandleCount).toBe(1);
+      expect(createdConnections).toBe(1);
+
+      await expect(bounded.inspect(resource.id, 'live')).rejects.toBeInstanceOf(AggregateError);
+      expect(bounded.openHandleCount).toBe(1);
+      expect(createdConnections).toBe(1);
+
+      failClose = false;
+      await expect(bounded.inspect(resource.id, 'live')).resolves.toBeDefined();
+      expect(createdConnections).toBe(2);
+      expect(bounded.openHandleCount).toBe(0);
+    } finally {
+      failClose = false;
+      await bounded.close();
+    }
+  });
+
+  test('closes an expired idle database handle without another resource call', async () => {
+    const clock = manualIdleClock();
+    const idle = new DbResource({
+      db,
+      dataRoot: join(dataRoot, 'idle'),
+      idleHandleTimeoutMs: 100,
+      nowMs: clock.nowMs,
+      scheduleIdleSweep: clock.scheduleIdleSweep,
+    });
+    const resource = { id: 'idle-resource', kind: 'db' as const };
+    try {
+      await idle.provision(resource, {});
+      await idle.dispatch({
+        resource,
+        requirement: {
+          kind: 'db',
+          required: true,
+          scope: ['write'],
+          arbitrarySql: true,
+        },
+        canRead: false,
+        canWrite: true,
+      }, 'execute', { sql: 'CREATE TABLE idle_probe (id INTEGER PRIMARY KEY)' });
+
+      expect(idle.openHandleCount).toBe(1);
+      await clock.advance(99);
+      expect(idle.openHandleCount).toBe(1);
+      await clock.advance(1);
+      expect(idle.openHandleCount).toBe(0);
+    } finally {
+      await idle.close();
+    }
+  });
+
+  test('accounts for a failed close before admitting another database handle', async () => {
+    let failFirstClose = false;
+    const databaseFactory: TDatabaseFactory = (databasePath, options) => {
+      const database = new Database(databasePath, options);
+      const close = database.close.bind(database);
+      database.close = async () => {
+        if (failFirstClose && databasePath.includes('/first/')) {
+          throw new Error('injected close failure');
+        }
+        await close();
+      };
+      return database;
+    };
+    const bounded = new DbResource({
+      db,
+      dataRoot: join(dataRoot, 'close-failure'),
+      databaseFactory,
+      maxOpenHandles: 1,
+    });
+    const first = { id: 'first', kind: 'db' as const };
+    const second = { id: 'second', kind: 'db' as const };
+    const dispatch = (resource: typeof first) => bounded.dispatch({
+      resource,
+      requirement: {
+        kind: 'db',
+        required: true,
+        scope: ['write'],
+        arbitrarySql: true,
+      },
+      canRead: false,
+      canWrite: true,
+    }, 'execute', { sql: 'CREATE TABLE capacity_probe (id INTEGER PRIMARY KEY)' });
+
+    try {
+      await bounded.provision(first, {});
+      await bounded.provision(second, {});
+      await dispatch(first);
+      failFirstClose = true;
+      await expect(dispatch(second)).rejects.toBeInstanceOf(Error);
+      expect(bounded.openHandleCount).toBe(1);
+
+      failFirstClose = false;
+      await expect(dispatch(second)).resolves.toBeDefined();
+      expect(bounded.openHandleCount).toBe(1);
+    } finally {
+      failFirstClose = false;
+      await bounded.close();
+    }
   });
 });

@@ -8,9 +8,7 @@ export type TAiChatApiPort = {
       widgetDraft: Pick<TApi["agent"]["widgetDraft"], "get">;
       widgetPreview: Pick<TApi["agent"]["widgetPreview"], "get" | "build" | "refresh" | "reset" | "close" | "send">;
     };
-    actors: {
-      resources: TApi["actors"]["resources"];
-    };
+    resource: Pick<TApi["resource"], "resources">;
   };
 };
 

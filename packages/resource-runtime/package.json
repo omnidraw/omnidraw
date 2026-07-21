@@ -4,7 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*"
+    "./local": "./src/local/index.ts"
   },
   "scripts": {
     "test": "bun test",
@@ -12,5 +12,8 @@
   },
   "dependencies": {
     "@vibecanvas/tenant-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@tursodatabase/database": "catalog:"
   }
 }

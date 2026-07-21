@@ -6,6 +6,7 @@ import type { TFileApiContext } from './file/types';
 import type { TFilesystemApiContext } from './filesystem/types';
 import type { TNotificationApiContext } from './notification/types';
 import type { TPtyApiContext } from './pty/types';
+import type { TResourceApiContext } from './resource/types';
 import type { TToolApiContext } from './tool/types';
 
 type TApiContext = TActorsApiContext
@@ -16,6 +17,7 @@ type TApiContext = TActorsApiContext
   & TFilesystemApiContext
   & TNotificationApiContext
   & TPtyApiContext
+  & TResourceApiContext
   & TToolApiContext;
 
 export type {
@@ -28,5 +30,6 @@ export type {
   TFilesystemApiContext,
   TNotificationApiContext,
   TPtyApiContext,
+  TResourceApiContext,
   TToolApiContext,
 };

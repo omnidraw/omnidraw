@@ -124,7 +124,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   });
 
   const loadReferences = async (resourceId: string) => {
-    const [referenceError, value] = await orpcWebsocketService.apiService.api.actors.resources.references({ resourceId });
+    const [referenceError, value] = await orpcWebsocketService.apiService.api.resource.resources.references({ resourceId });
     if (resourceId === props.resource.id && !referenceError) setReferences(value);
   };
 
@@ -133,7 +133,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     const request = ++dataRequest;
     setDataLoading(true);
     setDataError("");
-    const [loadError, value] = await orpcWebsocketService.apiService.api.actors.resources.data({
+    const [loadError, value] = await orpcWebsocketService.apiService.api.resource.resources.data({
       resourceId,
       prefix: selectedPrefix || undefined,
       cursor,
@@ -281,7 +281,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
       revision: entry.revision,
     };
     setRevealPending(request);
-    const [requestError, value] = await orpcWebsocketService.apiService.api.actors.resources.dataRevealSecret({
+    const [requestError, value] = await orpcWebsocketService.apiService.api.resource.resources.dataRevealSecret({
       resourceId: request.resourceId,
       name: request.name,
     });
@@ -341,7 +341,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     }
     setEntryBusy(true);
     setEntryError("");
-    const [saveError] = await orpcWebsocketService.apiService.api.actors.resources.dataSet({
+    const [saveError] = await orpcWebsocketService.apiService.api.resource.resources.dataSet({
       resourceId: props.resource.id,
       key: editor.key,
       expectedRevision: editor.revision,
@@ -362,7 +362,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     const entry = entryDelete();
     if (!entry) return;
     setEntryBusy(true);
-    const [removeError] = await orpcWebsocketService.apiService.api.actors.resources.dataDelete({
+    const [removeError] = await orpcWebsocketService.apiService.api.resource.resources.dataDelete({
       resourceId: props.resource.id,
       key: entry.key,
       expectedRevision: entry.revision,
@@ -384,7 +384,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
     const value = name().trim();
     if (!value || value === displayName()) return;
     setBusy(true);
-    const [renameError] = await orpcWebsocketService.apiService.api.actors.resources.rename({ resourceId: props.resource.id, name: value });
+    const [renameError] = await orpcWebsocketService.apiService.api.resource.resources.rename({ resourceId: props.resource.id, name: value });
     setBusy(false);
     if (renameError) return showErrorToast(renameError.message);
     setDisplayName(value);
@@ -395,7 +395,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
   const remove = async () => {
     clearSecretReveal();
     setBusy(true);
-    const [deleteError] = await orpcWebsocketService.apiService.api.actors.resources.delete({ resourceId: props.resource.id });
+    const [deleteError] = await orpcWebsocketService.apiService.api.resource.resources.delete({ resourceId: props.resource.id });
     setBusy(false);
     if (deleteError) return showErrorToast(deleteError.message);
     showSuccessToast("Resource deleted");

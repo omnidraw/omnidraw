@@ -48,7 +48,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   const [resources, setResources] = createSignal<Array<{ id: string; name: string; kind: "kv" | "secretStore" | "db"; status: string }>>([]);
 
   const loadResources = async () => {
-    const [err, result] = await props.controller.apiService.api.actors.resources.list();
+    const [err, result] = await props.controller.apiService.api.resource.resources.list();
     if (err) {
       application.notifyError(err.message);
       return;
@@ -63,7 +63,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
   });
 
   const handleCreateResource = async (value: { kind: "kv" | "secretStore" | "db"; name: string }) => {
-    const [err] = await props.controller.apiService.api.actors.resources.create(value);
+    const [err] = await props.controller.apiService.api.resource.resources.create(value);
     if (err) {
       application.notifyError(err.message);
       return false;

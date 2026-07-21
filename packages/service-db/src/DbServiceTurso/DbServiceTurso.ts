@@ -92,6 +92,16 @@ interface IPublicMethods {
       keyHex: string;
     }): Promise<TEncryptionKey>;
   };
+  resourceEncryptionKey: {
+    get(tenant: TTenantContext, args: { resourceId: string }): Promise<TEncryptionKey | null>;
+    getOrCreate(tenant: TTenantContext, args: {
+      resourceId: string;
+      keyId: string;
+      purpose: string;
+      algorithm: string;
+      keyHex: string;
+    }): Promise<TEncryptionKey>;
+  };
   toolGroup: {
     listAll(tenant: TTenantContext): Promise<TToolGroup[]>;
     getByName(tenant: TTenantContext, args: { name: string }): Promise<TToolGroup | null>;
@@ -402,7 +412,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     get: (tenant: TTenantContext, args: { name: string }) => fxKeyValueGet(this, { tenant, ...args }),
   };
 
-  actorResourceEncryptionKey = {
+  resourceEncryptionKey = {
     get: (tenant: TTenantContext, args: { resourceId: string }) => fxActorResourceEncryptionKeyGet(this, { tenant, ...args }),
     getOrCreate: (tenant: TTenantContext, args: {
       resourceId: string;
@@ -414,6 +424,9 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       txActorResourceEncryptionKeyGetOrCreate(this, { tenant, ...args })
     )),
   };
+
+  /** @deprecated Use resourceEncryptionKey. */
+  actorResourceEncryptionKey = this.resourceEncryptionKey;
 
   actorResource = {
     create: (tenant: TTenantContext, args: {
@@ -610,6 +623,10 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       actorResourceEncryptionKey: {
         get: bind(this.actorResourceEncryptionKey.get),
         getOrCreate: bind(this.actorResourceEncryptionKey.getOrCreate),
+      },
+      resourceEncryptionKey: {
+        get: bind(this.resourceEncryptionKey.get),
+        getOrCreate: bind(this.resourceEncryptionKey.getOrCreate),
       },
       actorResource: {
         create: bind(this.actorResource.create),

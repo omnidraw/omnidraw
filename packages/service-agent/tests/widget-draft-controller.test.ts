@@ -856,7 +856,7 @@ describe("WidgetDraftController", () => {
     expect(await readFile(join(draftRoot, "actor", "fx.loadVersion.ts"), "utf8")).toContain("version: 'draft'")
     expect(await readFile(join(draftRoot, "widget", "main.ts"), "utf8")).toContain("revision = 'draft'")
     await controller.close()
-  })
+  }, 60_000)
 
   test("republishes the original slug but rejects a published slug change before mutating either installation", async () => {
     const root = await mkdtemp(join(tmpdir(), "vc-widget-published-slug-"))

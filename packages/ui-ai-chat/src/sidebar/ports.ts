@@ -9,8 +9,8 @@ export type TSidebarCanvas = TCanvas;
 export type TSidebarApiPort = {
   api: {
     canvas: Pick<TApi["canvas"], "create" | "update" | "remove">;
-    actors: {
-      resources: Pick<TApi["actors"]["resources"], "list" | "create">;
+    resource: {
+      resources: Pick<TApi["resource"]["resources"], "list" | "create">;
     };
     agent: Pick<TApi["agent"], "events" | "widgets" | "widgetPublish">;
   };

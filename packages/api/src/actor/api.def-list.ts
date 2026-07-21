@@ -2,8 +2,8 @@ import { baseActorsOs } from './orpc';
 
 const apiListDefinitions = baseActorsOs.definitions.list.handler(async ({ context }) => {
   const definitions = await context.db.actor.listDefinitions(context.tenant);
-  return definitions.map((definition) => {
-    const manifest = context.actor.getVibecanvasJson(definition.name);
+  return Promise.all(definitions.map(async (definition) => {
+    const manifest = await context.actor.getVibecanvasJson(definition.name);
     return {
       ...definition,
       version: manifest?.version,
@@ -15,7 +15,7 @@ const apiListDefinitions = baseActorsOs.definitions.list.handler(async ({ contex
         retryable: true,
       },
     };
-  });
+  }));
 });
 
 export { apiListDefinitions };

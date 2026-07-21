@@ -99,7 +99,7 @@ describe("DraftPreviewFrameService placement", () => {
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
-          actors: { resources: {} },
+          resource: { resources: {} },
         },
       } as never,
       widgetTransport: {

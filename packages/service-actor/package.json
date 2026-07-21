@@ -11,6 +11,7 @@
     "test": "bun test tests --timeout=20000"
   },
   "dependencies": {
+    "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",

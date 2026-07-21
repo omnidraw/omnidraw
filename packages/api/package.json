@@ -39,6 +39,7 @@
   "dependencies": {
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
+    "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/service-actor": "workspace:*",
     "@vibecanvas/service-agent": "workspace:*",
     "@vibecanvas/service-automerge": "workspace:*",

@@ -45,7 +45,7 @@ function notify(entry: TMentionCatalogEntry) {
 async function loadEntry(entry: TMentionCatalogEntry): Promise<TMentionCatalogSnapshot> {
   const widgetCatalog = entry.api.api.agent.widgets?.catalog
   const [resourceRequest, widgetRequest] = await Promise.allSettled([
-    entry.api.api.actors.resources.list({}),
+    entry.api.api.resource.resources.list({}),
     widgetCatalog ? widgetCatalog({}) : Promise.resolve(undefined),
   ])
   if (entry.closed) return entry.snapshot

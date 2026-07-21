@@ -1,6 +1,6 @@
 import type { TActorResource } from '@vibecanvas/service-db/model';
 import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
-import type { TDbInspection, TDbObject } from '@vibecanvas/service-actor/resources/resource-types';
+import type { TDbInspection, TDbObject } from '@vibecanvas/resource-runtime';
 
 type TResourceKind = TActorResource['kind'];
 

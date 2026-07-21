@@ -32,7 +32,7 @@ const ResourcePage: Component = () => {
     const resourceId = params.id;
     const requestId = ++latestRequestId;
     setLoadState((state) => fnBeginResourceRouteLoad({ state, requestId, resourceId }));
-    void orpcWebsocketService.apiService.api.actors.resources.get({ resourceId }).then(([loadError, value]) => {
+    void orpcWebsocketService.apiService.api.resource.resources.get({ resourceId }).then(([loadError, value]) => {
       setLoadState((state) => fnResolveResourceRouteLoad({
         state,
         requestId,

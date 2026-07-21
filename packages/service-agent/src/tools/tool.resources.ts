@@ -1,5 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
-import type { TDbCellValue } from '@vibecanvas/service-actor/resources/resource-types';
+import type { TDbCellValue } from '@vibecanvas/resource-runtime';
 import type { TActorResource, TJson } from '@vibecanvas/service-db/model';
 import { Type } from 'typebox';
 import type { ApprovalCoordinator } from '../approval/ApprovalCoordinator';

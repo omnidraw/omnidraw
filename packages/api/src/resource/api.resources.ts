@@ -1,59 +1,82 @@
 import { ORPCError } from '@orpc/contract';
-import { baseActorsOs } from '../actor/orpc';
-import { withActorResourceApiError } from './api.resource-error';
+import { fnResourceSecretRevealAllowed } from '@vibecanvas/resource-runtime';
+import { withResourceApiError } from './api.resource-error';
+import { baseResourceOs } from './orpc';
 
-export const apiListActorResources = baseActorsOs.resources.list.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.listResources(input ?? {}));
+export const apiListResources = baseResourceOs.resources.list.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.listResources(context.tenant, input ?? {}));
 });
 
-export const apiGetActorResource = baseActorsOs.resources.get.handler(async ({ input, context }) => {
-  const resource = await withActorResourceApiError(() => context.actor.getResource(input.resourceId));
+export const apiGetResource = baseResourceOs.resources.get.handler(async ({ input, context }) => {
+  const resource = await withResourceApiError(() => context.resource.getResource(context.tenant, input.resourceId));
   if (!resource) throw new ORPCError('NOT_FOUND');
   return resource;
 });
 
-export const apiCreateActorResource = baseActorsOs.resources.create.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.createResource(input));
+export const apiCreateResource = baseResourceOs.resources.create.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.createResource(context.tenant, input));
 });
 
-export const apiRenameActorResource = baseActorsOs.resources.rename.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.renameResource({ id: input.resourceId, name: input.name }));
+export const apiRenameResource = baseResourceOs.resources.rename.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.renameResource(
+    context.tenant,
+    { id: input.resourceId, name: input.name },
+  ));
 });
 
-export const apiDeleteActorResource = baseActorsOs.resources.delete.handler(async ({ input, context }) => {
-  await withActorResourceApiError(() => context.actor.deleteResource(input.resourceId));
+export const apiDeleteResource = baseResourceOs.resources.delete.handler(async ({ input, context }) => {
+  await withResourceApiError(() => context.resource.deleteResource(context.tenant, input.resourceId));
   return { deleted: true };
 });
 
-export const apiListActorResourceReferences = baseActorsOs.resources.references.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.listResourceReferences(input.resourceId));
+export const apiListResourceReferences = baseResourceOs.resources.references.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.listResourceReferences(context.tenant, input.resourceId));
 });
 
-export const apiListActorResourceData = baseActorsOs.resources.data.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.listResourceData(input));
+export const apiListResourceData = baseResourceOs.resources.data.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.listResourceData(context.tenant, input));
 });
 
-export const apiSetActorResourceData = baseActorsOs.resources.dataSet.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.setResourceDataEntry(input));
+export const apiSetResourceData = baseResourceOs.resources.dataSet.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.setResourceDataEntry(context.tenant, input));
 });
 
-export const apiDeleteActorResourceData = baseActorsOs.resources.dataDelete.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.deleteResourceDataEntry(input));
+export const apiDeleteResourceData = baseResourceOs.resources.dataDelete.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.deleteResourceDataEntry(context.tenant, input));
 });
 
-export const apiRevealActorResourceSecret = baseActorsOs.resources.dataRevealSecret.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.revealResourceSecret(input));
+export const apiRevealResourceSecret = baseResourceOs.resources.dataRevealSecret.handler(async ({ input, context }) => {
+  if (!fnResourceSecretRevealAllowed(context.tenant)) {
+    throw new ORPCError('FORBIDDEN', { message: 'Secret reveal requires an authorized human session.' });
+  }
+  const reveal = await withResourceApiError(() => context.humanResourceSecret.revealSecret(context.tenant, input));
+  if (!reveal) throw new ORPCError('NOT_FOUND');
+  return reveal;
 });
 
-export const apiActorDefinitionResourceStatus = baseActorsOs.resources.definitionStatus.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.getDefinitionResourceStatus(input.definitionName));
+export const apiDefinitionResourceStatus = baseResourceOs.resources.definitionStatus.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.getDefinitionResourceStatus(context.tenant, input.definitionName));
 });
 
-export const apiBindActorResource = baseActorsOs.resources.bind.handler(async ({ input, context }) => {
-  return withActorResourceApiError(() => context.actor.bindResource(input));
+export const apiBindResource = baseResourceOs.resources.bind.handler(async ({ input, context }) => {
+  return withResourceApiError(() => context.resource.bindResource(context.tenant, input));
 });
 
-export const apiUnbindActorResource = baseActorsOs.resources.unbind.handler(async ({ input, context }) => {
-  const deleted = await withActorResourceApiError(() => context.actor.unbindResource(input));
+export const apiUnbindResource = baseResourceOs.resources.unbind.handler(async ({ input, context }) => {
+  const deleted = await withResourceApiError(() => context.resource.unbindResource(context.tenant, input));
   return { deleted };
 });
+
+export const apiListActorResources = apiListResources;
+export const apiGetActorResource = apiGetResource;
+export const apiCreateActorResource = apiCreateResource;
+export const apiRenameActorResource = apiRenameResource;
+export const apiDeleteActorResource = apiDeleteResource;
+export const apiListActorResourceReferences = apiListResourceReferences;
+export const apiListActorResourceData = apiListResourceData;
+export const apiSetActorResourceData = apiSetResourceData;
+export const apiDeleteActorResourceData = apiDeleteResourceData;
+export const apiRevealActorResourceSecret = apiRevealResourceSecret;
+export const apiActorDefinitionResourceStatus = apiDefinitionResourceStatus;
+export const apiBindActorResource = apiBindResource;
+export const apiUnbindActorResource = apiUnbindResource;

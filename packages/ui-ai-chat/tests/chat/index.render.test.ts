@@ -56,10 +56,12 @@ function createApiService() {
   return {
     api: {
       actors: {
-        resources: {
+        definitions: {
           list: async () => [undefined, []],
         },
-        definitions: {
+      },
+      resource: {
+        resources: {
           list: async () => [undefined, []],
         },
       },
@@ -439,7 +441,7 @@ describe("AiChat shell", () => {
       name: "Cache",
       status: "ready",
     }]]);
-    apiService.api.actors.resources.list = listResources
+    apiService.api.resource.resources.list = listResources
     apiService.api.agent.approval.list = async () => [undefined, [{
       id: "approval-1",
       chatId: "conversation-1",
