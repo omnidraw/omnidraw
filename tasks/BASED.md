@@ -164,6 +164,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
 - [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
 - [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
+- [ ]: [B54](b/B54.md) - widget publish: successful publication leaves the draft behind
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -247,6 +248,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A81](a/A81.md) - docs: comprehensive UI screen atlas
 - [x]: [A82](a/A82.md) - AI chat: open draft Preview frame from widget-create result
 - [x]: [A83](a/A83.md) - widgets: drag published, draft, and Preview variants onto canvas
+- [ ]: [A84](a/A84.md) - AI chat: slash commands for chat actions
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -342,11 +344,13 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S91](s/S91.md) - actor resources: move SecretStoreResource out of the control database
 - [ ]: [S92](s/S92.md) - db migrations: squash the unreleased post-0.4.7 migration tail
 - [x]: [S93](s/S93.md) - secret stores: reveal values and encrypt Turso files at rest
-- [ ]: [S94](s/S94.md) - widget detail: context-mounted edit chat
+- [?]: [S94](s/S94.md) - widget detail: context-mounted edit chat
 - [x]: [S95](s/S95.md) - sidebar: unify selected widget highlight
 - [x]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
 - [x]: [S97](s/S97.md) - compress task reference images
 - [x]: [S98](s/S98.md) - widgets: replace fullscreen header with SolidJS host chrome
+- [ ]: [S99](s/S99.md) - widget publish: explicit confirmation from Preview and draft detail
+- [ ]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research
