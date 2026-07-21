@@ -4,15 +4,22 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DEFAULT_OSS_ORGANIZATION_ID } from '../../../src/CONSTANTS';
-import { fxActorResourceEncryptionKeyGet } from '../../../src/DbServiceTurso/fx.encryption-key';
+import { fxActorResourceEncryptionKeyGet as fxActorResourceEncryptionKeyGetRaw } from '../../../src/DbServiceTurso/fx.encryption-key';
 import {
-  txActorResourceBeginDelete,
-  txActorResourceCreate,
-  txActorResourceDelete,
+  txActorResourceBeginDelete as txActorResourceBeginDeleteRaw,
+  txActorResourceCreate as txActorResourceCreateRaw,
+  txActorResourceDelete as txActorResourceDeleteRaw,
 } from '../../../src/DbServiceTurso/tx.actor-resource';
-import { txActorResourceEncryptionKeyGetOrCreate } from '../../../src/DbServiceTurso/tx.encryption-key';
+import { txActorResourceEncryptionKeyGetOrCreate as txActorResourceEncryptionKeyGetOrCreateRaw } from '../../../src/DbServiceTurso/tx.encryption-key';
 import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
 import { EXPECTED_APPLICATION_TABLES } from '../../../src/schema/expected-schema';
+import { bindTenantOperation } from '../tenant.fixture';
+
+const fxActorResourceEncryptionKeyGet = bindTenantOperation(fxActorResourceEncryptionKeyGetRaw);
+const txActorResourceBeginDelete = bindTenantOperation(txActorResourceBeginDeleteRaw);
+const txActorResourceCreate = bindTenantOperation(txActorResourceCreateRaw);
+const txActorResourceDelete = bindTenantOperation(txActorResourceDeleteRaw);
+const txActorResourceEncryptionKeyGetOrCreate = bindTenantOperation(txActorResourceEncryptionKeyGetOrCreateRaw);
 
 const SECRET_ONE = '00000000-0000-4000-8000-000000000201';
 const SECRET_SHARED = '00000000-0000-4000-8000-000000000202';

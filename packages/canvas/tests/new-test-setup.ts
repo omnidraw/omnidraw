@@ -5,6 +5,7 @@ import { ThemeService } from "@vibecanvas/service-theme";
 import { buildRuntime } from "../src/runtime";
 import type { ICanvasRuntimeExtension } from "../src/extension";
 import { createMockDocHandle, createTestContainer, ensureDom, ensureRangeGeometryMocks, ensureResizeObserver, flushCanvasEffects } from "./test-setup";
+import { LOCAL_BROWSER_TENANT_SCOPE } from "../src/CONSTANTS";
 
 export type TNewCanvasHarness = {
   runtime: ReturnType<typeof buildRuntime>;
@@ -41,6 +42,7 @@ export async function createNewCanvasHarness(args?: {
   const docHandle = args?.docHandle ?? createMockDocHandle();
   const runtime = buildRuntime({
     canvasId: args?.canvasId ?? "test-canvas",
+    tenant: LOCAL_BROWSER_TENANT_SCOPE,
     container,
     docHandle,
     onToggleSidebar: () => {},

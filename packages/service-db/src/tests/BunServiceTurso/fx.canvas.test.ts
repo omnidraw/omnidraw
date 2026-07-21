@@ -11,6 +11,7 @@ import {
 } from "../../../src/DbServiceTurso/fx.canvas";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
 import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
+import { TEST_TENANT } from "../tenant.fixture";
 
 const ACCOUNT_EDITOR = "00000000-0000-4000-8000-000000000111";
 const ACCOUNT_VIEWER = "00000000-0000-4000-8000-000000000112";
@@ -18,6 +19,10 @@ const ACCOUNT_OUTSIDER = "00000000-0000-4000-8000-000000000113";
 const CANVAS_ALPHA = "00000000-0000-4000-8000-000000000121";
 const CANVAS_BETA = "00000000-0000-4000-8000-000000000122";
 const CANVAS_PRIVATE = "00000000-0000-4000-8000-000000000123";
+
+function tenantFor(accountId: string) {
+  return { ...TEST_TENANT, accountId };
+}
 
 async function inMemoryDb(): Promise<Database> {
   // @ts-expect-error custom_types not typed yet
@@ -92,54 +97,50 @@ describe("fx.canvas", () => {
     await db.close();
   });
 
-  test("lists all canvases when no account scope is provided", async () => {
-    const canvases = await fxCanvasListAll({ db }, {});
-    expect(canvases.map((canvas) => canvas.id).sort()).toEqual([
-      CANVAS_ALPHA,
-      CANVAS_BETA,
-      CANVAS_PRIVATE,
-    ]);
+  test("always limits canvases to the mandatory tenant account", async () => {
+    const canvases = await fxCanvasListAll({ db }, { tenant: TEST_TENANT });
+    expect(canvases.map((canvas) => canvas.id)).toEqual([CANVAS_ALPHA]);
   });
 
   test("lists only canvases visible to the account scope", async () => {
-    const editorCanvases = await fxCanvasListAll({ db }, { accountId: ACCOUNT_EDITOR });
-    const viewerCanvases = await fxCanvasListAll({ db }, { accountId: ACCOUNT_VIEWER });
-    const outsiderCanvases = await fxCanvasListAll({ db }, { accountId: ACCOUNT_OUTSIDER });
+    const editorCanvases = await fxCanvasListAll({ db }, { tenant: tenantFor(ACCOUNT_EDITOR) });
+    const viewerCanvases = await fxCanvasListAll({ db }, { tenant: tenantFor(ACCOUNT_VIEWER) });
+    const outsiderCanvases = await fxCanvasListAll({ db }, { tenant: tenantFor(ACCOUNT_OUTSIDER) });
 
     expect(editorCanvases.map((canvas) => canvas.id).sort()).toEqual([CANVAS_ALPHA, CANVAS_BETA]);
     expect(viewerCanvases.map((canvas) => canvas.id)).toEqual([CANVAS_ALPHA]);
     expect(outsiderCanvases).toEqual([]);
   });
 
-  test("finds canvas by name with and without account scope", async () => {
-    expect(await fxCanvasFindByName({ db }, { name: "Private" })).toMatchObject({ id: CANVAS_PRIVATE });
-    expect(await fxCanvasFindByName({ db }, { name: "Beta", accountId: DEFAULT_OSS_ACCOUNT_ID })).toBeNull();
-    expect(await fxCanvasFindByName({ db }, { name: "Beta", accountId: ACCOUNT_EDITOR })).toMatchObject({
+  test("finds canvas by name only within tenant membership", async () => {
+    expect(await fxCanvasFindByName({ db }, { tenant: TEST_TENANT, name: "Alpha" })).toMatchObject({ id: CANVAS_ALPHA });
+    expect(await fxCanvasFindByName({ db }, { tenant: TEST_TENANT, name: "Beta" })).toBeNull();
+    expect(await fxCanvasFindByName({ db }, { tenant: tenantFor(ACCOUNT_EDITOR), name: "Beta" })).toMatchObject({
       id: CANVAS_BETA,
       automerge_url: "automerge:beta",
     });
   });
 
-  test("finds canvas by id with and without account scope", async () => {
-    expect(await fxCanvasFindById({ db }, { id: CANVAS_PRIVATE })).toMatchObject({ id: CANVAS_PRIVATE });
-    expect(await fxCanvasFindById({ db }, { id: CANVAS_BETA, accountId: DEFAULT_OSS_ACCOUNT_ID })).toBeNull();
-    expect(await fxCanvasFindById({ db }, { id: CANVAS_BETA, accountId: ACCOUNT_EDITOR })).toMatchObject({
+  test("finds canvas by id only within tenant membership", async () => {
+    expect(await fxCanvasFindById({ db }, { tenant: TEST_TENANT, id: CANVAS_ALPHA })).toMatchObject({ id: CANVAS_ALPHA });
+    expect(await fxCanvasFindById({ db }, { tenant: TEST_TENANT, id: CANVAS_BETA })).toBeNull();
+    expect(await fxCanvasFindById({ db }, { tenant: tenantFor(ACCOUNT_EDITOR), id: CANVAS_BETA })).toMatchObject({
       id: CANVAS_BETA,
       automerge_url: "automerge:beta",
     });
   });
 
   test("checks edit and owner permissions from member roles", async () => {
-    expect(await fxCanvasCanEdit({ db }, { canvasId: CANVAS_ALPHA, accountId: DEFAULT_OSS_ACCOUNT_ID })).toBe(true);
-    expect(await fxCanvasCanEdit({ db }, { canvasId: CANVAS_ALPHA, accountId: ACCOUNT_EDITOR })).toBe(true);
-    expect(await fxCanvasCanEdit({ db }, { canvasId: CANVAS_ALPHA, accountId: ACCOUNT_VIEWER })).toBe(false);
-    expect(await fxCanvasCanEdit({ db }, { canvasId: CANVAS_ALPHA, accountId: ACCOUNT_OUTSIDER })).toBe(false);
-    expect(await fxCanvasHasOwnerRole({ db }, { canvasId: CANVAS_ALPHA, accountId: DEFAULT_OSS_ACCOUNT_ID })).toBe(true);
-    expect(await fxCanvasHasOwnerRole({ db }, { canvasId: CANVAS_ALPHA, accountId: ACCOUNT_EDITOR })).toBe(false);
+    expect(await fxCanvasCanEdit({ db }, { tenant: TEST_TENANT, canvasId: CANVAS_ALPHA })).toBe(true);
+    expect(await fxCanvasCanEdit({ db }, { tenant: tenantFor(ACCOUNT_EDITOR), canvasId: CANVAS_ALPHA })).toBe(true);
+    expect(await fxCanvasCanEdit({ db }, { tenant: tenantFor(ACCOUNT_VIEWER), canvasId: CANVAS_ALPHA })).toBe(false);
+    expect(await fxCanvasCanEdit({ db }, { tenant: tenantFor(ACCOUNT_OUTSIDER), canvasId: CANVAS_ALPHA })).toBe(false);
+    expect(await fxCanvasHasOwnerRole({ db }, { tenant: TEST_TENANT, canvasId: CANVAS_ALPHA })).toBe(true);
+    expect(await fxCanvasHasOwnerRole({ db }, { tenant: tenantFor(ACCOUNT_EDITOR), canvasId: CANVAS_ALPHA })).toBe(false);
   });
 
   test("lists canvas members", async () => {
-    const members = await fxCanvasListMembers({ db }, { canvasId: CANVAS_ALPHA });
+    const members = await fxCanvasListMembers({ db }, { tenant: TEST_TENANT, canvasId: CANVAS_ALPHA });
     expect(members.map((member) => ({ account_id: member.account_id, role: member.role }))).toEqual([
       { account_id: DEFAULT_OSS_ACCOUNT_ID, role: "owner" },
       { account_id: ACCOUNT_EDITOR, role: "editor" },

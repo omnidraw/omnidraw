@@ -1,12 +1,12 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TAccount } from "../model"
 import { fnBooleanFromSql, fnTimestampFromMs } from "./fn.legacy-row"
 
 type TPortal = {
   db: Database
 }
-type TArgs = {}
+type TArgs = { tenant: TTenantContext }
 
 export async function fxAccountGetDefaultOwner(portal: TPortal, args: TArgs): Promise<TAccount | null> {
   const stmt = await portal.db.prepare(`
@@ -20,7 +20,7 @@ export async function fxAccountGetDefaultOwner(portal: TPortal, args: TArgs): Pr
       AND organization_memberships.status = 'active'
     WHERE accounts.id = ? AND accounts.status = 'active'
   `)
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, DEFAULT_OSS_ACCOUNT_ID) as {
+  const row = await stmt.get(args.tenant.orgId, args.tenant.accountId) as {
     id: string
     kind: TAccount["kind"]
     display_name: string

@@ -4,13 +4,25 @@ import { createPtyPlugin } from '../src/plugins/pty/PtyPlugin';
 import type { ICliConfig } from '../src/config';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { join, resolve } from 'node:path';
+
+const TEST_TENANT = Object.freeze({
+  orgId: 'org-test',
+  accountId: 'account-test',
+  cellId: 'cell-test',
+  placementEpoch: 1,
+  roles: Object.freeze(['owner']),
+  capabilities: Object.freeze(['pty']),
+  requestId: 'request-1',
+}) satisfies TTenantContext;
 
 type TMockSocket = WebSocket & {
   data?: {
     path: string;
     query: string;
     requestId: string;
+    tenant: TTenantContext;
   };
   readyState: number;
   send: ReturnType<typeof mock>;
@@ -47,6 +59,7 @@ function createSocket(path: string, query = ''): TMockSocket {
       path,
       query,
       requestId: 'request-1',
+      tenant: TEST_TENANT,
     },
     readyState: WebSocket.OPEN,
     send: mock(() => undefined),
@@ -80,7 +93,8 @@ describe('createPtyPlugin', () => {
       send: mock(() => undefined),
       detach: mock(() => undefined),
     };
-    const attach = mock((args: Parameters<IPtyService['attach']>[0]) => {
+    const attach = mock((tenant: Parameters<IPtyService['attach']>[0], args: Parameters<IPtyService['attach']>[1]) => {
+      expect(tenant).toBe(TEST_TENANT);
       args.send(new TextEncoder().encode('hello-from-pty'));
       return attachment;
     });
@@ -93,12 +107,12 @@ describe('createPtyPlugin', () => {
       },
     } as any);
 
-    const socket = createSocket('/api/pty/pty-1/connect', '?workingDirectory=%2Ftmp%2Fdemo&cursor=12');
+    const socket = createSocket('/api/pty/pty-1/connect', '?workingDirectory=workspace%2Fdemo&cursor=12');
     hooks.wsOpen.call(socket as unknown as WebSocket);
 
     expect(attach).toHaveBeenCalledTimes(1);
-    expect(attach.mock.calls[0]?.[0]).toMatchObject({
-      workingDirectory: '/tmp/demo',
+    expect(attach.mock.calls[0]?.[1]).toMatchObject({
+      workingDirectory: 'workspace/demo',
       ptyID: 'pty-1',
       cursor: 12,
     });

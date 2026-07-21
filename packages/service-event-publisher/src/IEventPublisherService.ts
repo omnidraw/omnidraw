@@ -3,6 +3,7 @@
  */
 
 import type { IService } from '@vibecanvas/runtime';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   TActorEvent,
   TAgentEvent,
@@ -32,19 +33,56 @@ export type {
 } from './events';
 
 export interface IEventPublisherService extends IService {
-  publishDbEvent(canvasId: string, event: TDbEvent): void;
-  subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent>;
+  forTenant(tenant: TTenantContext): ITenantEventPublisherService;
 
-  publishActorEvent(event: TActorEvent): void;
-  subscribeActorEvents(): AsyncIterable<TActorEvent>;
+  publishDbEvent(tenant: TTenantContext, canvasId: string, event: TDbEvent): number;
+  subscribeDbEvents(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
+  subscribeDbEventRecords(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
+  getDbEventCursor(tenant: TTenantContext): number;
 
-  publishAgentEvent(event: TAgentEvent): void;
-  subscribeAgentEvents(): AsyncIterable<TAgentEvent>;
+  publishActorEvent(tenant: TTenantContext, event: TActorEvent): number;
+  subscribeActorEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent>;
+  getActorEventCursor(tenant: TTenantContext): number;
 
-  publishFilesystemEvent(path: string, event: TFilesystemEvent): void;
-  subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent>;
+  publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number;
+  subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
+  getAgentEventCursor(tenant: TTenantContext): number;
 
-  publishNotification(event: TNotificationEvent): void;
-  subscribeNotifications(): AsyncIterable<TNotificationEvent>;
+  publishFilesystemEvent(tenant: TTenantContext, filesystemId: string, path: string, event: TFilesystemEvent): number;
+  subscribeFilesystemEvents(tenant: TTenantContext, filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent>;
+  getFilesystemEventCursor(tenant: TTenantContext, filesystemId: string): number;
+
+  publishNotification(tenant: TTenantContext, event: TNotificationEvent): number;
+  subscribeNotifications(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
+  subscribeNotificationRecords(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
+  getNotificationEventCursor(tenant: TTenantContext): number;
+  getLatestNotification(tenant: TTenantContext): TNotificationEvent | null;
+}
+
+export type TEventSubscriptionOptions = Readonly<{ afterSequence?: number }>;
+
+export type TSequencedEvent<TEvent> = Readonly<{
+  event: TEvent;
+  sequence: number;
+}>;
+
+export interface ITenantEventPublisherService {
+  publishDbEvent(canvasId: string, event: TDbEvent): number;
+  subscribeDbEvents(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
+  subscribeDbEventRecords(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
+  getDbEventCursor(): number;
+  publishActorEvent(event: TActorEvent): number;
+  subscribeActorEvents(options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent>;
+  getActorEventCursor(): number;
+  publishAgentEvent(event: TAgentEvent): number;
+  subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
+  getAgentEventCursor(): number;
+  publishFilesystemEvent(filesystemId: string, path: string, event: TFilesystemEvent): number;
+  subscribeFilesystemEvents(filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent>;
+  getFilesystemEventCursor(filesystemId: string): number;
+  publishNotification(event: TNotificationEvent): number;
+  subscribeNotifications(options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
+  subscribeNotificationRecords(options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;
+  getNotificationEventCursor(): number;
   getLatestNotification(): TNotificationEvent | null;
 }

@@ -3,17 +3,17 @@ import { fxResolveFilesystemId } from './core/fx.resolve-filesystem-id';
 import { baseFilesystemOs } from './orpc';
 
 const apiWatchFilesystem = baseFilesystemOs.watch.handler(async function* ({ input, context }) {
-  const filesystemId = await fxResolveFilesystemId({ accountId: context.accountId, db: context.db }, { filesystemId: input.filesystemId });
+  const filesystemId = await fxResolveFilesystemId({ db: context.db }, { tenant: context.tenant, filesystemId: input.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
-  const iterator = context.filesystem.watch(filesystemId, input.path, input.watchId);
-  if (!iterator) throw new ORPCError('CONFLICT', { message: `Watch ${input.watchId} already exists` });
+  const iterator = context.filesystem.watch(context.tenant, { filesystemId, path: input.path, watchId: input.watchId });
+  if (!iterator) throw new ORPCError('CONFLICT', { message: 'Filesystem watch unavailable' });
 
   try {
     for await (const event of iterator) {
       yield event;
     }
   } finally {
-    context.filesystem.unwatch(filesystemId, input.watchId);
+    context.filesystem.unwatch(context.tenant, { filesystemId, watchId: input.watchId });
   }
 });
 

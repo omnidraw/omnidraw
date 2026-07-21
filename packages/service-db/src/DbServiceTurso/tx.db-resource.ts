@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type {
   TDbResourceApplyInstanceResult,
   TDbResourceApplyInstanceStatus,
@@ -22,17 +22,20 @@ type TPortal = {
 }
 
 type TArgsDraftCreate = {
+  tenant: TTenantContext
   id: string
   resourceId: string
   name: string
 }
 
 type TArgsDraftRename = {
+  tenant: TTenantContext
   id: string
   name: string
 }
 
 type TArgsDraftUpdateStatus = {
+  tenant: TTenantContext
   id: string
   status: TDbResourceDraftStatus
   expectedStatus?: TDbResourceDraftStatus
@@ -40,6 +43,7 @@ type TArgsDraftUpdateStatus = {
 }
 
 type TArgsDraftAppendChange = {
+  tenant: TTenantContext
   draftId: string
   sequence: number
   kind: TDbResourceDraftChangeKind
@@ -48,11 +52,13 @@ type TArgsDraftAppendChange = {
 }
 
 type TArgsDraftDiscard = {
+  tenant: TTenantContext
   id: string
   lastError?: TJson | null
 }
 
 type TArgsApplyCreate = {
+  tenant: TTenantContext
   id: string
   resourceId: string
   draftId?: string | null
@@ -61,12 +67,14 @@ type TArgsApplyCreate = {
 }
 
 type TArgsApplyCreateFromDraft = {
+  tenant: TTenantContext
   id: string
   resourceId: string
   draftId: string
 }
 
 type TArgsApplyFinishWithDraft = {
+  tenant: TTenantContext
   id: string
   draftId: string
   status: Extract<TDbResourceApplyStatus, "succeeded" | "failed" | "recovered">
@@ -77,6 +85,7 @@ type TArgsApplyFinishWithDraft = {
 }
 
 type TArgsApplyUpdate = {
+  tenant: TTenantContext
   id: string
   status: TDbResourceApplyStatus
   expectedStatus?: TDbResourceApplyStatus
@@ -85,6 +94,7 @@ type TArgsApplyUpdate = {
 }
 
 type TArgsApplyInstanceResultUpsert = {
+  tenant: TTenantContext
   applyId: string
   actorInstanceId: string
   actorDefinitionName: string
@@ -99,17 +109,18 @@ function serializedJson(value: TJson | null | undefined): string | null {
 
 async function requireDbResource(
   portal: TPortal,
+  tenant: TTenantContext,
   resourceId: string,
   allowedStatuses: readonly TActorResourceStatus[],
 ): Promise<void> {
-  const resource = await fxActorResourceGet(portal, { id: resourceId })
+  const resource = await fxActorResourceGet(portal, { tenant, id: resourceId })
   if (!resource || resource.kind !== "db" || !allowedStatuses.includes(resource.status)) {
     throw new Error(`Actor resource "${resourceId}" is not an available DbResource`)
   }
 }
 
 export async function txDbResourceDraftCreate(portal: TPortal, args: TArgsDraftCreate): Promise<TDbResourceDraft> {
-  await requireDbResource(portal, args.resourceId, ["ready"])
+  await requireDbResource(portal, args.tenant, args.resourceId, ["ready"])
   await (await portal.db.prepare(`
     INSERT INTO db_resource_drafts (
       org_id, id, resource_id, resource_kind, name, status, last_error_json,
@@ -121,8 +132,8 @@ export async function txDbResourceDraftCreate(portal: TPortal, args: TArgsDraftC
       CAST(unixepoch('subsec') * 1000 AS INTEGER),
       NULL
     )
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id, args.resourceId, args.name)
-  const draft = await fxDbResourceDraftGet(portal, { id: args.id })
+  `)).run(args.tenant.orgId, args.id, args.resourceId, args.name)
+  const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.id })
   if (!draft) throw new Error(`Failed to create DbResource draft "${args.id}"`)
   return draft
 }
@@ -132,7 +143,7 @@ export async function txDbResourceDraftRename(portal: TPortal, args: TArgsDraftR
     UPDATE db_resource_drafts
     SET name = ?, updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
     WHERE org_id = ? AND id = ? AND status = 'editing'
-  `)).run(args.name, DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).run(args.name, args.tenant.orgId, args.id)
   if (result.changes === 0) return null
   return fxDbResourceDraftGet(portal, args)
 }
@@ -152,7 +163,7 @@ export async function txDbResourceDraftUpdateStatus(
             ELSE NULL
           END
         WHERE org_id = ? AND id = ?
-      `)).run(args.status, lastError, args.status, DEFAULT_OSS_ORGANIZATION_ID, args.id)
+      `)).run(args.status, lastError, args.status, args.tenant.orgId, args.id)
     : await (await portal.db.prepare(`
         UPDATE db_resource_drafts
         SET status = ?, last_error_json = ?,
@@ -166,12 +177,12 @@ export async function txDbResourceDraftUpdateStatus(
         args.status,
         lastError,
         args.status,
-        DEFAULT_OSS_ORGANIZATION_ID,
+        args.tenant.orgId,
         args.id,
         args.expectedStatus,
       )
   if (result.changes === 0) return null
-  return fxDbResourceDraftGet(portal, { id: args.id })
+  return fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.id })
 }
 
 export async function txDbResourceDraftAppendChange(
@@ -179,7 +190,7 @@ export async function txDbResourceDraftAppendChange(
   args: TArgsDraftAppendChange,
 ): Promise<TDbResourceDraftChange> {
   const append = portal.db.transaction(async () => {
-    const draft = await fxDbResourceDraftGet(portal, { id: args.draftId })
+    const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
     if (!draft || draft.status !== "editing") {
       throw new Error(`DbResource draft "${args.draftId}" is not editable`)
     }
@@ -187,7 +198,7 @@ export async function txDbResourceDraftAppendChange(
       SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
       FROM db_resource_draft_changes
       WHERE org_id = ? AND draft_id = ?
-    `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.draftId) as { next_sequence: number } | undefined
+    `)).get(args.tenant.orgId, args.draftId) as { next_sequence: number } | undefined
     const sequence = sequenceRow?.next_sequence ?? 1
     if (sequence !== args.sequence) {
       throw new Error(`DbResource draft "${args.draftId}" physical and control sequences diverged`)
@@ -198,7 +209,7 @@ export async function txDbResourceDraftAppendChange(
       )
       VALUES (?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
     `)).run(
-      DEFAULT_OSS_ORGANIZATION_ID,
+      args.tenant.orgId,
       args.draftId,
       args.sequence,
       args.kind,
@@ -209,7 +220,7 @@ export async function txDbResourceDraftAppendChange(
       SELECT *
       FROM db_resource_draft_changes
       WHERE org_id = ? AND draft_id = ? AND sequence = ?
-    `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.draftId, args.sequence)
+    `)).get(args.tenant.orgId, args.draftId, args.sequence)
     if (row === undefined || row === null) throw new Error("Failed to persist DbResource draft change")
     return fnParseDbResourceDraftChangeRow(row)
   })
@@ -222,21 +233,21 @@ export async function txDbResourceDraftDiscard(portal: TPortal, args: TArgsDraft
     SET status = 'discarded', last_error_json = ?, applied_at_ms = NULL,
       updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
     WHERE org_id = ? AND id = ? AND status IN ('editing', 'error')
-  `)).run(serializedJson(args.lastError), DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).run(serializedJson(args.lastError), args.tenant.orgId, args.id)
   if (result.changes === 0) return null
-  return fxDbResourceDraftGet(portal, { id: args.id })
+  return fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.id })
 }
 
 export async function txDbResourceApplyCreate(portal: TPortal, args: TArgsApplyCreate): Promise<TDbResourceApplyRun> {
-  await requireDbResource(portal, args.resourceId, ["ready", "migrating"])
+  await requireDbResource(portal, args.tenant, args.resourceId, ["ready", "migrating"])
   if (args.draftId !== undefined && args.draftId !== null) {
-    const draft = await fxDbResourceDraftGet(portal, { id: args.draftId })
+    const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
     if (!draft || draft.resource_id !== args.resourceId || !["editing", "applying"].includes(draft.status)) {
       throw new Error(`DbResource draft "${args.draftId}" is not active for resource "${args.resourceId}"`)
     }
   }
   if (args.sourceApplyId !== undefined && args.sourceApplyId !== null) {
-    const source = await fxDbResourceApplyGet(portal, { id: args.sourceApplyId })
+    const source = await fxDbResourceApplyGet(portal, { tenant: args.tenant, id: args.sourceApplyId })
     if (!source || source.resource_id !== args.resourceId || !source.backup_retained) {
       throw new Error(`DbResource retained backup "${args.sourceApplyId}" is not available for resource "${args.resourceId}"`)
     }
@@ -256,7 +267,7 @@ export async function txDbResourceApplyCreate(portal: TPortal, args: TArgsApplyC
         THEN CAST(unixepoch('subsec') * 1000 AS INTEGER) ELSE NULL END
     )
   `)).run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
     args.resourceId,
     args.draftId ?? null,
@@ -264,7 +275,7 @@ export async function txDbResourceApplyCreate(portal: TPortal, args: TArgsApplyC
     args.status ?? "preparing",
     args.status ?? "preparing",
   )
-  const apply = await fxDbResourceApplyGet(portal, { id: args.id })
+  const apply = await fxDbResourceApplyGet(portal, { tenant: args.tenant, id: args.id })
   if (!apply) throw new Error(`Failed to create DbResource apply run "${args.id}"`)
   return apply
 }
@@ -274,12 +285,13 @@ export async function txDbResourceApplyCreateFromDraft(
   args: TArgsApplyCreateFromDraft,
 ): Promise<{ apply: TDbResourceApplyRun; draft: TDbResourceDraft }> {
   const admit = portal.db.transaction(async () => {
-    await requireDbResource(portal, args.resourceId, ["ready"])
-    const draft = await fxDbResourceDraftGet(portal, { id: args.draftId })
+    await requireDbResource(portal, args.tenant, args.resourceId, ["ready"])
+    const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
     if (!draft || draft.resource_id !== args.resourceId || draft.status !== "editing") {
       throw new Error(`DbResource draft "${args.draftId}" is not editable for resource "${args.resourceId}"`)
     }
     const updatedDraft = await txDbResourceDraftUpdateStatus(portal, {
+      tenant: args.tenant,
       id: args.draftId,
       status: "applying",
       expectedStatus: "editing",
@@ -287,6 +299,7 @@ export async function txDbResourceApplyCreateFromDraft(
     })
     if (!updatedDraft) throw new Error(`DbResource draft "${args.draftId}" changed before apply admission`)
     const apply = await txDbResourceApplyCreate(portal, {
+      tenant: args.tenant,
       id: args.id,
       resourceId: args.resourceId,
       draftId: args.draftId,
@@ -303,6 +316,7 @@ export async function txDbResourceApplyFinishWithDraft(
 ): Promise<{ apply: TDbResourceApplyRun; draft: TDbResourceDraft }> {
   const finish = portal.db.transaction(async () => {
     const apply = await txDbResourceApplyUpdate(portal, {
+      tenant: args.tenant,
       id: args.id,
       status: args.status,
       expectedStatus: args.expectedStatus,
@@ -311,6 +325,7 @@ export async function txDbResourceApplyFinishWithDraft(
     })
     if (!apply || apply.draft_id !== args.draftId) throw new Error(`DbResource apply "${args.id}" changed before completion`)
     const draft = await txDbResourceDraftUpdateStatus(portal, {
+      tenant: args.tenant,
       id: args.draftId,
       status: args.draftStatus,
       expectedStatus: "applying",
@@ -339,7 +354,7 @@ export async function txDbResourceApplyUpdate(portal: TPortal, args: TArgsApplyU
         serializedJson(args.lastError),
         args.backupRetained === undefined ? null : Number(args.backupRetained),
         terminal,
-        DEFAULT_OSS_ORGANIZATION_ID,
+        args.tenant.orgId,
         args.id,
       )
     : await (await portal.db.prepare(`
@@ -356,12 +371,12 @@ export async function txDbResourceApplyUpdate(portal: TPortal, args: TArgsApplyU
         serializedJson(args.lastError),
         args.backupRetained === undefined ? null : Number(args.backupRetained),
         terminal,
-        DEFAULT_OSS_ORGANIZATION_ID,
+        args.tenant.orgId,
         args.id,
         args.expectedStatus,
       )
   if (result.changes === 0) return null
-  return fxDbResourceApplyGet(portal, { id: args.id })
+  return fxDbResourceApplyGet(portal, { tenant: args.tenant, id: args.id })
 }
 
 export async function txDbResourceApplyInstanceResultUpsert(
@@ -386,7 +401,7 @@ export async function txDbResourceApplyInstanceResultUpsert(
       error_json = excluded.error_json,
       updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
   `)).run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.applyId,
     args.actorInstanceId,
     args.actorDefinitionName,
@@ -398,7 +413,7 @@ export async function txDbResourceApplyInstanceResultUpsert(
     SELECT *
     FROM legacy_actor_apply_results
     WHERE org_id = ? AND apply_id = ? AND actor_instance_id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.applyId, args.actorInstanceId)
+  `)).get(args.tenant.orgId, args.applyId, args.actorInstanceId)
   if (row === undefined || row === null) throw new Error("Failed to persist DbResource apply instance result")
   return fnParseDbResourceApplyInstanceResultRow(row)
 }

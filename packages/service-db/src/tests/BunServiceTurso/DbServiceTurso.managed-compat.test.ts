@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { DbServiceTurso } from '../../../src/DbServiceTurso/DbServiceTurso';
+import { bindTestTenant } from '../tenant.fixture';
 
 const ID = {
   canvas: '00000000-0000-4000-8000-000000000101',
@@ -23,14 +24,15 @@ describe('DbServiceTurso managed baseline compatibility', () => {
   });
 
   test('round-trips legacy public models through organization-scoped baseline tables', async () => {
-    const db = new DbServiceTurso({
+    const service = new DbServiceTurso({
       databasePath: ':memory:',
       dataDir: import.meta.dir,
       cacheDir: import.meta.dir,
       silentMigrations: true,
     });
-    databases.push(db);
-    await db.start();
+    databases.push(service);
+    await service.start();
+    const db = bindTestTenant(service);
 
     await db.canvas.create({ id: ID.canvas, name: 'Managed', automerge_url: 'automerge:managed' });
     const file = await db.file.create({

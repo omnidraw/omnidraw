@@ -109,6 +109,10 @@ class OrpcWebsocketService {
       return [error, null] as const;
     }
   }
+
+  dispose(): void {
+    this.websocket.close(1000, 'Tenant client disposed');
+  }
 }
 
 export { apiContract, contract, getRpcWebsocketUrl, OrpcWebsocketService };

@@ -3,19 +3,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DbServiceTurso } from "../../../src/DbServiceTurso/DbServiceTurso";
+import { bindTestTenant, type TTenantTestDb } from "../tenant.fixture";
 
 describe("DbServiceTurso tool groups", () => {
   let tempRoot: string;
-  let db: DbServiceTurso;
+  let db: TTenantTestDb;
 
   beforeEach(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "vibecanvas-db-tool-groups-"));
-    db = new DbServiceTurso({
+    const service = new DbServiceTurso({
       databasePath: join(tempRoot, "vibecanvas.turso"),
       dataDir: tempRoot,
       cacheDir: tempRoot,
     });
-    await db.start();
+    await service.start();
+    db = bindTestTenant(service);
   });
 
   afterEach(async () => {

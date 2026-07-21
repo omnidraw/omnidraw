@@ -4,27 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Check } from 'typebox/value';
-import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { AgentService } from '../src/AgentService';
 import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { createFakeSessionManager, executeTool } from './tool.test-helpers';
-
-class TestEvents implements IEventPublisherService {
-  name = 'widget-test-events';
-  publishDbEvent(_canvasId: string, _event: TDbEvent): void {}
-  async *subscribeDbEvents(_canvasId: string): AsyncIterable<TDbEvent> {}
-  publishActorEvent(_event: TActorEvent): void {}
-  async *subscribeActorEvents(): AsyncIterable<TActorEvent> {}
-  publishAgentEvent(_event: TAgentEvent): void {}
-  async *subscribeAgentEvents(): AsyncIterable<TAgentEvent> {}
-  publishFilesystemEvent(_path: string, _event: TFilesystemEvent): void {}
-  async *subscribeFilesystemEvents(_path: string): AsyncIterable<TFilesystemEvent> {}
-  publishNotification(_event: TNotificationEvent): void {}
-  async *subscribeNotifications(): AsyncIterable<TNotificationEvent> {}
-  getLatestNotification(): TNotificationEvent | null { return null; }
-}
+import { createTestTenantEvents } from './tenant.fixture';
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
@@ -254,7 +239,7 @@ describe('widget tools and publish integration', () => {
       cachePath: join(dataPath, 'cache'),
       dataPath,
       configPath,
-      eventPublisherService: new TestEvents(),
+      eventPublisherService: createTestTenantEvents(),
       actorService: {
         reload: async () => {},
         listResourceBindingsForDefinition: async () => [],
@@ -290,7 +275,7 @@ describe('widget tools and publish integration', () => {
       cachePath: join(dataPath, 'cache'),
       dataPath,
       configPath,
-      eventPublisherService: new TestEvents(),
+      eventPublisherService: createTestTenantEvents(),
       actorService: {
         reload: async () => {},
         transitionDefinitionPublication: async () => { reloads += 1; },
@@ -322,7 +307,7 @@ describe('widget tools and publish integration', () => {
       cachePath: join(dataPath, 'cache'),
       dataPath,
       configPath,
-      eventPublisherService: new TestEvents(),
+      eventPublisherService: createTestTenantEvents(),
       actorService: {
         reload: async () => {},
         listResourceBindingsForDefinition: async () => [],
@@ -364,7 +349,7 @@ describe('widget tools and publish integration', () => {
       cachePath: join(dataPath, 'cache'),
       dataPath,
       configPath,
-      eventPublisherService: new TestEvents(),
+      eventPublisherService: createTestTenantEvents(),
       actorService: {
         reload: async () => {},
         listResourceBindingsForDefinition: async () => [],

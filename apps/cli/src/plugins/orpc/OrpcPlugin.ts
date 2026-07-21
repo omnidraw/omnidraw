@@ -2,9 +2,9 @@ import { onError } from '@orpc/server';
 import { RPCHandler } from '@orpc/server/bun-ws';
 import type { IRuntimeServices } from '@vibecanvas/cli/setup-services';
 import type { IPlugin } from '@vibecanvas/runtime';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
-import { OSS_FAKE_SESSION } from '../auth/AuthPlugin';
 import { baseOs } from './orpc.base';
 import { router } from './router';
 
@@ -12,6 +12,7 @@ type TOrpcWebSocketData = {
   path: string;
   query: string;
   requestId: string;
+  tenant: TTenantContext;
 };
 
 function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
@@ -46,19 +47,21 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         const socket = ws as WebSocket & { data?: TOrpcWebSocketData };
         if (socket.data?.path !== '/api') return;
 
-        void handler.message(ws as never, message, {
+        void Promise.all([
+          actor.forTenant(socket.data.tenant),
+          agent.forTenant(socket.data.tenant),
+        ]).then(([tenantActor, tenantAgent]) => handler.message(ws as never, message, {
           context: {
-            accountId: OSS_FAKE_SESSION.accountId,
+            tenant: socket.data!.tenant,
             automerge,
             db,
             eventPublisher,
             filesystem,
             pty,
-            actor,
-            agent,
-            requestId: socket.data.requestId,
+            actor: tenantActor,
+            agent: tenantAgent,
           },
-        }).catch((error) => {
+        })).catch((error) => {
           console.error(error);
         });
       });

@@ -1,8 +1,9 @@
 import type { TFileDatabaseCapability } from '../interface';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 
 type TFileApiContext = {
   db: TFileDatabaseCapability;
-  requestId?: string;
+  tenant: TTenantContext;
 };
 
 export type { TFileApiContext };

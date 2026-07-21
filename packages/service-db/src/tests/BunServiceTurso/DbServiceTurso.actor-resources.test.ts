@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { DbServiceTurso } from "../../../src/DbServiceTurso/DbServiceTurso"
+import { bindTestTenant, type TTenantTestDb } from "../tenant.fixture"
 
 const testUuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`
 const KV_A = testUuid(301)
@@ -13,7 +14,7 @@ const MISSING = testUuid(308)
 const KV_B = testUuid(309)
 const KV_CREATED = testUuid(310)
 
-async function insertDefinition(db: DbServiceTurso, name: string, slug: string) {
+async function insertDefinition(db: TTenantTestDb, name: string, slug: string) {
   await db.actor.insertDefinition({
     name,
     slug,
@@ -24,15 +25,16 @@ async function insertDefinition(db: DbServiceTurso, name: string, slug: string) 
 }
 
 describe("DbServiceTurso actor resources", () => {
-  let db!: DbServiceTurso
+  let db!: TTenantTestDb
 
   beforeEach(async () => {
-    db = new DbServiceTurso({
+    const service = new DbServiceTurso({
       databasePath: ":memory:",
       dataDir: ".",
       cacheDir: ".",
     })
-    await db.start()
+    await service.start()
+    db = bindTestTenant(service)
   })
 
   afterEach(async () => {

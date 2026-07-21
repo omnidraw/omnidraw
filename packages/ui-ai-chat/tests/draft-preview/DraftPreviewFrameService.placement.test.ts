@@ -1,5 +1,6 @@
 import { ThemeService } from "@vibecanvas/service-theme";
 import { buildRuntime } from "@vibecanvas/canvas/runtime";
+import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createAiChatCanvasExtension } from "../../src/canvas-extension";
 import { DRAFT_PREVIEW_WIDGET_KIND } from "../../src/draft-preview/CONSTANTS";
@@ -116,6 +117,7 @@ describe("DraftPreviewFrameService placement", () => {
     });
     const runtime = buildRuntime({
       canvasId: "multi-preview-placement-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},

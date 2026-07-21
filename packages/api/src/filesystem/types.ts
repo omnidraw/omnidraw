@@ -1,16 +1,16 @@
 import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { TFilesystemDatabaseCapability } from '../interface';
 
 type TFilesystemApiCapability = Pick<
   IFilesystemService,
-  'exists' | 'homeDir' | 'keepalive' | 'readFile' | 'readdir' | 'rename' | 'stat' | 'unwatch' | 'watch' | 'writeFile'
+  'exists' | 'homeDir' | 'keepalive' | 'readFile' | 'readdir' | 'rename' | 'resolveHostPath' | 'stat' | 'unwatch' | 'watch' | 'writeFile'
 >;
 
 type TFilesystemApiContext = {
-  accountId?: string;
   db: TFilesystemDatabaseCapability;
   filesystem: TFilesystemApiCapability;
-  requestId?: string;
+  tenant: TTenantContext;
 };
 
 export type { TFilesystemApiCapability, TFilesystemApiContext };

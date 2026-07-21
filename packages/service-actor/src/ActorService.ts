@@ -1,7 +1,7 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { readdir } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative as relativePath } from 'node:path';
 import { ActorSupervisor } from './ActorSupervisor';
@@ -39,7 +39,7 @@ interface IPublicMethods {
 }
 
 export interface IActorServiceConfig {
-  db: DbServiceTurso;
+  db: TTenantDb;
   configPath: string;
   dataRoot: string;
   crypto?: Pick<Crypto, 'randomUUID'>;
@@ -47,7 +47,7 @@ export interface IActorServiceConfig {
   actorResourceKeyValueDatabaseFactory?: TActorResourceKeyValueDatabaseFactory;
   actorResourceKeyValueMaxOpenHandles?: number;
   secretStoreKeyProvider: ISecretStoreKeyProvider;
-  eventPublisherService: IEventPublisherService,
+  eventPublisherService: ITenantEventPublisherService,
 }
 
 export class ActorService implements IService, IStartableService, IStoppableService, IPublicMethods {

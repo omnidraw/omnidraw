@@ -6,6 +6,7 @@ import { Canvas } from "@vibecanvas/canvas";
 import { useNavigate } from "@solidjs/router";
 import { type Component } from "solid-js";
 import { canvasImagePort, canvasToolbarGroupsPort, createFrontendAiChatExtension } from "../ai-chat-adapters";
+import { createBrowserTenantBoundary } from "../services/tenant";
 
 type CanvasPageProps = {
   canvas: TBackendCanvas;
@@ -14,10 +15,10 @@ type CanvasPageProps = {
 const CanvasPage: Component<CanvasPageProps> = (props) => {
   const navigate = useNavigate();
   const aiChatExtension = createFrontendAiChatExtension({ navigate });
-
-  return (
+  const tenantCanvas = createBrowserTenantBoundary((tenant) => (
     <Canvas
       canvas={props.canvas}
+      tenant={tenant}
       extensions={[aiChatExtension]}
       image={canvasImagePort}
       toolbarGroups={canvasToolbarGroupsPort}
@@ -25,7 +26,9 @@ const CanvasPage: Component<CanvasPageProps> = (props) => {
       themeService={themeService}
       store={{ sidebarVisible: () => store.sidebarVisible, onToggleSidebar: () => setStore('sidebarVisible', v => !v) }}
     />
-  );
+  ));
+
+  return <>{tenantCanvas()}</>;
 };
 
 export default CanvasPage;

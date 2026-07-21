@@ -3,6 +3,39 @@ export type TFilesystemWatchEvent = {
   fileName: string;
 };
 
+export type TFilesystemScopeArgs = {
+  filesystemId: string;
+};
+
+export type TFilesystemRootRegistrationArgs = TFilesystemScopeArgs & {
+  rootPath: string;
+};
+
+export type TFilesystemPathArgs = TFilesystemScopeArgs & {
+  path: string;
+};
+
+export type TFilesystemWriteFileArgs = TFilesystemPathArgs & {
+  content: string;
+};
+
+export type TFilesystemRenameArgs = TFilesystemScopeArgs & {
+  sourcePath: string;
+  targetPath: string;
+};
+
+export type TFilesystemWatchArgs = TFilesystemPathArgs & {
+  watchId: string;
+};
+
+export type TFilesystemWatchControlArgs = TFilesystemScopeArgs & {
+  watchId: string;
+};
+
+export type TFilesystemServiceOptions = {
+  watchTtlMs?: number;
+};
+
 export type TFilesystemListArgs = {
   path: string;
   omitFiles?: boolean;

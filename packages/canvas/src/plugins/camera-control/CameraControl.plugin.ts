@@ -5,6 +5,7 @@ import { fnGetPointerDelta } from "./fn.get-pointer-delta";
 import { fxReadCameraStateFromLocalStorage } from "./fx.read-camera-state-from-localstorage";
 import { txSyncHandLayer } from "./tx.sync-hand-layer";
 import { txWriteCameraStateToLocalStorage } from "./tx.write-camera-state-to-localstorage";
+import { fnBrowserTenantStorageKeys } from "../../fn.browser-tenant-scope";
 
 const ZOOM_STEP = 1.03;
 
@@ -77,7 +78,11 @@ export function createCameraControlPlugin(): IPlugin<IRuntimeServices, IRuntimeH
       const camera = ctx.services.require("camera");
       const render = ctx.services.require("scene");
       const storage = getDefaultStorage();
-      const restoredViewport = fxReadCameraStateFromLocalStorage({ storage }, { canvasId: ctx.config.canvasId });
+      const storageKey = fnBrowserTenantStorageKeys(ctx.config.tenant).cameraViewports;
+      const restoredViewport = fxReadCameraStateFromLocalStorage({ storage }, {
+        canvasId: ctx.config.canvasId,
+        storageKey,
+      });
 
       if (restoredViewport) {
         camera.setViewport(restoredViewport, { emitChange: false });
@@ -86,6 +91,7 @@ export function createCameraControlPlugin(): IPlugin<IRuntimeServices, IRuntimeH
       offCameraChange = camera.hooks.change.tap(() => {
         txWriteCameraStateToLocalStorage({ storage }, {
           canvasId: ctx.config.canvasId,
+          storageKey,
           viewport: {
             x: camera.x,
             y: camera.y,

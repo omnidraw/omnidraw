@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TActorConnection, TActorDefinition, TActorInstance } from "../model"
 import {
   fnParseActorConnectionRow,
@@ -11,21 +11,25 @@ type TPortal = {
   db: Database
 }
 
-type TArgs = Record<never, never>
+type TArgs = { tenant: TTenantContext }
 
 type TArgsListInstances = {
+  tenant: TTenantContext
   canvasId?: string
 }
 
 type TArgsGetDefinition = {
+  tenant: TTenantContext
   name: string
 }
 
 type TArgsGetInstanceByElementId = {
+  tenant: TTenantContext
   elementId: string
 }
 
 type TArgsGetInstanceById = {
+  tenant: TTenantContext
   instanceId: string
 }
 
@@ -36,7 +40,7 @@ export async function fxActorListDefinitions(portal: TPortal, args: TArgs): Prom
     FROM legacy_actor_definitions
     WHERE org_id = ?
     ORDER BY name ASC, slug ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID)
+  `)).all(args.tenant.orgId)
   return rows.map(fnParseActorDefinitionRow)
 }
 
@@ -48,7 +52,7 @@ export async function fxActorGetDefinition(
     SELECT name, slug, url, description, manifest_relative_path, created_at_ms, updated_at_ms
     FROM legacy_actor_definitions
     WHERE org_id = ? AND name = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.name)
+  `)).get(args.tenant.orgId, args.name)
   return row ? fnParseActorDefinitionRow(row) : null
 }
 
@@ -64,7 +68,7 @@ export async function fxActorListInstances(
       FROM legacy_actor_instances
       WHERE org_id = ?
       ORDER BY created_at_ms ASC, id ASC
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID)
+    `)).all(args.tenant.orgId)
     return rows.map(fnParseActorInstanceRow)
   }
 
@@ -75,7 +79,7 @@ export async function fxActorListInstances(
     FROM legacy_actor_instances
     WHERE org_id = ? AND canvas_id = ?
     ORDER BY created_at_ms ASC, id ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.canvasId)
+  `)).all(args.tenant.orgId, args.canvasId)
   return rows.map(fnParseActorInstanceRow)
 }
 
@@ -87,7 +91,7 @@ export async function fxActorListConnections(portal: TPortal, args: TArgs): Prom
     FROM legacy_actor_connections
     WHERE org_id = ?
     ORDER BY created_at_ms ASC, id ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID)
+  `)).all(args.tenant.orgId)
   return rows.map(fnParseActorConnectionRow)
 }
 
@@ -103,7 +107,7 @@ export async function fxActorGetInstanceByElementId(
     WHERE org_id = ? AND element_id = ?
     ORDER BY created_at_ms ASC, id ASC
     LIMIT 1
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.elementId)
+  `)).get(args.tenant.orgId, args.elementId)
   return row ? fnParseActorInstanceRow(row) : null
 }
 
@@ -117,6 +121,6 @@ export async function fxActorGetInstanceById(
       created_at_ms, updated_at_ms
     FROM legacy_actor_instances
     WHERE org_id = ? AND id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.instanceId)
+  `)).get(args.tenant.orgId, args.instanceId)
   return row ? fnParseActorInstanceRow(row) : null
 }

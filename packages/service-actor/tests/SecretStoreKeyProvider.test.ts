@@ -11,6 +11,7 @@ import {
   type TStoredEncryptionKey,
 } from '../src/resources/SecretStoreKeyProvider';
 import { testUuid } from './test-uuid';
+import { bindTestTenantDb } from './tenant.fixture';
 
 function memoryKeyStore(initial: Array<{ resourceId: string; key: TStoredEncryptionKey }> = []): (
   IActorResourceEncryptionKeyStore & {
@@ -208,28 +209,30 @@ describe('SecretStoreDatabaseKeyProvider', () => {
     const firstDb = new DbServiceTurso(config);
     try {
       await firstDb.start();
-      await firstDb.actorResource.create({
+      const firstTenantDb = bindTestTenantDb(firstDb);
+      await firstTenantDb.actorResource.create({
         id: testUuid('resource'),
         kind: 'secretStore',
         name: 'Secret resource',
         status: 'ready',
       });
       const first = new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: firstDb.actorResourceEncryptionKey,
+        encryptionKeys: firstTenantDb.actorResourceEncryptionKey,
         randomBytes: () => Buffer.alloc(32, 0x6b),
         randomUUID: () => testUuid('persisted-key'),
       });
       const key = await first.getOrCreateDatabaseHexKey(testUuid('resource'));
-      await expect(firstDb.actorResourceEncryptionKey.get({ resourceId: testUuid('resource') }))
+      await expect(firstTenantDb.actorResourceEncryptionKey.get({ resourceId: testUuid('resource') }))
         .resolves.toMatchObject({ id: testUuid('persisted-key'), key_hex: '6b'.repeat(32) });
       await firstDb.db.close();
 
       const restartedDb = new DbServiceTurso(config);
       try {
         await restartedDb.start();
+        const restartedTenantDb = bindTestTenantDb(restartedDb);
         let generated = false;
         const restarted = new SecretStoreDatabaseKeyProvider({
-          encryptionKeys: restartedDb.actorResourceEncryptionKey,
+          encryptionKeys: restartedTenantDb.actorResourceEncryptionKey,
           randomBytes: () => {
             generated = true;
             return Buffer.alloc(32, 0xff);

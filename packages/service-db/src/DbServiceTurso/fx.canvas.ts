@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TCanvas, TCanvasMember } from "../model"
 import { fnTimestampFromMs } from "./fn.legacy-row"
 
@@ -8,7 +8,7 @@ type TPortal = {
 }
 
 type TArgsAccountScoped = {
-  accountId?: string
+  tenant: TTenantContext
 }
 
 type TArgsFindByName = TArgsAccountScoped & {
@@ -20,11 +20,12 @@ type TArgsFindById = TArgsAccountScoped & {
 }
 
 type TArgsCanEdit = {
-  accountId: string
+  tenant: TTenantContext
   canvasId: string
 }
 
 type TArgsListMembers = {
+  tenant: TTenantContext
   canvasId: string
 }
 
@@ -63,20 +64,6 @@ function fnParseCanvasMemberRow(row: TCanvasMemberStorageRow): TCanvasMember {
 }
 
 export async function fxCanvasListAll(portal: TPortal, args: TArgsAccountScoped): Promise<TCanvas[]> {
-  if (!args.accountId) {
-    const stmt = await portal.db.prepare(`
-      SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
-        canvases.created_at_ms
-      FROM canvases
-      INNER JOIN collaboration_documents
-        ON collaboration_documents.org_id = canvases.org_id
-        AND collaboration_documents.canvas_id = canvases.id
-      WHERE canvases.org_id = ?
-    `)
-    const rows = await stmt.all(DEFAULT_OSS_ORGANIZATION_ID) as TCanvasStorageRow[]
-    return rows.map(fnParseCanvasRow)
-  }
-
   const stmt = await portal.db.prepare(`
     SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
       canvases.created_at_ms
@@ -90,25 +77,11 @@ export async function fxCanvasListAll(portal: TPortal, args: TArgsAccountScoped)
       AND collaboration_documents.canvas_id = canvases.id
     WHERE canvases.org_id = ?
   `)
-  const rows = await stmt.all(args.accountId, DEFAULT_OSS_ORGANIZATION_ID) as TCanvasStorageRow[]
+  const rows = await stmt.all(args.tenant.accountId, args.tenant.orgId) as TCanvasStorageRow[]
   return rows.map(fnParseCanvasRow)
 }
 
 export async function fxCanvasFindByName(portal: TPortal, args: TArgsFindByName): Promise<TCanvas | null> {
-  if (!args.accountId) {
-    const stmt = await portal.db.prepare(`
-      SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
-        canvases.created_at_ms
-      FROM canvases
-      INNER JOIN collaboration_documents
-        ON collaboration_documents.org_id = canvases.org_id
-        AND collaboration_documents.canvas_id = canvases.id
-      WHERE canvases.org_id = ? AND canvases.name = ?
-    `)
-    const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.name) as TCanvasStorageRow | undefined
-    return row ? fnParseCanvasRow(row) : null
-  }
-
   const stmt = await portal.db.prepare(`
     SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
       canvases.created_at_ms
@@ -122,25 +95,11 @@ export async function fxCanvasFindByName(portal: TPortal, args: TArgsFindByName)
       AND collaboration_documents.canvas_id = canvases.id
     WHERE canvases.org_id = ? AND canvases.name = ?
   `)
-  const row = await stmt.get(args.accountId, DEFAULT_OSS_ORGANIZATION_ID, args.name) as TCanvasStorageRow | undefined
+  const row = await stmt.get(args.tenant.accountId, args.tenant.orgId, args.name) as TCanvasStorageRow | undefined
   return row ? fnParseCanvasRow(row) : null
 }
 
 export async function fxCanvasFindById(portal: TPortal, args: TArgsFindById): Promise<TCanvas | null> {
-  if (!args.accountId) {
-    const stmt = await portal.db.prepare(`
-      SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
-        canvases.created_at_ms
-      FROM canvases
-      INNER JOIN collaboration_documents
-        ON collaboration_documents.org_id = canvases.org_id
-        AND collaboration_documents.canvas_id = canvases.id
-      WHERE canvases.org_id = ? AND canvases.id = ?
-    `)
-    const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.id) as TCanvasStorageRow | undefined
-    return row ? fnParseCanvasRow(row) : null
-  }
-
   const stmt = await portal.db.prepare(`
     SELECT canvases.id, canvases.name, collaboration_documents.automerge_url,
       canvases.created_at_ms
@@ -154,7 +113,7 @@ export async function fxCanvasFindById(portal: TPortal, args: TArgsFindById): Pr
       AND collaboration_documents.canvas_id = canvases.id
     WHERE canvases.org_id = ? AND canvases.id = ?
   `)
-  const row = await stmt.get(args.accountId, DEFAULT_OSS_ORGANIZATION_ID, args.id) as TCanvasStorageRow | undefined
+  const row = await stmt.get(args.tenant.accountId, args.tenant.orgId, args.id) as TCanvasStorageRow | undefined
   return row ? fnParseCanvasRow(row) : null
 }
 
@@ -168,7 +127,7 @@ export async function fxCanvasCanEdit(portal: TPortal, args: TArgsCanEdit): Prom
       AND role IN ('owner', 'editor')
     LIMIT 1
   `)
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.canvasId, args.accountId)
+  const row = await stmt.get(args.tenant.orgId, args.canvasId, args.tenant.accountId)
   return row != null
 }
 
@@ -182,7 +141,7 @@ export async function fxCanvasHasOwnerRole(portal: TPortal, args: TArgsCanEdit):
       AND role = 'owner'
     LIMIT 1
   `)
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.canvasId, args.accountId)
+  const row = await stmt.get(args.tenant.orgId, args.canvasId, args.tenant.accountId)
   return row != null
 }
 
@@ -192,6 +151,6 @@ export async function fxCanvasListMembers(portal: TPortal, args: TArgsListMember
     FROM canvas_members
     WHERE org_id = ? AND canvas_id = ?
   `)
-  const rows = await stmt.all(DEFAULT_OSS_ORGANIZATION_ID, args.canvasId) as TCanvasMemberStorageRow[]
+  const rows = await stmt.all(args.tenant.orgId, args.canvasId) as TCanvasMemberStorageRow[]
   return rows.map(fnParseCanvasMemberRow)
 }

@@ -1,13 +1,11 @@
 import type { IPlugin } from '@vibecanvas/runtime';
-import { DEFAULT_OSS_ACCOUNT_ID } from '@vibecanvas/service-db/CONSTANTS';
+import type { ITenantContextProvider, TTenantContextRequest } from '@vibecanvas/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
 import type { IRuntimeServices } from '../../setup-services';
-
-type TOssFakeSession = {
-  accountId: string;
-  mode: 'oss-default-owner';
-};
+import { OSS_FAKE_SESSION } from './CONSTANTS';
+import { fnAssertOssTenantPlacement, fnCreateOssTenantContext } from './fn.oss-tenant-context';
+import type { TOssFakeSession } from './types';
 
 function createAuthPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
@@ -19,16 +17,17 @@ function createAuthPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
         const db = ctx.services.get('db');
         if (!db) return;
 
-        db.account.ensureDefaultOwner();
+        await db.account.ensureDefaultOwner();
       });
     },
   };
 }
 
-const OSS_FAKE_SESSION: TOssFakeSession = {
-  accountId: DEFAULT_OSS_ACCOUNT_ID,
-  mode: 'oss-default-owner',
-};
+const OSS_TENANT_CONTEXT_PROVIDER: ITenantContextProvider = Object.freeze({
+  async resolveTenantContext(request: TTenantContextRequest) {
+    return fnAssertOssTenantPlacement(fnCreateOssTenantContext(request));
+  },
+});
 
-export { createAuthPlugin, OSS_FAKE_SESSION };
+export { createAuthPlugin, OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER };
 export type { TOssFakeSession };

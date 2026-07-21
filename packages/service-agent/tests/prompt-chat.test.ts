@@ -5,24 +5,8 @@ import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
 import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetResourceSelectionRecord } from '../src/core/fx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
-import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from '../src/prompts';
-
-class TestEventPublisherService implements IEventPublisherService {
-  name = 'test-event-publisher';
-
-  publishDbEvent(canvasId: string, event: TDbEvent): void { void canvasId; void event; }
-  async *subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent> { void canvasId; }
-  publishActorEvent(event: TActorEvent): void { void event; }
-  async *subscribeActorEvents(): AsyncIterable<TActorEvent> { }
-  publishAgentEvent(event: TAgentEvent): void { void event; }
-  async *subscribeAgentEvents(): AsyncIterable<TAgentEvent> { }
-  publishFilesystemEvent(path: string, event: TFilesystemEvent): void { void path; void event; }
-  async *subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent> { void path; }
-  publishNotification(event: TNotificationEvent): void { void event; }
-  async *subscribeNotifications(): AsyncIterable<TNotificationEvent> { }
-  getLatestNotification(): TNotificationEvent | null { return null; }
-}
+import { createTestTenantEvents } from './tenant.fixture';
 
 const tempDirs: string[] = [];
 
@@ -41,7 +25,7 @@ async function createService(
     cachePath: join(dataPath, 'cache'),
     dataPath,
     configPath: join(dataPath, 'config'),
-    eventPublisherService: new TestEventPublisherService(),
+    eventPublisherService: createTestTenantEvents(),
     actorService,
     authorizeToolCall,
   });
@@ -424,7 +408,7 @@ describe('AgentService.promptChat', () => {
     expect(service.sessionMap[widgetId][sessionId]).not.toBe(originalEntry);
   });
 
-  test('refreshes internal authorization context on reuse and rejects account ownership changes', async () => {
+  test('refreshes request authorization, reauthorizes approval, and rejects account ownership changes', async () => {
     const authorizationChecks: Array<{ toolName: string; accountId?: string; requestId?: string }> = [];
     const service = await createService({
       reload: async () => {},
@@ -460,8 +444,16 @@ describe('AgentService.promptChat', () => {
       accountId: 'account-1',
       requestId: 'request-2',
     });
-    await service.resolveChatApproval(widgetId, sessionId, approval.id, 'reject');
+    await service.resolveChatApproval(widgetId, sessionId, approval.id, 'approve', {
+      accountId: 'account-1',
+      requestId: 'request-approval',
+    });
     await toolResult;
+    expect(authorizationChecks).toContainEqual({
+      toolName: 'approval.resolve',
+      accountId: 'account-1',
+      requestId: 'request-approval',
+    });
     await expect(service.connectChat(widgetId, sessionId, { accountId: 'account-2', requestId: 'request-3' }))
       .rejects.toMatchObject({ code: 'CHAT_AUTHORIZATION_CHANGED' });
     expect(service.sessionMap[widgetId][sessionId].authorizationContext).toEqual({

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  fnFreezeTenantContext,
   fnScopedKey,
   fnTenantContextHasCapability,
   fnTenantContextMatchesPlacement,
@@ -39,6 +40,25 @@ describe('tenant-core public contracts', () => {
       cellId: 'cell-a',
       epoch: 8,
     })).toBe(false);
+  });
+
+  test('freezes the context and copied authority collections at runtime', () => {
+    const mutableRoles = ['member'];
+    const mutableCapabilities = ['canvas:read'];
+    const frozen = fnFreezeTenantContext({
+      ...context,
+      roles: mutableRoles,
+      capabilities: mutableCapabilities,
+    });
+
+    mutableRoles.push('owner');
+    mutableCapabilities.push('canvas:write');
+
+    expect(Object.isFrozen(frozen)).toBe(true);
+    expect(Object.isFrozen(frozen.roles)).toBe(true);
+    expect(Object.isFrozen(frozen.capabilities)).toBe(true);
+    expect(frozen.roles).toEqual(['member']);
+    expect(frozen.capabilities).toEqual(['canvas:read']);
   });
 
   test('supports a fake managed context provider', async () => {

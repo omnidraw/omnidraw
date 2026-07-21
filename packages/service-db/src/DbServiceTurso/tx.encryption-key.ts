@@ -1,5 +1,5 @@
 import type { Database } from '@tursodatabase/database';
-import { DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { TEncryptionKey } from '../model';
 import { fxActorResourceEncryptionKeyGet } from './fx.encryption-key';
 
@@ -8,6 +8,7 @@ type TPortal = {
 };
 
 type TArgs = {
+  tenant: TTenantContext;
   resourceId: string;
   keyId: string;
   purpose: string;
@@ -34,7 +35,10 @@ export async function txActorResourceEncryptionKeyGetOrCreate(
 ): Promise<TEncryptionKey> {
   assertEncryptionKeyArgs(args);
   const getOrCreate = portal.db.transaction(async () => {
-    const existing = await fxActorResourceEncryptionKeyGet(portal, { resourceId: args.resourceId });
+    const existing = await fxActorResourceEncryptionKeyGet(portal, {
+      tenant: args.tenant,
+      resourceId: args.resourceId,
+    });
     if (existing) return existing;
 
     await (await portal.db.prepare(`
@@ -47,14 +51,17 @@ export async function txActorResourceEncryptionKeyGetOrCreate(
       WHERE org_id = ? AND id = ? AND kind = 'secretStore'
       ON CONFLICT (org_id, resource_id) DO NOTHING
     `)).run(
-      DEFAULT_OSS_ORGANIZATION_ID,
+      args.tenant.orgId,
       args.keyId,
       args.keyHex,
-      DEFAULT_OSS_ORGANIZATION_ID,
+      args.tenant.orgId,
       args.resourceId,
     );
 
-    const stored = await fxActorResourceEncryptionKeyGet(portal, { resourceId: args.resourceId });
+    const stored = await fxActorResourceEncryptionKeyGet(portal, {
+      tenant: args.tenant,
+      resourceId: args.resourceId,
+    });
     if (!stored) throw new Error('Secret-store actor resource was not found.');
     return stored;
   }) as TImmediateTransaction<TEncryptionKey>;

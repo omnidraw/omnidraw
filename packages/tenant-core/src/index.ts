@@ -25,6 +25,7 @@ export type {
 } from './types';
 export { fnScopedKey } from './core/fn.scoped-key';
 export {
+  fnFreezeTenantContext,
   fnTenantContextHasCapability,
   fnTenantContextMatchesPlacement,
 } from './core/fn.tenant-context';

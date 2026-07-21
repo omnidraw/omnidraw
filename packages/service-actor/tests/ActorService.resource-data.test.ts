@@ -3,17 +3,18 @@ import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import { ActorService } from '../src/ActorService';
 import { ActorResourceError } from '../src/resources/ActorResourceError';
 import { SecretStoreDatabaseKeyProvider } from '../src/resources/SecretStoreKeyProvider';
 import { createTestCrypto, testUuid } from './test-uuid';
+import { bindTestTenantDb, createTestTenantEvents, type TActorTestDb } from './tenant.fixture';
 
 describe('ActorService KV and secret management', () => {
   let rootDir = '';
   let configPath = '';
   let dataRoot = '';
-  let db: DbServiceTurso;
+  let dbService: DbServiceTurso;
+  let db: TActorTestDb;
   let service: ActorService;
   let testCrypto: Pick<Crypto, 'randomUUID'>;
 
@@ -23,8 +24,9 @@ describe('ActorService KV and secret management', () => {
     dataRoot = join(rootDir, 'data');
     await mkdir(join(configPath, 'widgets'), { recursive: true });
     await mkdir(dataRoot, { recursive: true });
-    db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
-    await db.start();
+    dbService = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
+    await dbService.start();
+    db = bindTestTenantDb(dbService);
     testCrypto = createTestCrypto('actor-service-resource-data');
     service = new ActorService({
       db,
@@ -36,7 +38,7 @@ describe('ActorService KV and secret management', () => {
         randomBytes: () => Buffer.alloc(32, 0x5c),
         randomUUID: () => testUuid('test-key-initial'),
       }),
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
   });
@@ -185,7 +187,7 @@ describe('ActorService KV and secret management', () => {
         randomBytes: () => Buffer.alloc(32, 0xff),
         randomUUID: () => testUuid('test-key-restart'),
       }),
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
 
@@ -219,7 +221,7 @@ describe('ActorService KV and secret management', () => {
         getDatabaseHexKey: async () => '00'.repeat(32),
         getOrCreateDatabaseHexKey: async () => '00'.repeat(32),
       },
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
 
@@ -256,7 +258,7 @@ describe('ActorService KV and secret management', () => {
         randomBytes: () => Buffer.alloc(32, 0xff),
         randomUUID: () => testUuid('replacement-key-must-not-be-created'),
       }),
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
 
@@ -291,7 +293,7 @@ describe('ActorService KV and secret management', () => {
         randomBytes: () => Buffer.alloc(32, 0xff),
         randomUUID: () => testUuid('test-key-healthy-restart'),
       }),
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
     expect(await service.getResource(missing.id)).toMatchObject({ status: 'error' });

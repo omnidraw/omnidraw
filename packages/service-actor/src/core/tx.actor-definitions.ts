@@ -1,4 +1,4 @@
-import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
+import type { TTenantDb } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import type { TVibecanvasJson } from "./types";
 import type { readdir as _readdir } from 'node:fs/promises';
 import type { rm as _rm } from 'node:fs/promises';
@@ -11,7 +11,7 @@ type TVibecanvasDefinition = TVibecanvasJson & {
 }
 
 type TPortalSyncDbActorDefinitions = {
-  db: DbServiceTurso,
+  db: TTenantDb,
   crypto: Pick<typeof crypto, "randomUUID">,
   configPath: string,
   isAbsolute: typeof _isAbsolute,

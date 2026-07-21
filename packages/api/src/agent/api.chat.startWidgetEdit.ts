@@ -2,7 +2,7 @@ import { baseAgentOs } from './orpc';
 
 export const apiChatStartWidgetEdit = baseAgentOs.chat.startWidgetEdit.handler(async ({ input, context }) => {
   return await context.agent.startWidgetEditChat(input.widgetId, input.sessionId, input.definitionName, {
-    accountId: context.accountId,
-    requestId: context.requestId,
+    accountId: context.tenant.accountId,
+    requestId: context.tenant.requestId,
   })
 });

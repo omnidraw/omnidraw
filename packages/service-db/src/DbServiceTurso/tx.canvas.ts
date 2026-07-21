@@ -1,46 +1,33 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TCanvas } from "../model"
 import { fxCanvasCanEdit, fxCanvasFindById, fxCanvasHasOwnerRole } from "./fx.canvas"
 import { fnTimestampFromMs } from "./fn.legacy-row"
-import { txAccountEnsureDefaultOwner } from "./tx.account"
 
 type TPortal = {
   db: Database
 }
 
 type TArgsCreate = Pick<TCanvas, "automerge_url" | "id" | "name"> & {
-  accountId?: string
+  tenant: TTenantContext
 }
 
 type TArgsRenameById = {
   id: string
   name: string
-  accountId?: string
+  tenant: TTenantContext
 }
 
 type TArgsDeleteById = {
   id: string
-  accountId?: string
+  tenant: TTenantContext
 }
 
 type TImmediateTransaction<T> = (() => Promise<T>) & {
   immediate: () => Promise<T>
 }
 
-function accountIdOrDefault(accountId?: string) {
-  return accountId ?? DEFAULT_OSS_ACCOUNT_ID
-}
-
-async function ensureDefaultAccountWhenNeeded(portal: TPortal, accountId?: string) {
-  if (!accountId || accountId === DEFAULT_OSS_ACCOUNT_ID) {
-    await txAccountEnsureDefaultOwner(portal, {})
-  }
-}
-
 export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promise<TCanvas> {
-  const accountId = accountIdOrDefault(args.accountId)
-  await ensureDefaultAccountWhenNeeded(portal, args.accountId)
   const nowSql = "CAST(unixepoch('subsec') * 1000 AS INTEGER)"
 
   const create = portal.db.transaction(async () => {
@@ -52,10 +39,10 @@ export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promis
       RETURNING id, name, created_at_ms
     `)
     const created = await createCanvasStmt.get(
-      DEFAULT_OSS_ORGANIZATION_ID,
+      args.tenant.orgId,
       args.id,
       args.name,
-      accountId,
+      args.tenant.accountId,
     ) as { id: string; name: string; created_at_ms: unknown } | null | undefined
 
     if (!created) {
@@ -70,11 +57,11 @@ export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promis
       VALUES (?, ?, ?, NULL, ?, ?, ${nowSql}, ${nowSql})
     `)
     await createDocumentStmt.run(
-      DEFAULT_OSS_ORGANIZATION_ID,
+      args.tenant.orgId,
       created.id,
       created.id,
       args.automerge_url,
-      DEFAULT_OSS_ORGANIZATION_ID,
+      args.tenant.orgId,
     )
 
     const createMemberStmt = await portal.db.prepare(`
@@ -83,7 +70,7 @@ export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promis
       )
       VALUES (?, ?, ?, 'owner', ${nowSql}, ${nowSql})
     `)
-    await createMemberStmt.run(DEFAULT_OSS_ORGANIZATION_ID, created.id, accountId)
+    await createMemberStmt.run(args.tenant.orgId, created.id, args.tenant.accountId)
     return {
       id: created.id,
       name: created.name,
@@ -95,15 +82,13 @@ export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promis
 }
 
 export async function txCanvasRenameById(portal: TPortal, args: TArgsRenameById): Promise<TCanvas | null> {
-  if (args.accountId) {
-    const canEdit = await fxCanvasCanEdit(portal, {
-      accountId: args.accountId,
-      canvasId: args.id,
-    })
+  const canEdit = await fxCanvasCanEdit(portal, {
+    tenant: args.tenant,
+    canvasId: args.id,
+  })
 
-    if (!canEdit) {
-      return null
-    }
+  if (!canEdit) {
+    return null
   }
 
   const stmt = await portal.db.prepare(`
@@ -111,30 +96,28 @@ export async function txCanvasRenameById(portal: TPortal, args: TArgsRenameById)
     SET name = ?, updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
     WHERE org_id = ? AND id = ?
   `)
-  const result = await stmt.run(args.name, DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  const result = await stmt.run(args.name, args.tenant.orgId, args.id)
   if (result.changes === 0) return null
-  return fxCanvasFindById(portal, { id: args.id })
+  return fxCanvasFindById(portal, { tenant: args.tenant, id: args.id })
 }
 
 export async function txCanvasDeleteById(portal: TPortal, args: TArgsDeleteById): Promise<TCanvas[]> {
-  if (args.accountId) {
-    const hasOwnerRole = await fxCanvasHasOwnerRole(portal, {
-      accountId: args.accountId,
-      canvasId: args.id,
-    })
+  const hasOwnerRole = await fxCanvasHasOwnerRole(portal, {
+    tenant: args.tenant,
+    canvasId: args.id,
+  })
 
-    if (!hasOwnerRole) {
-      return []
-    }
+  if (!hasOwnerRole) {
+    return []
   }
 
-  const existing = await fxCanvasFindById(portal, { id: args.id })
+  const existing = await fxCanvasFindById(portal, { tenant: args.tenant, id: args.id })
   if (!existing) return []
 
   const stmt = await portal.db.prepare(`
     DELETE FROM canvases
     WHERE org_id = ? AND id = ?
   `)
-  const result = await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  const result = await stmt.run(args.tenant.orgId, args.id)
   return result.changes === 0 ? [] : [existing]
 }

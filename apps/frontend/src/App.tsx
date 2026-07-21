@@ -1,12 +1,12 @@
 import { useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
-import { onMount } from "solid-js";
-import { showErrorToast, Toaster } from "./components/ui/Toast";
+import { onCleanup, onMount } from "solid-js";
+import { Toaster } from "./components/ui/Toast";
 import { Sidebar, WidgetCatalogProvider } from "@vibecanvas/ui-ai-chat";
-import { orpcWebsocketService } from "./services/orpc-websocket";
-import { createStartupCanvasBootstrap } from "./startup-canvas";
 import { setStore, store } from "./store";
 import styles from "./App.module.css";
 import { createFrontendSidebarController } from "./ai-chat-adapters";
+import { bootstrapFrontendCanvases, registerFrontendCanvasBootstrapHost } from "./services/canvas-bootstrap";
+import { getBrowserTenantScope } from "./services/tenant";
 
 const App = (props: RouteSectionProps) => {
   const location = useLocation();
@@ -17,16 +17,14 @@ const App = (props: RouteSectionProps) => {
     navigate,
   });
 
-  const bootstrapCanvases = createStartupCanvasBootstrap({
-    listCanvases: () => orpcWebsocketService.apiService.api.canvas.list(),
-    createCanvas: (name) => orpcWebsocketService.apiService.api.canvas.create({ name }),
-    setCanvases: (canvases) => setStore("canvases", canvases),
+  const unregisterCanvasBootstrapHost = registerFrontendCanvasBootstrapHost({
+    pathname: () => location.pathname,
     navigate,
-    onError: (message) => showErrorToast(message),
   });
+  onCleanup(unregisterCanvasBootstrapHost);
 
   onMount(() => {
-    void bootstrapCanvases({ pathname: location.pathname }).catch(() => undefined);
+    void bootstrapFrontendCanvases(getBrowserTenantScope()).catch(() => undefined);
     document.addEventListener("wheel", (e) => {
       if (e.ctrlKey) {
         e.preventDefault();

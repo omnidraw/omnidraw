@@ -1,5 +1,5 @@
 import type { Database } from '@tursodatabase/database';
-import { DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { TEncryptionKey } from '../model';
 import { fnTimestampFromMs } from './fn.legacy-row';
 
@@ -8,6 +8,7 @@ type TPortal = {
 };
 
 type TArgs = {
+  tenant: TTenantContext;
   resourceId: string;
 };
 
@@ -37,6 +38,6 @@ export async function fxActorResourceEncryptionKeyGet(
     SELECT id, lower(hex(key_material)) AS key_hex, created_at_ms
     FROM resource_encryption_keys
     WHERE org_id = ? AND resource_id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId);
+  `)).get(args.tenant.orgId, args.resourceId);
   return row ? parseEncryptionKey(row) : null;
 }

@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TJson, TKeyValue } from "../model"
 
 type TPortal = {
@@ -7,6 +7,7 @@ type TPortal = {
 }
 
 type TArgsGet = {
+  tenant: TTenantContext
   name: string
 }
 
@@ -42,7 +43,7 @@ export async function fxKeyValueGet(portal: TPortal, args: TArgsGet): Promise<TK
     FROM key_values
     WHERE org_id = ? AND name = ?
   `)
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.name)
+  const row = await stmt.get(args.tenant.orgId, args.name)
 
   if (!row) return null
 

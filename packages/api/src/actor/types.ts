@@ -106,14 +106,13 @@ export type TActorApiCapability = {
 };
 
 export type TActorEventCapability = {
-  publishAgentEvent(event: TAgentEvent): void;
-  subscribeActorEvents(): AsyncIterable<TActorEvent>;
+  publishAgentEvent(tenant: import('@vibecanvas/tenant-core').TTenantContext, event: TAgentEvent): number;
+  subscribeActorEvents(tenant: import('@vibecanvas/tenant-core').TTenantContext): AsyncIterable<TActorEvent>;
 };
 
 export type TActorsApiContext = {
   db: TActorDatabaseCapability;
   eventPublisher: TActorEventCapability;
   actor: TActorApiCapability;
-  accountId?: string;
-  requestId?: string;
+  tenant: import('@vibecanvas/tenant-core').TTenantContext;
 };

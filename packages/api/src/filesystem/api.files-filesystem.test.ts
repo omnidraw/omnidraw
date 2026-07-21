@@ -3,7 +3,18 @@ import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import type { Dirent } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import { walkDirectory } from './api.files-filesystem';
+
+const TENANT = fnFreezeTenantContext({
+  orgId: 'org-a',
+  accountId: 'account-a',
+  cellId: 'cell-a',
+  placementEpoch: 1,
+  roles: ['owner'],
+  capabilities: ['filesystem:read'],
+  requestId: 'filesystem-helper-test',
+});
 
 function createPermissionDeniedError(path: string): TErrorEntry {
   return {
@@ -15,9 +26,9 @@ function createPermissionDeniedError(path: string): TErrorEntry {
 
 function createTestFilesystem() {
   return {
-    readdir(_: string, path: string): TErrTuple<Dirent[]> {
+    readdir(_: typeof TENANT, args: { filesystemId: string; path: string }): TErrTuple<Dirent[]> {
       try {
-        return [readdirSync(path, { withFileTypes: true }), null];
+        return [readdirSync(args.path, { withFileTypes: true }), null];
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to read directory';
         return [null, { code: 'SRV.TEST.READDIR.FAILED', statusCode: 500, externalMessage: { en: message } }];
@@ -37,14 +48,14 @@ describe('api.files-filesystem helpers', () => {
       writeFileSync(join(root, 'alpha', 'nested', 'deep.txt'), 'deep', 'utf8');
       writeFileSync(join(root, 'top.txt'), 'top', 'utf8');
 
-      const [depthZeroNodes, depthZeroError] = walkDirectory(service, 'fs-local', root, 0);
+      const [depthZeroNodes, depthZeroError] = walkDirectory(service, TENANT, 'fs-local', root, 0);
       expect(depthZeroError).toBeNull();
       expect(depthZeroNodes?.map((node) => ({ name: node.name, is_dir: node.is_dir, childCount: node.children.length }))).toEqual([
         { name: 'alpha', is_dir: true, childCount: 0 },
         { name: 'top.txt', is_dir: false, childCount: 0 },
       ]);
 
-      const [depthOneNodes, depthOneError] = walkDirectory(service, 'fs-local', root, 1);
+      const [depthOneNodes, depthOneError] = walkDirectory(service, TENANT, 'fs-local', root, 1);
       expect(depthOneError).toBeNull();
       expect(depthOneNodes?.[0]?.name).toBe('alpha');
       expect(depthOneNodes?.[0]?.children.map((node) => ({ name: node.name, is_dir: node.is_dir, childCount: node.children.length }))).toEqual([
@@ -65,7 +76,7 @@ describe('api.files-filesystem helpers', () => {
       writeFileSync(join(root, 'src', 'skip.md'), 'skip', 'utf8');
       writeFileSync(join(root, 'readme.md'), 'root', 'utf8');
 
-      const [nodes, error] = walkDirectory(service, 'fs-local', root, 3);
+      const [nodes, error] = walkDirectory(service, TENANT, 'fs-local', root, 3);
       expect(error).toBeNull();
       expect(nodes?.map((node) => node.name)).toEqual(['src', 'readme.md']);
       expect(nodes?.[0]?.children.map((node) => node.name)).toEqual(['keep.ts', 'skip.md']);
@@ -80,12 +91,12 @@ describe('api.files-filesystem helpers', () => {
     const baseService = createTestFilesystem();
     const service = {
       ...baseService,
-      readdir(filesystemId: string, path: string): TErrTuple<Dirent[]> {
-        if (path === deniedPath) {
-          return [null, createPermissionDeniedError(path)];
+      readdir(tenant: typeof TENANT, args: { filesystemId: string; path: string }): TErrTuple<Dirent[]> {
+        if (args.path === deniedPath) {
+          return [null, createPermissionDeniedError(args.path)];
         }
 
-        return baseService.readdir(filesystemId, path);
+        return baseService.readdir(tenant, args);
       },
     } as import('@vibecanvas/service-filesystem/IFilesystemService').IFilesystemService;
 
@@ -94,7 +105,7 @@ describe('api.files-filesystem helpers', () => {
       mkdirSync(join(root, 'src'));
       writeFileSync(join(root, 'src', 'keep.ts'), 'keep', 'utf8');
 
-      const [nodes, error] = walkDirectory(service, 'fs-local', root, 3);
+      const [nodes, error] = walkDirectory(service, TENANT, 'fs-local', root, 3);
       expect(error).toBeNull();
       expect(nodes?.map((node) => node.name)).toEqual(['.Trash', 'src']);
       expect(nodes?.[0]).toEqual({

@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "bun test src"
+    "test": "bun test src && vitest --run"
   },
   "devDependencies": {
     "typescript": "catalog:",
@@ -26,7 +26,6 @@
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",
     "@solid-primitives/scheduled": "^1.5.3",
-    "@solid-primitives/storage": "^4.4.0",
     "@solidjs/router": "^0.15.4",
     "@vibecanvas/api": "workspace:*",
     "@vibecanvas/ui-actor-legacy": "workspace:*",

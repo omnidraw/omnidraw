@@ -1,3 +1,5 @@
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+
 export type TPtyStatus = "running" | "exited" | "error";
 
 export type TPty = {
@@ -36,10 +38,24 @@ export type TPtyUpdateBody = {
   };
 };
 
-export type TPtyAttachArgs = {
-  filesystemId?: string;
+export type TPtyScopeArgs = {
+  filesystemId: string;
   workingDirectory: string;
+};
+
+export type TPtyCreateArgs = TPtyScopeArgs & {
+  body?: TPtyCreateBody;
+};
+
+export type TPtyPathArgs = TPtyScopeArgs & {
   ptyID: string;
+};
+
+export type TPtyUpdateArgs = TPtyPathArgs & {
+  body: TPtyUpdateBody;
+};
+
+export type TPtyAttachArgs = TPtyPathArgs & {
   cursor?: number;
   send: (data: Uint8Array) => void;
   close?: (code?: number, reason?: string) => void;
@@ -48,4 +64,19 @@ export type TPtyAttachArgs = {
 export type TPtyAttachment = {
   send: (payload: string | ArrayBuffer | ArrayBufferView) => void;
   detach: () => void;
+};
+
+export type TPtyWorkingDirectoryArgs = {
+  filesystemId: string;
+  path: string;
+};
+
+export type TPtyServiceBunPtyOptions = {
+  resolveWorkingDirectory(
+    tenant: TTenantContext,
+    args: TPtyWorkingDirectoryArgs,
+  ): string | null;
+  createSessionId?: () => string;
+  createClientId?: () => string;
+  now?: () => number;
 };

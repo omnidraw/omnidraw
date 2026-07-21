@@ -36,6 +36,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
 | [apps/cli/src/parse-argv.ts](apps/cli/src/parse-argv.ts) |  |
 | [apps/cli/src/plugins/auth/AuthPlugin.ts](apps/cli/src/plugins/auth/AuthPlugin.ts) |  |
+| [apps/cli/src/plugins/auth/CONSTANTS.ts](apps/cli/src/plugins/auth/CONSTANTS.ts) |  |
+| [apps/cli/src/plugins/auth/fn.oss-tenant-context.ts](apps/cli/src/plugins/auth/fn.oss-tenant-context.ts) |  |
+| [apps/cli/src/plugins/auth/types.ts](apps/cli/src/plugins/auth/types.ts) |  |
 | [apps/cli/src/plugins/automerge/AutomergePlugin.ts](apps/cli/src/plugins/automerge/AutomergePlugin.ts) |  |
 | [apps/cli/src/plugins/cli/CliPlugin.ts](apps/cli/src/plugins/cli/CliPlugin.ts) |  |
 | [apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts](apps/cli/src/plugins/cli/cmds/cmd.uninstall.ts) |  |
@@ -46,6 +49,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts](apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts) |  |
 | [apps/cli/src/plugins/cli/core/tx.uninstall.ts](apps/cli/src/plugins/cli/core/tx.uninstall.ts) |  |
+| [apps/cli/src/plugins/filesystem/CONSTANTS.ts](apps/cli/src/plugins/filesystem/CONSTANTS.ts) |  |
 | [apps/cli/src/plugins/filesystem/FilesystemPlugin.ts](apps/cli/src/plugins/filesystem/FilesystemPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/orpc.base.ts](apps/cli/src/plugins/orpc/orpc.base.ts) |  |
 | [apps/cli/src/plugins/orpc/OrpcPlugin.ts](apps/cli/src/plugins/orpc/OrpcPlugin.ts) |  |
@@ -54,6 +58,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/check-update.ts](apps/cli/src/plugins/server/check-update.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
+| [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
 | [apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts](apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts) |  |
@@ -101,11 +106,18 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/pages/resource.tsx](apps/frontend/src/pages/resource.tsx) |  |
 | [apps/frontend/src/pages/welcome.tsx](apps/frontend/src/pages/welcome.tsx) |  |
 | [apps/frontend/src/pages/widget.tsx](apps/frontend/src/pages/widget.tsx) |  |
-| [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | Automerge Client Service |
+| [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | The frontend and canvas renderer intentionally share one browser Repo lifecycle. |
+| [apps/frontend/src/services/canvas-bootstrap.ts](apps/frontend/src/services/canvas-bootstrap.ts) |  |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
+| [apps/frontend/src/services/tenant-client-state.ts](apps/frontend/src/services/tenant-client-state.ts) |  |
+| [apps/frontend/src/services/tenant-runtime.ts](apps/frontend/src/services/tenant-runtime.ts) |  |
+| [apps/frontend/src/services/tenant-switch-coordinator.ts](apps/frontend/src/services/tenant-switch-coordinator.ts) |  |
+| [apps/frontend/src/services/tenant.ts](apps/frontend/src/services/tenant.ts) |  |
+| [apps/frontend/src/services/tenant.vitest.ts](apps/frontend/src/services/tenant.vitest.ts) |  |
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
 | [apps/frontend/src/services/theme.ts](apps/frontend/src/services/theme.ts) |  |
 | [apps/frontend/src/services/tx.route-notification-toast.ts](apps/frontend/src/services/tx.route-notification-toast.ts) |  |
+| [apps/frontend/src/services/tx.switch-browser-tenant.ts](apps/frontend/src/services/tx.switch-browser-tenant.ts) |  |
 | [apps/frontend/src/startup-canvas.ts](apps/frontend/src/startup-canvas.ts) |  |
 | [apps/frontend/src/store.ts](apps/frontend/src/store.ts) |  |
 | [apps/frontend/src/styles/route-state.module.css](apps/frontend/src/styles/route-state.module.css) |  |
@@ -113,6 +125,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/utils/path-display.ts](apps/frontend/src/utils/path-display.ts) |  |
 | [apps/frontend/tsconfig.json](apps/frontend/tsconfig.json) |  |
 | [apps/frontend/vite.config.ts](apps/frontend/vite.config.ts) |  |
+| [apps/frontend/vitest.config.ts](apps/frontend/vitest.config.ts) |  |
 
 ## apps/vibecanvas
 
@@ -238,6 +251,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/contract.ts](packages/api/src/contract.ts) |  |
 | [packages/api/src/db/api.db-events.ts](packages/api/src/db/api.db-events.ts) |  |
 | [packages/api/src/db/contract.ts](packages/api/src/db/contract.ts) |  |
+| [packages/api/src/db/fx.db-events.ts](packages/api/src/db/fx.db-events.ts) |  |
 | [packages/api/src/db/handlers.ts](packages/api/src/db/handlers.ts) |  |
 | [packages/api/src/db/index.ts](packages/api/src/db/index.ts) |  |
 | [packages/api/src/db/orpc.ts](packages/api/src/db/orpc.ts) |  |
@@ -326,7 +340,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/ARCHITECTURE.md](packages/canvas/ARCHITECTURE.md) |  |
 | [packages/canvas/package.json](packages/canvas/package.json) |  |
 | [packages/canvas/PERFORMANCE.md](packages/canvas/PERFORMANCE.md) |  |
-| [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Automerge Client Service |
+| [packages/canvas/src/automerge.ts](packages/canvas/src/automerge.ts) | Tenant-scoped browser Automerge client. A placement or organization switch tears down the previous Repo before any document from the next scope loads. |
 | [packages/canvas/src/base.css](packages/canvas/src/base.css) |  |
 | [packages/canvas/src/components/Canvas.tsx](packages/canvas/src/components/Canvas.tsx) |  |
 | [packages/canvas/src/components/CanvasConfirmDialog/index.tsx](packages/canvas/src/components/CanvasConfirmDialog/index.tsx) |  |
@@ -357,6 +371,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/TextAlignPicker.tsx) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/types.ts](packages/canvas/src/components/SelectionStyleMenu/types.ts) |  |
 | [packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx](packages/canvas/src/components/SelectionStyleMenu/VerticalAlignPicker.tsx) |  |
+| [packages/canvas/src/CONSTANTS.ts](packages/canvas/src/CONSTANTS.ts) |  |
 | [packages/canvas/src/core/CONSTANTS.ts](packages/canvas/src/core/CONSTANTS.ts) |  |
 | [packages/canvas/src/core/fn.canvas-node-semantics.ts](packages/canvas/src/core/fn.canvas-node-semantics.ts) |  |
 | [packages/canvas/src/core/fn.create-ordered-z-index.ts](packages/canvas/src/core/fn.create-ordered-z-index.ts) |  |
@@ -380,6 +395,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/core/tx.set-node-z-index.ts](packages/canvas/src/core/tx.set-node-z-index.ts) |  |
 | [packages/canvas/src/core/types.ts](packages/canvas/src/core/types.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |
+| [packages/canvas/src/fn.browser-tenant-scope.ts](packages/canvas/src/fn.browser-tenant-scope.ts) |  |
 | [packages/canvas/src/index.ts](packages/canvas/src/index.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts](packages/canvas/src/plugins/camera-control/CameraControl.plugin.ts) |  |
 | [packages/canvas/src/plugins/camera-control/CONSTANTS.ts](packages/canvas/src/plugins/camera-control/CONSTANTS.ts) |  |
@@ -736,7 +752,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-automerge/src/adapters/turso.adapter.ts](packages/service-automerge/src/adapters/turso.adapter.ts) |  |
 | [packages/service-automerge/src/adapters/websocket.adapter.ts](packages/service-automerge/src/adapters/websocket.adapter.ts) |  |
 | [packages/service-automerge/src/AutomergeService.ts](packages/service-automerge/src/AutomergeService.ts) |  |
+| [packages/service-automerge/src/CONSTANTS.ts](packages/service-automerge/src/CONSTANTS.ts) |  |
+| [packages/service-automerge/src/core/fn.automerge-document.ts](packages/service-automerge/src/core/fn.automerge-document.ts) |  |
 | [packages/service-automerge/src/IAutomergeService.ts](packages/service-automerge/src/IAutomergeService.ts) |  |
+| [packages/service-automerge/src/types/automerge-service.types.ts](packages/service-automerge/src/types/automerge-service.types.ts) |  |
 | [packages/service-automerge/src/types/canvas-doc.types.ts](packages/service-automerge/src/types/canvas-doc.types.ts) |  |
 | [packages/service-automerge/src/types/canvas-doc.zod.ts](packages/service-automerge/src/types/canvas-doc.zod.ts) |  |
 | [packages/service-automerge/tsconfig.json](packages/service-automerge/tsconfig.json) |  |
@@ -799,6 +818,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-event-publisher/src/events.ts](packages/service-event-publisher/src/events.ts) | Service-owned event contracts that do not depend on API transport schemas. |
 | [packages/service-event-publisher/src/IEventPublisherService.ts](packages/service-event-publisher/src/IEventPublisherService.ts) | Event publication capability consumed by services and transport adapters. |
 | [packages/service-event-publisher/src/index.ts](packages/service-event-publisher/src/index.ts) | Public service-owned event contracts and publisher implementation. |
+| [packages/service-event-publisher/src/ScopedEventBus.ts](packages/service-event-publisher/src/ScopedEventBus.ts) |  |
 | [packages/service-event-publisher/tsconfig.json](packages/service-event-publisher/tsconfig.json) |  |
 
 ## packages/service-filesystem
@@ -1046,5 +1066,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable M0 gate for renderer, widget-host, collaboration, and actor compatibility behavior. |
+| [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

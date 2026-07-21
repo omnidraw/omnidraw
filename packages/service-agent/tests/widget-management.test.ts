@@ -3,33 +3,21 @@ import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type {
-  IEventPublisherService,
-  TActorEvent,
   TAgentEvent,
-  TDbEvent,
-  TFilesystemEvent,
-  TNotificationEvent,
 } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
 import { WidgetDraftController } from '../src/widget-drafts/WidgetDraftController';
 import { WidgetManagement } from '../src/widget-management/WidgetManagement';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { executeTool } from './tool.test-helpers';
+import { TestTenantEventPublisher } from './tenant.fixture';
 
-class TestEvents implements IEventPublisherService {
-  name = 'widget-management-events';
+class TestEvents extends TestTenantEventPublisher {
   events: TAgentEvent[] = [];
-  publishDbEvent(_canvasId: string, _event: TDbEvent): void {}
-  async *subscribeDbEvents(_canvasId: string): AsyncIterable<TDbEvent> {}
-  publishActorEvent(_event: TActorEvent): void {}
-  async *subscribeActorEvents(): AsyncIterable<TActorEvent> {}
-  publishAgentEvent(event: TAgentEvent): void { this.events.push(event); }
-  async *subscribeAgentEvents(): AsyncIterable<TAgentEvent> {}
-  publishFilesystemEvent(_path: string, _event: TFilesystemEvent): void {}
-  async *subscribeFilesystemEvents(_path: string): AsyncIterable<TFilesystemEvent> {}
-  publishNotification(_event: TNotificationEvent): void {}
-  async *subscribeNotifications(): AsyncIterable<TNotificationEvent> {}
-  getLatestNotification(): TNotificationEvent | null { return null; }
+  override publishAgentEvent(event: TAgentEvent): number {
+    this.events.push(event);
+    return super.publishAgentEvent(event);
+  }
 }
 
 const roots: string[] = [];

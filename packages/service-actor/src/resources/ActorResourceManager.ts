@@ -1,4 +1,4 @@
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { fnNormalizeResourceName } from '@vibecanvas/service-db/core/fn.resource-name';
 import type {
   TActorResource,
@@ -22,7 +22,7 @@ import type { TActorResourceRequirement, TActorResourceScope } from '../core/typ
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 2_000;
 
 type TActorResourceManagerConfig = {
-  readonly db: DbServiceTurso;
+  readonly db: TTenantDb;
   readonly crypto: Pick<Crypto, 'randomUUID'>;
   readonly getDefinition: TActorManifestResolver;
   readonly providers: readonly IActorResourceProvider[];
@@ -110,7 +110,7 @@ function safeLifecycleError(error: unknown): TJson {
 }
 
 export class ActorResourceManager {
-  readonly #db: DbServiceTurso;
+  readonly #db: TTenantDb;
   readonly #crypto: Pick<Crypto, 'randomUUID'>;
   readonly #getDefinition: TActorManifestResolver;
   readonly #providers = new Map<TActorResourceKind, IActorResourceProvider>();

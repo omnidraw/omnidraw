@@ -8,6 +8,7 @@ import type { TVibecanvasJson } from '../src/core/types';
 import { ActorResourceManager } from '../src/resources/ActorResourceManager';
 import { DbResource } from '../src/resources/DbResource';
 import { createTestCrypto, testUuid } from './test-uuid';
+import { bindTestTenantDb, type TActorTestDb } from './tenant.fixture';
 
 const definitionName = 'Notes Widget';
 
@@ -46,7 +47,8 @@ function manifest(): TVibecanvasJson & { manifest_path: string } {
 }
 
 describe('DbResource schema-agnostic provider', () => {
-  let db: DbServiceTurso;
+  let dbService: DbServiceTurso;
+  let db: TActorTestDb;
   let provider: DbResource;
   let manager: ActorResourceManager;
   let dataRoot: string;
@@ -54,8 +56,9 @@ describe('DbResource schema-agnostic provider', () => {
 
   beforeEach(async () => {
     dataRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-db-resource-'));
-    db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
-    await db.start();
+    dbService = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
+    await dbService.start();
+    db = bindTestTenantDb(dbService);
     testCrypto = createTestCrypto('db-resource');
     const definition = manifest();
     await db.actor.insertDefinition({ name: definitionName, slug: definition.slug, url: null, description: null, manifest_path: definition.manifest_path });

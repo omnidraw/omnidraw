@@ -7,6 +7,7 @@ import type { Group } from "konva/lib/Group";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { Shape, ShapeConfig } from "konva/lib/Shape";
 import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetDropPlacementService } from "./services";
+import type { TBrowserTenantScope } from "./fn.browser-tenant-scope";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
@@ -33,6 +34,7 @@ export type TCanvasToolbarGroupsPort = {
 
 export interface IRuntimeConfig {
   canvasId: string;
+  tenant: TBrowserTenantScope;
   container: HTMLDivElement;
   docHandle: DocHandle<TCanvasDoc>;
   onToggleSidebar: () => void;

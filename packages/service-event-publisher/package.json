@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",
-    "@orpc/server": "catalog:",
-    "@vibecanvas/runtime": "workspace:*"
+    "@vibecanvas/runtime": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*"
   }
 }

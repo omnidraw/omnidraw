@@ -1,5 +1,6 @@
 import { ThemeService } from "@vibecanvas/service-theme";
 import { buildRuntime } from "@vibecanvas/canvas/runtime";
+import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAiChatCanvasExtension } from "../../src/canvas-extension";
 import { DRAFT_PREVIEW_FRAME_GAP, DRAFT_PREVIEW_WIDGET_KIND } from "../../src/draft-preview/CONSTANTS";
@@ -61,6 +62,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "extension-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle: createMockDocHandle(),
       onToggleSidebar: () => {},
@@ -128,6 +130,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "late-stream-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle: createMockDocHandle(),
       onToggleSidebar: () => {},
@@ -242,6 +245,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "preview-open-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},
@@ -474,6 +478,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "collaborator-preview-race-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},
@@ -621,6 +626,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "preview-remount-owner-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},
@@ -770,6 +776,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "grouped-preview-placement-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},
@@ -916,6 +923,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "delayed-preview-shutdown-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},
@@ -1069,6 +1077,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "preview-hydration-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},
@@ -1213,6 +1222,7 @@ describe("AI Chat canvas extension", () => {
     });
     const runtime = buildRuntime({
       canvasId: "mounted-chat-preview-action-test",
+      tenant: LOCAL_BROWSER_TENANT_SCOPE,
       container,
       docHandle,
       onToggleSidebar: () => {},

@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
-import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import { ActorService } from '../src/ActorService';
 import type { TDatabaseFactory } from '../src/resources/DbResource';
 import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
 import { createTestCrypto, testUuid } from './test-uuid';
+import { bindTestTenantDb, createTestTenantEvents, type TActorTestDb } from './tenant.fixture';
 
 const DEFINITION_NAME = 'Structure Draft Notes Test';
 
@@ -33,7 +33,8 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
   let rootDir = '';
   let dataRoot = '';
   let functionsPath = '';
-  let db: DbServiceTurso;
+  let dbService: DbServiceTurso;
+  let db: TActorTestDb;
   let service: ActorService;
   let testCrypto: Pick<Crypto, 'randomUUID'>;
   let beforePrepare: ((databasePath: string, sql: string) => Promise<void>) | null;
@@ -50,8 +51,9 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
     await writeFile(join(widgetDir, 'vibecanvas.json'), `${JSON.stringify(manifest(), null, 2)}\n`, 'utf8');
     functionsPath = join(widgetDir, 'actor', 'functions.ts');
     await writeFile(functionsPath, 'export default { fn: {}, fx: {}, tx: {} };\n', 'utf8');
-    db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
-    await db.start();
+    dbService = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
+    await dbService.start();
+    db = bindTestTenantDb(dbService);
     beforePrepare = null;
     afterRun = null;
     testCrypto = createTestCrypto('actor-service-resource-apply');
@@ -77,7 +79,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       dataRoot,
       dbResourceDatabaseFactory: databaseFactory,
       secretStoreKeyProvider: testSecretStoreKeyProvider,
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
   });
@@ -486,7 +488,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       configPath: join(rootDir, 'config'),
       dataRoot,
       secretStoreKeyProvider: testSecretStoreKeyProvider,
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
 
@@ -528,7 +530,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       configPath: join(rootDir, 'config'),
       dataRoot,
       secretStoreKeyProvider: testSecretStoreKeyProvider,
-      eventPublisherService: new EventPublisherService(),
+      eventPublisherService: createTestTenantEvents(),
     });
     await service.start({} as never);
     expect(await db.dbResource.draft.get({ id: draft.draft.id })).toMatchObject({

@@ -4,6 +4,7 @@ import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from "../../../sr
 import { fxActorListInstances } from "../../../src/DbServiceTurso/fx.actor";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
 import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
+import { TEST_TENANT } from "../tenant.fixture";
 
 const CANVAS_ID = "00000000-0000-4000-8000-000000000101";
 const OBJECT_ACTOR_ID = "00000000-0000-4000-8000-000000000102";
@@ -59,7 +60,7 @@ describe("fx.actor", () => {
   });
 
   test("lists actor instances with machine_context decoded from the checked object JSON column", async () => {
-    const instances = await fxActorListInstances({ db }, {});
+    const instances = await fxActorListInstances({ db }, { tenant: TEST_TENANT });
     const objectContext = instances.find((instance) => instance.id === OBJECT_ACTOR_ID);
 
     expect(objectContext?.machine_context).toEqual({ count: 7, nested: { ok: true } });

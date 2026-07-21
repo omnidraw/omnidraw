@@ -1,13 +1,14 @@
 import type { Database } from "@tursodatabase/database";
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS";
+import type { TTenantContext } from "@vibecanvas/tenant-core";
 import type { TJson, TToolGroup } from "../model";
 
 type TPortal = {
   db: Database;
 };
 
-type TArgs = {};
+type TArgs = { tenant: TTenantContext };
 type TArgsGetByName = {
+  tenant: TTenantContext;
   name: string;
 };
 
@@ -38,7 +39,7 @@ export async function fxToolGroupListAll(portal: TPortal, args: TArgs): Promise<
     WHERE org_id = ? AND status = 'active'
     ORDER BY name ASC
   `);
-  const rows = await stmt.all(DEFAULT_OSS_ORGANIZATION_ID);
+  const rows = await stmt.all(args.tenant.orgId);
   return rows.map(parseToolGroup);
 }
 
@@ -48,6 +49,6 @@ export async function fxToolGroupGetByName(portal: TPortal, args: TArgsGetByName
     FROM tool_groups
     WHERE org_id = ? AND name = ? AND status = 'active'
   `);
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.name);
+  const row = await stmt.get(args.tenant.orgId, args.name);
   return row ? parseToolGroup(row) : null;
 }

@@ -13,7 +13,7 @@ function toCatalogGroup(group: { name: string; json: TJson | null }): TWidgetCat
 }
 
 async function readCatalog(context: TAgentApiContext): Promise<TWidgetCatalog> {
-  const groups = (await context.db.toolGroup.listAll()).map(toCatalogGroup);
+  const groups = (await context.db.toolGroup.listAll(context.tenant)).map(toCatalogGroup);
   return context.agent.getWidgetCatalog(groups);
 }
 
@@ -64,7 +64,7 @@ export const apiWidgetsEnsureDraft = baseAgentOs.widgets.ensureDraft.handler(asy
 
 export const apiWidgetsPatchDraftTool = baseAgentOs.widgets.patchDraftTool.handler(async ({ context, input }) => {
   if (input.patch.group !== undefined && input.patch.group !== null) {
-    const group = await context.db.toolGroup.getByName({ name: input.patch.group });
+    const group = await context.db.toolGroup.getByName(context.tenant, { name: input.patch.group });
     if (!group) throw new ORPCError('NOT_FOUND', { message: `Tool group "${input.patch.group}" was not found.` });
   }
   try {
@@ -76,7 +76,7 @@ export const apiWidgetsPatchDraftTool = baseAgentOs.widgets.patchDraftTool.handl
 
 export const apiWidgetsPatchDraftMetadata = baseAgentOs.widgets.patchDraftMetadata.handler(async ({ context, input }) => {
   if (input.patch.tool?.group !== undefined && input.patch.tool.group !== null) {
-    const group = await context.db.toolGroup.getByName({ name: input.patch.tool.group });
+    const group = await context.db.toolGroup.getByName(context.tenant, { name: input.patch.tool.group });
     if (!group) throw new ORPCError('NOT_FOUND', { message: `Tool group "${input.patch.tool.group}" was not found.` });
   }
   try {
@@ -90,9 +90,9 @@ export const apiWidgetsDelete = baseAgentOs.widgets.delete.handler(async ({ cont
   try {
     const result = await context.agent.deleteWidget(input.name, input.source);
     if (!result) throw new ORPCError('NOT_FOUND', { message: `${input.source === 'published' ? 'Published widget' : 'Widget draft'} "${input.name}" was not found.` });
-    context.eventPublisher.publishAgentEvent({ kind: 'widget-catalog', type: 'changed' });
+    context.eventPublisher.publishAgentEvent(context.tenant, { kind: 'widget-catalog', type: 'changed' });
     if (result.deletedPublished) {
-      context.eventPublisher.publishAgentEvent({
+      context.eventPublisher.publishAgentEvent(context.tenant, {
         kind: 'widgetupdate',
         widgetId: input.name,
         sessionId: 'definition-delete',
@@ -113,8 +113,8 @@ export const apiWidgetsResolvePlacement = baseAgentOs.widgets.resolvePlacement.h
 
 export const apiWidgetsGroupsCreate = baseAgentOs.widgets.groups.create.handler(async ({ context, input }) => {
   try {
-    const group = await context.db.toolGroup.create({ name: input.name, json: input.icon as TJson | null });
-    context.eventPublisher.publishAgentEvent({ kind: 'widget-catalog', type: 'changed' });
+    const group = await context.db.toolGroup.create(context.tenant, { name: input.name, json: input.icon as TJson | null });
+    context.eventPublisher.publishAgentEvent(context.tenant, { kind: 'widget-catalog', type: 'changed' });
     return toCatalogGroup(group);
   } catch {
     throw new ORPCError('ALREADY_EXISTS', { message: `Tool group "${input.name}" already exists.` });
@@ -129,13 +129,13 @@ export const apiWidgetsGroupsUpdate = baseAgentOs.widgets.groups.update.handler(
       throw new ORPCError('CONFLICT', { message: `GROUP_IN_USE: Rename is blocked because ${affected.length} widget variant${affected.length === 1 ? '' : 's'} use this group.` });
     }
   }
-  const group = await context.db.toolGroup.update({
+  const group = await context.db.toolGroup.update(context.tenant, {
     currentName: input.currentName,
     name: input.group.name,
     json: input.group.icon as TJson | null,
   });
   if (!group) throw new ORPCError('NOT_FOUND', { message: `Tool group "${input.currentName}" was not found.` });
-  context.eventPublisher.publishAgentEvent({ kind: 'widget-catalog', type: 'changed' });
+  context.eventPublisher.publishAgentEvent(context.tenant, { kind: 'widget-catalog', type: 'changed' });
   return toCatalogGroup(group);
 });
 
@@ -145,8 +145,8 @@ export const apiWidgetsGroupsRemove = baseAgentOs.widgets.groups.remove.handler(
   if (affected.length > 0) {
     throw new ORPCError('CONFLICT', { message: `GROUP_IN_USE: Delete is blocked because ${affected.length} widget variant${affected.length === 1 ? '' : 's'} use this group.` });
   }
-  const group = await context.db.toolGroup.remove({ name: input.name });
+  const group = await context.db.toolGroup.remove(context.tenant, { name: input.name });
   if (!group) throw new ORPCError('NOT_FOUND', { message: `Tool group "${input.name}" was not found.` });
-  context.eventPublisher.publishAgentEvent({ kind: 'widget-catalog', type: 'changed' });
+  context.eventPublisher.publishAgentEvent(context.tenant, { kind: 'widget-catalog', type: 'changed' });
   return toCatalogGroup(group);
 });

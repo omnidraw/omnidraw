@@ -2,7 +2,7 @@ import { Actor } from '@vibecanvas/service-actor/Actor';
 import { ActorResourceError } from '@vibecanvas/service-actor';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { execFile } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
@@ -26,7 +26,7 @@ import type {
 type TWidgetDraftControllerConfig = {
   configPath: string;
   workspace: WidgetWorkspace;
-  eventPublisher: IEventPublisherService;
+  eventPublisher: ITenantEventPublisherService;
   actorService?: TActorServiceReloader;
 };
 

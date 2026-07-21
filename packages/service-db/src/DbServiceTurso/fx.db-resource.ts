@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type {
   TActorInstance,
   TDbResourceApplyInstanceResult,
@@ -25,10 +25,12 @@ type TPortal = {
 }
 
 type TArgsDraftGet = {
+  tenant: TTenantContext
   id: string
 }
 
 type TArgsDraftList = {
+  tenant: TTenantContext
   resourceId: string
   status?: TDbResourceDraftStatus
   before?: { createdAt: string; id: string }
@@ -36,18 +38,22 @@ type TArgsDraftList = {
 }
 
 type TArgsDraftGetActive = {
+  tenant: TTenantContext
   resourceId: string
 }
 
 type TArgsDraftChangeList = {
+  tenant: TTenantContext
   draftId: string
 }
 
 type TArgsApplyGet = {
+  tenant: TTenantContext
   id: string
 }
 
 type TArgsApplyList = {
+  tenant: TTenantContext
   resourceId: string
   status?: TDbResourceApplyStatus
   before?: { createdAt: string; id: string }
@@ -55,14 +61,17 @@ type TArgsApplyList = {
 }
 
 type TArgsApplyInstanceResultListByApply = {
+  tenant: TTenantContext
   applyId: string
 }
 
 type TArgsApplyInstanceResultListByInstance = {
+  tenant: TTenantContext
   actorInstanceId: string
 }
 
 type TArgsListAffectedInstances = {
+  tenant: TTenantContext
   resourceId: string
 }
 
@@ -71,7 +80,7 @@ export async function fxDbResourceDraftGet(portal: TPortal, args: TArgsDraftGet)
     SELECT *
     FROM db_resource_drafts
     WHERE org_id = ? AND id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).get(args.tenant.orgId, args.id)
   return row === undefined || row === null ? null : fnParseDbResourceDraftRow(row)
 }
 
@@ -87,7 +96,7 @@ export async function fxDbResourceDraftList(portal: TPortal, args: TArgsDraftLis
         AND (created_at_ms < ? OR (created_at_ms = ? AND id < ?))
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, args.status, beforeMs, beforeMs, args.before.id, limit)
+    `)).all(args.tenant.orgId, args.resourceId, args.status, beforeMs, beforeMs, args.before.id, limit)
   } else if (args.status !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
@@ -95,7 +104,7 @@ export async function fxDbResourceDraftList(portal: TPortal, args: TArgsDraftLis
       WHERE org_id = ? AND resource_id = ? AND status = ?
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, args.status, limit)
+    `)).all(args.tenant.orgId, args.resourceId, args.status, limit)
   } else if (args.before !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
@@ -104,7 +113,7 @@ export async function fxDbResourceDraftList(portal: TPortal, args: TArgsDraftLis
         AND (created_at_ms < ? OR (created_at_ms = ? AND id < ?))
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, beforeMs, beforeMs, args.before.id, limit)
+    `)).all(args.tenant.orgId, args.resourceId, beforeMs, beforeMs, args.before.id, limit)
   } else {
     rows = await (await portal.db.prepare(`
       SELECT *
@@ -112,7 +121,7 @@ export async function fxDbResourceDraftList(portal: TPortal, args: TArgsDraftLis
       WHERE org_id = ? AND resource_id = ?
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, limit)
+    `)).all(args.tenant.orgId, args.resourceId, limit)
   }
   return rows.map(fnParseDbResourceDraftRow)
 }
@@ -127,7 +136,7 @@ export async function fxDbResourceDraftGetActive(
     WHERE org_id = ? AND resource_id = ? AND status IN ('editing', 'applying')
     ORDER BY created_at_ms DESC, id DESC
     LIMIT 1
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId)
+  `)).get(args.tenant.orgId, args.resourceId)
   return row === undefined || row === null ? null : fnParseDbResourceDraftRow(row)
 }
 
@@ -140,7 +149,7 @@ export async function fxDbResourceDraftChangeList(
     FROM db_resource_draft_changes
     WHERE org_id = ? AND draft_id = ?
     ORDER BY sequence ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.draftId)
+  `)).all(args.tenant.orgId, args.draftId)
   return rows.map(fnParseDbResourceDraftChangeRow)
 }
 
@@ -149,7 +158,7 @@ export async function fxDbResourceApplyGet(portal: TPortal, args: TArgsApplyGet)
     SELECT *
     FROM db_resource_apply_runs
     WHERE org_id = ? AND id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).get(args.tenant.orgId, args.id)
   return row === undefined || row === null ? null : fnParseDbResourceApplyRunRow(row)
 }
 
@@ -165,7 +174,7 @@ export async function fxDbResourceApplyList(portal: TPortal, args: TArgsApplyLis
         AND (created_at_ms < ? OR (created_at_ms = ? AND id < ?))
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, args.status, beforeMs, beforeMs, args.before.id, limit)
+    `)).all(args.tenant.orgId, args.resourceId, args.status, beforeMs, beforeMs, args.before.id, limit)
   } else if (args.status !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
@@ -173,7 +182,7 @@ export async function fxDbResourceApplyList(portal: TPortal, args: TArgsApplyLis
       WHERE org_id = ? AND resource_id = ? AND status = ?
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, args.status, limit)
+    `)).all(args.tenant.orgId, args.resourceId, args.status, limit)
   } else if (args.before !== undefined) {
     rows = await (await portal.db.prepare(`
       SELECT *
@@ -182,7 +191,7 @@ export async function fxDbResourceApplyList(portal: TPortal, args: TArgsApplyLis
         AND (created_at_ms < ? OR (created_at_ms = ? AND id < ?))
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, beforeMs, beforeMs, args.before.id, limit)
+    `)).all(args.tenant.orgId, args.resourceId, beforeMs, beforeMs, args.before.id, limit)
   } else {
     rows = await (await portal.db.prepare(`
       SELECT *
@@ -190,7 +199,7 @@ export async function fxDbResourceApplyList(portal: TPortal, args: TArgsApplyLis
       WHERE org_id = ? AND resource_id = ?
       ORDER BY created_at_ms DESC, id DESC
       LIMIT ?
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId, limit)
+    `)).all(args.tenant.orgId, args.resourceId, limit)
   }
   return rows.map(fnParseDbResourceApplyRunRow)
 }
@@ -204,7 +213,7 @@ export async function fxDbResourceApplyInstanceResultListByApply(
     FROM legacy_actor_apply_results
     WHERE org_id = ? AND apply_id = ?
     ORDER BY actor_definition_name ASC, actor_instance_id ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.applyId)
+  `)).all(args.tenant.orgId, args.applyId)
   return rows.map(fnParseDbResourceApplyInstanceResultRow)
 }
 
@@ -220,7 +229,7 @@ export async function fxDbResourceApplyInstanceResultListByInstance(
       AND db_resource_apply_runs.id = results.apply_id
     WHERE results.org_id = ? AND results.actor_instance_id = ?
     ORDER BY db_resource_apply_runs.created_at_ms DESC, db_resource_apply_runs.id DESC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.actorInstanceId)
+  `)).all(args.tenant.orgId, args.actorInstanceId)
   return rows.map(fnParseDbResourceApplyInstanceResultRow)
 }
 
@@ -236,6 +245,6 @@ export async function fxDbResourceListAffectedInstances(
       AND bindings.definition_name = instances.actor_definition_name
     WHERE instances.org_id = ? AND bindings.resource_id = ?
     ORDER BY instances.created_at_ms ASC, instances.id ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId)
+  `)).all(args.tenant.orgId, args.resourceId)
   return rows.map(fnParseActorInstanceRow)
 }

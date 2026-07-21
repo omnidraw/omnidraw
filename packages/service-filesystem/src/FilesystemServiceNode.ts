@@ -1,216 +1,422 @@
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, watch, writeFileSync, type FSWatcher } from 'fs';
-import { homedir } from 'os';
+import { fnScopedKey } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  watch,
+  writeFileSync,
+  type FSWatcher,
+} from 'fs';
+import { dirname, isAbsolute, relative, resolve, sep, win32 } from 'path';
 import type { IFilesystemService } from './IFilesystemService';
-import type { TFilesystemWatchEvent } from './types';
+import type {
+  TFilesystemPathArgs,
+  TFilesystemRenameArgs,
+  TFilesystemRootRegistrationArgs,
+  TFilesystemScopeArgs,
+  TFilesystemServiceOptions,
+  TFilesystemWatchArgs,
+  TFilesystemWatchControlArgs,
+  TFilesystemWatchEvent,
+  TFilesystemWriteFileArgs,
+} from './types';
 
 type TWatchEntry = {
+  rootKey: string;
   watcher: FSWatcher;
   abortController: AbortController;
   listeners: Set<string>;
+  subscriptions: Map<string, AsyncIterator<TFilesystemWatchEvent>>;
   timeouts: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-const WATCH_TTL_MS = 60 * 1000;
+type TPathScopeFailure = 'capability_not_found' | 'outside_root';
+
+type TResolvedPath =
+  | { ok: true; path: string; rootKey: string; virtualPath: string }
+  | { ok: false; reason: TPathScopeFailure };
+
+const DEFAULT_WATCH_TTL_MS = 60 * 1000;
 
 // TODO: [S57]
 export class FilesystemServiceNode implements IFilesystemService {
   readonly name = 'filesystem' as const;
 
-  #watchersByPath = new Map<string, TWatchEntry>();
-  #watchIdToPath = new Map<string, string>();
+  readonly #roots = new Map<string, string>();
+  readonly #watchersByPath = new Map<string, TWatchEntry>();
+  readonly #watchIdToPath = new Map<string, string>();
+  readonly #watchTtlMs: number;
 
-  constructor(private eventPublisher: IEventPublisherService) {
+  constructor(
+    private readonly eventPublisher: IEventPublisherService,
+    options: TFilesystemServiceOptions = {},
+  ) {
+    this.#watchTtlMs = options.watchTtlMs ?? DEFAULT_WATCH_TTL_MS;
   }
 
-  homeDir(_filesystemId: string): string {
-    return homedir();
+  registerRoot(tenant: TTenantContext, args: TFilesystemRootRegistrationArgs): void {
+    const candidate = realpathSync(resolve(args.rootPath));
+    if (!statSync(candidate).isDirectory()) {
+      throw new Error('Filesystem root must be a directory');
+    }
+
+    const rootKey = this.#rootKey(tenant, args.filesystemId);
+    const existing = this.#roots.get(rootKey);
+    if (existing && existing !== candidate) {
+      throw new Error('Filesystem capability is already registered');
+    }
+
+    this.#roots.set(rootKey, candidate);
   }
 
-  exists(_filesystemId: string, path: string): boolean {
-    return existsSync(path);
+  unregisterRoot(tenant: TTenantContext, args: TFilesystemScopeArgs): void {
+    const rootKey = this.#rootKey(tenant, args.filesystemId);
+    if (!this.#roots.delete(rootKey)) return;
+
+    for (const [pathKey, entry] of this.#watchersByPath) {
+      if (entry.rootKey === rootKey) this.#releasePath(pathKey);
+    }
   }
 
-  readdir(_filesystemId: string, path: string): TErrTuple<import('fs').Dirent[]> {
+  resolveHostPath(tenant: TTenantContext, args: TFilesystemPathArgs): string | null {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    return resolved.ok ? resolved.path : null;
+  }
+
+  homeDir(tenant: TTenantContext, args: TFilesystemScopeArgs): string | null {
+    return this.#roots.has(this.#rootKey(tenant, args.filesystemId)) ? '' : null;
+  }
+
+  exists(tenant: TTenantContext, args: TFilesystemPathArgs): boolean {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    return resolved.ok && existsSync(resolved.path);
+  }
+
+  readdir(tenant: TTenantContext, args: TFilesystemPathArgs): TErrTuple<import('fs').Dirent[]> {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    if (!resolved.ok) return [null, this.#scopeError(resolved.reason)];
+
     try {
-      return [readdirSync(path, { withFileTypes: true }), null];
+      return [readdirSync(resolved.path, { withFileTypes: true }), null];
     } catch (error) {
       return [null, this.#toFilesystemError(error, 'SRV.FILESYSTEM.READDIR.FAILED', 'Failed to read directory')];
     }
   }
 
-  stat(_filesystemId: string, path: string): TErrTuple<import('fs').Stats> {
+  stat(tenant: TTenantContext, args: TFilesystemPathArgs): TErrTuple<import('fs').Stats> {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    if (!resolved.ok) return [null, this.#scopeError(resolved.reason)];
+
     try {
-      return [statSync(path), null];
+      return [statSync(resolved.path), null];
     } catch (error) {
       return [null, this.#toFilesystemError(error, 'SRV.FILESYSTEM.STAT.FAILED', 'Failed to stat path')];
     }
   }
 
-  readFile(_filesystemId: string, path: string): TErrTuple<Buffer> {
+  readFile(tenant: TTenantContext, args: TFilesystemPathArgs): TErrTuple<Buffer> {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    if (!resolved.ok) return [null, this.#scopeError(resolved.reason)];
+
     try {
-      return [readFileSync(path), null];
+      return [readFileSync(resolved.path), null];
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to read file';
-      return [null, {
-        code: 'SRV.FILESYSTEM.READ.FAILED',
-        statusCode: 500,
-        externalMessage: { en: message },
-      }];
+      return [null, this.#toFilesystemError(error, 'SRV.FILESYSTEM.READ.FAILED', 'Failed to read file')];
     }
   }
 
-  writeFile(_filesystemId: string, path: string, content: string): TErrTuple<void> {
+  writeFile(tenant: TTenantContext, args: TFilesystemWriteFileArgs): TErrTuple<void> {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    if (!resolved.ok) return [null, this.#scopeError(resolved.reason)];
+
     try {
-      writeFileSync(path, content, 'utf8');
+      writeFileSync(resolved.path, args.content, 'utf8');
       return [undefined, null];
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to write file';
-      return [null, {
-        code: 'SRV.FILESYSTEM.WRITE.FAILED',
-        statusCode: 500,
-        externalMessage: { en: message },
-      }];
+      return [null, this.#toFilesystemError(error, 'SRV.FILESYSTEM.WRITE.FAILED', 'Failed to write file')];
     }
   }
 
-  rename(_filesystemId: string, sourcePath: string, targetPath: string): TErrTuple<void> {
+  rename(tenant: TTenantContext, args: TFilesystemRenameArgs): TErrTuple<void> {
+    const source = this.#resolveAuthorizedPath(tenant, {
+      filesystemId: args.filesystemId,
+      path: args.sourcePath,
+    });
+    const target = this.#resolveAuthorizedPath(tenant, {
+      filesystemId: args.filesystemId,
+      path: args.targetPath,
+    });
+    if (!source.ok) return [null, this.#scopeError(source.reason)];
+    if (!target.ok) return [null, this.#scopeError(target.reason)];
+
     try {
-      renameSync(sourcePath, targetPath);
+      renameSync(source.path, target.path);
       return [undefined, null];
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to rename path';
-      return [null, {
-        code: 'SRV.FILESYSTEM.RENAME.FAILED',
-        statusCode: 500,
-        externalMessage: { en: message },
-      }];
+      return [null, this.#toFilesystemError(error, 'SRV.FILESYSTEM.RENAME.FAILED', 'Failed to rename path')];
     }
   }
 
-  watch(_filesystemId: string, path: string, watchId: string): AsyncIterable<TFilesystemWatchEvent> | null {
-    if (this.#watchIdToPath.has(watchId)) return null;
+  watch(tenant: TTenantContext, args: TFilesystemWatchArgs): AsyncIterable<TFilesystemWatchEvent> | null {
+    const resolved = this.#resolveAuthorizedPath(tenant, args);
+    if (!resolved.ok) return null;
 
-    let entry = this.#watchersByPath.get(path);
+    const watchKey = this.#watchKey(tenant, args.filesystemId, args.watchId);
+    if (this.#watchIdToPath.has(watchKey)) return null;
+    const afterSequence = this.eventPublisher.getFilesystemEventCursor(tenant, args.filesystemId);
+
+    const pathKey = fnScopedKey('filesystem-watch-path', [
+      tenant.orgId,
+      tenant.cellId,
+      `${tenant.placementEpoch}`,
+      args.filesystemId,
+      resolved.path,
+    ]);
+    let entry = this.#watchersByPath.get(pathKey);
 
     if (!entry) {
       const abortController = new AbortController();
-      const watcher = watch(path, { signal: abortController.signal });
+      const watcher = watch(resolved.path, { signal: abortController.signal });
       entry = {
+        rootKey: resolved.rootKey,
         watcher,
         abortController,
         listeners: new Set(),
+        subscriptions: new Map(),
         timeouts: new Map(),
       };
 
       watcher.on('change', (eventType: 'rename' | 'change', fileName) => {
         if (typeof fileName !== 'string') return;
-        this.eventPublisher.publishFilesystemEvent(path, { eventType, fileName });
+        this.eventPublisher.publishFilesystemEvent(
+          tenant,
+          args.filesystemId,
+          resolved.virtualPath,
+          { eventType, fileName },
+        );
       });
 
       watcher.on('close', () => {
-        this.#releasePath(path);
+        this.#releasePath(pathKey);
       });
 
       watcher.on('error', () => {
-        this.#releasePath(path);
+        this.#releasePath(pathKey);
       });
 
-      this.#watchersByPath.set(path, entry);
+      this.#watchersByPath.set(pathKey, entry);
     }
 
-    entry.listeners.add(watchId);
-    this.#watchIdToPath.set(watchId, path);
-    this.#resetTimeout(path, watchId);
+    entry.listeners.add(watchKey);
+    this.#watchIdToPath.set(watchKey, pathKey);
+    this.#resetTimeout(pathKey, watchKey);
 
-    return this.eventPublisher.subscribeFilesystemEvents(path);
+    const subscription = this.eventPublisher.subscribeFilesystemEvents(
+      tenant,
+      args.filesystemId,
+      resolved.virtualPath,
+      { afterSequence },
+    )[Symbol.asyncIterator]();
+    entry.subscriptions.set(watchKey, subscription);
+
+    const iterator: AsyncIterator<TFilesystemWatchEvent> = {
+      next: () => subscription.next(),
+      return: async () => {
+        this.#unwatchKeys(watchKey);
+        return { done: true, value: undefined };
+      },
+    };
+    return {
+      [Symbol.asyncIterator]: () => iterator,
+    };
   }
 
-  keepalive(_filesystemId: string, watchId: string): boolean {
-    const path = this.#watchIdToPath.get(watchId);
-    if (!path) return false;
-    if (!this.#watchersByPath.has(path)) return false;
-    this.#resetTimeout(path, watchId);
+  keepalive(tenant: TTenantContext, args: TFilesystemWatchControlArgs): boolean {
+    const watchKey = this.#watchKey(tenant, args.filesystemId, args.watchId);
+    const pathKey = this.#watchIdToPath.get(watchKey);
+    if (!pathKey || !this.#watchersByPath.has(pathKey)) return false;
+    this.#resetTimeout(pathKey, watchKey);
     return true;
   }
 
-  unwatch(_filesystemId: string, watchId: string): void {
-    const path = this.#watchIdToPath.get(watchId);
-    if (!path) return;
-
-    const entry = this.#watchersByPath.get(path);
-    this.#watchIdToPath.delete(watchId);
-    if (!entry) return;
-
-    const timeout = entry.timeouts.get(watchId);
-    if (timeout) {
-      clearTimeout(timeout);
-      entry.timeouts.delete(watchId);
-    }
-
-    entry.listeners.delete(watchId);
-    if (entry.listeners.size > 0) return;
-
-    this.#watchersByPath.delete(path);
-    entry.abortController.abort();
+  unwatch(tenant: TTenantContext, args: TFilesystemWatchControlArgs): void {
+    const watchKey = this.#watchKey(tenant, args.filesystemId, args.watchId);
+    this.#unwatchKeys(watchKey);
   }
 
   stop(): void {
-    for (const entry of this.#watchersByPath.values()) {
-      for (const timeout of entry.timeouts.values()) {
-        clearTimeout(timeout);
-      }
-      entry.abortController.abort();
+    for (const pathKey of [...this.#watchersByPath.keys()]) {
+      this.#releasePath(pathKey);
     }
 
-    this.#watchersByPath.clear();
     this.#watchIdToPath.clear();
+    this.#roots.clear();
+  }
+
+  #rootKey(tenant: TTenantContext, filesystemId: string): string {
+    return fnScopedKey('filesystem-root', [
+      tenant.orgId,
+      tenant.cellId,
+      `${tenant.placementEpoch}`,
+      filesystemId,
+    ]);
+  }
+
+  #watchKey(tenant: TTenantContext, filesystemId: string, watchId: string): string {
+    return fnScopedKey('filesystem-watch', [
+      tenant.orgId,
+      tenant.accountId,
+      tenant.cellId,
+      `${tenant.placementEpoch}`,
+      filesystemId,
+      watchId,
+    ]);
+  }
+
+  #resolveAuthorizedPath(tenant: TTenantContext, args: TFilesystemPathArgs): TResolvedPath {
+    const rootKey = this.#rootKey(tenant, args.filesystemId);
+    const root = this.#roots.get(rootKey);
+    if (!root) return { ok: false, reason: 'capability_not_found' };
+    if (isAbsolute(args.path) || win32.isAbsolute(args.path) || args.path.includes('\\')) {
+      return { ok: false, reason: 'outside_root' };
+    }
+
+    const candidate = resolve(root, args.path || '.');
+    if (!this.#contains(root, candidate)) return { ok: false, reason: 'outside_root' };
+
+    let existing = candidate;
+    while (!existsSync(existing)) {
+      const parent = dirname(existing);
+      if (parent === existing) return { ok: false, reason: 'outside_root' };
+      existing = parent;
+    }
+
+    const canonicalExisting = realpathSync(existing);
+    if (!this.#contains(root, canonicalExisting)) return { ok: false, reason: 'outside_root' };
+
+    const path = existsSync(candidate)
+      ? realpathSync(candidate)
+      : resolve(canonicalExisting, relative(existing, candidate));
+    if (!this.#contains(root, path)) return { ok: false, reason: 'outside_root' };
+    return {
+      ok: true,
+      path,
+      rootKey,
+      virtualPath: relative(root, path).split(sep).join('/'),
+    };
+  }
+
+  #contains(root: string, candidate: string): boolean {
+    const fromRoot = relative(root, candidate);
+    return fromRoot === ''
+      || (fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot));
+  }
+
+  #scopeError(reason: TPathScopeFailure): TErrorEntry {
+    if (reason === 'outside_root') {
+      return {
+        code: 'SRV.FILESYSTEM.PATH.OUTSIDE_ROOT',
+        statusCode: 403,
+        externalMessage: { en: 'Path is outside the registered filesystem root' },
+      };
+    }
+
+    return {
+      code: 'SRV.FILESYSTEM.CAPABILITY.NOT_FOUND',
+      statusCode: 404,
+      externalMessage: { en: 'Filesystem capability not found' },
+    };
   }
 
   #toFilesystemError(error: unknown, fallbackCode: TErrorCode, fallbackMessage: string): TErrorEntry {
-    const message = error instanceof Error ? error.message : fallbackMessage;
     const errorCode = typeof error === 'object' && error !== null && 'code' in error ? (error.code as unknown) : null;
 
     if (errorCode === 'EPERM' || errorCode === 'EACCES') {
       return {
         code: `${fallbackCode.replace(/\.FAILED$/, '')}.PERMISSION_DENIED` as TErrorCode,
         statusCode: 403,
-        externalMessage: { en: message },
+        externalMessage: { en: 'Permission denied' },
+      };
+    }
+
+    if (errorCode === 'ENOENT') {
+      return {
+        code: `${fallbackCode.replace(/\.FAILED$/, '')}.NOT_FOUND` as TErrorCode,
+        statusCode: 404,
+        externalMessage: { en: 'Path not found' },
       };
     }
 
     return {
       code: fallbackCode,
       statusCode: 500,
-      externalMessage: { en: message },
+      externalMessage: { en: fallbackMessage },
     };
   }
 
-  #resetTimeout(path: string, watchId: string) {
-    const entry = this.#watchersByPath.get(path);
+  #resetTimeout(pathKey: string, watchKey: string): void {
+    const entry = this.#watchersByPath.get(pathKey);
     if (!entry) return;
 
-    const existingTimeout = entry.timeouts.get(watchId);
+    const existingTimeout = entry.timeouts.get(watchKey);
     if (existingTimeout) clearTimeout(existingTimeout);
 
-    entry.timeouts.set(watchId, setTimeout(() => {
-      this.unwatch('__local__', watchId);
-    }, WATCH_TTL_MS));
+    entry.timeouts.set(watchKey, setTimeout(() => {
+      this.#unwatchKeys(watchKey);
+    }, this.#watchTtlMs));
   }
 
-  #releasePath(path: string) {
-    const entry = this.#watchersByPath.get(path);
+  #unwatchKeys(watchKey: string): void {
+    const pathKey = this.#watchIdToPath.get(watchKey);
+    if (!pathKey) return;
+
+    const entry = this.#watchersByPath.get(pathKey);
+    this.#watchIdToPath.delete(watchKey);
     if (!entry) return;
 
-    this.#watchersByPath.delete(path);
+    this.#closeSubscription(entry, watchKey);
 
-    for (const watchId of entry.listeners) {
-      this.#watchIdToPath.delete(watchId);
-      const timeout = entry.timeouts.get(watchId);
+    const timeout = entry.timeouts.get(watchKey);
+    if (timeout) {
+      clearTimeout(timeout);
+      entry.timeouts.delete(watchKey);
+    }
+
+    entry.listeners.delete(watchKey);
+    if (entry.listeners.size > 0) return;
+
+    this.#watchersByPath.delete(pathKey);
+    entry.abortController.abort();
+  }
+
+  #releasePath(pathKey: string): void {
+    const entry = this.#watchersByPath.get(pathKey);
+    if (!entry) return;
+
+    this.#watchersByPath.delete(pathKey);
+    entry.abortController.abort();
+
+    for (const watchKey of entry.listeners) {
+      this.#watchIdToPath.delete(watchKey);
+      this.#closeSubscription(entry, watchKey);
+      const timeout = entry.timeouts.get(watchKey);
       if (timeout) clearTimeout(timeout);
     }
 
     entry.listeners.clear();
+    entry.subscriptions.clear();
     entry.timeouts.clear();
+  }
+
+  #closeSubscription(entry: TWatchEntry, watchKey: string): void {
+    const subscription = entry.subscriptions.get(watchKey);
+    if (!subscription) return;
+    entry.subscriptions.delete(watchKey);
+    void Promise.resolve(subscription.return?.()).catch(() => undefined);
   }
 }

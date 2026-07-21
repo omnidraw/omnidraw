@@ -1,0 +1,133 @@
+import { fnScopedKey } from '@vibecanvas/tenant-core';
+import type { TSequencedEvent } from './IEventPublisherService';
+
+type TScopedEventRecord<TEvent> = Readonly<{
+  event: TEvent;
+  sequence: number;
+  topic: string;
+}>;
+
+type TSubscriber<TEvent> = {
+  closed: boolean;
+  pending: ((result: IteratorResult<TScopedEventRecord<TEvent>>) => void) | null;
+  queue: TScopedEventRecord<TEvent>[];
+};
+
+type TSubscribeArgs = Readonly<{
+  afterSequence?: number;
+}>;
+
+class ScopedEventBus<TEvent> {
+  readonly #maxReplayEvents: number;
+  readonly #records = new Map<string, TScopedEventRecord<TEvent>[]>();
+  readonly #sequences = new Map<string, number>();
+  readonly #subscribers = new Map<string, Set<TSubscriber<TEvent>>>();
+
+  constructor(maxReplayEvents = 256) {
+    this.#maxReplayEvents = Math.max(1, maxReplayEvents);
+  }
+
+  cursor(scope: string): number {
+    return this.#sequences.get(scope) ?? 0;
+  }
+
+  publish(scope: string, topic: string, event: TEvent): number {
+    const sequence = this.cursor(scope) + 1;
+    this.#sequences.set(scope, sequence);
+
+    const records = this.#records.get(scope) ?? [];
+    const record = { event, sequence, topic };
+    records.push(record);
+    if (records.length > this.#maxReplayEvents) {
+      records.splice(0, records.length - this.#maxReplayEvents);
+    }
+    this.#records.set(scope, records);
+
+    this.#push(scope, topic, record);
+    if (topic !== '*') this.#push(scope, '*', record);
+    return sequence;
+  }
+
+  subscribe(scope: string, topic: string, args: TSubscribeArgs = {}): AsyncIterable<TEvent> {
+    const records = this.subscribeRecords(scope, topic, args);
+    return {
+      [Symbol.asyncIterator](): AsyncIterator<TEvent> {
+        const iterator = records[Symbol.asyncIterator]();
+        return {
+          next: async () => {
+            const result = await iterator.next();
+            if (result.done) return { done: true, value: undefined };
+            return { done: false, value: result.value.event };
+          },
+          return: async () => {
+            await iterator.return?.();
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  }
+
+  subscribeRecords(scope: string, topic: string, args: TSubscribeArgs = {}): AsyncIterable<TSequencedEvent<TEvent>> {
+    const afterSequence = args.afterSequence ?? this.cursor(scope);
+    const subscriber: TSubscriber<TEvent> = {
+      closed: false,
+      pending: null,
+      queue: (this.#records.get(scope) ?? [])
+        .filter((record) => record.sequence > afterSequence && (topic === '*' || record.topic === topic)),
+    };
+    const subscriberKey = fnScopedKey('subscriber', [scope, topic]);
+    const subscribers = this.#subscribers.get(subscriberKey) ?? new Set<TSubscriber<TEvent>>();
+    subscribers.add(subscriber);
+    this.#subscribers.set(subscriberKey, subscribers);
+
+    const close = () => {
+      if (subscriber.closed) return;
+      subscriber.closed = true;
+      subscriber.pending?.({ done: true, value: undefined });
+      subscriber.pending = null;
+      subscribers.delete(subscriber);
+      if (subscribers.size === 0) this.#subscribers.delete(subscriberKey);
+    };
+
+    return {
+      [Symbol.asyncIterator](): AsyncIterator<TSequencedEvent<TEvent>> {
+        return {
+          next: async () => {
+            const queued = subscriber.queue.shift();
+            if (queued !== undefined) {
+              return { done: false, value: { event: queued.event, sequence: queued.sequence } };
+            }
+            if (subscriber.closed) return { done: true, value: undefined };
+            const result = await new Promise<IteratorResult<TScopedEventRecord<TEvent>>>((resolve) => {
+              subscriber.pending = resolve;
+            });
+            if (result.done) return { done: true, value: undefined };
+            return { done: false, value: { event: result.value.event, sequence: result.value.sequence } };
+          },
+          return: async () => {
+            close();
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+  }
+
+  #push(scope: string, topic: string, record: TScopedEventRecord<TEvent>): void {
+    const subscriberKey = fnScopedKey('subscriber', [scope, topic]);
+    for (const subscriber of this.#subscribers.get(subscriberKey) ?? []) {
+      if (subscriber.closed) continue;
+      if (subscriber.pending) {
+        const pending = subscriber.pending;
+        subscriber.pending = null;
+        pending({ done: false, value: record });
+      } else {
+        subscriber.queue.push(record);
+      }
+    }
+  }
+}
+
+export { ScopedEventBus };
+export type { TSubscribeArgs };

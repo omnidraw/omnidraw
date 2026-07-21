@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
 import { createTestCrypto, testUuid } from './test-uuid';
+import { bindTestTenantDb, type TActorTestDb } from './tenant.fixture';
 
 const definitionName = 'Resource Test';
 
@@ -58,7 +59,8 @@ const manifest: TVibecanvasJson & { manifest_path: string } = {
 };
 
 describe('ActorResourceManager', () => {
-  let db: DbServiceTurso;
+  let dbService: DbServiceTurso;
+  let db: TActorTestDb;
   let manager: ActorResourceManager;
   let rootDir: string;
   let kvStore: ActorResourceKeyValueStore;
@@ -67,8 +69,9 @@ describe('ActorResourceManager', () => {
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-resource-manager-'));
-    db = new DbServiceTurso({ databasePath: ':memory:', dataDir: import.meta.dir, cacheDir: import.meta.dir });
-    await db.start();
+    dbService = new DbServiceTurso({ databasePath: ':memory:', dataDir: import.meta.dir, cacheDir: import.meta.dir });
+    await dbService.start();
+    db = bindTestTenantDb(dbService);
     testCrypto = createTestCrypto('actor-resource-manager');
     await db.actor.insertDefinition({
       name: definitionName,

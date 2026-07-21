@@ -1,4 +1,5 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
+import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
 import type { Dirent } from 'node:fs';
 import path from "node:path";
 import * as fs from 'node:fs/promises';
@@ -52,39 +53,38 @@ type TActorConnectionCreateArgs = Omit<TActorConnection, "created_at" | "updated
 
 
 /**
- * Interface follows same pattern.
- * args, accountId?
- * If no accountId -> no authz check -> auto pass
+ * Public customer-data repositories require a tenant context for every call.
+ * System bootstrap operations are deliberately kept outside this surface.
  */
 interface IPublicMethods {
   canvas: {
-    listAll(args?: { accountId?: string }): Promise<TCanvas[]>;
-    findByName(args: { name: string }, scope?: { accountId?: string }): Promise<TCanvas | null>;
-    findById(args: { id: string }, scope?: { accountId?: string }): Promise<TCanvas | null>;
-    create(args: TCanvasCreateArgs, scope?: { accountId?: string }): Promise<TCanvas>;
-    renameById(args: { id: string, name: string}, scope?: { accountId?: string }): Promise<TCanvas | null>;
-    deleteById(args: { id: string }, scope?: { accountId?: string }): Promise<TCanvas[]>;
-    listMembers(args: { canvasId: string }, accountId?: string): Promise<TCanvasMember[]>;
+    listAll(tenant: TTenantContext): Promise<TCanvas[]>;
+    findByName(tenant: TTenantContext, args: { name: string }): Promise<TCanvas | null>;
+    findById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas | null>;
+    create(tenant: TTenantContext, args: TCanvasCreateArgs): Promise<TCanvas>;
+    renameById(tenant: TTenantContext, args: { id: string, name: string}): Promise<TCanvas | null>;
+    deleteById(tenant: TTenantContext, args: { id: string }): Promise<TCanvas[]>;
+    listMembers(tenant: TTenantContext, args: { canvasId: string }): Promise<TCanvasMember[]>;
   };
   file: {
-    listAll(): Promise<TMediaFile[]>;
-    create(args: TFileCreateArgs): Promise<TMediaFile>;
-    getById(args: { id: string }): Promise<TMediaFile | null>;
-    deleteById(args: { id: string }): Promise<void>;
+    listAll(tenant: TTenantContext): Promise<TMediaFile[]>;
+    create(tenant: TTenantContext, args: TFileCreateArgs): Promise<TMediaFile>;
+    getById(tenant: TTenantContext, args: { id: string }): Promise<TMediaFile | null>;
+    deleteById(tenant: TTenantContext, args: { id: string }): Promise<void>;
   };
   filesystem: {
-    listAll(): Promise<TFilesystem[]>;
-    findById(id: string): Promise<TFilesystem | null>;
-    create(args: TFilesystemCreateArgs): Promise<TFilesystem>;
+    listAll(tenant: TTenantContext): Promise<TFilesystem[]>;
+    findById(tenant: TTenantContext, args: { id: string }): Promise<TFilesystem | null>;
+    create(tenant: TTenantContext, args: TFilesystemCreateArgs): Promise<TFilesystem>;
   };
   keyValue: {
-    add(args: TKeyValue): Promise<TKeyValue>;
-    remove(args: { name: string }): Promise<void>;
-    get(args: { name: string }): Promise<TKeyValue | null>;
+    add(tenant: TTenantContext, args: TKeyValue): Promise<TKeyValue>;
+    remove(tenant: TTenantContext, args: { name: string }): Promise<void>;
+    get(tenant: TTenantContext, args: { name: string }): Promise<TKeyValue | null>;
   };
   actorResourceEncryptionKey: {
-    get(args: { resourceId: string }): Promise<TEncryptionKey | null>;
-    getOrCreate(args: {
+    get(tenant: TTenantContext, args: { resourceId: string }): Promise<TEncryptionKey | null>;
+    getOrCreate(tenant: TTenantContext, args: {
       resourceId: string;
       keyId: string;
       purpose: string;
@@ -93,28 +93,28 @@ interface IPublicMethods {
     }): Promise<TEncryptionKey>;
   };
   toolGroup: {
-    listAll(): Promise<TToolGroup[]>;
-    getByName(args: { name: string }): Promise<TToolGroup | null>;
-    create(args: TToolGroup): Promise<TToolGroup>;
-    update(args: TToolGroup & { currentName: string }): Promise<TToolGroup | null>;
-    remove(args: { name: string }): Promise<TToolGroup | null>;
+    listAll(tenant: TTenantContext): Promise<TToolGroup[]>;
+    getByName(tenant: TTenantContext, args: { name: string }): Promise<TToolGroup | null>;
+    create(tenant: TTenantContext, args: TToolGroup): Promise<TToolGroup>;
+    update(tenant: TTenantContext, args: TToolGroup & { currentName: string }): Promise<TToolGroup | null>;
+    remove(tenant: TTenantContext, args: { name: string }): Promise<TToolGroup | null>;
   };
   actor: {
-    listDefinitions(): Promise<TActorDefinition[]>;
-    insertDefinition(def: TActorDefinitionCreateArgs): Promise<TActorDefinition>;
-    deleteDefinition(id: string): Promise<void>;
-    updateDefinition(def: TActorDefinitionUpdateArgs): Promise<TActorDefinition>;
-    reload(): Promise<void>;
-    listInstances(filter?: { canvasId?: string }): Promise<TActorInstance[]>;
-    insertInstance(instance: TActorInstanceCreateArgs): Promise<TActorInstance>;
-    updateInstanceStatus(instance: TActorInstanceUpdateStatusArgs): Promise<TActorInstance>;
-    updateInstanceHealth(instance: TActorInstanceUpdateHealthArgs): Promise<TActorInstance>;
-    updateInstanceMachine(instance: TActorInstanceUpdateMachineArgs): Promise<TActorInstance>;
-    deleteInstance(id: string): Promise<void>;
-    listConnections(): Promise<TActorConnection[]>;
-    insertConnection(connection: TActorConnectionCreateArgs): Promise<TActorConnection>;
-    deleteConnectionById(id: string): Promise<void>;
-    deleteConnectionBySource(actorId: string): Promise<void>;
+    listDefinitions(tenant: TTenantContext): Promise<TActorDefinition[]>;
+    insertDefinition(tenant: TTenantContext, def: TActorDefinitionCreateArgs): Promise<TActorDefinition>;
+    deleteDefinition(tenant: TTenantContext, id: string): Promise<void>;
+    updateDefinition(tenant: TTenantContext, def: TActorDefinitionUpdateArgs): Promise<TActorDefinition | null>;
+    reload(tenant: TTenantContext): Promise<void>;
+    listInstances(tenant: TTenantContext, filter?: { canvasId?: string }): Promise<TActorInstance[]>;
+    insertInstance(tenant: TTenantContext, instance: TActorInstanceCreateArgs): Promise<TActorInstance>;
+    updateInstanceStatus(tenant: TTenantContext, instance: TActorInstanceUpdateStatusArgs): Promise<TActorInstance | null>;
+    updateInstanceHealth(tenant: TTenantContext, instance: TActorInstanceUpdateHealthArgs): Promise<TActorInstance | null>;
+    updateInstanceMachine(tenant: TTenantContext, instance: TActorInstanceUpdateMachineArgs): Promise<TActorInstance | null>;
+    deleteInstance(tenant: TTenantContext, id: string): Promise<void>;
+    listConnections(tenant: TTenantContext): Promise<TActorConnection[]>;
+    insertConnection(tenant: TTenantContext, connection: TActorConnectionCreateArgs): Promise<TActorConnection>;
+    deleteConnectionById(tenant: TTenantContext, id: string): Promise<void>;
+    deleteConnectionBySource(tenant: TTenantContext, actorId: string): Promise<void>;
   }
 }
 
@@ -314,7 +314,7 @@ export async function preflightDbServiceDatabase(
 export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'DbServiceTurso'
   db: Database
-  #actorWriteTail: Promise<void> = Promise.resolve()
+  #actorWriteTails = new Map<string, Promise<void>>()
   #isConnected = false
 
   constructor(private config: IDbConfig) {
@@ -352,94 +352,100 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     this.#isConnected = false
   }
 
-  #serializeActorWrite<T>(write: () => Promise<T>): Promise<T> {
-    const result = this.#actorWriteTail.then(write, write)
-    this.#actorWriteTail = result.then(
+  #serializeActorWrite<T>(tenant: TTenantContext, write: () => Promise<T>): Promise<T> {
+    const key = fnScopedKey('db-actor-write', [tenant.orgId])
+    const previous = this.#actorWriteTails.get(key) ?? Promise.resolve()
+    const result = previous.then(write, write)
+    const tail = result.then(
       () => undefined,
       () => undefined,
     )
+    this.#actorWriteTails.set(key, tail)
+    void tail.then(() => {
+      if (this.#actorWriteTails.get(key) === tail) this.#actorWriteTails.delete(key)
+    })
 
     return result
   }
 
   account = {
-    getDefaultOwner: () => fxAccountGetDefaultOwner(this, {}),
+    getDefaultOwner: (tenant: TTenantContext) => fxAccountGetDefaultOwner(this, { tenant }),
     ensureDefaultOwner: () => txAccountEnsureDefaultOwner(this, {}),
   };
 
   canvas = {
-    listAll: (args?: { accountId?: string }) => fxCanvasListAll(this, { accountId: args?.accountId }),
-    findByName: (args: { name: string }, scope?: { accountId?: string }) => fxCanvasFindByName(this, { ...args, accountId: scope?.accountId }),
-    findById: (args: { id: string }, scope?: { accountId?: string }) => fxCanvasFindById(this, { ...args, accountId: scope?.accountId }),
-    create: (args: TCanvasCreateArgs, scope?: { accountId?: string }) => txCanvasCreate(this, { ...args, accountId: scope?.accountId }),
-    renameById: (args: { id: string, name: string }, scope?: { accountId?: string }) => txCanvasRenameById(this, { ...args, accountId: scope?.accountId }),
-    deleteById: (args: { id: string }, scope?: { accountId?: string }) => txCanvasDeleteById(this, { ...args, accountId: scope?.accountId }),
-    listMembers: (args: { canvasId: string }) => fxCanvasListMembers(this, args),
+    listAll: (tenant: TTenantContext) => fxCanvasListAll(this, { tenant }),
+    findByName: (tenant: TTenantContext, args: { name: string }) => fxCanvasFindByName(this, { tenant, ...args }),
+    findById: (tenant: TTenantContext, args: { id: string }) => fxCanvasFindById(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TCanvasCreateArgs) => txCanvasCreate(this, { tenant, ...args }),
+    renameById: (tenant: TTenantContext, args: { id: string, name: string }) => txCanvasRenameById(this, { tenant, ...args }),
+    deleteById: (tenant: TTenantContext, args: { id: string }) => txCanvasDeleteById(this, { tenant, ...args }),
+    listMembers: (tenant: TTenantContext, args: { canvasId: string }) => fxCanvasListMembers(this, { tenant, ...args }),
   };
 
   file = {
-    listAll: () => fxFileListAll(this, {}),
-    create: (args: TFileCreateArgs) => txFileCreate(this, args),
-    getById: (args: { id: string }) => fxFileGetById(this, args),
-    deleteById: (args: { id: string }) => txFileDeleteById(this, args),
+    listAll: (tenant: TTenantContext) => fxFileListAll(this, { tenant }),
+    create: (tenant: TTenantContext, args: TFileCreateArgs) => txFileCreate(this, { tenant, ...args }),
+    getById: (tenant: TTenantContext, args: { id: string }) => fxFileGetById(this, { tenant, ...args }),
+    deleteById: (tenant: TTenantContext, args: { id: string }) => txFileDeleteById(this, { tenant, ...args }),
   };
 
   filesystem = {
-    listAll: () => fxFilesystemListAll(this, {}),
-    findById: (id: string) => fxFilesystemFindById(this, { id }),
-    create: (args: TFilesystemCreateArgs) => txFilesystemCreate(this, args),
+    listAll: (tenant: TTenantContext) => fxFilesystemListAll(this, { tenant }),
+    findById: (tenant: TTenantContext, args: { id: string }) => fxFilesystemFindById(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TFilesystemCreateArgs) => txFilesystemCreate(this, { tenant, ...args }),
   };
 
   keyValue = {
-    add: (args: TKeyValue) => txKeyValueAdd(this, args),
-    remove: (args: { name: string }) => txKeyValueRemove(this, args),
-    get: (args: { name: string }) => fxKeyValueGet(this, args),
+    add: (tenant: TTenantContext, args: TKeyValue) => txKeyValueAdd(this, { tenant, ...args }),
+    remove: (tenant: TTenantContext, args: { name: string }) => txKeyValueRemove(this, { tenant, ...args }),
+    get: (tenant: TTenantContext, args: { name: string }) => fxKeyValueGet(this, { tenant, ...args }),
   };
 
   actorResourceEncryptionKey = {
-    get: (args: { resourceId: string }) => fxActorResourceEncryptionKeyGet(this, args),
-    getOrCreate: (args: {
+    get: (tenant: TTenantContext, args: { resourceId: string }) => fxActorResourceEncryptionKeyGet(this, { tenant, ...args }),
+    getOrCreate: (tenant: TTenantContext, args: {
       resourceId: string;
       keyId: string;
       purpose: string;
       algorithm: string;
       keyHex: string;
-    }) => this.#serializeActorWrite(() => (
-      txActorResourceEncryptionKeyGetOrCreate(this, args)
+    }) => this.#serializeActorWrite(tenant, () => (
+      txActorResourceEncryptionKeyGetOrCreate(this, { tenant, ...args })
     )),
   };
 
   actorResource = {
-    create: (args: {
+    create: (tenant: TTenantContext, args: {
       id: string;
       kind: TActorResourceKind;
       name: string;
       status?: TActorResourceStatus;
       lastError?: TJson | null;
-    }) => this.#serializeActorWrite(() => txActorResourceCreate(this, args)),
-    get: (args: { id: string }) => fxActorResourceGet(this, args),
-    findByNameKey: (args: { nameKey: string }) => fxActorResourceFindByNameKey(this, args),
-    list: (args: { kind?: TActorResourceKind; status?: TActorResourceStatus } = {}) => fxActorResourceList(this, args),
-    rename: (args: { id: string; name: string }) => this.#serializeActorWrite(() => txActorResourceRename(this, args)),
-    updateProviderState: (args: {
+    }) => this.#serializeActorWrite(tenant, () => txActorResourceCreate(this, { tenant, ...args })),
+    get: (tenant: TTenantContext, args: { id: string }) => fxActorResourceGet(this, { tenant, ...args }),
+    findByNameKey: (tenant: TTenantContext, args: { nameKey: string }) => fxActorResourceFindByNameKey(this, { tenant, ...args }),
+    list: (tenant: TTenantContext, args: { kind?: TActorResourceKind; status?: TActorResourceStatus } = {}) => fxActorResourceList(this, { tenant, ...args }),
+    rename: (tenant: TTenantContext, args: { id: string; name: string }) => this.#serializeActorWrite(tenant, () => txActorResourceRename(this, { tenant, ...args })),
+    updateProviderState: (tenant: TTenantContext, args: {
       id: string;
       status?: TActorResourceStatus;
       lastError?: TJson | null;
-    }) => this.#serializeActorWrite(() => txActorResourceUpdateProviderState(this, args)),
-    beginDelete: (args: { id: string }) => this.#serializeActorWrite(() => txActorResourceBeginDelete(this, args)),
-    delete: (args: { id: string }) => this.#serializeActorWrite(() => txActorResourceDelete(this, args)),
-    listBindingsForDefinition: (args: { definitionName: string }) => fxActorResourceListBindingsForDefinition(this, args),
-    listBindingsForResource: (args: { resourceId: string }) => fxActorResourceListBindingsForResource(this, args),
-    listDefinitionsReferencingResource: (args: { resourceId: string }) => fxActorResourceListDefinitionsReferencingResource(this, args),
-    upsertBinding: (args: {
+    }) => this.#serializeActorWrite(tenant, () => txActorResourceUpdateProviderState(this, { tenant, ...args })),
+    beginDelete: (tenant: TTenantContext, args: { id: string }) => this.#serializeActorWrite(tenant, () => txActorResourceBeginDelete(this, { tenant, ...args })),
+    delete: (tenant: TTenantContext, args: { id: string }) => this.#serializeActorWrite(tenant, () => txActorResourceDelete(this, { tenant, ...args })),
+    listBindingsForDefinition: (tenant: TTenantContext, args: { definitionName: string }) => fxActorResourceListBindingsForDefinition(this, { tenant, ...args }),
+    listBindingsForResource: (tenant: TTenantContext, args: { resourceId: string }) => fxActorResourceListBindingsForResource(this, { tenant, ...args }),
+    listDefinitionsReferencingResource: (tenant: TTenantContext, args: { resourceId: string }) => fxActorResourceListDefinitionsReferencingResource(this, { tenant, ...args }),
+    upsertBinding: (tenant: TTenantContext, args: {
       definitionName: string;
       slotName: string;
       resourceId: string;
       allowRead: boolean;
       allowWrite: boolean;
-    }) => this.#serializeActorWrite(() => txActorResourceUpsertBinding(this, args)),
-    removeBinding: (args: { definitionName: string; slotName: string }) => this.#serializeActorWrite(() => txActorResourceRemoveBinding(this, args)),
-    replaceBindings: (args: {
+    }) => this.#serializeActorWrite(tenant, () => txActorResourceUpsertBinding(this, { tenant, ...args })),
+    removeBinding: (tenant: TTenantContext, args: { definitionName: string; slotName: string }) => this.#serializeActorWrite(tenant, () => txActorResourceRemoveBinding(this, { tenant, ...args })),
+    replaceBindings: (tenant: TTenantContext, args: {
       definitionName: string;
       expectedBindings?: readonly {
         slotName: string;
@@ -453,65 +459,65 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         allowRead: boolean;
         allowWrite: boolean;
       }[];
-    }) => this.#serializeActorWrite(() => txActorResourceReplaceBindings(this, args)),
+    }) => this.#serializeActorWrite(tenant, () => txActorResourceReplaceBindings(this, { tenant, ...args })),
   };
 
   dbResource = {
     draft: {
-      create: (args: { id: string; resourceId: string; name: string }) => this.#serializeActorWrite(() => txDbResourceDraftCreate(this, args)),
-      get: (args: { id: string }) => fxDbResourceDraftGet(this, args),
-      getActive: (args: { resourceId: string }) => fxDbResourceDraftGetActive(this, args),
-      list: (args: {
+      create: (tenant: TTenantContext, args: { id: string; resourceId: string; name: string }) => this.#serializeActorWrite(tenant, () => txDbResourceDraftCreate(this, { tenant, ...args })),
+      get: (tenant: TTenantContext, args: { id: string }) => fxDbResourceDraftGet(this, { tenant, ...args }),
+      getActive: (tenant: TTenantContext, args: { resourceId: string }) => fxDbResourceDraftGetActive(this, { tenant, ...args }),
+      list: (tenant: TTenantContext, args: {
         resourceId: string;
         status?: TDbResourceDraftStatus;
         before?: { createdAt: string; id: string };
         limit?: number;
-      }) => fxDbResourceDraftList(this, args),
-      rename: (args: { id: string; name: string }) => this.#serializeActorWrite(() => txDbResourceDraftRename(this, args)),
-      updateStatus: (args: {
+      }) => fxDbResourceDraftList(this, { tenant, ...args }),
+      rename: (tenant: TTenantContext, args: { id: string; name: string }) => this.#serializeActorWrite(tenant, () => txDbResourceDraftRename(this, { tenant, ...args })),
+      updateStatus: (tenant: TTenantContext, args: {
         id: string;
         status: TDbResourceDraftStatus;
         expectedStatus?: TDbResourceDraftStatus;
         lastError?: TJson | null;
-      }) => this.#serializeActorWrite(() => txDbResourceDraftUpdateStatus(this, args)),
-      discard: (args: { id: string; lastError?: TJson | null }) => this.#serializeActorWrite(() => txDbResourceDraftDiscard(this, args)),
+      }) => this.#serializeActorWrite(tenant, () => txDbResourceDraftUpdateStatus(this, { tenant, ...args })),
+      discard: (tenant: TTenantContext, args: { id: string; lastError?: TJson | null }) => this.#serializeActorWrite(tenant, () => txDbResourceDraftDiscard(this, { tenant, ...args })),
       change: {
-        list: (args: { draftId: string }) => fxDbResourceDraftChangeList(this, args),
-        append: (args: {
+        list: (tenant: TTenantContext, args: { draftId: string }) => fxDbResourceDraftChangeList(this, { tenant, ...args }),
+        append: (tenant: TTenantContext, args: {
           draftId: string;
           sequence: number;
           kind: TDbResourceDraftChangeKind;
           operation?: TJson | null;
           sql: string;
-        }) => this.#serializeActorWrite(() => txDbResourceDraftAppendChange(this, args)),
+        }) => this.#serializeActorWrite(tenant, () => txDbResourceDraftAppendChange(this, { tenant, ...args })),
       },
     },
     apply: {
-      create: (args: {
+      create: (tenant: TTenantContext, args: {
         id: string;
         resourceId: string;
         draftId?: string | null;
         sourceApplyId?: string | null;
         status?: TDbResourceApplyStatus;
-      }) => this.#serializeActorWrite(() => txDbResourceApplyCreate(this, args)),
-      createFromDraft: (args: { id: string; resourceId: string; draftId: string }) => (
-        this.#serializeActorWrite(() => txDbResourceApplyCreateFromDraft(this, args))
+      }) => this.#serializeActorWrite(tenant, () => txDbResourceApplyCreate(this, { tenant, ...args })),
+      createFromDraft: (tenant: TTenantContext, args: { id: string; resourceId: string; draftId: string }) => (
+        this.#serializeActorWrite(tenant, () => txDbResourceApplyCreateFromDraft(this, { tenant, ...args }))
       ),
-      get: (args: { id: string }) => fxDbResourceApplyGet(this, args),
-      list: (args: {
+      get: (tenant: TTenantContext, args: { id: string }) => fxDbResourceApplyGet(this, { tenant, ...args }),
+      list: (tenant: TTenantContext, args: {
         resourceId: string;
         status?: TDbResourceApplyStatus;
         before?: { createdAt: string; id: string };
         limit?: number;
-      }) => fxDbResourceApplyList(this, args),
-      update: (args: {
+      }) => fxDbResourceApplyList(this, { tenant, ...args }),
+      update: (tenant: TTenantContext, args: {
         id: string;
         status: TDbResourceApplyStatus;
         expectedStatus?: TDbResourceApplyStatus;
         lastError?: TJson | null;
         backupRetained?: boolean;
-      }) => this.#serializeActorWrite(() => txDbResourceApplyUpdate(this, args)),
-      finishWithDraft: (args: {
+      }) => this.#serializeActorWrite(tenant, () => txDbResourceApplyUpdate(this, { tenant, ...args })),
+      finishWithDraft: (tenant: TTenantContext, args: {
         id: string;
         draftId: string;
         status: Extract<TDbResourceApplyStatus, "succeeded" | "failed" | "recovered">;
@@ -519,51 +525,166 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         draftStatus: Extract<TDbResourceDraftStatus, "applied" | "editing" | "error">;
         lastError?: TJson | null;
         backupRetained?: boolean;
-      }) => this.#serializeActorWrite(() => txDbResourceApplyFinishWithDraft(this, args)),
+      }) => this.#serializeActorWrite(tenant, () => txDbResourceApplyFinishWithDraft(this, { tenant, ...args })),
       instanceResult: {
-        upsert: (args: {
+        upsert: (tenant: TTenantContext, args: {
           applyId: string;
           actorInstanceId: string;
           actorDefinitionName: string;
           wasRunning: boolean;
           status: TDbResourceApplyInstanceStatus;
           error?: TJson | null;
-        }) => this.#serializeActorWrite(() => txDbResourceApplyInstanceResultUpsert(this, args)),
-        listByApply: (args: { applyId: string }) => fxDbResourceApplyInstanceResultListByApply(this, args),
-        listByInstance: (args: { actorInstanceId: string }) => fxDbResourceApplyInstanceResultListByInstance(this, args),
+        }) => this.#serializeActorWrite(tenant, () => txDbResourceApplyInstanceResultUpsert(this, { tenant, ...args })),
+        listByApply: (tenant: TTenantContext, args: { applyId: string }) => fxDbResourceApplyInstanceResultListByApply(this, { tenant, ...args }),
+        listByInstance: (tenant: TTenantContext, args: { actorInstanceId: string }) => fxDbResourceApplyInstanceResultListByInstance(this, { tenant, ...args }),
       },
     },
-    listAffectedInstances: (args: { resourceId: string }) => fxDbResourceListAffectedInstances(this, args),
+    listAffectedInstances: (tenant: TTenantContext, args: { resourceId: string }) => fxDbResourceListAffectedInstances(this, { tenant, ...args }),
   };
 
   toolGroup = {
-    listAll: () => fxToolGroupListAll(this, {}),
-    getByName: (args: { name: string }) => fxToolGroupGetByName(this, args),
-    create: (args: TToolGroup) => txToolGroupCreate(this, args),
-    update: (args: TToolGroup & { currentName: string }) => txToolGroupUpdate(this, args),
-    remove: (args: { name: string }) => txToolGroupRemove(this, args),
+    listAll: (tenant: TTenantContext) => fxToolGroupListAll(this, { tenant }),
+    getByName: (tenant: TTenantContext, args: { name: string }) => fxToolGroupGetByName(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TToolGroup) => txToolGroupCreate(this, { tenant, ...args }),
+    update: (tenant: TTenantContext, args: TToolGroup & { currentName: string }) => txToolGroupUpdate(this, { tenant, ...args }),
+    remove: (tenant: TTenantContext, args: { name: string }) => txToolGroupRemove(this, { tenant, ...args }),
   };
 
   actor = {
-    listDefinitions: () => fxActorListDefinitions(this, {}),
-    insertDefinition: (def: TActorDefinitionCreateArgs) => this.#serializeActorWrite(() => txActorInsertDefinition(this, def)),
-    deleteDefinition: (name: string) => this.#serializeActorWrite(() => txActorDeleteDefinition(this, { name })),
-    getDefinition: (name: string) => fxActorGetDefinition(this, {name}),
-    updateDefinition: (def: TActorDefinitionUpdateArgs) => this.#serializeActorWrite(() => txActorUpdateDefinition(this, def)),
-    reload: async () => {
+    listDefinitions: (tenant: TTenantContext) => fxActorListDefinitions(this, { tenant }),
+    insertDefinition: (tenant: TTenantContext, def: TActorDefinitionCreateArgs) => this.#serializeActorWrite(tenant, () => txActorInsertDefinition(this, { tenant, ...def })),
+    deleteDefinition: (tenant: TTenantContext, name: string) => this.#serializeActorWrite(tenant, () => txActorDeleteDefinition(this, { tenant, name })),
+    getDefinition: (tenant: TTenantContext, name: string) => fxActorGetDefinition(this, { tenant, name }),
+    updateDefinition: (tenant: TTenantContext, def: TActorDefinitionUpdateArgs) => this.#serializeActorWrite(tenant, () => txActorUpdateDefinition(this, { tenant, ...def })),
+    reload: async (_tenant: TTenantContext) => {
       // TODO: i forgot what this was about
     },
-    listInstances: (filter?: { canvasId?: string }) => fxActorListInstances(this, { canvasId: filter?.canvasId }),
-    insertInstance: (instance: TActorInstanceCreateArgs) => this.#serializeActorWrite(() => txActorInsertInstance(this, instance)),
-    updateInstanceStatus: (instance: TActorInstanceUpdateStatusArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceStatus(this, instance)),
-    updateInstanceHealth: (instance: TActorInstanceUpdateHealthArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceHealth(this, instance)),
-    updateInstanceMachine: (instance: TActorInstanceUpdateMachineArgs) => this.#serializeActorWrite(() => txActorUpdateInstanceMachine(this, instance)),
-    getInstanceByElementId: (elementId: string) => fxActorGetInstanceByElementId(this, {elementId}),
-    getInstanceById: (instanceId: string) => fxActorGetInstanceById(this, {instanceId}),
-    deleteInstance: (id: string) => this.#serializeActorWrite(() => txActorDeleteInstance(this, { id })),
-    listConnections: () => fxActorListConnections(this, {}),
-    insertConnection: (connection: TActorConnectionCreateArgs) => this.#serializeActorWrite(() => txActorInsertConnection(this, connection)),
-    deleteConnectionById: (id: string) => this.#serializeActorWrite(() => txActorDeleteConnectionById(this, { id })),
-    deleteConnectionBySource: (actorId: string) => this.#serializeActorWrite(() => txActorDeleteConnectionBySource(this, { actorId })),
+    listInstances: (tenant: TTenantContext, filter?: { canvasId?: string }) => fxActorListInstances(this, { tenant, canvasId: filter?.canvasId }),
+    insertInstance: (tenant: TTenantContext, instance: TActorInstanceCreateArgs) => this.#serializeActorWrite(tenant, () => txActorInsertInstance(this, { tenant, ...instance })),
+    updateInstanceStatus: (tenant: TTenantContext, instance: TActorInstanceUpdateStatusArgs) => this.#serializeActorWrite(tenant, () => txActorUpdateInstanceStatus(this, { tenant, ...instance })),
+    updateInstanceHealth: (tenant: TTenantContext, instance: TActorInstanceUpdateHealthArgs) => this.#serializeActorWrite(tenant, () => txActorUpdateInstanceHealth(this, { tenant, ...instance })),
+    updateInstanceMachine: (tenant: TTenantContext, instance: TActorInstanceUpdateMachineArgs) => this.#serializeActorWrite(tenant, () => txActorUpdateInstanceMachine(this, { tenant, ...instance })),
+    getInstanceByElementId: (tenant: TTenantContext, elementId: string) => fxActorGetInstanceByElementId(this, { tenant, elementId }),
+    getInstanceById: (tenant: TTenantContext, instanceId: string) => fxActorGetInstanceById(this, { tenant, instanceId }),
+    deleteInstance: (tenant: TTenantContext, id: string) => this.#serializeActorWrite(tenant, () => txActorDeleteInstance(this, { tenant, id })),
+    listConnections: (tenant: TTenantContext) => fxActorListConnections(this, { tenant }),
+    insertConnection: (tenant: TTenantContext, connection: TActorConnectionCreateArgs) => this.#serializeActorWrite(tenant, () => txActorInsertConnection(this, { tenant, ...connection })),
+    deleteConnectionById: (tenant: TTenantContext, id: string) => this.#serializeActorWrite(tenant, () => txActorDeleteConnectionById(this, { tenant, id })),
+    deleteConnectionBySource: (tenant: TTenantContext, actorId: string) => this.#serializeActorWrite(tenant, () => txActorDeleteConnectionBySource(this, { tenant, actorId })),
   };
+
+  forTenant(tenant: TTenantContext) {
+    const bind = <TArgs extends unknown[], TResult>(
+      operation: (tenantContext: TTenantContext, ...args: TArgs) => TResult,
+    ) => (...args: TArgs): TResult => operation(tenant, ...args)
+
+    return {
+      account: {
+        getDefaultOwner: bind(this.account.getDefaultOwner),
+      },
+      canvas: {
+        listAll: bind(this.canvas.listAll),
+        findByName: bind(this.canvas.findByName),
+        findById: bind(this.canvas.findById),
+        create: bind(this.canvas.create),
+        renameById: bind(this.canvas.renameById),
+        deleteById: bind(this.canvas.deleteById),
+        listMembers: bind(this.canvas.listMembers),
+      },
+      file: {
+        listAll: bind(this.file.listAll),
+        create: bind(this.file.create),
+        getById: bind(this.file.getById),
+        deleteById: bind(this.file.deleteById),
+      },
+      filesystem: {
+        listAll: bind(this.filesystem.listAll),
+        findById: bind(this.filesystem.findById),
+        create: bind(this.filesystem.create),
+      },
+      keyValue: {
+        add: bind(this.keyValue.add),
+        remove: bind(this.keyValue.remove),
+        get: bind(this.keyValue.get),
+      },
+      actorResourceEncryptionKey: {
+        get: bind(this.actorResourceEncryptionKey.get),
+        getOrCreate: bind(this.actorResourceEncryptionKey.getOrCreate),
+      },
+      actorResource: {
+        create: bind(this.actorResource.create),
+        get: bind(this.actorResource.get),
+        findByNameKey: bind(this.actorResource.findByNameKey),
+        list: bind(this.actorResource.list),
+        rename: bind(this.actorResource.rename),
+        updateProviderState: bind(this.actorResource.updateProviderState),
+        beginDelete: bind(this.actorResource.beginDelete),
+        delete: bind(this.actorResource.delete),
+        listBindingsForDefinition: bind(this.actorResource.listBindingsForDefinition),
+        listBindingsForResource: bind(this.actorResource.listBindingsForResource),
+        listDefinitionsReferencingResource: bind(this.actorResource.listDefinitionsReferencingResource),
+        upsertBinding: bind(this.actorResource.upsertBinding),
+        removeBinding: bind(this.actorResource.removeBinding),
+        replaceBindings: bind(this.actorResource.replaceBindings),
+      },
+      dbResource: {
+        draft: {
+          create: bind(this.dbResource.draft.create),
+          get: bind(this.dbResource.draft.get),
+          getActive: bind(this.dbResource.draft.getActive),
+          list: bind(this.dbResource.draft.list),
+          rename: bind(this.dbResource.draft.rename),
+          updateStatus: bind(this.dbResource.draft.updateStatus),
+          discard: bind(this.dbResource.draft.discard),
+          change: {
+            list: bind(this.dbResource.draft.change.list),
+            append: bind(this.dbResource.draft.change.append),
+          },
+        },
+        apply: {
+          create: bind(this.dbResource.apply.create),
+          createFromDraft: bind(this.dbResource.apply.createFromDraft),
+          get: bind(this.dbResource.apply.get),
+          list: bind(this.dbResource.apply.list),
+          update: bind(this.dbResource.apply.update),
+          finishWithDraft: bind(this.dbResource.apply.finishWithDraft),
+          instanceResult: {
+            upsert: bind(this.dbResource.apply.instanceResult.upsert),
+            listByApply: bind(this.dbResource.apply.instanceResult.listByApply),
+            listByInstance: bind(this.dbResource.apply.instanceResult.listByInstance),
+          },
+        },
+        listAffectedInstances: bind(this.dbResource.listAffectedInstances),
+      },
+      toolGroup: {
+        listAll: bind(this.toolGroup.listAll),
+        getByName: bind(this.toolGroup.getByName),
+        create: bind(this.toolGroup.create),
+        update: bind(this.toolGroup.update),
+        remove: bind(this.toolGroup.remove),
+      },
+      actor: {
+        listDefinitions: bind(this.actor.listDefinitions),
+        insertDefinition: bind(this.actor.insertDefinition),
+        deleteDefinition: bind(this.actor.deleteDefinition),
+        getDefinition: bind(this.actor.getDefinition),
+        updateDefinition: bind(this.actor.updateDefinition),
+        reload: bind(this.actor.reload),
+        listInstances: bind(this.actor.listInstances),
+        insertInstance: bind(this.actor.insertInstance),
+        updateInstanceStatus: bind(this.actor.updateInstanceStatus),
+        updateInstanceHealth: bind(this.actor.updateInstanceHealth),
+        updateInstanceMachine: bind(this.actor.updateInstanceMachine),
+        getInstanceByElementId: bind(this.actor.getInstanceByElementId),
+        getInstanceById: bind(this.actor.getInstanceById),
+        deleteInstance: bind(this.actor.deleteInstance),
+        listConnections: bind(this.actor.listConnections),
+        insertConnection: bind(this.actor.insertConnection),
+        deleteConnectionById: bind(this.actor.deleteConnectionById),
+        deleteConnectionBySource: bind(this.actor.deleteConnectionBySource),
+      },
+    }
+  }
 }
+
+export type TTenantDb = ReturnType<DbServiceTurso['forTenant']>

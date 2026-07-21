@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TJson, TKeyValue } from "../model"
 
 type TPortal = {
@@ -7,8 +7,11 @@ type TPortal = {
 }
 
 type TArgsRemove = {
+  tenant: TTenantContext
   name: string
 }
+
+type TArgsAdd = TKeyValue & { tenant: TTenantContext }
 
 type TRawKeyValue = {
   name: string
@@ -48,7 +51,7 @@ function toColumnValues(args: TKeyValue): [string | null, string | null, number 
   return [null, null, null, args.value]
 }
 
-export async function txKeyValueAdd(portal: TPortal, args: TKeyValue): Promise<TKeyValue> {
+export async function txKeyValueAdd(portal: TPortal, args: TArgsAdd): Promise<TKeyValue> {
   const [text, json, number, bool] = toColumnValues(args)
   const stmt = await portal.db.prepare(`
     INSERT INTO key_values (
@@ -62,7 +65,7 @@ export async function txKeyValueAdd(portal: TPortal, args: TKeyValue): Promise<T
     )
     RETURNING name, kind, text_value, json_value, number_value, bool_value
   `)
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.name, args.type, text, json, number, bool)
+  const row = await stmt.get(args.tenant.orgId, args.name, args.type, text, json, number, bool)
 
   if (!row) {
     throw new Error("Failed to add key value")
@@ -76,5 +79,5 @@ export async function txKeyValueRemove(portal: TPortal, args: TArgsRemove): Prom
     DELETE FROM key_values
     WHERE org_id = ? AND name = ?
   `)
-  await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.name)
+  await stmt.run(args.tenant.orgId, args.name)
 }

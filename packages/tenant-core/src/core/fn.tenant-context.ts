@@ -4,6 +4,14 @@
 
 import type { TTenantCapability, TTenantContext, TTenantPlacement } from '../types';
 
+export function fnFreezeTenantContext(context: TTenantContext): TTenantContext {
+  return Object.freeze({
+    ...context,
+    roles: Object.freeze([...context.roles]),
+    capabilities: Object.freeze([...context.capabilities]),
+  });
+}
+
 export function fnTenantContextHasCapability(
   context: TTenantContext,
   capability: TTenantCapability,

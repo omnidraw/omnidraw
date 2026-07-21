@@ -1,7 +1,8 @@
 import { baseFilesystemOs } from './orpc';
 
 const apiListRegisteredFilesystems = baseFilesystemOs.listRegisteredFilesystems.handler(async ({ context }) => {
-  return await context.db.filesystem.listAll();
+  const filesystems = await context.db.filesystem.listAll(context.tenant);
+  return filesystems.map((filesystem) => ({ ...filesystem, path: '' }));
 });
 
 export { apiListRegisteredFilesystems };

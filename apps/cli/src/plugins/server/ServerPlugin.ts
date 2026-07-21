@@ -5,6 +5,7 @@ import type { ICliHooks } from '../../hooks';
 import { checkForUpdateOnBoot } from './check-update';
 import { handleHttpRequest } from './http';
 import type { TOrpcWebSocketData } from '../orpc/OrpcPlugin';
+import { OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from '../auth/AuthPlugin';
 
 function serveWithPortFallback<TSocketData>(serve: (port: number) => ReturnType<typeof Bun.serve<TSocketData>>, startPort: number): ReturnType<typeof Bun.serve<TSocketData>> {
   const maxAttempts = 100;
@@ -38,13 +39,19 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
           async fetch(req, server) {
             const url = new URL(req.url);
             const upgraded = ctx.hooks.wsUpgrade.call(req);
+            const requestId = crypto.randomUUID();
+            const tenant = await OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
+              requestId,
+              session: OSS_FAKE_SESSION,
+            });
 
             if (upgraded) {
               if (server.upgrade(req, {
                 data: {
                   path: url.pathname,
                   query: url.search,
-                  requestId: crypto.randomUUID(),
+                  requestId,
+                  tenant,
                 },
               })) {
                 return;
@@ -63,7 +70,7 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
               return new Response('Database service not available', { status: 500 });
             }
 
-            return handleHttpRequest(req, { compiled: ctx.config.compiled, version: ctx.config.version }, db, import.meta.dir);
+            return handleHttpRequest(req, { compiled: ctx.config.compiled, version: ctx.config.version }, db, tenant, import.meta.dir);
           },
           websocket: {
             data: {} as TOrpcWebSocketData,
@@ -98,7 +105,11 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
         console.log(`Server listening on http://localhost:${bunServer.port}`);
 
         const eventPublisher = ctx.services.require('eventPublisher');
-        checkForUpdateOnBoot(ctx.config, eventPublisher);
+        const tenant = await OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
+          requestId: crypto.randomUUID(),
+          session: OSS_FAKE_SESSION,
+        });
+        checkForUpdateOnBoot(ctx.config, eventPublisher.forTenant(tenant));
       });
 
       ctx.hooks.shutdown.tapPromise(async () => {

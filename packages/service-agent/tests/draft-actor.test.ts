@@ -4,24 +4,21 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import type { IEventPublisherService, TAgentEvent, TActorEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { createFakeSessionManager } from './tool.test-helpers';
+import { TestTenantEventPublisher } from './tenant.fixture';
 
-class TestEventPublisherService implements IEventPublisherService {
-  name = 'test-event-publisher';
+class TestEventPublisherService extends TestTenantEventPublisher {
   agentEvents: TAgentEvent[] = [];
 
-  publishDbEvent(canvasId: string, event: TDbEvent): void { void canvasId; void event; }
-  async *subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent> { void canvasId; }
-  publishActorEvent(event: TActorEvent): void { void event; }
-  async *subscribeActorEvents(): AsyncIterable<TActorEvent> { }
-  publishAgentEvent(event: TAgentEvent): void { this.agentEvents.push(event); }
-  async *subscribeAgentEvents(): AsyncIterable<TAgentEvent> { yield* this.agentEvents; }
-  publishFilesystemEvent(path: string, event: TFilesystemEvent): void { void path; void event; }
-  async *subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent> { void path; }
-  publishNotification(event: TNotificationEvent): void { void event; }
-  async *subscribeNotifications(): AsyncIterable<TNotificationEvent> { }
-  getLatestNotification(): TNotificationEvent | null { return null; }
+  override publishAgentEvent(event: TAgentEvent): number {
+    this.agentEvents.push(event);
+    return super.publishAgentEvent(event);
+  }
+
+  override async *subscribeAgentEvents(): AsyncIterable<TAgentEvent> {
+    yield* this.agentEvents;
+  }
 }
 
 const tempDirs: string[] = [];

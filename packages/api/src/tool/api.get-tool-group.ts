@@ -3,9 +3,9 @@ import { fnToToolGroup } from "./fn.to-tool-group";
 import { baseToolOs } from "./orpc";
 
 const apiGetToolGroup = baseToolOs.groups.get.handler(async ({ context, input }) => {
-  const group = await context.db.toolGroup.getByName({ name: input.name });
+  const group = await context.db.toolGroup.getByName(context.tenant, { name: input.name });
   if (!group) {
-    throw new ORPCError("NOT_FOUND", { message: `Tool group "${input.name}" not found` });
+    throw new ORPCError("NOT_FOUND", { message: 'Tool group not found' });
   }
 
   return fnToToolGroup({ group });

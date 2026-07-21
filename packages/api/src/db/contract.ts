@@ -23,11 +23,18 @@ export const ZDbEventSchema = z.object({
   ]),
 });
 
+export const ZDbEventStreamSchema = ZDbEventSchema.extend({
+  sequence: z.number().int().positive(),
+});
+
 const dbContract = oc.router({
   events: oc
-    .input(z.object({ canvasId: z.string() }))
+    .input(z.object({
+      canvasId: z.string(),
+      afterSequence: z.number().int().nonnegative().optional(),
+    }))
     .route({ method: 'GET' })
-    .output(eventIterator(ZDbEventSchema)),
+    .output(eventIterator(ZDbEventStreamSchema)),
 });
 
 export { dbContract };

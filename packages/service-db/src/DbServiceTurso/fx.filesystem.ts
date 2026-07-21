@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TFilesystem } from "../model"
 import { fnTimestampFromMs } from "./fn.legacy-row"
 
@@ -7,9 +7,10 @@ type TPortal = {
   db: Database
 }
 
-type TArgs = {}
+type TArgs = { tenant: TTenantContext }
 
 type TArgsFindById = {
+  tenant: TTenantContext
   id: string
 }
 
@@ -41,7 +42,7 @@ export async function fxFilesystemListAll(portal: TPortal, args: TArgs): Promise
     WHERE org_id = ?
     ORDER BY created_at_ms ASC, id ASC
   `)
-  const rows = await stmt.all(DEFAULT_OSS_ORGANIZATION_ID)
+  const rows = await stmt.all(args.tenant.orgId)
   return rows.map(parseFilesystemRow)
 }
 
@@ -51,6 +52,6 @@ export async function fxFilesystemFindById(portal: TPortal, args: TArgsFindById)
     FROM file_systems
     WHERE org_id = ? AND id = ?
   `)
-  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  const row = await stmt.get(args.tenant.orgId, args.id)
   return row ? parseFilesystemRow(row) : null
 }

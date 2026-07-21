@@ -1,10 +1,15 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { connect, Database } from "@tursodatabase/database";
 import { DEFAULT_OSS_ORGANIZATION_ID } from "../../../src/CONSTANTS";
-import { fxKeyValueGet } from "../../../src/DbServiceTurso/fx.keyValue";
-import { txKeyValueAdd, txKeyValueRemove } from "../../../src/DbServiceTurso/tx.keyValue";
+import { fxKeyValueGet as fxKeyValueGetRaw } from "../../../src/DbServiceTurso/fx.keyValue";
+import { txKeyValueAdd as txKeyValueAddRaw, txKeyValueRemove as txKeyValueRemoveRaw } from "../../../src/DbServiceTurso/tx.keyValue";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
 import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
+import { bindTenantOperation } from "../tenant.fixture";
+
+const fxKeyValueGet = bindTenantOperation(fxKeyValueGetRaw);
+const txKeyValueAdd = bindTenantOperation(txKeyValueAddRaw);
+const txKeyValueRemove = bindTenantOperation(txKeyValueRemoveRaw);
 
 async function inMemoryDb() {
   // @ts-expect-error custom_types not typed yet

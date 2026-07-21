@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { AgentService } from '../src/AgentService';
 import { txAppendWidgetDbChangeProposalRecord } from '../src/core/tx.session-records';
 import { createFakeSessionManager } from './tool.test-helpers';
+import { createTestTenantEvents } from './tenant.fixture';
 
 const proposal = {
   id: 'proposal-1',
@@ -18,7 +19,7 @@ function createService(actorService: ConstructorParameters<typeof AgentService>[
     cachePath: '/tmp/cache',
     dataPath: '/tmp/data',
     configPath: '/tmp/config',
-    eventPublisherService: {} as never,
+    eventPublisherService: createTestTenantEvents(),
     actorService,
   });
   const sessionManager = createFakeSessionManager();

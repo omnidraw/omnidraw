@@ -1,6 +1,6 @@
-import type { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
+import type { TTenantDb } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import type { TActorConnection, TActorInstance, TWidgetError } from "@vibecanvas/service-db/model";
-import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { fxListVibecanvasJsons } from "./core/fx.vibecanvas-actors";
 import { readdir, exists, rm } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative } from "node:path";
@@ -37,11 +37,11 @@ interface IPublicMethods { // not in use yet
 }
 
 interface IActorSupervisorConfig {
-  db: DbServiceTurso
+  db: TTenantDb
   crypto?: Pick<typeof crypto, 'randomUUID'>
   absWidgetDir: string
   configPath: string
-  eventPublisherService: IEventPublisherService
+  eventPublisherService: ITenantEventPublisherService
   resourceGateway?: TActorResourceGateway
   actorStartAdmission?: (args: {
     definitionName: string

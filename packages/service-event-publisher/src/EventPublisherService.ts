@@ -1,58 +1,151 @@
-import { EventPublisher } from '@orpc/server';
-import type { IEventPublisherService, TActorEvent, TAgentEvent, TDbEvent, TFilesystemEvent, TNotificationEvent } from './IEventPublisherService';
+import { fnScopedKey } from '@vibecanvas/tenant-core';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type {
+  IEventPublisherService,
+  ITenantEventPublisherService,
+  TActorEvent,
+  TAgentEvent,
+  TDbEvent,
+  TEventSubscriptionOptions,
+  TFilesystemEvent,
+  TNotificationEvent,
+  TSequencedEvent,
+} from './IEventPublisherService';
+import { ScopedEventBus } from './ScopedEventBus';
 
 export class EventPublisherService implements IEventPublisherService {
   readonly name = 'eventPublisher';
 
-  #db = new EventPublisher<Record<string, TDbEvent>>();
-  #actor = new EventPublisher<Record<string, TActorEvent>>();
-  #agent = new EventPublisher<Record<string, TAgentEvent>>();
-  #filesystem = new EventPublisher<Record<string, TFilesystemEvent>>();
-  #notification = new EventPublisher<Record<string, TNotificationEvent>>();
-  #latestNotification: TNotificationEvent | null = null;
+  readonly #db = new ScopedEventBus<TDbEvent>();
+  readonly #actor = new ScopedEventBus<TActorEvent>();
+  readonly #agent = new ScopedEventBus<TAgentEvent>();
+  readonly #filesystem = new ScopedEventBus<TFilesystemEvent>();
+  readonly #notification = new ScopedEventBus<TNotificationEvent>();
+  readonly #latestNotification = new Map<string, TNotificationEvent>();
 
-  publishDbEvent(canvasId: string, event: TDbEvent): void {
-    this.#db.publish(canvasId, event);
+  forTenant(tenant: TTenantContext): ITenantEventPublisherService {
+    return Object.freeze({
+      publishDbEvent: (canvasId: string, event: TDbEvent) => this.publishDbEvent(tenant, canvasId, event),
+      subscribeDbEvents: (canvasId: string, options?: TEventSubscriptionOptions) => this.subscribeDbEvents(tenant, canvasId, options),
+      subscribeDbEventRecords: (canvasId: string, options?: TEventSubscriptionOptions) => (
+        this.subscribeDbEventRecords(tenant, canvasId, options)
+      ),
+      getDbEventCursor: () => this.getDbEventCursor(tenant),
+      publishActorEvent: (event: TActorEvent) => this.publishActorEvent(tenant, event),
+      subscribeActorEvents: (options?: TEventSubscriptionOptions) => this.subscribeActorEvents(tenant, options),
+      getActorEventCursor: () => this.getActorEventCursor(tenant),
+      publishAgentEvent: (event: TAgentEvent) => this.publishAgentEvent(tenant, event),
+      subscribeAgentEvents: (options?: TEventSubscriptionOptions) => this.subscribeAgentEvents(tenant, options),
+      getAgentEventCursor: () => this.getAgentEventCursor(tenant),
+      publishFilesystemEvent: (filesystemId: string, path: string, event: TFilesystemEvent) => (
+        this.publishFilesystemEvent(tenant, filesystemId, path, event)
+      ),
+      subscribeFilesystemEvents: (filesystemId: string, path: string, options?: TEventSubscriptionOptions) => (
+        this.subscribeFilesystemEvents(tenant, filesystemId, path, options)
+      ),
+      getFilesystemEventCursor: (filesystemId: string) => this.getFilesystemEventCursor(tenant, filesystemId),
+      publishNotification: (event: TNotificationEvent) => this.publishNotification(tenant, event),
+      subscribeNotifications: (options?: TEventSubscriptionOptions) => this.subscribeNotifications(tenant, options),
+      subscribeNotificationRecords: (options?: TEventSubscriptionOptions) => (
+        this.subscribeNotificationRecords(tenant, options)
+      ),
+      getNotificationEventCursor: () => this.getNotificationEventCursor(tenant),
+      getLatestNotification: () => this.getLatestNotification(tenant),
+    });
   }
 
-  subscribeDbEvents(canvasId: string): AsyncIterable<TDbEvent> {
-    return this.#db.subscribe(canvasId);
+  publishDbEvent(tenant: TTenantContext, canvasId: string, event: TDbEvent): number {
+    return this.#db.publish(this.#orgScope(tenant, 'db'), canvasId, event);
   }
 
-  publishActorEvent(event: TActorEvent): void {
-    this.#actor.publish('global', event);
+  subscribeDbEvents(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent> {
+    return this.#db.subscribe(this.#orgScope(tenant, 'db'), canvasId, options);
   }
 
-  subscribeActorEvents(): AsyncIterable<TActorEvent> {
-    return this.#actor.subscribe('global')
+  subscribeDbEventRecords(
+    tenant: TTenantContext,
+    canvasId: string,
+    options?: TEventSubscriptionOptions,
+  ): AsyncIterable<TSequencedEvent<TDbEvent>> {
+    return this.#db.subscribeRecords(this.#orgScope(tenant, 'db'), canvasId, options);
   }
 
-  publishAgentEvent(event: TAgentEvent): void {
-    this.#agent.publish('global', event);
+  getDbEventCursor(tenant: TTenantContext): number {
+    return this.#db.cursor(this.#orgScope(tenant, 'db'));
   }
 
-  subscribeAgentEvents(): AsyncIterable<TAgentEvent> {
-    return this.#agent.subscribe('global')
+  publishActorEvent(tenant: TTenantContext, event: TActorEvent): number {
+    return this.#actor.publish(this.#accountScope(tenant, 'actor'), 'global', event);
   }
 
-  publishFilesystemEvent(path: string, event: TFilesystemEvent): void {
-    this.#filesystem.publish(path, event);
+  subscribeActorEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent> {
+    return this.#actor.subscribe(this.#accountScope(tenant, 'actor'), 'global', options);
   }
 
-  subscribeFilesystemEvents(path: string): AsyncIterable<TFilesystemEvent> {
-    return this.#filesystem.subscribe(path);
+  getActorEventCursor(tenant: TTenantContext): number {
+    return this.#actor.cursor(this.#accountScope(tenant, 'actor'));
   }
 
-  publishNotification(event: TNotificationEvent): void {
-    this.#latestNotification = event;
-    this.#notification.publish('global', event);
+  publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number {
+    return this.#agent.publish(this.#accountScope(tenant, 'agent'), 'global', event);
   }
 
-  subscribeNotifications(): AsyncIterable<TNotificationEvent> {
-    return this.#notification.subscribe('global');
+  subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent> {
+    return this.#agent.subscribe(this.#accountScope(tenant, 'agent'), 'global', options);
   }
 
-  getLatestNotification(): TNotificationEvent | null {
-    return this.#latestNotification;
+  getAgentEventCursor(tenant: TTenantContext): number {
+    return this.#agent.cursor(this.#accountScope(tenant, 'agent'));
+  }
+
+  publishFilesystemEvent(tenant: TTenantContext, filesystemId: string, path: string, event: TFilesystemEvent): number {
+    return this.#filesystem.publish(this.#filesystemScope(tenant, filesystemId), path, event);
+  }
+
+  subscribeFilesystemEvents(tenant: TTenantContext, filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent> {
+    return this.#filesystem.subscribe(this.#filesystemScope(tenant, filesystemId), path, options);
+  }
+
+  getFilesystemEventCursor(tenant: TTenantContext, filesystemId: string): number {
+    return this.#filesystem.cursor(this.#filesystemScope(tenant, filesystemId));
+  }
+
+  publishNotification(tenant: TTenantContext, event: TNotificationEvent): number {
+    const scope = this.#accountScope(tenant, 'notification');
+    this.#latestNotification.set(scope, event);
+    return this.#notification.publish(scope, 'global', event);
+  }
+
+  subscribeNotifications(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent> {
+    return this.#notification.subscribe(this.#accountScope(tenant, 'notification'), 'global', options);
+  }
+
+  subscribeNotificationRecords(
+    tenant: TTenantContext,
+    options?: TEventSubscriptionOptions,
+  ): AsyncIterable<TSequencedEvent<TNotificationEvent>> {
+    const scope = this.#accountScope(tenant, 'notification');
+    const afterSequence = options?.afterSequence ?? Math.max(0, this.#notification.cursor(scope) - 1);
+    return this.#notification.subscribeRecords(scope, 'global', { afterSequence });
+  }
+
+  getNotificationEventCursor(tenant: TTenantContext): number {
+    return this.#notification.cursor(this.#accountScope(tenant, 'notification'));
+  }
+
+  getLatestNotification(tenant: TTenantContext): TNotificationEvent | null {
+    return this.#latestNotification.get(this.#accountScope(tenant, 'notification')) ?? null;
+  }
+
+  #orgScope(tenant: TTenantContext, namespace: string): string {
+    return fnScopedKey(namespace, [tenant.orgId]);
+  }
+
+  #accountScope(tenant: TTenantContext, namespace: string): string {
+    return fnScopedKey(namespace, [tenant.orgId, tenant.accountId]);
+  }
+
+  #filesystemScope(tenant: TTenantContext, filesystemId: string): string {
+    return fnScopedKey('filesystem', [tenant.orgId, filesystemId]);
   }
 }

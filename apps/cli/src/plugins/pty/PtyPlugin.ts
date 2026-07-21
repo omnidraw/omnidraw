@@ -1,12 +1,15 @@
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import type { IPlugin } from '@vibecanvas/runtime';
+import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
 import type { ICliConfig } from '../../config';
 import type { ICliHooks } from '../../hooks';
+import { OSS_LOCAL_FILESYSTEM_ID } from '../filesystem/CONSTANTS';
 
 type TPtyWebSocketData = {
   path: string;
   query: string;
   requestId: string;
+  tenant: TTenantContext;
 };
 
 type TBunPtySocket = WebSocket & {
@@ -37,7 +40,13 @@ function createPtyPlugin(): IPlugin<{ pty: IPtyService }, ICliHooks, ICliConfig>
       }
 
       const pty = ctx.services.require('pty');
-      const nativePtyConnections = new Map<unknown, TPtySocketConnection>();
+      const nativePtyConnections = new Map<string, TPtySocketConnection>();
+
+      const connectionKey = (socket: TBunPtySocket): string | null => {
+        const data = socket.data;
+        if (!data) return null;
+        return fnScopedKey('pty-websocket', [data.tenant.orgId, data.tenant.accountId, data.requestId]);
+      };
 
       ctx.hooks.wsUpgrade.tap((req) => {
         const url = new URL(req.url);
@@ -62,10 +71,10 @@ function createPtyPlugin(): IPlugin<{ pty: IPtyService }, ICliHooks, ICliConfig>
           return;
         }
 
-        const filesystemId = query.get('filesystemId') ?? undefined;
+        const filesystemId = query.get('filesystemId') ?? OSS_LOCAL_FILESYSTEM_ID;
         const rawCursor = query.get('cursor');
         const cursor = rawCursor === null ? undefined : Number.parseInt(rawCursor, 10);
-        const attachment = pty.attach({
+        const attachment = pty.attach(socket.data!.tenant, {
           filesystemId,
           workingDirectory,
           ptyID,
@@ -85,7 +94,13 @@ function createPtyPlugin(): IPlugin<{ pty: IPtyService }, ICliHooks, ICliConfig>
           return;
         }
 
-        nativePtyConnections.set(ws, attachment);
+        const key = connectionKey(socket);
+        if (!key) {
+          attachment.detach();
+          socket.close(1008, 'Missing tenant context');
+          return;
+        }
+        nativePtyConnections.set(key, attachment);
       });
 
       ctx.hooks.wsMessage.tap((ws, message) => {
@@ -93,7 +108,8 @@ function createPtyPlugin(): IPlugin<{ pty: IPtyService }, ICliHooks, ICliConfig>
         const path = socket.data?.path;
         if (!path || !isNativePtyConnectPath(path)) return;
 
-        const connection = nativePtyConnections.get(ws);
+        const key = connectionKey(socket);
+        const connection = key ? nativePtyConnections.get(key) : undefined;
         if (!connection) return;
         connection.send(message as string | Buffer | ArrayBuffer | Uint8Array);
       });
@@ -103,9 +119,10 @@ function createPtyPlugin(): IPlugin<{ pty: IPtyService }, ICliHooks, ICliConfig>
         const path = socket.data?.path;
         if (!path || !isNativePtyConnectPath(path)) return;
 
-        const connection = nativePtyConnections.get(ws);
+        const key = connectionKey(socket);
+        const connection = key ? nativePtyConnections.get(key) : undefined;
         if (!connection) return;
-        nativePtyConnections.delete(ws);
+        nativePtyConnections.delete(key!);
         connection.detach();
       });
 

@@ -4,6 +4,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./automerge": "./src/automerge.ts",
+    "./CONSTANTS": "./src/CONSTANTS.ts",
+    "./fn.browser-tenant-scope": "./src/fn.browser-tenant-scope.ts",
     "./core/*": "./src/core/*.ts",
     "./services": "./src/services/index.ts",
     "./services/*": "./src/services/*.ts",
@@ -61,6 +64,7 @@
     "@vibecanvas/service-theme": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
     "@vibecanvas/tapable": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*",
     "dompurify": "^3.4.11",
     "ghostty-web": "^0.4.0",
     "konva": "^10.3.0",

@@ -8,11 +8,14 @@ import { findDocument } from "../automerge";
 import { buildRuntime } from "../runtime";
 import type { ICanvasRuntimeExtension } from "../extension";
 import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "../types";
+import type { TBrowserTenantScope } from "../fn.browser-tenant-scope";
+import { fnBrowserTenantScopeKey } from "../fn.browser-tenant-scope";
 
 export type TBackendCanvas = TCanvas;
 
 type CanvasPageProps = {
   canvas: TBackendCanvas;
+  tenant: TBrowserTenantScope;
   extensions?: readonly ICanvasRuntimeExtension[];
   image: TCanvasImagePort;
   toolbarGroups?: TCanvasToolbarGroupsPort;
@@ -34,15 +37,31 @@ export function Canvas(props: CanvasPageProps) {
   let activeHandle: DocHandle<TCanvasDoc> | null = null;
   let runtime: IRuntime | null = null;
   const [bootError, setBootError] = createSignal<string | null>(null);
-  const [docHandle] = createResource(() => props.canvas.automerge_url as AutomergeUrl, async (url) => {
+  const canvasSource = () => ({
+    scope: props.tenant,
+    scopeKey: fnBrowserTenantScopeKey(props.tenant),
+    url: props.canvas.automerge_url as AutomergeUrl,
+  });
+  const [docHandle] = createResource(canvasSource, async ({ scope, url }) => {
     try {
-      return await findDocument(url);
+      return await findDocument(scope, url);
     } catch (e) {
       console.error("[CanvasPage] Failed to load automerge doc:", e);
       props.notification.showError("Failed to load automerge doc");
       throw e
     }
   });
+
+  createEffect<string | null>((previousSourceKey) => {
+    const source = canvasSource();
+    const sourceKey = `${source.scopeKey}:${source.url}`;
+    if (previousSourceKey !== null && sourceKey !== previousSourceKey) {
+      runtime?.shutdown();
+      runtime = null;
+      activeHandle = null;
+    }
+    return sourceKey;
+  }, null);
 
   createEffect(() => {
     const nextHandle = docHandle();
@@ -55,6 +74,7 @@ export function Canvas(props: CanvasPageProps) {
     }
     runtime = buildRuntime({
       canvasId: props.canvas.id,
+      tenant: props.tenant,
       container: containerRef,
       docHandle: nextHandle,
       onToggleSidebar: props.store.onToggleSidebar,

@@ -10,7 +10,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",
-    "@vibecanvas/runtime": "workspace:*"
+    "@vibecanvas/tenant-core": "workspace:*"
   }
 }

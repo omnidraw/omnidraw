@@ -1,5 +1,5 @@
 import { ORPCError } from '@orpc/server';
-import { basename, resolve } from 'path';
+import { posix } from 'path';
 import { fnCreateFilesystemError } from './core/fn.create-filesystem-error';
 import { fnDetectFileKind } from './core/fn.detect-file-kind';
 import { fnDetectMime } from './core/fn.detect-mime';
@@ -8,14 +8,14 @@ import { fnToApiFilesystemError } from './core/fn.to-api-filesystem-error';
 import { baseFilesystemOs } from './orpc';
 
 const apiInspectFilesystem = baseFilesystemOs.inspect.handler(async ({ input, context }) => {
-  const filesystemId = await fxResolveFilesystemId({ accountId: context.accountId, db: context.db }, { filesystemId: input.query.filesystemId });
+  const filesystemId = await fxResolveFilesystemId({ db: context.db }, { tenant: context.tenant, filesystemId: input.query.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
-  const path = resolve(input.query.path);
-  const [stats, error] = context.filesystem.stat(filesystemId, path);
+  const path = input.query.path;
+  const [stats, error] = context.filesystem.stat(context.tenant, { filesystemId, path });
   if (error || !stats) return fnToApiFilesystemError(error ?? fnCreateFilesystemError('FX.FILESYSTEM.INSPECT.NOT_FOUND', `Path not found: ${path}`, 404), 'Failed to inspect file');
 
   return {
-    name: basename(path),
+    name: posix.basename(path),
     path,
     mime: fnDetectMime(path),
     kind: fnDetectFileKind(path),

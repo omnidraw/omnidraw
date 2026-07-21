@@ -7,7 +7,7 @@ const apiCloneFile = baseFileOs.clone.handler(async ({ input, context }) => {
     throw new Error('Invalid file url');
   }
 
-  const record = await context.db.file.getById({ id: fileMeta.id });
+  const record = await context.db.file.getById(context.tenant, { id: fileMeta.id });
 
   if (!record) {
     throw new Error('File not found');
@@ -19,7 +19,7 @@ const apiCloneFile = baseFileOs.clone.handler(async ({ input, context }) => {
   }
 
   const clonedId = crypto.randomUUID();
-  await context.db.file.create({
+  await context.db.file.create(context.tenant, {
     id: clonedId,
     hash: record.hash,
     mime_type: record.mime_type,

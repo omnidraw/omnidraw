@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { implement } from '@orpc/server';
+import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import { apiContract } from './contract';
 import type { TApiContext } from './context';
 import { router } from './router';
@@ -111,16 +112,21 @@ const fakeAgentCapability = {
   validateWidgetDraft: unusedCapability,
 } satisfies TApiContext['agent'];
 
-const fakeContext = {
+const tenant = fnFreezeTenantContext({
+  orgId: 'fake-org',
   accountId: 'fake-account',
+  cellId: 'fake-cell',
+  placementEpoch: 1,
+  roles: ['owner'],
+  capabilities: ['*'],
   requestId: 'fake-request',
+});
+
+const fakeContext = {
+  tenant,
   actor: fakeActorCapability,
   agent: fakeAgentCapability,
-  automerge: {
-    repo: fakeCapability<TApiContext['automerge']['repo']>(),
-    notifyDocumentRegistered: async () => undefined,
-    failDocumentRegistration: () => undefined,
-  },
+  automerge: fakeCapability<TApiContext['automerge']>(),
   db: {
     actor: fakeCapability<TApiContext['db']['actor']>(),
     canvas: fakeCapability<TApiContext['db']['canvas']>(),
@@ -129,20 +135,19 @@ const fakeContext = {
       listAll: async () => [],
     },
     toolGroup: {
-      create: async (group) => group,
+      create: async (_tenant, group) => group,
       getByName: async () => null,
       listAll: async () => [{ name: 'Fake tools', json: null }],
       remove: async () => null,
-      update: async (group) => ({ name: group.name, json: group.json }),
+      update: async (_tenant, group) => ({ name: group.name, json: group.json }),
     },
   },
   eventPublisher: {
-    getLatestNotification: () => null,
-    publishAgentEvent: () => undefined,
+    publishAgentEvent: () => 1,
     subscribeActorEvents: async function* () {},
     subscribeAgentEvents: async function* () {},
-    subscribeDbEvents: async function* () {},
-    subscribeNotifications: async function* () {},
+    subscribeDbEventRecords: async function* () {},
+    subscribeNotificationRecords: async function* () {},
   },
   filesystem: fakeCapability<TApiContext['filesystem']>(),
   pty: fakeCapability<TApiContext['pty']>(),

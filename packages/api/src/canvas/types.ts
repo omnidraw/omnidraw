@@ -1,18 +1,16 @@
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { TCanvasDatabaseCapability } from '../interface';
 
 type TCanvasAutomergeCapability = Pick<
   IAutomergeService,
-  'failDocumentRegistration' | 'notifyDocumentRegistered'
-> & {
-  repo: Pick<IAutomergeService['repo'], 'create' | 'delete'>;
-};
+  'createDocument' | 'deleteDocument' | 'failDocumentRegistration' | 'notifyDocumentRegistered'
+>;
 
 type TCanvasApiContext = {
-  accountId?: string;
   db: TCanvasDatabaseCapability;
   automerge: TCanvasAutomergeCapability;
-  requestId?: string;
+  tenant: TTenantContext;
 };
 
 export type { TCanvasApiContext, TCanvasAutomergeCapability };

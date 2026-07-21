@@ -215,14 +215,13 @@ export type TAgentApiCapability = {
 };
 
 export type TAgentEventCapability = {
-  publishAgentEvent(event: TAgentEvent): void;
-  subscribeAgentEvents(): AsyncIterable<TAgentEvent>;
+  publishAgentEvent(tenant: import('@vibecanvas/tenant-core').TTenantContext, event: TAgentEvent): number;
+  subscribeAgentEvents(tenant: import('@vibecanvas/tenant-core').TTenantContext): AsyncIterable<TAgentEvent>;
 };
 
 export type TAgentApiContext = {
   db: TToolGroupDatabaseCapability;
   eventPublisher: TAgentEventCapability;
   agent: TAgentApiCapability;
-  accountId?: string;
-  requestId?: string;
+  tenant: import('@vibecanvas/tenant-core').TTenantContext;
 };

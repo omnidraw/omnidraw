@@ -5,7 +5,7 @@ import type { ICliConfig } from './config';
 import { fnBuildHomePreflightError } from './fn.home-preflight-error';
 import { bootCliRuntime, createCliHooks, shutdownCliRuntime } from './hooks';
 import { CliArgvError, parseCliArgv } from './parse-argv';
-import { createAuthPlugin } from './plugins/auth/AuthPlugin';
+import { createAuthPlugin, OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from './plugins/auth/AuthPlugin';
 import { createAutomergePlugin } from './plugins/automerge/AutomergePlugin';
 import { createCliPlugin } from './plugins/cli/CliPlugin';
 import { fnPrintCommandError } from './plugins/cli/core/fn.print-command-result';
@@ -65,13 +65,16 @@ export async function runCliMain() {
   const { services, eventPublisher } = setupServices(config);
 
   if (config.command === 'serve' && !config.helpRequested) {
-    void txCheckWidgetPrerequisites({
-      execFile: (file, args, options, callback) => {
-        execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
-      },
-      warn: (message) => console.warn(message),
-      publishNotification: (event) => eventPublisher.publishNotification(event),
-    }, config);
+    void OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
+      requestId: crypto.randomUUID(),
+      session: OSS_FAKE_SESSION,
+    }).then((tenant) => txCheckWidgetPrerequisites({
+        execFile: (file, args, options, callback) => {
+          execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
+        },
+        warn: (message) => console.warn(message),
+        publishNotification: (event) => eventPublisher.publishNotification(tenant, event),
+    }, config));
   }
 
   const runtime = createRuntime<any, ICliConfig>({

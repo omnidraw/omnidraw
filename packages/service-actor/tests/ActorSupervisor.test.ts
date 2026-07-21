@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
+import { EventPublisherService } from "@vibecanvas/service-event-publisher/EventPublisherService";
+import type { ITenantEventPublisherService } from "@vibecanvas/service-event-publisher/IEventPublisherService";
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
 import type { TActorStartAdmission } from "../src/resources/resource-types";
@@ -8,6 +10,7 @@ import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import fundActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
 import { createTestCrypto, testUuid } from "./test-uuid";
+import { bindTestTenantDb, TEST_TENANT, type TActorTestDb } from "./tenant.fixture";
 
 const widgetDir = new URL("./fixtures", import.meta.url).pathname;
 const configPath = new URL(".", import.meta.url).pathname;
@@ -20,29 +23,36 @@ type TNotification = {
   readonly description: string;
 };
 
-function createEventPublisherService(notifications: TNotification[], actorEvents: TActorEvent[]) {
+function createEventPublisherService(
+  notifications: TNotification[],
+  actorEvents: TActorEvent[],
+): ITenantEventPublisherService {
+  const publisher = new EventPublisherService().forTenant(TEST_TENANT);
   return {
+    ...publisher,
     publishNotification: (notification: TNotification) => {
       notifications.push(notification);
+      return publisher.publishNotification(notification);
     },
     publishActorEvent: (event: TActorEvent) => {
       actorEvents.push(event);
+      return publisher.publishActorEvent(event);
     },
   };
 }
 
-function createSupervisor(db: DbServiceTurso, notifications: TNotification[], actorEvents: TActorEvent[] = []) {
+function createSupervisor(db: TActorTestDb, notifications: TNotification[], actorEvents: TActorEvent[] = []) {
   return new ActorSupervisor({
     absWidgetDir: widgetDir,
     configPath,
     db,
     crypto: createTestCrypto("actor-supervisor"),
-    eventPublisherService: createEventPublisherService(notifications, actorEvents) as any,
+    eventPublisherService: createEventPublisherService(notifications, actorEvents),
   });
 }
 
 function createSupervisorWithPaths(args: {
-  db: DbServiceTurso;
+  db: TActorTestDb;
   notifications: TNotification[];
   actorEvents?: TActorEvent[];
   absWidgetDir: string;
@@ -53,7 +63,7 @@ function createSupervisorWithPaths(args: {
     configPath: args.configPath,
     db: args.db,
     crypto: createTestCrypto("actor-supervisor-with-paths"),
-    eventPublisherService: createEventPublisherService(args.notifications, args.actorEvents ?? []) as any,
+    eventPublisherService: createEventPublisherService(args.notifications, args.actorEvents ?? []),
   });
 }
 
@@ -65,7 +75,7 @@ async function waitForIdle(actor: { isIdle(): boolean }) {
   throw new Error("Timed out waiting for actor to become idle");
 }
 
-async function waitForPersistedContext(db: DbServiceTurso, instanceId: string, expectedContext: unknown) {
+async function waitForPersistedContext(db: TActorTestDb, instanceId: string, expectedContext: unknown) {
   for (let index = 0; index < 100; index += 1) {
     const instance = await db.actor.getInstanceById(instanceId);
     const context = typeof instance?.machine_context === "string"
@@ -78,7 +88,7 @@ async function waitForPersistedContext(db: DbServiceTurso, instanceId: string, e
   throw new Error("Timed out waiting for actor context to persist");
 }
 
-async function waitForPersistedState(db: DbServiceTurso, instanceId: string, expectedState: string) {
+async function waitForPersistedState(db: TActorTestDb, instanceId: string, expectedState: string) {
   for (let index = 0; index < 100; index += 1) {
     const instance = await db.actor.getInstanceById(instanceId);
     if (instance?.machine_state === expectedState) return;
@@ -88,17 +98,19 @@ async function waitForPersistedState(db: DbServiceTurso, instanceId: string, exp
 }
 
 describe("ActorSupervisor", () => {
-  let db!: DbServiceTurso;
+  let dbService!: DbServiceTurso;
+  let db!: TActorTestDb;
   let notifications!: TNotification[];
 
   beforeEach(async () => {
-    db = new DbServiceTurso({
+    dbService = new DbServiceTurso({
       databasePath: ":memory:",
       dataDir: widgetDir,
       cacheDir: widgetDir,
     });
     notifications = [];
-    await db.start();
+    await dbService.start();
+    db = bindTestTenantDb(dbService);
   });
 
   afterEach(async () => {

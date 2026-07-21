@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TMediaFile } from "../model"
 import { fxFileGetById } from "./fx.file"
 
@@ -7,9 +7,12 @@ type TPortal = {
   db: Database
 }
 
-type TArgsCreate = Pick<TMediaFile, "id" | "hash" | "mime_type" | "data">
+type TArgsCreate = Pick<TMediaFile, "id" | "hash" | "mime_type" | "data"> & {
+  tenant: TTenantContext
+}
 
 type TArgsDeleteById = {
+  tenant: TTenantContext
   id: string
 }
 
@@ -21,14 +24,14 @@ export async function txFileCreate(portal: TPortal, args: TArgsCreate): Promise<
     VALUES (?, ?, NULL, ?, NULL, ?, length(?), ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
   `)
   await stmt.run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
     args.hash,
     args.mime_type,
     args.data,
     args.data,
   )
-  const created = await fxFileGetById(portal, { id: args.id })
+  const created = await fxFileGetById(portal, { tenant: args.tenant, id: args.id })
   if (!created) throw new Error("Failed to create media file record")
   return created
 }
@@ -44,5 +47,5 @@ export async function txFileDeleteById(portal: TPortal, args: TArgsDeleteById): 
     DELETE FROM media_files
     WHERE org_id = ? AND id = ?
   `)
-  await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  await stmt.run(args.tenant.orgId, args.id)
 }

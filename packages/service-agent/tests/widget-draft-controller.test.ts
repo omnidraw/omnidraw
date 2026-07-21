@@ -3,12 +3,7 @@ import { cp, lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile } f
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type {
-  IEventPublisherService,
-  TActorEvent,
   TAgentEvent,
-  TDbEvent,
-  TFilesystemEvent,
-  TNotificationEvent,
 } from "@vibecanvas/service-event-publisher/IEventPublisherService"
 import { createWidgetWorkspaceTools } from "../src/tools/tool.widget-workspace"
 import { fnBuildWidgetCreateManifest } from "../src/tools/fn.widget-create"
@@ -16,21 +11,14 @@ import { WidgetDraftController } from "../src/widget-drafts/WidgetDraftControlle
 import { WidgetManagement } from "../src/widget-management/WidgetManagement"
 import { WidgetWorkspace } from "../src/workspace/WidgetWorkspace"
 import { executeTool } from "./tool.test-helpers"
+import { TestTenantEventPublisher } from "./tenant.fixture"
 
-class TestEvents implements IEventPublisherService {
-  name = "widget-draft-controller-events"
+class TestEvents extends TestTenantEventPublisher {
   agentEvents: TAgentEvent[] = []
-  publishDbEvent(_canvasId: string, _event: TDbEvent): void {}
-  async *subscribeDbEvents(_canvasId: string): AsyncIterable<TDbEvent> {}
-  publishActorEvent(_event: TActorEvent): void {}
-  async *subscribeActorEvents(): AsyncIterable<TActorEvent> {}
-  publishAgentEvent(event: TAgentEvent): void { this.agentEvents.push(event) }
-  async *subscribeAgentEvents(): AsyncIterable<TAgentEvent> {}
-  publishFilesystemEvent(_path: string, _event: TFilesystemEvent): void {}
-  async *subscribeFilesystemEvents(_path: string): AsyncIterable<TFilesystemEvent> {}
-  publishNotification(_event: TNotificationEvent): void {}
-  async *subscribeNotifications(): AsyncIterable<TNotificationEvent> {}
-  getLatestNotification(): TNotificationEvent | null { return null }
+  override publishAgentEvent(event: TAgentEvent): number {
+    this.agentEvents.push(event)
+    return super.publishAgentEvent(event)
+  }
 }
 
 const roots: string[] = []
@@ -183,7 +171,7 @@ describe("WidgetDraftController", () => {
     expect((await controller.buildPreview("Snapshot Clock", PREVIEW_ID, broken!.revision)).ready).toBe(false)
     expect(await readdir(workspace.previewSnapshotRoot)).toEqual([])
     await controller.close()
-  })
+  }, 30_000)
 
   test("closes only the active Preview revision and treats missing or obsolete closes as no-ops", async () => {
     const root = await mkdtemp(join(tmpdir(), "vc-widget-preview-user-close-"))

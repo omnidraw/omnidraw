@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DbServiceTurso } from "../../../src/DbServiceTurso/DbServiceTurso";
+import { bindTestTenant, type TTenantTestDb } from "../tenant.fixture";
 
 const testUuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 const CANVAS_ID = testUuid(401);
@@ -14,18 +15,18 @@ const ACTOR_MEDIUM = testUuid(803);
 const ACTOR_HEALTH = testUuid(804);
 const ACTOR_DEFINITION_NAME = "Counter";
 
-async function createDbService(tempRoot: string): Promise<DbServiceTurso> {
-  const db = new DbServiceTurso({
+async function createDbService(tempRoot: string): Promise<TTenantTestDb> {
+  const service = new DbServiceTurso({
     databasePath: join(tempRoot, "vibecanvas.turso"),
     dataDir: tempRoot,
     cacheDir: tempRoot,
   });
 
-  await db.start();
-  return db;
+  await service.start();
+  return bindTestTenant(service);
 }
 
-async function seedActorGraph(db: DbServiceTurso): Promise<void> {
+async function seedActorGraph(db: TTenantTestDb): Promise<void> {
   await db.canvas.create({
     id: CANVAS_ID,
     name: "Actor Write Burst",
@@ -42,7 +43,7 @@ async function seedActorGraph(db: DbServiceTurso): Promise<void> {
 
 describe("DbServiceTurso actor writes", () => {
   let tempRoot: string;
-  let db: DbServiceTurso;
+  let db: TTenantTestDb;
 
   beforeEach(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "vibecanvas-db-actor-writes-"));
@@ -243,10 +244,12 @@ describe("DbServiceTurso actor writes", () => {
         retryable: true,
       },
     });
+    if (!failed) throw new Error('Expected actor health update to find the instance.');
     expect(failed.last_error?.code).toBe("ACTOR_INSTANCE_START_FAILED");
     expect(failed.machine_context).toEqual({ html: mediumHtml, count: 7 });
 
     const recovered = await db.actor.updateInstanceHealth({ id: ACTOR_HEALTH, status: "running", last_error: null });
+    if (!recovered) throw new Error('Expected actor recovery update to find the instance.');
     expect(recovered.last_error).toBeNull();
     expect(recovered.machine_context).toEqual({ html: mediumHtml, count: 7 });
   });

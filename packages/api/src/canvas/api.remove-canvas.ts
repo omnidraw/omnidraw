@@ -1,16 +1,17 @@
 import { ORPCError } from '@orpc/contract';
 import { baseCanvasOs } from './orpc';
 
-type AutomergeUrl = string & { __documentUrl: true } // for opening / linking
-
 const apiRemoveCanvas = baseCanvasOs.remove.handler(async ({ context, input }) => {
-  const result = await context.db.canvas.deleteById(input.params, { accountId: context.accountId });
-
-  if (result.length === 0) {
+  const canvas = await context.db.canvas.findById(context.tenant, input.params);
+  if (!canvas) {
     throw new ORPCError('NOT_FOUND', { message: 'Canvas not found' });
   }
 
-  context.automerge.repo.delete(result[0].automerge_url as AutomergeUrl)
+  await context.automerge.deleteDocument(context.tenant, canvas.automerge_url)
+  const result = await context.db.canvas.deleteById(context.tenant, input.params);
+  if (result.length === 0) {
+    throw new ORPCError('NOT_FOUND', { message: 'Canvas not found' });
+  }
   return result[0];
 });
 

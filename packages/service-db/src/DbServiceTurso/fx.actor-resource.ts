@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import { fnResourceNameKey } from "../core/fn.resource-name"
 import type {
   TActorDefinition,
@@ -19,23 +19,28 @@ type TPortal = {
 }
 
 type TArgsGet = {
+  tenant: TTenantContext
   id: string
 }
 
 type TArgsList = {
+  tenant: TTenantContext
   kind?: TActorResourceKind
   status?: TActorResourceStatus
 }
 
 type TArgsFindByNameKey = {
+  tenant: TTenantContext
   nameKey: string
 }
 
 type TArgsListBindingsForDefinition = {
+  tenant: TTenantContext
   definitionName: string
 }
 
 type TArgsListBindingsForResource = {
+  tenant: TTenantContext
   resourceId: string
 }
 
@@ -44,7 +49,7 @@ export async function fxActorResourceGet(portal: TPortal, args: TArgsGet): Promi
     SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
     FROM resource_catalog
     WHERE org_id = ? AND id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).get(args.tenant.orgId, args.id)
   return row ? fnParseActorResourceRow(row) : null
 }
 
@@ -55,7 +60,7 @@ export async function fxActorResourceList(portal: TPortal, args: TArgsList): Pro
       FROM resource_catalog
       WHERE org_id = ? AND kind = ? AND status = ?
       ORDER BY created_at_ms ASC, id ASC
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.kind, args.status)
+    `)).all(args.tenant.orgId, args.kind, args.status)
     return rows.map(fnParseActorResourceRow)
   }
   if (args.kind !== undefined) {
@@ -64,7 +69,7 @@ export async function fxActorResourceList(portal: TPortal, args: TArgsList): Pro
       FROM resource_catalog
       WHERE org_id = ? AND kind = ?
       ORDER BY created_at_ms ASC, id ASC
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.kind)
+    `)).all(args.tenant.orgId, args.kind)
     return rows.map(fnParseActorResourceRow)
   }
   if (args.status !== undefined) {
@@ -73,7 +78,7 @@ export async function fxActorResourceList(portal: TPortal, args: TArgsList): Pro
       FROM resource_catalog
       WHERE org_id = ? AND status = ?
       ORDER BY created_at_ms ASC, id ASC
-    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.status)
+    `)).all(args.tenant.orgId, args.status)
     return rows.map(fnParseActorResourceRow)
   }
   const rows = await (await portal.db.prepare(`
@@ -81,7 +86,7 @@ export async function fxActorResourceList(portal: TPortal, args: TArgsList): Pro
     FROM resource_catalog
     WHERE org_id = ?
     ORDER BY created_at_ms ASC, id ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID)
+  `)).all(args.tenant.orgId)
   return rows.map(fnParseActorResourceRow)
 }
 
@@ -94,7 +99,7 @@ export async function fxActorResourceFindByNameKey(
     FROM resource_catalog
     WHERE org_id = ?
     ORDER BY kind ASC, id ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID) as Array<{ name: string }>
+  `)).all(args.tenant.orgId) as Array<{ name: string }>
   return rows
     .filter((row) => fnResourceNameKey(row.name) === args.nameKey)
     .map(fnParseActorResourceRow)
@@ -110,7 +115,7 @@ export async function fxActorResourceListBindingsForDefinition(
     FROM legacy_actor_resource_bindings
     WHERE org_id = ? AND definition_name = ?
     ORDER BY slot_name ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName)
+  `)).all(args.tenant.orgId, args.definitionName)
   return rows.map(fnParseActorResourceBindingRow)
 }
 
@@ -124,7 +129,7 @@ export async function fxActorResourceListBindingsForResource(
     FROM legacy_actor_resource_bindings
     WHERE org_id = ? AND resource_id = ?
     ORDER BY definition_name ASC, slot_name ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId)
+  `)).all(args.tenant.orgId, args.resourceId)
   return rows.map(fnParseActorResourceBindingRow)
 }
 
@@ -142,6 +147,6 @@ export async function fxActorResourceListDefinitionsReferencingResource(
       AND bindings.definition_name = definitions.name
     WHERE definitions.org_id = ? AND bindings.resource_id = ?
     ORDER BY definitions.name ASC
-  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId)
+  `)).all(args.tenant.orgId, args.resourceId)
   return rows.map(fnParseActorDefinitionRow)
 }

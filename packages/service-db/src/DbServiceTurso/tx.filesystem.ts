@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TFilesystem } from "../model"
 import { fxFilesystemFindById } from "./fx.filesystem"
 
@@ -7,7 +7,9 @@ type TPortal = {
   db: Database
 }
 
-type TArgsCreate = Omit<TFilesystem, "created_at" | "updated_at">
+type TArgsCreate = Omit<TFilesystem, "created_at" | "updated_at"> & {
+  tenant: TTenantContext
+}
 
 export async function txFilesystemCreate(portal: TPortal, args: TArgsCreate): Promise<TFilesystem> {
   const stmt = await portal.db.prepare(`
@@ -22,7 +24,7 @@ export async function txFilesystemCreate(portal: TPortal, args: TArgsCreate): Pr
     )
   `)
   await stmt.run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
     args.name,
     args.slug,
@@ -30,7 +32,7 @@ export async function txFilesystemCreate(portal: TPortal, args: TArgsCreate): Pr
     args.slug,
     args.description,
   )
-  const created = await fxFilesystemFindById(portal, { id: args.id })
+  const created = await fxFilesystemFindById(portal, { tenant: args.tenant, id: args.id })
   if (!created) throw new Error("Failed to create filesystem record")
   return created
 }

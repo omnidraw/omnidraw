@@ -7,7 +7,7 @@ export const apiDeleteDefinition = baseActorsOs.definitions.delete.handler(async
     throw new ORPCError('NOT_FOUND')
   }
 
-  context.eventPublisher.publishAgentEvent({
+  context.eventPublisher.publishAgentEvent(context.tenant, {
     kind: 'widgetupdate',
     widgetId: input.name,
     sessionId: 'definition-delete',

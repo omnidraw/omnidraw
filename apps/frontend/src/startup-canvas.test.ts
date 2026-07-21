@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
+import type { TBrowserTenantScope } from "@vibecanvas/canvas/fn.browser-tenant-scope";
 import type { TBackendCanvas } from "./types/backend.types";
-import { createStartupCanvasBootstrap } from "./startup-canvas";
+import { createStartupCanvasBootstrap, runStartupCanvasBootstrap } from "./startup-canvas";
+import {
+  activateBrowserTenantScope,
+  getBrowserTenantActivation,
+  isBrowserTenantActivationCurrent,
+} from "./services/tenant";
 
 const canvas = (id: string): TBackendCanvas => ({
   id,
@@ -90,5 +96,43 @@ describe("startup canvas bootstrap", () => {
 
     expect(harness.createCanvas).toHaveBeenCalledWith("Untitled Canvas");
     expect(harness.navigate).not.toHaveBeenCalled();
+  });
+
+  test("drops a deferred tenant response after an A-to-B-to-A activation change", async () => {
+    const scope = (orgId: string) => Object.freeze({
+      accountId: `account-${orgId}`,
+      cellId: `cell-${orgId}`,
+      deploymentOrigin: "https://cloud.example",
+      orgId,
+      placementEpoch: 1,
+    }) satisfies TBrowserTenantScope;
+    const scopeA = scope("org-a");
+    let resolveList!: (result: readonly [null, TBackendCanvas[]]) => void;
+    const deferredList = new Promise<readonly [null, TBackendCanvas[]]>((resolve) => {
+      resolveList = resolve;
+    });
+    const setCanvases = vi.fn();
+    const navigate = vi.fn();
+    const onError = vi.fn();
+
+    activateBrowserTenantScope(scopeA);
+    const activationA = getBrowserTenantActivation();
+    const pending = runStartupCanvasBootstrap({
+      createCanvas: vi.fn(async () => [null, canvas("created-a")] as const),
+      isCurrent: () => isBrowserTenantActivationCurrent(activationA),
+      listCanvases: () => deferredList,
+      navigate,
+      onError,
+      setCanvases,
+    }, { pathname: "/c/shared" });
+
+    activateBrowserTenantScope(scope("org-b"));
+    activateBrowserTenantScope(scopeA);
+    resolveList([null, [canvas("shared")]]);
+    await pending;
+
+    expect(setCanvases).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
   });
 });

@@ -46,6 +46,7 @@
     "@vibecanvas/service-event-publisher": "workspace:*",
     "@vibecanvas/service-filesystem": "workspace:*",
     "@vibecanvas/service-pty": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*",
     "zod": "catalog:"
   }
 }

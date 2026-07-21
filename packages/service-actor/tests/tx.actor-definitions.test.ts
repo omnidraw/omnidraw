@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { DbServiceTurso } from "@vibecanvas/service-db/DbServiceTurso/DbServiceTurso";
 import { txSyncDbActorDefinitions } from "../src/core/tx.actor-definitions";
+import { bindTestTenantDb, type TActorTestDb } from "./tenant.fixture";
 
 type TSyncDefinition = Parameters<typeof txSyncDbActorDefinitions>[1]["defs"][number];
 
@@ -17,16 +18,18 @@ function definition(manifestPath: string): TSyncDefinition {
 
 describe("txSyncDbActorDefinitions", () => {
   let tempRoot: string;
-  let db: DbServiceTurso;
+  let dbService: DbServiceTurso;
+  let db: TActorTestDb;
 
   beforeEach(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "vibecanvas-actor-definition-sync-"));
-    db = new DbServiceTurso({
+    dbService = new DbServiceTurso({
       databasePath: join(tempRoot, "vibecanvas.turso"),
       dataDir: tempRoot,
       cacheDir: tempRoot,
     });
-    await db.start();
+    await dbService.start();
+    db = bindTestTenantDb(dbService);
     await db.actor.insertDefinition({
       name: "Todo Actor System",
       slug: "todo-actor-system",

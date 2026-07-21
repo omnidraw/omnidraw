@@ -13,6 +13,7 @@
     "@tursodatabase/database-common": "0.6.1",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*",
     "zod": "catalog:"
   }
 }

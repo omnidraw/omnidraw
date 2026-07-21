@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TActorConnection, TActorDefinition, TActorInstance, TJson } from "../model"
 import {
   fnParseActorConnectionRow,
@@ -12,20 +12,21 @@ type TPortal = {
   db: Database
 }
 
-type TArgsDefinitionCreate = Omit<TActorDefinition, "created_at" | "updated_at">
-type TArgsDefinitionDelete = { name: string }
-type TArgsDefinitionUpdate = Omit<TActorDefinition, "created_at" | "updated_at"> & { currentSlug?: string }
-type TArgsInstanceCreate = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context" | "last_error"> & {
+type TTenantArgs = { tenant: TTenantContext }
+type TArgsDefinitionCreate = TTenantArgs & Omit<TActorDefinition, "created_at" | "updated_at">
+type TArgsDefinitionDelete = TTenantArgs & { name: string }
+type TArgsDefinitionUpdate = TTenantArgs & Omit<TActorDefinition, "created_at" | "updated_at"> & { currentSlug?: string }
+type TArgsInstanceCreate = TTenantArgs & Omit<TActorInstance, "created_at" | "updated_at" | "machine_context" | "last_error"> & {
   machine_context: TJson
   last_error?: TActorInstance["last_error"]
 }
-type TArgsInstanceUpdateStatus = Pick<TActorInstance, "id" | "status">
-type TArgsInstanceUpdateHealth = Pick<TActorInstance, "id" | "status" | "last_error">
-type TArgsInstanceUpdateMachine = Pick<TActorInstance, "id" | "machine_state"> & { machine_context: TJson }
-type TArgsInstanceDelete = { id: string }
-type TArgsConnectionCreate = Omit<TActorConnection, "created_at" | "style"> & { style: TJson }
-type TArgsConnectionDeleteById = { id: string }
-type TArgsConnectionDeleteBySource = { actorId: string }
+type TArgsInstanceUpdateStatus = TTenantArgs & Pick<TActorInstance, "id" | "status">
+type TArgsInstanceUpdateHealth = TTenantArgs & Pick<TActorInstance, "id" | "status" | "last_error">
+type TArgsInstanceUpdateMachine = TTenantArgs & Pick<TActorInstance, "id" | "machine_state"> & { machine_context: TJson }
+type TArgsInstanceDelete = TTenantArgs & { id: string }
+type TArgsConnectionCreate = TTenantArgs & Omit<TActorConnection, "created_at" | "style"> & { style: TJson }
+type TArgsConnectionDeleteById = TTenantArgs & { id: string }
+type TArgsConnectionDeleteBySource = TTenantArgs & { actorId: string }
 
 export async function txActorInsertDefinition(
   portal: TPortal,
@@ -41,7 +42,7 @@ export async function txActorInsertDefinition(
       CAST(unixepoch('subsec') * 1000 AS INTEGER)
     )
   `)).run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.name,
     args.slug,
     args.url,
@@ -52,7 +53,7 @@ export async function txActorInsertDefinition(
     SELECT name, slug, url, description, manifest_relative_path, created_at_ms, updated_at_ms
     FROM legacy_actor_definitions
     WHERE org_id = ? AND name = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.name)
+  `)).get(args.tenant.orgId, args.name)
   if (!row) throw new Error("Failed to insert actor definition")
   return fnParseActorDefinitionRow(row)
 }
@@ -61,14 +62,14 @@ export async function txActorDeleteDefinition(portal: TPortal, args: TArgsDefini
   await (await portal.db.prepare(`
     DELETE FROM legacy_actor_definitions
     WHERE org_id = ? AND name = ?
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.name)
+  `)).run(args.tenant.orgId, args.name)
 }
 
 export async function txActorUpdateDefinition(
   portal: TPortal,
   args: TArgsDefinitionUpdate,
-): Promise<TActorDefinition> {
-  await (await portal.db.prepare(`
+): Promise<TActorDefinition | null> {
+  const result = await (await portal.db.prepare(`
     UPDATE legacy_actor_definitions
     SET name = ?, slug = ?, url = ?, description = ?, manifest_relative_path = ?,
       updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
@@ -79,16 +80,16 @@ export async function txActorUpdateDefinition(
     args.url,
     args.description,
     args.manifest_path,
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.currentSlug ?? args.slug,
   )
+  if (result.changes === 0) return null
   const row = await (await portal.db.prepare(`
     SELECT name, slug, url, description, manifest_relative_path, created_at_ms, updated_at_ms
     FROM legacy_actor_definitions
     WHERE org_id = ? AND slug = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.slug)
-  if (!row) throw new Error(`Unknown actor definition slug "${args.slug}"`)
-  return fnParseActorDefinitionRow(row)
+  `)).get(args.tenant.orgId, args.slug)
+  return row ? fnParseActorDefinitionRow(row) : null
 }
 
 export async function txActorInsertInstance(portal: TPortal, args: TArgsInstanceCreate): Promise<TActorInstance> {
@@ -104,7 +105,7 @@ export async function txActorInsertInstance(portal: TPortal, args: TArgsInstance
       CAST(unixepoch('subsec') * 1000 AS INTEGER)
     )
   `)).run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
     args.canvas_id,
     args.element_id,
@@ -116,7 +117,7 @@ export async function txActorInsertInstance(portal: TPortal, args: TArgsInstance
     fnSerializeJsonValue(args.machine_context),
     args.last_error == null ? null : fnSerializeJsonValue(args.last_error),
   )
-  const created = await fxActorGetInstanceById(portal, { instanceId: args.id })
+  const created = await fxActorGetInstanceById(portal, { tenant: args.tenant, instanceId: args.id })
   if (!created) throw new Error("Failed to insert actor instance")
   return created
 }
@@ -124,7 +125,7 @@ export async function txActorInsertInstance(portal: TPortal, args: TArgsInstance
 export async function txActorUpdateInstanceHealth(
   portal: TPortal,
   args: TArgsInstanceUpdateHealth,
-): Promise<TActorInstance> {
+): Promise<TActorInstance | null> {
   await (await portal.db.prepare(`
     UPDATE legacy_actor_instances
     SET status = ?, last_error_json = ?,
@@ -133,32 +134,30 @@ export async function txActorUpdateInstanceHealth(
   `)).run(
     args.status,
     args.last_error === null ? null : fnSerializeJsonValue(args.last_error),
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
   )
-  const updated = await fxActorGetInstanceById(portal, { instanceId: args.id })
-  if (!updated) throw new Error(`Unknown actor instance "${args.id}"`)
+  const updated = await fxActorGetInstanceById(portal, { tenant: args.tenant, instanceId: args.id })
   return updated
 }
 
 export async function txActorUpdateInstanceStatus(
   portal: TPortal,
   args: TArgsInstanceUpdateStatus,
-): Promise<TActorInstance> {
+): Promise<TActorInstance | null> {
   await (await portal.db.prepare(`
     UPDATE legacy_actor_instances
     SET status = ?, updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
     WHERE org_id = ? AND id = ?
-  `)).run(args.status, DEFAULT_OSS_ORGANIZATION_ID, args.id)
-  const updated = await fxActorGetInstanceById(portal, { instanceId: args.id })
-  if (!updated) throw new Error(`Unknown actor instance "${args.id}"`)
+  `)).run(args.status, args.tenant.orgId, args.id)
+  const updated = await fxActorGetInstanceById(portal, { tenant: args.tenant, instanceId: args.id })
   return updated
 }
 
 export async function txActorUpdateInstanceMachine(
   portal: TPortal,
   args: TArgsInstanceUpdateMachine,
-): Promise<TActorInstance> {
+): Promise<TActorInstance | null> {
   await (await portal.db.prepare(`
     UPDATE legacy_actor_instances
     SET machine_state = ?, machine_context_json = ?,
@@ -167,11 +166,10 @@ export async function txActorUpdateInstanceMachine(
   `)).run(
     args.machine_state,
     fnSerializeJsonValue(args.machine_context),
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
   )
-  const updated = await fxActorGetInstanceById(portal, { instanceId: args.id })
-  if (!updated) throw new Error(`Unknown actor instance "${args.id}"`)
+  const updated = await fxActorGetInstanceById(portal, { tenant: args.tenant, instanceId: args.id })
   return updated
 }
 
@@ -179,7 +177,7 @@ export async function txActorDeleteInstance(portal: TPortal, args: TArgsInstance
   await (await portal.db.prepare(`
     DELETE FROM legacy_actor_instances
     WHERE org_id = ? AND id = ?
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).run(args.tenant.orgId, args.id)
 }
 
 export async function txActorInsertConnection(
@@ -193,7 +191,7 @@ export async function txActorInsertConnection(
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
   `)).run(
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.id,
     args.canvas_id,
     args.source_actor_instance_id,
@@ -208,7 +206,7 @@ export async function txActorInsertConnection(
       enabled, label, message_name_whitelist_json, style_json, created_at_ms
     FROM legacy_actor_connections
     WHERE org_id = ? AND id = ?
-  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).get(args.tenant.orgId, args.id)
   if (!row) throw new Error("Failed to insert actor connection")
   return fnParseActorConnectionRow(row)
 }
@@ -220,7 +218,7 @@ export async function txActorDeleteConnectionById(
   await (await portal.db.prepare(`
     DELETE FROM legacy_actor_connections
     WHERE org_id = ? AND id = ?
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  `)).run(args.tenant.orgId, args.id)
 }
 
 export async function txActorDeleteConnectionBySource(
@@ -230,5 +228,5 @@ export async function txActorDeleteConnectionBySource(
   await (await portal.db.prepare(`
     DELETE FROM legacy_actor_connections
     WHERE org_id = ? AND source_actor_instance_id = ?
-  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.actorId)
+  `)).run(args.tenant.orgId, args.actorId)
 }

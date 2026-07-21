@@ -1,7 +1,8 @@
 import { ORPCError } from '@orpc/server';
+import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, posix } from 'path';
+import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
 import { fnExtensionFromPtyImageFormat } from './core/fn.extension-from-pty-image-format';
 import { fxResolveFilesystemId } from './core/fx.resolve-filesystem-id';
 import { basePtyOs } from './orpc';
@@ -12,11 +13,18 @@ function getBase64Payload(base64OrDataUrl: string): string {
   return base64OrDataUrl;
 }
 
-function getRequestTempDirectory(requestId?: string) {
-  return join(tmpdir(), 'vibecanvas', 'pty-clipboard', requestId ?? 'anonymous');
+function getRequestTempDirectory(tenant: TTenantContext) {
+  const scope = fnScopedKey('pty-upload', [tenant.orgId, tenant.accountId, tenant.requestId]);
+  const opaqueScope = createHash('sha256').update(scope).digest('hex');
+  return posix.join('.vibecanvas', 'temp', 'pty-clipboard', opaqueScope);
 }
 
-async function uploadPtyImageToTemp(args: { requestId?: string; base64: string; format: Parameters<typeof fnExtensionFromPtyImageFormat>[0] }) {
+async function uploadPtyImageToTemp(args: {
+  tenant: TTenantContext;
+  hostDirectory: string;
+  base64: string;
+  format: Parameters<typeof fnExtensionFromPtyImageFormat>[0];
+}) {
   const base64Payload = getBase64Payload(args.base64).trim();
   const bytes = Buffer.from(base64Payload, 'base64');
 
@@ -24,21 +32,28 @@ async function uploadPtyImageToTemp(args: { requestId?: string; base64: string; 
     throw new Error('Invalid or empty image payload');
   }
 
-  const directoryPath = getRequestTempDirectory(args.requestId);
-  await mkdir(directoryPath, { recursive: true });
+  const virtualDirectory = getRequestTempDirectory(args.tenant);
+  await mkdir(args.hostDirectory, { recursive: true });
 
-  const fileName = `clipboard-${Date.now()}-${crypto.randomUUID()}.${fnExtensionFromPtyImageFormat(args.format)}`;
-  const filePath = join(directoryPath, fileName);
-  await writeFile(filePath, bytes);
+  const fileName = `clipboard-${Date.now()}-${randomUUID()}.${fnExtensionFromPtyImageFormat(args.format)}`;
+  const hostFilePath = join(args.hostDirectory, fileName);
+  await writeFile(hostFilePath, bytes);
 
-  return { path: filePath };
+  return { path: posix.join(virtualDirectory, fileName) };
 }
 
 const apiUploadPtyImage = basePtyOs.uploadImage.handler(async ({ input, context }) => {
-  const filesystemId = await fxResolveFilesystemId({ accountId: context.accountId }, { filesystemId: input.filesystemId });
+  const filesystemId = await fxResolveFilesystemId({ db: context.db }, { tenant: context.tenant, filesystemId: input.filesystemId });
   if (!filesystemId) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
+  const virtualDirectory = getRequestTempDirectory(context.tenant);
+  const hostDirectory = context.filesystem.resolveHostPath(context.tenant, {
+    filesystemId,
+    path: virtualDirectory,
+  });
+  if (!hostDirectory) throw new ORPCError('NOT_FOUND', { message: 'No local filesystem registered' });
   return uploadPtyImageToTemp({
-    requestId: context.requestId,
+    tenant: context.tenant,
+    hostDirectory,
     base64: input.body.base64,
     format: input.body.format,
   });

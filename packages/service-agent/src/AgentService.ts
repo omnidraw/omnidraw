@@ -3,7 +3,7 @@ import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
 import { ActorResourceError } from '@vibecanvas/service-actor';
 import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { IEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { ITenantEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { execFile } from 'node:child_process';
@@ -40,7 +40,7 @@ interface IActorServiceConfig {
   cachePath: string;
   dataPath: string;
   configPath: string;
-  eventPublisherService: IEventPublisherService,
+  eventPublisherService: ITenantEventPublisherService,
   actorService?: TActorServiceReloader;
   authorizeToolCall?: TToolAuthorizer;
   approvalTimeoutMs?: number;

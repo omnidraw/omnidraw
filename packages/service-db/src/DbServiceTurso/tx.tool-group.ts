@@ -1,5 +1,5 @@
 import type { Database } from "@tursodatabase/database";
-import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS";
+import type { TTenantContext } from "@vibecanvas/tenant-core";
 import type { TJson, TToolGroup } from "../model";
 import { fxToolGroupGetByName } from "./fx.tool-group";
 
@@ -7,9 +7,10 @@ type TPortal = {
   db: Database;
 };
 
-type TArgsCreate = TToolGroup;
-type TArgsUpdate = TToolGroup & { currentName: string };
+type TArgsCreate = TToolGroup & { tenant: TTenantContext };
+type TArgsUpdate = TToolGroup & { currentName: string; tenant: TTenantContext };
 type TArgsRemove = {
+  tenant: TTenantContext;
   name: string;
 };
 
@@ -30,8 +31,8 @@ export async function txToolGroupCreate(portal: TPortal, args: TArgsCreate): Pro
       CAST(unixepoch('subsec') * 1000 AS INTEGER)
     )
   `);
-  await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.name, serializeJson(args.json));
-  const created = await fxToolGroupGetByName(portal, { name: args.name });
+  await stmt.run(args.tenant.orgId, args.name, serializeJson(args.json));
+  const created = await fxToolGroupGetByName(portal, { tenant: args.tenant, name: args.name });
   if (!created) throw new Error("Failed to create tool group");
   return created;
 }
@@ -45,10 +46,10 @@ export async function txToolGroupUpdate(portal: TPortal, args: TArgsUpdate): Pro
   const result = await stmt.run(
     args.name,
     serializeJson(args.json),
-    DEFAULT_OSS_ORGANIZATION_ID,
+    args.tenant.orgId,
     args.currentName,
   );
-  return result.changes === 0 ? null : fxToolGroupGetByName(portal, { name: args.name });
+  return result.changes === 0 ? null : fxToolGroupGetByName(portal, { tenant: args.tenant, name: args.name });
 }
 
 export async function txToolGroupRemove(portal: TPortal, args: TArgsRemove): Promise<TToolGroup | null> {
@@ -58,6 +59,6 @@ export async function txToolGroupRemove(portal: TPortal, args: TArgsRemove): Pro
     DELETE FROM tool_groups
     WHERE org_id = ? AND name = ?
   `);
-  await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.name);
+  await stmt.run(args.tenant.orgId, args.name);
   return existing;
 }

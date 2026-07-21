@@ -9,11 +9,19 @@ export const ZNotificationEvent = z.object({
 
 export type TNotificationEvent = z.infer<typeof ZNotificationEvent>;
 
+export const ZNotificationStreamEvent = ZNotificationEvent.extend({
+  sequence: z.number().int().positive(),
+});
+
+export type TNotificationStreamEvent = z.infer<typeof ZNotificationStreamEvent>;
+
 const notificationContract = oc.router({
   events: oc
-    .input(z.object({}))
+    .input(z.object({
+      afterSequence: z.number().int().nonnegative().optional(),
+    }))
     .route({ method: 'GET' })
-    .output(eventIterator(ZNotificationEvent)),
+    .output(eventIterator(ZNotificationStreamEvent)),
 });
 
 export { notificationContract };

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { DbServiceTurso } from "../../../src/DbServiceTurso/DbServiceTurso"
+import { bindTestTenant, type TTenantTestDb } from "../tenant.fixture"
 
 const testUuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`
 const IDS = {
@@ -15,11 +16,12 @@ const IDS = {
 } as const
 
 describe("DbServiceTurso DbResource draft/apply persistence", () => {
-  let db!: DbServiceTurso
+  let db!: TTenantTestDb
 
   beforeEach(async () => {
-    db = new DbServiceTurso({ databasePath: ":memory:", dataDir: ".", cacheDir: "." })
-    await db.start()
+    const service = new DbServiceTurso({ databasePath: ":memory:", dataDir: ".", cacheDir: "." })
+    await service.start()
+    db = bindTestTenant(service)
   })
 
   afterEach(async () => {

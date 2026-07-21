@@ -1,4 +1,4 @@
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
 import type { TActorResource, TDbResourceDraftChange } from '@vibecanvas/service-db/model';
 import { Database as SQLiteDatabase } from 'bun:sqlite';
@@ -85,7 +85,7 @@ type TDatabaseFactory = (
 ) => Database;
 
 export type TDbResourceConfig = {
-  readonly db: DbServiceTurso;
+  readonly db: TTenantDb;
   readonly dataRoot: string;
   readonly databaseFactory?: TDatabaseFactory;
 };
@@ -509,7 +509,7 @@ function referentialAction(value: string | undefined): string {
 export class DbResource implements IActorResourceProvider {
   readonly kind = 'db' as const;
   readonly reconcileReady = true;
-  readonly #db: DbServiceTurso;
+  readonly #db: TTenantDb;
   readonly #dataRoot: string;
   readonly #databaseFactory: TDatabaseFactory;
   readonly #handles = new Map<string, Promise<Database>>();

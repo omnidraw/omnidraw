@@ -1,4 +1,4 @@
-import type { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type {
   TDbResourceApplyRun,
   TDbResourceDraft,
@@ -22,7 +22,7 @@ import type {
 const COMPATIBILITY_NOTICE = 'Actor compatibility cannot be guaranteed. Restart results are observed runtime outcomes only.';
 
 type TDbResourceCoordinatorConfig = {
-  readonly db: DbServiceTurso;
+  readonly db: TTenantDb;
   readonly resourceManager: ActorResourceManager;
   readonly supervisor: ActorSupervisor;
   readonly dbResource: DbResource;
@@ -65,7 +65,7 @@ function structuredWarnings(changes: TDbDraftDetails['changes']): string[] {
 }
 
 export class DbResourceCoordinator {
-  readonly #db: DbServiceTurso;
+  readonly #db: TTenantDb;
   readonly #resourceManager: ActorResourceManager;
   readonly #supervisor: ActorSupervisor;
   readonly #dbResource: DbResource;
