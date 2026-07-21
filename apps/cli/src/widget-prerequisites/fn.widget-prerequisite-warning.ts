@@ -1,4 +1,4 @@
-import type { TNotificationEvent } from '@vibecanvas/api-notification/contract';
+import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
 import type { TWidgetExecutableProbe } from './fx.probe-widget-executable';
 
 export type TWidgetPrerequisiteWarning = {

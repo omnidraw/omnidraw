@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { TNotificationEvent } from '@vibecanvas/api-notification/contract';
+import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
 import type { TExecFile, TExecFileError, TWidgetExecutable } from '../src/widget-prerequisites/fx.probe-widget-executable';
 import { txCheckWidgetPrerequisites } from '../src/widget-prerequisites/tx.check-widget-prerequisites';
 

@@ -1,8 +1,7 @@
 import { createORPCClient, createSafeClient, type SafeClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
-import { oc, populateContractRouterPaths, type ContractRouterClient } from "@orpc/contract";
-import { actorsContract } from "@vibecanvas/api-actors/contract";
-import { agentContract } from "@vibecanvas/api-agent/contract";
+import type { ContractRouterClient } from "@orpc/contract";
+import { apiContract, contract } from "@vibecanvas/api/contract";
 export type {
   TWidgetCatalog,
   TWidgetCatalogEntry,
@@ -27,31 +26,10 @@ export type {
   TWidgetPreviewCloseResult,
   TWidgetPreviewResult,
   TWidgetPreviewSendResult,
-} from "@vibecanvas/api-agent/contract";
-import { canvasContract } from "@vibecanvas/api-canvas/contract";
-import { dbContract } from "@vibecanvas/api-db/contract";
-import { fileContract } from "@vibecanvas/api-file/contract";
-import { filesystemContract } from "@vibecanvas/api-filesystem/contract";
-import { notificationContract, type TNotificationEvent } from "@vibecanvas/api-notification/contract";
-import { ptyContract, type TPtyImageFormat } from "@vibecanvas/api-pty/contract";
-import { toolContract } from "@vibecanvas/api-tool/contract";
+} from "@vibecanvas/api/agent/contract";
+import type { TNotificationEvent } from "@vibecanvas/api/notification/contract";
+import type { TPtyImageFormat } from "@vibecanvas/api/pty/contract";
 import { WebSocket as PartySocketWebSocket } from "partysocket";
-
-const contract = oc.router({
-  actors: actorsContract,
-  agent: agentContract,
-  canvas: canvasContract,
-  db: dbContract,
-  file: fileContract,
-  filesystem: filesystemContract,
-  notification: notificationContract,
-  pty: ptyContract,
-  tool: toolContract,
-});
-
-const apiContract = populateContractRouterPaths(
-  oc.router({ api: contract }),
-);
 
 type TOrpcClient = ContractRouterClient<typeof apiContract>;
 type TOrpcSafeClient = SafeClient<TOrpcClient>;

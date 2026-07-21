@@ -22,29 +22,29 @@ Current dependencies and responsibilities:
 This package is not called directly by frontend code. The flow is:
 
 1. Frontend UI calls the typed ORPC client.
-2. `packages/api-agent` validates and exposes the API contract.
+2. `packages/api/src/agent` validates and exposes the API contract.
 3. API handlers call `AgentService` methods through `context.agent`.
 4. `AgentService` performs Pi/service-layer work and returns contract-shaped data.
 
 Important files to inspect before changing public service behavior:
-- `packages/api-agent/src/contract.ts`
-- `packages/api-agent/src/types.ts`
-- `packages/api-agent/src/api.setting.get.ts`
-- `packages/api-agent/src/api.auth.login.ts`
-- `packages/api-agent/src/api.auth.status.ts`
-- `packages/api-agent/src/api.auth.abort.ts`
-- `packages/canvas/src/components/AiChat/index.tsx`
-- `packages/canvas/src/components/AiChat/tabs/SettingsTab.tsx`
+- `packages/api/src/agent/contract.ts`
+- `packages/api/src/agent/types.ts`
+- `packages/api/src/agent/api.setting.get.ts`
+- `packages/api/src/agent/api.auth.login.ts`
+- `packages/api/src/agent/api.auth.status.ts`
+- `packages/api/src/agent/api.auth.abort.ts`
+- `packages/ui-ai-chat/src/chat/components/index.tsx`
+- `packages/ui-ai-chat/src/chat/components/tabs/SettingsTab.tsx`
 
 Frontend entrypoint currently using this stack:
-- `packages/canvas/src/components/AiChat/index.tsx`
+- `packages/ui-ai-chat/src/chat/components/index.tsx`
   - fetches `apiService.api.agent.settings.get({})`
   - treats `providersWithCredentials.length > 0` as authenticated
   - uses the settings response to choose default tab and render settings state
 
 ## API contract discipline
 
-Keep `AgentService` return values aligned with `packages/api-agent/src/contract.ts`.
+Keep `AgentService` return values aligned with `packages/api/src/agent/contract.ts`.
 
 Current contract shape includes:
 - `settings.get` returns default model/provider/thinking level, credentialed providers, available providers, and available models.
@@ -60,7 +60,7 @@ Current contract shape includes:
 - `events` streams Pi agent session events published by `AgentService` through `IEventPublisherService`.
 
 When changing service public methods:
-- update `api-agent` handlers and contract together
+- update `packages/api/src/agent` handlers and contract together
 - consider frontend expectations in `AiChat`
 - prefer additive changes when possible
 - never return secrets or raw credentials to the API/frontend
@@ -113,7 +113,7 @@ Do:
 Do not:
 - import frontend or SolidJS code
 - encode UI labels, tab choices, CSS, or component state here
-- bypass `api-agent` for frontend-facing behavior
+- bypass the consolidated API agent domain for frontend-facing behavior
 - leak Pi SDK object instances through API return values
 - expose API keys, tokens, auth files, or raw Pi auth records
 
@@ -147,5 +147,5 @@ Useful commands from this package:
 - `bun test tests --timeout=20000`
 
 Also run/check API/frontend callers when public behavior changes:
-- `packages/api-agent` typecheck/tests if available
+- `packages/api` typecheck/tests
 - canvas/frontend typecheck if changing shapes consumed by `AiChat`

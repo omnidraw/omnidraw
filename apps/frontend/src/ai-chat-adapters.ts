@@ -13,7 +13,7 @@ import {
   type TSidebarController,
   type TWidgetBrowserPort,
   type TWidgetTransportPort,
-} from "@vibecanvas/ai-chat";
+} from "@vibecanvas/ui-ai-chat";
 import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "@vibecanvas/canvas";
 
 export const catalogInvalidation = createCatalogInvalidation();

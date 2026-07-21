@@ -1,0 +1,51 @@
+{
+  "name": "@vibecanvas/api",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts",
+    "./context": "./src/context.ts",
+    "./handlers": "./src/handlers.ts",
+    "./interface": "./src/interface.ts",
+    "./router": "./src/router.ts",
+    "./actor": "./src/actor/index.ts",
+    "./actor/*": "./src/actor/*.ts",
+    "./agent": "./src/agent/index.ts",
+    "./agent/*": "./src/agent/*.ts",
+    "./canvas": "./src/canvas/index.ts",
+    "./canvas/*": "./src/canvas/*.ts",
+    "./collaboration": "./src/collaboration/index.ts",
+    "./db": "./src/db/index.ts",
+    "./db/*": "./src/db/*.ts",
+    "./file": "./src/file/index.ts",
+    "./file/*": "./src/file/*.ts",
+    "./filesystem": "./src/filesystem/index.ts",
+    "./filesystem/*": "./src/filesystem/*.ts",
+    "./function": "./src/function/index.ts",
+    "./media": "./src/media/index.ts",
+    "./notification": "./src/notification/index.ts",
+    "./notification/*": "./src/notification/*.ts",
+    "./pty": "./src/pty/index.ts",
+    "./pty/*": "./src/pty/*.ts",
+    "./resource": "./src/resource/index.ts",
+    "./resource/*": "./src/resource/*.ts",
+    "./tool": "./src/tool/index.ts",
+    "./tool/*": "./src/tool/*.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@orpc/contract": "catalog:",
+    "@orpc/server": "catalog:",
+    "@vibecanvas/service-actor": "workspace:*",
+    "@vibecanvas/service-agent": "workspace:*",
+    "@vibecanvas/service-automerge": "workspace:*",
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/service-event-publisher": "workspace:*",
+    "@vibecanvas/service-filesystem": "workspace:*",
+    "@vibecanvas/service-pty": "workspace:*",
+    "zod": "catalog:"
+  }
+}

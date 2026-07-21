@@ -5,19 +5,11 @@ apps/web -> github pages, marketing website
 apps/server -> bun server
 apps/vibecanvas -> installable binary for npm package
 
-packages/actor-ui -> SolidJS actor state-machine visualization
-packages/ai-chat -> AI chat, sidebar, widget runtime, and canvas integrations
-packages/api-actors -> oRPC actor, resource, and messaging contracts and handlers
-packages/api-agent -> oRPC agent, chat, auth, approval, and widget lifecycle APIs
-packages/api-canvas -> oRPC canvas CRUD contracts and handlers
-packages/api-db -> oRPC database event-stream contracts and handlers
-packages/api-file -> oRPC persisted file storage contracts and handlers
-packages/api-filesystem -> oRPC filesystem browsing, read/write, move, and watch APIs
-packages/api-notification -> oRPC notification event-stream contracts and handlers
-packages/api-pty -> oRPC terminal session and terminal image-upload APIs
-packages/api-tool -> oRPC tool-group CRUD contracts and handlers
+packages/api -> consolidated oRPC contracts and handlers by domain
 packages/canvas -> canvas editor core, Konva rendering, Automerge collaboration, and widgets
+packages/function-runtime -> public short-lived function contracts and service interfaces
 packages/orpc-client -> typed browser WebSocket client aggregating the oRPC APIs
+packages/resource-runtime -> public resource capability, provider, and gateway contracts
 packages/runtime -> plugin lifecycle, service registry, and runtime orchestration
 packages/sdk -> publishable widget and actor authoring SDK
 packages/service-actor -> actor runtime, supervision, manifests, and resource bindings
@@ -31,6 +23,10 @@ packages/service-pty -> Bun PTY service implementation
 packages/service-theme -> built-in themes and runtime theme synchronization
 packages/shared-functions -> shared functional helpers and Vibecanvas config utilities
 packages/tapable -> synchronous and asynchronous lifecycle hook primitives
+packages/tenant-core -> public tenant context, placement, and scoped-key contracts
+packages/ui-actor-legacy -> SolidJS legacy actor state-machine visualization
+packages/ui-ai-chat -> AI chat, sidebar, widget UI, and canvas integrations
+packages/widget-contract -> public widget manifest, artifact, and revision contracts
 
 We use @tasks/BASED.md to manage our work.
 When you are tasks to generate new task plans. Think if a mockup img is useful.

@@ -1,0 +1,16 @@
+{
+  "name": "@vibecanvas/resource-runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibecanvas/tenant-core": "workspace:*"
+  }
+}

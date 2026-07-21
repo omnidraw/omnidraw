@@ -1,0 +1,17 @@
+{
+  "name": "@vibecanvas/widget-contract",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibecanvas/resource-runtime": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*"
+  }
+}

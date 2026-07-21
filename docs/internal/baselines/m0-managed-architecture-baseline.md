@@ -16,7 +16,7 @@ bun run baseline:managed-architecture -- --output /tmp/vibecanvas-m0-baseline.js
 | Protected surface | Existing suite exercised |
 | --- | --- |
 | Camera, selection, movement, resize, transform, stacking, grouping, clone/delete, and CRDT visual replay | Full `@vibecanvas/canvas` non-performance suite |
-| Widget window, DOM portal, fullscreen, placement, clone, resize, loading/error, and actor snapshot bridge | Focused `@vibecanvas/ai-chat` widget, widget-placement, and draft-preview suites |
+| Widget window, DOM portal, fullscreen, placement, clone, resize, loading/error, and actor snapshot bridge | Focused `@vibecanvas/ui-ai-chat` widget, widget-placement, and draft-preview suites |
 | Shared document persistence and peer reconnect lifecycle | `AutomergeService.test.ts` and `websocket.adapter.test.ts` |
 | Current child-process snapshot/message/resource behavior | `Actor.test.ts` and `Actor.resource-ipc.test.ts` |
 

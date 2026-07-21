@@ -1,7 +1,7 @@
 import { useLocation, useNavigate, type RouteSectionProps } from "@solidjs/router";
 import { onMount } from "solid-js";
 import { showErrorToast, Toaster } from "./components/ui/Toast";
-import { Sidebar, WidgetCatalogProvider } from "@vibecanvas/ai-chat";
+import { Sidebar, WidgetCatalogProvider } from "@vibecanvas/ui-ai-chat";
 import { orpcWebsocketService } from "./services/orpc-websocket";
 import { createStartupCanvasBootstrap } from "./startup-canvas";
 import { setStore, store } from "./store";

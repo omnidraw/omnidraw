@@ -1,0 +1,177 @@
+import { describe, expect, test } from 'bun:test';
+import { implement } from '@orpc/server';
+import { apiContract } from './contract';
+import type { TApiContext } from './context';
+import { router } from './router';
+
+function fakeCapability<T extends object>(): T {
+  return new Proxy({}, {
+    get: () => () => {
+      throw new Error('Unused fake capability method');
+    },
+  }) as T;
+}
+
+function unusedCapability(): never {
+  throw new Error('Unused fake capability method');
+}
+
+const fakeActorCapability = {
+  bindResource: unusedCapability,
+  bulkDbRows: unusedCapability,
+  changeDbDraft: unusedCapability,
+  confirmDbApply: unusedCapability,
+  createDbDraft: unusedCapability,
+  createDbRow: unusedCapability,
+  createResource: unusedCapability,
+  dbResourceImpact: unusedCapability,
+  deleteDbRow: unusedCapability,
+  deleteDefinition: unusedCapability,
+  deleteResource: unusedCapability,
+  deleteResourceDataEntry: unusedCapability,
+  discardDbBackup: unusedCapability,
+  discardDbDraft: unusedCapability,
+  executeDbDraftSql: unusedCapability,
+  executeDbLiveSql: unusedCapability,
+  getActiveDbDraft: unusedCapability,
+  getDbApply: unusedCapability,
+  getDbBackup: unusedCapability,
+  getDbDraft: unusedCapability,
+  getDbRestoreStatus: unusedCapability,
+  getDbRow: unusedCapability,
+  getDefinitionResourceStatus: unusedCapability,
+  getResource: unusedCapability,
+  getVibecanvasJson: unusedCapability,
+  getWidgetCode: unusedCapability,
+  inspectDbResource: unusedCapability,
+  listDbApplies: unusedCapability,
+  listDbDrafts: unusedCapability,
+  listDbRows: unusedCapability,
+  listResourceData: unusedCapability,
+  listResourceReferences: unusedCapability,
+  listResources: unusedCapability,
+  previewDbApply: unusedCapability,
+  previewDbBackupRestore: unusedCapability,
+  renameResource: unusedCapability,
+  restoreDbBackup: unusedCapability,
+  revealResourceSecret: unusedCapability,
+  sendMessage: unusedCapability,
+  setResourceDataEntry: unusedCapability,
+  unbindResource: unusedCapability,
+  updateDbRow: unusedCapability,
+} satisfies TApiContext['actor'];
+
+const fakeAgentCapability = {
+  abortLogin: unusedCapability,
+  approveChatDbChange: unusedCapability,
+  buildWidgetPreview: unusedCapability,
+  cancelChat: unusedCapability,
+  clearDraftResourceBindingsChat: unusedCapability,
+  closeWidgetPreview: unusedCapability,
+  connectChat: unusedCapability,
+  deleteWidget: unusedCapability,
+  ensureWidgetDraft: unusedCapability,
+  getChatApproval: unusedCapability,
+  getLoginStatus: unusedCapability,
+  getWidgetCatalog: unusedCapability,
+  getWidgetDetail: unusedCapability,
+  getWidgetDraft: unusedCapability,
+  getWidgetPreview: unusedCapability,
+  inspectDraftActorChat: unusedCapability,
+  listChatApprovals: unusedCapability,
+  listWidgetDrafts: unusedCapability,
+  listWidgetFiles: unusedCapability,
+  login: unusedCapability,
+  logout: unusedCapability,
+  newChatSession: unusedCapability,
+  patchDraftManifestChat: unusedCapability,
+  patchWidgetDraftMetadata: unusedCapability,
+  patchWidgetDraftTool: unusedCapability,
+  previewSourceChat: unusedCapability,
+  promptChat: unusedCapability,
+  publishChat: unusedCapability,
+  publishWidgetDraft: unusedCapability,
+  readDraftManifestChat: unusedCapability,
+  readWidgetFile: unusedCapability,
+  refreshWidgetPreview: unusedCapability,
+  rejectChatDbChange: unusedCapability,
+  reloadDraftActorChat: unusedCapability,
+  removeApiKey: unusedCapability,
+  resetDraftActorChat: unusedCapability,
+  resetWidgetPreview: unusedCapability,
+  resolveChatApproval: unusedCapability,
+  resolveWidgetPlacement: unusedCapability,
+  sendDraftActorChat: unusedCapability,
+  sendWidgetPreview: unusedCapability,
+  setApiKey: unusedCapability,
+  settings: unusedCapability,
+  startDraftActorChat: unusedCapability,
+  startWidgetEditChat: unusedCapability,
+  stopDraftActorChat: unusedCapability,
+  validateWidgetDraft: unusedCapability,
+} satisfies TApiContext['agent'];
+
+const fakeContext = {
+  accountId: 'fake-account',
+  requestId: 'fake-request',
+  actor: fakeActorCapability,
+  agent: fakeAgentCapability,
+  automerge: {
+    repo: fakeCapability<TApiContext['automerge']['repo']>(),
+    notifyDocumentRegistered: async () => undefined,
+    failDocumentRegistration: () => undefined,
+  },
+  db: {
+    actor: fakeCapability<TApiContext['db']['actor']>(),
+    canvas: fakeCapability<TApiContext['db']['canvas']>(),
+    file: fakeCapability<TApiContext['db']['file']>(),
+    filesystem: {
+      listAll: async () => [],
+    },
+    toolGroup: {
+      create: async (group) => group,
+      getByName: async () => null,
+      listAll: async () => [{ name: 'Fake tools', json: null }],
+      remove: async () => null,
+      update: async (group) => ({ name: group.name, json: group.json }),
+    },
+  },
+  eventPublisher: {
+    getLatestNotification: () => null,
+    publishAgentEvent: () => undefined,
+    subscribeActorEvents: async function* () {},
+    subscribeAgentEvents: async function* () {},
+    subscribeDbEvents: async function* () {},
+    subscribeNotifications: async function* () {},
+  },
+  filesystem: fakeCapability<TApiContext['filesystem']>(),
+  pty: fakeCapability<TApiContext['pty']>(),
+} satisfies TApiContext;
+
+describe('API context composition', () => {
+  test('boots the complete router from structural fake capabilities', () => {
+    const composed = implement(apiContract)
+      .$context<TApiContext>()
+      .router(router);
+
+    expect(Object.keys(composed.api)).toEqual([
+      'actors',
+      'agent',
+      'canvas',
+      'db',
+      'file',
+      'filesystem',
+      'notification',
+      'pty',
+      'tool',
+    ]);
+  });
+
+  test('runs a handler using only its narrow fake database capability', async () => {
+    const listToolGroups = router.api.tool.groups.list.callable({ context: fakeContext });
+
+    await expect(listToolGroups()).resolves.toEqual([
+      { name: 'Fake tools', json: null },
+    ]);
+  });
+});

@@ -3,15 +3,16 @@
   "private": true,
   "type": "module",
   "exports": {
+    ".": "./src/index.ts",
     "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "catalog:",
     "@orpc/server": "catalog:",
-    "@vibecanvas/api-db": "workspace:*",
-    "@vibecanvas/api-notification": "workspace:*",
-    "@vibecanvas/api-actors": "workspace:*",
-    "@vibecanvas/runtime": "workspace:*",
-    "zod": "catalog:"
+    "@vibecanvas/runtime": "workspace:*"
   }
 }

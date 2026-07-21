@@ -22,7 +22,7 @@ const suites: readonly TRegressionSuite[] = [
   },
   {
     name: "widget frame, portal, fullscreen, placement, clone, and actor snapshots",
-    cwd: resolve(REPO_ROOT, "packages/ai-chat"),
+    cwd: resolve(REPO_ROOT, "packages/ui-ai-chat"),
     command: [
       "node",
       "./node_modules/vitest/vitest.mjs",

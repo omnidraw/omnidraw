@@ -7,6 +7,7 @@
     "./core/*": "./src/core/*.ts",
     "./services": "./src/services/index.ts",
     "./services/*": "./src/services/*.ts",
+    "./widget-host/*": "./src/widget-host/*.ts",
     "./*": "./src/*"
   },
   "devDependencies": {

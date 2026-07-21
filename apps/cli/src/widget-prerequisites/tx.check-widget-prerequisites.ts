@@ -1,4 +1,4 @@
-import type { TNotificationEvent } from '@vibecanvas/api-notification/contract';
+import type { TNotificationEvent } from '@vibecanvas/api/notification/contract';
 import type { ICliConfig } from '../config';
 import type { TExecFile, TWidgetExecutableProbe } from './fx.probe-widget-executable';
 import { fxProbeWidgetExecutable } from './fx.probe-widget-executable';

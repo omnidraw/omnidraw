@@ -77,8 +77,8 @@ The implementation agent updates this table as the run progresses. `Evidence` sh
 | Milestone | Status | Reached when | Evidence |
 | --- | --- | --- | --- |
 | M0 — Baseline | `PASSED` | Current canvas behavior and cost baselines are reproducible | commit `649a155b`; [`m0-managed-architecture-baseline.md`](./baselines/m0-managed-architecture-baseline.md) |
-| M1 — Data foundation | `PASSED` | New home/config and strict `main.db` baseline pass all corruption guards | [`m1-managed-data-foundation.md`](./baselines/m1-managed-data-foundation.md) |
-| M2 — Package/API boundary | `NOT_STARTED` | One API package, renamed UI packages, and clean dependency direction compile | — |
+| M1 — Data foundation | `PASSED` | New home/config and strict `main.db` baseline pass all corruption guards | commit `710438b4`; [`m1-managed-data-foundation.md`](./baselines/m1-managed-data-foundation.md) |
+| M2 — Package/API boundary | `PASSED` | One API package, renamed UI packages, and clean dependency direction compile | [`m2-package-api-boundary.md`](./baselines/m2-package-api-boundary.md) |
 | M3 — Tenant backend | `NOT_STARTED` | All backend authority surfaces and Automerge admission pass two-org isolation | — |
 | M4 — Resource runtime | `NOT_STARTED` | Resources are actor-independent and files have one enforced owner | — |
 | M5 — Widget artifacts | `NOT_STARTED` | Manifest v2 and immutable publication work without actors | — |
