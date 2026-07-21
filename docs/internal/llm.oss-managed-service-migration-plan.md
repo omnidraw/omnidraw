@@ -81,8 +81,8 @@ The implementation agent updates this table as the run progresses. `Evidence` sh
 | M2 — Package/API boundary | `PASSED` | One API package, renamed UI packages, and clean dependency direction compile | commit `be57323f`; [`m2-package-api-boundary.md`](./baselines/m2-package-api-boundary.md) |
 | M3 — Tenant backend | `PASSED` | All backend authority surfaces and Automerge admission pass two-org isolation | commit `967bd7ff`; [`m3-tenant-backend.md`](./baselines/m3-tenant-backend.md) |
 | M4 — Resource runtime | `PASSED` | Resources are actor-independent and files have one enforced owner | commit `4a0cc383`; [`m4-resource-runtime.md`](./baselines/m4-resource-runtime.md) |
-| M5 — Widget artifacts | `VERIFYING` | Manifest v2 and immutable publication work without actors | — |
-| M6 — Function runtime | `NOT_STARTED` | Typed local functions, gateway calls, receipts, limits, and scale-to-zero pass | — |
+| M5 — Widget artifacts | `PASSED` | Manifest v2 and immutable publication work without actors | commit `4e0fa769`; [`m5-widget-artifacts.md`](./baselines/m5-widget-artifacts.md) |
+| M6 — Function runtime | `IN_PROGRESS` | Typed local functions, gateway calls, receipts, limits, and scale-to-zero pass | — |
 | M7 — Widget-host cutover | `NOT_STARTED` | Existing canvas renderer runs browser-only/function/legacy adapters unchanged | — |
 | M8 — Authoring cutover | `NOT_STARTED` | AI authoring, preview, validation, and publish use v2 safely | — |
 | M9 — Managed-ready OSS | `NOT_STARTED` | Legacy actors are optional and external private-style composition works | — |
