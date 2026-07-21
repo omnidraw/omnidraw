@@ -1,5 +1,6 @@
 type TPortal = {
   Bun: Pick<typeof Bun, 'CryptoHasher' | 'file'>;
+  TextDecoder: typeof TextDecoder;
 };
 
 type TArgs = {
@@ -13,13 +14,12 @@ type TMigrationFile = Readonly<{
 
 async function fxReadMigrationFile(portal: TPortal, args: TArgs): Promise<TMigrationFile> {
   const file = portal.Bun.file(args.path);
-  const [bytes, sql] = await Promise.all([
-    file.arrayBuffer(),
-    file.text(),
-  ]);
+  const bytes = await file.arrayBuffer();
+  const exactBytes = new Uint8Array(bytes);
   const checksumSha256 = new portal.Bun.CryptoHasher('sha256')
-    .update(new Uint8Array(bytes))
+    .update(exactBytes)
     .digest('hex');
+  const sql = new portal.TextDecoder('utf-8', { fatal: true }).decode(exactBytes);
 
   return { checksumSha256, sql };
 }

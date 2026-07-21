@@ -2,6 +2,12 @@ import { reactive } from '@arrow-js/core';
 
 import type { TActorRuntimeState, TMessageMap, TVibecanvasJsonValue } from './shared';
 
+export type {
+  TWidgetManifestV2,
+  TWidgetServerManifest,
+  TWidgetUiManifest,
+} from '@vibecanvas/widget-contract';
+
 export type TWidgetActor<
   TContext = TVibecanvasJsonValue,
   TInput extends TMessageMap = TMessageMap,

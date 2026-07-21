@@ -28,6 +28,7 @@
     "@vibecanvas/shared-functions": "workspace:*",
     "@vibecanvas/tapable": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
+    "@vibecanvas/widget-contract": "workspace:*",
     "zod": "catalog:"
   }
 }

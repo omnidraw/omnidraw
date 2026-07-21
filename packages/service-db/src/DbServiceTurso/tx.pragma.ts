@@ -2,7 +2,6 @@ import type { Database } from '@tursodatabase/database';
 import {
   DATABASE_APPLICATION_ID,
   DATABASE_JOURNAL_MODE,
-  DATABASE_SCHEMA_VERSION,
 } from '../CONSTANTS';
 
 type TPortal = {
@@ -10,7 +9,7 @@ type TPortal = {
 };
 
 type TArgs = {
-  expectApplicationMetadata: boolean;
+  expectedUserVersion: number | null;
 };
 
 function expectedValue(
@@ -57,9 +56,9 @@ async function txAssertDatabasePragmas(portal: TPortal, args: TArgs): Promise<vo
   expectedValue(entries[5], 'cache_size', 10000);
   expectedValue(entries[6], 'temp_store', 2);
 
-  if (args.expectApplicationMetadata) {
+  if (args.expectedUserVersion !== null) {
     expectedValue(entries[7], 'application_id', DATABASE_APPLICATION_ID);
-    expectedValue(entries[8], 'user_version', DATABASE_SCHEMA_VERSION);
+    expectedValue(entries[8], 'user_version', args.expectedUserVersion);
   }
 }
 

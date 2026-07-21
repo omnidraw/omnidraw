@@ -36,6 +36,7 @@
         "@vibecanvas/shared-functions": "workspace:*",
         "@vibecanvas/tapable": "workspace:*",
         "@vibecanvas/tenant-core": "workspace:*",
+        "@vibecanvas/widget-contract": "workspace:*",
         "zod": "catalog:",
       },
     },
@@ -219,6 +220,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@arrow-js/core": "^1.0.6",
+        "@vibecanvas/widget-contract": "workspace:*",
       },
       "devDependencies": {
         "typescript": "catalog:",
@@ -280,6 +282,7 @@
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
         "@vibecanvas/tenant-core": "workspace:*",
+        "@vibecanvas/widget-contract": "workspace:*",
         "zod": "catalog:",
       },
     },
@@ -396,6 +399,7 @@
       "dependencies": {
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/tenant-core": "workspace:*",
+        "zod": "catalog:",
       },
     },
   },

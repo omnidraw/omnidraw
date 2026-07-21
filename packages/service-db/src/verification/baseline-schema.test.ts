@@ -6,8 +6,9 @@ import path from "node:path";
 import {
   EXPECTED_APPLICATION_TABLE_COUNT,
   EXPECTED_APPLICATION_TABLES,
+  EXPECTED_BASELINE_SCHEMA as EXPECTED_SCHEMA,
   EXPECTED_INDEXES,
-  EXPECTED_SCHEMA,
+  EXPECTED_SCHEMA as EXPECTED_CURRENT_SCHEMA,
   type TExpectedForeignKey,
   type TExpectedTable,
 } from "../schema/expected-schema";
@@ -23,6 +24,16 @@ async function openBaseline() {
   await db.exec("PRAGMA foreign_keys = ON");
   await db.exec("PRAGMA ignore_check_constraints = 0");
   const sql = await Bun.file(new URL("../migrations/000-initial.sql", import.meta.url)).text();
+  const apply = db.transaction(async () => db.exec(sql));
+  await apply();
+  return db;
+}
+
+async function openCurrentSchema() {
+  const db = await openBaseline();
+  const sql = await Bun.file(
+    new URL("../migrations/001-widget-revision-sequence.sql", import.meta.url),
+  ).text();
   const apply = db.transaction(async () => db.exec(sql));
   await apply();
   return db;
@@ -175,6 +186,36 @@ describe("000-initial.sql", () => {
       }>;
       expect(columns.toSorted((left, right) => left.seqno - right.seqno).map((value) => value.name))
         .toEqual(expected.columns);
+    }
+  });
+
+  test("001 extends the current schema manifest without rewriting the immutable baseline", async () => {
+    const db = await openCurrentSchema();
+    const expected = EXPECTED_CURRENT_SCHEMA.widget_definitions;
+    const columns = (await (await db.prepare("PRAGMA table_info(widget_definitions)")).all()) as Array<{
+      name: string;
+      type: string;
+      notnull: number;
+      pk: number;
+    }>;
+    expect(columns.map((value) => ({
+      name: value.name,
+      type: value.type,
+      notNull: value.notnull === 1,
+      primaryKey: value.pk > 0,
+    }))).toEqual(expected.columns.map((value) => ({
+      name: value.name,
+      type: value.type,
+      notNull: value.notNull,
+      primaryKey: value.primaryKeyPosition > 0,
+    })));
+
+    const schema = await (await db.prepare(`
+      SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'widget_definitions'
+    `)).get() as { sql: string } | undefined;
+    const normalizedSql = schema?.sql.replace(/\s+/g, "") ?? "";
+    for (const fragment of expected.requiredSqlFragments ?? []) {
+      expect(normalizedSql).toContain(fragment.replace(/\s+/g, ""));
     }
   });
 

@@ -4,7 +4,9 @@ import { DEFAULT_OSS_ORGANIZATION_ID } from "../../../src/CONSTANTS";
 import { fxKeyValueGet as fxKeyValueGetRaw } from "../../../src/DbServiceTurso/fx.keyValue";
 import { txKeyValueAdd as txKeyValueAddRaw, txKeyValueRemove as txKeyValueRemoveRaw } from "../../../src/DbServiceTurso/tx.keyValue";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
-import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
+import {
+  EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+} from "../../../src/schema/expected-schema";
 import { bindTenantOperation } from "../tenant.fixture";
 
 const fxKeyValueGet = bindTenantOperation(fxKeyValueGetRaw);
@@ -33,10 +35,10 @@ describe("tx.keyValue/fx.keyValue", () => {
 
   beforeEach(async () => {
     db = await inMemoryDb();
-    await txRunMigrations({ db, Bun }, {
+    await txRunMigrations({ db, Bun, TextDecoder }, {
       applicationVersion: "test",
       appliedAtMs: 1,
-      expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+      expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
     });
   });
 

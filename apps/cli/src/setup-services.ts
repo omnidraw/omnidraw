@@ -1,4 +1,5 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
+import { randomBytes } from 'node:crypto';
 import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { AgentService } from '@vibecanvas/service-agent';
@@ -27,6 +28,14 @@ import {
 import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorBridge';
 import { TenantServicePool } from './services/TenantServicePool';
 import { TenantResourceService } from './services/TenantResourceService';
+import { WidgetService } from './services/WidgetService';
+import {
+  createWidgetServiceCapability,
+  WidgetServicePool,
+  type TWidgetServiceCapability,
+} from './services/WidgetServicePool';
+
+const WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
 
 export interface IRuntimeServices {
   automerge: IAutomergeService;
@@ -37,6 +46,8 @@ export interface IRuntimeServices {
   resourceOwner: ResourceServicePool;
   resource: TResourceApiCapability;
   humanResourceSecret: IHumanResourceSecretService;
+  widgetOwner: WidgetServicePool;
+  widget: TWidgetServiceCapability;
   actor: TenantServicePool<ActorService>;
   agent: TenantServicePool<AgentService>;
 }
@@ -72,6 +83,28 @@ function setupServices(config: ICliConfig) {
   services.provide('db', 20, dbService);
   services.provide('filesystem', 30, filesystemService);
   services.provide('pty', 40, ptyService);
+
+  const widgetService = new WidgetServicePool({
+    create: async (tenant) => {
+      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
+      const artifactsRoot = join(organizationRoot, 'artifacts');
+      const buildTempRoot = join(organizationRoot, 'temp', 'widget-builds');
+      await Promise.all([
+        mkdir(artifactsRoot, { recursive: true, mode: 0o700 }),
+        mkdir(buildTempRoot, { recursive: true, mode: 0o700 }),
+      ]);
+      return new WidgetService({
+        placement: tenant,
+        database: dbService.db,
+        artifactsRoot,
+        buildTempRoot,
+        builderIdentity: `vibecanvas-widget-bun/${Bun.version}`,
+        artifactReadSecret: randomBytes(32),
+        artifactReadMaximumTtlMs: WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS,
+      });
+    },
+  });
+  const widgetCapability = createWidgetServiceCapability(widgetService);
 
   const resourceBridgeKey = (tenant: Parameters<DbServiceTurso['forTenant']>[0]) => fnScopedKey(
     'resource-store',
@@ -194,6 +227,8 @@ function setupServices(config: ICliConfig) {
   },
   );
   services.provide('automerge', 50, automergeService);
+  services.provide('widgetOwner', 55, widgetService);
+  services.provide('widget', 56, widgetCapability);
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);
@@ -208,6 +243,7 @@ function setupServices(config: ICliConfig) {
     filesystemService,
     ptyService,
     resourceService,
+    widgetService,
   };
 }
 

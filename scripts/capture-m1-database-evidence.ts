@@ -5,7 +5,10 @@ import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Database } from '../packages/service-db/src/DbServiceTurso/turso-native';
-import { EXPECTED_APPLICATION_TABLES } from '../packages/service-db/src/schema/expected-schema';
+import {
+  EXPECTED_APPLICATION_SCHEMA_OBJECTS,
+  EXPECTED_APPLICATION_TABLES,
+} from '../packages/service-db/src/schema/expected-schema';
 import { txRunMigrations } from '../packages/service-db/src/DbServiceTurso/tx.migrations';
 
 const EVIDENCE_APPLIED_AT_MS = Date.UTC(2026, 6, 21);
@@ -65,18 +68,20 @@ async function main(): Promise<void> {
   try {
     database = new Database(databasePath);
     await database.connect();
-    const bootstrap = await txRunMigrations({ db: database, Bun }, {
+    const bootstrap = await txRunMigrations({ db: database, Bun, TextDecoder }, {
       applicationVersion: EVIDENCE_APPLICATION_VERSION,
       appliedAtMs: EVIDENCE_APPLIED_AT_MS,
       expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+      expectedSchemaObjects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     });
     await database.close();
     database = new Database(databasePath);
     await database.connect();
-    const restart = await txRunMigrations({ db: database, Bun }, {
+    const restart = await txRunMigrations({ db: database, Bun, TextDecoder }, {
       applicationVersion: 'must-not-replace-ledger',
       appliedAtMs: EVIDENCE_APPLIED_AT_MS + 1,
       expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+      expectedSchemaObjects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     });
 
     const { applicationTables, catalog } = await captureCatalog(database);

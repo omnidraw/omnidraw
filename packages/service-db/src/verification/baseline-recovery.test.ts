@@ -142,7 +142,7 @@ describe('managed baseline recovery', () => {
         user_version: DATABASE_SCHEMA_VERSION,
       });
       expect(await (await restoredService.db.prepare('SELECT count(*) AS count FROM schema_migrations')).get())
-        .toEqual({ count: 1 });
+        .toEqual({ count: DATABASE_SCHEMA_VERSION + 1 });
       expect(await (await restoredService.db.prepare(`
         SELECT relative_path FROM resource_placements WHERE org_id = ? AND resource_id = ?
       `)).get(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID)).toEqual({ relative_path: relativeResourcePath });

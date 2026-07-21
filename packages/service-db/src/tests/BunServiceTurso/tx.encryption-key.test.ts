@@ -12,7 +12,9 @@ import {
 } from '../../../src/DbServiceTurso/tx.actor-resource';
 import { txActorResourceEncryptionKeyGetOrCreate as txActorResourceEncryptionKeyGetOrCreateRaw } from '../../../src/DbServiceTurso/tx.encryption-key';
 import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
-import { EXPECTED_APPLICATION_TABLES } from '../../../src/schema/expected-schema';
+import {
+  EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+} from '../../../src/schema/expected-schema';
 import { bindTenantOperation } from '../tenant.fixture';
 
 const fxActorResourceEncryptionKeyGet = bindTenantOperation(fxActorResourceEncryptionKeyGetRaw);
@@ -33,10 +35,10 @@ async function inMemoryDb(): Promise<Database> {
 }
 
 async function migrate(db: Database): Promise<void> {
-  await txRunMigrations({ db, Bun }, {
+  await txRunMigrations({ db, Bun, TextDecoder }, {
     applicationVersion: 'test',
     appliedAtMs: 1,
-    expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+    expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
   });
 }
 

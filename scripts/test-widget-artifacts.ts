@@ -1,0 +1,96 @@
+#!/usr/bin/env bun
+
+/**
+ * @file Durable M5 gate for immutable, actor-free widget artifacts.
+ */
+
+import { resolve } from 'node:path';
+
+type TWidgetArtifactSuite = Readonly<{
+  name: string;
+  command: readonly string[];
+  requiredPaths: readonly string[];
+}>;
+
+const REPO_ROOT = resolve(import.meta.dir, '..');
+const CLI_INTEGRATION_TEST = 'apps/cli/tests/WidgetService.test.ts';
+
+const suites: TWidgetArtifactSuite[] = [
+  {
+    name: 'widget v2 contracts, immutable builds, capabilities, and garbage collection',
+    command: ['bun', 'test', 'packages/widget-contract/tests', '--timeout=30000'],
+    requiredPaths: [
+      'packages/widget-contract/tests/widget-contract.test.ts',
+      'packages/widget-contract/tests/local-artifacts.test.ts',
+      'packages/widget-contract/tests/widget-artifact-recovery.test.ts',
+      'packages/widget-contract/tests/fixtures/widget-artifact-orphan-writer.ts',
+    ],
+  },
+  {
+    name: 'transactional widget definitions, revisions, bindings, rollback, retention, and crash-safe GC',
+    command: [
+      'bun',
+      'test',
+      'packages/service-db/src/tests/WidgetControlStoreTurso.test.ts',
+      'packages/service-db/src/tests/WidgetArtifactGarbageCollector.crash.test.ts',
+    ],
+    requiredPaths: [
+      'packages/service-db/src/tests/WidgetControlStoreTurso.test.ts',
+      'packages/service-db/src/tests/WidgetArtifactGarbageCollector.crash.test.ts',
+      'packages/service-db/src/tests/fixtures/widget-artifact-delete-crash.ts',
+    ],
+  },
+  {
+    name: 'production widget publication composition and actor-free persistence',
+    command: ['bun', 'test', CLI_INTEGRATION_TEST, '--timeout=30000'],
+    requiredPaths: [CLI_INTEGRATION_TEST],
+  },
+  {
+    name: 'browser, actor-independence, capability, and artifact-path boundaries',
+    command: ['bun', 'test', 'scripts/widget-artifact-boundary.test.ts'],
+    requiredPaths: ['scripts/widget-artifact-boundary.test.ts'],
+  },
+];
+
+async function assertSuiteExists(suite: TWidgetArtifactSuite): Promise<void> {
+  for (const path of suite.requiredPaths) {
+    const file = Bun.file(resolve(REPO_ROOT, path));
+    if (!(await file.exists())) {
+      throw new Error(
+        `[widget-artifacts] required input is missing for "${suite.name}": ${path}`,
+      );
+    }
+    if (/\b(?:describe|it|test)\.(?:skip|todo)\s*\(/.test(await file.text())) {
+      throw new Error(
+        `[widget-artifacts] skipped or unfinished assertions are forbidden in required suite: ${path}`,
+      );
+    }
+  }
+}
+
+async function runSuite(suite: TWidgetArtifactSuite, index: number): Promise<void> {
+  await assertSuiteExists(suite);
+  console.log(`\n[widget-artifacts ${index + 1}/${suites.length}] ${suite.name}`);
+  console.log(`[widget-artifacts] $ ${suite.command.join(' ')}`);
+
+  const subprocess = Bun.spawn([...suite.command], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      VIBECANVAS_SILENT_DB_MIGRATIONS: '1',
+    },
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const exitCode = await subprocess.exited;
+  if (exitCode !== 0) {
+    throw new Error(
+      `[widget-artifacts ${index + 1}/${suites.length}] "${suite.name}" failed with exit code ${exitCode}`,
+    );
+  }
+}
+
+for (const [index, suite] of suites.entries()) await runSuite(suite, index);
+
+console.log(`\n[widget-artifacts] passed all ${suites.length} immutable artifact suites`);

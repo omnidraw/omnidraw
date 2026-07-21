@@ -1,12 +1,8 @@
-import { INITIAL_MIGRATION } from '../migrations/CONSTANTS';
+import { MIGRATION_FILES } from '../migrations/CONSTANTS';
 import type { TMigration } from './migration-types';
 
-const migrationFiles = Object.freeze<TMigration[]>([
-  INITIAL_MIGRATION,
-]);
-
 function listMigrationFiles(): readonly TMigration[] {
-  return migrationFiles;
+  return MIGRATION_FILES;
 }
 
 export { listMigrationFiles };

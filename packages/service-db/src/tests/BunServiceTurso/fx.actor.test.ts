@@ -3,7 +3,9 @@ import { connect, type Database } from "@tursodatabase/database";
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from "../../../src/CONSTANTS";
 import { fxActorListInstances } from "../../../src/DbServiceTurso/fx.actor";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
-import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
+import {
+  EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+} from "../../../src/schema/expected-schema";
 import { TEST_TENANT } from "../tenant.fixture";
 
 const CANVAS_ID = "00000000-0000-4000-8000-000000000101";
@@ -15,10 +17,10 @@ async function inMemoryDb(): Promise<Database> {
 }
 
 async function seedActorRows(db: Database): Promise<void> {
-  await txRunMigrations({ db, Bun }, {
+  await txRunMigrations({ db, Bun, TextDecoder }, {
     applicationVersion: "test",
     appliedAtMs: 1,
-    expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+    expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
   });
   await (await db.prepare(`
     INSERT INTO canvases (

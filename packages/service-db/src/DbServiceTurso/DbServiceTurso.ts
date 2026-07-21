@@ -5,13 +5,14 @@ import path from "node:path";
 import * as fs from 'node:fs/promises';
 import {
   DEFAULT_OSS_ORGANIZATION_ID,
-  INITIAL_MIGRATION_NAME,
   MIGRATION_APPLICATION_VERSION_FALLBACK,
 } from '../CONSTANTS';
-import { INITIAL_MIGRATION } from '../migrations/CONSTANTS';
+import { MIGRATION_FILES } from '../migrations/CONSTANTS';
 import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TEncryptionKey, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
-import { EXPECTED_APPLICATION_TABLES } from '../schema/expected-schema';
+import {
+  EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+} from '../schema/expected-schema';
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxActorResourceFindByNameKey, fxActorResourceGet, fxActorResourceList, fxActorResourceListBindingsForDefinition, fxActorResourceListBindingsForResource, fxActorResourceListDefinitionsReferencingResource } from "./fx.actor-resource";
@@ -36,7 +37,10 @@ import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
 import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
 import { txRunMigrations } from "./tx.migrations";
 import { Database } from "./turso-native";
-import type { TDatabasePreflightResult } from './migration-types';
+import type {
+  TDatabasePreflightResult,
+  TMigrationChecksum,
+} from './migration-types';
 
 declare const VIBECANVAS_VERSION: string | undefined;
 
@@ -152,6 +156,14 @@ async function assertEmptyDirectory(directory: string): Promise<void> {
   }
 }
 
+async function readMigrationChecksums(): Promise<readonly TMigrationChecksum[]> {
+  return Promise.all(MIGRATION_FILES.map(async (migration) => ({
+    version: migration.version,
+    name: migration.name,
+    checksumSha256: (await fxReadMigrationFile({ Bun, TextDecoder }, { path: migration.path })).checksumSha256,
+  })));
+}
+
 async function validateOrganizationsDirectory(
   organizationsDir: string,
   fresh: boolean,
@@ -214,24 +226,31 @@ async function validateVibecanvasHomeLayout(
         throw new Error(`Refusing non-directory legacy migration entry in ${homeDir}.`);
       }
       const migrationDir = path.join(homeDir, entry.name);
-      const entries = await fs.readdir(migrationDir, { withFileTypes: true });
+      const entries = (await fs.readdir(migrationDir, { withFileTypes: true }))
+        .toSorted((left, right) => left.name.localeCompare(right.name));
       if (entries.length === 0) continue;
-      if (
-        entries.length !== 1
-        || entries[0]?.name !== INITIAL_MIGRATION_NAME
-        || !entries[0].isFile()
-      ) {
+      const isContiguousKnownPrefix = entries.length <= MIGRATION_FILES.length
+        && entries.every((migrationEntry, index) => (
+          migrationEntry.isFile()
+          && migrationEntry.name === MIGRATION_FILES[index]?.name
+        ));
+      if (!isContiguousKnownPrefix) {
         throw new Error(
           `Refusing actor-era or unknown database-migrations directory in ${homeDir}; `
-            + `expected only ${INITIAL_MIGRATION_NAME}.`,
+            + `expected a contiguous prefix of [${MIGRATION_FILES.map((migration) => migration.name).join(', ')}].`,
         );
       }
-      const [installedMigration, embeddedMigration] = await Promise.all([
-        fxReadMigrationFile({ Bun }, { path: path.join(migrationDir, INITIAL_MIGRATION_NAME) }),
-        fxReadMigrationFile({ Bun }, { path: INITIAL_MIGRATION.path }),
-      ]);
-      if (installedMigration.checksumSha256 !== embeddedMigration.checksumSha256) {
-        throw new Error(`Refusing database-migrations/${INITIAL_MIGRATION_NAME} with an unknown checksum.`);
+
+      for (const [index, migrationEntry] of entries.entries()) {
+        const embedded = MIGRATION_FILES[index];
+        if (!embedded) throw new Error('Migration prefix validation lost its registered migration.');
+        const [installedMigration, embeddedMigration] = await Promise.all([
+          fxReadMigrationFile({ Bun, TextDecoder }, { path: path.join(migrationDir, migrationEntry.name) }),
+          fxReadMigrationFile({ Bun, TextDecoder }, { path: embedded.path }),
+        ]);
+        if (installedMigration.checksumSha256 !== embeddedMigration.checksumSha256) {
+          throw new Error(`Refusing database-migrations/${migrationEntry.name} with an unknown checksum.`);
+        }
       }
       continue;
     }
@@ -288,7 +307,7 @@ export async function preflightDbServiceDatabase(
     throw new Error(`Refusing Vibecanvas database path because it is not a regular file: ${args.databasePath}`);
   }
 
-  const migrationFile = await fxReadMigrationFile({ Bun }, { path: INITIAL_MIGRATION.path });
+  const migrations = await readMigrationChecksums();
   const database = new Database(args.databasePath, {
     readonly: true,
     fileMustExist: true,
@@ -300,10 +319,10 @@ export async function preflightDbServiceDatabase(
     await database.connect();
     connected = true;
     const result = await fxPreflightMigrationState(
-      { db: database },
+      { Bun, db: database },
       {
-        checksumSha256: migrationFile.checksumSha256,
-        expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+        expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+        migrations,
       },
     );
     await validateVibecanvasHomeLayout(args.homeDir, args.databasePath, result.status === 'empty');
@@ -344,10 +363,11 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
       await txRunMigrations({
         db: this.db,
         Bun,
+        TextDecoder,
       }, {
         applicationVersion: migrationApplicationVersion(),
         appliedAtMs: Date.now(),
-        expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+        expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
       })
     } catch (error) {
       await this.db.close()

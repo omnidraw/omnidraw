@@ -10,7 +10,9 @@ import {
   fxCanvasListMembers,
 } from "../../../src/DbServiceTurso/fx.canvas";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
-import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
+import {
+  EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+} from "../../../src/schema/expected-schema";
 import { TEST_TENANT } from "../tenant.fixture";
 
 const ACCOUNT_EDITOR = "00000000-0000-4000-8000-000000000111";
@@ -30,10 +32,10 @@ async function inMemoryDb(): Promise<Database> {
 }
 
 async function seedCanvasRows(db: Database): Promise<void> {
-  await txRunMigrations({ db, Bun }, {
+  await txRunMigrations({ db, Bun, TextDecoder }, {
     applicationVersion: "test",
     appliedAtMs: 1,
-    expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+    expectedSchemaContracts: EXPECTED_DATABASE_SCHEMA_CONTRACTS,
   });
   const insertAccount = await db.prepare(`
     INSERT INTO accounts (

@@ -1,17 +1,37 @@
-/**
- * @file Keeps the raw baseline SQL asset on the server-only migration boundary.
- */
+/** @file Keeps ordered raw SQL assets on the server-only migration boundary. */
 
 /// <reference path="../assets.d.ts" />
 
-import { DATABASE_SCHEMA_VERSION, INITIAL_MIGRATION_NAME } from '../CONSTANTS';
+import {
+  INITIAL_MIGRATION_NAME,
+  INITIAL_MIGRATION_VERSION,
+  WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+  WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
+} from '../CONSTANTS';
 import initialMigrationPath from './000-initial.sql' with { type: 'file' };
+import widgetRevisionSequenceMigrationPath from './001-widget-revision-sequence.sql' with { type: 'file' };
 
 const INITIAL_MIGRATION = Object.freeze({
   type: 'sql' as const,
   name: INITIAL_MIGRATION_NAME,
-  version: DATABASE_SCHEMA_VERSION,
+  version: INITIAL_MIGRATION_VERSION,
   path: initialMigrationPath,
 });
 
-export { INITIAL_MIGRATION };
+const WIDGET_REVISION_SEQUENCE_MIGRATION = Object.freeze({
+  type: 'sql' as const,
+  name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+  version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
+  path: widgetRevisionSequenceMigrationPath,
+});
+
+const MIGRATION_FILES = Object.freeze([
+  INITIAL_MIGRATION,
+  WIDGET_REVISION_SEQUENCE_MIGRATION,
+]);
+
+export {
+  INITIAL_MIGRATION,
+  MIGRATION_FILES,
+  WIDGET_REVISION_SEQUENCE_MIGRATION,
+};

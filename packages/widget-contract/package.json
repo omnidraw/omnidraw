@@ -4,7 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*"
+    "./local": "./src/local/index.ts"
   },
   "scripts": {
     "test": "bun test",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@vibecanvas/resource-runtime": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*"
+    "@vibecanvas/tenant-core": "workspace:*",
+    "zod": "catalog:"
   }
 }

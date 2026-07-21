@@ -66,6 +66,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
 | [apps/cli/src/services/TenantResourceService.ts](apps/cli/src/services/TenantResourceService.ts) |  |
 | [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
+| [apps/cli/src/services/WidgetService.ts](apps/cli/src/services/WidgetService.ts) |  |
+| [apps/cli/src/services/WidgetServicePool.ts](apps/cli/src/services/WidgetServicePool.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
 | [apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts](apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts) |  |
@@ -801,12 +803,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/core/fn.resource-name.ts](packages/service-db/src/core/fn.resource-name.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.actor-resource-row.ts](packages/service-db/src/DbServiceTurso/fn.actor-resource-row.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts](packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.db-resource.ts](packages/service-db/src/DbServiceTurso/fn.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.legacy-row.ts](packages/service-db/src/DbServiceTurso/fn.legacy-row.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts](packages/service-db/src/DbServiceTurso/fn.migration-sql-transaction-control.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.actor-resource.ts](packages/service-db/src/DbServiceTurso/fx.actor-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.canvas.ts](packages/service-db/src/DbServiceTurso/fx.canvas.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts](packages/service-db/src/DbServiceTurso/fx.database-schema-contract.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.encryption-key.ts](packages/service-db/src/DbServiceTurso/fx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
@@ -832,12 +837,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
-| [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps the raw baseline SQL asset on the server-only migration boundary. |
+| [packages/service-db/src/migrations/001-widget-revision-sequence.sql](packages/service-db/src/migrations/001-widget-revision-sequence.sql) |  |
+| [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts](packages/service-db/src/ResourceControlStoreTurso/fn.resource-control-store-row.ts) |  |
 | [packages/service-db/src/schema/expected-schema.ts](packages/service-db/src/schema/expected-schema.ts) |  |
 | [packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts](packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts) |  |
+| [packages/service-db/src/WidgetControlStoreTurso.ts](packages/service-db/src/WidgetControlStoreTurso.ts) |  |
+| [packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts](packages/service-db/src/WidgetControlStoreTurso/fn.widget-control-store-row.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
 
 ## packages/service-event-publisher
@@ -1071,10 +1079,27 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/widget-contract/package.json](packages/widget-contract/package.json) |  |
-| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Evaluates v2 widget resource declarations and artifact invariants. |
+| [packages/widget-contract/src/core/fn.contract.ts](packages/widget-contract/src/core/fn.contract.ts) |  |
+| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v2. |
 | [packages/widget-contract/src/index.ts](packages/widget-contract/src/index.ts) | Public widget manifest and immutable artifact contract surface. |
-| [packages/widget-contract/src/interface.ts](packages/widget-contract/src/interface.ts) | Narrow widget artifact and immutable revision read capabilities. |
-| [packages/widget-contract/src/types.ts](packages/widget-contract/src/types.ts) | UI-agnostic widget manifest, artifact, definition, and revision types. |
+| [packages/widget-contract/src/interface.ts](packages/widget-contract/src/interface.ts) | Narrow public capabilities for widget build, publication, artifact access, and GC. |
+| [packages/widget-contract/src/local/CONSTANTS.ts](packages/widget-contract/src/local/CONSTANTS.ts) |  |
+| [packages/widget-contract/src/local/fn.artifact-path.ts](packages/widget-contract/src/local/fn.artifact-path.ts) |  |
+| [packages/widget-contract/src/local/fn.artifact-read-policy.ts](packages/widget-contract/src/local/fn.artifact-read-policy.ts) |  |
+| [packages/widget-contract/src/local/fn.build-boundary.ts](packages/widget-contract/src/local/fn.build-boundary.ts) |  |
+| [packages/widget-contract/src/local/fn.source-snapshot.ts](packages/widget-contract/src/local/fn.source-snapshot.ts) |  |
+| [packages/widget-contract/src/local/index.ts](packages/widget-contract/src/local/index.ts) |  |
+| [packages/widget-contract/src/local/LocalWidgetArtifactStore.ts](packages/widget-contract/src/local/LocalWidgetArtifactStore.ts) |  |
+| [packages/widget-contract/src/local/PinnedLocalDirectory.ts](packages/widget-contract/src/local/PinnedLocalDirectory.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactBuilderBun.ts](packages/widget-contract/src/local/WidgetArtifactBuilderBun.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts](packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactOperationLane.ts](packages/widget-contract/src/local/WidgetArtifactOperationLane.ts) | One bounded organization-local mutation lane shared by publication and artifact GC. |
+| [packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts](packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts) |  |
+| [packages/widget-contract/src/local/WidgetArtifactService.ts](packages/widget-contract/src/local/WidgetArtifactService.ts) |  |
+| [packages/widget-contract/src/local/WidgetPublicationService.ts](packages/widget-contract/src/local/WidgetPublicationService.ts) |  |
+| [packages/widget-contract/src/local/WidgetSourceSnapshot.ts](packages/widget-contract/src/local/WidgetSourceSnapshot.ts) |  |
+| [packages/widget-contract/src/manifest-schema.ts](packages/widget-contract/src/manifest-schema.ts) | Strict runtime schema for the actor-free widget manifest v2 contract. |
+| [packages/widget-contract/src/types.ts](packages/widget-contract/src/types.ts) | Browser-safe widget manifest, immutable artifact, publication, and retention types. |
 | [packages/widget-contract/tsconfig.json](packages/widget-contract/tsconfig.json) |  |
 
 ## scripts
@@ -1101,4 +1126,5 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the actor-independent, single-owner resource runtime. |
+| [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable, actor-free widget artifacts. |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

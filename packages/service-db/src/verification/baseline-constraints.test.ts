@@ -39,8 +39,11 @@ async function openBaseline() {
   databases.push(db);
   await db.exec("PRAGMA foreign_keys = ON");
   await db.exec("PRAGMA ignore_check_constraints = 0");
-  const sql = await Bun.file(new URL("../migrations/000-initial.sql", import.meta.url)).text();
-  await db.exec(sql);
+  const migrations = await Promise.all([
+    Bun.file(new URL("../migrations/000-initial.sql", import.meta.url)).text(),
+    Bun.file(new URL("../migrations/001-widget-revision-sequence.sql", import.meta.url)).text(),
+  ]);
+  for (const sql of migrations) await db.exec(sql);
   return db;
 }
 
@@ -222,7 +225,26 @@ afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("000-initial.sql constraints", () => {
+describe("managed schema constraints", () => {
+  test("defaults and constrains the durable widget revision sequence", async () => {
+    const db = await openBaseline();
+    await run(
+      db,
+      "INSERT INTO widget_definitions (org_id, id, slug, name, status, active_revision_id, created_at_ms, updated_at_ms) VALUES (?, ?, 'sequence', 'Sequence', 'draft', NULL, 1, 1)",
+      ORG_A,
+      DEFINITION_A,
+    );
+    expect(await (await db.prepare(`
+      SELECT next_revision_number FROM widget_definitions WHERE org_id = ? AND id = ?
+    `)).get(ORG_A, DEFINITION_A)).toEqual({ next_revision_number: 1 });
+    await expectRejected(run(
+      db,
+      "UPDATE widget_definitions SET next_revision_number = 0 WHERE org_id = ? AND id = ?",
+      ORG_A,
+      DEFINITION_A,
+    ));
+  });
+
   test("rejects malformed/null IDs, bad enums/booleans/timestamps, invalid JSON, and bad digests", async () => {
     const db = await openBaseline();
 
