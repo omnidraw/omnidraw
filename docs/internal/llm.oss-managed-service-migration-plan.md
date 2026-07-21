@@ -79,8 +79,8 @@ The implementation agent updates this table as the run progresses. `Evidence` sh
 | M0 — Baseline | `PASSED` | Current canvas behavior and cost baselines are reproducible | commit `649a155b`; [`m0-managed-architecture-baseline.md`](./baselines/m0-managed-architecture-baseline.md) |
 | M1 — Data foundation | `PASSED` | New home/config and strict `main.db` baseline pass all corruption guards | commit `710438b4`; [`m1-managed-data-foundation.md`](./baselines/m1-managed-data-foundation.md) |
 | M2 — Package/API boundary | `PASSED` | One API package, renamed UI packages, and clean dependency direction compile | commit `be57323f`; [`m2-package-api-boundary.md`](./baselines/m2-package-api-boundary.md) |
-| M3 — Tenant backend | `PASSED` | All backend authority surfaces and Automerge admission pass two-org isolation | [`m3-tenant-backend.md`](./baselines/m3-tenant-backend.md) |
-| M4 — Resource runtime | `NOT_STARTED` | Resources are actor-independent and files have one enforced owner | — |
+| M3 — Tenant backend | `PASSED` | All backend authority surfaces and Automerge admission pass two-org isolation | commit `967bd7ff`; [`m3-tenant-backend.md`](./baselines/m3-tenant-backend.md) |
+| M4 — Resource runtime | `IN_PROGRESS` | Resources are actor-independent and files have one enforced owner | — |
 | M5 — Widget artifacts | `NOT_STARTED` | Manifest v2 and immutable publication work without actors | — |
 | M6 — Function runtime | `NOT_STARTED` | Typed local functions, gateway calls, receipts, limits, and scale-to-zero pass | — |
 | M7 — Widget-host cutover | `NOT_STARTED` | Existing canvas renderer runs browser-only/function/legacy adapters unchanged | — |
