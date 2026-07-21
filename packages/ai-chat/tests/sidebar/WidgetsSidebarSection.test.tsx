@@ -83,6 +83,8 @@ describe('WidgetsSidebarSection selection', () => {
     const draft = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('Draft'));
     expect(published).toBeDefined();
     expect(draft).toBeDefined();
+    expect(draft?.closest(`.${styles.widgetRow}`)?.classList.contains(styles.draftRow)).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="Add Camera draft to canvas"]')?.classList.contains(styles.draftAddButton)).toBe(true);
     expect(published?.getAttribute('aria-current')).toBe('page');
     expect(published?.classList.contains(styles.selected)).toBe(true);
     expect(draft?.hasAttribute('aria-current')).toBe(false);

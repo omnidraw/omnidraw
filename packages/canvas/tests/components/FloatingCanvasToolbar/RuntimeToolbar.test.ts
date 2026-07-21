@@ -92,6 +92,17 @@ afterEach(() => {
 });
 
 describe("RuntimeToolbar", () => {
+  it("marks draft tools with a distinct toolbar tone", () => {
+    const service = createToolService([tool("weather-draft", { label: "Weather · Draft", tone: "draft" })]);
+    dispose = render(() => createComponent(RuntimeToolbar, {
+      tool: service as never,
+      viewportElement: viewport!,
+      onToolSelect: () => {},
+    }), viewport!);
+
+    expect(viewport?.querySelector<HTMLButtonElement>("button[aria-label='Weather · Draft']")?.classList.contains("vc-toolbar-button--draft")).toBe(true);
+  });
+
   it("loads persisted group definitions and renders their stored icon", async () => {
     const service = createToolService([
       tool("one", { group: "health" }),

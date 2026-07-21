@@ -227,6 +227,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ai-chat/src/draft-preview/widget.css](packages/ai-chat/src/draft-preview/widget.css) |  |
 | [packages/ai-chat/src/index.ts](packages/ai-chat/src/index.ts) |  |
 | [packages/ai-chat/src/ports.ts](packages/ai-chat/src/ports.ts) |  |
+| [packages/ai-chat/src/publication/fn.publication-contract.ts](packages/ai-chat/src/publication/fn.publication-contract.ts) |  |
+| [packages/ai-chat/src/publication/interface.ts](packages/ai-chat/src/publication/interface.ts) |  |
+| [packages/ai-chat/src/publication/mount.tsx](packages/ai-chat/src/publication/mount.tsx) |  |
+| [packages/ai-chat/src/publication/WidgetPublicationDialog.module.css](packages/ai-chat/src/publication/WidgetPublicationDialog.module.css) |  |
+| [packages/ai-chat/src/publication/WidgetPublicationDialog.tsx](packages/ai-chat/src/publication/WidgetPublicationDialog.tsx) |  |
 | [packages/ai-chat/src/sidebar/components/CreateCanvasDialog.tsx](packages/ai-chat/src/sidebar/components/CreateCanvasDialog.tsx) |  |
 | [packages/ai-chat/src/sidebar/components/CreateResourceDialog.tsx](packages/ai-chat/src/sidebar/components/CreateResourceDialog.tsx) |  |
 | [packages/ai-chat/src/sidebar/components/DeleteCanvasDialog.tsx](packages/ai-chat/src/sidebar/components/DeleteCanvasDialog.tsx) |  |

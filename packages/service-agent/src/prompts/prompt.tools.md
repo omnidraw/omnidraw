@@ -43,7 +43,7 @@ There are no phases, actor candidates, dynamic tool switches, or model-callable 
 - Use `edit` for exact replacements and `patch` for strict unified diffs. Writes are atomic, but this workflow does not provide merge, undo, checkpoints, branches, or conflict revisions.
 - Do not change the declared identity of a draft synced from a published widget. A rename is a new widget: create a separate draft with the new name and leave the previous widget independent.
 - Run `vc_widget_validate` after meaningful edits. Its visible result includes `ok`, bounded errors and warnings, checked files, and truncation flags. Repair every reported error.
-- Validation never publishes. Publishing remains a user-controlled product action outside your tools. Never claim publication unless that product flow reports success.
+- Validation never publishes and “ready” never means published. The AI cannot publish a draft and must not imply that any tool call does so. Only the user can publish by clicking **Publish**—or **Republish** when updating an existing widget—in the draft Preview title bar or draft detail page and confirming the explanatory dialog. Never claim publication unless that product flow reports success.
 
 ## Resources
 

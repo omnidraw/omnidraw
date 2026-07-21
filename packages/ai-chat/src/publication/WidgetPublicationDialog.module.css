@@ -1,0 +1,17 @@
+.overlay { position: fixed; inset: 0; z-index: 10070; background: rgb(0 0 0 / .55); }
+.content { position: fixed; top: 50%; left: 50%; z-index: 10080; width: min(32rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); box-sizing: border-box; padding: 1.25rem; overflow-y: auto; transform: translate(-50%, -50%); border: 1px solid var(--border, #d0d5dd); background: var(--popover, #fff); color: var(--popover-foreground, #111827); box-shadow: 0 16px 40px rgb(0 0 0 / .28); font: 500 .78rem/1.55 Inter, ui-sans-serif, system-ui, sans-serif; }
+.title { margin: 0; font-size: .95rem; }
+.description { margin: .6rem 0 0; color: var(--muted-foreground, #667085); }
+.status { margin: .75rem 0; padding: .7rem; border: 1px solid var(--border, #d0d5dd); background: var(--background, #fff); }
+.status[data-tone="error"] { border-color: var(--destructive, #b42318); color: var(--destructive, #b42318); }
+.status[data-tone="success"] { border-color: var(--success, #027a48); color: var(--success, #027a48); }
+.status strong, .status p { display: block; margin: 0; }
+.status p { margin-top: .25rem; color: inherit; }
+.diagnostics { max-height: 9rem; margin: .5rem 0 0; padding-left: 1.15rem; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: .68rem; }
+.actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-width: 5.5rem; min-height: 2.25rem; padding: .45rem 1rem; border: 1px solid var(--border, #d0d5dd); border-radius: 0; background: var(--background, #fff); color: var(--foreground, #111827); font: inherit; font-weight: 750; }
+.button:hover:not(:disabled) { background: var(--accent, #f2f4f7); }
+.button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring, #38bdf8); }
+.button:disabled { cursor: wait; opacity: .55; }
+.button.primary { border-color: var(--primary, #f59e0b); background: var(--primary, #f59e0b); color: var(--primary-foreground, #0c0a09); }
+.button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary, #f59e0b) 86%, var(--foreground, #111827)); }

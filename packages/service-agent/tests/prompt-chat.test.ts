@@ -76,6 +76,11 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('read `vibecanvas.json`, the actor registry/reset transaction, and the widget entry/CSS');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update an existing draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `vc_widget_validate`, inspect every diagnostic, and fix all errors');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot publish a draft');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('**Republish** when updating an existing widget');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“ready” never means published');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('validation publishes');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_create({ name, kind');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('choose `widget` or `actor-widget`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Accessibility,');

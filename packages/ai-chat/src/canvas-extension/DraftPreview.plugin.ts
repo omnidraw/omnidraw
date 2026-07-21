@@ -15,10 +15,13 @@ export function createDraftPreviewPlugin(portal: {
         id: DRAFT_PREVIEW_WIDGET_KIND,
         dataType: "ui-widget",
         cloneable: false,
+        titleBarActions: [{ id: "publish", label: "Publish" }],
         getTitle: (element) => portal.previewFrames.getTitle(element),
-        renderDom: ({ root, element }) => portal.previewFrames.mount({ root, element }),
+        renderDom: ({ root, element, titleBar }) => {
+          if (!titleBar) throw new Error("Draft Preview title bar actions are unavailable")
+          return portal.previewFrames.mount({ root, element, titleBar })
+        },
       })
     },
   }
 }
-

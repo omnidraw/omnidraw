@@ -48,6 +48,7 @@ export type TToolDrawCreateBehavior = {
 export type TTool = {
   id: string;
   label: string;
+  tone?: "draft";
   icon?: TToolIcon;
   shortcuts?: TToolShortcut[];
   group?: string; // planned for dropdown

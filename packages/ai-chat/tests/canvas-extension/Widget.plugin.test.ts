@@ -44,6 +44,52 @@ function widgetCatalog(revision: string): TWidgetCatalog {
 }
 
 describe("Widget plugin catalog reconciliation", () => {
+  test("registers draft placement tools with the draft toolbar tone", async () => {
+    const draft = { ...publishedVariant("revision-draft"), source: "draft" as const };
+    draft.placement = {
+      reference: { source: "draft", name: "Weather", revision: "revision-draft" },
+      bounds: { width: 360, height: 320 },
+    };
+    const registerPlacementTool = vi.fn();
+    const hooks = {
+      init: new SyncHook(),
+      initAsync: new AsyncParallelHook(),
+      destroy: new SyncHook(),
+    };
+    const plugin = createWidgetPlugin({
+      application: { logError: vi.fn() },
+      transport: {
+        api: {
+          actors: { definitions: { list: vi.fn(async () => [undefined, []] as const) } },
+          agent: { widgets: { catalog: vi.fn(async () => [undefined, {
+            generation: "draft-only",
+            groups: [],
+            widgets: [{ name: "Weather", relation: "draft-only", published: null, draft, problem: null }],
+          }] as const) } },
+        },
+      },
+      widgetManager: {
+        registerPlacementTool,
+        unregisterPlacementTool: vi.fn(),
+        unregisterWidget: vi.fn(),
+        setGlobalDefinitionError: vi.fn(),
+        completeDefinitionDiscovery: vi.fn(),
+      },
+      widgetPlacement: {
+        createDropRequest: vi.fn((args) => args),
+        cancelActiveIfUnavailable: vi.fn(),
+      },
+    } as never);
+
+    plugin.apply({ hooks } as never);
+    await hooks.initAsync.promise();
+
+    expect(registerPlacementTool).toHaveBeenCalledWith(expect.objectContaining({
+      label: "Weather · Draft",
+      tone: "draft",
+    }));
+  });
+
   test("keeps an unchanged published widget mounted across catalog refreshes", async () => {
     let catalog = widgetCatalog("revision-1");
     let updatedAt = "2026-07-20T00:00:00.000Z";

@@ -51,7 +51,7 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A trusted widget-create result opens one revision-pinned interactive Preview beside its originating chat. |
+| **AI assistant — Draft Preview.** A trusted widget-create result opens one revision-pinned interactive Preview beside its originating chat. Draft Preview host chrome exposes **Publish** or **Republish** before the window menu; publishing always opens a current-state confirmation dialog. |
 
 | Direct widget placement |
 | --- |

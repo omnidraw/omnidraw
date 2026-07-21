@@ -14,6 +14,8 @@ import { WidgetIcon } from './components/WidgetIcon';
 import { fnWidgetMessageRows } from './fn.widget-manifest';
 import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
+import { WidgetPublicationDialog } from '../../publication/WidgetPublicationDialog';
+import type { TWidgetPublicationState } from '../../publication/interface';
 
 export type TWidgetDetailPageProps = {
   source: TWidgetSource | null;
@@ -40,6 +42,8 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const [toolLabel, setToolLabel] = createSignal('');
   const [priority, setPriority] = createSignal('');
   const [saving, setSaving] = createSignal(false);
+  const [publishOpen, setPublishOpen] = createSignal(false);
+  const [publicationState, setPublicationState] = createSignal<TWidgetPublicationState>({ open: false, loading: true, publishing: false, actionLabel: 'Publish' });
   const [deleteOpen, setDeleteOpen] = createSignal(false);
   const [deleting, setDeleting] = createSignal(false);
   let detailRequest = 0;
@@ -232,26 +236,6 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     else await loadDetail();
   };
 
-  const publish = async () => {
-    const current = detail();
-    if (!current || current.source !== 'draft') return;
-    setSaving(true);
-    const [publishError, result] = await props.controller.apiService.api.agent.widgetPublish.publish({ draftId: current.name, expectedRevision: current.variant.revision });
-    setSaving(false);
-    if (publishError) {
-      application.notifyError(publishError.message);
-      await loadDetail();
-      return;
-    }
-    if (!result.published) {
-      application.notifyError(result.message);
-      await loadDetail();
-      return;
-    }
-    application.notifySuccess('Widget published');
-    await Promise.all([loadDetail(), catalogState.refresh()]);
-  };
-
   return (
     <Show when={!loading() && detail()} fallback={<div class={styles.routeState} role="status"><p>{error() || 'Loading widget…'}</p></div>}>
       {(current) => <Tabs.Root class={styles.page} value={activeTab()} onChange={selectTab}>
@@ -262,7 +246,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           </div>
           <div class={styles.headerActions}>
             <Show when={current().source === 'published'}><Button class={styles.button} disabled={saving()} onClick={editAsDraft}>Edit as draft</Button></Show>
-            <Show when={current().source === 'draft'}><Button class={`${styles.button} ${styles.primary}`} disabled={saving()} onClick={publish}>Publish</Button></Show>
+            <Show when={current().source === 'draft'}><Button class={`${styles.button} ${styles.primary}`} disabled={saving() || publicationState().loading || publicationState().open || publicationState().publishing} aria-busy={publicationState().publishing} onClick={() => setPublishOpen(true)}>{publicationState().publishing ? `${publicationState().actionLabel}ing…` : publicationState().loading ? 'Checking…' : publicationState().actionLabel}</Button></Show>
             <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
           </div>
         </header>
@@ -305,6 +289,20 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
         </div></Tabs.Content>
 
         <AlertDialog.Root open={deleteOpen()} onOpenChange={(open) => { if (!deleting()) setDeleteOpen(open); }}><AlertDialog.Portal><AlertDialog.Overlay class={styles.dialogOverlay} /><AlertDialog.Content class={styles.dialogContent}><AlertDialog.Title class={styles.dialogTitle}>{current().source === 'published' ? 'Delete published widget' : 'Delete widget draft'}</AlertDialog.Title><AlertDialog.Description class={styles.dialogDescription}>{current().source === 'published' ? `Delete the published widget “${current().variant.displayName}”? Its draft, toolbar definition, and all canvas actor instances will also be permanently deleted. This cannot be undone.` : `Delete only the draft “${current().variant.displayName}”? The published widget and all of its canvas instances will remain unchanged. This cannot be undone.`}</AlertDialog.Description><div class={styles.dialogActions}><AlertDialog.CloseButton class={styles.button} disabled={deleting()}>Cancel</AlertDialog.CloseButton><Button class={`${styles.button} ${styles.dangerButton}`} disabled={deleting()} onClick={removeWidget}>{deleting() ? 'Deleting…' : current().source === 'published' ? 'Delete widget and instances' : 'Delete draft only'}</Button></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>
+        <Show when={current().source === 'draft'}>
+          <WidgetPublicationDialog
+            api={props.controller.apiService.api.agent}
+            draftId={current().name}
+            open={publishOpen()}
+            onOpenChange={setPublishOpen}
+            onStateChange={setPublicationState}
+            onPublished={async () => {
+              application.notifySuccess('Widget published');
+              props.controller.invalidation.invalidate('widgets');
+              await Promise.all([loadDetail(), catalogState.refresh()]);
+            }}
+          />
+        </Show>
       </Tabs.Root>}
     </Show>
   );

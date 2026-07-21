@@ -148,8 +148,8 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
   }
 
   const syncStatus = (stale: boolean, message = "") => {
-    revisionLabel.textContent = `Revision ${ownedRevision.slice(0, 10)}`
-    revisionLabel.title = ownedRevision
+    revisionLabel.textContent = stale ? "Outdated Preview" : "Current Preview"
+    revisionLabel.removeAttribute("title")
     staleBadge.hidden = !stale
     statusMessage.textContent = message
     refreshButton.hidden = !stale

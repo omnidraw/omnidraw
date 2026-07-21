@@ -208,6 +208,14 @@
   color: var(--foreground);
 }
 
+.vc-toolbar-button--draft {
+  color: var(--warning);
+}
+
+.vc-toolbar-button--draft:hover {
+  color: color-mix(in srgb, var(--warning) 82%, var(--foreground));
+}
+
 .vc-toolbar-button__shortcut {
   position: absolute;
   bottom: 0;

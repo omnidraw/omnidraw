@@ -349,7 +349,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S96](s/S96.md) - AI mentions: live resource and widget catalog
 - [x]: [S97](s/S97.md) - compress task reference images
 - [x]: [S98](s/S98.md) - widgets: replace fullscreen header with SolidJS host chrome
-- [ ]: [S99](s/S99.md) - widget publish: explicit confirmation from Preview and draft detail
+- [x]: [S99](s/S99.md) - widget publish: explicit confirmation from Preview and draft detail
 - [ ]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
 
 ## E xplorations

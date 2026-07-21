@@ -820,6 +820,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   registerPlacementTool(args: {
     id: string;
     label: string;
+    tone?: "draft";
     icon?: string;
     group?: string;
     priority?: number;
@@ -828,6 +829,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#toolService.registerTool({
       id: args.id,
       label: args.label,
+      tone: args.tone,
       icon: args.icon,
       group: args.group,
       priority: args.priority,

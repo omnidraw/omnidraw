@@ -103,7 +103,7 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
       }
     };
     return (
-      <div class={`${styles.widgetRow} ${isSelected(value) ? styles.selected : ''}`}>
+      <div class={`${styles.widgetRow} ${value.source === 'draft' ? styles.draftRow : ''} ${isSelected(value) ? styles.selected : ''}`}>
         <Button
           class={`${styles.widgetRowMain} ${isSelected(value) ? styles.selected : ''}`}
           aria-current={isSelected(value) ? 'page' : undefined}
@@ -136,7 +136,7 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
           <Show when={value.problem || value.missingGroup}><TriangleAlert class={styles.warning} size={12} aria-label={value.problem ? 'Widget problem' : 'Missing tool group'} /></Show>
         </Button>
         <Button
-          class={styles.addButton}
+          class={`${styles.addButton} ${value.source === 'draft' ? styles.draftAddButton : ''}`}
           aria-label={`Add ${label} ${value.source} to canvas`}
           title={disabledReason ?? 'Add to canvas'}
           disabled={!value.placement}

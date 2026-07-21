@@ -17,6 +17,7 @@ interface ToolButtonProps {
   ariaHasPopup?: "menu";
   ariaExpanded?: boolean;
   role?: "menuitem";
+  tone?: "draft";
 }
 
 export function ToolButton(props: ToolButtonProps) {
@@ -34,6 +35,7 @@ export function ToolButton(props: ToolButtonProps) {
       class="vc-toolbar-button"
       classList={{
         "vc-toolbar-button--active": props.isActive,
+        "vc-toolbar-button--draft": props.tone === "draft",
         "vc-toolbar-button--has-wide-shortcut": hasWideShortcut(),
       }}
     >

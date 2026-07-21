@@ -4,7 +4,7 @@ type TApi = TOrpcSafeClient["api"];
 
 export type TAiChatApiPort = {
   api: {
-    agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events" | "widgets"> & {
+    agent: Pick<TApi["agent"], "settings" | "auth" | "chat" | "approval" | "events" | "widgets" | "widgetPublish"> & {
       widgetDraft: Pick<TApi["agent"]["widgetDraft"], "get">;
       widgetPreview: Pick<TApi["agent"]["widgetPreview"], "get" | "build" | "refresh" | "reset" | "close" | "send">;
     };
@@ -50,6 +50,7 @@ export type TWidgetBrowserPort = {
 export type TAiChatApplicationPort = {
   openResource?(resourceId: string): void;
   invalidateResourceCatalog(): void;
+  invalidateWidgetCatalog?(): void;
   subscribeCatalogInvalidation?(kind: "resources" | "widgets", listener: () => void): () => void;
   logError(error: unknown): void;
 };

@@ -14,6 +14,9 @@ import { isKonvaGroup } from "@vibecanvas/canvas/core/GUARDS"
 import Konva from "konva"
 import type { TAiChatApiPort, TAiChatApplicationPort, TWidgetBrowserPort } from "../ports"
 import { mountArrowSandboxBridge } from "../widget/mount-arrow-sandbox"
+import type { TWidgetTitleBarPortal } from "../widget/interface"
+import { mountWidgetPublicationDialog } from "../publication/mount"
+import type { TWidgetPublicationApi } from "../publication/interface"
 import {
   DRAFT_PREVIEW_FRAME_GAP,
   DRAFT_PREVIEW_MIN_HEIGHT,
@@ -116,7 +119,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     return payload ? `${payload.draftId} Preview` : "Draft Preview"
   }
 
-  mount(args: { root: HTMLDivElement; element: TElement }) {
+  mount(args: { root: HTMLDivElement; element: TElement; titleBar?: TWidgetTitleBarPortal }) {
     if (this.#stopping) {
       this.#initialResults.delete(args.element.id)
       args.root.replaceChildren()
@@ -155,8 +158,26 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
       onLogError: this.#args.application.logError,
     })
     this.#runtimes.set(args.element.id, { payload, runtime })
+    const publicationApi = this.#args.api.api.agent as unknown as Partial<TWidgetPublicationApi>
+    const disposePublication = args.titleBar
+      && publicationApi.widgets?.detail
+      && publicationApi.widgetPublish?.publish
+      ? mountWidgetPublicationDialog({
+        document: args.root.ownerDocument,
+        api: publicationApi as TWidgetPublicationApi,
+        draftId: payload.draftId,
+        getPinnedRevision: () => runtime.getOwnedRevision(),
+        titleBar: args.titleBar,
+        onRequestPreviewRefresh: () => runtime.refresh(),
+        onPublished: async () => {
+          this.#args.application.invalidateWidgetCatalog?.()
+          await runtime.refresh()
+        },
+      })
+      : () => undefined
 
     return () => {
+      disposePublication()
       if (this.#runtimes.get(args.element.id)?.runtime === runtime) {
         this.#runtimes.delete(args.element.id)
       }

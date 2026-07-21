@@ -40,6 +40,7 @@ export function createWidgetPlugin(portal: {
         portal.widgetManager.registerPlacementTool({
           id,
           label: `${variant.tool.label ?? variant.displayName} · Draft`,
+          tone: "draft",
           icon: fnResolveWidgetToolIcon(variant.tool.icon ?? undefined),
           group: variant.tool.group ?? undefined,
           priority: variant.tool.priority ?? undefined,

@@ -94,6 +94,7 @@ function RuntimeToolButton(props: {
         shortcut={shortcutParts().shortcut}
         letterShortcut={shortcutParts().letterShortcut}
         ariaLabel={props.tool.label}
+        tone={props.tool.tone}
         role={props.role}
         isActive={props.activeToolId === props.tool.id || Boolean(props.tool.active)}
         onClick={() => {
