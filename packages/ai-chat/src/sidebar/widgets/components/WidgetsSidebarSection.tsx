@@ -172,9 +172,21 @@ export const WidgetsSidebarSection: Component<{ controller: TSidebarController }
             {(projected) => <>
               <For each={projected().groups}>{(group) => <div>
                 <div class={styles.groupRow}>
-                  <Button class={styles.groupToggle} onClick={() => toggleGroup(group.name)} aria-expanded={expandedGroups().has(group.name)} aria-label={`${expandedGroups().has(group.name) ? 'Collapse' : 'Expand'} ${group.name}`}><ChevronRight size={12} /></Button>
-                  <WidgetIcon icon={group.icon} class={styles.icon} />
-                  <span class={styles.groupName}>{group.name}</span>
+                  <Button
+                    class={styles.groupDisclosure}
+                    onClick={() => toggleGroup(group.name)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      toggleGroup(group.name);
+                    }}
+                    aria-expanded={expandedGroups().has(group.name)}
+                    aria-label={`${expandedGroups().has(group.name) ? 'Collapse' : 'Expand'} ${group.name} tool group`}
+                  >
+                    <ChevronRight size={12} class={styles.groupChevron} />
+                    <WidgetIcon icon={group.icon} class={styles.icon} />
+                    <span class={styles.groupName}>{group.name}</span>
+                  </Button>
                   <DropdownMenu modal={false}>
                     <DropdownMenu.Trigger class={styles.groupMenuTrigger} aria-label={`Actions for ${group.name}`}><MoreHorizontal size={13} /></DropdownMenu.Trigger>
                     <DropdownMenu.Portal><DropdownMenu.Content class={styles.menu}><DropdownMenu.Item class={styles.menuItem} onSelect={() => openEdit(group)}>Edit group</DropdownMenu.Item></DropdownMenu.Content></DropdownMenu.Portal>

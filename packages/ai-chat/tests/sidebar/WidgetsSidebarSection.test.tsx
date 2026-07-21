@@ -43,6 +43,44 @@ function catalog(): TWidgetCatalog {
   };
 }
 
+function controller(pathname: () => string) {
+  return {
+    apiService: {
+      api: {
+        agent: {
+          events: vi.fn(async () => [null, { async *[Symbol.asyncIterator]() {} }]),
+          widgets: {
+            catalog: vi.fn(async () => [null, catalog()]),
+            groups: {
+              create: vi.fn(async () => [null, undefined]),
+              update: vi.fn(async () => [null, undefined]),
+              remove: vi.fn(async () => [null, undefined]),
+            },
+          },
+        },
+      },
+    },
+    browser: {
+      setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
+      clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
+    },
+    invalidation: createCatalogInvalidation(),
+    application: {
+      pathname,
+      navigate: vi.fn(),
+      notifyError: vi.fn(),
+    },
+  } as never;
+}
+
+function keyboardClick(button: HTMLButtonElement, key: 'Enter' | ' ') {
+  button.focus();
+  const keydown = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key });
+  button.dispatchEvent(keydown);
+  button.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key }));
+  if (!keydown.defaultPrevented) button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+}
+
 afterEach(() => {
   dispose?.();
   dispose = undefined;
@@ -51,6 +89,65 @@ afterEach(() => {
 });
 
 describe('WidgetsSidebarSection selection', () => {
+  test('uses the whole group disclosure while keeping its actions menu independent', async () => {
+    const sectionController = controller(() => '/c/canvas-1');
+    const container = document.createElement('div');
+    host = container;
+    document.body.appendChild(container);
+    dispose = render(() => (
+      <WidgetCatalogProvider controller={sectionController}>
+        <WidgetsSidebarSection controller={sectionController} />
+      </WidgetCatalogProvider>
+    ), container);
+
+    const disclosure = await vi.waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('button[aria-label="Expand Media tool group"]');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    const isExpanded = () => disclosure.getAttribute('aria-expanded') === 'true';
+    const visibleRows = () => container.querySelectorAll(`.${styles.groupChildren} .${styles.widgetRow}`).length;
+
+    expect(disclosure.tagName).toBe('BUTTON');
+    expect(isExpanded()).toBe(false);
+    expect(visibleRows()).toBe(0);
+
+    disclosure.querySelector<SVGElement>('svg')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(isExpanded()).toBe(true);
+    expect(visibleRows()).toBe(2);
+
+    disclosure.querySelector<HTMLElement>(`.${styles.groupName}`)?.click();
+    expect(isExpanded()).toBe(false);
+    expect(visibleRows()).toBe(0);
+
+    disclosure.querySelector<HTMLElement>(`.${styles.icon}`)?.click();
+    expect(isExpanded()).toBe(true);
+    disclosure.click();
+    expect(isExpanded()).toBe(false);
+
+    keyboardClick(disclosure, 'Enter');
+    expect(isExpanded()).toBe(true);
+    expect(visibleRows()).toBe(2);
+    keyboardClick(disclosure, ' ');
+    expect(isExpanded()).toBe(false);
+    expect(visibleRows()).toBe(0);
+
+    const menuTrigger = container.querySelector<HTMLButtonElement>('button[aria-label="Actions for Media"]');
+    expect(menuTrigger).not.toBeNull();
+    menuTrigger!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    menuTrigger!.click();
+    expect(isExpanded()).toBe(false);
+
+    const menuItem = await vi.waitFor(() => {
+      const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+        .find((candidate) => candidate.textContent?.trim() === 'Edit group');
+      expect(item).toBeDefined();
+      return item!;
+    });
+    menuItem.click();
+    expect(isExpanded()).toBe(false);
+  });
+
   test('reveals the selected group and moves aria-current between exact source variants', async () => {
     const [pathname, setPathname] = createSignal('/widgets/published/Camera');
     const controller = {

@@ -350,7 +350,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S97](s/S97.md) - compress task reference images
 - [x]: [S98](s/S98.md) - widgets: replace fullscreen header with SolidJS host chrome
 - [x]: [S99](s/S99.md) - widget publish: explicit confirmation from Preview and draft detail
-- [ ]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
+- [x]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

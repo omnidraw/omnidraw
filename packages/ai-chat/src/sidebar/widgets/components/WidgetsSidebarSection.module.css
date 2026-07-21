@@ -1,16 +1,18 @@
 .section { margin-top: .375rem; padding-top: .375rem; border-top: 1px solid var(--border); }
 .header { display: flex; align-items: center; justify-content: space-between; min-height: 1.75rem; padding: .125rem .625rem; color: var(--muted-foreground); }
-.sectionToggle, .menuTrigger, .groupToggle, .groupMenuTrigger { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 0; background: transparent; color: inherit; }
+.sectionToggle, .menuTrigger, .groupDisclosure, .groupMenuTrigger { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 0; background: transparent; color: inherit; }
 .sectionToggle { min-width: 0; gap: .25rem; padding: .25rem; font-size: .6875rem; font-weight: 800; text-transform: uppercase; }
 .menuTrigger, .groupMenuTrigger { width: 1.75rem; height: 1.75rem; }
-.sectionToggle:hover, .menuTrigger:hover, .groupToggle:hover, .groupMenuTrigger:hover { background: var(--accent); color: var(--foreground); }
-.sectionToggle:focus-visible, .menuTrigger:focus-visible, .groupToggle:focus-visible, .groupMenuTrigger:focus-visible, .widgetRowMain:focus-visible, .addButton:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
-.chevron, .groupToggle svg { transition: transform 150ms ease; }
-.sectionToggle[aria-expanded="true"] .chevron, .groupToggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.sectionToggle:hover, .menuTrigger:hover, .groupDisclosure:hover, .groupMenuTrigger:hover { background: var(--accent); color: var(--foreground); }
+.sectionToggle:focus-visible, .menuTrigger:focus-visible, .groupMenuTrigger:focus-visible, .widgetRowMain:focus-visible, .addButton:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.groupDisclosure:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
+.chevron, .groupChevron { transition: transform 150ms ease; }
+.sectionToggle[aria-expanded="true"] .chevron, .groupDisclosure[aria-expanded="true"] .groupChevron { transform: rotate(90deg); }
 .body { display: flex; flex-direction: column; padding-left: .375rem; }
-.groupRow { display: grid; grid-template-columns: 1.5rem 1rem minmax(0, 1fr) 1.75rem; align-items: center; gap: .25rem; min-height: 1.875rem; padding-left: .25rem; color: var(--foreground); }
+.groupRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; min-height: 1.875rem; padding-left: .25rem; color: var(--foreground); }
 .groupRow:hover { background: var(--accent); }
-.groupToggle { width: 1.5rem; height: 1.5rem; }
+.groupDisclosure { display: grid; grid-template-columns: 1.5rem 1rem minmax(0, 1fr); justify-content: stretch; gap: .25rem; min-width: 0; padding: 0; text-align: left; }
+.groupChevron { align-self: center; justify-self: center; }
 .groupName, .widgetName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; font-weight: 700; }
 .groupChildren { display: flex; flex-direction: column; padding-left: 1.375rem; }
 .widgetRow { display: grid; grid-template-columns: minmax(0, 1fr) 1.75rem; align-items: stretch; width: 100%; min-height: 1.875rem; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--foreground); transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
