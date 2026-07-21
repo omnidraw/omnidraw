@@ -10,6 +10,7 @@ import {
   type IActorResourceEncryptionKeyStore,
   type TStoredEncryptionKey,
 } from '../src/resources/SecretStoreKeyProvider';
+import { testUuid } from './test-uuid';
 
 function memoryKeyStore(initial: Array<{ resourceId: string; key: TStoredEncryptionKey }> = []): (
   IActorResourceEncryptionKeyStore & {
@@ -52,7 +53,7 @@ function storedDatabaseKey(
   overrides: Partial<TStoredEncryptionKey> = {},
 ): TStoredEncryptionKey {
   return {
-    id: 'key-one',
+    id: testUuid('key-one'),
     purpose: SECRET_STORE_DATABASE_KEY_PURPOSE,
     algorithm: SECRET_STORE_DATABASE_KEY_ALGORITHM,
     key_hex: keyHex,
@@ -69,18 +70,18 @@ describe('SecretStoreDatabaseKeyProvider', () => {
     const provider = new SecretStoreDatabaseKeyProvider({
       encryptionKeys,
       randomBytes: () => Buffer.alloc(32, ++byte),
-      randomUUID: () => `key-${++id}`,
+      randomUUID: () => testUuid(`key-${++id}`),
     });
 
-    const first = await provider.getOrCreateDatabaseHexKey('resource-a');
-    const second = await provider.getOrCreateDatabaseHexKey('resource-b');
+    const first = await provider.getOrCreateDatabaseHexKey(testUuid('resource-a'));
+    const second = await provider.getOrCreateDatabaseHexKey(testUuid('resource-b'));
 
     expect(first).toBe('11'.repeat(32));
     expect(second).toBe('12'.repeat(32));
     expect(encryptionKeys.rows).toHaveLength(2);
     expect(encryptionKeys.links).toEqual(new Map([
-      ['resource-a', 'key-1'],
-      ['resource-b', 'key-2'],
+      [testUuid('resource-a'), testUuid('key-1')],
+      [testUuid('resource-b'), testUuid('key-2')],
     ]));
   });
 
@@ -89,9 +90,9 @@ describe('SecretStoreDatabaseKeyProvider', () => {
     const first = new SecretStoreDatabaseKeyProvider({
       encryptionKeys,
       randomBytes: () => Buffer.alloc(32, 0x6b),
-      randomUUID: () => 'persisted-key',
+      randomUUID: () => testUuid('persisted-key'),
     });
-    const key = await first.getOrCreateDatabaseHexKey('resource');
+    const key = await first.getOrCreateDatabaseHexKey(testUuid('resource'));
 
     let generated = false;
     const restarted = new SecretStoreDatabaseKeyProvider({
@@ -100,10 +101,10 @@ describe('SecretStoreDatabaseKeyProvider', () => {
         generated = true;
         return Buffer.alloc(32, 0xff);
       },
-      randomUUID: () => 'unused-key',
+      randomUUID: () => testUuid('unused-key'),
     });
 
-    expect(await restarted.getDatabaseHexKey('resource')).toBe(key);
+    expect(await restarted.getDatabaseHexKey(testUuid('resource'))).toBe(key);
     expect(generated).toBe(false);
     expect(encryptionKeys.rows).toHaveLength(1);
   });
@@ -113,17 +114,17 @@ describe('SecretStoreDatabaseKeyProvider', () => {
     const first = new SecretStoreDatabaseKeyProvider({
       encryptionKeys,
       randomBytes: () => Buffer.alloc(32, 0x11),
-      randomUUID: () => 'key-one',
+      randomUUID: () => testUuid('key-one'),
     });
     const second = new SecretStoreDatabaseKeyProvider({
       encryptionKeys,
       randomBytes: () => Buffer.alloc(32, 0x22),
-      randomUUID: () => 'key-two',
+      randomUUID: () => testUuid('key-two'),
     });
 
     const [firstKey, secondKey] = await Promise.all([
-      first.getOrCreateDatabaseHexKey('shared-resource'),
-      second.getOrCreateDatabaseHexKey('shared-resource'),
+      first.getOrCreateDatabaseHexKey(testUuid('shared-resource')),
+      second.getOrCreateDatabaseHexKey(testUuid('shared-resource')),
     ]);
 
     expect(firstKey).toBe(secondKey);
@@ -140,9 +141,9 @@ describe('SecretStoreDatabaseKeyProvider', () => {
       storedDatabaseKey('aa'.repeat(32), { algorithm: 'wrong' }),
     ]) {
       const provider = new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: memoryKeyStore([{ resourceId: 'resource', key: stored }]),
+        encryptionKeys: memoryKeyStore([{ resourceId: testUuid('resource'), key: stored }]),
       });
-      await expect(provider.getDatabaseHexKey('resource'))
+      await expect(provider.getDatabaseHexKey(testUuid('resource')))
         .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
     }
   });
@@ -156,16 +157,16 @@ describe('SecretStoreDatabaseKeyProvider', () => {
         generated = true;
         return Buffer.alloc(32, 0x11);
       },
-      randomUUID: () => 'must-not-be-used',
+      randomUUID: () => testUuid('must-not-be-used'),
     });
 
-    await expect(provider.getDatabaseHexKey('existing-resource'))
+    await expect(provider.getDatabaseHexKey(testUuid('existing-resource')))
       .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
     expect(generated).toBe(false);
     expect(encryptionKeys.rows).toHaveLength(0);
     expect(encryptionKeys.links).toHaveLength(0);
 
-    await expect(provider.getOrCreateDatabaseHexKey('existing-resource'))
+    await expect(provider.getOrCreateDatabaseHexKey(testUuid('existing-resource')))
       .resolves.toBe('11'.repeat(32));
   });
 
@@ -174,7 +175,7 @@ describe('SecretStoreDatabaseKeyProvider', () => {
       encryptionKeys: memoryKeyStore(),
       randomBytes: () => Buffer.alloc(31),
     });
-    await expect(short.getOrCreateDatabaseHexKey('resource'))
+    await expect(short.getOrCreateDatabaseHexKey(testUuid('resource')))
       .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
     await expect(short.getOrCreateDatabaseHexKey(''))
       .rejects.toMatchObject({ code: 'SECRET_STORE_KEY_UNAVAILABLE' });
@@ -189,7 +190,7 @@ describe('SecretStoreDatabaseKeyProvider', () => {
         },
       },
     });
-    await expect(failed.getDatabaseHexKey('resource')).rejects.toMatchObject({
+    await expect(failed.getDatabaseHexKey(testUuid('resource'))).rejects.toMatchObject({
       code: 'SECRET_STORE_KEY_UNAVAILABLE',
       message: 'The secret-store database encryption key is unavailable or invalid.',
     });
@@ -208,7 +209,7 @@ describe('SecretStoreDatabaseKeyProvider', () => {
     try {
       await firstDb.start();
       await firstDb.actorResource.create({
-        id: 'resource',
+        id: testUuid('resource'),
         kind: 'secretStore',
         name: 'Secret resource',
         status: 'ready',
@@ -216,11 +217,11 @@ describe('SecretStoreDatabaseKeyProvider', () => {
       const first = new SecretStoreDatabaseKeyProvider({
         encryptionKeys: firstDb.actorResourceEncryptionKey,
         randomBytes: () => Buffer.alloc(32, 0x6b),
-        randomUUID: () => 'persisted-key',
+        randomUUID: () => testUuid('persisted-key'),
       });
-      const key = await first.getOrCreateDatabaseHexKey('resource');
-      await expect(firstDb.actorResourceEncryptionKey.get({ resourceId: 'resource' }))
-        .resolves.toMatchObject({ id: 'persisted-key', key_hex: '6b'.repeat(32) });
+      const key = await first.getOrCreateDatabaseHexKey(testUuid('resource'));
+      await expect(firstDb.actorResourceEncryptionKey.get({ resourceId: testUuid('resource') }))
+        .resolves.toMatchObject({ id: testUuid('persisted-key'), key_hex: '6b'.repeat(32) });
       await firstDb.db.close();
 
       const restartedDb = new DbServiceTurso(config);
@@ -233,9 +234,9 @@ describe('SecretStoreDatabaseKeyProvider', () => {
             generated = true;
             return Buffer.alloc(32, 0xff);
           },
-          randomUUID: () => 'unused-key',
+          randomUUID: () => testUuid('unused-key'),
         });
-        expect(await restarted.getDatabaseHexKey('resource')).toBe(key);
+        expect(await restarted.getDatabaseHexKey(testUuid('resource'))).toBe(key);
         expect(generated).toBe(false);
       } finally {
         await restartedDb.db.close();

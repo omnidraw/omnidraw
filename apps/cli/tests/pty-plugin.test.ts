@@ -3,6 +3,8 @@ import { createCliHooks } from '../src/hooks';
 import { createPtyPlugin } from '../src/plugins/pty/PtyPlugin';
 import type { ICliConfig } from '../src/config';
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
+import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
+import { join, resolve } from 'node:path';
 
 type TMockSocket = WebSocket & {
   data?: {
@@ -16,6 +18,13 @@ type TMockSocket = WebSocket & {
 };
 
 function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
+  const home = fnResolveVibecanvasHome({ join, resolve }, {
+    cwd: '/tmp',
+    dataDir: '/tmp/vibecanvas-home',
+    env: {},
+    homedir: '/tmp',
+  });
+
   return {
     cwd: process.cwd(),
     dev: true,
@@ -25,10 +34,7 @@ function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
     rawArgv: ['bun', 'run'],
     argv: [],
     port: 3000,
-    dataPath: '/tmp/vibecanvas-data',
-    dbPath: '/tmp/vibecanvas.turso'  ,
-    configPath: '/tmp/vibecanvas.json',
-    cachePath: '/tmp/vibecanvas-cache',
+    home,
     helpRequested: false,
     versionRequested: false,
     ...overrides,

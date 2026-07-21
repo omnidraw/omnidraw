@@ -1,4 +1,5 @@
 import type { Database } from "@tursodatabase/database"
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
 import type { TJson, TKeyValue } from "../model"
 
 type TPortal = {
@@ -11,10 +12,11 @@ type TArgsRemove = {
 
 type TRawKeyValue = {
   name: string
-  text: string | null
-  json: unknown | null
-  number: number | null
-  bool: boolean | number | null
+  kind: TKeyValue["type"]
+  text_value: string | null
+  json_value: unknown | null
+  number_value: number | null
+  bool_value: boolean | number | null
 }
 
 function parseJson(value: unknown): TJson {
@@ -30,10 +32,10 @@ function serializeJson(value: TJson): string {
 function parseKeyValue(row: unknown): TKeyValue {
   const value = row as TRawKeyValue
 
-  if (value.text !== null) return { name: value.name, type: "text", value: value.text }
-  if (value.json !== null) return { name: value.name, type: "json", value: parseJson(value.json) }
-  if (value.number !== null) return { name: value.name, type: "number", value: value.number }
-  if (value.bool !== null) return { name: value.name, type: "bool", value: Boolean(value.bool) }
+  if (value.kind === "text" && value.text_value !== null) return { name: value.name, type: "text", value: value.text_value }
+  if (value.kind === "json" && value.json_value !== null) return { name: value.name, type: "json", value: parseJson(value.json_value) }
+  if (value.kind === "number" && value.number_value !== null) return { name: value.name, type: "number", value: value.number_value }
+  if (value.kind === "bool" && value.bool_value !== null) return { name: value.name, type: "bool", value: Boolean(value.bool_value) }
 
   throw new Error(`Invalid key value row "${value.name}"`)
 }
@@ -49,11 +51,18 @@ function toColumnValues(args: TKeyValue): [string | null, string | null, number 
 export async function txKeyValueAdd(portal: TPortal, args: TKeyValue): Promise<TKeyValue> {
   const [text, json, number, bool] = toColumnValues(args)
   const stmt = await portal.db.prepare(`
-    INSERT INTO kv (name, text, json, number, bool)
-    VALUES (?, ?, ?, ?, ?)
-    RETURNING *
+    INSERT INTO key_values (
+      org_id, name, kind, text_value, json_value, number_value, bool_value,
+      created_at_ms, updated_at_ms
+    )
+    VALUES (
+      ?, ?, ?, ?, ?, ?, ?,
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    )
+    RETURNING name, kind, text_value, json_value, number_value, bool_value
   `)
-  const row = await stmt.get(args.name, text, json, number, bool)
+  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.name, args.type, text, json, number, bool)
 
   if (!row) {
     throw new Error("Failed to add key value")
@@ -64,8 +73,8 @@ export async function txKeyValueAdd(portal: TPortal, args: TKeyValue): Promise<T
 
 export async function txKeyValueRemove(portal: TPortal, args: TArgsRemove): Promise<void> {
   const stmt = await portal.db.prepare(`
-    DELETE FROM kv
-    WHERE name = ?
+    DELETE FROM key_values
+    WHERE org_id = ? AND name = ?
   `)
-  await stmt.run(args.name)
+  await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.name)
 }

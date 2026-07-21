@@ -45,9 +45,9 @@ function setupServices(config: ICliConfig) {
   }
 
   const dbService = new DbServiceTurso({
-    databasePath: config.dbPath,
-    dataDir: config.xdgPaths.dataDirPath,
-    cacheDir: config.xdgPaths.cacheDirPath,
+    databasePath: config.home.mainDbPath,
+    dataDir: config.home.homeDir,
+    cacheDir: config.home.cacheRoot,
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
   const filesystemService = new FilesystemServiceNode(eventPublisher);
@@ -112,15 +112,15 @@ function setupServices(config: ICliConfig) {
     });
     const actorService = new ActorService({
       db: dbService,
-      configPath: config.xdgPaths.configDirPath,
-      dataRoot: config.xdgPaths.dataDirPath,
+      configPath: config.home.artifactsRoot,
+      dataRoot: config.home.resourcesRoot,
       secretStoreKeyProvider,
       eventPublisherService: eventPublisher
     });
     const agentService = new AgentService({
-      dataPath: config.xdgPaths.dataDirPath,
-      cachePath: config.xdgPaths.cacheDirPath,
-      configPath: config.xdgPaths.configDirPath,
+      dataPath: config.home.agentRoot,
+      cachePath: config.home.cacheRoot,
+      configPath: config.home.artifactsRoot,
       eventPublisherService: eventPublisher,
       actorService
     })

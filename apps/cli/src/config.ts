@@ -1,4 +1,5 @@
 import type { TCliSubcommandOptions } from './parse-argv';
+import type { TVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
 
 export interface ICliConfig {
   cwd: string;
@@ -10,13 +11,7 @@ export interface ICliConfig {
   rawArgv: string[];
   argv: string[];
   port: number;
-  dbPath: string;
-  xdgPaths: {
-    configDirPath: string;
-    dataDirPath: string;
-    cacheDirPath: string;
-    stateDirPath: string;
-  };
+  home: TVibecanvasHome;
   helpRequested: boolean;
   versionRequested: boolean;
   upgradeTarget?: string;

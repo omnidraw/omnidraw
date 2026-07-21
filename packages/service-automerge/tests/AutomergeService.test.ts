@@ -2,6 +2,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { connect, type Database as TursoDatabase } from '@tursodatabase/database';
+import { DEFAULT_OSS_ORGANIZATION_ID } from '@vibecanvas/shared-functions/vibecanvas-config/CONSTANTS';
 import { AutomergeService } from '../src/AutomergeService';
 import type { TCanvasDoc, TElement } from '../src/types/canvas-doc.types';
 
@@ -22,15 +23,57 @@ async function waitFor(args: { predicate: () => boolean | Promise<boolean>; mess
 }
 
 async function waitForPersistedTursoDoc(args: { database: TursoDatabase; automergeUrl: string; timeoutMs?: number }): Promise<void> {
-  const prefix = `${args.automergeUrl.replace('automerge:', '')}*`;
   await waitFor({
     timeoutMs: args.timeoutMs,
     message: `Timed out waiting for persisted Turso Automerge data for ${args.automergeUrl}`,
     predicate: async () => {
-      const row = await args.database.get('select count(*) as n from automerge_repo_data where key glob ?', prefix) as { n: number };
+      const row = await (await args.database.prepare(`
+        SELECT count(*) AS n
+        FROM collaboration_chunks AS chunks
+        INNER JOIN collaboration_documents AS documents
+          ON documents.org_id = chunks.org_id AND documents.id = chunks.document_id
+        WHERE documents.org_id = ? AND documents.automerge_url = ?
+      `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.automergeUrl) as { n: number };
       return row.n > 0;
     },
   });
+}
+
+async function createMemoryTurso(): Promise<TursoDatabase> {
+  const database = await connect(':memory:');
+  await database.exec(`
+    CREATE TABLE collaboration_documents (
+      org_id TEXT NOT NULL,
+      id TEXT NOT NULL,
+      automerge_url TEXT NOT NULL,
+      PRIMARY KEY (org_id, id),
+      UNIQUE (org_id, automerge_url)
+    ) STRICT;
+    CREATE TABLE collaboration_chunks (
+      org_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      chunk_key TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      chunk_bytes BLOB NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (org_id, document_id, chunk_key),
+      UNIQUE (org_id, document_id, sequence)
+    ) STRICT;
+  `);
+  return database;
+}
+
+async function registerDocument(args: {
+  database: TursoDatabase;
+  service: AutomergeService;
+  id: string;
+  automergeUrl: string;
+}): Promise<void> {
+  await (await args.database.prepare(`
+    INSERT INTO collaboration_documents (org_id, id, automerge_url)
+    VALUES (?, ?, ?)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id, args.automergeUrl);
+  await args.service.notifyDocumentRegistered(args.automergeUrl);
 }
 
 function createNoopAutomergeCallbacks(): ConstructorParameters<typeof AutomergeService>[1] {
@@ -81,7 +124,7 @@ describe('AutomergeService', () => {
 
   afterEach(async () => {
     while (services.length > 0) {
-      services.pop()?.stop();
+      await services.pop()?.stop();
     }
     await sleep(50);
     while (tursoDatabases.length > 0) {
@@ -90,7 +133,7 @@ describe('AutomergeService', () => {
   });
 
   test('loads persisted documents through turso connections', async () => {
-    const turso = await connect(':memory:');
+    const turso = await createMemoryTurso();
     tursoDatabases.push(turso);
 
     const creator = new AutomergeService(turso, createNoopAutomergeCallbacks());
@@ -102,6 +145,12 @@ describe('AutomergeService', () => {
       name: 'hello turso',
       elements: {},
       groups: {},
+    });
+    await registerDocument({
+      database: turso,
+      service: creator,
+      id: 'document-turso-1',
+      automergeUrl: createdHandle.url,
     });
     await createdHandle.whenReady();
 
@@ -121,7 +170,7 @@ describe('AutomergeService', () => {
 
   test('notifies when an element is deleted from a watched canvas document', async () => {
     const deletedElements: Array<{ canvasDocId: string; automergeUrl: string; element: TElement }> = [];
-    const turso = await connect(':memory:');
+    const turso = await createMemoryTurso();
     tursoDatabases.push(turso);
 
     const service = new AutomergeService(turso, {
@@ -142,6 +191,12 @@ describe('AutomergeService', () => {
       },
       groups: {},
     });
+    await registerDocument({
+      database: turso,
+      service,
+      id: 'document-delete-test',
+      automergeUrl: handle.url,
+    });
     await handle.whenReady();
 
     await sleep(1100);
@@ -160,7 +215,7 @@ describe('AutomergeService', () => {
 
   test('notifies when an element is created in a watched canvas document', async () => {
     const createdElements: Array<{ canvasDocId: string; automergeUrl: string; element: TElement }> = [];
-    const turso = await connect(':memory:');
+    const turso = await createMemoryTurso();
     tursoDatabases.push(turso);
 
     const service = new AutomergeService(turso, {
@@ -177,6 +232,12 @@ describe('AutomergeService', () => {
       name: 'create test',
       elements: {},
       groups: {},
+    });
+    await registerDocument({
+      database: turso,
+      service,
+      id: 'document-create-test',
+      automergeUrl: handle.url,
     });
     await handle.whenReady();
 

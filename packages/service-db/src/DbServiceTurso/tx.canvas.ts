@@ -1,7 +1,8 @@
 import type { Database } from "@tursodatabase/database"
-import { DEFAULT_OSS_ACCOUNT_ID } from "../CONSTANTS"
+import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
 import type { TCanvas } from "../model"
-import { fxCanvasCanEdit, fxCanvasHasOwnerRole } from "./fx.canvas"
+import { fxCanvasCanEdit, fxCanvasFindById, fxCanvasHasOwnerRole } from "./fx.canvas"
+import { fnTimestampFromMs } from "./fn.legacy-row"
 import { txAccountEnsureDefaultOwner } from "./tx.account"
 
 type TPortal = {
@@ -23,6 +24,10 @@ type TArgsDeleteById = {
   accountId?: string
 }
 
+type TImmediateTransaction<T> = (() => Promise<T>) & {
+  immediate: () => Promise<T>
+}
+
 function accountIdOrDefault(accountId?: string) {
   return accountId ?? DEFAULT_OSS_ACCOUNT_ID
 }
@@ -36,31 +41,57 @@ async function ensureDefaultAccountWhenNeeded(portal: TPortal, accountId?: strin
 export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promise<TCanvas> {
   const accountId = accountIdOrDefault(args.accountId)
   await ensureDefaultAccountWhenNeeded(portal, args.accountId)
+  const nowSql = "CAST(unixepoch('subsec') * 1000 AS INTEGER)"
 
-  await portal.db.exec("BEGIN TRANSACTION")
-  try {
+  const create = portal.db.transaction(async () => {
     const createCanvasStmt = await portal.db.prepare(`
-      INSERT INTO canvas (id, name, automerge_url)
-      VALUES (?, ?, ?)
-      RETURNING *
+      INSERT INTO canvases (
+        org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
+      )
+      VALUES (?, ?, ?, 'restricted', ?, ${nowSql}, ${nowSql})
+      RETURNING id, name, created_at_ms
     `)
-    const created = await createCanvasStmt.get(args.id, args.name, args.automerge_url) as TCanvas | null | undefined
+    const created = await createCanvasStmt.get(
+      DEFAULT_OSS_ORGANIZATION_ID,
+      args.id,
+      args.name,
+      accountId,
+    ) as { id: string; name: string; created_at_ms: unknown } | null | undefined
 
     if (!created) {
       throw new Error("Failed to create canvas")
     }
 
-    const createMemberStmt = await portal.db.prepare(`
-      INSERT INTO canvas_members (canvas_id, account_id, role)
-      VALUES (?, ?, 'owner')
+    const createDocumentStmt = await portal.db.prepare(`
+      INSERT INTO collaboration_documents (
+        org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
+        created_at_ms, updated_at_ms
+      )
+      VALUES (?, ?, ?, NULL, ?, ?, ${nowSql}, ${nowSql})
     `)
-    await createMemberStmt.run(created.id, accountId)
-    await portal.db.exec("COMMIT")
-    return created
-  } catch (error) {
-    await portal.db.exec("ROLLBACK")
-    throw error
-  }
+    await createDocumentStmt.run(
+      DEFAULT_OSS_ORGANIZATION_ID,
+      created.id,
+      created.id,
+      args.automerge_url,
+      DEFAULT_OSS_ORGANIZATION_ID,
+    )
+
+    const createMemberStmt = await portal.db.prepare(`
+      INSERT INTO canvas_members (
+        org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
+      )
+      VALUES (?, ?, ?, 'owner', ${nowSql}, ${nowSql})
+    `)
+    await createMemberStmt.run(DEFAULT_OSS_ORGANIZATION_ID, created.id, accountId)
+    return {
+      id: created.id,
+      name: created.name,
+      automerge_url: args.automerge_url,
+      created_at: fnTimestampFromMs(created.created_at_ms),
+    }
+  }) as TImmediateTransaction<TCanvas>
+  return create.immediate()
 }
 
 export async function txCanvasRenameById(portal: TPortal, args: TArgsRenameById): Promise<TCanvas | null> {
@@ -76,13 +107,13 @@ export async function txCanvasRenameById(portal: TPortal, args: TArgsRenameById)
   }
 
   const stmt = await portal.db.prepare(`
-    UPDATE canvas
-    SET name = ?
-    WHERE id = ?
-    RETURNING *
+    UPDATE canvases
+    SET name = ?, updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    WHERE org_id = ? AND id = ?
   `)
-  const row = await stmt.get(args.name, args.id)
-  return (row ?? null) as TCanvas | null
+  const result = await stmt.run(args.name, DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  if (result.changes === 0) return null
+  return fxCanvasFindById(portal, { id: args.id })
 }
 
 export async function txCanvasDeleteById(portal: TPortal, args: TArgsDeleteById): Promise<TCanvas[]> {
@@ -97,11 +128,13 @@ export async function txCanvasDeleteById(portal: TPortal, args: TArgsDeleteById)
     }
   }
 
+  const existing = await fxCanvasFindById(portal, { id: args.id })
+  if (!existing) return []
+
   const stmt = await portal.db.prepare(`
-    DELETE FROM canvas
-    WHERE id = ?
-    RETURNING *
+    DELETE FROM canvases
+    WHERE org_id = ? AND id = ?
   `)
-  const rows = await stmt.all(args.id)
-  return rows as TCanvas[]
+  const result = await stmt.run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+  return result.changes === 0 ? [] : [existing]
 }

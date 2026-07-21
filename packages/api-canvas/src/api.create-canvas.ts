@@ -15,8 +15,14 @@ const apiCreateCanvas = baseCanvasOs.create.handler(async ({ context, input }) =
   })
 
   const canvas = { id: crypto.randomUUID(), name: input.name, created_at: new Date(), automerge_url: handle.url };
-  const result = await context.db.canvas.create(canvas, { accountId: context.accountId });
-  return result;
+  try {
+    const result = await context.db.canvas.create(canvas, { accountId: context.accountId });
+    await context.automerge.notifyDocumentRegistered(handle.url);
+    return result;
+  } catch (error) {
+    context.automerge.failDocumentRegistration(handle.url, error);
+    throw error;
+  }
 });
 
 export { apiCreateCanvas };

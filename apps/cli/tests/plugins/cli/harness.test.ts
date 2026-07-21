@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createCliTestContext, expectExitCode, expectNoStderr, parseJsonStdout, type TCliTestContext } from './harness';
 
 const activeContexts = new Set<TCliTestContext>();
@@ -37,8 +40,45 @@ describe('CLI test harness', () => {
     expect(result.stdout).toContain('serve     Start the vibecanvas runtime');
     expect(result.stdout).toContain('upgrade   Check for and install updates');
     expect(result.stdout).toContain('uninstall Remove the installed binary');
+    expect(result.stdout).toContain('--data-dir <path>');
+    expect(result.stdout).toContain('VIBECANVAS_HOME');
+    expect(result.stdout).not.toContain('--db');
     expect(result.stdout).not.toContain('Canvas subcommands:');
     expect(result.stdout).not.toContain('vibecanvas canvas');
+    expect(existsSync(context.homeDir)).toBe(false);
+  });
+
+  test('shows help without probing the widget toolchain', async () => {
+    const context = await createContext();
+    const result = await context.runProcess({
+      cmd: [process.execPath, 'run', 'apps/cli/src/main.ts', '--help'],
+      env: { ...process.env, PATH: '', VIBECANVAS_HOME: context.homeDir },
+    });
+
+    expectExitCode(result, 0);
+    expectNoStderr(result);
+    expect(result.stdout).toContain('Usage:');
+    expect(existsSync(context.homeDir)).toBe(false);
+  });
+
+  test('refuses an unknown home before creating directories or a database', async () => {
+    const context = await createContext();
+    const actorEraDatabase = join(context.homeDir, 'vibecanvas.turso');
+    const originalBytes = Buffer.from('actor-era-database-marker\n');
+    await mkdir(context.homeDir, { recursive: true });
+    await writeFile(actorEraDatabase, originalBytes);
+
+    const result = await context.runVibecanvasCli(['serve', '--port', '30991']);
+
+    expectExitCode(result, 1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(context.homeDir);
+    expect(result.stderr).toContain('Actor-era and unknown non-empty layouts are unsupported.');
+    expect(result.stderr).toContain('Archive or move');
+    expect(result.stderr).toContain('--data-dir <fresh-path>');
+    expect(await readdir(context.homeDir)).toEqual(['vibecanvas.turso']);
+    expect(await readFile(actorEraDatabase)).toEqual(originalBytes);
+    expect(existsSync(context.dbPath)).toBe(false);
   });
 
   test('suggests nearest remaining commands for unknown root commands', async () => {
@@ -72,6 +112,7 @@ describe('CLI test harness', () => {
     expectExitCode(result, 0);
     expectNoStderr(result);
     expect(result.stdout).toContain('[Uninstall] Dry-run');
-    expect(result.stdout).toContain('database file');
+    expect(result.stdout).toContain('home dir');
+    expect(existsSync(context.homeDir)).toBe(false);
   });
 });

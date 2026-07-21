@@ -76,8 +76,8 @@ The implementation agent updates this table as the run progresses. `Evidence` sh
 
 | Milestone | Status | Reached when | Evidence |
 | --- | --- | --- | --- |
-| M0 — Baseline | `PASSED` | Current canvas behavior and cost baselines are reproducible | [`m0-managed-architecture-baseline.md`](./baselines/m0-managed-architecture-baseline.md) |
-| M1 — Data foundation | `NOT_STARTED` | New home/config and strict `main.db` baseline pass all corruption guards | — |
+| M0 — Baseline | `PASSED` | Current canvas behavior and cost baselines are reproducible | commit `649a155b`; [`m0-managed-architecture-baseline.md`](./baselines/m0-managed-architecture-baseline.md) |
+| M1 — Data foundation | `PASSED` | New home/config and strict `main.db` baseline pass all corruption guards | [`m1-managed-data-foundation.md`](./baselines/m1-managed-data-foundation.md) |
 | M2 — Package/API boundary | `NOT_STARTED` | One API package, renamed UI packages, and clean dependency direction compile | — |
 | M3 — Tenant backend | `NOT_STARTED` | All backend authority surfaces and Automerge admission pass two-org isolation | — |
 | M4 — Resource runtime | `NOT_STARTED` | Resources are actor-independent and files have one enforced owner | — |
@@ -412,6 +412,7 @@ schema_migrations
 accounts
 organizations
 organization_memberships
+key_values
 ```
 
 Constraints:
@@ -567,9 +568,11 @@ Constraints:
 legacy_actor_definitions
 legacy_actor_instances
 legacy_actor_connections
+legacy_actor_resource_bindings
+legacy_actor_apply_results
 ```
 
-Include these tenant-qualified compatibility tables in the one fixed baseline if the rewritten release promises the optional legacy plugin. They remain empty when the plugin is disabled, must not be referenced by v2 widget rows, and are never populated from an old database. Do not create configuration-dependent schema variants.
+Include these tenant-qualified compatibility tables in the one fixed baseline if the rewritten release promises the optional legacy plugin. The resource-binding and apply-result tables preserve legacy resource selection and coordinated apply recovery without coupling legacy actors to v2 `resource_bindings`. They remain empty when the plugin is disabled, must not be referenced by v2 widget rows, and are never populated from an old database. Do not create configuration-dependent schema variants.
 
 ### 7.8 Index contract
 

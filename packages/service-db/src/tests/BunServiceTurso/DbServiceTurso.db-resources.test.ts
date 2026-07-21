@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { DbServiceTurso } from "../../../src/DbServiceTurso/DbServiceTurso"
 
+const testUuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`
+const IDS = {
+  dbNotes: testUuid(401), draftOne: testUuid(402), draftTwo: testUuid(403),
+  kv: testUuid(404), dbLoading: testUuid(405), badKind: testUuid(406), notReady: testUuid(407),
+  draft: testUuid(408), db: testUuid(409), draft1: testUuid(410), draft2: testUuid(411),
+  draft3: testUuid(412), apply1: testUuid(413), apply2: testUuid(414), apply3: testUuid(415),
+  applyOne: testUuid(416), applyTwo: testUuid(417), restoreOne: testUuid(418),
+  dbAtomic: testUuid(419), draftAtomic: testUuid(420), duplicateApply: testUuid(421),
+  applyAtomic: testUuid(422), missingDraft: testUuid(423), canvas: testUuid(424),
+  runningInstance: testUuid(425), stoppedInstance: testUuid(426), apply: testUuid(427),
+  instance: testUuid(428), restore: testUuid(429),
+} as const
+
 describe("DbServiceTurso DbResource draft/apply persistence", () => {
   let db!: DbServiceTurso
 
@@ -14,63 +27,63 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
   })
 
   test("creates one active resource-local draft and permits a new one after discard", async () => {
-    await db.actorResource.create({ id: "db-notes", kind: "db", name: "Notes", status: "ready" })
+    await db.actorResource.create({ id: IDS.dbNotes, kind: "db", name: "Notes", status: "ready" })
 
     await expect(db.dbResource.draft.create({
-      id: "draft-one",
-      resourceId: "db-notes",
+      id: IDS.draftOne,
+      resourceId: IDS.dbNotes,
       name: "Add note labels",
     })).resolves.toMatchObject({
-      id: "draft-one",
-      resource_id: "db-notes",
+      id: IDS.draftOne,
+      resource_id: IDS.dbNotes,
       name: "Add note labels",
       status: "editing",
       last_error: null,
       applied_at: null,
     })
-    await expect(db.dbResource.draft.getActive({ resourceId: "db-notes" })).resolves.toMatchObject({ id: "draft-one" })
+    await expect(db.dbResource.draft.getActive({ resourceId: IDS.dbNotes })).resolves.toMatchObject({ id: IDS.draftOne })
     await expect(db.dbResource.draft.create({
-      id: "draft-two",
-      resourceId: "db-notes",
+      id: IDS.draftTwo,
+      resourceId: IDS.dbNotes,
       name: "Competing draft",
     })).rejects.toBeDefined()
 
-    await expect(db.dbResource.draft.rename({ id: "draft-one", name: "Labels and colors" })).resolves.toMatchObject({
+    await expect(db.dbResource.draft.rename({ id: IDS.draftOne, name: "Labels and colors" })).resolves.toMatchObject({
       name: "Labels and colors",
     })
-    await expect(db.dbResource.draft.discard({ id: "draft-one" })).resolves.toMatchObject({ status: "discarded" })
-    await expect(db.dbResource.draft.getActive({ resourceId: "db-notes" })).resolves.toBeNull()
+    await expect(db.dbResource.draft.discard({ id: IDS.draftOne })).resolves.toMatchObject({ status: "discarded" })
+    await expect(db.dbResource.draft.getActive({ resourceId: IDS.dbNotes })).resolves.toBeNull()
     await expect(db.dbResource.draft.create({
-      id: "draft-two",
-      resourceId: "db-notes",
+      id: IDS.draftTwo,
+      resourceId: IDS.dbNotes,
       name: "Replacement",
     })).resolves.toMatchObject({ status: "editing" })
 
-    const drafts = await db.dbResource.draft.list({ resourceId: "db-notes" })
-    expect(drafts.map((draft) => draft.id)).toEqual(["draft-two", "draft-one"])
+    const drafts = await db.dbResource.draft.list({ resourceId: IDS.dbNotes })
+    expect(drafts.map((draft) => draft.id)).toEqual([IDS.draftTwo, IDS.draftOne])
   })
 
   test("requires a ready database resource for draft creation", async () => {
-    await db.actorResource.create({ id: "kv", kind: "kv", name: "KV", status: "ready" })
-    await db.actorResource.create({ id: "db-loading", kind: "db", name: "Loading", status: "provisioning" })
+    await db.actorResource.create({ id: IDS.kv, kind: "kv", name: "KV", status: "ready" })
+    await db.actorResource.create({ id: IDS.dbLoading, kind: "db", name: "Loading", status: "provisioning" })
 
-    await expect(db.dbResource.draft.create({ id: "bad-kind", resourceId: "kv", name: "No" })).rejects.toThrow(
+    await expect(db.dbResource.draft.create({ id: IDS.badKind, resourceId: IDS.kv, name: "No" })).rejects.toThrow(
       "not an available DbResource",
     )
     await expect(db.dbResource.draft.create({
-      id: "not-ready",
-      resourceId: "db-loading",
+      id: IDS.notReady,
+      resourceId: IDS.dbLoading,
       name: "No",
     })).rejects.toThrow("not an available DbResource")
   })
 
   test("stores ordered structured and raw changes with exact SQL", async () => {
-    await db.actorResource.create({ id: "db-notes", kind: "db", name: "Notes", status: "ready" })
-    await db.dbResource.draft.create({ id: "draft", resourceId: "db-notes", name: "Structure" })
+    await db.actorResource.create({ id: IDS.dbNotes, kind: "db", name: "Notes", status: "ready" })
+    await db.dbResource.draft.create({ id: IDS.draft, resourceId: IDS.dbNotes, name: "Structure" })
     const exactSql = "ALTER TABLE \"notes\" ADD COLUMN \"color\" TEXT;\r\n"
 
     await expect(db.dbResource.draft.change.append({
-      draftId: "draft",
+      draftId: IDS.draft,
       sequence: 1,
       kind: "structure",
       operation: { type: "addColumn", table: "notes", column: "color" },
@@ -82,19 +95,19 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       sql: exactSql,
     })
     await db.dbResource.draft.change.append({
-      draftId: "draft",
+      draftId: IDS.draft,
       sequence: 2,
       kind: "sql",
       sql: "CREATE INDEX notes_color_idx ON notes(color);",
     })
 
-    await expect(db.dbResource.draft.change.list({ draftId: "draft" })).resolves.toMatchObject([
+    await expect(db.dbResource.draft.change.list({ draftId: IDS.draft })).resolves.toMatchObject([
       { sequence: 1, sql: exactSql },
       { sequence: 2, kind: "sql", operation: null },
     ])
-    await db.dbResource.draft.updateStatus({ id: "draft", status: "applying", expectedStatus: "editing" })
+    await db.dbResource.draft.updateStatus({ id: IDS.draft, status: "applying", expectedStatus: "editing" })
     await expect(db.dbResource.draft.change.append({
-      draftId: "draft",
+      draftId: IDS.draft,
       sequence: 3,
       kind: "sql",
       sql: "DROP TABLE notes;",
@@ -102,72 +115,72 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
   })
 
   test("cursor-paginates bounded draft and apply history without offsets", async () => {
-    await db.actorResource.create({ id: "db", kind: "db", name: "DB", status: "ready" })
-    for (const id of ["draft-1", "draft-2", "draft-3"]) {
-      await db.dbResource.draft.create({ id, resourceId: "db", name: id })
+    await db.actorResource.create({ id: IDS.db, kind: "db", name: "DB", status: "ready" })
+    for (const id of [IDS.draft1, IDS.draft2, IDS.draft3]) {
+      await db.dbResource.draft.create({ id, resourceId: IDS.db, name: id })
       await db.dbResource.draft.discard({ id })
     }
-    const draftPage = await db.dbResource.draft.list({ resourceId: "db", limit: 2 })
-    expect(draftPage.map((draft) => draft.id)).toEqual(["draft-3", "draft-2"])
+    const draftPage = await db.dbResource.draft.list({ resourceId: IDS.db, limit: 2 })
+    expect(draftPage.map((draft) => draft.id)).toEqual([IDS.draft3, IDS.draft2])
     await expect(db.dbResource.draft.list({
-      resourceId: "db",
+      resourceId: IDS.db,
       before: { createdAt: draftPage[1]!.created_at, id: draftPage[1]!.id },
       limit: 2,
-    })).resolves.toMatchObject([{ id: "draft-1" }])
-    await expect(db.dbResource.draft.list({ resourceId: "db", limit: 201 })).rejects.toThrow("between 1 and 200")
+    })).resolves.toMatchObject([{ id: IDS.draft1 }])
+    await expect(db.dbResource.draft.list({ resourceId: IDS.db, limit: 201 })).rejects.toThrow("between 1 and 200")
 
-    for (const id of ["apply-1", "apply-2", "apply-3"]) {
-      await db.dbResource.apply.create({ id, resourceId: "db" })
+    for (const id of [IDS.apply1, IDS.apply2, IDS.apply3]) {
+      await db.dbResource.apply.create({ id, resourceId: IDS.db })
       await db.dbResource.apply.update({ id, status: "succeeded", expectedStatus: "preparing" })
     }
-    const applyPage = await db.dbResource.apply.list({ resourceId: "db", limit: 2 })
-    expect(applyPage.map((apply) => apply.id)).toEqual(["apply-3", "apply-2"])
+    const applyPage = await db.dbResource.apply.list({ resourceId: IDS.db, limit: 2 })
+    expect(applyPage.map((apply) => apply.id)).toEqual([IDS.apply3, IDS.apply2])
     await expect(db.dbResource.apply.list({
-      resourceId: "db",
+      resourceId: IDS.db,
       before: { createdAt: applyPage[1]!.created_at, id: applyPage[1]!.id },
       limit: 2,
-    })).resolves.toMatchObject([{ id: "apply-1" }])
-    await expect(db.dbResource.apply.list({ resourceId: "db", limit: 101 })).rejects.toThrow("between 1 and 100")
+    })).resolves.toMatchObject([{ id: IDS.apply1 }])
+    await expect(db.dbResource.apply.list({ resourceId: IDS.db, limit: 101 })).rejects.toThrow("between 1 and 100")
   })
 
   test("persists apply lifecycle separately from draft state and retains recovery metadata", async () => {
-    await db.actorResource.create({ id: "db-notes", kind: "db", name: "Notes", status: "ready" })
-    await db.dbResource.draft.create({ id: "draft", resourceId: "db-notes", name: "Structure" })
+    await db.actorResource.create({ id: IDS.dbNotes, kind: "db", name: "Notes", status: "ready" })
+    await db.dbResource.draft.create({ id: IDS.draft, resourceId: IDS.dbNotes, name: "Structure" })
 
-    await expect(db.dbResource.apply.create({ id: "apply-one", resourceId: "db-notes", draftId: "draft" })).resolves.toMatchObject({
+    await expect(db.dbResource.apply.create({ id: IDS.applyOne, resourceId: IDS.dbNotes, draftId: IDS.draft })).resolves.toMatchObject({
       status: "preparing",
       backup_retained: false,
       completed_at: null,
     })
-    await expect(db.dbResource.apply.create({ id: "apply-two", resourceId: "db-notes", draftId: "draft" })).rejects.toBeDefined()
+    await expect(db.dbResource.apply.create({ id: IDS.applyTwo, resourceId: IDS.dbNotes, draftId: IDS.draft })).rejects.toBeDefined()
     await expect(db.dbResource.apply.update({
-      id: "apply-one",
+      id: IDS.applyOne,
       status: "stopping",
       expectedStatus: "preparing",
     })).resolves.toMatchObject({ status: "stopping" })
     await expect(db.dbResource.apply.update({
-      id: "apply-one",
+      id: IDS.applyOne,
       status: "succeeded",
       expectedStatus: "stopping",
       backupRetained: true,
     })).resolves.toMatchObject({ status: "succeeded", backup_retained: true })
 
-    const completed = await db.dbResource.apply.get({ id: "apply-one" })
-    expect(completed?.completed_at).toMatch(/^\d{4}-\d{2}-\d{2} /)
+    const completed = await db.dbResource.apply.get({ id: IDS.applyOne })
+    expect(completed?.completed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
     await expect(db.dbResource.draft.updateStatus({
-      id: "draft",
+      id: IDS.draft,
       status: "applied",
       expectedStatus: "editing",
     })).resolves.toMatchObject({ status: "applied", applied_at: expect.any(String) })
 
     await expect(db.dbResource.apply.create({
-      id: "restore-one",
-      resourceId: "db-notes",
+      id: IDS.restoreOne,
+      resourceId: IDS.dbNotes,
       draftId: null,
-      sourceApplyId: "apply-one",
-    })).resolves.toMatchObject({ draft_id: null, source_apply_id: "apply-one", status: "preparing" })
+      sourceApplyId: IDS.applyOne,
+    })).resolves.toMatchObject({ draft_id: null, source_apply_id: IDS.applyOne, status: "preparing" })
     await expect(db.dbResource.apply.update({
-      id: "restore-one",
+      id: IDS.restoreOne,
       status: "recovered",
       lastError: { code: "DB_RESOURCE_APPLY_RECOVERED", message: "Backup restored" },
     })).resolves.toMatchObject({
@@ -175,50 +188,50 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       last_error: { code: "DB_RESOURCE_APPLY_RECOVERED", message: "Backup restored" },
     })
 
-    const firstCompletedAt = "2000-01-01 00:00:00"
-    await (await db.db.prepare("UPDATE db_resource_apply_runs SET completed_at = ? WHERE id = ?")).run(firstCompletedAt, "apply-one")
+    const firstCompletedAt = "2100-01-01T00:00:00.000Z"
+    await (await db.db.prepare("UPDATE db_resource_apply_runs SET completed_at_ms = ? WHERE id = ?")).run(4102444800000, IDS.applyOne)
     await db.dbResource.apply.update({
-      id: "apply-one",
+      id: IDS.applyOne,
       status: "succeeded",
       backupRetained: false,
     })
-    expect((await db.dbResource.apply.get({ id: "apply-one" }))?.completed_at).toBe(firstCompletedAt)
+    expect((await db.dbResource.apply.get({ id: IDS.applyOne }))?.completed_at).toBe(firstCompletedAt)
   })
 
   test("atomically admits and completes a draft apply", async () => {
-    await db.actorResource.create({ id: "db-atomic", kind: "db", name: "Atomic", status: "ready" })
-    await db.dbResource.draft.create({ id: "draft-atomic", resourceId: "db-atomic", name: "Atomic draft" })
-    await db.dbResource.apply.create({ id: "duplicate-apply", resourceId: "db-atomic" })
-    await db.dbResource.apply.update({ id: "duplicate-apply", status: "succeeded", expectedStatus: "preparing" })
+    await db.actorResource.create({ id: IDS.dbAtomic, kind: "db", name: "Atomic", status: "ready" })
+    await db.dbResource.draft.create({ id: IDS.draftAtomic, resourceId: IDS.dbAtomic, name: "Atomic draft" })
+    await db.dbResource.apply.create({ id: IDS.duplicateApply, resourceId: IDS.dbAtomic })
+    await db.dbResource.apply.update({ id: IDS.duplicateApply, status: "succeeded", expectedStatus: "preparing" })
 
     await expect(db.dbResource.apply.createFromDraft({
-      id: "duplicate-apply",
-      resourceId: "db-atomic",
-      draftId: "draft-atomic",
+      id: IDS.duplicateApply,
+      resourceId: IDS.dbAtomic,
+      draftId: IDS.draftAtomic,
     })).rejects.toBeDefined()
-    expect(await db.dbResource.draft.get({ id: "draft-atomic" })).toMatchObject({ status: "editing" })
+    expect(await db.dbResource.draft.get({ id: IDS.draftAtomic })).toMatchObject({ status: "editing" })
 
     const admitted = await db.dbResource.apply.createFromDraft({
-      id: "apply-atomic",
-      resourceId: "db-atomic",
-      draftId: "draft-atomic",
+      id: IDS.applyAtomic,
+      resourceId: IDS.dbAtomic,
+      draftId: IDS.draftAtomic,
     })
     expect(admitted).toMatchObject({
-      apply: { id: "apply-atomic", status: "preparing", draft_id: "draft-atomic" },
-      draft: { id: "draft-atomic", status: "applying" },
+      apply: { id: IDS.applyAtomic, status: "preparing", draft_id: IDS.draftAtomic },
+      draft: { id: IDS.draftAtomic, status: "applying" },
     })
-    await db.dbResource.apply.update({ id: "apply-atomic", status: "restarting", expectedStatus: "preparing" })
+    await db.dbResource.apply.update({ id: IDS.applyAtomic, status: "restarting", expectedStatus: "preparing" })
     await expect(db.dbResource.apply.finishWithDraft({
-      id: "apply-atomic",
-      draftId: "missing-draft",
+      id: IDS.applyAtomic,
+      draftId: IDS.missingDraft,
       status: "succeeded",
       expectedStatus: "restarting",
       draftStatus: "applied",
     })).rejects.toBeDefined()
-    expect(await db.dbResource.apply.get({ id: "apply-atomic" })).toMatchObject({ status: "restarting" })
+    expect(await db.dbResource.apply.get({ id: IDS.applyAtomic })).toMatchObject({ status: "restarting" })
     const completed = await db.dbResource.apply.finishWithDraft({
-      id: "apply-atomic",
-      draftId: "draft-atomic",
+      id: IDS.applyAtomic,
+      draftId: IDS.draftAtomic,
       status: "succeeded",
       expectedStatus: "restarting",
       draftStatus: "applied",
@@ -231,7 +244,7 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
   })
 
   test("persists and updates every affected instance outcome", async () => {
-    await db.canvas.create({ id: "canvas", name: "Canvas", automerge_url: "automerge:db-resource" })
+    await db.canvas.create({ id: IDS.canvas, name: "Canvas", automerge_url: "automerge:db-resource" })
     await db.actor.insertDefinition({
       name: "Notes Widget",
       slug: "notes-widget",
@@ -239,18 +252,18 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       description: null,
       manifest_path: "widgets/notes/vibecanvas.json",
     })
-    await db.actorResource.create({ id: "db-notes", kind: "db", name: "Notes", status: "ready" })
+    await db.actorResource.create({ id: IDS.dbNotes, kind: "db", name: "Notes", status: "ready" })
     await db.actorResource.upsertBinding({
       definitionName: "Notes Widget",
       slotName: "notes",
-      resourceId: "db-notes",
+      resourceId: IDS.dbNotes,
       allowRead: true,
       allowWrite: true,
     })
-    for (const [id, status] of [["running-instance", "running"], ["stopped-instance", "stopped"]] as const) {
+    for (const [id, status] of [[IDS.runningInstance, "running"], [IDS.stoppedInstance, "stopped"]] as const) {
       await db.actor.insertInstance({
         id,
-        canvas_id: "canvas",
+        canvas_id: IDS.canvas,
         element_id: `element-${id}`,
         actor_definition_name: "Notes Widget",
         filesystem_id: null,
@@ -261,21 +274,21 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       })
     }
 
-    await expect(db.dbResource.listAffectedInstances({ resourceId: "db-notes" })).resolves.toMatchObject([
-      { id: "running-instance", machine_context: { persisted: true } },
-      { id: "stopped-instance", machine_context: { persisted: true } },
+    await expect(db.dbResource.listAffectedInstances({ resourceId: IDS.dbNotes })).resolves.toMatchObject([
+      { id: IDS.runningInstance, machine_context: { persisted: true } },
+      { id: IDS.stoppedInstance, machine_context: { persisted: true } },
     ])
-    await db.dbResource.apply.create({ id: "apply", resourceId: "db-notes" })
+    await db.dbResource.apply.create({ id: IDS.apply, resourceId: IDS.dbNotes })
     await db.dbResource.apply.instanceResult.upsert({
-      applyId: "apply",
-      actorInstanceId: "running-instance",
+      applyId: IDS.apply,
+      actorInstanceId: IDS.runningInstance,
       actorDefinitionName: "Notes Widget",
       wasRunning: true,
       status: "pendingStop",
     })
     await expect(db.dbResource.apply.instanceResult.upsert({
-      applyId: "apply",
-      actorInstanceId: "running-instance",
+      applyId: IDS.apply,
+      actorInstanceId: IDS.runningInstance,
       actorDefinitionName: "Notes Widget",
       wasRunning: true,
       status: "startFailed",
@@ -286,24 +299,24 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       error: { code: "ACTOR_START_FAILED" },
     })
     await db.dbResource.apply.instanceResult.upsert({
-      applyId: "apply",
-      actorInstanceId: "stopped-instance",
+      applyId: IDS.apply,
+      actorInstanceId: IDS.stoppedInstance,
       actorDefinitionName: "Notes Widget",
       wasRunning: false,
       status: "notRunning",
     })
 
-    await expect(db.dbResource.apply.instanceResult.listByApply({ applyId: "apply" })).resolves.toMatchObject([
-      { actor_instance_id: "running-instance", status: "startFailed" },
-      { actor_instance_id: "stopped-instance", status: "notRunning", was_running: false },
+    await expect(db.dbResource.apply.instanceResult.listByApply({ applyId: IDS.apply })).resolves.toMatchObject([
+      { actor_instance_id: IDS.runningInstance, status: "startFailed" },
+      { actor_instance_id: IDS.stoppedInstance, status: "notRunning", was_running: false },
     ])
     await expect(db.dbResource.apply.instanceResult.listByInstance({
-      actorInstanceId: "running-instance",
+      actorInstanceId: IDS.runningInstance,
     })).resolves.toHaveLength(1)
   })
 
   test("resource deletion cascades drafts, apply runs, and instance results", async () => {
-    await db.canvas.create({ id: "canvas", name: "Canvas", automerge_url: "automerge:cascade" })
+    await db.canvas.create({ id: IDS.canvas, name: "Canvas", automerge_url: "automerge:cascade" })
     await db.actor.insertDefinition({
       name: "Widget",
       slug: "widget",
@@ -312,8 +325,8 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       manifest_path: "widgets/widget/vibecanvas.json",
     })
     await db.actor.insertInstance({
-      id: "instance",
-      canvas_id: "canvas",
+      id: IDS.instance,
+      canvas_id: IDS.canvas,
       element_id: "element",
       actor_definition_name: "Widget",
       filesystem_id: null,
@@ -322,25 +335,25 @@ describe("DbServiceTurso DbResource draft/apply persistence", () => {
       machine_state: "ready",
       machine_context: {},
     })
-    await db.actorResource.create({ id: "db", kind: "db", name: "DB", status: "ready" })
-    await db.dbResource.draft.create({ id: "draft", resourceId: "db", name: "Draft" })
-    await db.dbResource.apply.create({ id: "apply", resourceId: "db", draftId: "draft" })
+    await db.actorResource.create({ id: IDS.db, kind: "db", name: "DB", status: "ready" })
+    await db.dbResource.draft.create({ id: IDS.draft, resourceId: IDS.db, name: "Draft" })
+    await db.dbResource.apply.create({ id: IDS.apply, resourceId: IDS.db, draftId: IDS.draft })
     await db.dbResource.apply.instanceResult.upsert({
-      applyId: "apply",
-      actorInstanceId: "instance",
+      applyId: IDS.apply,
+      actorInstanceId: IDS.instance,
       actorDefinitionName: "Widget",
       wasRunning: false,
       status: "notRunning",
     })
-    await db.dbResource.apply.update({ id: "apply", status: "succeeded", backupRetained: true })
-    await db.dbResource.apply.create({ id: "restore", resourceId: "db", sourceApplyId: "apply" })
-    await db.dbResource.apply.update({ id: "restore", status: "succeeded" })
+    await db.dbResource.apply.update({ id: IDS.apply, status: "succeeded", backupRetained: true })
+    await db.dbResource.apply.create({ id: IDS.restore, resourceId: IDS.db, sourceApplyId: IDS.apply })
+    await db.dbResource.apply.update({ id: IDS.restore, status: "succeeded" })
 
-    await db.actorResource.beginDelete({ id: "db" })
-    await db.actorResource.delete({ id: "db" })
-    await expect(db.dbResource.draft.get({ id: "draft" })).resolves.toBeNull()
-    await expect(db.dbResource.apply.get({ id: "apply" })).resolves.toBeNull()
-    await expect(db.dbResource.apply.get({ id: "restore" })).resolves.toBeNull()
-    await expect(db.dbResource.apply.instanceResult.listByApply({ applyId: "apply" })).resolves.toEqual([])
+    await db.actorResource.beginDelete({ id: IDS.db })
+    await db.actorResource.delete({ id: IDS.db })
+    await expect(db.dbResource.draft.get({ id: IDS.draft })).resolves.toBeNull()
+    await expect(db.dbResource.apply.get({ id: IDS.apply })).resolves.toBeNull()
+    await expect(db.dbResource.apply.get({ id: IDS.restore })).resolves.toBeNull()
+    await expect(db.dbResource.apply.instanceResult.listByApply({ applyId: IDS.apply })).resolves.toEqual([])
   })
 })

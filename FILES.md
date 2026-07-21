@@ -30,6 +30,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
+| [apps/cli/src/fn.home-preflight-error.ts](apps/cli/src/fn.home-preflight-error.ts) |  |
 | [apps/cli/src/hooks.ts](apps/cli/src/hooks.ts) |  |
 | [apps/cli/src/main-app.ts](apps/cli/src/main-app.ts) |  |
 | [apps/cli/src/main.ts](apps/cli/src/main.ts) |  |
@@ -876,6 +877,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.actor-resource-row.ts](packages/service-db/src/DbServiceTurso/fn.actor-resource-row.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.db-resource.ts](packages/service-db/src/DbServiceTurso/fn.db-resource.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.legacy-row.ts](packages/service-db/src/DbServiceTurso/fn.legacy-row.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.account.ts](packages/service-db/src/DbServiceTurso/fx.account.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.actor-resource.ts](packages/service-db/src/DbServiceTurso/fx.actor-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.actor.ts](packages/service-db/src/DbServiceTurso/fx.actor.ts) |  |
@@ -885,24 +887,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.migration-file.ts](packages/service-db/src/DbServiceTurso/fx.migration-file.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fx.migration-state.ts](packages/service-db/src/DbServiceTurso/fx.migration-state.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.tool-group.ts](packages/service-db/src/DbServiceTurso/fx.tool-group.ts) |  |
 | [packages/service-db/src/DbServiceTurso/list-migration-files.ts](packages/service-db/src/DbServiceTurso/list-migration-files.ts) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql](packages/service-db/src/DbServiceTurso/migration-files/000-add-automerge.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql](packages/service-db/src/DbServiceTurso/migration-files/001-add-auth-tables.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/002-add-canvas.sql](packages/service-db/src/DbServiceTurso/migration-files/002-add-canvas.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql](packages/service-db/src/DbServiceTurso/migration-files/003-add-media-files.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql](packages/service-db/src/DbServiceTurso/migration-files/004-add-filesystems.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql](packages/service-db/src/DbServiceTurso/migration-files/005-add-actor.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql](packages/service-db/src/DbServiceTurso/migration-files/006-add-key-value.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql](packages/service-db/src/DbServiceTurso/migration-files/007-add-actor-instance-error.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql](packages/service-db/src/DbServiceTurso/migration-files/008-add-tool-groups.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/009-add-actor-resources.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql](packages/service-db/src/DbServiceTurso/migration-files/011-add-db-resources.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql](packages/service-db/src/DbServiceTurso/migration-files/012-replace-db-resource-migrations.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql](packages/service-db/src/DbServiceTurso/migration-files/013-add-db-resource-restore-source.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts](packages/service-db/src/DbServiceTurso/migration-files/014-migrate-agent-storage.ts) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/015-add-actor-resource-name-keys.sql) |  |
-| [packages/service-db/src/DbServiceTurso/migration-files/016-add-encryption-keys.sql](packages/service-db/src/DbServiceTurso/migration-files/016-add-encryption-keys.sql) |  |
 | [packages/service-db/src/DbServiceTurso/migration-types.ts](packages/service-db/src/DbServiceTurso/migration-types.ts) |  |
 | [packages/service-db/src/DbServiceTurso/turso-native.ts](packages/service-db/src/DbServiceTurso/turso-native.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.account.ts](packages/service-db/src/DbServiceTurso/tx.account.ts) |  |
@@ -918,7 +906,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
+| [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
+| [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps the raw baseline SQL asset on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
+| [packages/service-db/src/schema/expected-schema.ts](packages/service-db/src/schema/expected-schema.ts) |  |
+| [packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts](packages/service-db/src/verification/fixtures/wal-interrupted-writer.ts) |  |
 | [packages/service-db/tsconfig.json](packages/service-db/tsconfig.json) |  |
 
 ## packages/service-event-publisher
@@ -990,8 +982,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/shared-functions/src/functional/fn.memoize.ts](packages/shared-functions/src/functional/fn.memoize.ts) |  |
 | [packages/shared-functions/src/functional/fn.pipe.ts](packages/shared-functions/src/functional/fn.pipe.ts) |  |
 | [packages/shared-functions/src/functional/fn.throttle.ts](packages/shared-functions/src/functional/fn.throttle.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/fn.xdg-paths.ts](packages/shared-functions/src/vibecanvas-config/fn.xdg-paths.ts) |  |
-| [packages/shared-functions/src/vibecanvas-config/tx.xdg-paths.ts](packages/shared-functions/src/vibecanvas-config/tx.xdg-paths.ts) |  |
+| [packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts](packages/shared-functions/src/vibecanvas-config/CONSTANTS.ts) |  |
+| [packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts](packages/shared-functions/src/vibecanvas-config/fn.resolve-vibecanvas-home.ts) |  |
+| [packages/shared-functions/src/vibecanvas-config/tx.ensure-vibecanvas-home.ts](packages/shared-functions/src/vibecanvas-config/tx.ensure-vibecanvas-home.ts) |  |
 | [packages/shared-functions/tsconfig.json](packages/shared-functions/tsconfig.json) |  |
 
 ## packages/tapable
@@ -1013,6 +1006,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
+| [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
 | [scripts/fixtures/managed-architecture-baseline.v1.json](scripts/fixtures/managed-architecture-baseline.v1.json) |  |

@@ -38,6 +38,7 @@ interface IPublicMethods { // not in use yet
 
 interface IActorSupervisorConfig {
   db: DbServiceTurso
+  crypto?: Pick<typeof crypto, 'randomUUID'>
   absWidgetDir: string
   configPath: string
   eventPublisherService: IEventPublisherService
@@ -88,7 +89,7 @@ export class ActorSupervisor {
   async reloadDefinitionsOnly() {
     await this.reloadDefinitions()
     const definitionSyncErrors = await txSyncDbActorDefinitions({
-      crypto,
+      crypto: this.#config.crypto ?? crypto,
       db: this.#config.db,
       configPath: this.#config.configPath,
       isAbsolute,
@@ -558,7 +559,7 @@ export class ActorSupervisor {
     }
 
     const actorDb = await this.#config.db.actor.insertInstance({
-      id: crypto.randomUUID(),
+      id: (this.#config.crypto ?? crypto).randomUUID(),
       actor_definition_name: def.name,
       canvas_id: canvasId,
       display_name: def.name,

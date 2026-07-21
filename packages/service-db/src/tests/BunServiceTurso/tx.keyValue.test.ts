@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { connect, Database } from "@tursodatabase/database";
-import path from "node:path";
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../../../src/CONSTANTS";
 import { fxKeyValueGet } from "../../../src/DbServiceTurso/fx.keyValue";
 import { txKeyValueAdd, txKeyValueRemove } from "../../../src/DbServiceTurso/tx.keyValue";
 import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
+import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
 
 async function inMemoryDb() {
   // @ts-expect-error custom_types not typed yet
@@ -27,7 +28,11 @@ describe("tx.keyValue/fx.keyValue", () => {
 
   beforeEach(async () => {
     db = await inMemoryDb();
-    await txRunMigrations({ db, Bun, path }, {});
+    await txRunMigrations({ db, Bun }, {
+      applicationVersion: "test",
+      appliedAtMs: 1,
+      expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+    });
   });
 
   afterEach(async () => {
@@ -66,12 +71,21 @@ describe("tx.keyValue/fx.keyValue", () => {
   });
 
   test("enforces exactly one non-null value column", async () => {
-    const insert = await db.prepare("insert into kv (name, text, json, number, bool) values (?, ?, ?, ?, ?)");
+    const insert = await db.prepare(`
+      INSERT INTO key_values (
+        org_id, name, kind, text_value, json_value, number_value, bool_value,
+        blob_value, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 1, 1)
+    `);
 
-    await expectSqlConstraintFailure(() => insert.run("kv-none", null, null, null, null));
-    await expectSqlConstraintFailure(() => insert.run("kv-many", "hello", null, 42, null));
+    await expectSqlConstraintFailure(() => insert.run(
+      DEFAULT_OSS_ORGANIZATION_ID, "kv-none", "text", null, null, null, null,
+    ));
+    await expectSqlConstraintFailure(() => insert.run(
+      DEFAULT_OSS_ORGANIZATION_ID, "kv-many", "text", "hello", null, 42, null,
+    ));
 
-    await insert.run("kv-one", "hello", null, null, null);
+    await insert.run(DEFAULT_OSS_ORGANIZATION_ID, "kv-one", "text", "hello", null, null, null);
 
     await expect(fxKeyValueGet({ db }, { name: "kv-one" })).resolves.toEqual({
       name: "kv-one",

@@ -1,9 +1,7 @@
-import { fnXdgPaths } from '@vibecanvas/shared-functions/vibecanvas-config/fn.xdg-paths';
-import { txEnsureXdgPaths } from '@vibecanvas/shared-functions/vibecanvas-config/tx.xdg-paths';
-import { existsSync, mkdirSync } from 'fs';
+import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
 import type { ICliConfig } from './config';
 import type { TCliParsedArgv } from './parse-argv';
-import { dirname, join, resolve } from 'path';
+import { join, resolve } from 'path';
 import { homedir } from 'os';
 
 function getDefaultPort(compiled: boolean): number {
@@ -11,6 +9,7 @@ function getDefaultPort(compiled: boolean): number {
 }
 
 function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
+  const cwd = process.cwd();
   const compiled =
     (typeof VIBECANVAS_COMPILED !== 'undefined' && VIBECANVAS_COMPILED) ||
     process.env.VIBECANVAS_COMPILED === 'true';
@@ -19,25 +18,15 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
     (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION) ||
     process.env.VIBECANVAS_VERSION ||
     '0.0.0';
-  const resolved = parsed.command === 'serve'
-    ? txEnsureXdgPaths({ fs: { existsSync, mkdirSync }, dirname, join, resolve, process }, { isCompiled: compiled, homedir: homedir() })
-    : (() => {
-      const paths = fnXdgPaths({ dirname, join, resolve }, {
-        env: process.env,
-        cwd: process.cwd(),
-        homedir: homedir(),
-        isCompiled: compiled,
-      });
-      return { databasePath: paths.databasePath, paths };
-    })();
-
-  const dbPath = parsed.dbPath ?? resolved.databasePath;
-  if (parsed.command === 'serve') {
-    mkdirSync(dirname(dbPath), { recursive: true });
-  }
+  const home = fnResolveVibecanvasHome({ join, resolve }, {
+    cwd,
+    dataDir: parsed.dataDir,
+    env: process.env,
+    homedir: homedir(),
+  });
 
   return {
-    cwd: process.cwd(),
+    cwd,
     dev,
     compiled,
     version,
@@ -46,13 +35,7 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
     rawArgv: parsed.rawArgv,
     argv: parsed.argv,
     port: parsed.port ?? getDefaultPort(compiled),
-    dbPath,
-    xdgPaths: {
-      cacheDirPath: resolved.paths.cacheDir,
-      configDirPath: resolved.paths.configDir,
-      dataDirPath: resolved.paths.dataDir,
-      stateDirPath: resolved.paths.stateDir
-    },
+    home,
     helpRequested: parsed.helpRequested,
     versionRequested: parsed.versionRequested,
     upgradeTarget: parsed.upgradeTarget,

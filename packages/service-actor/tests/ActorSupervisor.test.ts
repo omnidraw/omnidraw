@@ -7,6 +7,7 @@ import path from "node:path";
 import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import fundActorConfigJson from "./fixtures/account-fund-actor/vibecanvas.json";
+import { createTestCrypto, testUuid } from "./test-uuid";
 
 const widgetDir = new URL("./fixtures", import.meta.url).pathname;
 const configPath = new URL(".", import.meta.url).pathname;
@@ -35,6 +36,7 @@ function createSupervisor(db: DbServiceTurso, notifications: TNotification[], ac
     absWidgetDir: widgetDir,
     configPath,
     db,
+    crypto: createTestCrypto("actor-supervisor"),
     eventPublisherService: createEventPublisherService(notifications, actorEvents) as any,
   });
 }
@@ -50,6 +52,7 @@ function createSupervisorWithPaths(args: {
     absWidgetDir: args.absWidgetDir,
     configPath: args.configPath,
     db: args.db,
+    crypto: createTestCrypto("actor-supervisor-with-paths"),
     eventPublisherService: createEventPublisherService(args.notifications, args.actorEvents ?? []) as any,
   });
 }
@@ -128,13 +131,13 @@ describe("ActorSupervisor", () => {
     const supervisor = createSupervisor(db, notifications);
     await supervisor.init();
     await db.canvas.create({
-      id: "publication-canvas",
+      id: testUuid("publication-canvas"),
       name: "Publication Canvas",
       automerge_url: "automerge:publication-canvas",
     });
     await db.actor.insertInstance({
-      id: "publication-instance",
-      canvas_id: "publication-canvas",
+      id: testUuid("publication-instance"),
+      canvas_id: testUuid("publication-canvas"),
       element_id: "publication-element",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -145,10 +148,10 @@ describe("ActorSupervisor", () => {
     });
 
     await supervisor.reloadDefinitionsOnly();
-    expect(supervisor.actorMap["publication-instance"]).toBeUndefined();
+    expect(supervisor.actorMap[testUuid("publication-instance")]).toBeUndefined();
 
     await supervisor.completeDefinitionPublication("Account Funds Test", false);
-    expect(supervisor.actorMap["publication-instance"]).toBeDefined();
+    expect(supervisor.actorMap[testUuid("publication-instance")]).toBeDefined();
     await supervisor.closeActors();
   });
 
@@ -251,7 +254,7 @@ describe("ActorSupervisor", () => {
       await supervisor.reloadDefinitionsOnly();
 
       expect(supervisor.vibecanvasDefMap[manifest.name]).toBeUndefined();
-      expect(await db.actor.getDefinition(manifest.name)).toBeUndefined();
+      expect(await db.actor.getDefinition(manifest.name)).toBeNull();
       expect(notifications).toContainEqual({
         type: "error",
         title: "Ambiguous actor definition",
@@ -265,7 +268,7 @@ describe("ActorSupervisor", () => {
 
   test("init boots actor instances from db with saved state and data", async () => {
     await db.canvas.create({
-      id: "canvas-1",
+      id: testUuid("canvas-1"),
       name: "Actor Supervisor Test Canvas",
       automerge_url: "automerge:actor-supervisor-test",
     });
@@ -286,8 +289,8 @@ describe("ActorSupervisor", () => {
     });
 
     await db.actor.insertInstance({
-      id: "fund-instance-ready",
-      canvas_id: "canvas-1",
+      id: testUuid("fund-instance-ready"),
+      canvas_id: testUuid("canvas-1"),
       element_id: "element-fund-ready",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -297,8 +300,8 @@ describe("ActorSupervisor", () => {
       machine_context: { balance: 125 },
     });
     await db.actor.insertInstance({
-      id: "fund-instance-busy",
-      canvas_id: "canvas-1",
+      id: testUuid("fund-instance-busy"),
+      canvas_id: testUuid("canvas-1"),
       element_id: "element-fund-busy",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -308,8 +311,8 @@ describe("ActorSupervisor", () => {
       machine_context: { balance: 55 },
     });
     await db.actor.insertInstance({
-      id: "bookkeeper-instance-ready",
-      canvas_id: "canvas-1",
+      id: testUuid("bookkeeper-instance-ready"),
+      canvas_id: testUuid("canvas-1"),
       element_id: "element-bookkeeper-ready",
       actor_definition_name: "Account Bookkeeper Test",
       filesystem_id: null,
@@ -333,16 +336,16 @@ describe("ActorSupervisor", () => {
     await supervisor.init();
 
     expect(Object.keys(supervisor.actorMap).sort()).toEqual([
-      "bookkeeper-instance-ready",
-      "fund-instance-busy",
-      "fund-instance-ready",
-    ]);
-    expect(supervisor.actorMap["fund-instance-ready"].getState()).toBe("ready");
-    expect(supervisor.actorMap["fund-instance-ready"].getData()).toEqual({ balance: 125 });
-    expect(supervisor.actorMap["fund-instance-busy"].getState()).toBe("busy.counting");
-    expect(supervisor.actorMap["fund-instance-busy"].getData()).toEqual({ balance: 55 });
-    expect(supervisor.actorMap["bookkeeper-instance-ready"].getState()).toBe("ready");
-    expect(supervisor.actorMap["bookkeeper-instance-ready"].getData()).toEqual({
+      testUuid("bookkeeper-instance-ready"),
+      testUuid("fund-instance-busy"),
+      testUuid("fund-instance-ready"),
+    ].sort());
+    expect(supervisor.actorMap[testUuid("fund-instance-ready")].getState()).toBe("ready");
+    expect(supervisor.actorMap[testUuid("fund-instance-ready")].getData()).toEqual({ balance: 125 });
+    expect(supervisor.actorMap[testUuid("fund-instance-busy")].getState()).toBe("busy.counting");
+    expect(supervisor.actorMap[testUuid("fund-instance-busy")].getData()).toEqual({ balance: 55 });
+    expect(supervisor.actorMap[testUuid("bookkeeper-instance-ready")].getState()).toBe("ready");
+    expect(supervisor.actorMap[testUuid("bookkeeper-instance-ready")].getData()).toEqual({
       entries: [
         {
           accountId: "1",
@@ -353,7 +356,7 @@ describe("ActorSupervisor", () => {
     });
     const readyInstanceStatuses = updateInstanceHealth.mock.calls
       .map(([args]) => args)
-      .filter((args) => args.id === "fund-instance-ready")
+      .filter((args) => args.id === testUuid("fund-instance-ready"))
       .map((args) => args.status);
     expect(readyInstanceStatuses).toEqual(["starting", "running"]);
 
@@ -366,7 +369,7 @@ describe("ActorSupervisor", () => {
     await supervisor.closeActors();
 
     await db.canvas.create({
-      id: "canvas-isolation",
+      id: testUuid("canvas-isolation"),
       name: "Isolation",
       automerge_url: "automerge:actor-isolation",
     });
@@ -378,8 +381,8 @@ describe("ActorSupervisor", () => {
       manifest_path: "widgets/unavailable/vibecanvas.json",
     });
     await db.actor.insertInstance({
-      id: "actor-bad-first",
-      canvas_id: "canvas-isolation",
+      id: testUuid("actor-bad-first"),
+      canvas_id: testUuid("canvas-isolation"),
       element_id: "element-bad-first",
       actor_definition_name: "Unavailable Widget",
       filesystem_id: null,
@@ -389,8 +392,8 @@ describe("ActorSupervisor", () => {
       machine_context: {},
     });
     await db.actor.insertInstance({
-      id: "actor-good-second",
-      canvas_id: "canvas-isolation",
+      id: testUuid("actor-good-second"),
+      canvas_id: testUuid("canvas-isolation"),
       element_id: "element-good-second",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -402,19 +405,19 @@ describe("ActorSupervisor", () => {
 
     await supervisor.init();
 
-    expect(supervisor.actorMap["actor-bad-first"]).toBeUndefined();
-    expect(supervisor.actorMap["actor-good-second"]).toBeDefined();
-    expect(await db.actor.getInstanceById("actor-bad-first")).toMatchObject({
+    expect(supervisor.actorMap[testUuid("actor-bad-first")]).toBeUndefined();
+    expect(supervisor.actorMap[testUuid("actor-good-second")]).toBeDefined();
+    expect(await db.actor.getInstanceById(testUuid("actor-bad-first"))).toMatchObject({
       status: "error",
       last_error: { code: "WIDGET_DEFINITION_UNAVAILABLE" },
     });
-    expect(await db.actor.getInstanceById("actor-good-second")).toMatchObject({ status: "running", last_error: null });
+    expect(await db.actor.getInstanceById(testUuid("actor-good-second"))).toMatchObject({ status: "running", last_error: null });
     await supervisor.closeActors();
   });
 
   test("publishes running status event when actor instance is created", async () => {
     await db.canvas.create({
-      id: "canvas-create-instance",
+      id: testUuid("canvas-create-instance"),
       name: "Actor Create Instance Test Canvas",
       automerge_url: "automerge:actor-create-instance-test",
     });
@@ -423,7 +426,7 @@ describe("ActorSupervisor", () => {
     const supervisor = createSupervisor(db, notifications, publishedActorEvents);
 
     await supervisor.init();
-    const actor = await supervisor.createInstance("Account Funds Test", "canvas-create-instance", "element-created-fund");
+    const actor = await supervisor.createInstance("Account Funds Test", testUuid("canvas-create-instance"), "element-created-fund");
     if (!actor) throw new Error("Expected actor instance to be created");
 
     expect(actor.getId()).toBeString();
@@ -440,7 +443,7 @@ describe("ActorSupervisor", () => {
 
   test("reload refreshes definitions and loads missing db instances without stopping running actors", async () => {
     await db.canvas.create({
-      id: "canvas-reload",
+      id: testUuid("canvas-reload"),
       name: "Actor Reload Test Canvas",
       automerge_url: "automerge:actor-reload-test",
     });
@@ -448,15 +451,15 @@ describe("ActorSupervisor", () => {
     const supervisor = createSupervisor(db, notifications);
 
     await supervisor.init();
-    const existingActor = await supervisor.createInstance("Account Funds Test", "canvas-reload", "element-existing-fund");
+    const existingActor = await supervisor.createInstance("Account Funds Test", testUuid("canvas-reload"), "element-existing-fund");
     if (!existingActor) throw new Error("Expected existing actor to be created");
     const existingActorId = existingActor.getId();
     const existingEvents: TActorEvent[] = [];
     existingActor.listen(event => existingEvents.push(event));
 
     await db.actor.insertInstance({
-      id: "fund-reload-new",
-      canvas_id: "canvas-reload",
+      id: testUuid("fund-reload-new"),
+      canvas_id: testUuid("canvas-reload"),
       element_id: "element-fund-reload-new",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -476,14 +479,14 @@ describe("ActorSupervisor", () => {
       from: "running",
       to: "stopped",
     });
-    expect(supervisor.actorMap["fund-reload-new"].getData()).toEqual({ balance: 7 });
+    expect(supervisor.actorMap[testUuid("fund-reload-new")].getData()).toEqual({ balance: 7 });
 
     await supervisor.closeActors();
   });
 
   test("persists actor machine data after successful inbox processing", async () => {
     await db.canvas.create({
-      id: "canvas-persist-machine",
+      id: testUuid("canvas-persist-machine"),
       name: "Actor Persistence Test Canvas",
       automerge_url: "automerge:actor-persistence-test",
     });
@@ -497,8 +500,8 @@ describe("ActorSupervisor", () => {
     });
 
     await db.actor.insertInstance({
-      id: "fund-persist",
-      canvas_id: "canvas-persist-machine",
+      id: testUuid("fund-persist"),
+      canvas_id: testUuid("canvas-persist-machine"),
       element_id: "element-fund-persist",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -511,11 +514,11 @@ describe("ActorSupervisor", () => {
     const supervisor = createSupervisor(db, notifications);
 
     await supervisor.init();
-    supervisor.actorMap["fund-persist"].inbox("add-funds", {accountId: "1", amount: 42});
-    await waitForIdle(supervisor.actorMap["fund-persist"]);
-    await waitForPersistedContext(db, "fund-persist", { balance: 42 });
+    supervisor.actorMap[testUuid("fund-persist")].inbox("add-funds", {accountId: "1", amount: 42});
+    await waitForIdle(supervisor.actorMap[testUuid("fund-persist")]);
+    await waitForPersistedContext(db, testUuid("fund-persist"), { balance: 42 });
 
-    const instance = await db.actor.getInstanceById("fund-persist");
+    const instance = await db.actor.getInstanceById(testUuid("fund-persist"));
     expect(instance?.machine_state).toBe("ready");
 
     await supervisor.closeActors();
@@ -545,7 +548,7 @@ describe("ActorSupervisor", () => {
 
     try {
       await db.canvas.create({
-        id: "canvas-activity-persist",
+        id: testUuid("canvas-activity-persist"),
         name: "Activity Persist",
         automerge_url: "automerge:activity-persist",
       });
@@ -558,7 +561,7 @@ describe("ActorSupervisor", () => {
         configPath: tempConfigPath,
       });
       await supervisor.init();
-      const actor = await supervisor.createInstance("Activity Persist Test", "canvas-activity-persist", "element-activity-persist");
+      const actor = await supervisor.createInstance("Activity Persist Test", testUuid("canvas-activity-persist"), "element-activity-persist");
       if (!actor) throw new Error("Expected activity actor to be created");
 
       await waitForPersistedContext(db, actor.getId(), { events: ["lifecycle.enter"], ticks: 1 });
@@ -597,7 +600,7 @@ describe("ActorSupervisor", () => {
 
     try {
       await db.canvas.create({
-        id: "canvas-error-persist",
+        id: testUuid("canvas-error-persist"),
         name: "Error Persist",
         automerge_url: "automerge:error-persist",
       });
@@ -608,7 +611,7 @@ describe("ActorSupervisor", () => {
         configPath: tempConfigPath,
       });
       await supervisor.init();
-      const actor = await supervisor.createInstance("Error Persist Test", "canvas-error-persist", "element-error-persist");
+      const actor = await supervisor.createInstance("Error Persist Test", testUuid("canvas-error-persist"), "element-error-persist");
       if (!actor) throw new Error("Expected error actor to be created");
 
       await waitForPersistedState(db, actor.getId(), "error");
@@ -622,7 +625,7 @@ describe("ActorSupervisor", () => {
 
   test("routes emitted actor messages to connected target actors", async () => {
     await db.canvas.create({
-      id: "canvas-connection",
+      id: testUuid("canvas-connection"),
       name: "Actor Connection Test Canvas",
       automerge_url: "automerge:actor-connection-test",
     });
@@ -643,8 +646,8 @@ describe("ActorSupervisor", () => {
     });
 
     await db.actor.insertInstance({
-      id: "fund-source",
-      canvas_id: "canvas-connection",
+      id: testUuid("fund-source"),
+      canvas_id: testUuid("canvas-connection"),
       element_id: "element-fund-source",
       actor_definition_name: "Account Funds Test",
       filesystem_id: null,
@@ -654,8 +657,8 @@ describe("ActorSupervisor", () => {
       machine_context: { balance: 0 },
     });
     await db.actor.insertInstance({
-      id: "bookkeeper-target",
-      canvas_id: "canvas-connection",
+      id: testUuid("bookkeeper-target"),
+      canvas_id: testUuid("canvas-connection"),
       element_id: "element-bookkeeper-target",
       actor_definition_name: "Account Bookkeeper Test",
       filesystem_id: null,
@@ -666,10 +669,10 @@ describe("ActorSupervisor", () => {
     });
 
     await db.actor.insertConnection({
-      id: "connection-fund-to-bookkeeper",
-      canvas_id: "canvas-connection",
-      source_actor_instance_id: "fund-source",
-      target_actor_instance_id: "bookkeeper-target",
+      id: testUuid("connection-fund-to-bookkeeper"),
+      canvas_id: testUuid("canvas-connection"),
+      source_actor_instance_id: testUuid("fund-source"),
+      target_actor_instance_id: testUuid("bookkeeper-target"),
       enabled: true,
       label: null,
       msg_name_whitelist: JSON.stringify(["funds-added"]),
@@ -682,31 +685,31 @@ describe("ActorSupervisor", () => {
     await supervisor.init();
     const sourceEvents: TActorEvent[] = [];
     const targetEvents: TActorEvent[] = [];
-    supervisor.listenToActorEvents("fund-source", event => sourceEvents.push(event));
-    supervisor.listenToActorEvents("bookkeeper-target", event => targetEvents.push(event));
+    supervisor.listenToActorEvents(testUuid("fund-source"), event => sourceEvents.push(event));
+    supervisor.listenToActorEvents(testUuid("bookkeeper-target"), event => targetEvents.push(event));
 
-    const messageId = supervisor.actorMap["fund-source"].inbox("add-funds", {accountId: "1", amount: 42});
-    await waitForIdle(supervisor.actorMap["fund-source"]);
-    await waitForIdle(supervisor.actorMap["bookkeeper-target"]);
+    const messageId = supervisor.actorMap[testUuid("fund-source")].inbox("add-funds", {accountId: "1", amount: 42});
+    await waitForIdle(supervisor.actorMap[testUuid("fund-source")]);
+    await waitForIdle(supervisor.actorMap[testUuid("bookkeeper-target")]);
 
     expect(messageId).toBeString();
     expect(sourceEvents).toContainEqual({
       kind: "system",
-      actorId: "fund-source",
+      actorId: testUuid("fund-source"),
       type: "data.changed",
       data: { balance: 42 },
       messageId,
     });
     expect(sourceEvents).toContainEqual({
       kind: "actor",
-      actorId: "fund-source",
+      actorId: testUuid("fund-source"),
       name: "funds-added",
       payload: { accountId: "1", amount: 42, balance: 42 },
       messageId,
     });
     expect(sourceEvents).toContainEqual({
       kind: "system",
-      actorId: "fund-source",
+      actorId: testUuid("fund-source"),
       type: "ack",
       inputName: "add-funds",
       messageId,
@@ -715,17 +718,17 @@ describe("ActorSupervisor", () => {
     expect(targetEvents.some(event => event.kind === "system" && event.type === "ack")).toBe(true);
     expect(publishedActorEvents).toContainEqual({
       kind: "actor",
-      actorId: "fund-source",
+      actorId: testUuid("fund-source"),
       name: "funds-added",
       payload: { accountId: "1", amount: 42, balance: 42 },
       messageId,
     });
     expect(publishedActorEvents.some(event => event.kind === "system" && event.type === "data.changed")).toBe(true);
 
-    expect(supervisor.connectionMap["fund-source"].map(connection => connection.id)).toEqual([
-      "connection-fund-to-bookkeeper",
+    expect(supervisor.connectionMap[testUuid("fund-source")].map(connection => connection.id)).toEqual([
+      testUuid("connection-fund-to-bookkeeper"),
     ]);
-    expect(supervisor.actorMap["bookkeeper-target"].getData()).toEqual({
+    expect(supervisor.actorMap[testUuid("bookkeeper-target")].getData()).toEqual({
       entries: [
         {
           accountId: "1",
@@ -746,7 +749,7 @@ describe("ActorSupervisor", () => {
 
     try {
       await db.canvas.create({
-        id: "canvas-delete-definition",
+        id: testUuid("canvas-delete-definition"),
         name: "Actor Delete Definition Test Canvas",
         automerge_url: "automerge:actor-delete-definition-test",
       });
@@ -759,7 +762,7 @@ describe("ActorSupervisor", () => {
       });
 
       await supervisor.init();
-      const actor = await supervisor.createInstance("Account Funds Test", "canvas-delete-definition", "element-delete-definition");
+      const actor = await supervisor.createInstance("Account Funds Test", testUuid("canvas-delete-definition"), "element-delete-definition");
       if (!actor) throw new Error("Expected actor to be created");
 
       const deleted = await supervisor.deleteDefinition("Account Funds Test");
@@ -767,8 +770,8 @@ describe("ActorSupervisor", () => {
       expect(deleted).toBe(true);
       expect(supervisor.vibecanvasDefMap["Account Funds Test"]).toBeUndefined();
       expect(supervisor.actorMap[actor.getId()]).toBeUndefined();
-      expect(await db.actor.getDefinition("Account Funds Test")).toBeUndefined();
-      expect(await db.actor.getInstanceById(actor.getId())).toBeUndefined();
+      expect(await db.actor.getDefinition("Account Funds Test")).toBeNull();
+      expect(await db.actor.getInstanceById(actor.getId())).toBeNull();
       await expect(access(tempDefinitionDir)).rejects.toThrow();
 
       await supervisor.closeActors();
@@ -779,7 +782,7 @@ describe("ActorSupervisor", () => {
 
   test("serializes duplicate starts for one actor instance", async () => {
     await db.canvas.create({
-      id: "canvas-serialized-start",
+      id: testUuid("canvas-serialized-start"),
       name: "Serialized start",
       automerge_url: "automerge:serialized-start",
     });
@@ -802,6 +805,7 @@ describe("ActorSupervisor", () => {
       absWidgetDir: widgetDir,
       configPath,
       db,
+      crypto: createTestCrypto("serialized-start"),
       eventPublisherService: createEventPublisherService(notifications, []) as any,
       actorStartAdmission: async () => {
         admissionCalls += 1;
@@ -816,7 +820,7 @@ describe("ActorSupervisor", () => {
     await supervisor.init();
     const actor = await supervisor.createInstance(
       "Account Funds Test",
-      "canvas-serialized-start",
+      testUuid("canvas-serialized-start"),
       "element-serialized-start",
     );
     if (!actor) throw new Error("Expected actor instance to be created");
@@ -842,7 +846,7 @@ describe("ActorSupervisor", () => {
 
   test("closeActors drains an accepted start and prevents a post-shutdown actor", async () => {
     await db.canvas.create({
-      id: "canvas-shutdown-start",
+      id: testUuid("canvas-shutdown-start"),
       name: "Shutdown start",
       automerge_url: "automerge:shutdown-start",
     });
@@ -864,6 +868,7 @@ describe("ActorSupervisor", () => {
       absWidgetDir: widgetDir,
       configPath,
       db,
+      crypto: createTestCrypto("shutdown-start"),
       eventPublisherService: createEventPublisherService(notifications, []) as any,
       actorStartAdmission: async () => {
         if (holdAdmission) {
@@ -877,7 +882,7 @@ describe("ActorSupervisor", () => {
     await supervisor.init();
     const actor = await supervisor.createInstance(
       "Account Funds Test",
-      "canvas-shutdown-start",
+      testUuid("canvas-shutdown-start"),
       "element-shutdown-start",
     );
     if (!actor) throw new Error("Expected actor instance to be created");

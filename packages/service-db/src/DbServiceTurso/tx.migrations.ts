@@ -1,75 +1,120 @@
-/* eslint-disable functional-core/import-boundary -- legacy migration tx imports filesystem migration discovery helper */
-import { listMigrationFiles } from "./list-migration-files"
-import type { Database } from "@tursodatabase/database"
-import type * as fs from 'node:fs/promises';
-import type path from "node:path"
+import type { Database } from '@tursodatabase/database';
+import {
+  DATABASE_APPLICATION_ID,
+  DATABASE_SCHEMA_VERSION,
+} from '../CONSTANTS';
+import { INITIAL_MIGRATION } from '../migrations/CONSTANTS';
+import { fxReadMigrationFile } from './fx.migration-file';
+import { fxPreflightMigrationState } from './fx.migration-state';
+import {
+  txAssertDatabasePragmas,
+  txDefaultRunPragmas,
+} from './tx.pragma';
 
 type TPortal = {
-  db: Database,
-  Bun: typeof Bun
-  path: typeof path
-  dataDir?: string
-  fs?: Pick<typeof fs, 'cp' | 'lstat' | 'mkdir' | 'readFile' | 'readdir' | 'readlink' | 'realpath' | 'rename' | 'rm' | 'rmdir' | 'symlink' | 'writeFile'>
-  platform?: NodeJS.Platform
-}
+  Bun: Pick<typeof Bun, 'CryptoHasher' | 'file'>;
+  db: Database;
+};
 
 type TArgs = {
+  applicationVersion: string;
+  appliedAtMs: number;
+  expectedApplicationTables: readonly string[];
+};
 
-}
+type TImmediateTransaction = (() => Promise<void>) & {
+  immediate: () => Promise<void>;
+};
 
-async function txEnsureMigrationTable(portal: TPortal, args: TArgs) {
-  await portal.db.exec(`
-CREATE TABLE IF NOT EXISTS migrations (
-  name TEXT NOT NULL,
-  hash_hex TEXT NOT NULL,
-  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-    `)
-}
+async function assertDatabaseChecks(db: Database): Promise<void> {
+  const [integrityRow, quickRow] = await Promise.all([
+    (await db.prepare('PRAGMA integrity_check')).get(),
+    (await db.prepare('PRAGMA quick_check')).get(),
+  ]) as [Record<string, unknown> | undefined, Record<string, unknown> | undefined];
 
-async function listAppliedMigrations(portal: TPortal): Promise<{ name: string; hash_hex: string; applied_at: Date }[]> {
-  const stmt = await portal.db.prepare(`SELECT name, hash_hex, applied_at FROM migrations`)
-  const result = await stmt.all()
-  return result.map((row) => ({
-    name: row.name,
-    hash_hex: row.hash_hex,
-    applied_at: new Date(row.applied_at),
-  })).sort((a, b) => a.applied_at.getTime() - b.applied_at.getTime())
-}
-
-export async function txRunMigrations(portal: TPortal, args: TArgs) {
-  const migrationFiles = listMigrationFiles()
-  await txEnsureMigrationTable(portal, args)
-  const appliedMigrations = await listAppliedMigrations(portal)
-  const warnings: string[] = []
-  for (const file of migrationFiles) {
-    const migrationName = file.name
-    if(appliedMigrations.some((m) => m.name === migrationName)) continue
-    let hashHex: string
-    if (file.type === 'sql') {
-      const sqlFile = await portal.Bun.file(file.path).text()
-      hashHex = portal.Bun.hash(sqlFile).toString(16)
-      const legacyMigration = appliedMigrations.find((migration) => file.legacyNames?.includes(migration.name))
-      if (legacyMigration) {
-        if (legacyMigration.hash_hex !== hashHex) {
-          throw new Error(`Cannot repair renamed migration '${legacyMigration.name}': SQL hash does not match '${migrationName}'.`)
-        }
-        const rename = await portal.db.prepare(`UPDATE migrations SET name = ? WHERE name = ?`)
-        await rename.run(migrationName, legacyMigration.name)
-        continue
-      }
-      await portal.db.exec(sqlFile)
-    } else {
-      hashHex = portal.Bun.hash(`${file.name}:${file.version}`).toString(16)
-      if (portal.dataDir && portal.fs && portal.platform) {
-        const result = await file.run({ db: portal.db, dataDir: portal.dataDir, fs: portal.fs, path: portal.path, platform: portal.platform }, {})
-        warnings.push(...(result.warnings ?? []).slice(0, Math.max(0, 100 - warnings.length)))
-      } else {
-        warnings.push(`${file.name}: filesystem portal was not supplied; no agent storage existed in this isolated migration run.`)
-      }
-    }
-    const stmt = await portal.db.prepare(`INSERT INTO migrations (name, hash_hex) VALUES (?, ?)`)
-    await stmt.run(migrationName, hashHex)
+  if (integrityRow?.integrity_check !== 'ok') {
+    throw new Error(`Database integrity_check failed: ${String(integrityRow?.integrity_check)}.`);
   }
-  return { warnings }
+  if (quickRow?.quick_check !== 'ok') {
+    throw new Error(`Database quick_check failed: ${String(quickRow?.quick_check)}.`);
+  }
 }
+
+async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied: boolean }> {
+  if (!args.applicationVersion.trim()) {
+    throw new Error('Migration applicationVersion must not be empty.');
+  }
+  if (!Number.isSafeInteger(args.appliedAtMs) || args.appliedAtMs < 0) {
+    throw new Error('Migration appliedAtMs must be a non-negative safe integer.');
+  }
+
+  const migrationFile = await fxReadMigrationFile(
+    { Bun: portal.Bun },
+    { path: INITIAL_MIGRATION.path },
+  );
+  const preflightArgs = {
+    checksumSha256: migrationFile.checksumSha256,
+    expectedApplicationTables: args.expectedApplicationTables,
+  } as const;
+  const initialState = await fxPreflightMigrationState({ db: portal.db }, preflightArgs);
+
+  await txDefaultRunPragmas(
+    { db: portal.db },
+    {
+      expectApplicationMetadata: initialState.status === 'ready',
+    },
+  );
+  await txAssertDatabasePragmas(
+    { db: portal.db },
+    {
+      expectApplicationMetadata: initialState.status === 'ready',
+    },
+  );
+
+  if (initialState.status === 'ready') {
+    await assertDatabaseChecks(portal.db);
+    return { applied: false };
+  }
+
+  const transaction = portal.db.transaction(async () => {
+    await portal.db.exec(migrationFile.sql);
+    const insertMigration = await portal.db.prepare(`
+      INSERT INTO schema_migrations (
+        version,
+        name,
+        checksum_sha256,
+        applied_at_ms,
+        application_version
+      ) VALUES (?, ?, ?, ?, ?)
+    `);
+    await insertMigration.run(
+      DATABASE_SCHEMA_VERSION,
+      INITIAL_MIGRATION.name,
+      migrationFile.checksumSha256,
+      args.appliedAtMs,
+      args.applicationVersion,
+    );
+    await portal.db.exec(`
+      PRAGMA application_id = ${DATABASE_APPLICATION_ID};
+      PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
+    `);
+  }) as TImmediateTransaction;
+
+  await transaction.immediate();
+
+  await txAssertDatabasePragmas(
+    { db: portal.db },
+    {
+      expectApplicationMetadata: true,
+    },
+  );
+  const finalState = await fxPreflightMigrationState({ db: portal.db }, preflightArgs);
+  if (finalState.status !== 'ready') {
+    throw new Error('Fresh database bootstrap completed without a valid managed migration state.');
+  }
+  await assertDatabaseChecks(portal.db);
+
+  return { applied: true };
+}
+
+export { txRunMigrations };

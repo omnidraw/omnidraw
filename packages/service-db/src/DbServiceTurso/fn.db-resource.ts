@@ -12,6 +12,7 @@ import {
   DB_RESOURCE_DRAFT_LIST_MAX_LIMIT,
 } from "../CONSTANTS"
 import { fnParseJsonValue } from "./fn.actor-resource-row"
+import { fnBooleanFromSql, fnNullableTimestampFromMs, fnTimestampFromMs } from "./fn.legacy-row"
 
 function parseNullableJson(value: unknown): TJson | null {
   return value === null || value === undefined ? null : fnParseJsonValue(value)
@@ -34,41 +35,89 @@ export function fnDbResourceApplyListLimit(limit: number | undefined): number {
 }
 
 export function fnParseDbResourceDraftRow(row: unknown): TDbResourceDraft {
-  const value = row as Omit<TDbResourceDraft, "last_error"> & { last_error: unknown | null }
+  const value = row as {
+    id: string
+    resource_id: string
+    name: string
+    status: TDbResourceDraft["status"]
+    last_error_json: unknown | null
+    created_at_ms: unknown
+    updated_at_ms: unknown
+    applied_at_ms: unknown | null
+  }
   return {
-    ...value,
-    last_error: parseNullableJson(value.last_error),
+    id: value.id,
+    resource_id: value.resource_id,
+    name: value.name,
+    status: value.status,
+    last_error: parseNullableJson(value.last_error_json),
+    created_at: fnTimestampFromMs(value.created_at_ms),
+    updated_at: fnTimestampFromMs(value.updated_at_ms),
+    applied_at: fnNullableTimestampFromMs(value.applied_at_ms),
   }
 }
 
 export function fnParseDbResourceDraftChangeRow(row: unknown): TDbResourceDraftChange {
-  const value = row as Omit<TDbResourceDraftChange, "operation"> & { operation: unknown | null }
+  const value = row as {
+    draft_id: string
+    sequence: number
+    kind: TDbResourceDraftChange["kind"]
+    operation_json: unknown | null
+    sql_text: string
+    created_at_ms: unknown
+  }
   return {
-    ...value,
-    operation: parseNullableJson(value.operation),
+    draft_id: value.draft_id,
+    sequence: value.sequence,
+    kind: value.kind,
+    operation: parseNullableJson(value.operation_json),
+    sql: value.sql_text,
+    created_at: fnTimestampFromMs(value.created_at_ms),
   }
 }
 
 export function fnParseDbResourceApplyRunRow(row: unknown): TDbResourceApplyRun {
-  const value = row as Omit<TDbResourceApplyRun, "last_error" | "backup_retained"> & {
-    last_error: unknown | null
-    backup_retained: boolean | number
+  const value = row as {
+    id: string
+    resource_id: string
+    draft_id: string | null
+    source_apply_id: string | null
+    status: TDbResourceApplyRun["status"]
+    last_error_json: unknown | null
+    backup_retained: unknown
+    created_at_ms: unknown
+    completed_at_ms: unknown | null
   }
   return {
-    ...value,
-    last_error: parseNullableJson(value.last_error),
-    backup_retained: Boolean(value.backup_retained),
+    id: value.id,
+    resource_id: value.resource_id,
+    draft_id: value.draft_id,
+    source_apply_id: value.source_apply_id,
+    status: value.status,
+    last_error: parseNullableJson(value.last_error_json),
+    backup_retained: fnBooleanFromSql(value.backup_retained),
+    created_at: fnTimestampFromMs(value.created_at_ms),
+    completed_at: fnNullableTimestampFromMs(value.completed_at_ms),
   }
 }
 
 export function fnParseDbResourceApplyInstanceResultRow(row: unknown): TDbResourceApplyInstanceResult {
-  const value = row as Omit<TDbResourceApplyInstanceResult, "error" | "was_running"> & {
-    error: unknown | null
-    was_running: boolean | number
+  const value = row as {
+    apply_id: string
+    actor_instance_id: string
+    actor_definition_name: string
+    was_running: unknown
+    status: TDbResourceApplyInstanceResult["status"]
+    error_json: unknown | null
+    updated_at_ms: unknown
   }
   return {
-    ...value,
-    error: parseNullableJson(value.error),
-    was_running: Boolean(value.was_running),
+    apply_id: value.apply_id,
+    actor_instance_id: value.actor_instance_id,
+    actor_definition_name: value.actor_definition_name,
+    was_running: fnBooleanFromSql(value.was_running),
+    status: value.status,
+    error: parseNullableJson(value.error_json),
+    updated_at: fnTimestampFromMs(value.updated_at_ms),
   }
 }

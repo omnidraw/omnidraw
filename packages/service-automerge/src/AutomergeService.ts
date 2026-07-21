@@ -1,4 +1,4 @@
-import { Repo, type DocHandle, type PeerId, type StorageAdapterInterface } from '@automerge/automerge-repo';
+import { Repo, type DocHandle, type PeerId } from '@automerge/automerge-repo';
 import type { Database as TursoDatabase } from '@tursodatabase/database';
 import { TursoStorageAdapter } from './adapters/turso.adapter';
 import { BunWSServerAdapter } from './adapters/websocket.adapter';
@@ -20,6 +20,7 @@ export type TAutomergeCallbacks = {
 export class AutomergeService implements IAutomergeService {
   readonly name = 'automerge' as const;
   #repo: Repo | null = null;
+  #storageAdapter: TursoStorageAdapter | null = null;
   readonly wsAdapter: BunWSServerAdapter;
   #elementDeleteWatchedDocumentIds = new Set<string>();
   #elementDeleteScanInterval: ReturnType<typeof setInterval> | null = null;
@@ -49,6 +50,7 @@ export class AutomergeService implements IAutomergeService {
     }
 
     const storage = this.#createStorageAdapter(this.database);
+    this.#storageAdapter = storage;
 
     this.#repo = new Repo({
       storage,
@@ -60,12 +62,23 @@ export class AutomergeService implements IAutomergeService {
     this.#startElementDeleteWatcher();
   }
 
-  #createStorageAdapter(database: TAutomergeStorageConfig): StorageAdapterInterface {
+  #createStorageAdapter(database: TAutomergeStorageConfig): TursoStorageAdapter {
     if ('type' in database) {
       return new TursoStorageAdapter(database.database);
     }
 
     return new TursoStorageAdapter(database);
+  }
+
+  async notifyDocumentRegistered(automergeUrl: string): Promise<void> {
+    if (this.#storageAdapter === null) {
+      throw new Error('AutomergeService registration notified before service start');
+    }
+    await this.#storageAdapter.notifyDocumentRegistered(automergeUrl);
+  }
+
+  failDocumentRegistration(automergeUrl: string, cause: unknown): void {
+    this.#storageAdapter?.failDocumentRegistration(automergeUrl, cause);
   }
 
   #startElementDeleteWatcher(): void {
@@ -122,13 +135,17 @@ export class AutomergeService implements IAutomergeService {
   }
 
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.#elementDeleteScanInterval !== null) {
       clearInterval(this.#elementDeleteScanInterval);
       this.#elementDeleteScanInterval = null;
     }
 
+    const storageAdapter = this.#storageAdapter;
+    storageAdapter?.dispose();
     this.wsAdapter.disconnect();
+    await this.#repo?.shutdown();
     this.#repo = null;
+    this.#storageAdapter = null;
   }
 }

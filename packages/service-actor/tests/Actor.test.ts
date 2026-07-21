@@ -721,6 +721,7 @@ describe("Actor", () => {
         actor.start()
         await actor.waitUntilReady()
         await waitFor(() => actor.getState() === "ready", "activity target recovery did not finish")
+        await waitForIdle(actor)
         expect(actor.getData()).toMatchObject({
             recovered: 1,
             events: ["lifecycle.exit", "lifecycle.enter"],

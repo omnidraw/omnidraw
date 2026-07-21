@@ -1,44 +1,48 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { connect, Database } from "@tursodatabase/database";
-import path from "node:path";
-import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { connect, type Database } from "@tursodatabase/database";
+import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from "../../../src/CONSTANTS";
 import { fxActorListInstances } from "../../../src/DbServiceTurso/fx.actor";
+import { txRunMigrations } from "../../../src/DbServiceTurso/tx.migrations";
+import { EXPECTED_APPLICATION_TABLES } from "../../../src/schema/expected-schema";
 
-async function inMemoryDb() {
+const CANVAS_ID = "00000000-0000-4000-8000-000000000101";
+const OBJECT_ACTOR_ID = "00000000-0000-4000-8000-000000000102";
+
+async function inMemoryDb(): Promise<Database> {
   // @ts-expect-error custom_types not typed yet
   return connect(":memory:", { experimental: ["custom_types", "triggers", "index_method"] });
 }
 
-async function seedActorRows(db: Database) {
-  await db.exec("PRAGMA foreign_keys = ON");
-  await txRunMigrations({ db, Bun, path }, {});
-
-  const insertCanvas = await db.prepare("insert into canvas (id, name, automerge_url) values (?, ?, ?)");
-  await insertCanvas.run("canvas-actor", "Actor Canvas", "automerge:actor");
-
-  const insertDefinition = await db.prepare("insert into actor_definitions (name, slug, manifest_path) values (?, ?, ?)");
-  await insertDefinition.run("Counter", "counter", "actors/counter/vibecanvas.json");
-
-  const insertInstance = await db.prepare("insert into actor_instances (id, canvas_id, element_id, actor_definition_name, display_name, status, machine_state, machine_context) values (?, ?, ?, ?, ?, ?, ?, ?)");
+async function seedActorRows(db: Database): Promise<void> {
+  await txRunMigrations({ db, Bun }, {
+    applicationVersion: "test",
+    appliedAtMs: 1,
+    expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+  });
+  await (await db.prepare(`
+    INSERT INTO canvases (
+      org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
+    ) VALUES (?, ?, 'Actor Canvas', 'restricted', ?, 1, 1)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_ID, DEFAULT_OSS_ACCOUNT_ID);
+  await (await db.prepare(`
+    INSERT INTO legacy_actor_definitions (
+      org_id, name, slug, url, description, manifest_relative_path, created_at_ms, updated_at_ms
+    ) VALUES (?, 'Counter', 'counter', NULL, NULL, 'actors/counter/vibecanvas.json', 1, 1)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID);
+  const insertInstance = await db.prepare(`
+    INSERT INTO legacy_actor_instances (
+      org_id, id, canvas_id, element_id, actor_definition_name, file_system_id,
+      display_name, status, machine_state, machine_context_json, last_error_json,
+      created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, ?, 'Counter', NULL, ?, 'running', 'ready', ?, NULL, 1, 1)
+  `);
   await insertInstance.run(
-    "actor-object-context",
-    "canvas-actor",
+    DEFAULT_OSS_ORGANIZATION_ID,
+    OBJECT_ACTOR_ID,
+    CANVAS_ID,
     "element-object-context",
-    "Counter",
     "Counter Object Context",
-    "running",
-    "ready",
     JSON.stringify({ count: 7, nested: { ok: true } }),
-  );
-  await insertInstance.run(
-    "actor-string-context",
-    "canvas-actor",
-    "element-string-context",
-    "Counter",
-    "Counter String Context",
-    "running",
-    "ready",
-    JSON.stringify("valid-json-string"),
   );
 }
 
@@ -54,15 +58,11 @@ describe("fx.actor", () => {
     await db.close();
   });
 
-  test("lists actor instances with machine_context decoded from JSON column", async () => {
+  test("lists actor instances with machine_context decoded from the checked object JSON column", async () => {
     const instances = await fxActorListInstances({ db }, {});
-
-    const objectContext = instances.find(instance => instance.id === "actor-object-context");
-    const stringContext = instances.find(instance => instance.id === "actor-string-context");
+    const objectContext = instances.find((instance) => instance.id === OBJECT_ACTOR_ID);
 
     expect(objectContext?.machine_context).toEqual({ count: 7, nested: { ok: true } });
     expect(typeof objectContext?.machine_context).toBe("object");
-    expect(stringContext?.machine_context).toBe("valid-json-string");
-    expect(typeof stringContext?.machine_context).toBe("string");
   });
 });

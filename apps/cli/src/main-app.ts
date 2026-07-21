@@ -2,6 +2,7 @@ import { createRuntime } from '@vibecanvas/runtime';
 import { execFile } from 'node:child_process';
 import { buildCliConfig } from './build-config';
 import type { ICliConfig } from './config';
+import { fnBuildHomePreflightError } from './fn.home-preflight-error';
 import { bootCliRuntime, createCliHooks, shutdownCliRuntime } from './hooks';
 import { CliArgvError, parseCliArgv } from './parse-argv';
 import { createAuthPlugin } from './plugins/auth/AuthPlugin';
@@ -42,16 +43,36 @@ export async function runCliMain() {
     return;
   }
 
+  if (config.command === 'serve' && !config.helpRequested) {
+    const { preflightDbServiceDatabase } = await import('@vibecanvas/service-db/DbServiceTurso/DbServiceTurso');
+    try {
+      await preflightDbServiceDatabase({
+        homeDir: config.home.homeDir,
+        databasePath: config.home.mainDbPath,
+      });
+    } catch (error) {
+      fnPrintCommandError(fnBuildHomePreflightError({ homeDir: config.home.homeDir, error }), wantsJson);
+      return;
+    }
+    const [{ mkdirSync }, { txEnsureVibecanvasHome }] = await Promise.all([
+      import('node:fs'),
+      import('@vibecanvas/shared-functions/vibecanvas-config/tx.ensure-vibecanvas-home'),
+    ]);
+    txEnsureVibecanvasHome({ mkdirSync }, { home: config.home });
+  }
+
   const { setupServices } = await import('./setup-services');
   const { services, eventPublisher } = setupServices(config);
 
-  void txCheckWidgetPrerequisites({
-    execFile: (file, args, options, callback) => {
-      execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
-    },
-    warn: (message) => console.warn(message),
-    publishNotification: (event) => eventPublisher.publishNotification(event),
-  }, config);
+  if (config.command === 'serve' && !config.helpRequested) {
+    void txCheckWidgetPrerequisites({
+      execFile: (file, args, options, callback) => {
+        execFile(file, [...args], { ...options, encoding: 'utf8' }, callback);
+      },
+      warn: (message) => console.warn(message),
+      publishNotification: (event) => eventPublisher.publishNotification(event),
+    }, config);
+  }
 
   const runtime = createRuntime<any, ICliConfig>({
     plugins: [createAuthPlugin(), createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],

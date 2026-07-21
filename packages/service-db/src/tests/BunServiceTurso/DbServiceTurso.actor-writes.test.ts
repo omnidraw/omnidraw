@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DbServiceTurso } from "../../../src/DbServiceTurso/DbServiceTurso";
 
-const CANVAS_ID = "canvas-actor-write-burst";
+const testUuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
+const CANVAS_ID = testUuid(401);
+const actorId = (index: number) => testUuid(500 + index);
+const connectionId = (index: number) => testUuid(700 + index);
+const ACTOR_SMALL = testUuid(801);
+const ACTOR_TARGET = testUuid(802);
+const ACTOR_MEDIUM = testUuid(803);
+const ACTOR_HEALTH = testUuid(804);
 const ACTOR_DEFINITION_NAME = "Counter";
 
 async function createDbService(tempRoot: string): Promise<DbServiceTurso> {
@@ -29,7 +36,7 @@ async function seedActorGraph(db: DbServiceTurso): Promise<void> {
     slug: "counter",
     url: null,
     description: null,
-    manifest_path: "/actors/counter/vibecanvas.json",
+    manifest_path: "actors/counter/vibecanvas.json",
   });
 }
 
@@ -53,7 +60,7 @@ describe("DbServiceTurso actor writes", () => {
     const deletedIds = new Set<string>();
 
     await Promise.all(Array.from({ length: iterations }, async (_, index) => {
-      const id = `actor-${index}`;
+      const id = actorId(index);
 
       await db.actor.insertInstance({
         id,
@@ -91,12 +98,12 @@ describe("DbServiceTurso actor writes", () => {
     expect(instances.every(instance => instance.status === "running")).toBe(true);
     expect(instances.every(instance => instance.machine_state === "ready")).toBe(true);
 
-    const actor37 = instances.find(instance => instance.id === "actor-37");
+    const actor37 = instances.find(instance => instance.id === actorId(37));
     expect(actor37?.machine_context).toEqual({ count: 37, nested: { ok: true } });
 
     const liveIds = instances.map(instance => instance.id);
     await Promise.all(liveIds.slice(0, 40).map((sourceId, index) => db.actor.insertConnection({
-      id: `connection-${index}`,
+      id: connectionId(index),
       canvas_id: CANVAS_ID,
       source_actor_instance_id: sourceId,
       target_actor_instance_id: liveIds[(index + 1) % liveIds.length],
@@ -108,7 +115,7 @@ describe("DbServiceTurso actor writes", () => {
 
     const connections = await db.actor.listConnections();
     expect(connections).toHaveLength(40);
-    expect(connections.find(connection => connection.id === "connection-37")?.style).toEqual({ index: 37 });
+    expect(connections.find(connection => connection.id === connectionId(37))?.style).toEqual({ index: 37 });
 
     await Promise.all(connections.map((connection, index) => {
       if (index % 2 === 0) {
@@ -127,7 +134,7 @@ describe("DbServiceTurso actor writes", () => {
       slug: "counter",
       url: null,
       description: null,
-      manifest_path: "/actors/duplicate/vibecanvas.json",
+      manifest_path: "actors/duplicate/vibecanvas.json",
     })).rejects.toBeInstanceOf(Error);
 
     await expect(db.actor.insertDefinition({
@@ -135,7 +142,7 @@ describe("DbServiceTurso actor writes", () => {
       slug: "timer",
       url: null,
       description: null,
-      manifest_path: "/actors/timer/vibecanvas.json",
+      manifest_path: "actors/timer/vibecanvas.json",
     })).resolves.toMatchObject({
       name: "Timer",
       slug: "timer",
@@ -146,9 +153,9 @@ describe("DbServiceTurso actor writes", () => {
     const mediumHtml = `<!doctype html><html><body>${"x".repeat(16_000)}</body></html>`;
 
     for (const [id, context] of [
-      ["actor-small-a", { kind: "small-a" }],
-      ["actor-update-target", { kind: "target" }],
-      ["actor-medium-c", { kind: "medium", html: mediumHtml }],
+      [ACTOR_SMALL, { kind: "small-a" }],
+      [ACTOR_TARGET, { kind: "target" }],
+      [ACTOR_MEDIUM, { kind: "medium", html: mediumHtml }],
     ] as const) {
       await db.actor.insertInstance({
         id,
@@ -164,32 +171,32 @@ describe("DbServiceTurso actor writes", () => {
     }
 
     const statusResult = await db.actor.updateInstanceStatus({
-      id: "actor-update-target",
+      id: ACTOR_TARGET,
       status: "running",
     });
     expect(statusResult).toMatchObject({
-      id: "actor-update-target",
+      id: ACTOR_TARGET,
       status: "running",
       machine_context: { kind: "target" },
     });
 
     const nextContext = { kind: "medium-updated", html: mediumHtml };
     const machineResult = await db.actor.updateInstanceMachine({
-      id: "actor-medium-c",
+      id: ACTOR_MEDIUM,
       machine_state: "ready",
       machine_context: nextContext,
     });
     expect(machineResult).toMatchObject({
-      id: "actor-medium-c",
+      id: ACTOR_MEDIUM,
       machine_state: "ready",
       machine_context: nextContext,
     });
 
-    const persistedTarget = await db.actor.getInstanceById("actor-update-target");
-    const persistedMedium = await db.actor.getInstanceById("actor-medium-c");
-    expect(persistedTarget?.id).toBe("actor-update-target");
+    const persistedTarget = await db.actor.getInstanceById(ACTOR_TARGET);
+    const persistedMedium = await db.actor.getInstanceById(ACTOR_MEDIUM);
+    expect(persistedTarget?.id).toBe(ACTOR_TARGET);
     expect(persistedTarget?.status).toBe("running");
-    expect(persistedMedium?.id).toBe("actor-medium-c");
+    expect(persistedMedium?.id).toBe(ACTOR_MEDIUM);
   });
 
   test("updates actor definition identity without UPDATE RETURNING on the self-triggered table", async () => {
@@ -199,7 +206,7 @@ describe("DbServiceTurso actor writes", () => {
       slug: "counter-v2",
       url: "https://example.com/counter",
       description: "Updated counter",
-      manifest_path: "/actors/counter-renamed/vibecanvas.json",
+      manifest_path: "actors/counter-renamed/vibecanvas.json",
     });
 
     expect(updated).toMatchObject({
@@ -207,7 +214,7 @@ describe("DbServiceTurso actor writes", () => {
       slug: "counter-v2",
       url: "https://example.com/counter",
       description: "Updated counter",
-      manifest_path: "/actors/counter-renamed/vibecanvas.json",
+      manifest_path: "actors/counter-renamed/vibecanvas.json",
     });
     await expect(db.actor.listDefinitions()).resolves.toHaveLength(1);
   });
@@ -215,7 +222,7 @@ describe("DbServiceTurso actor writes", () => {
   test("persists and clears actor infrastructure errors without changing machine context", async () => {
     const mediumHtml = `<main>${"state".repeat(4_000)}</main>`;
     await db.actor.insertInstance({
-      id: "actor-health",
+      id: ACTOR_HEALTH,
       canvas_id: CANVAS_ID,
       element_id: "element-health",
       actor_definition_name: ACTOR_DEFINITION_NAME,
@@ -227,7 +234,7 @@ describe("DbServiceTurso actor writes", () => {
     });
 
     const failed = await db.actor.updateInstanceHealth({
-      id: "actor-health",
+      id: ACTOR_HEALTH,
       status: "error",
       last_error: {
         phase: "instance-start",
@@ -239,7 +246,7 @@ describe("DbServiceTurso actor writes", () => {
     expect(failed.last_error?.code).toBe("ACTOR_INSTANCE_START_FAILED");
     expect(failed.machine_context).toEqual({ html: mediumHtml, count: 7 });
 
-    const recovered = await db.actor.updateInstanceHealth({ id: "actor-health", status: "running", last_error: null });
+    const recovered = await db.actor.updateInstanceHealth({ id: ACTOR_HEALTH, status: "running", last_error: null });
     expect(recovered.last_error).toBeNull();
     expect(recovered.machine_context).toEqual({ html: mediumHtml, count: 7 });
   });

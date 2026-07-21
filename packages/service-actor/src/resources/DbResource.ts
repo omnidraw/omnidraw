@@ -530,7 +530,7 @@ export class DbResource implements IActorResourceProvider {
     const resourceId = validateHostId(resource.id);
     const directory = this.#resourceDirectory(resourceId);
     try {
-      await mkdir(join(this.#dataRoot, 'actor-resources', 'db'), { recursive: true });
+      await mkdir(this.#dataRoot, { recursive: true });
       await mkdir(directory);
       const database = await this.#open(resourceId, false);
       await database.exec(APPLY_MARKER_SQL);
@@ -1972,9 +1972,9 @@ export class DbResource implements IActorResourceProvider {
     await Promise.all(sourceEntries.map((entry) => copyFile(join(sourceDirectory, entry), join(dirname(destinationPath), `${destinationName}${entry.slice(sourceName.length)}`))));
   }
 
-  #resourceDirectory(resourceId: string) { return join(this.#dataRoot, 'actor-resources', 'db', validateHostId(resourceId)); }
+  #resourceDirectory(resourceId: string) { return join(this.#dataRoot, validateHostId(resourceId)); }
   #databasePath(resourceId: string) { return join(this.#resourceDirectory(resourceId), 'data.db'); }
-  #draftDirectory(draftId: string) { return join(this.#dataRoot, 'actor-resources', 'db-drafts', validateHostId(draftId, 'DbResource draft')); }
+  #draftDirectory(draftId: string) { return join(this.#dataRoot, '.drafts', validateHostId(draftId, 'DbResource draft')); }
   #draftDatabasePath(draftId: string) { return join(this.#draftDirectory(draftId), 'data.db'); }
   #backupDirectory(resourceId: string, applyId: string) { return join(this.#resourceDirectory(resourceId), 'backups', validateHostId(applyId, 'DbResource apply')); }
   #backupDatabasePath(resourceId: string, applyId: string) { return join(this.#backupDirectory(resourceId, applyId), 'data.db'); }

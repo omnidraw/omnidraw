@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { buildCliConfig } from '../src/build-config';
 import { parseCliArgv } from '../src/parse-argv';
 
@@ -47,22 +50,34 @@ describe('parseCliArgv command resolution', () => {
   });
 
   test('carries parsed options into buildCliConfig', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'serve', '--db', './tmp/dev.sqlite', '--json']);
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/vibecanvas-home', '--json']);
     const config = buildCliConfig(parsed);
 
     expect(config.command).toBe('serve');
     expect(config.subcommand).toBeUndefined();
-    expect(config.dbPath).toBe('./tmp/dev.sqlite');
+    expect(config.home.homeDir).toBe(resolve(process.cwd(), './tmp/vibecanvas-home'));
+    expect(config.home.mainDbPath).toBe(resolve(process.cwd(), './tmp/vibecanvas-home/main.db'));
     expect(config.subcommandOptions).toMatchObject({
       json: true,
     });
   });
 
   test('does not mistake a later positional for the top-level command', () => {
-    const parsed = parseCliArgv(['bun', 'run', 'serve', '--db', './tmp/dev.sqlite', 'query']);
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', './tmp/vibecanvas-home', 'query']);
 
     expect(parsed.command).toBe('serve');
     expect(parsed.subcommand).toBeUndefined();
-    expect(parsed.dbPath).toBe('./tmp/dev.sqlite');
+    expect(parsed.dataDir).toBe('./tmp/vibecanvas-home');
+  });
+
+  test('configuration construction resolves paths without touching disk', () => {
+    const homeDir = join(tmpdir(), `vibecanvas-config-${crypto.randomUUID()}`);
+    const parsed = parseCliArgv(['bun', 'run', 'serve', '--data-dir', homeDir]);
+
+    expect(existsSync(homeDir)).toBe(false);
+    const config = buildCliConfig(parsed);
+
+    expect(config.home.homeDir).toBe(homeDir);
+    expect(existsSync(homeDir)).toBe(false);
   });
 });

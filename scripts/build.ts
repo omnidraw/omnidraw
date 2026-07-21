@@ -37,7 +37,7 @@ const frontendDir = path.join(rootDir, "apps/frontend")
 const sdkDir = path.join(rootDir, "packages/sdk")
 const wrapperDir = path.join(rootDir, "apps/vibecanvas")
 const wrapperBinPath = path.join(wrapperDir, "bin/vibecanvas")
-const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/DbServiceTurso/migration-files")
+const serviceDbMigrationsDir = path.join(rootDir, "packages/service-db/src/migrations")
 const forbiddenBinaryMarkers = [
   "wasm_bindgen_output/nodejs/automerge_wasm_bg.wasm",
 ] as const
@@ -423,7 +423,7 @@ async function collectMigrationFiles(): Promise<string[]> {
 
 async function generateEmbeddedMigrations(migrationFiles: string[]): Promise<void> {
   const imports = migrationFiles
-    .map((f, i) => `import migration${i} from './DbServiceTurso/migration-files/${f}' with { type: "file" };`)
+    .map((f, i) => `import migration${i} from './migrations/${f}' with { type: "file" };`)
     .join("\n");
 
   const embeddedMigrationsCode = `// Auto-generated file - do not edit

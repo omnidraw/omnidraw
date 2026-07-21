@@ -61,7 +61,7 @@ describe('ActorResourceKeyValueStore', () => {
       await legacy.set({ resourceId: args.resourceId, key: 'token', value: args.value });
     }
     await legacy.close();
-    const kvDirectory = join(rootDir, 'actor-resources', 'kv', args.resourceId);
+    const kvDirectory = join(rootDir, args.resourceId);
     const database = new Database(join(kvDirectory, 'data.db'), { fileMustExist: true });
     await database.connect();
     try {
@@ -77,8 +77,6 @@ describe('ActorResourceKeyValueStore', () => {
     } finally {
       await database.close();
     }
-    await mkdir(join(rootDir, 'actor-resources', 'secret-store'), { recursive: true });
-    await rename(kvDirectory, join(rootDir, 'actor-resources', 'secret-store', args.resourceId));
   }
 
   async function moveDatabaseArtifacts(fromPath: string, toPath: string): Promise<void> {
@@ -105,13 +103,13 @@ describe('ActorResourceKeyValueStore', () => {
     await kv.provision({ resourceId: 'kv-safe_1', kind: 'kv' });
     await secrets.provision({ resourceId: 'secret-safe_1', kind: 'secretStore' });
 
-    expect((await stat(join(rootDir, 'actor-resources', 'kv', 'kv-safe_1', 'data.db'))).isFile()).toBe(true);
-    expect((await stat(join(rootDir, 'actor-resources', 'secret-store', 'secret-safe_1', 'data.db'))).isFile()).toBe(true);
+    expect((await stat(join(rootDir, 'kv-safe_1', 'data.db'))).isFile()).toBe(true);
+    expect((await stat(join(rootDir, 'secret-safe_1', 'data.db'))).isFile()).toBe(true);
 
     for (const [databasePath, encryption] of [
-      [join(rootDir, 'actor-resources', 'kv', 'kv-safe_1', 'data.db'), undefined],
+      [join(rootDir, 'kv-safe_1', 'data.db'), undefined],
       [
-        join(rootDir, 'actor-resources', 'secret-store', 'secret-safe_1', 'data.db'),
+        join(rootDir, 'secret-safe_1', 'data.db'),
         { cipher: 'aegis256' as const, hexkey: testSecretStoreDatabaseHexKey('secret-safe_1') },
       ],
     ] as const) {
@@ -158,7 +156,7 @@ describe('ActorResourceKeyValueStore', () => {
     const sentinel = 'secret-at-rest-sentinel-9f7c';
     await secrets.set({ resourceId: 'encrypted-secret', key: 'token', value: sentinel });
     await secrets.set({ resourceId: 'encrypted-secret', key: 'token', value: sentinel });
-    const directory = join(rootDir, 'actor-resources', 'secret-store', 'encrypted-secret');
+    const directory = join(rootDir, 'encrypted-secret');
     const liveSidecars = (await readdir(directory)).filter((name) => name !== 'data.db' && name.startsWith('data.db'));
     expect(liveSidecars.length).toBeGreaterThan(0);
     expect(liveSidecars).toContain('data.db-wal');
@@ -223,7 +221,7 @@ describe('ActorResourceKeyValueStore', () => {
     });
     await secrets.close();
 
-    const directory = join(rootDir, 'actor-resources', 'secret-store', expected.resourceId);
+    const directory = join(rootDir, expected.resourceId);
     expect((await readFile(join(directory, 'data.db'))).subarray(0, 6).toString('ascii')).toBe('Turso\0');
     expect((await readdir(directory)).some((name) => name.includes('.tmp') || name.includes('.recovery'))).toBe(false);
     const database = new Database(join(directory, 'data.db'), {
@@ -271,7 +269,7 @@ describe('ActorResourceKeyValueStore', () => {
         .rejects.toThrow(`injected conversion fault: ${checkpoint}`);
       expect(injected).toBe(true);
 
-      const directory = join(rootDir, 'actor-resources', 'secret-store', resourceId);
+      const directory = join(rootDir, resourceId);
       const migrationFiles = await readdir(directory);
       expect(migrationFiles.some((name) => (
         name === 'data.db'
@@ -338,7 +336,7 @@ describe('ActorResourceKeyValueStore', () => {
       createdAt: '2022-01-01T00:00:00.000Z',
       updatedAt: '2022-01-02T00:00:00.000Z',
     });
-    const recoveryBase = join(rootDir, 'actor-resources', 'secret-store', 'recovery-only', 'data.db');
+    const recoveryBase = join(rootDir, 'recovery-only', 'data.db');
     await moveDatabaseArtifacts(recoveryBase, `${recoveryBase}.plaintext-v1.recovery`);
     const recoveryStore = store('secretStore');
     await recoveryStore.verify({ resourceId: 'recovery-only', kind: 'secretStore' });
@@ -352,7 +350,7 @@ describe('ActorResourceKeyValueStore', () => {
       createdAt: '2023-01-01T00:00:00.000Z',
       updatedAt: '2023-01-03T00:00:00.000Z',
     });
-    const temporaryBase = join(rootDir, 'actor-resources', 'secret-store', 'temporary-with-recovery', 'data.db');
+    const temporaryBase = join(rootDir, 'temporary-with-recovery', 'data.db');
     const plaintextBackup = `${temporaryBase}.test-plaintext-backup`;
     await copyDatabaseArtifacts(temporaryBase, plaintextBackup);
     const converter = store('secretStore');
@@ -371,7 +369,7 @@ describe('ActorResourceKeyValueStore', () => {
     await orphan.provision({ resourceId: 'orphan-temporary', kind: 'secretStore' });
     await orphan.set({ resourceId: 'orphan-temporary', key: 'token', value: 'unproven-temporary' });
     await orphan.close();
-    const orphanBase = join(rootDir, 'actor-resources', 'secret-store', 'orphan-temporary', 'data.db');
+    const orphanBase = join(rootDir, 'orphan-temporary', 'data.db');
     await moveDatabaseArtifacts(orphanBase, `${orphanBase}.encryption-v2.tmp`);
     const orphanRecovery = store('secretStore');
     await expect(orphanRecovery.verify({ resourceId: 'orphan-temporary', kind: 'secretStore' }))
@@ -390,13 +388,13 @@ describe('ActorResourceKeyValueStore', () => {
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
     });
-    const sourceBase = join(rootDir, 'actor-resources', 'secret-store', 'mismatch-source', 'data.db');
+    const sourceBase = join(rootDir, 'mismatch-source', 'data.db');
     const source = new Database(sourceBase, { fileMustExist: true });
     await source.connect();
     await (await source.prepare('UPDATE _vibecanvas_resource_metadata SET resource_id = ?')).run('mismatch-final');
     await source.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     await source.close();
-    const mismatchBase = join(rootDir, 'actor-resources', 'secret-store', 'mismatch-final', 'data.db');
+    const mismatchBase = join(rootDir, 'mismatch-final', 'data.db');
     await moveDatabaseArtifacts(sourceBase, `${mismatchBase}.plaintext-v1.recovery`);
     const mismatch = store('secretStore');
     await expect(mismatch.verify({ resourceId: 'mismatch-final', kind: 'secretStore' }))
@@ -420,7 +418,7 @@ describe('ActorResourceKeyValueStore', () => {
       createdAt: '2024-03-01T00:00:00.000Z',
       updatedAt: '2024-03-01T00:00:00.000Z',
     });
-    const databasePath = join(rootDir, 'actor-resources', 'secret-store', 'weakened-schema', 'data.db');
+    const databasePath = join(rootDir, 'weakened-schema', 'data.db');
     const database = new Database(databasePath, { fileMustExist: true });
     await database.connect();
     await database.exec(`
@@ -447,7 +445,7 @@ describe('ActorResourceKeyValueStore', () => {
     await secrets.provision({ resourceId: 'wrong-key', kind: 'secretStore' });
     await secrets.set({ resourceId: 'wrong-key', key: 'token', value: 'must-remain-encrypted' });
     await secrets.close();
-    const databasePath = join(rootDir, 'actor-resources', 'secret-store', 'wrong-key', 'data.db');
+    const databasePath = join(rootDir, 'wrong-key', 'data.db');
     const before = await readFile(databasePath);
 
     const wrongKeyStore = new ActorResourceKeyValueStore({
@@ -464,7 +462,7 @@ describe('ActorResourceKeyValueStore', () => {
       message: 'The secret-store database could not be decrypted or verified.',
     });
     expect(await readFile(databasePath)).toEqual(before);
-    expect((await readdir(join(rootDir, 'actor-resources', 'secret-store', 'wrong-key')))
+    expect((await readdir(join(rootDir, 'wrong-key')))
       .some((name) => name.includes('.recovery'))).toBe(false);
   });
 
@@ -636,21 +634,21 @@ describe('ActorResourceKeyValueStore', () => {
     await kv.close();
     await secrets.close();
 
-    const missingPath = join(rootDir, 'actor-resources', 'kv', 'missing', 'data.db');
+    const missingPath = join(rootDir, 'missing', 'data.db');
     await rm(missingPath);
-    const corruptPath = join(rootDir, 'actor-resources', 'kv', 'corrupt', 'data.db');
+    const corruptPath = join(rootDir, 'corrupt', 'data.db');
     await writeFile(corruptPath, 'not a database');
-    const kvPath = join(rootDir, 'actor-resources', 'kv', 'swapped-kv', 'data.db');
-    const secretPath = join(rootDir, 'actor-resources', 'secret-store', 'swapped-secret', 'data.db');
+    const kvPath = join(rootDir, 'swapped-kv', 'data.db');
+    const secretPath = join(rootDir, 'swapped-secret', 'data.db');
     await rm(`${secretPath}-wal`, { force: true });
     await rm(`${secretPath}-shm`, { force: true });
     await copyFile(kvPath, secretPath);
-    const idSourcePath = join(rootDir, 'actor-resources', 'kv', 'swapped-id-source', 'data.db');
-    const idTargetPath = join(rootDir, 'actor-resources', 'kv', 'swapped-id-target', 'data.db');
+    const idSourcePath = join(rootDir, 'swapped-id-source', 'data.db');
+    const idTargetPath = join(rootDir, 'swapped-id-target', 'data.db');
     await rm(`${idTargetPath}-wal`, { force: true });
     await rm(`${idTargetPath}-shm`, { force: true });
     await copyFile(idSourcePath, idTargetPath);
-    const unsupportedPath = join(rootDir, 'actor-resources', 'kv', 'unsupported', 'data.db');
+    const unsupportedPath = join(rootDir, 'unsupported', 'data.db');
     const unsupported = new Database(unsupportedPath, { fileMustExist: true });
     await unsupported.connect();
     await (await unsupported.prepare('UPDATE _vibecanvas_resource_metadata SET format_version = 2')).run();
@@ -667,8 +665,8 @@ describe('ActorResourceKeyValueStore', () => {
   });
 
   test('cleans failed provisioning without deleting pre-existing or sibling directories', async () => {
-    const sibling = join(rootDir, 'actor-resources', 'kv', 'sibling');
-    const existing = join(rootDir, 'actor-resources', 'kv', 'existing');
+    const sibling = join(rootDir, 'sibling');
+    const existing = join(rootDir, 'existing');
     await mkdir(sibling, { recursive: true });
     await writeFile(join(sibling, 'keep.txt'), 'keep');
     await mkdir(existing, { recursive: true });
@@ -686,7 +684,7 @@ describe('ActorResourceKeyValueStore', () => {
     await expect(kv.provision({ resourceId: 'existing', kind: 'kv' })).rejects.toBeInstanceOf(Error);
     expect(await Bun.file(join(sibling, 'keep.txt')).text()).toBe('keep');
     expect(await Bun.file(join(existing, 'unknown.txt')).text()).toBe('unknown');
-    expect(await stat(join(rootDir, 'actor-resources', 'kv', 'failed')).catch(() => null)).toBeNull();
+    expect(await stat(join(rootDir, 'failed')).catch(() => null)).toBeNull();
   });
 
   test('bounds lazy handles with idle LRU eviction', async () => {

@@ -212,7 +212,7 @@ async function readWorkspaceGraph() {
 async function measureServerBaseline(fixture: TManagedArchitectureBaselineFixture) {
   const tempRoot = await mkdtemp(join(tmpdir(), "vibecanvas-m0-server-"));
   const port = await reservePort();
-  const databasePath = resolve(tempRoot, "database", "vibecanvas.db");
+  const vibecanvasHome = resolve(tempRoot, "home");
   const bunExecutable = Bun.which("bun") ?? process.execPath;
   const startedAt = performance.now();
   const subprocess = Bun.spawn([
@@ -221,16 +221,12 @@ async function measureServerBaseline(fixture: TManagedArchitectureBaselineFixtur
     "serve",
     "--port",
     String(port),
-    "--db",
-    databasePath,
+    "--data-dir",
+    vibecanvasHome,
   ], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
-      XDG_CONFIG_HOME: resolve(tempRoot, "config"),
-      XDG_DATA_HOME: resolve(tempRoot, "data"),
-      XDG_CACHE_HOME: resolve(tempRoot, "cache"),
-      XDG_STATE_HOME: resolve(tempRoot, "state"),
       VIBECANVAS_SILENT_AUTOMERGE_LOGS: "1",
       VIBECANVAS_SILENT_DB_MIGRATIONS: "1",
     },

@@ -1,4 +1,5 @@
 import type { Database } from "@tursodatabase/database";
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS";
 import type { TJson, TToolGroup } from "../model";
 
 type TPortal = {
@@ -10,7 +11,7 @@ type TArgsGetByName = {
   name: string;
 };
 
-function fnParseJson(value: unknown): TJson | null {
+function parseJson(value: unknown): TJson | null {
   if (value === null) {
     return null;
   }
@@ -22,30 +23,31 @@ function fnParseJson(value: unknown): TJson | null {
   return JSON.parse(value) as TJson;
 }
 
-function fnParseToolGroup(row: unknown): TToolGroup {
-  const value = row as { name: string; json: unknown | null };
+function parseToolGroup(row: unknown): TToolGroup {
+  const value = row as { name: string; configuration_json: unknown | null };
   return {
     name: value.name,
-    json: fnParseJson(value.json),
+    json: parseJson(value.configuration_json),
   };
 }
 
 export async function fxToolGroupListAll(portal: TPortal, args: TArgs): Promise<TToolGroup[]> {
   const stmt = await portal.db.prepare(`
-    SELECT name, json
+    SELECT name, configuration_json
     FROM tool_groups
+    WHERE org_id = ? AND status = 'active'
     ORDER BY name ASC
   `);
-  const rows = await stmt.all();
-  return rows.map(fnParseToolGroup);
+  const rows = await stmt.all(DEFAULT_OSS_ORGANIZATION_ID);
+  return rows.map(parseToolGroup);
 }
 
 export async function fxToolGroupGetByName(portal: TPortal, args: TArgsGetByName): Promise<TToolGroup | null> {
   const stmt = await portal.db.prepare(`
-    SELECT name, json
+    SELECT name, configuration_json
     FROM tool_groups
-    WHERE name = ?
+    WHERE org_id = ? AND name = ? AND status = 'active'
   `);
-  const row = await stmt.get(args.name);
-  return row ? fnParseToolGroup(row) : null;
+  const row = await stmt.get(DEFAULT_OSS_ORGANIZATION_ID, args.name);
+  return row ? parseToolGroup(row) : null;
 }

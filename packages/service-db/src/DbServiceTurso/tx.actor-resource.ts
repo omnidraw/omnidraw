@@ -1,4 +1,5 @@
 import type { Database } from "@tursodatabase/database"
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
 import type {
   TActorResource,
   TActorResourceBinding,
@@ -12,7 +13,7 @@ import {
   fnParseActorResourceRow,
   fnSerializeJsonValue,
 } from "./fn.actor-resource-row"
-import { fxActorResourceGet } from "./fx.actor-resource"
+import { fxActorResourceFindByNameKey, fxActorResourceGet } from "./fx.actor-resource"
 
 type TPortal = {
   db: Database
@@ -41,6 +42,10 @@ type TArgsUpdateProviderState = {
 
 type TArgsResourceId = {
   id: string
+}
+
+type TImmediateTransaction<T> = (() => Promise<T>) & {
+  immediate: () => Promise<T>
 }
 
 type TArgsUpsertBinding = {
@@ -87,21 +92,25 @@ function rethrowResourceNameMutationError(error: unknown, name: string): never {
 export async function txActorResourceCreate(portal: TPortal, args: TArgsCreate): Promise<TActorResource> {
   const normalized = fnNormalizeResourceName(args.name)
   if (!normalized.ok) throw Object.assign(new Error(normalized.message), { code: normalized.code })
+  const conflicts = await fxActorResourceFindByNameKey(portal, { nameKey: normalized.value.key })
+  if (conflicts.length > 0) throw resourceNameConflictError(normalized.value.name)
   const insert = await portal.db.prepare(`
-    INSERT INTO actor_resources (id, kind, name, name_key, status, last_error)
-    SELECT ?, ?, ?, ?, ?, ?
-    WHERE NOT EXISTS (
-      SELECT 1 FROM actor_resources WHERE name_key = ?
+    INSERT INTO resource_catalog (
+      org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+    )
+    VALUES (
+      ?, ?, ?, ?, ?, ?,
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      CAST(unixepoch('subsec') * 1000 AS INTEGER)
     )
   `)
   const result = await insert.run(
+    DEFAULT_OSS_ORGANIZATION_ID,
     args.id,
     args.kind,
     normalized.value.name,
-    normalized.value.key,
     args.status ?? "created",
     args.lastError === undefined || args.lastError === null ? null : fnSerializeJsonValue(args.lastError),
-    normalized.value.key,
   ).catch((error) => rethrowResourceNameMutationError(error, normalized.value.name))
   if (result.changes === 0) {
     throw resourceNameConflictError(normalized.value.name)
@@ -114,16 +123,15 @@ export async function txActorResourceCreate(portal: TPortal, args: TArgsCreate):
 export async function txActorResourceRename(portal: TPortal, args: TArgsRename): Promise<TActorResource | null> {
   const normalized = fnNormalizeResourceName(args.name)
   if (!normalized.ok) throw Object.assign(new Error(normalized.message), { code: normalized.code })
+  const conflicts = await fxActorResourceFindByNameKey(portal, { nameKey: normalized.value.key })
+  if (conflicts.some((resource) => resource.id !== args.id)) {
+    throw resourceNameConflictError(normalized.value.name)
+  }
   const result = await (await portal.db.prepare(`
-    UPDATE actor_resources
-    SET name = ?, name_key = ?
-    WHERE id = ?
-      AND NOT EXISTS (
-        SELECT 1
-        FROM actor_resources AS collision
-        WHERE collision.name_key = ? AND collision.id <> ?
-      )
-  `)).run(normalized.value.name, normalized.value.key, args.id, normalized.value.key, args.id)
+    UPDATE resource_catalog
+    SET name = ?, updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    WHERE org_id = ? AND id = ?
+  `)).run(normalized.value.name, DEFAULT_OSS_ORGANIZATION_ID, args.id)
     .catch((error) => rethrowResourceNameMutationError(error, normalized.value.name))
   if (result.changes === 0) {
     const current = await fxActorResourceGet(portal, { id: args.id })
@@ -137,44 +145,19 @@ export async function txActorResourceAuditNames(portal: TPortal, args: TArgsAudi
   void args
   const rows = await (await portal.db.prepare(`
     SELECT id, name
-    FROM actor_resources
+    FROM resource_catalog
+    WHERE org_id = ?
     ORDER BY id ASC
-  `)).all() as { id: string; name: string }[]
-  const update = await portal.db.prepare(`
-    UPDATE actor_resources
-    SET name_key = ?
-    WHERE id = ?
-  `)
+  `)).all(DEFAULT_OSS_ORGANIZATION_ID) as { id: string; name: string }[]
+  const names = new Map<string, string>()
   for (const row of rows) {
-    await update.run(fnResourceNameKey(row.name), row.id)
+    const key = fnResourceNameKey(row.name)
+    const conflictingId = names.get(key)
+    if (conflictingId !== undefined) {
+      throw new Error(`Resources '${conflictingId}' and '${row.id}' have conflicting normalized names.`)
+    }
+    names.set(key, row.id)
   }
-  await (await portal.db.prepare(`
-    CREATE TRIGGER IF NOT EXISTS actor_resources_name_key_before_insert
-    BEFORE INSERT ON actor_resources
-    FOR EACH ROW
-    WHEN NEW.name_key IS NULL OR EXISTS (
-      SELECT 1 FROM actor_resources WHERE name_key = NEW.name_key
-    )
-    BEGIN
-      SELECT RAISE(ABORT, 'RESOURCE_NAME_CONFLICT');
-    END
-  `)).run()
-  await (await portal.db.prepare(`
-    CREATE TRIGGER IF NOT EXISTS actor_resources_name_key_before_update
-    BEFORE UPDATE OF name_key ON actor_resources
-    FOR EACH ROW
-    WHEN NEW.name_key IS NULL OR (
-      NEW.name_key IS NOT OLD.name_key
-      AND EXISTS (
-        SELECT 1
-        FROM actor_resources AS collision
-        WHERE collision.name_key = NEW.name_key AND collision.id <> OLD.id
-      )
-    )
-    BEGIN
-      SELECT RAISE(ABORT, 'RESOURCE_NAME_CONFLICT');
-    END
-  `)).run()
 }
 
 export async function txActorResourceUpdateProviderState(
@@ -184,15 +167,17 @@ export async function txActorResourceUpdateProviderState(
   const hasStatus = args.status !== undefined
   const hasLastError = args.lastError !== undefined
   await (await portal.db.prepare(`
-    UPDATE actor_resources
+    UPDATE resource_catalog
     SET status = CASE WHEN ? THEN ? ELSE status END,
-        last_error = CASE WHEN ? THEN ? ELSE last_error END
-    WHERE id = ?
+        last_error_json = CASE WHEN ? THEN ? ELSE last_error_json END,
+        updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    WHERE org_id = ? AND id = ?
   `)).run(
     hasStatus,
     args.status ?? null,
     hasLastError,
     args.lastError === undefined || args.lastError === null ? null : fnSerializeJsonValue(args.lastError),
+    DEFAULT_OSS_ORGANIZATION_ID,
     args.id,
   )
   return fxActorResourceGet(portal, { id: args.id })
@@ -200,55 +185,65 @@ export async function txActorResourceUpdateProviderState(
 
 export async function txActorResourceBeginDelete(portal: TPortal, args: TArgsResourceId): Promise<TActorResource | null> {
   const result = await (await portal.db.prepare(`
-    UPDATE actor_resources
-    SET status = 'deleting'
-    WHERE id = ?
+    UPDATE resource_catalog
+    SET status = 'deleting', updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    WHERE org_id = ? AND id = ?
       AND status IN ('created', 'ready', 'error', 'deleting')
       AND NOT EXISTS (
         SELECT 1
-        FROM actor_resource_bindings
-        WHERE resource_id = actor_resources.id
+        FROM legacy_actor_resource_bindings
+        WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
       )
-  `)).run(args.id)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM resource_bindings
+        WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
+      )
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
   if (result.changes === 0) return null
   return fxActorResourceGet(portal, { id: args.id })
 }
 
 export async function txActorResourceDelete(portal: TPortal, args: TArgsResourceId): Promise<boolean> {
-  await portal.db.exec("BEGIN IMMEDIATE")
-  try {
-    const linkedKey = await (await portal.db.prepare(`
-      SELECT encryption_key_id
-      FROM actor_resource_encryption_keys
-      WHERE actor_resource_id = ?
-    `)).get(args.id) as { encryption_key_id?: unknown } | undefined
-    const result = await (await portal.db.prepare(`
-      DELETE FROM actor_resources
-      WHERE id = ?
+  const remove = portal.db.transaction(async () => {
+    const eligible = await (await portal.db.prepare(`
+      SELECT id
+      FROM resource_catalog
+      WHERE org_id = ? AND id = ?
         AND status = 'deleting'
         AND NOT EXISTS (
           SELECT 1
-          FROM actor_resource_bindings
-          WHERE resource_id = actor_resources.id
+          FROM legacy_actor_resource_bindings
+          WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
         )
-    `)).run(args.id)
-    if (result.changes > 0 && typeof linkedKey?.encryption_key_id === "string") {
-      await (await portal.db.prepare(`
-        DELETE FROM encryption_keys
-        WHERE id = ?
-          AND NOT EXISTS (
-            SELECT 1
-            FROM actor_resource_encryption_keys
-            WHERE encryption_key_id = encryption_keys.id
-          )
-      `)).run(linkedKey.encryption_key_id)
-    }
-    await portal.db.exec("COMMIT")
+        AND NOT EXISTS (
+          SELECT 1
+          FROM resource_bindings
+          WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
+        )
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+    if (!eligible) return false
+
+    // Apply-run lineage is RESTRICT by design. Clear it only inside the same
+    // transaction that removes the complete resource history; a retained backup
+    // still blocks deletion and rolls this update back.
+    await (await portal.db.prepare(`
+      UPDATE db_resource_apply_runs
+      SET source_apply_id = NULL
+      WHERE org_id = ? AND resource_id = ? AND source_apply_id IS NOT NULL
+    `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+    await (await portal.db.prepare(`
+      DELETE FROM db_resource_apply_runs
+      WHERE org_id = ? AND resource_id = ?
+    `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
+
+    const result = await (await portal.db.prepare(`
+      DELETE FROM resource_catalog
+      WHERE org_id = ? AND id = ? AND status = 'deleting'
+    `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id)
     return result.changes > 0
-  } catch (error) {
-    await portal.db.exec("ROLLBACK").catch(() => undefined)
-    throw error
-  }
+  }) as TImmediateTransaction<boolean>
+  return remove.immediate()
 }
 
 export async function txActorResourceUpsertBinding(
@@ -256,41 +251,50 @@ export async function txActorResourceUpsertBinding(
   args: TArgsUpsertBinding,
 ): Promise<TActorResourceBinding | null> {
   const result = await (await portal.db.prepare(`
-    INSERT INTO actor_resource_bindings (
-      actor_definition_name,
+    INSERT INTO legacy_actor_resource_bindings (
+      org_id,
+      definition_name,
       slot_name,
       resource_id,
       allow_read,
-      allow_write
+      allow_write,
+      created_at_ms,
+      updated_at_ms
     )
-    SELECT ?, ?, id, ?, ?
-    FROM actor_resources
-    WHERE id = ? AND status = 'ready'
-    ON CONFLICT (actor_definition_name, slot_name) DO UPDATE SET
+    SELECT ?, ?, ?, id, ?, ?,
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    FROM resource_catalog
+    WHERE org_id = ? AND id = ? AND status = 'ready'
+    ON CONFLICT (org_id, definition_name, slot_name) DO UPDATE SET
       resource_id = excluded.resource_id,
       allow_read = excluded.allow_read,
-      allow_write = excluded.allow_write
+      allow_write = excluded.allow_write,
+      updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
   `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
     args.definitionName,
     args.slotName,
     args.allowRead,
     args.allowWrite,
+    DEFAULT_OSS_ORGANIZATION_ID,
     args.resourceId,
   )
   if (result.changes === 0) return null
   const row = await (await portal.db.prepare(`
-    SELECT *
-    FROM actor_resource_bindings
-    WHERE actor_definition_name = ? AND slot_name = ?
-  `)).get(args.definitionName, args.slotName)
+    SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
+      created_at_ms, updated_at_ms
+    FROM legacy_actor_resource_bindings
+    WHERE org_id = ? AND definition_name = ? AND slot_name = ?
+  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName, args.slotName)
   return row ? fnParseActorResourceBindingRow(row) : null
 }
 
 export async function txActorResourceRemoveBinding(portal: TPortal, args: TArgsRemoveBinding): Promise<boolean> {
   const result = await (await portal.db.prepare(`
-    DELETE FROM actor_resource_bindings
-    WHERE actor_definition_name = ? AND slot_name = ?
-  `)).run(args.definitionName, args.slotName)
+    DELETE FROM legacy_actor_resource_bindings
+    WHERE org_id = ? AND definition_name = ? AND slot_name = ?
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName, args.slotName)
   return result.changes > 0
 }
 
@@ -304,11 +308,12 @@ export async function txActorResourceReplaceBindings(
   const replace = portal.db.transaction(async () => {
     if (args.expectedBindings) {
       const currentRows = await (await portal.db.prepare(`
-        SELECT *
-        FROM actor_resource_bindings
-        WHERE actor_definition_name = ?
+        SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
+          created_at_ms, updated_at_ms
+        FROM legacy_actor_resource_bindings
+        WHERE org_id = ? AND definition_name = ?
         ORDER BY slot_name ASC
-      `)).all(args.definitionName)
+      `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName)
       const current = currentRows.map(fnParseActorResourceBindingRow)
       const expected = [...args.expectedBindings].sort((left, right) => left.slotName.localeCompare(right.slotName, "en-US"))
       const matches = current.length === expected.length && current.every((binding, index) => {
@@ -327,27 +332,34 @@ export async function txActorResourceReplaceBindings(
       }
     }
     await (await portal.db.prepare(`
-      DELETE FROM actor_resource_bindings
-      WHERE actor_definition_name = ?
-    `)).run(args.definitionName)
+      DELETE FROM legacy_actor_resource_bindings
+      WHERE org_id = ? AND definition_name = ?
+    `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName)
     const insert = await portal.db.prepare(`
-      INSERT INTO actor_resource_bindings (
-        actor_definition_name,
+      INSERT INTO legacy_actor_resource_bindings (
+        org_id,
+        definition_name,
         slot_name,
         resource_id,
         allow_read,
-        allow_write
+        allow_write,
+        created_at_ms,
+        updated_at_ms
       )
-      SELECT ?, ?, id, ?, ?
-      FROM actor_resources
-      WHERE id = ? AND status = 'ready'
+      SELECT ?, ?, ?, id, ?, ?,
+        CAST(unixepoch('subsec') * 1000 AS INTEGER),
+        CAST(unixepoch('subsec') * 1000 AS INTEGER)
+      FROM resource_catalog
+      WHERE org_id = ? AND id = ? AND status = 'ready'
     `)
     for (const binding of args.bindings) {
       const result = await insert.run(
+        DEFAULT_OSS_ORGANIZATION_ID,
         args.definitionName,
         binding.slotName,
         binding.allowRead,
         binding.allowWrite,
+        DEFAULT_OSS_ORGANIZATION_ID,
         binding.resourceId,
       )
       if (result.changes === 0) {
@@ -355,11 +367,12 @@ export async function txActorResourceReplaceBindings(
       }
     }
     const rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resource_bindings
-      WHERE actor_definition_name = ?
+      SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
+        created_at_ms, updated_at_ms
+      FROM legacy_actor_resource_bindings
+      WHERE org_id = ? AND definition_name = ?
       ORDER BY slot_name ASC
-    `)).all(args.definitionName)
+    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName)
     return rows.map(fnParseActorResourceBindingRow)
   })
   return replace()

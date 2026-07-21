@@ -1,4 +1,5 @@
 import type { Database } from "@tursodatabase/database"
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
 import type {
   TDbResourceApplyInstanceResult,
   TDbResourceApplyInstanceStatus,
@@ -110,9 +111,17 @@ async function requireDbResource(
 export async function txDbResourceDraftCreate(portal: TPortal, args: TArgsDraftCreate): Promise<TDbResourceDraft> {
   await requireDbResource(portal, args.resourceId, ["ready"])
   await (await portal.db.prepare(`
-    INSERT INTO db_resource_drafts (id, resource_id, name, status)
-    VALUES (?, ?, ?, 'editing')
-  `)).run(args.id, args.resourceId, args.name)
+    INSERT INTO db_resource_drafts (
+      org_id, id, resource_id, resource_kind, name, status, last_error_json,
+      created_at_ms, updated_at_ms, applied_at_ms
+    )
+    VALUES (
+      ?, ?, ?, 'db', ?, 'editing', NULL,
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      NULL
+    )
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, args.id, args.resourceId, args.name)
   const draft = await fxDbResourceDraftGet(portal, { id: args.id })
   if (!draft) throw new Error(`Failed to create DbResource draft "${args.id}"`)
   return draft
@@ -121,9 +130,9 @@ export async function txDbResourceDraftCreate(portal: TPortal, args: TArgsDraftC
 export async function txDbResourceDraftRename(portal: TPortal, args: TArgsDraftRename): Promise<TDbResourceDraft | null> {
   const result = await (await portal.db.prepare(`
     UPDATE db_resource_drafts
-    SET name = ?
-    WHERE id = ? AND status = 'editing'
-  `)).run(args.name, args.id)
+    SET name = ?, updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    WHERE org_id = ? AND id = ? AND status = 'editing'
+  `)).run(args.name, DEFAULT_OSS_ORGANIZATION_ID, args.id)
   if (result.changes === 0) return null
   return fxDbResourceDraftGet(portal, args)
 }
@@ -136,16 +145,31 @@ export async function txDbResourceDraftUpdateStatus(
   const result = args.expectedStatus === undefined
     ? await (await portal.db.prepare(`
         UPDATE db_resource_drafts
-        SET status = ?, last_error = ?,
-          applied_at = CASE WHEN ? = 'applied' THEN datetime('now') ELSE applied_at END
-        WHERE id = ?
-      `)).run(args.status, lastError, args.status, args.id)
+        SET status = ?, last_error_json = ?,
+          updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER),
+          applied_at_ms = CASE
+            WHEN ? = 'applied' THEN CAST(unixepoch('subsec') * 1000 AS INTEGER)
+            ELSE NULL
+          END
+        WHERE org_id = ? AND id = ?
+      `)).run(args.status, lastError, args.status, DEFAULT_OSS_ORGANIZATION_ID, args.id)
     : await (await portal.db.prepare(`
         UPDATE db_resource_drafts
-        SET status = ?, last_error = ?,
-          applied_at = CASE WHEN ? = 'applied' THEN datetime('now') ELSE applied_at END
-        WHERE id = ? AND status = ?
-      `)).run(args.status, lastError, args.status, args.id, args.expectedStatus)
+        SET status = ?, last_error_json = ?,
+          updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER),
+          applied_at_ms = CASE
+            WHEN ? = 'applied' THEN CAST(unixepoch('subsec') * 1000 AS INTEGER)
+            ELSE NULL
+          END
+        WHERE org_id = ? AND id = ? AND status = ?
+      `)).run(
+        args.status,
+        lastError,
+        args.status,
+        DEFAULT_OSS_ORGANIZATION_ID,
+        args.id,
+        args.expectedStatus,
+      )
   if (result.changes === 0) return null
   return fxDbResourceDraftGet(portal, { id: args.id })
 }
@@ -162,21 +186,30 @@ export async function txDbResourceDraftAppendChange(
     const sequenceRow = await (await portal.db.prepare(`
       SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
       FROM db_resource_draft_changes
-      WHERE draft_id = ?
-    `)).get(args.draftId) as { next_sequence: number } | undefined
+      WHERE org_id = ? AND draft_id = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.draftId) as { next_sequence: number } | undefined
     const sequence = sequenceRow?.next_sequence ?? 1
     if (sequence !== args.sequence) {
       throw new Error(`DbResource draft "${args.draftId}" physical and control sequences diverged`)
     }
     await (await portal.db.prepare(`
-      INSERT INTO db_resource_draft_changes (draft_id, sequence, kind, operation, sql)
-      VALUES (?, ?, ?, ?, ?)
-    `)).run(args.draftId, args.sequence, args.kind, serializedJson(args.operation), args.sql)
+      INSERT INTO db_resource_draft_changes (
+        org_id, draft_id, sequence, kind, operation_json, sql_text, created_at_ms
+      )
+      VALUES (?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+    `)).run(
+      DEFAULT_OSS_ORGANIZATION_ID,
+      args.draftId,
+      args.sequence,
+      args.kind,
+      serializedJson(args.operation),
+      args.sql,
+    )
     const row = await (await portal.db.prepare(`
       SELECT *
       FROM db_resource_draft_changes
-      WHERE draft_id = ? AND sequence = ?
-    `)).get(args.draftId, args.sequence)
+      WHERE org_id = ? AND draft_id = ? AND sequence = ?
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.draftId, args.sequence)
     if (row === undefined || row === null) throw new Error("Failed to persist DbResource draft change")
     return fnParseDbResourceDraftChangeRow(row)
   })
@@ -186,9 +219,10 @@ export async function txDbResourceDraftAppendChange(
 export async function txDbResourceDraftDiscard(portal: TPortal, args: TArgsDraftDiscard): Promise<TDbResourceDraft | null> {
   const result = await (await portal.db.prepare(`
     UPDATE db_resource_drafts
-    SET status = 'discarded', last_error = ?
-    WHERE id = ? AND status IN ('editing', 'error')
-  `)).run(serializedJson(args.lastError), args.id)
+    SET status = 'discarded', last_error_json = ?, applied_at_ms = NULL,
+      updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    WHERE org_id = ? AND id = ? AND status IN ('editing', 'error')
+  `)).run(serializedJson(args.lastError), DEFAULT_OSS_ORGANIZATION_ID, args.id)
   if (result.changes === 0) return null
   return fxDbResourceDraftGet(portal, { id: args.id })
 }
@@ -211,9 +245,25 @@ export async function txDbResourceApplyCreate(portal: TPortal, args: TArgsApplyC
     throw new Error("DbResource work cannot be both a draft apply and a backup restore")
   }
   await (await portal.db.prepare(`
-    INSERT INTO db_resource_apply_runs (id, resource_id, draft_id, source_apply_id, status)
-    VALUES (?, ?, ?, ?, ?)
-  `)).run(args.id, args.resourceId, args.draftId ?? null, args.sourceApplyId ?? null, args.status ?? "preparing")
+    INSERT INTO db_resource_apply_runs (
+      org_id, id, resource_id, draft_id, source_apply_id, status,
+      last_error_json, backup_retained, created_at_ms, completed_at_ms
+    )
+    VALUES (
+      ?, ?, ?, ?, ?, ?, NULL, 0,
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      CASE WHEN ? IN ('succeeded', 'failed', 'recovered')
+        THEN CAST(unixepoch('subsec') * 1000 AS INTEGER) ELSE NULL END
+    )
+  `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    args.id,
+    args.resourceId,
+    args.draftId ?? null,
+    args.sourceApplyId ?? null,
+    args.status ?? "preparing",
+    args.status ?? "preparing",
+  )
   const apply = await fxDbResourceApplyGet(portal, { id: args.id })
   if (!apply) throw new Error(`Failed to create DbResource apply run "${args.id}"`)
   return apply
@@ -277,18 +327,39 @@ export async function txDbResourceApplyUpdate(portal: TPortal, args: TArgsApplyU
   const result = args.expectedStatus === undefined
     ? await (await portal.db.prepare(`
         UPDATE db_resource_apply_runs
-        SET status = ?, last_error = ?,
+        SET status = ?, last_error_json = ?,
           backup_retained = COALESCE(?, backup_retained),
-          completed_at = CASE WHEN ? AND completed_at IS NULL THEN datetime('now') ELSE completed_at END
-        WHERE id = ?
-      `)).run(args.status, serializedJson(args.lastError), args.backupRetained ?? null, terminal, args.id)
+          completed_at_ms = CASE
+            WHEN ? THEN COALESCE(completed_at_ms, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+            ELSE NULL
+          END
+        WHERE org_id = ? AND id = ?
+      `)).run(
+        args.status,
+        serializedJson(args.lastError),
+        args.backupRetained === undefined ? null : Number(args.backupRetained),
+        terminal,
+        DEFAULT_OSS_ORGANIZATION_ID,
+        args.id,
+      )
     : await (await portal.db.prepare(`
         UPDATE db_resource_apply_runs
-        SET status = ?, last_error = ?,
+        SET status = ?, last_error_json = ?,
           backup_retained = COALESCE(?, backup_retained),
-          completed_at = CASE WHEN ? AND completed_at IS NULL THEN datetime('now') ELSE completed_at END
-        WHERE id = ? AND status = ?
-      `)).run(args.status, serializedJson(args.lastError), args.backupRetained ?? null, terminal, args.id, args.expectedStatus)
+          completed_at_ms = CASE
+            WHEN ? THEN COALESCE(completed_at_ms, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+            ELSE NULL
+          END
+        WHERE org_id = ? AND id = ? AND status = ?
+      `)).run(
+        args.status,
+        serializedJson(args.lastError),
+        args.backupRetained === undefined ? null : Number(args.backupRetained),
+        terminal,
+        DEFAULT_OSS_ORGANIZATION_ID,
+        args.id,
+        args.expectedStatus,
+      )
   if (result.changes === 0) return null
   return fxDbResourceApplyGet(portal, { id: args.id })
 }
@@ -298,20 +369,24 @@ export async function txDbResourceApplyInstanceResultUpsert(
   args: TArgsApplyInstanceResultUpsert,
 ): Promise<TDbResourceApplyInstanceResult> {
   await (await portal.db.prepare(`
-    INSERT INTO db_resource_apply_instance_results (
+    INSERT INTO legacy_actor_apply_results (
+      org_id,
       apply_id,
       actor_instance_id,
       actor_definition_name,
       was_running,
       status,
-      error
-    ) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT (apply_id, actor_instance_id) DO UPDATE SET
+      error_json,
+      updated_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+    ON CONFLICT (org_id, apply_id, actor_instance_id) DO UPDATE SET
       actor_definition_name = excluded.actor_definition_name,
       was_running = excluded.was_running,
       status = excluded.status,
-      error = excluded.error
+      error_json = excluded.error_json,
+      updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
   `)).run(
+    DEFAULT_OSS_ORGANIZATION_ID,
     args.applyId,
     args.actorInstanceId,
     args.actorDefinitionName,
@@ -321,9 +396,9 @@ export async function txDbResourceApplyInstanceResultUpsert(
   )
   const row = await (await portal.db.prepare(`
     SELECT *
-    FROM db_resource_apply_instance_results
-    WHERE apply_id = ? AND actor_instance_id = ?
-  `)).get(args.applyId, args.actorInstanceId)
+    FROM legacy_actor_apply_results
+    WHERE org_id = ? AND apply_id = ? AND actor_instance_id = ?
+  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.applyId, args.actorInstanceId)
   if (row === undefined || row === null) throw new Error("Failed to persist DbResource apply instance result")
   return fnParseDbResourceApplyInstanceResultRow(row)
 }

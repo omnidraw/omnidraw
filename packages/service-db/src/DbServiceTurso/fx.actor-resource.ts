@@ -1,4 +1,6 @@
 import type { Database } from "@tursodatabase/database"
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
+import { fnResourceNameKey } from "../core/fn.resource-name"
 import type {
   TActorDefinition,
   TActorResource,
@@ -7,6 +9,7 @@ import type {
   TActorResourceStatus,
 } from "../model"
 import {
+  fnParseActorDefinitionRow,
   fnParseActorResourceBindingRow,
   fnParseActorResourceRow,
 } from "./fn.actor-resource-row"
@@ -38,46 +41,47 @@ type TArgsListBindingsForResource = {
 
 export async function fxActorResourceGet(portal: TPortal, args: TArgsGet): Promise<TActorResource | null> {
   const row = await (await portal.db.prepare(`
-    SELECT *
-    FROM actor_resources
-    WHERE id = ?
-  `)).get(args.id)
+    SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+    FROM resource_catalog
+    WHERE org_id = ? AND id = ?
+  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.id)
   return row ? fnParseActorResourceRow(row) : null
 }
 
 export async function fxActorResourceList(portal: TPortal, args: TArgsList): Promise<TActorResource[]> {
   if (args.kind !== undefined && args.status !== undefined) {
     const rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resources
-      WHERE kind = ? AND status = ?
-      ORDER BY created_at ASC, id ASC
-    `)).all(args.kind, args.status)
+      SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+      FROM resource_catalog
+      WHERE org_id = ? AND kind = ? AND status = ?
+      ORDER BY created_at_ms ASC, id ASC
+    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.kind, args.status)
     return rows.map(fnParseActorResourceRow)
   }
   if (args.kind !== undefined) {
     const rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resources
-      WHERE kind = ?
-      ORDER BY created_at ASC, id ASC
-    `)).all(args.kind)
+      SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+      FROM resource_catalog
+      WHERE org_id = ? AND kind = ?
+      ORDER BY created_at_ms ASC, id ASC
+    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.kind)
     return rows.map(fnParseActorResourceRow)
   }
   if (args.status !== undefined) {
     const rows = await (await portal.db.prepare(`
-      SELECT *
-      FROM actor_resources
-      WHERE status = ?
-      ORDER BY created_at ASC, id ASC
-    `)).all(args.status)
+      SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+      FROM resource_catalog
+      WHERE org_id = ? AND status = ?
+      ORDER BY created_at_ms ASC, id ASC
+    `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.status)
     return rows.map(fnParseActorResourceRow)
   }
   const rows = await (await portal.db.prepare(`
-    SELECT *
-    FROM actor_resources
-    ORDER BY created_at ASC, id ASC
-  `)).all()
+    SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+    FROM resource_catalog
+    WHERE org_id = ?
+    ORDER BY created_at_ms ASC, id ASC
+  `)).all(DEFAULT_OSS_ORGANIZATION_ID)
   return rows.map(fnParseActorResourceRow)
 }
 
@@ -86,12 +90,14 @@ export async function fxActorResourceFindByNameKey(
   args: TArgsFindByNameKey,
 ): Promise<TActorResource[]> {
   const rows = await (await portal.db.prepare(`
-    SELECT *
-    FROM actor_resources
-    WHERE name_key = ?
+    SELECT id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+    FROM resource_catalog
+    WHERE org_id = ?
     ORDER BY kind ASC, id ASC
-  `)).all(args.nameKey)
-  return rows.map(fnParseActorResourceRow)
+  `)).all(DEFAULT_OSS_ORGANIZATION_ID) as Array<{ name: string }>
+  return rows
+    .filter((row) => fnResourceNameKey(row.name) === args.nameKey)
+    .map(fnParseActorResourceRow)
 }
 
 export async function fxActorResourceListBindingsForDefinition(
@@ -99,11 +105,12 @@ export async function fxActorResourceListBindingsForDefinition(
   args: TArgsListBindingsForDefinition,
 ): Promise<TActorResourceBinding[]> {
   const rows = await (await portal.db.prepare(`
-    SELECT *
-    FROM actor_resource_bindings
-    WHERE actor_definition_name = ?
+    SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
+      created_at_ms, updated_at_ms
+    FROM legacy_actor_resource_bindings
+    WHERE org_id = ? AND definition_name = ?
     ORDER BY slot_name ASC
-  `)).all(args.definitionName)
+  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.definitionName)
   return rows.map(fnParseActorResourceBindingRow)
 }
 
@@ -112,11 +119,12 @@ export async function fxActorResourceListBindingsForResource(
   args: TArgsListBindingsForResource,
 ): Promise<TActorResourceBinding[]> {
   const rows = await (await portal.db.prepare(`
-    SELECT *
-    FROM actor_resource_bindings
-    WHERE resource_id = ?
-    ORDER BY actor_definition_name ASC, slot_name ASC
-  `)).all(args.resourceId)
+    SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
+      created_at_ms, updated_at_ms
+    FROM legacy_actor_resource_bindings
+    WHERE org_id = ? AND resource_id = ?
+    ORDER BY definition_name ASC, slot_name ASC
+  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId)
   return rows.map(fnParseActorResourceBindingRow)
 }
 
@@ -125,12 +133,15 @@ export async function fxActorResourceListDefinitionsReferencingResource(
   args: TArgsListBindingsForResource,
 ): Promise<TActorDefinition[]> {
   const rows = await (await portal.db.prepare(`
-    SELECT DISTINCT actor_definitions.*
-    FROM actor_definitions
-    INNER JOIN actor_resource_bindings
-      ON actor_resource_bindings.actor_definition_name = actor_definitions.name
-    WHERE actor_resource_bindings.resource_id = ?
-    ORDER BY actor_definitions.name ASC
-  `)).all(args.resourceId)
-  return rows as TActorDefinition[]
+    SELECT DISTINCT definitions.name, definitions.slug, definitions.url,
+      definitions.description, definitions.manifest_relative_path,
+      definitions.created_at_ms, definitions.updated_at_ms
+    FROM legacy_actor_definitions AS definitions
+    INNER JOIN legacy_actor_resource_bindings AS bindings
+      ON bindings.org_id = definitions.org_id
+      AND bindings.definition_name = definitions.name
+    WHERE definitions.org_id = ? AND bindings.resource_id = ?
+    ORDER BY definitions.name ASC
+  `)).all(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId)
+  return rows.map(fnParseActorDefinitionRow)
 }

@@ -4,19 +4,36 @@ import type {
   StorageKey,
 } from '@automerge/automerge-repo';
 import type { Database } from '@tursodatabase/database';
+import { DEFAULT_OSS_ORGANIZATION_ID } from '@vibecanvas/shared-functions/vibecanvas-config/CONSTANTS';
 
 interface Options {
   separator?: string;
+  organizationId?: string;
+  maxPendingWrites?: number;
+  maxPendingBytes?: number;
 }
 
-type Data = { data: Uint8Array };
-type RangeData = { key: string; data: Uint8Array };
+type Data = { chunk_bytes: Uint8Array };
+type RangeData = { chunk_key: string; chunk_bytes: Uint8Array };
+type DocumentData = { id: string };
+type SequenceData = { sequence: number };
+type NextSequenceData = { next_sequence: number };
+type PendingWrite = {
+  key: StorageKey;
+  binary: Uint8Array;
+  resolve: () => void;
+  reject: (error: Error) => void;
+};
 
 type TursoStatement = Awaited<ReturnType<Database['prepare']>>;
 
 type PreparedStatements = {
+  findDocument: TursoStatement;
   load: TursoStatement;
-  save: TursoStatement;
+  findSequence: TursoStatement;
+  nextSequence: TursoStatement;
+  insert: TursoStatement;
+  update: TursoStatement;
   remove: TursoStatement;
   loadRange: TursoStatement;
   removeRange: TursoStatement;
@@ -25,47 +42,131 @@ type PreparedStatements = {
 export class TursoStorageAdapter implements StorageAdapterInterface {
   private readonly db: Database;
   private readonly separator: string;
-  private readonly tableName = 'automerge_repo_data';
+  private readonly organizationId: string;
+  private readonly maxPendingWrites: number;
+  private readonly maxPendingBytes: number;
+  private readonly registeredDocuments = new Map<string, string>();
+  private readonly pendingWrites = new Map<string, PendingWrite[]>();
+  private readonly documentWriteTails = new Map<string, Promise<void>>();
+  private pendingWriteCount = 0;
+  private pendingByteCount = 0;
   private setupPromise: Promise<PreparedStatements> | null = null;
 
   constructor(database: Database, options?: Options) {
     this.db = database;
     this.separator = options?.separator ?? '.';
+    this.organizationId = options?.organizationId ?? DEFAULT_OSS_ORGANIZATION_ID;
+    this.maxPendingWrites = options?.maxPendingWrites ?? 1024;
+    this.maxPendingBytes = options?.maxPendingBytes ?? 64 * 1024 * 1024;
   }
 
   async load(keyArray: StorageKey): Promise<Uint8Array | undefined> {
+    if (this.isStorageAdapterIdKey(keyArray)) {
+      return new TextEncoder().encode(this.organizationId);
+    }
     const statements = await this.setup();
-    const key = this.keyToString(keyArray);
-    const result = await statements.load.get(key) as Data | undefined;
-    return result?.data;
+    const documentId = await this.findDocumentId(statements, keyArray);
+    if (documentId === undefined) return undefined;
+    const result = await statements.load.get(
+      this.organizationId,
+      documentId,
+      this.keyToString(keyArray),
+    ) as Data | undefined;
+    return result?.chunk_bytes;
   }
 
   async save(keyArray: StorageKey, binary: Uint8Array): Promise<void> {
+    if (this.isStorageAdapterIdKey(keyArray)) return;
     const statements = await this.setup();
-    const key = this.keyToString(keyArray);
-    await statements.save.run(key, binary);
+    const documentKey = this.requireDocumentKey(keyArray);
+    const documentId = await this.findDocumentId(statements, keyArray);
+    if (documentId !== undefined) {
+      await this.persistSerialized(statements, documentId, keyArray, binary);
+      return;
+    }
+
+    await this.enqueuePendingWrite(documentKey, keyArray, binary);
   }
 
   async remove(keyArray: string[]): Promise<void> {
+    if (this.isStorageAdapterIdKey(keyArray)) return;
     const statements = await this.setup();
-    const key = this.keyToString(keyArray);
-    await statements.remove.run(key);
+    const documentId = await this.findDocumentId(statements, keyArray);
+    if (documentId === undefined) return;
+    await statements.remove.run(
+      this.organizationId,
+      documentId,
+      this.keyToString(keyArray),
+    );
   }
 
   async loadRange(keyPrefix: StorageKey): Promise<Chunk[]> {
     const statements = await this.setup();
+    const documentId = await this.findDocumentId(statements, keyPrefix);
+    if (documentId === undefined) return [];
     const prefix = this.keyToString(keyPrefix);
-    const result = await statements.loadRange.all(`${prefix}*`) as RangeData[];
-    return result.map(({ key, data }) => ({
-      key: this.stringToKey(key),
-      data,
+    const result = await statements.loadRange.all(
+      this.organizationId,
+      documentId,
+      `${prefix}*`,
+    ) as RangeData[];
+    return result.map(({ chunk_key, chunk_bytes }) => ({
+      key: this.stringToKey(chunk_key),
+      data: chunk_bytes,
     }));
   }
 
   async removeRange(keyPrefix: string[]): Promise<void> {
     const statements = await this.setup();
+    const documentId = await this.findDocumentId(statements, keyPrefix);
+    if (documentId === undefined) return;
     const prefix = this.keyToString(keyPrefix);
-    await statements.removeRange.run(`${prefix}*`);
+    await statements.removeRange.run(
+      this.organizationId,
+      documentId,
+      `${prefix}*`,
+    );
+  }
+
+  async notifyDocumentRegistered(automergeUrl: string): Promise<void> {
+    const statements = await this.setup();
+    const row = await statements.findDocument.get(
+      this.organizationId,
+      automergeUrl,
+    ) as DocumentData | undefined;
+    if (row === undefined) {
+      throw new Error(`Automerge document '${automergeUrl}' is not registered.`);
+    }
+
+    const documentKey = this.documentKeyFromUrl(automergeUrl);
+    this.registeredDocuments.set(documentKey, row.id);
+    const pending = this.takePendingWrites(documentKey);
+    const flushes = pending.map(async (write) => {
+      try {
+        await this.persistSerialized(statements, row.id, write.key, write.binary);
+        write.resolve();
+      } catch (error) {
+        const failure = this.toError(error);
+        write.reject(failure);
+        throw failure;
+      }
+    });
+    await Promise.all(flushes);
+  }
+
+  failDocumentRegistration(automergeUrl: string, cause: unknown): void {
+    const error = this.toError(cause);
+    for (const write of this.takePendingWrites(this.documentKeyFromUrl(automergeUrl))) {
+      write.reject(error);
+    }
+  }
+
+  dispose(cause: unknown = new Error('Automerge storage stopped before document registration.')): void {
+    const error = this.toError(cause);
+    for (const documentKey of [...this.pendingWrites.keys()]) {
+      for (const write of this.takePendingWrites(documentKey)) write.reject(error);
+    }
+    this.registeredDocuments.clear();
   }
 
   private setup(): Promise<PreparedStatements> {
@@ -77,28 +178,184 @@ export class TursoStorageAdapter implements StorageAdapterInterface {
   }
 
   private async setupStatements(): Promise<PreparedStatements> {
-    await this.db.exec(`
-      CREATE TABLE IF NOT EXISTS ${this.tableName} (
-        key TEXT PRIMARY KEY,
-        updated_at TEXT,
-        data BLOB
-      );
+    const findDocument = await this.db.prepare(`
+      SELECT id
+      FROM collaboration_documents
+      WHERE org_id = ? AND automerge_url = ?
+    `);
+    const load = await this.db.prepare(`
+      SELECT chunk_bytes
+      FROM collaboration_chunks
+      WHERE org_id = ? AND document_id = ? AND chunk_key = ?
+    `);
+    const findSequence = await this.db.prepare(`
+      SELECT sequence
+      FROM collaboration_chunks
+      WHERE org_id = ? AND document_id = ? AND chunk_key = ?
+    `);
+    const nextSequence = await this.db.prepare(`
+      SELECT COALESCE(MAX(sequence), -1) + 1 AS next_sequence
+      FROM collaboration_chunks
+      WHERE org_id = ? AND document_id = ?
+    `);
+    const insert = await this.db.prepare(`
+      INSERT INTO collaboration_chunks (
+        org_id, document_id, chunk_key, sequence, chunk_bytes, created_at_ms
+      )
+      VALUES (?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+    `);
+    const update = await this.db.prepare(`
+      UPDATE collaboration_chunks
+      SET chunk_bytes = ?
+      WHERE org_id = ? AND document_id = ? AND chunk_key = ?
+    `);
+    const remove = await this.db.prepare(`
+      DELETE FROM collaboration_chunks
+      WHERE org_id = ? AND document_id = ? AND chunk_key = ?
+    `);
+    const loadRange = await this.db.prepare(`
+      SELECT chunk_key, chunk_bytes
+      FROM collaboration_chunks
+      WHERE org_id = ? AND document_id = ? AND chunk_key GLOB ?
+      ORDER BY sequence ASC
+    `);
+    const removeRange = await this.db.prepare(`
+      DELETE FROM collaboration_chunks
+      WHERE org_id = ? AND document_id = ? AND chunk_key GLOB ?
     `);
 
-    const load = await this.db.prepare(`SELECT data FROM ${this.tableName} WHERE key = ?;`);
-    const save = await this.db.prepare(`
-      INSERT INTO ${this.tableName} (key, updated_at, data)
-        VALUES (?, datetime(), ?)
-        ON CONFLICT DO UPDATE SET data = excluded.data, updated_at = datetime();
-    `);
-    const remove = await this.db.prepare(`DELETE FROM ${this.tableName} WHERE key = ?;`);
-    const loadRange = await this.db.prepare(`SELECT key, data FROM ${this.tableName} WHERE key GLOB ?;`);
-    const removeRange = await this.db.prepare(`DELETE FROM ${this.tableName} WHERE key GLOB ?;`);
-
-    return { load, save, remove, loadRange, removeRange };
+    return {
+      findDocument,
+      load,
+      findSequence,
+      nextSequence,
+      insert,
+      update,
+      remove,
+      loadRange,
+      removeRange,
+    };
   }
 
-  private keyToString(key: StorageKey): string {
+  private async findDocumentId(
+    statements: PreparedStatements,
+    key: readonly string[],
+  ): Promise<string | undefined> {
+    const documentKey = key[0];
+    if (documentKey === undefined) return undefined;
+    const cached = this.registeredDocuments.get(documentKey);
+    if (cached !== undefined) return cached;
+    const result = await statements.findDocument.get(
+      this.organizationId,
+      `automerge:${documentKey}`,
+    ) as DocumentData | undefined;
+    if (result !== undefined) this.registeredDocuments.set(documentKey, result.id);
+    return result?.id;
+  }
+
+  private enqueuePendingWrite(
+    documentKey: string,
+    key: StorageKey,
+    binary: Uint8Array,
+  ): Promise<void> {
+    if (
+      this.pendingWriteCount >= this.maxPendingWrites
+      || this.pendingByteCount + binary.byteLength > this.maxPendingBytes
+    ) {
+      return Promise.reject(new Error('Automerge pending storage queue capacity exceeded.'));
+    }
+
+    const storedBinary = binary.slice();
+    this.pendingWriteCount += 1;
+    this.pendingByteCount += storedBinary.byteLength;
+    return new Promise<void>((resolve, reject) => {
+      const writes = this.pendingWrites.get(documentKey) ?? [];
+      writes.push({ key: [...key], binary: storedBinary, resolve, reject });
+      this.pendingWrites.set(documentKey, writes);
+    });
+  }
+
+  private takePendingWrites(documentKey: string): PendingWrite[] {
+    const pending = this.pendingWrites.get(documentKey) ?? [];
+    this.pendingWrites.delete(documentKey);
+    this.pendingWriteCount -= pending.length;
+    this.pendingByteCount -= pending.reduce((total, write) => total + write.binary.byteLength, 0);
+    return pending;
+  }
+
+  private persistSerialized(
+    statements: PreparedStatements,
+    documentId: string,
+    key: readonly string[],
+    binary: Uint8Array,
+  ): Promise<void> {
+    const previous = this.documentWriteTails.get(documentId) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() => this.persist(statements, documentId, key, binary));
+    this.documentWriteTails.set(documentId, current);
+    void current.finally(() => {
+      if (this.documentWriteTails.get(documentId) === current) {
+        this.documentWriteTails.delete(documentId);
+      }
+    }).catch(() => undefined);
+    return current;
+  }
+
+  private async persist(
+    statements: PreparedStatements,
+    documentId: string,
+    key: readonly string[],
+    binary: Uint8Array,
+  ): Promise<void> {
+    const chunkKey = this.keyToString(key);
+    const persist = this.db.transaction(async () => {
+      const existing = await statements.findSequence.get(
+        this.organizationId,
+        documentId,
+        chunkKey,
+      ) as SequenceData | undefined;
+      if (existing !== undefined) {
+        await statements.update.run(binary, this.organizationId, documentId, chunkKey);
+        return;
+      }
+
+      const next = await statements.nextSequence.get(
+        this.organizationId,
+        documentId,
+      ) as NextSequenceData | undefined;
+      await statements.insert.run(
+        this.organizationId,
+        documentId,
+        chunkKey,
+        next?.next_sequence ?? 0,
+        binary,
+      );
+    });
+    await persist();
+  }
+
+  private requireDocumentKey(key: readonly string[]): string {
+    const documentKey = key[0];
+    if (documentKey === undefined || documentKey.length === 0) {
+      throw new Error('Automerge storage key is missing a document identifier.');
+    }
+    return documentKey;
+  }
+
+  private isStorageAdapterIdKey(key: readonly string[]): boolean {
+    return key.length === 1 && key[0] === 'storage-adapter-id';
+  }
+
+  private documentKeyFromUrl(automergeUrl: string): string {
+    return automergeUrl.startsWith('automerge:') ? automergeUrl.slice('automerge:'.length) : automergeUrl;
+  }
+
+  private toError(cause: unknown): Error {
+    return cause instanceof Error ? cause : new Error(String(cause));
+  }
+
+  private keyToString(key: readonly string[]): string {
     return key.join(this.separator);
   }
 

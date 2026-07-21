@@ -1,8 +1,16 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
+import type { Dirent } from 'node:fs';
 import path from "node:path";
 import * as fs from 'node:fs/promises';
+import {
+  DEFAULT_OSS_ORGANIZATION_ID,
+  INITIAL_MIGRATION_NAME,
+  MIGRATION_APPLICATION_VERSION_FALLBACK,
+} from '../CONSTANTS';
+import { INITIAL_MIGRATION } from '../migrations/CONSTANTS';
 import type { IDbConfig } from "../interface";
 import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TEncryptionKey, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
+import { EXPECTED_APPLICATION_TABLES } from '../schema/expected-schema';
 import { fxAccountGetDefaultOwner } from "./fx.account";
 import { fxActorGetDefinition, fxActorGetInstanceByElementId, fxActorGetInstanceById, fxActorListConnections, fxActorListDefinitions, fxActorListInstances } from "./fx.actor";
 import { fxActorResourceFindByNameKey, fxActorResourceGet, fxActorResourceList, fxActorResourceListBindingsForDefinition, fxActorResourceListBindingsForResource, fxActorResourceListDefinitionsReferencingResource } from "./fx.actor-resource";
@@ -12,10 +20,12 @@ import { fxActorResourceEncryptionKeyGet } from "./fx.encryption-key";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
 import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { fxKeyValueGet } from "./fx.keyValue";
+import { fxReadMigrationFile } from './fx.migration-file';
+import { fxPreflightMigrationState } from './fx.migration-state';
 import { fxToolGroupGetByName, fxToolGroupListAll } from "./fx.tool-group";
 import { txAccountEnsureDefaultOwner } from "./tx.account";
 import { txActorDeleteConnectionById, txActorDeleteConnectionBySource, txActorDeleteDefinition, txActorDeleteInstance, txActorInsertConnection, txActorInsertDefinition, txActorInsertInstance, txActorUpdateDefinition, txActorUpdateInstanceHealth, txActorUpdateInstanceMachine, txActorUpdateInstanceStatus } from "./tx.actor";
-import { txActorResourceAuditNames, txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceReplaceBindings, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
+import { txActorResourceBeginDelete, txActorResourceCreate, txActorResourceDelete, txActorResourceRemoveBinding, txActorResourceRename, txActorResourceReplaceBindings, txActorResourceUpdateProviderState, txActorResourceUpsertBinding } from "./tx.actor-resource";
 import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.canvas";
 import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyInstanceResultUpsert, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
 import { txActorResourceEncryptionKeyGetOrCreate } from "./tx.encryption-key";
@@ -24,8 +34,10 @@ import { txFilesystemCreate } from "./tx.filesystem";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
 import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
 import { txRunMigrations } from "./tx.migrations";
-import { txDefaultRunPragmas } from "./tx.pragma";
 import { Database } from "./turso-native";
+import type { TDatabasePreflightResult } from './migration-types';
+
+declare const VIBECANVAS_VERSION: string | undefined;
 
 type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
 type TFileCreateArgs = Omit<TMediaFile, "created_at">
@@ -106,10 +118,204 @@ interface IPublicMethods {
   }
 }
 
+type TPreflightDbServiceDatabaseArgs = {
+  databasePath: string;
+  homeDir: string;
+};
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
+function migrationApplicationVersion(): string {
+  return (
+    (typeof VIBECANVAS_VERSION !== 'undefined' && VIBECANVAS_VERSION)
+    || process.env.VIBECANVAS_VERSION
+    || MIGRATION_APPLICATION_VERSION_FALLBACK
+  );
+}
+
+async function assertEmptyDirectory(directory: string): Promise<void> {
+  const entries = await fs.readdir(directory);
+  if (entries.length !== 0) {
+    throw new Error(`Refusing non-empty pre-bootstrap directory: ${directory}`);
+  }
+}
+
+async function validateOrganizationsDirectory(
+  organizationsDir: string,
+  fresh: boolean,
+): Promise<void> {
+  const organizations = await fs.readdir(organizationsDir, { withFileTypes: true });
+  if (!fresh) {
+    if (organizations.some((entry) => !entry.isDirectory())) {
+      throw new Error(`Refusing non-directory organization entry in ${organizationsDir}.`);
+    }
+    return;
+  }
+
+  for (const organization of organizations) {
+    if (
+      organization.name !== DEFAULT_OSS_ORGANIZATION_ID
+      || !organization.isDirectory()
+    ) {
+      throw new Error(`Refusing unknown pre-bootstrap organization entry '${organization.name}'.`);
+    }
+    const organizationRoot = path.join(organizationsDir, organization.name);
+    const expectedLeaves = new Set(['agent', 'artifacts', 'resources', 'temp', 'pty']);
+    const leaves = await fs.readdir(organizationRoot, { withFileTypes: true });
+    for (const leaf of leaves) {
+      if (!expectedLeaves.has(leaf.name) || !leaf.isDirectory()) {
+        throw new Error(`Refusing unknown pre-bootstrap organization path '${leaf.name}'.`);
+      }
+      await assertEmptyDirectory(path.join(organizationRoot, leaf.name));
+    }
+  }
+}
+
+async function validateVibecanvasHomeLayout(
+  homeDir: string,
+  databasePath: string,
+  fresh: boolean,
+): Promise<void> {
+  let rootEntries: Dirent[];
+  try {
+    const rootStat = await fs.lstat(homeDir);
+    if (!rootStat.isDirectory()) {
+      throw new Error(`Vibecanvas home is not a directory: ${homeDir}`);
+    }
+    rootEntries = await fs.readdir(homeDir, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingPathError(error)) return;
+    throw error;
+  }
+
+  const databaseName = path.dirname(databasePath) === homeDir ? path.basename(databasePath) : null;
+  for (const entry of rootEntries) {
+    if (entry.name === 'bin' || entry.name === 'native') {
+      if (!entry.isDirectory()) {
+        throw new Error(`Refusing non-directory install entry '${entry.name}' in ${homeDir}.`);
+      }
+      continue;
+    }
+
+    if (entry.name === 'database-migrations') {
+      if (!entry.isDirectory()) {
+        throw new Error(`Refusing non-directory legacy migration entry in ${homeDir}.`);
+      }
+      const migrationDir = path.join(homeDir, entry.name);
+      const entries = await fs.readdir(migrationDir, { withFileTypes: true });
+      if (entries.length === 0) continue;
+      if (
+        entries.length !== 1
+        || entries[0]?.name !== INITIAL_MIGRATION_NAME
+        || !entries[0].isFile()
+      ) {
+        throw new Error(
+          `Refusing actor-era or unknown database-migrations directory in ${homeDir}; `
+            + `expected only ${INITIAL_MIGRATION_NAME}.`,
+        );
+      }
+      const [installedMigration, embeddedMigration] = await Promise.all([
+        fxReadMigrationFile({ Bun }, { path: path.join(migrationDir, INITIAL_MIGRATION_NAME) }),
+        fxReadMigrationFile({ Bun }, { path: INITIAL_MIGRATION.path }),
+      ]);
+      if (installedMigration.checksumSha256 !== embeddedMigration.checksumSha256) {
+        throw new Error(`Refusing database-migrations/${INITIAL_MIGRATION_NAME} with an unknown checksum.`);
+      }
+      continue;
+    }
+
+    if (entry.name === 'cache' || entry.name === 'logs') {
+      if (!entry.isDirectory()) {
+        throw new Error(`Refusing non-directory managed entry '${entry.name}' in ${homeDir}.`);
+      }
+      if (fresh) await assertEmptyDirectory(path.join(homeDir, entry.name));
+      continue;
+    }
+
+    if (entry.name === 'organizations') {
+      if (!entry.isDirectory()) {
+        throw new Error(`Refusing non-directory organizations entry in ${homeDir}.`);
+      }
+      await validateOrganizationsDirectory(path.join(homeDir, entry.name), fresh);
+      continue;
+    }
+
+    if (entry.name === 'config.json' && !fresh && entry.isFile()) continue;
+
+    if (
+      databaseName !== null
+      && (
+        entry.name === databaseName
+        || entry.name === `${databaseName}-wal`
+        || entry.name === `${databaseName}-tshm`
+      )
+      && entry.isFile()
+    ) {
+      continue;
+    }
+
+    throw new Error(
+      `Refusing non-empty Vibecanvas home before database bootstrap; unknown entry '${entry.name}' was not modified.`,
+    );
+  }
+}
+
+export async function preflightDbServiceDatabase(
+  args: TPreflightDbServiceDatabaseArgs,
+): Promise<TDatabasePreflightResult> {
+  let databaseStat: Awaited<ReturnType<typeof fs.lstat>>;
+  try {
+    databaseStat = await fs.lstat(args.databasePath);
+  } catch (error) {
+    if (!isMissingPathError(error)) throw error;
+    await validateVibecanvasHomeLayout(args.homeDir, args.databasePath, true);
+    return { status: 'empty' };
+  }
+
+  if (!databaseStat.isFile()) {
+    throw new Error(`Refusing Vibecanvas database path because it is not a regular file: ${args.databasePath}`);
+  }
+
+  const migrationFile = await fxReadMigrationFile({ Bun }, { path: INITIAL_MIGRATION.path });
+  const database = new Database(args.databasePath, {
+    readonly: true,
+    fileMustExist: true,
+    // @ts-expect-error custom_types is supported by the pinned native runtime ahead of its public union.
+    experimental: ['custom_types', 'triggers', 'index_method'],
+  });
+  let connected = false;
+  try {
+    await database.connect();
+    connected = true;
+    const result = await fxPreflightMigrationState(
+      { db: database },
+      {
+        checksumSha256: migrationFile.checksumSha256,
+        expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+      },
+    );
+    await validateVibecanvasHomeLayout(args.homeDir, args.databasePath, result.status === 'empty');
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Refusing to open Vibecanvas database:')) {
+      throw error;
+    }
+    throw new Error(
+      `Refusing to open Vibecanvas database after a read-only preflight failed: ${args.databasePath}`,
+      { cause: error },
+    );
+  } finally {
+    if (connected) await database.close();
+  }
+}
+
 export class DbServiceTurso implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'DbServiceTurso'
   db: Database
   #actorWriteTail: Promise<void> = Promise.resolve()
+  #isConnected = false
 
   constructor(private config: IDbConfig) {
     const experimental = this.config.databasePath === ":memory:"
@@ -123,22 +329,27 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   }
   async start(_ctx?: Parameters<IStartableService["start"]>[0]): Promise<void> {
     await this.db.connect()
-    await txDefaultRunPragmas({ db: this.db }, {})
-    const migrationResult = await txRunMigrations({
-      db: this.db,
-      Bun,
-      path,
-      fs,
-      dataDir: this.config.dataDir,
-      platform: process.platform,
-    }, {})
-    if (!this.config.silentMigrations) {
-      for (const warning of migrationResult.warnings) console.warn(`[migration] ${warning}`)
+    this.#isConnected = true
+    try {
+      await txRunMigrations({
+        db: this.db,
+        Bun,
+      }, {
+        applicationVersion: migrationApplicationVersion(),
+        appliedAtMs: Date.now(),
+        expectedApplicationTables: EXPECTED_APPLICATION_TABLES,
+      })
+    } catch (error) {
+      await this.db.close()
+      this.#isConnected = false
+      throw error
     }
-    await txActorResourceAuditNames(this, {})
   }
 
   async stop(): Promise<void> {
+    if (!this.#isConnected) return
+    await this.db.close()
+    this.#isConnected = false
   }
 
   #serializeActorWrite<T>(write: () => Promise<T>): Promise<T> {
@@ -334,7 +545,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   };
 
   actor = {
-    listDefinitions: () => fxActorListDefinitions(this),
+    listDefinitions: () => fxActorListDefinitions(this, {}),
     insertDefinition: (def: TActorDefinitionCreateArgs) => this.#serializeActorWrite(() => txActorInsertDefinition(this, def)),
     deleteDefinition: (name: string) => this.#serializeActorWrite(() => txActorDeleteDefinition(this, { name })),
     getDefinition: (name: string) => fxActorGetDefinition(this, {name}),
@@ -350,7 +561,7 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     getInstanceByElementId: (elementId: string) => fxActorGetInstanceByElementId(this, {elementId}),
     getInstanceById: (instanceId: string) => fxActorGetInstanceById(this, {instanceId}),
     deleteInstance: (id: string) => this.#serializeActorWrite(() => txActorDeleteInstance(this, { id })),
-    listConnections: () => fxActorListConnections(this),
+    listConnections: () => fxActorListConnections(this, {}),
     insertConnection: (connection: TActorConnectionCreateArgs) => this.#serializeActorWrite(() => txActorInsertConnection(this, connection)),
     deleteConnectionById: (id: string) => this.#serializeActorWrite(() => txActorDeleteConnectionById(this, { id })),
     deleteConnectionBySource: (actorId: string) => this.#serializeActorWrite(() => txActorDeleteConnectionBySource(this, { actorId })),

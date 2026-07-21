@@ -65,6 +65,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
     this.#supervisor = new ActorSupervisor({
       absWidgetDir: join(config.configPath, 'widgets'),
       configPath: config.configPath,
+      crypto: config.crypto ?? crypto,
       db: config.db,
       eventPublisherService: config.eventPublisherService,
       resourceGateway: (call) => this.#resourceManager.call(call),

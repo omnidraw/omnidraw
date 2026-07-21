@@ -7,6 +7,7 @@ import type { TDbResourceDraftChange } from '@vibecanvas/service-db/model';
 import type { TVibecanvasJson } from '../src/core/types';
 import { ActorResourceManager } from '../src/resources/ActorResourceManager';
 import { DbResource } from '../src/resources/DbResource';
+import { createTestCrypto, testUuid } from './test-uuid';
 
 const definitionName = 'Notes Widget';
 
@@ -49,15 +50,17 @@ describe('DbResource schema-agnostic provider', () => {
   let provider: DbResource;
   let manager: ActorResourceManager;
   let dataRoot: string;
+  let testCrypto: Pick<Crypto, 'randomUUID'>;
 
   beforeEach(async () => {
     dataRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-db-resource-'));
     db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
     await db.start();
+    testCrypto = createTestCrypto('db-resource');
     const definition = manifest();
     await db.actor.insertDefinition({ name: definitionName, slug: definition.slug, url: null, description: null, manifest_path: definition.manifest_path });
     provider = new DbResource({ db, dataRoot });
-    manager = new ActorResourceManager({ db, crypto, getDefinition: (name) => name === definitionName ? definition : null, providers: [provider] });
+    manager = new ActorResourceManager({ db, crypto: testCrypto, getDefinition: (name) => name === definitionName ? definition : null, providers: [provider] });
   });
 
   afterEach(async () => {
@@ -87,7 +90,7 @@ describe('DbResource schema-agnostic provider', () => {
 
   test('creates an empty physical database and preserves named and arbitrary SQLite-compatible calls', async () => {
     const resource = await createBoundResource();
-    await access(join(dataRoot, 'actor-resources', 'db', resource.id, 'data.db'));
+    await access(join(dataRoot, resource.id, 'data.db'));
     await call('execute', { sql: 'CREATE TABLE notes (id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL) STRICT' });
     await expect(call('invoke', { operation: 'createNote', parameters: { id: 'a', title: 'Alpha' } }))
       .resolves.toMatchObject({ rowsAffected: 1 });
@@ -423,28 +426,28 @@ describe('DbResource schema-agnostic provider', () => {
     await call('execute', { sql: 'CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL)' });
     await provider.createRow({ resourceId: resource.id, object: 'notes', values: { id: { type: 'integer', value: '1' }, title: { type: 'text', value: 'before' } } });
 
-    await provider.createDraft(resource.id, 'draft-a');
-    const sql = await provider.applyDraftChange('draft-a', {
+    await provider.createDraft(resource.id, testUuid('draft-a'));
+    const sql = await provider.applyDraftChange(testUuid('draft-a'), {
       kind: 'addColumn',
       table: 'notes',
       column: { name: 'archived', declaredType: 'INTEGER', nullable: false, defaultSql: '0' },
     });
     expect((await provider.inspect(resource.id, 'live')).objects[0].columns.map((column) => column.name)).not.toContain('archived');
-    expect((await provider.inspect(resource.id, 'draft', 'draft-a')).objects[0].columns.map((column) => column.name)).toContain('archived');
-    expect(await provider.listDraftChangeEvidence('draft-a')).toEqual([{ sequence: 1, kind: 'structure', sql: sql.sql }]);
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-a'))).objects[0].columns.map((column) => column.name)).toContain('archived');
+    expect(await provider.listDraftChangeEvidence(testUuid('draft-a'))).toEqual([{ sequence: 1, kind: 'structure', sql: sql.sql }]);
 
     const changes: TDbResourceDraftChange[] = [{
-      draft_id: 'draft-a', sequence: 1, kind: 'structure', operation: { kind: 'addColumn' }, sql: sql.sql, created_at: new Date().toISOString(),
+      draft_id: testUuid('draft-a'), sequence: 1, kind: 'structure', operation: { kind: 'addColumn' }, sql: sql.sql, created_at: new Date().toISOString(),
     }];
-    await expect(provider.applyDraft({ resourceId: resource.id, draftId: 'draft-a', applyId: 'apply-a', changes }))
+    await expect(provider.applyDraft({ resourceId: resource.id, draftId: testUuid('draft-a'), applyId: testUuid('apply-a'), changes }))
       .resolves.toMatchObject({ outcome: 'succeeded', backupRetained: true });
     expect((await provider.inspect(resource.id, 'live')).objects[0].columns.map((column) => column.name)).toContain('archived');
-    await expect(provider.reconcileApply(resource.id, 'apply-a'))
-      .resolves.toEqual({ outcome: 'committed', retainedBackupApplyId: 'apply-a' });
+    await expect(provider.reconcileApply(resource.id, testUuid('apply-a')))
+      .resolves.toEqual({ outcome: 'committed', retainedBackupApplyId: testUuid('apply-a') });
 
-    await expect(provider.reconcileApply(resource.id, 'restore-after-crash', { restoreSourceApplyId: 'apply-a' }))
-      .resolves.toEqual({ outcome: 'recovered', retainedBackupApplyId: 'apply-a' });
-    expect(await provider.hasApplyMarker(resource.id, 'restore-after-crash')).toBe(true);
+    await expect(provider.reconcileApply(resource.id, testUuid('restore-after-crash'), { restoreSourceApplyId: testUuid('apply-a') }))
+      .resolves.toEqual({ outcome: 'recovered', retainedBackupApplyId: testUuid('apply-a') });
+    expect(await provider.hasApplyMarker(resource.id, testUuid('restore-after-crash'))).toBe(true);
 
     await provider.updateRow({
       resourceId: resource.id,
@@ -453,7 +456,7 @@ describe('DbResource schema-agnostic provider', () => {
       values: { title: { type: 'text', value: 'after' } },
       expectedOriginal: { title: { type: 'text', value: 'before' } },
     });
-    await provider.restoreBackup(resource.id, 'apply-a', 'restore-a');
+    await provider.restoreBackup(resource.id, testUuid('apply-a'), testUuid('restore-a'));
     const restored = await provider.listRows({ resourceId: resource.id, object: 'notes' });
     expect(restored.rows[0].values.title).toEqual({ type: 'text', value: 'before' });
     expect(restored.object.columns.map((column) => column.name)).not.toContain('archived');
@@ -468,14 +471,14 @@ describe('DbResource schema-agnostic provider', () => {
     expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(1);
     await expect(provider.reconcile(resource)).resolves.toEqual({ status: 'ready' });
 
-    await provider.createDraft(resource.id, 'draft-with-fk-baseline');
-    const sql = await provider.applyDraftChange('draft-with-fk-baseline', {
+    await provider.createDraft(resource.id, testUuid('draft-with-fk-baseline'));
+    const sql = await provider.applyDraftChange(testUuid('draft-with-fk-baseline'), {
       kind: 'addColumn',
       table: 'children',
       column: { name: 'label', declaredType: 'TEXT' },
     });
     const changes: TDbResourceDraftChange[] = [{
-      draft_id: 'draft-with-fk-baseline',
+      draft_id: testUuid('draft-with-fk-baseline'),
       sequence: 1,
       kind: 'structure',
       operation: { kind: 'addColumn' },
@@ -485,11 +488,11 @@ describe('DbResource schema-agnostic provider', () => {
 
     await expect(provider.applyDraft({
       resourceId: resource.id,
-      draftId: 'draft-with-fk-baseline',
-      applyId: 'apply-with-fk-baseline',
+      draftId: testUuid('draft-with-fk-baseline'),
+      applyId: testUuid('apply-with-fk-baseline'),
       changes,
     })).resolves.toMatchObject({ outcome: 'succeeded', backupRetained: true });
-    expect(await provider.hasVerifiedBackup(resource.id, 'apply-with-fk-baseline')).toBe(true);
+    expect(await provider.hasVerifiedBackup(resource.id, testUuid('apply-with-fk-baseline'))).toBe(true);
   });
 
   test('detects a newly introduced foreign-key violation and restores the verified pre-apply database', async () => {
@@ -499,7 +502,7 @@ describe('DbResource schema-agnostic provider', () => {
       { sql: 'CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id))' },
     ] });
     const changes: TDbResourceDraftChange[] = [{
-      draft_id: 'draft-new-fk',
+      draft_id: testUuid('draft-new-fk'),
       sequence: 1,
       kind: 'sql',
       operation: null,
@@ -508,8 +511,8 @@ describe('DbResource schema-agnostic provider', () => {
     }];
     await expect(provider.applyDraft({
       resourceId: resource.id,
-      draftId: 'draft-new-fk',
-      applyId: 'apply-new-fk',
+      draftId: testUuid('draft-new-fk'),
+      applyId: testUuid('apply-new-fk'),
       changes,
     })).resolves.toMatchObject({ outcome: 'recovered', backupRetained: true });
     expect(await provider.inspectForeignKeyViolations(resource.id)).toEqual([]);
@@ -556,7 +559,7 @@ describe('DbResource schema-agnostic provider', () => {
 
   test('does not overwrite newer healthy live state from an unrelated retained backup during precommit reconciliation', async () => {
     const resource = await createBoundResource();
-    await expect(provider.applyDraft({ resourceId: resource.id, draftId: 'draft-old', applyId: 'apply-old', changes: [] }))
+    await expect(provider.applyDraft({ resourceId: resource.id, draftId: testUuid('draft-old'), applyId: testUuid('apply-old'), changes: [] }))
       .resolves.toMatchObject({ outcome: 'succeeded', backupRetained: true });
     await call('execute', { sql: 'PRAGMA foreign_keys = OFF' });
     await call('execute', { operations: [
@@ -565,8 +568,8 @@ describe('DbResource schema-agnostic provider', () => {
       { sql: 'INSERT INTO children (id, parent_id) VALUES (1, 999)' },
     ] });
     expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(1);
-    await expect(provider.reconcileApply(resource.id, 'apply-interrupted', { fallbackBackupApplyId: 'apply-old' }))
-      .resolves.toEqual({ outcome: 'uncommitted', retainedBackupApplyId: 'apply-old' });
+    await expect(provider.reconcileApply(resource.id, testUuid('apply-interrupted'), { fallbackBackupApplyId: testUuid('apply-old') }))
+      .resolves.toEqual({ outcome: 'uncommitted', retainedBackupApplyId: testUuid('apply-old') });
     expect(await provider.inspectForeignKeyViolations(resource.id)).toHaveLength(1);
     await expect(call('query', { sql: 'SELECT id, parent_id FROM children', parameters: {} }, 'fx'))
       .resolves.toEqual([{ id: 1n, parent_id: 999n }]);
@@ -586,41 +589,41 @@ describe('DbResource schema-agnostic provider', () => {
 
   test('supports the complete structured table, column, index, and foreign-key draft surface', async () => {
     const resource = await createBoundResource();
-    await provider.createDraft(resource.id, 'draft-structure');
-    await provider.applyDraftChange('draft-structure', {
+    await provider.createDraft(resource.id, testUuid('draft-structure'));
+    await provider.applyDraftChange(testUuid('draft-structure'), {
       kind: 'createTable', table: 'parents', columns: [{ name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 }],
     });
-    await provider.applyDraftChange('draft-structure', {
+    await provider.applyDraftChange(testUuid('draft-structure'), {
       kind: 'createTable', table: 'children', columns: [
         { name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 },
         { name: 'parent_id', declaredType: 'INTEGER' },
         { name: 'label', declaredType: 'TEXT' },
       ],
     });
-    await provider.applyDraftChange('draft-structure', { kind: 'createIndex', table: 'children', name: 'children_parent', columns: ['parent_id'] });
-    await provider.applyDraftChange('draft-structure', {
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'createIndex', table: 'children', name: 'children_parent', columns: ['parent_id'] });
+    await provider.applyDraftChange(testUuid('draft-structure'), {
       kind: 'createForeignKey', table: 'children', columns: ['parent_id'], referencedTable: 'parents', referencedColumns: ['id'], onDelete: 'CASCADE',
     });
-    let children = (await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.find((object) => object.name === 'children')!;
+    let children = (await provider.inspect(resource.id, 'draft', testUuid('draft-structure'))).objects.find((object) => object.name === 'children')!;
     expect(children.foreignKeys).toHaveLength(1);
-    await provider.applyDraftChange('draft-structure', {
+    await provider.applyDraftChange(testUuid('draft-structure'), {
       kind: 'alterColumn', table: 'children', column: 'label', definition: { name: 'label', declaredType: 'TEXT', nullable: false, defaultSql: "''" },
     });
-    await provider.applyDraftChange('draft-structure', { kind: 'renameColumn', table: 'children', column: 'label', newName: 'title' });
-    children = (await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.find((object) => object.name === 'children')!;
-    await provider.applyDraftChange('draft-structure', { kind: 'dropForeignKey', table: 'children', id: children.foreignKeys[0].id });
-    await provider.applyDraftChange('draft-structure', { kind: 'dropIndex', name: 'children_parent' });
-    await provider.applyDraftChange('draft-structure', { kind: 'dropColumn', table: 'children', column: 'title' });
-    await provider.applyDraftChange('draft-structure', { kind: 'renameTable', table: 'children', newName: 'items' });
-    expect((await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.map((object) => object.name)).toEqual(['items', 'parents']);
-    await provider.applyDraftChange('draft-structure', { kind: 'dropTable', table: 'items' });
-    expect((await provider.inspect(resource.id, 'draft', 'draft-structure')).objects.map((object) => object.name)).toEqual(['parents']);
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'renameColumn', table: 'children', column: 'label', newName: 'title' });
+    children = (await provider.inspect(resource.id, 'draft', testUuid('draft-structure'))).objects.find((object) => object.name === 'children')!;
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'dropForeignKey', table: 'children', id: children.foreignKeys[0].id });
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'dropIndex', name: 'children_parent' });
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'dropColumn', table: 'children', column: 'title' });
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'renameTable', table: 'children', newName: 'items' });
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-structure'))).objects.map((object) => object.name)).toEqual(['items', 'parents']);
+    await provider.applyDraftChange(testUuid('draft-structure'), { kind: 'dropTable', table: 'items' });
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-structure'))).objects.map((object) => object.name)).toEqual(['parents']);
   });
 
   test('creates structured tables as STRICT by default', async () => {
     const resource = await createBoundResource();
-    await provider.createDraft(resource.id, 'draft-default-strict');
-    const change = await provider.applyDraftChange('draft-default-strict', {
+    await provider.createDraft(resource.id, testUuid('draft-default-strict'));
+    const change = await provider.applyDraftChange(testUuid('draft-default-strict'), {
       kind: 'createTable',
       table: 'strict_by_default',
       columns: [
@@ -630,13 +633,13 @@ describe('DbResource schema-agnostic provider', () => {
     });
 
     expect(change.sql).toMatch(/\) STRICT;$/);
-    expect((await provider.inspect(resource.id, 'draft', 'draft-default-strict')).objects[0]?.createSql).toMatch(/\bSTRICT\s*$/i);
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-default-strict'))).objects[0]?.createSql).toMatch(/\bSTRICT\s*$/i);
   });
 
   test('creates STRICT WITHOUT ROWID tables with valid combined table options', async () => {
     const resource = await createBoundResource();
-    await provider.createDraft(resource.id, 'draft-strict-without-rowid');
-    const change = await provider.applyDraftChange('draft-strict-without-rowid', {
+    await provider.createDraft(resource.id, testUuid('draft-strict-without-rowid'));
+    const change = await provider.applyDraftChange(testUuid('draft-strict-without-rowid'), {
       kind: 'createTable',
       table: 'strict_keys',
       columns: [
@@ -649,15 +652,15 @@ describe('DbResource schema-agnostic provider', () => {
     });
 
     expect(change.sql).toMatch(/\) STRICT, WITHOUT ROWID;$/);
-    expect((await provider.inspect(resource.id, 'draft', 'draft-strict-without-rowid')).objects[0]?.createSql)
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-strict-without-rowid'))).objects[0]?.createSql)
       .toMatch(/\bSTRICT\s*,\s*WITHOUT\s+ROWID\s*$/i);
 
     await expect(provider.applyDraft({
       resourceId: resource.id,
-      draftId: 'draft-strict-without-rowid',
-      applyId: 'apply-strict-without-rowid',
+      draftId: testUuid('draft-strict-without-rowid'),
+      applyId: testUuid('apply-strict-without-rowid'),
       changes: [{
-        draft_id: 'draft-strict-without-rowid',
+        draft_id: testUuid('draft-strict-without-rowid'),
         sequence: change.sequence,
         kind: 'structure',
         operation: null,
@@ -668,23 +671,23 @@ describe('DbResource schema-agnostic provider', () => {
     expect((await provider.inspect(resource.id, 'live')).objects[0]?.createSql)
       .toMatch(/\bSTRICT\s*,\s*WITHOUT\s+ROWID\s*$/i);
 
-    await provider.createDraft(resource.id, 'draft-rebuild-strict-without-rowid');
-    const rebuild = await provider.applyDraftChange('draft-rebuild-strict-without-rowid', {
+    await provider.createDraft(resource.id, testUuid('draft-rebuild-strict-without-rowid'));
+    const rebuild = await provider.applyDraftChange(testUuid('draft-rebuild-strict-without-rowid'), {
       kind: 'alterColumn',
       table: 'strict_keys',
       column: 'value',
       definition: { name: 'value', defaultSql: "x''" },
     });
     expect(rebuild.sql).toContain('STRICT, WITHOUT ROWID;');
-    expect((await provider.inspect(resource.id, 'draft', 'draft-rebuild-strict-without-rowid')).objects[0]?.createSql)
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-rebuild-strict-without-rowid'))).objects[0]?.createSql)
       .toMatch(/\bSTRICT\s*,\s*WITHOUT\s+ROWID\s*$/i);
   });
 
   test('rejects unsupported declared types clearly for STRICT structured tables', async () => {
     const resource = await createBoundResource();
-    await provider.createDraft(resource.id, 'draft-invalid-strict-type');
+    await provider.createDraft(resource.id, testUuid('draft-invalid-strict-type'));
 
-    await expect(provider.applyDraftChange('draft-invalid-strict-type', {
+    await expect(provider.applyDraftChange(testUuid('draft-invalid-strict-type'), {
       kind: 'createTable',
       table: 'invalid_strict_notes',
       columns: [{ name: 'title', declaredType: 'VARCHAR(255)' }],
@@ -693,7 +696,7 @@ describe('DbResource schema-agnostic provider', () => {
       message: expect.stringContaining('STRICT table column "title" must use INT, INTEGER, REAL, TEXT, BLOB, or ANY'),
     });
 
-    const flexible = await provider.applyDraftChange('draft-invalid-strict-type', {
+    const flexible = await provider.applyDraftChange(testUuid('draft-invalid-strict-type'), {
       kind: 'createTable',
       table: 'flexible_notes',
       columns: [{ name: 'title', declaredType: 'VARCHAR(255)' }],
@@ -708,14 +711,14 @@ describe('DbResource schema-agnostic provider', () => {
       { sql: 'CREATE TABLE strict_notes (id INTEGER PRIMARY KEY, title TEXT NOT NULL) STRICT' },
       { sql: 'CREATE TABLE collated_notes (id INTEGER PRIMARY KEY, title TEXT COLLATE NOCASE)' },
     ] });
-    await provider.createDraft(resource.id, 'draft-lossless');
-    const sql = await provider.applyDraftChange('draft-lossless', {
+    await provider.createDraft(resource.id, testUuid('draft-lossless'));
+    const sql = await provider.applyDraftChange(testUuid('draft-lossless'), {
       kind: 'alterColumn', table: 'strict_notes', column: 'title', definition: { name: 'title', defaultSql: "''" },
     });
     expect(sql.sql).toContain(' STRICT;');
-    expect((await provider.inspect(resource.id, 'draft', 'draft-lossless')).objects.find((object) => object.name === 'strict_notes')?.createSql)
+    expect((await provider.inspect(resource.id, 'draft', testUuid('draft-lossless'))).objects.find((object) => object.name === 'strict_notes')?.createSql)
       .toMatch(/\bSTRICT\b/i);
-    await expect(provider.applyDraftChange('draft-lossless', {
+    await expect(provider.applyDraftChange(testUuid('draft-lossless'), {
       kind: 'alterColumn', table: 'collated_notes', column: 'title', definition: { name: 'title', nullable: false },
     })).rejects.toMatchObject({ code: 'DB_RESOURCE_SCHEMA_OPERATION_INVALID' });
   });
@@ -725,14 +728,14 @@ describe('DbResource schema-agnostic provider', () => {
     await call('execute', {
       sql: 'CREATE TABLE flexible_notes (id INTEGER PRIMARY KEY, "strict" VARCHAR(255), title VARCHAR(255))',
     });
-    await provider.createDraft(resource.id, 'draft-flexible-rebuild');
-    const change = await provider.applyDraftChange('draft-flexible-rebuild', {
+    await provider.createDraft(resource.id, testUuid('draft-flexible-rebuild'));
+    const change = await provider.applyDraftChange(testUuid('draft-flexible-rebuild'), {
       kind: 'alterColumn',
       table: 'flexible_notes',
       column: 'title',
       definition: { name: 'title', nullable: false, defaultSql: "''" },
     });
-    const createSql = (await provider.inspect(resource.id, 'draft', 'draft-flexible-rebuild')).objects[0]?.createSql ?? '';
+    const createSql = (await provider.inspect(resource.id, 'draft', testUuid('draft-flexible-rebuild'))).objects[0]?.createSql ?? '';
 
     expect(change.sql).not.toMatch(/CREATE TABLE[^;]+\)\s+STRICT;/i);
     expect(createSql).not.toMatch(/\)\s*(?:WITHOUT\s+ROWID\s*,\s*)?STRICT\s*$/i);
@@ -749,7 +752,7 @@ describe('DbResource schema-agnostic provider', () => {
     await manager.close();
     provider = new DbResource({ db, dataRoot });
     const definition = manifest();
-    manager = new ActorResourceManager({ db, crypto, getDefinition: (name) => name === definitionName ? definition : null, providers: [provider] });
+    manager = new ActorResourceManager({ db, crypto: testCrypto, getDefinition: (name) => name === definitionName ? definition : null, providers: [provider] });
     await manager.reconcileStartup();
     await expect(call('query', { sql: "SELECT name FROM sqlite_schema WHERE name = '_vibecanvas_migrations'", parameters: {} }, 'fx')).resolves.toEqual([]);
     await expect(call('query', { sql: 'SELECT id, title FROM notes', parameters: {} }, 'fx')).resolves.toEqual([{ id: 1n, title: 'preserved' }]);

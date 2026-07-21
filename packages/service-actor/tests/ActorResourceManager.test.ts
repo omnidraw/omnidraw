@@ -11,6 +11,7 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
+import { createTestCrypto, testUuid } from './test-uuid';
 
 const definitionName = 'Resource Test';
 
@@ -62,11 +63,13 @@ describe('ActorResourceManager', () => {
   let rootDir: string;
   let kvStore: ActorResourceKeyValueStore;
   let kvResource: KvResource;
+  let testCrypto: Pick<Crypto, 'randomUUID'>;
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-resource-manager-'));
     db = new DbServiceTurso({ databasePath: ':memory:', dataDir: import.meta.dir, cacheDir: import.meta.dir });
     await db.start();
+    testCrypto = createTestCrypto('actor-resource-manager');
     await db.actor.insertDefinition({
       name: definitionName,
       slug: manifest.slug,
@@ -79,7 +82,7 @@ describe('ActorResourceManager', () => {
     kvResource = physical.kvResource;
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? manifest : null,
       providers: physical.providers,
     });
@@ -121,13 +124,16 @@ describe('ActorResourceManager', () => {
   });
 
   test('reports legacy normalized-name collisions as ambiguous without choosing a row', async () => {
-    await (await db.db.prepare('DROP TRIGGER IF EXISTS actor_resources_name_key_before_insert')).run();
     await (await db.db.prepare(`
-      INSERT INTO actor_resources (id, kind, name, name_key, status)
-      VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+      INSERT INTO resource_catalog (
+        org_id, id, kind, name, status, created_at_ms, updated_at_ms
+      )
+      SELECT id, ?, ?, ?, ?, 0, 0 FROM organizations
+      UNION ALL
+      SELECT id, ?, ?, ?, ?, 0, 0 FROM organizations
     `)).run(
-      'legacy-a', 'kv', 'Legacy', 'legacy', 'ready',
-      'legacy-b', 'secretStore', 'legacy', 'legacy', 'ready',
+      testUuid('legacy-a'), 'kv', 'Legacy', 'ready',
+      testUuid('legacy-b'), 'secretStore', 'legacy', 'ready',
     );
     await expect(manager.resolveResourceByName('LEGACY', { requireReady: false }))
       .rejects.toMatchObject({ code: 'RESOURCE_NAME_AMBIGUOUS' });
@@ -327,7 +333,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? dbManifest : null,
       providers: [{
         kind: 'db',
@@ -472,7 +478,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? dbManifest : null,
       providers: [provider],
     });
@@ -674,23 +680,23 @@ describe('ActorResourceManager', () => {
 
   test('startup reconciliation restores transitional KV and removes deleting resources', async () => {
     await db.actorResource.create({
-      id: 'recover-kv',
+      id: testUuid('recover-kv'),
       kind: 'kv',
       name: 'Recover KV',
       status: 'provisioning',
       lastError: { code: 'INTERRUPTED', message: 'Previous startup stopped.' },
     });
-    await kvStore.provision({ resourceId: 'recover-kv', kind: 'kv' });
+    await kvStore.provision({ resourceId: testUuid('recover-kv'), kind: 'kv' });
     await db.actorResource.create({
-      id: 'delete-kv',
+      id: testUuid('delete-kv'),
       kind: 'kv',
       name: 'Delete KV',
       status: 'deleting',
     });
-    await kvStore.provision({ resourceId: 'delete-kv', kind: 'kv' });
-    await kvStore.set({ resourceId: 'delete-kv', key: 'stale', value: true });
+    await kvStore.provision({ resourceId: testUuid('delete-kv'), kind: 'kv' });
+    await kvStore.set({ resourceId: testUuid('delete-kv'), key: 'stale', value: true });
     await db.actorResource.create({
-      id: 'already-removed-kv',
+      id: testUuid('already-removed-kv'),
       kind: 'kv',
       name: 'Already removed KV',
       status: 'deleting',
@@ -698,13 +704,13 @@ describe('ActorResourceManager', () => {
 
     await manager.reconcileStartup();
 
-    expect(await manager.getResource('recover-kv')).toMatchObject({
+    expect(await manager.getResource(testUuid('recover-kv'))).toMatchObject({
       status: 'ready',
       last_error: null,
     });
-    expect(await manager.getResource('delete-kv')).toBeNull();
-    expect(await manager.getResource('already-removed-kv')).toBeNull();
-    expect(await stat(join(rootDir, 'actor-resources', 'kv', 'delete-kv')).catch(() => null)).toBeNull();
+    expect(await manager.getResource(testUuid('delete-kv'))).toBeNull();
+    expect(await manager.getResource(testUuid('already-removed-kv'))).toBeNull();
+    expect(await stat(join(rootDir, testUuid('delete-kv'))).catch(() => null)).toBeNull();
   });
 
   test('leaves migrating database resources blocked for apply recovery', async () => {
@@ -733,7 +739,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? dbManifest : null,
       providers: [provider],
     });
@@ -772,7 +778,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? dbManifest : null,
       providers: [provider],
     });
@@ -808,7 +814,7 @@ describe('ActorResourceManager', () => {
       effect() { return null; },
       async dispatch() { return null; },
     };
-    manager = new ActorResourceManager({ db, crypto, getDefinition: () => null, providers: [provider] });
+    manager = new ActorResourceManager({ db, crypto: testCrypto, getDefinition: () => null, providers: [provider] });
     const resource = await manager.createResource({ kind: 'db', name: 'Management gate DB' });
     let releaseManagement!: () => void;
     let markManagementStarted!: () => void;
@@ -851,7 +857,7 @@ describe('ActorResourceManager', () => {
     kvResource = physical.kvResource;
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? staleManifest : null,
       providers: physical.providers,
     });
@@ -881,7 +887,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? manifest : null,
       providers: [provider],
     });
@@ -920,7 +926,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? dbManifest : null,
       providers: [provider],
     });
@@ -966,7 +972,7 @@ describe('ActorResourceManager', () => {
     };
     manager = new ActorResourceManager({
       db,
-      crypto,
+      crypto: testCrypto,
       getDefinition: (name) => name === definitionName ? dbManifest : null,
       providers: [provider],
     });

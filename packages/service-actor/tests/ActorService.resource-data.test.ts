@@ -7,6 +7,7 @@ import { EventPublisherService } from '@vibecanvas/service-event-publisher/Event
 import { ActorService } from '../src/ActorService';
 import { ActorResourceError } from '../src/resources/ActorResourceError';
 import { SecretStoreDatabaseKeyProvider } from '../src/resources/SecretStoreKeyProvider';
+import { createTestCrypto, testUuid } from './test-uuid';
 
 describe('ActorService KV and secret management', () => {
   let rootDir = '';
@@ -14,6 +15,7 @@ describe('ActorService KV and secret management', () => {
   let dataRoot = '';
   let db: DbServiceTurso;
   let service: ActorService;
+  let testCrypto: Pick<Crypto, 'randomUUID'>;
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-service-resource-data-'));
@@ -23,14 +25,16 @@ describe('ActorService KV and secret management', () => {
     await mkdir(dataRoot, { recursive: true });
     db = new DbServiceTurso({ databasePath: ':memory:', dataDir: dataRoot, cacheDir: dataRoot });
     await db.start();
+    testCrypto = createTestCrypto('actor-service-resource-data');
     service = new ActorService({
       db,
+      crypto: testCrypto,
       configPath,
       dataRoot,
       secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
         encryptionKeys: db.actorResourceEncryptionKey,
         randomBytes: () => Buffer.alloc(32, 0x5c),
-        randomUUID: () => 'test-key-initial',
+        randomUUID: () => testUuid('test-key-initial'),
       }),
       eventPublisherService: new EventPublisherService(),
     });
@@ -168,17 +172,18 @@ describe('ActorService KV and secret management', () => {
     await service.setResourceDataEntry({ resourceId: kv.id, key: 'theme', expectedRevision: null, value: 'dark' });
     await service.setResourceDataEntry({ resourceId: secrets.id, key: 'token', expectedRevision: null, value: 'persistent-secret' });
 
-    expect((await stat(join(dataRoot, 'actor-resources', 'kv', kv.id, 'data.db'))).isFile()).toBe(true);
-    expect((await stat(join(dataRoot, 'actor-resources', 'secret-store', secrets.id, 'data.db'))).isFile()).toBe(true);
+    expect((await stat(join(dataRoot, kv.id, 'data.db'))).isFile()).toBe(true);
+    expect((await stat(join(dataRoot, secrets.id, 'data.db'))).isFile()).toBe(true);
     await service.stop();
     service = new ActorService({
       db,
+      crypto: testCrypto,
       configPath,
       dataRoot,
       secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
         encryptionKeys: db.actorResourceEncryptionKey,
         randomBytes: () => Buffer.alloc(32, 0xff),
-        randomUUID: () => 'test-key-restart',
+        randomUUID: () => testUuid('test-key-restart'),
       }),
       eventPublisherService: new EventPublisherService(),
     });
@@ -202,11 +207,12 @@ describe('ActorService KV and secret management', () => {
       expectedRevision: null,
       value: 'wrong-key-startup-sentinel',
     });
-    const databasePath = join(dataRoot, 'actor-resources', 'secret-store', secrets.id, 'data.db');
+    const databasePath = join(dataRoot, secrets.id, 'data.db');
     await service.stop();
     const before = await readFile(databasePath);
     service = new ActorService({
       db,
+      crypto: testCrypto,
       configPath,
       dataRoot,
       secretStoreKeyProvider: {
@@ -237,17 +243,18 @@ describe('ActorService KV and secret management', () => {
     });
     await service.stop();
     await (await db.db.prepare(`
-      DELETE FROM actor_resource_encryption_keys
-      WHERE actor_resource_id = ?
+      DELETE FROM resource_encryption_keys
+      WHERE resource_id = ?
     `)).run(secrets.id);
     service = new ActorService({
       db,
+      crypto: testCrypto,
       configPath,
       dataRoot,
       secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
         encryptionKeys: db.actorResourceEncryptionKey,
         randomBytes: () => Buffer.alloc(32, 0xff),
-        randomUUID: () => 'replacement-key-must-not-be-created',
+        randomUUID: () => testUuid('replacement-key-must-not-be-created'),
       }),
       eventPublisherService: new EventPublisherService(),
     });
@@ -262,8 +269,8 @@ describe('ActorService KV and secret management', () => {
     });
     expect(JSON.stringify(await service.getResource(secrets.id))).not.toContain('missing-key-startup-sentinel');
     await expect(db.actorResourceEncryptionKey.get({ resourceId: secrets.id })).resolves.toBeNull();
-    const keyCount = await (await db.db.prepare('SELECT COUNT(*) AS count FROM encryption_keys')).get();
-    expect(Number(keyCount?.count)).toBe(1);
+    const keyCount = await (await db.db.prepare('SELECT COUNT(*) AS count FROM resource_encryption_keys')).get();
+    expect(Number(keyCount?.count)).toBe(0);
   });
 
   test('marks only a missing ready physical resource as error without recreating it', async () => {
@@ -271,17 +278,18 @@ describe('ActorService KV and secret management', () => {
     const healthy = await service.createResource({ kind: 'secretStore', name: 'Healthy after restart' });
     await service.setResourceDataEntry({ resourceId: healthy.id, key: 'token', expectedRevision: null, value: 'healthy-secret' });
     await service.stop();
-    const missingPath = join(dataRoot, 'actor-resources', 'kv', missing.id, 'data.db');
+    const missingPath = join(dataRoot, missing.id, 'data.db');
     await rm(missingPath);
 
     service = new ActorService({
       db,
+      crypto: testCrypto,
       configPath,
       dataRoot,
       secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
         encryptionKeys: db.actorResourceEncryptionKey,
         randomBytes: () => Buffer.alloc(32, 0xff),
-        randomUUID: () => 'test-key-healthy-restart',
+        randomUUID: () => testUuid('test-key-healthy-restart'),
       }),
       eventPublisherService: new EventPublisherService(),
     });

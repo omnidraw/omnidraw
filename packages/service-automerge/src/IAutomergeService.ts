@@ -5,4 +5,6 @@ import type { BunWSServerAdapter } from './adapters/websocket.adapter';
 export interface IAutomergeService extends IService, IStartableService, IStoppableService {
   readonly repo: Repo;
   readonly wsAdapter: BunWSServerAdapter;
+  notifyDocumentRegistered(automergeUrl: string): Promise<void>;
+  failDocumentRegistration(automergeUrl: string, cause: unknown): void;
 }

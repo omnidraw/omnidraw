@@ -5,5 +5,10 @@
     "outDir": "dist",
     "composite": true
   },
-  "include": ["src", "../../global.d.ts", "tests/fn.xdg-paths.test.ts"]
+  "include": [
+    "src",
+    "../../global.d.ts",
+    "tests/fn.resolve-vibecanvas-home.test.ts",
+    "tests/tx.ensure-vibecanvas-home.test.ts"
+  ]
 }

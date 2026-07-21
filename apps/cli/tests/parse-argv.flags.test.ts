@@ -9,14 +9,14 @@ describe('parseCliArgv flag parsing', () => {
       'serve',
       '--port',
       '3001',
-      '--db',
-      './tmp/dev.sqlite',
+      '--data-dir',
+      './tmp/vibecanvas-home',
       '--upgrade',
       '1.2.3',
     ]);
 
     expect(parsed.port).toBe(3001);
-    expect(parsed.dbPath).toBe('./tmp/dev.sqlite');
+    expect(parsed.dataDir).toBe('./tmp/vibecanvas-home');
     expect(parsed.upgradeTarget).toBe('1.2.3');
   });
 
@@ -55,7 +55,13 @@ describe('parseCliArgv flag parsing', () => {
     expect(() => parseCliArgv(['bun', 'run', 'serve', '--port', 'abc'])).toThrow('Invalid port: abc');
   });
 
-  test('rejects option tokens as --db values', () => {
-    expect(() => parseCliArgv(['bun', 'run', 'serve', '--db', '--json'])).toThrow("--db requires a path value. Received option token '--json' instead.");
+  test('rejects option tokens as --data-dir values', () => {
+    expect(() => parseCliArgv(['bun', 'run', 'serve', '--data-dir', '--json'])).toThrow("--data-dir requires a path value. Received option token '--json' instead.");
+    expect(() => parseCliArgv(['bun', 'run', 'serve', '--data-dir'])).toThrow('--data-dir requires a path value.');
+  });
+
+  test('rejects the removed database-file override', () => {
+    expect(() => parseCliArgv(['bun', 'run', 'serve', '--db', './tmp/dev.sqlite'])).toThrow('--db is no longer supported. Use --data-dir');
+    expect(() => parseCliArgv(['bun', 'run', 'serve', '--db=./tmp/dev.sqlite'])).toThrow('--db is no longer supported. Use --data-dir');
   });
 });

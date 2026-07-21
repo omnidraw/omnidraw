@@ -1,23 +1,36 @@
 import type { Database } from "@tursodatabase/database"
+import { DEFAULT_OSS_ORGANIZATION_ID } from "../CONSTANTS"
 import type { TFilesystem } from "../model"
+import { fxFilesystemFindById } from "./fx.filesystem"
 
 type TPortal = {
   db: Database
 }
 
-type TArgsCreate = Pick<TFilesystem, "id" | "name" | "slug">
+type TArgsCreate = Omit<TFilesystem, "created_at" | "updated_at">
 
 export async function txFilesystemCreate(portal: TPortal, args: TArgsCreate): Promise<TFilesystem> {
   const stmt = await portal.db.prepare(`
-    INSERT INTO file_systems (id, name, slug, path)
-    VALUES (?, ?, ?, ?)
-    RETURNING *
+    INSERT INTO file_systems (
+      org_id, id, name, slug, capability_ref, relative_root, description,
+      status, created_at_ms, updated_at_ms
+    )
+    VALUES (
+      ?, ?, ?, ?, ?, ?, ?, 'active',
+      CAST(unixepoch('subsec') * 1000 AS INTEGER),
+      CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    )
   `)
-  const row = await stmt.get(args.id, args.name, args.slug, "")
-
-  if (!row) {
-    throw new Error("Failed to create filesystem record")
-  }
-
-  return row as TFilesystem
+  await stmt.run(
+    DEFAULT_OSS_ORGANIZATION_ID,
+    args.id,
+    args.name,
+    args.slug,
+    args.path === "" ? `legacy-empty:${args.id}` : args.path,
+    args.slug,
+    args.description,
+  )
+  const created = await fxFilesystemFindById(portal, { id: args.id })
+  if (!created) throw new Error("Failed to create filesystem record")
+  return created
 }

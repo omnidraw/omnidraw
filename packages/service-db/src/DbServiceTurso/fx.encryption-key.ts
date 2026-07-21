@@ -1,5 +1,7 @@
 import type { Database } from '@tursodatabase/database';
+import { DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import type { TEncryptionKey } from '../model';
+import { fnTimestampFromMs } from './fn.legacy-row';
 
 type TPortal = {
   db: Database;
@@ -10,34 +12,31 @@ type TArgs = {
 };
 
 function parseEncryptionKey(row: unknown): TEncryptionKey {
-  const value = row as Partial<TEncryptionKey>;
-  if (
-    typeof value.id !== 'string'
-    || typeof value.purpose !== 'string'
-    || typeof value.algorithm !== 'string'
-    || typeof value.key_hex !== 'string'
-    || typeof value.created_at !== 'string'
-  ) {
+  const value = row as {
+    id: unknown;
+    key_hex: unknown;
+    created_at_ms: unknown;
+  };
+  if (typeof value.id !== 'string' || typeof value.key_hex !== 'string') {
     throw new Error('Stored encryption key is invalid.');
   }
   return {
     id: value.id,
-    purpose: value.purpose,
-    algorithm: value.algorithm,
+    purpose: 'actor-resource-secret-store',
+    algorithm: 'aegis256',
     key_hex: value.key_hex,
-    created_at: value.created_at,
+    created_at: fnTimestampFromMs(value.created_at_ms),
   };
 }
 
-export async function fxActorResourceEncryptionKeyGet(portal: TPortal, args: TArgs): Promise<TEncryptionKey | null> {
-  const statement = await portal.db.prepare(`
-    SELECT encryption_keys.id, encryption_keys.purpose, encryption_keys.algorithm,
-      encryption_keys.key_hex, encryption_keys.created_at
-    FROM actor_resource_encryption_keys
-    INNER JOIN encryption_keys
-      ON encryption_keys.id = actor_resource_encryption_keys.encryption_key_id
-    WHERE actor_resource_encryption_keys.actor_resource_id = ?
-  `);
-  const row = await statement.get(args.resourceId);
+export async function fxActorResourceEncryptionKeyGet(
+  portal: TPortal,
+  args: TArgs,
+): Promise<TEncryptionKey | null> {
+  const row = await (await portal.db.prepare(`
+    SELECT id, lower(hex(key_material)) AS key_hex, created_at_ms
+    FROM resource_encryption_keys
+    WHERE org_id = ? AND resource_id = ?
+  `)).get(DEFAULT_OSS_ORGANIZATION_ID, args.resourceId);
   return row ? parseEncryptionKey(row) : null;
 }

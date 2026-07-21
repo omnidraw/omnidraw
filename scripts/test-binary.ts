@@ -6,7 +6,7 @@
 
 import path from "path"
 import net from "node:net"
-import { chmod, mkdir } from "node:fs/promises"
+import { chmod, mkdir, readdir } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { Glob } from "bun"
 import { Database } from "../packages/service-db/src/DbServiceTurso/turso-native"
@@ -237,7 +237,7 @@ async function assertPathMissing(targetPath: string, label: string): Promise<voi
   }
 }
 
-async function assertEncryptionKeyTables(databasePath: string): Promise<void> {
+async function assertManagedSchema(databasePath: string): Promise<void> {
   const database = new Database(databasePath, {
     // @ts-expect-error multiprocess_wal is ahead of the public experimental feature union.
     experimental: ["custom_types", "triggers", "index_method", "multiprocess_wal"],
@@ -248,13 +248,13 @@ async function assertEncryptionKeyTables(databasePath: string): Promise<void> {
       SELECT name
       FROM sqlite_master
       WHERE type = 'table'
-        AND name IN ('encryption_keys', 'actor_resource_encryption_keys')
+        AND name IN ('schema_migrations', 'organizations', 'resource_encryption_keys')
       ORDER BY name
     `)
     const rows = await statement.all()
     const names = rows.map((row) => row.name)
-    if (names.join(',') !== 'actor_resource_encryption_keys,encryption_keys') {
-      throw new Error(`Compiled control database is missing encryption-key tables: ${databasePath}`)
+    if (names.join(',') !== 'organizations,resource_encryption_keys,schema_migrations') {
+      throw new Error(`Compiled control database is missing the managed baseline schema: ${databasePath}`)
     }
   } finally {
     await database.close()
@@ -292,7 +292,7 @@ async function createWidgetToolchainFixtures(tempRoot: string): Promise<{ availa
 
 async function assertWidgetPrerequisiteBinaryScenario(args: {
   binaryPath: string
-  configPath: string
+  homePath: string
   path: string
   port: number
   warningExpected: boolean
@@ -305,7 +305,7 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
     env: {
       ...process.env,
       PATH: args.path,
-      VIBECANVAS_CONFIG: args.configPath,
+      VIBECANVAS_HOME: args.homePath,
     },
   })
   const stdoutPromise = new Response(proc.stdout).text()
@@ -332,6 +332,68 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
     }
   } else if (stderr.includes(warningText)) {
     throw new Error(`Widget prerequisite binary emitted an unexpected warning: ${stderr}`)
+  }
+}
+
+async function assertHomePreflightRefusalBinaryScenario(args: {
+  binaryPath: string
+  homePath: string
+  port: number
+  timeoutMs: number
+}): Promise<void> {
+  const actorEraDatabasePath = path.join(args.homePath, "vibecanvas.turso")
+  const originalContents = "actor-era-database-marker\n"
+  await mkdir(args.homePath, { recursive: true })
+  await Bun.write(actorEraDatabasePath, originalContents)
+
+  const proc = Bun.spawn({
+    cmd: [args.binaryPath, "serve", "--port", String(args.port)],
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      VIBECANVAS_HOME: args.homePath,
+    },
+  })
+  const stdoutPromise = new Response(proc.stdout).text()
+  const stderrPromise = new Response(proc.stderr).text()
+  let exited = false
+
+  try {
+    const exitCode = await withTimeout(proc.exited, args.timeoutMs, "compiled home preflight refusal")
+    exited = true
+    const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
+
+    if (exitCode === 0) {
+      throw new Error(`Compiled binary accepted an actor-era home: ${args.homePath}`)
+    }
+    if (stdout.trim().length !== 0) {
+      throw new Error(`Compiled home preflight unexpectedly wrote stdout: ${stdout}`)
+    }
+    for (const expected of [
+      args.homePath,
+      "Actor-era and unknown non-empty layouts are unsupported.",
+      "Archive or move",
+      "--data-dir <fresh-path>",
+    ]) {
+      if (!stderr.includes(expected)) {
+        throw new Error(`Compiled home preflight stderr did not include ${JSON.stringify(expected)}: ${stderr || "<empty>"}`)
+      }
+    }
+
+    const entries = (await readdir(args.homePath)).sort()
+    if (JSON.stringify(entries) !== JSON.stringify(["vibecanvas.turso"])) {
+      throw new Error(`Compiled home preflight mutated the selected root: ${JSON.stringify(entries)}`)
+    }
+    if (await Bun.file(actorEraDatabasePath).text() !== originalContents) {
+      throw new Error(`Compiled home preflight modified the actor-era marker: ${actorEraDatabasePath}`)
+    }
+    await assertPathMissing(path.join(args.homePath, "main.db"), "compiled refused main.db")
+  } finally {
+    if (!exited) {
+      proc.kill()
+      await proc.exited
+    }
   }
 }
 
@@ -666,8 +728,8 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
     if (scenario.expectedDbPath) {
       await assertPathExists(scenario.expectedDbPath, `${scenario.name} db path`)
       console.log(`[test-binary] PASS ${scenario.name} db path ${scenario.expectedDbPath}`)
-      await assertEncryptionKeyTables(scenario.expectedDbPath)
-      console.log(`[test-binary] PASS ${scenario.name} encryption-key tables migration`)
+      await assertManagedSchema(scenario.expectedDbPath)
+      console.log(`[test-binary] PASS ${scenario.name} managed baseline schema`)
     }
 
     for (const missingPath of scenario.expectedAbsentPaths ?? []) {
@@ -712,11 +774,10 @@ async function main() {
   const binaryPath = await resolveBinaryPath(args.binaryPath)
   const expectedNativeAddonPath = getExpectedNativeAddonPath(binaryPath)
   const tempRoot = path.join(process.cwd(), `.tmp-binary-test-${Date.now()}`)
-  const tempConfigDir = path.join(tempRoot, "config-mode")
-  const tempCompiledConfigDir = path.join(tempRoot, "compiled-config-mode")
-  const tempDbDir = path.join(tempRoot, "db-mode")
-  const explicitDbPath = path.join(tempDbDir, "nested", "binary-test.sqlite")
-  const xdgRoot = path.join(tempRoot, "xdg-root")
+  const envHome = path.join(tempRoot, "env-home")
+  const compiledHome = path.join(tempRoot, "compiled-home")
+  const explicitHome = path.join(tempRoot, "explicit-home")
+  const ignoredEnvHome = path.join(tempRoot, "ignored-env-home")
   const widgetToolchains = await createWidgetToolchainFixtures(tempRoot)
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
@@ -725,9 +786,17 @@ async function main() {
   console.log(`[test-binary] PASS native addon ${expectedNativeAddonPath}`)
   console.log(`[test-binary] Temp root: ${tempRoot}`)
 
+  await assertHomePreflightRefusalBinaryScenario({
+    binaryPath,
+    homePath: path.join(tempRoot, "actor-era-home"),
+    port: args.port + 2,
+    timeoutMs: args.startupTimeoutMs,
+  })
+  console.log("[test-binary] PASS compiled home preflight refuses actor-era data without mutation")
+
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,
-    configPath: path.join(tempRoot, "widget-toolchain-available-config"),
+    homePath: path.join(tempRoot, "widget-toolchain-available-home"),
     path: widgetToolchains.availablePath,
     port: args.port,
     warningExpected: false,
@@ -737,7 +806,7 @@ async function main() {
 
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,
-    configPath: path.join(tempRoot, "widget-toolchain-missing-config"),
+    homePath: path.join(tempRoot, "widget-toolchain-missing-home"),
     path: widgetToolchains.missingPath,
     port: args.port + 1,
     warningExpected: true,
@@ -753,29 +822,26 @@ async function main() {
   await assertActorIpcBinary(binaryPath, tempRoot, args.requestTimeoutMs)
 
   await runBinaryScenario(binaryPath, args, {
-    name: "config-env",
+    name: "home-env",
     port: args.port,
     cmd: ["serve", "--port", String(args.port)],
     env: {
-      VIBECANVAS_CONFIG: tempConfigDir,
+      VIBECANVAS_HOME: envHome,
     },
-    expectedDbPath: path.join(tempConfigDir, "vibecanvas.turso"),
-    cleanupPaths: [tempConfigDir],
+    expectedDbPath: path.join(envHome, "main.db"),
+    cleanupPaths: [envHome],
   })
 
   await runBinaryScenario(binaryPath, args, {
-    name: "explicit-db-flag",
+    name: "explicit-data-dir-flag",
     port: args.port + 1,
-    cmd: ["serve", "--port", String(args.port + 1), "--db", explicitDbPath],
+    cmd: ["serve", "--port", String(args.port + 1), "--data-dir", explicitHome],
     env: {
-      XDG_DATA_HOME: path.join(xdgRoot, "data"),
-      XDG_CONFIG_HOME: path.join(xdgRoot, "config"),
-      XDG_STATE_HOME: path.join(xdgRoot, "state"),
-      XDG_CACHE_HOME: path.join(xdgRoot, "cache"),
+      VIBECANVAS_HOME: ignoredEnvHome,
     },
-    expectedDbPath: explicitDbPath,
-    expectedAbsentPaths: [path.join(xdgRoot, "data", "vibecanvas", "vibecanvas.turso")],
-    cleanupPaths: [tempDbDir, xdgRoot],
+    expectedDbPath: path.join(explicitHome, "main.db"),
+    expectedAbsentPaths: [ignoredEnvHome],
+    cleanupPaths: [explicitHome, ignoredEnvHome],
   })
 
   const defaultCompiledPort = 7496
@@ -786,10 +852,10 @@ async function main() {
       port: defaultCompiledPort + 1,
       cmd: [],
       env: {
-        VIBECANVAS_CONFIG: tempCompiledConfigDir,
+        VIBECANVAS_HOME: compiledHome,
       },
-      expectedDbPath: path.join(tempCompiledConfigDir, "vibecanvas.turso"),
-      cleanupPaths: [tempCompiledConfigDir],
+      expectedDbPath: path.join(compiledHome, "main.db"),
+      cleanupPaths: [compiledHome],
     })
   } finally {
     await blockedCompiledPort.close()

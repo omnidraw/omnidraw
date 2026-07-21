@@ -170,7 +170,6 @@ type TDatabaseFileState = 'missing' | 'plaintext' | 'encrypted' | 'unknown';
 export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersistence {
   readonly #dataRoot: string;
   readonly #kind: TActorResourceKeyValueKind;
-  readonly #pathSegment: 'kv' | 'secret-store';
   readonly #secretStoreKeyProvider: ISecretStoreKeyProvider | undefined;
   readonly #secretStoreConversionCheckpoint: TActorResourceKeyValueStoreConfig['secretStoreConversionCheckpoint'];
   readonly #databaseFactory: TActorResourceKeyValueDatabaseFactory;
@@ -199,7 +198,6 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     }
     this.#dataRoot = config.dataRoot;
     this.#kind = config.kind;
-    this.#pathSegment = config.kind === 'kv' ? 'kv' : 'secret-store';
     this.#secretStoreKeyProvider = config.secretStoreKeyProvider;
     this.#secretStoreConversionCheckpoint = config.secretStoreConversionCheckpoint;
     if (config.kind === 'secretStore' && !this.#secretStoreKeyProvider) {
@@ -226,7 +224,7 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     let directoryCreated = false;
     try {
       const databaseHexKey = await this.#databaseHexKey(resourceId, true);
-      await mkdir(this.#kindRoot(), { recursive: true });
+      await mkdir(this.#dataRoot, { recursive: true });
       await mkdir(directory);
       directoryCreated = true;
       const database = this.#databaseFactory(
@@ -1232,12 +1230,8 @@ export class ActorResourceKeyValueStore implements IActorResourceKeyValuePersist
     }
   }
 
-  #kindRoot(): string {
-    return join(this.#dataRoot, 'actor-resources', this.#pathSegment);
-  }
-
   #resourceDirectory(resourceId: string): string {
-    return join(this.#kindRoot(), fnActorResourceKeyValueHostId(resourceId));
+    return join(this.#dataRoot, fnActorResourceKeyValueHostId(resourceId));
   }
 
   #databasePath(resourceId: string): string {

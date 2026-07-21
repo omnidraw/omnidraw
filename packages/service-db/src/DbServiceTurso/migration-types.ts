@@ -1,22 +1,24 @@
-import type { Database } from '@tursodatabase/database';
-import type * as fs from 'node:fs/promises';
-import type path from 'node:path';
+type TMigration = Readonly<{
+  type: 'sql';
+  name: string;
+  version: number;
+  path: string;
+}>;
 
-export type TMigrationResult = { warnings?: string[] };
-
-export type TMigrationPortal = {
-  db: Database;
-  dataDir: string;
-  fs: Pick<typeof fs, 'cp' | 'lstat' | 'mkdir' | 'readFile' | 'readdir' | 'readlink' | 'realpath' | 'rename' | 'rm' | 'rmdir' | 'symlink' | 'writeFile'>;
-  path: typeof path;
-  platform: NodeJS.Platform;
+type TMigrationLedgerRow = {
+  version: number;
+  name: string;
+  checksum_sha256: string;
+  applied_at_ms: number;
+  application_version: string;
 };
 
-export type TMigration =
-  | { type: 'sql'; name: string; path: string; legacyNames?: string[] }
-  | {
-      type: 'typescript';
-      name: string;
-      version: string;
-      run: (portal: TMigrationPortal, args: Record<string, never>) => Promise<TMigrationResult>;
-    };
+type TDatabasePreflightResult =
+  | Readonly<{ status: 'empty' }>
+  | Readonly<{ status: 'ready'; migration: TMigrationLedgerRow }>;
+
+export type {
+  TDatabasePreflightResult,
+  TMigration,
+  TMigrationLedgerRow,
+};
