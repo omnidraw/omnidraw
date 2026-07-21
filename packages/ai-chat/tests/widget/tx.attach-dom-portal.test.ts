@@ -116,6 +116,8 @@ describe("txAttachDomPortal", () => {
     expect(titleBar).toBeDefined();
     expect(actionRoot?.style.transform).toBe("matrix(1,0,0,1,10,20)");
     expect(settingsButton?.textContent).toBe("Settings");
+    expect(settingsButton?.style.background).toContain("color-mix");
+    expect(settingsButton?.style.borderColor).toContain("color-mix");
 
     titleBar?.onAction("settings", () => { settingsCalls += 1; });
     settingsButton?.click();

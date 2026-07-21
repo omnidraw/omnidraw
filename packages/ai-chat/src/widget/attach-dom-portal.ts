@@ -55,6 +55,10 @@ type TPortal = {
   transport?: TWidgetTransportPort
 };
 
+const WIDGET_TITLE_ACTION_BACKGROUND = 'color-mix(in srgb, currentColor 7%, transparent)';
+const WIDGET_TITLE_ACTION_BACKGROUND_HOVER = 'color-mix(in srgb, currentColor 11%, transparent)';
+const WIDGET_TITLE_ACTION_BORDER = 'color-mix(in srgb, currentColor 13%, transparent)';
+
 type TArgs = {
   element: TElement;
 };
@@ -150,7 +154,8 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
       button.setAttribute('aria-pressed', String(state.pressed));
       button.style.background = state.pressed
         ? 'color-mix(in srgb, currentColor 14%, transparent)'
-        : 'transparent';
+        : WIDGET_TITLE_ACTION_BACKGROUND;
+      button.style.borderColor = state.pressed ? 'currentColor' : WIDGET_TITLE_ACTION_BORDER;
       button.style.boxShadow = state.pressed ? 'inset 0 0 0 1px currentColor' : 'none';
     }
     if (state.disabled !== undefined) {
@@ -218,9 +223,9 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     button.setAttribute('aria-label', action.label);
     button.style.alignItems = 'center';
     button.style.appearance = 'none';
-    button.style.background = 'transparent';
-    button.style.border = '1px solid transparent';
-    button.style.borderRadius = '4px';
+    button.style.background = WIDGET_TITLE_ACTION_BACKGROUND;
+    button.style.border = `1px solid ${WIDGET_TITLE_ACTION_BORDER}`;
+    button.style.borderRadius = '5px';
     button.style.boxSizing = 'border-box';
     button.style.color = 'inherit';
     button.style.cursor = 'pointer';
@@ -233,6 +238,16 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
     button.style.pointerEvents = 'auto';
     button.style.whiteSpace = 'nowrap';
     button.onpointerdown = (event) => event.stopPropagation();
+    button.onpointerenter = () => {
+      if (!button.disabled && !titleActionStates.get(action.id)?.pressed) {
+        button.style.background = WIDGET_TITLE_ACTION_BACKGROUND_HOVER;
+      }
+    };
+    button.onpointerleave = () => {
+      if (!titleActionStates.get(action.id)?.pressed) {
+        button.style.background = WIDGET_TITLE_ACTION_BACKGROUND;
+      }
+    };
     button.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();

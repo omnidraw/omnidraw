@@ -73,6 +73,9 @@ export class WidgetWorkspace {
   readonly publishedRoot: string;
   readonly draftRoot: string;
   readonly previewSnapshotRoot: string;
+  readonly publicationBackupRoot: string;
+  readonly publicationStateRoot: string;
+  readonly installedPublicationBackupRoot: string;
   readonly sdkPackagePath: string;
   readonly installedWidgetsRoot: string;
   readonly #platform: NodeJS.Platform;
@@ -88,6 +91,9 @@ export class WidgetWorkspace {
     this.publishedRoot = join(this.agentRoot, 'widgets', 'published');
     this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
     this.previewSnapshotRoot = join(this.agentRoot, 'preview-snapshots');
+    this.publicationBackupRoot = join(this.agentRoot, 'publication-backups');
+    this.publicationStateRoot = join(this.agentRoot, 'publication-state');
+    this.installedPublicationBackupRoot = join(config.configPath, '.publication-backups');
     this.sdkPackagePath = join(this.agentRoot, 'sdk');
     this.installedWidgetsRoot = join(config.configPath, 'widgets');
     this.#platform = config.platform ?? process.platform;
@@ -103,6 +109,9 @@ export class WidgetWorkspace {
       mkdir(this.chatRoot, { recursive: true }),
       mkdir(this.publishedRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),
+      mkdir(this.publicationBackupRoot, { recursive: true }),
+      mkdir(this.publicationStateRoot, { recursive: true }),
+      mkdir(this.installedPublicationBackupRoot, { recursive: true }),
       rm(this.previewSnapshotRoot, { recursive: true, force: true }).then(() => mkdir(this.previewSnapshotRoot, { recursive: true })),
     ]);
     await this.reconcilePublishedWidgets();
@@ -397,6 +406,8 @@ export class WidgetWorkspace {
           await rm(backup, { recursive: true, force: true }).catch(() => undefined);
           movedExisting = false;
         }
+        const revision = await this.#readDraftRevision(target);
+        await this.#writeCleanDraftRevision(name, revision.value);
       } finally {
         await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
         if (!movedExisting) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
@@ -445,6 +456,18 @@ export class WidgetWorkspace {
       revision: revision.value,
       updatedAt: new Date(revision.updatedAtMs).toISOString(),
     };
+  }
+
+  async getCleanDraftRevision(requestedName: string): Promise<string | null> {
+    const name = this.#normalizeName(requestedName);
+    try {
+      const value: unknown = JSON.parse(await readFile(this.#publicationStatePath(name), 'utf8'));
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+      const revision = (value as { cleanDraftRevision?: unknown }).cleanDraftRevision;
+      return typeof revision === 'string' && /^[a-f0-9]{64}$/.test(revision) ? revision : null;
+    } catch {
+      return null;
+    }
   }
 
   async listAvailableWidgets(chatId: string): Promise<TAvailableWidget[]> {
@@ -665,14 +688,19 @@ export class WidgetWorkspace {
     }
     this.#activePublishes.add(name);
     if (installedPath !== null) this.#activeInstalledPublishes.add(installedPath);
-    const temporary = join(this.publishedRoot, `.publish-${publishId}`);
-    const backup = join(this.publishedRoot, `.publish-backup-${publishId}`);
-    const installedBackup = installedPath === null ? null : join(this.installedWidgetsRoot, `.publish-backup-${publishId}`);
+    const transactionRoot = join(this.publicationBackupRoot, publishId);
+    const installedTransactionRoot = join(this.installedPublicationBackupRoot, publishId);
+    const temporary = join(transactionRoot, 'canonical-next');
+    const backup = join(transactionRoot, 'canonical-previous');
+    const installedBackup = installedPath === null ? null : join(installedTransactionRoot, 'installed-previous');
     let wasExisting = false;
     let wasInstalledExisting = false;
+    let acceptedDraftRevision = '';
     try {
+      await mkdir(transactionRoot, { recursive: true });
       if (installedPath !== null && installedBackup !== null) {
         await mkdir(this.installedWidgetsRoot, { recursive: true });
+        await mkdir(installedTransactionRoot, { recursive: true });
         const installedEntry = await lstat(installedPath).catch(() => null);
         if (installedEntry) {
           const installedTarget = await stat(installedPath).catch(() => null);
@@ -683,9 +711,10 @@ export class WidgetWorkspace {
       }
       await this.#withWidgetWrite(draftPath, async () => {
         if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
+        const currentRevision = await this.#readDraftRevision(draftPath);
+        acceptedDraftRevision = currentRevision.value;
         if (expectedRevision !== undefined) {
-          const currentRevision = await this.#readDraftRevision(draftPath);
-          if (currentRevision.value !== expectedRevision) {
+          if (acceptedDraftRevision !== expectedRevision) {
             throw new Error(`Widget draft '${name}' changed. Expected revision '${expectedRevision}', current revision '${currentRevision.value}'.`);
           }
         }
@@ -710,7 +739,8 @@ export class WidgetWorkspace {
       if (wasExisting && !await lstat(canonicalPath).catch(() => null)) {
         await rename(backup, canonicalPath).catch(() => undefined);
       }
-      if (installedBackup !== null) await rm(installedBackup, { recursive: true, force: true }).catch(() => undefined);
+      await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined);
+      await rm(installedTransactionRoot, { recursive: true, force: true }).catch(() => undefined);
       this.#activePublishes.delete(name);
       if (installedPath !== null) this.#activeInstalledPublishes.delete(installedPath);
       throw error;
@@ -730,11 +760,21 @@ export class WidgetWorkspace {
       commit: async () => {
         if (settled) return;
         try {
-          if (wasExisting) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
-          if (wasInstalledExisting && installedBackup !== null) {
-            await rm(installedBackup, { recursive: true, force: true }).catch(() => undefined);
-          }
+          await this.#withWidgetWrite(draftPath, async () => {
+            if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+              throw new Error(`Widget draft '${name}' does not exist.`);
+            }
+            const currentRevision = await this.#readDraftRevision(draftPath);
+            if (currentRevision.value !== acceptedDraftRevision) {
+              throw new Error(`Widget draft '${name}' changed. Expected revision '${acceptedDraftRevision}', current revision '${currentRevision.value}'.`);
+            }
+            await this.#writeCleanDraftRevision(name, acceptedDraftRevision);
+          });
           settled = true;
+          await Promise.all([
+            rm(transactionRoot, { recursive: true, force: true }),
+            rm(installedTransactionRoot, { recursive: true, force: true }),
+          ].map((operation) => operation.catch(() => undefined)));
         } finally {
           this.#activePublishes.delete(name);
           if (installedPath !== null) this.#activeInstalledPublishes.delete(installedPath);
@@ -749,8 +789,10 @@ export class WidgetWorkspace {
             await rm(installedPath, { recursive: true, force: true });
             if (wasInstalledExisting && installedBackup !== null) await rename(installedBackup, installedPath);
           } else if (wasInstalledExisting && installedBackup !== null) {
-            await rm(installedBackup, { recursive: true, force: true });
+            await rm(installedTransactionRoot, { recursive: true, force: true });
           }
+          await rm(transactionRoot, { recursive: true, force: true });
+          await rm(installedTransactionRoot, { recursive: true, force: true });
           settled = true;
         } finally {
           this.#activePublishes.delete(name);
@@ -1088,6 +1130,22 @@ export class WidgetWorkspace {
       value: hash.digest('hex'),
       updatedAtMs: updatedAtMicros / 1_000,
     };
+  }
+
+  #publicationStatePath(name: string): string {
+    return join(this.publicationStateRoot, `${name}.json`);
+  }
+
+  async #writeCleanDraftRevision(name: string, revision: string): Promise<void> {
+    const target = this.#publicationStatePath(name);
+    const temporary = join(this.publicationStateRoot, `.write-${this.#safeId()}`);
+    try {
+      await mkdir(this.publicationStateRoot, { recursive: true });
+      await writeFile(temporary, JSON.stringify({ version: 1, cleanDraftRevision: revision }), { encoding: 'utf8', flag: 'wx' });
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 
   async #readManifest(root: string): Promise<Record<string, unknown> | null> {

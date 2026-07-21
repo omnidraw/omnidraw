@@ -157,8 +157,12 @@ describe("ActorSupervisor", () => {
     const tempWidgetDir = path.join(tempConfigPath, "widgets");
     const canonicalDir = path.join(tempWidgetDir, "todo-actor-system");
     const legacyDir = path.join(tempWidgetDir, "sdk-test");
+    const publicationBackupDir = path.join(tempWidgetDir, ".publish-backup-test");
+    const reconcileDir = path.join(tempWidgetDir, ".reconcile-test");
     await mkdir(canonicalDir, { recursive: true });
     await mkdir(legacyDir, { recursive: true });
+    await mkdir(publicationBackupDir, { recursive: true });
+    await mkdir(reconcileDir, { recursive: true });
 
     const identity = {
       name: "Todo Actor System",
@@ -182,6 +186,8 @@ describe("ActorSupervisor", () => {
     };
     await writeFile(path.join(canonicalDir, "vibecanvas.json"), JSON.stringify(canonicalManifest), "utf8");
     await writeFile(path.join(legacyDir, "vibecanvas.json"), JSON.stringify(legacyManifest), "utf8");
+    await writeFile(path.join(publicationBackupDir, "vibecanvas.json"), JSON.stringify(legacyManifest), "utf8");
+    await writeFile(path.join(reconcileDir, "vibecanvas.json"), JSON.stringify(legacyManifest), "utf8");
 
     const supervisor = createSupervisorWithPaths({
       db,
@@ -210,6 +216,8 @@ describe("ActorSupervisor", () => {
         title: "Ignored duplicate actor definition",
         description: expect.stringContaining("widgets/sdk-test/vibecanvas.json"),
       });
+      expect(notifications.some((notification) => notification.description.includes(".publish-"))).toBe(false);
+      expect(notifications.some((notification) => notification.description.includes(".reconcile-"))).toBe(false);
     } finally {
       await supervisor.closeActors();
       await rm(tempConfigPath, { recursive: true, force: true });

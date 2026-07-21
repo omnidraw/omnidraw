@@ -296,10 +296,12 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             open={publishOpen()}
             onOpenChange={setPublishOpen}
             onStateChange={setPublicationState}
-            onPublished={async () => {
+            onPublished={async ({ result }) => {
               application.notifySuccess('Widget published');
               props.controller.invalidation.invalidate('widgets');
-              await Promise.all([loadDetail(), catalogState.refresh()]);
+              await catalogState.refresh();
+              setPublishOpen(false);
+              application.navigate(`/widgets/published/${encodeURIComponent(result.definitionName)}?tab=overview`, { replace: true });
             }}
           />
         </Show>

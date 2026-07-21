@@ -155,9 +155,13 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
       mountSandbox: mountArrowSandboxBridge,
       onPersistRevision: (revision) => this.#persistRevision(args.element.id, revision),
       onReleaseRevision: (revision) => this.#scheduleRelease(previewId, payload.draftId, revision),
+      onResetStateChange: (state) => args.titleBar?.setActionState("reset", state),
       onLogError: this.#args.application.logError,
     })
     this.#runtimes.set(args.element.id, { payload, runtime })
+    const disposeReset = args.titleBar?.onAction("reset", () => {
+      void runtime.reset().catch(this.#args.application.logError)
+    }) ?? (() => undefined)
     const publicationApi = this.#args.api.api.agent as unknown as Partial<TWidgetPublicationApi>
     const disposePublication = args.titleBar
       && publicationApi.widgets?.detail
@@ -177,6 +181,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
       : () => undefined
 
     return () => {
+      disposeReset()
       disposePublication()
       if (this.#runtimes.get(args.element.id)?.runtime === runtime) {
         this.#runtimes.delete(args.element.id)

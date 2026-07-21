@@ -3,7 +3,7 @@ import { createDraftPreviewPlugin } from "../../src/canvas-extension/DraftPrevie
 import { DRAFT_PREVIEW_WIDGET_KIND } from "../../src/draft-preview/CONSTANTS"
 
 describe("DraftPreview plugin", () => {
-  test("registers Publish as a host title-bar action and requires its portal", () => {
+  test("registers Reset and Publish as host title-bar actions and requires its portal", () => {
     const registerWidget = vi.fn()
     const plugin = createDraftPreviewPlugin({
       previewFrames: { getTitle: vi.fn(), mount: vi.fn() },
@@ -15,7 +15,10 @@ describe("DraftPreview plugin", () => {
     expect(config).toMatchObject({
       id: DRAFT_PREVIEW_WIDGET_KIND,
       dataType: "ui-widget",
-      titleBarActions: [{ id: "publish", label: "Publish" }],
+      titleBarActions: [
+        { id: "reset", label: "Reset" },
+        { id: "publish", label: "Publish" },
+      ],
     })
     expect(() => config.renderDom({ root: document.createElement("div"), element: {} })).toThrow("Draft Preview title bar actions are unavailable")
   })

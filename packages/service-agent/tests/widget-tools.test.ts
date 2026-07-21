@@ -311,7 +311,7 @@ describe('widget tools and publish integration', () => {
     expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Binding Rollback', source: 'draft' });
   });
 
-  test('first publish snapshots the draft while every chat remains mounted to the draft', async () => {
+  test('first publish retains the shared draft and republish records its latest clean revision', async () => {
     const { dataPath, configPath, workspace } = await fixture();
     const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
       .find((tool) => tool.name === 'vc_widget_create')!;
@@ -337,11 +337,10 @@ describe('widget tools and publish integration', () => {
     expect(result.published).toBe(true);
     expect((await workspace.listMounts('chat-a'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
     expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
-    expect(await realpath(join(workspace.getChatRoot('chat-a'), 'widgets', 'Published Timer')))
-      .toBe(await realpath(join(workspace.draftRoot, 'Published Timer')));
     expect((await stat(join(configPath, 'widgets', 'published-timer'))).isDirectory()).toBe(true);
     expect((await stat(join(workspace.publishedRoot, 'Published Timer'))).isDirectory()).toBe(true);
-    expect((await stat(join(workspace.draftRoot, 'Published Timer'))).isDirectory()).toBe(true);
+    const firstPublishedRevision = (await workspace.getDraft('Published Timer'))!.revision;
+    expect(await workspace.getCleanDraftRevision('Published Timer')).toBe(firstPublishedRevision);
 
     await writeFile(join(workspace.draftRoot, 'Published Timer', 'widget', 'main.css'), '.republished { color: red; }\n', 'utf8');
     const republished = await service.publishChat('widget', 'chat-a');
@@ -349,6 +348,9 @@ describe('widget tools and publish integration', () => {
     expect(await readFile(join(workspace.publishedRoot, 'Published Timer', 'widget', 'main.css'), 'utf8')).toContain('.republished');
     expect(await readFile(join(configPath, 'widgets', 'published-timer', 'widget', 'main.css'), 'utf8')).toContain('.republished');
     expect((await workspace.listMounts('chat-a'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
+    expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
+    expect(await workspace.getCleanDraftRevision('Published Timer'))
+      .toBe((await workspace.getDraft('Published Timer'))!.revision);
   });
 
   test('restores the previous canonical and installed widget when an existing publish fails after copy', async () => {
@@ -378,6 +380,7 @@ describe('widget tools and publish integration', () => {
     };
 
     expect((await service.publishChat('widget', 'chat-a')).published).toBe(true);
+    const cleanRevision = await workspace.getCleanDraftRevision('Atomic Timer');
     await writeFile(join(workspace.draftRoot, 'Atomic Timer', 'widget', 'main.css'), '.new-draft { color: red; }\n', 'utf8');
     rejectReload = true;
 
@@ -386,5 +389,7 @@ describe('widget tools and publish integration', () => {
     expect(await readFile(join(workspace.draftRoot, 'Atomic Timer', 'widget', 'main.css'), 'utf8')).toContain('.new-draft');
     expect(await readFile(join(workspace.publishedRoot, 'Atomic Timer', 'widget', 'main.css'), 'utf8')).not.toContain('.new-draft');
     expect(await readFile(join(configPath, 'widgets', 'atomic-timer', 'widget', 'main.css'), 'utf8')).not.toContain('.new-draft');
+    expect(await workspace.getCleanDraftRevision('Atomic Timer')).toBe(cleanRevision);
+    expect((await workspace.getDraft('Atomic Timer'))!.revision).not.toBe(cleanRevision);
   });
 });

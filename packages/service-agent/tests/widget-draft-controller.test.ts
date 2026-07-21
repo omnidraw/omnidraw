@@ -11,7 +11,9 @@ import type {
   TNotificationEvent,
 } from "@vibecanvas/service-event-publisher/IEventPublisherService"
 import { createWidgetWorkspaceTools } from "../src/tools/tool.widget-workspace"
+import { fnBuildWidgetCreateManifest } from "../src/tools/fn.widget-create"
 import { WidgetDraftController } from "../src/widget-drafts/WidgetDraftController"
+import { WidgetManagement } from "../src/widget-management/WidgetManagement"
 import { WidgetWorkspace } from "../src/workspace/WidgetWorkspace"
 import { executeTool } from "./tool.test-helpers"
 
@@ -33,6 +35,22 @@ class TestEvents implements IEventPublisherService {
 
 const roots: string[] = []
 const PREVIEW_ID = "preview-owner-a"
+
+async function createDraftFixture(workspace: WidgetWorkspace, chatId: string, name: string) {
+  const draftRoot = join(workspace.draftRoot, name)
+  await mkdir(join(draftRoot, "actor"), { recursive: true })
+  await mkdir(join(draftRoot, "widget"), { recursive: true })
+  await writeFile(join(draftRoot, "vibecanvas.json"), `${JSON.stringify(fnBuildWidgetCreateManifest({ name }), null, 2)}\n`, "utf8")
+  await writeFile(join(draftRoot, "actor", "functions.ts"), [
+    'import { txResetError } from "./tx.resetError";',
+    'export default { fn: {}, fx: {}, tx: { "tx.resetError": txResetError } };',
+    '',
+  ].join("\n"), "utf8")
+  await writeFile(join(draftRoot, "actor", "tx.resetError.ts"), 'export async function txResetError() {}\n', "utf8")
+  await writeFile(join(draftRoot, "widget", "main.ts"), 'export default {};\n', "utf8")
+  await writeFile(join(draftRoot, "widget", "main.css"), '.fixture { color: black; }\n', "utf8")
+  await workspace.loadWidget(chatId, name)
+}
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
@@ -861,16 +879,33 @@ describe("WidgetDraftController", () => {
     const workspace = new WidgetWorkspace({ dataPath, configPath })
     await workspace.init()
     const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
-    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
-    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
-      name: "Stable Slug",
-    })
+    const management = new WidgetManagement({ workspace, drafts: controller })
+    await createDraftFixture(workspace, "chat-a", "Stable Slug")
 
     const initial = await controller.get("Stable Slug")
+    expect((await controller.buildPreview("Stable Slug", PREVIEW_ID, initial!.revision)).ready).toBe(true)
     expect((await controller.publish("Stable Slug", initial!.revision)).published).toBe(true)
+    expect(await controller.get("Stable Slug")).toMatchObject({ revision: initial!.revision })
+    expect((await workspace.listMounts("chat-a"))[0]).toMatchObject({ name: "Stable Slug", source: "draft" })
+    expect(await readdir(workspace.previewSnapshotRoot)).toHaveLength(1)
+    expect(await controller.getPreview("Stable Slug", PREVIEW_ID)).toMatchObject({ ready: true, revision: initial!.revision })
+    expect(await management.detail("Stable Slug", "draft")).toMatchObject({ source: "draft" })
+    expect(await management.detail("Stable Slug", "published")).toMatchObject({ source: "published", sibling: { source: "draft" } })
+    const publishedManifestPath = join(workspace.publishedRoot, "Stable Slug", "vibecanvas.json")
+    await writeFile(publishedManifestPath, `${(await readFile(publishedManifestPath, "utf8")).trim()}  \n`, "utf8")
+    const publishedCatalog = await management.catalog([])
+    expect(publishedCatalog.widgets).toEqual([
+      expect.objectContaining({ name: "Stable Slug", relation: "same", draft: expect.anything() }),
+    ])
+    expect(publishedCatalog.widgets[0]?.published?.contentFingerprint)
+      .not.toBe(publishedCatalog.widgets[0]?.draft?.contentFingerprint)
+
     await writeFile(join(workspace.draftRoot, "Stable Slug", "widget", "main.css"), ".same-slug { color: green; }\n", "utf8")
     const sameSlug = await controller.get("Stable Slug")
+    expect((await management.catalog([])).widgets[0]?.relation).toBe("different")
     expect((await controller.publish("Stable Slug", sameSlug!.revision)).published).toBe(true)
+    expect(await controller.get("Stable Slug")).toMatchObject({ revision: sameSlug!.revision })
+    expect((await management.catalog([])).widgets[0]?.relation).toBe("same")
     expect(await readFile(join(configPath, "widgets", "stable-slug", "widget", "main.css"), "utf8"))
       .toContain("same-slug")
 
@@ -902,14 +937,12 @@ describe("WidgetDraftController", () => {
     const workspace = new WidgetWorkspace({ dataPath, configPath })
     await workspace.init()
     const firstController = new WidgetDraftController({ configPath, workspace, eventPublisher: new TestEvents() })
-    const tools = createWidgetWorkspaceTools({ workspace, chatId: "chat-a", authorize: async () => true })
-    await executeTool(tools.find((tool) => tool.name === "vc_widget_create")!, {
-      name: "Binding Compensation",
-    })
+    await createDraftFixture(workspace, "chat-a", "Binding Compensation")
     const initial = await firstController.get("Binding Compensation")
     expect((await firstController.publish("Binding Compensation", initial!.revision)).published).toBe(true)
     await firstController.close()
 
+    await workspace.ensureDraftFromPublished("Binding Compensation")
     const draftRoot = join(workspace.draftRoot, "Binding Compensation")
     const manifestPath = join(draftRoot, "vibecanvas.json")
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"))

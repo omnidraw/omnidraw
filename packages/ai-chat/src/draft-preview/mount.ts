@@ -58,13 +58,6 @@ function closeIterator(iterator: AsyncIterator<unknown> | undefined) {
 export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRuntime {
   const dom = args.root.ownerDocument
   const shell = dom.createElement("section")
-  const status = dom.createElement("div")
-  const revisionLabel = dom.createElement("code")
-  const staleBadge = dom.createElement("span")
-  const statusMessage = dom.createElement("span")
-  const actions = dom.createElement("div")
-  const refreshButton = dom.createElement("button")
-  const resetButton = dom.createElement("button")
   const body = dom.createElement("div")
   let disposed = false
   let requestId = 0
@@ -108,21 +101,8 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
 
   shell.className = "vc-draft-preview"
   shell.setAttribute("aria-label", `${args.payload.draftId} Preview`)
-  status.className = "vc-draft-preview__status"
-  revisionLabel.className = "vc-draft-preview__revision"
-  staleBadge.className = "vc-draft-preview__stale"
-  staleBadge.textContent = "Stale"
-  staleBadge.hidden = true
-  statusMessage.className = "vc-draft-preview__status-message"
-  actions.className = "vc-draft-preview__actions"
-  refreshButton.type = "button"
-  refreshButton.textContent = "Refresh Preview"
-  resetButton.type = "button"
-  resetButton.textContent = "Reset"
   body.className = "vc-draft-preview__body"
-  actions.append(refreshButton, resetButton)
-  status.append(revisionLabel, staleBadge, statusMessage, actions)
-  shell.append(status, body)
+  shell.append(body)
   args.root.replaceChildren(shell)
 
   const setBusy = (message: string) => {
@@ -136,25 +116,15 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     loading.setAttribute("aria-live", "polite")
     loading.textContent = message
     body.appendChild(loading)
-    refreshButton.disabled = true
-    resetButton.disabled = true
-    statusMessage.textContent = message
+    args.onResetStateChange?.({ disabled: true })
   }
 
-  const setOperationBusy = (message: string) => {
-    refreshButton.disabled = true
-    resetButton.disabled = true
-    statusMessage.textContent = message
+  const setOperationBusy = (_message: string) => {
+    args.onResetStateChange?.({ disabled: true })
   }
 
-  const syncStatus = (stale: boolean, message = "") => {
-    revisionLabel.textContent = stale ? "Outdated Preview" : "Current Preview"
-    revisionLabel.removeAttribute("title")
-    staleBadge.hidden = !stale
-    statusMessage.textContent = message
-    refreshButton.hidden = !stale
-    refreshButton.disabled = false
-    resetButton.disabled = false
+  const syncStatus = (_stale: boolean, _message = "") => {
+    args.onResetStateChange?.({ disabled: false })
   }
 
   const renderFailure = (failure: TDraftPreviewFailure) => {
@@ -217,7 +187,6 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     message.textContent = error.message
     overlay.append(heading, message)
     body.appendChild(overlay)
-    statusMessage.textContent = error.phase.replaceAll("-", " ")
   }
 
   const preserveSandboxFailure = (failure: TDraftPreviewFailure) => {
@@ -535,13 +504,6 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     return enqueueMutation(runReset)
   }
 
-  refreshButton.onclick = () => {
-    void refresh().catch((error) => args.onLogError(error))
-  }
-  resetButton.onclick = () => {
-    void reset().catch((error) => args.onLogError(error))
-  }
-
   void args.api.api.agent.events({}).then(async ([error, events]) => {
     if (error) throw new Error(errorMessage(error, "Preview updates disconnected."))
     const iterator = events[Symbol.asyncIterator]()
@@ -591,7 +553,6 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     }
   }).catch((error) => {
     if (!disposed) {
-      statusMessage.textContent = "updates disconnected"
       args.onLogError(error)
     }
   })

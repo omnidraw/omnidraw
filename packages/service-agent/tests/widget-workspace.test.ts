@@ -268,19 +268,38 @@ describe('WidgetWorkspace', () => {
     expect(created.files).toEqual(['vibecanvas.json', 'widget/main.ts']);
   });
 
-  test('publishes a draft snapshot without ever retargeting chat mounts', async () => {
-    const { workspace } = await createWorkspace();
+  test('records a committed draft revision while retaining drafts and every chat mount', async () => {
+    const { root, dataPath, configPath, workspace } = await createWorkspace();
     await createWidgetFolder(workspace.draftRoot, 'Timer');
     await workspace.loadWidget('chat-a', 'Timer');
     await workspace.loadWidget('chat-b', 'Timer');
+    const unrelatedTarget = await createWidgetFolder(root, 'unrelated-timer');
+    const unrelatedRoot = await workspace.ensureChat('chat-unrelated');
+    const unrelatedMount = join(unrelatedRoot, 'widgets', 'Timer');
+    await rm(unrelatedMount, { force: true });
+    await symlink(unrelatedTarget, unrelatedMount, 'dir');
 
-    const snapshot = await workspace.beginDraftPublish('Timer');
+    const accepted = await workspace.getDraft('Timer');
+    const snapshot = await workspace.beginDraftPublish('Timer', undefined, accepted!.revision);
     expect((await workspace.listMounts('chat-a'))[0]?.source).toBe('draft');
     expect((await workspace.listMounts('chat-b'))[0]?.targetPath).toBe(await realpath(join(workspace.draftRoot, 'Timer')));
     expect(await readFile(join(snapshot.canonicalPath, 'widget', 'main.ts'), 'utf8')).toBe('initial');
-    await snapshot.rollback();
-    expect(await readFile(join(workspace.draftRoot, 'Timer', 'widget', 'main.ts'), 'utf8')).toBe('initial');
-    await expect(lstat(snapshot.canonicalPath)).rejects.toThrow();
+    await snapshot.commit();
+    await snapshot.commit();
+
+    expect(await workspace.getDraft('Timer')).toMatchObject({ revision: accepted!.revision });
+    expect(await workspace.getCleanDraftRevision('Timer')).toBe(accepted!.revision);
+    expect(await realpath(join(workspace.getChatRoot('chat-a'), 'widgets', 'Timer')))
+      .toBe(await realpath(join(workspace.draftRoot, 'Timer')));
+    expect(await realpath(join(workspace.getChatRoot('chat-b'), 'widgets', 'Timer')))
+      .toBe(await realpath(join(workspace.draftRoot, 'Timer')));
+    expect(await realpath(unrelatedMount)).toBe(await realpath(unrelatedTarget));
+    expect(await readFile(join(snapshot.canonicalPath, 'widget', 'main.ts'), 'utf8')).toBe('initial');
+    expect(await readdir(workspace.publicationBackupRoot)).toEqual([]);
+    expect(await readdir(workspace.installedPublicationBackupRoot)).toEqual([]);
+    const restarted = new WidgetWorkspace({ dataPath, configPath });
+    await restarted.init();
+    expect(await restarted.getCleanDraftRevision('Timer')).toBe(accepted!.revision);
   });
 
   test('prevents concurrent publishes from claiming the same installed slug', async () => {
@@ -292,6 +311,23 @@ describe('WidgetWorkspace', () => {
     await timer.rollback();
     const clock = await workspace.beginDraftPublish('Clock', 'shared-slug');
     await clock.rollback();
+  });
+
+  test('preserves the exact draft and mounts when the accepted revision changes before commit', async () => {
+    const { workspace } = await createWorkspace();
+    await createWidgetFolder(workspace.draftRoot, 'Timer', 'accepted');
+    const mount = await workspace.loadWidget('chat-a', 'Timer');
+    const accepted = await workspace.getDraft('Timer');
+    const snapshot = await workspace.beginDraftPublish('Timer', undefined, accepted!.revision);
+
+    await writeFile(join(workspace.draftRoot, 'Timer', 'widget', 'main.ts'), 'changed while publishing', 'utf8');
+    await expect(snapshot.commit()).rejects.toThrow('changed');
+    await snapshot.rollback();
+
+    expect(await readFile(join(workspace.draftRoot, 'Timer', 'widget', 'main.ts'), 'utf8')).toBe('changed while publishing');
+    expect(await realpath(mount.mountPath)).toBe(await realpath(join(workspace.draftRoot, 'Timer')));
+    expect(await workspace.getCleanDraftRevision('Timer')).toBeNull();
+    await expect(lstat(snapshot.canonicalPath)).rejects.toThrow();
   });
 
   test('restores the previous canonical snapshot when a publish rolls back', async () => {

@@ -53,16 +53,46 @@ describe("DraftPreviewFrameService placement", () => {
       draftId,
       revision: expectedRevision,
     }] as const);
+    const refreshPreview = vi.fn(async () => [undefined, ready] as const);
+    const resetPreview = vi.fn(async () => [undefined, ready] as const);
+    const publish = vi.fn(async () => [undefined, {
+      published: true,
+      draftId: summary.draftId,
+      revision: summary.revision,
+      definitionName: summary.name,
+      manifest: {},
+    }] as const);
     const extension = createAiChatCanvasExtension({
       chatApi: {
         api: {
           agent: {
+            widgets: { detail: vi.fn(async () => [undefined, {
+              name: summary.name,
+              source: "draft",
+              relation: "draft-only",
+              sibling: null,
+              manifest: null,
+              problem: null,
+              variant: {
+                source: "draft",
+                displayName: summary.displayName,
+                kind: "actor-widget",
+                slug: "blobby",
+                description: null,
+                revision: summary.revision,
+                contentFingerprint: null,
+                updatedAt: null,
+                tool: { label: summary.displayName, icon: null, group: null, priority: null, behaviorType: "mode" },
+                validation: null,
+              },
+            }] as const) },
+            widgetPublish: { publish },
             widgetDraft: { get: vi.fn(async () => [undefined, summary] as const) },
             widgetPreview: {
               get: getPreview,
               build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
+              refresh: refreshPreview,
+              reset: resetPreview,
               close: closePreview,
               send: vi.fn(),
             },
@@ -131,7 +161,42 @@ describe("DraftPreviewFrameService placement", () => {
     expect(runtime.services.require("selection").focusedId).toBe(frames[1]?.id);
 
     resolvePreviewGets.forEach((resolve) => resolve([undefined, ready]));
-    await Promise.resolve();
+    const resetActions = await vi.waitFor(() => {
+      const buttons = container!.querySelectorAll<HTMLButtonElement>("[data-widget-title-action-id='reset']");
+      expect(buttons.length).toBeGreaterThanOrEqual(2);
+      expect(buttons[0]!.disabled).toBe(false);
+      return buttons;
+    });
+    expect(container!.querySelector(".vc-draft-preview__status")).toBeNull();
+    resetActions[0]!.click();
+    await vi.waitFor(() => expect(resetPreview).toHaveBeenCalledWith({
+      draftId: summary.draftId,
+      previewId: "preview-owner-1",
+      expectedRevision: summary.revision,
+    }));
+    const publishActions = await vi.waitFor(() => {
+      const buttons = container!.querySelectorAll<HTMLButtonElement>("[data-widget-title-action-id='publish']");
+      expect(buttons.length).toBeGreaterThanOrEqual(2);
+      return buttons;
+    });
+    publishActions[0]!.click();
+    const confirm = await vi.waitFor(() => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+        .find((candidate) => candidate.textContent === "Publish" && !candidate.disabled);
+      expect(button).toBeDefined();
+      return button!;
+    });
+    confirm.click();
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledWith({
+      draftId: summary.draftId,
+      expectedRevision: summary.revision,
+    }));
+    await vi.waitFor(() => expect(refreshPreview).toHaveBeenCalledWith({
+      draftId: summary.draftId,
+      previewId: "preview-owner-1",
+      expectedRevision: summary.revision,
+    }));
+    expect(Object.values(docHandle.doc().elements)).toHaveLength(2);
     await runtime.shutdown();
   });
 });

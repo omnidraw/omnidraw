@@ -575,8 +575,7 @@ describe("draft Preview runtime", () => {
     expect(await bridge!.sendMessage({ name: "increment", payload: {} })).toMatchObject({ ok: false })
     expect(cleanupSandbox).not.toHaveBeenCalled()
     expect(root?.querySelector(".vc-draft-preview__sandbox")).not.toBeNull()
-    expect(root?.textContent).toContain("Refresh Preview before interacting with this changed draft.")
-    expect(root?.querySelector<HTMLElement>(".vc-draft-preview__stale")?.hidden).toBe(false)
+    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
     expect(await bridge!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-1" } })
 
     runtime.dispose()
@@ -622,7 +621,7 @@ describe("draft Preview runtime", () => {
       onLogError: vi.fn(),
     })
 
-    expect(root?.textContent).toContain("Stale")
+    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
     expect(runtime.getOwnedRevision()).toBe("rev-1")
     await runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
     expect(refreshPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1", expectedRevision: "rev-2" })
@@ -630,7 +629,7 @@ describe("draft Preview runtime", () => {
     expect(mountSandbox).toHaveBeenCalledTimes(2)
     expect(persistRevision).toHaveBeenCalledWith("rev-2")
     expect(runtime.getOwnedRevision()).toBe("rev-2")
-    expect(root?.querySelector<HTMLElement>(".vc-draft-preview__stale")?.hidden).toBe(true)
+    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
 
     runtime.dispose()
     expect(cleanupSecondSandbox).toHaveBeenCalledOnce()
@@ -689,7 +688,7 @@ describe("draft Preview runtime", () => {
     expect(refreshPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1", expectedRevision: "rev-2" })
     expect(cleanupSandbox).not.toHaveBeenCalled()
     expect(root?.querySelector(".vc-draft-preview__sandbox")).not.toBeNull()
-    expect(root?.textContent).toContain(staleFailure.message)
+    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
     expect(await bridge!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-1" } })
 
     await runtime.reset()

@@ -164,7 +164,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B51](b/B51.md) - widget reload: moved manifest conflicts with persisted actor slug
 - [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
 - [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
-- [ ]: [B54](b/B54.md) - widget publish: successful publication leaves the draft behind
+- [x]: [B54](b/B54.md) - widget publish: retain the draft but show it only after edits
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages

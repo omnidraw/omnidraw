@@ -81,6 +81,7 @@ describe("mounted publication coordinator", () => {
     await vi.waitFor(() => expect(mounted.publish).toHaveBeenCalledWith({ draftId: "Weather", expectedRevision: "rev-2" }))
     expect(mounted.published).toHaveBeenCalledOnce()
     expect(document.body.textContent).toContain("Widget published")
+    await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({ label: "Republish" }))
     mounted.dispose()
   })
 

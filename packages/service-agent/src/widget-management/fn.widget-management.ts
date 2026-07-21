@@ -25,12 +25,17 @@ export function fnWidgetRelation(args: {
   hasDraft: boolean;
   publishedFingerprint: string | null;
   draftFingerprint: string | null;
+  cleanDraftRevision: string | null;
+  draftRevision: string | null;
   hasProblem: boolean;
 }): TWidgetRelation {
   if (args.hasPublished && !args.hasDraft) return 'published-only';
   if (!args.hasPublished && args.hasDraft) return 'draft-only';
   if (!args.hasPublished || !args.hasDraft) return 'unknown';
   if (args.hasProblem || args.publishedFingerprint === null || args.draftFingerprint === null) return 'unknown';
+  if (args.cleanDraftRevision !== null && args.draftRevision !== null) {
+    return args.cleanDraftRevision === args.draftRevision ? 'same' : 'different';
+  }
   return args.publishedFingerprint === args.draftFingerprint ? 'same' : 'different';
 }
 

@@ -17,6 +17,15 @@ type TArgsListVibecanvasJsons = {
 }
 
 const VIBECANVAS_JSON = 'vibecanvas.json'
+const TRANSIENT_WIDGET_DIRECTORY_PREFIXES = [
+    '.publish-',
+    '.publish-backup-',
+    '.reconcile-',
+]
+
+function isTransientWidgetDirectory(name: string): boolean {
+    return TRANSIENT_WIDGET_DIRECTORY_PREFIXES.some((prefix) => name.startsWith(prefix))
+}
 
 function formatZodIssuePath(path: unknown[]): string {
     if(path.length === 0) return '$'
@@ -84,7 +93,7 @@ async function fxIsVibecanvasWidgetRepo(portal: TPortalListVibecanvasJsons, args
 export async function fxListVibecanvasJsons(portal: TPortalListVibecanvasJsons, args: TArgsListVibecanvasJsons): Promise<TWidgetRepoResult[]> {
     const dirs = await portal.readdir(args.widgetDir, {withFileTypes: true})
     const results = await Promise.all(dirs.map(d => {
-        if(!d.isDirectory()) return null
+        if(!d.isDirectory() || isTransientWidgetDirectory(d.name)) return null
 
         return fxIsVibecanvasWidgetRepo(portal, {repoDir: portal.join(d.parentPath, d.name)})
     }))

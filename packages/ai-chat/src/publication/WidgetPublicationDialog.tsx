@@ -165,6 +165,11 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
       return
     }
 
+    setDetail({
+      ...current,
+      relation: "same",
+      sibling: { ...current.variant, source: "published" },
+    })
     setIssue({
       title: "Widget published",
       message: "The latest draft is now the published widget definition.",

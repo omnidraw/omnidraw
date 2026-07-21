@@ -41,6 +41,7 @@ export type TMountDraftPreviewArgs = {
   mountSandbox: TDraftPreviewSandboxMount
   onPersistRevision: (revision: string) => void
   onReleaseRevision: (revision: string) => void
+  onResetStateChange?: (state: { disabled: boolean }) => void
   onLogError: (error: unknown) => void
 }
 

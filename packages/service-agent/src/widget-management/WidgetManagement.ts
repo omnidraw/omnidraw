@@ -383,10 +383,11 @@ export class WidgetManagement {
   }
 
   async #catalogEntry(name: string, hasPublished: boolean, hasDraft: boolean): Promise<TWidgetCatalogEntry> {
-    const [published, draft, previewState] = await Promise.all([
+    const [published, draft, previewState, cleanDraftRevision] = await Promise.all([
       hasPublished ? this.#readVariant(name, 'published') : Promise.resolve(null),
       hasDraft ? this.#readVariant(name, 'draft') : Promise.resolve(null),
       hasDraft ? this.#drafts.getPreviewCatalogState(name) : Promise.resolve(null),
+      hasPublished && hasDraft ? this.#workspace.getCleanDraftRevision(name) : Promise.resolve(null),
     ]);
     let problem = published?.problem ?? draft?.problem ?? null;
     if (!problem && published?.manifest && published.manifest.name !== name) {
@@ -400,6 +401,8 @@ export class WidgetManagement {
       hasDraft,
       publishedFingerprint: published?.summary.contentFingerprint ?? null,
       draftFingerprint: draft?.summary.contentFingerprint ?? null,
+      cleanDraftRevision,
+      draftRevision: draft?.summary.revision ?? null,
       hasProblem: problem !== null,
     });
     return {
