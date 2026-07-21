@@ -6,11 +6,15 @@ import { EventPublisherService } from '@vibecanvas/service-event-publisher/Event
 import { FilesystemServiceNode } from './FilesystemServiceNode';
 
 async function nextEvent<T>(iterator: AsyncIterable<T>, timeoutMs = 3000): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
+    timeoutId = setTimeout(() => reject(new Error(`Timed out after ${timeoutMs}ms`)), timeoutMs);
   });
 
-  const result = await Promise.race([iterator[Symbol.asyncIterator]().next(), timeout]);
+  const result = await Promise.race([iterator[Symbol.asyncIterator]().next(), timeout])
+    .finally(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+    });
   if (result.done || result.value === undefined) throw new Error('Iterator finished unexpectedly');
   return result.value;
 }
@@ -69,6 +73,7 @@ describe('FilesystemServiceNode', () => {
     expect(service.watch('fs-local', root, 'watch-1')).toBeNull();
 
     const pendingEvent = nextEvent(iterator!);
+    await Bun.sleep(20);
     writeFileSync(join(root, 'created.txt'), 'watch me', 'utf8');
 
     const event = await pendingEvent;

@@ -6,6 +6,9 @@
     ".": "./src/IFilesystemService.ts",
     "./*": "./src/*.ts"
   },
+  "scripts": {
+    "test": "bun test"
+  },
   "dependencies": {
     "@vibecanvas/service-event-publisher": "workspace:*",
     "@vibecanvas/runtime": "workspace:*"

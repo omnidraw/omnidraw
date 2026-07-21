@@ -5,6 +5,9 @@
   "exports": {
     "./*": "./src/*.ts"
   },
+  "scripts": {
+    "test": "bun test"
+  },
   "dependencies": {
     "@orpc/contract": "catalog:",
     "@orpc/server": "catalog:",
