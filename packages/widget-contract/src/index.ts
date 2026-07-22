@@ -5,6 +5,8 @@
 export type * from './interface';
 export type * from './types';
 export {
+  ZWidgetBrowserFunctionDescriptor,
+  ZWidgetBrowserFunctionDescriptors,
   ZWidgetServerFunctionDescriptor,
   ZWidgetServerFunctionDescriptors,
 } from './function-descriptor-schema';

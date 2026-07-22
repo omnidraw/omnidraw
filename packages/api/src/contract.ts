@@ -10,6 +10,7 @@ import { notificationContract } from './notification/contract';
 import { ptyContract } from './pty/contract';
 import { resourceContract } from './resource/contract';
 import { toolContract } from './tool/contract';
+import { widgetContract } from './widget/contract';
 
 const contract = oc.router({
   actors: actorsContract,
@@ -23,6 +24,7 @@ const contract = oc.router({
   pty: ptyContract,
   resource: resourceContract,
   tool: toolContract,
+  widget: widgetContract,
 });
 
 const apiContract = populateContractRouterPaths(
@@ -43,4 +45,5 @@ export {
   ptyContract,
   resourceContract,
   toolContract,
+  widgetContract,
 };

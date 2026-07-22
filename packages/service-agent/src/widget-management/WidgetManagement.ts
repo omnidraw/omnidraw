@@ -45,6 +45,11 @@ type TWidgetManagementConfig = {
   workspace: WidgetWorkspace;
   drafts: WidgetDraftController;
   deletePublishedDefinition?: (name: string) => Promise<boolean>;
+  afterVariantFingerprint?: (args: Readonly<{
+    name: string;
+    source: TWidgetSource;
+    attempt: number;
+  }>) => void | Promise<void>;
 };
 
 type TTreeFingerprint = {
@@ -63,11 +68,13 @@ export class WidgetManagement {
   readonly #workspace: WidgetWorkspace;
   readonly #drafts: WidgetDraftController;
   readonly #deletePublishedDefinition?: (name: string) => Promise<boolean>;
+  readonly #afterVariantFingerprint?: TWidgetManagementConfig['afterVariantFingerprint'];
 
   constructor(config: TWidgetManagementConfig) {
     this.#workspace = config.workspace;
     this.#drafts = config.drafts;
     this.#deletePublishedDefinition = config.deletePublishedDefinition;
+    this.#afterVariantFingerprint = config.afterVariantFingerprint;
   }
 
   async catalog(groups: TWidgetCatalogGroup[]): Promise<TWidgetCatalog> {
@@ -124,13 +131,31 @@ export class WidgetManagement {
         currentRevision: detail.variant.revision,
       };
     }
+    if (reference.source === 'published') {
+      return {
+        ok: true,
+        descriptor: {
+          reference,
+          bounds: detail.variant.placement.bounds,
+          kind: 'published-legacy',
+          definitionId: null,
+          revisionId: null,
+          definitionName: detail.manifest.name,
+          definitionSlug: detail.manifest.slug,
+          previewId: null,
+        },
+      };
+    }
     return {
       ok: true,
       descriptor: {
         reference,
         bounds: detail.variant.placement.bounds,
-        kind: reference.source === 'published' ? 'published' : 'preview',
-        definitionName: reference.source === 'published' ? detail.manifest.name : null,
+        kind: 'preview',
+        definitionId: null,
+        revisionId: null,
+        definitionName: null,
+        definitionSlug: null,
         previewId: null,
       },
     };
@@ -428,28 +453,60 @@ export class WidgetManagement {
 
   async #readVariant(name: string, source: TWidgetSource): Promise<TVariantRead> {
     const root = join(source === 'published' ? this.#workspace.publishedRoot : this.#workspace.draftRoot, name);
-    const fingerprint = await this.#fingerprint(root);
-    const manifestResult = await this.#readManifest(root);
-    const draft = source === 'draft' ? await this.#drafts.get(name) : null;
-    const revision = source === 'draft'
-      ? draft?.revision ?? fingerprint.fingerprint ?? 'unknown'
-      : fingerprint.fingerprint ?? 'unknown';
-    const summary = fnWidgetVariantSummary({
+    let latestFingerprint: TTreeFingerprint = {
+      fingerprint: null,
+      updatedAt: null,
+      problem: fnWidgetProblem('SOURCE_CHANGED', 'Widget source changed while its catalog snapshot was being read.'),
+    };
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const before = await this.#fingerprint(root);
+      await this.#afterVariantFingerprint?.({ name, source, attempt });
+      const manifestResult = await this.#readManifest(root);
+      const draft = source === 'draft' ? await this.#drafts.get(name) : null;
+      const after = await this.#fingerprint(root);
+      latestFingerprint = after;
+      if (before.fingerprint !== after.fingerprint) continue;
+      const safeManifest = after.fingerprint === null ? null : manifestResult.manifest;
+      const revision = source === 'draft'
+        ? draft?.revision ?? after.fingerprint ?? 'unknown'
+        : after.fingerprint ?? 'unknown';
+      const summary = fnWidgetVariantSummary({
         source,
         fallbackName: name,
-        manifest: manifestResult.manifest,
+        manifest: safeManifest,
         revision,
-        fingerprint: fingerprint.fingerprint,
-        updatedAt: source === 'draft' ? draft?.updatedAt ?? fingerprint.updatedAt : fingerprint.updatedAt,
+        fingerprint: after.fingerprint,
+        updatedAt: source === 'draft' ? draft?.updatedAt ?? after.updatedAt : after.updatedAt,
         validation: source === 'draft' ? draft?.validation ?? null : null,
       });
-    if (!manifestResult.manifest && manifestResult.groupReference) {
-      summary.tool.group = manifestResult.groupReference;
+      if (!safeManifest && manifestResult.groupReference) {
+        summary.tool.group = manifestResult.groupReference;
+      }
+      return {
+        summary,
+        manifest: safeManifest,
+        problem: after.problem ?? manifestResult.problem,
+      };
     }
+    const draft = source === 'draft' ? await this.#drafts.get(name) : null;
+    const revision = source === 'draft'
+      ? draft?.revision ?? latestFingerprint.fingerprint ?? 'unknown'
+      : latestFingerprint.fingerprint ?? 'unknown';
     return {
-      summary,
-      manifest: manifestResult.manifest,
-      problem: fingerprint.problem ?? manifestResult.problem,
+      summary: fnWidgetVariantSummary({
+        source,
+        fallbackName: name,
+        manifest: null,
+        revision,
+        fingerprint: latestFingerprint.fingerprint,
+        updatedAt: source === 'draft' ? draft?.updatedAt ?? latestFingerprint.updatedAt : latestFingerprint.updatedAt,
+        validation: source === 'draft' ? draft?.validation ?? null : null,
+      }),
+      manifest: null,
+      problem: fnWidgetProblem(
+        'SOURCE_CHANGED',
+        'Widget source changed while its catalog snapshot was being read.',
+      ),
     };
   }
 

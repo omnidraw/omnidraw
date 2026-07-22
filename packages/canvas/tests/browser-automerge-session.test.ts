@@ -20,8 +20,13 @@ const fakes = vi.hoisted(() => {
 
     constructor(readonly url: string, readonly document: Record<string, unknown>) {}
 
-    async whenReady(): Promise<void> {
+    get documentId(): string {
+      return this.url.replace('automerge:', '');
+    }
+
+    async whenReady(_states?: unknown, options?: { signal?: AbortSignal }): Promise<void> {
       this.readyCalls += 1;
+      if (options?.signal?.aborted) throw new Error('aborted');
       await this.ready.promise;
     }
 
@@ -38,6 +43,7 @@ const fakes = vi.hoisted(() => {
   const webSockets: FakeWebSocketAdapter[] = [];
 
   class FakeRepo {
+    readonly removedDocumentIds: string[] = [];
     shutdownCalls = 0;
 
     find(url: string): FakeHandle {
@@ -48,6 +54,10 @@ const fakes = vi.hoisted(() => {
 
     async shutdown(): Promise<void> {
       this.shutdownCalls += 1;
+    }
+
+    async removeFromCache(documentId: string): Promise<void> {
+      this.removedDocumentIds.push(documentId);
     }
   }
 
@@ -163,6 +173,70 @@ describe('browser Automerge session isolation', () => {
 
     expect(handleA.removedListeners).toBeGreaterThan(0);
     expect(automerge.getHandle(tenantA, 'tenant-a-active-document')).toBeUndefined();
+  });
+
+  test('an aborted second shared-document open does not detach the first user', async () => {
+    const handle = new fakes.FakeHandle('automerge:shared-widget-state', {
+      schemaVersion: 1,
+      identity: {},
+      state: null,
+    });
+    handle.ready.resolve();
+    fakes.handles.set(handle.url, handle);
+
+    const automerge = await import('../src/automerge');
+    await expect(automerge.openAutomergeDocument(tenantA, handle.url as never))
+      .resolves.toBe(handle);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(automerge.openAutomergeDocument(
+      tenantA,
+      handle.url as never,
+      controller.signal,
+    )).rejects.toThrow('aborted');
+
+    expect(handle.removedListeners).toBe(0);
+    await automerge.releaseAutomergeDocument(tenantA, handle as never);
+    expect(handle.removedListeners).toBe(0);
+  });
+
+  test('a shared state handle remains cached until its last lease is released', async () => {
+    const handle = new fakes.FakeHandle('automerge:shared-state-leases', {
+      schemaVersion: 1,
+      identity: {},
+      state: null,
+    });
+    handle.ready.resolve();
+    fakes.handles.set(handle.url, handle);
+
+    const automerge = await import('../src/automerge');
+    await automerge.openAutomergeDocument(tenantA, handle.url as never);
+    await automerge.openAutomergeDocument(tenantA, handle.url as never);
+    const repo = await automerge.getOrCreateRepo(tenantA) as unknown as InstanceType<typeof fakes.FakeRepo>;
+
+    await automerge.releaseAutomergeDocument(tenantA, handle as never);
+    expect(repo.removedDocumentIds).toEqual([]);
+    await automerge.releaseAutomergeDocument(tenantA, handle as never);
+    expect(repo.removedDocumentIds).toEqual(['shared-state-leases']);
+  });
+
+  test('repeated state opens and releases do not retain document handles', async () => {
+    const handle = new fakes.FakeHandle('automerge:repeated-state', {
+      schemaVersion: 1,
+      identity: {},
+      state: null,
+    });
+    handle.ready.resolve();
+    fakes.handles.set(handle.url, handle);
+
+    const automerge = await import('../src/automerge');
+    const repo = await automerge.getOrCreateRepo(tenantA) as unknown as InstanceType<typeof fakes.FakeRepo>;
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const opened = await automerge.openAutomergeDocument(tenantA, handle.url as never);
+      await automerge.releaseAutomergeDocument(tenantA, opened);
+    }
+
+    expect(repo.removedDocumentIds).toHaveLength(25);
   });
 
   test('an origin switch connects Automerge to the new deployment cell', async () => {

@@ -2,6 +2,7 @@ import {
   type IWidgetBrowserUiArtifactReadCapabilityIssuer,
   type IWidgetArtifactReader,
   type IWidgetPublicationService,
+  type IWidgetPublishedPlacementReader,
   type IWidgetRevisionReader,
   type IWidgetServerExecutionArtifactReadCapabilityIssuer,
   type TWidgetArtifactGcRequest,
@@ -19,12 +20,13 @@ import {
 
 type TWidgetServicePoolOptions = Omit<
   TTenantServicePoolOptions<WidgetService>,
-  'key'
+  'key' | 'singlePlacementPerOrganization'
 >;
 
 type TWidgetServiceCapability = IWidgetPublicationService
   & IWidgetArtifactReader
-  & IWidgetBrowserUiArtifactReadCapabilityIssuer;
+  & IWidgetBrowserUiArtifactReadCapabilityIssuer
+  & IWidgetPublishedPlacementReader;
 
 type TWidgetServerArtifactCapability = IWidgetArtifactReader
   & IWidgetServerExecutionArtifactReadCapabilityIssuer
@@ -41,6 +43,7 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
         tenant.cellId,
         String(tenant.placementEpoch),
       ]),
+      singlePlacementPerOrganization: true,
     });
   }
 
@@ -59,6 +62,23 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
   getActiveRevision: IWidgetPublicationService['getActiveRevision'] = (tenant, definitionId) => (
     this.#delegate(tenant, (service) => service.getActiveRevision(tenant, definitionId))
   );
+
+  listPublishedPlacements: IWidgetPublishedPlacementReader['listPublishedPlacements'] = (
+    tenant,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.listPublishedPlacements(tenant),
+  );
+
+  resolvePublishedPlacement: IWidgetPublishedPlacementReader['resolvePublishedPlacement'] = (
+    tenant,
+    target,
+  ) => {
+    return this.#delegate(
+      tenant,
+      (service) => service.resolvePublishedPlacement(tenant, target),
+    );
+  };
 
   issueBrowserUiArtifactReadCapability:
     IWidgetBrowserUiArtifactReadCapabilityIssuer['issueBrowserUiArtifactReadCapability'] = (
@@ -108,7 +128,7 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
     tenant: TTenantContext,
     operation: (service: WidgetService) => Promise<TResult>,
   ): Promise<TResult> {
-    return this.forTenant(tenant).then(operation);
+    return this.withTenantService(tenant, operation);
   }
 }
 
@@ -121,6 +141,8 @@ function createWidgetServiceCapability(
     rollback: pool.rollback,
     getRevision: pool.getRevision,
     getActiveRevision: pool.getActiveRevision,
+    listPublishedPlacements: pool.listPublishedPlacements,
+    resolvePublishedPlacement: pool.resolvePublishedPlacement,
     issueBrowserUiArtifactReadCapability: pool.issueBrowserUiArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,

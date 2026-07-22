@@ -3,6 +3,7 @@ import {
   DATABASE_APPLICATION_ID,
   DATABASE_JOURNAL_MODE,
 } from '../CONSTANTS';
+import { txRunDatabaseWrite } from '../tx.run-database-transaction';
 
 type TPortal = {
   db: Database;
@@ -24,15 +25,17 @@ function expectedValue(
 }
 
 async function txDefaultRunPragmas(portal: TPortal, args: TArgs): Promise<void> {
-  await portal.db.exec(`
-    PRAGMA foreign_keys = ON;
-    PRAGMA ignore_check_constraints = 0;
-    PRAGMA journal_mode = WAL;
-    PRAGMA busy_timeout = 5000;
-    PRAGMA synchronous = FULL;
-    PRAGMA cache_size = 10000;
-    PRAGMA temp_store = 2;
-  `);
+  await txRunDatabaseWrite({ database: portal.db }, {
+    operation: () => portal.db.exec(`
+      PRAGMA foreign_keys = ON;
+      PRAGMA ignore_check_constraints = 0;
+      PRAGMA journal_mode = WAL;
+      PRAGMA busy_timeout = 5000;
+      PRAGMA synchronous = FULL;
+      PRAGMA cache_size = 10000;
+      PRAGMA temp_store = 2;
+    `),
+  });
 }
 
 async function txAssertDatabasePragmas(portal: TPortal, args: TArgs): Promise<void> {

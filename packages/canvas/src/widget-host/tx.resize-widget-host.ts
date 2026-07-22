@@ -1,4 +1,4 @@
-import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TElementData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
 import type { TElementTransformAnchor } from "../services/element/types";
 import { ELEMENT_DATA_ATTR } from "../core/CONSTANTS";
@@ -19,6 +19,11 @@ import {
   WIDGET_HOST_WINDOW_CORNER_RADIUS,
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from "./CONSTANTS";
+import {
+  fnIsWidgetHostData,
+  fnNormalizeWidgetHostData,
+  fnPatchWidgetHostFrame,
+} from "./fn.normalize-widget-host-data";
 
 type TPortal = {
   Circle?: typeof Konva.Circle;
@@ -57,12 +62,15 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.width);
 
   const beforeElement = args.node.getAttr(TRANSFORM_BEFORE_ELEMENT_ATTR) as TElement | undefined;
-  if (beforeElement?.data.type === "widget" || beforeElement?.data.type === "ui-widget") {
+  const beforeHostData = beforeElement
+    ? fnNormalizeWidgetHostData(beforeElement.data)
+    : null;
+  if (beforeElement && beforeHostData) {
     if (args.anchors?.some((anchor) => anchor.endsWith("left"))) {
-      args.node.x(beforeElement.x + beforeElement.data.w - width);
+      args.node.x(beforeElement.x + beforeHostData.w - width);
     }
     if (args.anchors?.some((anchor) => anchor.startsWith("top"))) {
-      args.node.y(beforeElement.y + beforeElement.data.h - height);
+      args.node.y(beforeElement.y + beforeHostData.h - height);
     }
   }
 
@@ -114,14 +122,13 @@ function txApplyWidgetHostSize(portal: TPortal, args: {
     body.listening(true);
   }
 
-  const data = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
-  if (data?.type === "widget" || data?.type === "ui-widget") {
-    args.node.setAttr(ELEMENT_DATA_ATTR, {
-      ...data,
+  const data = args.node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined;
+  if (data && fnIsWidgetHostData(data)) {
+    args.node.setAttr(ELEMENT_DATA_ATTR, fnPatchWidgetHostFrame(data, {
       w: width,
       h: height,
       expanded: true,
-    });
+    }));
   }
   args.node.getLayer()?.batchDraw();
 }

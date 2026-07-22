@@ -14,10 +14,12 @@ import {
 } from './fn.browser-tenant-scope';
 
 type TBrowserAutomergeSession = {
+  readonly documentLeases: Map<DocHandle<any>, number>;
+  readonly documentReleaseTails: Map<string, Promise<void>>;
   readonly handles: Map<string, DocHandle<TCanvasDoc>>;
   readonly repo: Repo;
   readonly scope: TBrowserTenantScope;
-  readonly trackedHandles: Set<DocHandle<TCanvasDoc>>;
+  readonly trackedHandles: Set<DocHandle<any>>;
   readonly wsAdapter: BrowserWebSocketClientAdapter;
 };
 
@@ -59,8 +61,11 @@ async function shutdownActiveRepo(): Promise<void> {
   const session = activeSession;
   activeSession = null;
   if (!session) return;
+  await Promise.allSettled(session.documentReleaseTails.values());
   for (const handle of session.trackedHandles) handle.removeAllListeners();
   session.handles.clear();
+  session.documentLeases.clear();
+  session.documentReleaseTails.clear();
   session.trackedHandles.clear();
   session.wsAdapter.disconnect();
   await session.repo.shutdown();
@@ -80,6 +85,8 @@ async function activateScope(scope: TBrowserTenantScope): Promise<void> {
       peerId: `client-${fnBrowserTenantScopeKey(nextScope)}-${crypto.randomUUID()}` as PeerId,
     });
     activeSession = {
+      documentLeases: new Map(),
+      documentReleaseTails: new Map(),
       handles: new Map(),
       repo,
       scope: nextScope,
@@ -159,6 +166,76 @@ export async function findDocument(
     throw error;
   }
   return handle;
+}
+
+/**
+ * Opens a non-canvas document through the tenant-scoped shared Repo without
+ * adding it to the canvas-id handle cache. Callers own only their listeners;
+ * the tenant session owns the handle and connection lifecycle.
+ */
+export async function openAutomergeDocument<TDocument>(
+  scope: TBrowserTenantScope,
+  url: AutomergeUrl,
+  signal?: AbortSignal,
+): Promise<DocHandle<TDocument>> {
+  const session = await getOrCreateSession(scope);
+  let handle = await session.repo.find<TDocument>(url, { signal });
+  const pendingRelease = session.documentReleaseTails.get(handle.documentId);
+  if (pendingRelease) {
+    await pendingRelease;
+    assertCurrentSession(session);
+    handle = await session.repo.find<TDocument>(url, { signal });
+  }
+  session.documentLeases.set(handle, (session.documentLeases.get(handle) ?? 0) + 1);
+  session.trackedHandles.add(handle);
+  try {
+    // Repo.find may return a handle already used by another widget. This helper
+    // installs no listeners, so a failed/aborted second open must not mutate the
+    // shared handle. A lease keeps the shared handle cached until its last user
+    // releases it.
+    await handle.whenReady(undefined, { signal });
+    assertCurrentSession(session);
+    return handle;
+  } catch (error) {
+    await releaseAutomergeDocument(scope, handle);
+    throw error;
+  }
+}
+
+/** Releases one non-canvas document lease and evicts the last unused handle. */
+export async function releaseAutomergeDocument<TDocument>(
+  scope: TBrowserTenantScope,
+  handle: DocHandle<TDocument>,
+): Promise<void> {
+  const session = activeSession;
+  if (!session || !fnBrowserTenantScopesMatch(session.scope, scope)) return;
+
+  const leaseCount = session.documentLeases.get(handle) ?? 0;
+  if (leaseCount <= 0) return;
+  if (leaseCount > 1) {
+    session.documentLeases.set(handle, leaseCount - 1);
+    return;
+  }
+
+  session.documentLeases.delete(handle);
+  const documentId = handle.documentId;
+  const previousTail = session.documentReleaseTails.get(documentId) ?? Promise.resolve();
+  const releaseTail = previousTail.catch(() => undefined).then(async () => {
+    if (
+      activeSession !== session
+      || (session.documentLeases.get(handle) ?? 0) > 0
+    ) return;
+    session.trackedHandles.delete(handle);
+    await session.repo.removeFromCache(documentId);
+  });
+  session.documentReleaseTails.set(documentId, releaseTail);
+  try {
+    await releaseTail;
+  } finally {
+    if (session.documentReleaseTails.get(documentId) === releaseTail) {
+      session.documentReleaseTails.delete(documentId);
+    }
+  }
 }
 
 export function getHandle(scope: TBrowserTenantScope, docId: string): DocHandle<TCanvasDoc> | undefined {

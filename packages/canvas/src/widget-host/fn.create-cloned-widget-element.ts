@@ -14,6 +14,7 @@ type TArgs = {
 export function fnCreateClonedWidgetElement(portal: TPortal, args: TArgs) {
   const timestamp = portal.now()
   const clone = portal.clone(args.sourceElement)
+  const elementId = portal.createId()
   if (clone.data.type === "widget") {
     const { actorInstanceId, ...dataWithoutInstance } = clone.data
     void actorInstanceId
@@ -23,11 +24,18 @@ export function fnCreateClonedWidgetElement(portal: TPortal, args: TArgs) {
       ...clone.data,
       payload: portal.cloneUiWidgetPayload(clone.data.payload ?? {}),
     }
+  } else if (clone.data.type === "widget-instance") {
+    const { stateDocumentId, ...dataWithoutStateDocument } = clone.data
+    void stateDocumentId
+    clone.data = {
+      ...dataWithoutStateDocument,
+      instanceId: portal.createId(),
+    }
   }
 
   return {
     ...clone,
-    id: portal.createId(),
+    id: elementId,
     createdAt: timestamp,
     updatedAt: timestamp,
     parentGroupId: null,

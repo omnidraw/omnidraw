@@ -90,6 +90,9 @@ export type TWidgetServerFunctionDescriptor = Readonly<{
   retry: TWidgetServerFunctionRetry;
 }>;
 
+/** Browser-visible function metadata; host filesystem module paths are never exposed. */
+export type TWidgetBrowserFunctionDescriptor = Omit<TWidgetServerFunctionDescriptor, 'modulePath'>;
+
 export type TWidgetServerFunctionDescriptorValidation =
   | Readonly<{ valid: true }>
   | Readonly<{
@@ -252,6 +255,22 @@ export type TWidgetDefinitionCreate = Readonly<{
   slug: string;
   name: string;
   nowMs: number;
+}>;
+
+export type TWidgetPublishedPlacementTarget = Readonly<{
+  definitionId: TWidgetDefinitionId;
+  revisionId: TWidgetRevisionId;
+}>;
+
+export type TWidgetPublishedPlacementDescriptor = Readonly<{
+  definitionId: TWidgetDefinitionId;
+  revisionId: TWidgetRevisionId;
+  name: string;
+  slug: string;
+  description: string | null;
+  contractDigestSha256: TWidgetArtifactDigest;
+  updatedAtMs: number;
+  bounds: Readonly<{ width: number; height: number }>;
 }>;
 
 export type TWidgetRevisionDescriptor = Readonly<{

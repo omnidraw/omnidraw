@@ -10,6 +10,11 @@ import type {
   TWidgetPlacementCoordinator,
   TWidgetPlacementStartArgs,
 } from "./WidgetPlacementCoordinator";
+import {
+  fnValidateDirectV2WidgetPlacement,
+  fnValidateWidgetPlacementDescriptor,
+} from "./fn.validate-widget-placement-descriptor";
+import type { TDirectV2WidgetPlacementDescriptor } from "./fn.validate-widget-placement-descriptor";
 
 type TWidgetPlacementServiceArgs = {
   api: TAiChatApiPort;
@@ -65,6 +70,10 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
   }
 
   #request(args: Omit<TWidgetPlacementStartArgs, "event">) {
+    const directV2Placement = fnValidateDirectV2WidgetPlacement({
+      reference: args.reference,
+      bounds: args.bounds,
+    });
     return {
       reference: args.reference,
       bounds: args.bounds,
@@ -72,22 +81,57 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       onDragStart: args.onDragStart,
       onDragEnd: args.onDragEnd,
       onCancel: () => this.#notification?.showInfo("Widget placement canceled"),
-      onCommit: async (commitArgs: {
+      onCommit: (commitArgs: {
         reference: TWidgetPlacementRef;
         bounds: TWidgetFrameBounds;
         clientPoint: { x: number; y: number };
       }) => {
-        try {
-          await this.#commit(commitArgs, args.label);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.#notification?.showError("Widget placement failed", message);
+        if (directV2Placement.kind !== "not-v2") {
+          try {
+            if (directV2Placement.kind === "invalid") {
+              throw new Error(directV2Placement.message);
+            }
+            this.#commitDirectV2(commitArgs, directV2Placement.descriptor, args.label);
+          } catch (error) {
+            this.#showCommitError(error);
+          }
+          return;
         }
+        return this.#commitResolved(commitArgs, args.label).catch((error) => {
+          this.#showCommitError(error);
+        });
       },
     };
   }
 
-  async #commit(args: {
+  #commitDirectV2(args: {
+    reference: TWidgetPlacementRef;
+    bounds: TWidgetFrameBounds;
+    clientPoint: { x: number; y: number };
+  }, expected: TDirectV2WidgetPlacementDescriptor, label: string): void {
+    const validated = fnValidateDirectV2WidgetPlacement({
+      reference: args.reference,
+      bounds: args.bounds,
+    });
+    if (
+      validated.kind !== "valid"
+      || validated.descriptor.definitionId !== expected.definitionId
+      || validated.descriptor.revisionId !== expected.revisionId
+      || validated.descriptor.bounds.width !== expected.bounds.width
+      || validated.descriptor.bounds.height !== expected.bounds.height
+    ) {
+      throw new Error("The committed v2 widget placement differs from its catalog descriptor.");
+    }
+    const worldBounds = this.#args.dropPlacement.resolveWorldBounds(args.clientPoint, expected.bounds);
+    this.#args.widgetManager.placeWidgetInstance({
+      definitionId: expected.definitionId,
+      revisionId: expected.revisionId,
+      bounds: worldBounds,
+    });
+    this.#notification?.showSuccess(`${label} added to canvas`);
+  }
+
+  async #commitResolved(args: {
     reference: TWidgetPlacementRef;
     bounds: TWidgetFrameBounds;
     clientPoint: { x: number; y: number };
@@ -100,18 +144,20 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       });
       if (error) throw error;
       if (!result.ok) throw new Error(result.message);
-      const descriptor = result.descriptor;
-      if (
-        descriptor.reference.source !== args.reference.source
-        || descriptor.reference.name !== args.reference.name
-        || descriptor.reference.revision !== args.reference.revision
-      ) {
-        throw new Error("The placement resolver returned a different widget revision.");
-      }
+      const validated = fnValidateWidgetPlacementDescriptor({
+        descriptor: result.descriptor,
+        expectedReference: args.reference,
+        expectedPreviewId: previewId ?? null,
+      });
+      if (!validated.ok) throw new Error(validated.message);
+      const descriptor = validated.descriptor;
       const worldBounds = this.#args.dropPlacement.resolveWorldBounds(args.clientPoint, descriptor.bounds);
-      if (descriptor.kind === "published") {
+      if (descriptor.kind === "published-v2") {
+        throw new Error("Published v2 widgets must be placed from their local catalog descriptor.");
+      }
+      if (descriptor.kind === "published-legacy") {
         if (!descriptor.definitionName) throw new Error("The published widget definition is unavailable.");
-        this.#args.widgetManager.placePublishedWidget(descriptor.definitionName, worldBounds);
+        this.#args.widgetManager.placeLegacyPublishedWidget(descriptor.definitionName, worldBounds);
       } else {
         if (!descriptor.previewId) throw new Error("The Preview owner is unavailable.");
         await this.#args.previewFrames.place({
@@ -132,5 +178,10 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       }
       throw error;
     }
+  }
+
+  #showCommitError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.#notification?.showError("Widget placement failed", message);
   }
 }

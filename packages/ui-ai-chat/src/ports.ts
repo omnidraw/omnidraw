@@ -16,6 +16,8 @@ export type TWidgetTransportPort = {
   api: {
     actors: Pick<TApi["actors"], "definitions" | "instances" | "events">;
     agent?: Pick<TApi["agent"], "events" | "widgets">;
+    widget: Pick<TApi['widget'], 'runtime'>;
+    function: Pick<TApi['function'], 'invoke' | 'get'>;
   };
 };
 
@@ -37,12 +39,17 @@ export type TAiChatBrowserPort = {
 export type TWidgetBrowserPort = {
   document: Document;
   createId(): string;
+  organizationId(): string;
+  tenantAuthorityKey(): string;
   now(): number;
   nowDate(): Date;
   setTimeout(callback: () => void, timeout: number): unknown;
   clearTimeout(timer: unknown): void;
   setInterval(callback: () => void, timeout: number): unknown;
   clearInterval(timer: unknown): void;
+  decodeBase64(value: string): Uint8Array;
+  decodeUtf8(value: Uint8Array): string;
+  digestSha256(value: Uint8Array): Promise<string>;
 };
 
 export type TAiChatApplicationPort = {

@@ -1,9 +1,9 @@
 import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
-import type { TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TUiWidgetData, TWidgetData, TWidgetInstanceData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
-import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, ToolService } from "@vibecanvas/canvas/services";
+import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, HistoryService, RenderOrderService, SceneService, SelectionService, ToolService } from "@vibecanvas/canvas/services";
 import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "@vibecanvas/canvas/core/CONSTANTS";
 import type { IRuntimeConfig, IRuntimeHooks } from "@vibecanvas/canvas";
 import {
@@ -34,26 +34,30 @@ import { txAttachDomPortal } from "./attach-dom-portal";
 import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
 import { txResizeWidgetHost } from "./tx.resize-widget-host";
 import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
-import type { TActorEvent } from "@vibecanvas/api/actor/contract";
 import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { TWidgetError } from '@vibecanvas/service-db/model';
-import type { TWidgetBrowserPort, TWidgetTransportPort } from "../ports";
+import type { TWidgetBrowserPort } from "../ports";
 import type { TWidgetDropRequest, TWidgetWorldBounds } from "@vibecanvas/canvas/services";
 import { fnCreateWidgetElement } from "./fn.create-widget-element";
 import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
+import {
+  LegacyWidgetActorAdapter,
+  type TWidgetActorEvent,
+} from './LegacyWidgetActorAdapter';
+import type { TWidgetHostData } from '@vibecanvas/canvas/widget-host/types';
+import { fnIsWidgetHostData, fnNormalizeWidgetHostData } from '@vibecanvas/canvas/widget-host/fn.normalize-widget-host-data';
+import { txMountCommittedWidgetRuntime } from './tx.mount-committed-widget-runtime';
 
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
 
-export type TWidgetActorEvent = TActorEvent;
-
 type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
+export type { TWidgetActorEvent } from './LegacyWidgetActorAdapter';
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
   #crdtService: CrdtService;
   #historyService?: HistoryService;
-  #loggingService: LoggingService;
   #themeService: ThemeService;
   #selectionService: SelectionService;
   #contextMenuService: ContextMenuService;
@@ -66,9 +70,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #browser: TWidgetBrowserPort;
-  #transport: TWidgetTransportPort;
-  #actorEventSubscribers = new Map<string, Set<TWidgetActorEventHandler>>();
-  #isActorEventListenerRunning = false;
+  #legacyActorAdapter: LegacyWidgetActorAdapter;
+  #neutralHost: IWidgetManagerServiceProps['neutralHost'];
+  #started = false;
   #registeredWidgetKinds = new Set<string>();
   #registeredWidgetConfigs = new Map<string, IWidgetConfig>();
   #registeredToolIdsByKind = new Map<string, string>();
@@ -76,9 +80,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #elementErrors = new Map<string, TWidgetError>();
   #globalDefinitionError: TWidgetError | null = null;
   #definitionDiscoveryComplete = false;
-  #activeActorEventIterator: AsyncIterator<unknown> | null = null;
-  #reconnectTimer: unknown | null = null;
-  #resolveReconnectWait: (() => void) | null = null;
+  #neutralPortalCleanups = new Set<() => void>();
 
   private readonly runtimeHooks!: IRuntimeHooks;
 
@@ -86,7 +88,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   constructor(props: IWidgetManagerServiceProps) {
     this.#crdtService = props.crdtService;
     this.#historyService = props.historyService;
-    this.#loggingService = props.loggingService;
     this.#themeService = props.themeService;
     this.#selectionService = props.selectionService;
     this.#contextMenuService = props.contextMenuService;
@@ -97,7 +98,12 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#cameraService = props.cameraService;
     this.#confirmDialogService = props.confirmDialogService;
     this.#browser = props.browser;
-    this.#transport = props.transport;
+    this.#neutralHost = props.neutralHost;
+    this.#legacyActorAdapter = new LegacyWidgetActorAdapter({
+      browser: props.browser,
+      logging: props.loggingService,
+      transport: props.transport,
+    });
   }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
@@ -110,20 +116,18 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#widgetPortal.id = "widget-portal";
 
     this.#registerFallbackWidgetDefinition();
-
-    this.#isActorEventListenerRunning = true;
-    void this.#listenToActorEvents();
+    this.#registerNeutralWidgetDefinition();
+    this.#started = true;
+    if ([...this.#registeredWidgetConfigs.values()].some((config) => config.dataType === 'widget' && config.actor)) {
+      this.#legacyActorAdapter.start();
+    }
   }
 
   stop(): void | Promise<void> {
-    this.#isActorEventListenerRunning = false;
-    if (this.#reconnectTimer !== null) this.#browser.clearTimeout(this.#reconnectTimer);
-    this.#reconnectTimer = null;
-    this.#resolveReconnectWait?.();
-    this.#resolveReconnectWait = null;
-    this.#closeActorEventIterator(this.#activeActorEventIterator);
-    this.#activeActorEventIterator = null;
-    this.#actorEventSubscribers.clear();
+    this.#started = false;
+    this.#legacyActorAdapter.stop();
+    [...this.#neutralPortalCleanups].forEach((cleanup) => cleanup());
+    this.#neutralPortalCleanups.clear();
     this.#removeSelectionChangeListener?.();
     this.#removeSelectionChangeListener = undefined;
     this.#contextMenuService.close();
@@ -131,72 +135,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
 
-  async #listenToActorEvents() {
-    let delay = 250;
-    while (this.#isActorEventListenerRunning) {
-      try {
-        const [err, it] = await this.#transport.api.actors.events({});
-        if (err) throw err;
-        delay = 250;
-        const iterator = it[Symbol.asyncIterator]();
-        if (!this.#isActorEventListenerRunning) {
-          this.#closeActorEventIterator(iterator);
-          return;
-        }
-        this.#activeActorEventIterator = iterator;
-        try {
-          while (this.#isActorEventListenerRunning) {
-            const next = await iterator.next();
-            if (next.done) break;
-            this.#routeActorEvent(next.value as TWidgetActorEvent);
-          }
-        } finally {
-          if (this.#activeActorEventIterator === iterator) {
-            this.#activeActorEventIterator = null;
-            this.#closeActorEventIterator(iterator);
-          }
-        }
-      } catch (error) {
-        this.#activeActorEventIterator = null;
-        this.#loggingService.warn({ kind: 'service', name: this.name, level: 1, event: 'actor-event-stream-disconnected', payload: error });
-        this.#actorEventSubscribers.forEach((subscribers, actorId) => {
-          const event: TWidgetActorEvent = {
-            kind: 'system',
-            actorId,
-            type: 'error',
-            code: 'ACTOR_EVENT_STREAM_DISCONNECTED',
-            message: 'Widget actor updates were disconnected. Reconnecting…',
-          };
-          subscribers.forEach((handler) => handler(event));
-        });
-      }
-      if (!this.#isActorEventListenerRunning) return;
-      await new Promise<void>((resolve) => {
-        this.#resolveReconnectWait = resolve;
-        this.#reconnectTimer = this.#browser.setTimeout(() => {
-          this.#reconnectTimer = null;
-          this.#resolveReconnectWait = null;
-          resolve();
-        }, delay);
-      });
-      delay = Math.min(delay * 2, 5_000);
-    }
-  }
-
-  #closeActorEventIterator(iterator: AsyncIterator<unknown> | null) {
-    if (!iterator?.return) return;
-    try {
-      const closing = iterator.return();
-      if (closing) void Promise.resolve(closing).catch(() => undefined);
-    } catch {
-      // Stream cleanup must remain safe when an iterator closes synchronously.
-    }
-  }
-
   #getWidgetElementIds(kind?: string) {
     return Object.values(this.#crdtService.doc().elements).flatMap((element) => {
-      if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return [];
-      if (kind !== undefined && element.data.kind !== kind) return [];
+      const host = fnNormalizeWidgetHostData(element.data);
+      if (!host) return [];
+      if (kind !== undefined && host.hostKey !== kind) return [];
       return [element.id];
     });
   }
@@ -215,7 +158,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   }
 
   getWidgetError(element: TElement): TWidgetError | null {
-    const kind = element.data.type === 'widget' || element.data.type === 'ui-widget' ? element.data.kind : 'unknown';
+    if (element.data.type === 'widget-instance') return null;
+    const kind = fnNormalizeWidgetHostData(element.data)?.hostKey ?? 'unknown';
     const error = this.#elementErrors.get(element.id)
       ?? this.#definitionErrors.get(kind)
       ?? this.#globalDefinitionError;
@@ -248,7 +192,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   setElementError(elementId: string, error: TWidgetError) {
     this.#elementErrors.set(elementId, error);
     const element = this.#crdtService.doc().elements[elementId];
-    if (element?.data.type === 'widget' || element?.data.type === 'ui-widget') {
+    if (element && fnIsWidgetHostData(element.data)) {
       this.#invalidateElements([elementId]);
     }
   }
@@ -256,7 +200,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   clearElementError(elementId: string) {
     this.#elementErrors.delete(elementId);
     const element = this.#crdtService.doc().elements[elementId];
-    if (element?.data.type === 'widget' || element?.data.type === 'ui-widget') {
+    if (element && fnIsWidgetHostData(element.data)) {
       this.#invalidateElements([elementId]);
     }
   }
@@ -290,7 +234,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           themeService: this.#themeService,
           hostColors: colors,
           fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
-          transport: this.#transport,
         }, { element });
         if (node && onRemove) {
           node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
@@ -325,28 +268,175 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     });
   }
 
-  #routeActorEvent(event: TWidgetActorEvent) {
-    const subscribers = this.#actorEventSubscribers.get(event.actorId);
-    if (!subscribers) return;
-
-    subscribers.forEach((handler) => handler(event));
+  #registerNeutralWidgetDefinition() {
+    this.#elementService.registerElement({
+      id: '__widget-instance-host',
+      matchesElement: (element) => element.data.type === 'widget-instance',
+      matchesNode: (node) => {
+        const data = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetInstanceData | undefined;
+        return data?.type === 'widget-instance';
+      },
+      toElement: (node) => fnToWidgetElement(node, this.#browser.now()),
+      createNode: (element) => {
+        if (element.data.type !== 'widget-instance') return null;
+        const colors = fnGetHostThemeColors(this.#themeService, 'widget-instance');
+        const widgetConfig: IWidgetConfig = {
+          id: element.data.definitionId,
+          getTitle: (candidate) => candidate.data.type === 'widget-instance'
+            ? candidate.data.definitionId
+            : 'Widget',
+          renderDom: this.#neutralHost
+            ? ({ root, element: candidate }) => txMountCommittedWidgetRuntime({
+                canvasId: this.#neutralHost!.canvasId,
+                crdtService: this.#crdtService,
+                runtime: this.#neutralHost!.runtime,
+              }, {
+                elementId: candidate.id,
+                root,
+              })
+            : undefined,
+        };
+        const node = fnCreateWidgetNode(Konva, colors, element, {
+          label: element.data.definitionId,
+        });
+        const onRemove = txAttachDomPortal({
+          node,
+          widgetPortal: this.#widgetPortal,
+          document: this.#browser.document,
+          browser: this.#browser,
+          widgetServie: this,
+          cameraService: this.#cameraService,
+          sceneService: this.#sceneService,
+          selectionService: this.#selectionService,
+          themeService: this.#themeService,
+          hostColors: colors,
+          fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
+          widgetConfig,
+        }, { element });
+        if (node && onRemove) {
+          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
+          const existingOnRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
+          const cleanupPortal = () => {
+            this.#neutralPortalCleanups.delete(cleanupPortal);
+            onRemove();
+          };
+          this.#neutralPortalCleanups.add(cleanupPortal);
+          node.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
+            existingOnRemove?.(removeArgs);
+            cleanupPortal();
+          });
+        }
+        return node;
+      },
+      updateElement: (element) => {
+        if (element.data.type !== 'widget-instance') return false;
+        const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
+          return candidate.id() === element.id;
+        });
+        if (!node) return false;
+        const colors = fnGetHostThemeColors(this.#themeService, 'widget-instance');
+        return txUpdateWidgetNodeFromElement({
+          Circle: Konva.Circle,
+          Group: Konva.Group,
+          Line: Konva.Line,
+          Rect: Konva.Rect,
+          Text: Konva.Text,
+        }, {
+          node,
+          element,
+          label: element.data.definitionId,
+          labelFill: colors.headerTitleFill,
+          hostColors: colors,
+        });
+      },
+      createDragClone: ({ node }) => {
+        if (!this.#historyService) return false;
+        return txCreateWidgetCloneDrag({
+          Group: Konva.Group,
+          crdt: this.#crdtService,
+          element: this.#elementService,
+          history: this.#historyService,
+          renderOrder: this.#renderOrderService,
+          scene: this.#sceneService,
+          selection: this.#selectionService,
+          createId: () => this.#browser.createId(),
+          createNode: (candidateElement) => {
+            const candidateNode = this.#elementService.createNodeFromElement(candidateElement);
+            return candidateNode instanceof Konva.Group ? candidateNode : null;
+          },
+          now: () => this.#browser.now(),
+          clone: <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T,
+          setupNode: (candidateNode) => fxAttachWidgetListener({
+            node: candidateNode,
+            Circle: Konva.Circle,
+            Group: Konva.Group,
+            Line: Konva.Line,
+            Rect: Konva.Rect,
+            hooks: this.runtimeHooks,
+            selection: this.#selectionService,
+            toElement: (candidate) => this.#elementService.toElement(candidate),
+            crdtService: this.#crdtService,
+            startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
+            removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
+            openWidgetMenu: (menuArgs) => this.#openWidgetHeaderMenu(menuArgs),
+            closeWidgetMenu: () => this.#contextMenuService.close(),
+            setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
+            clearTimer: (timer) => this.#browser.clearInterval(timer),
+          }, {}),
+        }, { node });
+      },
+      getTransformOptions: () => ({
+        flipEnabled: false,
+        keepRatio: false,
+        boundBoxFunc: (oldBox, newBox) => {
+          if (newBox.width < WIDGET_HOST_MIN_WIDTH || newBox.height < WIDGET_HOST_MIN_HEIGHT) {
+            return oldBox;
+          }
+          return newBox;
+        },
+      }),
+      onResize: ({ node, element, anchors }) => {
+        if (element.data.type !== 'widget-instance') return;
+        txResizeWidgetHost({
+          Circle: Konva.Circle,
+          Group: Konva.Group,
+          Line: Konva.Line,
+          Rect: Konva.Rect,
+          Text: Konva.Text,
+        }, { node, anchors });
+        this.#syncWidgetDomPortal(node);
+        return { cancel: true, crdt: false };
+      },
+      attachListeners: (node) => fxAttachWidgetListener({
+        node,
+        Circle: Konva.Circle,
+        Group: Konva.Group,
+        Line: Konva.Line,
+        Rect: Konva.Rect,
+        hooks: this.runtimeHooks,
+        selection: this.#selectionService,
+        toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
+        crdtService: this.#crdtService,
+        startDragClone: (args) => this.#elementService.createDragClone(args),
+        removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
+        openWidgetMenu: (args) => this.#openWidgetHeaderMenu(args),
+        closeWidgetMenu: () => this.#contextMenuService.close(),
+        setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
+        clearTimer: (timer) => this.#browser.clearInterval(timer),
+      }, {}),
+    });
   }
 
   subscribeActorInstanceEvents(actorInstanceId: string, handler: TWidgetActorEventHandler) {
-    let subscribers = this.#actorEventSubscribers.get(actorInstanceId);
-    if (!subscribers) {
-      subscribers = new Set();
-      this.#actorEventSubscribers.set(actorInstanceId, subscribers);
-    }
+    return this.#legacyActorAdapter.subscribe(actorInstanceId, handler);
+  }
 
-    subscribers.add(handler);
+  getLegacyActorSnapshot(args: Parameters<LegacyWidgetActorAdapter['getSnapshot']>[0]) {
+    return this.#legacyActorAdapter.getSnapshot(args);
+  }
 
-    return () => {
-      subscribers.delete(handler);
-      if (subscribers.size === 0) {
-        this.#actorEventSubscribers.delete(actorInstanceId);
-      }
-    };
+  sendLegacyActorMessage(args: Parameters<LegacyWidgetActorAdapter['sendMessage']>[0]) {
+    return this.#legacyActorAdapter.sendMessage(args);
   }
 
   #findWidgetNodeById(id: string) {
@@ -359,7 +449,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
   #removeWidgetNode(node: Konva.Node, args: { recordHistory: boolean }) {
     const element = this.#elementService.toElement(node);
-    if (!element || (element.data.type !== "widget" && element.data.type !== "ui-widget")) {
+    if (!element || !fnIsWidgetHostData(element.data)) {
       return false;
     }
 
@@ -417,17 +507,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       return false;
     }
 
-    const [error] = await this.#transport.api.actors.definitions.delete({ name: kind });
-    if (error) {
-      this.#loggingService.warn({
-        kind: "service",
-        name: this.name,
-        level: 1,
-        event: "delete-widget-definition-failed",
-        payload: error,
-      });
-      return false;
-    }
+    if (!await this.#legacyActorAdapter.deleteDefinition(kind)) return false;
 
     const doc = this.#crdtService.doc();
     const matchingElements = Object.values(doc.elements).filter((element) => {
@@ -449,6 +529,39 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     }
 
     this.unregisterWidget(kind);
+    this.#selectionService.clear();
+    this.#sceneService.staticForegroundLayer.batchDraw();
+    return true;
+  }
+
+  async deleteWidgetInstanceDefinition(definitionId: string) {
+    const deleteDefinition = this.#neutralHost?.deleteDefinition;
+    if (!deleteDefinition) return false;
+    this.#contextMenuService.close();
+    const confirmed = await this.#confirmDialogService.confirm({
+      title: 'Delete widget',
+      description: 'Delete this published widget definition and all of its current canvas instances? This action cannot be undone.',
+      confirmLabel: 'Delete widget',
+      cancelLabel: 'Cancel',
+      destructive: true,
+    });
+    if (!confirmed || !await deleteDefinition({ definitionId })) return false;
+
+    const matchingElements = Object.values(this.#crdtService.doc().elements).filter((element) => {
+      return element.data.type === 'widget-instance' && element.data.definitionId === definitionId;
+    });
+    if (matchingElements.length > 0) {
+      let builder = this.#crdtService.build();
+      matchingElements.forEach((element) => {
+        const node = this.#findWidgetNodeById(element.id);
+        if (node) {
+          builder = this.#elementService.removeElement(node, builder);
+          return;
+        }
+        builder.deleteElement(element.id);
+      });
+      builder.commit();
+    }
     this.#selectionService.clear();
     this.#sceneService.staticForegroundLayer.batchDraw();
     return true;
@@ -482,8 +595,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0]);
     }
 
-    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
-    if (widgetData?.type === "widget" || widgetData?.type === "ui-widget") {
+    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData | undefined;
+    if (widgetData && fnIsWidgetHostData(widgetData)) {
       node.setAttr(ELEMENT_DATA_ATTR, {
         ...widgetData,
         expanded,
@@ -505,8 +618,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       }
     }
 
-    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
-    if (widgetData?.type === "widget" || widgetData?.type === "ui-widget") {
+    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData | undefined;
+    if (widgetData && fnIsWidgetHostData(widgetData)) {
       node.setAttr(ELEMENT_DATA_ATTR, {
         ...widgetData,
         window: windowMode,
@@ -547,22 +660,23 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       y: number;
     };
   }) {
-    const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined;
-    if (widgetData?.type !== "widget" && widgetData?.type !== "ui-widget") {
+    const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData | undefined;
+    if (!widgetData || !fnIsWidgetHostData(widgetData)) {
       return;
     }
 
     this.#selectionService.setSelection([args.node]);
+    const deleteInstanceAction = {
+      id: "widget-delete-instance",
+      label: "Delete instance",
+      priority: 30,
+      onSelect: () => {
+        this.#removeWidgetNode(args.node, { recordHistory: true });
+      },
+    };
     const deleteActions = widgetData.type === "widget"
       ? [
-        {
-          id: "widget-delete-instance",
-          label: "Delete instance",
-          priority: 30,
-          onSelect: () => {
-            this.#removeWidgetNode(args.node, { recordHistory: true });
-          },
-        },
+        deleteInstanceAction,
         {
           id: "widget-delete-definition",
           label: "Delete widget",
@@ -572,16 +686,19 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           },
         },
       ]
-      : [
-        {
-          id: "widget-delete-instance",
-          label: "Delete instance",
-          priority: 30,
-          onSelect: () => {
-            this.#removeWidgetNode(args.node, { recordHistory: true });
-          },
-        },
-      ];
+      : widgetData.type === 'widget-instance' && this.#neutralHost?.deleteDefinition
+        ? [
+            deleteInstanceAction,
+            {
+              id: 'widget-delete-definition',
+              label: 'Delete widget',
+              priority: 40,
+              onSelect: () => {
+                void this.deleteWidgetInstanceDefinition(widgetData.definitionId);
+              },
+            },
+          ]
+        : [deleteInstanceAction];
 
     this.#contextMenuService.openWithActionsAt({
       x: args.anchor.x,
@@ -621,7 +738,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
   unregisterWidget(kind: string) {
     this.#removeWidgetRegistration(kind);
-    if (this.#isActorEventListenerRunning) {
+    if (this.#started) {
       this.#invalidateElements(this.#getWidgetElementIds(kind));
     }
   }
@@ -632,6 +749,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#registeredWidgetConfigs.set(wConfig.id, wConfig);
     this.#registeredToolIdsByKind.set(wConfig.id, wConfig.toolId ?? wConfig.id);
     this.clearDefinitionError(wConfig.id);
+    if (this.#started && wConfig.dataType === 'widget' && wConfig.actor) {
+      this.#legacyActorAdapter.start();
+    }
 
     if (wConfig.tool) {
       fxRegisterWidgetTool({
@@ -669,7 +789,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
           hostColors: colors,
           fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
           widgetConfig: wConfig,
-          transport: this.#transport,
         }, {element})
         if (node && onRemove) {
           node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
@@ -811,7 +930,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         clearTimer: (timer) => this.#browser.clearInterval(timer),
       }, {})
     })
-    if (this.#isActorEventListenerRunning) {
+    if (this.#started) {
       this.#invalidateElements(this.#getWidgetElementIds(wConfig.id));
     }
 
@@ -842,7 +961,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#toolService.unregisterTool(id);
   }
 
-  placePublishedWidget(kind: string, bounds: TWidgetWorldBounds) {
+  placeLegacyPublishedWidget(kind: string, bounds: TWidgetWorldBounds) {
     const config = this.#registeredWidgetConfigs.get(kind);
     if (!config || config.dataType !== "widget" || !config.actor) {
       throw new Error(`Published widget definition '${kind}' is unavailable.`);
@@ -859,8 +978,38 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       height: bounds.height,
       now: timestamp,
     });
+    return this.#placeWidgetElement(element, `Published widget '${kind}'`);
+  }
+
+  placeWidgetInstance(args: Readonly<{
+    definitionId: string;
+    revisionId: string;
+    bounds: TWidgetWorldBounds;
+    instanceId?: string;
+    stateDocumentId?: string;
+  }>) {
+    const timestamp = this.#browser.now();
+    const element = fnCreateWidgetElement({
+      id: this.#browser.createId(),
+      dataType: 'widget-instance',
+      definitionId: args.definitionId,
+      revisionId: args.revisionId,
+      instanceId: args.instanceId ?? this.#browser.createId(),
+      ...(args.stateDocumentId === undefined
+        ? {}
+        : { stateDocumentId: args.stateDocumentId }),
+      x: args.bounds.x,
+      y: args.bounds.y,
+      width: args.bounds.width,
+      height: args.bounds.height,
+      now: timestamp,
+    });
+    return this.#placeWidgetElement(element, `Widget definition '${args.definitionId}'`);
+  }
+
+  #placeWidgetElement(element: TElement, errorLabel: string) {
     const node = this.#elementService.createNodeFromElement(element);
-    if (!(node instanceof Konva.Group)) throw new Error(`Published widget '${kind}' could not be created.`);
+    if (!(node instanceof Konva.Group)) throw new Error(`${errorLabel} could not be created.`);
     this.#sceneService.staticForegroundLayer.add(node);
     this.#renderOrderService.assignOrderOnInsert({
       parent: this.#sceneService.staticForegroundLayer,
@@ -870,7 +1019,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     const persisted = this.#elementService.toElement(node);
     if (!persisted) {
       node.destroy();
-      throw new Error(`Published widget '${kind}' could not be persisted.`);
+      throw new Error(`${errorLabel} could not be persisted.`);
     }
     const commitResult = this.#crdtService.build().patchElement(persisted.id, persisted).commit();
     this.#toolService.setActiveTool("select");

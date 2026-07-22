@@ -7,3 +7,4 @@ export * from './interface';
 export * from './media';
 export * from './router';
 export * from './resource';
+export * from './widget';

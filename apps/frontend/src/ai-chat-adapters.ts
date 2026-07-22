@@ -1,8 +1,9 @@
 import { showErrorToast, showSuccessToast } from "@/components/ui/Toast";
 import { removeFromCache } from "@/services/automerge";
-import { getBrowserTenantScope } from "@/services/tenant";
+import { getBrowserTenantActivation, getBrowserTenantScope } from "@/services/tenant";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { themeService, txSetThemeAppearance } from "@/services/theme";
+import { widgetCollaborativeStatePort } from "@/services/widget-collaborative-state";
 import { setStore, store } from "@/store";
 import {
   createAiChatCanvasExtension,
@@ -45,12 +46,30 @@ export const chatBrowserPort: TAiChatBrowserPort = {
 export const widgetBrowserPort: TWidgetBrowserPort = {
   document,
   createId: () => crypto.randomUUID(),
+  organizationId: () => getBrowserTenantScope().orgId,
+  tenantAuthorityKey: () => {
+    const activation = getBrowserTenantActivation();
+    return JSON.stringify([
+      activation.generation,
+      activation.scope.deploymentOrigin,
+      activation.scope.orgId,
+      activation.scope.accountId,
+      activation.scope.cellId,
+      activation.scope.placementEpoch,
+    ]);
+  },
   now: () => Date.now(),
   nowDate: () => new Date(),
   setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),
   clearTimeout: (timer) => window.clearTimeout(timer as number),
   setInterval: (callback, timeout) => window.setInterval(callback, timeout),
   clearInterval: (timer) => window.clearInterval(timer as number),
+  decodeBase64: (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0)),
+  decodeUtf8: (value) => new TextDecoder().decode(value),
+  digestSha256: async (value) => {
+    const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(value));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  },
 };
 
 const apiService = orpcWebsocketService.apiService;
@@ -105,6 +124,7 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
       logError: (error) => console.error(error),
     },
     widgetPlacement: widgetPlacementCoordinator,
+    widgetCollaborativeState: widgetCollaborativeStatePort,
   });
 }
 

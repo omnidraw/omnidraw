@@ -1,6 +1,18 @@
+import { isValidAutomergeUrl } from '@automerge/automerge-repo';
 import { z } from 'zod';
 
+const LOWERCASE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const zLowercaseUuid = z.string().regex(LOWERCASE_UUID_PATTERN, 'Expected a lowercase UUID.');
+const zAutomergeDocumentUrl = z.string().refine(
+  (value) => isValidAutomergeUrl(value) && !value.includes('#'),
+  'Expected a canonical Automerge document URL without heads.',
+);
+
 export const zPoint2D = z.tuple([z.number(), z.number()]);
+export const zElementId = z.string().refine(
+  (value) => value.trim() === value && value.length >= 1 && value.length <= 200,
+  'Expected 1 to 200 trimmed characters.',
+);
 
 export const zJsonValue: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(),
@@ -20,7 +32,7 @@ export const zBinding = z.object({
 });
 
 export const zBaseElement = z.object({
-  id: z.string(),
+  id: zElementId,
   x: z.number(),
   y: z.number(),
   rotation: z.number(),
@@ -150,6 +162,18 @@ export const zUiWidgetData = z.object({
   uiProps: z.record(z.string(), zJsonValue).optional(),
 }).strict();
 
+export const zWidgetInstanceData = z.object({
+  type: z.literal('widget-instance'),
+  definitionId: zLowercaseUuid,
+  revisionId: zLowercaseUuid,
+  instanceId: zLowercaseUuid,
+  stateDocumentId: zAutomergeDocumentUrl.optional(),
+  w: z.number(),
+  h: z.number(),
+  expanded: z.boolean(),
+  window: zWidgetWindow,
+}).strict();
+
 export const zElementData = z.union([
   zRectData,
   zEllipseData,
@@ -161,6 +185,7 @@ export const zElementData = z.union([
   zImageData,
   zWidgetData,
   zUiWidgetData,
+  zWidgetInstanceData,
 ]);
 
 export const zElementStyle = z.object({
@@ -191,6 +216,15 @@ export const zGroup = z.object({
 export const zCanvasDoc = z.object({
   id: z.string(),
   name: z.string(),
-  elements: z.record(z.string(), zElement),
+  elements: z.record(zElementId, zElement),
   groups: z.record(z.string(), zGroup),
+}).superRefine((document, context) => {
+  for (const [elementKey, element] of Object.entries(document.elements)) {
+    if (elementKey === element.id) continue;
+    context.addIssue({
+      code: 'custom',
+      path: ['elements', elementKey, 'id'],
+      message: 'Element key must match its persisted element id.',
+    });
+  }
 });

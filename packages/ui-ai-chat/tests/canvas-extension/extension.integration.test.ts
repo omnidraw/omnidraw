@@ -80,13 +80,13 @@ describe("AI Chat canvas extension", () => {
     expect(runtime.services.require("tool").getTool("ai")?.label).toBe("AI Chat");
     expect(container.querySelector("#widget-portal")).not.toBeNull();
     expect(listDefinitions).toHaveBeenCalledOnce();
-    expect(actorEvents).toHaveBeenCalledOnce();
+    expect(actorEvents).not.toHaveBeenCalled();
 
     await runtime.shutdown();
 
     expect(runtime.services.require("tool").getTool("ai")).toBeUndefined();
     expect(container.querySelector("#widget-portal")).toBeNull();
-    expect(returnStream).toHaveBeenCalledOnce();
+    expect(returnStream).not.toHaveBeenCalled();
   });
 
   it("closes actor and agent streams that resolve after runtime shutdown", async () => {
@@ -117,7 +117,21 @@ describe("AI Chat canvas extension", () => {
       widgetTransport: {
         api: {
           actors: {
-            definitions: { list: vi.fn(async () => [null, []] as const), get: vi.fn() },
+            definitions: {
+              list: vi.fn(async () => [null, [{
+                name: 'Legacy',
+                health: 'ready',
+                error: null,
+                updated_at: '2026-07-22T00:00:00.000Z',
+              }]] as const),
+              get: vi.fn(async () => [null, {
+                def: {
+                  name: 'Legacy',
+                  widget: { tool: { label: 'Legacy', icon: null } },
+                },
+                widgetCode: [{ path: 'main.ts', content: 'export default {}' }],
+              }] as const),
+            },
             instances: {} as never,
             events: actorEvents,
           },

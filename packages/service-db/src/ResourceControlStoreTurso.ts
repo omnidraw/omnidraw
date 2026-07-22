@@ -30,10 +30,10 @@ import {
   fnResourceControlStorePlacement,
   fnResourceControlStoreSerializeJson,
 } from './ResourceControlStoreTurso/fn.resource-control-store-row';
-
-type TImmediateTransaction<T> = (() => Promise<T>) & {
-  immediate(): Promise<T>;
-};
+import {
+  txRunDatabaseTransaction,
+  txRunDatabaseWrite,
+} from './tx.run-database-transaction';
 
 type TExpectedStatus = string | readonly string[];
 
@@ -89,40 +89,41 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     tenant: TTenantContext,
     request: TCreateResourceRequest,
   ): Promise<TResourceDescriptor> {
-    const create = this.database.transaction(async () => {
-      const name = await this.#availableResourceName(tenant, request.name);
-      await (await this.database.prepare(`
-        INSERT INTO resource_catalog (
-          org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, 'created', NULL, ?, ?)
-      `)).run(
-        tenant.orgId,
-        request.id,
-        request.kind,
-        name,
-        request.nowMs,
-        request.nowMs,
-      );
-      await (await this.database.prepare(`
-        INSERT INTO resource_placements (
-          org_id, resource_id, cell_id, placement_epoch, relative_path,
-          status, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?)
-      `)).run(
-        tenant.orgId,
-        request.id,
-        request.cellId,
-        request.placementEpoch,
-        request.storageKey,
-        request.nowMs,
-        request.nowMs,
-      );
-      const created = await this.getResource(tenant, request.id);
-      if (!created) throw new Error(`Failed to create resource '${request.id}'.`);
-      return created;
-    }) as TImmediateTransaction<TResourceDescriptor>;
     try {
-      return await create.immediate();
+      return await txRunDatabaseTransaction({ database: this.database }, {
+        operation: async () => {
+          const name = await this.#availableResourceName(tenant, request.name);
+          await (await this.database.prepare(`
+            INSERT INTO resource_catalog (
+              org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+            ) VALUES (?, ?, ?, ?, 'created', NULL, ?, ?)
+          `)).run(
+            tenant.orgId,
+            request.id,
+            request.kind,
+            name,
+            request.nowMs,
+            request.nowMs,
+          );
+          await (await this.database.prepare(`
+            INSERT INTO resource_placements (
+              org_id, resource_id, cell_id, placement_epoch, relative_path,
+              status, created_at_ms, updated_at_ms
+            ) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?)
+          `)).run(
+            tenant.orgId,
+            request.id,
+            request.cellId,
+            request.placementEpoch,
+            request.storageKey,
+            request.nowMs,
+            request.nowMs,
+          );
+          const created = await this.getResource(tenant, request.id);
+          if (!created) throw new Error(`Failed to create resource '${request.id}'.`);
+          return created;
+        },
+      });
     } catch (error) {
       this.#rethrowResourceNameConflict(error, request.name);
     }
@@ -132,20 +133,21 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     tenant: TTenantContext,
     request: Readonly<{ resourceId: TResourceId; name: string; nowMs: number }>,
   ): Promise<TResourceDescriptor | null> {
-    const rename = this.database.transaction(async () => {
-      const current = await this.getResource(tenant, request.resourceId);
-      if (!current) return null;
-      const name = await this.#availableResourceName(tenant, request.name, request.resourceId);
-      const result = await (await this.database.prepare(`
-          UPDATE resource_catalog
-          SET name = ?, updated_at_ms = ?
-          WHERE org_id = ? AND id = ?
-        `)).run(name, request.nowMs, tenant.orgId, request.resourceId);
-      if (result.changes === 0) return null;
-      return this.getResource(tenant, request.resourceId);
-    }) as TImmediateTransaction<TResourceDescriptor | null>;
     try {
-      return await rename.immediate();
+      return await txRunDatabaseTransaction({ database: this.database }, {
+        operation: async () => {
+          const current = await this.getResource(tenant, request.resourceId);
+          if (!current) return null;
+          const name = await this.#availableResourceName(tenant, request.name, request.resourceId);
+          const result = await (await this.database.prepare(`
+              UPDATE resource_catalog
+              SET name = ?, updated_at_ms = ?
+              WHERE org_id = ? AND id = ?
+            `)).run(name, request.nowMs, tenant.orgId, request.resourceId);
+          if (result.changes === 0) return null;
+          return this.getResource(tenant, request.resourceId);
+        },
+      });
     } catch (error) {
       this.#rethrowResourceNameConflict(error, request.name);
     }
@@ -157,56 +159,59 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   ): Promise<TResourceDescriptor | null> {
     const expected = this.#expectedStatuses(request.expectedStatus);
     if (expected.length === 0) return null;
-    const result = await (await this.database.prepare(`
-      UPDATE resource_catalog
-      SET status = ?, last_error_json = ?, updated_at_ms = ?
-      WHERE org_id = ? AND id = ?
-        AND status IN (${expected.map(() => '?').join(', ')})
-    `)).run(
-      request.status,
-      fnResourceControlStoreSerializeJson(request.lastError),
-      request.nowMs,
-      tenant.orgId,
-      request.resourceId,
-      ...expected,
-    );
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        UPDATE resource_catalog
+        SET status = ?, last_error_json = ?, updated_at_ms = ?
+        WHERE org_id = ? AND id = ?
+          AND status IN (${expected.map(() => '?').join(', ')})
+      `)).run(
+        request.status,
+        fnResourceControlStoreSerializeJson(request.lastError),
+        request.nowMs,
+        tenant.orgId,
+        request.resourceId,
+        ...expected,
+      )
+    ));
     if (result.changes === 0) return null;
     return this.getResource(tenant, request.resourceId);
   }
 
   async deleteResource(tenant: TTenantContext, resourceId: TResourceId): Promise<boolean> {
-    const remove = this.database.transaction(async () => {
-      const eligible = await (await this.database.prepare(`
-        SELECT id
-        FROM resource_catalog
-        WHERE org_id = ? AND id = ? AND status = 'deleting'
-          AND NOT EXISTS (
-            SELECT 1 FROM resource_bindings
-            WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM legacy_actor_resource_bindings
-            WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
-          )
-      `)).get(tenant.orgId, resourceId);
-      if (!eligible) return false;
+    return txRunDatabaseTransaction({ database: this.database }, {
+      operation: async () => {
+        const eligible = await (await this.database.prepare(`
+          SELECT id
+          FROM resource_catalog
+          WHERE org_id = ? AND id = ? AND status = 'deleting'
+            AND NOT EXISTS (
+              SELECT 1 FROM resource_bindings
+              WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM legacy_actor_resource_bindings
+              WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
+            )
+        `)).get(tenant.orgId, resourceId);
+        if (!eligible) return false;
 
-      await (await this.database.prepare(`
-        UPDATE db_resource_apply_runs
-        SET source_apply_id = NULL
-        WHERE org_id = ? AND resource_id = ? AND source_apply_id IS NOT NULL
-      `)).run(tenant.orgId, resourceId);
-      await (await this.database.prepare(`
-        DELETE FROM db_resource_apply_runs
-        WHERE org_id = ? AND resource_id = ?
-      `)).run(tenant.orgId, resourceId);
-      const result = await (await this.database.prepare(`
-        DELETE FROM resource_catalog
-        WHERE org_id = ? AND id = ? AND status = 'deleting'
-      `)).run(tenant.orgId, resourceId);
-      return result.changes > 0;
-    }) as TImmediateTransaction<boolean>;
-    return remove.immediate();
+        await (await this.database.prepare(`
+          UPDATE db_resource_apply_runs
+          SET source_apply_id = NULL
+          WHERE org_id = ? AND resource_id = ? AND source_apply_id IS NOT NULL
+        `)).run(tenant.orgId, resourceId);
+        await (await this.database.prepare(`
+          DELETE FROM db_resource_apply_runs
+          WHERE org_id = ? AND resource_id = ?
+        `)).run(tenant.orgId, resourceId);
+        const result = await (await this.database.prepare(`
+          DELETE FROM resource_catalog
+          WHERE org_id = ? AND id = ? AND status = 'deleting'
+        `)).run(tenant.orgId, resourceId);
+        return result.changes > 0;
+      },
+    });
   }
 
   async getPlacement(
@@ -225,20 +230,22 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     tenant: TTenantContext,
     request: TReserveResourcePlacementRequest,
   ): Promise<TResourcePlacement> {
-    await (await this.database.prepare(`
-      INSERT INTO resource_placements (
-        org_id, resource_id, cell_id, placement_epoch, relative_path,
-        status, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?)
-    `)).run(
-      tenant.orgId,
-      request.resourceId,
-      request.cellId,
-      request.placementEpoch,
-      request.storageKey,
-      request.nowMs,
-      request.nowMs,
-    );
+    await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        INSERT INTO resource_placements (
+          org_id, resource_id, cell_id, placement_epoch, relative_path,
+          status, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?)
+      `)).run(
+        tenant.orgId,
+        request.resourceId,
+        request.cellId,
+        request.placementEpoch,
+        request.storageKey,
+        request.nowMs,
+        request.nowMs,
+      )
+    ));
     const placement = await this.getPlacement(tenant, request.resourceId);
     if (!placement) throw new Error(`Failed to reserve placement for resource '${request.resourceId}'.`);
     return placement;
@@ -248,29 +255,33 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     tenant: TTenantContext,
     request: TUpdateResourcePlacementRequest,
   ): Promise<TResourcePlacement | null> {
-    const result = await (await this.database.prepare(`
-      UPDATE resource_placements
-      SET cell_id = ?, placement_epoch = ?, relative_path = ?, status = ?, updated_at_ms = ?
-      WHERE org_id = ? AND resource_id = ? AND placement_epoch = ?
-    `)).run(
-      request.cellId,
-      request.placementEpoch,
-      request.storageKey,
-      request.status,
-      request.nowMs,
-      tenant.orgId,
-      request.resourceId,
-      request.expectedEpoch,
-    );
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        UPDATE resource_placements
+        SET cell_id = ?, placement_epoch = ?, relative_path = ?, status = ?, updated_at_ms = ?
+        WHERE org_id = ? AND resource_id = ? AND placement_epoch = ?
+      `)).run(
+        request.cellId,
+        request.placementEpoch,
+        request.storageKey,
+        request.status,
+        request.nowMs,
+        tenant.orgId,
+        request.resourceId,
+        request.expectedEpoch,
+      )
+    ));
     if (result.changes === 0) return null;
     return this.getPlacement(tenant, request.resourceId);
   }
 
   async deletePlacement(tenant: TTenantContext, resourceId: TResourceId): Promise<boolean> {
-    const result = await (await this.database.prepare(`
-      DELETE FROM resource_placements
-      WHERE org_id = ? AND resource_id = ?
-    `)).run(tenant.orgId, resourceId);
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        DELETE FROM resource_placements
+        WHERE org_id = ? AND resource_id = ?
+      `)).run(tenant.orgId, resourceId)
+    ));
     return result.changes > 0;
   }
 
@@ -303,36 +314,38 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     tenant: TTenantContext,
     binding: TResourceBindingReference,
   ): Promise<TResourceBindingReference> {
-    await (await this.database.prepare(`
-      INSERT INTO resource_bindings (
-        org_id, definition_id, revision_id, slot_name, resource_id, resource_kind,
-        is_required, manifest_allow_read, manifest_allow_write, allow_read, allow_write,
-        created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (org_id, definition_id, revision_id, slot_name) DO UPDATE SET
-        resource_id = excluded.resource_id,
-        resource_kind = excluded.resource_kind,
-        is_required = excluded.is_required,
-        manifest_allow_read = excluded.manifest_allow_read,
-        manifest_allow_write = excluded.manifest_allow_write,
-        allow_read = excluded.allow_read,
-        allow_write = excluded.allow_write,
-        updated_at_ms = excluded.updated_at_ms
-    `)).run(
-      tenant.orgId,
-      binding.definitionId,
-      binding.revisionId,
-      binding.slot,
-      binding.resourceId,
-      binding.kind,
-      Number(binding.required),
-      Number(binding.manifestAllowRead),
-      Number(binding.manifestAllowWrite),
-      Number(binding.allowRead),
-      Number(binding.allowWrite),
-      binding.createdAtMs,
-      binding.updatedAtMs,
-    );
+    await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        INSERT INTO resource_bindings (
+          org_id, definition_id, revision_id, slot_name, resource_id, resource_kind,
+          is_required, manifest_allow_read, manifest_allow_write, allow_read, allow_write,
+          created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (org_id, definition_id, revision_id, slot_name) DO UPDATE SET
+          resource_id = excluded.resource_id,
+          resource_kind = excluded.resource_kind,
+          is_required = excluded.is_required,
+          manifest_allow_read = excluded.manifest_allow_read,
+          manifest_allow_write = excluded.manifest_allow_write,
+          allow_read = excluded.allow_read,
+          allow_write = excluded.allow_write,
+          updated_at_ms = excluded.updated_at_ms
+      `)).run(
+        tenant.orgId,
+        binding.definitionId,
+        binding.revisionId,
+        binding.slot,
+        binding.resourceId,
+        binding.kind,
+        Number(binding.required),
+        Number(binding.manifestAllowRead),
+        Number(binding.manifestAllowWrite),
+        Number(binding.allowRead),
+        Number(binding.allowWrite),
+        binding.createdAtMs,
+        binding.updatedAtMs,
+      )
+    ));
     const stored = await this.resolveBinding(tenant, binding);
     if (!stored) throw new Error(`Failed to store resource binding '${binding.slot}'.`);
     return stored;
@@ -342,10 +355,12 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     tenant: TTenantContext,
     request: Readonly<{ definitionId: string; revisionId: string; slot: TResourceSlot }>,
   ): Promise<boolean> {
-    const result = await (await this.database.prepare(`
-      DELETE FROM resource_bindings
-      WHERE org_id = ? AND definition_id = ? AND revision_id = ? AND slot_name = ?
-    `)).run(tenant.orgId, request.definitionId, request.revisionId, request.slot);
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        DELETE FROM resource_bindings
+        WHERE org_id = ? AND definition_id = ? AND revision_id = ? AND slot_name = ?
+      `)).run(tenant.orgId, request.definitionId, request.revisionId, request.slot)
+    ));
     return result.changes > 0;
   }
 
@@ -354,22 +369,24 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     draft: TDbResourceDraft,
   ): Promise<TDbResourceDraft> {
     this.#assertTenantOrg(tenant, draft.orgId);
-    await (await this.database.prepare(`
-      INSERT INTO db_resource_drafts (
-        org_id, id, resource_id, resource_kind, name, status, last_error_json,
-        created_at_ms, updated_at_ms, applied_at_ms
-      ) VALUES (?, ?, ?, 'db', ?, ?, ?, ?, ?, ?)
-    `)).run(
-      tenant.orgId,
-      draft.id,
-      draft.resourceId,
-      draft.name,
-      draft.status,
-      fnResourceControlStoreSerializeJson(draft.lastError),
-      draft.createdAtMs,
-      draft.updatedAtMs,
-      draft.appliedAtMs,
-    );
+    await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        INSERT INTO db_resource_drafts (
+          org_id, id, resource_id, resource_kind, name, status, last_error_json,
+          created_at_ms, updated_at_ms, applied_at_ms
+        ) VALUES (?, ?, ?, 'db', ?, ?, ?, ?, ?, ?)
+      `)).run(
+        tenant.orgId,
+        draft.id,
+        draft.resourceId,
+        draft.name,
+        draft.status,
+        fnResourceControlStoreSerializeJson(draft.lastError),
+        draft.createdAtMs,
+        draft.updatedAtMs,
+        draft.appliedAtMs,
+      )
+    ));
     const stored = await this.getDbDraft(tenant, draft.id);
     if (!stored) throw new Error(`Failed to create DB resource draft '${draft.id}'.`);
     return stored;
@@ -423,20 +440,22 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   ): Promise<TDbResourceDraft | null> {
     const expected = this.#expectedStatuses(request.expectedStatus);
     if (expected.length === 0) return null;
-    const result = await (await this.database.prepare(`
-      UPDATE db_resource_drafts
-      SET status = ?, last_error_json = ?, applied_at_ms = ?, updated_at_ms = ?
-      WHERE org_id = ? AND id = ?
-        AND status IN (${expected.map(() => '?').join(', ')})
-    `)).run(
-      request.status,
-      fnResourceControlStoreSerializeJson(request.lastError),
-      request.appliedAtMs,
-      request.nowMs,
-      tenant.orgId,
-      request.draftId,
-      ...expected,
-    );
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        UPDATE db_resource_drafts
+        SET status = ?, last_error_json = ?, applied_at_ms = ?, updated_at_ms = ?
+        WHERE org_id = ? AND id = ?
+          AND status IN (${expected.map(() => '?').join(', ')})
+      `)).run(
+        request.status,
+        fnResourceControlStoreSerializeJson(request.lastError),
+        request.appliedAtMs,
+        request.nowMs,
+        tenant.orgId,
+        request.draftId,
+        ...expected,
+      )
+    ));
     if (result.changes === 0) return null;
     return this.getDbDraft(tenant, request.draftId);
   }
@@ -446,19 +465,21 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     change: TDbResourceDraftChange,
   ): Promise<TDbResourceDraftChange> {
     this.#assertTenantOrg(tenant, change.orgId);
-    await (await this.database.prepare(`
-      INSERT INTO db_resource_draft_changes (
-        org_id, draft_id, sequence, kind, operation_json, sql_text, created_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)).run(
-      tenant.orgId,
-      change.draftId,
-      change.sequence,
-      change.kind,
-      fnResourceControlStoreSerializeJson(change.operation),
-      change.sql,
-      change.createdAtMs,
-    );
+    await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        INSERT INTO db_resource_draft_changes (
+          org_id, draft_id, sequence, kind, operation_json, sql_text, created_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)).run(
+        tenant.orgId,
+        change.draftId,
+        change.sequence,
+        change.kind,
+        fnResourceControlStoreSerializeJson(change.operation),
+        change.sql,
+        change.createdAtMs,
+      )
+    ));
     const row = await (await this.database.prepare(`
       SELECT * FROM db_resource_draft_changes
       WHERE org_id = ? AND draft_id = ? AND sequence = ?
@@ -484,23 +505,25 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     apply: TDbResourceApplyRun,
   ): Promise<TDbResourceApplyRun> {
     this.#assertTenantOrg(tenant, apply.orgId);
-    await (await this.database.prepare(`
-      INSERT INTO db_resource_apply_runs (
-        org_id, id, resource_id, draft_id, source_apply_id, status, last_error_json,
-        backup_retained, created_at_ms, completed_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)).run(
-      tenant.orgId,
-      apply.id,
-      apply.resourceId,
-      apply.draftId,
-      apply.sourceApplyId,
-      apply.status,
-      fnResourceControlStoreSerializeJson(apply.lastError),
-      Number(apply.backupRetained),
-      apply.createdAtMs,
-      apply.completedAtMs,
-    );
+    await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        INSERT INTO db_resource_apply_runs (
+          org_id, id, resource_id, draft_id, source_apply_id, status, last_error_json,
+          backup_retained, created_at_ms, completed_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)).run(
+        tenant.orgId,
+        apply.id,
+        apply.resourceId,
+        apply.draftId,
+        apply.sourceApplyId,
+        apply.status,
+        fnResourceControlStoreSerializeJson(apply.lastError),
+        Number(apply.backupRetained),
+        apply.createdAtMs,
+        apply.completedAtMs,
+      )
+    ));
     const stored = await this.getDbApply(tenant, apply.id);
     if (!stored) throw new Error(`Failed to create DB resource apply run '${apply.id}'.`);
     return stored;
@@ -546,20 +569,22 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
   ): Promise<TDbResourceApplyRun | null> {
     const expected = this.#expectedStatuses(request.expectedStatus);
     if (expected.length === 0) return null;
-    const result = await (await this.database.prepare(`
-      UPDATE db_resource_apply_runs
-      SET status = ?, last_error_json = ?, backup_retained = ?, completed_at_ms = ?
-      WHERE org_id = ? AND id = ?
-        AND status IN (${expected.map(() => '?').join(', ')})
-    `)).run(
-      request.status,
-      fnResourceControlStoreSerializeJson(request.lastError),
-      Number(request.backupRetained),
-      request.completedAtMs,
-      tenant.orgId,
-      request.applyId,
-      ...expected,
-    );
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        UPDATE db_resource_apply_runs
+        SET status = ?, last_error_json = ?, backup_retained = ?, completed_at_ms = ?
+        WHERE org_id = ? AND id = ?
+          AND status IN (${expected.map(() => '?').join(', ')})
+      `)).run(
+        request.status,
+        fnResourceControlStoreSerializeJson(request.lastError),
+        Number(request.backupRetained),
+        request.completedAtMs,
+        tenant.orgId,
+        request.applyId,
+        ...expected,
+      )
+    ));
     if (result.changes === 0) return null;
     return this.getDbApply(tenant, request.applyId);
   }
@@ -569,24 +594,26 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     backup: TDbResourceBackup,
   ): Promise<TDbResourceBackup> {
     this.#assertTenantOrg(tenant, backup.orgId);
-    await (await this.database.prepare(`
-      INSERT INTO db_resource_backups (
-        org_id, id, resource_id, apply_run_id, relative_path, digest_sha256,
-        byte_size, state, created_at_ms, verified_at_ms, delete_after_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)).run(
-      tenant.orgId,
-      backup.id,
-      backup.resourceId,
-      backup.applyRunId,
-      backup.storageKey,
-      backup.digestSha256,
-      backup.byteSize,
-      backup.state,
-      backup.createdAtMs,
-      backup.verifiedAtMs,
-      backup.deleteAfterMs,
-    );
+    await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        INSERT INTO db_resource_backups (
+          org_id, id, resource_id, apply_run_id, relative_path, digest_sha256,
+          byte_size, state, created_at_ms, verified_at_ms, delete_after_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)).run(
+        tenant.orgId,
+        backup.id,
+        backup.resourceId,
+        backup.applyRunId,
+        backup.storageKey,
+        backup.digestSha256,
+        backup.byteSize,
+        backup.state,
+        backup.createdAtMs,
+        backup.verifiedAtMs,
+        backup.deleteAfterMs,
+      )
+    ));
     const stored = await this.getDbBackup(tenant, {
       resourceId: backup.resourceId,
       applyRunId: backup.applyRunId,
@@ -623,24 +650,26 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
     backup: TDbResourceBackup,
   ): Promise<TDbResourceBackup | null> {
     this.#assertTenantOrg(tenant, backup.orgId);
-    const result = await (await this.database.prepare(`
-      UPDATE db_resource_backups
-      SET resource_id = ?, apply_run_id = ?, relative_path = ?, digest_sha256 = ?,
-        byte_size = ?, state = ?, created_at_ms = ?, verified_at_ms = ?, delete_after_ms = ?
-      WHERE org_id = ? AND id = ?
-    `)).run(
-      backup.resourceId,
-      backup.applyRunId,
-      backup.storageKey,
-      backup.digestSha256,
-      backup.byteSize,
-      backup.state,
-      backup.createdAtMs,
-      backup.verifiedAtMs,
-      backup.deleteAfterMs,
-      tenant.orgId,
-      backup.id,
-    );
+    const result = await this.#runWrite(async () => (
+      (await this.database.prepare(`
+        UPDATE db_resource_backups
+        SET resource_id = ?, apply_run_id = ?, relative_path = ?, digest_sha256 = ?,
+          byte_size = ?, state = ?, created_at_ms = ?, verified_at_ms = ?, delete_after_ms = ?
+        WHERE org_id = ? AND id = ?
+      `)).run(
+        backup.resourceId,
+        backup.applyRunId,
+        backup.storageKey,
+        backup.digestSha256,
+        backup.byteSize,
+        backup.state,
+        backup.createdAtMs,
+        backup.verifiedAtMs,
+        backup.deleteAfterMs,
+        tenant.orgId,
+        backup.id,
+      )
+    ));
     if (result.changes === 0) return null;
     return this.getDbBackup(tenant, {
       resourceId: backup.resourceId,
@@ -670,6 +699,10 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
       );
     }
     return normalized.value.name;
+  }
+
+  #runWrite<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
+    return txRunDatabaseWrite({ database: this.database }, { operation });
   }
 
   #rethrowResourceNameConflict(error: unknown, name: string): never {

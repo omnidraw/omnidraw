@@ -36,6 +36,7 @@ import { txFilesystemCreate } from "./tx.filesystem";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
 import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
 import { txRunMigrations } from "./tx.migrations";
+import { txRunDatabaseWrite } from "../tx.run-database-transaction";
 import { Database } from "./turso-native";
 import type {
   TDatabasePreflightResult,
@@ -385,7 +386,8 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   #serializeActorWrite<T>(tenant: TTenantContext, write: () => Promise<T>): Promise<T> {
     const key = fnScopedKey('db-actor-write', [tenant.orgId])
     const previous = this.#actorWriteTails.get(key) ?? Promise.resolve()
-    const result = previous.then(write, write)
+    const run = () => this.#serializeDatabaseWrite(write)
+    const result = previous.then(run, run)
     const tail = result.then(
       () => undefined,
       () => undefined,
@@ -398,37 +400,57 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     return result
   }
 
+  #serializeDatabaseWrite<T>(write: () => Promise<T>): Promise<T> {
+    return txRunDatabaseWrite({ database: this.db }, { operation: write })
+  }
+
   account = {
     getDefaultOwner: (tenant: TTenantContext) => fxAccountGetDefaultOwner(this, { tenant }),
-    ensureDefaultOwner: () => txAccountEnsureDefaultOwner(this, {}),
+    ensureDefaultOwner: () => this.#serializeDatabaseWrite(() => txAccountEnsureDefaultOwner(this, {})),
   };
 
   canvas = {
     listAll: (tenant: TTenantContext) => fxCanvasListAll(this, { tenant }),
     findByName: (tenant: TTenantContext, args: { name: string }) => fxCanvasFindByName(this, { tenant, ...args }),
     findById: (tenant: TTenantContext, args: { id: string }) => fxCanvasFindById(this, { tenant, ...args }),
-    create: (tenant: TTenantContext, args: TCanvasCreateArgs) => txCanvasCreate(this, { tenant, ...args }),
-    renameById: (tenant: TTenantContext, args: { id: string, name: string }) => txCanvasRenameById(this, { tenant, ...args }),
-    deleteById: (tenant: TTenantContext, args: { id: string }) => txCanvasDeleteById(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TCanvasCreateArgs) => this.#serializeDatabaseWrite(
+      () => txCanvasCreate(this, { tenant, ...args }),
+    ),
+    renameById: (tenant: TTenantContext, args: { id: string, name: string }) => this.#serializeDatabaseWrite(
+      () => txCanvasRenameById(this, { tenant, ...args }),
+    ),
+    deleteById: (tenant: TTenantContext, args: { id: string }) => this.#serializeDatabaseWrite(
+      () => txCanvasDeleteById(this, { tenant, ...args }),
+    ),
     listMembers: (tenant: TTenantContext, args: { canvasId: string }) => fxCanvasListMembers(this, { tenant, ...args }),
   };
 
   file = {
     listAll: (tenant: TTenantContext) => fxFileListAll(this, { tenant }),
-    create: (tenant: TTenantContext, args: TFileCreateArgs) => txFileCreate(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TFileCreateArgs) => this.#serializeDatabaseWrite(
+      () => txFileCreate(this, { tenant, ...args }),
+    ),
     getById: (tenant: TTenantContext, args: { id: string }) => fxFileGetById(this, { tenant, ...args }),
-    deleteById: (tenant: TTenantContext, args: { id: string }) => txFileDeleteById(this, { tenant, ...args }),
+    deleteById: (tenant: TTenantContext, args: { id: string }) => this.#serializeDatabaseWrite(
+      () => txFileDeleteById(this, { tenant, ...args }),
+    ),
   };
 
   filesystem = {
     listAll: (tenant: TTenantContext) => fxFilesystemListAll(this, { tenant }),
     findById: (tenant: TTenantContext, args: { id: string }) => fxFilesystemFindById(this, { tenant, ...args }),
-    create: (tenant: TTenantContext, args: TFilesystemCreateArgs) => txFilesystemCreate(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TFilesystemCreateArgs) => this.#serializeDatabaseWrite(
+      () => txFilesystemCreate(this, { tenant, ...args }),
+    ),
   };
 
   keyValue = {
-    add: (tenant: TTenantContext, args: TKeyValue) => txKeyValueAdd(this, { tenant, ...args }),
-    remove: (tenant: TTenantContext, args: { name: string }) => txKeyValueRemove(this, { tenant, ...args }),
+    add: (tenant: TTenantContext, args: TKeyValue) => this.#serializeDatabaseWrite(
+      () => txKeyValueAdd(this, { tenant, ...args }),
+    ),
+    remove: (tenant: TTenantContext, args: { name: string }) => this.#serializeDatabaseWrite(
+      () => txKeyValueRemove(this, { tenant, ...args }),
+    ),
     get: (tenant: TTenantContext, args: { name: string }) => fxKeyValueGet(this, { tenant, ...args }),
   };
 
@@ -578,9 +600,15 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
   toolGroup = {
     listAll: (tenant: TTenantContext) => fxToolGroupListAll(this, { tenant }),
     getByName: (tenant: TTenantContext, args: { name: string }) => fxToolGroupGetByName(this, { tenant, ...args }),
-    create: (tenant: TTenantContext, args: TToolGroup) => txToolGroupCreate(this, { tenant, ...args }),
-    update: (tenant: TTenantContext, args: TToolGroup & { currentName: string }) => txToolGroupUpdate(this, { tenant, ...args }),
-    remove: (tenant: TTenantContext, args: { name: string }) => txToolGroupRemove(this, { tenant, ...args }),
+    create: (tenant: TTenantContext, args: TToolGroup) => this.#serializeDatabaseWrite(
+      () => txToolGroupCreate(this, { tenant, ...args }),
+    ),
+    update: (tenant: TTenantContext, args: TToolGroup & { currentName: string }) => this.#serializeDatabaseWrite(
+      () => txToolGroupUpdate(this, { tenant, ...args }),
+    ),
+    remove: (tenant: TTenantContext, args: { name: string }) => this.#serializeDatabaseWrite(
+      () => txToolGroupRemove(this, { tenant, ...args }),
+    ),
   };
 
   actor = {

@@ -2,8 +2,12 @@ import { AsyncParallelHook, SyncHook } from "@vibecanvas/tapable";
 import { describe, expect, test, vi } from "vitest";
 import type { TWidgetCatalog, TWidgetVariantSummary } from "@vibecanvas/orpc-client";
 import { createWidgetPlugin } from "../../src/canvas-extension/Widget.plugin";
+import { WidgetPlacementService } from "../../src/widget-placement/WidgetPlacementService";
 
-function publishedVariant(revision: string): TWidgetVariantSummary {
+const DEFINITION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+const REVISION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7";
+
+function publishedVariant(revision: string, referenceName = "Weather"): TWidgetVariantSummary {
   return {
     source: "published",
     displayName: "Weather",
@@ -22,20 +26,20 @@ function publishedVariant(revision: string): TWidgetVariantSummary {
     },
     validation: null,
     placement: {
-      reference: { source: "published", name: "Weather", revision },
+      reference: { source: "published", name: referenceName, revision },
       bounds: { width: 360, height: 320 },
     },
   };
 }
 
-function widgetCatalog(revision: string): TWidgetCatalog {
+function widgetCatalog(revision: string, referenceName = "Weather"): TWidgetCatalog {
   return {
     generation: revision,
     groups: [],
     widgets: [{
       name: "Weather",
       relation: "published-only",
-      published: publishedVariant(revision),
+      published: publishedVariant(revision, referenceName),
       draft: null,
       preview: null,
       problem: null,
@@ -88,6 +92,113 @@ describe("Widget plugin catalog reconciliation", () => {
       label: "Weather · Draft",
       tone: "draft",
     }));
+  });
+
+  test("exposes and commits neutral published placement with an empty legacy actor catalog", async () => {
+    const reference = {
+      source: "published" as const,
+      name: `v2:${DEFINITION_ID}`,
+      revision: REVISION_ID,
+    };
+    const catalog = widgetCatalog(reference.revision, reference.name);
+    const actorList = vi.fn(async () => [undefined, []] as const);
+    const actorGet = vi.fn();
+    const actorEvents = vi.fn();
+    const actorSnapshot = vi.fn();
+    const actorSendMessage = vi.fn();
+    const resolvePlacement = vi.fn(async () => [undefined, {
+      ok: true,
+      descriptor: {
+        kind: "published-v2",
+        reference,
+        bounds: { width: 360, height: 320 },
+        definitionId: DEFINITION_ID,
+        revisionId: REVISION_ID,
+        definitionName: null,
+        definitionSlug: "weather",
+        previewId: null,
+      },
+    }] as const);
+    const placeWidgetInstance = vi.fn();
+    const placeLegacyPublishedWidget = vi.fn();
+    let registeredPlacement: { placement: ReturnType<WidgetPlacementService["createDropRequest"]> } | undefined;
+    const widgetManager = {
+      registerPlacementTool: vi.fn((registration: {
+        placement: ReturnType<WidgetPlacementService["createDropRequest"]>;
+      }) => { registeredPlacement = registration; }),
+      unregisterPlacementTool: vi.fn(),
+      registerWidget: vi.fn(),
+      unregisterWidget: vi.fn(),
+      setDefinitionError: vi.fn(),
+      setGlobalDefinitionError: vi.fn(),
+      completeDefinitionDiscovery: vi.fn(),
+      placeWidgetInstance,
+      placeLegacyPublishedWidget,
+    };
+    const transportApi = {
+      actors: {
+        events: actorEvents,
+        definitions: { list: actorList, get: actorGet },
+        instances: { snapshot: actorSnapshot, sendMessage: actorSendMessage },
+      },
+      agent: {
+        widgets: {
+          catalog: vi.fn(async () => [undefined, catalog] as const),
+          resolvePlacement,
+        },
+        widgetPreview: { close: vi.fn() },
+      },
+    };
+    const placement = new WidgetPlacementService({
+      api: { api: transportApi } as never,
+      browser: { createId: vi.fn() } as never,
+      coordinator: { register: vi.fn(() => () => undefined) } as never,
+      dropPlacement: {
+        resolveWorldBounds: vi.fn(() => ({ x: 40, y: 50, width: 360, height: 320 })),
+        cancelIfReferenceUnavailable: vi.fn(),
+      } as never,
+      previewFrames: { place: vi.fn() } as never,
+      widgetManager: widgetManager as never,
+    });
+    const hooks = {
+      init: new SyncHook(),
+      initAsync: new AsyncParallelHook(),
+      destroy: new SyncHook(),
+    };
+    const plugin = createWidgetPlugin({
+      application: { logError: vi.fn() },
+      transport: { api: transportApi },
+      widgetManager,
+      widgetPlacement: placement,
+    } as never);
+
+    plugin.apply({ hooks } as never);
+    await hooks.initAsync.promise();
+
+    expect(actorList).toHaveBeenCalledOnce();
+    expect(widgetManager.registerPlacementTool).toHaveBeenCalledWith(expect.objectContaining({
+      label: "Weather",
+      tone: undefined,
+    }));
+    expect(widgetManager.registerWidget).not.toHaveBeenCalled();
+    if (!registeredPlacement) throw new Error("Expected published placement registration.");
+    await registeredPlacement.placement.onCommit({
+      reference,
+      bounds: { width: 360, height: 320 },
+      clientPoint: { x: 100, y: 120 },
+    });
+
+    expect(resolvePlacement).not.toHaveBeenCalled();
+    expect(placeWidgetInstance).toHaveBeenCalledWith({
+      definitionId: DEFINITION_ID,
+      revisionId: REVISION_ID,
+      bounds: { x: 40, y: 50, width: 360, height: 320 },
+    });
+    expect(placeLegacyPublishedWidget).not.toHaveBeenCalled();
+    expect(actorGet).not.toHaveBeenCalled();
+    expect(actorEvents).not.toHaveBeenCalled();
+    expect(actorSnapshot).not.toHaveBeenCalled();
+    expect(actorSendMessage).not.toHaveBeenCalled();
   });
 
   test("keeps an unchanged published widget mounted across catalog refreshes", async () => {

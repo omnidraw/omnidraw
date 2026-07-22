@@ -1,6 +1,7 @@
 import type { Database } from "@tursodatabase/database"
 import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type { TCanvas } from "../model"
+import { txRunDatabaseTransaction } from "../tx.run-database-transaction"
 import { fxCanvasCanEdit, fxCanvasFindById, fxCanvasHasOwnerRole } from "./fx.canvas"
 import { fnTimestampFromMs } from "./fn.legacy-row"
 
@@ -23,62 +24,59 @@ type TArgsDeleteById = {
   tenant: TTenantContext
 }
 
-type TImmediateTransaction<T> = (() => Promise<T>) & {
-  immediate: () => Promise<T>
-}
-
 export async function txCanvasCreate(portal: TPortal, args: TArgsCreate): Promise<TCanvas> {
   const nowSql = "CAST(unixepoch('subsec') * 1000 AS INTEGER)"
 
-  const create = portal.db.transaction(async () => {
-    const createCanvasStmt = await portal.db.prepare(`
-      INSERT INTO canvases (
-        org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
-      )
-      VALUES (?, ?, ?, 'restricted', ?, ${nowSql}, ${nowSql})
-      RETURNING id, name, created_at_ms
-    `)
-    const created = await createCanvasStmt.get(
-      args.tenant.orgId,
-      args.id,
-      args.name,
-      args.tenant.accountId,
-    ) as { id: string; name: string; created_at_ms: unknown } | null | undefined
+  return txRunDatabaseTransaction({ database: portal.db }, {
+    operation: async () => {
+      const createCanvasStmt = await portal.db.prepare(`
+        INSERT INTO canvases (
+          org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
+        )
+        VALUES (?, ?, ?, 'restricted', ?, ${nowSql}, ${nowSql})
+        RETURNING id, name, created_at_ms
+      `)
+      const created = await createCanvasStmt.get(
+        args.tenant.orgId,
+        args.id,
+        args.name,
+        args.tenant.accountId,
+      ) as { id: string; name: string; created_at_ms: unknown } | null | undefined
 
-    if (!created) {
-      throw new Error("Failed to create canvas")
-    }
+      if (!created) {
+        throw new Error("Failed to create canvas")
+      }
 
-    const createDocumentStmt = await portal.db.prepare(`
-      INSERT INTO collaboration_documents (
-        org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
-        created_at_ms, updated_at_ms
+      const createDocumentStmt = await portal.db.prepare(`
+        INSERT INTO collaboration_documents (
+          org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
+          created_at_ms, updated_at_ms
+        )
+        VALUES (?, ?, ?, NULL, ?, ?, ${nowSql}, ${nowSql})
+      `)
+      await createDocumentStmt.run(
+        args.tenant.orgId,
+        created.id,
+        created.id,
+        args.automerge_url,
+        args.tenant.orgId,
       )
-      VALUES (?, ?, ?, NULL, ?, ?, ${nowSql}, ${nowSql})
-    `)
-    await createDocumentStmt.run(
-      args.tenant.orgId,
-      created.id,
-      created.id,
-      args.automerge_url,
-      args.tenant.orgId,
-    )
 
-    const createMemberStmt = await portal.db.prepare(`
-      INSERT INTO canvas_members (
-        org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
-      )
-      VALUES (?, ?, ?, 'owner', ${nowSql}, ${nowSql})
-    `)
-    await createMemberStmt.run(args.tenant.orgId, created.id, args.tenant.accountId)
-    return {
-      id: created.id,
-      name: created.name,
-      automerge_url: args.automerge_url,
-      created_at: fnTimestampFromMs(created.created_at_ms),
-    }
-  }) as TImmediateTransaction<TCanvas>
-  return create.immediate()
+      const createMemberStmt = await portal.db.prepare(`
+        INSERT INTO canvas_members (
+          org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
+        )
+        VALUES (?, ?, ?, 'owner', ${nowSql}, ${nowSql})
+      `)
+      await createMemberStmt.run(args.tenant.orgId, created.id, args.tenant.accountId)
+      return {
+        id: created.id,
+        name: created.name,
+        automerge_url: args.automerge_url,
+        created_at: fnTimestampFromMs(created.created_at_ms),
+      }
+    },
+  })
 }
 
 export async function txCanvasRenameById(portal: TPortal, args: TArgsRenameById): Promise<TCanvas | null> {

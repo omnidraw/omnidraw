@@ -17,7 +17,9 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-function createWidgetElement(type: "widget" | "ui-widget" = "widget"): TElement {
+type TWidgetFixtureKind = "widget" | "ui-widget" | "widget-instance";
+
+function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
   return {
     id: "widget-1",
     x: 10,
@@ -32,15 +34,27 @@ function createWidgetElement(type: "widget" | "ui-widget" = "widget"): TElement 
     createdAt: 1,
     updatedAt: 1,
     style: {},
-    data: {
-      type,
-      kind: "example",
-      w: 160,
-      h: 120,
-      expanded: true,
-      window: "contained",
-      payload: {},
-    },
+    data: type === "widget-instance"
+      ? {
+          type,
+          definitionId: "definition-1",
+          revisionId: "revision-1",
+          instanceId: "instance-1",
+          stateDocumentId: "state-1",
+          w: 160,
+          h: 120,
+          expanded: true,
+          window: "contained",
+        }
+      : {
+          type,
+          kind: "example",
+          w: 160,
+          h: 120,
+          expanded: true,
+          window: "contained",
+          payload: {},
+        },
   };
 }
 
@@ -52,7 +66,7 @@ function createCameraService() {
   } as unknown as CameraService;
 }
 
-function createMountedWidget(type: "widget" | "ui-widget" = "widget") {
+function createMountedWidget(type: TWidgetFixtureKind = "widget") {
   ensureDom();
 
   const element = createWidgetElement(type);
@@ -64,7 +78,7 @@ function createMountedWidget(type: "widget" | "ui-widget" = "widget") {
   });
   const layer = new Konva.Layer();
   const widgetPortal = document.createElement("div");
-  const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), element);
+  const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), type), element);
 
   expect(node).toBeInstanceOf(Konva.Group);
 
@@ -207,8 +221,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test("renders the widget body div from the canvas transform", async () => {
-    const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget();
+  test.each(["widget", "widget-instance"] as const)("renders the %s body div from the canvas transform", async (type) => {
+    const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget(type);
     layer.position({ x: 50, y: 60 });
     layer.scale({ x: 2, y: 2 });
 
@@ -232,8 +246,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test("updates the widget body div when the camera changes", () => {
-    const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget();
+  test.each(["widget", "widget-instance"] as const)("updates the %s body div when the camera changes", (type) => {
+    const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget(type);
 
     const removeListener = txAttachDomPortal({
       node: group,
@@ -258,8 +272,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test("syncs the widget body div after widget resize", () => {
-    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
+  test.each(["widget", "widget-instance"] as const)("syncs the %s body div after resize", (type) => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget(type);
 
     const removeListener = txAttachDomPortal({
       node: group,
@@ -292,8 +306,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test("updates the widget body div when the widget is dragged", () => {
-    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget();
+  test.each(["widget", "widget-instance"] as const)("updates the %s body div when the host is dragged", (type) => {
+    const { cameraService, element, group, stage, widgetPortal } = createMountedWidget(type);
 
     const removeListener = txAttachDomPortal({
       node: group,

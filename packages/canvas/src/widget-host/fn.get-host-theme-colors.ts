@@ -2,9 +2,12 @@ import type { ThemeService } from "@vibecanvas/service-theme"
 import type { THostThemeColors } from "./types"
 
 
-export function fnGetHostThemeColors(themeService: ThemeService, widgetType: 'widget' | 'ui-widget' = 'widget'): THostThemeColors {
+export function fnGetHostThemeColors(
+  themeService: ThemeService,
+  widgetType: 'widget' | 'ui-widget' | 'widget-instance' = 'widget',
+): THostThemeColors {
   const colors = themeService.getTheme().colors
-  const isUiWidget = widgetType === 'ui-widget'
+  const isUiWidget = widgetType !== 'widget'
 
   return {
     headerFill: isUiWidget ? colors.accent : colors.muted,

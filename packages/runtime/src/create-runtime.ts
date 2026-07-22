@@ -114,24 +114,32 @@ export function createRuntime<THooks extends object, TConfig extends object>({
         .sort((a, b) => b.startOrder - a.startOrder || a.name.localeCompare(b.name));
 
       let shutdownError: unknown;
+      let shutdownFailed = false;
 
       try {
         await shutdown?.(ctx);
       } catch (error) {
+        shutdownFailed = true;
         shutdownError = error;
       }
 
-      try {
-        for (const { service } of registrations) {
-          if (service && 'stop' in service) {
+      let serviceStopError: unknown;
+      let serviceStopFailed = false;
+      for (const { service } of registrations) {
+        if (service && 'stop' in service) {
+          try {
             await (service.stop as () => Promise<void>)();
+          } catch (error) {
+            if (!serviceStopFailed) {
+              serviceStopFailed = true;
+              serviceStopError = error;
+            }
           }
         }
-      } catch (error) {
-        throw shutdownError ?? error;
       }
 
-      if (shutdownError) throw shutdownError;
+      if (shutdownFailed) throw shutdownError;
+      if (serviceStopFailed) throw serviceStopError;
     },
     services,
     hooks,

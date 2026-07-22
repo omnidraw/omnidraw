@@ -4,6 +4,7 @@ import {
   DATABASE_SCHEMA_VERSION,
 } from '../CONSTANTS';
 import { MIGRATION_FILES } from '../migrations/CONSTANTS';
+import { txRunDatabaseTransaction } from '../tx.run-database-transaction';
 import { fnFindTopLevelMigrationTransactionControl } from './fn.migration-sql-transaction-control';
 import { fxReadMigrationFile } from './fx.migration-file';
 import { fxPreflightMigrationState } from './fx.migration-state';
@@ -26,10 +27,6 @@ type TArgs = {
   applicationVersion: string;
   appliedAtMs: number;
   expectedSchemaContracts: readonly TExpectedDatabaseSchemaContract[];
-};
-
-type TImmediateTransaction<T> = (() => Promise<T>) & {
-  immediate: () => Promise<T>;
 };
 
 type TResolvedMigration = TMigrationChecksum & Readonly<{
@@ -108,69 +105,69 @@ async function txRunMigrations(portal: TPortal, args: TArgs): Promise<{ applied:
 
   if (initialState.status === 'ready') return { applied: false };
 
-  const transaction = portal.db.transaction(async () => {
-    // The read-only preflight preserves unknown databases. Rechecking after the
-    // immediate writer lock makes concurrent starters observe one ledger owner.
-    const lockedState = await fxPreflightMigrationState(
-      { Bun: portal.Bun, db: portal.db },
-      preflightArgs,
-    );
-    await assertDatabaseChecks(portal.db);
-    if (lockedState.status === 'ready') {
+  const applied = await txRunDatabaseTransaction({ database: portal.db }, {
+    operation: async () => {
+      // The read-only preflight preserves unknown databases. Rechecking after the
+      // immediate writer lock makes concurrent starters observe one ledger owner.
+      const lockedState = await fxPreflightMigrationState(
+        { Bun: portal.Bun, db: portal.db },
+        preflightArgs,
+      );
+      await assertDatabaseChecks(portal.db);
+      if (lockedState.status === 'ready') {
+        await txAssertDatabasePragmas(
+          { db: portal.db },
+          { expectedUserVersion: DATABASE_SCHEMA_VERSION },
+        );
+        return false;
+      }
+
+      const appliedCount = lockedState.status === 'empty'
+        ? 0
+        : lockedState.appliedMigrations.length;
+
+      for (const migration of migrations.slice(appliedCount)) {
+        await portal.db.exec(migration.sql);
+        await (await portal.db.prepare(`
+          INSERT INTO schema_migrations (
+            version,
+            name,
+            checksum_sha256,
+            applied_at_ms,
+            application_version
+          ) VALUES (?, ?, ?, ?, ?)
+        `)).run(
+          migration.version,
+          migration.name,
+          migration.checksumSha256,
+          args.appliedAtMs,
+          args.applicationVersion,
+        );
+      }
+      await portal.db.exec(`
+        PRAGMA application_id = ${DATABASE_APPLICATION_ID};
+        PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
+      `);
+
+      // Validate the exact uncommitted result while the immediate lock is still
+      // held. Throwing here rolls DDL, ledger, and header metadata back together.
       await txAssertDatabasePragmas(
         { db: portal.db },
         { expectedUserVersion: DATABASE_SCHEMA_VERSION },
       );
-      return false;
-    }
-
-    const appliedCount = lockedState.status === 'empty'
-      ? 0
-      : lockedState.appliedMigrations.length;
-
-    for (const migration of migrations.slice(appliedCount)) {
-      await portal.db.exec(migration.sql);
-      await (await portal.db.prepare(`
-        INSERT INTO schema_migrations (
-          version,
-          name,
-          checksum_sha256,
-          applied_at_ms,
-          application_version
-        ) VALUES (?, ?, ?, ?, ?)
-      `)).run(
-        migration.version,
-        migration.name,
-        migration.checksumSha256,
-        args.appliedAtMs,
-        args.applicationVersion,
+      const committedState = await fxPreflightMigrationState(
+        { Bun: portal.Bun, db: portal.db },
+        preflightArgs,
       );
-    }
-    await portal.db.exec(`
-      PRAGMA application_id = ${DATABASE_APPLICATION_ID};
-      PRAGMA user_version = ${DATABASE_SCHEMA_VERSION};
-    `);
-
-    // Validate the exact uncommitted result while the immediate lock is still
-    // held. Throwing here rolls DDL, ledger, and header metadata back together.
-    await txAssertDatabasePragmas(
-      { db: portal.db },
-      { expectedUserVersion: DATABASE_SCHEMA_VERSION },
-    );
-    const committedState = await fxPreflightMigrationState(
-      { Bun: portal.Bun, db: portal.db },
-      preflightArgs,
-    );
-    if (committedState.status !== 'ready') {
-      throw new Error(
-        'Database migration transaction did not produce the latest valid managed migration state.',
-      );
-    }
-    await assertDatabaseChecks(portal.db);
-    return true;
-  }) as TImmediateTransaction<boolean>;
-
-  const applied = await transaction.immediate();
+      if (committedState.status !== 'ready') {
+        throw new Error(
+          'Database migration transaction did not produce the latest valid managed migration state.',
+        );
+      }
+      await assertDatabaseChecks(portal.db);
+      return true;
+    },
+  });
 
   await txAssertDatabasePragmas(
     { db: portal.db },

@@ -20,6 +20,24 @@ export type TServerFunctionClientOf<TFunction> = TFunction extends (
 
 let serverFunctionTransport: IServerFunctionClientTransport | null = null;
 
+export const SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY = '__VIBECANVAS_SERVER_FUNCTION_TRANSPORT_V1__' as const;
+
+type TServerFunctionClientGlobal = typeof globalThis & Readonly<Record<
+  typeof SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY,
+  unknown
+>>;
+
+function browserHostTransport(): IServerFunctionClientTransport | null {
+  const candidate = (globalThis as TServerFunctionClientGlobal)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
+  if (
+    candidate === null
+    || typeof candidate !== 'object'
+    || typeof (candidate as Partial<IServerFunctionClientTransport>).createIdempotencyKey !== 'function'
+    || typeof (candidate as Partial<IServerFunctionClientTransport>).invoke !== 'function'
+  ) return null;
+  return candidate as IServerFunctionClientTransport;
+}
+
 export function __setServerFunctionTransport(
   transport: IServerFunctionClientTransport | null,
 ): void {
@@ -34,7 +52,7 @@ export function createServerFunctionProxy<TInput, TOutput>(
     throw new TypeError('Server-function proxy name is invalid.');
   }
   return async (input: TInput) => {
-    const target = transport ?? serverFunctionTransport;
+    const target = transport ?? browserHostTransport() ?? serverFunctionTransport;
     if (target === null) {
       throw new Error('The widget server-function transport is not connected.');
     }

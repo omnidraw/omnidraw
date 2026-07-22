@@ -8,6 +8,7 @@ import type {
   TJson,
 } from "../model"
 import { fnNormalizeResourceName, fnResourceNameKey } from "../core/fn.resource-name"
+import { txRunDatabaseTransaction } from "../tx.run-database-transaction"
 import {
   fnParseActorResourceBindingRow,
   fnParseActorResourceRow,
@@ -46,10 +47,6 @@ type TArgsUpdateProviderState = {
 type TArgsResourceId = {
   tenant: TTenantContext
   id: string
-}
-
-type TImmediateTransaction<T> = (() => Promise<T>) & {
-  immediate: () => Promise<T>
 }
 
 type TArgsUpsertBinding = {
@@ -218,45 +215,46 @@ export async function txActorResourceBeginDelete(portal: TPortal, args: TArgsRes
 }
 
 export async function txActorResourceDelete(portal: TPortal, args: TArgsResourceId): Promise<boolean> {
-  const remove = portal.db.transaction(async () => {
-    const eligible = await (await portal.db.prepare(`
-      SELECT id
-      FROM resource_catalog
-      WHERE org_id = ? AND id = ?
-        AND status = 'deleting'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM legacy_actor_resource_bindings
-          WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM resource_bindings
-          WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
-        )
-    `)).get(args.tenant.orgId, args.id)
-    if (!eligible) return false
+  return txRunDatabaseTransaction({ database: portal.db }, {
+    operation: async () => {
+      const eligible = await (await portal.db.prepare(`
+        SELECT id
+        FROM resource_catalog
+        WHERE org_id = ? AND id = ?
+          AND status = 'deleting'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM legacy_actor_resource_bindings
+            WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM resource_bindings
+            WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
+          )
+      `)).get(args.tenant.orgId, args.id)
+      if (!eligible) return false
 
-    // Apply-run lineage is RESTRICT by design. Clear it only inside the same
-    // transaction that removes the complete resource history; a retained backup
-    // still blocks deletion and rolls this update back.
-    await (await portal.db.prepare(`
-      UPDATE db_resource_apply_runs
-      SET source_apply_id = NULL
-      WHERE org_id = ? AND resource_id = ? AND source_apply_id IS NOT NULL
-    `)).run(args.tenant.orgId, args.id)
-    await (await portal.db.prepare(`
-      DELETE FROM db_resource_apply_runs
-      WHERE org_id = ? AND resource_id = ?
-    `)).run(args.tenant.orgId, args.id)
+      // Apply-run lineage is RESTRICT by design. Clear it only inside the same
+      // transaction that removes the complete resource history; a retained backup
+      // still blocks deletion and rolls this update back.
+      await (await portal.db.prepare(`
+        UPDATE db_resource_apply_runs
+        SET source_apply_id = NULL
+        WHERE org_id = ? AND resource_id = ? AND source_apply_id IS NOT NULL
+      `)).run(args.tenant.orgId, args.id)
+      await (await portal.db.prepare(`
+        DELETE FROM db_resource_apply_runs
+        WHERE org_id = ? AND resource_id = ?
+      `)).run(args.tenant.orgId, args.id)
 
-    const result = await (await portal.db.prepare(`
-      DELETE FROM resource_catalog
-      WHERE org_id = ? AND id = ? AND status = 'deleting'
-    `)).run(args.tenant.orgId, args.id)
-    return result.changes > 0
-  }) as TImmediateTransaction<boolean>
-  return remove.immediate()
+      const result = await (await portal.db.prepare(`
+        DELETE FROM resource_catalog
+        WHERE org_id = ? AND id = ? AND status = 'deleting'
+      `)).run(args.tenant.orgId, args.id)
+      return result.changes > 0
+    },
+  })
 }
 
 export async function txActorResourceUpsertBinding(
@@ -318,75 +316,77 @@ export async function txActorResourceReplaceBindings(
   if (new Set(args.bindings.map((binding) => binding.slotName)).size !== args.bindings.length) {
     throw new Error(`Definition '${args.definitionName}' has duplicate resource binding slots.`)
   }
-  const replace = portal.db.transaction(async () => {
-    if (args.expectedBindings) {
-      const currentRows = await (await portal.db.prepare(`
+  return txRunDatabaseTransaction({ database: portal.db }, {
+    mode: "deferred",
+    operation: async () => {
+      if (args.expectedBindings) {
+        const currentRows = await (await portal.db.prepare(`
+          SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
+            created_at_ms, updated_at_ms
+          FROM legacy_actor_resource_bindings
+          WHERE org_id = ? AND definition_name = ?
+          ORDER BY slot_name ASC
+        `)).all(args.tenant.orgId, args.definitionName)
+        const current = currentRows.map(fnParseActorResourceBindingRow)
+        const expected = [...args.expectedBindings].sort((left, right) => left.slotName.localeCompare(right.slotName, "en-US"))
+        const matches = current.length === expected.length && current.every((binding, index) => {
+          const candidate = expected[index]
+          return candidate !== undefined
+            && binding.slot_name === candidate.slotName
+            && binding.resource_id === candidate.resourceId
+            && binding.allow_read === candidate.allowRead
+            && binding.allow_write === candidate.allowWrite
+        })
+        if (!matches) {
+          throw Object.assign(
+            new Error(`Resource bindings for definition '${args.definitionName}' changed concurrently.`),
+            { code: "RESOURCE_BINDING_CONFLICT" },
+          )
+        }
+      }
+      await (await portal.db.prepare(`
+        DELETE FROM legacy_actor_resource_bindings
+        WHERE org_id = ? AND definition_name = ?
+      `)).run(args.tenant.orgId, args.definitionName)
+      const insert = await portal.db.prepare(`
+        INSERT INTO legacy_actor_resource_bindings (
+          org_id,
+          definition_name,
+          slot_name,
+          resource_id,
+          allow_read,
+          allow_write,
+          created_at_ms,
+          updated_at_ms
+        )
+        SELECT ?, ?, ?, id, ?, ?,
+          CAST(unixepoch('subsec') * 1000 AS INTEGER),
+          CAST(unixepoch('subsec') * 1000 AS INTEGER)
+        FROM resource_catalog
+        WHERE org_id = ? AND id = ? AND status = 'ready'
+      `)
+      for (const binding of args.bindings) {
+        const result = await insert.run(
+          args.tenant.orgId,
+          args.definitionName,
+          binding.slotName,
+          binding.allowRead,
+          binding.allowWrite,
+          args.tenant.orgId,
+          binding.resourceId,
+        )
+        if (result.changes === 0) {
+          throw new Error(`Resource '${binding.resourceId}' is not ready for binding.`)
+        }
+      }
+      const rows = await (await portal.db.prepare(`
         SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
           created_at_ms, updated_at_ms
         FROM legacy_actor_resource_bindings
         WHERE org_id = ? AND definition_name = ?
         ORDER BY slot_name ASC
       `)).all(args.tenant.orgId, args.definitionName)
-      const current = currentRows.map(fnParseActorResourceBindingRow)
-      const expected = [...args.expectedBindings].sort((left, right) => left.slotName.localeCompare(right.slotName, "en-US"))
-      const matches = current.length === expected.length && current.every((binding, index) => {
-        const candidate = expected[index]
-        return candidate !== undefined
-          && binding.slot_name === candidate.slotName
-          && binding.resource_id === candidate.resourceId
-          && binding.allow_read === candidate.allowRead
-          && binding.allow_write === candidate.allowWrite
-      })
-      if (!matches) {
-        throw Object.assign(
-          new Error(`Resource bindings for definition '${args.definitionName}' changed concurrently.`),
-          { code: "RESOURCE_BINDING_CONFLICT" },
-        )
-      }
-    }
-    await (await portal.db.prepare(`
-      DELETE FROM legacy_actor_resource_bindings
-      WHERE org_id = ? AND definition_name = ?
-    `)).run(args.tenant.orgId, args.definitionName)
-    const insert = await portal.db.prepare(`
-      INSERT INTO legacy_actor_resource_bindings (
-        org_id,
-        definition_name,
-        slot_name,
-        resource_id,
-        allow_read,
-        allow_write,
-        created_at_ms,
-        updated_at_ms
-      )
-      SELECT ?, ?, ?, id, ?, ?,
-        CAST(unixepoch('subsec') * 1000 AS INTEGER),
-        CAST(unixepoch('subsec') * 1000 AS INTEGER)
-      FROM resource_catalog
-      WHERE org_id = ? AND id = ? AND status = 'ready'
-    `)
-    for (const binding of args.bindings) {
-      const result = await insert.run(
-        args.tenant.orgId,
-        args.definitionName,
-        binding.slotName,
-        binding.allowRead,
-        binding.allowWrite,
-        args.tenant.orgId,
-        binding.resourceId,
-      )
-      if (result.changes === 0) {
-        throw new Error(`Resource '${binding.resourceId}' is not ready for binding.`)
-      }
-    }
-    const rows = await (await portal.db.prepare(`
-      SELECT definition_name, slot_name, resource_id, allow_read, allow_write,
-        created_at_ms, updated_at_ms
-      FROM legacy_actor_resource_bindings
-      WHERE org_id = ? AND definition_name = ?
-      ORDER BY slot_name ASC
-    `)).all(args.tenant.orgId, args.definitionName)
-    return rows.map(fnParseActorResourceBindingRow)
+      return rows.map(fnParseActorResourceBindingRow)
+    },
   })
-  return replace()
 }

@@ -187,6 +187,10 @@ function controlStoreHarness(overrides: Partial<IWidgetControlStore> = {}): Read
 }> {
   const calls: string[] = [];
   const store: IWidgetControlStore = {
+    async listPublishedDefinitions() {
+      calls.push('listPublishedDefinitions');
+      return [];
+    },
     async createDefinition(callTenant, request) {
       calls.push('createDefinition');
       return {

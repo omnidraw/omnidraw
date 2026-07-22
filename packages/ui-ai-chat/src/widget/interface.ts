@@ -17,6 +17,7 @@ import type {
 } from "@vibecanvas/canvas/services";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TWidgetBrowserPort, TWidgetTransportPort } from "../ports";
+import type { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 
 export interface IWidgetManagerServiceHooks {
   widgetChange: SyncHook<[]>;
@@ -37,6 +38,11 @@ export interface IWidgetManagerServiceProps {
   confirmDialogService: ConfirmDialogService;
   browser: TWidgetBrowserPort;
   transport: TWidgetTransportPort;
+  neutralHost?: Readonly<{
+    canvasId: string;
+    runtime: WidgetUiRuntime;
+    deleteDefinition?(args: Readonly<{ definitionId: string }>): Promise<boolean>;
+  }>;
 }
 
 export type TWidgetRenderArgs = {

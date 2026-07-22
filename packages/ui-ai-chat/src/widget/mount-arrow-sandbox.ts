@@ -4,19 +4,23 @@ import { sandbox as SANDBOX } from '@arrow-js/sandbox';
 import SDK_WIDGET_SOURCE from '../../../sdk/dist/widget.js?raw';
 import type { TElement, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { IWidgetConfig } from './interface';
-import type { TWidgetActorEvent } from './WidgetManagerService';
+import type { LegacyWidgetActorAdapter, TWidgetActorEvent } from './LegacyWidgetActorAdapter';
 import type { TWidgetError } from '@vibecanvas/service-db/model';
 import { fnActorEventSnapshot, type TActorSnapshot } from './fn.actor-event-snapshot';
-import type { TWidgetBrowserPort, TWidgetTransportPort } from '../ports';
+import {
+  fnEnqueueLatestLegacyActorSnapshot,
+  type TLegacyActorHostEvent,
+} from './fn.legacy-actor-event-queue';
+import type { TWidgetBrowserPort } from '../ports';
+import { WIDGET_SANDBOX_TRUSTED_HOST_LAYOUT_CSS } from '../widget-runtime/CONSTANTS';
 
-type TWidgetHostActorEventResult =
-  | { readonly cursor?: string; readonly type: 'snapshot'; readonly snapshot: TActorSnapshot }
-  | { readonly cursor?: string; readonly type: 'noop' };
+type TWidgetHostActorEventResult = TLegacyActorHostEvent;
 
 type TPortal = {
   root: HTMLElement;
   browser: TWidgetBrowserPort;
-  transport: TWidgetTransportPort;
+  getActorSnapshot: LegacyWidgetActorAdapter['getSnapshot'];
+  sendActorMessage: LegacyWidgetActorAdapter['sendMessage'];
   subscribeActorInstanceEvents: (actorInstanceId: string, handler: (event: TWidgetActorEvent) => void) => () => void;
   getActorInstanceId: () => string | null;
   onLoading: () => void;
@@ -95,31 +99,6 @@ void pollActorEvents();
 
 export { actor } from '${SDK_MODULE_PATH}';
 `;
-const SANDBOX_BASE_CSS = `
-:host {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-:host > div {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-`;
-
 function getSandboxSource(source: Record<string, string | undefined>): Record<string, string> {
   const nextSource: Record<string, string> = {
     ...Object.fromEntries(
@@ -136,7 +115,7 @@ function getSandboxSource(source: Record<string, string | undefined>): Record<st
     [SDK_BOOTSTRAP_MODULE_PATH]: SDK_BOOTSTRAP_SOURCE,
   };
 
-  nextSource['main.css'] = `${SANDBOX_BASE_CSS}\n${nextSource['main.css'] ?? ''}`;
+  nextSource['main.css'] = `${WIDGET_SANDBOX_TRUSTED_HOST_LAYOUT_CSS}${nextSource['main.css'] ?? ''}`;
 
   return nextSource;
 }
@@ -229,7 +208,7 @@ async function waitForActorInstanceId(portal: TPortal): Promise<string | null> {
 
 async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string | null, elementId: string): Promise<TActorSnapshot> {
   if (!actorInstanceId) {
-    const [elementError, elementSnapshot] = await portal.transport.api.actors.instances.snapshot({ elementId });
+    const [elementError, elementSnapshot] = await portal.getActorSnapshot({ elementId });
     if (!elementError) {
       if (elementSnapshot.status === 'created' || elementSnapshot.status === 'starting') portal.onLoading();
       else if (elementSnapshot.error) portal.onError(elementSnapshot.error);
@@ -241,7 +220,7 @@ async function getInitialActorSnapshot(portal: TPortal, actorInstanceId: string 
     return { status: 'error', state: 'error', context: { message: error.message }, error };
   }
 
-  const [error, snapshot] = await portal.transport.api.actors.instances.snapshot({ instanceId: actorInstanceId });
+  const [error, snapshot] = await portal.getActorSnapshot({ instanceId: actorInstanceId });
   if (error) {
     const widgetError: TWidgetError = { phase: 'snapshot', code: 'ACTOR_SNAPSHOT_FAILED', message: String(error), retryable: true };
     portal.onError(widgetError);
@@ -328,7 +307,7 @@ export function mountArrowSandbox(portal: TPortal, args: TArgs) {
           };
         }
 
-        const [error, result] = await portal.transport.api.actors.instances.sendMessage({
+        const [error, result] = await portal.sendActorMessage({
           instanceId: readyActorInstanceId,
           name: message.name,
           payload: message.payload,
@@ -394,7 +373,7 @@ export function mountArrowSandboxBridge(portal: TArrowSandboxBridgePortal, args:
   let cursor = 0;
   let currentSnapshot: TActorSnapshot | null = null;
   let unbindSandboxFormSubmitGuards: (() => void) | undefined;
-  const queuedEvents: TWidgetHostActorEventResult[] = [];
+  let queuedEvents: TWidgetHostActorEventResult[] = [];
   const pendingResolvers: Array<(event: TWidgetHostActorEventResult) => void> = [];
 
   const pushActorEvent = (event: TWidgetHostActorEventResult) => {
@@ -406,7 +385,7 @@ export function mountArrowSandboxBridge(portal: TArrowSandboxBridgePortal, args:
       return;
     }
 
-    queuedEvents.push(event);
+    queuedEvents = fnEnqueueLatestLegacyActorSnapshot(queuedEvents, event);
   };
 
   const pushSnapshot = (snapshot: TActorSnapshot) => {
@@ -451,6 +430,7 @@ export function mountArrowSandboxBridge(portal: TArrowSandboxBridgePortal, args:
     ${SANDBOX({
     source: getSandboxSource(args.sources),
     onError(error) {
+      disposeBridge();
       portal.onError(getSandboxHostError(error));
     },
   }, {

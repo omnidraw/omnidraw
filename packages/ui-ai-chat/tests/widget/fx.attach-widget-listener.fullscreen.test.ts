@@ -1,4 +1,5 @@
-import type { TElement, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TWidgetHostData } from "@vibecanvas/canvas/widget-host/types";
 import { ThemeService } from "@vibecanvas/service-theme";
 import { SyncExitHook, SyncHook } from "@vibecanvas/tapable";
 import Konva from "konva";
@@ -24,7 +25,9 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-function createWidgetElement(): TElement {
+type TWidgetFixtureKind = "widget" | "widget-instance";
+
+function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
   return {
     id: "widget-fullscreen-button-1",
     x: 10,
@@ -39,15 +42,27 @@ function createWidgetElement(): TElement {
     createdAt: 1,
     updatedAt: 1,
     style: {},
-    data: {
-      type: "widget",
-      kind: "example",
-      w: 160,
-      h: 120,
-      expanded: true,
-      window: "contained",
-      payload: {},
-    },
+    data: type === "widget-instance"
+      ? {
+          type,
+          definitionId: "definition-1",
+          revisionId: "revision-1",
+          instanceId: "instance-1",
+          stateDocumentId: "state-1",
+          w: 160,
+          h: 120,
+          expanded: true,
+          window: "contained",
+        }
+      : {
+          type,
+          kind: "example",
+          w: 160,
+          h: 120,
+          expanded: true,
+          window: "contained",
+          payload: {},
+        },
   };
 }
 
@@ -68,17 +83,17 @@ function createHooks() {
 }
 
 describe("widget fullscreen button", () => {
-  test("toggles fullscreen without replacing the mounted body div", () => {
+  test.each(["widget", "widget-instance"] as const)("toggles fullscreen for %s without replacing the mounted body div", (type) => {
     ensureDom();
 
-    const element = createWidgetElement();
+    const element = createWidgetElement(type);
     const container = createTestContainer({ width: 900, height: 700 });
     const stage = new Konva.Stage({ container, width: 900, height: 700 });
     const layer = new Konva.Layer();
     const widgetPortal = document.createElement("div");
     const cameraService = createCameraService();
     const selectionService = new SelectionService();
-    const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService()), element);
+    const node = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), type), element);
 
     expect(node).toBeInstanceOf(Konva.Group);
     stage.add(layer);
@@ -116,7 +131,7 @@ describe("widget fullscreen button", () => {
     expect(maximize).toBeInstanceOf(Konva.Circle);
     maximize?.fire("pointerclick", { cancelBubble: false });
 
-    const fullscreenData = (node as Konva.Group).getAttr(ELEMENT_DATA_ATTR) as TWidgetData;
+    const fullscreenData = (node as Konva.Group).getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData;
     const fullscreenDiv = widgetPortal.querySelector<HTMLDivElement>("[data-widget-element-id='widget-fullscreen-button-1']");
     const fullscreenHeader = widgetPortal.querySelector<HTMLDivElement>("[data-widget-fullscreen-header-id='widget-fullscreen-button-1']");
     expect(fullscreenData.window).toBe("fullscreen");
@@ -130,7 +145,7 @@ describe("widget fullscreen button", () => {
 
     maximize?.fire("pointerclick", { cancelBubble: false });
 
-    const containedData = (node as Konva.Group).getAttr(ELEMENT_DATA_ATTR) as TWidgetData;
+    const containedData = (node as Konva.Group).getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData;
     const containedDiv = widgetPortal.querySelector<HTMLDivElement>("[data-widget-element-id='widget-fullscreen-button-1']");
     expect(containedData.window).toBe("contained");
     expect(containedDiv).toBe(div);

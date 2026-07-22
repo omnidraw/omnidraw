@@ -96,6 +96,14 @@ export const EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES = [
 export const EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLE_COUNT =
   EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES.length;
 
+export const EXPECTED_WIDGET_HOST_APPLICATION_TABLES = [
+  ...EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES,
+  "widget_instance_projection_heads",
+] as const;
+
+export const EXPECTED_WIDGET_HOST_APPLICATION_TABLE_COUNT =
+  EXPECTED_WIDGET_HOST_APPLICATION_TABLES.length;
+
 export const EXPECTED_APPLICATION_SCHEMA_OBJECTS = Object.freeze({
   views: Object.freeze([]),
   triggers: Object.freeze([]),
@@ -608,6 +616,31 @@ export const EXPECTED_FUNCTION_RUNTIME_SCHEMA = {
   },
 } satisfies Record<(typeof EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES)[number], TExpectedTable>;
 
+export const EXPECTED_WIDGET_HOST_SCHEMA = {
+  ...EXPECTED_FUNCTION_RUNTIME_SCHEMA,
+  collaboration_documents: {
+    ...EXPECTED_FUNCTION_RUNTIME_SCHEMA.collaboration_documents,
+    columns: [
+      ...EXPECTED_FUNCTION_RUNTIME_SCHEMA.collaboration_documents.columns,
+      integer("content_version"),
+    ],
+    requiredSqlFragments: [
+      "content_version INTEGER NOT NULL DEFAULT 0 CHECK (content_version >= 0)",
+    ],
+  },
+  widget_instance_projection_heads: {
+    columns: [
+      tenantId("org_id", 1), tenantId("canvas_id", 2), integer("source_sequence"),
+      text("snapshot_digest_sha256"), integer("projected_at_ms"),
+    ],
+    primaryKey: ["org_id", "canvas_id"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id", "canvas_id"], referencesTable: "canvases", referencesColumns: ["org_id", "id"], onDelete: "CASCADE" },
+    ],
+  },
+} satisfies Record<(typeof EXPECTED_WIDGET_HOST_APPLICATION_TABLES)[number], TExpectedTable>;
+
 export const EXPECTED_INDEXES = {
   organization_memberships_account_idx: { table: "organization_memberships", columns: ["account_id", "org_id"], unique: false, partial: false },
   organization_memberships_status_idx: { table: "organization_memberships", columns: ["org_id", "status", "role"], unique: false, partial: false },
@@ -710,5 +743,12 @@ export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_FUNCTION_RUNTIME_SCHEMA,
     version: 2,
+  }),
+  Object.freeze({
+    fingerprintSha256: 'cba2f687ad4b43b389e060d6d1af2106dc948b8124b19a898d97048e827cad72',
+    indexes: EXPECTED_FUNCTION_RUNTIME_INDEXES,
+    objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
+    tables: EXPECTED_WIDGET_HOST_SCHEMA,
+    version: 3,
   }),
 ]) satisfies readonly TExpectedDatabaseSchemaContract[];

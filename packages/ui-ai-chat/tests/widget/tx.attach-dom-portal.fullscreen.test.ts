@@ -5,6 +5,7 @@ import Konva from "konva";
 import { describe, expect, test, vi } from "vitest";
 import { ELEMENT_DATA_ATTR } from "@vibecanvas/canvas/core/CONSTANTS";
 import type { CameraService, SceneService } from "@vibecanvas/canvas/services";
+import type { TWidgetHostData } from "@vibecanvas/canvas/widget-host/types";
 import type { WidgetManagerService } from "../../src/widget/WidgetManagerService";
 import type { TWidgetTitleBarPortal } from "../../src/widget/interface";
 import {
@@ -21,7 +22,9 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-function createWidgetElement(type: "widget" | "ui-widget" = "widget"): TElement {
+type TWidgetFixtureKind = "widget" | "ui-widget" | "widget-instance";
+
+function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
   return {
     id: "widget-fullscreen-1",
     x: 10,
@@ -36,15 +39,27 @@ function createWidgetElement(type: "widget" | "ui-widget" = "widget"): TElement 
     createdAt: 1,
     updatedAt: 1,
     style: {},
-    data: {
-      type,
-      kind: "example",
-      w: 160,
-      h: 120,
-      expanded: true,
-      window: "contained",
-      payload: {},
-    },
+    data: type === "widget-instance"
+      ? {
+          type,
+          definitionId: "definition-1",
+          revisionId: "revision-1",
+          instanceId: "instance-1",
+          stateDocumentId: "state-1",
+          w: 160,
+          h: 120,
+          expanded: true,
+          window: "contained",
+        }
+      : {
+          type,
+          kind: "example",
+          w: 160,
+          h: 120,
+          expanded: true,
+          window: "contained",
+          payload: {},
+        },
   };
 }
 
@@ -70,18 +85,21 @@ function normalizedColor(color: string) {
   return element.style.color;
 }
 
-function setWidgetData(node: Konva.Group, patch: Partial<TWidgetData | TUiWidgetData>) {
-  const current = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | TUiWidgetData;
+function setWidgetData(
+  node: Konva.Group,
+  patch: Partial<Pick<TWidgetHostData, "expanded" | "window">>,
+) {
+  const current = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData;
   node.setAttr(ELEMENT_DATA_ATTR, { ...current, ...patch });
 }
 
 describe("txAttachDomPortal fullscreen", () => {
-  test("keeps the mounted body while Solid chrome enters and exits fullscreen, then disposes completely", () => {
+  test.each(["widget", "widget-instance"] as const)("keeps the mounted %s body while Solid chrome enters and exits fullscreen, then disposes completely", (type) => {
     ensureDom();
 
-    const element = createWidgetElement();
+    const element = createWidgetElement(type);
     const themeService = new ThemeService({ initialThemeId: THEME_ID_LIGHT });
-    const hostColors = fnGetHostThemeColors(themeService, "widget");
+    const hostColors = fnGetHostThemeColors(themeService, type);
     const container = createTestContainer({ width: 800, height: 600 });
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
@@ -151,7 +169,7 @@ describe("txAttachDomPortal fullscreen", () => {
     expect(fullscreenDiv?.style.height).toBe(`${700 - WIDGET_HOST_HEADER_HEIGHT}px`);
 
     exitFullscreen?.click();
-    const containedData = (node as Konva.Group).getAttr(ELEMENT_DATA_ATTR) as TWidgetData;
+    const containedData = (node as Konva.Group).getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData;
     const containedDiv = widgetPortal.querySelector<HTMLDivElement>("[data-widget-element-id='widget-fullscreen-1']");
     expect(containedData.window).toBe("contained");
     expect(containedDiv).toBe(div);

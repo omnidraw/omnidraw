@@ -23,6 +23,7 @@ export function createWidgetPlugin(portal: {
       const placementTool = (
         variant: TWidgetVariantSummary,
         nextToolIds: Set<string>,
+        tone?: "draft",
       ) => {
         const placement = variant.placement;
         if (!placement) return;
@@ -35,12 +36,13 @@ export function createWidgetPlugin(portal: {
           icon: variant.tool.icon,
           group: variant.tool.group,
           priority: variant.tool.priority,
+          tone: tone ?? null,
         });
         if (placementToolFingerprints.get(id) === fingerprint) return;
         portal.widgetManager.registerPlacementTool({
           id,
-          label: `${variant.tool.label ?? variant.displayName} · Draft`,
-          tone: "draft",
+          label: `${variant.tool.label ?? variant.displayName}${tone === "draft" ? " · Draft" : ""}`,
+          tone,
           icon: fnResolveWidgetToolIcon(variant.tool.icon ?? undefined),
           group: variant.tool.group ?? undefined,
           priority: variant.tool.priority ?? undefined,
@@ -54,7 +56,6 @@ export function createWidgetPlugin(portal: {
       };
 
       const registerPublished = async (
-        variant: TWidgetVariantSummary | undefined,
         actorDefinitionName: string,
         fingerprint: string,
         generation: number,
@@ -75,20 +76,10 @@ export function createWidgetPlugin(portal: {
           sources[file.path] = file.content;
           return sources;
         }, {});
-        const reference = variant?.placement?.reference;
         portal.widgetManager.registerWidget({
           id: actor.def.name,
-          toolId: reference ? fnWidgetPlacementToolId(reference) : undefined,
           dataType: "widget",
-          tool: {
-            ...actor.def.widget.tool,
-            icon: fnResolveWidgetToolIcon(actor.def.widget.tool.icon),
-          },
-          widgetPlacement: variant?.placement && reference ? portal.widgetPlacement.createDropRequest({
-            reference,
-            bounds: variant.placement.bounds,
-            label: actor.def.widget.tool.label,
-          }) : undefined,
+          getTitle: () => actor.def.widget.tool.label,
           actor: { actorDefinitionName: actor.def.name },
           sandbox: {
             // @ts-expect-error Published definitions guarantee main.ts or main.js after backend validation.
@@ -107,7 +98,7 @@ export function createWidgetPlugin(portal: {
         if (generation !== refreshGeneration) return;
         const [definitionsError, actorDefs] = definitionsResult;
         const [catalogError, catalogValue] = catalogResult;
-        if (definitionsError) {
+        if (definitionsError && (catalogError || !catalogValue)) {
           portal.widgetManager.setGlobalDefinitionError({
             phase: "definition-discovery",
             code: "WIDGET_DEFINITION_UNAVAILABLE",
@@ -121,23 +112,30 @@ export function createWidgetPlugin(portal: {
           portal.widgetManager.setGlobalDefinitionError(null);
           placementToolFingerprints.forEach((_fingerprint, id) => portal.widgetManager.unregisterPlacementTool(id));
           placementToolFingerprints.clear();
-          const nextPublishedKinds = new Set(actorDefs.filter((definition) => definition.health !== "error").map((definition) => definition.name));
+          const availableActorDefs = actorDefs ?? [];
+          const nextPublishedKinds = new Set(availableActorDefs.filter((definition) => definition.health !== "error").map((definition) => definition.name));
           publishedRegistrationFingerprints.forEach((_fingerprint, name) => {
             if (nextPublishedKinds.has(name)) return;
             portal.widgetManager.unregisterWidget(name);
             publishedRegistrationFingerprints.delete(name);
           });
-          await Promise.all(actorDefs.flatMap((definition) => {
+          await Promise.all(availableActorDefs.flatMap((definition) => {
             if (definition.health === "error") return [];
-            return [registerPublished(undefined, definition.name, `fallback:${definition.updated_at}`, generation)];
+            return [registerPublished(definition.name, `fallback:${definition.updated_at}`, generation)];
           }));
           portal.widgetManager.completeDefinitionDiscovery();
           return;
         }
         const catalog: TWidgetCatalog = catalogValue;
-        portal.widgetManager.setGlobalDefinitionError(null);
+        portal.widgetManager.setGlobalDefinitionError(definitionsError ? {
+          phase: "definition-discovery",
+          code: "WIDGET_DEFINITION_UNAVAILABLE",
+          message: "Legacy widget definitions could not be loaded.",
+          retryable: true,
+        } : null);
 
-        const definitionsByName = new Map(actorDefs.map((definition) => [definition.name, definition]));
+        const availableActorDefs = definitionsError ? [] : (actorDefs ?? []);
+        const definitionsByName = new Map(availableActorDefs.map((definition) => [definition.name, definition]));
         const nextPublishedKinds = new Set<string>();
         const nextPlacementToolIds = new Set<string>();
         const availableReferences: TWidgetPlacementRef[] = [];
@@ -145,7 +143,10 @@ export function createWidgetPlugin(portal: {
         for (const entry of catalog.widgets) {
           const published = entry.published;
           if (published) {
-            if (published.placement) availableReferences.push(published.placement.reference);
+            if (published.placement) {
+              availableReferences.push(published.placement.reference);
+              placementTool(published, nextPlacementToolIds);
+            }
             const actorDefinition = definitionsByName.get(published.displayName) ?? definitionsByName.get(entry.name);
             if (actorDefinition?.health === "error") {
               portal.widgetManager.setDefinitionError(actorDefinition.name, actorDefinition.error ?? {
@@ -157,7 +158,6 @@ export function createWidgetPlugin(portal: {
             } else if (actorDefinition) {
               nextPublishedKinds.add(actorDefinition.name);
               registrations.push(registerPublished(
-                published,
                 actorDefinition.name,
                 JSON.stringify({
                   revision: published.revision,
@@ -171,7 +171,7 @@ export function createWidgetPlugin(portal: {
           }
           if (entry.draft?.placement) availableReferences.push(entry.draft.placement.reference);
           if (entry.draft && (entry.relation !== "same" || !entry.published)) {
-            placementTool(entry.draft, nextPlacementToolIds);
+            placementTool(entry.draft, nextPlacementToolIds, "draft");
           }
         }
         portal.widgetPlacement.cancelActiveIfUnavailable(availableReferences);

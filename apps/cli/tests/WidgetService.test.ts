@@ -14,6 +14,7 @@ import type { TWidgetManifestV2, TWidgetRevisionDescriptor } from '@vibecanvas/w
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { WidgetService } from '../src/services/WidgetService';
+import { WidgetServicePool } from '../src/services/WidgetServicePool';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 
@@ -196,6 +197,25 @@ describe('actor-free production widget service', () => {
       serverArtifact: null,
       manifest: { schemaVersion: 2, slug: 'browser-widget' },
     });
+    await expect(service.resolvePublishedPlacement(TENANT, {
+      definitionId: published.definition.id,
+      revisionId: published.revision.id,
+    })).resolves.toMatchObject({
+      definitionId: published.definition.id,
+      revisionId: published.revision.id,
+      slug: 'browser-widget',
+      bounds: { width: 360, height: 320 },
+    });
+    await expect(service.listPublishedPlacements(TENANT)).resolves.toEqual([
+      expect.objectContaining({
+        definitionId: published.definition.id,
+        revisionId: published.revision.id,
+      }),
+    ]);
+    await expect(service.resolvePublishedPlacement(TENANT, {
+      definitionId: uuid(898),
+      revisionId: uuid(897),
+    })).resolves.toBeNull();
     expect(await tableCount(database, 'widget_definitions')).toBe(1);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(1);
     expect(await tableCount(database, 'artifact_references')).toBe(1);
@@ -410,6 +430,17 @@ describe('actor-free production widget service', () => {
       nowMs: 300,
     });
     expect(rollback).toMatchObject({ status: 'updated', activeRevisionId: first.revision.id });
+    await expect(service.resolvePublishedPlacement(TENANT, {
+      definitionId: first.definition.id,
+      revisionId: first.revision.id,
+    })).resolves.toMatchObject({
+      definitionId: first.definition.id,
+      revisionId: first.revision.id,
+    });
+    await expect(service.resolvePublishedPlacement(TENANT, {
+      definitionId: second.definition.id,
+      revisionId: second.revision.id,
+    })).resolves.toBeNull();
     await expect(service.rollback(TENANT, {
       definitionId: first.definition.id,
       expectedActiveRevisionId: second.revision.id,
@@ -465,8 +496,9 @@ describe('actor-free production widget service', () => {
     expect(await filesBelow(artifactsRoot)).toEqual([]);
   });
 
-  test('production composition shares one organization owner and never instantiates the actor pool', async () => {
+  test('production composition keeps v2 actor-free and acquires legacy ownership only on fallback', async () => {
     const compositionRoot = join(root, 'production-composition');
+    await mkdir(compositionRoot, { recursive: true });
     const home = fnResolveVibecanvasHome({ join, resolve }, {
       cwd: compositionRoot,
       dataDir: compositionRoot,
@@ -490,6 +522,9 @@ describe('actor-free production widget service', () => {
     const widgetOwner = services.require('widgetOwner');
     const widgetCapability = services.require('widget');
     const actorOwner = services.require('actor');
+    const agentOwner = services.require('agent');
+    const resourceOwner = services.require('resourceOwner');
+    const compositionDatabase = services.require('db');
     const registrations = new Map(
       services.getRegistrations().map((registration) => [registration.name, registration.startOrder]),
     );
@@ -501,13 +536,19 @@ describe('actor-free production widget service', () => {
       'getArtifact',
       'getRevision',
       'issueBrowserUiArtifactReadCapability',
+      'listPublishedPlacements',
       'publish',
       'readArtifact',
+      'resolvePublishedPlacement',
       'rollback',
     ]);
     expect('issueServerExecutionArtifactReadCapability' in widgetCapability).toBe(false);
 
+    await compositionDatabase.start();
     widgetOwner.start({ config: {}, hooks: {} });
+    resourceOwner.start({ config: {}, hooks: {} });
+    actorOwner.start({ config: {}, hooks: {} });
+    agentOwner.start({ config: {}, hooks: {} });
     try {
       const first = await widgetOwner.forTenant(TENANT);
       const second = await widgetOwner.forTenant(fnFreezeTenantContext({
@@ -518,9 +559,231 @@ describe('actor-free production widget service', () => {
       expect(second).toBe(first);
       expect(widgetOwner.getTenantCount()).toBe(1);
       expect(actorOwner.getTenantCount()).toBe(0);
+
+      const sourceRoot = join(compositionRoot, 'placement-source');
+      await writeSource(sourceRoot, {
+        'src/ui.ts': 'export const placementMarker = "PLACEMENT_WIDGET";',
+      });
+      const snapshot = await first.captureSource(TENANT, sourceRoot, {
+        id: uuid(890),
+        createdAtMs: 10,
+      });
+      const published = await first.publish(TENANT, {
+        definitionId: uuid(891),
+        revisionId: uuid(892),
+        expectedActiveRevisionId: null,
+        snapshot,
+        manifest: {
+          schemaVersion: 2,
+          name: 'Placement widget',
+          slug: 'placement-widget',
+          ui: { entry: 'src/ui.ts' },
+        },
+        bindings: [],
+        builderIdentity: `vibecanvas-widget-bun/${Bun.version}`,
+        nowMs: 20,
+      });
+      if (published.status !== 'committed') throw new Error('Expected committed publication.');
+      expect(published.revision.serverArtifact).toBeNull();
+
+      const installedWidgetsRoot = join(
+        home.organizationsDir,
+        TENANT.orgId,
+        'artifacts',
+        'widgets',
+      );
+      const legacyManifest = (name: string, slug: string) => ({
+        slug,
+        name,
+        actor: {
+          relFunctionPath: './actor/functions.ts',
+          initialState: 'ready',
+          initialData: {},
+          states: { ready: { on: {} } },
+          inputMsgSchema: {},
+          outputMsgSchema: {},
+        },
+        widget: {
+          relWidgetDir: './widget',
+          frame: { width: 420, height: 300 },
+          tool: {
+            label: name,
+            behavior: { type: 'mode', mode: 'draw-create' },
+          },
+        },
+      });
+      await writeSource(join(installedWidgetsRoot, 'legacy-only-widget'), {
+        'vibecanvas.json': JSON.stringify(legacyManifest(
+          'Legacy only widget',
+          'legacy-only-widget',
+        )),
+        'actor/functions.ts': 'export default { fn: {}, fx: {}, tx: {} };',
+        'widget/main.ts': 'export default {};',
+      });
+
+      const agent = await agentOwner.forTenant(TENANT);
+      expect(actorOwner.getTenantCount()).toBe(0);
+      const catalogEntry = (await agent.getWidgetCatalog([])).widgets.find(
+        (entry) => entry.name === 'Placement widget',
+      );
+      const reference = catalogEntry?.published?.placement?.reference;
+      if (!reference) throw new Error('Expected published placement reference.');
+      expect(reference).toEqual({
+        source: 'published',
+        name: `v2:${published.definition.id}`,
+        revision: published.revision.id,
+      });
+      await expect(agent.resolveWidgetPlacement(reference)).resolves.toMatchObject({
+        ok: true,
+        descriptor: {
+          kind: 'published-v2',
+          reference,
+          bounds: { width: 360, height: 320 },
+          definitionId: published.definition.id,
+          revisionId: published.revision.id,
+          definitionName: null,
+          definitionSlug: 'placement-widget',
+          previewId: null,
+        },
+      });
+      expect(actorOwner.getTenantCount()).toBe(0);
+      expect(await tableCount(compositionDatabase, 'legacy_actor_definitions')).toBe(0);
+      expect(await tableCount(compositionDatabase, 'legacy_actor_instances')).toBe(0);
+
+      const legacyEntry = (await agent.getWidgetCatalog([])).widgets.find(
+        (entry) => entry.name === 'Legacy only widget',
+      );
+      const legacyReference = legacyEntry?.published?.placement?.reference;
+      if (!legacyReference) throw new Error('Expected legacy placement reference.');
+      await expect(agent.resolveWidgetPlacement(legacyReference)).resolves.toMatchObject({
+        ok: true,
+        descriptor: {
+          kind: 'published-legacy',
+          reference: legacyReference,
+          definitionId: null,
+          revisionId: null,
+          definitionName: 'Legacy only widget',
+          definitionSlug: 'legacy-only-widget',
+          previewId: null,
+        },
+      });
+      expect(actorOwner.getTenantCount()).toBe(1);
+      expect(await tableCount(compositionDatabase, 'legacy_actor_instances')).toBe(0);
     } finally {
+      await agentOwner.stop();
+      await actorOwner.stop();
+      await resourceOwner.stop();
       await widgetOwner.stop();
+      await compositionDatabase.stop();
     }
     expect(actorOwner.getTenantCount()).toBe(0);
+  });
+});
+
+describe('WidgetServicePool placement fencing', () => {
+  const placementTarget = {
+    definitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+    revisionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7',
+  } as const;
+  const movedTenant = (placementEpoch: number): TTenantContext => fnFreezeTenantContext({
+    ...TENANT,
+    cellId: uuid(900 + placementEpoch),
+    placementEpoch,
+    requestId: `widget-pool-placement-${placementEpoch}`,
+  });
+
+  test('retires a higher-epoch owner and rejects stale placement resolution', async () => {
+    const events: string[] = [];
+    const pool = new WidgetServicePool({
+      create: async (placement) => ({
+        start: async () => { events.push(`start:${placement.placementEpoch}`); },
+        stop: async () => { events.push(`stop:${placement.placementEpoch}`); },
+        resolvePublishedPlacement: async (_tenant: TTenantContext, target: typeof placementTarget) => {
+          events.push(`resolve:${placement.placementEpoch}:${target.revisionId}`);
+          return {
+            ...target,
+            name: 'Weather',
+            slug: 'weather',
+            description: null,
+            contractDigestSha256: 'c'.repeat(64),
+            updatedAtMs: 1,
+            bounds: { width: 360, height: 320 },
+          };
+        },
+      } as unknown as WidgetService),
+    });
+    pool.start({ hooks: {}, config: {} });
+
+    await expect(pool.resolvePublishedPlacement(movedTenant(1), placementTarget)).resolves.toMatchObject({
+      definitionId: placementTarget.definitionId,
+      revisionId: placementTarget.revisionId,
+    });
+    await expect(pool.resolvePublishedPlacement(movedTenant(2), placementTarget)).resolves.toMatchObject({
+      definitionId: placementTarget.definitionId,
+      revisionId: placementTarget.revisionId,
+    });
+    expect(events).toEqual([
+      'start:1',
+      `resolve:1:${placementTarget.revisionId}`,
+      'stop:1',
+      'start:2',
+      `resolve:2:${placementTarget.revisionId}`,
+    ]);
+    expect(pool.getTenantCount()).toBe(1);
+    await expect(pool.resolvePublishedPlacement(movedTenant(1), placementTarget)).rejects.toThrow(
+      'rejected stale organization placement epoch 1; current epoch is 2',
+    );
+    await pool.stop();
+  });
+
+  test('drains an in-flight placement resolver before higher-epoch startup', async () => {
+    const events: string[] = [];
+    let markOldResolverEntered: (() => void) | undefined;
+    const oldResolverEntered = new Promise<void>((resolve) => {
+      markOldResolverEntered = resolve;
+    });
+    let releaseOldResolver: (() => void) | undefined;
+    const oldResolverBlocked = new Promise<void>((resolve) => {
+      releaseOldResolver = resolve;
+    });
+    const pool = new WidgetServicePool({
+      create: async (placement) => ({
+        start: async () => { events.push(`start:${placement.placementEpoch}`); },
+        stop: async () => { events.push(`stop:${placement.placementEpoch}`); },
+        resolvePublishedPlacement: async (_tenant: TTenantContext, target: typeof placementTarget) => {
+          events.push(`resolve:start:${placement.placementEpoch}:${target.revisionId}`);
+          if (placement.placementEpoch === 1) {
+            markOldResolverEntered?.();
+            await oldResolverBlocked;
+          }
+          events.push(`resolve:end:${placement.placementEpoch}:${target.revisionId}`);
+          return null;
+        },
+      } as unknown as WidgetService),
+    });
+    pool.start({ hooks: {}, config: {} });
+
+    const oldResolution = pool.resolvePublishedPlacement(movedTenant(1), placementTarget);
+    await oldResolverEntered;
+    const replacementResolution = pool.resolvePublishedPlacement(movedTenant(2), placementTarget);
+    await Promise.resolve();
+    expect(events).toEqual([
+      'start:1',
+      `resolve:start:1:${placementTarget.revisionId}`,
+    ]);
+
+    releaseOldResolver?.();
+    await expect(oldResolution).resolves.toBeNull();
+    await expect(replacementResolution).resolves.toBeNull();
+    expect(events).toEqual([
+      'start:1',
+      `resolve:start:1:${placementTarget.revisionId}`,
+      `resolve:end:1:${placementTarget.revisionId}`,
+      'stop:1',
+      'start:2',
+      `resolve:start:2:${placementTarget.revisionId}`,
+      `resolve:end:2:${placementTarget.revisionId}`,
+    ]);
+    await pool.stop();
   });
 });

@@ -31,7 +31,9 @@
     "./resource": "./src/resource/index.ts",
     "./resource/*": "./src/resource/*.ts",
     "./tool": "./src/tool/index.ts",
-    "./tool/*": "./src/tool/*.ts"
+    "./tool/*": "./src/tool/*.ts",
+    "./widget": "./src/widget/index.ts",
+    "./widget/*": "./src/widget/*.ts"
   },
   "scripts": {
     "test": "bun test"
@@ -48,6 +50,7 @@
     "@vibecanvas/service-filesystem": "workspace:*",
     "@vibecanvas/service-pty": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
+    "@vibecanvas/widget-contract": "workspace:*",
     "zod": "catalog:"
   }
 }

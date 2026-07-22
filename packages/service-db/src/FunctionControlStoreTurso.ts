@@ -61,8 +61,8 @@ import {
   fnFunctionControlStoreUsage,
 } from './FunctionControlStoreTurso/fn.function-control-store-row';
 import { fnFunctionId } from './FunctionControlStoreTurso/fn.function-id';
+import { txRunDatabaseTransaction } from './tx.run-database-transaction';
 
-type TImmediateTransaction<T> = (() => Promise<T>) & { immediate(): Promise<T> };
 type TTransactionScope = { active: boolean; orgId: string };
 type TStoredInvocationBundle = Readonly<{
   invocation: TInvocationRecord;
@@ -81,7 +81,6 @@ const ZERO_METRICS: TUsageMetrics = {
   networkRxBytes: 0,
   networkTxBytes: 0,
 };
-const immediateTransactionTails = new WeakMap<object, Promise<void>>();
 
 function functionStoreError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
@@ -252,14 +251,32 @@ export class FunctionControlStoreTurso implements
         throw new TypeError('Invocation deadline exceeds its immutable timeout ceiling.');
       }
       const instance = await (await this.database.prepare(`
-        SELECT canvas_id
-        FROM widget_instances
-        WHERE org_id = ? AND definition_id = ? AND revision_id = ? AND id = ?
+        SELECT instance.canvas_id
+        FROM widget_instances AS instance
+        INNER JOIN canvas_members AS member
+          ON member.org_id = instance.org_id
+          AND member.canvas_id = instance.canvas_id
+          AND member.account_id = ?
+        INNER JOIN collaboration_documents AS canvas_document
+          ON canvas_document.org_id = instance.org_id
+          AND canvas_document.canvas_id = instance.canvas_id
+          AND canvas_document.widget_instance_id IS NULL
+        INNER JOIN widget_instance_projection_heads AS projection_head
+          ON projection_head.org_id = canvas_document.org_id
+          AND projection_head.canvas_id = canvas_document.canvas_id
+          AND projection_head.source_sequence = canvas_document.content_version
+        WHERE instance.org_id = ? AND instance.definition_id = ?
+          AND instance.revision_id = ? AND instance.id = ?
+          AND instance.status = 'active'
+          AND (? IS NULL OR instance.canvas_id = ?)
       `)).get(
+        tenant.accountId,
         tenant.orgId,
         envelope.widgetDefinitionId,
         envelope.widgetRevisionId,
         envelope.widgetInstanceId,
+        tenant.canvasId ?? null,
+        tenant.canvasId ?? null,
       ) as Record<string, unknown> | undefined;
       if (!instance) {
         throw functionStoreError('FUNCTION_WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
@@ -269,16 +286,24 @@ export class FunctionControlStoreTurso implements
       await this.#deleteExpiredIdempotencyKey(tenant, request, envelope.createdAtMs);
       const existing = await this.#findIdempotencyRecord(tenant, request);
       if (existing) {
-        if (String(existing.request_fingerprint_sha256) !== request.requestFingerprintSha256) {
+        const existingInvocation = await this.getInvocation(
+          tenant,
+          String(existing.invocation_id),
+        );
+        if (!existingInvocation) {
+          throw new Error('Idempotency record references a missing invocation.');
+        }
+        if (
+          existingInvocation.envelope.tenant.accountId !== tenant.accountId
+          || String(existing.request_fingerprint_sha256) !== request.requestFingerprintSha256
+        ) {
           return {
             status: 'conflict',
             invocationId: String(existing.invocation_id),
             reason: 'fingerprint_mismatch',
           };
         }
-        const invocation = await this.getInvocation(tenant, String(existing.invocation_id));
-        if (!invocation) throw new Error('Idempotency record references a missing invocation.');
-        return { status: 'replayed', invocation };
+        return { status: 'replayed', invocation: existingInvocation };
       }
 
       await (await this.database.prepare(`
@@ -664,7 +689,11 @@ export class FunctionControlStoreTurso implements
   ): Promise<TInvocationCancellationResult> {
     return this.#runImmediate(tenant, async () => {
       const invocation = await this.getInvocation(tenant, request.invocationId);
-      if (!invocation || !this.#invocationPlacementMatches(tenant, invocation)) {
+      if (
+        !invocation
+        || !this.#invocationPlacementMatches(tenant, invocation)
+        || !await this.#hasInvocationCallerAuthority(tenant, invocation)
+      ) {
         return { status: 'missing' };
       }
       if (TERMINAL_INVOCATION_STATUSES.includes(invocation.status as never)) {
@@ -1865,6 +1894,27 @@ export class FunctionControlStoreTurso implements
       && invocation.envelope.tenant.placementEpoch === tenant.placementEpoch;
   }
 
+  async #hasInvocationCallerAuthority(
+    tenant: TTenantContext,
+    invocation: TInvocationRecord,
+  ): Promise<boolean> {
+    const canvasId = invocation.envelope.tenant.canvasId;
+    if (
+      invocation.envelope.tenant.accountId !== tenant.accountId
+      || canvasId === undefined
+      || (tenant.canvasId !== undefined && tenant.canvasId !== canvasId)
+    ) {
+      return false;
+    }
+    const membership = await (await this.database.prepare(`
+      SELECT 1
+      FROM canvas_members
+      WHERE org_id = ? AND canvas_id = ? AND account_id = ?
+      LIMIT 1
+    `)).get(tenant.orgId, canvasId, tenant.accountId);
+    return membership != null;
+  }
+
   #assertPermitScope(tenant: TTenantContext, scope: TResourceWritePermitScope): void {
     if (
       scope.claims.orgId !== tenant.orgId
@@ -1907,29 +1957,18 @@ export class FunctionControlStoreTurso implements
       }
       return operation();
     }
-    const transaction = this.database.transaction(async () => {
-      const scope: TTransactionScope = { active: true, orgId: tenant.orgId };
-      return this.#transactionScope.run(scope, async () => {
-        try {
-          return await operation();
-        } finally {
-          scope.active = false;
-        }
-      });
-    }) as TImmediateTransaction<T>;
-    const previous = immediateTransactionTails.get(this.database) ?? Promise.resolve();
-    const result = previous.then(
-      () => transaction.immediate(),
-      () => transaction.immediate(),
-    );
-    const tail = result.then(() => undefined, () => undefined);
-    immediateTransactionTails.set(this.database, tail);
-    void tail.then(() => {
-      if (immediateTransactionTails.get(this.database) === tail) {
-        immediateTransactionTails.delete(this.database);
-      }
+    return txRunDatabaseTransaction({ database: this.database }, {
+      operation: async () => {
+        const scope: TTransactionScope = { active: true, orgId: tenant.orgId };
+        return this.#transactionScope.run(scope, async () => {
+          try {
+            return await operation();
+          } finally {
+            scope.active = false;
+          }
+        });
+      },
     });
-    return result;
   }
 
   #positiveTtl(value: number): void {

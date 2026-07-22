@@ -136,6 +136,9 @@ class FunctionService implements
       if (code === 'FUNCTION_PLACEMENT_STALE') {
         throw functionServiceError('FUNCTION_RUNTIME_UNAVAILABLE', 'Function runtime is unavailable.');
       }
+      if (code === 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND') {
+        throw functionServiceError('WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
+      }
       if (code === 'FUNCTION_INPUT_NOT_JSON' || code === 'FUNCTION_IDEMPOTENCY_KEY_INVALID') {
         throw functionServiceError('FUNCTION_INPUT_INVALID', 'Function input is invalid.');
       }
@@ -157,10 +160,14 @@ class FunctionService implements
     this.#assertPlacement(tenant);
     this.#assertStarted();
     const record = await this.#store.getInvocation(tenant, invocationId);
-    if (record === null || !await this.#hasCanvasAuthority(
+    if (
+      record === null
+      || record.envelope.tenant.accountId !== tenant.accountId
+      || !await this.#hasCanvasAuthority(
       tenant,
       record.envelope.tenant.canvasId,
-    )) {
+      )
+    ) {
       return null;
     }
     return invocationView(record);
@@ -173,10 +180,14 @@ class FunctionService implements
     this.#assertPlacement(tenant);
     this.#assertStarted();
     const current = await this.#store.getInvocation(tenant, invocationId);
-    if (current === null || !await this.#hasCanvasAuthority(
+    if (
+      current === null
+      || current.envelope.tenant.accountId !== tenant.accountId
+      || !await this.#hasCanvasAuthority(
       tenant,
       current.envelope.tenant.canvasId,
-    )) {
+      )
+    ) {
       return null;
     }
     const result = await this.#store.requestCancellation(tenant, {
@@ -197,6 +208,14 @@ class FunctionService implements
         ON member.org_id = instance.org_id
         AND member.canvas_id = instance.canvas_id
         AND member.account_id = ?
+      INNER JOIN collaboration_documents AS canvas_document
+        ON canvas_document.org_id = instance.org_id
+        AND canvas_document.canvas_id = instance.canvas_id
+        AND canvas_document.widget_instance_id IS NULL
+      INNER JOIN widget_instance_projection_heads AS projection_head
+        ON projection_head.org_id = canvas_document.org_id
+        AND projection_head.canvas_id = canvas_document.canvas_id
+        AND projection_head.source_sequence = canvas_document.content_version
       WHERE instance.org_id = ? AND instance.id = ?
       LIMIT 1
     `)).get(

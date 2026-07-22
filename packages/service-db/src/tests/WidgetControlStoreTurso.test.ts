@@ -1065,7 +1065,7 @@ describe('WidgetControlStoreTurso', () => {
     ))).rejects.toMatchObject({ code: 'WIDGET_ARTIFACT_MUTATION_SCOPE_MISMATCH' });
   });
 
-  test('prunes only inactive revisions not pinned by instances, invocations, or idempotency records', async () => {
+  test('keeps revision pins behind the conservative durable-canvas pruning fence', async () => {
     const revisions = [uuid(451), uuid(452), uuid(453), uuid(454), uuid(455)];
     const serverArtifacts = revisions.map((_, index) => artifact(TENANT_A, {
       id: uuid(470 + index),
@@ -1173,43 +1173,87 @@ describe('WidgetControlStoreTurso', () => {
       inactiveBeforeMs: 100,
       limit: 100,
     });
-    expect(firstPrune.prunedRevisionIds).toEqual([revisions[0]]);
+    expect(firstPrune.prunedRevisionIds).toEqual([]);
+    expect(await store.getRevision(TENANT_A, revisions[0])).not.toBeNull();
     expect(await store.getRevision(TENANT_A, revisions[1])).not.toBeNull();
     expect(await store.getRevision(TENANT_A, revisions[2])).not.toBeNull();
     expect(await store.getRevision(TENANT_A, revisions[3])).not.toBeNull();
     expect(await store.getRevision(TENANT_A, revisions[4])).not.toBeNull();
 
-    await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ? AND id = ?`))
-      .run(TENANT_A.orgId, instances[0]);
-    expect((await store.pruneInactiveRevisions(TENANT_A, {
-      nowMs: 100,
-      inactiveBeforeMs: 100,
-      limit: 100,
-    })).prunedRevisionIds).toEqual([revisions[1]]);
-
-    await (await service.db.prepare(`
-      UPDATE function_invocations SET retains_revision = 0 WHERE org_id = ? AND id = ?
-    `)).run(TENANT_A.orgId, invocationA);
-    await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ? AND id = ?`))
-      .run(TENANT_A.orgId, instances[1]);
-    expect((await store.pruneInactiveRevisions(TENANT_A, {
-      nowMs: 100,
-      inactiveBeforeMs: 100,
-      limit: 100,
-    })).prunedRevisionIds).toEqual([revisions[2]]);
-
     await (await service.db.prepare(`DELETE FROM idempotency_records WHERE org_id = ? AND id = ?`))
       .run(TENANT_A.orgId, uuid(461));
-    await (await service.db.prepare(`
-      UPDATE function_invocations SET retains_revision = 0 WHERE org_id = ? AND id = ?
-    `)).run(TENANT_A.orgId, invocationB);
-    await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ? AND id = ?`))
-      .run(TENANT_A.orgId, instances[2]);
+    await (await service.db.prepare(`DELETE FROM function_invocations WHERE org_id = ?`))
+      .run(TENANT_A.orgId);
+    await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ?`))
+      .run(TENANT_A.orgId);
+    await (await service.db.prepare(`DELETE FROM canvases WHERE org_id = ? AND id = ?`))
+      .run(TENANT_A.orgId, CANVAS_A);
     expect((await store.pruneInactiveRevisions(TENANT_A, {
       nowMs: 100,
       inactiveBeforeMs: 100,
       limit: 100,
-    })).prunedRevisionIds).toEqual([revisions[3]]);
+    })).prunedRevisionIds).toEqual(revisions.slice(0, 4));
+  });
+
+  test('keeps a rolled-back revision until an offline canvas placement can reach projection', async () => {
+    const firstRevisionId = uuid(620);
+    const rolledBackRevisionId = uuid(621);
+    committed(await publish(store, TENANT_A, {
+      definitionId: DEFINITION_B,
+      revisionId: firstRevisionId,
+      manifest: manifest({ slug: 'offline-placement', name: 'Offline placement' }),
+      nowMs: 10,
+    }));
+    committed(await publish(store, TENANT_A, {
+      definitionId: DEFINITION_B,
+      revisionId: rolledBackRevisionId,
+      expectedActiveRevisionId: firstRevisionId,
+      manifest: manifest({ slug: 'offline-placement', name: 'Offline placement' }),
+      nowMs: 20,
+    }));
+    await (await service.db.prepare(`
+      INSERT INTO canvases (
+        org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'Offline canvas', 'org', ?, 20, 20)
+    `)).run(TENANT_A.orgId, CANVAS_A, TENANT_A.accountId);
+    expect((await store.rollbackPublication(TENANT_A, {
+      definitionId: DEFINITION_B,
+      expectedActiveRevisionId: rolledBackRevisionId,
+      targetRevisionId: firstRevisionId,
+      nowMs: 30,
+    })).status).toBe('updated');
+
+    expect((await store.pruneInactiveRevisions(TENANT_A, {
+      nowMs: 30,
+      inactiveBeforeMs: 30,
+      limit: 100,
+    })).prunedRevisionIds).toEqual([]);
+    expect(await store.getRevision(TENANT_A, rolledBackRevisionId)).not.toBeNull();
+
+    const projectedInstanceId = uuid(622);
+    await (await service.db.prepare(`
+      INSERT INTO widget_instances (
+        org_id, id, canvas_id, element_id, definition_id, revision_id,
+        status, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, 'offline-element', ?, ?, 'active', 40, 40)
+    `)).run(
+      TENANT_A.orgId,
+      projectedInstanceId,
+      CANVAS_A,
+      DEFINITION_B,
+      rolledBackRevisionId,
+    );
+    expect(await store.getRevision(TENANT_A, rolledBackRevisionId)).not.toBeNull();
+
+    await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ? AND id = ?`))
+      .run(TENANT_A.orgId, projectedInstanceId);
+    await (await service.db.prepare(`DELETE FROM canvases WHERE org_id = ? AND id = ?`))
+      .run(TENANT_A.orgId, CANVAS_A);
+    expect((await store.pruneInactiveRevisions(TENANT_A, {
+      nowMs: 40,
+      inactiveBeforeMs: 40,
+      limit: 100,
+    })).prunedRevisionIds).toEqual([rolledBackRevisionId]);
   });
 
   test('retires expired live previews at the exact boundary before artifact grace begins', async () => {

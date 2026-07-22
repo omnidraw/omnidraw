@@ -74,6 +74,7 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
           },
           websocket: {
             data: {} as TOrpcWebSocketData,
+            closeOnBackpressureLimit: true,
             open(ws) {
               ctx.hooks.wsOpen.call(ws as unknown as WebSocket);
             },

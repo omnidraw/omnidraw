@@ -1,4 +1,5 @@
 import type { DocHandle } from "@automerge/automerge-repo";
+import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TAiChatApplicationPort, TAiChatBrowserPort, TWidgetBrowserPort } from "../src/ports";
 
@@ -88,12 +89,20 @@ export function createTestWidgetBrowser(): TWidgetBrowserPort {
   return {
     document,
     createId: () => "00000000-0000-4000-8000-000000000001",
+    organizationId: () => LOCAL_BROWSER_TENANT_SCOPE.orgId,
+    tenantAuthorityKey: () => 'test-tenant-authority',
     now: () => 1,
     nowDate: () => new Date(1),
     setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),
     clearTimeout: (timer) => window.clearTimeout(timer as number),
     setInterval: (callback, timeout) => window.setInterval(callback, timeout),
     clearInterval: (timer) => window.clearInterval(timer as number),
+    decodeBase64: (value) => Uint8Array.from(window.atob(value), (character) => character.charCodeAt(0)),
+    decodeUtf8: (value) => new TextDecoder().decode(value),
+    digestSha256: async (value) => {
+      const digest = await window.crypto.subtle.digest('SHA-256', value as Uint8Array<ArrayBuffer>);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    },
   };
 }
 

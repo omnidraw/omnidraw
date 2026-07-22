@@ -137,13 +137,50 @@ export type TWidgetPlacementErrorCode =
   | 'UNSUPPORTED_BEHAVIOR'
   | 'INVALID_FRAME_BOUNDS';
 
-export type TWidgetPlacementDescriptor = {
+type TWidgetPlacementDescriptorBase = {
   reference: TWidgetPlacementRef;
   bounds: TWidgetFrameBounds;
-  kind: 'published' | 'preview';
-  definitionName: string | null;
-  previewId: string | null;
 };
+
+export type TPublishedWidgetPlacementIdentity = Readonly<{
+  definitionId: string;
+  revisionId: string;
+}>;
+
+export type TPublishedWidgetPlacementTarget = TPublishedWidgetPlacementIdentity & Readonly<{
+  name: string;
+  slug: string;
+  description: string | null;
+  contractDigestSha256: string;
+  updatedAtMs: number;
+  bounds: TWidgetFrameBounds;
+}>;
+
+export type TWidgetPlacementDescriptor =
+  | (TWidgetPlacementDescriptorBase & {
+      kind: 'published-v2';
+      definitionId: string;
+      revisionId: string;
+      definitionName: null;
+      definitionSlug: string;
+      previewId: null;
+    })
+  | (TWidgetPlacementDescriptorBase & {
+      kind: 'published-legacy';
+      definitionId: null;
+      revisionId: null;
+      definitionName: string;
+      definitionSlug: string;
+      previewId: null;
+    })
+  | (TWidgetPlacementDescriptorBase & {
+      kind: 'preview';
+      definitionId: null;
+      revisionId: null;
+      definitionName: null;
+      definitionSlug: null;
+      previewId: string | null;
+    });
 
 export type TWidgetPlacementResolveResult =
   | { ok: true; descriptor: TWidgetPlacementDescriptor }

@@ -1,4 +1,4 @@
-import type { TElement, TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
+import type { TElement, TElementData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import { fnCurry } from '@vibecanvas/shared-functions/functional/fn.curry'
 import type Konva from 'konva'
 import type { CrdtService, SelectionService } from '../services'
@@ -20,6 +20,11 @@ import {
   WIDGET_WINDOW_CONTAINED,
   WIDGET_WINDOW_FULLSCREEN,
 } from './CONSTANTS'
+import {
+  fnIsWidgetHostData,
+  fnNormalizeWidgetHostData,
+  fnPatchWidgetHostFrame,
+} from './fn.normalize-widget-host-data'
 
 type TPortal = {
   Circle: typeof Konva.Circle;
@@ -104,15 +109,15 @@ function setupButtons(args: {
         return
       }
       if (buttonId === WIDGET_HOST_MINIMIZE_BUTTON_ID) {
-        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
-        const nextExpanded = widgetData?.type === 'widget' || widgetData?.type === 'ui-widget'
-          ? widgetData.expanded === false
-          : false
+        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined
+        const hostData = widgetData ? fnNormalizeWidgetHostData(widgetData) : null
+        const nextExpanded = hostData ? hostData.expanded === false : false
         args.syncExpandedState(nextExpanded)
       }
       if (buttonId === WIDGET_HOST_MAXIMIZE_BUTTON_ID) {
-        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
-        const nextWindowMode = (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') && widgetData.window === WIDGET_WINDOW_FULLSCREEN
+        const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined
+        const hostData = widgetData ? fnNormalizeWidgetHostData(widgetData) : null
+        const nextWindowMode = hostData?.window === WIDGET_WINDOW_FULLSCREEN
           ? WIDGET_WINDOW_CONTAINED
           : WIDGET_WINDOW_FULLSCREEN
         args.syncWindowState(nextWindowMode)
@@ -207,12 +212,11 @@ function syncExpandedState(portal: TPortal, expanded: boolean) {
     header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0])
   }
 
-  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
-  if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
-    portal.node.setAttr(ELEMENT_DATA_ATTR, {
-      ...widgetData,
+  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined
+  if (widgetData && fnIsWidgetHostData(widgetData)) {
+    portal.node.setAttr(ELEMENT_DATA_ATTR, fnPatchWidgetHostFrame(widgetData, {
       expanded,
-    })
+    }))
   }
 
   syncWidgetDomPortal(portal)
@@ -226,12 +230,11 @@ function syncWindowState(portal: TPortal, windowMode: typeof WIDGET_WINDOW_CONTA
     activateWidgetBody(portal)
   }
 
-  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
-  if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
-    portal.node.setAttr(ELEMENT_DATA_ATTR, {
-      ...widgetData,
+  const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TElementData | undefined
+  if (widgetData && fnIsWidgetHostData(widgetData)) {
+    portal.node.setAttr(ELEMENT_DATA_ATTR, fnPatchWidgetHostFrame(widgetData, {
       window: windowMode,
-    })
+    }))
   }
 
   syncWidgetDomPortal(portal)

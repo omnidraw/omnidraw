@@ -1,6 +1,6 @@
-import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type Konva from "konva";
-import type { THostThemeColors } from "./types";
+import type { THostThemeColors, TWidgetHostData } from "./types";
 import {
   ELEMENT_DATA_ATTR,
   ELEMENT_STYLE_ATTR,
@@ -31,6 +31,11 @@ import {
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from "./CONSTANTS";
 import { txSyncWidgetDomPortals } from "./tx.sync-widget-dom-portals";
+import {
+  fnIsWidgetHostData,
+  fnNormalizeWidgetHostData,
+  fnPatchWidgetHostFrame,
+} from "./fn.normalize-widget-host-data";
 
 function getMenuButtonX(width: number) {
   return Math.max(0, width - WIDGET_HOST_MENU_BUTTON_RIGHT_INSET - WIDGET_HOST_MENU_BUTTON_SIZE);
@@ -138,7 +143,7 @@ export type TArgsUpdateWidgetNodeFromElement = {
 function syncWidgetMetadata(args: {
   node: Konva.Group;
   element: TElement;
-  data: TUiWidgetData | TWidgetData;
+  data: TWidgetHostData;
 }) {
   args.node.setAttr(ELEMENT_DATA_ATTR, args.data);
   args.node.setAttr(ELEMENT_STYLE_ATTR, args.element.style ?? {});
@@ -246,13 +251,16 @@ export function txUpdateWidgetNodeFromElement(
   portal: TPortalUpdateWidgetNodeFromElement,
   args: TArgsUpdateWidgetNodeFromElement,
 ) {
-  if (!(args.node instanceof portal.Group) || (args.element.data.type !== "widget" && args.element.data.type !== "ui-widget")) {
+  if (!(args.node instanceof portal.Group) || !fnIsWidgetHostData(args.element.data)) {
     return false;
   }
 
-  const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.element.data.w);
-  const height = Math.max(WIDGET_HOST_MIN_HEIGHT, args.element.data.h);
-  const expanded = args.element.data.expanded !== false;
+  const hostData = fnNormalizeWidgetHostData(args.element.data);
+  if (!hostData) return false;
+
+  const width = Math.max(WIDGET_HOST_MIN_WIDTH, hostData.w);
+  const height = Math.max(WIDGET_HOST_MIN_HEIGHT, hostData.h);
+  const expanded = hostData.expanded !== false;
   const absolutePosition = fnGetAbsolutePositionFromWorldPosition({
     worldPosition: { x: args.element.x, y: args.element.y },
     parentTransform: args.node.getLayer()?.getAbsoluteTransform() ?? null,
@@ -266,19 +274,18 @@ export function txUpdateWidgetNodeFromElement(
     width,
     height,
     expanded,
-    label: args.label ?? args.element.data.kind,
+    label: args.label ?? hostData.hostKey,
     labelFill: args.labelFill ?? args.hostColors?.headerTitleFill ?? '#ef4444',
     hostColors: args.hostColors,
   });
   syncWidgetMetadata({
     node: args.node,
     element: args.element,
-    data: {
-      ...args.element.data,
+    data: fnPatchWidgetHostFrame(args.element.data, {
       w: width,
       h: height,
       expanded,
-    },
+    }),
   });
   txSetNodeZIndex({}, { node: args.node, zIndex: args.element.zIndex });
   txSyncWidgetDomPortals({}, { node: args.node });

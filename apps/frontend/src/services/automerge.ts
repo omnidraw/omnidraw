@@ -6,6 +6,8 @@ export {
   getHandle,
   getOrCreateRepo,
   loadPersistedDocuments,
+  openAutomergeDocument,
+  releaseAutomergeDocument,
   removeFromCache,
   switchAutomergeTenant,
   updateDocumentName,

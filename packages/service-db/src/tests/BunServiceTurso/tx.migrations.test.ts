@@ -14,11 +14,14 @@ import {
   INITIAL_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
+  WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
+  WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
 } from '../../../src/CONSTANTS';
 import {
   FUNCTION_RUNTIME_MIGRATION,
   INITIAL_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
+  WIDGET_INSTANCE_PROJECTION_MIGRATION,
 } from '../../../src/migrations/CONSTANTS';
 import {
   DbServiceTurso,
@@ -33,7 +36,7 @@ import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
 import { listEmbeddedMigrationFiles } from '../../../src/_embedded-migrations';
 import {
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
-  EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES,
+  EXPECTED_WIDGET_HOST_APPLICATION_TABLES,
 } from '../../../src/schema/expected-schema';
 
 const temporaryRoots: string[] = [];
@@ -91,6 +94,11 @@ function syntheticPreflightArgs() {
         version: FUNCTION_RUNTIME_MIGRATION_VERSION,
         name: FUNCTION_RUNTIME_MIGRATION_NAME,
         checksumSha256: 'c'.repeat(64),
+      },
+      {
+        version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
+        name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
+        checksumSha256: 'd'.repeat(64),
       },
     ],
   } as const;
@@ -240,11 +248,17 @@ describe('ordered managed migration runner', () => {
         name: FUNCTION_RUNTIME_MIGRATION_NAME,
         version: FUNCTION_RUNTIME_MIGRATION_VERSION,
       }),
+      expect.objectContaining({
+        type: 'sql',
+        name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
+        version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
+      }),
     ]);
     expect(listEmbeddedMigrationFiles()).toEqual([
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       FUNCTION_RUNTIME_MIGRATION_NAME,
+      WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
     ]);
 
     const migrationDirectory = new URL('../../../src/migrations/', import.meta.url).pathname;
@@ -255,6 +269,7 @@ describe('ordered managed migration runner', () => {
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       FUNCTION_RUNTIME_MIGRATION_NAME,
+      WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
     ]);
   });
 
@@ -295,12 +310,25 @@ describe('ordered managed migration runner', () => {
         applied_at_ms: 1_753_113_600_000,
         application_version: '1.2.3-test',
       },
+      {
+        version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION,
+        name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
+        checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        applied_at_ms: 1_753_113_600_000,
+        application_version: '1.2.3-test',
+      },
     ]);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
       .find((column) => column.name === 'next_revision_number')).toMatchObject({
         type: 'INTEGER',
         notnull: 1,
         dflt_value: '1',
+      });
+    expect((await (await db.prepare('PRAGMA table_info(collaboration_documents)')).all())
+      .find((column) => column.name === 'content_version')).toMatchObject({
+        type: 'INTEGER',
+        notnull: 1,
+        dflt_value: '0',
       });
     expect(
       await (await db.prepare('SELECT id, slug, name FROM organizations')).all(),
@@ -322,7 +350,7 @@ describe('ordered managed migration runner', () => {
       .filter((row) => row.schema === 'main' && row.type === 'table' && !String(row.name).startsWith('sqlite_'))
       .sort((left, right) => String(left.name).localeCompare(String(right.name)));
     expect(tables.map((row) => row.name)).toEqual(
-      [...EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES].sort(),
+      [...EXPECTED_WIDGET_HOST_APPLICATION_TABLES].sort(),
     );
     expect(tables.every((row) => row.strict === 1)).toBe(true);
   });
@@ -371,6 +399,7 @@ describe('ordered managed migration runner', () => {
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
       { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
+      { version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION, name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME },
     ]);
 
     const ledger = await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all();
@@ -791,6 +820,7 @@ describe('ordered managed migration runner', () => {
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
       { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
       { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
+      { version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION, name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME },
     ]);
   });
 
@@ -998,6 +1028,15 @@ describe('read-only startup preflight', () => {
       databasePath: path.join(homeDir, 'main.db'),
     })).resolves.toEqual({ status: 'empty' });
 
+    await fs.copyFile(
+      WIDGET_INSTANCE_PROJECTION_MIGRATION.path,
+      path.join(migrationDir, WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME),
+    );
+    await expect(preflightDbServiceDatabase({
+      homeDir,
+      databasePath: path.join(homeDir, 'main.db'),
+    })).resolves.toEqual({ status: 'empty' });
+
     await fs.rm(path.join(migrationDir, INITIAL_MIGRATION_NAME));
     await expect(preflightDbServiceDatabase({
       homeDir,
@@ -1061,6 +1100,7 @@ describe('read-only startup preflight', () => {
         { name: INITIAL_MIGRATION_NAME, version: INITIAL_MIGRATION_VERSION },
         { name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME, version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION },
         { name: FUNCTION_RUNTIME_MIGRATION_NAME, version: FUNCTION_RUNTIME_MIGRATION_VERSION },
+        { name: WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME, version: WIDGET_INSTANCE_PROJECTION_MIGRATION_VERSION },
       ],
     });
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);

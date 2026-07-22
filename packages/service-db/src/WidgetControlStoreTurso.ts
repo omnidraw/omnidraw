@@ -49,10 +49,7 @@ import {
   fnWidgetControlStoreResourceCeiling,
   fnWidgetControlStoreRevision,
 } from './WidgetControlStoreTurso/fn.widget-control-store-row';
-
-type TImmediateTransaction<T> = (() => Promise<T>) & {
-  immediate(): Promise<T>;
-};
+import { txRunDatabaseTransaction } from './tx.run-database-transaction';
 
 type TArtifactMutationScope = {
   active: boolean;
@@ -67,7 +64,6 @@ type TValidatedPublicationFunctions = Readonly<{
 }>;
 
 const CONTROL_STORE_MAX_BATCH = 500;
-const immediateTransactionTails = new WeakMap<object, Promise<void>>();
 
 const ARTIFACT_IS_REFERENCED = `
   EXISTS (
@@ -156,6 +152,25 @@ export class WidgetControlStoreTurso implements
       WHERE org_id = ? AND slug = ?
     `)).get(tenant.orgId, slug);
     return row ? fnWidgetControlStoreDefinition(row) : null;
+  }
+
+  async listPublishedDefinitions(
+    tenant: TTenantContext,
+    limit: number,
+  ): Promise<readonly TWidgetDefinitionDescriptor[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10_001) {
+      throw new Error('Widget definition list limit is invalid.');
+    }
+    const rows = await (await this.database.prepare(`
+      SELECT *
+      FROM widget_definitions
+      WHERE org_id = ?
+        AND status = 'published'
+        AND active_revision_id IS NOT NULL
+      ORDER BY name ASC, id ASC
+      LIMIT ?
+    `)).all(tenant.orgId, limit);
+    return rows.map((row) => fnWidgetControlStoreDefinition(row));
   }
 
   async getRevision(
@@ -472,6 +487,15 @@ export class WidgetControlStoreTurso implements
       this.#timestamp(request.inactiveBeforeMs, 'inactive revision cutoff'));
     return this.#runImmediate(tenant, async () => {
       await this.#expireLivePreviews(tenant, nowMs, limit);
+      // An offline Automerge document can still contain a revision placement
+      // that has not reached the asynchronous widget_instances projection.
+      // Until placements have a durable reservation/ack protocol, the only
+      // state that proves no later canvas sync can reveal such a reference is
+      // an organization with no durable canvases at all.
+      const durableCanvas = await (await this.database.prepare(`
+        SELECT 1 FROM canvases WHERE org_id = ? LIMIT 1
+      `)).get(tenant.orgId);
+      if (durableCanvas) return { prunedRevisionIds: [] };
       const rows = await (await this.database.prepare(`
         SELECT revision.id
         FROM widget_definition_revisions AS revision
@@ -1229,32 +1253,18 @@ export class WidgetControlStoreTurso implements
       return operation();
     }
 
-    const transaction = this.database.transaction(async () => {
-      const scope: TArtifactMutationScope = { active: true, orgId: tenant.orgId };
-      return this.#artifactMutationScope.run(scope, async () => {
-        try {
-          return await operation();
-        } finally {
-          scope.active = false;
-        }
-      });
-    }) as TImmediateTransaction<T>;
-    const previous = immediateTransactionTails.get(this.database) ?? Promise.resolve();
-    const result = previous.then(
-      () => transaction.immediate(),
-      () => transaction.immediate(),
-    );
-    const tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    immediateTransactionTails.set(this.database, tail);
-    void tail.then(() => {
-      if (immediateTransactionTails.get(this.database) === tail) {
-        immediateTransactionTails.delete(this.database);
-      }
+    return txRunDatabaseTransaction({ database: this.database }, {
+      operation: async () => {
+        const scope: TArtifactMutationScope = { active: true, orgId: tenant.orgId };
+        return this.#artifactMutationScope.run(scope, async () => {
+          try {
+            return await operation();
+          } finally {
+            scope.active = false;
+          }
+        });
+      },
     });
-    return result;
   }
 
   #batchLimit(value: number): number {

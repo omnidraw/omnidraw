@@ -194,6 +194,7 @@ export class LocalFunctionDispatcher {
     });
     const requestFingerprintSha256 = sha256(fnCanonicalJson({
       orgId: tenant.orgId,
+      accountId: tenant.accountId,
       widgetDefinitionId: definition.widgetDefinitionId,
       widgetRevisionId: definition.widgetRevisionId,
       widgetInstanceId: request.widgetInstanceId,

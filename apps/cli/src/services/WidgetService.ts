@@ -6,6 +6,8 @@ import type {
   IWidgetArtifactGarbageCollector,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
   IWidgetArtifactReader,
+  IWidgetControlStore,
+  IWidgetPublishedPlacementReader,
   IWidgetPublicationService,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
   IWidgetServerFunctionDescriptorExtractor,
@@ -16,8 +18,11 @@ import type {
   TWidgetArtifactReadCapability,
   TWidgetArtifactReadCapabilityIssueRequest,
   TWidgetArtifactReadRequest,
+  TWidgetDefinitionDescriptor,
   TWidgetPublishRequest,
   TWidgetPublishResult,
+  TWidgetPublishedPlacementDescriptor,
+  TWidgetPublishedPlacementTarget,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRollbackInput,
@@ -57,17 +62,23 @@ type TWidgetSourceCaptureArgs = Readonly<{
   expectedDigestSha256?: string;
 }>;
 
+const WIDGET_PLACEMENT_FALLBACK_BOUNDS = Object.freeze({ width: 360, height: 320 });
+const WIDGET_PLACEMENT_CATALOG_MAX_DEFINITIONS = 1_000;
+const WIDGET_PLACEMENT_CATALOG_READ_CONCURRENCY = 8;
+
 /** Organization-placement owner for actor-free v2 widget artifacts and revisions. */
 class WidgetService implements
   IService,
   IStoppableService,
   IWidgetPublicationService,
+  IWidgetPublishedPlacementReader,
   IWidgetArtifactReader,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
   IWidgetArtifactGarbageCollector {
   readonly name = 'widget-service';
   readonly #placement: TWidgetServicePlacement;
+  readonly #controlStore: IWidgetControlStore;
   readonly #sourceSnapshot: WidgetSourceSnapshot;
   readonly #publication: WidgetPublicationService;
   readonly #artifacts: WidgetArtifactService;
@@ -78,6 +89,7 @@ class WidgetService implements
     this.#sourceSnapshot = new WidgetSourceSnapshot();
 
     const controlStore = new WidgetControlStoreTurso(config.database);
+    this.#controlStore = controlStore;
     const blobs = new LocalWidgetArtifactStore({
       orgId: config.placement.orgId,
       artifactsRoot: config.artifactsRoot,
@@ -155,6 +167,68 @@ class WidgetService implements
     return this.#publication.getActiveRevision(tenant, definitionId);
   }
 
+  async listPublishedPlacements(
+    tenant: TTenantContext,
+  ): Promise<readonly TWidgetPublishedPlacementDescriptor[]> {
+    this.#assertPlacement(tenant);
+    const definitions = await this.#controlStore.listPublishedDefinitions(
+      tenant,
+      WIDGET_PLACEMENT_CATALOG_MAX_DEFINITIONS + 1,
+    );
+    if (definitions.length > WIDGET_PLACEMENT_CATALOG_MAX_DEFINITIONS) {
+      throw Object.assign(new Error('Published widget placement catalog exceeds its safe limit.'), {
+        code: 'WIDGET_PLACEMENT_CATALOG_LIMIT',
+      });
+    }
+    const placements: TWidgetPublishedPlacementDescriptor[] = [];
+    for (
+      let offset = 0;
+      offset < definitions.length;
+      offset += WIDGET_PLACEMENT_CATALOG_READ_CONCURRENCY
+    ) {
+      const batch = definitions.slice(
+        offset,
+        offset + WIDGET_PLACEMENT_CATALOG_READ_CONCURRENCY,
+      );
+      placements.push(...await Promise.all(batch.map(async (definition) => {
+        const revision = await this.#controlStore.getActiveRevision(tenant, definition.id);
+        if (
+          !revision
+          || definition.activeRevisionId === null
+          || revision.id !== definition.activeRevisionId
+          || revision.definitionId !== definition.id
+        ) {
+          throw Object.assign(new Error('Published widget placement is unavailable.'), {
+            code: 'WIDGET_PLACEMENT_UNAVAILABLE',
+          });
+        }
+        return this.#publishedPlacementDescriptor(definition, revision);
+      })));
+    }
+    return placements;
+  }
+
+  async resolvePublishedPlacement(
+    tenant: TTenantContext,
+    target: TWidgetPublishedPlacementTarget,
+  ): Promise<TWidgetPublishedPlacementDescriptor | null> {
+    this.#assertPlacement(tenant);
+    const definition = await this.#controlStore.getDefinition(tenant, target.definitionId);
+    if (!definition) return null;
+    if (
+      definition.status !== 'published'
+      || definition.activeRevisionId === null
+      || definition.activeRevisionId !== target.revisionId
+    ) return null;
+    const revision = await this.#controlStore.getActiveRevision(tenant, definition.id);
+    if (
+      !revision
+      || revision.id !== target.revisionId
+      || revision.definitionId !== definition.id
+    ) return null;
+    return this.#publishedPlacementDescriptor(definition, revision);
+  }
+
   issueBrowserUiArtifactReadCapability(
     tenant: TTenantContext,
     request: TWidgetArtifactReadCapabilityIssueRequest,
@@ -185,6 +259,30 @@ class WidgetService implements
   ): Promise<Uint8Array | null> {
     this.#assertPlacement(tenant);
     return this.#artifacts.readArtifact(tenant, request);
+  }
+
+  #publishedPlacementDescriptor(
+    definition: TWidgetDefinitionDescriptor,
+    revision: TWidgetRevisionDescriptor,
+  ): TWidgetPublishedPlacementDescriptor {
+    if (
+      revision.manifest.name !== definition.name
+      || revision.manifest.slug !== definition.slug
+    ) {
+      throw Object.assign(new Error('Published widget placement identity is inconsistent.'), {
+        code: 'WIDGET_PLACEMENT_UNAVAILABLE',
+      });
+    }
+    return Object.freeze({
+      definitionId: definition.id,
+      revisionId: revision.id,
+      name: definition.name,
+      slug: definition.slug,
+      description: revision.manifest.description ?? null,
+      contractDigestSha256: revision.contractDigestSha256,
+      updatedAtMs: revision.createdAtMs,
+      bounds: WIDGET_PLACEMENT_FALLBACK_BOUNDS,
+    });
   }
 
   collect(

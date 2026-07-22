@@ -3,6 +3,7 @@ import type Konva from "konva";
 import { VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR } from "../core/CONSTANTS";
 import type { CrdtService, ElementService, HistoryService, RenderOrderService, SceneService, SelectionService } from "../services";
 import { fnCreateClonedWidgetElement } from "./fn.create-cloned-widget-element";
+import { fnIsWidgetHostData } from "./fn.normalize-widget-host-data";
 
 type TNodeOnRemove = (args: { node: unknown }) => void;
 
@@ -55,7 +56,7 @@ function removeWidgetNode(node: Konva.Group) {
 
 export function txCreateWidgetCloneDrag(portal: TPortal, args: TArgs) {
   const sourceElement = portal.element.toElement(args.node);
-  if (!sourceElement || (sourceElement.data.type !== "widget" && sourceElement.data.type !== "ui-widget")) {
+  if (!sourceElement || !fnIsWidgetHostData(sourceElement.data)) {
     return false;
   }
 

@@ -36,6 +36,12 @@ const OUTSIDER_TENANT: TTenantContext = Object.freeze({
   requestId: 'request-outsider',
 });
 
+const OTHER_MEMBER_TENANT: TTenantContext = Object.freeze({
+  ...WS_TENANT,
+  accountId: '00000000-0000-4000-8000-000000000098',
+  requestId: 'request-other-member',
+});
+
 function record(
   status: TInvocationRecord['status'] = 'queued',
   invocationTenant: TTenantContext = TENANT,
@@ -92,6 +98,7 @@ function databaseForTarget(options: Readonly<{
     status: string;
   }> | null;
   memberAccountIds?: readonly string[];
+  projectionCurrent?: boolean;
 }> = {}): Database {
   const row = {
     canvas_id: TENANT.canvasId!,
@@ -108,6 +115,10 @@ function databaseForTarget(options: Readonly<{
           const [accountId, orgId, widgetInstanceId] = values;
           if (
             options.target === null
+            || (
+              options.projectionCurrent === false
+              && sql.includes('widget_instance_projection_heads')
+            )
             || orgId !== TENANT.orgId
             || widgetInstanceId !== record().envelope.widgetInstanceId
             || !memberAccountIds.includes(String(accountId))
@@ -357,6 +368,16 @@ describe('FunctionService host authority', () => {
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_ARCHIVED' });
     await inactive.stop();
 
+    const delayedProjection = createService({
+      database: databaseForTarget({ projectionCurrent: false }),
+    });
+    await expect(delayedProjection.service.invokeFunction(TENANT, {
+      widgetInstanceId: record().envelope.widgetInstanceId,
+      functionName: 'run', input: {}, idempotencyKey: 'key',
+    })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
+    expect(delayedProjection.calls).toHaveLength(0);
+    await delayedProjection.service.stop();
+
     const conflict = createService({
       invoke: async () => ({
         status: 'conflict',
@@ -369,6 +390,27 @@ describe('FunctionService host authority', () => {
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     await conflict.stop();
+  });
+
+  test('maps a projection race at durable invocation creation to the stable target code', async () => {
+    const raced = createService({
+      invoke: async () => {
+        throw Object.assign(new Error('durable projection moved'), {
+          code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND',
+        });
+      },
+    }).service;
+
+    await expect(raced.invokeFunction(TENANT, {
+      widgetInstanceId: record().envelope.widgetInstanceId,
+      functionName: 'run',
+      input: {},
+      idempotencyKey: 'projection-race',
+    })).rejects.toMatchObject({
+      code: 'WIDGET_INSTANCE_NOT_FOUND',
+      message: 'Widget instance was not found.',
+    });
+    await raced.stop();
   });
 
   test('maps durable get and cancellation records to the public view', async () => {
@@ -398,6 +440,22 @@ describe('FunctionService host authority', () => {
     )).resolves.toBeNull();
     expect(unauthorized.cancellationCalls).toHaveLength(0);
     await unauthorized.service.stop();
+
+    const otherMember = createService({
+      database: databaseForTarget({
+        memberAccountIds: [TENANT.accountId, OTHER_MEMBER_TENANT.accountId],
+      }),
+    });
+    await expect(otherMember.service.getFunctionInvocation(
+      OTHER_MEMBER_TENANT,
+      record().envelope.id,
+    )).resolves.toBeNull();
+    await expect(otherMember.service.cancelFunctionInvocation(
+      OTHER_MEMBER_TENANT,
+      record().envelope.id,
+    )).resolves.toBeNull();
+    expect(otherMember.cancellationCalls).toHaveLength(0);
+    await otherMember.service.stop();
 
     const mismatchedTenant: TTenantContext = Object.freeze({
       ...TENANT,

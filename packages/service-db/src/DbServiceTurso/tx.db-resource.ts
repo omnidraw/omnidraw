@@ -12,6 +12,7 @@ import type {
   TActorResourceStatus,
   TJson,
 } from "../model"
+import { txRunDatabaseTransaction } from "../tx.run-database-transaction"
 import { fnSerializeJsonValue } from "./fn.actor-resource-row"
 import { fnParseDbResourceApplyInstanceResultRow, fnParseDbResourceDraftChangeRow } from "./fn.db-resource"
 import { fxActorResourceGet } from "./fx.actor-resource"
@@ -189,42 +190,44 @@ export async function txDbResourceDraftAppendChange(
   portal: TPortal,
   args: TArgsDraftAppendChange,
 ): Promise<TDbResourceDraftChange> {
-  const append = portal.db.transaction(async () => {
-    const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
-    if (!draft || draft.status !== "editing") {
-      throw new Error(`DbResource draft "${args.draftId}" is not editable`)
-    }
-    const sequenceRow = await (await portal.db.prepare(`
-      SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
-      FROM db_resource_draft_changes
-      WHERE org_id = ? AND draft_id = ?
-    `)).get(args.tenant.orgId, args.draftId) as { next_sequence: number } | undefined
-    const sequence = sequenceRow?.next_sequence ?? 1
-    if (sequence !== args.sequence) {
-      throw new Error(`DbResource draft "${args.draftId}" physical and control sequences diverged`)
-    }
-    await (await portal.db.prepare(`
-      INSERT INTO db_resource_draft_changes (
-        org_id, draft_id, sequence, kind, operation_json, sql_text, created_at_ms
+  return txRunDatabaseTransaction({ database: portal.db }, {
+    mode: "deferred",
+    operation: async () => {
+      const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
+      if (!draft || draft.status !== "editing") {
+        throw new Error(`DbResource draft "${args.draftId}" is not editable`)
+      }
+      const sequenceRow = await (await portal.db.prepare(`
+        SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+        FROM db_resource_draft_changes
+        WHERE org_id = ? AND draft_id = ?
+      `)).get(args.tenant.orgId, args.draftId) as { next_sequence: number } | undefined
+      const sequence = sequenceRow?.next_sequence ?? 1
+      if (sequence !== args.sequence) {
+        throw new Error(`DbResource draft "${args.draftId}" physical and control sequences diverged`)
+      }
+      await (await portal.db.prepare(`
+        INSERT INTO db_resource_draft_changes (
+          org_id, draft_id, sequence, kind, operation_json, sql_text, created_at_ms
+        )
+        VALUES (?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
+      `)).run(
+        args.tenant.orgId,
+        args.draftId,
+        args.sequence,
+        args.kind,
+        serializedJson(args.operation),
+        args.sql,
       )
-      VALUES (?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
-    `)).run(
-      args.tenant.orgId,
-      args.draftId,
-      args.sequence,
-      args.kind,
-      serializedJson(args.operation),
-      args.sql,
-    )
-    const row = await (await portal.db.prepare(`
-      SELECT *
-      FROM db_resource_draft_changes
-      WHERE org_id = ? AND draft_id = ? AND sequence = ?
-    `)).get(args.tenant.orgId, args.draftId, args.sequence)
-    if (row === undefined || row === null) throw new Error("Failed to persist DbResource draft change")
-    return fnParseDbResourceDraftChangeRow(row)
+      const row = await (await portal.db.prepare(`
+        SELECT *
+        FROM db_resource_draft_changes
+        WHERE org_id = ? AND draft_id = ? AND sequence = ?
+      `)).get(args.tenant.orgId, args.draftId, args.sequence)
+      if (row === undefined || row === null) throw new Error("Failed to persist DbResource draft change")
+      return fnParseDbResourceDraftChangeRow(row)
+    },
   })
-  return append()
 }
 
 export async function txDbResourceDraftDiscard(portal: TPortal, args: TArgsDraftDiscard): Promise<TDbResourceDraft | null> {
@@ -284,57 +287,61 @@ export async function txDbResourceApplyCreateFromDraft(
   portal: TPortal,
   args: TArgsApplyCreateFromDraft,
 ): Promise<{ apply: TDbResourceApplyRun; draft: TDbResourceDraft }> {
-  const admit = portal.db.transaction(async () => {
-    await requireDbResource(portal, args.tenant, args.resourceId, ["ready"])
-    const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
-    if (!draft || draft.resource_id !== args.resourceId || draft.status !== "editing") {
-      throw new Error(`DbResource draft "${args.draftId}" is not editable for resource "${args.resourceId}"`)
-    }
-    const updatedDraft = await txDbResourceDraftUpdateStatus(portal, {
-      tenant: args.tenant,
-      id: args.draftId,
-      status: "applying",
-      expectedStatus: "editing",
-      lastError: null,
-    })
-    if (!updatedDraft) throw new Error(`DbResource draft "${args.draftId}" changed before apply admission`)
-    const apply = await txDbResourceApplyCreate(portal, {
-      tenant: args.tenant,
-      id: args.id,
-      resourceId: args.resourceId,
-      draftId: args.draftId,
-      status: "preparing",
-    })
-    return { apply, draft: updatedDraft }
+  return txRunDatabaseTransaction({ database: portal.db }, {
+    mode: "deferred",
+    operation: async () => {
+      await requireDbResource(portal, args.tenant, args.resourceId, ["ready"])
+      const draft = await fxDbResourceDraftGet(portal, { tenant: args.tenant, id: args.draftId })
+      if (!draft || draft.resource_id !== args.resourceId || draft.status !== "editing") {
+        throw new Error(`DbResource draft "${args.draftId}" is not editable for resource "${args.resourceId}"`)
+      }
+      const updatedDraft = await txDbResourceDraftUpdateStatus(portal, {
+        tenant: args.tenant,
+        id: args.draftId,
+        status: "applying",
+        expectedStatus: "editing",
+        lastError: null,
+      })
+      if (!updatedDraft) throw new Error(`DbResource draft "${args.draftId}" changed before apply admission`)
+      const apply = await txDbResourceApplyCreate(portal, {
+        tenant: args.tenant,
+        id: args.id,
+        resourceId: args.resourceId,
+        draftId: args.draftId,
+        status: "preparing",
+      })
+      return { apply, draft: updatedDraft }
+    },
   })
-  return admit()
 }
 
 export async function txDbResourceApplyFinishWithDraft(
   portal: TPortal,
   args: TArgsApplyFinishWithDraft,
 ): Promise<{ apply: TDbResourceApplyRun; draft: TDbResourceDraft }> {
-  const finish = portal.db.transaction(async () => {
-    const apply = await txDbResourceApplyUpdate(portal, {
-      tenant: args.tenant,
-      id: args.id,
-      status: args.status,
-      expectedStatus: args.expectedStatus,
-      lastError: args.lastError,
-      backupRetained: args.backupRetained,
-    })
-    if (!apply || apply.draft_id !== args.draftId) throw new Error(`DbResource apply "${args.id}" changed before completion`)
-    const draft = await txDbResourceDraftUpdateStatus(portal, {
-      tenant: args.tenant,
-      id: args.draftId,
-      status: args.draftStatus,
-      expectedStatus: "applying",
-      lastError: args.lastError,
-    })
-    if (!draft) throw new Error(`DbResource draft "${args.draftId}" changed before apply completion`)
-    return { apply, draft }
+  return txRunDatabaseTransaction({ database: portal.db }, {
+    mode: "deferred",
+    operation: async () => {
+      const apply = await txDbResourceApplyUpdate(portal, {
+        tenant: args.tenant,
+        id: args.id,
+        status: args.status,
+        expectedStatus: args.expectedStatus,
+        lastError: args.lastError,
+        backupRetained: args.backupRetained,
+      })
+      if (!apply || apply.draft_id !== args.draftId) throw new Error(`DbResource apply "${args.id}" changed before completion`)
+      const draft = await txDbResourceDraftUpdateStatus(portal, {
+        tenant: args.tenant,
+        id: args.draftId,
+        status: args.draftStatus,
+        expectedStatus: "applying",
+        lastError: args.lastError,
+      })
+      if (!draft) throw new Error(`DbResource draft "${args.draftId}" changed before apply completion`)
+      return { apply, draft }
+    },
   })
-  return finish()
 }
 
 export async function txDbResourceApplyUpdate(portal: TPortal, args: TArgsApplyUpdate): Promise<TDbResourceApplyRun | null> {

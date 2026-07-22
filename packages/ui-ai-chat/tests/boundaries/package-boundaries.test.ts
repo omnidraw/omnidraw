@@ -31,6 +31,7 @@ describe("package boundaries", () => {
       "fn.create-widget-element.ts",
       "fn.create-widget-node.ts",
       "fn.get-host-theme-colors.ts",
+      "fn.normalize-widget-host-data.ts",
       "fn.to-widget-element.ts",
       "fx.attach-widget-listener.ts",
       "tx.create-widget-clone-drag.ts",

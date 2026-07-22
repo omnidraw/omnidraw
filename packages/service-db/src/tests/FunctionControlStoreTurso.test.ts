@@ -29,6 +29,7 @@ const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStar
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 const CANVAS_ID = uuid(700);
+const CANVAS_DOCUMENT_ID = uuid(707);
 const DEFINITION_ID = uuid(701);
 const REVISION_ID = uuid(702);
 const UI_ARTIFACT_ID = uuid(703);
@@ -42,6 +43,7 @@ const OPERATION_FINGERPRINT = sha256('operation');
 const CELL_ID = 'function-test-cell';
 const FUNCTION_NAME = 'updatePreferences';
 const FUNCTION_ID = fnFunctionId(DEFINITION_ID, FUNCTION_NAME);
+const OTHER_ACCOUNT_ID = uuid(799);
 
 const TENANT = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -52,6 +54,12 @@ const TENANT = fnFreezeTenantContext({
   capabilities: ['*'],
   requestId: 'function-control-test',
   canvasId: CANVAS_ID,
+});
+
+const OTHER_MEMBER_TENANT = fnFreezeTenantContext({
+  ...TENANT,
+  accountId: OTHER_ACCOUNT_ID,
+  requestId: 'function-control-other-member',
 });
 
 const DESCRIPTOR: TWidgetServerFunctionDescriptor = fnNormalizeWidgetServerFunctionDescriptor({
@@ -101,6 +109,7 @@ async function openDatabase(databasePath = ':memory:', migrate = true): Promise<
       '000-initial.sql',
       '001-widget-revision-sequence.sql',
       '002-function-runtime.sql',
+      '003-widget-instance-projection.sql',
     ]) {
       await database.exec(await Bun.file(new URL(`../migrations/${migration}`, import.meta.url)).text());
     }
@@ -156,6 +165,22 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
       org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
     ) VALUES (?, ?, 'Function canvas', 'org', ?, 1, 1)
   `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_ID, DEFAULT_OSS_ACCOUNT_ID);
+  await (await database.prepare(`
+    INSERT INTO canvas_members (
+      org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, 'owner', 1, 1)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_ID, DEFAULT_OSS_ACCOUNT_ID);
+  await (await database.prepare(`
+    INSERT INTO collaboration_documents (
+      org_id, id, canvas_id, widget_instance_id, automerge_url, partition_key,
+      created_at_ms, updated_at_ms, content_version
+    ) VALUES (?, ?, ?, NULL, 'automerge:function-control-canvas', 'function-control', 1, 1, 0)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_DOCUMENT_ID, CANVAS_ID);
+  await (await database.prepare(`
+    INSERT INTO widget_instance_projection_heads (
+      org_id, canvas_id, source_sequence, snapshot_digest_sha256, projected_at_ms
+    ) VALUES (?, ?, 0, ?, 1)
+  `)).run(DEFAULT_OSS_ORGANIZATION_ID, CANVAS_ID, sha256('function-control-canvas'));
   await (await database.prepare(`
     INSERT INTO artifact_references (
       org_id, id, kind, digest_sha256, byte_size, retention_state, retain_until_ms, created_at_ms
@@ -376,9 +401,111 @@ describe('FunctionControlStoreTurso', () => {
       ...missingInstance,
       envelope: { ...missingInstance.envelope, widgetInstanceId: uuid(999) },
     })).rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
+    await (await database.prepare(`
+      UPDATE widget_instances
+      SET status = 'archived', updated_at_ms = 4
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT.orgId, WIDGET_INSTANCE_ID);
+    const archivedInstance = createRequest(uuid(1714), { invalid: 'archived-instance' });
+    await expect(store.createOrReplayInvocation(TENANT, archivedInstance))
+      .rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
     expect(await (await database.prepare(`
       SELECT count(*) AS count FROM function_invocations WHERE org_id = ?
     `)).get(TENANT.orgId)).toEqual({ count: 0 });
+  });
+
+  test('denies create and replay while the durable canvas projection is behind', async () => {
+    const request = createRequest(uuid(1715), { projection: 'current' }, {
+      key: 'projection-currency',
+    });
+    await expect(store.createOrReplayInvocation(TENANT, request)).resolves.toMatchObject({
+      status: 'created',
+    });
+    await (await database.prepare(`
+      UPDATE collaboration_documents
+      SET content_version = content_version + 1
+      WHERE org_id = ? AND id = ?
+    `)).run(TENANT.orgId, CANVAS_DOCUMENT_ID);
+
+    await expect(store.createOrReplayInvocation(TENANT, request))
+      .rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
+    await expect(store.createOrReplayInvocation(
+      TENANT,
+      createRequest(uuid(1716), { projection: 'delayed' }),
+    )).rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
+    expect(await (await database.prepare(`
+      SELECT count(*) AS count FROM function_invocations WHERE org_id = ?
+    `)).get(TENANT.orgId)).toEqual({ count: 1 });
+  });
+
+  test('rechecks invoking account, canvas, and membership inside create and cancellation transactions', async () => {
+    const invocationId = uuid(1717);
+    const request = createRequest(invocationId, { authority: 'owner' }, {
+      key: 'account-authority',
+      fingerprint: sha256('same-account-fingerprint'),
+    });
+    await expect(store.createOrReplayInvocation(TENANT, request)).resolves.toMatchObject({
+      status: 'created',
+    });
+    await (await database.prepare(`
+      INSERT INTO accounts (
+        id, kind, display_name, status, is_autogenerated, created_at_ms, updated_at_ms
+      ) VALUES (?, 'user', 'Other member', 'active', 0, 1, 1)
+    `)).run(OTHER_ACCOUNT_ID);
+    await (await database.prepare(`
+      INSERT INTO organization_memberships (
+        org_id, account_id, role, status, is_billable_seat, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'member', 'active', 1, 1, 1)
+    `)).run(TENANT.orgId, OTHER_ACCOUNT_ID);
+    await (await database.prepare(`
+      INSERT INTO canvas_members (
+        org_id, canvas_id, account_id, role, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, 'editor', 1, 1)
+    `)).run(TENANT.orgId, CANVAS_ID, OTHER_ACCOUNT_ID);
+
+    const otherRequest = createRequest(uuid(1718), { authority: 'owner' }, {
+      key: 'account-authority',
+      fingerprint: request.requestFingerprintSha256,
+    });
+    await expect(store.createOrReplayInvocation(OTHER_MEMBER_TENANT, {
+      ...otherRequest,
+      envelope: { ...otherRequest.envelope, tenant: OTHER_MEMBER_TENANT },
+    })).resolves.toEqual({
+      status: 'conflict',
+      invocationId,
+      reason: 'fingerprint_mismatch',
+    });
+    await expect(store.requestCancellation(OTHER_MEMBER_TENANT, {
+      invocationId,
+      nowMs: 101,
+    })).resolves.toEqual({ status: 'missing' });
+
+    const mismatchedCanvasTenant = fnFreezeTenantContext({
+      ...TENANT,
+      canvasId: uuid(798),
+      requestId: 'function-control-mismatched-canvas',
+    });
+    const mismatchedCanvas = createRequest(uuid(1719), { authority: 'wrong-canvas' });
+    await expect(store.createOrReplayInvocation(mismatchedCanvasTenant, {
+      ...mismatchedCanvas,
+      envelope: { ...mismatchedCanvas.envelope, tenant: mismatchedCanvasTenant },
+    })).rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
+
+    await (await database.prepare(`
+      DELETE FROM canvas_members
+      WHERE org_id = ? AND canvas_id = ? AND account_id = ?
+    `)).run(TENANT.orgId, CANVAS_ID, TENANT.accountId);
+    await expect(store.createOrReplayInvocation(
+      TENANT,
+      createRequest(uuid(1720), { authority: 'revoked' }),
+    )).rejects.toMatchObject({ code: 'FUNCTION_WIDGET_INSTANCE_NOT_FOUND' });
+    await expect(store.requestCancellation(TENANT, {
+      invocationId,
+      nowMs: 102,
+    })).resolves.toEqual({ status: 'missing' });
+    expect(await (await database.prepare(`
+      SELECT count(*) AS count FROM function_invocations WHERE org_id = ?
+    `)).get(TENANT.orgId)).toEqual({ count: 1 });
   });
 
   test('enforces the durable priority ceiling', async () => {

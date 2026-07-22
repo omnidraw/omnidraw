@@ -28,7 +28,19 @@ import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
 import { WidgetManagement } from './widget-management/WidgetManagement';
-import type { TWidgetCatalogGroup, TWidgetDraftMetadataPatch, TWidgetDraftToolPatch, TWidgetSource } from './widget-management/types';
+import {
+  fnMergeV2WidgetPlacementCatalog,
+  fnParseV2WidgetPlacementReference,
+  fnValidateV2WidgetPlacementTargets,
+} from './widget-management/fn.v2-widget-placement';
+import type {
+  TPublishedWidgetPlacementIdentity,
+  TPublishedWidgetPlacementTarget,
+  TWidgetCatalogGroup,
+  TWidgetDraftMetadataPatch,
+  TWidgetDraftToolPatch,
+  TWidgetSource,
+} from './widget-management/types';
 
 interface IPublicMethods {
   logout(providerId: string): void;
@@ -42,6 +54,13 @@ interface IActorServiceConfig {
   configPath: string;
   eventPublisherService: ITenantEventPublisherService,
   actorService?: TActorServiceReloader;
+  listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
+  resolvePublishedWidgetPlacement?: (
+    target: TPublishedWidgetPlacementIdentity,
+  ) => Promise<TPublishedWidgetPlacementTarget | null>;
+  resolveLegacyPublishedWidgetManifest?: (
+    definitionName: string,
+  ) => Promise<(TVibecanvasJson & { manifest_path: string }) | null>;
   authorizeToolCall?: TToolAuthorizer;
   approvalTimeoutMs?: number;
 }
@@ -527,8 +546,14 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetDrafts.publish(name, expectedRevision)
   }
 
-  getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
-    return this.#widgetManagement.catalog(groups)
+  async getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
+    const [legacyCatalog, targets] = await Promise.all([
+      this.#widgetManagement.catalog(groups),
+      this.#config.listPublishedWidgetPlacements?.() ?? Promise.resolve([]),
+    ])
+    const validated = fnValidateV2WidgetPlacementTargets(targets)
+    if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
+    return fnMergeV2WidgetPlacementCatalog({ legacyCatalog, targets: validated.targets })
   }
 
   getWidgetDetail(name: string, source: TWidgetSource) {
@@ -563,12 +588,49 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     reference: import('@vibecanvas/service-actor/core/fn.widget-frame').TWidgetPlacementRef,
     previewId?: string,
   ): Promise<import('./widget-management/types').TWidgetPlacementResolveResult> {
+    const v2Identity = fnParseV2WidgetPlacementReference(reference)
+    if (v2Identity) {
+      const target = this.#config.resolvePublishedWidgetPlacement
+        ? await this.#config.resolvePublishedWidgetPlacement(v2Identity)
+        : null
+      if (
+        !target
+        || target.definitionId !== v2Identity.definitionId
+        || target.revisionId !== v2Identity.revisionId
+      ) {
+        return {
+          ok: false,
+          code: 'NOT_FOUND',
+          message: 'Published v2 widget placement is no longer active.',
+        }
+      }
+      return {
+        ok: true,
+        descriptor: {
+          reference,
+          bounds: target.bounds,
+          kind: 'published-v2',
+          definitionId: target.definitionId,
+          revisionId: target.revisionId,
+          definitionName: null,
+          definitionSlug: target.slug,
+          previewId: null,
+        },
+      }
+    }
     const resolved = await this.#widgetManagement.resolvePlacementReference(reference)
     if (!resolved.ok) return resolved
     if (reference.source === 'published') {
+      if (resolved.descriptor.kind !== 'published-legacy') {
+        return {
+          ok: false,
+          code: 'NOT_FOUND',
+          message: 'Published widget placement is unavailable.',
+        }
+      }
       const definitionName = resolved.descriptor.definitionName
       const runtimeManifest = definitionName
-        ? this.#config.actorService?.getVibecanvasJson?.(definitionName)
+        ? await this.#resolveLegacyPublishedWidgetManifest(definitionName)
         : null
       if (!runtimeManifest) {
         return {
@@ -577,7 +639,24 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           message: `Published widget '${reference.name}' is not available in the actor runtime.`,
         }
       }
+      if (
+        runtimeManifest.name !== resolved.descriptor.definitionName
+        || runtimeManifest.slug !== resolved.descriptor.definitionSlug
+      ) {
+        return {
+          ok: false,
+          code: 'STALE_REVISION',
+          message: `Published widget '${reference.name}' changed before legacy placement.`,
+        }
+      }
       return resolved
+    }
+    if (resolved.descriptor.kind !== 'preview') {
+      return {
+        ok: false,
+        code: 'NOT_FOUND',
+        message: 'Widget Preview placement is unavailable.',
+      }
     }
     if (!previewId) {
       return { ok: false, code: 'UNSUPPORTED_BEHAVIOR', message: 'Preview placement requires an owner identity.' }
@@ -610,6 +689,15 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       ok: true,
       descriptor: { ...resolved.descriptor, previewId },
     }
+  }
+
+  async #resolveLegacyPublishedWidgetManifest(
+    definitionName: string,
+  ): Promise<(TVibecanvasJson & { manifest_path: string }) | null> {
+    if (this.#config.resolveLegacyPublishedWidgetManifest) {
+      return this.#config.resolveLegacyPublishedWidgetManifest(definitionName)
+    }
+    return this.#config.actorService?.getVibecanvasJson?.(definitionName) ?? null
   }
 
   inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
@@ -1261,7 +1349,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     generation: number,
   ): Promise<TAgentChatStartWidgetEditResult> {
     if (this.#isStopping) return { ok: false, message: 'Agent service is stopping.' }
-    const sourceManifest = this.#config.actorService?.getVibecanvasJson?.(definitionName)
+    const sourceManifest = await this.#resolveLegacyPublishedWidgetManifest(definitionName)
     if (!sourceManifest) return { ok: false, message: `Published widget definition not found: ${definitionName}` }
 
     await this.#workspace.reconcilePublishedWidgets()

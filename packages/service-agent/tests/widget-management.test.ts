@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import type {
   TAgentEvent,
 } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { AgentService } from '../src/AgentService';
+import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
 import { WidgetDraftController } from '../src/widget-drafts/WidgetDraftController';
 import { WidgetManagement } from '../src/widget-management/WidgetManagement';
@@ -336,5 +338,208 @@ describe('WidgetManagement', () => {
     expect(await manager.detail('Camera', 'published')).toBeNull();
     expect(await workspace.getDraft('Camera')).toBeNull();
     controller.close();
+  });
+
+  test('retries a source snapshot when files change between fingerprint and manifest read', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vc-widget-snapshot-'));
+    roots.push(root);
+    const dataPath = join(root, 'data');
+    const configPath = join(root, 'config');
+    await mkdir(join(configPath, 'widgets'), { recursive: true });
+    const workspace = new WidgetWorkspace({ dataPath, configPath });
+    await workspace.init();
+    const controller = new WidgetDraftController({
+      configPath,
+      workspace,
+      eventPublisher: new TestEvents(),
+    });
+    const publishedRoot = join(workspace.publishedRoot, 'Camera');
+    await mkdir(join(publishedRoot, 'widget'), { recursive: true });
+    await writeFile(
+      join(publishedRoot, 'vibecanvas.json'),
+      JSON.stringify(fnBuildWidgetCreateManifest({ name: 'Camera' })),
+      'utf8',
+    );
+    await writeFile(join(publishedRoot, 'widget', 'main.ts'), 'export default {}', 'utf8');
+    const manager = new WidgetManagement({ workspace, drafts: controller });
+    const before = (await manager.catalog([])).widgets[0]?.published;
+    if (!before?.placement) throw new Error('Expected published placement fixture.');
+
+    let mutated = false;
+    const raced = new WidgetManagement({
+      workspace,
+      drafts: controller,
+      afterVariantFingerprint: async ({ source, attempt }) => {
+        if (source !== 'published' || attempt !== 1 || mutated) return;
+        mutated = true;
+        const manifestPath = join(workspace.publishedRoot, 'Camera', 'vibecanvas.json');
+        const nextManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+        nextManifest.slug = 'camera-v2';
+        nextManifest.widget.frame = { width: 512, height: 384 };
+        await writeFile(manifestPath, JSON.stringify(nextManifest), 'utf8');
+      },
+    });
+
+    await expect(raced.resolvePlacementReference(before.placement.reference)).resolves.toMatchObject({
+      ok: false,
+      code: 'STALE_REVISION',
+    });
+    const after = (await raced.catalog([])).widgets[0]?.published;
+    expect(after).toMatchObject({
+      slug: 'camera-v2',
+      placement: { bounds: { width: 512, height: 384 } },
+    });
+    expect(after?.revision).not.toBe(before.revision);
+    await controller.close();
+  });
+
+  test('resolves exact v2 placement before consulting the explicit legacy actor fallback', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vc-widget-placement-'));
+    roots.push(root);
+    const dataPath = join(root, 'data');
+    const configPath = join(root, 'config');
+    const publishedRoot = join(dataPath, 'pi', 'agent', 'widgets', 'published', 'Camera');
+    await mkdir(join(publishedRoot, 'widget'), { recursive: true });
+    const manifest = fnBuildWidgetCreateManifest({ name: 'Camera' });
+    await writeFile(join(publishedRoot, 'vibecanvas.json'), JSON.stringify(manifest), 'utf8');
+    await writeFile(join(publishedRoot, 'widget', 'main.ts'), 'export default {}', 'utf8');
+
+    const neutralTarget = {
+      definitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      revisionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7',
+      name: 'Weather v2',
+      slug: 'weather-v2',
+      description: null,
+      contractDigestSha256: 'c'.repeat(64),
+      updatedAtMs: 10,
+      bounds: { width: 360, height: 320 },
+    };
+    const resolvedIdentities: Array<{ definitionId: string; revisionId: string }> = [];
+    let v2Active = true;
+    let legacyActorLookups = 0;
+    let legacyRuntimeManifest = { ...manifest, manifest_path: publishedRoot };
+    const service = new AgentService({
+      cachePath: join(root, 'cache'),
+      dataPath,
+      configPath,
+      eventPublisherService: new TestEvents(),
+      listPublishedWidgetPlacements: async () => [neutralTarget],
+      resolvePublishedWidgetPlacement: async (identity) => {
+        resolvedIdentities.push(identity);
+        return v2Active ? neutralTarget : null;
+      },
+      actorService: {
+        reload: async () => undefined,
+        getVibecanvasJson: () => {
+          legacyActorLookups += 1;
+          return legacyRuntimeManifest;
+        },
+      },
+    });
+    await service.start({ config: {}, hooks: {} });
+
+    const catalog = await service.getWidgetCatalog([]);
+    const published = catalog.widgets.find((entry) => entry.name === neutralTarget.name)?.published;
+    if (!published?.placement) throw new Error('Expected published fixture.');
+    const reference = published.placement.reference;
+    await expect(service.resolveWidgetPlacement(reference)).resolves.toMatchObject({
+      ok: true,
+      descriptor: {
+        kind: 'published-v2',
+        definitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+        revisionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7',
+        definitionName: null,
+        definitionSlug: neutralTarget.slug,
+        previewId: null,
+      },
+    });
+    expect(resolvedIdentities).toEqual([{
+      definitionId: neutralTarget.definitionId,
+      revisionId: neutralTarget.revisionId,
+    }]);
+    expect(legacyActorLookups).toBe(0);
+
+    v2Active = false;
+    await expect(service.resolveWidgetPlacement(reference)).resolves.toMatchObject({
+      ok: false,
+      code: 'NOT_FOUND',
+    });
+    expect(legacyActorLookups).toBe(0);
+
+    const legacy = catalog.widgets.find((entry) => entry.name === manifest.name)?.published;
+    if (!legacy?.placement) throw new Error('Expected legacy published fixture.');
+    legacyRuntimeManifest = {
+      ...legacyRuntimeManifest,
+      slug: 'stale-runtime-slug',
+    };
+    await expect(service.resolveWidgetPlacement(legacy.placement.reference)).resolves.toMatchObject({
+      ok: false,
+      code: 'STALE_REVISION',
+    });
+    expect(legacyActorLookups).toBe(1);
+
+    legacyRuntimeManifest = { ...manifest, manifest_path: publishedRoot };
+    await expect(service.resolveWidgetPlacement(legacy.placement.reference)).resolves.toMatchObject({
+      ok: true,
+      descriptor: {
+        kind: 'published-legacy',
+        definitionId: null,
+        revisionId: null,
+        definitionName: manifest.name,
+        definitionSlug: manifest.slug,
+        previewId: null,
+      },
+    });
+    expect(legacyActorLookups).toBe(2);
+
+    await service.stop();
+  });
+
+  test('rejects over-limit and malformed published placement catalogs at the agent boundary', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vc-widget-catalog-boundary-'));
+    roots.push(root);
+    const target = {
+      definitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+      revisionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7',
+      name: 'Weather v2',
+      slug: 'weather-v2',
+      description: null,
+      contractDigestSha256: 'c'.repeat(64),
+      updatedAtMs: 10,
+      bounds: { width: 360, height: 320 },
+    };
+    let injectedTargets: unknown = Array.from({ length: 1_001 }, () => target);
+    const service = new AgentService({
+      cachePath: join(root, 'cache'),
+      dataPath: join(root, 'data'),
+      configPath: join(root, 'config'),
+      eventPublisherService: new TestEvents(),
+      listPublishedWidgetPlacements: async () => injectedTargets as never,
+    });
+    await service.start({ config: {}, hooks: {} });
+
+    await expect(service.getWidgetCatalog([])).rejects.toThrow('OPERATION_UNAVAILABLE');
+    injectedTargets = [{
+      ...target,
+      bounds: { width: Number.POSITIVE_INFINITY, height: 320 },
+      unexpectedActorDefinition: 'Weather',
+    }];
+    await expect(service.getWidgetCatalog([])).rejects.toThrow('OPERATION_UNAVAILABLE');
+    injectedTargets = [target, {
+      ...target,
+      definitionId: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2',
+      revisionId: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd3',
+      slug: 'weather-v3',
+    }];
+    await expect(service.getWidgetCatalog([])).rejects.toThrow('OPERATION_UNAVAILABLE');
+    injectedTargets = [target, {
+      ...target,
+      definitionId: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2',
+      name: 'Weather v3',
+      slug: 'weather-v3',
+    }];
+    await expect(service.getWidgetCatalog([])).rejects.toThrow('OPERATION_UNAVAILABLE');
+
+    await service.stop();
   });
 });

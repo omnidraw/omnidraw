@@ -200,4 +200,70 @@ describe('createRuntime', () => {
 
     expect(calls).toEqual(['shutdown', 'stop']);
   });
+
+  test('continues stopping lower-order services and retains the first stop error', async () => {
+    const services = createServiceRegistry();
+    const calls: string[] = [];
+    const firstFailure = new Error('high-order stop failed');
+
+    services.provide('high' as never, 30, {
+      name: 'high',
+      async stop() {
+        calls.push('high');
+        throw firstFailure;
+      },
+    } as never);
+    services.provide('middle' as never, 20, {
+      name: 'middle',
+      async stop() {
+        calls.push('middle');
+      },
+    } as never);
+    services.provide('low' as never, 10, {
+      name: 'low',
+      async stop() {
+        calls.push('low');
+        throw new Error('low-order stop failed');
+      },
+    } as never);
+
+    const runtime = createRuntime({ plugins: [], hooks: {}, config: {}, services });
+
+    await expect(runtime.shutdown()).rejects.toBe(firstFailure);
+    expect(calls).toEqual(['high', 'middle', 'low']);
+  });
+
+  test('retains shutdown callback error precedence while all services stop', async () => {
+    const services = createServiceRegistry();
+    const calls: string[] = [];
+    const shutdownFailure = new Error('shutdown callback failed');
+
+    services.provide('high' as never, 20, {
+      name: 'high',
+      async stop() {
+        calls.push('high');
+        throw new Error('service stop failed');
+      },
+    } as never);
+    services.provide('low' as never, 10, {
+      name: 'low',
+      async stop() {
+        calls.push('low');
+      },
+    } as never);
+
+    const runtime = createRuntime({
+      plugins: [],
+      hooks: {},
+      config: {},
+      services,
+      shutdown: async () => {
+        calls.push('shutdown');
+        throw shutdownFailure;
+      },
+    });
+
+    await expect(runtime.shutdown()).rejects.toBe(shutdownFailure);
+    expect(calls).toEqual(['shutdown', 'high', 'low']);
+  });
 });

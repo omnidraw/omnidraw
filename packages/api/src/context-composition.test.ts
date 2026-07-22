@@ -160,6 +160,19 @@ const fakeContext = {
   humanResourceSecret: fakeHumanResourceSecretCapability,
   pty: fakeCapability<TApiContext['pty']>(),
   resource: fakeResourceCapability,
+  widget: fakeCapability<TApiContext['widget']>(),
+  widgetRuntimeLoadAdmission: {
+    run: async (_tenant, signal, operation) => await operation(
+      signal ?? new AbortController().signal,
+      (cleanup) => {
+        try {
+          void cleanup().catch(() => undefined);
+        } catch {
+          // The production admission service observes cleanup failures.
+        }
+      },
+    ),
+  },
 } satisfies TApiContext;
 
 describe('API context composition', () => {
@@ -180,6 +193,7 @@ describe('API context composition', () => {
       'pty',
       'resource',
       'tool',
+      'widget',
     ]);
   });
 

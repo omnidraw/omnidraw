@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   __setServerFunctionTransport,
   createServerFunctionProxy,
+  SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY,
   type IServerFunctionClientTransport,
   type TServerFunctionClientRequest,
 } from '../src/widget';
@@ -69,7 +70,10 @@ const context: TServerFunctionContext<'fn', Record<never, never>> = {
   metrics: { increment: () => undefined },
 };
 
-afterEach(() => __setServerFunctionTransport(null));
+afterEach(() => {
+  __setServerFunctionTransport(null);
+  delete (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
+});
 
 describe('@vibecanvas/sdk/server', () => {
   test('emits canonical descriptors and validates input and output at execution', async () => {
@@ -179,5 +183,34 @@ describe('generated widget server-function proxy', () => {
     });
     await expect(count({})).rejects.toThrow('invalid idempotency key');
     expect(() => createServerFunctionProxy('not a function name')).toThrow('name is invalid');
+  });
+
+  test('resolves the revision-scoped sandbox-global bridge across a bundled SDK boundary', async () => {
+    const calls: TServerFunctionClientRequest[] = [];
+    const spoofedLocalTransport = {
+      createIdempotencyKey: () => 'spoofed-local-key',
+      invoke: async <TOutput>() => ({ length: -1 }) as TOutput,
+    } satisfies IServerFunctionClientTransport;
+    __setServerFunctionTransport(spoofedLocalTransport);
+    (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY] = Object.freeze({
+      createIdempotencyKey: () => 'global-key-a',
+      invoke: async <TOutput>(request: TServerFunctionClientRequest) => {
+        calls.push(request);
+        return { length: 7 } as TOutput;
+      },
+    } satisfies IServerFunctionClientTransport);
+
+    const count = createServerFunctionProxy<{ text: string }, { length: number }>('count');
+    await expect(count({ text: 'bundled' })).resolves.toEqual({ length: 7 });
+    expect(calls).toEqual([{
+      functionName: 'count',
+      input: { text: 'bundled' },
+      idempotencyKey: 'global-key-a',
+    }]);
+
+    delete (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
+    await expect(count({ text: 'legacy-local' })).resolves.toEqual({ length: -1 });
+    __setServerFunctionTransport(null);
+    await expect(count({ text: 'closed' })).rejects.toThrow('transport is not connected');
   });
 });

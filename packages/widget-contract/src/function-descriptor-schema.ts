@@ -7,6 +7,7 @@ import {
   fnNormalizeWidgetServerFunctionDescriptors,
 } from './core/fn.function-descriptor';
 import type {
+  TWidgetBrowserFunctionDescriptor,
   TWidgetSerializableJsonObject,
   TWidgetServerFunctionDescriptor,
 } from './types';
@@ -28,7 +29,7 @@ const ZWidgetServerFunctionResourceAccess = z.object({
   effect: z.enum(['read', 'write', 'read_write']),
 }).strict();
 
-const ZWidgetServerFunctionDescriptorShape = z.object({
+const ZWidgetServerFunctionDescriptorObject = z.object({
   schemaVersion: z.literal(1),
   exportName: z.string().regex(EXPORT_NAME_PATTERN),
   modulePath: z.string().max(500).regex(MODULE_PATH_PATTERN).optional(),
@@ -48,7 +49,17 @@ const ZWidgetServerFunctionDescriptorShape = z.object({
     initialBackoffMs: z.number().int().min(0).max(10_000),
     maxBackoffMs: z.number().int().min(0).max(30_000),
   }).strict(),
-}).strict().superRefine((descriptor, context) => {
+}).strict();
+
+type TFunctionDescriptorRules = Pick<
+  TWidgetServerFunctionDescriptor,
+  'effect' | 'resources' | 'retry'
+>;
+
+function refineFunctionDescriptor(
+  descriptor: TFunctionDescriptorRules,
+  context: z.RefinementCtx,
+): void {
   const slots = new Set<string>();
   descriptor.resources.forEach((resource, index) => {
     if (slots.has(resource.slot)) {
@@ -88,12 +99,27 @@ const ZWidgetServerFunctionDescriptorShape = z.object({
       path: ['retry', 'maxBackoffMs'],
     });
   }
-});
+}
+
+const ZWidgetServerFunctionDescriptorShape = ZWidgetServerFunctionDescriptorObject
+  .superRefine(refineFunctionDescriptor);
+
+const ZWidgetBrowserFunctionDescriptorShape = ZWidgetServerFunctionDescriptorObject
+  .omit({ modulePath: true })
+  .strict()
+  .superRefine(refineFunctionDescriptor);
 
 export const ZWidgetServerFunctionDescriptor: z.ZodType<TWidgetServerFunctionDescriptor> =
   ZWidgetServerFunctionDescriptorShape.transform((descriptor) => (
     fnNormalizeWidgetServerFunctionDescriptor(descriptor)
   ));
+
+export const ZWidgetBrowserFunctionDescriptor: z.ZodType<TWidgetBrowserFunctionDescriptor> =
+  ZWidgetBrowserFunctionDescriptorShape.transform((descriptor) => {
+    const { modulePath: _modulePath, ...browserDescriptor } =
+      fnNormalizeWidgetServerFunctionDescriptor(descriptor);
+    return browserDescriptor;
+  });
 
 export const ZWidgetServerFunctionDescriptors = z.array(ZWidgetServerFunctionDescriptor)
   .max(128)
@@ -111,3 +137,19 @@ export const ZWidgetServerFunctionDescriptors = z.array(ZWidgetServerFunctionDes
     });
   })
   .transform(fnNormalizeWidgetServerFunctionDescriptors);
+
+export const ZWidgetBrowserFunctionDescriptors = z.array(ZWidgetBrowserFunctionDescriptor)
+  .max(128)
+  .superRefine((descriptors, context) => {
+    const exports = new Set<string>();
+    descriptors.forEach((descriptor, index) => {
+      if (exports.has(descriptor.exportName)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate server-function export: ${descriptor.exportName}`,
+          path: [index, 'exportName'],
+        });
+      }
+      exports.add(descriptor.exportName);
+    });
+  });

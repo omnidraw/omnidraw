@@ -32,6 +32,8 @@ import type {
   TWidgetDefinitionId,
   TWidgetPublicationCommitInput,
   TWidgetPublicationCommitResult,
+  TWidgetPublishedPlacementDescriptor,
+  TWidgetPublishedPlacementTarget,
   TWidgetPreviewArtifactActivationRequest,
   TWidgetPublishRequest,
   TWidgetPublishResult,
@@ -124,8 +126,24 @@ export interface IWidgetRevisionReader {
   ): Promise<TWidgetRevisionDescriptor | null>;
 }
 
+export interface IWidgetPublishedPlacementReader {
+  listPublishedPlacements(
+    tenant: TTenantContext,
+  ): Promise<readonly TWidgetPublishedPlacementDescriptor[]>;
+
+  resolvePublishedPlacement(
+    tenant: TTenantContext,
+    target: TWidgetPublishedPlacementTarget,
+  ): Promise<TWidgetPublishedPlacementDescriptor | null>;
+}
+
 /** Tenant-qualified metadata store; publication and rollback methods are atomic CAS operations. */
 export interface IWidgetControlStore extends IWidgetRevisionReader {
+  listPublishedDefinitions(
+    tenant: TTenantContext,
+    limit: number,
+  ): Promise<readonly TWidgetDefinitionDescriptor[]>;
+
   createDefinition(
     tenant: TTenantContext,
     request: TWidgetDefinitionCreate,

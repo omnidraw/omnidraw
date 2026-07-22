@@ -30,6 +30,11 @@ import {
   WIDGET_HOST_WINDOW_STROKE_WIDTH,
 } from './CONSTANTS';
 import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../core/CONSTANTS"
+import {
+  fnIsWidgetHostData,
+  fnNormalizeWidgetHostData,
+  fnPatchWidgetHostFrame,
+} from "./fn.normalize-widget-host-data";
 import type { THostThemeColors } from "./types";
 
 function getMenuButtonX(width: number) {
@@ -207,13 +212,15 @@ function createBody(konva: typeof Konva, colors: THostThemeColors) {
 }
 
 export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors, element: TElement, args?: { label?: string }) {
-  if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return null
+  if (!fnIsWidgetHostData(element.data)) return null
+  const hostData = fnNormalizeWidgetHostData(element.data)
+  if (!hostData) return null
 
-  const width = Math.max(WIDGET_HOST_MIN_WIDTH, element.data.w)
-  const height = Math.max(WIDGET_HOST_MIN_HEIGHT, element.data.h)
+  const width = Math.max(WIDGET_HOST_MIN_WIDTH, hostData.w)
+  const height = Math.max(WIDGET_HOST_MIN_HEIGHT, hostData.h)
   const bodyHeight = Math.max(0, height - WIDGET_HOST_HEADER_HEIGHT)
   const dividerWidth = Math.max(0, width - WIDGET_HOST_WINDOW_STROKE_WIDTH * 2)
-  const isExpanded = element.data.expanded !== false
+  const isExpanded = hostData.expanded !== false
 
   const group = new konva.Group({
     id: element.id,
@@ -228,7 +235,7 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   body.visible(isExpanded)
   body.listening(isExpanded)
 
-  const header = createHeader(konva, colors, args?.label ?? element.data.kind)
+  const header = createHeader(konva, colors, args?.label ?? hostData.hostKey)
   const border = createBorder(konva, colors)
   const headerBackground = header.findOne(`#${WIDGET_HOST_HEADER_ID}`)
   const divider = header.findOne(`#${WIDGET_HOST_DIVIDER_ID}`)
@@ -265,12 +272,11 @@ export function fnCreateWidgetNode(konva: typeof Konva, colors: THostThemeColors
   group.add(header)
   group.add(body)
 
-  group.setAttr(ELEMENT_DATA_ATTR, {
-    ...element.data,
+  group.setAttr(ELEMENT_DATA_ATTR, fnPatchWidgetHostFrame(element.data, {
     w: width,
     h: height,
     expanded: isExpanded,
-  })
+  }))
   group.setAttr(ELEMENT_STYLE_ATTR, element.style ?? {})
   group.setAttr(VC_CREATED_AT_ATTR, element.createdAt)
   group.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt)

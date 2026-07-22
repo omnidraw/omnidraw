@@ -1,3 +1,4 @@
+import { isValidAutomergeUrl } from '@automerge/automerge-repo';
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { randomBytes } from 'node:crypto';
 import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
@@ -11,11 +12,14 @@ import {
 } from '@vibecanvas/function-runtime/local';
 import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
+import { WidgetInstanceMetadataProjector } from '@vibecanvas/service-automerge/projection';
 import { AgentService } from '@vibecanvas/service-agent';
+import type { TActorServiceReloader } from '@vibecanvas/service-agent/core/types';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { FunctionControlStoreTurso } from '@vibecanvas/service-db/FunctionControlStoreTurso';
 import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
+import { WidgetInstanceMetadataStoreTurso } from '@vibecanvas/service-db/WidgetInstanceMetadataStoreTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { FilesystemServiceNode } from '@vibecanvas/service-filesystem/FilesystemServiceNode';
@@ -48,6 +52,7 @@ import { TenantServicePool } from './services/TenantServicePool';
 import { TenantResourceService } from './services/TenantResourceService';
 import { WidgetService } from './services/WidgetService';
 import { WidgetFunctionArtifactReader } from './services/WidgetFunctionArtifactReader';
+import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
 import {
   createWidgetServerArtifactCapability,
   createWidgetServiceCapability,
@@ -67,6 +72,33 @@ const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
   'zod',
 ]);
 
+function createDeferredActorService(
+  load: () => Promise<TActorServiceReloader>,
+): TActorServiceReloader {
+  let pending: Promise<TActorServiceReloader> | null = null;
+  const resolve = () => {
+    if (pending) return pending;
+    pending = load().catch((error) => {
+      pending = null;
+      throw error;
+    });
+    return pending;
+  };
+  return new Proxy({} as TActorServiceReloader, {
+    get(_target, property) {
+      if (property === 'then' || property === 'getVibecanvasJson') return undefined;
+      if (typeof property !== 'string') return undefined;
+      return (...args: unknown[]) => resolve().then((service) => {
+        const method = Reflect.get(service, property, service);
+        if (typeof method !== 'function') {
+          throw new Error(`Actor service capability '${property}' is unavailable.`);
+        }
+        return Reflect.apply(method, service, args);
+      });
+    },
+  });
+}
+
 function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
   if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
     throw new Error(`Widget build package '${specifier}' is not trusted by the host.`);
@@ -81,6 +113,7 @@ function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
 
 export interface IRuntimeServices {
   automerge: IAutomergeService;
+  widgetInstanceProjection: WidgetInstanceMetadataProjector;
   db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
   filesystem: IFilesystemService;
@@ -90,6 +123,7 @@ export interface IRuntimeServices {
   humanResourceSecret: IHumanResourceSecretService;
   widgetOwner: WidgetServicePool;
   widget: TWidgetServiceCapability;
+  widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   functionOwner: FunctionServicePool;
   functionInvocation: IFunctionInvocationApiCapability;
   actor: TenantServicePool<ActorService>;
@@ -162,6 +196,7 @@ function setupServices(config: ICliConfig) {
     },
   });
   const widgetCapability = createWidgetServiceCapability(widgetService);
+  const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
   const widgetServerArtifacts = createWidgetServerArtifactCapability(widgetService);
   const functionArtifactReader = new WidgetFunctionArtifactReader({
     widgets: widgetServerArtifacts,
@@ -285,21 +320,40 @@ function setupServices(config: ICliConfig) {
         mkdir(agentRoot, { recursive: true }),
         mkdir(cacheRoot, { recursive: true }),
       ]);
+      const loadActorService = () => actorService.forTenant(tenant);
       return new AgentService({
         dataPath: agentRoot,
         cachePath: cacheRoot,
         configPath: artifactsRoot,
         eventPublisherService: eventPublisher.forTenant(tenant),
-        actorService: await actorService.forTenant(tenant),
+        actorService: createDeferredActorService(loadActorService),
+        listPublishedWidgetPlacements: () => (
+          widgetCapability.listPublishedPlacements(tenant)
+        ),
+        resolvePublishedWidgetPlacement: (target) => (
+          widgetCapability.resolvePublishedPlacement(tenant, target)
+        ),
+        resolveLegacyPublishedWidgetManifest: async (definitionName) => (
+          (await loadActorService()).getVibecanvasJson(definitionName)
+        ),
       });
     },
   });
 
+  const widgetInstanceProjection = new WidgetInstanceMetadataProjector({
+    store: new WidgetInstanceMetadataStoreTurso(dbService.db, {
+      isCanonicalStateDocumentId: (candidate) => (
+        isValidAutomergeUrl(candidate) && !candidate.includes('#')
+      ),
+    }),
+    nowMs: () => Date.now(),
+  });
+  services.provide('widgetInstanceProjection', 49, widgetInstanceProjection);
+
   const automergeService = new AutomergeService(dbService.db, {
-    async authorizeDocument(tenant, automergeUrl) {
-      const canvases = await dbService.canvas.listAll(tenant);
-      return canvases.some((canvas) => canvas.automerge_url === automergeUrl);
-    },
+    // Exact OSS document access is resolved once by the storage authority so
+    // WebSocket admission and durable validation cannot drift.
+    authorizeDocument: () => true,
     async onElementCreate(event, handle) {
       try {
         const element = event.element;
@@ -347,11 +401,33 @@ function setupServices(config: ICliConfig) {
         });
       }
     },
+    onDocumentSnapshot(event) {
+      const result = widgetInstanceProjection.enqueue(event.tenantContext, {
+        canvasId: event.canvasId,
+        sourceSequence: event.sourceSequence,
+        elements: event.elements,
+      });
+      if (result.status === 'rejected') {
+        throw new Error(`Widget instance projection rejected durable canvas state: ${result.reason}`);
+      }
+      if (result.status === 'quarantined') {
+        eventPublisher.publishNotification(event.tenantContext, {
+          type: 'error',
+          title: 'Widget metadata projection quarantined',
+          description: `${result.canvasId}@${result.sourceSequence ?? 'invalid'}: ${result.reason}`,
+        });
+      }
+    },
+    async onDocumentRelease(event) {
+      if (event.canvasId === null) return;
+      await widgetInstanceProjection.release(event.tenantContext, event.canvasId);
+    },
   },
   );
   services.provide('automerge', 50, automergeService);
   services.provide('widgetOwner', 55, widgetService);
   services.provide('widget', 56, widgetCapability);
+  services.provide('widgetRuntimeLoadAdmission', 57, widgetRuntimeLoadAdmission);
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);

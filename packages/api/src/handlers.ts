@@ -9,6 +9,7 @@ import { notificationHandlers } from './notification/handlers';
 import { ptyHandlers } from './pty/handlers';
 import { resourceHandlers } from './resource/handlers';
 import { toolHandlers } from './tool/handlers';
+import { widgetHandlers } from './widget/handlers';
 
 const handlers = {
   actors: actorsHandlers,
@@ -22,6 +23,7 @@ const handlers = {
   pty: ptyHandlers,
   resource: resourceHandlers,
   tool: toolHandlers,
+  widget: widgetHandlers,
 };
 
 export {
@@ -37,4 +39,5 @@ export {
   ptyHandlers,
   resourceHandlers,
   toolHandlers,
+  widgetHandlers,
 };

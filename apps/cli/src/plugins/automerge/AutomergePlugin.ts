@@ -12,9 +12,10 @@ type TAutomergeWebSocketData = {
   tenant: TTenantContext;
 };
 
-type TBunAutomergeSocket = WebSocket & {
+type TBunAutomergeSocket = Omit<WebSocket, 'send'> & {
   data?: TAutomergeWebSocketData;
   ping(): void;
+  send(data: ArrayBuffer): number;
   terminate(): void;
 };
 
@@ -57,7 +58,7 @@ function createAutomergePlugin(): IPlugin<{ automerge: IAutomergeService }, ICli
             socket.close();
           },
           send(data: ArrayBuffer) {
-            socket.send(data);
+            return socket.send(data);
           },
           terminate() {
             socket.terminate();

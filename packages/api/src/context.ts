@@ -9,6 +9,7 @@ import type { TNotificationApiContext } from './notification/types';
 import type { TPtyApiContext } from './pty/types';
 import type { TResourceApiContext } from './resource/types';
 import type { TToolApiContext } from './tool/types';
+import type { TWidgetApiContext } from './widget/types';
 
 type TApiContext = TActorsApiContext
   & TAgentApiContext
@@ -20,7 +21,8 @@ type TApiContext = TActorsApiContext
   & TNotificationApiContext
   & TPtyApiContext
   & TResourceApiContext
-  & TToolApiContext;
+  & TToolApiContext
+  & TWidgetApiContext;
 
 export type {
   TActorsApiContext,
@@ -35,4 +37,5 @@ export type {
   TPtyApiContext,
   TResourceApiContext,
   TToolApiContext,
+  TWidgetApiContext,
 };
