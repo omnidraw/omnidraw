@@ -924,11 +924,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/service-event-publisher/package.json](packages/service-event-publisher/package.json) |  |
+| [packages/service-event-publisher/src/EventBus.ts](packages/service-event-publisher/src/EventBus.ts) |  |
 | [packages/service-event-publisher/src/EventPublisherService.ts](packages/service-event-publisher/src/EventPublisherService.ts) |  |
 | [packages/service-event-publisher/src/events.ts](packages/service-event-publisher/src/events.ts) | Service-owned event contracts that do not depend on API transport schemas. |
 | [packages/service-event-publisher/src/IEventPublisherService.ts](packages/service-event-publisher/src/IEventPublisherService.ts) | Event publication capability consumed by services and transport adapters. |
 | [packages/service-event-publisher/src/index.ts](packages/service-event-publisher/src/index.ts) | Public service-owned event contracts and publisher implementation. |
-| [packages/service-event-publisher/src/ScopedEventBus.ts](packages/service-event-publisher/src/ScopedEventBus.ts) |  |
 | [packages/service-event-publisher/tsconfig.json](packages/service-event-publisher/tsconfig.json) |  |
 
 ## packages/service-filesystem

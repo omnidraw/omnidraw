@@ -12,10 +12,7 @@ import {
   createServiceRegistry,
   type ICollaborationService,
   type IPlugin,
-  type IScopedEventBus,
   type IService,
-  type TScopedEventRecord,
-  type TScopedEventTopic,
 } from '@vibecanvas/runtime'
 import type {
   IIdentityProvider,
@@ -38,7 +35,6 @@ declare module '@vibecanvas/runtime' {
     managedExecutor: TManagedService<IFunctionExecutor>
     managedResources: TManagedService<IResourceGateway>
     managedCollaboration: TManagedService<ICollaborationService>
-    managedEvents: TManagedService<IScopedEventBus<unknown>>
     managedUsage: TManagedService<IUsageSink>
   }
 }
@@ -61,16 +57,11 @@ const MANAGED_SERVICE_NAMES = [
   'managedExecutor',
   'managedResources',
   'managedCollaboration',
-  'managedEvents',
   'managedUsage',
 ] as const
 
 function artifactKey(orgId: string, artifactId: string): string {
   return `${orgId}:${artifactId}`
-}
-
-function topicKey(orgId: string, topic: TScopedEventTopic): string {
-  return `${orgId}:${JSON.stringify(topic)}`
 }
 
 function invocationFingerprint(request: TFunctionDispatchRequest): string {
@@ -134,7 +125,6 @@ function invocationRecord(
 export function createManagedCompositionFixture() {
   const artifactDescriptors = new Map<string, TWidgetArtifactDescriptor>()
   const artifactBytes = new Map<string, Uint8Array>()
-  const eventRecords = new Map<string, TScopedEventRecord<unknown>[]>()
   const admittedDocuments = new Set<string>()
   const dispatchEvidence: Array<Readonly<{
     tenant: TTenantContext
@@ -273,35 +263,6 @@ export function createManagedCompositionFixture() {
     },
   }
 
-  const events: TManagedService<IScopedEventBus<unknown>> = {
-    name: 'managed-events',
-    async publish(tenant, topic, event) {
-      const key = topicKey(tenant.orgId, topic)
-      const records = eventRecords.get(key) ?? []
-      const record: TScopedEventRecord<unknown> = Object.freeze({
-        eventId: `managed-event:${tenant.orgId}:${records.length + 1}`,
-        orgId: tenant.orgId,
-        topic,
-        sequence: records.length + 1,
-        publishedAtMs: records.length + 1,
-        event,
-      })
-      records.push(record)
-      eventRecords.set(key, records)
-      return record
-    },
-    subscribe(tenant, topic, options) {
-      const afterSequence = options?.afterSequence ?? 0
-      const records = [...(eventRecords.get(topicKey(tenant.orgId, topic)) ?? [])]
-        .filter((record) => record.sequence > afterSequence)
-      return {
-        async *[Symbol.asyncIterator]() {
-          for (const record of records) yield record
-        },
-      }
-    },
-  }
-
   const usage: TManagedService<IUsageSink> = {
     name: 'managed-usage',
     async listUsageOutbox() {
@@ -320,8 +281,7 @@ export function createManagedCompositionFixture() {
   services.provide('managedExecutor', 50, executor)
   services.provide('managedResources', 60, resources)
   services.provide('managedCollaboration', 70, collaboration)
-  services.provide('managedEvents', 80, events)
-  services.provide('managedUsage', 90, usage)
+  services.provide('managedUsage', 80, usage)
 
   const compositionProbe: IPlugin<Pick<
     import('@vibecanvas/runtime').IServiceMap,
@@ -352,7 +312,6 @@ export function createManagedCompositionFixture() {
       executor,
       resources,
       collaboration,
-      events,
       usage,
     },
     bootEvidence,

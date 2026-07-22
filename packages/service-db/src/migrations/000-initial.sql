@@ -1184,37 +1184,6 @@ CREATE INDEX resource_write_permits_expiry_idx
 CREATE INDEX resource_write_permits_attempt_idx
   ON resource_write_permits (org_id, invocation_id, attempt_id);
 
-CREATE TABLE scoped_events (
-  org_id TEXT NOT NULL CHECK (
-    length(org_id) = 36 AND org_id = lower(org_id)
-    AND substr(org_id, 9, 1) = '-' AND substr(org_id, 14, 1) = '-'
-    AND substr(org_id, 19, 1) = '-' AND substr(org_id, 24, 1) = '-'
-    AND length(replace(org_id, '-', '')) = 32
-    AND replace(org_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  id TEXT NOT NULL CHECK (
-    length(id) = 36 AND id = lower(id)
-    AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-'
-    AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-'
-    AND length(replace(id, '-', '')) = 32
-    AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  topic TEXT NOT NULL CHECK (length(trim(topic)) BETWEEN 1 AND 300),
-  sequence INTEGER NOT NULL CHECK (sequence >= 1),
-  event_type TEXT NOT NULL CHECK (
-    event_type IN ('created', 'updated', 'deleted', 'state_changed', 'message', 'output', 'error')
-  ),
-  payload_json TEXT NOT NULL CHECK (json_valid(payload_json) AND json_type(payload_json) = 'object'),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  retain_until_ms INTEGER CHECK (retain_until_ms IS NULL OR retain_until_ms >= created_at_ms),
-  PRIMARY KEY (org_id, id),
-  UNIQUE (org_id, topic, sequence),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE
-) STRICT;
-
-CREATE INDEX scoped_events_replay_idx ON scoped_events (org_id, topic, sequence);
-CREATE INDEX scoped_events_retention_idx ON scoped_events (org_id, retain_until_ms);
-
 CREATE TABLE usage_outbox (
   org_id TEXT NOT NULL CHECK (
     length(org_id) = 36 AND org_id = lower(org_id)

@@ -248,7 +248,7 @@ The key correction is to shard persistent authority while pooling ephemeral comp
 | Plane | Owns | Must not own |
 | --- | --- | --- |
 | Global control plane | Users, organizations, memberships, seat counts, subscriptions, plan policy, cell directory, placement epochs, runtime/build policy, usage rollups, invoices | Canvas/CRDT payloads, customer artifact references, open resource files, live sandboxes, per-call synchronous data paths |
-| Cell gateway | Authenticated tenant context, API routing, WebSocket sessions, canvas/widget/resource catalog APIs, scoped event subscriptions | Physical resource paths, sandbox lifecycle details, billing calculation policy |
+| Cell gateway | Authenticated tenant context, API routing, WebSocket sessions, canvas/widget/resource catalog APIs | Physical resource paths, sandbox lifecycle details, billing calculation policy |
 | Collaboration | Document routing, Automerge protocol, active handles, persistence, compaction, presence | Widget server execution and resource writes triggered merely by element presence |
 | Invocation controller | Validation, durable job state, organization-fair admission inside one cell, leases, retries, cancellation, version pinning, result retention | Executing guest code, allocating capacity between cells, or opening customer database files |
 | Fleet allocator | Coarse assignment of executor slots/memory tiers to cells from backlog, reservations, and host headroom | Per-organization queue order, invocation state, guest execution, or the synchronous result path |
@@ -954,7 +954,6 @@ function_attempts
 invocation_leases              # worker/epoch/expiry; authoritative fence
 resource_write_permits         # short attempt-epoch transaction fences
 idempotency_records            # input/revision/contract conflict detection
-scoped_events or outbox
 usage_outbox
 media_files                    # org/canvas ownership, blob reference
 file_systems                   # org root/capability, never an ambient host path
@@ -1042,7 +1041,7 @@ Retire actor connections for new widgets. Use the narrowest state/communication 
 | Scheduled or multi-step coordination | Unsupported initially; defer to a future private managed extension |
 | Broadcast invalidation | Org/canvas-scoped host event with no arbitrary target actor ID |
 
-An event bus remains useful infrastructure, but it is scoped and host-controlled. It should not recreate a graph of permanently running actors. Transactional durable events require an outbox; ephemeral events can be dropped and followed by a state refresh.
+Service-owned ephemeral event channels remain useful infrastructure. They should not recreate a graph of permanently running actors; dropped events can be followed by a state refresh.
 
 ## Open-source and private managed boundary
 
@@ -1114,7 +1113,6 @@ The private repository consumes versioned public packages. For local development
 | `SandboxDriver` | Prepare/start/execute/measure/destroy | Bun child/test driver | Microsandbox or later driver |
 | `ResourceProvider/Gateway` | Logical calls and lifecycle | Direct local providers | Routed Resource Store fleet |
 | `CollaborationService` | Tenant-aware document sessions | One local Automerge service | Partitioned cell service |
-| `ScopedEventBus` | Org/canvas/session/invocation topics | In-memory | Distributed managed bus/outbox |
 | `UsageSink` | Idempotent raw receipts | Local log/no-op | Durable outbox and billing ingest |
 
 Managed plan algorithms can remain private while envelope types, deterministic policy inputs, and conformance tests remain public. This lets third parties implement their own scheduler or sandbox without exposing WipeCanvas billing strategy.
@@ -1141,7 +1139,7 @@ Managed plan algorithms can remain private while envelope types, deterministic p
 | `packages/service-automerge` | Refactor | Tenant-aware collaboration interface, bounded lifecycle, partition adapter; no direct actor creation. |
 | `packages/service-db` | Replace actor-era schema with strict baseline | `~/.vibecanvas/main.db`, `000-initial.sql`, migration ledger, local cell/control store implementation, and pure tenant-aware repository helpers. |
 | `packages/service-actor` | Retire from default path | Extract resources; keep supervisor/Actor only in a legacy compatibility plugin. |
-| `packages/service-event-publisher` | Replace implementation | Scoped event-bus interface with local and managed adapters. |
+| `packages/service-event-publisher` | Keep local | Service-owned ephemeral DB, actor, agent, filesystem, and notification channels. |
 | `packages/service-agent` | Make stores injectable/org-scoped | Authoring, validation, build, preview, publication orchestration; no process-global tenant state. |
 | `packages/orpc-client` | Keep | Aggregate typed API and generated function transport. |
 | Existing `packages/api-*` | Collapse into `packages/api` | One `@vibecanvas/api` package with `actor` (legacy), `agent`, `canvas`, `collaboration`, `filesystem`, `function`, `media`, `notification`, `pty`, `resource`, and `tool` domain folders plus one contract/context/router. |

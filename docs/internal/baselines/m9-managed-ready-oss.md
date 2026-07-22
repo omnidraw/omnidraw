@@ -87,14 +87,13 @@ flowchart LR
   `tenant-core`, and `widget-contract` to the exact shared release version
   `0.1.0` and imports only their documented root exports.
 - The fixture registers fake managed identity, placement, artifact,
-  dispatcher, executor, resource, collaboration, scoped-event, and usage
+  dispatcher, executor, resource, collaboration, and usage
   implementations through the public service registry. It does not import the
   OSS CLI, API package, concrete `service-*` implementations, package `src`
   paths, or copied/patched source.
 - Public packages are versioned, non-private, export their supported root, and
-  exact-pin public-to-public dependencies. Collaboration and scoped-event
-  interfaces live in the public runtime contract rather than local service
-  packages.
+  exact-pin public-to-public dependencies. The collaboration interface lives
+  in the public runtime contract rather than a local service package.
 - The OSS-side API conformance harness adapts the fixture dispatcher to the
   public function API capability, then invokes the existing function router.
   The fixture remains API-agnostic, and architecture assertions reject fixture

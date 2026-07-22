@@ -523,18 +523,14 @@ CHECK (finished_at_ms IS NULL OR started_at_ms IS NOT NULL),
 CHECK (finished_at_ms IS NULL OR finished_at_ms >= started_at_ms)
 ```
 
-#### Events and usage
+#### Usage
 
 ```text
-scoped_events
 usage_outbox
 ```
 
 Constraints:
 
-- every topic is organization-scoped and bounded;
-- event type is checked; payload JSON is valid and bounded at the application boundary;
-- sequence/order key is unique within its stream;
 - usage receipt ID is unique and references one invocation attempt or resource operation;
 - receipt numeric fields are non-negative integers;
 - outbox state transitions and imported timestamps are consistent;
@@ -922,7 +918,7 @@ M7 is the client cutover. Do not proceed to authoring until the renderer regress
 
 ### Implement
 
-- Refactor `service-agent` to depend on `IWidgetDraftStore`, validator, builder, publication, preview, resource catalog/gateway, and scoped event interfaces instead of `ActorService`.
+- Refactor `service-agent` to depend on `IWidgetDraftStore`, validator, builder, publication, preview, and resource catalog/gateway interfaces instead of `ActorService`.
 - Generate UI-only widgets by default; generate server files only when required.
 - Replace primary actor/state-machine prompt material with short functions, schemas, resource effects, and collaborative/resource state guidance.
 - Keep legacy actor authoring only if explicitly required by the compatibility adapter.

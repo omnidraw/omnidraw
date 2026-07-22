@@ -89,7 +89,7 @@ describe("000-initial.sql", () => {
   test("matches the complete checked-in table, column, key, FK, and index manifest", async () => {
     const db = await openBaseline();
     expect(Object.keys(EXPECTED_SCHEMA).toSorted()).toEqual([...EXPECTED_APPLICATION_TABLES].toSorted());
-    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(40);
+    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(39);
 
     const tableList = (await (await db.prepare("PRAGMA table_list")).all()) as Array<{
       name: string;
