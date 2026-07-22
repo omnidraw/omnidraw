@@ -9,7 +9,6 @@ import type {
   TAgentEvent,
   TDbEvent,
   TEventSubscriptionOptions,
-  TFilesystemEvent,
   TNotificationEvent,
   TSequencedEvent,
 } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -68,22 +67,6 @@ export class TestTenantEventPublisher implements ITenantEventPublisherService {
 
   getAgentEventCursor(): number {
     return this.delegate.getAgentEventCursor();
-  }
-
-  publishFilesystemEvent(filesystemId: string, path: string, event: TFilesystemEvent): number {
-    return this.delegate.publishFilesystemEvent(filesystemId, path, event);
-  }
-
-  subscribeFilesystemEvents(
-    filesystemId: string,
-    path: string,
-    options?: TEventSubscriptionOptions,
-  ): AsyncIterable<TFilesystemEvent> {
-    return this.delegate.subscribeFilesystemEvents(filesystemId, path, options);
-  }
-
-  getFilesystemEventCursor(filesystemId: string): number {
-    return this.delegate.getFilesystemEventCursor(filesystemId);
   }
 
   publishNotification(event: TNotificationEvent): number {

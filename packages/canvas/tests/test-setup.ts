@@ -179,9 +179,6 @@ type TLegacyAppCapabilities = {
   cloneImage?: unknown;
   deleteImage?: unknown;
   notification?: unknown;
-  terminal?: unknown;
-  filetree?: unknown;
-  file?: unknown;
 };
 
 export async function createCanvasTestHarness(args: {

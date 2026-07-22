@@ -1,37 +1,24 @@
 import { fnScopedKey } from '@vibecanvas/tenant-core';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
-  IScopedEventBus,
-  TScopedEventRecord,
-  TScopedEventTopic,
-} from '@vibecanvas/runtime';
-import type {
   IEventPublisherService,
   ITenantEventPublisherService,
   TActorEvent,
   TAgentEvent,
   TDbEvent,
   TEventSubscriptionOptions,
-  TFilesystemEvent,
   TNotificationEvent,
   TSequencedEvent,
 } from './IEventPublisherService';
-import { ScopedEventBus } from './ScopedEventBus';
+import { EventBus } from './EventBus';
 
-type TPublicScopedEvent = Readonly<{
-  event: unknown;
-  publishedAtMs: number;
-}>;
-
-export class EventPublisherService implements IEventPublisherService, IScopedEventBus<unknown> {
+export class EventPublisherService implements IEventPublisherService {
   readonly name = 'eventPublisher';
 
-  readonly #db = new ScopedEventBus<TDbEvent>();
-  readonly #actor = new ScopedEventBus<TActorEvent>();
-  readonly #agent = new ScopedEventBus<TAgentEvent>();
-  readonly #filesystem = new ScopedEventBus<TFilesystemEvent>();
-  readonly #notification = new ScopedEventBus<TNotificationEvent>();
-  readonly #scoped = new ScopedEventBus<TPublicScopedEvent>();
+  readonly #db = new EventBus<TDbEvent>();
+  readonly #actor = new EventBus<TActorEvent>();
+  readonly #agent = new EventBus<TAgentEvent>();
+  readonly #notification = new EventBus<TNotificationEvent>();
   readonly #latestNotification = new Map<string, TNotificationEvent>();
 
   forTenant(tenant: TTenantContext): ITenantEventPublisherService {
@@ -48,13 +35,6 @@ export class EventPublisherService implements IEventPublisherService, IScopedEve
       publishAgentEvent: (event: TAgentEvent) => this.publishAgentEvent(tenant, event),
       subscribeAgentEvents: (options?: TEventSubscriptionOptions) => this.subscribeAgentEvents(tenant, options),
       getAgentEventCursor: () => this.getAgentEventCursor(tenant),
-      publishFilesystemEvent: (filesystemId: string, path: string, event: TFilesystemEvent) => (
-        this.publishFilesystemEvent(tenant, filesystemId, path, event)
-      ),
-      subscribeFilesystemEvents: (filesystemId: string, path: string, options?: TEventSubscriptionOptions) => (
-        this.subscribeFilesystemEvents(tenant, filesystemId, path, options)
-      ),
-      getFilesystemEventCursor: (filesystemId: string) => this.getFilesystemEventCursor(tenant, filesystemId),
       publishNotification: (event: TNotificationEvent) => this.publishNotification(tenant, event),
       subscribeNotifications: (options?: TEventSubscriptionOptions) => this.subscribeNotifications(tenant, options),
       subscribeNotificationRecords: (options?: TEventSubscriptionOptions) => (
@@ -109,18 +89,6 @@ export class EventPublisherService implements IEventPublisherService, IScopedEve
     return this.#agent.cursor(this.#accountScope(tenant, 'agent'));
   }
 
-  publishFilesystemEvent(tenant: TTenantContext, filesystemId: string, path: string, event: TFilesystemEvent): number {
-    return this.#filesystem.publish(this.#filesystemScope(tenant, filesystemId), path, event);
-  }
-
-  subscribeFilesystemEvents(tenant: TTenantContext, filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent> {
-    return this.#filesystem.subscribe(this.#filesystemScope(tenant, filesystemId), path, options);
-  }
-
-  getFilesystemEventCursor(tenant: TTenantContext, filesystemId: string): number {
-    return this.#filesystem.cursor(this.#filesystemScope(tenant, filesystemId));
-  }
-
   publishNotification(tenant: TTenantContext, event: TNotificationEvent): number {
     const scope = this.#accountScope(tenant, 'notification');
     this.#latestNotification.set(scope, event);
@@ -148,51 +116,6 @@ export class EventPublisherService implements IEventPublisherService, IScopedEve
     return this.#latestNotification.get(this.#accountScope(tenant, 'notification')) ?? null;
   }
 
-  async publish(
-    tenant: TTenantContext,
-    topic: TScopedEventTopic,
-    event: unknown,
-  ): Promise<TScopedEventRecord<unknown>> {
-    const scope = this.#orgScope(tenant, 'scoped-event');
-    const publishedAtMs = Date.now();
-    const sequence = this.#scoped.publish(scope, JSON.stringify(topic), { event, publishedAtMs });
-    return Object.freeze({
-      eventId: fnScopedKey('scoped-event-record', [tenant.orgId, String(sequence)]),
-      orgId: tenant.orgId,
-      topic,
-      sequence,
-      publishedAtMs,
-      event,
-    });
-  }
-
-  subscribe(
-    tenant: TTenantContext,
-    topic: TScopedEventTopic,
-    options?: TEventSubscriptionOptions,
-  ): AsyncIterable<TScopedEventRecord<unknown>> {
-    const records = this.#scoped.subscribeRecords(
-      this.#orgScope(tenant, 'scoped-event'),
-      JSON.stringify(topic),
-      options,
-    );
-    const orgId = tenant.orgId;
-    return {
-      async *[Symbol.asyncIterator]() {
-        for await (const record of records) {
-          yield Object.freeze({
-            eventId: fnScopedKey('scoped-event-record', [orgId, String(record.sequence)]),
-            orgId,
-            topic,
-            sequence: record.sequence,
-            publishedAtMs: record.event.publishedAtMs,
-            event: record.event.event,
-          });
-        }
-      },
-    };
-  }
-
   #orgScope(tenant: TTenantContext, namespace: string): string {
     return fnScopedKey(namespace, [tenant.orgId]);
   }
@@ -201,7 +124,4 @@ export class EventPublisherService implements IEventPublisherService, IScopedEve
     return fnScopedKey(namespace, [tenant.orgId, tenant.accountId]);
   }
 
-  #filesystemScope(tenant: TTenantContext, filesystemId: string): string {
-    return fnScopedKey('filesystem', [tenant.orgId, filesystemId]);
-  }
 }

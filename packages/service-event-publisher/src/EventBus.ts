@@ -1,7 +1,7 @@
 import { fnScopedKey } from '@vibecanvas/tenant-core';
 import type { TSequencedEvent } from './IEventPublisherService';
 
-type TScopedEventRecord<TEvent> = Readonly<{
+type TEventRecord<TEvent> = Readonly<{
   event: TEvent;
   sequence: number;
   topic: string;
@@ -9,17 +9,17 @@ type TScopedEventRecord<TEvent> = Readonly<{
 
 type TSubscriber<TEvent> = {
   closed: boolean;
-  pending: ((result: IteratorResult<TScopedEventRecord<TEvent>>) => void) | null;
-  queue: TScopedEventRecord<TEvent>[];
+  pending: ((result: IteratorResult<TEventRecord<TEvent>>) => void) | null;
+  queue: TEventRecord<TEvent>[];
 };
 
 type TSubscribeArgs = Readonly<{
   afterSequence?: number;
 }>;
 
-class ScopedEventBus<TEvent> {
+class EventBus<TEvent> {
   readonly #maxReplayEvents: number;
-  readonly #records = new Map<string, TScopedEventRecord<TEvent>[]>();
+  readonly #records = new Map<string, TEventRecord<TEvent>[]>();
   readonly #sequences = new Map<string, number>();
   readonly #subscribers = new Map<string, Set<TSubscriber<TEvent>>>();
 
@@ -99,7 +99,7 @@ class ScopedEventBus<TEvent> {
               return { done: false, value: { event: queued.event, sequence: queued.sequence } };
             }
             if (subscriber.closed) return { done: true, value: undefined };
-            const result = await new Promise<IteratorResult<TScopedEventRecord<TEvent>>>((resolve) => {
+            const result = await new Promise<IteratorResult<TEventRecord<TEvent>>>((resolve) => {
               subscriber.pending = resolve;
             });
             if (result.done) return { done: true, value: undefined };
@@ -114,7 +114,7 @@ class ScopedEventBus<TEvent> {
     };
   }
 
-  #push(scope: string, topic: string, record: TScopedEventRecord<TEvent>): void {
+  #push(scope: string, topic: string, record: TEventRecord<TEvent>): void {
     const subscriberKey = fnScopedKey('subscriber', [scope, topic]);
     for (const subscriber of this.#subscribers.get(subscriberKey) ?? []) {
       if (subscriber.closed) continue;
@@ -129,5 +129,5 @@ class ScopedEventBus<TEvent> {
   }
 }
 
-export { ScopedEventBus };
+export { EventBus };
 export type { TSubscribeArgs };

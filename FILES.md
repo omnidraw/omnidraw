@@ -23,10 +23,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/_embedded-assets.ts](apps/cli/_embedded-assets.ts) |  |
 | [apps/cli/.gitignore](apps/cli/.gitignore) |  |
 | [apps/cli/AGENTS.md](apps/cli/AGENTS.md) |  |
-| [apps/cli/embedded-assets.ts](apps/cli/embedded-assets.ts) |  |
 | [apps/cli/package.json](apps/cli/package.json) |  |
 | [apps/cli/public/favicon.png](apps/cli/public/favicon.png) |  |
-| [apps/cli/public/index.html](apps/cli/public/index.html) |  |
 | [apps/cli/public/logo.png](apps/cli/public/logo.png) |  |
 | [apps/cli/src/build-config.ts](apps/cli/src/build-config.ts) |  |
 | [apps/cli/src/config.ts](apps/cli/src/config.ts) |  |
@@ -49,13 +47,10 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/cli/core/fn.should-upgrade.ts](apps/cli/src/plugins/cli/core/fn.should-upgrade.ts) |  |
 | [apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts](apps/cli/src/plugins/cli/core/fn.uninstall-plan.ts) |  |
 | [apps/cli/src/plugins/cli/core/tx.uninstall.ts](apps/cli/src/plugins/cli/core/tx.uninstall.ts) |  |
-| [apps/cli/src/plugins/filesystem/CONSTANTS.ts](apps/cli/src/plugins/filesystem/CONSTANTS.ts) |  |
-| [apps/cli/src/plugins/filesystem/FilesystemPlugin.ts](apps/cli/src/plugins/filesystem/FilesystemPlugin.ts) |  |
 | [apps/cli/src/plugins/legacy-actor/LegacyActorPlugin.ts](apps/cli/src/plugins/legacy-actor/LegacyActorPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/orpc.base.ts](apps/cli/src/plugins/orpc/orpc.base.ts) |  |
 | [apps/cli/src/plugins/orpc/OrpcPlugin.ts](apps/cli/src/plugins/orpc/OrpcPlugin.ts) |  |
 | [apps/cli/src/plugins/orpc/router.ts](apps/cli/src/plugins/orpc/router.ts) |  |
-| [apps/cli/src/plugins/pty/PtyPlugin.ts](apps/cli/src/plugins/pty/PtyPlugin.ts) |  |
 | [apps/cli/src/plugins/server/check-update.ts](apps/cli/src/plugins/server/check-update.ts) |  |
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
@@ -107,8 +102,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/ai-chat-adapters.ts](apps/frontend/src/ai-chat-adapters.ts) |  |
 | [apps/frontend/src/App.module.css](apps/frontend/src/App.module.css) |  |
 | [apps/frontend/src/App.tsx](apps/frontend/src/App.tsx) |  |
-| [apps/frontend/src/components/path-picker-dialog.module.css](apps/frontend/src/components/path-picker-dialog.module.css) |  |
-| [apps/frontend/src/components/path-picker-dialog.tsx](apps/frontend/src/components/path-picker-dialog.tsx) |  |
 | [apps/frontend/src/components/ui/scroll-area.module.css](apps/frontend/src/components/ui/scroll-area.module.css) |  |
 | [apps/frontend/src/components/ui/scroll-area.tsx](apps/frontend/src/components/ui/scroll-area.tsx) |  |
 | [apps/frontend/src/components/ui/Toast.module.css](apps/frontend/src/components/ui/Toast.module.css) |  |
@@ -173,6 +166,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
+| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
+| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
+| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
+| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
+| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
+| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
+| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
+| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -290,27 +291,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/file/index.ts](packages/api/src/file/index.ts) |  |
 | [packages/api/src/file/orpc.ts](packages/api/src/file/orpc.ts) |  |
 | [packages/api/src/file/types.ts](packages/api/src/file/types.ts) |  |
-| [packages/api/src/filesystem/api.files-filesystem.ts](packages/api/src/filesystem/api.files-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.home-filesystem.ts](packages/api/src/filesystem/api.home-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.inspect-filesystem.ts](packages/api/src/filesystem/api.inspect-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.keepalive-watch-filesystem.ts](packages/api/src/filesystem/api.keepalive-watch-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.list-filesystem.ts](packages/api/src/filesystem/api.list-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.list-registered-filesystems.ts](packages/api/src/filesystem/api.list-registered-filesystems.ts) |  |
-| [packages/api/src/filesystem/api.move-filesystem.ts](packages/api/src/filesystem/api.move-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.read-filesystem.ts](packages/api/src/filesystem/api.read-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.unwatch-filesystem.ts](packages/api/src/filesystem/api.unwatch-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.watch-filesystem.ts](packages/api/src/filesystem/api.watch-filesystem.ts) |  |
-| [packages/api/src/filesystem/api.write-filesystem.ts](packages/api/src/filesystem/api.write-filesystem.ts) |  |
-| [packages/api/src/filesystem/contract.ts](packages/api/src/filesystem/contract.ts) |  |
-| [packages/api/src/filesystem/core/fn.create-filesystem-error.ts](packages/api/src/filesystem/core/fn.create-filesystem-error.ts) |  |
-| [packages/api/src/filesystem/core/fn.detect-file-kind.ts](packages/api/src/filesystem/core/fn.detect-file-kind.ts) |  |
-| [packages/api/src/filesystem/core/fn.detect-mime.ts](packages/api/src/filesystem/core/fn.detect-mime.ts) |  |
-| [packages/api/src/filesystem/core/fn.to-api-filesystem-error.ts](packages/api/src/filesystem/core/fn.to-api-filesystem-error.ts) |  |
-| [packages/api/src/filesystem/core/fx.resolve-filesystem-id.ts](packages/api/src/filesystem/core/fx.resolve-filesystem-id.ts) |  |
-| [packages/api/src/filesystem/handlers.ts](packages/api/src/filesystem/handlers.ts) |  |
-| [packages/api/src/filesystem/index.ts](packages/api/src/filesystem/index.ts) |  |
-| [packages/api/src/filesystem/orpc.ts](packages/api/src/filesystem/orpc.ts) |  |
-| [packages/api/src/filesystem/types.ts](packages/api/src/filesystem/types.ts) |  |
 | [packages/api/src/function/api.cancel-function.ts](packages/api/src/function/api.cancel-function.ts) |  |
 | [packages/api/src/function/api.function-error.ts](packages/api/src/function/api.function-error.ts) |  |
 | [packages/api/src/function/api.get-function.ts](packages/api/src/function/api.get-function.ts) |  |
@@ -331,19 +311,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/notification/index.ts](packages/api/src/notification/index.ts) |  |
 | [packages/api/src/notification/orpc.ts](packages/api/src/notification/orpc.ts) |  |
 | [packages/api/src/notification/types.ts](packages/api/src/notification/types.ts) |  |
-| [packages/api/src/pty/api.create-pty.ts](packages/api/src/pty/api.create-pty.ts) |  |
-| [packages/api/src/pty/api.get-pty.ts](packages/api/src/pty/api.get-pty.ts) |  |
-| [packages/api/src/pty/api.list-pty.ts](packages/api/src/pty/api.list-pty.ts) |  |
-| [packages/api/src/pty/api.remove-pty.ts](packages/api/src/pty/api.remove-pty.ts) |  |
-| [packages/api/src/pty/api.update-pty.ts](packages/api/src/pty/api.update-pty.ts) |  |
-| [packages/api/src/pty/api.upload-image.ts](packages/api/src/pty/api.upload-image.ts) |  |
-| [packages/api/src/pty/contract.ts](packages/api/src/pty/contract.ts) |  |
-| [packages/api/src/pty/core/fn.extension-from-pty-image-format.ts](packages/api/src/pty/core/fn.extension-from-pty-image-format.ts) |  |
-| [packages/api/src/pty/core/fx.resolve-filesystem-id.ts](packages/api/src/pty/core/fx.resolve-filesystem-id.ts) |  |
-| [packages/api/src/pty/handlers.ts](packages/api/src/pty/handlers.ts) |  |
-| [packages/api/src/pty/index.ts](packages/api/src/pty/index.ts) |  |
-| [packages/api/src/pty/orpc.ts](packages/api/src/pty/orpc.ts) |  |
-| [packages/api/src/pty/types.ts](packages/api/src/pty/types.ts) |  |
 | [packages/api/src/resource/api.db-resources.ts](packages/api/src/resource/api.db-resources.ts) |  |
 | [packages/api/src/resource/api.resource-error.ts](packages/api/src/resource/api.resource-error.ts) |  |
 | [packages/api/src/resource/api.resources.ts](packages/api/src/resource/api.resources.ts) |  |
@@ -451,11 +418,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts](packages/canvas/src/plugins/confirm-dialog/ConfirmDialog.plugin.ts) |  |
 | [packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts](packages/canvas/src/plugins/context-menu/ContextMenu.plugin.ts) |  |
 | [packages/canvas/src/plugins/event-listener/EventListener.plugin.ts](packages/canvas/src/plugins/event-listener/EventListener.plugin.ts) |  |
-| [packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts](packages/canvas/src/plugins/filesystem/Filesystem.plugin.ts) |  |
-| [packages/canvas/src/plugins/filesystem/getLanguageExtension.ts](packages/canvas/src/plugins/filesystem/getLanguageExtension.ts) |  |
-| [packages/canvas/src/plugins/filesystem/typed.ts](packages/canvas/src/plugins/filesystem/typed.ts) |  |
-| [packages/canvas/src/plugins/filesystem/widget.css](packages/canvas/src/plugins/filesystem/widget.css) |  |
-| [packages/canvas/src/plugins/filesystem/widget.ts](packages/canvas/src/plugins/filesystem/widget.ts) |  |
 | [packages/canvas/src/plugins/grid/fn.math.ts](packages/canvas/src/plugins/grid/fn.math.ts) |  |
 | [packages/canvas/src/plugins/grid/Grid.plugin.ts](packages/canvas/src/plugins/grid/Grid.plugin.ts) |  |
 | [packages/canvas/src/plugins/grid/tx.draw.ts](packages/canvas/src/plugins/grid/tx.draw.ts) |  |
@@ -523,10 +485,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/plugins/shape2d/tx.create-clone-drag.ts](packages/canvas/src/plugins/shape2d/tx.create-clone-drag.ts) |  |
 | [packages/canvas/src/plugins/shape2d/tx.setup-node.ts](packages/canvas/src/plugins/shape2d/tx.setup-node.ts) |  |
 | [packages/canvas/src/plugins/shape2d/tx.update-node-from-element.ts](packages/canvas/src/plugins/shape2d/tx.update-node-from-element.ts) |  |
-| [packages/canvas/src/plugins/terminal/Terminal.plugin.ts](packages/canvas/src/plugins/terminal/Terminal.plugin.ts) |  |
-| [packages/canvas/src/plugins/terminal/typed.ts](packages/canvas/src/plugins/terminal/typed.ts) |  |
-| [packages/canvas/src/plugins/terminal/widget.css](packages/canvas/src/plugins/terminal/widget.css) |  |
-| [packages/canvas/src/plugins/terminal/widget.ts](packages/canvas/src/plugins/terminal/widget.ts) |  |
 | [packages/canvas/src/plugins/text/CONSTANTS.ts](packages/canvas/src/plugins/text/CONSTANTS.ts) |  |
 | [packages/canvas/src/plugins/text/fn.compute-text-height.ts](packages/canvas/src/plugins/text/fn.compute-text-height.ts) |  |
 | [packages/canvas/src/plugins/text/fn.create-text-element.ts](packages/canvas/src/plugins/text/fn.create-text-element.ts) |  |
@@ -876,7 +834,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/fx.db-resource.ts](packages/service-db/src/DbServiceTurso/fx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.encryption-key.ts](packages/service-db/src/DbServiceTurso/fx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.file.ts](packages/service-db/src/DbServiceTurso/fx.file.ts) |  |
-| [packages/service-db/src/DbServiceTurso/fx.filesystem.ts](packages/service-db/src/DbServiceTurso/fx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.keyValue.ts](packages/service-db/src/DbServiceTurso/fx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.migration-file.ts](packages/service-db/src/DbServiceTurso/fx.migration-file.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fx.migration-state.ts](packages/service-db/src/DbServiceTurso/fx.migration-state.ts) |  |
@@ -891,7 +848,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.db-resource.ts](packages/service-db/src/DbServiceTurso/tx.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.encryption-key.ts](packages/service-db/src/DbServiceTurso/tx.encryption-key.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.file.ts](packages/service-db/src/DbServiceTurso/tx.file.ts) |  |
-| [packages/service-db/src/DbServiceTurso/tx.filesystem.ts](packages/service-db/src/DbServiceTurso/tx.filesystem.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.keyValue.ts](packages/service-db/src/DbServiceTurso/tx.keyValue.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
@@ -924,22 +880,12 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/service-event-publisher/package.json](packages/service-event-publisher/package.json) |  |
+| [packages/service-event-publisher/src/EventBus.ts](packages/service-event-publisher/src/EventBus.ts) |  |
 | [packages/service-event-publisher/src/EventPublisherService.ts](packages/service-event-publisher/src/EventPublisherService.ts) |  |
 | [packages/service-event-publisher/src/events.ts](packages/service-event-publisher/src/events.ts) | Service-owned event contracts that do not depend on API transport schemas. |
 | [packages/service-event-publisher/src/IEventPublisherService.ts](packages/service-event-publisher/src/IEventPublisherService.ts) | Event publication capability consumed by services and transport adapters. |
 | [packages/service-event-publisher/src/index.ts](packages/service-event-publisher/src/index.ts) | Public service-owned event contracts and publisher implementation. |
-| [packages/service-event-publisher/src/ScopedEventBus.ts](packages/service-event-publisher/src/ScopedEventBus.ts) |  |
 | [packages/service-event-publisher/tsconfig.json](packages/service-event-publisher/tsconfig.json) |  |
-
-## packages/service-filesystem
-
-| path | jsdocs |
-|---|---|
-| [packages/service-filesystem/package.json](packages/service-filesystem/package.json) |  |
-| [packages/service-filesystem/src/FilesystemServiceNode.ts](packages/service-filesystem/src/FilesystemServiceNode.ts) |  |
-| [packages/service-filesystem/src/IFilesystemService.ts](packages/service-filesystem/src/IFilesystemService.ts) |  |
-| [packages/service-filesystem/src/types.ts](packages/service-filesystem/src/types.ts) |  |
-| [packages/service-filesystem/tsconfig.json](packages/service-filesystem/tsconfig.json) |  |
 
 ## packages/service-kv
 
@@ -950,16 +896,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-kv/src/KvService.ts](packages/service-kv/src/KvService.ts) |  |
 | [packages/service-kv/src/types.ts](packages/service-kv/src/types.ts) |  |
 | [packages/service-kv/tsconfig.json](packages/service-kv/tsconfig.json) |  |
-
-## packages/service-pty
-
-| path | jsdocs |
-|---|---|
-| [packages/service-pty/package.json](packages/service-pty/package.json) |  |
-| [packages/service-pty/src/IPtyService.ts](packages/service-pty/src/IPtyService.ts) |  |
-| [packages/service-pty/src/PtyServiceBunPty.ts](packages/service-pty/src/PtyServiceBunPty.ts) |  |
-| [packages/service-pty/src/types.ts](packages/service-pty/src/types.ts) |  |
-| [packages/service-pty/tsconfig.json](packages/service-pty/tsconfig.json) |  |
 
 ## packages/service-theme
 

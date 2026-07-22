@@ -15,7 +15,6 @@ describe('external private-style managed composition', () => {
       'managed-executor',
       'managed-resources',
       'managed-collaboration',
-      'managed-events',
       'managed-usage',
     ])
     expect(await fixture.services.identity.resolveIdentity({ requestId: 'request', session: {} }))
@@ -26,7 +25,7 @@ describe('external private-style managed composition', () => {
     await fixture.runtime.shutdown()
   })
 
-  test('uses managed artifact, dispatcher/executor, resource, collaboration, event, and usage fakes', async () => {
+  test('uses managed artifact, dispatcher/executor, resource, collaboration, and usage fakes', async () => {
     const fixture = createManagedCompositionFixture()
     await fixture.runtime.boot()
 
@@ -93,14 +92,6 @@ describe('external private-style managed composition', () => {
       .toBe(true)
     await fixture.services.collaboration.releaseDocument(MANAGED_TENANT, 'document-managed')
 
-    const topic = { scope: 'canvas' as const, canvasId: 'canvas-managed', name: 'widget.changed' }
-    await fixture.services.events.publish(MANAGED_TENANT, topic, { revision: 2 })
-    const iterator = fixture.services.events.subscribe(MANAGED_TENANT, topic)[Symbol.asyncIterator]()
-    expect((await iterator.next()).value).toMatchObject({
-      orgId: MANAGED_TENANT.orgId,
-      sequence: 1,
-      event: { revision: 2 },
-    })
     expect(await fixture.services.usage.listUsageOutbox(MANAGED_TENANT, { limit: 10 })).toEqual([])
     expect(await fixture.services.usage.transitionUsageOutbox(MANAGED_TENANT, {
       ids: ['usage-1'],

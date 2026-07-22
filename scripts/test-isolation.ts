@@ -49,26 +49,6 @@ const suites: readonly TIsolationSuite[] = [
     ],
   },
   {
-    name: 'filesystem capabilities, traversal, watch isolation, and stale cleanup',
-    command: [
-      'bun',
-      'test',
-      'packages/service-filesystem/src/FilesystemServiceNode.test.ts',
-      'packages/api/src/filesystem/api.files-filesystem.test.ts',
-    ],
-  },
-  {
-    name: 'PTY sessions, attachments, uploads, and disconnect teardown',
-    command: [
-      'bun',
-      'test',
-      'packages/service-pty/tests/PtyServiceBunPty.test.ts',
-      'packages/api/src/pty/api.upload-image.test.ts',
-      'apps/cli/tests/pty-plugin.test.ts',
-      '--timeout=30000',
-    ],
-  },
-  {
     name: 'events, wildcard topics, cursors, notifications, and context composition',
     command: [
       'bun',

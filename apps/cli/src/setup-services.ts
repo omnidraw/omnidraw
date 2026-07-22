@@ -24,10 +24,6 @@ import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceContro
 import { WidgetInstanceMetadataStoreTurso } from '@vibecanvas/service-db/WidgetInstanceMetadataStoreTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import { FilesystemServiceNode } from '@vibecanvas/service-filesystem/FilesystemServiceNode';
-import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesystemService';
-import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
-import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'path';
 import { fnScopedKey } from '@vibecanvas/tenant-core';
@@ -98,8 +94,6 @@ export interface IRuntimeServices {
   widgetInstanceProjection: WidgetInstanceMetadataProjector;
   db: DbServiceTurso;
   eventPublisher: IEventPublisherService;
-  filesystem: IFilesystemService;
-  pty: IPtyService;
   resourceOwner: ResourceServicePool;
   resource: TResourceApiCapability;
   humanResourceSecret: IHumanResourceSecretService;
@@ -145,20 +139,13 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
   const widgetBuilderIdentity = `vibecanvas-widget-bun/${Bun.version}`;
-  const filesystemService = new FilesystemServiceNode(eventPublisher);
   const functionStore = new FunctionControlStoreTurso(dbService.db);
   const functionSchemas = new JsonSchemaFunctionValidator();
   const functionWriteCapabilities = new ResourceWriteCapabilityAuthority({
     secret: randomBytes(32),
     permits: functionStore,
   });
-  const ptyService = new PtyServiceBunPty({
-    resolveWorkingDirectory: (tenant, args) => filesystemService.resolveHostPath(tenant, args),
-  });
-
   services.provide('db', 20, dbService);
-  services.provide('filesystem', 30, filesystemService);
-  services.provide('pty', 40, ptyService);
 
   const widgetService = new WidgetServicePool({
     create: async (tenant) => {
@@ -420,8 +407,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     automergeService,
     dbService,
     eventPublisher,
-    filesystemService,
-    ptyService,
     resourceService,
     functionService,
     widgetService,

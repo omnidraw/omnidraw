@@ -248,7 +248,7 @@ The key correction is to shard persistent authority while pooling ephemeral comp
 | Plane | Owns | Must not own |
 | --- | --- | --- |
 | Global control plane | Users, organizations, memberships, seat counts, subscriptions, plan policy, cell directory, placement epochs, runtime/build policy, usage rollups, invoices | Canvas/CRDT payloads, customer artifact references, open resource files, live sandboxes, per-call synchronous data paths |
-| Cell gateway | Authenticated tenant context, API routing, WebSocket sessions, canvas/widget/resource catalog APIs, scoped event subscriptions | Physical resource paths, sandbox lifecycle details, billing calculation policy |
+| Cell gateway | Authenticated tenant context, API routing, WebSocket sessions, canvas/widget/resource catalog APIs | Physical resource paths, sandbox lifecycle details, billing calculation policy |
 | Collaboration | Document routing, Automerge protocol, active handles, persistence, compaction, presence | Widget server execution and resource writes triggered merely by element presence |
 | Invocation controller | Validation, durable job state, organization-fair admission inside one cell, leases, retries, cancellation, version pinning, result retention | Executing guest code, allocating capacity between cells, or opening customer database files |
 | Fleet allocator | Coarse assignment of executor slots/memory tiers to cells from backlog, reservations, and host headroom | Per-organization queue order, invocation state, guest execution, or the synchronous result path |
@@ -954,12 +954,9 @@ function_attempts
 invocation_leases              # worker/epoch/expiry; authoritative fence
 resource_write_permits         # short attempt-epoch transaction fences
 idempotency_records            # input/revision/contract conflict detection
-scoped_events or outbox
 usage_outbox
 media_files                    # org/canvas ownership, blob reference
-file_systems                   # org root/capability, never an ambient host path
 tool_groups                    # org-owned or explicit system-owned scope
-pty_session_metadata           # short retention; live process remains ephemeral
 legacy_actor_*                 # compatibility only
 agent_chats, drafts, previews, approvals
 ```
@@ -988,7 +985,6 @@ Schema rules:
 - Make uniqueness organization-qualified, for example `(org_id, slug)` and `(org_id, canvas_id, element_id)`.
 - Include `org_id` in every customer parent/child foreign key and supporting index so an incorrect join cannot create a cross-scope relationship.
 - Reserve an explicit system/global owner scope for built-in widgets instead of using ambiguous nullable `org_id` values.
-- Prefix filesystem roots with an opaque organization ID, but never use paths as authorization.
 - Scope in-memory maps, cache keys, browser storage, queues, event topics, and idempotency keys the same way as database rows.
 - A new OSS installation seeds one deterministic local organization and owner membership in the fresh database.
 
@@ -1000,8 +996,6 @@ The rewrite must cover every authority-bearing surface, not only actor and canva
 | --- | --- | --- |
 | `canvas`, `canvas_members`, Automerge documents and presence | Add organization-qualified ownership, ACLs, document admission, keys, and topics | Same canvas/document IDs cannot be opened, joined, or observed across orgs |
 | `media_files` and `@vibecanvas/api/media` | Store org/canvas ownership separately from content hash; authorize clone/get/remove/put through tenant context | Knowing a hash or file ID in org A grants no read/clone/delete in org B |
-| `file_systems`, `@vibecanvas/api/filesystem`, `packages/service-filesystem` | Register org-scoped virtual roots/capabilities; scope paths, watchers, watch IDs, events, and temp files | Filesystem ID, path, or watch ID from org A is rejected in org B |
-| `@vibecanvas/api/pty`, `packages/service-pty` | Scope session maps, attachments, working directories, uploads, process limits, and teardown by org/account/session | A PTY/session ID or uploaded temp path cannot be attached/read/removed cross-org |
 | `tool_groups` and `@vibecanvas/api/tool` | Make groups org-owned or explicit immutable system built-ins; qualify names and mutations | Identical group names coexist; mutation cannot address another org's group |
 | `@vibecanvas/api/notification` and event publisher | Replace global streams with org/account/canvas/invocation topics and admission | A subscriber in org B receives no org A payload or existence signal |
 | `@vibecanvas/api/resource`, resource providers, resource files | Scope catalogs, schemas, operation names, placements, queues, backups, and receipts | Resource/operation IDs collide safely and every cross-org read/write/restore fails |
@@ -1042,7 +1036,7 @@ Retire actor connections for new widgets. Use the narrowest state/communication 
 | Scheduled or multi-step coordination | Unsupported initially; defer to a future private managed extension |
 | Broadcast invalidation | Org/canvas-scoped host event with no arbitrary target actor ID |
 
-An event bus remains useful infrastructure, but it is scoped and host-controlled. It should not recreate a graph of permanently running actors. Transactional durable events require an outbox; ephemeral events can be dropped and followed by a state refresh.
+Service-owned ephemeral event channels remain useful infrastructure. They should not recreate a graph of permanently running actors; dropped events can be followed by a state refresh.
 
 ## Open-source and private managed boundary
 
@@ -1114,7 +1108,6 @@ The private repository consumes versioned public packages. For local development
 | `SandboxDriver` | Prepare/start/execute/measure/destroy | Bun child/test driver | Microsandbox or later driver |
 | `ResourceProvider/Gateway` | Logical calls and lifecycle | Direct local providers | Routed Resource Store fleet |
 | `CollaborationService` | Tenant-aware document sessions | One local Automerge service | Partitioned cell service |
-| `ScopedEventBus` | Org/canvas/session/invocation topics | In-memory | Distributed managed bus/outbox |
 | `UsageSink` | Idempotent raw receipts | Local log/no-op | Durable outbox and billing ingest |
 
 Managed plan algorithms can remain private while envelope types, deterministic policy inputs, and conformance tests remain public. This lets third parties implement their own scheduler or sandbox without exposing WipeCanvas billing strategy.
@@ -1141,12 +1134,10 @@ Managed plan algorithms can remain private while envelope types, deterministic p
 | `packages/service-automerge` | Refactor | Tenant-aware collaboration interface, bounded lifecycle, partition adapter; no direct actor creation. |
 | `packages/service-db` | Replace actor-era schema with strict baseline | `~/.vibecanvas/main.db`, `000-initial.sql`, migration ledger, local cell/control store implementation, and pure tenant-aware repository helpers. |
 | `packages/service-actor` | Retire from default path | Extract resources; keep supervisor/Actor only in a legacy compatibility plugin. |
-| `packages/service-event-publisher` | Replace implementation | Scoped event-bus interface with local and managed adapters. |
+| `packages/service-event-publisher` | Keep local | Service-owned ephemeral DB, actor, agent, and notification channels. |
 | `packages/service-agent` | Make stores injectable/org-scoped | Authoring, validation, build, preview, publication orchestration; no process-global tenant state. |
 | `packages/orpc-client` | Keep | Aggregate typed API and generated function transport. |
-| Existing `packages/api-*` | Collapse into `packages/api` | One `@vibecanvas/api` package with `actor` (legacy), `agent`, `canvas`, `collaboration`, `filesystem`, `function`, `media`, `notification`, `pty`, `resource`, and `tool` domain folders plus one contract/context/router. |
-| `packages/service-filesystem` | Capability-scope and bound | Organization-rooted virtual filesystems, scoped watcher maps/events, path and byte limits; no ambient host roots. |
-| `packages/service-pty` | Isolate active sessions | Organization/account/session-scoped process maps, working directories, uploads, attachment limits, idle expiry, and teardown. PTY is active metered work, not a widget backend. |
+| Existing `packages/api-*` | Collapse into `packages/api` | One `@vibecanvas/api` package with `actor` (legacy), `agent`, `canvas`, `collaboration`, `function`, `media`, `notification`, `resource`, and `tool` domain folders plus one contract/context/router. |
 | `packages/service-kv` | Audit and namespace | Separate platform-global configuration from organization-qualified customer keys. |
 | `packages/service-theme` | Keep mostly client-side | Built-in definitions remain global immutable data; remembered/user styles are scoped in their owning canvas/account store. |
 | Actor resource classes | Extract and keep | Local resource providers behind a location-transparent gateway. |

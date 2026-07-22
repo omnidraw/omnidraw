@@ -21,7 +21,6 @@ function txEnsureVibecanvasHome(
     args.home.artifactsRoot,
     args.home.resourcesRoot,
     args.home.tempRoot,
-    args.home.ptyRoot,
     args.home.cacheRoot,
     args.home.logsRoot,
   ];

@@ -66,7 +66,6 @@
     "@vibecanvas/tapable": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
     "dompurify": "^3.4.11",
-    "ghostty-web": "^0.4.0",
     "konva": "^10.3.0",
     "lucide-solid": "catalog:",
     "lucide-static": "catalog:",

@@ -16,7 +16,7 @@
       "application_id": 1447641669
     },
     "userVersion": {
-      "user_version": 0
+      "user_version": 4
     },
     "foreignKeys": {
       "foreign_keys": 1
@@ -41,7 +41,35 @@
     {
       "version": 0,
       "name": "000-initial.sql",
-      "checksum_sha256": "862dfebc6fbc1e21d52ac71130279f73c6214439d74107785ed1b671f4a60e2b",
+      "checksum_sha256": "71186df35215bf2c3df3286ce87a1d84b6b8abe384105911635e1a2a3b0f2e55",
+      "applied_at_ms": 1784592000000,
+      "application_version": "m1-evidence"
+    },
+    {
+      "version": 1,
+      "name": "001-widget-revision-sequence.sql",
+      "checksum_sha256": "20331fb3caf44495aa431d7d2dd4e1a91556acc8efb7e6120d0c31614f4bb2e6",
+      "applied_at_ms": 1784592000000,
+      "application_version": "m1-evidence"
+    },
+    {
+      "version": 2,
+      "name": "002-function-runtime.sql",
+      "checksum_sha256": "dace423882d0ba1f38637c73cc7d278f923ae1f5c68141093f4cc891c03e4708",
+      "applied_at_ms": 1784592000000,
+      "application_version": "m1-evidence"
+    },
+    {
+      "version": 3,
+      "name": "003-widget-instance-projection.sql",
+      "checksum_sha256": "6bc16ecec5f5a41c86699925030d755d5d8e805e951f7cd836b747231218a996",
+      "applied_at_ms": 1784592000000,
+      "application_version": "m1-evidence"
+    },
+    {
+      "version": 4,
+      "name": "004-agent-authoring.sql",
+      "checksum_sha256": "2d8702614e5909ca44119e32998b8f35af9f63a12fa2dd949e5a1c1da72989dc",
       "applied_at_ms": 1784592000000,
       "application_version": "m1-evidence"
     }
@@ -59,7 +87,7 @@
       "schema": "main",
       "name": "agent_chats",
       "type": "table",
-      "ncol": 10,
+      "ncol": 11,
       "wr": 0,
       "strict": 1
     },
@@ -67,7 +95,23 @@
       "schema": "main",
       "name": "agent_drafts",
       "type": "table",
-      "ncol": 10,
+      "ncol": 12,
+      "wr": 0,
+      "strict": 1
+    },
+    {
+      "schema": "main",
+      "name": "agent_preview_resource_bindings",
+      "type": "table",
+      "ncol": 12,
+      "wr": 0,
+      "strict": 1
+    },
+    {
+      "schema": "main",
+      "name": "agent_preview_revisions",
+      "type": "table",
+      "ncol": 25,
       "wr": 0,
       "strict": 1
     },
@@ -75,7 +119,7 @@
       "schema": "main",
       "name": "agent_previews",
       "type": "table",
-      "ncol": 11,
+      "ncol": 12,
       "wr": 0,
       "strict": 1
     },
@@ -115,7 +159,7 @@
       "schema": "main",
       "name": "collaboration_documents",
       "type": "table",
-      "ncol": 8,
+      "ncol": 9,
       "wr": 0,
       "strict": 1
     },
@@ -153,17 +197,17 @@
     },
     {
       "schema": "main",
-      "name": "file_systems",
+      "name": "function_attempts",
       "type": "table",
-      "ncol": 10,
+      "ncol": 26,
       "wr": 0,
       "strict": 1
     },
     {
       "schema": "main",
-      "name": "function_attempts",
+      "name": "function_definitions",
       "type": "table",
-      "ncol": 22,
+      "ncol": 25,
       "wr": 0,
       "strict": 1
     },
@@ -171,7 +215,7 @@
       "schema": "main",
       "name": "function_invocations",
       "type": "table",
-      "ncol": 19,
+      "ncol": 49,
       "wr": 0,
       "strict": 1
     },
@@ -179,7 +223,7 @@
       "schema": "main",
       "name": "idempotency_records",
       "type": "table",
-      "ncol": 12,
+      "ncol": 15,
       "wr": 0,
       "strict": 1
     },
@@ -227,7 +271,7 @@
       "schema": "main",
       "name": "legacy_actor_instances",
       "type": "table",
-      "ncol": 13,
+      "ncol": 12,
       "wr": 0,
       "strict": 1
     },
@@ -260,14 +304,6 @@
       "name": "organizations",
       "type": "table",
       "ncol": 6,
-      "wr": 0,
-      "strict": 1
-    },
-    {
-      "schema": "main",
-      "name": "pty_session_metadata",
-      "type": "table",
-      "ncol": 10,
       "wr": 0,
       "strict": 1
     },
@@ -307,7 +343,7 @@
       "schema": "main",
       "name": "resource_write_permits",
       "type": "table",
-      "ncol": 11,
+      "ncol": 15,
       "wr": 0,
       "strict": 1
     },
@@ -316,14 +352,6 @@
       "name": "schema_migrations",
       "type": "table",
       "ncol": 5,
-      "wr": 0,
-      "strict": 1
-    },
-    {
-      "schema": "main",
-      "name": "scoped_events",
-      "type": "table",
-      "ncol": 8,
       "wr": 0,
       "strict": 1
     },
@@ -339,7 +367,7 @@
       "schema": "main",
       "name": "usage_outbox",
       "type": "table",
-      "ncol": 21,
+      "ncol": 30,
       "wr": 0,
       "strict": 1
     },
@@ -347,7 +375,7 @@
       "schema": "main",
       "name": "widget_definition_revisions",
       "type": "table",
-      "ncol": 11,
+      "ncol": 14,
       "wr": 0,
       "strict": 1
     },
@@ -355,13 +383,29 @@
       "schema": "main",
       "name": "widget_definitions",
       "type": "table",
-      "ncol": 8,
+      "ncol": 9,
+      "wr": 0,
+      "strict": 1
+    },
+    {
+      "schema": "main",
+      "name": "widget_instance_projection_heads",
+      "type": "table",
+      "ncol": 5,
       "wr": 0,
       "strict": 1
     },
     {
       "schema": "main",
       "name": "widget_instances",
+      "type": "table",
+      "ncol": 9,
+      "wr": 0,
+      "strict": 1
+    },
+    {
+      "schema": "main",
+      "name": "widget_revision_sources",
       "type": "table",
       "ncol": 9,
       "wr": 0,
@@ -529,6 +573,14 @@
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "external_session_key",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
         }
       ],
       "foreignKeys": [
@@ -585,18 +637,25 @@
       ],
       "indexes": [
         {
-          "seq": 4,
+          "seq": 5,
           "name": "agent_chats_account_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
         },
         {
-          "seq": 3,
+          "seq": 4,
           "name": "agent_chats_canvas_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
+        },
+        {
+          "seq": 3,
+          "name": "agent_chats_external_session_idx",
+          "unique": 1,
+          "origin": "c",
+          "partial": 1
         },
         {
           "seq": 2,
@@ -653,6 +712,23 @@
             "seqno": 2,
             "cid": 8,
             "name": "created_at_ms"
+          }
+        ],
+        "agent_chats_external_session_idx": [
+          {
+            "seqno": 0,
+            "cid": 0,
+            "name": "org_id"
+          },
+          {
+            "seqno": 1,
+            "cid": 2,
+            "name": "account_id"
+          },
+          {
+            "seqno": 2,
+            "cid": 10,
+            "name": "external_session_key"
           }
         ],
         "sqlite_autoindex_agent_chats_1": [
@@ -774,6 +850,22 @@
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "definition_id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "published_revision_id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
         }
       ],
       "foreignKeys": [
@@ -810,8 +902,15 @@
       ],
       "indexes": [
         {
-          "seq": 2,
+          "seq": 3,
           "name": "agent_drafts_chat_idx",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 2,
+          "name": "agent_drafts_definition_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
@@ -847,6 +946,23 @@
             "seqno": 2,
             "cid": 8,
             "name": "created_at_ms"
+          }
+        ],
+        "agent_drafts_definition_idx": [
+          {
+            "seqno": 0,
+            "cid": 0,
+            "name": "org_id"
+          },
+          {
+            "seqno": 1,
+            "cid": 10,
+            "name": "definition_id"
+          },
+          {
+            "seqno": 2,
+            "cid": 11,
+            "name": "published_revision_id"
           }
         ],
         "sqlite_autoindex_agent_drafts_1": [
@@ -969,6 +1085,14 @@
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "active_revision_id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
         }
       ],
       "foreignKeys": [
@@ -1036,20 +1160,27 @@
       "indexes": [
         {
           "seq": 2,
-          "name": "agent_previews_artifact_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 4,
-          "name": "agent_previews_draft_idx",
+          "name": "agent_previews_active_revision_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
         },
         {
           "seq": 3,
+          "name": "agent_previews_artifact_idx",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 5,
+          "name": "agent_previews_draft_idx",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 4,
           "name": "agent_previews_expiry_idx",
           "unique": 0,
           "origin": "c",
@@ -1071,6 +1202,33 @@
         }
       ],
       "indexDetails": {
+        "agent_previews_active_revision_idx": [
+          {
+            "seqno": 0,
+            "cid": 0,
+            "name": "org_id"
+          },
+          {
+            "seqno": 1,
+            "cid": 1,
+            "name": "id"
+          },
+          {
+            "seqno": 2,
+            "cid": 11,
+            "name": "active_revision_id"
+          },
+          {
+            "seqno": 3,
+            "cid": 6,
+            "name": "status"
+          },
+          {
+            "seqno": 4,
+            "cid": 10,
+            "name": "expires_at_ms"
+          }
+        ],
         "agent_previews_artifact_idx": [
           {
             "seqno": 0,
@@ -1832,6 +1990,14 @@
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "content_version",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "0",
           "pk": 0
         }
       ],
@@ -2920,182 +3086,6 @@
         ]
       }
     },
-    "file_systems": {
-      "columns": [
-        {
-          "cid": 0,
-          "name": "org_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 1,
-          "name": "id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 2,
-          "name": "name",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 3,
-          "name": "slug",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 4,
-          "name": "capability_ref",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 5,
-          "name": "relative_root",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
-          "name": "description",
-          "type": "TEXT",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 7,
-          "name": "status",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 8,
-          "name": "created_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 9,
-          "name": "updated_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        }
-      ],
-      "foreignKeys": [
-        {
-          "id": 0,
-          "seq": 0,
-          "table": "organizations",
-          "from": "org_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        }
-      ],
-      "indexes": [
-        {
-          "seq": 3,
-          "name": "sqlite_autoindex_file_systems_1",
-          "unique": 1,
-          "origin": "pk",
-          "partial": 0
-        },
-        {
-          "seq": 2,
-          "name": "sqlite_autoindex_file_systems_2",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        },
-        {
-          "seq": 1,
-          "name": "sqlite_autoindex_file_systems_3",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        },
-        {
-          "seq": 0,
-          "name": "sqlite_autoindex_file_systems_4",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        }
-      ],
-      "indexDetails": {
-        "sqlite_autoindex_file_systems_1": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 1,
-            "name": "id"
-          }
-        ],
-        "sqlite_autoindex_file_systems_2": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 2,
-            "name": "name"
-          }
-        ],
-        "sqlite_autoindex_file_systems_3": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 3,
-            "name": "slug"
-          }
-        ],
-        "sqlite_autoindex_file_systems_4": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 4,
-            "name": "capability_ref"
-          }
-        ]
-      }
-    },
     "function_attempts": {
       "columns": [
         {
@@ -3228,7 +3218,7 @@
         },
         {
           "cid": 16,
-          "name": "cold_start",
+          "name": "output_byte_size",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -3236,15 +3226,15 @@
         },
         {
           "cid": 17,
-          "name": "failure_owner",
-          "type": "TEXT",
-          "notnull": 0,
+          "name": "log_byte_size",
+          "type": "INTEGER",
+          "notnull": 1,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 18,
-          "name": "billable",
+          "name": "cold_start",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -3252,6 +3242,30 @@
         },
         {
           "cid": 19,
+          "name": "failure_owner",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 20,
+          "name": "failure_json",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 21,
+          "name": "billable",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 22,
           "name": "created_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -3259,7 +3273,7 @@
           "pk": 0
         },
         {
-          "cid": 20,
+          "cid": 23,
           "name": "started_at_ms",
           "type": "INTEGER",
           "notnull": 0,
@@ -3267,7 +3281,15 @@
           "pk": 0
         },
         {
-          "cid": 21,
+          "cid": 24,
+          "name": "guest_code_entered_at_ms",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 25,
           "name": "finished_at_ms",
           "type": "INTEGER",
           "notnull": 0,
@@ -3309,29 +3331,36 @@
       ],
       "indexes": [
         {
-          "seq": 3,
+          "seq": 4,
           "name": "function_attempts_invocation_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
         },
         {
-          "seq": 2,
+          "seq": 3,
           "name": "sqlite_autoindex_function_attempts_1",
           "unique": 1,
           "origin": "pk",
           "partial": 0
         },
         {
-          "seq": 1,
+          "seq": 2,
           "name": "sqlite_autoindex_function_attempts_2",
           "unique": 1,
           "origin": "u",
           "partial": 0
         },
         {
-          "seq": 0,
+          "seq": 1,
           "name": "sqlite_autoindex_function_attempts_3",
+          "unique": 1,
+          "origin": "u",
+          "partial": 0
+        },
+        {
+          "seq": 0,
+          "name": "sqlite_autoindex_function_attempts_4",
           "unique": 1,
           "origin": "u",
           "partial": 0
@@ -3400,6 +3429,23 @@
             "cid": 3,
             "name": "attempt_number"
           }
+        ],
+        "sqlite_autoindex_function_attempts_4": [
+          {
+            "seqno": 0,
+            "cid": 0,
+            "name": "org_id"
+          },
+          {
+            "seqno": 1,
+            "cid": 2,
+            "name": "invocation_id"
+          },
+          {
+            "seqno": 2,
+            "cid": 4,
+            "name": "lease_epoch"
+          }
         ]
       }
     },
@@ -3431,7 +3477,7 @@
         },
         {
           "cid": 3,
-          "name": "widget_definition_id",
+          "name": "subject_kind",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -3439,15 +3485,15 @@
         },
         {
           "cid": 4,
-          "name": "widget_revision_id",
+          "name": "canvas_id",
           "type": "TEXT",
-          "notnull": 1,
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 5,
-          "name": "widget_instance_id",
+          "name": "widget_definition_id",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -3455,7 +3501,7 @@
         },
         {
           "cid": 6,
-          "name": "function_name",
+          "name": "widget_revision_id",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -3463,39 +3509,39 @@
         },
         {
           "cid": 7,
-          "name": "input_json",
+          "name": "widget_instance_id",
           "type": "TEXT",
-          "notnull": 1,
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 8,
-          "name": "input_digest_sha256",
+          "name": "preview_id",
           "type": "TEXT",
-          "notnull": 1,
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 9,
-          "name": "policy_version",
-          "type": "INTEGER",
-          "notnull": 1,
+          "name": "preview_revision_id",
+          "type": "TEXT",
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 10,
-          "name": "priority",
-          "type": "INTEGER",
+          "name": "function_id",
+          "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 11,
-          "name": "status",
+          "name": "function_name",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -3503,6 +3549,190 @@
         },
         {
           "cid": 12,
+          "name": "definition_revision",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "artifact_digest_sha256",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 14,
+          "name": "contract_digest_sha256",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 15,
+          "name": "runtime_abi",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 16,
+          "name": "tenant_cell_id",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 17,
+          "name": "tenant_placement_epoch",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 18,
+          "name": "tenant_request_id",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 19,
+          "name": "tenant_roles_json",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 20,
+          "name": "tenant_capabilities_json",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 21,
+          "name": "input_json",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 22,
+          "name": "input_digest_sha256",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 23,
+          "name": "idempotency_key",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 24,
+          "name": "policy_version",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 25,
+          "name": "priority",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 26,
+          "name": "timeout_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 27,
+          "name": "memory_tier",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 28,
+          "name": "output_byte_limit",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 29,
+          "name": "log_byte_limit",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 30,
+          "name": "retry_mode",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 31,
+          "name": "max_attempts",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 32,
+          "name": "initial_backoff_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 33,
+          "name": "max_backoff_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 34,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 35,
           "name": "result_json",
           "type": "TEXT",
           "notnull": 0,
@@ -3510,7 +3740,23 @@
           "pk": 0
         },
         {
-          "cid": 13,
+          "cid": 36,
+          "name": "failure_json",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 37,
+          "name": "result_digest_sha256",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 38,
           "name": "output_byte_size",
           "type": "INTEGER",
           "notnull": 1,
@@ -3518,7 +3764,7 @@
           "pk": 0
         },
         {
-          "cid": 14,
+          "cid": 39,
           "name": "log_byte_size",
           "type": "INTEGER",
           "notnull": 1,
@@ -3526,7 +3772,23 @@
           "pk": 0
         },
         {
-          "cid": 15,
+          "cid": 40,
+          "name": "body_state",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 41,
+          "name": "retains_revision",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 42,
           "name": "created_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -3534,7 +3796,15 @@
           "pk": 0
         },
         {
-          "cid": 16,
+          "cid": 43,
+          "name": "available_at_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 44,
           "name": "deadline_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -3542,7 +3812,15 @@
           "pk": 0
         },
         {
-          "cid": 17,
+          "cid": 45,
+          "name": "cancel_requested_at_ms",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 46,
           "name": "started_at_ms",
           "type": "INTEGER",
           "notnull": 0,
@@ -3550,8 +3828,16 @@
           "pk": 0
         },
         {
-          "cid": 18,
+          "cid": 47,
           "name": "finished_at_ms",
+          "type": "INTEGER",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 48,
+          "name": "bodies_compacted_at_ms",
           "type": "INTEGER",
           "notnull": 0,
           "dflt_value": null,
@@ -3562,76 +3848,6 @@
         {
           "id": 0,
           "seq": 0,
-          "table": "widget_instances",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 1,
-          "table": "widget_instances",
-          "from": "widget_definition_id",
-          "to": "definition_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 2,
-          "table": "widget_instances",
-          "from": "widget_revision_id",
-          "to": "revision_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 3,
-          "table": "widget_instances",
-          "from": "widget_instance_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 0,
-          "table": "widget_definition_revisions",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 1,
-          "table": "widget_definition_revisions",
-          "from": "widget_definition_id",
-          "to": "definition_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 2,
-          "table": "widget_definition_revisions",
-          "from": "widget_revision_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 2,
-          "seq": 0,
           "table": "organization_memberships",
           "from": "org_id",
           "to": "org_id",
@@ -3640,7 +3856,7 @@
           "match": "NONE"
         },
         {
-          "id": 2,
+          "id": 0,
           "seq": 1,
           "table": "organization_memberships",
           "from": "account_id",
@@ -3650,7 +3866,7 @@
           "match": "NONE"
         },
         {
-          "id": 3,
+          "id": 1,
           "seq": 0,
           "table": "organizations",
           "from": "org_id",
@@ -3662,28 +3878,35 @@
       ],
       "indexes": [
         {
-          "seq": 2,
+          "seq": 3,
           "name": "function_invocations_account_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
         },
         {
-          "seq": 1,
+          "seq": 2,
           "name": "function_invocations_instance_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
         },
         {
-          "seq": 4,
+          "seq": 1,
+          "name": "function_invocations_preview_idx",
+          "unique": 0,
+          "origin": "c",
+          "partial": 0
+        },
+        {
+          "seq": 5,
           "name": "function_invocations_queue_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
         },
         {
-          "seq": 3,
+          "seq": 4,
           "name": "function_invocations_revision_idx",
           "unique": 0,
           "origin": "c",
@@ -3711,7 +3934,7 @@
           },
           {
             "seqno": 2,
-            "cid": 15,
+            "cid": 42,
             "name": "created_at_ms"
           }
         ],
@@ -3723,18 +3946,40 @@
           },
           {
             "seqno": 1,
-            "cid": 3,
+            "cid": 5,
             "name": "widget_definition_id"
           },
           {
             "seqno": 2,
-            "cid": 4,
+            "cid": 6,
             "name": "widget_revision_id"
           },
           {
             "seqno": 3,
-            "cid": 5,
+            "cid": 7,
             "name": "widget_instance_id"
+          }
+        ],
+        "function_invocations_preview_idx": [
+          {
+            "seqno": 0,
+            "cid": 0,
+            "name": "org_id"
+          },
+          {
+            "seqno": 1,
+            "cid": 8,
+            "name": "preview_id"
+          },
+          {
+            "seqno": 2,
+            "cid": 9,
+            "name": "preview_revision_id"
+          },
+          {
+            "seqno": 3,
+            "cid": 42,
+            "name": "created_at_ms"
           }
         ],
         "function_invocations_queue_idx": [
@@ -3745,12 +3990,27 @@
           },
           {
             "seqno": 1,
-            "cid": 11,
+            "cid": 34,
             "name": "status"
           },
           {
             "seqno": 2,
-            "cid": 15,
+            "cid": 27,
+            "name": "memory_tier"
+          },
+          {
+            "seqno": 3,
+            "cid": 43,
+            "name": "available_at_ms"
+          },
+          {
+            "seqno": 4,
+            "cid": 25,
+            "name": "priority"
+          },
+          {
+            "seqno": 5,
+            "cid": 42,
             "name": "created_at_ms"
           }
         ],
@@ -3762,17 +4022,22 @@
           },
           {
             "seqno": 1,
-            "cid": 3,
+            "cid": 5,
             "name": "widget_definition_id"
           },
           {
             "seqno": 2,
-            "cid": 4,
+            "cid": 6,
             "name": "widget_revision_id"
           },
           {
             "seqno": 3,
-            "cid": 15,
+            "cid": 41,
+            "name": "retains_revision"
+          },
+          {
+            "seqno": 4,
+            "cid": 42,
             "name": "created_at_ms"
           }
         ],
@@ -3810,7 +4075,7 @@
         },
         {
           "cid": 2,
-          "name": "scope_kind",
+          "name": "function_id",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -3818,6 +4083,14 @@
         },
         {
           "cid": 3,
+          "name": "scope_kind",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 4,
           "name": "canvas_id",
           "type": "TEXT",
           "notnull": 0,
@@ -3825,7 +4098,7 @@
           "pk": 0
         },
         {
-          "cid": 4,
+          "cid": 5,
           "name": "widget_instance_id",
           "type": "TEXT",
           "notnull": 0,
@@ -3833,7 +4106,23 @@
           "pk": 0
         },
         {
-          "cid": 5,
+          "cid": 6,
+          "name": "preview_id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 7,
+          "name": "preview_revision_id",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
           "name": "idempotency_key",
           "type": "TEXT",
           "notnull": 1,
@@ -3841,7 +4130,7 @@
           "pk": 0
         },
         {
-          "cid": 6,
+          "cid": 9,
           "name": "request_fingerprint_sha256",
           "type": "TEXT",
           "notnull": 1,
@@ -3849,7 +4138,7 @@
           "pk": 0
         },
         {
-          "cid": 7,
+          "cid": 10,
           "name": "widget_definition_id",
           "type": "TEXT",
           "notnull": 1,
@@ -3857,7 +4146,7 @@
           "pk": 0
         },
         {
-          "cid": 8,
+          "cid": 11,
           "name": "widget_revision_id",
           "type": "TEXT",
           "notnull": 1,
@@ -3865,7 +4154,7 @@
           "pk": 0
         },
         {
-          "cid": 9,
+          "cid": 12,
           "name": "invocation_id",
           "type": "TEXT",
           "notnull": 1,
@@ -3873,7 +4162,7 @@
           "pk": 0
         },
         {
-          "cid": 10,
+          "cid": 13,
           "name": "created_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -3881,7 +4170,7 @@
           "pk": 0
         },
         {
-          "cid": 11,
+          "cid": 14,
           "name": "expires_at_ms",
           "type": "INTEGER",
           "notnull": 0,
@@ -3913,7 +4202,7 @@
         {
           "id": 1,
           "seq": 0,
-          "table": "widget_definition_revisions",
+          "table": "agent_preview_revisions",
           "from": "org_id",
           "to": "org_id",
           "on_update": "NO ACTION",
@@ -3923,9 +4212,9 @@
         {
           "id": 1,
           "seq": 1,
-          "table": "widget_definition_revisions",
-          "from": "widget_definition_id",
-          "to": "definition_id",
+          "table": "agent_preview_revisions",
+          "from": "preview_id",
+          "to": "preview_id",
           "on_update": "NO ACTION",
           "on_delete": "RESTRICT",
           "match": "NONE"
@@ -3933,8 +4222,8 @@
         {
           "id": 1,
           "seq": 2,
-          "table": "widget_definition_revisions",
-          "from": "widget_revision_id",
+          "table": "agent_preview_revisions",
+          "from": "preview_revision_id",
           "to": "id",
           "on_update": "NO ACTION",
           "on_delete": "RESTRICT",
@@ -3993,7 +4282,7 @@
       ],
       "indexes": [
         {
-          "seq": 5,
+          "seq": 6,
           "name": "idempotency_records_canvas_key_idx",
           "unique": 1,
           "origin": "c",
@@ -4014,8 +4303,15 @@
           "partial": 0
         },
         {
-          "seq": 6,
+          "seq": 7,
           "name": "idempotency_records_org_key_idx",
+          "unique": 1,
+          "origin": "c",
+          "partial": 1
+        },
+        {
+          "seq": 4,
+          "name": "idempotency_records_preview_key_idx",
           "unique": 1,
           "origin": "c",
           "partial": 1
@@ -4028,7 +4324,7 @@
           "partial": 0
         },
         {
-          "seq": 4,
+          "seq": 5,
           "name": "idempotency_records_widget_key_idx",
           "unique": 1,
           "origin": "c",
@@ -4051,12 +4347,17 @@
           },
           {
             "seqno": 1,
-            "cid": 3,
+            "cid": 4,
             "name": "canvas_id"
           },
           {
             "seqno": 2,
-            "cid": 5,
+            "cid": 2,
+            "name": "function_id"
+          },
+          {
+            "seqno": 3,
+            "cid": 8,
             "name": "idempotency_key"
           }
         ],
@@ -4068,7 +4369,7 @@
           },
           {
             "seqno": 1,
-            "cid": 11,
+            "cid": 14,
             "name": "expires_at_ms"
           }
         ],
@@ -4080,7 +4381,7 @@
           },
           {
             "seqno": 1,
-            "cid": 9,
+            "cid": 12,
             "name": "invocation_id"
           }
         ],
@@ -4092,7 +4393,39 @@
           },
           {
             "seqno": 1,
-            "cid": 5,
+            "cid": 2,
+            "name": "function_id"
+          },
+          {
+            "seqno": 2,
+            "cid": 8,
+            "name": "idempotency_key"
+          }
+        ],
+        "idempotency_records_preview_key_idx": [
+          {
+            "seqno": 0,
+            "cid": 0,
+            "name": "org_id"
+          },
+          {
+            "seqno": 1,
+            "cid": 6,
+            "name": "preview_id"
+          },
+          {
+            "seqno": 2,
+            "cid": 7,
+            "name": "preview_revision_id"
+          },
+          {
+            "seqno": 3,
+            "cid": 2,
+            "name": "function_id"
+          },
+          {
+            "seqno": 4,
+            "cid": 8,
             "name": "idempotency_key"
           }
         ],
@@ -4104,12 +4437,12 @@
           },
           {
             "seqno": 1,
-            "cid": 7,
+            "cid": 10,
             "name": "widget_definition_id"
           },
           {
             "seqno": 2,
-            "cid": 8,
+            "cid": 11,
             "name": "widget_revision_id"
           }
         ],
@@ -4121,12 +4454,17 @@
           },
           {
             "seqno": 1,
-            "cid": 4,
+            "cid": 5,
             "name": "widget_instance_id"
           },
           {
             "seqno": 2,
-            "cid": 5,
+            "cid": 2,
+            "name": "function_id"
+          },
+          {
+            "seqno": 3,
+            "cid": 8,
             "name": "idempotency_key"
           }
         ],
@@ -5140,14 +5478,6 @@
         },
         {
           "cid": 5,
-          "name": "file_system_id",
-          "type": "TEXT",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
           "name": "display_name",
           "type": "TEXT",
           "notnull": 1,
@@ -5155,7 +5485,7 @@
           "pk": 0
         },
         {
-          "cid": 7,
+          "cid": 6,
           "name": "status",
           "type": "TEXT",
           "notnull": 1,
@@ -5163,7 +5493,7 @@
           "pk": 0
         },
         {
-          "cid": 8,
+          "cid": 7,
           "name": "machine_state",
           "type": "TEXT",
           "notnull": 1,
@@ -5171,7 +5501,7 @@
           "pk": 0
         },
         {
-          "cid": 9,
+          "cid": 8,
           "name": "machine_context_json",
           "type": "TEXT",
           "notnull": 1,
@@ -5179,7 +5509,7 @@
           "pk": 0
         },
         {
-          "cid": 10,
+          "cid": 9,
           "name": "last_error_json",
           "type": "TEXT",
           "notnull": 0,
@@ -5187,7 +5517,7 @@
           "pk": 0
         },
         {
-          "cid": 11,
+          "cid": 10,
           "name": "created_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -5195,7 +5525,7 @@
           "pk": 0
         },
         {
-          "cid": 12,
+          "cid": 11,
           "name": "updated_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -5207,26 +5537,6 @@
         {
           "id": 0,
           "seq": 0,
-          "table": "file_systems",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 1,
-          "table": "file_systems",
-          "from": "file_system_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 0,
           "table": "legacy_actor_definitions",
           "from": "org_id",
           "to": "org_id",
@@ -5235,7 +5545,7 @@
           "match": "NONE"
         },
         {
-          "id": 1,
+          "id": 0,
           "seq": 1,
           "table": "legacy_actor_definitions",
           "from": "actor_definition_name",
@@ -5245,7 +5555,7 @@
           "match": "NONE"
         },
         {
-          "id": 2,
+          "id": 1,
           "seq": 0,
           "table": "canvases",
           "from": "org_id",
@@ -5255,7 +5565,7 @@
           "match": "NONE"
         },
         {
-          "id": 2,
+          "id": 1,
           "seq": 1,
           "table": "canvases",
           "from": "canvas_id",
@@ -5265,7 +5575,7 @@
           "match": "NONE"
         },
         {
-          "id": 3,
+          "id": 2,
           "seq": 0,
           "table": "organizations",
           "from": "org_id",
@@ -5277,15 +5587,8 @@
       ],
       "indexes": [
         {
-          "seq": 5,
-          "name": "legacy_actor_instances_definition_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
           "seq": 4,
-          "name": "legacy_actor_instances_filesystem_idx",
+          "name": "legacy_actor_instances_definition_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
@@ -5333,20 +5636,8 @@
           },
           {
             "seqno": 2,
-            "cid": 7,
+            "cid": 6,
             "name": "status"
-          }
-        ],
-        "legacy_actor_instances_filesystem_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 5,
-            "name": "file_system_id"
           }
         ],
         "sqlite_autoindex_legacy_actor_instances_1": [
@@ -6003,232 +6294,6 @@
             "seqno": 0,
             "cid": 1,
             "name": "slug"
-          }
-        ]
-      }
-    },
-    "pty_session_metadata": {
-      "columns": [
-        {
-          "cid": 0,
-          "name": "org_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 1,
-          "name": "id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 2,
-          "name": "account_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 3,
-          "name": "file_system_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 4,
-          "name": "cwd_relative_path",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 5,
-          "name": "status",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
-          "name": "exit_code",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 7,
-          "name": "created_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 8,
-          "name": "closed_at_ms",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 9,
-          "name": "retain_until_ms",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        }
-      ],
-      "foreignKeys": [
-        {
-          "id": 0,
-          "seq": 0,
-          "table": "file_systems",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 1,
-          "table": "file_systems",
-          "from": "file_system_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 0,
-          "table": "organization_memberships",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 1,
-          "table": "organization_memberships",
-          "from": "account_id",
-          "to": "account_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 2,
-          "seq": 0,
-          "table": "organizations",
-          "from": "org_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "CASCADE",
-          "match": "NONE"
-        }
-      ],
-      "indexes": [
-        {
-          "seq": 2,
-          "name": "pty_session_metadata_account_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 1,
-          "name": "pty_session_metadata_filesystem_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 3,
-          "name": "pty_session_metadata_retention_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 0,
-          "name": "sqlite_autoindex_pty_session_metadata_1",
-          "unique": 1,
-          "origin": "pk",
-          "partial": 0
-        }
-      ],
-      "indexDetails": {
-        "pty_session_metadata_account_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 2,
-            "name": "account_id"
-          },
-          {
-            "seqno": 2,
-            "cid": 7,
-            "name": "created_at_ms"
-          }
-        ],
-        "pty_session_metadata_filesystem_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 3,
-            "name": "file_system_id"
-          }
-        ],
-        "pty_session_metadata_retention_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 5,
-            "name": "status"
-          },
-          {
-            "seqno": 2,
-            "cid": 9,
-            "name": "retain_until_ms"
-          }
-        ],
-        "sqlite_autoindex_pty_session_metadata_1": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 1,
-            "name": "id"
           }
         ]
       }
@@ -7024,7 +7089,7 @@
         },
         {
           "cid": 7,
-          "name": "status",
+          "name": "operation_id",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -7032,6 +7097,38 @@
         },
         {
           "cid": 8,
+          "name": "operation_fingerprint_sha256",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 9,
+          "name": "status",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 10,
+          "name": "result_json",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "result_digest_sha256",
+          "type": "TEXT",
+          "notnull": 0,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 12,
           "name": "issued_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -7039,7 +7136,7 @@
           "pk": 0
         },
         {
-          "cid": 9,
+          "cid": 13,
           "name": "expires_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -7047,7 +7144,7 @@
           "pk": 0
         },
         {
-          "cid": 10,
+          "cid": 14,
           "name": "consumed_at_ms",
           "type": "INTEGER",
           "notnull": 0,
@@ -7190,6 +7287,11 @@
             "seqno": 2,
             "cid": 4,
             "name": "attempt_id"
+          },
+          {
+            "seqno": 3,
+            "cid": 5,
+            "name": "lease_epoch"
           }
         ],
         "resource_write_permits_expiry_idx": [
@@ -7200,12 +7302,12 @@
           },
           {
             "seqno": 1,
-            "cid": 7,
+            "cid": 9,
             "name": "status"
           },
           {
             "seqno": 2,
-            "cid": 9,
+            "cid": 13,
             "name": "expires_at_ms"
           }
         ],
@@ -7256,13 +7358,8 @@
           },
           {
             "seqno": 3,
-            "cid": 4,
-            "name": "attempt_id"
-          },
-          {
-            "seqno": 4,
-            "cid": 6,
-            "name": "operation_name"
+            "cid": 7,
+            "name": "operation_id"
           }
         ]
       }
@@ -7326,176 +7423,6 @@
             "seqno": 0,
             "cid": 1,
             "name": "name"
-          }
-        ]
-      }
-    },
-    "scoped_events": {
-      "columns": [
-        {
-          "cid": 0,
-          "name": "org_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 1,
-          "name": "id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 2,
-          "name": "topic",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 3,
-          "name": "sequence",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 4,
-          "name": "event_type",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 5,
-          "name": "payload_json",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
-          "name": "created_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 7,
-          "name": "retain_until_ms",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        }
-      ],
-      "foreignKeys": [
-        {
-          "id": 0,
-          "seq": 0,
-          "table": "organizations",
-          "from": "org_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "CASCADE",
-          "match": "NONE"
-        }
-      ],
-      "indexes": [
-        {
-          "seq": 3,
-          "name": "scoped_events_replay_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 2,
-          "name": "scoped_events_retention_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 1,
-          "name": "sqlite_autoindex_scoped_events_1",
-          "unique": 1,
-          "origin": "pk",
-          "partial": 0
-        },
-        {
-          "seq": 0,
-          "name": "sqlite_autoindex_scoped_events_2",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        }
-      ],
-      "indexDetails": {
-        "scoped_events_replay_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 2,
-            "name": "topic"
-          },
-          {
-            "seqno": 2,
-            "cid": 3,
-            "name": "sequence"
-          }
-        ],
-        "scoped_events_retention_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 7,
-            "name": "retain_until_ms"
-          }
-        ],
-        "sqlite_autoindex_scoped_events_1": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 1,
-            "name": "id"
-          }
-        ],
-        "sqlite_autoindex_scoped_events_2": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 2,
-            "name": "topic"
-          },
-          {
-            "seqno": 2,
-            "cid": 3,
-            "name": "sequence"
           }
         ]
       }
@@ -7650,31 +7577,31 @@
         },
         {
           "cid": 4,
-          "name": "resource_id",
-          "type": "TEXT",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 5,
-          "name": "resource_permit_id",
-          "type": "TEXT",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
-          "name": "state",
+          "name": "invocation_id",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
         },
         {
+          "cid": 5,
+          "name": "function_id",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 6,
+          "name": "definition_revision",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
           "cid": 7,
-          "name": "outcome",
+          "name": "sandbox_driver",
           "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
@@ -7682,15 +7609,15 @@
         },
         {
           "cid": 8,
-          "name": "failure_owner",
+          "name": "memory_tier",
           "type": "TEXT",
-          "notnull": 0,
+          "notnull": 1,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 9,
-          "name": "billable",
+          "name": "queued_at_ms",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -7698,15 +7625,15 @@
         },
         {
           "cid": 10,
-          "name": "policy_version",
+          "name": "started_at_ms",
           "type": "INTEGER",
-          "notnull": 1,
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 11,
-          "name": "active_wall_ms",
+          "name": "finished_at_ms",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -7714,7 +7641,7 @@
         },
         {
           "cid": 12,
-          "name": "cpu_ms",
+          "name": "cold_start",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -7722,47 +7649,47 @@
         },
         {
           "cid": 13,
-          "name": "allocated_memory_byte_ms",
-          "type": "INTEGER",
-          "notnull": 1,
+          "name": "resource_id",
+          "type": "TEXT",
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 14,
-          "name": "peak_rss_bytes",
-          "type": "INTEGER",
-          "notnull": 1,
+          "name": "resource_permit_id",
+          "type": "TEXT",
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 15,
-          "name": "disk_read_bytes",
-          "type": "INTEGER",
+          "name": "state",
+          "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 16,
-          "name": "disk_write_bytes",
-          "type": "INTEGER",
+          "name": "outcome",
+          "type": "TEXT",
           "notnull": 1,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 17,
-          "name": "network_rx_bytes",
-          "type": "INTEGER",
-          "notnull": 1,
+          "name": "failure_owner",
+          "type": "TEXT",
+          "notnull": 0,
           "dflt_value": null,
           "pk": 0
         },
         {
           "cid": 18,
-          "name": "network_tx_bytes",
+          "name": "billable",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -7770,7 +7697,7 @@
         },
         {
           "cid": 19,
-          "name": "created_at_ms",
+          "name": "policy_version",
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
@@ -7778,6 +7705,78 @@
         },
         {
           "cid": 20,
+          "name": "active_wall_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 21,
+          "name": "cpu_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 22,
+          "name": "allocated_memory_byte_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 23,
+          "name": "peak_rss_bytes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 24,
+          "name": "disk_read_bytes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 25,
+          "name": "disk_write_bytes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 26,
+          "name": "network_rx_bytes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 27,
+          "name": "network_tx_bytes",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 28,
+          "name": "created_at_ms",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 29,
           "name": "imported_at_ms",
           "type": "INTEGER",
           "notnull": 0,
@@ -7839,7 +7838,7 @@
         {
           "id": 2,
           "seq": 0,
-          "table": "organization_memberships",
+          "table": "function_invocations",
           "from": "org_id",
           "to": "org_id",
           "on_update": "NO ACTION",
@@ -7849,6 +7848,26 @@
         {
           "id": 2,
           "seq": 1,
+          "table": "function_invocations",
+          "from": "invocation_id",
+          "to": "id",
+          "on_update": "NO ACTION",
+          "on_delete": "RESTRICT",
+          "match": "NONE"
+        },
+        {
+          "id": 3,
+          "seq": 0,
+          "table": "organization_memberships",
+          "from": "org_id",
+          "to": "org_id",
+          "on_update": "NO ACTION",
+          "on_delete": "RESTRICT",
+          "match": "NONE"
+        },
+        {
+          "id": 3,
+          "seq": 1,
           "table": "organization_memberships",
           "from": "account_id",
           "to": "account_id",
@@ -7857,7 +7876,7 @@
           "match": "NONE"
         },
         {
-          "id": 3,
+          "id": 4,
           "seq": 0,
           "table": "organizations",
           "from": "org_id",
@@ -7937,7 +7956,7 @@
           },
           {
             "seqno": 2,
-            "cid": 19,
+            "cid": 28,
             "name": "created_at_ms"
           }
         ],
@@ -7961,12 +7980,12 @@
           },
           {
             "seqno": 1,
-            "cid": 6,
+            "cid": 15,
             "name": "state"
           },
           {
             "seqno": 2,
-            "cid": 19,
+            "cid": 28,
             "name": "created_at_ms"
           }
         ],
@@ -7978,12 +7997,12 @@
           },
           {
             "seqno": 1,
-            "cid": 4,
+            "cid": 13,
             "name": "resource_id"
           },
           {
             "seqno": 2,
-            "cid": 5,
+            "cid": 14,
             "name": "resource_permit_id"
           }
         ],
@@ -7995,7 +8014,7 @@
           },
           {
             "seqno": 1,
-            "cid": 5,
+            "cid": 14,
             "name": "resource_permit_id"
           }
         ]
@@ -8089,6 +8108,30 @@
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 11,
+          "name": "function_descriptors_json",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'{\"format\":\"vibecanvas.server-functions.v1\",\"functions\":[]}'",
+          "pk": 0
+        },
+        {
+          "cid": 12,
+          "name": "function_descriptors_digest_sha256",
+          "type": "TEXT",
+          "notnull": 1,
+          "dflt_value": "'2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b'",
+          "pk": 0
+        },
+        {
+          "cid": 13,
+          "name": "contract_format_version",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "1",
           "pk": 0
         }
       ],
@@ -8392,6 +8435,14 @@
           "type": "INTEGER",
           "notnull": 1,
           "dflt_value": null,
+          "pk": 0
+        },
+        {
+          "cid": 8,
+          "name": "next_revision_number",
+          "type": "INTEGER",
+          "notnull": 1,
+          "dflt_value": "1",
           "pk": 0
         }
       ],

@@ -2,14 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { extname, join, relative, resolve, sep } from 'node:path'
 import {
-  createServiceRegistry,
   type ICollaborationService,
-  type IScopedEventBus,
   type IService,
   type IServiceRegistry,
 } from '../packages/runtime/src'
 import type { IAutomergeService } from '../packages/service-automerge/src/IAutomergeService'
-import { EventPublisherService } from '../packages/service-event-publisher/src/EventPublisherService'
 import { actorsContract } from '../packages/api/src/actor/contract'
 import { actorsHandlers } from '../packages/api/src/actor/handlers'
 
@@ -75,7 +72,6 @@ const FORBIDDEN_MANAGED_PACKAGE_FAMILIES = Object.freeze([
 declare module '../packages/runtime/src/interface' {
   interface IServiceMap {
     localCollaboration: ICollaborationService & IService
-    localEvents: IScopedEventBus<unknown> & IService
   }
 }
 
@@ -320,12 +316,7 @@ describe('managed composition architecture boundaries', () => {
     expect(statefulSchemaViolations).toEqual([])
   })
 
-  test('structurally registers local collaboration and event adapters through public seams', () => {
-    const services = createServiceRegistry()
-    const events: IScopedEventBus<unknown> & IService = new EventPublisherService()
-    services.provide('localEvents', 20, events)
-
-    expect(services.require('localEvents')).toBe(events)
+  test('structurally exposes local collaboration through a public seam', () => {
     expect(registerLocalCollaboration).toBeInstanceOf(Function)
   })
 

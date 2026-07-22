@@ -1184,37 +1184,6 @@ CREATE INDEX resource_write_permits_expiry_idx
 CREATE INDEX resource_write_permits_attempt_idx
   ON resource_write_permits (org_id, invocation_id, attempt_id);
 
-CREATE TABLE scoped_events (
-  org_id TEXT NOT NULL CHECK (
-    length(org_id) = 36 AND org_id = lower(org_id)
-    AND substr(org_id, 9, 1) = '-' AND substr(org_id, 14, 1) = '-'
-    AND substr(org_id, 19, 1) = '-' AND substr(org_id, 24, 1) = '-'
-    AND length(replace(org_id, '-', '')) = 32
-    AND replace(org_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  id TEXT NOT NULL CHECK (
-    length(id) = 36 AND id = lower(id)
-    AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-'
-    AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-'
-    AND length(replace(id, '-', '')) = 32
-    AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  topic TEXT NOT NULL CHECK (length(trim(topic)) BETWEEN 1 AND 300),
-  sequence INTEGER NOT NULL CHECK (sequence >= 1),
-  event_type TEXT NOT NULL CHECK (
-    event_type IN ('created', 'updated', 'deleted', 'state_changed', 'message', 'output', 'error')
-  ),
-  payload_json TEXT NOT NULL CHECK (json_valid(payload_json) AND json_type(payload_json) = 'object'),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  retain_until_ms INTEGER CHECK (retain_until_ms IS NULL OR retain_until_ms >= created_at_ms),
-  PRIMARY KEY (org_id, id),
-  UNIQUE (org_id, topic, sequence),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE
-) STRICT;
-
-CREATE INDEX scoped_events_replay_idx ON scoped_events (org_id, topic, sequence);
-CREATE INDEX scoped_events_retention_idx ON scoped_events (org_id, retain_until_ms);
-
 CREATE TABLE usage_outbox (
   org_id TEXT NOT NULL CHECK (
     length(org_id) = 36 AND org_id = lower(org_id)
@@ -1354,51 +1323,6 @@ CREATE INDEX media_files_canvas_idx ON media_files (org_id, canvas_id, created_a
 CREATE INDEX media_files_source_hash_idx ON media_files (org_id, source_hash);
 CREATE INDEX media_files_digest_idx ON media_files (org_id, digest_sha256);
 
-CREATE TABLE file_systems (
-  org_id TEXT NOT NULL CHECK (
-    length(org_id) = 36 AND org_id = lower(org_id)
-    AND substr(org_id, 9, 1) = '-' AND substr(org_id, 14, 1) = '-'
-    AND substr(org_id, 19, 1) = '-' AND substr(org_id, 24, 1) = '-'
-    AND length(replace(org_id, '-', '')) = 32
-    AND replace(org_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  id TEXT NOT NULL CHECK (
-    length(id) = 36 AND id = lower(id)
-    AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-'
-    AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-'
-    AND length(replace(id, '-', '')) = 32
-    AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 200),
-  slug TEXT NOT NULL CHECK (
-    length(slug) BETWEEN 1 AND 100 AND slug = lower(trim(slug))
-    AND substr(slug, 1, 1) <> '-' AND substr(slug, -1, 1) <> '-'
-    AND instr(slug, '--') = 0 AND slug NOT GLOB '*[^a-z0-9-]*'
-  ),
-  capability_ref TEXT NOT NULL CHECK (length(trim(capability_ref)) BETWEEN 1 AND 300),
-  relative_root TEXT NOT NULL CHECK (
-    length(relative_root) BETWEEN 1 AND 1024
-    AND relative_root = trim(relative_root)
-    AND substr(relative_root, 1, 1) <> '/'
-    AND relative_root NOT GLOB '[A-Za-z]:*'
-    AND instr(relative_root, '\') = 0
-    AND relative_root <> '.' AND relative_root <> '..'
-    AND relative_root NOT LIKE './%' AND relative_root NOT LIKE '../%'
-    AND relative_root NOT LIKE '%/./%' AND relative_root NOT LIKE '%/../%'
-    AND relative_root NOT LIKE '%/.' AND relative_root NOT LIKE '%/..'
-    AND relative_root NOT LIKE '%//%'
-  ),
-  description TEXT CHECK (description IS NULL OR length(description) <= 2000),
-  status TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
-  PRIMARY KEY (org_id, id),
-  UNIQUE (org_id, name),
-  UNIQUE (org_id, slug),
-  UNIQUE (org_id, capability_ref),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE RESTRICT
-) STRICT;
-
 CREATE TABLE tool_groups (
   org_id TEXT NOT NULL CHECK (
     length(org_id) = 36 AND org_id = lower(org_id)
@@ -1426,71 +1350,6 @@ CREATE TABLE tool_groups (
   UNIQUE (org_id, name),
   FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE
 ) STRICT;
-
-CREATE TABLE pty_session_metadata (
-  org_id TEXT NOT NULL CHECK (
-    length(org_id) = 36 AND org_id = lower(org_id)
-    AND substr(org_id, 9, 1) = '-' AND substr(org_id, 14, 1) = '-'
-    AND substr(org_id, 19, 1) = '-' AND substr(org_id, 24, 1) = '-'
-    AND length(replace(org_id, '-', '')) = 32
-    AND replace(org_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  id TEXT NOT NULL CHECK (
-    length(id) = 36 AND id = lower(id)
-    AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-'
-    AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-'
-    AND length(replace(id, '-', '')) = 32
-    AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  account_id TEXT NOT NULL CHECK (
-    length(account_id) = 36 AND account_id = lower(account_id)
-    AND substr(account_id, 9, 1) = '-' AND substr(account_id, 14, 1) = '-'
-    AND substr(account_id, 19, 1) = '-' AND substr(account_id, 24, 1) = '-'
-    AND length(replace(account_id, '-', '')) = 32
-    AND replace(account_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  file_system_id TEXT NOT NULL CHECK (
-    length(file_system_id) = 36 AND file_system_id = lower(file_system_id)
-    AND substr(file_system_id, 9, 1) = '-' AND substr(file_system_id, 14, 1) = '-'
-    AND substr(file_system_id, 19, 1) = '-' AND substr(file_system_id, 24, 1) = '-'
-    AND length(replace(file_system_id, '-', '')) = 32
-    AND replace(file_system_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  cwd_relative_path TEXT NOT NULL CHECK (
-    length(cwd_relative_path) BETWEEN 1 AND 1024
-    AND cwd_relative_path = trim(cwd_relative_path)
-    AND substr(cwd_relative_path, 1, 1) <> '/'
-    AND cwd_relative_path NOT GLOB '[A-Za-z]:*'
-    AND instr(cwd_relative_path, '\') = 0
-    AND cwd_relative_path <> '.' AND cwd_relative_path <> '..'
-    AND cwd_relative_path NOT LIKE './%' AND cwd_relative_path NOT LIKE '../%'
-    AND cwd_relative_path NOT LIKE '%/./%' AND cwd_relative_path NOT LIKE '%/../%'
-    AND cwd_relative_path NOT LIKE '%/.' AND cwd_relative_path NOT LIKE '%/..'
-    AND cwd_relative_path NOT LIKE '%//%'
-  ),
-  status TEXT NOT NULL CHECK (status IN ('opening', 'running', 'exited', 'failed', 'closed')),
-  exit_code INTEGER,
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  closed_at_ms INTEGER CHECK (closed_at_ms IS NULL OR closed_at_ms >= created_at_ms),
-  retain_until_ms INTEGER CHECK (retain_until_ms IS NULL OR retain_until_ms >= closed_at_ms),
-  PRIMARY KEY (org_id, id),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, account_id)
-    REFERENCES organization_memberships (org_id, account_id) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, file_system_id) REFERENCES file_systems (org_id, id) ON DELETE RESTRICT,
-  CHECK (
-    (status IN ('exited', 'failed', 'closed') AND closed_at_ms IS NOT NULL)
-    OR (status IN ('opening', 'running') AND closed_at_ms IS NULL)
-  ),
-  CHECK ((status = 'exited' AND exit_code IS NOT NULL) OR (status <> 'exited' AND exit_code IS NULL))
-) STRICT;
-
-CREATE INDEX pty_session_metadata_retention_idx
-  ON pty_session_metadata (org_id, status, retain_until_ms);
-CREATE INDEX pty_session_metadata_account_idx
-  ON pty_session_metadata (org_id, account_id, created_at_ms);
-CREATE INDEX pty_session_metadata_filesystem_idx
-  ON pty_session_metadata (org_id, file_system_id);
 
 CREATE TABLE agent_chats (
   org_id TEXT NOT NULL CHECK (
@@ -1747,15 +1606,6 @@ CREATE TABLE legacy_actor_instances (
   ),
   element_id TEXT NOT NULL CHECK (length(trim(element_id)) BETWEEN 1 AND 200),
   actor_definition_name TEXT NOT NULL CHECK (length(trim(actor_definition_name)) BETWEEN 1 AND 200),
-  file_system_id TEXT CHECK (
-    file_system_id IS NULL OR (
-      length(file_system_id) = 36 AND file_system_id = lower(file_system_id)
-      AND substr(file_system_id, 9, 1) = '-' AND substr(file_system_id, 14, 1) = '-'
-      AND substr(file_system_id, 19, 1) = '-' AND substr(file_system_id, 24, 1) = '-'
-      AND length(replace(file_system_id, '-', '')) = 32
-      AND replace(file_system_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
   display_name TEXT NOT NULL CHECK (length(trim(display_name)) BETWEEN 1 AND 200),
   status TEXT NOT NULL CHECK (
     status IN ('created', 'starting', 'running', 'paused', 'stopping', 'stopped', 'error', 'blocked')
@@ -1776,15 +1626,11 @@ CREATE TABLE legacy_actor_instances (
   FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE,
   FOREIGN KEY (org_id, canvas_id) REFERENCES canvases (org_id, id) ON DELETE CASCADE,
   FOREIGN KEY (org_id, actor_definition_name)
-    REFERENCES legacy_actor_definitions (org_id, name) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, file_system_id) REFERENCES file_systems (org_id, id) ON DELETE RESTRICT
+    REFERENCES legacy_actor_definitions (org_id, name) ON DELETE CASCADE
 ) STRICT;
 
 CREATE INDEX legacy_actor_instances_definition_idx
   ON legacy_actor_instances (org_id, actor_definition_name, status);
-CREATE INDEX legacy_actor_instances_filesystem_idx
-  ON legacy_actor_instances (org_id, file_system_id);
-
 CREATE TABLE legacy_actor_connections (
   org_id TEXT NOT NULL CHECK (
     length(org_id) = 36 AND org_id = lower(org_id)

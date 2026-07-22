@@ -117,7 +117,6 @@ export function fnParseActorInstanceRow(row: unknown): TActorInstance {
     canvas_id: string
     element_id: string
     actor_definition_name: string
-    file_system_id: string | null
     display_name: string
     status: TActorInstance["status"]
     machine_state: string
@@ -131,7 +130,6 @@ export function fnParseActorInstanceRow(row: unknown): TActorInstance {
     canvas_id: value.canvas_id,
     element_id: value.element_id,
     actor_definition_name: value.actor_definition_name,
-    filesystem_id: value.file_system_id,
     display_name: value.display_name,
     status: value.status,
     machine_state: value.machine_state,

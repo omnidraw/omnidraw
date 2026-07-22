@@ -35,6 +35,28 @@ function createTextElement(overrides?: Partial<TElement>): TElement {
 }
 
 describe("new SceneHydrator plugin", () => {
+  test.each(["filesystem", "terminal"])("preserves unmatched persisted %s ui widgets without mounting them", async (kind) => {
+    const element = createTextElement({
+      id: `${kind}-legacy-widget`,
+      data: {
+        type: "ui-widget",
+        kind,
+        w: 600,
+        h: 400,
+        expanded: false,
+        window: "contained",
+        payload: { legacy: true },
+      },
+    });
+    const docHandle = createMockDocHandle({ elements: { [element.id]: element } });
+    const harness = await createNewCanvasHarness({ docHandle });
+
+    expect(harness.staticForegroundLayer.findOne(`#${element.id}`)).toBeFalsy();
+    expect(docHandle.doc().elements[element.id]).toEqual(element);
+
+    await harness.destroy();
+  });
+
   test("applies remote element updates without recreating the scene node", async () => {
     const element = createTextElement({ id: "text-live" });
     if (element.data.type === "text") {

@@ -32,7 +32,6 @@ describe('fnResolveVibecanvasHome', () => {
       artifactsRoot: join(organizationRoot, 'artifacts'),
       resourcesRoot: join(organizationRoot, 'resources'),
       tempRoot: join(organizationRoot, 'temp'),
-      ptyRoot: join(organizationRoot, 'pty'),
       cacheRoot: join(homeDir, 'cache'),
       logsRoot: join(homeDir, 'logs'),
     });

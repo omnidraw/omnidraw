@@ -124,7 +124,6 @@ describe('neutral ResourceService database apply with actor coordination', () =>
       canvas_id: testUuid('draft-canvas'),
       element_id: 'stopped-element',
       actor_definition_name: DEFINITION_NAME,
-      filesystem_id: null,
       display_name: 'Stopped Draft Notes',
       status: 'stopped',
       machine_state: 'ready',

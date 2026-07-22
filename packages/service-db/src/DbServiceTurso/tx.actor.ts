@@ -95,12 +95,12 @@ export async function txActorUpdateDefinition(
 export async function txActorInsertInstance(portal: TPortal, args: TArgsInstanceCreate): Promise<TActorInstance> {
   await (await portal.db.prepare(`
     INSERT INTO legacy_actor_instances (
-      org_id, id, canvas_id, element_id, actor_definition_name, file_system_id,
+      org_id, id, canvas_id, element_id, actor_definition_name,
       display_name, status, machine_state, machine_context_json, last_error_json,
       created_at_ms, updated_at_ms
     )
     VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       CAST(unixepoch('subsec') * 1000 AS INTEGER),
       CAST(unixepoch('subsec') * 1000 AS INTEGER)
     )
@@ -110,7 +110,6 @@ export async function txActorInsertInstance(portal: TPortal, args: TArgsInstance
     args.canvas_id,
     args.element_id,
     args.actor_definition_name,
-    args.filesystem_id,
     args.display_name,
     args.status,
     args.machine_state,

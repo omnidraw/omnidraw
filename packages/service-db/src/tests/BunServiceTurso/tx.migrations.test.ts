@@ -1012,7 +1012,6 @@ describe('read-only startup preflight', () => {
       'artifacts',
       'resources',
       'temp',
-      'pty',
     ].map((name) => fs.mkdir(path.join(organizationRoot, name), { recursive: true })));
     await fs.mkdir(path.join(homeDir, 'cache'));
     await fs.mkdir(path.join(homeDir, 'logs'));

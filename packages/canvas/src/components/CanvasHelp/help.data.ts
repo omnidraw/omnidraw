@@ -22,8 +22,6 @@ const TOOL_LABELS: Record<TTool, string> = {
   pen: "Pen",
   text: "Text",
   image: "Image",
-  filesystem: "Filesystem",
-  terminal: "Terminal",
   browser: "Browser",
 };
 
@@ -62,16 +60,6 @@ export const HELP_SECTIONS: THelpSection[] = [
       { label: "Duplicate by drag", keys: ["Alt", "Drag"] },
       { label: "Undo", keys: ["Cmd/Ctrl", "Z"] },
       { label: "Redo", keys: ["Cmd/Ctrl", "Shift", "Z"] },
-    ],
-  },
-  {
-    title: "Hosted Terminal",
-    items: [
-      { label: "Type in terminal", note: "Click inside the terminal body. Canvas shortcuts pause while terminal focus is active." },
-      { label: "Move terminal", note: "Drag the terminal header." },
-      { label: "Show resize handles", note: "Double click the terminal header or use the resize button in the top-right corner." },
-      { label: "Close terminal", note: "Use the close button in the top-right corner." },
-      { label: "Zoom behavior", note: "Terminal UI scales with the canvas, so text shrinks and grows with zoom." },
     ],
   },
 ];

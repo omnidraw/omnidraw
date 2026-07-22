@@ -529,7 +529,6 @@ Preferred path:
 - `packages/canvas/src/plugins/camera-control`
 - `packages/canvas/src/plugins/context-menu`
 - `packages/canvas/src/plugins/event-listener`
-- `packages/canvas/src/plugins/filesystem`
 - `packages/canvas/src/plugins/grid`
 - `packages/canvas/src/plugins/group`
 - `packages/canvas/src/plugins/history-control`
@@ -543,7 +542,6 @@ Preferred path:
 - `packages/canvas/src/plugins/selection-style-menu`
 - `packages/canvas/src/plugins/shape1d`
 - `packages/canvas/src/plugins/shape2d`
-- `packages/canvas/src/plugins/terminal`
 - `packages/canvas/src/plugins/text`
 - `packages/canvas/src/plugins/toolbar`
 - `packages/canvas/src/plugins/transform`

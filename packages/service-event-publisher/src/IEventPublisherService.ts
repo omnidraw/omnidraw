@@ -8,7 +8,6 @@ import type {
   TActorEvent,
   TAgentEvent,
   TDbEvent,
-  TFilesystemEvent,
   TNotificationEvent,
 } from './events';
 
@@ -28,7 +27,6 @@ export type {
   TAgentWidgetUpdateEvent,
   TDbEvent,
   TEventJson,
-  TFilesystemEvent,
   TNotificationEvent,
 } from './events';
 
@@ -47,10 +45,6 @@ export interface IEventPublisherService extends IService {
   publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number;
   subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
   getAgentEventCursor(tenant: TTenantContext): number;
-
-  publishFilesystemEvent(tenant: TTenantContext, filesystemId: string, path: string, event: TFilesystemEvent): number;
-  subscribeFilesystemEvents(tenant: TTenantContext, filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent>;
-  getFilesystemEventCursor(tenant: TTenantContext, filesystemId: string): number;
 
   publishNotification(tenant: TTenantContext, event: TNotificationEvent): number;
   subscribeNotifications(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
@@ -77,9 +71,6 @@ export interface ITenantEventPublisherService {
   publishAgentEvent(event: TAgentEvent): number;
   subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
   getAgentEventCursor(): number;
-  publishFilesystemEvent(filesystemId: string, path: string, event: TFilesystemEvent): number;
-  subscribeFilesystemEvents(filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent>;
-  getFilesystemEventCursor(filesystemId: string): number;
   publishNotification(event: TNotificationEvent): number;
   subscribeNotifications(options?: TEventSubscriptionOptions): AsyncIterable<TNotificationEvent>;
   subscribeNotificationRecords(options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TNotificationEvent>>;

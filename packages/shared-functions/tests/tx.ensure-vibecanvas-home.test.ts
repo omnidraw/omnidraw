@@ -31,7 +31,6 @@ describe('txEnsureVibecanvasHome', () => {
       home.artifactsRoot,
       home.resourcesRoot,
       home.tempRoot,
-      home.ptyRoot,
       home.cacheRoot,
       home.logsRoot,
     ]);
@@ -60,7 +59,6 @@ describe('txEnsureVibecanvasHome', () => {
         home.artifactsRoot,
         home.resourcesRoot,
         home.tempRoot,
-        home.ptyRoot,
         home.cacheRoot,
         home.logsRoot,
       ];

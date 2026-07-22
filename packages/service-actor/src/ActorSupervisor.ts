@@ -522,7 +522,6 @@ export class ActorSupervisor {
       canvas_id: canvasId,
       display_name: def.name,
       element_id: elementId,
-      filesystem_id: null,
       status: 'created',
       machine_state: def.actor.initialState,
       machine_context: def.actor.initialData

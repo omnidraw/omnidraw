@@ -169,7 +169,6 @@ packages/
       function/
       media/
       notification/
-      pty/
       resource/
       tool/
       contract.ts
@@ -188,9 +187,7 @@ packages/
   service-automerge/
   service-db/
   service-event-publisher/
-  service-filesystem/
   service-kv/
-  service-pty/
   service-theme/
   shared-functions/
   tapable/
@@ -523,30 +520,24 @@ CHECK (finished_at_ms IS NULL OR started_at_ms IS NOT NULL),
 CHECK (finished_at_ms IS NULL OR finished_at_ms >= started_at_ms)
 ```
 
-#### Events and usage
+#### Usage
 
 ```text
-scoped_events
 usage_outbox
 ```
 
 Constraints:
 
-- every topic is organization-scoped and bounded;
-- event type is checked; payload JSON is valid and bounded at the application boundary;
-- sequence/order key is unique within its stream;
 - usage receipt ID is unique and references one invocation attempt or resource operation;
 - receipt numeric fields are non-negative integers;
 - outbox state transitions and imported timestamps are consistent;
 - billing aggregation does not live in this OSS schema.
 
-#### Media, filesystem, PTY, tools, and agent ownership
+#### Media, tools, and agent ownership
 
 ```text
 media_files
-file_systems
 tool_groups
-pty_session_metadata
 agent_chats
 agent_drafts
 agent_previews
@@ -556,11 +547,9 @@ Constraints:
 
 - all are organization-qualified;
 - media hash is not authorization and may be physically duplicated/deduplicated independently;
-- filesystem rows store a host-created capability/root reference, not arbitrary authority from a caller;
 - tool group names are unique per organization; immutable system tools live separately in code or a distinct system table;
-- live PTY processes, watches, and approvals remain ephemeral but their in-memory keys include organization/account/session;
 - agent draft/preview/chat names may collide across organizations without sharing paths;
-- every persisted relative path is bounded, normalized by the application, and checked against obvious absolute/traversal forms; filesystem capability checks remain mandatory because SQL cannot prove path containment.
+- every persisted relative path is bounded, normalized by the application, and checked against obvious absolute/traversal forms.
 
 #### Optional legacy actor compatibility
 
@@ -922,7 +911,7 @@ M7 is the client cutover. Do not proceed to authoring until the renderer regress
 
 ### Implement
 
-- Refactor `service-agent` to depend on `IWidgetDraftStore`, validator, builder, publication, preview, resource catalog/gateway, and scoped event interfaces instead of `ActorService`.
+- Refactor `service-agent` to depend on `IWidgetDraftStore`, validator, builder, publication, preview, and resource catalog/gateway interfaces instead of `ActorService`.
 - Generate UI-only widgets by default; generate server files only when required.
 - Replace primary actor/state-machine prompt material with short functions, schemas, resource effects, and collaborative/resource state guidance.
 - Keep legacy actor authoring only if explicitly required by the compatibility adapter.

@@ -28,13 +28,13 @@ The public ownership is:
 | `@vibecanvas/widget-contract` | `IWidgetArtifactStore`, immutable widget/artifact contracts, neutral frame/tool metadata |
 | `@vibecanvas/function-runtime` | `IFunctionDispatcher`, `IFunctionExecutor`, stores, scheduler, sandbox, and `IUsageSink` |
 | `@vibecanvas/resource-runtime` | `IResourceGateway`, Resource Store/provider contracts |
-| `@vibecanvas/runtime` | Service registry/plugin lifecycle, `ICollaborationService`, and `IScopedEventBus` |
+| `@vibecanvas/runtime` | Service registry/plugin lifecycle and `ICollaborationService` |
 
 Concrete local Turso, Automerge, Bun child-process, event-publisher, and actor packages are OSS adapters. They are not dependencies of the private composition root.
 
 ## Composition rule
 
-Private identity, placement, artifact, scheduler/executor, resource, collaboration, event, and usage implementations register with `createServiceRegistry()` and are selected by the private app composition root. Consolidated OSS API handlers continue to consume the same narrow capabilities. The private repository must not import `apps/cli`, a package `src` path, an API handler module, or a concrete `service-*` implementation.
+Private identity, placement, artifact, scheduler/executor, resource, collaboration, and usage implementations register with `createServiceRegistry()` and are selected by the private app composition root. Consolidated OSS API handlers continue to consume the same narrow capabilities. The private repository must not import `apps/cli`, a package `src` path, an API handler module, or a concrete `service-*` implementation.
 
 The executable proof is [`scripts/fixtures/external-composition`](../../scripts/fixtures/external-composition). It is intentionally outside `apps/cli`, declares exact release dependencies, and imports package export maps only.
 

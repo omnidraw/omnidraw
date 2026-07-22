@@ -14,8 +14,6 @@ import Minus from "lucide-solid/icons/minus";
 import Pencil from "lucide-solid/icons/pencil";
 import Type from "lucide-solid/icons/type";
 import Image from "lucide-solid/icons/image";
-import FolderTree from "lucide-solid/icons/folder-tree";
-import SquareTerminal from "lucide-solid/icons/square-terminal";
 import Globe from "lucide-solid/icons/globe";
 import Grid2x2 from "lucide-solid/icons/grid-2x2";
 import PanelLeft from "lucide-solid/icons/panel-left";
@@ -46,8 +44,6 @@ const TOOL_ICONS: Record<TTool, () => JSX.Element> = {
   pen: () => <Pencil size={14} />,
   text: () => <Type size={14} />,
   image: () => <Image size={14} />,
-  filesystem: () => <FolderTree size={14} />,
-  terminal: () => <SquareTerminal size={14} />,
   browser: () => <Globe size={14} />,
 };
 
@@ -68,7 +64,7 @@ export function FloatingCanvasToolbar(props: IFloatingCanvasToolbarProps) {
     <div class="vc-canvas-toolbar-anchor">
       {/* Main toolbar */}
       <div class="vc-canvas-toolbar-panel">
-        {/* Terminal header - clickable toggle */}
+        {/* Collapsible toolbar header */}
         <Tooltip openDelay={400} closeDelay={0} placement="left">
           <Tooltip.Trigger
             as="button"

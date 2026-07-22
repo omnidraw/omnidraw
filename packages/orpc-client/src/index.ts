@@ -28,7 +28,6 @@ export type {
   TWidgetPreviewResult,
 } from "@vibecanvas/api/agent/contract";
 import type { TNotificationEvent } from "@vibecanvas/api/notification/contract";
-import type { TPtyImageFormat } from "@vibecanvas/api/pty/contract";
 import { WebSocket as PartySocketWebSocket } from "partysocket";
 
 type TOrpcClient = ContractRouterClient<typeof apiContract>;
@@ -41,31 +40,6 @@ type TCreateOrpcWebsocketServiceArgs = {
 function getRpcWebsocketUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/api`;
-}
-
-function fileToDataUrl(file: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error("Failed to read clipboard image"));
-        return;
-      }
-      resolve(reader.result);
-    };
-    reader.onerror = () => {
-      reject(reader.error ?? new Error("Failed to read clipboard image"));
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function toPtyImageFormat(type: string): TPtyImageFormat | null {
-  if (type === "image/jpeg") return type;
-  if (type === "image/png") return type;
-  if (type === "image/gif") return type;
-  if (type === "image/webp") return type;
-  return null;
 }
 
 class OrpcWebsocketService {
@@ -90,30 +64,10 @@ class OrpcWebsocketService {
 
   }
 
-  async uploadClipboardImageToPtyTemp(args: { workingDirectory: string; file: File | Blob }) {
-    const format = toPtyImageFormat(args.file.type);
-    if (!format) {
-      return [new Error(`Unsupported clipboard image type: ${args.file.type || "unknown"}`), null] as const;
-    }
-
-    try {
-      const base64 = await fileToDataUrl(args.file);
-      return this.apiService.api.pty.uploadImage({
-        workingDirectory: args.workingDirectory,
-        body: {
-          base64,
-          format,
-        },
-      });
-    } catch (error) {
-      return [error, null] as const;
-    }
-  }
-
   dispose(): void {
     this.websocket.close(1000, 'Tenant client disposed');
   }
 }
 
 export { apiContract, contract, getRpcWebsocketUrl, OrpcWebsocketService };
-export type { TCreateOrpcWebsocketServiceArgs, TNotificationEvent, TOrpcClient, TOrpcSafeClient, TPtyImageFormat };
+export type { TCreateOrpcWebsocketServiceArgs, TNotificationEvent, TOrpcClient, TOrpcSafeClient };
