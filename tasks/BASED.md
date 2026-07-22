@@ -387,7 +387,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E36](e/E36.md) - managed multi-tenant architecture and scale-to-zero widget functions
 
 ## D ebt
-- [~]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
+- [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
 ## Pragmatic Code Style
 
 Long code line for lookup / easy parts.
