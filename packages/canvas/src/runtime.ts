@@ -173,10 +173,6 @@ export function buildRuntime(config: IRuntimeConfig, extensions: readonly ICanva
     createPenPlugin(),
     createTextPlugin(),
     createImagePlugin(),
-    // S61: Filesystem widget surface is temporarily disabled; implementation remains under plugins/filesystem.
-    // createFilesystemPlugin(),
-    // S60: Terminal widget surface is temporarily disabled; implementation remains under plugins/terminal.
-    // createTerminalPlugin(),
   ];
   const extensionPlugins = extensionInstalls.flatMap((install) => [...(install.plugins ?? [])]);
   const plugins: TCanvasRuntimePlugin[] = [

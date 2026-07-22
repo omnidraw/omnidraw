@@ -41,7 +41,7 @@
     {
       "version": 0,
       "name": "000-initial.sql",
-      "checksum_sha256": "3b86545d7cb2c82b0bbe4394c4e00ffd71e4a6452bf7ef51cd97d48ddb0e38f1",
+      "checksum_sha256": "71186df35215bf2c3df3286ce87a1d84b6b8abe384105911635e1a2a3b0f2e55",
       "applied_at_ms": 1784592000000,
       "application_version": "m1-evidence"
     },
@@ -197,14 +197,6 @@
     },
     {
       "schema": "main",
-      "name": "file_systems",
-      "type": "table",
-      "ncol": 10,
-      "wr": 0,
-      "strict": 1
-    },
-    {
-      "schema": "main",
       "name": "function_attempts",
       "type": "table",
       "ncol": 26,
@@ -279,7 +271,7 @@
       "schema": "main",
       "name": "legacy_actor_instances",
       "type": "table",
-      "ncol": 13,
+      "ncol": 12,
       "wr": 0,
       "strict": 1
     },
@@ -312,14 +304,6 @@
       "name": "organizations",
       "type": "table",
       "ncol": 6,
-      "wr": 0,
-      "strict": 1
-    },
-    {
-      "schema": "main",
-      "name": "pty_session_metadata",
-      "type": "table",
-      "ncol": 10,
       "wr": 0,
       "strict": 1
     },
@@ -3102,182 +3086,6 @@
         ]
       }
     },
-    "file_systems": {
-      "columns": [
-        {
-          "cid": 0,
-          "name": "org_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 1,
-          "name": "id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 2,
-          "name": "name",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 3,
-          "name": "slug",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 4,
-          "name": "capability_ref",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 5,
-          "name": "relative_root",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
-          "name": "description",
-          "type": "TEXT",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 7,
-          "name": "status",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 8,
-          "name": "created_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 9,
-          "name": "updated_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        }
-      ],
-      "foreignKeys": [
-        {
-          "id": 0,
-          "seq": 0,
-          "table": "organizations",
-          "from": "org_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        }
-      ],
-      "indexes": [
-        {
-          "seq": 3,
-          "name": "sqlite_autoindex_file_systems_1",
-          "unique": 1,
-          "origin": "pk",
-          "partial": 0
-        },
-        {
-          "seq": 2,
-          "name": "sqlite_autoindex_file_systems_2",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        },
-        {
-          "seq": 1,
-          "name": "sqlite_autoindex_file_systems_3",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        },
-        {
-          "seq": 0,
-          "name": "sqlite_autoindex_file_systems_4",
-          "unique": 1,
-          "origin": "u",
-          "partial": 0
-        }
-      ],
-      "indexDetails": {
-        "sqlite_autoindex_file_systems_1": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 1,
-            "name": "id"
-          }
-        ],
-        "sqlite_autoindex_file_systems_2": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 2,
-            "name": "name"
-          }
-        ],
-        "sqlite_autoindex_file_systems_3": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 3,
-            "name": "slug"
-          }
-        ],
-        "sqlite_autoindex_file_systems_4": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 4,
-            "name": "capability_ref"
-          }
-        ]
-      }
-    },
     "function_attempts": {
       "columns": [
         {
@@ -5670,14 +5478,6 @@
         },
         {
           "cid": 5,
-          "name": "file_system_id",
-          "type": "TEXT",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
           "name": "display_name",
           "type": "TEXT",
           "notnull": 1,
@@ -5685,7 +5485,7 @@
           "pk": 0
         },
         {
-          "cid": 7,
+          "cid": 6,
           "name": "status",
           "type": "TEXT",
           "notnull": 1,
@@ -5693,7 +5493,7 @@
           "pk": 0
         },
         {
-          "cid": 8,
+          "cid": 7,
           "name": "machine_state",
           "type": "TEXT",
           "notnull": 1,
@@ -5701,7 +5501,7 @@
           "pk": 0
         },
         {
-          "cid": 9,
+          "cid": 8,
           "name": "machine_context_json",
           "type": "TEXT",
           "notnull": 1,
@@ -5709,7 +5509,7 @@
           "pk": 0
         },
         {
-          "cid": 10,
+          "cid": 9,
           "name": "last_error_json",
           "type": "TEXT",
           "notnull": 0,
@@ -5717,7 +5517,7 @@
           "pk": 0
         },
         {
-          "cid": 11,
+          "cid": 10,
           "name": "created_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -5725,7 +5525,7 @@
           "pk": 0
         },
         {
-          "cid": 12,
+          "cid": 11,
           "name": "updated_at_ms",
           "type": "INTEGER",
           "notnull": 1,
@@ -5737,26 +5537,6 @@
         {
           "id": 0,
           "seq": 0,
-          "table": "file_systems",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 1,
-          "table": "file_systems",
-          "from": "file_system_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 0,
           "table": "legacy_actor_definitions",
           "from": "org_id",
           "to": "org_id",
@@ -5765,7 +5545,7 @@
           "match": "NONE"
         },
         {
-          "id": 1,
+          "id": 0,
           "seq": 1,
           "table": "legacy_actor_definitions",
           "from": "actor_definition_name",
@@ -5775,7 +5555,7 @@
           "match": "NONE"
         },
         {
-          "id": 2,
+          "id": 1,
           "seq": 0,
           "table": "canvases",
           "from": "org_id",
@@ -5785,7 +5565,7 @@
           "match": "NONE"
         },
         {
-          "id": 2,
+          "id": 1,
           "seq": 1,
           "table": "canvases",
           "from": "canvas_id",
@@ -5795,7 +5575,7 @@
           "match": "NONE"
         },
         {
-          "id": 3,
+          "id": 2,
           "seq": 0,
           "table": "organizations",
           "from": "org_id",
@@ -5807,15 +5587,8 @@
       ],
       "indexes": [
         {
-          "seq": 5,
-          "name": "legacy_actor_instances_definition_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
           "seq": 4,
-          "name": "legacy_actor_instances_filesystem_idx",
+          "name": "legacy_actor_instances_definition_idx",
           "unique": 0,
           "origin": "c",
           "partial": 0
@@ -5863,20 +5636,8 @@
           },
           {
             "seqno": 2,
-            "cid": 7,
+            "cid": 6,
             "name": "status"
-          }
-        ],
-        "legacy_actor_instances_filesystem_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 5,
-            "name": "file_system_id"
           }
         ],
         "sqlite_autoindex_legacy_actor_instances_1": [
@@ -6533,232 +6294,6 @@
             "seqno": 0,
             "cid": 1,
             "name": "slug"
-          }
-        ]
-      }
-    },
-    "pty_session_metadata": {
-      "columns": [
-        {
-          "cid": 0,
-          "name": "org_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 1,
-          "name": "id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 1
-        },
-        {
-          "cid": 2,
-          "name": "account_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 3,
-          "name": "file_system_id",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 4,
-          "name": "cwd_relative_path",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 5,
-          "name": "status",
-          "type": "TEXT",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 6,
-          "name": "exit_code",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 7,
-          "name": "created_at_ms",
-          "type": "INTEGER",
-          "notnull": 1,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 8,
-          "name": "closed_at_ms",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        },
-        {
-          "cid": 9,
-          "name": "retain_until_ms",
-          "type": "INTEGER",
-          "notnull": 0,
-          "dflt_value": null,
-          "pk": 0
-        }
-      ],
-      "foreignKeys": [
-        {
-          "id": 0,
-          "seq": 0,
-          "table": "file_systems",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 0,
-          "seq": 1,
-          "table": "file_systems",
-          "from": "file_system_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 0,
-          "table": "organization_memberships",
-          "from": "org_id",
-          "to": "org_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 1,
-          "seq": 1,
-          "table": "organization_memberships",
-          "from": "account_id",
-          "to": "account_id",
-          "on_update": "NO ACTION",
-          "on_delete": "RESTRICT",
-          "match": "NONE"
-        },
-        {
-          "id": 2,
-          "seq": 0,
-          "table": "organizations",
-          "from": "org_id",
-          "to": "id",
-          "on_update": "NO ACTION",
-          "on_delete": "CASCADE",
-          "match": "NONE"
-        }
-      ],
-      "indexes": [
-        {
-          "seq": 2,
-          "name": "pty_session_metadata_account_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 1,
-          "name": "pty_session_metadata_filesystem_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 3,
-          "name": "pty_session_metadata_retention_idx",
-          "unique": 0,
-          "origin": "c",
-          "partial": 0
-        },
-        {
-          "seq": 0,
-          "name": "sqlite_autoindex_pty_session_metadata_1",
-          "unique": 1,
-          "origin": "pk",
-          "partial": 0
-        }
-      ],
-      "indexDetails": {
-        "pty_session_metadata_account_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 2,
-            "name": "account_id"
-          },
-          {
-            "seqno": 2,
-            "cid": 7,
-            "name": "created_at_ms"
-          }
-        ],
-        "pty_session_metadata_filesystem_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 3,
-            "name": "file_system_id"
-          }
-        ],
-        "pty_session_metadata_retention_idx": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 5,
-            "name": "status"
-          },
-          {
-            "seqno": 2,
-            "cid": 9,
-            "name": "retain_until_ms"
-          }
-        ],
-        "sqlite_autoindex_pty_session_metadata_1": [
-          {
-            "seqno": 0,
-            "cid": 0,
-            "name": "org_id"
-          },
-          {
-            "seqno": 1,
-            "cid": 1,
-            "name": "id"
           }
         ]
       }

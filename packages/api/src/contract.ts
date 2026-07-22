@@ -4,10 +4,8 @@ import { agentContract } from './agent/contract';
 import { canvasContract } from './canvas/contract';
 import { dbContract } from './db/contract';
 import { fileContract } from './file/contract';
-import { filesystemContract } from './filesystem/contract';
 import { functionContract } from './function/contract';
 import { notificationContract } from './notification/contract';
-import { ptyContract } from './pty/contract';
 import { resourceContract } from './resource/contract';
 import { toolContract } from './tool/contract';
 import { widgetContract } from './widget/contract';
@@ -18,10 +16,8 @@ const contract = oc.router({
   canvas: canvasContract,
   db: dbContract,
   file: fileContract,
-  filesystem: filesystemContract,
   function: functionContract,
   notification: notificationContract,
-  pty: ptyContract,
   resource: resourceContract,
   tool: toolContract,
   widget: widgetContract,
@@ -39,10 +35,8 @@ export {
   contract,
   dbContract,
   fileContract,
-  filesystemContract,
   functionContract,
   notificationContract,
-  ptyContract,
   resourceContract,
   toolContract,
   widgetContract,

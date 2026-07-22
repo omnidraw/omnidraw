@@ -70,7 +70,7 @@ describe('tenant-qualified DB repositories', () => {
     await service.stop();
   });
 
-  test('isolates canvas, media, filesystem, key-value, and tool-group collisions', async () => {
+  test('isolates canvas, media, key-value, and tool-group collisions', async () => {
     await expect(tenantA.account.getDefaultOwner()).resolves.toMatchObject({ id: TEST_TENANT.accountId });
     await expect(tenantB.account.getDefaultOwner()).resolves.toMatchObject({ id: TENANT_B.accountId });
 
@@ -141,35 +141,6 @@ describe('tenant-qualified DB repositories', () => {
     await tenantB.file.deleteById({ id: UNKNOWN_ID });
     await expect(tenantA.file.getById({ id: foreignFileId })).resolves.not.toBeNull();
 
-    const sharedFilesystemId = uuid(30);
-    const foreignFilesystemId = uuid(31);
-    await tenantA.filesystem.create({
-      id: sharedFilesystemId,
-      name: 'Workspace',
-      slug: 'workspace',
-      path: 'capability:a',
-      description: 'A',
-    });
-    await tenantB.filesystem.create({
-      id: sharedFilesystemId,
-      name: 'Workspace',
-      slug: 'workspace',
-      path: 'capability:b',
-      description: 'B',
-    });
-    await tenantA.filesystem.create({
-      id: foreignFilesystemId,
-      name: 'Private workspace',
-      slug: 'private-workspace',
-      path: 'capability:private-a',
-      description: null,
-    });
-    await expect(tenantA.filesystem.findById({ id: sharedFilesystemId })).resolves.toMatchObject({ path: 'capability:a' });
-    await expect(tenantB.filesystem.findById({ id: sharedFilesystemId })).resolves.toMatchObject({ path: 'capability:b' });
-    await expect(tenantB.filesystem.findById({ id: foreignFilesystemId })).resolves.toBeNull();
-    await expect(tenantB.filesystem.findById({ id: UNKNOWN_ID })).resolves.toBeNull();
-    expect(await tenantB.filesystem.listAll()).toHaveLength(1);
-
     await tenantA.keyValue.add({ name: 'shared-key', type: 'text', value: 'A' });
     await tenantB.keyValue.add({ name: 'shared-key', type: 'text', value: 'B' });
     await tenantA.keyValue.add({ name: 'foreign-key', type: 'text', value: 'A only' });
@@ -221,7 +192,6 @@ describe('tenant-qualified DB repositories', () => {
       canvas_id: canvasId,
       element_id: `element-${label}`,
       actor_definition_name: 'Shared actor',
-      filesystem_id: null,
       display_name: label,
       status: 'created' as const,
       machine_state: 'idle',

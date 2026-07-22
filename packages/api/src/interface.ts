@@ -2,7 +2,6 @@ import type {
   TActorDefinition,
   TActorInstance,
   TCanvas,
-  TFilesystem,
   TMediaFile,
   TToolGroup,
 } from '@vibecanvas/service-db/model';
@@ -33,12 +32,6 @@ export type TFileDatabaseCapability = {
     create(tenant: TTenantContext, args: Omit<TMediaFile, 'created_at'>): Promise<TMediaFile>;
     deleteById(tenant: TTenantContext, args: { id: string }): Promise<void>;
     getById(tenant: TTenantContext, args: { id: string }): Promise<TMediaFile | null>;
-  };
-};
-
-export type TFilesystemDatabaseCapability = {
-  filesystem: {
-    listAll(tenant: TTenantContext): Promise<TFilesystem[]>;
   };
 };
 

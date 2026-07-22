@@ -27,11 +27,6 @@ export type TNotificationEvent = Readonly<{
   description?: string;
 }>;
 
-export type TFilesystemEvent = Readonly<{
-  eventType: 'rename' | 'change';
-  fileName: string;
-}>;
-
 export type TActorStatus =
   | 'created'
   | 'starting'

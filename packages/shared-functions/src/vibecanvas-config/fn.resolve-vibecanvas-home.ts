@@ -11,7 +11,6 @@ type TVibecanvasHome = Readonly<{
   artifactsRoot: string;
   resourcesRoot: string;
   tempRoot: string;
-  ptyRoot: string;
   cacheRoot: string;
   logsRoot: string;
 }>;
@@ -77,7 +76,6 @@ function fnResolveVibecanvasHome(
     artifactsRoot: portal.join(defaultOrganizationRoot, 'artifacts'),
     resourcesRoot: portal.join(defaultOrganizationRoot, 'resources'),
     tempRoot: portal.join(defaultOrganizationRoot, 'temp'),
-    ptyRoot: portal.join(defaultOrganizationRoot, 'pty'),
     cacheRoot: portal.join(homeDir, 'cache'),
     logsRoot: portal.join(homeDir, 'logs'),
   });

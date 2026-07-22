@@ -16,7 +16,7 @@ Primary KPIs to optimize:
 | CRDT commit cost | time/op count/bytes per local commit, and commits per second during drag | Fewer smaller commits on hot paths | `src/services/crdt/CrdtService.ts`, drag/transform setup files |
 | Network sync volume | Automerge change count and approximate encoded bytes per gesture | Reduce high-frequency sync traffic | `src/automerge.ts`, `src/services/crdt/CrdtService.ts` |
 | Remote change application | time and UI disruption when non-local CRDT changes arrive | Avoid full scene reload when a patch can update nodes | `src/plugins/scene-hydrator/SceneHydrator.plugin.ts` |
-| Main-thread blocking | long tasks from serialization, cloning, text layout, image decode/upload, CodeMirror/terminal/widgets | Keep under 50ms long-task threshold | text/shape/pen/image/widget plugins |
+| Main-thread blocking | long tasks from serialization, cloning, text layout, image decode/upload, and widgets | Keep under 50ms long-task threshold | text/shape/pen/image/widget plugins |
 | Memory pressure | live Konva nodes, DOM portals, history snapshots, cloned element payloads | Avoid unbounded growth and large retained snapshots | `src/services/history/HistoryService.ts`, clone/drag/history paths |
 
 Suggested benchmark matrix:
@@ -101,7 +101,7 @@ Known sources of main-thread work:
 - Pen rendering through `perfect-freehand`, especially many points.
 - Image file read, image decode/dimension probing, and upload/clone operations.
 - Widget DOM portals syncing CSS transforms on camera/selection/drag.
-- CodeMirror/terminal widgets can add large DOM work inside canvas portals.
+- Rich widgets can add large DOM work inside canvas portals.
 
 ## Existing measurement hooks
 

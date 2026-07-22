@@ -107,21 +107,6 @@ describe('EventPublisherService tenant isolation', () => {
     await reconnect.return?.();
   });
 
-  test('isolates identical filesystem paths and watch topics', async () => {
-    const service = new EventPublisherService();
-    const watchA = service.subscribeFilesystemEvents(tenantA, 'home', '/same')[Symbol.asyncIterator]();
-    const nextA = watchA.next();
-
-    service.publishFilesystemEvent(tenantB, 'home', '/same', { eventType: 'change', fileName: 'foreign.txt' });
-    service.publishFilesystemEvent(tenantA, 'home', '/same', { eventType: 'change', fileName: 'local.txt' });
-
-    expect(await nextA).toEqual({
-      done: false,
-      value: { eventType: 'change', fileName: 'local.txt' },
-    });
-    await watchA.return?.();
-  });
-
   test('creates an immutable tenant-bound capability for legacy services', () => {
     const service = new EventPublisherService();
     const boundA = service.forTenant(tenantA);

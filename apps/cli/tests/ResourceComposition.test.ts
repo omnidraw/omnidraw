@@ -293,8 +293,6 @@ describe('resource runtime composition', () => {
       automerge: {},
       db: {},
       eventPublisher: {},
-      filesystem: {},
-      pty: {},
     } as unknown as TOrpcTenantContextServices);
     const listResources = router.api.resource.resources.list.callable({ context });
 
@@ -311,9 +309,7 @@ describe('resource runtime composition', () => {
       automerge: {},
       db: {},
       eventPublisher: {},
-      filesystem: {},
       functionInvocation: {},
-      pty: {},
       widget: {},
       widgetRuntimeLoadAdmission: {},
     } as unknown as TOrpcTenantContextServices);
@@ -348,9 +344,7 @@ describe('resource runtime composition', () => {
       automerge: {},
       db: {},
       eventPublisher: {},
-      filesystem: {},
       functionInvocation: {},
-      pty: {},
       widget: {},
       widgetRuntimeLoadAdmission: {},
     } as unknown as TOrpcTenantContextServices);

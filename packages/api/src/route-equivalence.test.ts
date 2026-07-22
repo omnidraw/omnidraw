@@ -9,10 +9,8 @@ const ROUTE_KEYS = [
   'canvas',
   'db',
   'file',
-  'filesystem',
   'function',
   'notification',
-  'pty',
   'resource',
   'tool',
   'widget',
@@ -38,7 +36,7 @@ describe('unified API route equivalence', () => {
     const contractProcedures = collectProcedurePaths(apiContract);
     const handlerProcedures = collectProcedurePaths(router);
 
-    expect(contractProcedures).toHaveLength(125);
+    expect(contractProcedures).toHaveLength(108);
     expect(handlerProcedures.toSorted()).toEqual(contractProcedures.toSorted());
   });
 });

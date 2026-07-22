@@ -5,7 +5,6 @@ import { bindTestTenant } from '../tenant.fixture';
 const ID = {
   canvas: '00000000-0000-4000-8000-000000000101',
   file: '00000000-0000-4000-8000-000000000102',
-  filesystem: '00000000-0000-4000-8000-000000000103',
   actorOne: '00000000-0000-4000-8000-000000000104',
   actorTwo: '00000000-0000-4000-8000-000000000105',
   connection: '00000000-0000-4000-8000-000000000106',
@@ -44,15 +43,6 @@ describe('DbServiceTurso managed baseline compatibility', () => {
     expect(file).toMatchObject({ id: ID.file, hash: 'legacy-etag' });
     expect(file.created_at).toBeString();
 
-    const filesystem = await db.filesystem.create({
-      id: ID.filesystem,
-      name: 'Workspace',
-      slug: 'workspace',
-      path: '/tmp/workspace',
-      description: 'Local workspace',
-    });
-    expect(filesystem).toMatchObject({ path: '/tmp/workspace', description: 'Local workspace' });
-
     await db.actor.insertDefinition({
       name: 'ManagedActor',
       slug: 'managed-actor',
@@ -66,7 +56,6 @@ describe('DbServiceTurso managed baseline compatibility', () => {
         canvas_id: ID.canvas,
         element_id: element,
         actor_definition_name: 'ManagedActor',
-        filesystem_id: ID.filesystem,
         display_name: element,
         status: 'created',
         machine_state: 'idle',

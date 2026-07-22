@@ -127,9 +127,6 @@ const fakeContext = {
     actor: fakeCapability<TApiContext['db']['actor']>(),
     canvas: fakeCapability<TApiContext['db']['canvas']>(),
     file: fakeCapability<TApiContext['db']['file']>(),
-    filesystem: {
-      listAll: async () => [],
-    },
     toolGroup: {
       create: async (_tenant, group) => group,
       getByName: async () => null,
@@ -145,10 +142,8 @@ const fakeContext = {
     subscribeDbEventRecords: async function* () {},
     subscribeNotificationRecords: async function* () {},
   },
-  filesystem: fakeCapability<TApiContext['filesystem']>(),
   functionInvocation: fakeCapability<TApiContext['functionInvocation']>(),
   humanResourceSecret: fakeHumanResourceSecretCapability,
-  pty: fakeCapability<TApiContext['pty']>(),
   resource: fakeResourceCapability,
   widget: fakeCapability<TApiContext['widget']>(),
   widgetRuntimeLoadAdmission: {
@@ -177,10 +172,8 @@ describe('API context composition', () => {
       'canvas',
       'db',
       'file',
-      'filesystem',
       'function',
       'notification',
-      'pty',
       'resource',
       'tool',
       'widget',

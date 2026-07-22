@@ -454,12 +454,6 @@ describe("managed schema constraints", () => {
         relativePath,
       ));
     }
-    await expectRejected(run(
-      db,
-      "INSERT INTO file_systems (org_id, id, name, slug, capability_ref, relative_root, description, status, created_at_ms, updated_at_ms) VALUES (?, ?, 'Unsafe', 'unsafe', 'cap-unsafe', '../escape', NULL, 'active', 1, 1)",
-      ORG_A,
-      "00000000-0000-4000-8000-000000000047",
-    ));
   });
 
   test("rejects invalid invocation lifecycles, duplicate attempts and idempotency keys", async () => {
@@ -612,7 +606,7 @@ describe("managed schema constraints", () => {
     const actorId = "00000000-0000-4000-8000-000000000060";
     await run(
       db,
-      "INSERT INTO legacy_actor_instances (org_id, id, canvas_id, element_id, actor_definition_name, file_system_id, display_name, status, machine_state, machine_context_json, last_error_json, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 'actor-element', 'Legacy Weather', NULL, 'Weather', 'stopped', 'idle', '{}', NULL, 1, 1)",
+      "INSERT INTO legacy_actor_instances (org_id, id, canvas_id, element_id, actor_definition_name, display_name, status, machine_state, machine_context_json, last_error_json, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 'actor-element', 'Legacy Weather', 'Weather', 'stopped', 'idle', '{}', NULL, 1, 1)",
       ORG_A,
       actorId,
       CANVAS_A,

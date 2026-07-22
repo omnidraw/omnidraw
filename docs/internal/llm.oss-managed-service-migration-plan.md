@@ -169,7 +169,6 @@ packages/
       function/
       media/
       notification/
-      pty/
       resource/
       tool/
       contract.ts
@@ -188,9 +187,7 @@ packages/
   service-automerge/
   service-db/
   service-event-publisher/
-  service-filesystem/
   service-kv/
-  service-pty/
   service-theme/
   shared-functions/
   tapable/
@@ -536,13 +533,11 @@ Constraints:
 - outbox state transitions and imported timestamps are consistent;
 - billing aggregation does not live in this OSS schema.
 
-#### Media, filesystem, PTY, tools, and agent ownership
+#### Media, tools, and agent ownership
 
 ```text
 media_files
-file_systems
 tool_groups
-pty_session_metadata
 agent_chats
 agent_drafts
 agent_previews
@@ -552,11 +547,9 @@ Constraints:
 
 - all are organization-qualified;
 - media hash is not authorization and may be physically duplicated/deduplicated independently;
-- filesystem rows store a host-created capability/root reference, not arbitrary authority from a caller;
 - tool group names are unique per organization; immutable system tools live separately in code or a distinct system table;
-- live PTY processes, watches, and approvals remain ephemeral but their in-memory keys include organization/account/session;
 - agent draft/preview/chat names may collide across organizations without sharing paths;
-- every persisted relative path is bounded, normalized by the application, and checked against obvious absolute/traversal forms; filesystem capability checks remain mandatory because SQL cannot prove path containment.
+- every persisted relative path is bounded, normalized by the application, and checked against obvious absolute/traversal forms.
 
 #### Optional legacy actor compatibility
 

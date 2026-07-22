@@ -9,7 +9,7 @@ import {
 } from '../CONSTANTS';
 import { MIGRATION_FILES } from '../migrations/CONSTANTS';
 import type { IDbConfig } from "../interface";
-import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TEncryptionKey, TFilesystem, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
+import type { TActorConnection, TActorDefinition, TActorInstance, TActorResource, TActorResourceKind, TActorResourceStatus, TCanvas, TCanvasMember, TDbResourceApplyInstanceStatus, TDbResourceApplyStatus, TDbResourceDraftChangeKind, TDbResourceDraftStatus, TEncryptionKey, TJson, TKeyValue, TMediaFile, TToolGroup } from "../model";
 import {
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
 } from '../schema/expected-schema';
@@ -20,7 +20,6 @@ import { fxCanvasFindById, fxCanvasFindByName, fxCanvasListAll, fxCanvasListMemb
 import { fxDbResourceApplyGet, fxDbResourceApplyInstanceResultListByApply, fxDbResourceApplyInstanceResultListByInstance, fxDbResourceApplyList, fxDbResourceDraftChangeList, fxDbResourceDraftGet, fxDbResourceDraftGetActive, fxDbResourceDraftList, fxDbResourceListAffectedInstances } from "./fx.db-resource";
 import { fxActorResourceEncryptionKeyGet } from "./fx.encryption-key";
 import { fxFileGetById, fxFileListAll } from "./fx.file";
-import { fxFilesystemFindById, fxFilesystemListAll } from "./fx.filesystem";
 import { fxKeyValueGet } from "./fx.keyValue";
 import { fxReadMigrationFile } from './fx.migration-file';
 import { fxPreflightMigrationState } from './fx.migration-state';
@@ -32,7 +31,6 @@ import { txCanvasCreate, txCanvasDeleteById, txCanvasRenameById } from "./tx.can
 import { txDbResourceApplyCreate, txDbResourceApplyCreateFromDraft, txDbResourceApplyFinishWithDraft, txDbResourceApplyInstanceResultUpsert, txDbResourceApplyUpdate, txDbResourceDraftAppendChange, txDbResourceDraftCreate, txDbResourceDraftDiscard, txDbResourceDraftRename, txDbResourceDraftUpdateStatus } from "./tx.db-resource";
 import { txActorResourceEncryptionKeyGetOrCreate } from "./tx.encryption-key";
 import { txFileCreate, txFileDeleteById } from "./tx.file";
-import { txFilesystemCreate } from "./tx.filesystem";
 import { txKeyValueAdd, txKeyValueRemove } from "./tx.keyValue";
 import { txToolGroupCreate, txToolGroupRemove, txToolGroupUpdate } from "./tx.tool-group";
 import { txRunMigrations } from "./tx.migrations";
@@ -47,7 +45,6 @@ declare const VIBECANVAS_VERSION: string | undefined;
 
 type TCanvasCreateArgs = Omit<TCanvas, "created_at">;
 type TFileCreateArgs = Omit<TMediaFile, "created_at">
-type TFilesystemCreateArgs = Omit<TFilesystem, "created_at" | "updated_at">;
 type TActorDefinitionCreateArgs = Omit<TActorDefinition, "created_at" | "updated_at">;
 type TActorDefinitionUpdateArgs = Omit<TActorDefinition, "id" | "created_at" | "updated_at"> & { currentSlug?: string };
 type TActorInstanceCreateArgs = Omit<TActorInstance, "created_at" | "updated_at" | "machine_context" | "last_error"> & { machine_context: TJson; last_error?: TActorInstance['last_error'] };
@@ -76,11 +73,6 @@ interface IPublicMethods {
     create(tenant: TTenantContext, args: TFileCreateArgs): Promise<TMediaFile>;
     getById(tenant: TTenantContext, args: { id: string }): Promise<TMediaFile | null>;
     deleteById(tenant: TTenantContext, args: { id: string }): Promise<void>;
-  };
-  filesystem: {
-    listAll(tenant: TTenantContext): Promise<TFilesystem[]>;
-    findById(tenant: TTenantContext, args: { id: string }): Promise<TFilesystem | null>;
-    create(tenant: TTenantContext, args: TFilesystemCreateArgs): Promise<TFilesystem>;
   };
   keyValue: {
     add(tenant: TTenantContext, args: TKeyValue): Promise<TKeyValue>;
@@ -185,7 +177,7 @@ async function validateOrganizationsDirectory(
       throw new Error(`Refusing unknown pre-bootstrap organization entry '${organization.name}'.`);
     }
     const organizationRoot = path.join(organizationsDir, organization.name);
-    const expectedLeaves = new Set(['agent', 'artifacts', 'resources', 'temp', 'pty']);
+    const expectedLeaves = new Set(['agent', 'artifacts', 'resources', 'temp']);
     const leaves = await fs.readdir(organizationRoot, { withFileTypes: true });
     for (const leaf of leaves) {
       if (!expectedLeaves.has(leaf.name) || !leaf.isDirectory()) {
@@ -434,14 +426,6 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
     ),
   };
 
-  filesystem = {
-    listAll: (tenant: TTenantContext) => fxFilesystemListAll(this, { tenant }),
-    findById: (tenant: TTenantContext, args: { id: string }) => fxFilesystemFindById(this, { tenant, ...args }),
-    create: (tenant: TTenantContext, args: TFilesystemCreateArgs) => this.#serializeDatabaseWrite(
-      () => txFilesystemCreate(this, { tenant, ...args }),
-    ),
-  };
-
   keyValue = {
     add: (tenant: TTenantContext, args: TKeyValue) => this.#serializeDatabaseWrite(
       () => txKeyValueAdd(this, { tenant, ...args }),
@@ -655,11 +639,6 @@ export class DbServiceTurso implements IService, IStartableService, IStoppableSe
         create: bind(this.file.create),
         getById: bind(this.file.getById),
         deleteById: bind(this.file.deleteById),
-      },
-      filesystem: {
-        listAll: bind(this.filesystem.listAll),
-        findById: bind(this.filesystem.findById),
-        create: bind(this.filesystem.create),
       },
       keyValue: {
         add: bind(this.keyValue.add),

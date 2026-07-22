@@ -17,8 +17,6 @@ const SHARED_CANVAS_ID = uuid(10);
 const FOREIGN_CANVAS_ID = uuid(11);
 const SHARED_FILE_ID = uuid(20);
 const FOREIGN_FILE_ID = uuid(21);
-const SHARED_FILESYSTEM_ID = uuid(30);
-const FOREIGN_FILESYSTEM_ID = uuid(31);
 const SHARED_INSTANCE_ID = uuid(40);
 const FOREIGN_INSTANCE_ID = uuid(41);
 const UNKNOWN_ID = uuid(999);
@@ -44,8 +42,6 @@ const tenantB = fnFreezeTenantContext({
 
 type TCapabilityCalls = {
   automerge: TTenantContext[];
-  filesystem: TTenantContext[];
-  pty: TTenantContext[];
 };
 
 async function seedSecondTenant(service: DbServiceTurso): Promise<void> {
@@ -93,18 +89,6 @@ describe('API tenant authority forwarding', () => {
           calls.automerge.push(receivedTenant);
         },
       },
-      filesystem: {
-        homeDir: (receivedTenant: TTenantContext) => {
-          calls.filesystem.push(receivedTenant);
-          return '';
-        },
-      },
-      pty: {
-        list: (receivedTenant: TTenantContext) => {
-          calls.pty.push(receivedTenant);
-          return [];
-        },
-      },
     } as unknown as TApiContext;
   }
 
@@ -117,7 +101,7 @@ describe('API tenant authority forwarding', () => {
     });
     await service.start();
     await seedSecondTenant(service);
-    calls = { automerge: [], filesystem: [], pty: [] };
+    calls = { automerge: [] };
 
     await service.canvas.create(tenantA, {
       id: SHARED_CANVAS_ID,
@@ -154,28 +138,6 @@ describe('API tenant authority forwarding', () => {
       data: new Uint8Array([3]),
     });
 
-    await service.filesystem.create(tenantA, {
-      id: SHARED_FILESYSTEM_ID,
-      name: 'Workspace',
-      slug: 'workspace',
-      path: 'host-capability-a',
-      description: 'Tenant A',
-    });
-    await service.filesystem.create(tenantB, {
-      id: SHARED_FILESYSTEM_ID,
-      name: 'Workspace',
-      slug: 'workspace',
-      path: 'host-capability-b',
-      description: 'Tenant B',
-    });
-    await service.filesystem.create(tenantA, {
-      id: FOREIGN_FILESYSTEM_ID,
-      name: 'Private workspace',
-      slug: 'private-workspace',
-      path: 'host-capability-a-only',
-      description: null,
-    });
-
     await service.toolGroup.create(tenantA, { name: 'Shared tools', json: null });
     await service.toolGroup.create(tenantB, { name: 'Shared tools', json: { svgIcon: '<svg>B</svg>' } });
     await service.toolGroup.create(tenantA, { name: 'Tenant A tools', json: null });
@@ -199,7 +161,6 @@ describe('API tenant authority forwarding', () => {
       canvas_id: SHARED_CANVAS_ID,
       element_id: `element-${label}`,
       actor_definition_name: 'Shared actor',
-      filesystem_id: null,
       display_name: label,
       status: 'created' as const,
       machine_state: `state-${label}`,
@@ -235,24 +196,6 @@ describe('API tenant authority forwarding', () => {
     const getToolsB = router.api.tool.groups.get.callable({ context: context(tenantB) });
     expect((await getToolsA({ name: 'Shared tools' })).json).toBeNull();
     expect((await getToolsB({ name: 'Shared tools' })).json).toEqual({ svgIcon: '<svg>B</svg>' });
-
-    const listFilesystemsA = router.api.filesystem.listRegisteredFilesystems.callable({ context: context(tenantA) });
-    const listFilesystemsB = router.api.filesystem.listRegisteredFilesystems.callable({ context: context(tenantB) });
-    expect((await listFilesystemsA()).map(({ description, path }) => ({ description, path }))).toEqual([
-      { description: 'Tenant A', path: '' },
-      { description: null, path: '' },
-    ]);
-    expect((await listFilesystemsB()).map(({ description, path }) => ({ description, path }))).toEqual([
-      { description: 'Tenant B', path: '' },
-    ]);
-
-    const homeB = router.api.filesystem.home.callable({ context: context(tenantB) });
-    await expect(homeB({ filesystemId: SHARED_FILESYSTEM_ID })).resolves.toEqual({ path: '' });
-    expect(calls.filesystem.at(-1)).toBe(tenantB);
-
-    const listPtyB = router.api.pty.list.callable({ context: context(tenantB) });
-    await expect(listPtyB({ filesystemId: SHARED_FILESYSTEM_ID, workingDirectory: '' })).resolves.toEqual([]);
-    expect(calls.pty.at(-1)).toBe(tenantB);
 
     const snapshotA = router.api.actors.instances.snapshot.callable({ context: context(tenantA) });
     const snapshotB = router.api.actors.instances.snapshot.callable({ context: context(tenantB) });
@@ -294,15 +237,6 @@ describe('API tenant authority forwarding', () => {
     expect(await rejectionSignature(removeToolsB({ name: 'Tenant A tools' })))
       .toEqual(await rejectionSignature(removeToolsB({ name: 'Unknown tools' })));
     expect(await service.toolGroup.getByName(tenantA, { name: 'Tenant A tools' })).not.toBeNull();
-
-    const homeB = router.api.filesystem.home.callable({ context: context(tenantB) });
-    expect(await rejectionSignature(homeB({ filesystemId: FOREIGN_FILESYSTEM_ID })))
-      .toEqual(await rejectionSignature(homeB({ filesystemId: UNKNOWN_ID })));
-    const listPtyB = router.api.pty.list.callable({ context: context(tenantB) });
-    expect(await rejectionSignature(listPtyB({ filesystemId: FOREIGN_FILESYSTEM_ID, workingDirectory: '' })))
-      .toEqual(await rejectionSignature(listPtyB({ filesystemId: UNKNOWN_ID, workingDirectory: '' })));
-    expect(calls.filesystem).toEqual([]);
-    expect(calls.pty).toEqual([]);
 
     const snapshotB = router.api.actors.instances.snapshot.callable({ context: context(tenantB) });
     expect(await rejectionSignature(snapshotB({ instanceId: FOREIGN_INSTANCE_ID })))

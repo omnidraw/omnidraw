@@ -62,7 +62,7 @@ export async function fxActorListInstances(
 ): Promise<TActorInstance[]> {
   if (args.canvasId === undefined) {
     const rows = await (await portal.db.prepare(`
-      SELECT id, canvas_id, element_id, actor_definition_name, file_system_id,
+      SELECT id, canvas_id, element_id, actor_definition_name,
         display_name, status, machine_state, machine_context_json, last_error_json,
         created_at_ms, updated_at_ms
       FROM legacy_actor_instances
@@ -73,7 +73,7 @@ export async function fxActorListInstances(
   }
 
   const rows = await (await portal.db.prepare(`
-    SELECT id, canvas_id, element_id, actor_definition_name, file_system_id,
+    SELECT id, canvas_id, element_id, actor_definition_name,
       display_name, status, machine_state, machine_context_json, last_error_json,
       created_at_ms, updated_at_ms
     FROM legacy_actor_instances
@@ -100,7 +100,7 @@ export async function fxActorGetInstanceByElementId(
   args: TArgsGetInstanceByElementId,
 ): Promise<TActorInstance | null> {
   const row = await (await portal.db.prepare(`
-    SELECT id, canvas_id, element_id, actor_definition_name, file_system_id,
+    SELECT id, canvas_id, element_id, actor_definition_name,
       display_name, status, machine_state, machine_context_json, last_error_json,
       created_at_ms, updated_at_ms
     FROM legacy_actor_instances
@@ -116,7 +116,7 @@ export async function fxActorGetInstanceById(
   args: TArgsGetInstanceById,
 ): Promise<TActorInstance | null> {
   const row = await (await portal.db.prepare(`
-    SELECT id, canvas_id, element_id, actor_definition_name, file_system_id,
+    SELECT id, canvas_id, element_id, actor_definition_name,
       display_name, status, machine_state, machine_context_json, last_error_json,
       created_at_ms, updated_at_ms
     FROM legacy_actor_instances

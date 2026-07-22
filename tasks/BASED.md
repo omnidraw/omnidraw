@@ -306,14 +306,14 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S53](s/S53.md) - normalize functional-core extension into reusable core
 - [x]: [S54](s/S54.md) - simplify widget system
 - [x]: [S55](s/S55.md) - store images as blob not base64
-- [ ]: [S56](s/S56.md) - check if service-filesystem filewatcher needs rework for Bun 1.3.14 fs.watch rewrite
-- [ ]: [S57] - rename FilesystemServiceNode -> FilesystemService
+- [x]: [S56](s/S56.md) - superseded by S104 filesystem stack removal
+- [x]: [S57] - superseded by S104 filesystem stack removal
 - [x]: [S58](s/S58.md) - widget SDK bridge: sandbox-local reactive actor proxy
 - [x]: [S59](s/S59.md) - cleanup functional-core eslint-disable exceptions
 - [x]: [S60](s/S60.md) - remove terminal widget (comment out only)
 - [x]: [S61](s/S61.md) - remove filesystem widget (comment out only)
-- [ ]: [S62](s/S62.md) - reimplement terminal widget API path
-- [ ]: [S63](s/S63.md) - reimplement filesystem widget API path
+- [x]: [S62](s/S62.md) - superseded by S103 PTY stack removal
+- [x]: [S63](s/S63.md) - superseded by S104 filesystem stack removal
 - [x]: [S64](s/S64.md) - db: store actor manifest paths relative to config
 - [x]: [S65](s/S65.md) - widget tool icon metadata object and validation
 - [x]: [S66](s/S66.md) - ai wizard: cap chat input height
@@ -353,8 +353,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
 - [x]: [S101](s/S101.md) - relax home directory validation
 - [x]: [S102](s/S102.md) - dev server uses local .vibecanvas
-- [ ]: [S103](s/S103.md) - remove PTY service, API, canvas terminal, and SQL metadata
-- [ ]: [S104](s/S104.md) - remove filesystem service, API, canvas plugin, and SQL table
+- [x]: [S103](s/S103.md) - remove PTY service, API, canvas terminal, and SQL metadata
+- [x]: [S104](s/S104.md) - remove filesystem service, API, canvas plugin, and SQL table
 - [x]: [S105](s/S105.md) - remove scoped_events table and related code
 - [ ]: [S106](s/S106.md) - widgets: remove published source folders and use source artifacts only
 - [ ]: [S107](s/S107.md) - widgets: remove the actor system completely
@@ -365,7 +365,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [E5](e/E5.md) - how to implement state machine system?
 - [-]: [E6](e/E6.md) - should we include a task management
 - [x]: [E8](e/E8.md) - canvas CLI: query/edit surface exploration
-- [ ]: [E9] - tmux for persistant pty sessions
+- [x]: [E9] - superseded by S103 PTY stack removal
 - [ ]: [E10] - headless chrome to stream to canvas
 - [ ]: [E11] - https://github.com/cr0hn/dockerscan
 - [ ]: [E12] - https://github.com/superradcompany/microsandbox

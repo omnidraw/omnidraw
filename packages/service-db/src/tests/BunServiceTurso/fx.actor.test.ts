@@ -34,10 +34,10 @@ async function seedActorRows(db: Database): Promise<void> {
   `)).run(DEFAULT_OSS_ORGANIZATION_ID);
   const insertInstance = await db.prepare(`
     INSERT INTO legacy_actor_instances (
-      org_id, id, canvas_id, element_id, actor_definition_name, file_system_id,
+      org_id, id, canvas_id, element_id, actor_definition_name,
       display_name, status, machine_state, machine_context_json, last_error_json,
       created_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, ?, 'Counter', NULL, ?, 'running', 'ready', ?, NULL, 1, 1)
+    ) VALUES (?, ?, ?, ?, 'Counter', ?, 'running', 'ready', ?, NULL, 1, 1)
   `);
   await insertInstance.run(
     DEFAULT_OSS_ORGANIZATION_ID,

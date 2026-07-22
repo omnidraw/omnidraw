@@ -118,16 +118,6 @@ export const ZMediaFile = z.object({
   created_at: ZTimestamp,
 });
 
-export const ZFilesystem = z.object({
-  id: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  path: z.string(),
-  description: z.string().nullable(),
-  created_at: ZTimestamp,
-  updated_at: ZTimestamp,
-});
-
 export const ZActorDefinition = z.object({
   name: z.string(),
   slug: z.string(),
@@ -143,7 +133,6 @@ export const ZActorInstance = z.object({
   canvas_id: z.string(),
   element_id: z.string(),
   actor_definition_name: z.string(),
-  filesystem_id: z.string().nullable(),
   display_name: z.string(),
   status: ZActorStatus,
   machine_state: z.string(),
@@ -268,7 +257,6 @@ export type TCanvas = z.infer<typeof ZCanvas>;
 export type TCanvasMember = z.infer<typeof ZCanvasMember>;
 export type TMediaFile = z.infer<typeof ZMediaFile>;
 export type TFile = TMediaFile;
-export type TFilesystem = z.infer<typeof ZFilesystem>;
 export type TActorDefinition = z.infer<typeof ZActorDefinition>;
 export type TActorInstance = z.infer<typeof ZActorInstance>;
 export type TActorConnection = z.infer<typeof ZActorConnection>;

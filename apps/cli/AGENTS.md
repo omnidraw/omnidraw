@@ -38,7 +38,6 @@ Examples in `apps/cli`:
 - `CliPlugin`
 - `ServerPlugin`
 - `OrpcPlugin`
-- `PtyPlugin`
 - `AutomergePlugin`
 
 ### Services
@@ -49,8 +48,6 @@ Services:
 - expose methods to plugins
 
 Examples:
-- filesystem service
-- PTY service
 - automerge service
 - event publisher service
 
@@ -130,7 +127,7 @@ if (config.command !== 'serve') {
 Why this matters:
 - direct `process.exit()` is too blunt
 - it skips runtime shutdown
-- it can leave Automerge / ws / PTY resources alive
+- it can leave Automerge / ws resources alive
 - it can return before persisted writes are durable
 
 Rule:

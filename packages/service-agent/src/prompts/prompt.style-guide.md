@@ -43,7 +43,6 @@ Common variables:
 Canvas-specific variables may also be available:
 
 - `--vc-canvas-*`
-- `--vc-terminal-*`
 
 ## Light and dark mode
 

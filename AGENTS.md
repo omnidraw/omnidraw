@@ -17,9 +17,7 @@ packages/service-agent -> Pi agent sessions, approvals, widget generation, and p
 packages/service-automerge -> Automerge document persistence and WebSocket synchronization
 packages/service-db -> Turso-backed application data, models, and migrations
 packages/service-event-publisher -> runtime event publication to API subscription streams
-packages/service-filesystem -> Node filesystem service implementation
 packages/service-kv -> persistent key-value service backed by the database service
-packages/service-pty -> Bun PTY service implementation
 packages/service-theme -> built-in themes and runtime theme synchronization
 packages/shared-functions -> shared functional helpers and Vibecanvas config utilities
 packages/tapable -> synchronous and asynchronous lifecycle hook primitives

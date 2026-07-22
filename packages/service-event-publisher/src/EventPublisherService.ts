@@ -7,7 +7,6 @@ import type {
   TAgentEvent,
   TDbEvent,
   TEventSubscriptionOptions,
-  TFilesystemEvent,
   TNotificationEvent,
   TSequencedEvent,
 } from './IEventPublisherService';
@@ -19,7 +18,6 @@ export class EventPublisherService implements IEventPublisherService {
   readonly #db = new EventBus<TDbEvent>();
   readonly #actor = new EventBus<TActorEvent>();
   readonly #agent = new EventBus<TAgentEvent>();
-  readonly #filesystem = new EventBus<TFilesystemEvent>();
   readonly #notification = new EventBus<TNotificationEvent>();
   readonly #latestNotification = new Map<string, TNotificationEvent>();
 
@@ -37,13 +35,6 @@ export class EventPublisherService implements IEventPublisherService {
       publishAgentEvent: (event: TAgentEvent) => this.publishAgentEvent(tenant, event),
       subscribeAgentEvents: (options?: TEventSubscriptionOptions) => this.subscribeAgentEvents(tenant, options),
       getAgentEventCursor: () => this.getAgentEventCursor(tenant),
-      publishFilesystemEvent: (filesystemId: string, path: string, event: TFilesystemEvent) => (
-        this.publishFilesystemEvent(tenant, filesystemId, path, event)
-      ),
-      subscribeFilesystemEvents: (filesystemId: string, path: string, options?: TEventSubscriptionOptions) => (
-        this.subscribeFilesystemEvents(tenant, filesystemId, path, options)
-      ),
-      getFilesystemEventCursor: (filesystemId: string) => this.getFilesystemEventCursor(tenant, filesystemId),
       publishNotification: (event: TNotificationEvent) => this.publishNotification(tenant, event),
       subscribeNotifications: (options?: TEventSubscriptionOptions) => this.subscribeNotifications(tenant, options),
       subscribeNotificationRecords: (options?: TEventSubscriptionOptions) => (
@@ -98,18 +89,6 @@ export class EventPublisherService implements IEventPublisherService {
     return this.#agent.cursor(this.#accountScope(tenant, 'agent'));
   }
 
-  publishFilesystemEvent(tenant: TTenantContext, filesystemId: string, path: string, event: TFilesystemEvent): number {
-    return this.#filesystem.publish(this.#filesystemScope(tenant, filesystemId), path, event);
-  }
-
-  subscribeFilesystemEvents(tenant: TTenantContext, filesystemId: string, path: string, options?: TEventSubscriptionOptions): AsyncIterable<TFilesystemEvent> {
-    return this.#filesystem.subscribe(this.#filesystemScope(tenant, filesystemId), path, options);
-  }
-
-  getFilesystemEventCursor(tenant: TTenantContext, filesystemId: string): number {
-    return this.#filesystem.cursor(this.#filesystemScope(tenant, filesystemId));
-  }
-
   publishNotification(tenant: TTenantContext, event: TNotificationEvent): number {
     const scope = this.#accountScope(tenant, 'notification');
     this.#latestNotification.set(scope, event);
@@ -145,7 +124,4 @@ export class EventPublisherService implements IEventPublisherService {
     return fnScopedKey(namespace, [tenant.orgId, tenant.accountId]);
   }
 
-  #filesystemScope(tenant: TTenantContext, filesystemId: string): string {
-    return fnScopedKey('filesystem', [tenant.orgId, filesystemId]);
-  }
 }

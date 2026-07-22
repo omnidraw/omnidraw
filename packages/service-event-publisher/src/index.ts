@@ -20,6 +20,5 @@ export type {
   TAgentWidgetUpdateEvent,
   TDbEvent,
   TEventJson,
-  TFilesystemEvent,
   TNotificationEvent,
 } from './events';

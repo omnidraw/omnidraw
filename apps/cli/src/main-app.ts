@@ -9,9 +9,7 @@ import { createAuthPlugin, OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from 
 import { createAutomergePlugin } from './plugins/automerge/AutomergePlugin';
 import { createCliPlugin } from './plugins/cli/CliPlugin';
 import { fnPrintCommandError } from './plugins/cli/core/fn.print-command-result';
-import { createFilesystemPlugin } from './plugins/filesystem/FilesystemPlugin';
 import { createOrpcPlugin } from './plugins/orpc/OrpcPlugin';
-import { createPtyPlugin } from './plugins/pty/PtyPlugin';
 import { createServerPlugin } from './plugins/server/ServerPlugin';
 import { setupSignals } from './setup-signals';
 import { txCheckWidgetPrerequisites } from './widget-prerequisites/tx.check-widget-prerequisites';
@@ -44,8 +42,16 @@ export async function runCliMain() {
   }
 
   if (config.command === 'serve' && !config.helpRequested) {
-    const { preflightDbServiceDatabase } = await import('@vibecanvas/service-db/DbServiceTurso/DbServiceTurso');
+    const [{ existsSync }, { join }, { preflightDbServiceDatabase }] = await Promise.all([
+      import('node:fs'),
+      import('node:path'),
+      import('@vibecanvas/service-db/DbServiceTurso/DbServiceTurso'),
+    ]);
     try {
+      const actorEraDatabasePath = join(config.home.homeDir, 'vibecanvas.turso');
+      if (existsSync(actorEraDatabasePath)) {
+        throw new Error(`Actor-era database found at ${actorEraDatabasePath}`);
+      }
       await preflightDbServiceDatabase({
         homeDir: config.home.homeDir,
         databasePath: config.home.mainDbPath,
@@ -85,11 +91,9 @@ export async function runCliMain() {
   const runtime = createRuntime<any, ICliConfig>({
     plugins: [
       createAuthPlugin(),
-      createFilesystemPlugin(),
       createCliPlugin(),
       ...(legacyActor ? [legacyActor] : []),
       createOrpcPlugin(),
-      createPtyPlugin(),
       createAutomergePlugin(),
       createServerPlugin(),
     ],
