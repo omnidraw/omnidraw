@@ -351,8 +351,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S98](s/S98.md) - widgets: replace fullscreen header with SolidJS host chrome
 - [x]: [S99](s/S99.md) - widget publish: explicit confirmation from Preview and draft detail
 - [x]: [S100](s/S100.md) - sidebar: toggle tool groups from the whole row
-- [ ]: [S101](s/S101.md) - relax home directory validation
-- [ ]: [S102](s/S102.md) - dev server uses local .vibecanvas
+- [x]: [S101](s/S101.md) - relax home directory validation
+- [x]: [S102](s/S102.md) - dev server uses local .vibecanvas
 - [ ]: [S103](s/S103.md) - remove PTY service, API, canvas terminal, and SQL metadata
 - [ ]: [S104](s/S104.md) - remove filesystem service, API, canvas plugin, and SQL table
 - [ ]: [S105](s/S105.md) - remove scoped_events table and related code

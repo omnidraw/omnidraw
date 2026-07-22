@@ -286,9 +286,7 @@ async function validateVibecanvasHomeLayout(
       continue;
     }
 
-    throw new Error(
-      `Refusing non-empty Vibecanvas home before database bootstrap; unknown entry '${entry.name}' was not modified.`,
-    );
+    continue;
   }
 }
 
