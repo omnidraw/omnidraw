@@ -12,11 +12,22 @@ import { join, resolve } from 'node:path';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
 const DOCKERFILE = 'scripts/docker/final-acceptance.Dockerfile';
+const requestedPlatform = process.env.VIBECANVAS_DOCKER_PLATFORM?.trim() || undefined;
 const REQUIRED_TRACKED_FILES = [
   DOCKERFILE,
   'scripts/test-ci-docker.ts',
   'scripts/test-final-acceptance.ts',
 ] as const;
+
+if (requestedPlatform && !/^linux\/(?:amd64|arm64)$/.test(requestedPlatform)) {
+  throw new Error(
+    `VIBECANVAS_DOCKER_PLATFORM must be linux/amd64 or linux/arm64, received ${requestedPlatform}`,
+  );
+}
+
+const platformArguments = requestedPlatform === undefined
+  ? []
+  : ['--platform', requestedPlatform];
 
 async function capture(command: readonly string[]): Promise<string> {
   const child = Bun.spawn([...command], {
@@ -62,6 +73,7 @@ const contextPath = join(temporaryRoot, 'context');
 const imageTag = `vibecanvas-final-acceptance:${revision.slice(0, 12)}`;
 
 try {
+  console.log(`[ci-docker] platform ${requestedPlatform ?? 'daemon-native'}`);
   await mkdir(contextPath);
   await run([
     'git',
@@ -74,8 +86,7 @@ try {
   await run([
     'docker',
     'build',
-    '--platform',
-    'linux/amd64',
+    ...platformArguments,
     '--file',
     DOCKERFILE,
     '--label',
@@ -88,8 +99,7 @@ try {
     'docker',
     'run',
     '--rm',
-    '--platform',
-    'linux/amd64',
+    ...platformArguments,
     '--env',
     'CI=1',
     '--env',

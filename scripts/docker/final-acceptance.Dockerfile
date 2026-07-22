@@ -2,6 +2,7 @@ FROM ubuntu:24.04
 
 ARG BUN_VERSION=1.3.14
 ARG NODE_VERSION=22.17.0
+ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive \
     BUN_INSTALL=/opt/bun \
@@ -24,7 +25,12 @@ RUN apt-get update \
       unzip \
       xz-utils \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz \
+    && case "${TARGETARCH}" in \
+      amd64) NODE_ARCH=x64 ;; \
+      arm64) NODE_ARCH=arm64 ;; \
+      *) echo "Unsupported Docker target architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -o /tmp/node.tar.xz \
     && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
     && rm -f /tmp/node.tar.xz \
     && test "$(node --version)" = "v${NODE_VERSION}" \
