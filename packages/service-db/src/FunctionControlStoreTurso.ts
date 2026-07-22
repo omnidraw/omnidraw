@@ -13,6 +13,7 @@ import type {
   TFunctionDefinition,
   TFunctionFailure,
   TFunctionInvocationId,
+  TFunctionInvocationSubject,
   TFunctionRevisionRegistration,
   TInvocationAttemptCompletionRequest,
   TInvocationAttemptCompletionResult,
@@ -48,8 +49,13 @@ import type {
 } from '@vibecanvas/resource-runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
+  ZWidgetManifestV2,
+  ZWidgetServerFunctionDescriptors,
+  fnCanonicalizeWidgetContractPayload,
+  fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
+  fnValidateWidgetServerFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
 import { fnFunctionCanonicalJson } from './FunctionControlStoreTurso/fn.function-json';
 import {
@@ -217,6 +223,124 @@ export class FunctionControlStoreTurso implements
     return row ? fnFunctionControlStoreDefinition(row) : null;
   }
 
+  async resolveFunctionForSubject(
+    tenant: TTenantContext,
+    request: Readonly<{
+      subject: TFunctionInvocationSubject;
+      widgetDefinitionId: string;
+      widgetRevisionId: string;
+      functionName: string;
+      purpose: 'admission' | 'execution';
+    }>,
+  ): Promise<TFunctionDefinition | null> {
+    if (request.subject.kind === 'widget_instance') {
+      const definition = await this.resolveFunction(tenant, request);
+      return definition?.widgetDefinitionId === request.widgetDefinitionId
+        ? definition
+        : null;
+    }
+
+    const nowMs = this.#nowMs();
+    const row = await (await this.database.prepare(`
+      SELECT revision.*, preview.expires_at_ms AS preview_expires_at_ms
+      FROM agent_preview_revisions AS revision
+      INNER JOIN agent_previews AS preview
+        ON preview.org_id = revision.org_id
+        AND preview.id = revision.preview_id
+      INNER JOIN agent_drafts AS draft
+        ON draft.org_id = revision.org_id
+        AND draft.id = revision.draft_id
+      INNER JOIN agent_chats AS chat
+        ON chat.org_id = draft.org_id
+        AND chat.id = draft.chat_id
+      WHERE revision.org_id = ?
+        AND revision.preview_id = ?
+        AND revision.id = ?
+        AND revision.definition_id = ?
+        AND chat.account_id = ?
+        AND (? = 'execution' OR (
+          preview.status = 'ready' AND preview.active_revision_id = revision.id
+        ))
+        AND preview.expires_at_ms > ?
+        AND revision.expires_at_ms > ?
+        AND revision.server_artifact_id IS NOT NULL
+        AND revision.server_artifact_kind = 'server'
+      LIMIT 1
+    `)).get(
+      tenant.orgId,
+      request.subject.previewId,
+      request.subject.previewRevisionId,
+      request.widgetDefinitionId,
+      tenant.accountId,
+      request.purpose,
+      nowMs,
+      nowMs,
+    ) as Record<string, unknown> | undefined;
+    if (!row || String(row.id) !== request.widgetRevisionId) return null;
+
+    try {
+      const manifestResult = ZWidgetManifestV2.safeParse(JSON.parse(String(row.manifest_json)));
+      if (!manifestResult.success) return null;
+      const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifestResult.data);
+      if (canonicalManifestJson !== String(row.manifest_json)) return null;
+      if (manifestResult.data.server?.runtimeAbi !== String(row.runtime_abi)) return null;
+
+      const storedDescriptors = JSON.parse(String(row.function_descriptors_json)) as {
+        functions?: unknown;
+      };
+      const descriptorsResult = ZWidgetServerFunctionDescriptors.safeParse(
+        storedDescriptors.functions,
+      );
+      if (!descriptorsResult.success) return null;
+      const canonicalDescriptors = fnCanonicalizeWidgetServerFunctionDescriptors(
+        descriptorsResult.data,
+      );
+      if (
+        canonicalDescriptors !== String(row.function_descriptors_json)
+        || sha256(canonicalDescriptors) !== String(row.function_descriptors_digest_sha256)
+        || !fnValidateWidgetServerFunctionDescriptors(
+          manifestResult.data,
+          descriptorsResult.data,
+        ).valid
+      ) return null;
+      const contractPayload = fnCanonicalizeWidgetContractPayload({
+        canonicalManifestJson,
+        uiDigestSha256: String(row.ui_artifact_digest_sha256),
+        serverDigestSha256: String(row.server_artifact_digest_sha256),
+        runtimeAbi: String(row.runtime_abi),
+        functionDescriptorsDigestSha256: String(row.function_descriptors_digest_sha256),
+      });
+      if (sha256(contractPayload) !== String(row.contract_digest_sha256)) return null;
+
+      const descriptor = descriptorsResult.data
+        .map(fnNormalizeWidgetServerFunctionDescriptor)
+        .find((candidate) => candidate.exportName === request.functionName);
+      if (!descriptor) return null;
+      const widgetDefinitionId = String(row.definition_id);
+      return {
+        orgId: tenant.orgId,
+        id: fnFunctionId(widgetDefinitionId, descriptor.exportName),
+        widgetDefinitionId,
+        widgetRevisionId: String(row.id),
+        name: descriptor.exportName,
+        effect: descriptor.effect,
+        definitionRevision: 1,
+        serverArtifactId: String(row.server_artifact_id),
+        artifactDigestSha256: String(row.server_artifact_digest_sha256),
+        contractDigestSha256: String(row.contract_digest_sha256),
+        descriptorDigestSha256: sha256(fnFunctionCanonicalJson(descriptor)),
+        runtimeAbi: String(row.runtime_abi),
+        inputSchema: descriptor.inputSchema,
+        outputSchema: descriptor.outputSchema,
+        resources: descriptor.resources,
+        limits: descriptor.limits,
+        retry: descriptor.retry,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async createOrReplayInvocation(
     tenant: TTenantContext,
     request: TInvocationCreateRequest,
@@ -234,12 +358,13 @@ export class FunctionControlStoreTurso implements
           'Invocation input does not match its immutable digest.',
         );
       }
-      const definition = await this.#getDefinitionById(
-        tenant,
-        envelope.widgetDefinitionId,
-        envelope.widgetRevisionId,
-        envelope.functionId,
-      );
+      const definition = await this.resolveFunctionForSubject(tenant, {
+        subject: envelope.subject,
+        widgetDefinitionId: envelope.widgetDefinitionId,
+        widgetRevisionId: envelope.widgetRevisionId,
+        functionName: envelope.functionName,
+        purpose: 'admission',
+      });
       if (!definition || !this.#definitionMatchesEnvelope(definition, envelope)) {
         throw functionStoreError(
           'FUNCTION_INVOCATION_AUTHORITY_MISMATCH',
@@ -250,7 +375,9 @@ export class FunctionControlStoreTurso implements
         || envelope.deadlineAtMs > envelope.createdAtMs + envelope.limits.timeoutMs) {
         throw new TypeError('Invocation deadline exceeds its immutable timeout ceiling.');
       }
-      const instance = await (await this.database.prepare(`
+      let canvasId: string | null = null;
+      if (envelope.subject.kind === 'widget_instance') {
+        const instance = await (await this.database.prepare(`
         SELECT instance.canvas_id
         FROM widget_instances AS instance
         INNER JOIN canvas_members AS member
@@ -269,20 +396,21 @@ export class FunctionControlStoreTurso implements
           AND instance.revision_id = ? AND instance.id = ?
           AND instance.status = 'active'
           AND (? IS NULL OR instance.canvas_id = ?)
-      `)).get(
-        tenant.accountId,
-        tenant.orgId,
-        envelope.widgetDefinitionId,
-        envelope.widgetRevisionId,
-        envelope.widgetInstanceId,
-        tenant.canvasId ?? null,
-        tenant.canvasId ?? null,
-      ) as Record<string, unknown> | undefined;
-      if (!instance) {
-        throw functionStoreError('FUNCTION_WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
+        `)).get(
+          tenant.accountId,
+          tenant.orgId,
+          envelope.widgetDefinitionId,
+          envelope.widgetRevisionId,
+          envelope.subject.widgetInstanceId,
+          tenant.canvasId ?? null,
+          tenant.canvasId ?? null,
+        ) as Record<string, unknown> | undefined;
+        if (!instance || String(instance.canvas_id) !== envelope.subject.canvasId) {
+          throw functionStoreError('FUNCTION_WIDGET_INSTANCE_NOT_FOUND', 'Widget instance was not found.');
+        }
+        canvasId = String(instance.canvas_id);
       }
-      const canvasId = String(instance.canvas_id);
-      this.#assertIdempotencyScope(request, envelope.widgetInstanceId, canvasId);
+      this.#assertIdempotencyScope(request, envelope.subject);
       await this.#deleteExpiredIdempotencyKey(tenant, request, envelope.createdAtMs);
       const existing = await this.#findIdempotencyRecord(tenant, request);
       if (existing) {
@@ -308,8 +436,9 @@ export class FunctionControlStoreTurso implements
 
       await (await this.database.prepare(`
         INSERT INTO function_invocations (
-          org_id, id, account_id, canvas_id, widget_definition_id, widget_revision_id,
-          widget_instance_id, function_id, function_name, definition_revision,
+          org_id, id, account_id, subject_kind, canvas_id,
+          widget_definition_id, widget_revision_id, widget_instance_id,
+          preview_id, preview_revision_id, function_id, function_name, definition_revision,
           artifact_digest_sha256, contract_digest_sha256, runtime_abi,
           tenant_cell_id, tenant_placement_epoch, tenant_request_id,
           tenant_roles_json, tenant_capabilities_json, input_json,
@@ -321,7 +450,7 @@ export class FunctionControlStoreTurso implements
           created_at_ms, available_at_ms, deadline_at_ms, cancel_requested_at_ms,
           started_at_ms, finished_at_ms, bodies_compacted_at_ms
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', NULL, NULL, NULL, 0, 0, 'full', 1,
           ?, ?, ?, NULL, NULL, NULL, NULL
         )
@@ -329,10 +458,13 @@ export class FunctionControlStoreTurso implements
         tenant.orgId,
         envelope.id,
         tenant.accountId,
+        envelope.subject.kind,
         canvasId,
         envelope.widgetDefinitionId,
         envelope.widgetRevisionId,
-        envelope.widgetInstanceId,
+        envelope.subject.kind === 'widget_instance' ? envelope.subject.widgetInstanceId : null,
+        envelope.subject.kind === 'agent_preview' ? envelope.subject.previewId : null,
+        envelope.subject.kind === 'agent_preview' ? envelope.subject.previewRevisionId : null,
         envelope.functionId,
         envelope.functionName,
         envelope.definitionRevision,
@@ -365,9 +497,10 @@ export class FunctionControlStoreTurso implements
       await (await this.database.prepare(`
         INSERT INTO idempotency_records (
           org_id, id, function_id, scope_kind, canvas_id, widget_instance_id,
+          preview_id, preview_revision_id,
           idempotency_key, request_fingerprint_sha256, widget_definition_id,
           widget_revision_id, invocation_id, created_at_ms, expires_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)).run(
         tenant.orgId,
         request.idempotencyRecordId,
@@ -375,6 +508,8 @@ export class FunctionControlStoreTurso implements
         scope.kind,
         scope.kind === 'canvas' ? scope.canvasId : null,
         scope.kind === 'widget_instance' ? scope.widgetInstanceId : null,
+        scope.kind === 'agent_preview' ? scope.previewId : null,
+        scope.kind === 'agent_preview' ? scope.previewRevisionId : null,
         envelope.idempotencyKey,
         request.requestFingerprintSha256,
         envelope.widgetDefinitionId,
@@ -1776,6 +1911,7 @@ export class FunctionControlStoreTurso implements
       WHERE org_id = ? AND function_id = ? AND scope_kind = ? AND idempotency_key = ?
         AND expires_at_ms IS NOT NULL AND expires_at_ms <= ?
         AND canvas_id IS ? AND widget_instance_id IS ?
+        AND preview_id IS ? AND preview_revision_id IS ?
     `)).run(
       tenant.orgId,
       envelope.functionId,
@@ -1784,6 +1920,8 @@ export class FunctionControlStoreTurso implements
       nowMs,
       scope.kind === 'canvas' ? scope.canvasId : null,
       scope.kind === 'widget_instance' ? scope.widgetInstanceId : null,
+      scope.kind === 'agent_preview' ? scope.previewId : null,
+      scope.kind === 'agent_preview' ? scope.previewRevisionId : null,
     );
   }
 
@@ -1796,6 +1934,7 @@ export class FunctionControlStoreTurso implements
       SELECT * FROM idempotency_records
       WHERE org_id = ? AND function_id = ? AND scope_kind = ? AND idempotency_key = ?
         AND canvas_id IS ? AND widget_instance_id IS ?
+        AND preview_id IS ? AND preview_revision_id IS ?
     `)).get(
       tenant.orgId,
       request.envelope.functionId,
@@ -1803,6 +1942,8 @@ export class FunctionControlStoreTurso implements
       request.envelope.idempotencyKey,
       scope.kind === 'canvas' ? scope.canvasId : null,
       scope.kind === 'widget_instance' ? scope.widgetInstanceId : null,
+      scope.kind === 'agent_preview' ? scope.previewId : null,
+      scope.kind === 'agent_preview' ? scope.previewRevisionId : null,
     );
     return row ? row as Record<string, unknown> : null;
   }
@@ -1848,14 +1989,32 @@ export class FunctionControlStoreTurso implements
 
   #assertIdempotencyScope(
     request: TInvocationCreateRequest,
-    widgetInstanceId: string,
-    canvasId: string,
+    subject: TFunctionInvocationSubject,
   ): void {
     const scope = request.idempotencyScope;
-    if (scope.kind === 'canvas' && scope.canvasId !== canvasId) {
+    if (subject.kind === 'agent_preview') {
+      if (
+        scope.kind !== 'agent_preview'
+        || scope.previewId !== subject.previewId
+        || scope.previewRevisionId !== subject.previewRevisionId
+      ) {
+        throw functionStoreError(
+          'FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH',
+          'Agent-preview idempotency scope is invalid.',
+        );
+      }
+      return;
+    }
+    if (scope.kind === 'agent_preview') {
+      throw functionStoreError(
+        'FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH',
+        'Widget-instance invocation cannot use an agent-preview idempotency scope.',
+      );
+    }
+    if (scope.kind === 'canvas' && scope.canvasId !== subject.canvasId) {
       throw functionStoreError('FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH', 'Canvas idempotency scope is invalid.');
     }
-    if (scope.kind === 'widget_instance' && scope.widgetInstanceId !== widgetInstanceId) {
+    if (scope.kind === 'widget_instance' && scope.widgetInstanceId !== subject.widgetInstanceId) {
       throw functionStoreError(
         'FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH',
         'Widget-instance idempotency scope is invalid.',
@@ -1898,11 +2057,39 @@ export class FunctionControlStoreTurso implements
     tenant: TTenantContext,
     invocation: TInvocationRecord,
   ): Promise<boolean> {
+    if (invocation.envelope.subject.kind === 'agent_preview') {
+      if (invocation.envelope.tenant.accountId !== tenant.accountId) return false;
+      const ownership = await (await this.database.prepare(`
+        SELECT 1
+        FROM agent_preview_revisions AS revision
+        INNER JOIN agent_previews AS preview
+          ON preview.org_id = revision.org_id
+          AND preview.id = revision.preview_id
+        INNER JOIN agent_drafts AS draft
+          ON draft.org_id = revision.org_id
+          AND draft.id = revision.draft_id
+        INNER JOIN agent_chats AS chat
+          ON chat.org_id = draft.org_id
+          AND chat.id = draft.chat_id
+        WHERE revision.org_id = ?
+          AND revision.preview_id = ?
+          AND revision.id = ?
+          AND chat.account_id = ?
+        LIMIT 1
+      `)).get(
+        tenant.orgId,
+        invocation.envelope.subject.previewId,
+        invocation.envelope.subject.previewRevisionId,
+        tenant.accountId,
+      );
+      return ownership != null;
+    }
     const canvasId = invocation.envelope.tenant.canvasId;
     if (
       invocation.envelope.tenant.accountId !== tenant.accountId
       || canvasId === undefined
       || (tenant.canvasId !== undefined && tenant.canvasId !== canvasId)
+      || invocation.envelope.subject.canvasId !== canvasId
     ) {
       return false;
     }

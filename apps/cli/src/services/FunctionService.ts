@@ -6,6 +6,7 @@ import type {
 } from '@vibecanvas/api/function';
 import type {
   IFunctionControlStore,
+  TFunctionInvocationSubject,
   TInvocationCreateResult,
   TInvocationRecord,
 } from '@vibecanvas/function-runtime';
@@ -40,16 +41,80 @@ type TWidgetInvocationTargetRow = Readonly<{
   status: string;
 }>;
 
+type TPreviewFunctionInvocationRequest = Readonly<{
+  previewId: string;
+  previewRevisionId: string;
+  widgetDefinitionId: string;
+  functionName: string;
+  input: unknown;
+  idempotencyKey: string;
+}>;
+
+type TPreviewFunctionInvocationLookup = Readonly<{
+  invocationId: string;
+  previewId: string;
+  previewRevisionId: string;
+}>;
+
+type TPreviewFunctionInvocationView = Readonly<{
+  id: string;
+  functionName: string;
+  widgetRevisionId: string;
+  subject: Extract<TFunctionInvocationSubject, { kind: 'agent_preview' }>;
+  status: TInvocationRecord['status'];
+  output: unknown | null;
+  failure: TInvocationRecord['failure'];
+  createdAtMs: number;
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+}>;
+
+type TPreviewFunctionInvocationCapability = Readonly<{
+  invokePreviewFunction(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationRequest,
+  ): Promise<TPreviewFunctionInvocationView>;
+  getPreviewFunctionInvocation(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationLookup,
+  ): Promise<TPreviewFunctionInvocationView | null>;
+  cancelPreviewFunctionInvocation(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationLookup,
+  ): Promise<TPreviewFunctionInvocationView | null>;
+}>;
+
 function functionServiceError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
 function invocationView(record: TInvocationRecord): TFunctionInvocationView {
+  if (record.envelope.subject.kind !== 'widget_instance') {
+    throw new TypeError('A preview invocation cannot be exposed through the public function API.');
+  }
   return {
     id: record.envelope.id,
     functionName: record.envelope.functionName,
     widgetRevisionId: record.envelope.widgetRevisionId,
-    widgetInstanceId: record.envelope.widgetInstanceId,
+    widgetInstanceId: record.envelope.subject.widgetInstanceId,
+    status: record.status,
+    output: record.output,
+    failure: record.failure,
+    createdAtMs: record.envelope.createdAtMs,
+    startedAtMs: record.startedAtMs,
+    finishedAtMs: record.finishedAtMs,
+  };
+}
+
+function previewInvocationView(record: TInvocationRecord): TPreviewFunctionInvocationView {
+  if (record.envelope.subject.kind !== 'agent_preview') {
+    throw new TypeError('A widget-instance invocation cannot be exposed through the preview API.');
+  }
+  return {
+    id: record.envelope.id,
+    functionName: record.envelope.functionName,
+    widgetRevisionId: record.envelope.widgetRevisionId,
+    subject: record.envelope.subject,
     status: record.status,
     output: record.output,
     failure: record.failure,
@@ -64,7 +129,8 @@ class FunctionService implements
   IService,
   IStartableService<object, object>,
   IStoppableService,
-  IFunctionInvocationApiCapability {
+  IFunctionInvocationApiCapability,
+  TPreviewFunctionInvocationCapability {
   readonly name = 'function-service';
   readonly #placement: TFunctionServicePlacement;
   readonly #database: Database;
@@ -119,7 +185,11 @@ class FunctionService implements
       result = await this.#dispatcher.invoke(tenant, {
         widgetDefinitionId: target.definition_id,
         widgetRevisionId: target.revision_id,
-        widgetInstanceId: request.widgetInstanceId,
+        subject: {
+          kind: 'widget_instance',
+          canvasId: target.canvas_id,
+          widgetInstanceId: request.widgetInstanceId,
+        },
         functionName: request.functionName,
         input: request.input,
         idempotencyKey: request.idempotencyKey,
@@ -153,6 +223,56 @@ class FunctionService implements
     return invocationView(result.invocation);
   }
 
+  async invokePreviewFunction(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationRequest,
+  ): Promise<TPreviewFunctionInvocationView> {
+    this.#assertPlacement(tenant);
+    this.#assertStarted();
+    let result: TInvocationCreateResult;
+    try {
+      result = await this.#dispatcher.invoke(tenant, {
+        widgetDefinitionId: request.widgetDefinitionId,
+        widgetRevisionId: request.previewRevisionId,
+        subject: {
+          kind: 'agent_preview',
+          previewId: request.previewId,
+          previewRevisionId: request.previewRevisionId,
+        },
+        functionName: request.functionName,
+        input: request.input,
+        idempotencyKey: request.idempotencyKey,
+        idempotencyScope: {
+          kind: 'agent_preview',
+          previewId: request.previewId,
+          previewRevisionId: request.previewRevisionId,
+        },
+        idempotencyExpiresAtMs: this.#nowMs() + this.#idempotencyTtlMs,
+      });
+    } catch (error) {
+      const code = error !== null && typeof error === 'object' && 'code' in error
+        ? String(error.code)
+        : '';
+      if (code === 'FUNCTION_PLACEMENT_STALE') {
+        throw functionServiceError('FUNCTION_RUNTIME_UNAVAILABLE', 'Function runtime is unavailable.');
+      }
+      if (code === 'FUNCTION_NOT_FOUND') {
+        throw functionServiceError('PREVIEW_FUNCTION_NOT_FOUND', 'Preview function was not found.');
+      }
+      if (code === 'FUNCTION_INPUT_NOT_JSON' || code === 'FUNCTION_IDEMPOTENCY_KEY_INVALID') {
+        throw functionServiceError('FUNCTION_INPUT_INVALID', 'Function input is invalid.');
+      }
+      throw error;
+    }
+    if (result.status === 'conflict') {
+      throw functionServiceError(
+        'IDEMPOTENCY_CONFLICT',
+        'Idempotency key conflicts with an existing invocation.',
+      );
+    }
+    return previewInvocationView(result.invocation);
+  }
+
   async getFunctionInvocation(
     tenant: TTenantContext,
     invocationId: string,
@@ -162,6 +282,7 @@ class FunctionService implements
     const record = await this.#store.getInvocation(tenant, invocationId);
     if (
       record === null
+      || record.envelope.subject.kind !== 'widget_instance'
       || record.envelope.tenant.accountId !== tenant.accountId
       || !await this.#hasCanvasAuthority(
       tenant,
@@ -182,6 +303,7 @@ class FunctionService implements
     const current = await this.#store.getInvocation(tenant, invocationId);
     if (
       current === null
+      || current.envelope.subject.kind !== 'widget_instance'
       || current.envelope.tenant.accountId !== tenant.accountId
       || !await this.#hasCanvasAuthority(
       tenant,
@@ -195,6 +317,49 @@ class FunctionService implements
       nowMs: this.#nowMs(),
     });
     return result.status === 'missing' ? null : invocationView(result.invocation);
+  }
+
+  async getPreviewFunctionInvocation(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationLookup,
+  ): Promise<TPreviewFunctionInvocationView | null> {
+    this.#assertPlacement(tenant);
+    this.#assertStarted();
+    const record = await this.#store.getInvocation(tenant, request.invocationId);
+    return this.#isOwnedPreviewInvocation(tenant, request, record)
+      ? previewInvocationView(record)
+      : null;
+  }
+
+  async cancelPreviewFunctionInvocation(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationLookup,
+  ): Promise<TPreviewFunctionInvocationView | null> {
+    this.#assertPlacement(tenant);
+    this.#assertStarted();
+    const current = await this.#store.getInvocation(tenant, request.invocationId);
+    if (!this.#isOwnedPreviewInvocation(tenant, request, current)) return null;
+    const result = await this.#store.requestCancellation(tenant, {
+      invocationId: request.invocationId,
+      nowMs: this.#nowMs(),
+    });
+    return result.status === 'missing' ? null : previewInvocationView(result.invocation);
+  }
+
+  #isOwnedPreviewInvocation(
+    tenant: TTenantContext,
+    request: TPreviewFunctionInvocationLookup,
+    record: TInvocationRecord | null,
+  ): record is TInvocationRecord & Readonly<{
+    envelope: TInvocationRecord['envelope'] & Readonly<{
+      subject: Extract<TFunctionInvocationSubject, { kind: 'agent_preview' }>;
+    }>;
+  }> {
+    return record !== null
+      && record.envelope.tenant.accountId === tenant.accountId
+      && record.envelope.subject.kind === 'agent_preview'
+      && record.envelope.subject.previewId === request.previewId
+      && record.envelope.subject.previewRevisionId === request.previewRevisionId;
   }
 
   async #resolveTarget(
@@ -272,4 +437,11 @@ class FunctionService implements
 }
 
 export { FunctionService };
-export type { TFunctionServiceConfig, TFunctionServicePlacement };
+export type {
+  TFunctionServiceConfig,
+  TFunctionServicePlacement,
+  TPreviewFunctionInvocationCapability,
+  TPreviewFunctionInvocationLookup,
+  TPreviewFunctionInvocationRequest,
+  TPreviewFunctionInvocationView,
+};

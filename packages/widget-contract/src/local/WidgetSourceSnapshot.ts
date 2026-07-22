@@ -2,7 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import type { TWidgetSourceFile, TWidgetSourceSnapshot } from '../types';
+import type {
+  TWidgetSourceArtifact,
+  TWidgetSourceFile,
+  TWidgetSourceSnapshot,
+} from '../types';
 import {
   WIDGET_SOURCE_MAX_FILES,
   WIDGET_SOURCE_MAX_FILE_BYTES,
@@ -47,6 +51,16 @@ type TDirectoryStamp = Readonly<{
   modifiedAtMs: number;
   changedAtMs: number;
   entries: string;
+}>;
+
+type TWidgetSourceArtifactEnvelope = Readonly<{
+  format: 'vibecanvas.widget-source.v1';
+  snapshotId: string;
+  sourceDigestSha256: string;
+  builderIdentity: string;
+  createdAtMs: number;
+  byteSize: number;
+  files: readonly Readonly<{ path: string; bytesBase64: string }>[];
 }>;
 
 function compareText(left: string, right: string): number {
@@ -106,6 +120,40 @@ function digestSnapshot(files: readonly TCapturedWidgetSourceFile[]): string {
     hash.update(';');
   }
   return hash.digest('hex');
+}
+
+function sha256(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function sourceArtifactError(message: string): Error {
+  return Object.assign(new Error(message), { code: 'WIDGET_SOURCE_ARTIFACT_INVALID' });
+}
+
+function boundedContext(value: string, label: string): string {
+  if (value.length < 1 || value.length > 256 || value.trim() !== value || value.includes('\0')) {
+    throw sourceArtifactError(`Widget source artifact ${label} is invalid.`);
+  }
+  return value;
+}
+
+function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value).sort(compareText);
+  const orderedExpected = [...expected].sort(compareText);
+  return keys.length === orderedExpected.length
+    && keys.every((key, index) => key === orderedExpected[index]);
+}
+
+function decodeBase64(value: string): Uint8Array {
+  if (
+    value.length % 4 !== 0
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
+  ) throw sourceArtifactError('Widget source artifact file bytes are invalid.');
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.toString('base64') !== value) {
+    throw sourceArtifactError('Widget source artifact file bytes are not canonical.');
+  }
+  return new Uint8Array(bytes);
 }
 
 async function directoryEntryStamp(hostPath: string): Promise<string> {
@@ -307,6 +355,125 @@ export class WidgetSourceSnapshot {
       byteSize: fnWidgetSourceSnapshotByteSize(ordered),
       files: ordered,
       createdAtMs: args.createdAtMs ?? Date.now(),
+    });
+  }
+
+  /** Encodes one snapshot into deterministic artifact bytes for durable provenance. */
+  encodeArtifact(
+    snapshot: TWidgetSourceSnapshot,
+    args: Readonly<{ builderIdentity: string }>,
+  ): TWidgetSourceArtifact {
+    const builderIdentity = boundedContext(args.builderIdentity, 'builder identity');
+    const snapshotId = boundedContext(snapshot.id, 'snapshot ID');
+    if (!Number.isSafeInteger(snapshot.createdAtMs) || snapshot.createdAtMs < 0) {
+      throw sourceArtifactError('Widget source artifact creation timestamp is invalid.');
+    }
+    const files = fnNormalizeWidgetSourceFiles(snapshot.files);
+    const sourceDigestSha256 = digestSnapshot(files);
+    if (sourceDigestSha256 !== snapshot.digestSha256) {
+      throw sourceArtifactError('Widget source artifact digest does not match its files.');
+    }
+    const byteSize = fnWidgetSourceSnapshotByteSize(files);
+    const envelope: TWidgetSourceArtifactEnvelope = Object.freeze({
+      format: 'vibecanvas.widget-source.v1',
+      snapshotId,
+      sourceDigestSha256,
+      builderIdentity,
+      createdAtMs: snapshot.createdAtMs,
+      byteSize,
+      files: Object.freeze(files.map((file) => Object.freeze({
+        path: file.path,
+        bytesBase64: Buffer.from(file.bytes).toString('base64'),
+      }))),
+    });
+    const bytes = new Uint8Array(Buffer.from(JSON.stringify(envelope), 'utf8'));
+    return Object.freeze({ kind: 'source', digestSha256: sha256(bytes), bytes });
+  }
+
+  /** Decodes and verifies source artifact bytes before they are materialized or edited. */
+  decodeArtifact(
+    artifact: TWidgetSourceArtifact,
+    args: Readonly<{
+      expectedSnapshotId?: string;
+      expectedSourceDigestSha256?: string;
+      expectedBuilderIdentity?: string;
+    }> = {},
+  ): TCapturedWidgetSourceSnapshot {
+    if (artifact.kind !== 'source' || sha256(artifact.bytes) !== artifact.digestSha256) {
+      throw sourceArtifactError('Widget source artifact bytes do not match their digest.');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(Buffer.from(artifact.bytes).toString('utf8'));
+    } catch {
+      throw sourceArtifactError('Widget source artifact envelope is malformed.');
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw sourceArtifactError('Widget source artifact envelope is malformed.');
+    }
+    const envelope = parsed as Record<string, unknown>;
+    if (!exactKeys(envelope, [
+      'format',
+      'snapshotId',
+      'sourceDigestSha256',
+      'builderIdentity',
+      'createdAtMs',
+      'byteSize',
+      'files',
+    ])) throw sourceArtifactError('Widget source artifact envelope is malformed.');
+    if (
+      envelope.format !== 'vibecanvas.widget-source.v1'
+      || typeof envelope.snapshotId !== 'string'
+      || typeof envelope.sourceDigestSha256 !== 'string'
+      || typeof envelope.builderIdentity !== 'string'
+      || !Number.isSafeInteger(envelope.createdAtMs)
+      || Number(envelope.createdAtMs) < 0
+      || !Number.isSafeInteger(envelope.byteSize)
+      || Number(envelope.byteSize) < 0
+      || !Array.isArray(envelope.files)
+    ) throw sourceArtifactError('Widget source artifact envelope is malformed.');
+    const snapshotId = boundedContext(envelope.snapshotId, 'snapshot ID');
+    const builderIdentity = boundedContext(envelope.builderIdentity, 'builder identity');
+    if (
+      args.expectedSnapshotId !== undefined
+      && snapshotId !== args.expectedSnapshotId
+    ) throw sourceArtifactError('Widget source artifact snapshot ID is unexpected.');
+    if (
+      args.expectedBuilderIdentity !== undefined
+      && builderIdentity !== args.expectedBuilderIdentity
+    ) throw sourceArtifactError('Widget source artifact builder identity is unexpected.');
+
+    const decoded: TCapturedWidgetSourceFile[] = envelope.files.map((value) => {
+      if (
+        typeof value !== 'object'
+        || value === null
+        || Array.isArray(value)
+        || !exactKeys(value as Record<string, unknown>, ['path', 'bytesBase64'])
+        || typeof (value as Record<string, unknown>).path !== 'string'
+        || typeof (value as Record<string, unknown>).bytesBase64 !== 'string'
+      ) throw sourceArtifactError('Widget source artifact file entry is malformed.');
+      return Object.freeze({
+        path: (value as { path: string }).path,
+        bytes: decodeBase64((value as { bytesBase64: string }).bytesBase64),
+      });
+    });
+    const files = fnNormalizeWidgetSourceFiles(decoded);
+    const sourceDigestSha256 = digestSnapshot(files);
+    if (
+      sourceDigestSha256 !== envelope.sourceDigestSha256
+      || (
+        args.expectedSourceDigestSha256 !== undefined
+        && sourceDigestSha256 !== args.expectedSourceDigestSha256
+      )
+      || fnWidgetSourceSnapshotByteSize(files) !== envelope.byteSize
+    ) throw sourceArtifactError('Widget source artifact snapshot integrity check failed.');
+
+    return Object.freeze({
+      id: snapshotId,
+      digestSha256: sourceDigestSha256,
+      byteSize: Number(envelope.byteSize),
+      files,
+      createdAtMs: Number(envelope.createdAtMs),
     });
   }
 

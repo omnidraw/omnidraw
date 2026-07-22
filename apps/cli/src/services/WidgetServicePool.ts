@@ -1,10 +1,14 @@
 import {
   type IWidgetBrowserUiArtifactReadCapabilityIssuer,
   type IWidgetArtifactReader,
+  type IWidgetPreviewService,
   type IWidgetPublicationService,
   type IWidgetPublishedPlacementReader,
   type IWidgetRevisionReader,
+  type IWidgetServerPreviewArtifactReadCapabilityIssuer,
   type IWidgetServerExecutionArtifactReadCapabilityIssuer,
+  type IWidgetSourceBuildArtifactReadCapabilityIssuer,
+  type IWidgetUiPreviewArtifactReadCapabilityIssuer,
   type TWidgetArtifactGcRequest,
   type TWidgetArtifactGcResult,
 } from '@vibecanvas/widget-contract';
@@ -24,13 +28,27 @@ type TWidgetServicePoolOptions = Omit<
 >;
 
 type TWidgetServiceCapability = IWidgetPublicationService
+  & IWidgetPreviewService
   & IWidgetArtifactReader
   & IWidgetBrowserUiArtifactReadCapabilityIssuer
+  & IWidgetUiPreviewArtifactReadCapabilityIssuer
+  & IWidgetSourceBuildArtifactReadCapabilityIssuer
   & IWidgetPublishedPlacementReader;
+
+/** Trusted authoring surface; captureSource accepts a host path and is never public API authority. */
+type TWidgetAuthoringCapability = IWidgetPublicationService
+  & IWidgetPreviewService
+  & IWidgetArtifactReader
+  & IWidgetUiPreviewArtifactReadCapabilityIssuer
+  & Readonly<{
+    captureSource: WidgetService['captureSource'];
+  }>;
 
 type TWidgetServerArtifactCapability = IWidgetArtifactReader
   & IWidgetServerExecutionArtifactReadCapabilityIssuer
-  & Pick<IWidgetRevisionReader, 'getRevision'>;
+  & IWidgetServerPreviewArtifactReadCapabilityIssuer
+  & Pick<IWidgetRevisionReader, 'getRevision'>
+  & Pick<IWidgetPreviewService, 'getPreviewRevision'>;
 
 /** One physical widget artifact owner per organization placement, shared by accounts. */
 class WidgetServicePool extends TenantServicePool<WidgetService>
@@ -61,6 +79,26 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
 
   getActiveRevision: IWidgetPublicationService['getActiveRevision'] = (tenant, definitionId) => (
     this.#delegate(tenant, (service) => service.getActiveRevision(tenant, definitionId))
+  );
+
+  getRevisionSource: IWidgetPublicationService['getRevisionSource'] = (tenant, revisionId) => (
+    this.#delegate(tenant, (service) => service.getRevisionSource(tenant, revisionId))
+  );
+
+  buildPreview: IWidgetPreviewService['buildPreview'] = (tenant, request) => (
+    this.#delegate(tenant, (service) => service.buildPreview(tenant, request))
+  );
+
+  getPreview: IWidgetPreviewService['getPreview'] = (tenant, request) => (
+    this.#delegate(tenant, (service) => service.getPreview(tenant, request))
+  );
+
+  getPreviewRevision: IWidgetPreviewService['getPreviewRevision'] = (tenant, request) => (
+    this.#delegate(tenant, (service) => service.getPreviewRevision(tenant, request))
+  );
+
+  stopPreview: IWidgetPreviewService['stopPreview'] = (tenant, request) => (
+    this.#delegate(tenant, (service) => service.stopPreview(tenant, request))
   );
 
   listPublishedPlacements: IWidgetPublishedPlacementReader['listPublishedPlacements'] = (
@@ -96,6 +134,33 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
   ) => this.#delegate(
     tenant,
     (service) => service.issueServerExecutionArtifactReadCapability(tenant, request),
+  );
+
+  issueSourceBuildArtifactReadCapability:
+    IWidgetSourceBuildArtifactReadCapabilityIssuer['issueSourceBuildArtifactReadCapability'] = (
+    tenant,
+    request,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.issueSourceBuildArtifactReadCapability(tenant, request),
+  );
+
+  issueUiPreviewArtifactReadCapability:
+    IWidgetUiPreviewArtifactReadCapabilityIssuer['issueUiPreviewArtifactReadCapability'] = (
+    tenant,
+    request,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.issueUiPreviewArtifactReadCapability(tenant, request),
+  );
+
+  issueServerPreviewArtifactReadCapability:
+    IWidgetServerPreviewArtifactReadCapabilityIssuer['issueServerPreviewArtifactReadCapability'] = (
+    tenant,
+    request,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.issueServerPreviewArtifactReadCapability(tenant, request),
   );
 
   getArtifact: IWidgetArtifactReader['getArtifact'] = (tenant, request) => (
@@ -141,11 +206,38 @@ function createWidgetServiceCapability(
     rollback: pool.rollback,
     getRevision: pool.getRevision,
     getActiveRevision: pool.getActiveRevision,
+    getRevisionSource: pool.getRevisionSource,
+    buildPreview: pool.buildPreview,
+    getPreview: pool.getPreview,
+    getPreviewRevision: pool.getPreviewRevision,
+    stopPreview: pool.stopPreview,
     listPublishedPlacements: pool.listPublishedPlacements,
     resolvePublishedPlacement: pool.resolvePublishedPlacement,
     issueBrowserUiArtifactReadCapability: pool.issueBrowserUiArtifactReadCapability,
+    issueUiPreviewArtifactReadCapability: pool.issueUiPreviewArtifactReadCapability,
+    issueSourceBuildArtifactReadCapability: pool.issueSourceBuildArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,
+  });
+}
+
+function createWidgetAuthoringCapability(
+  pool: WidgetServicePool,
+): TWidgetAuthoringCapability {
+  return Object.freeze({
+    publish: pool.publish,
+    rollback: pool.rollback,
+    getRevision: pool.getRevision,
+    getActiveRevision: pool.getActiveRevision,
+    getRevisionSource: pool.getRevisionSource,
+    buildPreview: pool.buildPreview,
+    getPreview: pool.getPreview,
+    getPreviewRevision: pool.getPreviewRevision,
+    stopPreview: pool.stopPreview,
+    issueUiPreviewArtifactReadCapability: pool.issueUiPreviewArtifactReadCapability,
+    getArtifact: pool.getArtifact,
+    readArtifact: pool.readArtifact,
+    captureSource: pool.captureSource,
   });
 }
 
@@ -155,18 +247,22 @@ function createWidgetServerArtifactCapability(
 ): TWidgetServerArtifactCapability {
   return Object.freeze({
     getRevision: pool.getRevision,
+    getPreviewRevision: pool.getPreviewRevision,
     issueServerExecutionArtifactReadCapability: pool.issueServerExecutionArtifactReadCapability,
+    issueServerPreviewArtifactReadCapability: pool.issueServerPreviewArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,
   });
 }
 
 export {
+  createWidgetAuthoringCapability,
   createWidgetServerArtifactCapability,
   createWidgetServiceCapability,
   WidgetServicePool,
 };
 export type {
+  TWidgetAuthoringCapability,
   TWidgetServerArtifactCapability,
   TWidgetServiceCapability,
   TWidgetServicePoolOptions,

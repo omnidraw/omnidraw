@@ -86,6 +86,17 @@ export function fnFunctionControlStoreDefinition(row: unknown): TFunctionDefinit
 export function fnFunctionControlStoreInvocation(row: unknown): TInvocationRecord {
   const value = row as Record<string, unknown>;
   const bodyState = value.body_state as TInvocationRecord['bodyState'];
+  const subject = value.subject_kind === 'agent_preview'
+    ? {
+        kind: 'agent_preview' as const,
+        previewId: String(value.preview_id),
+        previewRevisionId: String(value.preview_revision_id),
+      }
+    : {
+        kind: 'widget_instance' as const,
+        canvasId: String(value.canvas_id),
+        widgetInstanceId: String(value.widget_instance_id),
+      };
   return {
     envelope: {
       id: String(value.id),
@@ -107,7 +118,7 @@ export function fnFunctionControlStoreInvocation(row: unknown): TInvocationRecor
       },
       widgetDefinitionId: String(value.widget_definition_id),
       widgetRevisionId: String(value.widget_revision_id),
-      widgetInstanceId: String(value.widget_instance_id),
+      subject,
       functionId: String(value.function_id),
       functionName: String(value.function_name),
       definitionRevision: safeInteger(value.definition_revision, 'invocation definition revision'),

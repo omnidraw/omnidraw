@@ -1,7 +1,10 @@
 import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
-import { FunctionService } from './FunctionService';
+import {
+  FunctionService,
+  type TPreviewFunctionInvocationCapability,
+} from './FunctionService';
 import {
   TenantServicePool,
   type TTenantServicePoolOptions,
@@ -16,7 +19,7 @@ type TFunctionServicePoolOptions = Omit<
 }>;
 
 class FunctionServicePool extends TenantServicePool<FunctionService>
-implements IFunctionInvocationApiCapability {
+implements IFunctionInvocationApiCapability, TPreviewFunctionInvocationCapability {
   readonly #bootstrapTenants: readonly TTenantContext[];
 
   constructor(options: TFunctionServicePoolOptions) {
@@ -69,12 +72,49 @@ implements IFunctionInvocationApiCapability {
     (service) => service.cancelFunctionInvocation(tenant, invocationId),
   );
 
+  invokePreviewFunction: TPreviewFunctionInvocationCapability['invokePreviewFunction'] = (
+    tenant,
+    request,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.invokePreviewFunction(tenant, request),
+  );
+
+  getPreviewFunctionInvocation:
+    TPreviewFunctionInvocationCapability['getPreviewFunctionInvocation'] = (
+    tenant,
+    request,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.getPreviewFunctionInvocation(tenant, request),
+  );
+
+  cancelPreviewFunctionInvocation:
+    TPreviewFunctionInvocationCapability['cancelPreviewFunctionInvocation'] = (
+    tenant,
+    request,
+  ) => this.#delegate(
+    tenant,
+    (service) => service.cancelPreviewFunctionInvocation(tenant, request),
+  );
+
   #delegate<TResult>(
     tenant: TTenantContext,
     operation: (service: FunctionService) => Promise<TResult>,
   ): Promise<TResult> {
     return this.withTenantService(tenant, operation);
   }
+}
+
+/** Trusted Agent-only surface; never register this as the public function API capability. */
+function createPreviewFunctionInvocationCapability(
+  pool: FunctionServicePool,
+): TPreviewFunctionInvocationCapability {
+  return Object.freeze({
+    invokePreviewFunction: pool.invokePreviewFunction,
+    getPreviewFunctionInvocation: pool.getPreviewFunctionInvocation,
+    cancelPreviewFunctionInvocation: pool.cancelPreviewFunctionInvocation,
+  });
 }
 
 function createFunctionInvocationCapability(
@@ -87,5 +127,9 @@ function createFunctionInvocationCapability(
   });
 }
 
-export { createFunctionInvocationCapability, FunctionServicePool };
+export {
+  createFunctionInvocationCapability,
+  createPreviewFunctionInvocationCapability,
+  FunctionServicePool,
+};
 export type { TFunctionServicePoolOptions };

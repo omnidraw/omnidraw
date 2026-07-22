@@ -7,7 +7,11 @@ import type {
 import type { LocalFunctionDispatcher } from '@vibecanvas/function-runtime/local';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { FunctionService } from '../src/services/FunctionService';
-import { FunctionServicePool } from '../src/services/FunctionServicePool';
+import {
+  createFunctionInvocationCapability,
+  createPreviewFunctionInvocationCapability,
+  FunctionServicePool,
+} from '../src/services/FunctionServicePool';
 
 const TENANT: TTenantContext = Object.freeze({
   orgId: '00000000-0000-4000-8000-000000000001',
@@ -42,6 +46,10 @@ const OTHER_MEMBER_TENANT: TTenantContext = Object.freeze({
   requestId: 'request-other-member',
 });
 
+const WIDGET_INSTANCE_ID = '00000000-0000-4000-8000-000000000022';
+const PREVIEW_ID = '00000000-0000-4000-8000-000000000023';
+const PREVIEW_REVISION_ID = '00000000-0000-4000-8000-000000000024';
+
 function record(
   status: TInvocationRecord['status'] = 'queued',
   invocationTenant: TTenantContext = TENANT,
@@ -52,7 +60,11 @@ function record(
       tenant: invocationTenant,
       widgetDefinitionId: '00000000-0000-4000-8000-000000000020',
       widgetRevisionId: '00000000-0000-4000-8000-000000000021',
-      widgetInstanceId: '00000000-0000-4000-8000-000000000022',
+      subject: {
+        kind: 'widget_instance',
+        canvasId: TENANT.canvasId!,
+        widgetInstanceId: WIDGET_INSTANCE_ID,
+      },
       functionId: 'fn:definition:run',
       functionName: 'run',
       definitionRevision: 1,
@@ -90,6 +102,24 @@ function record(
   };
 }
 
+function previewRecord(
+  status: TInvocationRecord['status'] = 'queued',
+): TInvocationRecord {
+  const value = record(status, WS_TENANT);
+  return {
+    ...value,
+    envelope: {
+      ...value.envelope,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      subject: {
+        kind: 'agent_preview',
+        previewId: PREVIEW_ID,
+        previewRevisionId: PREVIEW_REVISION_ID,
+      },
+    },
+  };
+}
+
 function databaseForTarget(options: Readonly<{
   target?: Partial<{
     canvas_id: string;
@@ -120,7 +150,7 @@ function databaseForTarget(options: Readonly<{
               && sql.includes('widget_instance_projection_heads')
             )
             || orgId !== TENANT.orgId
-            || widgetInstanceId !== record().envelope.widgetInstanceId
+            || widgetInstanceId !== WIDGET_INSTANCE_ID
             || !memberAccountIds.includes(String(accountId))
           ) {
             return undefined;
@@ -317,13 +347,13 @@ describe('FunctionService host authority', () => {
       nowMs: () => 500,
     });
     await expect(service.invokeFunction(WS_TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run',
       input: { value: 1 },
       idempotencyKey: 'request-key',
     })).resolves.toMatchObject({
       widgetRevisionId: record().envelope.widgetRevisionId,
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       status: 'queued',
     });
     expect(calls).toEqual([expect.objectContaining({
@@ -331,7 +361,7 @@ describe('FunctionService host authority', () => {
       widgetRevisionId: record().envelope.widgetRevisionId,
       idempotencyScope: {
         kind: 'widget_instance',
-        widgetInstanceId: record().envelope.widgetInstanceId,
+        widgetInstanceId: WIDGET_INSTANCE_ID,
       },
       idempotencyExpiresAtMs: 60_500,
     })]);
@@ -341,7 +371,7 @@ describe('FunctionService host authority', () => {
   test('hides unauthorized, context-mismatched, and inactive targets behind stable codes', async () => {
     const unauthorized = createService();
     await expect(unauthorized.service.invokeFunction(OUTSIDER_TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
     expect(unauthorized.calls).toHaveLength(0);
@@ -353,7 +383,7 @@ describe('FunctionService host authority', () => {
       }),
     });
     await expect(mismatched.service.invokeFunction(TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
     expect(mismatched.calls).toHaveLength(0);
@@ -363,7 +393,7 @@ describe('FunctionService host authority', () => {
       database: databaseForTarget({ target: { status: 'archived' } }),
     }).service;
     await expect(inactive.invokeFunction(TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_ARCHIVED' });
     await inactive.stop();
@@ -372,7 +402,7 @@ describe('FunctionService host authority', () => {
       database: databaseForTarget({ projectionCurrent: false }),
     });
     await expect(delayedProjection.service.invokeFunction(TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'WIDGET_INSTANCE_NOT_FOUND' });
     expect(delayedProjection.calls).toHaveLength(0);
@@ -386,7 +416,7 @@ describe('FunctionService host authority', () => {
       }),
     }).service;
     await expect(conflict.invokeFunction(TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run', input: {}, idempotencyKey: 'key',
     })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
     await conflict.stop();
@@ -402,7 +432,7 @@ describe('FunctionService host authority', () => {
     }).service;
 
     await expect(raced.invokeFunction(TENANT, {
-      widgetInstanceId: record().envelope.widgetInstanceId,
+      widgetInstanceId: WIDGET_INSTANCE_ID,
       functionName: 'run',
       input: {},
       idempotencyKey: 'projection-race',
@@ -484,5 +514,87 @@ describe('FunctionService host authority', () => {
     )).resolves.toBeNull();
     expect(missingCanvas.cancellationCalls).toHaveLength(0);
     await missingCanvas.service.stop();
+  });
+
+  test('invokes and polls an immutable preview without fabricating a widget instance', async () => {
+    const invocation = previewRecord();
+    const { calls, cancellationCalls, service } = createService({
+      invocation,
+      idempotencyTtlMs: 60_000,
+      nowMs: () => 500,
+    });
+    const request = {
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ID,
+      widgetDefinitionId: invocation.envelope.widgetDefinitionId,
+      functionName: 'run',
+      input: { value: 1 },
+      idempotencyKey: 'preview-key',
+    } as const;
+
+    await expect(service.invokePreviewFunction(WS_TENANT, request)).resolves.toEqual(
+      expect.objectContaining({
+        id: invocation.envelope.id,
+        widgetRevisionId: PREVIEW_REVISION_ID,
+        subject: {
+          kind: 'agent_preview',
+          previewId: PREVIEW_ID,
+          previewRevisionId: PREVIEW_REVISION_ID,
+        },
+      }),
+    );
+    expect(calls).toEqual([expect.objectContaining({
+      widgetDefinitionId: invocation.envelope.widgetDefinitionId,
+      widgetRevisionId: PREVIEW_REVISION_ID,
+      subject: {
+        kind: 'agent_preview',
+        previewId: PREVIEW_ID,
+        previewRevisionId: PREVIEW_REVISION_ID,
+      },
+      idempotencyScope: {
+        kind: 'agent_preview',
+        previewId: PREVIEW_ID,
+        previewRevisionId: PREVIEW_REVISION_ID,
+      },
+      idempotencyExpiresAtMs: 60_500,
+    })]);
+    expect(calls[0]).not.toHaveProperty('widgetInstanceId');
+
+    const lookup = {
+      invocationId: invocation.envelope.id,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ID,
+    } as const;
+    await expect(service.getPreviewFunctionInvocation(WS_TENANT, lookup))
+      .resolves.toMatchObject({ subject: { kind: 'agent_preview' } });
+    await expect(service.getPreviewFunctionInvocation(WS_TENANT, {
+      ...lookup,
+      previewRevisionId: 'preview-revision-other',
+    })).resolves.toBeNull();
+    await expect(service.cancelPreviewFunctionInvocation(WS_TENANT, lookup))
+      .resolves.toMatchObject({ subject: { kind: 'agent_preview' }, status: 'cancelled' });
+    expect(cancellationCalls).toHaveLength(1);
+    await service.stop();
+  });
+
+  test('keeps preview records out of the public function capability', async () => {
+    const invocation = previewRecord();
+    const { cancellationCalls, service } = createService({ invocation });
+    await expect(service.getFunctionInvocation(WS_TENANT, invocation.envelope.id))
+      .resolves.toBeNull();
+    await expect(service.cancelFunctionInvocation(WS_TENANT, invocation.envelope.id))
+      .resolves.toBeNull();
+    expect(cancellationCalls).toHaveLength(0);
+
+    const publicCapability = createFunctionInvocationCapability(
+      service as unknown as FunctionServicePool,
+    ) as unknown as Record<string, unknown>;
+    const previewCapability = createPreviewFunctionInvocationCapability(
+      service as unknown as FunctionServicePool,
+    ) as unknown as Record<string, unknown>;
+    expect(publicCapability).not.toHaveProperty('invokePreviewFunction');
+    expect(previewCapability).toHaveProperty('invokePreviewFunction');
+    expect(previewCapability).not.toHaveProperty('invokeFunction');
+    await service.stop();
   });
 });

@@ -68,6 +68,27 @@ ${extraExport}
 `;
 }
 
+function subjectGuestSource(): string {
+  return `
+const registration = Object.freeze(${JSON.stringify(registration)});
+const echo = async () => { throw new Error('use host entry'); };
+Object.defineProperties(echo, {
+  __vibecanvasServerFunction: { value: 'vibecanvas.server-function.v1', enumerable: false },
+  __vibecanvasRegistration: { value: registration, enumerable: false },
+  __vibecanvasExecute: {
+    value: async (context) => ({
+      echo: context.subject.kind === 'agent_preview'
+        ? context.subject.previewId
+        : context.subject.widgetInstanceId,
+    }),
+    enumerable: false,
+  },
+});
+Object.freeze(echo);
+export { echo };
+`;
+}
+
 function computedEscapeGuestSource(): string {
   return `
 const registration = Object.freeze(${JSON.stringify(registration)});
@@ -238,7 +259,11 @@ function envelope(definitionValue: TFunctionDefinition): TFunctionInvocationEnve
     tenant,
     widgetDefinitionId: definitionValue.widgetDefinitionId,
     widgetRevisionId: definitionValue.widgetRevisionId,
-    widgetInstanceId: 'instance-a',
+    subject: {
+      kind: 'widget_instance',
+      canvasId: 'canvas-a',
+      widgetInstanceId: 'instance-a',
+    },
     functionId: definitionValue.id,
     functionName: definitionValue.name,
     definitionRevision: definitionValue.definitionRevision,
@@ -522,7 +547,7 @@ function executorFaultFixture(hooks: Readonly<{
     completions: [],
   };
   const store = {
-    resolveFunction: async () => definitionValue,
+    resolveFunctionForSubject: async () => definitionValue,
     claim: async () => hooks.claim?.() ?? ({ status: 'claimed' as const, attempt: attemptValue, lease }),
     getInvocation: async () => ({
       ...invocationRecord(invocation),
@@ -898,6 +923,40 @@ describe('local short-lived function runtime', () => {
       teardownFailures: [],
     });
     expect(await readdir(tempRoot)).toEqual([]);
+  });
+
+  test('exposes the immutable preview subject inside the guest SDK context', async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), 'vibecanvas-driver-preview-subject-'));
+    roots.push(tempRoot);
+    const built = artifact(subjectGuestSource());
+    const definitionValue = {
+      ...definition(built.buildArtifact.digestSha256),
+      widgetRevisionId: 'preview-revision-a',
+    };
+    const driver = new BunChildSandboxDriver({
+      tempRoot,
+      startupTimeoutMs: 2_000,
+      readRssBytes: async () => 1_024,
+    });
+    const prepared = await driver.prepare({
+      definition: definitionValue,
+      artifact: built.buildArtifact.bytes,
+    });
+    const running = await driver.start(prepared, attempt(), sandboxStartRequest());
+    const result = await driver.execute(running, {
+      ...envelope(definitionValue),
+      subject: {
+        kind: 'agent_preview',
+        previewId: 'preview-a',
+        previewRevisionId: 'preview-revision-a',
+      },
+    }, { call: async () => { throw new Error('fn must not call resources'); } });
+    expect(result).toMatchObject({
+      status: 'succeeded',
+      output: { echo: 'preview-a' },
+    });
+    await driver.destroy(running);
+    expect(driver.diagnostics().activeGuestCount).toBe(0);
   });
 
   test('guest VM blocks a computed constructor escape to ambient Bun authority', async () => {
@@ -2062,7 +2121,7 @@ describe('local short-lived function runtime', () => {
     let createCalls = 0;
     const fingerprints: string[] = [];
     const store = {
-      resolveFunction: async () => definitionValue,
+      resolveFunctionForSubject: async () => definitionValue,
       createOrReplayInvocation: async (_tenant: unknown, request: {
         envelope: TFunctionInvocationEnvelope;
         requestFingerprintSha256: string;
@@ -2097,7 +2156,11 @@ describe('local short-lived function runtime', () => {
     const request = {
       widgetDefinitionId: definitionValue.widgetDefinitionId,
       widgetRevisionId: definitionValue.widgetRevisionId,
-      widgetInstanceId: 'instance-a',
+      subject: {
+        kind: 'widget_instance',
+        canvasId: 'canvas-a',
+        widgetInstanceId: 'instance-a',
+      },
       functionName: definitionValue.name,
       idempotencyKey: 'same-key',
     } as const;
@@ -2114,6 +2177,69 @@ describe('local short-lived function runtime', () => {
     expect(createCalls).toBe(2);
   });
 
+  test('pins an agent preview subject without synthesizing canvas or widget identity', async () => {
+    const definitionValue = {
+      ...definition('a'.repeat(64)),
+      widgetRevisionId: 'preview-revision-a',
+    };
+    const resolutions: unknown[] = [];
+    const creations: TFunctionInvocationEnvelope[] = [];
+    const store = {
+      resolveFunctionForSubject: async (_tenant: unknown, request: unknown) => {
+        resolutions.push(request);
+        return definitionValue;
+      },
+      createOrReplayInvocation: async (_tenant: unknown, request: {
+        envelope: TFunctionInvocationEnvelope;
+      }) => {
+        creations.push(request.envelope);
+        return {
+          status: 'created' as const,
+          invocation: invocationRecord(request.envelope),
+        };
+      },
+    } as unknown as IFunctionControlStore;
+    const scheduler: IScheduler = {
+      notifyQueued: async () => undefined,
+      takeNext: async () => null,
+    };
+    let nextId = 0;
+    const dispatcher = new LocalFunctionDispatcher({
+      orgId: tenant.orgId,
+      cellId: tenant.cellId,
+      placementEpoch: tenant.placementEpoch,
+      recoveryTenant: tenant,
+      workerId: 'preview-worker',
+      schedulingDomain: 'local',
+      memoryTiers: ['small'],
+      store,
+      scheduler,
+      executor: { execute: async () => ({ status: 'not_claimed', reason: 'test' }) } as unknown as FunctionExecutor,
+      schemas: new JsonSchemaFunctionValidator(),
+      nowMs: () => 100,
+      createId: () => `preview-id-${nextId++}`,
+    });
+    const subject = {
+      kind: 'agent_preview' as const,
+      previewId: 'preview-a',
+      previewRevisionId: 'preview-revision-a',
+    };
+
+    await dispatcher.invoke(tenant, {
+      widgetDefinitionId: definitionValue.widgetDefinitionId,
+      widgetRevisionId: definitionValue.widgetRevisionId,
+      subject,
+      functionName: definitionValue.name,
+      input: { value: 'preview' },
+      idempotencyKey: 'preview-key',
+    });
+
+    expect(resolutions).toEqual([expect.objectContaining({ subject })]);
+    expect(creations).toHaveLength(1);
+    expect(creations[0]?.subject).toEqual(subject);
+    expect(creations[0]).not.toHaveProperty('widgetInstanceId');
+  });
+
   test('rejects sparse invocation input before it can collide with an empty-input idempotency fingerprint', async () => {
     const definitionValue: TFunctionDefinition = {
       ...definition('a'.repeat(64)),
@@ -2125,7 +2251,7 @@ describe('local short-lived function runtime', () => {
     };
     const fingerprints: string[] = [];
     const store = {
-      resolveFunction: async () => definitionValue,
+      resolveFunctionForSubject: async () => definitionValue,
       createOrReplayInvocation: async (_tenant: unknown, request: {
         envelope: TFunctionInvocationEnvelope;
         requestFingerprintSha256: string;
@@ -2160,7 +2286,11 @@ describe('local short-lived function runtime', () => {
     const request = {
       widgetDefinitionId: definitionValue.widgetDefinitionId,
       widgetRevisionId: definitionValue.widgetRevisionId,
-      widgetInstanceId: 'instance-a',
+      subject: {
+        kind: 'widget_instance',
+        canvasId: 'canvas-a',
+        widgetInstanceId: 'instance-a',
+      },
       functionName: definitionValue.name,
       idempotencyKey: 'sparse-key',
     } as const;
@@ -2187,7 +2317,7 @@ describe('local short-lived function runtime', () => {
     };
     const completions: Array<Record<string, unknown>> = [];
     const store = {
-      resolveFunction: async () => definitionValue,
+      resolveFunctionForSubject: async () => definitionValue,
       claim: async () => ({ status: 'claimed' as const, attempt: attemptValue, lease }),
       getInvocation: async () => invocationRecord(invocation),
       startAttempt: async () => ({ status: 'updated' as const, attempt: { ...attemptValue, status: 'running' }, lease }),

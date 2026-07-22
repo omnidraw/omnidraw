@@ -58,7 +58,13 @@ const TENANT_B = fnFreezeTenantContext({
 
 function artifact(
   tenant: TTenantContext,
-  args: Readonly<{ id: string; kind: 'ui' | 'server'; digest: string; byteSize?: number; nowMs?: number }>,
+  args: Readonly<{
+    id: string;
+    kind: 'source' | 'ui' | 'server';
+    digest: string;
+    byteSize?: number;
+    nowMs?: number;
+  }>,
 ): TWidgetArtifactDescriptor {
   return {
     orgId: tenant.orgId,
@@ -102,6 +108,10 @@ async function publish(
     contractDigestSha256?: string;
     uiArtifact?: TWidgetArtifactDescriptor;
     serverArtifact?: TWidgetArtifactDescriptor | null;
+    sourceArtifact?: TWidgetArtifactDescriptor;
+    sourceSnapshotId?: string;
+    sourceDigestSha256?: string;
+    builderIdentity?: string;
     bindings?: Parameters<IWidgetControlStore['commitPublication']>[1]['bindings'];
     functionDescriptors?: readonly TWidgetServerFunctionDescriptor[];
     nowMs?: number;
@@ -117,6 +127,12 @@ async function publish(
     nowMs,
   });
   const serverArtifact = args.serverArtifact ?? null;
+  const sourceArtifact = args.sourceArtifact ?? artifact(tenant, {
+    id: uuid(900_000 + nowMs),
+    kind: 'source',
+    digest: digest(900_000 + nowMs),
+    nowMs,
+  });
   const functionDescriptors = args.functionDescriptors ?? (value.server ? [{
     schemaVersion: 1 as const,
     exportName: 'run',
@@ -162,6 +178,13 @@ async function publish(
       contractDigestSha256,
       uiArtifact,
       serverArtifact,
+      createdAtMs: nowMs,
+    },
+    source: {
+      sourceSnapshotId: args.sourceSnapshotId ?? uuid(910_000 + nowMs),
+      sourceDigestSha256: args.sourceDigestSha256 ?? digest(910_000 + nowMs),
+      sourceArtifact,
+      builderIdentity: args.builderIdentity ?? 'widget-control-store-test',
       createdAtMs: nowMs,
     },
     bindings: args.bindings ?? [],
@@ -330,7 +353,7 @@ describe('WidgetControlStoreTurso', () => {
       contract_digest_sha256: secondRevision.contractDigestSha256,
       runtime_abi: 'vibecanvas:1',
     });
-    expect(await rowCount(service, 'artifact_references')).toBe(2);
+    expect(await rowCount(service, 'artifact_references')).toBe(4);
     expect(await store.getActiveRevision(TENANT_A, DEFINITION_A)).toMatchObject({ id: uuid(413) });
 
     expect(await (await service.db.prepare(`
@@ -365,6 +388,21 @@ describe('WidgetControlStoreTurso', () => {
       definitionId: DEFINITION_B,
     })).resolves.toBeNull();
     await expect(store.resolveArtifactReference(TENANT_B, resolution)).resolves.toBeNull();
+    await expect(store.getRevisionSource(TENANT_A, uuid(413))).resolves.toMatchObject({
+      definitionId: DEFINITION_A,
+      revisionId: uuid(413),
+      sourceSnapshotId: uuid(910_030),
+      sourceDigestSha256: digest(910_030),
+      sourceArtifact: { id: uuid(900_030), kind: 'source', digestSha256: digest(900_030) },
+      builderIdentity: 'widget-control-store-test',
+    });
+    await expect(store.resolveArtifactReference(TENANT_A, {
+      definitionId: DEFINITION_A,
+      revisionId: uuid(413),
+      artifactId: uuid(900_030),
+      kind: 'source',
+      digestSha256: digest(900_030),
+    })).resolves.toMatchObject({ id: uuid(900_030), kind: 'source' });
     await expect(store.resolveArtifactReference(TENANT_A, {
       ...resolution,
       kind: 'source',
@@ -1111,8 +1149,9 @@ describe('WidgetControlStoreTurso', () => {
     for (const [index, invocationId] of [invocationA, invocationB].entries()) {
       await (await service.db.prepare(`
         INSERT INTO function_invocations (
-          org_id, id, account_id, canvas_id, widget_definition_id, widget_revision_id,
-          widget_instance_id, function_id, function_name, definition_revision,
+          org_id, id, account_id, subject_kind, canvas_id,
+          widget_definition_id, widget_revision_id, widget_instance_id,
+          preview_id, preview_revision_id, function_id, function_name, definition_revision,
           artifact_digest_sha256, contract_digest_sha256, runtime_abi,
           tenant_cell_id, tenant_placement_epoch, tenant_request_id,
           tenant_roles_json, tenant_capabilities_json, input_json, input_digest_sha256,
@@ -1123,7 +1162,8 @@ describe('WidgetControlStoreTurso', () => {
           retains_revision, created_at_ms, available_at_ms, deadline_at_ms,
           cancel_requested_at_ms, started_at_ms, finished_at_ms, bodies_compacted_at_ms
         )
-        SELECT ?, ?, ?, ?, ?, ?, ?, definition.id, definition.export_name,
+        SELECT ?, ?, ?, 'widget_instance', ?, ?, ?, ?, NULL, NULL,
+          definition.id, definition.export_name,
           definition.definition_revision, definition.artifact_digest_sha256,
           definition.contract_digest_sha256, definition.runtime_abi,
           ?, 1, ?, '["owner"]', '["*"]', '{}', ?, ?, 1, 0,
@@ -1154,10 +1194,12 @@ describe('WidgetControlStoreTurso', () => {
     }
     await (await service.db.prepare(`
       INSERT INTO idempotency_records (
-        org_id, id, function_id, scope_kind, canvas_id, widget_instance_id, idempotency_key,
+        org_id, id, function_id, scope_kind, canvas_id, widget_instance_id,
+        preview_id, preview_revision_id, idempotency_key,
         request_fingerprint_sha256, widget_definition_id, widget_revision_id,
         invocation_id, created_at_ms, expires_at_ms
-      ) VALUES (?, ?, ?, 'organization', NULL, NULL, 'retention-pin', ?, ?, ?, ?, 23, NULL)
+      ) VALUES (?, ?, ?, 'organization', NULL, NULL, NULL, NULL,
+        'retention-pin', ?, ?, ?, ?, 23, NULL)
     `)).run(
       TENANT_A.orgId,
       uuid(461),
@@ -1372,6 +1414,7 @@ describe('WidgetControlStoreTurso', () => {
     const expiredRevisionId = uuid(591);
     const activeRevisionId = uuid(592);
     const expiredArtifactId = uuid(593);
+    const expiredSourceArtifactId = uuid(900_010);
     const activeArtifactId = uuid(594);
     const unexpiredArtifactId = uuid(595);
     const chatId = uuid(596);
@@ -1450,7 +1493,9 @@ describe('WidgetControlStoreTurso', () => {
     });
 
     expect(pass.pruned.prunedRevisionIds).toEqual([expiredRevisionId]);
-    expect(pass.reconciled.eligibleArtifactIds).toEqual([expiredArtifactId]);
+    expect([...pass.reconciled.eligibleArtifactIds].sort()).toEqual(
+      [expiredArtifactId, expiredSourceArtifactId].sort(),
+    );
     expect(await store.getRevision(TENANT_A, expiredRevisionId)).toBeNull();
     expect(await store.getRevision(TENANT_A, activeRevisionId)).not.toBeNull();
     expect(await (await service.db.prepare(`

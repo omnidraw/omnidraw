@@ -6,7 +6,11 @@ import type {
   IWidgetArtifactReadCapabilityVerifier,
   IWidgetArtifactStore,
   IWidgetControlStore,
+  IWidgetPreviewStore,
+  IWidgetServerPreviewArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
+  IWidgetSourceBuildArtifactReadCapabilityIssuer,
+  IWidgetUiPreviewArtifactReadCapabilityIssuer,
   TWidgetArtifactDeleteRequest,
   TWidgetArtifactDescriptor,
   TWidgetArtifactPut,
@@ -14,6 +18,7 @@ import type {
   TWidgetArtifactReadCapabilityIssueRequest,
   TWidgetArtifactReadPurpose,
   TWidgetArtifactReadRequest,
+  TWidgetPreviewArtifactReadCapabilityIssueRequest,
 } from '..';
 import { LocalWidgetArtifactStore } from './LocalWidgetArtifactStore';
 import {
@@ -27,6 +32,7 @@ export type TWidgetArtifactServiceConfig = Readonly<{
   blobs: LocalWidgetArtifactStore;
   capabilityIssuer: IWidgetArtifactReadCapabilitySigner;
   capabilityVerifier: IWidgetArtifactReadCapabilityVerifier;
+  previewStore?: Pick<IWidgetPreviewStore, 'resolvePreviewArtifact'>;
   now?: () => number;
   createNonce?: () => string;
 }>;
@@ -35,7 +41,10 @@ export type TWidgetArtifactServiceConfig = Readonly<{
 export class WidgetArtifactService implements
   IWidgetArtifactStore,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
-  IWidgetServerExecutionArtifactReadCapabilityIssuer {
+  IWidgetServerExecutionArtifactReadCapabilityIssuer,
+  IWidgetSourceBuildArtifactReadCapabilityIssuer,
+  IWidgetUiPreviewArtifactReadCapabilityIssuer,
+  IWidgetServerPreviewArtifactReadCapabilityIssuer {
   readonly #now: () => number;
   readonly #createNonce: () => string;
 
@@ -82,16 +91,16 @@ export class WidgetArtifactService implements
 
   issueUiPreviewArtifactReadCapability(
     tenant: TTenantContext,
-    request: TWidgetArtifactReadCapabilityIssueRequest,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'ui' }>,
   ): Promise<TWidgetArtifactReadCapability> {
-    return this.#issueArtifactReadCapability(tenant, request, 'preview_ui');
+    return this.#issuePreviewArtifactReadCapability(tenant, request, 'preview_ui');
   }
 
   issueServerPreviewArtifactReadCapability(
     tenant: TTenantContext,
-    request: TWidgetArtifactReadCapabilityIssueRequest,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'server' }>,
   ): Promise<TWidgetArtifactReadCapability> {
-    return this.#issueArtifactReadCapability(tenant, request, 'preview_server');
+    return this.#issuePreviewArtifactReadCapability(tenant, request, 'preview_server');
   }
 
   issueSourceBuildArtifactReadCapability(
@@ -150,6 +159,42 @@ export class WidgetArtifactService implements
     });
   }
 
+  async #issuePreviewArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest,
+    purpose: Extract<TWidgetArtifactReadPurpose, 'preview_ui' | 'preview_server'>,
+  ): Promise<TWidgetArtifactReadCapability> {
+    this.#assertOrganization(tenant);
+    const audience = fnWidgetArtifactAudience(tenant, purpose);
+    if (
+      !this.config.previewStore
+      || !fnWidgetArtifactCapabilityContextIsValid(audience)
+      || !fnWidgetArtifactPurposeAllowsKind(purpose, request.artifactKind)
+    ) throw this.#artifactNotFound();
+    const descriptor = await this.config.previewStore.resolvePreviewArtifact(tenant, {
+      previewId: request.previewId,
+      revisionId: request.previewRevisionId,
+      artifactId: request.artifactId,
+      kind: request.artifactKind,
+      digestSha256: request.digestSha256,
+      nowMs: this.#now(),
+    });
+    if (!descriptor) throw this.#artifactNotFound();
+    const nonce = this.#createNonce();
+    if (!fnWidgetArtifactCapabilityContextIsValid(nonce)) throw this.#artifactNotFound();
+    return this.config.capabilityIssuer.issueArtifactReadCapability(tenant, {
+      definitionId: request.previewId,
+      revisionId: request.previewRevisionId,
+      artifactId: request.artifactId,
+      artifactKind: request.artifactKind,
+      digestSha256: request.digestSha256,
+      expiresAtMs: request.expiresAtMs,
+      purpose,
+      audience,
+      nonce,
+    });
+  }
+
   async getArtifact(
     tenant: TTenantContext,
     request: TWidgetArtifactReadRequest,
@@ -159,17 +204,29 @@ export class WidgetArtifactService implements
       tenant.orgId !== this.config.blobs.config.orgId
       || !fnWidgetArtifactCapabilityContextIsValid(audience)
     ) return null;
+    const nowMs = this.#now();
     const claims = await this.config.capabilityVerifier.verifyArtifactReadCapability(tenant, {
       readCapability: request.readCapability,
       purpose: request.purpose,
       audience,
-      nowMs: this.#now(),
+      nowMs,
     });
     if (
       !claims
       || claims.artifactId !== request.artifactId
       || !fnWidgetArtifactPurposeAllowsKind(claims.purpose, claims.artifactKind)
     ) return null;
+    if (claims.purpose === 'preview_ui' || claims.purpose === 'preview_server') {
+      if (!this.config.previewStore) return null;
+      return this.config.previewStore.resolvePreviewArtifact(tenant, {
+        previewId: claims.definitionId,
+        revisionId: claims.revisionId,
+        artifactId: claims.artifactId,
+        kind: claims.artifactKind as 'ui' | 'server',
+        digestSha256: claims.digestSha256,
+        nowMs,
+      });
+    }
     return this.config.controlStore.resolveArtifactReference(tenant, {
       definitionId: claims.definitionId,
       revisionId: claims.revisionId,

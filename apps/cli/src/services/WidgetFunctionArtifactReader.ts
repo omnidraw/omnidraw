@@ -36,8 +36,13 @@ class WidgetFunctionArtifactReader implements IExactFunctionArtifactReader {
       artifactDigestSha256: string;
       contractDigestSha256: string;
       runtimeAbi: string;
+      subject: Parameters<IExactFunctionArtifactReader['readExactServerArtifact']>[1]['subject'];
     }>,
   ): Promise<Uint8Array> {
+    const subject = request.subject;
+    if (subject.kind === 'agent_preview') {
+      return this.#readExactPreviewServerArtifact(tenant, request, subject);
+    }
     const revision = await this.#widgets.getRevision(tenant, request.widgetRevisionId);
     const artifact = revision?.serverArtifact ?? null;
     if (
@@ -76,6 +81,62 @@ class WidgetFunctionArtifactReader implements IExactFunctionArtifactReader {
       });
     }
     return bytes;
+  }
+
+  async #readExactPreviewServerArtifact(
+    tenant: TTenantContext,
+    request: Parameters<IExactFunctionArtifactReader['readExactServerArtifact']>[1],
+    subject: Extract<
+      Parameters<IExactFunctionArtifactReader['readExactServerArtifact']>[1]['subject'],
+      { kind: 'agent_preview' }
+    >,
+  ): Promise<Uint8Array> {
+    const nowMs = this.#nowMs();
+    if (request.widgetRevisionId !== subject.previewRevisionId) {
+      throw this.#unavailable();
+    }
+    const revision = await this.#widgets.getPreviewRevision(tenant, {
+      previewId: subject.previewId,
+      revisionId: subject.previewRevisionId,
+      nowMs,
+    });
+    const artifact = revision?.serverArtifact ?? null;
+    if (
+      revision === null
+      || revision.definitionId !== request.widgetDefinitionId
+      || revision.contractDigestSha256 !== request.contractDigestSha256
+      || revision.manifest.server?.runtimeAbi !== request.runtimeAbi
+      || artifact === null
+      || artifact.id !== request.artifactId
+      || artifact.digestSha256 !== request.artifactDigestSha256
+      || artifact.kind !== 'server'
+    ) {
+      throw this.#unavailable();
+    }
+    const readCapability = await this.#widgets.issueServerPreviewArtifactReadCapability(
+      tenant,
+      {
+        previewId: subject.previewId,
+        previewRevisionId: subject.previewRevisionId,
+        artifactId: request.artifactId,
+        artifactKind: 'server',
+        digestSha256: request.artifactDigestSha256,
+        expiresAtMs: nowMs + this.#capabilityTtlMs,
+      },
+    );
+    const bytes = await this.#widgets.readArtifact(tenant, {
+      artifactId: request.artifactId,
+      readCapability,
+      purpose: 'preview_server',
+    });
+    if (bytes === null) throw this.#unavailable();
+    return bytes;
+  }
+
+  #unavailable(): Error {
+    return Object.assign(new Error('Pinned function artifact is unavailable.'), {
+      code: 'FUNCTION_REVISION_NOT_AVAILABLE',
+    });
   }
 }
 

@@ -3,6 +3,8 @@
 /// <reference path="../assets.d.ts" />
 
 import {
+  AGENT_AUTHORING_MIGRATION_NAME,
+  AGENT_AUTHORING_MIGRATION_VERSION,
   INITIAL_MIGRATION_NAME,
   INITIAL_MIGRATION_VERSION,
   FUNCTION_RUNTIME_MIGRATION_NAME,
@@ -12,6 +14,7 @@ import {
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
   WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
 } from '../CONSTANTS';
+import agentAuthoringMigrationPath from './004-agent-authoring.sql' with { type: 'file' };
 import initialMigrationPath from './000-initial.sql' with { type: 'file' };
 import widgetRevisionSequenceMigrationPath from './001-widget-revision-sequence.sql' with { type: 'file' };
 import functionRuntimeMigrationPath from './002-function-runtime.sql' with { type: 'file' };
@@ -45,14 +48,23 @@ const WIDGET_INSTANCE_PROJECTION_MIGRATION = Object.freeze({
   path: widgetInstanceProjectionMigrationPath,
 });
 
+const AGENT_AUTHORING_MIGRATION = Object.freeze({
+  type: 'sql' as const,
+  name: AGENT_AUTHORING_MIGRATION_NAME,
+  version: AGENT_AUTHORING_MIGRATION_VERSION,
+  path: agentAuthoringMigrationPath,
+});
+
 const MIGRATION_FILES = Object.freeze([
   INITIAL_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   WIDGET_INSTANCE_PROJECTION_MIGRATION,
+  AGENT_AUTHORING_MIGRATION,
 ]);
 
 export {
+  AGENT_AUTHORING_MIGRATION,
   INITIAL_MIGRATION,
   FUNCTION_RUNTIME_MIGRATION,
   MIGRATION_FILES,

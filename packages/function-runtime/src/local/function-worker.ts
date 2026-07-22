@@ -238,7 +238,7 @@ function runtimeContext(
   const identity = JSON.stringify(value.identity);
   const invocationId = JSON.stringify(value.invocationId);
   const widgetRevisionId = JSON.stringify(value.widgetRevisionId);
-  const widgetInstanceId = JSON.stringify(value.widgetInstanceId);
+  const subject = JSON.stringify(value.subject);
   const attemptId = JSON.stringify(value.attemptId);
   return withGuestBinding(guestContext, '__vibecanvasHostBridge', bridge, `(() => {
     const bridge = __vibecanvasHostBridge;
@@ -273,7 +273,7 @@ function runtimeContext(
       identity: Object.freeze(${identity}),
       invocationId: ${invocationId},
       widgetRevisionId: ${widgetRevisionId},
-      widgetInstanceId: ${widgetInstanceId},
+      subject: Object.freeze(${subject}),
       attemptId: ${attemptId},
       leaseEpoch: ${value.leaseEpoch},
       deadlineAtMs: ${value.deadlineAtMs},

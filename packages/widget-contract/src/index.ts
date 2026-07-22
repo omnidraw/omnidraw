@@ -12,6 +12,11 @@ export {
 } from './function-descriptor-schema';
 export { ZWidgetManifestV2 } from './manifest-schema';
 export { fnCanonicalizeWidgetContractPayload } from './core/fn.contract';
+export { fnValidateWidgetBuildIntegrity } from './core/fn.build-integrity';
+export type {
+  TWidgetBuildIntegrityArgs,
+  TWidgetBuildIntegrityValidation,
+} from './core/fn.build-integrity';
 export {
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,

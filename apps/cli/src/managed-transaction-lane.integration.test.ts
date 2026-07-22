@@ -30,6 +30,7 @@ const DEFINITION_ID = uuid(951);
 const REVISION_ID = uuid(952);
 const UI_ARTIFACT_ID = uuid(953);
 const SERVER_ARTIFACT_ID = uuid(954);
+const SOURCE_ARTIFACT_ID = uuid(959);
 const INSTANCE_ID = uuid(955);
 const QUEUED_DEFINITION_ID = uuid(956);
 const RECOVERED_DEFINITION_ID = uuid(957);
@@ -37,6 +38,7 @@ const CANVAS_URL = generateAutomergeUrl();
 const CANVAS_DOCUMENT_KEY = parseAutomergeUrl(CANVAS_URL).documentId;
 const UI_DIGEST = sha256('managed-lane-ui');
 const SERVER_DIGEST = sha256('managed-lane-server');
+const SOURCE_DIGEST = sha256('managed-lane-source');
 
 const TENANT = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -161,6 +163,22 @@ async function publishFunctionWidget(store: WidgetControlStoreTurso): Promise<st
       },
       createdAtMs: 20,
     },
+    source: {
+      sourceSnapshotId: uuid(960),
+      sourceDigestSha256: SOURCE_DIGEST,
+      sourceArtifact: {
+        orgId: TENANT.orgId,
+        id: SOURCE_ARTIFACT_ID,
+        kind: 'source',
+        digestSha256: SOURCE_DIGEST,
+        byteSize: 30,
+        retentionState: 'pinned',
+        retainUntilMs: null,
+        createdAtMs: 20,
+      },
+      builderIdentity: 'managed-transaction-lane-test',
+      createdAtMs: 20,
+    },
     bindings: [],
     nowMs: 20,
   });
@@ -182,7 +200,11 @@ function invocationRequest(
       tenant: TENANT,
       widgetDefinitionId: DEFINITION_ID,
       widgetRevisionId: REVISION_ID,
-      widgetInstanceId: INSTANCE_ID,
+      subject: {
+        kind: 'widget_instance',
+        canvasId: CANVAS_ID,
+        widgetInstanceId: INSTANCE_ID,
+      },
       functionId: fnFunctionId(DEFINITION_ID, FUNCTION_DESCRIPTOR.exportName),
       functionName: FUNCTION_DESCRIPTOR.exportName,
       definitionRevision: 1,

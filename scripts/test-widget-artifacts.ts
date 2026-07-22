@@ -33,6 +33,7 @@ const suites: TWidgetArtifactSuite[] = [
       'packages/widget-contract/tests/widget-contract.test.ts',
       'packages/widget-contract/tests/local-artifacts.test.ts',
       'packages/widget-contract/tests/widget-artifact-recovery.test.ts',
+      'packages/widget-contract/tests/widget-preview.test.ts',
       'packages/widget-contract/tests/fixtures/widget-artifact-orphan-writer.ts',
     ],
   },

@@ -47,12 +47,22 @@ const manifest: TWidgetManifestV2 = Object.freeze({
   ui: Object.freeze({ entry: 'src/ui.ts' }),
 });
 
+const snapshotFiles = Object.freeze([
+  Object.freeze({ path: 'src/ui.ts', bytes: new TextEncoder().encode('export const ui = true;') }),
+]);
+const snapshotHash = createHash('sha256');
+for (const file of snapshotFiles) {
+  const pathBytes = Buffer.from(file.path, 'utf8');
+  snapshotHash.update(`${pathBytes.byteLength}:`);
+  snapshotHash.update(pathBytes);
+  snapshotHash.update(`:${file.bytes.byteLength}:`);
+  snapshotHash.update(file.bytes);
+  snapshotHash.update(';');
+}
 const snapshot = Object.freeze({
   id: 'snapshot-recovery',
-  digestSha256: '1'.repeat(64),
-  files: Object.freeze([
-    Object.freeze({ path: 'src/ui.ts', bytes: new TextEncoder().encode('export const ui = true;') }),
-  ]),
+  digestSha256: snapshotHash.digest('hex'),
+  files: snapshotFiles,
   createdAtMs: 1,
 });
 
@@ -218,6 +228,10 @@ function controlStoreHarness(overrides: Partial<IWidgetControlStore> = {}): Read
     },
     async getActiveRevision() {
       calls.push('getActiveRevision');
+      return null;
+    },
+    async getRevisionSource() {
+      calls.push('getRevisionSource');
       return null;
     },
     async commitPublication() {
@@ -483,8 +497,8 @@ describe('widget artifact publication and GC recovery', () => {
       status: 'conflict',
       currentActiveRevisionId: 'revision-winner',
     });
-    expect(artifacts.putCount()).toBe(1);
-    expect(await blobs.listBlobDigests()).toHaveLength(1);
+    expect(artifacts.putCount()).toBe(2);
+    expect(await blobs.listBlobDigests()).toHaveLength(2);
 
     const collector = new WidgetArtifactGarbageCollector({
       controlStore: control.store,
@@ -492,7 +506,7 @@ describe('widget artifact publication and GC recovery', () => {
       blobs,
       operationLane: lane,
     });
-    expect(await collector.collect(tenant, gcRequest())).toMatchObject({ deleted: 1 });
+    expect(await collector.collect(tenant, gcRequest())).toMatchObject({ deleted: 2 });
     expect(await blobs.listBlobDigests()).toEqual([]);
   });
 
@@ -570,6 +584,7 @@ describe('widget artifact publication and GC recovery', () => {
         commitEntered.resolve(undefined);
         await releaseCommit.promise;
         referencedDigests.add(request.revision.uiArtifact.digestSha256);
+        referencedDigests.add(request.source.sourceArtifact.digestSha256);
         return committedResult(request);
       },
       async pruneInactiveRevisions() {
@@ -598,7 +613,7 @@ describe('widget artifact publication and GC recovery', () => {
 
     const publishing = publication.publish(tenant, publishRequest());
     await bounded(commitEntered.promise, 5_000, 'publication commit entry');
-    expect(await blobs.listBlobDigests()).toHaveLength(1);
+    expect(await blobs.listBlobDigests()).toHaveLength(2);
     const collecting = collector.collect(tenant, gcRequest());
     const laneObservation = await Promise.race([
       gcEntered.promise.then(() => 'gc-entered' as const),
@@ -609,7 +624,7 @@ describe('widget artifact publication and GC recovery', () => {
     releaseCommit.resolve(undefined);
     expect((await bounded(publishing, 5_000, 'publication completion')).status).toBe('committed');
     expect(await bounded(collecting, 5_000, 'serialized GC completion')).toMatchObject({ deleted: 0 });
-    expect(await blobs.listBlobDigests()).toHaveLength(1);
+    expect(await blobs.listBlobDigests()).toHaveLength(2);
   });
 
   test('a restarted collector safely resumes a durable deleting candidate', async () => {

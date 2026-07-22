@@ -15,6 +15,8 @@ export { WidgetArtifactService } from './WidgetArtifactService';
 export type { TWidgetArtifactServiceConfig } from './WidgetArtifactService';
 export { WidgetPublicationService } from './WidgetPublicationService';
 export type { TWidgetPublicationServiceConfig } from './WidgetPublicationService';
+export { WidgetPreviewService } from './WidgetPreviewService';
+export type { TWidgetPreviewServiceConfig } from './WidgetPreviewService';
 export { WidgetSourceSnapshot } from './WidgetSourceSnapshot';
 export type {
   TCapturedWidgetSourceFile,

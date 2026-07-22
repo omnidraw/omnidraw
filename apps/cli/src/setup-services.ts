@@ -37,9 +37,13 @@ import type { ICliConfig } from './config';
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
 import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
 import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
-import { FunctionService } from './services/FunctionService';
+import {
+  FunctionService,
+  type TPreviewFunctionInvocationCapability,
+} from './services/FunctionService';
 import {
   createFunctionInvocationCapability,
+  createPreviewFunctionInvocationCapability,
   FunctionServicePool,
 } from './services/FunctionServicePool';
 import { ResourceService } from './services/ResourceService';
@@ -66,6 +70,7 @@ const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
   requestId: 'function-runtime-placement-bootstrap',
 });
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
+  '@arrow-js/core',
   '@vibecanvas/sdk/server',
   '@vibecanvas/sdk/function-client',
   '@vibecanvas/sdk/widget',
@@ -126,6 +131,7 @@ export interface IRuntimeServices {
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   functionOwner: FunctionServicePool;
   functionInvocation: IFunctionInvocationApiCapability;
+  previewFunctionInvocation: TPreviewFunctionInvocationCapability;
   actor: TenantServicePool<ActorService>;
   agent: TenantServicePool<AgentService>;
 }
@@ -229,6 +235,7 @@ function setupServices(config: ICliConfig) {
   });
   const resourceCapabilities = createResourceServiceCapabilities(resourceService);
   const functionResourceGateways = new FunctionResourceGatewayFactory({
+    database: dbService.db,
     resources: resourceService,
     widgets: widgetServerArtifacts,
     permits: functionStore,
@@ -287,6 +294,7 @@ function setupServices(config: ICliConfig) {
     },
   });
   const functionCapability = createFunctionInvocationCapability(functionService);
+  const previewFunctionCapability = createPreviewFunctionInvocationCapability(functionService);
   actorService = new TenantServicePool<ActorService>('actor-service-pool', {
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
@@ -434,6 +442,7 @@ function setupServices(config: ICliConfig) {
   services.provide('actor', 60, actorService);
   services.provide('functionOwner', 61, functionService);
   services.provide('functionInvocation', 61, functionCapability);
+  services.provide('previewFunctionInvocation', 61, previewFunctionCapability);
   services.provide('agent', 62, agentService);
 
   return {

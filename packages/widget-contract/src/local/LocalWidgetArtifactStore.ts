@@ -6,7 +6,10 @@ import type {
   TWidgetArtifactDescriptor,
   TWidgetArtifactKind,
 } from '../types';
-import { WIDGET_ARTIFACT_MAX_BYTES } from './CONSTANTS';
+import {
+  WIDGET_ARTIFACT_MAX_BYTES,
+  WIDGET_SOURCE_ARTIFACT_MAX_BYTES,
+} from './CONSTANTS';
 import {
   fnArtifactBlobPath,
   fnArtifactTempPath,
@@ -95,6 +98,7 @@ async function readPinnedFile(
   roots: PinnedLocalDirectory,
   directory: TPinnedLocalDirectory,
   path: string,
+  maximumByteSize: number,
 ): Promise<Uint8Array> {
   await roots.assertDirectory(directory);
   const handle = await open(
@@ -103,7 +107,7 @@ async function readPinnedFile(
   );
   try {
     const beforeRead = await handle.stat();
-    if (!beforeRead.isFile() || Number(beforeRead.size) > WIDGET_ARTIFACT_MAX_BYTES) {
+    if (!beforeRead.isFile() || Number(beforeRead.size) > maximumByteSize) {
       throw artifactIntegrityError('Widget artifact path is not a bounded regular file.');
     }
     const size = Number(beforeRead.size);
@@ -145,6 +149,10 @@ async function readPinnedFile(
   }
 }
 
+function maximumArtifactByteSize(kind: TWidgetArtifactKind): number {
+  return kind === 'source' ? WIDGET_SOURCE_ARTIFACT_MAX_BYTES : WIDGET_ARTIFACT_MAX_BYTES;
+}
+
 /** Organization-local immutable content-addressed blob storage. */
 export class LocalWidgetArtifactStore {
   readonly #createNonce: () => string;
@@ -164,7 +172,8 @@ export class LocalWidgetArtifactStore {
     bytes: Uint8Array;
     expectedDigestSha256?: string;
   }>): Promise<TStoredWidgetArtifactBlob> {
-    if (args.bytes.byteLength > WIDGET_ARTIFACT_MAX_BYTES) {
+    const maximumByteSize = maximumArtifactByteSize(args.kind);
+    if (args.bytes.byteLength > maximumByteSize) {
       throw new Error('Widget artifact exceeds the byte limit.');
     }
     const digestSha256 = sha256(args.bytes);
@@ -188,7 +197,7 @@ export class LocalWidgetArtifactStore {
 
     let existing: Uint8Array | null = null;
     try {
-      existing = await readPinnedFile(this.#roots, parent, target);
+      existing = await readPinnedFile(this.#roots, parent, target, maximumByteSize);
     } catch (error) {
       if (!isMissing(error)) throw error;
     }
@@ -249,7 +258,7 @@ export class LocalWidgetArtifactStore {
     } catch (error) {
       await unlinkIfIdentity(temp, tempIdentity).catch(() => undefined);
       try {
-        const existing = await readPinnedFile(this.#roots, parent, target);
+        const existing = await readPinnedFile(this.#roots, parent, target, maximumByteSize);
         this.#assertBytes(existing, digestSha256, args.bytes.byteLength);
       } catch (existingError) {
         if (!isMissing(existingError)) throw existingError;
@@ -263,7 +272,7 @@ export class LocalWidgetArtifactStore {
       }
     }
     await this.#syncPinnedHierarchy(parent);
-    const durable = await readPinnedFile(this.#roots, parent, target);
+    const durable = await readPinnedFile(this.#roots, parent, target, maximumByteSize);
     this.#assertBytes(durable, digestSha256, args.bytes.byteLength);
 
     return Object.freeze({ kind: args.kind, digestSha256, byteSize: args.bytes.byteLength });
@@ -282,7 +291,12 @@ export class LocalWidgetArtifactStore {
     });
     let bytes: Uint8Array;
     try {
-      bytes = await readPinnedFile(this.#roots, parent, target);
+      bytes = await readPinnedFile(
+        this.#roots,
+        parent,
+        target,
+        maximumArtifactByteSize(descriptor.kind),
+      );
     } catch (error) {
       if (!isMissing(error)) throw error;
       throw artifactIntegrityError('Widget artifact bytes are missing.');

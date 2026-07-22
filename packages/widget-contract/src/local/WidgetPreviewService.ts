@@ -4,93 +4,113 @@ import {
   ZWidgetManifestV2,
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
-  fnValidateWidgetResourceBindings,
   fnValidateWidgetBuildIntegrity,
-  type IWidgetArtifactBuilder,
-  type IWidgetArtifactMutationCoordinator,
-  type IWidgetArtifactStore,
-  type IWidgetControlStore,
-  type IWidgetPublicationService,
-  type TWidgetActiveRevisionCasResult,
-  type TWidgetPublishRequest,
-  type TWidgetPublishResult,
-  type TWidgetRevisionDescriptor,
-  type TWidgetRevisionId,
-  type TWidgetRevisionSourceDescriptor,
-  type TWidgetRollbackInput,
+  fnValidateWidgetResourceBindings,
 } from '..';
+import type {
+  IWidgetArtifactBuilder,
+  IWidgetArtifactMutationCoordinator,
+  IWidgetArtifactStore,
+  IWidgetPreviewService,
+  IWidgetPreviewStore,
+  TWidgetPreviewBuildRequest,
+  TWidgetPreviewBuildResult,
+  TWidgetPreviewGetRequest,
+  TWidgetPreviewRevisionDescriptor,
+  TWidgetPreviewRevisionGetRequest,
+  TWidgetPreviewStopRequest,
+} from '..';
+import { fnValidateArtifactDigest } from './fn.artifact-path';
 import { WidgetArtifactOperationLane } from './WidgetArtifactOperationLane';
 import { WidgetSourceSnapshot } from './WidgetSourceSnapshot';
 
-export type TWidgetPublicationServiceConfig = Readonly<{
+export type TWidgetPreviewServiceConfig = Readonly<{
   builder: IWidgetArtifactBuilder;
   artifacts: IWidgetArtifactStore;
-  controlStore: IWidgetControlStore;
+  previewStore: IWidgetPreviewStore;
   mutationCoordinator: IWidgetArtifactMutationCoordinator;
   createId?: () => string;
   operationLane?: WidgetArtifactOperationLane;
   sourceSnapshots?: WidgetSourceSnapshot;
 }>;
 
-function invalidBindings(reason: string, slot?: string): Error {
-  return Object.assign(new Error(
-    slot === undefined
-      ? `Widget resource bindings are invalid: ${reason}.`
-      : `Widget resource binding '${slot}' is invalid: ${reason}.`,
-  ), { code: 'WIDGET_RESOURCE_BINDINGS_INVALID' });
+function previewError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
 }
 
-/** Actor-free build-and-commit orchestration for immutable v2 widget revisions. */
-export class WidgetPublicationService implements IWidgetPublicationService {
+function validatePreviewWindow(request: TWidgetPreviewBuildRequest): void {
+  fnValidateArtifactDigest(request.draftRevisionSha256);
+  if (request.draftRevisionSha256 !== request.snapshot.digestSha256) {
+    throw previewError(
+      'WIDGET_PREVIEW_DRAFT_STALE',
+      'Widget preview snapshot does not match the selected immutable draft revision.',
+    );
+  }
+  if (
+    !Number.isSafeInteger(request.nowMs)
+    || request.nowMs < 0
+    || !Number.isSafeInteger(request.retainUntilMs)
+    || request.retainUntilMs <= request.nowMs
+    || !Number.isSafeInteger(request.expiresAtMs)
+    || request.expiresAtMs <= request.nowMs
+    || request.retainUntilMs < request.expiresAtMs
+  ) throw previewError('WIDGET_PREVIEW_WINDOW_INVALID', 'Widget preview retention window is invalid.');
+}
+
+/** Actor-free immutable draft preview build and CAS activation orchestration. */
+export class WidgetPreviewService implements IWidgetPreviewService {
   readonly #createId: () => string;
   readonly #operationLane: WidgetArtifactOperationLane;
   readonly #sourceSnapshots: WidgetSourceSnapshot;
 
-  constructor(readonly config: TWidgetPublicationServiceConfig) {
+  constructor(readonly config: TWidgetPreviewServiceConfig) {
     this.#createId = config.createId ?? randomUUID;
     this.#operationLane = config.operationLane ?? new WidgetArtifactOperationLane();
     this.#sourceSnapshots = config.sourceSnapshots ?? new WidgetSourceSnapshot();
   }
 
-  async publish(
+  async buildPreview(
     tenant: TTenantContext,
-    request: TWidgetPublishRequest,
-  ): Promise<TWidgetPublishResult> {
+    request: TWidgetPreviewBuildRequest,
+  ): Promise<TWidgetPreviewBuildResult> {
+    validatePreviewWindow(request);
     const manifest = ZWidgetManifestV2.parse(request.manifest);
     const bindingValidation = fnValidateWidgetResourceBindings(manifest, request.bindings);
     if (!bindingValidation.valid) {
-      throw invalidBindings(bindingValidation.reason, bindingValidation.slot);
+      throw previewError(
+        'WIDGET_RESOURCE_BINDINGS_INVALID',
+        bindingValidation.slot === undefined
+          ? `Widget resource bindings are invalid: ${bindingValidation.reason}.`
+          : `Widget resource binding '${bindingValidation.slot}' is invalid: ${bindingValidation.reason}.`,
+      );
     }
     const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifest);
-
-    // All build targets finish before any durable metadata is mutated.
     const build = await this.config.builder.build(tenant, {
       snapshot: request.snapshot,
       manifest,
       canonicalManifestJson,
       builderIdentity: request.builderIdentity,
     });
-    const parsedFunctionDescriptors = ZWidgetServerFunctionDescriptors.safeParse(
-      build.functionDescriptors,
-    );
-    if (!parsedFunctionDescriptors.success) {
-      throw Object.assign(new Error('Widget builder returned malformed server-function descriptors.'), {
-        code: 'WIDGET_BUILD_INTEGRITY_FAILED',
-      });
+    const parsedDescriptors = ZWidgetServerFunctionDescriptors.safeParse(build.functionDescriptors);
+    if (!parsedDescriptors.success) {
+      throw previewError(
+        'WIDGET_BUILD_INTEGRITY_FAILED',
+        'Widget builder returned malformed server-function descriptors.',
+      );
     }
-    const functionDescriptors = parsedFunctionDescriptors.data;
     const integrity = fnValidateWidgetBuildIntegrity({
       snapshot: request.snapshot,
       manifest,
       canonicalManifestJson,
       builderIdentity: request.builderIdentity,
-      build: { ...build, functionDescriptors },
+      build: { ...build, functionDescriptors: parsedDescriptors.data },
       digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
     });
     if (!integrity.valid) {
-      throw Object.assign(new Error(`Widget builder integrity check failed: ${integrity.reason}.`), {
-        code: 'WIDGET_BUILD_INTEGRITY_FAILED',
-      });
+      throw previewError(
+        'WIDGET_BUILD_INTEGRITY_FAILED',
+        `Widget builder integrity check failed: ${integrity.reason}.`,
+      );
     }
     const sourceArtifactBytes = this.#sourceSnapshots.encodeArtifact(request.snapshot, {
       builderIdentity: request.builderIdentity,
@@ -128,29 +148,28 @@ export class WidgetPublicationService implements IWidgetPublicationService {
               createdAtMs: request.nowMs,
             });
 
-        // Blob writes, metadata references, bindings, revision, and active pointer
-        // share one authoritative mutation fence. A crash before commit leaves
-        // only grace-owned orphan bytes.
-        return this.config.controlStore.commitPublication(tenant, {
+        return this.config.previewStore.commitPreview(tenant, {
           expectedActiveRevisionId: request.expectedActiveRevisionId,
           revision: {
             id: request.revisionId,
+            previewId: request.previewId,
+            draftId: request.draftId,
             definitionId: request.definitionId,
-            manifest,
-            canonicalManifestJson,
-            functionDescriptors,
-            functionDescriptorsDigestSha256: integrity.functionDescriptorsDigestSha256,
-            contractDigestSha256: integrity.contractDigestSha256,
-            uiArtifact,
-            serverArtifact,
-            createdAtMs: request.nowMs,
-          },
-          source: {
+            draftRevisionSha256: request.draftRevisionSha256,
             sourceSnapshotId: request.snapshot.id,
             sourceDigestSha256: request.snapshot.digestSha256,
             sourceArtifact,
+            manifest,
+            canonicalManifestJson,
+            functionDescriptors: parsedDescriptors.data,
+            functionDescriptorsDigestSha256: integrity.functionDescriptorsDigestSha256,
+            contractDigestSha256: integrity.contractDigestSha256,
             builderIdentity: request.builderIdentity,
+            uiArtifact,
+            serverArtifact,
             createdAtMs: request.nowMs,
+            retainUntilMs: request.retainUntilMs,
+            expiresAtMs: request.expiresAtMs,
           },
           bindings: request.bindings,
           nowMs: request.nowMs,
@@ -159,31 +178,21 @@ export class WidgetPublicationService implements IWidgetPublicationService {
     ));
   }
 
-  getRevision(
+  getPreview(
     tenant: TTenantContext,
-    revisionId: TWidgetRevisionId,
-  ): Promise<TWidgetRevisionDescriptor | null> {
-    return this.config.controlStore.getRevision(tenant, revisionId);
+    request: TWidgetPreviewGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
+    return this.config.previewStore.getPreview(tenant, request);
   }
 
-  getActiveRevision(
+  getPreviewRevision(
     tenant: TTenantContext,
-    definitionId: string,
-  ): Promise<TWidgetRevisionDescriptor | null> {
-    return this.config.controlStore.getActiveRevision(tenant, definitionId);
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
+    return this.config.previewStore.getPreviewRevision(tenant, request);
   }
 
-  getRevisionSource(
-    tenant: TTenantContext,
-    revisionId: TWidgetRevisionId,
-  ): Promise<TWidgetRevisionSourceDescriptor | null> {
-    return this.config.controlStore.getRevisionSource(tenant, revisionId);
-  }
-
-  rollback(
-    tenant: TTenantContext,
-    request: TWidgetRollbackInput,
-  ): Promise<TWidgetActiveRevisionCasResult> {
-    return this.config.controlStore.rollbackPublication(tenant, request);
+  stopPreview(tenant: TTenantContext, request: TWidgetPreviewStopRequest): Promise<boolean> {
+    return this.config.previewStore.stopPreview(tenant, request);
   }
 }

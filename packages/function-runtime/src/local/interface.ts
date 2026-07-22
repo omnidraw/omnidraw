@@ -6,6 +6,7 @@ import type {
   TFunctionAttempt,
   TFunctionDefinition,
   TFunctionInvocationEnvelope,
+  TFunctionInvocationSubject,
   TInvocationLease,
 } from '../types';
 
@@ -19,6 +20,7 @@ export interface IExactFunctionArtifactReader {
       artifactDigestSha256: string;
       contractDigestSha256: string;
       runtimeAbi: string;
+      subject: TFunctionInvocationSubject;
     }>,
   ): Promise<Uint8Array>;
 }

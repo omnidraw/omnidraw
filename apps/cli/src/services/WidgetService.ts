@@ -1,16 +1,23 @@
 import type { Database } from '@tursodatabase/database';
 import type { IService, IStoppableService } from '@vibecanvas/runtime';
+import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
 import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlStoreTurso';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   IWidgetArtifactGarbageCollector,
+  IWidgetArtifactMutationCoordinator,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
   IWidgetArtifactReader,
   IWidgetControlStore,
+  IWidgetPreviewService,
+  IWidgetPreviewStore,
   IWidgetPublishedPlacementReader,
   IWidgetPublicationService,
+  IWidgetServerPreviewArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
+  IWidgetSourceBuildArtifactReadCapabilityIssuer,
   IWidgetServerFunctionDescriptorExtractor,
+  IWidgetUiPreviewArtifactReadCapabilityIssuer,
   TWidgetActiveRevisionCasResult,
   TWidgetArtifactDescriptor,
   TWidgetArtifactGcRequest,
@@ -23,8 +30,16 @@ import type {
   TWidgetPublishResult,
   TWidgetPublishedPlacementDescriptor,
   TWidgetPublishedPlacementTarget,
+  TWidgetPreviewArtifactReadCapabilityIssueRequest,
+  TWidgetPreviewBuildRequest,
+  TWidgetPreviewBuildResult,
+  TWidgetPreviewGetRequest,
+  TWidgetPreviewRevisionDescriptor,
+  TWidgetPreviewRevisionGetRequest,
+  TWidgetPreviewStopRequest,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
+  TWidgetRevisionSourceDescriptor,
   TWidgetRollbackInput,
 } from '@vibecanvas/widget-contract';
 import {
@@ -34,6 +49,7 @@ import {
   WidgetArtifactOperationLane,
   WidgetArtifactReadAuthority,
   WidgetArtifactService,
+  WidgetPreviewService,
   WidgetPublicationService,
   WidgetSourceSnapshot,
   type TCapturedWidgetSourceSnapshot,
@@ -75,12 +91,17 @@ class WidgetService implements
   IWidgetArtifactReader,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
+  IWidgetSourceBuildArtifactReadCapabilityIssuer,
+  IWidgetUiPreviewArtifactReadCapabilityIssuer,
+  IWidgetServerPreviewArtifactReadCapabilityIssuer,
+  IWidgetPreviewService,
   IWidgetArtifactGarbageCollector {
   readonly name = 'widget-service';
   readonly #placement: TWidgetServicePlacement;
-  readonly #controlStore: IWidgetControlStore;
+  readonly #controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator;
   readonly #sourceSnapshot: WidgetSourceSnapshot;
   readonly #publication: WidgetPublicationService;
+  readonly #preview: WidgetPreviewService;
   readonly #artifacts: WidgetArtifactService;
   readonly #garbageCollector: WidgetArtifactGarbageCollector;
 
@@ -88,7 +109,12 @@ class WidgetService implements
     this.#placement = Object.freeze({ ...config.placement });
     this.#sourceSnapshot = new WidgetSourceSnapshot();
 
-    const controlStore = new WidgetControlStoreTurso(config.database);
+    const controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator =
+      new WidgetControlStoreTurso(config.database);
+    const previewStore: IWidgetPreviewStore = new AgentAuthoringStoreTurso(
+      config.database,
+      controlStore,
+    );
     this.#controlStore = controlStore;
     const blobs = new LocalWidgetArtifactStore({
       orgId: config.placement.orgId,
@@ -101,22 +127,33 @@ class WidgetService implements
     });
     this.#artifacts = new WidgetArtifactService({
       controlStore,
+      previewStore,
       blobs,
       capabilityIssuer: readAuthority,
       capabilityVerifier: readAuthority,
     });
+    const builder = new WidgetArtifactBuilderBun({
+      tempRoot: config.buildTempRoot,
+      builderIdentity: config.builderIdentity,
+      snapshotService: this.#sourceSnapshot,
+      functionDescriptorExtractor: config.functionDescriptorExtractor,
+      resolveTrustedPackageImport: config.resolveTrustedPackageImport,
+    });
     this.#publication = new WidgetPublicationService({
-      builder: new WidgetArtifactBuilderBun({
-        tempRoot: config.buildTempRoot,
-        builderIdentity: config.builderIdentity,
-        snapshotService: this.#sourceSnapshot,
-        functionDescriptorExtractor: config.functionDescriptorExtractor,
-        resolveTrustedPackageImport: config.resolveTrustedPackageImport,
-      }),
+      builder,
       artifacts: this.#artifacts,
       controlStore,
       mutationCoordinator: controlStore,
       operationLane,
+      sourceSnapshots: this.#sourceSnapshot,
+    });
+    this.#preview = new WidgetPreviewService({
+      builder,
+      artifacts: this.#artifacts,
+      previewStore,
+      mutationCoordinator: controlStore,
+      operationLane,
+      sourceSnapshots: this.#sourceSnapshot,
     });
     this.#garbageCollector = new WidgetArtifactGarbageCollector({
       controlStore,
@@ -165,6 +202,43 @@ class WidgetService implements
   ): Promise<TWidgetRevisionDescriptor | null> {
     this.#assertPlacement(tenant);
     return this.#publication.getActiveRevision(tenant, definitionId);
+  }
+
+  getRevisionSource(
+    tenant: TTenantContext,
+    revisionId: TWidgetRevisionId,
+  ): Promise<TWidgetRevisionSourceDescriptor | null> {
+    this.#assertPlacement(tenant);
+    return this.#publication.getRevisionSource(tenant, revisionId);
+  }
+
+  buildPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewBuildRequest,
+  ): Promise<TWidgetPreviewBuildResult> {
+    this.#assertPlacement(tenant);
+    return this.#preview.buildPreview(tenant, request);
+  }
+
+  getPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
+    this.#assertPlacement(tenant);
+    return this.#preview.getPreview(tenant, request);
+  }
+
+  getPreviewRevision(
+    tenant: TTenantContext,
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
+    this.#assertPlacement(tenant);
+    return this.#preview.getPreviewRevision(tenant, request);
+  }
+
+  stopPreview(tenant: TTenantContext, request: TWidgetPreviewStopRequest): Promise<boolean> {
+    this.#assertPlacement(tenant);
+    return this.#preview.stopPreview(tenant, request);
   }
 
   async listPublishedPlacements(
@@ -243,6 +317,32 @@ class WidgetService implements
   ): Promise<TWidgetArtifactReadCapability> {
     this.#assertPlacement(tenant);
     return this.#artifacts.issueServerExecutionArtifactReadCapability(tenant, request);
+  }
+
+  issueSourceBuildArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetArtifactReadCapabilityIssueRequest,
+  ): Promise<TWidgetArtifactReadCapability> {
+    this.#assertPlacement(tenant);
+    return this.#artifacts.issueSourceBuildArtifactReadCapability(tenant, request);
+  }
+
+  issueUiPreviewArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'ui' }>,
+  ): Promise<TWidgetArtifactReadCapability> {
+    this.#assertPlacement(tenant);
+    return this.#artifacts.issueUiPreviewArtifactReadCapability(tenant, request);
+  }
+
+  issueServerPreviewArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{
+      artifactKind: 'server';
+    }>,
+  ): Promise<TWidgetArtifactReadCapability> {
+    this.#assertPlacement(tenant);
+    return this.#artifacts.issueServerPreviewArtifactReadCapability(tenant, request);
   }
 
   getArtifact(

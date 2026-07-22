@@ -55,7 +55,11 @@ const context: TServerFunctionContext<'fn', Record<never, never>> = {
   identity: { orgId: 'org-a', accountId: 'account-a', roles: ['member'] },
   invocationId: 'invocation-a',
   widgetRevisionId: 'revision-a',
-  widgetInstanceId: 'instance-a',
+  subject: {
+    kind: 'widget_instance',
+    canvasId: 'canvas-a',
+    widgetInstanceId: 'instance-a',
+  },
   attemptId: 'attempt-a',
   leaseEpoch: 1,
   deadlineAtMs: 10_000,
@@ -68,6 +72,16 @@ const context: TServerFunctionContext<'fn', Record<never, never>> = {
     error: () => undefined,
   },
   metrics: { increment: () => undefined },
+};
+
+const previewContext: TServerFunctionContext<'fn', Record<never, never>> = {
+  ...context,
+  widgetRevisionId: 'preview-revision-a',
+  subject: {
+    kind: 'agent_preview',
+    previewId: 'preview-a',
+    previewRevisionId: 'preview-revision-a',
+  },
 };
 
 afterEach(() => {
@@ -99,6 +113,17 @@ describe('@vibecanvas/sdk/server', () => {
     }]);
     await expect(count.__vibecanvasExecute(context, { text: 'hello' }))
       .resolves.toEqual({ length: 5 });
+    const previewIdentity = defineServerFunction({
+      effect: 'fn',
+      input: inputSchema,
+      output: outputSchema,
+    }, async (serverContext) => ({
+      length: serverContext.subject.kind === 'agent_preview'
+        ? serverContext.subject.previewId.length
+        : serverContext.subject.widgetInstanceId.length,
+    }));
+    await expect(previewIdentity.__vibecanvasExecute(previewContext, { text: 'hello' }))
+      .resolves.toEqual({ length: 'preview-a'.length });
     await expect(count.__vibecanvasExecute(context, { text: '' })).rejects.toThrow('text');
 
     const invalidOutput = defineServerFunction({

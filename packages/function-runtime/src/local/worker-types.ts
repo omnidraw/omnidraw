@@ -2,7 +2,7 @@
 
 import type { TResourceCall, TResourceCallResult } from '@vibecanvas/resource-runtime';
 import type { TWidgetServerFunctionDescriptor } from '@vibecanvas/widget-contract';
-import type { TFunctionFailure, TUsageMetrics } from '../types';
+import type { TFunctionFailure, TFunctionInvocationSubject, TUsageMetrics } from '../types';
 
 export type TFunctionCanonicalRegistration = Omit<
   TWidgetServerFunctionDescriptor,
@@ -18,7 +18,7 @@ export type TFunctionWorkerContext = Readonly<{
   invocationId: string;
   widgetDefinitionId: string;
   widgetRevisionId: string;
-  widgetInstanceId: string;
+  subject: TFunctionInvocationSubject;
   attemptId: string;
   leaseEpoch: number;
   deadlineAtMs: number;

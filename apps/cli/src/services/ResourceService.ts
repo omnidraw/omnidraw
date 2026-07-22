@@ -16,6 +16,7 @@ import {
   type TDbRowIdentity,
   type TDbRowUpdate,
   type TResourceJson,
+  type TResourceBinding,
   type TResourceDescriptor,
   type TResourceKind,
   type TResourceRequirement,
@@ -97,6 +98,11 @@ type TFunctionResourceGatewayRequest = Readonly<{
   definitionId: string;
   revisionId: string;
   requirements: readonly TResourceRequirement[];
+}>;
+
+type TPreviewFunctionResourceGatewayRequest = Readonly<{
+  requirements: readonly TResourceRequirement[];
+  bindings: readonly TResourceBinding[];
 }>;
 
 type TFunctionResourceGatewayAccess = Readonly<{
@@ -616,6 +622,46 @@ class ResourceService implements IService, IStartableService<object, object>, IS
           revisionId: binding.revisionId,
           required: binding.required,
         };
+      },
+    });
+    return Object.freeze({
+      bindings,
+      gateway: new ResourceGateway({
+        store: this.#requireStore(),
+        bindings,
+        requirements: {
+          resolveRequirement: async (callTenant, slot) => {
+            this.#assertTenantPlacement(callTenant);
+            return requirements.get(slot) ?? null;
+          },
+        },
+      }),
+    });
+  }
+
+  createPreviewFunctionResourceGateway(
+    tenant: TTenantContext,
+    request: TPreviewFunctionResourceGatewayRequest,
+  ): TFunctionResourceGatewayAccess {
+    this.#assertTenantPlacement(tenant);
+    const requirements = new Map<string, TResourceRequirement>();
+    for (const requirement of request.requirements) {
+      if (requirements.has(requirement.slot)) {
+        throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Function resource slots must be unique.');
+      }
+      requirements.set(requirement.slot, requirement);
+    }
+    const storedBindings = new Map<string, TResourceBinding>();
+    for (const binding of request.bindings) {
+      if (storedBindings.has(binding.slot)) {
+        throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Preview resource bindings must be unique.');
+      }
+      storedBindings.set(binding.slot, Object.freeze({ ...binding }));
+    }
+    const bindings: IResourceBindingResolver = Object.freeze({
+      resolveBinding: async (callTenant: TTenantContext, slot: string) => {
+        this.#assertTenantPlacement(callTenant);
+        return storedBindings.get(slot) ?? null;
       },
     });
     return Object.freeze({

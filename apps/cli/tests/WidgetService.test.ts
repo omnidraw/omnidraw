@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
+import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
@@ -11,6 +12,7 @@ import {
 import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
 import type { TWidgetManifestV2, TWidgetRevisionDescriptor } from '@vibecanvas/widget-contract';
+import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { WidgetService } from '../src/services/WidgetService';
@@ -34,8 +36,15 @@ const FOREIGN_TENANT = fnFreezeTenantContext({
   requestId: 'widget-service-foreign',
 });
 
+const OTHER_ACCOUNT_TENANT = fnFreezeTenantContext({
+  ...TENANT,
+  accountId: uuid(899),
+  requestId: 'widget-service-other-account',
+});
+
 const BUILDER_IDENTITY = 'vibecanvas-widget-test/bun';
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
+  '@arrow-js/core',
   '@vibecanvas/sdk/server',
   '@vibecanvas/sdk/function-client',
   '@vibecanvas/sdk/widget',
@@ -98,13 +107,15 @@ async function tableCount(database: DbServiceTurso, table: 'artifact_references'
   | 'legacy_actor_definitions'
   | 'legacy_actor_instances'
   | 'widget_definition_revisions'
-  | 'widget_definitions'): Promise<number> {
+  | 'widget_definitions'
+  | 'widget_revision_sources'): Promise<number> {
   const query = {
     artifact_references: 'SELECT count(*) AS count FROM artifact_references WHERE org_id = ?',
     legacy_actor_definitions: 'SELECT count(*) AS count FROM legacy_actor_definitions WHERE org_id = ?',
     legacy_actor_instances: 'SELECT count(*) AS count FROM legacy_actor_instances WHERE org_id = ?',
     widget_definition_revisions: 'SELECT count(*) AS count FROM widget_definition_revisions WHERE org_id = ?',
     widget_definitions: 'SELECT count(*) AS count FROM widget_definitions WHERE org_id = ?',
+    widget_revision_sources: 'SELECT count(*) AS count FROM widget_revision_sources WHERE org_id = ?',
   }[table];
   const row = await (await database.db.prepare(query)).get(TENANT.orgId) as { count: unknown };
   return Number(row.count);
@@ -218,16 +229,51 @@ describe('actor-free production widget service', () => {
     })).resolves.toBeNull();
     expect(await tableCount(database, 'widget_definitions')).toBe(1);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(1);
-    expect(await tableCount(database, 'artifact_references')).toBe(1);
+    expect(await tableCount(database, 'artifact_references')).toBe(2);
+    expect(await tableCount(database, 'widget_revision_sources')).toBe(1);
     expect(await tableCount(database, 'legacy_actor_definitions')).toBe(0);
     expect(await tableCount(database, 'legacy_actor_instances')).toBe(0);
 
     const artifactFiles = await filesBelow(artifactsRoot);
-    expect(artifactFiles).toHaveLength(1);
-    expect(artifactFiles[0]).toMatch(/^blobs\/sha256\/[0-9a-f]{2}\/[0-9a-f]{64}$/);
+    expect(artifactFiles).toHaveLength(2);
+    expect(artifactFiles.every((path) => (
+      /^blobs\/sha256\/[0-9a-f]{2}\/[0-9a-f]{64}$/.test(path)
+    ))).toBe(true);
     expect(artifactFiles.some((path) => path.includes('widgets/') || path.includes('actors/'))).toBe(false);
 
     const expiresAtMs = Date.now() + 30_000;
+    const source = await service.getRevisionSource(TENANT, published.revision.id);
+    expect(source).toMatchObject({
+      definitionId: published.definition.id,
+      revisionId: published.revision.id,
+      sourceSnapshotId: snapshot.id,
+      sourceDigestSha256: snapshot.digestSha256,
+      builderIdentity: BUILDER_IDENTITY,
+      sourceArtifact: { kind: 'source' },
+    });
+    if (!source) throw new Error('Expected retained publication source.');
+    const sourceCapability = await service.issueSourceBuildArtifactReadCapability(TENANT, {
+      definitionId: published.definition.id,
+      revisionId: published.revision.id,
+      artifactId: source.sourceArtifact.id,
+      artifactKind: 'source',
+      digestSha256: source.sourceArtifact.digestSha256,
+      expiresAtMs,
+    });
+    const sourceBytes = await service.readArtifact(TENANT, {
+      artifactId: source.sourceArtifact.id,
+      readCapability: sourceCapability,
+      purpose: 'source_build',
+    });
+    expect(new WidgetSourceSnapshot().decodeArtifact({
+      kind: 'source',
+      digestSha256: source.sourceArtifact.digestSha256,
+      bytes: sourceBytes!,
+    }, {
+      expectedSnapshotId: snapshot.id,
+      expectedSourceDigestSha256: snapshot.digestSha256,
+      expectedBuilderIdentity: BUILDER_IDENTITY,
+    }).files).toEqual(snapshot.files);
     const artifact = published.revision.uiArtifact;
     const capability = await service.issueBrowserUiArtifactReadCapability(TENANT, {
       definitionId: published.definition.id,
@@ -317,6 +363,188 @@ describe('actor-free production widget service', () => {
     await expect(service.readArtifact(TENANT, request)).rejects.toMatchObject({
       code: 'WIDGET_REVISION_INTEGRITY_FAILED',
     });
+  });
+
+  test('builds account-isolated immutable UI and server preview revisions without actors', async () => {
+    const nowMs = Date.now();
+    await (await database.db.prepare(`
+      INSERT INTO accounts (
+        id, kind, display_name, status, is_autogenerated, created_at_ms, updated_at_ms
+      ) VALUES (?, 'user', 'Other account', 'active', 0, ?, ?)
+    `)).run(OTHER_ACCOUNT_TENANT.accountId, nowMs, nowMs);
+    await (await database.db.prepare(`
+      INSERT INTO organization_memberships (
+        org_id, account_id, role, status, is_billable_seat, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'member', 'active', 1, ?, ?)
+    `)).run(TENANT.orgId, OTHER_ACCOUNT_TENANT.accountId, nowMs, nowMs);
+
+    const authoring = new AgentAuthoringStoreTurso(database.db);
+    const chatId = uuid(820);
+    const draftId = uuid(821);
+    const definitionId = uuid(822);
+    await authoring.createChat(TENANT, {
+      id: chatId,
+      canvasId: null,
+      externalSessionKey: 'preview-integration-chat',
+      name: 'Preview integration',
+      workspaceRelativePath: 'agent/chats/preview-integration',
+      historyRelativePath: 'agent/history/preview-integration.jsonl',
+      nowMs,
+    });
+    await authoring.createDraft(TENANT, {
+      id: draftId,
+      chatId,
+      definitionId,
+      name: 'Preview widget',
+      sourceRelativePath: 'agent/widgets/drafts/preview-widget',
+      nowMs: nowMs + 1,
+    });
+
+    const sourceRoot = join(root, 'preview-source');
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'export const previewMarker = "UI_PREVIEW_MARKER";',
+    });
+    const uiSnapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(823),
+      createdAtMs: nowMs + 2,
+    });
+    expect(await authoring.compareAndSetDraft(TENANT, {
+      draftId,
+      expectedSourceDigestSha256: null,
+      nextSourceDigestSha256: uiSnapshot.digestSha256,
+      nextStatus: 'ready',
+      nowMs: nowMs + 3,
+    })).toMatchObject({ status: 'updated' });
+    const uiManifest: TWidgetManifestV2 = {
+      schemaVersion: 2,
+      name: 'Preview widget',
+      slug: 'preview-widget',
+      ui: { entry: 'src/ui.ts' },
+    };
+    const previewId = uuid(824);
+    const uiRevisionId = uuid(825);
+    const uiPreview = await service.buildPreview(TENANT, {
+      previewId,
+      expectedActiveRevisionId: null,
+      revisionId: uiRevisionId,
+      draftId,
+      definitionId,
+      draftRevisionSha256: uiSnapshot.digestSha256,
+      snapshot: uiSnapshot,
+      manifest: uiManifest,
+      bindings: [],
+      builderIdentity: BUILDER_IDENTITY,
+      nowMs: nowMs + 4,
+      expiresAtMs: nowMs + 60_000,
+      retainUntilMs: nowMs + 120_000,
+    });
+    expect(uiPreview).toMatchObject({
+      status: 'committed',
+      revision: { id: uiRevisionId, serverArtifact: null },
+    });
+    await expect(service.getPreview(OTHER_ACCOUNT_TENANT, {
+      previewId,
+      nowMs: nowMs + 5,
+    })).resolves.toBeNull();
+    const activeUi = await service.getPreview(TENANT, { previewId, nowMs: nowMs + 5 });
+    if (!activeUi) throw new Error('Expected active UI preview.');
+    const uiCapability = await service.issueUiPreviewArtifactReadCapability(TENANT, {
+      previewId,
+      previewRevisionId: uiRevisionId,
+      artifactId: activeUi.uiArtifact.id,
+      artifactKind: 'ui',
+      digestSha256: activeUi.uiArtifact.digestSha256,
+      expiresAtMs: nowMs + 30_000,
+    });
+    expect(outputText((await service.readArtifact(TENANT, {
+      artifactId: activeUi.uiArtifact.id,
+      readCapability: uiCapability,
+      purpose: 'preview_ui',
+    }))!)).toContain('UI_PREVIEW_MARKER');
+
+    await writeSource(sourceRoot, {
+      'src/ui.ts': [
+        'import { previewServer } from "./server.server";',
+        'export const previewMarker = "SERVER_UI_PREVIEW_MARKER";',
+        'export const invokePreviewServer = (value: string) => previewServer({ value });',
+      ].join('\n'),
+      'src/server.server.ts': [
+        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { z } from "zod";',
+        'const Value = z.object({ value: z.string() });',
+        'export const previewServer = defineServerFunction({',
+        '  effect: "fn", input: Value, output: Value,',
+        '}, async (_ctx, input) => ({ value: `SERVER_PREVIEW_MARKER:${input.value}` }));',
+      ].join('\n'),
+    });
+    const serverSnapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(826),
+      createdAtMs: nowMs + 6,
+    });
+    expect(await authoring.compareAndSetDraft(TENANT, {
+      draftId,
+      expectedSourceDigestSha256: uiSnapshot.digestSha256,
+      nextSourceDigestSha256: serverSnapshot.digestSha256,
+      nextStatus: 'ready',
+      nowMs: nowMs + 7,
+    })).toMatchObject({ status: 'updated' });
+    const serverRevisionId = uuid(827);
+    const serverPreview = await service.buildPreview(TENANT, {
+      previewId,
+      expectedActiveRevisionId: uiRevisionId,
+      revisionId: serverRevisionId,
+      draftId,
+      definitionId,
+      draftRevisionSha256: serverSnapshot.digestSha256,
+      snapshot: serverSnapshot,
+      manifest: {
+        ...uiManifest,
+        server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
+      },
+      bindings: [],
+      builderIdentity: BUILDER_IDENTITY,
+      nowMs: nowMs + 8,
+      expiresAtMs: nowMs + 60_000,
+      retainUntilMs: nowMs + 120_000,
+    });
+    expect(serverPreview).toMatchObject({
+      status: 'committed',
+      previousActiveRevisionId: uiRevisionId,
+      revision: { id: serverRevisionId, serverArtifact: { kind: 'server' } },
+    });
+    if (serverPreview.status !== 'committed' || !serverPreview.revision.serverArtifact) {
+      throw new Error('Expected committed server preview.');
+    }
+    const serverArtifact = serverPreview.revision.serverArtifact;
+    const serverCapability = await service.issueServerPreviewArtifactReadCapability(TENANT, {
+      previewId,
+      previewRevisionId: serverRevisionId,
+      artifactId: serverArtifact.id,
+      artifactKind: 'server',
+      digestSha256: serverArtifact.digestSha256,
+      expiresAtMs: nowMs + 30_000,
+    });
+    expect(outputText((await service.readArtifact(TENANT, {
+      artifactId: serverArtifact.id,
+      readCapability: serverCapability,
+      purpose: 'preview_server',
+    }))!)).toContain('SERVER_PREVIEW_MARKER');
+    expect(await service.stopPreview(TENANT, {
+      previewId,
+      expectedActiveRevisionId: serverRevisionId,
+      nowMs: nowMs + 9,
+    })).toBe(true);
+    await expect(service.getPreview(TENANT, {
+      previewId,
+      nowMs: nowMs + 10,
+    })).resolves.toBeNull();
+    await expect(service.getPreviewRevision(TENANT, {
+      previewId,
+      revisionId: serverRevisionId,
+      nowMs: nowMs + 10,
+    })).resolves.toMatchObject({ id: serverRevisionId });
+    expect(await tableCount(database, 'legacy_actor_definitions')).toBe(0);
+    expect(await tableCount(database, 'legacy_actor_instances')).toBe(0);
   });
 
   test('publishes separate server/UI artifacts, rolls back by CAS, and collects the inactive revision', async () => {
@@ -453,13 +681,13 @@ describe('actor-free production widget service', () => {
       gracePeriodMs: 0,
       limit: 100,
     });
-    expect(collected.deleted).toBe(2);
+    expect(collected.deleted).toBe(3);
     expect(await service.getRevision(TENANT, second.revision.id)).toBeNull();
     expect(await service.getActiveRevision(TENANT, first.definition.id)).toMatchObject({
       id: first.revision.id,
     });
-    expect(await tableCount(database, 'artifact_references')).toBe(1);
-    expect(await filesBelow(artifactsRoot)).toHaveLength(1);
+    expect(await tableCount(database, 'artifact_references')).toBe(2);
+    expect(await filesBelow(artifactsRoot)).toHaveLength(2);
   });
 
   test('persists no definition, revision, binding, or blob when the optional server build fails', async () => {
@@ -532,15 +760,22 @@ describe('actor-free production widget service', () => {
     expect(registrations.get('widget')).toBe(56);
     expect(registrations.get('actor')).toBe(60);
     expect(Reflect.ownKeys(widgetCapability).sort()).toEqual([
+      'buildPreview',
       'getActiveRevision',
       'getArtifact',
+      'getPreview',
+      'getPreviewRevision',
       'getRevision',
+      'getRevisionSource',
       'issueBrowserUiArtifactReadCapability',
+      'issueSourceBuildArtifactReadCapability',
+      'issueUiPreviewArtifactReadCapability',
       'listPublishedPlacements',
       'publish',
       'readArtifact',
       'resolvePublishedPlacement',
       'rollback',
+      'stopPreview',
     ]);
     expect('issueServerExecutionArtifactReadCapability' in widgetCapability).toBe(false);
 

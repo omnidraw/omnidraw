@@ -10,6 +10,7 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@arrow-js/core": "^1.0.6",
     "@automerge/automerge-repo": "catalog:",
     "@orpc/client": "catalog:",
     "@orpc/contract": "catalog:",

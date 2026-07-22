@@ -7,6 +7,7 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { IFunctionControlStore, IScheduler } from '../interface';
 import type {
   TFunctionInvocationEnvelope,
+  TFunctionInvocationSubject,
   TFunctionMemoryTier,
   TInvocationCreateResult,
   TInvocationIdempotencyScope,
@@ -18,7 +19,7 @@ import { fnCanonicalJson } from './fn.canonical-json';
 export type TLocalFunctionInvocationRequest = Readonly<{
   widgetDefinitionId: string;
   widgetRevisionId: string;
-  widgetInstanceId: string;
+  subject: TFunctionInvocationSubject;
   functionName: string;
   input: unknown;
   idempotencyKey: string;
@@ -131,9 +132,12 @@ export class LocalFunctionDispatcher {
       request.idempotencyKey.trim().length === 0
       || request.idempotencyKey.length > 200
     ) throw inputError('FUNCTION_IDEMPOTENCY_KEY_INVALID', 'Function idempotency key is invalid.');
-    const definition = await this.#config.store.resolveFunction(tenant, {
+    const definition = await this.#config.store.resolveFunctionForSubject(tenant, {
+      subject: request.subject,
+      widgetDefinitionId: request.widgetDefinitionId,
       widgetRevisionId: request.widgetRevisionId,
       functionName: request.functionName,
+      purpose: 'admission',
     });
     if (
       !definition
@@ -175,7 +179,7 @@ export class LocalFunctionDispatcher {
       tenant: invocationTenant,
       widgetDefinitionId: definition.widgetDefinitionId,
       widgetRevisionId: definition.widgetRevisionId,
-      widgetInstanceId: request.widgetInstanceId,
+      subject: request.subject,
       functionId: definition.id,
       functionName: definition.name,
       definitionRevision: definition.definitionRevision,
@@ -197,7 +201,7 @@ export class LocalFunctionDispatcher {
       accountId: tenant.accountId,
       widgetDefinitionId: definition.widgetDefinitionId,
       widgetRevisionId: definition.widgetRevisionId,
-      widgetInstanceId: request.widgetInstanceId,
+      subject: request.subject,
       functionId: definition.id,
       definitionRevision: definition.definitionRevision,
       artifactDigestSha256: definition.artifactDigestSha256,
@@ -210,10 +214,7 @@ export class LocalFunctionDispatcher {
     const result = await this.#config.store.createOrReplayInvocation(tenant, {
       envelope,
       idempotencyRecordId: this.#createId(),
-      idempotencyScope: request.idempotencyScope ?? {
-        kind: 'widget_instance',
-        widgetInstanceId: request.widgetInstanceId,
-      },
+      idempotencyScope: request.idempotencyScope ?? request.subject,
       requestFingerprintSha256,
       idempotencyExpiresAtMs: request.idempotencyExpiresAtMs ?? null,
     });

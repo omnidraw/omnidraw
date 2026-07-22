@@ -73,7 +73,17 @@ export type TServerFunctionContext<
   }>;
   invocationId: string;
   widgetRevisionId: string;
-  widgetInstanceId: string;
+  subject:
+    | Readonly<{
+        kind: 'widget_instance';
+        canvasId: string;
+        widgetInstanceId: string;
+      }>
+    | Readonly<{
+        kind: 'agent_preview';
+        previewId: string;
+        previewRevisionId: string;
+      }>;
   attemptId: string;
   leaseEpoch: number;
   deadlineAtMs: number;

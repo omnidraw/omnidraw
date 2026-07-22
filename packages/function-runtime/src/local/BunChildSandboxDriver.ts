@@ -523,7 +523,7 @@ export class BunChildSandboxDriver implements ISandboxDriver {
           invocationId: envelope.id,
           widgetDefinitionId: envelope.widgetDefinitionId,
           widgetRevisionId: envelope.widgetRevisionId,
-          widgetInstanceId: envelope.widgetInstanceId,
+          subject: envelope.subject,
           attemptId: running.attempt.id,
           leaseEpoch: running.attempt.leaseEpoch,
           deadlineAtMs: envelope.deadlineAtMs,

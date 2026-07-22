@@ -154,9 +154,12 @@ export class FunctionExecutor {
 
   async execute(envelope: TFunctionInvocationEnvelope): Promise<TFunctionExecutionOutcome> {
     const tenant = envelope.tenant;
-    const definition = await this.#config.store.resolveFunction(tenant, {
+    const definition = await this.#config.store.resolveFunctionForSubject(tenant, {
+      subject: envelope.subject,
+      widgetDefinitionId: envelope.widgetDefinitionId,
       widgetRevisionId: envelope.widgetRevisionId,
       functionName: envelope.functionName,
+      purpose: 'execution',
     });
     if (!definition || !definitionMatchesEnvelope(definition, envelope)) {
       return { status: 'not_claimed', reason: 'definition_pin_mismatch' };
@@ -264,6 +267,7 @@ export class FunctionExecutor {
           artifactDigestSha256: definition.artifactDigestSha256,
           contractDigestSha256: definition.contractDigestSha256,
           runtimeAbi: definition.runtimeAbi,
+          subject: envelope.subject,
         });
         handle = await this.#config.driver.prepare({ definition, artifact });
         await inspectCancellation();

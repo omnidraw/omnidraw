@@ -35,6 +35,7 @@ import type {
   TWidgetPreviewArtifactActivationRequest,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
+  TWidgetRevisionSourceDescriptor,
   TWidgetRevisionPruneRequest,
   TWidgetRevisionPruneResult,
   TWidgetRollbackInput,
@@ -65,7 +66,7 @@ type TValidatedPublicationFunctions = Readonly<{
 
 const CONTROL_STORE_MAX_BATCH = 500;
 
-const ARTIFACT_IS_REFERENCED = `
+const DURABLE_ARTIFACT_REFERENCE_SQL = `
   EXISTS (
     SELECT 1
     FROM widget_definition_revisions AS revision
@@ -77,6 +78,13 @@ const ARTIFACT_IS_REFERENCED = `
         (revision.server_artifact_id = artifact_references.id
           AND revision.server_artifact_kind = artifact_references.kind)
       )
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM widget_revision_sources AS source
+    WHERE source.org_id = artifact_references.org_id
+      AND source.source_artifact_id = artifact_references.id
+      AND source.source_artifact_kind = artifact_references.kind
   )
   OR EXISTS (
     SELECT 1
@@ -184,6 +192,59 @@ export class WidgetControlStoreTurso implements
     return row ? this.#validatedStoredRevision(row) : null;
   }
 
+  async getRevisionSource(
+    tenant: TTenantContext,
+    revisionId: TWidgetRevisionId,
+  ): Promise<TWidgetRevisionSourceDescriptor | null> {
+    const row = await (await this.database.prepare(`
+      SELECT
+        source.*,
+        artifact.id AS artifact_id,
+        artifact.kind AS artifact_kind,
+        artifact.digest_sha256 AS artifact_digest_sha256,
+        artifact.byte_size AS artifact_byte_size,
+        artifact.retention_state AS artifact_retention_state,
+        artifact.retain_until_ms AS artifact_retain_until_ms,
+        artifact.created_at_ms AS artifact_created_at_ms
+      FROM widget_revision_sources AS source
+      JOIN artifact_references AS artifact
+        ON artifact.org_id = source.org_id
+       AND artifact.id = source.source_artifact_id
+       AND artifact.kind = source.source_artifact_kind
+      WHERE source.org_id = ? AND source.revision_id = ?
+    `)).get(tenant.orgId, revisionId);
+    if (!row) return null;
+    try {
+      const value = row as Record<string, unknown>;
+      const sourceArtifact = fnWidgetControlStoreArtifact({
+        org_id: tenant.orgId,
+        id: String(value.artifact_id),
+        kind: value.artifact_kind as TWidgetArtifactDescriptor['kind'],
+        digest_sha256: String(value.artifact_digest_sha256),
+        byte_size: value.artifact_byte_size,
+        retention_state: value.artifact_retention_state as TWidgetArtifactDescriptor['retentionState'],
+        retain_until_ms: value.artifact_retain_until_ms,
+        created_at_ms: value.artifact_created_at_ms,
+      });
+      if (sourceArtifact.kind !== 'source') throw new Error('source artifact kind differs');
+      return {
+        orgId: tenant.orgId,
+        definitionId: String(value.definition_id),
+        revisionId: String(value.revision_id),
+        sourceSnapshotId: String(value.source_snapshot_id),
+        sourceDigestSha256: String(value.source_digest_sha256),
+        sourceArtifact,
+        builderIdentity: String(value.builder_identity),
+        createdAtMs: this.#timestamp(Number(value.created_at_ms), 'source creation timestamp'),
+      };
+    } catch {
+      throw widgetStoreError(
+        'WIDGET_REVISION_SOURCE_INTEGRITY_FAILED',
+        'Stored widget revision source failed integrity validation.',
+      );
+    }
+  }
+
   async getActiveRevision(
     tenant: TTenantContext,
     definitionId: TWidgetDefinitionId,
@@ -243,6 +304,11 @@ export class WidgetControlStoreTurso implements
 
       this.#assertPublicationInput(tenant, definition, request, publicationManifest);
       const bindings = await this.#validateBindings(tenant, request, publicationManifest);
+      const sourceArtifact = await this.#pinPublicationArtifact(
+        tenant,
+        request.source.sourceArtifact,
+        'source',
+      );
       const uiArtifact = await this.#pinPublicationArtifact(tenant, request.revision.uiArtifact, 'ui');
       const serverArtifact = request.revision.serverArtifact
         ? await this.#pinPublicationArtifact(tenant, request.revision.serverArtifact, 'server')
@@ -280,6 +346,23 @@ export class WidgetControlStoreTurso implements
         request.revision.createdAtMs,
         publicationFunctions.canonicalJson,
         publicationFunctions.digestSha256,
+      );
+
+      await (await this.database.prepare(`
+        INSERT INTO widget_revision_sources (
+          org_id, definition_id, revision_id, source_snapshot_id,
+          source_artifact_id, source_artifact_kind, source_digest_sha256,
+          builder_identity, created_at_ms
+        ) VALUES (?, ?, ?, ?, ?, 'source', ?, ?, ?)
+      `)).run(
+        tenant.orgId,
+        definition.id,
+        request.revision.id,
+        request.source.sourceSnapshotId,
+        sourceArtifact.id,
+        request.source.sourceDigestSha256,
+        request.source.builderIdentity,
+        request.source.createdAtMs,
       );
 
       for (const descriptor of publicationFunctions.descriptors) {
@@ -451,6 +534,17 @@ export class WidgetControlStoreTurso implements
     tenant: TTenantContext,
     request: TWidgetArtifactResolutionRequest,
   ): Promise<TWidgetArtifactDescriptor | null> {
+    if (request.kind === 'source') {
+      const source = await this.getRevisionSource(tenant, request.revisionId);
+      const artifact = source?.sourceArtifact;
+      return source
+        && source.definitionId === request.definitionId
+        && artifact
+        && artifact.id === request.artifactId
+        && artifact.digestSha256 === request.digestSha256
+        ? artifact
+        : null;
+    }
     if (request.kind !== 'ui' && request.kind !== 'server') return null;
     const revision = await this.getRevision(tenant, request.revisionId);
     if (!revision || revision.definitionId !== request.definitionId) return null;
@@ -592,12 +686,14 @@ export class WidgetControlStoreTurso implements
 
     return this.#runImmediate(tenant, async () => {
       await this.#expireLivePreviews(tenant, nowMs, limit);
+      await this.#pruneExpiredPreviewRevisions(tenant, nowMs, limit);
+      const artifactIsReferenced = this.#artifactIsReferenced(nowMs);
 
       const referenced = await (await this.database.prepare(`
         SELECT id
         FROM artifact_references
         WHERE org_id = ? AND retention_state <> 'pinned'
-          AND (${ARTIFACT_IS_REFERENCED})
+          AND (${artifactIsReferenced})
         ORDER BY created_at_ms ASC, id ASC
         LIMIT ?
       `)).all(tenant.orgId, limit) as Array<{ id: string }>;
@@ -606,7 +702,7 @@ export class WidgetControlStoreTurso implements
         const result = await (await this.database.prepare(`
           UPDATE artifact_references
           SET retention_state = 'pinned', retain_until_ms = NULL
-          WHERE org_id = ? AND id = ? AND (${ARTIFACT_IS_REFERENCED})
+          WHERE org_id = ? AND id = ? AND (${artifactIsReferenced})
         `)).run(tenant.orgId, row.id);
         if (result.changes === 1) pinnedArtifactIds.push(row.id);
       }
@@ -615,7 +711,7 @@ export class WidgetControlStoreTurso implements
         SELECT id
         FROM artifact_references
         WHERE org_id = ? AND retention_state = 'pinned'
-          AND NOT (${ARTIFACT_IS_REFERENCED})
+          AND NOT (${artifactIsReferenced})
         ORDER BY created_at_ms ASC, id ASC
         LIMIT ?
       `)).all(tenant.orgId, limit) as Array<{ id: string }>;
@@ -625,7 +721,7 @@ export class WidgetControlStoreTurso implements
           UPDATE artifact_references
           SET retention_state = 'eligible', retain_until_ms = ?
           WHERE org_id = ? AND id = ? AND retention_state = 'pinned'
-            AND NOT (${ARTIFACT_IS_REFERENCED})
+            AND NOT (${artifactIsReferenced})
         `)).run(retainUntilMs, tenant.orgId, row.id);
         if (result.changes === 1) eligibleArtifactIds.push(row.id);
       }
@@ -666,6 +762,8 @@ export class WidgetControlStoreTurso implements
     request: TWidgetArtifactDeletionClaimRequest,
   ): Promise<TWidgetArtifactDescriptor | null> {
     return this.#runImmediate(tenant, async () => {
+      const nowMs = this.#timestamp(request.nowMs, 'current timestamp');
+      const artifactIsReferenced = this.#artifactIsReferenced(nowMs);
       const result = await (await this.database.prepare(`
         UPDATE artifact_references
         SET retention_state = 'deleting'
@@ -674,13 +772,13 @@ export class WidgetControlStoreTurso implements
           AND retain_until_ms = ?
           AND retain_until_ms <= ?
           AND retention_state IN ('eligible', 'deleting')
-          AND NOT (${ARTIFACT_IS_REFERENCED})
+          AND NOT (${artifactIsReferenced})
       `)).run(
         tenant.orgId,
         request.artifactId,
         request.expectedDigestSha256,
         request.expectedRetainUntilMs,
-        request.nowMs,
+        nowMs,
       );
       if (result.changes !== 1) return null;
       const row = await (await this.database.prepare(`
@@ -697,6 +795,7 @@ export class WidgetControlStoreTurso implements
     request: TWidgetArtifactDeletionCompleteRequest,
   ): Promise<TWidgetArtifactDeletionCompleteResult> {
     return this.#runImmediate(tenant, async () => {
+      const artifactIsReferenced = this.#artifactIsReferenced();
       const row = await (await this.database.prepare(`
         SELECT id
         FROM artifact_references
@@ -714,14 +813,14 @@ export class WidgetControlStoreTurso implements
       const result = await (await this.database.prepare(`
         DELETE FROM artifact_references
         WHERE org_id = ? AND id = ? AND digest_sha256 = ? AND retention_state = 'deleting'
-          AND NOT (${ARTIFACT_IS_REFERENCED})
+          AND NOT (${artifactIsReferenced})
       `)).run(tenant.orgId, request.artifactId, request.expectedDigestSha256);
       if (result.changes !== 1) {
         await (await this.database.prepare(`
           UPDATE artifact_references
           SET retention_state = 'pinned', retain_until_ms = NULL
           WHERE org_id = ? AND id = ? AND digest_sha256 = ?
-            AND (${ARTIFACT_IS_REFERENCED})
+            AND (${artifactIsReferenced})
         `)).run(tenant.orgId, request.artifactId, request.expectedDigestSha256);
         return { completed: false, deleteBlob: false };
       }
@@ -820,13 +919,119 @@ export class WidgetControlStoreTurso implements
     for (const row of expiredPreviews) {
       await (await this.database.prepare(`
         UPDATE agent_previews
-        SET status = 'stopped',
+        SET status = 'stopped', active_revision_id = NULL,
           updated_at_ms = CASE WHEN updated_at_ms < ? THEN ? ELSE updated_at_ms END
         WHERE org_id = ? AND id = ?
           AND status IN ('queued', 'building', 'ready')
           AND expires_at_ms <= ?
       `)).run(nowMs, nowMs, tenant.orgId, row.id, nowMs);
     }
+  }
+
+  async #pruneExpiredPreviewRevisions(
+    tenant: TTenantContext,
+    nowMs: number,
+    limit: number,
+  ): Promise<void> {
+    const rows = await (await this.database.prepare(`
+      SELECT revision.preview_id, revision.id
+      FROM agent_preview_revisions AS revision
+      WHERE revision.org_id = ? AND revision.retain_until_ms <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM agent_previews AS preview
+          WHERE preview.org_id = revision.org_id
+            AND preview.id = revision.preview_id
+            AND preview.active_revision_id = revision.id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM function_invocations AS invocation
+          WHERE invocation.org_id = revision.org_id
+            AND invocation.subject_kind = 'agent_preview'
+            AND invocation.preview_id = revision.preview_id
+            AND invocation.preview_revision_id = revision.id
+            AND invocation.retains_revision = 1
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM idempotency_records AS idempotency
+          WHERE idempotency.org_id = revision.org_id
+            AND idempotency.scope_kind = 'agent_preview'
+            AND idempotency.preview_id = revision.preview_id
+            AND idempotency.preview_revision_id = revision.id
+        )
+      ORDER BY revision.retain_until_ms ASC, revision.id ASC
+      LIMIT ?
+    `)).all(tenant.orgId, nowMs, limit) as Array<{ preview_id: string; id: string }>;
+    for (const row of rows) {
+      await (await this.database.prepare(`
+        DELETE FROM agent_preview_revisions AS revision
+        WHERE revision.org_id = ? AND revision.preview_id = ? AND revision.id = ?
+          AND revision.retain_until_ms <= ?
+          AND NOT EXISTS (
+            SELECT 1 FROM agent_previews AS preview
+            WHERE preview.org_id = revision.org_id
+              AND preview.id = revision.preview_id
+              AND preview.active_revision_id = revision.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM function_invocations AS invocation
+            WHERE invocation.org_id = revision.org_id
+              AND invocation.subject_kind = 'agent_preview'
+              AND invocation.preview_id = revision.preview_id
+              AND invocation.preview_revision_id = revision.id
+              AND invocation.retains_revision = 1
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM idempotency_records AS idempotency
+            WHERE idempotency.org_id = revision.org_id
+              AND idempotency.scope_kind = 'agent_preview'
+              AND idempotency.preview_id = revision.preview_id
+              AND idempotency.preview_revision_id = revision.id
+          )
+      `)).run(tenant.orgId, row.preview_id, row.id, nowMs);
+    }
+  }
+
+  #artifactIsReferenced(nowMs?: number): string {
+    const retentionReference = nowMs === undefined
+      ? ''
+      : `OR revision.retain_until_ms > ${this.#timestamp(nowMs, 'current timestamp')}`;
+    return `
+      ${DURABLE_ARTIFACT_REFERENCE_SQL}
+      OR EXISTS (
+        SELECT 1
+        FROM agent_preview_revisions AS revision
+        JOIN agent_previews AS preview
+          ON preview.org_id = revision.org_id AND preview.id = revision.preview_id
+        WHERE revision.org_id = artifact_references.org_id
+          AND (
+            (revision.source_artifact_id = artifact_references.id
+              AND revision.source_artifact_kind = artifact_references.kind)
+            OR (revision.ui_artifact_id = artifact_references.id
+              AND revision.ui_artifact_kind = artifact_references.kind)
+            OR (revision.server_artifact_id = artifact_references.id
+              AND revision.server_artifact_kind = artifact_references.kind)
+          )
+          AND (
+            (preview.status = 'ready' AND preview.active_revision_id = revision.id)
+            ${retentionReference}
+            OR EXISTS (
+              SELECT 1 FROM function_invocations AS invocation
+              WHERE invocation.org_id = revision.org_id
+                AND invocation.subject_kind = 'agent_preview'
+                AND invocation.preview_id = revision.preview_id
+                AND invocation.preview_revision_id = revision.id
+                AND invocation.retains_revision = 1
+            )
+            OR EXISTS (
+              SELECT 1 FROM idempotency_records AS idempotency
+              WHERE idempotency.org_id = revision.org_id
+                AND idempotency.scope_kind = 'agent_preview'
+                AND idempotency.preview_id = revision.preview_id
+                AND idempotency.preview_revision_id = revision.id
+            )
+          )
+      )
+    `;
   }
 
   #revisionSelect(): string {
@@ -1094,6 +1299,24 @@ export class WidgetControlStoreTurso implements
     if (revision.uiArtifact.orgId !== tenant.orgId || revision.uiArtifact.kind !== 'ui') {
       throw widgetStoreError('WIDGET_ARTIFACT_SCOPE_INVALID', 'UI artifact scope or kind is invalid.');
     }
+    if (
+      request.source.sourceArtifact.orgId !== tenant.orgId
+      || request.source.sourceArtifact.kind !== 'source'
+    ) {
+      throw widgetStoreError(
+        'WIDGET_ARTIFACT_SCOPE_INVALID',
+        'Source artifact scope or kind is invalid.',
+      );
+    }
+    if (
+      request.source.createdAtMs !== revision.createdAtMs
+      || request.source.sourceArtifact.createdAtMs !== request.source.createdAtMs
+    ) {
+      throw widgetStoreError(
+        'WIDGET_REVISION_SOURCE_MISMATCH',
+        'Widget source provenance and revision timestamps must match.',
+      );
+    }
     const expectsServer = manifest.server !== undefined;
     if (expectsServer !== (revision.serverArtifact !== null)) {
       throw widgetStoreError(
@@ -1105,8 +1328,15 @@ export class WidgetControlStoreTurso implements
       && (revision.serverArtifact.orgId !== tenant.orgId || revision.serverArtifact.kind !== 'server')) {
       throw widgetStoreError('WIDGET_ARTIFACT_SCOPE_INVALID', 'Server artifact scope or kind is invalid.');
     }
-    if (revision.serverArtifact?.id === revision.uiArtifact.id) {
-      throw widgetStoreError('WIDGET_ARTIFACT_IDENTITY_CONFLICT', 'UI and server artifacts must be distinct.');
+    if (
+      revision.serverArtifact?.id === revision.uiArtifact.id
+      || request.source.sourceArtifact.id === revision.uiArtifact.id
+      || request.source.sourceArtifact.id === revision.serverArtifact?.id
+    ) {
+      throw widgetStoreError(
+        'WIDGET_ARTIFACT_IDENTITY_CONFLICT',
+        'Source, UI, and server artifacts must be distinct.',
+      );
     }
   }
 
@@ -1183,7 +1413,7 @@ export class WidgetControlStoreTurso implements
   async #pinPublicationArtifact(
     tenant: TTenantContext,
     artifact: TPublicationArtifact,
-    kind: 'ui' | 'server',
+    kind: 'source' | 'ui' | 'server',
   ): Promise<TWidgetArtifactDescriptor> {
     if (artifact.orgId !== tenant.orgId || artifact.kind !== kind) {
       throw widgetStoreError('WIDGET_ARTIFACT_SCOPE_INVALID', `${kind} artifact scope or kind is invalid.`);

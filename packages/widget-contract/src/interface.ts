@@ -34,11 +34,22 @@ import type {
   TWidgetPublicationCommitResult,
   TWidgetPublishedPlacementDescriptor,
   TWidgetPublishedPlacementTarget,
+  TWidgetPreviewArtifactReadCapabilityIssueRequest,
+  TWidgetPreviewArtifactResolutionRequest,
   TWidgetPreviewArtifactActivationRequest,
+  TWidgetPreviewBuildRequest,
+  TWidgetPreviewBuildResult,
+  TWidgetPreviewCommitInput,
+  TWidgetPreviewCommitResult,
+  TWidgetPreviewGetRequest,
+  TWidgetPreviewRevisionDescriptor,
+  TWidgetPreviewRevisionGetRequest,
+  TWidgetPreviewStopRequest,
   TWidgetPublishRequest,
   TWidgetPublishResult,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
+  TWidgetRevisionSourceDescriptor,
   TWidgetRevisionPruneRequest,
   TWidgetRevisionPruneResult,
   TWidgetRollbackInput,
@@ -72,6 +83,27 @@ export interface IWidgetServerExecutionArtifactReadCapabilityIssuer {
   issueServerExecutionArtifactReadCapability(
     tenant: TTenantContext,
     request: TWidgetArtifactReadCapabilityIssueRequest,
+  ): Promise<TWidgetArtifactReadCapability>;
+}
+
+export interface IWidgetSourceBuildArtifactReadCapabilityIssuer {
+  issueSourceBuildArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetArtifactReadCapabilityIssueRequest,
+  ): Promise<TWidgetArtifactReadCapability>;
+}
+
+export interface IWidgetUiPreviewArtifactReadCapabilityIssuer {
+  issueUiPreviewArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'ui' }>,
+  ): Promise<TWidgetArtifactReadCapability>;
+}
+
+export interface IWidgetServerPreviewArtifactReadCapabilityIssuer {
+  issueServerPreviewArtifactReadCapability(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'server' }>,
   ): Promise<TWidgetArtifactReadCapability>;
 }
 
@@ -126,6 +158,55 @@ export interface IWidgetRevisionReader {
   ): Promise<TWidgetRevisionDescriptor | null>;
 }
 
+export interface IWidgetRevisionSourceReader {
+  getRevisionSource(
+    tenant: TTenantContext,
+    revisionId: TWidgetRevisionId,
+  ): Promise<TWidgetRevisionSourceDescriptor | null>;
+}
+
+export interface IWidgetPreviewRevisionReader {
+  getPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null>;
+
+  getPreviewRevision(
+    tenant: TTenantContext,
+    request: TWidgetPreviewRevisionGetRequest,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null>;
+}
+
+/** Tenant-qualified immutable preview revisions behind one CAS-swapped active pointer. */
+export interface IWidgetPreviewStore extends IWidgetPreviewRevisionReader {
+  commitPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewCommitInput,
+  ): Promise<TWidgetPreviewCommitResult>;
+
+  stopPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewStopRequest,
+  ): Promise<boolean>;
+
+  resolvePreviewArtifact(
+    tenant: TTenantContext,
+    request: TWidgetPreviewArtifactResolutionRequest,
+  ): Promise<TWidgetArtifactDescriptor | null>;
+}
+
+export interface IWidgetPreviewService extends IWidgetPreviewRevisionReader {
+  buildPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewBuildRequest,
+  ): Promise<TWidgetPreviewBuildResult>;
+
+  stopPreview(
+    tenant: TTenantContext,
+    request: TWidgetPreviewStopRequest,
+  ): Promise<boolean>;
+}
+
 export interface IWidgetPublishedPlacementReader {
   listPublishedPlacements(
     tenant: TTenantContext,
@@ -138,7 +219,7 @@ export interface IWidgetPublishedPlacementReader {
 }
 
 /** Tenant-qualified metadata store; publication and rollback methods are atomic CAS operations. */
-export interface IWidgetControlStore extends IWidgetRevisionReader {
+export interface IWidgetControlStore extends IWidgetRevisionReader, IWidgetRevisionSourceReader {
   listPublishedDefinitions(
     tenant: TTenantContext,
     limit: number,
@@ -228,7 +309,7 @@ export interface IWidgetControlStore extends IWidgetRevisionReader {
   ): Promise<boolean>;
 }
 
-export interface IWidgetPublicationService extends IWidgetRevisionReader {
+export interface IWidgetPublicationService extends IWidgetRevisionReader, IWidgetRevisionSourceReader {
   publish(
     tenant: TTenantContext,
     request: TWidgetPublishRequest,

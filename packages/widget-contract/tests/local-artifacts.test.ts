@@ -128,6 +128,34 @@ describe('local immutable widget source and build runtime', () => {
     await expect(snapshots.capture(linkedRoot)).rejects.toThrow('real directory');
   });
 
+  test('round-trips a deterministic immutable source artifact and rejects tampering', async () => {
+    const root = await tempRoot();
+    const source = join(root, 'source');
+    await mkdir(source);
+    await writeSource(source, {
+      'src/ui.ts': 'export const ui = "source-artifact";',
+      'widget.manifest.json': '{"schemaVersion":2}',
+    });
+    const snapshots = new WidgetSourceSnapshot();
+    const snapshot = await snapshots.capture(source, { id: 'source-artifact-a', createdAtMs: 7 });
+    const first = snapshots.encodeArtifact(snapshot, { builderIdentity: 'bun-source-v1' });
+    const second = snapshots.encodeArtifact(snapshot, { builderIdentity: 'bun-source-v1' });
+
+    expect(first.digestSha256).toBe(second.digestSha256);
+    expect(first.bytes).toEqual(second.bytes);
+    expect(snapshots.decodeArtifact(first, {
+      expectedSnapshotId: snapshot.id,
+      expectedSourceDigestSha256: snapshot.digestSha256,
+      expectedBuilderIdentity: 'bun-source-v1',
+    })).toEqual(snapshot);
+
+    const tampered = new Uint8Array(first.bytes);
+    tampered[tampered.byteLength - 1] ^= 1;
+    expect(() => snapshots.decodeArtifact({ ...first, bytes: tampered })).toThrow(
+      'do not match their digest',
+    );
+  });
+
   test('rejects a directory identity replacement while a source capture is in flight', async () => {
     const root = await tempRoot();
     const source = join(root, 'source');
@@ -518,6 +546,68 @@ describe('local immutable widget source and build runtime', () => {
       })).rejects.toMatchObject({ code: 'WIDGET_BUILD_FAILED' });
       expect(called).toBe(false);
     }
+  });
+
+  test('allows Arrow core only in the UI target and keeps it forbidden on the server', async () => {
+    const root = await tempRoot();
+    const sourceRoot = join(root, 'source');
+    await mkdir(sourceRoot);
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'import { reactive } from "@arrow-js/core"; export const state = reactive({ count: 1 });',
+      'src/server.ts': 'export const run = true;',
+    });
+    const snapshots = new WidgetSourceSnapshot();
+    const uiSnapshot = await snapshots.capture(sourceRoot, { id: 'arrow-ui', createdAtMs: 1 });
+    const uiManifest: TWidgetManifestV2 = {
+      schemaVersion: 2,
+      name: 'Arrow UI',
+      slug: 'arrow-ui',
+      ui: { entry: 'src/ui.ts' },
+    };
+    const builder = new WidgetArtifactBuilderBun({
+      tempRoot: join(root, 'temp'),
+      builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+      resolveTrustedPackageImport: (specifier) => {
+        if (specifier === '@arrow-js/core') {
+          return resolve(
+            import.meta.dir,
+            '../../sdk/node_modules/@arrow-js/core/dist/index.mjs',
+          );
+        }
+        return Bun.resolveSync(specifier, import.meta.dir);
+      },
+    });
+    expect((await builder.build(tenant, {
+      snapshot: uiSnapshot,
+      manifest: uiManifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(uiManifest),
+      builderIdentity: 'bun-test-v1',
+    })).uiArtifact.kind).toBe('ui');
+
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'export const ui = true;',
+      'src/server.ts': 'import { reactive } from "@arrow-js/core"; export const run = reactive({ ok: true });',
+    });
+    const serverSnapshot = await snapshots.capture(sourceRoot, {
+      id: 'arrow-server-forbidden',
+      createdAtMs: 2,
+    });
+    const serverManifest: TWidgetManifestV2 = {
+      ...uiManifest,
+      name: 'Arrow server forbidden',
+      slug: 'arrow-server-forbidden',
+      server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' },
+    };
+    await expect(builder.build(tenant, {
+      snapshot: serverSnapshot,
+      manifest: serverManifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(serverManifest),
+      builderIdentity: 'bun-test-v1',
+    })).rejects.toMatchObject({
+      code: 'WIDGET_BUILD_FAILED',
+      message: 'Widget server build failed.',
+    });
   });
 
   test('rejects malformed registration-sandbox descriptor output', async () => {
@@ -1177,8 +1267,23 @@ describe('local artifact integrity and authorization', () => {
         && descriptor.digestSha256 === request.digestSha256
       )) ?? null,
     } as unknown as IWidgetControlStore;
+    const previewStore = {
+      resolvePreviewArtifact: async (
+        _tenant: TTenantContext,
+        request: {
+          artifactId: string;
+          kind: string;
+          digestSha256: string;
+        },
+      ) => descriptors.find((descriptor) => (
+        descriptor.id === request.artifactId
+        && descriptor.kind === request.kind
+        && descriptor.digestSha256 === request.digestSha256
+      )) ?? null,
+    };
     const artifacts = new WidgetArtifactService({
       controlStore,
+      previewStore,
       blobs,
       capabilityIssuer: authority,
       capabilityVerifier: authority,
@@ -1193,10 +1298,6 @@ describe('local artifact integrity and authorization', () => {
       {
         descriptor: descriptors[1]!,
         issue: artifacts.issueBrowserUiArtifactReadCapability.bind(artifacts),
-      },
-      {
-        descriptor: descriptors[2]!,
-        issue: artifacts.issueUiPreviewArtifactReadCapability.bind(artifacts),
       },
       {
         descriptor: descriptors[3]!,
@@ -1218,10 +1319,10 @@ describe('local artifact integrity and authorization', () => {
     const serverPreviewCapability = await artifacts.issueServerPreviewArtifactReadCapability(
       tenant,
       {
-        definitionId: 'definition-a',
-        revisionId: 'revision-a',
+        previewId: 'preview-a',
+        previewRevisionId: 'preview-revision-a',
         artifactId: descriptors[1]!.id,
-        artifactKind: descriptors[1]!.kind,
+        artifactKind: 'server',
         digestSha256: descriptors[1]!.digestSha256,
         expiresAtMs: nowMs + 5_000,
       },
@@ -1235,10 +1336,10 @@ describe('local artifact integrity and authorization', () => {
     });
 
     const uiPreviewCapability = await artifacts.issueUiPreviewArtifactReadCapability(tenant, {
-      definitionId: 'definition-a',
-      revisionId: 'revision-a',
+      previewId: 'preview-a',
+      previewRevisionId: 'preview-revision-a',
       artifactId: descriptors[0]!.id,
-      artifactKind: descriptors[0]!.kind,
+      artifactKind: 'ui',
       digestSha256: descriptors[0]!.digestSha256,
       expiresAtMs: nowMs + 5_000,
     });
