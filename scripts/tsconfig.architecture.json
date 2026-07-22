@@ -6,6 +6,11 @@
   "include": [
     "architecture-boundaries.test.ts",
     "external-composition-api-integration.test.ts",
+    "test-binary.ts",
+    "test-ci-docker.ts",
+    "test-final-acceptance.ts",
+    "test-m10-load.ts",
+    "test-packed-public-composition.ts",
     "../global.d.ts"
   ]
 }

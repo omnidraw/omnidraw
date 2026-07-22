@@ -1220,9 +1220,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/build.ts](scripts/build.ts) | Builds vibecanvas distribution packages, embedded assets, checksums, and release manifests. |
 | [scripts/capture-m1-database-evidence.ts](scripts/capture-m1-database-evidence.ts) | Captures deterministic M1 Turso schema, index, foreign-key, and restart evidence. |
 | [scripts/dev.ts](scripts/dev.ts) | Starts the local dev stack on a matched backend/frontend port pair. |
+| [scripts/docker/final-acceptance.Dockerfile](scripts/docker/final-acceptance.Dockerfile) |  |
 | [scripts/eslint-functional-core-plugin.mjs](scripts/eslint-functional-core-plugin.mjs) |  |
 | [scripts/fixtures/external-composition/package.json](scripts/fixtures/external-composition/package.json) |  |
 | [scripts/fixtures/external-composition/src/managed-composition.ts](scripts/fixtures/external-composition/src/managed-composition.ts) |  |
+| [scripts/fixtures/external-composition/src/packed-consumer.ts](scripts/fixtures/external-composition/src/packed-consumer.ts) |  |
 | [scripts/fixtures/external-composition/tsconfig.json](scripts/fixtures/external-composition/tsconfig.json) |  |
 | [scripts/fixtures/managed-architecture-baseline.v1.json](scripts/fixtures/managed-architecture-baseline.v1.json) |  |
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
@@ -1241,10 +1243,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable M0 gate for renderer, widget-host, collaboration, and actor compatibility behavior. |
+| [scripts/test-ci-docker.ts](scripts/test-ci-docker.ts) | Builds and runs final acceptance from an immutable archive of the current commit. The Docker daemon never receives the caller's dirty worktree, node_modules, untracked files, or a writable bind mount. |
+| [scripts/test-final-acceptance.ts](scripts/test-final-acceptance.ts) | Permanent M10 acceptance runner. |
 | [scripts/test-function-runtime.ts](scripts/test-function-runtime.ts) | Durable M6 gate for typed, bounded, scale-to-zero server functions. |
 | [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-legacy-actor-matrix.ts](scripts/test-legacy-actor-matrix.ts) | Runs the complete product suite with the optional legacy actor plugin both disabled and enabled. The normal product default is disabled. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
+| [scripts/test-m10-load.ts](scripts/test-m10-load.ts) |  |
+| [scripts/test-packed-public-composition.ts](scripts/test-packed-public-composition.ts) | Packs the five managed-composition packages and proves a clean external consumer. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the actor-independent, single-owner resource runtime. |
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable, actor-free widget artifacts. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable M7 gate for the neutral renderer host and actor-free UI scale. |

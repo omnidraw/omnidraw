@@ -489,6 +489,9 @@ async function main() {
   process.env.VIBECANVAS_CHANNEL = channel
 
   // Filter targets
+  const hostDefaultTargets = process.platform === "darwin"
+    ? targets
+    : targets.filter((target) => target.os === process.platform)
   const filteredTargets = platformArg
     ? targets.filter((target) => target.os === platformArg)
     : singleFlag
@@ -498,7 +501,7 @@ async function main() {
         t.arch === process.arch &&
         !("avx2" in t && !t.avx2)
     )
-    : targets
+    : hostDefaultTargets
 
   if (filteredTargets.length === 0) {
     console.error(`No matching target for ${process.platform}-${process.arch}`)

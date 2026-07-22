@@ -273,4 +273,53 @@ describe('TenantServicePool', () => {
     expect(stopCount).toBe(2);
     expect(pool.getTenantCount()).toBe(0);
   });
+
+  test('lets a separate organization progress while one organization operation is blocked', async () => {
+    class OperationPool extends TenantServicePool<{
+      run: (operation: () => Promise<string>) => Promise<string>;
+    }> {
+      runForTenant(context: TTenantContext, operation: () => Promise<string>): Promise<string> {
+        return this.withTenantService(context, (service) => service.run(operation));
+      }
+    }
+
+    let markHotStarted: (() => void) | undefined;
+    const hotStarted = new Promise<void>((resolve) => { markHotStarted = resolve; });
+    let releaseHot: (() => void) | undefined;
+    const hotBlocked = new Promise<void>((resolve) => { releaseHot = resolve; });
+    let hotFinished = false;
+    const pool = new OperationPool('noisy-neighbor-pool', {
+      key: (context) => [context.orgId, context.cellId, context.placementEpoch].join(':'),
+      singlePlacementPerOrganization: true,
+      create: () => ({ run: async (operation) => operation() }),
+    });
+    pool.start({ config: {}, hooks: {} });
+
+    const hot = pool.runForTenant(tenant('org-hot'), async () => {
+      markHotStarted?.();
+      await hotBlocked;
+      hotFinished = true;
+      return 'hot-complete';
+    });
+    try {
+      await hotStarted;
+      const separateOrganization = pool.runForTenant(
+        tenant('org-independent'),
+        async () => 'independent-complete',
+      );
+      await expect(Promise.race([
+        separateOrganization,
+        Bun.sleep(1_000).then(() => { throw new Error('Separate organization was blocked by noisy-neighbor work.'); }),
+      ])).resolves.toBe('independent-complete');
+      expect(hotFinished).toBe(false);
+      expect(pool.getTenantCount()).toBe(2);
+
+      releaseHot?.();
+      await expect(hot).resolves.toBe('hot-complete');
+    } finally {
+      releaseHot?.();
+      await hot.catch(() => undefined);
+      await pool.stop();
+    }
+  });
 });

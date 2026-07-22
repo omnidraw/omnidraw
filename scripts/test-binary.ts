@@ -6,10 +6,26 @@
 
 import path from "path"
 import net from "node:net"
-import { chmod, mkdir, readdir } from "node:fs/promises"
+import { Database as SqliteDatabase } from "bun:sqlite"
+import { chmod, mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
+import { tmpdir } from "node:os"
 import { Glob } from "bun"
+import {
+  AGENT_AUTHORING_MIGRATION_NAME,
+  DATABASE_APPLICATION_ID,
+  DATABASE_SCHEMA_VERSION,
+  DEFAULT_OSS_ACCOUNT_DISPLAY_NAME,
+  DEFAULT_OSS_ACCOUNT_ID,
+  DEFAULT_OSS_ORGANIZATION_ID,
+  FUNCTION_RUNTIME_MIGRATION_NAME,
+  INITIAL_MIGRATION_NAME,
+  WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
+  WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+} from "../packages/service-db/src/CONSTANTS"
 import { Database } from "../packages/service-db/src/DbServiceTurso/turso-native"
+import { fnSerializeDatabaseSchemaFingerprint } from "../packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint"
+import { EXPECTED_DATABASE_SCHEMA_CONTRACTS } from "../packages/service-db/src/schema/expected-schema"
 
 const require = createRequire(import.meta.url)
 
@@ -29,6 +45,8 @@ type TBinaryScenario = {
   expectedLegacyActorEnabled: boolean
   expectedDbPath?: string
   expectedAbsentPaths?: string[]
+  verifyForeignKeysAfterShutdown?: boolean
+  shutdownSignal?: number
   cleanupPaths: string[]
 }
 
@@ -47,6 +65,32 @@ type TActorIpcChildMessage =
   | { type: "emitMessage"; id: number; msg: unknown }
   | { type: "done"; id: number }
   | { type: "error"; id?: number; msg: unknown; error?: boolean }
+
+type TMigrationIdentity = Readonly<{
+  version: number
+  name: string
+  checksumSha256: string
+}>
+
+type TManagedDatabaseSnapshot = Readonly<{
+  applicationId: number
+  userVersion: number
+  schemaFingerprintSha256: string
+  migrations: readonly TMigrationIdentity[]
+  organizations: readonly Record<string, unknown>[]
+  accounts: readonly Record<string, unknown>[]
+  memberships: readonly Record<string, unknown>[]
+  integrityCheck: "ok"
+  foreignKeyCheck: "not-verified" | "ok"
+}>
+
+const EXPECTED_MIGRATION_NAMES = Object.freeze([
+  INITIAL_MIGRATION_NAME,
+  WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+  FUNCTION_RUNTIME_MIGRATION_NAME,
+  WIDGET_INSTANCE_PROJECTION_MIGRATION_NAME,
+  AGENT_AUTHORING_MIGRATION_NAME,
+])
 
 function parseArgs(): TArgs {
   const args = Bun.argv.slice(2)
@@ -273,27 +317,190 @@ async function assertPathMissing(targetPath: string, label: string): Promise<voi
   }
 }
 
-async function assertManagedSchema(databasePath: string): Promise<void> {
+async function expectedMigrationLedger(): Promise<readonly TMigrationIdentity[]> {
+  const migrationsRoot = path.join(import.meta.dir, "..", "packages", "service-db", "src", "migrations")
+  return Promise.all(EXPECTED_MIGRATION_NAMES.map(async (name, version) => {
+    const bytes = new Uint8Array(await Bun.file(path.join(migrationsRoot, name)).arrayBuffer())
+    return Object.freeze({
+      version,
+      name,
+      checksumSha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"),
+    })
+  }))
+}
+
+async function assertManagedSchema(databasePath: string): Promise<TManagedDatabaseSnapshot> {
   const database = new Database(databasePath, {
     // @ts-expect-error multiprocess_wal is ahead of the public experimental feature union.
     experimental: ["custom_types", "triggers", "index_method", "multiprocess_wal"],
   })
   try {
     await database.connect()
-    const statement = await database.prepare(`
-      SELECT name
-      FROM sqlite_master
-      WHERE type = 'table'
-        AND name IN ('schema_migrations', 'organizations', 'resource_encryption_keys')
-      ORDER BY name
-    `)
-    const rows = await statement.all()
-    const names = rows.map((row) => row.name)
-    if (names.join(',') !== 'organizations,resource_encryption_keys,schema_migrations') {
-      throw new Error(`Compiled control database is missing the managed baseline schema: ${databasePath}`)
+    const applicationId = Number((await (await database.prepare("PRAGMA application_id")).get())?.application_id)
+    const userVersion = Number((await (await database.prepare("PRAGMA user_version")).get())?.user_version)
+    if (applicationId !== DATABASE_APPLICATION_ID) {
+      throw new Error(`Compiled control database application_id mismatch: ${applicationId}`)
     }
+    if (userVersion !== DATABASE_SCHEMA_VERSION) {
+      throw new Error(`Compiled control database user_version mismatch: ${userVersion}`)
+    }
+
+    const schemaRows = await (await database.prepare(`
+      SELECT type, name, tbl_name AS table_name, sql
+      FROM sqlite_schema
+      WHERE type IN ('table', 'index', 'view', 'trigger')
+        AND name NOT GLOB 'sqlite_*'
+      ORDER BY type, name, tbl_name
+    `)).all() as Array<{
+      type: "index" | "table" | "trigger" | "view"
+      name: string
+      table_name: string
+      sql: string | null
+    }>
+    const schemaFingerprintSha256 = new Bun.CryptoHasher("sha256")
+      .update(fnSerializeDatabaseSchemaFingerprint(schemaRows.map((row) => ({
+        type: row.type,
+        name: row.name,
+        tableName: row.table_name,
+        sql: row.sql,
+      }))))
+      .digest("hex")
+    const expectedSchema = EXPECTED_DATABASE_SCHEMA_CONTRACTS[DATABASE_SCHEMA_VERSION]
+    if (!expectedSchema || schemaFingerprintSha256 !== expectedSchema.fingerprintSha256) {
+      throw new Error(
+        `Compiled control database whole-schema fingerprint mismatch: ${schemaFingerprintSha256}`,
+      )
+    }
+
+    const migrations = (await (await database.prepare(`
+      SELECT version, name, checksum_sha256
+      FROM schema_migrations
+      ORDER BY version
+    `)).all()).map((row) => Object.freeze({
+      version: Number(row.version),
+      name: String(row.name),
+      checksumSha256: String(row.checksum_sha256),
+    }))
+    const expectedMigrations = await expectedMigrationLedger()
+    if (JSON.stringify(migrations) !== JSON.stringify(expectedMigrations)) {
+      throw new Error(`Compiled control database migration ledger mismatch: ${JSON.stringify(migrations)}`)
+    }
+
+    const organizations = await (await database.prepare(`
+      SELECT id, slug, name, status, created_at_ms, updated_at_ms
+      FROM organizations ORDER BY id
+    `)).all()
+    const accounts = await (await database.prepare(`
+      SELECT id, kind, display_name, status, is_autogenerated, created_at_ms, updated_at_ms
+      FROM accounts ORDER BY id
+    `)).all()
+    const memberships = await (await database.prepare(`
+      SELECT org_id, account_id, role, status, is_billable_seat, created_at_ms, updated_at_ms
+      FROM organization_memberships
+      ORDER BY org_id, account_id
+    `)).all()
+    const expectedOrganizations = [{
+      id: DEFAULT_OSS_ORGANIZATION_ID,
+      slug: "local",
+      name: "Local",
+      status: "active",
+      created_at_ms: 0,
+      updated_at_ms: 0,
+    }]
+    const expectedAccounts = [{
+      id: DEFAULT_OSS_ACCOUNT_ID,
+      kind: "user",
+      display_name: DEFAULT_OSS_ACCOUNT_DISPLAY_NAME,
+      status: "active",
+      is_autogenerated: 1,
+      created_at_ms: 0,
+      updated_at_ms: 0,
+    }]
+    const expectedMemberships = [{
+      org_id: DEFAULT_OSS_ORGANIZATION_ID,
+      account_id: DEFAULT_OSS_ACCOUNT_ID,
+      role: "owner",
+      status: "active",
+      is_billable_seat: 1,
+      created_at_ms: 0,
+      updated_at_ms: 0,
+    }]
+    if (JSON.stringify(organizations) !== JSON.stringify(expectedOrganizations)) {
+      throw new Error(`Compiled control database default organization seed mismatch: ${JSON.stringify(organizations)}`)
+    }
+    if (JSON.stringify(accounts) !== JSON.stringify(expectedAccounts)) {
+      throw new Error(`Compiled control database default account seed mismatch: ${JSON.stringify(accounts)}`)
+    }
+    if (JSON.stringify(memberships) !== JSON.stringify(expectedMemberships)) {
+      throw new Error(`Compiled control database default membership seed mismatch: ${JSON.stringify(memberships)}`)
+    }
+
+    const integrity = await (await database.prepare("PRAGMA integrity_check")).all()
+    if (JSON.stringify(integrity) !== JSON.stringify([{ integrity_check: "ok" }])) {
+      throw new Error(`Compiled control database integrity_check failed: ${JSON.stringify(integrity)}`)
+    }
+    return Object.freeze({
+      applicationId,
+      userVersion,
+      schemaFingerprintSha256,
+      migrations,
+      organizations,
+      accounts,
+      memberships,
+      integrityCheck: "ok",
+      foreignKeyCheck: "not-verified",
+    })
   } finally {
     await database.close()
+  }
+}
+
+async function assertFileForeignKeyIntegrity(
+  databasePath: string,
+): Promise<TManagedDatabaseSnapshot> {
+  const verificationRoot = await mkdtemp(path.join(tmpdir(), "vibecanvas-binary-fk-"))
+  try {
+    const databaseDirectory = path.dirname(databasePath)
+    const databaseName = path.basename(databasePath)
+    for (const entry of await readdir(databaseDirectory, { withFileTypes: true })) {
+      if (!entry.isFile() || (entry.name !== databaseName && !entry.name.startsWith(`${databaseName}-`))) {
+        continue
+      }
+      await Bun.write(
+        path.join(verificationRoot, entry.name),
+        Bun.file(path.join(databaseDirectory, entry.name)),
+      )
+    }
+
+    const verificationPath = path.join(verificationRoot, databaseName)
+    // Turso must open the copied main file and sidecars first so its
+    // multiprocess WAL is replayed before SQLite performs the FK audit.
+    const snapshot = await assertManagedSchema(verificationPath)
+    const verifier = new SqliteDatabase(verificationPath, { readonly: true, strict: true })
+    try {
+      const violations = verifier.query("PRAGMA foreign_key_check").all()
+      if (violations.length !== 0) {
+        throw new Error(
+          `Compiled control database foreign_key_check failed: ${JSON.stringify(violations)}`,
+        )
+      }
+    } finally {
+      verifier.close(false)
+    }
+    return Object.freeze({ ...snapshot, foreignKeyCheck: "ok" })
+  } finally {
+    await rm(verificationRoot, { recursive: true, force: true })
+  }
+}
+
+function assertSameManagedDatabaseSnapshot(
+  first: TManagedDatabaseSnapshot | undefined,
+  second: TManagedDatabaseSnapshot | undefined,
+): void {
+  if (!first || !second || JSON.stringify(first) !== JSON.stringify(second)) {
+    throw new Error(
+      `Compiled same-home restart changed deterministic database state: ${JSON.stringify({ first, second })}`,
+    )
   }
 }
 
@@ -707,9 +914,15 @@ async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeou
   console.log("[test-binary] PASS actor-ipc serializes DOMException errors")
 }
 
-async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBinaryScenario): Promise<void> {
+async function runBinaryScenario(
+  binaryPath: string,
+  args: TArgs,
+  scenario: TBinaryScenario,
+): Promise<TManagedDatabaseSnapshot | undefined> {
   const baseUrl = `http://127.0.0.1:${scenario.port}`
   console.log(`[test-binary] Scenario '${scenario.name}' using ${baseUrl}`)
+  let databaseSnapshot: TManagedDatabaseSnapshot | undefined
+  let scenarioPassed = false
 
   const proc = Bun.spawn({
     cmd: [binaryPath, ...scenario.cmd],
@@ -772,8 +985,8 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
     if (scenario.expectedDbPath) {
       await assertPathExists(scenario.expectedDbPath, `${scenario.name} db path`)
       console.log(`[test-binary] PASS ${scenario.name} db path ${scenario.expectedDbPath}`)
-      await assertManagedSchema(scenario.expectedDbPath)
-      console.log(`[test-binary] PASS ${scenario.name} managed baseline schema`)
+      databaseSnapshot = await assertManagedSchema(scenario.expectedDbPath)
+      console.log(`[test-binary] PASS ${scenario.name} exact managed schema, migrations, seed, and integrity`)
     }
 
     for (const missingPath of scenario.expectedAbsentPaths ?? []) {
@@ -782,8 +995,14 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
     }
 
     console.log(`[test-binary] Scenario '${scenario.name}' passed`)
+    scenarioPassed = true
   } finally {
-    proc.kill()
+    if (scenario.shutdownSignal === 9 && proc.exitCode !== null) {
+      throw new Error(
+        `${scenario.name} exited before the required SIGKILL fault injection (exit ${proc.exitCode}).`,
+      )
+    }
+    proc.kill(scenario.shutdownSignal)
 
     const exitOrTimeout = Promise.race([
       proc.exited,
@@ -794,9 +1013,38 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
       proc.kill(9)
       await proc.exited
     }
+    if (scenario.shutdownSignal === 9) {
+      if (proc.signalCode !== "SIGKILL") {
+        throw new Error(
+          `${scenario.name} did not exit through SIGKILL: ${String(proc.signalCode)}`,
+        )
+      }
+      console.log(`[test-binary] PASS ${scenario.name} terminated with SIGKILL for crash recovery`)
+    }
 
-    for (const cleanupPath of scenario.cleanupPaths) {
-      await Bun.$`rm -rf ${cleanupPath}`.quiet()
+    try {
+      if (
+        scenarioPassed
+        && scenario.verifyForeignKeysAfterShutdown === true
+        && scenario.expectedDbPath
+      ) {
+        const verifiedSnapshot = await assertFileForeignKeyIntegrity(scenario.expectedDbPath)
+        if (
+          databaseSnapshot
+          && JSON.stringify({ ...databaseSnapshot, foreignKeyCheck: "ok" })
+            !== JSON.stringify(verifiedSnapshot)
+        ) {
+          throw new Error(
+            `${scenario.name} copied WAL snapshot differs from the live Turso view.`,
+          )
+        }
+        databaseSnapshot = verifiedSnapshot
+        console.log(`[test-binary] PASS ${scenario.name} foreign_key_check after shutdown`)
+      }
+    } finally {
+      for (const cleanupPath of scenario.cleanupPaths) {
+        await Bun.$`rm -rf ${cleanupPath}`.quiet()
+      }
     }
 
     const [stdout, stderr] = await Promise.allSettled([stdoutPromise, stderrPromise])
@@ -811,6 +1059,8 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
       console.log(stderrText)
     }
   }
+
+  return databaseSnapshot
 }
 
 async function main() {
@@ -818,6 +1068,7 @@ async function main() {
   const binaryPath = await resolveBinaryPath(args.binaryPath)
   const expectedNativeAddonPath = getExpectedNativeAddonPath(binaryPath)
   const tempRoot = path.join(process.cwd(), `.tmp-binary-test-${Date.now()}`)
+  try {
   const envHome = path.join(tempRoot, "env-home")
   const compiledHome = path.join(tempRoot, "compiled-home")
   const explicitHome = path.join(tempRoot, "explicit-home")
@@ -860,14 +1111,13 @@ async function main() {
   console.log("[test-binary] PASS compiled widget prerequisite warning with empty PATH")
 
   if (args.widgetPrerequisitesOnly) {
-    await Bun.$`rm -rf ${tempRoot}`.quiet()
     return
   }
 
   await assertActorIpcBinary(binaryPath, tempRoot, args.requestTimeoutMs)
 
-  await runBinaryScenario(binaryPath, args, {
-    name: "home-env",
+  const firstHomeBoot = await runBinaryScenario(binaryPath, args, {
+    name: "home-env-first-boot",
     port: args.port,
     cmd: ["serve", "--port", String(args.port)],
     env: {
@@ -875,8 +1125,25 @@ async function main() {
     },
     expectedLegacyActorEnabled: false,
     expectedDbPath: path.join(envHome, "main.db"),
+    verifyForeignKeysAfterShutdown: true,
+    shutdownSignal: 9,
+    cleanupPaths: [],
+  })
+
+  const secondHomeBoot = await runBinaryScenario(binaryPath, args, {
+    name: "home-env-second-boot",
+    port: args.port,
+    cmd: ["serve", "--port", String(args.port)],
+    env: {
+      VIBECANVAS_HOME: envHome,
+    },
+    expectedLegacyActorEnabled: false,
+    expectedDbPath: path.join(envHome, "main.db"),
+    verifyForeignKeysAfterShutdown: true,
     cleanupPaths: [envHome],
   })
+  assertSameManagedDatabaseSnapshot(firstHomeBoot, secondHomeBoot)
+  console.log("[test-binary] PASS same fresh home boots twice with deterministic schema, migration, and seed state")
 
   await runBinaryScenario(binaryPath, args, {
     name: "explicit-data-dir-flag",
@@ -921,8 +1188,10 @@ async function main() {
     await blockedCompiledPort.close()
   }
 
-  await Bun.$`rm -rf ${tempRoot}`.quiet()
   console.log("[test-binary] All checks passed")
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
 }
 
 main().catch((error) => {

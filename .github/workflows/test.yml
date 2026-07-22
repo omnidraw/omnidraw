@@ -19,6 +19,10 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      VIBECANVAS_LEGACY_ACTOR_ENABLED: "0"
+      VIBECANVAS_REQUIRE_FD_INSPECTION: "1"
+      VITEST_MAX_WORKERS: "2"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -34,8 +38,8 @@ jobs:
       - name: Verify Turso native encryption support
         run: bun run verify:turso-native-encryption
 
-      - name: Run tests
-        run: bun run test
+      - name: Run final architecture acceptance
+        run: bun run test:final-acceptance
 
       - name: Upload test results
         if: failure()

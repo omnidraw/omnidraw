@@ -90,7 +90,8 @@ const descriptorInspectionAvailable = await openFileNames(process.pid).then(
   () => true,
   () => false,
 );
-const descriptorTest = descriptorInspectionAvailable ? test : test.skip;
+const descriptorInspectionRequired = process.env.VIBECANVAS_REQUIRE_FD_INSPECTION === '1';
+const descriptorTest = descriptorInspectionAvailable || descriptorInspectionRequired ? test : test.skip;
 
 async function readLine(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<string> {
   const decoder = new TextDecoder();
@@ -113,6 +114,14 @@ afterEach(async () => {
 });
 
 describe('M4 resource runtime boundaries', () => {
+  test('provides file-descriptor inspection when final acceptance requires it', () => {
+    if (!descriptorInspectionRequired) return;
+    expect(
+      descriptorInspectionAvailable,
+      'VIBECANVAS_REQUIRE_FD_INSPECTION=1 requires readable /proc/<pid>/fd or a working lsof command.',
+    ).toBe(true);
+  });
+
   test('keeps resource-runtime independent from actor and API implementations', async () => {
     const roots = [
       join(REPO_ROOT, 'packages/resource-runtime/src'),

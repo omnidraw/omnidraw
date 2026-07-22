@@ -118,6 +118,10 @@ declare module '@vibecanvas/runtime' {
 
 type TSetupServicesOptions = Readonly<{
   legacyActor?: TLegacyActorComposition;
+  createFunctionSandboxDriver?: (args: Readonly<{
+    compiledExecutable: boolean;
+    tempRoot: string;
+  }>) => BunChildSandboxDriver;
 }>;
 
 function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
@@ -236,7 +240,10 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         tenant.cellId,
         String(tenant.placementEpoch),
       ]);
-      const driver = new BunChildSandboxDriver({
+      const driver = options.createFunctionSandboxDriver?.({
+        compiledExecutable: config.compiled,
+        tempRoot: runtimeTempRoot,
+      }) ?? new BunChildSandboxDriver({
         compiledExecutable: config.compiled,
         tempRoot: runtimeTempRoot,
       });
