@@ -1,7 +1,11 @@
-import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/service-actor/core/fn.widget-frame';
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import type {
+  TVibecanvasToolIcon,
+  TWidgetBrowserFunctionDescriptor,
+  TWidgetFrameBounds,
+  TWidgetManifestV2,
+  TWidgetPlacementRef,
+} from '@vibecanvas/widget-contract';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 
 export type TWidgetSource = 'published' | 'draft';
@@ -79,6 +83,7 @@ export type TWidgetDetail = {
   variant: TWidgetVariantSummary;
   sibling: TWidgetVariantSummary | null;
   manifest: TWidgetManagementManifest | null;
+  functions: readonly TWidgetBrowserFunctionDescriptor[];
   problem: TWidgetCatalogProblem | null;
 };
 

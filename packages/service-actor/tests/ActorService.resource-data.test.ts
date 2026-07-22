@@ -2,21 +2,38 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ResourceError } from '@vibecanvas/resource-runtime';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { ActorService, type IActorResourceService } from '../src/ActorService';
-import { ActorResourceError } from '../src/resources/ActorResourceError';
-import { SecretStoreDatabaseKeyProvider } from '../src/resources/SecretStoreKeyProvider';
-import { createTestCrypto, testUuid } from './test-uuid';
+import type { ActorService, IActorResourceService } from '../src/ActorService';
+import { createNeutralActorResourceComposition, type TNeutralActorResourceComposition } from './neutral-resource.fixture';
+import { createTestCrypto } from './test-uuid';
 import { bindTestTenantDb, createTestTenantEvents, TEST_TENANT, type TActorTestDb } from './tenant.fixture';
 
-describe('ActorService KV and secret management', () => {
+describe('neutral ResourceService KV and secret management', () => {
   let rootDir = '';
   let configPath = '';
   let dataRoot = '';
   let dbService: DbServiceTurso;
   let db: TActorTestDb;
-  let service: ActorService;
+  let resources: TNeutralActorResourceComposition['resourceService'];
+  let composition: TNeutralActorResourceComposition;
   let testCrypto: Pick<Crypto, 'randomUUID'>;
+
+  const createComposition = (): TNeutralActorResourceComposition => createNeutralActorResourceComposition({
+    tenant: TEST_TENANT,
+    dbService,
+    db,
+    crypto: testCrypto,
+    configPath,
+    dataRoot,
+    eventPublisherService: createTestTenantEvents(),
+  });
+
+  const startFreshComposition = async (): Promise<void> => {
+    composition = createComposition();
+    resources = composition.resourceService;
+    await composition.start();
+  };
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-service-resource-data-'));
@@ -28,44 +45,19 @@ describe('ActorService KV and secret management', () => {
     await dbService.start();
     db = bindTestTenantDb(dbService);
     testCrypto = createTestCrypto('actor-service-resource-data');
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: db.actorResourceEncryptionKey,
-        randomBytes: () => Buffer.alloc(32, 0x5c),
-        randomUUID: () => testUuid('test-key-initial'),
-      }),
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await startFreshComposition();
   });
 
   afterEach(async () => {
-    await service.stop().catch(() => undefined);
+    await composition.stop().catch(() => undefined);
     await db.db.close().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
   });
 
-  test('rejects a second legacy ActorService owner for the same resource root', async () => {
-    const competing = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: db.actorResourceEncryptionKey,
-        randomBytes: () => Buffer.alloc(32, 0x6d),
-        randomUUID: () => testUuid('competing-test-key'),
-      }),
-      eventPublisherService: createTestTenantEvents(),
-    });
+  test('keeps resource ownership fencing in the injected neutral owner', async () => {
+    const competing = createComposition();
     try {
-      await expect(competing.start({} as never)).rejects.toMatchObject({
+      await expect(competing.start()).rejects.toMatchObject({
         code: 'RESOURCE_OWNER_CONFLICT',
       });
     } finally {
@@ -74,29 +66,29 @@ describe('ActorService KV and secret management', () => {
   });
 
   test('uses expected revisions for KV writes and deletes', async () => {
-    const resource = await service.createResource({ kind: 'kv', name: 'Preferences' });
-    await expect(service.setResourceDataEntry({
+    const resource = await resources.createResource({ kind: 'kv', name: 'Preferences' });
+    await expect(resources.setResourceDataEntry({
       resourceId: resource.id,
       key: 'theme',
       expectedRevision: null,
       value: { mode: 'dark' },
     })).resolves.toMatchObject({ kind: 'kv', entry: { key: 'theme', revision: 1 } });
-    await expect(service.setResourceDataEntry({
+    await expect(resources.setResourceDataEntry({
       resourceId: resource.id,
       key: 'theme',
       expectedRevision: 1,
       value: { mode: 'light' },
     })).resolves.toMatchObject({ kind: 'kv', entry: { key: 'theme', revision: 2 } });
 
-    await expect(service.deleteResourceDataEntry({ resourceId: resource.id, key: 'theme', expectedRevision: 1 }))
+    await expect(resources.deleteResourceDataEntry({ resourceId: resource.id, key: 'theme', expectedRevision: 1 }))
       .rejects.toMatchObject({ code: 'KV_ENTRY_CONFLICT' });
-    await expect(service.deleteResourceDataEntry({ resourceId: resource.id, key: 'theme', expectedRevision: 2 }))
+    await expect(resources.deleteResourceDataEntry({ resourceId: resource.id, key: 'theme', expectedRevision: 2 }))
       .resolves.toEqual({ deleted: true });
   });
 
   test('keeps secret plaintext out of management reads and mutation responses', async () => {
-    const resource = await service.createResource({ kind: 'secretStore', name: 'Secrets' });
-    const created = await service.setResourceDataEntry({
+    const resource = await resources.createResource({ kind: 'secretStore', name: 'Secrets' });
+    const created = await resources.setResourceDataEntry({
       resourceId: resource.id,
       key: 'api-token',
       expectedRevision: null,
@@ -105,20 +97,20 @@ describe('ActorService KV and secret management', () => {
     expect(created).toMatchObject({ kind: 'secretStore', entry: { name: 'api-token', revision: 1 } });
     expect(JSON.stringify(created)).not.toContain('must-not-leak');
 
-    await service.setResourceDataEntry({
+    await resources.setResourceDataEntry({
       resourceId: resource.id,
       key: 'api-user',
       expectedRevision: null,
       value: 'also-must-not-leak',
     });
-    await expect(service.countResourceData({ resourceId: resource.id })).resolves.toBe(2);
-    await expect(service.countResourceData({ resourceId: resource.id, search: 'token' })).resolves.toBe(1);
+    await expect(resources.countResourceData({ resourceId: resource.id })).resolves.toBe(2);
+    await expect(resources.countResourceData({ resourceId: resource.id, search: 'token' })).resolves.toBe(1);
 
-    const page = await service.listResourceData({ resourceId: resource.id, search: 'token' });
+    const page = await resources.listResourceData({ resourceId: resource.id, search: 'token' });
     expect(page).toMatchObject({ kind: 'secretStore', entries: [{ name: 'api-token', revision: 1 }] });
     expect(JSON.stringify(page)).not.toContain('must-not-leak');
 
-    const rotated = await service.setResourceDataEntry({
+    const rotated = await resources.setResourceDataEntry({
       resourceId: resource.id,
       key: 'api-token',
       expectedRevision: 1,
@@ -127,13 +119,13 @@ describe('ActorService KV and secret management', () => {
     expect(rotated).toMatchObject({ kind: 'secretStore', entry: { name: 'api-token', revision: 2 } });
     expect(JSON.stringify(rotated)).not.toContain('rotated-must-not-leak');
 
-    const invalid = service.setResourceDataEntry({
+    const invalid = resources.setResourceDataEntry({
       resourceId: resource.id,
       key: 'wrong-type',
       expectedRevision: null,
       value: { plaintext: 'not-a-string' },
     });
-    await expect(invalid).rejects.toBeInstanceOf(ActorResourceError);
+    await expect(invalid).rejects.toBeInstanceOf(ResourceError);
     await expect(invalid).rejects.toMatchObject({ code: 'SECRET_VALUE_INVALID' });
   });
 
@@ -145,70 +137,50 @@ describe('ActorService KV and secret management', () => {
 
     expect(actorServiceHasNoReveal).toBe(true);
     expect(actorResourceServiceHasNoReveal).toBe(true);
-    expect('revealResourceSecret' in service).toBe(false);
-    expect('revealSecret' in service).toBe(false);
+    expect('revealResourceSecret' in composition.actor).toBe(false);
+    expect('revealSecret' in composition.actor).toBe(false);
   });
 
   test('persists isolated KV and secret files across service reconstruction', async () => {
-    const kv = await service.createResource({ kind: 'kv', name: 'Restart KV' });
-    const secrets = await service.createResource({ kind: 'secretStore', name: 'Restart secrets' });
-    await service.setResourceDataEntry({ resourceId: kv.id, key: 'theme', expectedRevision: null, value: 'dark' });
-    await service.setResourceDataEntry({ resourceId: secrets.id, key: 'token', expectedRevision: null, value: 'persistent-secret' });
+    const kv = await resources.createResource({ kind: 'kv', name: 'Restart KV' });
+    const secrets = await resources.createResource({ kind: 'secretStore', name: 'Restart secrets' });
+    await resources.setResourceDataEntry({ resourceId: kv.id, key: 'theme', expectedRevision: null, value: 'dark' });
+    await resources.setResourceDataEntry({ resourceId: secrets.id, key: 'token', expectedRevision: null, value: 'persistent-secret' });
 
     expect((await stat(join(dataRoot, kv.id, 'data.db'))).isFile()).toBe(true);
     expect((await stat(join(dataRoot, secrets.id, 'data.db'))).isFile()).toBe(true);
-    await service.stop();
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: db.actorResourceEncryptionKey,
-        randomBytes: () => Buffer.alloc(32, 0xff),
-        randomUUID: () => testUuid('test-key-restart'),
-      }),
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await composition.stop();
+    await startFreshComposition();
 
-    expect(await service.getResourceDataEntry({ resourceId: kv.id, key: 'theme' })).toMatchObject({
+    expect(await resources.getResourceDataEntry({ resourceId: kv.id, key: 'theme' })).toMatchObject({
       kind: 'kv',
       value: 'dark',
       revision: 1,
     });
-    const secretMetadata = await service.getResourceDataEntry({ resourceId: secrets.id, key: 'token' });
+    const secretMetadata = await resources.getResourceDataEntry({ resourceId: secrets.id, key: 'token' });
     expect(secretMetadata).toMatchObject({ kind: 'secretStore', name: 'token', revision: 1 });
     expect(JSON.stringify(secretMetadata)).not.toContain('persistent-secret');
   });
 
   test('surfaces stable wrong-key reconciliation without replacing the encrypted file', async () => {
-    const secrets = await service.createResource({ kind: 'secretStore', name: 'Wrong key after restart' });
-    await service.setResourceDataEntry({
+    const secrets = await resources.createResource({ kind: 'secretStore', name: 'Wrong key after restart' });
+    await resources.setResourceDataEntry({
       resourceId: secrets.id,
       key: 'token',
       expectedRevision: null,
       value: 'wrong-key-startup-sentinel',
     });
     const databasePath = join(dataRoot, secrets.id, 'data.db');
-    await service.stop();
+    await composition.stop();
     const before = await readFile(databasePath);
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      secretStoreKeyProvider: {
-        getDatabaseHexKey: async () => '00'.repeat(32),
-        getOrCreateDatabaseHexKey: async () => '00'.repeat(32),
-      },
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await db.db.exec(`
+      UPDATE resource_encryption_keys
+      SET key_material = X'${'00'.repeat(32)}'
+      WHERE resource_id = '${secrets.id}'
+    `);
+    await startFreshComposition();
 
-    expect(await service.getResource(secrets.id)).toMatchObject({
+    expect(await resources.getResource(secrets.id)).toMatchObject({
       status: 'error',
       last_error: {
         code: 'SECRET_STORE_DECRYPTION_FAILED',
@@ -219,70 +191,44 @@ describe('ActorService KV and secret management', () => {
   });
 
   test('surfaces stable missing-key reconciliation without native details', async () => {
-    const secrets = await service.createResource({ kind: 'secretStore', name: 'Missing key after restart' });
-    await service.setResourceDataEntry({
+    const secrets = await resources.createResource({ kind: 'secretStore', name: 'Missing key after restart' });
+    await resources.setResourceDataEntry({
       resourceId: secrets.id,
       key: 'token',
       expectedRevision: null,
       value: 'missing-key-startup-sentinel',
     });
-    await service.stop();
+    await composition.stop();
     await (await db.db.prepare(`
       DELETE FROM resource_encryption_keys
       WHERE resource_id = ?
     `)).run(secrets.id);
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: db.actorResourceEncryptionKey,
-        randomBytes: () => Buffer.alloc(32, 0xff),
-        randomUUID: () => testUuid('replacement-key-must-not-be-created'),
-      }),
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await startFreshComposition();
 
-    expect(await service.getResource(secrets.id)).toMatchObject({
+    expect(await resources.getResource(secrets.id)).toMatchObject({
       status: 'error',
       last_error: {
         code: 'SECRET_STORE_KEY_UNAVAILABLE',
         message: 'The secret-store database encryption key is unavailable or invalid.',
       },
     });
-    expect(JSON.stringify(await service.getResource(secrets.id))).not.toContain('missing-key-startup-sentinel');
+    expect(JSON.stringify(await resources.getResource(secrets.id))).not.toContain('missing-key-startup-sentinel');
     await expect(db.actorResourceEncryptionKey.get({ resourceId: secrets.id })).resolves.toBeNull();
     const keyCount = await (await db.db.prepare('SELECT COUNT(*) AS count FROM resource_encryption_keys')).get();
     expect(Number(keyCount?.count)).toBe(0);
   });
 
   test('marks only a missing ready physical resource as error without recreating it', async () => {
-    const missing = await service.createResource({ kind: 'kv', name: 'Missing after restart' });
-    const healthy = await service.createResource({ kind: 'secretStore', name: 'Healthy after restart' });
-    await service.setResourceDataEntry({ resourceId: healthy.id, key: 'token', expectedRevision: null, value: 'healthy-secret' });
-    await service.stop();
+    const missing = await resources.createResource({ kind: 'kv', name: 'Missing after restart' });
+    const healthy = await resources.createResource({ kind: 'secretStore', name: 'Healthy after restart' });
+    await resources.setResourceDataEntry({ resourceId: healthy.id, key: 'token', expectedRevision: null, value: 'healthy-secret' });
+    await composition.stop();
     const missingPath = join(dataRoot, missing.id, 'data.db');
     await rm(missingPath);
 
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      secretStoreKeyProvider: new SecretStoreDatabaseKeyProvider({
-        encryptionKeys: db.actorResourceEncryptionKey,
-        randomBytes: () => Buffer.alloc(32, 0xff),
-        randomUUID: () => testUuid('test-key-healthy-restart'),
-      }),
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
-    expect(await service.getResource(missing.id)).toMatchObject({ status: 'error' });
-    expect(await service.getResource(healthy.id)).toMatchObject({ status: 'ready' });
+    await startFreshComposition();
+    expect(await resources.getResource(missing.id)).toMatchObject({ status: 'error' });
+    expect(await resources.getResource(healthy.id)).toMatchObject({ status: 'ready' });
     expect(await stat(missingPath).catch(() => null)).toBeNull();
   });
 });

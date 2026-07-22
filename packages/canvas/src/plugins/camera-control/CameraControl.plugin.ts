@@ -84,10 +84,6 @@ export function createCameraControlPlugin(): IPlugin<IRuntimeServices, IRuntimeH
         storageKey,
       });
 
-      if (restoredViewport) {
-        camera.setViewport(restoredViewport, { emitChange: false });
-      }
-
       offCameraChange = camera.hooks.change.tap(() => {
         txWriteCameraStateToLocalStorage({ storage }, {
           canvasId: ctx.config.canvasId,
@@ -101,6 +97,10 @@ export function createCameraControlPlugin(): IPlugin<IRuntimeServices, IRuntimeH
       });
 
       ctx.hooks.init.tap(() => {
+        if (restoredViewport) {
+          camera.setViewport(restoredViewport, { emitChange: false });
+        }
+
         handLayer = document.createElement("div");
         handLayer.id = "hand-layer";
         Object.assign(handLayer.style, {

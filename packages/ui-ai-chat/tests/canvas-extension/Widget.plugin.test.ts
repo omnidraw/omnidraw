@@ -64,7 +64,6 @@ describe("Widget plugin catalog reconciliation", () => {
       application: { logError: vi.fn() },
       transport: {
         api: {
-          actors: { definitions: { list: vi.fn(async () => [undefined, []] as const) } },
           agent: { widgets: { catalog: vi.fn(async () => [undefined, {
             generation: "draft-only",
             groups: [],
@@ -94,18 +93,13 @@ describe("Widget plugin catalog reconciliation", () => {
     }));
   });
 
-  test("exposes and commits neutral published placement with an empty legacy actor catalog", async () => {
+  test("exposes and commits neutral published placement with legacy UI disabled", async () => {
     const reference = {
       source: "published" as const,
       name: `v2:${DEFINITION_ID}`,
       revision: REVISION_ID,
     };
     const catalog = widgetCatalog(reference.revision, reference.name);
-    const actorList = vi.fn(async () => [undefined, []] as const);
-    const actorGet = vi.fn();
-    const actorEvents = vi.fn();
-    const actorSnapshot = vi.fn();
-    const actorSendMessage = vi.fn();
     const resolvePlacement = vi.fn(async () => [undefined, {
       ok: true,
       descriptor: {
@@ -137,11 +131,6 @@ describe("Widget plugin catalog reconciliation", () => {
       placeLegacyPublishedWidget,
     };
     const transportApi = {
-      actors: {
-        events: actorEvents,
-        definitions: { list: actorList, get: actorGet },
-        instances: { snapshot: actorSnapshot, sendMessage: actorSendMessage },
-      },
       agent: {
         widgets: {
           catalog: vi.fn(async () => [undefined, catalog] as const),
@@ -176,7 +165,6 @@ describe("Widget plugin catalog reconciliation", () => {
     plugin.apply({ hooks } as never);
     await hooks.initAsync.promise();
 
-    expect(actorList).toHaveBeenCalledOnce();
     expect(widgetManager.registerPlacementTool).toHaveBeenCalledWith(expect.objectContaining({
       label: "Weather",
       tone: undefined,
@@ -196,31 +184,14 @@ describe("Widget plugin catalog reconciliation", () => {
       bounds: { x: 40, y: 50, width: 360, height: 320 },
     });
     expect(placeLegacyPublishedWidget).not.toHaveBeenCalled();
-    expect(actorGet).not.toHaveBeenCalled();
-    expect(actorEvents).not.toHaveBeenCalled();
-    expect(actorSnapshot).not.toHaveBeenCalled();
-    expect(actorSendMessage).not.toHaveBeenCalled();
   });
 
-  test("keeps an unchanged published widget mounted across catalog refreshes", async () => {
+  test("keeps unchanged placement tools stable across catalog refreshes", async () => {
     let catalog = widgetCatalog("revision-1");
-    let updatedAt = "2026-07-20T00:00:00.000Z";
     let invalidateCatalog = () => undefined;
-    const list = vi.fn(async () => [undefined, [{
-      name: "Weather",
-      health: "ready",
-      error: null,
-      updated_at: updatedAt,
-    }]] as const);
-    const get = vi.fn(async () => [undefined, {
-      def: {
-        name: "Weather",
-        widget: { tool: { label: "Weather", icon: null } },
-      },
-      widgetCode: [{ path: "main.ts", content: "export default {}" }],
-    }] as const);
     const catalogRequest = vi.fn(async () => [undefined, catalog] as const);
-    const registerWidget = vi.fn();
+    const registerPlacementTool = vi.fn();
+    const unregisterPlacementTool = vi.fn();
     const cancelActiveIfUnavailable = vi.fn();
     const hooks = {
       init: new SyncHook(),
@@ -238,16 +209,12 @@ describe("Widget plugin catalog reconciliation", () => {
       },
       transport: {
         api: {
-          actors: { definitions: { list, get } },
           agent: { widgets: { catalog: catalogRequest } },
         },
       },
       widgetManager: {
-        registerWidget,
-        unregisterWidget: vi.fn(),
-        registerPlacementTool: vi.fn(),
-        unregisterPlacementTool: vi.fn(),
-        setDefinitionError: vi.fn(),
+        registerPlacementTool,
+        unregisterPlacementTool,
         setGlobalDefinitionError: vi.fn(),
         completeDefinitionDiscovery: vi.fn(),
       },
@@ -261,26 +228,29 @@ describe("Widget plugin catalog reconciliation", () => {
     hooks.init.call();
     await hooks.initAsync.promise();
 
-    expect(registerWidget).toHaveBeenCalledOnce();
-    expect(get).toHaveBeenCalledOnce();
+    expect(registerPlacementTool).toHaveBeenCalledOnce();
 
     invalidateCatalog();
     await vi.waitFor(() => expect(catalogRequest).toHaveBeenCalledTimes(2));
-    expect(registerWidget).toHaveBeenCalledOnce();
-    expect(get).toHaveBeenCalledOnce();
+    expect(registerPlacementTool).toHaveBeenCalledOnce();
     expect(cancelActiveIfUnavailable).toHaveBeenLastCalledWith([
       { source: "published", name: "Weather", revision: "revision-1" },
     ]);
 
     catalog = widgetCatalog("revision-2");
-    updatedAt = "2026-07-20T00:01:00.000Z";
     invalidateCatalog();
-    await vi.waitFor(() => expect(registerWidget).toHaveBeenCalledTimes(2));
-    expect(get).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(registerPlacementTool).toHaveBeenCalledTimes(2));
+    expect(registerPlacementTool).toHaveBeenLastCalledWith(expect.objectContaining({
+      placement: expect.objectContaining({
+        reference: { source: "published", name: "Weather", revision: "revision-2" },
+      }),
+    }));
+    expect(unregisterPlacementTool).not.toHaveBeenCalled();
     expect(cancelActiveIfUnavailable).toHaveBeenLastCalledWith([
       { source: "published", name: "Weather", revision: "revision-2" },
     ]);
 
     hooks.destroy.call();
+    expect(unregisterPlacementTool).toHaveBeenCalledWith("widget-placement:published:Weather");
   });
 });

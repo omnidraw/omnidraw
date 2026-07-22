@@ -1,6 +1,5 @@
 import { ORPCError } from '@orpc/server';
-import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
-import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import { ZVibecanvasToolIcon, type TVibecanvasToolIcon } from '@vibecanvas/widget-contract';
 import type { TJson } from '@vibecanvas/service-db/model';
 import type { TWidgetCatalog, TWidgetCatalogGroup } from '@vibecanvas/service-agent/widget-management/types';
 import { baseAgentOs } from './orpc';

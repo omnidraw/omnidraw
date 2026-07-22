@@ -218,8 +218,9 @@
     },
     "packages/runtime": {
       "name": "@vibecanvas/runtime",
+      "version": "0.1.0",
       "dependencies": {
-        "@vibecanvas/tapable": "workspace:*",
+        "@vibecanvas/tenant-core": "workspace:*",
       },
     },
     "packages/sdk": {
@@ -240,9 +241,9 @@
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
+        "@vibecanvas/widget-contract": "workspace:*",
         "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
-        "lucide-static": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -352,7 +353,13 @@
     "packages/ui-actor-legacy": {
       "name": "@vibecanvas/ui-actor-legacy",
       "dependencies": {
+        "@arrow-js/core": "^1.0.6",
+        "@arrow-js/sandbox": "1.0.6",
+        "@vibecanvas/api": "workspace:*",
+        "@vibecanvas/orpc-client": "workspace:*",
         "@vibecanvas/service-actor": "workspace:*",
+        "@vibecanvas/service-db": "workspace:*",
+        "@vibecanvas/ui-ai-chat": "workspace:*",
         "solid-js": "catalog:",
       },
       "devDependencies": {
@@ -370,17 +377,14 @@
         "@arrow-js/core": "^1.0.6",
         "@arrow-js/sandbox": "1.0.6",
         "@kobalte/core": "catalog:",
-        "@vibecanvas/api": "workspace:*",
         "@vibecanvas/canvas": "workspace:*",
         "@vibecanvas/orpc-client": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-automerge": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-theme": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
         "@vibecanvas/tapable": "workspace:*",
-        "@vibecanvas/ui-actor-legacy": "workspace:*",
         "@vibecanvas/widget-contract": "workspace:*",
         "dompurify": "^3.4.11",
         "konva": "^10.3.0",
@@ -411,7 +415,19 @@
       "dependencies": {
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/tenant-core": "workspace:*",
+        "lucide-static": "catalog:",
         "zod": "catalog:",
+      },
+    },
+    "scripts/fixtures/external-composition": {
+      "name": "@vibecanvas-fixtures/private-managed-composition",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vibecanvas/function-runtime": "0.1.0",
+        "@vibecanvas/resource-runtime": "0.1.0",
+        "@vibecanvas/runtime": "0.1.0",
+        "@vibecanvas/tenant-core": "0.1.0",
+        "@vibecanvas/widget-contract": "0.1.0",
       },
     },
   },
@@ -1309,6 +1325,8 @@
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
 
     "@ungap/structured-clone": ["@ungap/structured-clone@1.3.0", "", {}, "sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g=="],
+
+    "@vibecanvas-fixtures/private-managed-composition": ["@vibecanvas-fixtures/private-managed-composition@workspace:scripts/fixtures/external-composition"],
 
     "@vibecanvas/api": ["@vibecanvas/api@workspace:packages/api"],
 

@@ -24,6 +24,9 @@ export default defineConfig({
         target: backendTarget,
         ws: true
       },
+      '/health': {
+        target: backendTarget
+      },
       '/files': {
         target: backendTarget
       },

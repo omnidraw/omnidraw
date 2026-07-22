@@ -1,6 +1,6 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import { ZVibecanvasToolIcon } from '@vibecanvas/widget-contract';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type {
   TWidgetDraftSummary,
@@ -198,7 +198,7 @@ export type {
   TWidgetPlacementSummary,
   TWidgetCatalogPreviewSummary,
 } from '@vibecanvas/service-agent/widget-management/types';
-export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/service-actor/core/fn.widget-frame';
+export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
 
 export type TAgentChatConnect = {
   vcJson: TVibecanvasJson | null;

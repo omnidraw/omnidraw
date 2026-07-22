@@ -565,6 +565,8 @@ describe('ResourceService ownership', () => {
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
       await expect(service.inspectDbResource(tenant, { resourceId: database.id, target: 'live' }))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
+      await expect(service.listDbApplies(tenant, { resourceId: database.id }))
+        .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
       await expect(service.confirmDbApply(tenant, draft.draft.id))
         .rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
       await expect(service.restoreDbBackup(tenant, database.id, 'missing-apply'))
@@ -590,6 +592,76 @@ describe('ResourceService ownership', () => {
         .resolves.toMatchObject({ draft: { status: 'editing' } });
       await expect(service.getResource(tenant, kv.id)).resolves.toMatchObject({ id: kv.id });
     } finally {
+      await service?.stop().catch(() => undefined);
+      await dbService.stop().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps apply and restore status reads observable while a database resource is migrating', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-migration-status-'));
+    const dbService = new DbServiceTurso({
+      databasePath: ':memory:',
+      dataDir: root,
+      cacheDir: root,
+    });
+    let releaseDrain!: () => void;
+    let markDrainStarted!: () => void;
+    const drainGate = new Promise<void>((resolve) => { releaseDrain = resolve; });
+    const drainStarted = new Promise<void>((resolve) => { markDrainStarted = resolve; });
+    const blockingUseCoordinator: IResourceUseCoordinator = {
+      inspect: useCoordinator.inspect,
+      drain: async (context, request) => {
+        markDrainStarted();
+        await drainGate;
+        return useCoordinator.drain(context, request);
+      },
+      release: useCoordinator.release,
+    };
+    let service: ResourceService | null = null;
+    try {
+      await dbService.start();
+      const controlStore = new ResourceControlStoreTurso(dbService.db);
+      service = new ResourceService({
+        tenant,
+        db: dbService.forTenant(tenant),
+        controlStore,
+        dataRoot: root,
+        useCoordinator: blockingUseCoordinator,
+      });
+      await service.start({ config: {}, hooks: {} });
+      const database = await service.createResource(tenant, {
+        kind: 'db',
+        name: 'Observable migration status',
+      });
+      const draft = await service.createDbDraft(tenant, database.id, 'Observable apply');
+      const apply = await service.confirmDbApply(tenant, draft.draft.id);
+
+      await drainStarted;
+      await expect(controlStore.getResource(tenant, database.id)).resolves.toMatchObject({
+        status: 'migrating',
+      });
+      await expect(service.getDbApply(tenant, apply.id)).resolves.toMatchObject({
+        apply: { id: apply.id },
+      });
+      await expect(service.listDbApplies(tenant, { resourceId: database.id })).resolves.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: apply.id })]),
+      );
+      await expect(service.getDbRestoreStatus(tenant, apply.id)).resolves.toMatchObject({
+        apply: { id: apply.id },
+      });
+
+      releaseDrain();
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const status = (await service.getDbApply(tenant, apply.id)).apply.status;
+        if (['succeeded', 'failed', 'recovered'].includes(status)) break;
+        await Bun.sleep(10);
+      }
+      await expect(service.getDbApply(tenant, apply.id)).resolves.toMatchObject({
+        apply: { status: 'succeeded' },
+      });
+    } finally {
+      releaseDrain();
       await service?.stop().catch(() => undefined);
       await dbService.stop().catch(() => undefined);
       await rm(root, { recursive: true, force: true });

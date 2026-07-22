@@ -1,5 +1,5 @@
-import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TVibecanvasToolIcon } from '@vibecanvas/widget-contract';
 
 export type TWidgetManifestPatch = {
   name?: string;

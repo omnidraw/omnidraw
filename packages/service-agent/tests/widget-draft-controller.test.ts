@@ -741,13 +741,16 @@ describe('WidgetDraftController v2 authoring', () => {
       published: { revision: revision.id },
       draft: { draftId: draft.draftId },
     });
-    expect(await service.getWidgetDetail(target.name, 'published')).toMatchObject({
+    const publishedDetail = await service.getWidgetDetail(target.name, 'published');
+    expect(publishedDetail).toMatchObject({
       name: target.name,
       source: 'published',
       relation: 'same',
       manifest: { schemaVersion: 2, slug: target.slug },
       sibling: { draftId: draft.draftId },
+      functions: [{ exportName: 'lookup', effect: 'fn' }],
     });
+    expect('modulePath' in (publishedDetail?.functions[0] ?? {})).toBe(false);
     expect(await service.listWidgetFiles(target.name, 'published')).toEqual(expect.arrayContaining([
       { path: 'ui/main.ts', kind: 'file', size: expect.any(Number) },
       { path: 'server/main.ts', kind: 'file', size: expect.any(Number) },

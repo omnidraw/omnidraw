@@ -16,7 +16,6 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import { ZWidgetManifestV2, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
 import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
@@ -39,6 +38,10 @@ import type {
 type TWidgetWorkspaceConfig = {
   dataPath: string;
   configPath: string;
+  parseLegacyManifest?: (value: unknown) => Readonly<{
+    name: string;
+    kind?: 'widget' | 'actor-widget' | null;
+  }> | null;
   platform?: NodeJS.Platform;
   createId?: () => string;
   copyDirectory?: typeof cp;
@@ -107,6 +110,7 @@ export class WidgetWorkspace {
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
   readonly #copyDirectory: typeof cp;
+  readonly #parseLegacyManifest?: TWidgetWorkspaceConfig['parseLegacyManifest'];
   readonly #writeQueues = new Map<string, Promise<unknown>>();
   readonly #activePublishes = new Set<string>();
   readonly #activeInstalledPublishes = new Set<string>();
@@ -125,6 +129,7 @@ export class WidgetWorkspace {
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
     this.#copyDirectory = config.copyDirectory ?? cp;
+    this.#parseLegacyManifest = config.parseLegacyManifest;
   }
 
   async init(): Promise<void> {
@@ -603,9 +608,9 @@ export class WidgetWorkspace {
         if (v2.success) {
           return { ok: true as const, name: v2.data.name, kind: 'widget' as const };
         }
-        const parsed = ZVibecanvasJson.safeParse(value);
-        return parsed.success
-          ? { ok: true as const, name: parsed.data.name, kind: parsed.data.kind ?? null }
+        const parsed = this.#parseLegacyManifest?.(value) ?? null;
+        return parsed
+          ? { ok: true as const, name: parsed.name, kind: parsed.kind ?? null }
           : { ok: false as const };
       },
     }, {

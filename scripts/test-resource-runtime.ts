@@ -27,27 +27,6 @@ const suites: readonly TResourceRuntimeSuite[] = [
     command: ['bun', 'test', 'packages/service-db/src/tests/ResourceControlStoreTurso.test.ts'],
   },
   {
-    name: 'database WAL recovery, restore, concurrent calls, and bounded handles',
-    command: [
-      'bun',
-      'test',
-      'packages/service-actor/tests/DbResource.test.ts',
-      'packages/service-actor/tests/ActorResourceManager.test.ts',
-      'packages/service-actor/tests/ActorService.resource-apply.test.ts',
-      '--timeout=30000',
-    ],
-  },
-  {
-    name: 'KV and secret encryption, conversion recovery, concurrency, and handle bounds',
-    command: [
-      'bun',
-      'test',
-      'packages/service-actor/tests/ActorResourceKeyValueStore.test.ts',
-      'packages/service-actor/tests/SecretStoreKeyProvider.test.ts',
-      '--timeout=30000',
-    ],
-  },
-  {
     name: 'neutral resource API, legacy delegation, and tenant-first composition',
     command: [
       'bun',
@@ -68,6 +47,7 @@ const suites: readonly TResourceRuntimeSuite[] = [
       'apps/cli/tests/ResourceUseCoordinatorBridge.test.ts',
       'apps/cli/tests/TenantServicePool.test.ts',
       'apps/cli/tests/LazyTenantServiceCapability.test.ts',
+      'packages/service-actor/tests/ActorService.resource-apply.test.ts',
       'packages/service-actor/tests/ActorService.resource-data.test.ts',
       '--timeout=30000',
     ],

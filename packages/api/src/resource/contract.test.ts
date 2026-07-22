@@ -1,6 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { actorsContract } from '../actor/contract';
-import { actorsHandlers } from '../actor/handlers';
 import { resourceContract } from './contract';
 import { resourceHandlers } from './handlers';
 
@@ -28,14 +26,5 @@ describe('neutral resource API contract', () => {
     expect(collectProcedurePaths(resourceContract)).toHaveLength(39);
     expect(collectProcedurePaths(resourceHandlers).toSorted())
       .toEqual(collectProcedurePaths(resourceContract).toSorted());
-  });
-
-  test('keeps legacy actor routes as aliases of the neutral contract and handlers', () => {
-    for (const group of RESOURCE_GROUPS) {
-      const key = group as keyof typeof resourceContract;
-      expect(collectProcedurePaths(actorsContract[key]))
-        .toEqual(collectProcedurePaths(resourceContract[key]));
-      expect(actorsHandlers[key]).toBe(resourceHandlers[key]);
-    }
   });
 });

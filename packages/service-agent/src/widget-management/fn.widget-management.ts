@@ -1,6 +1,6 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
-import { fnNormalizeWidgetFrame } from '@vibecanvas/service-actor/core/fn.widget-frame';
+import { fnNormalizeWidgetFrame } from '@vibecanvas/widget-contract/fn.widget-frame';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 import { fnNormalizeWidgetName } from '../workspace/fn.names';
 import type {

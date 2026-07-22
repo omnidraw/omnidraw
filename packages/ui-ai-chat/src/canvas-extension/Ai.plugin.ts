@@ -175,38 +175,40 @@ export function createAiPlugin(portal: {
       const tool = ctx.services.require("tool");
       const widgetManager = portal.widgetManager;
 
-      widgetManager.registerWidget({
-        id: AI_WIDGET_KIND,
-        dataType: "ui-widget",
-        tool: {
-          label: "AI Chat",
-          icon: AI_WIDGET_ICON,
-          shortcuts: ["Q"],
-          priority: 5,
-        },
-        createInitialPayload: () => createAiWidgetPayload({ createSessionId }),
-        createClonePayload: (sourcePayload) => ({
-          ...sourcePayload,
-          sessionId: createSessionId(),
-        } satisfies TAiWidgetPayload),
-        titleBarActions: [{ id: "settings", label: "Settings" }],
-        renderDom: ({ root, element, titleBar }) => {
-          if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");
-          return mountAiWidget({
-            api: portal.api,
-            application: portal.application,
-            browser: portal.browser,
-            crdt,
-            scene,
-            tool,
-            createSessionId,
-            openWidgetPreview: portal.openWidgetPreview,
-          }, { root, element, id: element.id, titleBar });
-        },
+      ctx.hooks.init.tap(() => {
+        widgetManager.registerWidget({
+          id: AI_WIDGET_KIND,
+          dataType: "ui-widget",
+          tool: {
+            label: "AI Chat",
+            icon: AI_WIDGET_ICON,
+            shortcuts: ["Q"],
+            priority: 5,
+          },
+          createInitialPayload: () => createAiWidgetPayload({ createSessionId }),
+          createClonePayload: (sourcePayload) => ({
+            ...sourcePayload,
+            sessionId: createSessionId(),
+          } satisfies TAiWidgetPayload),
+          titleBarActions: [{ id: "settings", label: "Settings" }],
+          renderDom: ({ root, element, titleBar }) => {
+            if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");
+            return mountAiWidget({
+              api: portal.api,
+              application: portal.application,
+              browser: portal.browser,
+              crdt,
+              scene,
+              tool,
+              createSessionId,
+              openWidgetPreview: portal.openWidgetPreview,
+            }, { root, element, id: element.id, titleBar });
+          },
+        });
       });
 
       ctx.hooks.destroy.tap(() => {
-        tool.unregisterTool(AI_WIDGET_KIND);
+        widgetManager.unregisterWidget(AI_WIDGET_KIND);
       });
     },
   };

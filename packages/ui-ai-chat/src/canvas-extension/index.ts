@@ -17,6 +17,7 @@ import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 import { fnWidgetRuntimeLocalTargetMatchesElement } from '../widget-runtime/fn.runtime-identity';
 import type { TWidgetCollaborativeStatePort } from '../widget-runtime/interface';
 import { widgetUiArtifactMount } from '../widget-runtime/mount-widget-ui-artifact';
+import type { TLegacyActorUiCapability } from '../legacy';
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -26,6 +27,7 @@ export type TCreateAiChatCanvasExtensionArgs = {
   application: TAiChatApplicationPort;
   widgetPlacement?: TWidgetPlacementCoordinator;
   widgetCollaborativeState?: TWidgetCollaborativeStatePort;
+  legacy?: TLegacyActorUiCapability;
 };
 
 export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionArgs): ICanvasRuntimeExtension {
@@ -83,7 +85,9 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
         cameraService: context.services.camera,
         confirmDialogService: context.services.confirmDialog,
         browser: args.widgetBrowser,
-        transport: args.widgetTransport,
+        legacy: args.legacy?.createRuntimeAdapter({
+          logging: context.services.logging,
+        }),
         neutralHost: {
           canvasId: context.config.canvasId,
           runtime: widgetRuntime,
@@ -117,6 +121,12 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
           { name: "widget-placement", startOrder: 122, service: widgetPlacement },
         ],
         plugins: [
+          ...(args.legacy
+            ? [args.legacy.createWidgetPlugin({
+                application: args.application,
+                widgetManager,
+              })]
+            : []),
           createDraftPreviewPlugin({ previewFrames, widgetManager }),
           createAiPlugin({
             api: args.chatApi,
@@ -148,3 +158,4 @@ export type {
 } from "../ports";
 export { createWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
 export type { TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
+export type { TLegacyActorUiCapability } from '../legacy';

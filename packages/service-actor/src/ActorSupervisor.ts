@@ -13,7 +13,7 @@ import { fnSelectActorDefinitions, type TActorDefinitionCandidate } from "./core
 import { txDeleteActorDefinitionFiles, txSyncDbActorDefinitions } from "./core/tx.actor-definitions";
 import { Actor, type TActorEvent } from "./Actor";
 import { fnNormalizeWidgetError } from './core/fn.widget-error';
-import type { TActorResourceGateway, TActorStartAdmission } from './resources/resource-types';
+import type { TActorResourceGateway, TActorStartAdmission } from './legacy/resource-protocol';
 
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
@@ -53,6 +53,7 @@ interface IActorSupervisorConfig {
     resourceIds: readonly string[]
     succeeded: boolean
   }) => Promise<void>
+  actorShutdownTimeoutMs?: number
 }
 
 export class ActorSupervisor {
@@ -72,6 +73,10 @@ export class ActorSupervisor {
   constructor(config: IActorSupervisorConfig) {
     this.#config = config
     txEnsureWidgetFolder({ existsSync, mkdirSync }, { absWidgetDir: this.#config.absWidgetDir })
+  }
+
+  getActiveProcessCount(): number {
+    return Object.values(this.actorMap).filter((actor) => actor.hasActiveProcess()).length
   }
 
   async init() {
@@ -102,69 +107,6 @@ export class ActorSupervisor {
         description: error instanceof Error ? error.message : String(error),
       })
     })
-  }
-
-  async closeDefinitionActors(defName: string): Promise<void> {
-    const instances = await this.#config.db.actor.listInstances()
-    const matching = instances.filter((instance) => instance.actor_definition_name === defName)
-    for (const instance of matching) {
-      const actor = this.actorMap[instance.id]
-      if (!actor) continue
-      if (!await actor.closeAndWait()) {
-        throw new Error(`Actor instance '${instance.id}' did not stop for definition publication.`)
-      }
-      delete this.actorMap[instance.id]
-    }
-  }
-
-  async completeDefinitionPublication(defName: string, reloadInstances: boolean): Promise<void> {
-    if (reloadInstances) await this.reloadDefinitionInstances(defName)
-    else await this.loadMissingActorInstances()
-    await this.reloadConnections()
-  }
-
-  async reloadDefinitionInstances(defName: string) {
-    const def = this.vibecanvasDefMap[defName]
-    if (!def) return
-
-    const instances = await this.#config.db.actor.listInstances()
-    const matchingInstances = instances.filter((instance) => instance.actor_definition_name === defName)
-
-    for (const instance of matchingInstances) {
-      const actor = this.actorMap[instance.id]
-      if (!actor && instance.status === 'stopped') {
-        continue
-      }
-      if (!actor && instance.status === 'blocked') {
-        await this.loadActorInstance(instance, { respectPersistedStop: true })
-        continue
-      }
-      if (actor) {
-        actor.close()
-        delete this.actorMap[instance.id]
-      }
-
-      await this.#config.db.actor.updateInstanceMachine({
-        id: instance.id,
-        machine_state: def.actor.initialState,
-        machine_context: def.actor.initialData,
-      })
-      await this.#config.db.actor.updateInstanceStatus({ id: instance.id, status: 'created' })
-      await this.loadActorInstance({
-        ...instance,
-        machine_state: def.actor.initialState,
-        machine_context: def.actor.initialData,
-        status: 'created',
-      })
-    }
-
-    if (matchingInstances.length > 0) {
-      this.#config.eventPublisherService.publishNotification({
-        type: 'success',
-        title: 'Widget instances reloaded',
-        description: `Reloaded ${matchingInstances.length} instance(s) for ${defName}.`,
-      })
-    }
   }
 
   private async reloadDefinitions() {
@@ -361,7 +303,7 @@ export class ActorSupervisor {
       actor.start()
       await actor.waitUntilReady()
       if (!this.canContinueActorStart(epoch)) {
-        actor.close()
+        await this.closeActorProcess(actor, 'shutdown during startup')
         delete this.actorMap[actor.getId()]
         await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
         await completeAdmission(false)
@@ -369,7 +311,7 @@ export class ActorSupervisor {
       }
       await this.#config.db.actor.updateInstanceHealth({ id: actor.getId(), status: 'running', last_error: null })
       if (!this.canContinueActorStart(epoch)) {
-        actor.close()
+        await this.closeActorProcess(actor, 'shutdown after startup')
         delete this.actorMap[actor.getId()]
         await this.#config.db.actor.updateInstanceHealth({ id: actorInst.id, status: 'stopped', last_error: null })
         await completeAdmission(false)
@@ -379,8 +321,12 @@ export class ActorSupervisor {
       return actor
     } catch (cause) {
       if (actor) {
-        try { actor.close() } catch { /* best-effort cleanup */ }
-        delete this.actorMap[actor.getId()]
+        try {
+          await this.closeActorProcess(actor, 'failed startup')
+          delete this.actorMap[actor.getId()]
+        } catch (cleanupError) {
+          throw new AggregateError([cause, cleanupError], `Actor instance '${actor.getId()}' startup cleanup failed.`)
+        }
       }
       if (!this.canContinueActorStart(epoch)) {
         try {
@@ -538,13 +484,25 @@ export class ActorSupervisor {
   async closeActors(): Promise<void> {
     this.#acceptActorStarts = false
     this.#actorStartEpoch += 1
-    Object.values(this.actorMap).forEach(actor => actor.close())
-    this.actorMap = {}
+    const actorsAtShutdownBarrier = Object.values(this.actorMap)
+    actorsAtShutdownBarrier.forEach(actor => actor.close())
+    await Promise.allSettled([...this.#actorStartOperations])
+    const actors = [...new Set([
+      ...actorsAtShutdownBarrier,
+      ...Object.values(this.actorMap),
+    ])]
+    const results = await Promise.allSettled(actors.map(async (actor) => {
+      await this.closeActorProcess(actor, 'service shutdown')
+      if (this.actorMap[actor.getId()] === actor) delete this.actorMap[actor.getId()]
+    }))
     this.connectionMap = {}
     this.#snapshotPersistenceRevision.clear()
-    await Promise.allSettled([...this.#actorStartOperations])
-    Object.values(this.actorMap).forEach(actor => actor.close())
-    this.actorMap = {}
+    const failures = results
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason)
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'One or more actor child processes did not exit during shutdown.')
+    }
   }
 
   public async createInstance(defName: string, canvasId: string, elementId: string): Promise<Actor | null> {
@@ -577,7 +535,12 @@ export class ActorSupervisor {
     const actor = this.actorMap[instanceId]
     if (actor) {
       await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'stopping'})
-      actor.close()
+      try {
+        await this.closeActorProcess(actor, 'instance removal')
+      } catch (error) {
+        await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'error'})
+        throw error
+      }
       await this.#config.db.actor.updateInstanceStatus({id: actor.getId(), status: 'stopped'})
       delete this.actorMap[instanceId]
     }
@@ -604,12 +567,13 @@ export class ActorSupervisor {
     const actor = this.actorMap[instanceId]
     if (!actor) return false
     await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'stopping' })
-    const stopped = await actor.closeAndWait()
-    delete this.actorMap[instanceId]
-    if (!stopped) {
+    try {
+      await this.closeActorProcess(actor, 'resource apply')
+    } catch {
       await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'error' })
       return false
     }
+    delete this.actorMap[instanceId]
     await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'blocked' })
     return true
   }
@@ -623,6 +587,13 @@ export class ActorSupervisor {
     await this.#config.db.actor.updateInstanceStatus({ id: instanceId, status: 'created' })
     if (!this.#acceptActorStarts) return null
     return this.loadActorInstance({ ...instance, status: 'created' })
+  }
+
+  private async closeActorProcess(actor: Actor, context: string): Promise<void> {
+    const stopped = await actor.closeAndWait(this.#config.actorShutdownTimeoutMs)
+    if (!stopped) {
+      throw new Error(`Actor instance '${actor.getId()}' did not exit during ${context}.`)
+    }
   }
 
   public async deleteDefinition(defName: string): Promise<boolean> {

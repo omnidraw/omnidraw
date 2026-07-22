@@ -1,4 +1,3 @@
-import { resourceHandlers } from '../resource/handlers';
 import { apiActorSnapshot } from './api.actor-snapshot';
 import { apiDeleteDefinition } from './api.def-delete';
 import { apiGetDefinitions } from './api.def-get';
@@ -18,7 +17,6 @@ const actorsHandlers = {
     snapshot: apiActorSnapshot,
     sendMessage: apiActorSendMessage,
   },
-  ...resourceHandlers,
 };
 
 export { actorsHandlers, baseActorsOs };

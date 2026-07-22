@@ -10,6 +10,8 @@ import type {
   TFunctionAttempt,
   TFunctionAttemptId,
   TFunctionDefinition,
+  TFunctionDispatchRequest,
+  TFunctionExecutionOutcome,
   TFunctionInvocationEnvelope,
   TFunctionInvocationId,
   TFunctionInvocationSubject,
@@ -152,6 +154,21 @@ export interface IScheduler {
 export interface IExecutorCapacityAllocator {
   allocate(request: TExecutorCapacityRequest): Promise<TExecutorCapacityLease | null>;
   release(lease: TExecutorCapacityLease): Promise<void>;
+}
+
+/** Placement-owned invocation admission and scheduling edge. */
+export interface IFunctionDispatcher {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  invoke(
+    tenant: TTenantContext,
+    request: TFunctionDispatchRequest,
+  ): Promise<TInvocationCreateResult>;
+}
+
+/** One-attempt execution edge. Scheduling and fleet allocation remain outside it. */
+export interface IFunctionExecutor {
+  execute(envelope: TFunctionInvocationEnvelope): Promise<TFunctionExecutionOutcome>;
 }
 
 export interface ISandboxDriver {

@@ -5,6 +5,7 @@ export interface ICliConfig {
   cwd: string;
   dev: boolean;
   compiled: boolean;
+  legacyActorEnabled: boolean;
   version: string;
   command: 'serve' | 'upgrade' | 'uninstall' | 'unknown';
   subcommand?: string;

@@ -1,6 +1,12 @@
 export { createRuntime, createServiceRegistry, topoSort } from './create-runtime';
 export type { IRuntime } from './create-runtime';
 export type {
+  ICollaborationService,
+  IScopedEventBus,
+  TScopedEventRecord,
+  TScopedEventTopic,
+} from './composition';
+export type {
   IEventSource,
   IPlugin,
   IPluginContext,

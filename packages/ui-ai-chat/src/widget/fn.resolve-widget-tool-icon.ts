@@ -1,4 +1,4 @@
-import type { TVibecanvasToolIcon } from "@vibecanvas/service-actor/core/tool-icon";
+import type { TVibecanvasToolIcon } from '@vibecanvas/widget-contract';
 import { LUCIDE_STATIC_ICON_BY_KEY } from "./icons/CONSTANTS";
 
 export function fnResolveWidgetToolIcon(icon: TVibecanvasToolIcon | undefined) {

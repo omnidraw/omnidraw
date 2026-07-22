@@ -3,11 +3,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { IFunctionControlStore, ISandboxDriver } from '../interface';
+import type { IFunctionControlStore, IFunctionExecutor, ISandboxDriver } from '../interface';
 import type {
   TAttemptTerminalStatus,
   TFunctionAttempt,
   TFunctionFailure,
+  TFunctionExecutionOutcome,
   TFunctionInvocationEnvelope,
   TInvocationAttemptCompletionResult,
   TInvocationLease,
@@ -35,13 +36,7 @@ export type TFunctionExecutorConfig = Readonly<{
   createAttemptId?: () => string;
 }>;
 
-export type TFunctionExecutionOutcome =
-  | Readonly<{ status: 'not_claimed'; reason: string }>
-  | Readonly<{
-      status: 'completed';
-      completion: TInvocationAttemptCompletionResult;
-      attempt: TFunctionAttempt;
-    }>;
+export type { TFunctionExecutionOutcome } from '../types';
 
 type TTerminal = Readonly<{
   status: Exclude<TAttemptTerminalStatus, 'lost'>;
@@ -135,7 +130,7 @@ function definitionMatchesEnvelope(
     && definition.runtimeAbi === envelope.runtimeAbi;
 }
 
-export class FunctionExecutor {
+export class FunctionExecutor implements IFunctionExecutor {
   readonly #config: TFunctionExecutorConfig;
   readonly #leaseTtlMs: number;
   readonly #heartbeatMs: number;

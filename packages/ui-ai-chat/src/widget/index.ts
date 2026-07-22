@@ -8,3 +8,4 @@ export type {
   TWidgetTitleBarActionState,
   TWidgetTitleBarPortal,
 } from "./interface";
+export type { TLegacyWidgetSandboxMountArgs } from '../legacy';

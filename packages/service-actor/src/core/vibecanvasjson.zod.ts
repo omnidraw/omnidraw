@@ -1,6 +1,6 @@
 import { z } from 'zod';
+import { ZVibecanvasToolIcon } from '@vibecanvas/widget-contract';
 
-import { LUCIDE_STATIC_ICON_KEYS, isLucideStaticIconKey } from './tool-icon';
 import type {
   TActorData,
   TActorNonErrorState,
@@ -11,7 +11,6 @@ import type {
   TTransition,
   TVibecanvasJson,
 } from './types';
-import type { TVibecanvasToolIcon } from './tool-icon';
 import {
   WIDGET_FRAME_MAX_HEIGHT,
   WIDGET_FRAME_MAX_WIDTH,
@@ -285,15 +284,7 @@ export const ZActorNonErrorState = z.custom<TActorNonErrorState>(
   (value) => typeof value === 'string' && /^(booting|ready|busy|waiting)(\..*)?$/.test(value),
 );
 
-export const ZVibecanvasToolIcon: z.ZodType<TVibecanvasToolIcon> = z.object({
-  lucidIcon: z.custom<string>(
-    isLucideStaticIconKey,
-    `expected one of: ${LUCIDE_STATIC_ICON_KEYS.join(', ')}`,
-  ).optional(),
-  svgIcon: z.string().min(1).optional(),
-}).strict().refine((icon) => icon.lucidIcon !== undefined || icon.svgIcon !== undefined, {
-  message: 'expected at least one of lucidIcon or svgIcon',
-});
+export { ZVibecanvasToolIcon };
 
 export const ZActorErrorHandler = z.object({
   func: z.array(ZFunctionName),

@@ -4,6 +4,8 @@
 
 export type {
   IExecutorCapacityAllocator,
+  IFunctionDispatcher,
+  IFunctionExecutor,
   IFunctionControlStore,
   IFunctionRegistry,
   IInvocationLeaseAuthority,
@@ -21,6 +23,8 @@ export type {
   TFunctionAttempt,
   TFunctionAttemptId,
   TFunctionDefinition,
+  TFunctionDispatchRequest,
+  TFunctionExecutionOutcome,
   TFunctionFailure,
   TFunctionId,
   TFunctionInvocationEnvelope,

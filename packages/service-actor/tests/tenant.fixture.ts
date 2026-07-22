@@ -12,7 +12,7 @@ import type { ITenantEventPublisherService } from '@vibecanvas/service-event-pub
 export const TEST_TENANT = Object.freeze({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
   accountId: DEFAULT_OSS_ACCOUNT_ID,
-  cellId: 'service-actor-test-cell',
+  cellId: '00000000-0000-4000-8000-0000000000a1',
   placementEpoch: 1,
   roles: Object.freeze(['owner']),
   capabilities: Object.freeze(['*']),

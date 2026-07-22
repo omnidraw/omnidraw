@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ResourceError } from '@vibecanvas/resource-runtime';
 import { Actor, type TActorEvent } from "../src/Actor";
-import { ActorResourceError } from "../src/resources/ActorResourceError";
 import type { TVibecanvasJson } from "../src/core/types";
-import type { TActorResourceCall, TActorResourceGateway } from "../src/resources/resource-types";
+import type { TActorResourceCall, TActorResourceGateway } from "../src/legacy/resource-protocol";
 
 async function waitForIdle(actor: Actor) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -222,7 +222,7 @@ export default {
     }
   });
 
-  test("returns a redacted gateway ActorResourceError to child code", async () => {
+  test("returns a redacted gateway ResourceError to child code", async () => {
     const sentinel = "SENTINEL-GATEWAY-SECRET-29f4e2";
     const rootDir = await mkdtemp(join(tmpdir(), "vibecanvas-actor-resource-error-"));
     await writeFile(join(rootDir, "functions.ts"), `
@@ -249,7 +249,7 @@ export default {
     const events: TActorEvent[] = [];
     const resourceGateway: TActorResourceGateway = async (call) => {
       calls.push(call);
-      throw new ActorResourceError(
+      throw new ResourceError(
         "SECRET_OPERATION_FAILED",
         "Secret-store operation failed safely.",
         {

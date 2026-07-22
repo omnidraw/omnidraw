@@ -878,7 +878,7 @@ describe('actor-free production widget service', () => {
     expect(await filesBelow(artifactsRoot)).toEqual([]);
   });
 
-  test('production composition keeps v2 actor-free and acquires legacy ownership only on fallback', async () => {
+  test('production composition keeps v2 publication and placement actor-free by default', async () => {
     const compositionRoot = join(root, 'production-composition');
     await mkdir(compositionRoot, { recursive: true });
     const home = fnResolveVibecanvasHome({ join, resolve }, {
@@ -891,6 +891,7 @@ describe('actor-free production widget service', () => {
       cwd: compositionRoot,
       dev: true,
       compiled: false,
+      legacyActorEnabled: false,
       version: '0.0.0-test',
       command: 'serve',
       rawArgv: ['bun', 'run'],
@@ -903,7 +904,7 @@ describe('actor-free production widget service', () => {
     const { services } = setupServices(config);
     const widgetOwner = services.require('widgetOwner');
     const widgetCapability = services.require('widget');
-    const actorOwner = services.require('actor');
+    const actorOwner = services.get('actor');
     const agentOwner = services.require('agent');
     const resourceOwner = services.require('resourceOwner');
     const compositionDatabase = services.require('db');
@@ -912,7 +913,8 @@ describe('actor-free production widget service', () => {
     );
     expect(registrations.get('widgetOwner')).toBe(55);
     expect(registrations.get('widget')).toBe(56);
-    expect(registrations.get('actor')).toBe(60);
+    expect(actorOwner).toBeUndefined();
+    expect(registrations.has('actor')).toBe(false);
     expect(Reflect.ownKeys(widgetCapability).sort()).toEqual([
       'getActiveRevision',
       'getArtifact',
@@ -931,7 +933,6 @@ describe('actor-free production widget service', () => {
     await compositionDatabase.start();
     widgetOwner.start({ config: {}, hooks: {} });
     resourceOwner.start({ config: {}, hooks: {} });
-    actorOwner.start({ config: {}, hooks: {} });
     agentOwner.start({ config: {}, hooks: {} });
     try {
       const first = await widgetOwner.forTenant(TENANT);
@@ -942,7 +943,6 @@ describe('actor-free production widget service', () => {
       }));
       expect(second).toBe(first);
       expect(widgetOwner.getTenantCount()).toBe(1);
-      expect(actorOwner.getTenantCount()).toBe(0);
 
       const sourceRoot = join(compositionRoot, 'placement-source');
       await writeSource(sourceRoot, {
@@ -970,43 +970,7 @@ describe('actor-free production widget service', () => {
       if (published.status !== 'committed') throw new Error('Expected committed publication.');
       expect(published.revision.serverArtifact).toBeNull();
 
-      const installedWidgetsRoot = join(
-        home.organizationsDir,
-        TENANT.orgId,
-        'artifacts',
-        'widgets',
-      );
-      const legacyManifest = (name: string, slug: string) => ({
-        slug,
-        name,
-        actor: {
-          relFunctionPath: './actor/functions.ts',
-          initialState: 'ready',
-          initialData: {},
-          states: { ready: { on: {} } },
-          inputMsgSchema: {},
-          outputMsgSchema: {},
-        },
-        widget: {
-          relWidgetDir: './widget',
-          frame: { width: 420, height: 300 },
-          tool: {
-            label: name,
-            behavior: { type: 'mode', mode: 'draw-create' },
-          },
-        },
-      });
-      await writeSource(join(installedWidgetsRoot, 'legacy-only-widget'), {
-        'vibecanvas.json': JSON.stringify(legacyManifest(
-          'Legacy only widget',
-          'legacy-only-widget',
-        )),
-        'actor/functions.ts': 'export default { fn: {}, fx: {}, tx: {} };',
-        'widget/main.ts': 'export default {};',
-      });
-
       const agent = await agentOwner.forTenant(TENANT);
-      expect(actorOwner.getTenantCount()).toBe(0);
       const catalogEntry = (await agent.getWidgetCatalog([])).widgets.find(
         (entry) => entry.name === 'Placement widget',
       );
@@ -1030,37 +994,14 @@ describe('actor-free production widget service', () => {
           previewId: null,
         },
       });
-      expect(actorOwner.getTenantCount()).toBe(0);
       expect(await tableCount(compositionDatabase, 'legacy_actor_definitions')).toBe(0);
-      expect(await tableCount(compositionDatabase, 'legacy_actor_instances')).toBe(0);
-
-      const legacyEntry = (await agent.getWidgetCatalog([])).widgets.find(
-        (entry) => entry.name === 'Legacy only widget',
-      );
-      const legacyReference = legacyEntry?.published?.placement?.reference;
-      if (!legacyReference) throw new Error('Expected legacy placement reference.');
-      await expect(agent.resolveWidgetPlacement(legacyReference)).resolves.toMatchObject({
-        ok: true,
-        descriptor: {
-          kind: 'published-legacy',
-          reference: legacyReference,
-          definitionId: null,
-          revisionId: null,
-          definitionName: 'Legacy only widget',
-          definitionSlug: 'legacy-only-widget',
-          previewId: null,
-        },
-      });
-      expect(actorOwner.getTenantCount()).toBe(1);
       expect(await tableCount(compositionDatabase, 'legacy_actor_instances')).toBe(0);
     } finally {
       await agentOwner.stop();
-      await actorOwner.stop();
       await resourceOwner.stop();
       await widgetOwner.stop();
       await compositionDatabase.stop();
     }
-    expect(actorOwner.getTenantCount()).toBe(0);
   });
 });
 

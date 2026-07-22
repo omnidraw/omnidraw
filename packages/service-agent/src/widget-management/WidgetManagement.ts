@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import { ZWidgetManifestV2, type TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { WidgetDraftController } from '../widget-drafts/WidgetDraftController';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
@@ -46,6 +45,7 @@ import type {
 type TWidgetManagementConfig = {
   workspace: WidgetWorkspace;
   drafts: WidgetDraftController;
+  parseLegacyManifest?: (value: unknown) => TVibecanvasJson | null;
   deletePublishedDefinition?: (name: string) => Promise<boolean>;
   afterVariantFingerprint?: (args: Readonly<{
     name: string;
@@ -69,12 +69,14 @@ type TVariantRead = {
 export class WidgetManagement {
   readonly #workspace: WidgetWorkspace;
   readonly #drafts: WidgetDraftController;
+  readonly #parseLegacyManifest?: TWidgetManagementConfig['parseLegacyManifest'];
   readonly #deletePublishedDefinition?: (name: string) => Promise<boolean>;
   readonly #afterVariantFingerprint?: TWidgetManagementConfig['afterVariantFingerprint'];
 
   constructor(config: TWidgetManagementConfig) {
     this.#workspace = config.workspace;
     this.#drafts = config.drafts;
+    this.#parseLegacyManifest = config.parseLegacyManifest;
     this.#deletePublishedDefinition = config.deletePublishedDefinition;
     this.#afterVariantFingerprint = config.afterVariantFingerprint;
   }
@@ -112,11 +114,12 @@ export class WidgetManagement {
       variant: selected.summary,
       sibling,
       manifest: selected.manifest,
+      functions: [],
       problem: selected.problem ?? entry.problem,
     };
   }
 
-  async resolvePlacementReference(reference: import('@vibecanvas/service-actor/core/fn.widget-frame').TWidgetPlacementRef): Promise<TWidgetPlacementResolveResult> {
+  async resolvePlacementReference(reference: import('@vibecanvas/widget-contract').TWidgetPlacementRef): Promise<TWidgetPlacementResolveResult> {
     const source: TWidgetSource = reference.source === 'published' ? 'published' : 'draft';
     const detail = await this.detail(reference.name, source);
     if (!detail) {
@@ -264,16 +267,16 @@ export class WidgetManagement {
       if (ZWidgetManifestV2.safeParse(manifestValue).success) {
         throw new Error('INVALID_MANIFEST: Manifest v2 does not expose legacy tool metadata.');
       }
-      const parsed = ZVibecanvasJson.safeParse(manifestValue);
-      if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
+      const parsed = this.#parseLegacyManifest?.(manifestValue) ?? null;
+      if (!parsed) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
       const plan = fnPatchDraftManifest({
-        manifest: parsed.data as TVibecanvasJson,
+        manifest: parsed,
         patch: { tool: { ...patch, group: patch.group?.trim() || patch.group } },
       });
       if (plan.issues.length > 0) throw new Error(`INVALID_MANIFEST: ${plan.issues.join('; ')}`);
-      const validated = ZVibecanvasJson.safeParse(plan.manifest);
-      if (!validated.success) throw new Error('INVALID_MANIFEST: The requested tool metadata is invalid.');
-      return validated.data as TVibecanvasJson;
+      const validated = this.#parseLegacyManifest?.(plan.manifest) ?? null;
+      if (!validated) throw new Error('INVALID_MANIFEST: The requested tool metadata is invalid.');
+      return validated;
     });
     await this.#drafts.handleToolChange({ name, type: 'changed' });
     return (await this.#readVariant(name, 'draft')).summary;
@@ -306,10 +309,10 @@ export class WidgetManagement {
             ...(description === undefined ? {} : { description }),
           };
         }
-        const parsed = ZVibecanvasJson.safeParse(manifestValue);
-        if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
+        const parsed = this.#parseLegacyManifest?.(manifestValue) ?? null;
+        if (!parsed) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
         const plan = fnPatchDraftManifest({
-          manifest: parsed.data as TVibecanvasJson,
+          manifest: parsed,
           patch: {
             ...patch,
             name: nextName,
@@ -317,9 +320,9 @@ export class WidgetManagement {
           },
         });
         if (plan.issues.length > 0) throw new Error(`INVALID_MANIFEST: ${plan.issues.join('; ')}`);
-        const validated = ZVibecanvasJson.safeParse(plan.manifest);
-        if (!validated.success) throw new Error('INVALID_MANIFEST: The requested widget metadata is invalid.');
-        return validated.data as TVibecanvasJson;
+        const validated = this.#parseLegacyManifest?.(plan.manifest) ?? null;
+        if (!validated) throw new Error('INVALID_MANIFEST: The requested widget metadata is invalid.');
+        return validated;
       }, coordinateCommit);
     };
     const result = nextName === name
@@ -549,9 +552,9 @@ export class WidgetManagement {
       if (v2.success) {
         return { manifest: v2.data as TWidgetManifestV2, problem: null, groupReference: null };
       }
-      const legacy = ZVibecanvasJson.safeParse(raw);
-      if (!legacy.success) return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference };
-      return { manifest: legacy.data as TVibecanvasJson, problem: null, groupReference };
+      const legacy = this.#parseLegacyManifest?.(raw) ?? null;
+      if (!legacy) return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference };
+      return { manifest: legacy, problem: null, groupReference };
     } catch {
       return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is missing, unreadable, or invalid JSON.'), groupReference: null };
     }

@@ -1,6 +1,6 @@
 import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
 import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from "@vibecanvas/service-actor/core/fn.widget-frame";
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
 import type { IRuntimeConfig, IRuntimeHooks } from "@vibecanvas/canvas";
 import type { WidgetDropPlacementService } from "@vibecanvas/canvas/services";
 import type { TAiChatApiPort, TWidgetBrowserPort } from "../ports";

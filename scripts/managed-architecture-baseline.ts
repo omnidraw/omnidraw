@@ -11,7 +11,11 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Actor, type TActorEvent } from "../packages/service-actor/src/Actor";
 import type { TVibecanvasJson } from "../packages/service-actor/src/core/types";
-import { ActorResourceKeyValueStore } from "../packages/service-actor/src/resources/ActorResourceKeyValueStore";
+import {
+  ResourceKeyValueStore,
+  type IResourceKeyValueDatabase,
+  type TResourceKeyValueDatabaseOptions,
+} from "../packages/resource-runtime/src/local";
 import { AutomergeService } from "../packages/service-automerge/src/AutomergeService";
 import type { TCanvasDoc, TElement } from "../packages/service-automerge/src/types/canvas-doc.types";
 import type { WebSocketWithIsAlive } from "../packages/service-automerge/src/adapters/websocket.adapter";
@@ -564,10 +568,16 @@ async function measureAutomerge(fixture: TManagedArchitectureBaselineFixture) {
 
 async function measureResources(fixture: TManagedArchitectureBaselineFixture) {
   const tempRoot = await mkdtemp(join(tmpdir(), "vibecanvas-m0-resources-"));
-  const store = new ActorResourceKeyValueStore({
+  const store = new ResourceKeyValueStore({
     dataRoot: tempRoot,
     kind: "kv",
     maxOpenHandles: fixture.resources.maxOpenHandles,
+    databaseFactory: (databasePath: string, options: TResourceKeyValueDatabaseOptions) => (
+      new Database(
+        databasePath,
+        options as unknown as ConstructorParameters<typeof Database>[1],
+      ) as unknown as IResourceKeyValueDatabase
+    ),
   });
   const resourceIds = Array.from(
     { length: fixture.resources.provisionedSampleCount },

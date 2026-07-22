@@ -22,6 +22,19 @@ describe("package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
+  it("keeps legacy actor runtime ownership out of AI Chat", () => {
+    const forbiddenDependency = /@vibecanvas\/(?:service-actor|ui-actor-legacy)(?:[/'"]|$)/;
+    const forbiddenActorTransport = /\bapi\.actors\b|\bactors\s*:/;
+    const packageSource = readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8");
+    const violations = sourceFiles(join(PACKAGE_ROOT, "src")).flatMap((path) => {
+      const source = readFileSync(path, "utf8");
+      return forbiddenDependency.test(source) || forbiddenActorTransport.test(source) ? [path] : [];
+    });
+
+    expect(forbiddenDependency.test(packageSource)).toBe(false);
+    expect(violations).toEqual([]);
+  });
+
   it("keeps runtime-neutral widget implementation in canvas", () => {
     const widgetHostRoot = join(WORKSPACE_ROOT, "packages/canvas/src/widget-host");
     const implementationFiles = [

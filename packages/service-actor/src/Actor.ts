@@ -5,6 +5,7 @@
 
 import Ajv, { type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
+import { toSafeResourceError } from '@vibecanvas/resource-runtime';
 import { join } from "node:path";
 import type {
     TActorActivity,
@@ -30,8 +31,11 @@ import {
     fnSerializeActorError,
     type TActorFailurePhase,
 } from "./fn.actor-runtime";
-import { toSafeActorResourceError } from './resources/ActorResourceError';
-import type { TActorResourceCall, TActorResourceFunctionClass, TActorResourceGateway } from './resources/resource-types';
+import type {
+    TActorResourceCall,
+    TActorResourceFunctionClass,
+    TActorResourceGateway,
+} from './legacy/resource-protocol';
 
 type TSnapshotCause = "startup" | "input" | "activity" | "error";
 
@@ -206,7 +210,7 @@ export class Actor {
         this.#proc = proc;
 
         void proc.exited.then((exitCode) => {
-            this.#handleChildExit(exitCode);
+            this.#handleChildExit(proc, exitCode);
         });
 
         proc.stdout?.pipeTo(new WritableStream({
@@ -224,6 +228,14 @@ export class Actor {
 
     getId() {
         return this.#id;
+    }
+
+    hasActiveProcess(): boolean {
+        return this.#proc !== null;
+    }
+
+    getActiveProcessId(): number | null {
+        return this.#proc?.pid ?? null;
     }
 
     getState() {
@@ -321,7 +333,6 @@ export class Actor {
     }
 
     close() {
-        const wasRunning = this.#didEmitRunning;
         this.#isClosing = true;
         this.#isChildReady = false;
         this.#isActivated = false;
@@ -331,26 +342,26 @@ export class Actor {
         const closeError = new Error('Actor child process was closed');
         for (const waiter of [...this.#readyWaiters]) waiter.reject(closeError);
         this.#rejectPending(undefined, closeError);
-        this.#proc?.kill();
-        this.#proc = null;
-        if (wasRunning) {
-            this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" });
-            this.#didEmitRunning = false;
-        }
+        try {
+            this.#proc?.kill('SIGTERM');
+        } catch { /* an exit racing shutdown is observed through proc.exited */ }
     }
 
-    async closeAndWait(timeoutMs = 5_000): Promise<boolean> {
+    async closeAndWait(timeoutMs = 1_000): Promise<boolean> {
         const proc = this.#proc;
         this.close();
         if (!proc) return true;
 
-        if (await this.#waitForExit(proc, timeoutMs)) return true;
-        try {
-            proc.kill(9);
-        } catch {
-            return false;
+        if (await this.#waitForExit(proc, timeoutMs)) {
+            this.#completeExpectedChildExit(proc);
+            return true;
         }
-        return this.#waitForExit(proc, Math.min(timeoutMs, 1_000));
+        try {
+            proc.kill('SIGKILL');
+        } catch { /* an exit racing escalation is observed through proc.exited */ }
+        const exited = await this.#waitForExit(proc, Math.max(100, Math.min(timeoutMs, 1_000)));
+        if (exited) this.#completeExpectedChildExit(proc);
+        return exited;
     }
 
     #waitForExit(proc: Bun.Subprocess, timeoutMs: number): Promise<boolean> {
@@ -981,7 +992,7 @@ export class Actor {
             }
         } catch (error) {
             if (this.#proc !== proc || !this.#pendingRuns.has(message.id)) return;
-            const safeError = toSafeActorResourceError(error);
+            const safeError = toSafeResourceError(error);
             try {
                 proc.send({ type: 'resourceResult', callId: message.callId, ok: false, error: safeError });
             } catch { /* child exit races are expected */ }
@@ -1003,8 +1014,22 @@ export class Actor {
         pending.reject(rejection);
     }
 
-    #handleChildExit(exitCode: number | null) {
-        if (this.#isClosing) return;
+    #completeExpectedChildExit(proc: Bun.Subprocess) {
+        if (this.#proc !== proc) return;
+        this.#isChildReady = false;
+        this.#proc = null;
+        if (this.#didEmitRunning) {
+            this.#emitSystemEvent({ type: "status.changed", from: "running", to: "stopped" });
+            this.#didEmitRunning = false;
+        }
+    }
+
+    #handleChildExit(proc: Bun.Subprocess, exitCode: number | null) {
+        if (this.#proc !== proc) return;
+        if (this.#isClosing) {
+            this.#completeExpectedChildExit(proc);
+            return;
+        }
         this.#isChildReady = false;
         this.#proc = null;
         const error = new Error(`Actor child process exited with code ${exitCode}`);

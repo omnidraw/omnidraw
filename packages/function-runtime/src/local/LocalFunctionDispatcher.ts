@@ -4,30 +4,23 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { IFunctionControlStore, IScheduler } from '../interface';
 import type {
+  IFunctionControlStore,
+  IFunctionDispatcher,
+  IFunctionExecutor,
+  IScheduler,
+} from '../interface';
+import type {
+  TFunctionDispatchRequest,
+  TFunctionExecutionOutcome,
   TFunctionInvocationEnvelope,
-  TFunctionInvocationSubject,
   TFunctionMemoryTier,
   TInvocationCreateResult,
-  TInvocationIdempotencyScope,
 } from '../types';
-import { FunctionExecutor, type TFunctionExecutionOutcome } from './FunctionExecutor';
 import type { IFunctionSchemaValidator } from './JsonSchemaFunctionValidator';
 import { fnCanonicalJson } from './fn.canonical-json';
 
-export type TLocalFunctionInvocationRequest = Readonly<{
-  widgetDefinitionId: string;
-  widgetRevisionId: string;
-  subject: TFunctionInvocationSubject;
-  functionName: string;
-  input: unknown;
-  idempotencyKey: string;
-  idempotencyScope?: TInvocationIdempotencyScope;
-  idempotencyExpiresAtMs?: number | null;
-  priority?: number;
-  deadlineAtMs?: number;
-}>;
+export type TLocalFunctionInvocationRequest = TFunctionDispatchRequest;
 
 export type TLocalFunctionDispatcherConfig = Readonly<{
   orgId: string;
@@ -40,7 +33,7 @@ export type TLocalFunctionDispatcherConfig = Readonly<{
   memoryTiers: readonly TFunctionMemoryTier[];
   store: IFunctionControlStore;
   scheduler: IScheduler;
-  executor: FunctionExecutor;
+  executor: IFunctionExecutor;
   schemas: IFunctionSchemaValidator;
   policyVersion?: number;
   maxConcurrent?: number;
@@ -67,7 +60,7 @@ function inputError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
-export class LocalFunctionDispatcher {
+export class LocalFunctionDispatcher implements IFunctionDispatcher {
   readonly #config: TLocalFunctionDispatcherConfig;
   readonly #policyVersion: number;
   readonly #maxConcurrent: number;

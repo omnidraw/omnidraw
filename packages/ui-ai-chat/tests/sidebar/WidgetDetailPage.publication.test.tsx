@@ -30,6 +30,7 @@ const detail: TWidgetDetail = {
   relation: "draft-only",
   sibling: null,
   manifest: null,
+  functions: [],
   problem: null,
   variant,
 }

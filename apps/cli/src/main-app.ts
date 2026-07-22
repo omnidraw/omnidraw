@@ -62,7 +62,12 @@ export async function runCliMain() {
   }
 
   const { setupServices } = await import('./setup-services');
-  const { services, eventPublisher } = setupServices(config);
+  const legacyActor = config.legacyActorEnabled
+    && config.command === 'serve'
+    && !config.helpRequested
+    ? new (await import('./plugins/legacy-actor/LegacyActorPlugin')).LegacyActorPlugin()
+    : undefined;
+  const { services, eventPublisher } = setupServices(config, { legacyActor });
 
   if (config.command === 'serve' && !config.helpRequested) {
     void OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
@@ -78,7 +83,16 @@ export async function runCliMain() {
   }
 
   const runtime = createRuntime<any, ICliConfig>({
-    plugins: [createAuthPlugin(), createFilesystemPlugin(), createCliPlugin(), createOrpcPlugin(), createPtyPlugin(), createAutomergePlugin(), createServerPlugin()],
+    plugins: [
+      createAuthPlugin(),
+      createFilesystemPlugin(),
+      createCliPlugin(),
+      ...(legacyActor ? [legacyActor] : []),
+      createOrpcPlugin(),
+      createPtyPlugin(),
+      createAutomergePlugin(),
+      createServerPlugin(),
+    ],
     services,
     hooks: createCliHooks(),
     config,

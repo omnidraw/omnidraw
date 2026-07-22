@@ -10,11 +10,9 @@ import {
   LocalFunctionDispatcher,
   ResourceWriteCapabilityAuthority,
 } from '@vibecanvas/function-runtime/local';
-import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { WidgetInstanceMetadataProjector } from '@vibecanvas/service-automerge/projection';
 import { AgentService } from '@vibecanvas/service-agent';
-import type { TActorServiceReloader } from '@vibecanvas/service-agent/core/types';
 import {
   planImplicitResourceSelections,
   planSelectedResourceBindings,
@@ -38,6 +36,7 @@ import type {
   TResourceApiCapability,
 } from '@vibecanvas/api/resource/types';
 import type { ICliConfig } from './config';
+import type { TLegacyActorComposition } from './plugins/legacy-actor/LegacyActorPlugin';
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
 import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
 import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
@@ -58,7 +57,6 @@ import {
 } from './services/ResourceServicePool';
 import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorBridge';
 import { TenantServicePool } from './services/TenantServicePool';
-import { TenantResourceService } from './services/TenantResourceService';
 import { WidgetService } from './services/WidgetService';
 import { WidgetFunctionArtifactReader } from './services/WidgetFunctionArtifactReader';
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
@@ -82,33 +80,6 @@ const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
   '@vibecanvas/sdk/widget',
   'zod',
 ]);
-
-function createDeferredActorService(
-  load: () => Promise<TActorServiceReloader>,
-): TActorServiceReloader {
-  let pending: Promise<TActorServiceReloader> | null = null;
-  const resolve = () => {
-    if (pending) return pending;
-    pending = load().catch((error) => {
-      pending = null;
-      throw error;
-    });
-    return pending;
-  };
-  return new Proxy({} as TActorServiceReloader, {
-    get(_target, property) {
-      if (property === 'then' || property === 'getVibecanvasJson') return undefined;
-      if (typeof property !== 'string') return undefined;
-      return (...args: unknown[]) => resolve().then((service) => {
-        const method = Reflect.get(service, property, service);
-        if (typeof method !== 'function') {
-          throw new Error(`Actor service capability '${property}' is unavailable.`);
-        }
-        return Reflect.apply(method, service, args);
-      });
-    },
-  });
-}
 
 function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
   if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
@@ -138,7 +109,6 @@ export interface IRuntimeServices {
   functionOwner: FunctionServicePool;
   functionInvocation: IFunctionInvocationApiCapability;
   previewFunctionInvocation: TPreviewFunctionInvocationCapability;
-  actor: TenantServicePool<ActorService>;
   agent: TenantServicePool<AgentService>;
 }
 
@@ -146,8 +116,13 @@ declare module '@vibecanvas/runtime' {
   interface IServiceMap extends IRuntimeServices { }
 }
 
-function setupServices(config: ICliConfig) {
+type TSetupServicesOptions = Readonly<{
+  legacyActor?: TLegacyActorComposition;
+}>;
+
+function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
   const services = createServiceRegistry();
+  const legacyActor = options.legacyActor;
   const eventPublisher = new EventPublisherService();
   services.provide('eventPublisher', 10, eventPublisher);
 
@@ -217,26 +192,22 @@ function setupServices(config: ICliConfig) {
     widgets: widgetServerArtifacts,
   });
 
-  const resourceBridgeKey = (tenant: Parameters<DbServiceTurso['forTenant']>[0]) => fnScopedKey(
-    'resource-store',
-    [tenant.orgId, tenant.cellId, String(tenant.placementEpoch)],
-  );
-  const resourceUseBridges = new Map<string, ResourceUseCoordinatorBridge>();
-  let actorService: TenantServicePool<ActorService>;
   const resourceService = new ResourceServicePool({
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
       const resourcesRoot = join(organizationRoot, 'resources');
       await mkdir(resourcesRoot, { recursive: true });
       const useCoordinator = new ResourceUseCoordinatorBridge();
-      resourceUseBridges.set(resourceBridgeKey(tenant), useCoordinator);
+      legacyActor?.registerResourceUseBridge(tenant, useCoordinator);
       return new ResourceService({
         tenant,
         db: dbService.forTenant(tenant),
         controlStore: new ResourceControlStoreTurso(dbService.db),
         dataRoot: resourcesRoot,
         useCoordinator,
-        resolveConsumer: () => actorService.forTenant(tenant),
+        resolveConsumer: legacyActor
+          ? () => legacyActor.resolveResourceConsumer(tenant)
+          : undefined,
         writeCapabilityVerifier: functionWriteCapabilities,
         writePermitCoordinator: functionStore,
       });
@@ -304,28 +275,6 @@ function setupServices(config: ICliConfig) {
   });
   const functionCapability = createFunctionInvocationCapability(functionService);
   const previewFunctionCapability = createPreviewFunctionInvocationCapability(functionService);
-  actorService = new TenantServicePool<ActorService>('actor-service-pool', {
-    create: async (tenant) => {
-      const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
-      const artifactsRoot = join(organizationRoot, 'artifacts');
-      await mkdir(artifactsRoot, { recursive: true });
-      const tenantDb = dbService.forTenant(tenant);
-      const sharedResources = new TenantResourceService(
-        await resourceService.forTenant(tenant),
-        tenant,
-      );
-      const service = new ActorService({
-        tenant,
-        db: tenantDb,
-        configPath: artifactsRoot,
-        resourceService: sharedResources,
-        eventPublisherService: eventPublisher.forTenant(tenant),
-      });
-      const detachUseCoordinator = resourceUseBridges.get(resourceBridgeKey(tenant))?.attach(service);
-      if (detachUseCoordinator) service.addStopCleanup(detachUseCoordinator);
-      return service;
-    },
-  });
   const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
@@ -337,12 +286,12 @@ function setupServices(config: ICliConfig) {
         mkdir(agentRoot, { recursive: true }),
         mkdir(cacheRoot, { recursive: true }),
       ]);
-      const loadActorService = () => actorService.forTenant(tenant);
       const widgetOwner = await widgetService.forTenant(tenant);
       const agentResources = createAgentResourceService(
         await resourceService.forTenant(tenant),
         tenant,
       );
+      const legacyAgentConfig = legacyActor?.agentConfig(tenant);
       return new AgentService({
         dataPath: agentRoot,
         cachePath: cacheRoot,
@@ -397,15 +346,12 @@ function setupServices(config: ICliConfig) {
         createId: randomUUID,
         nowMs: Date.now,
         widgetBuilderIdentity,
-        actorService: createDeferredActorService(loadActorService),
+        ...legacyAgentConfig,
         listPublishedWidgetPlacements: () => (
           widgetCapability.listPublishedPlacements(tenant)
         ),
         resolvePublishedWidgetPlacement: (target) => (
           widgetCapability.resolvePublishedPlacement(tenant, target)
-        ),
-        resolveLegacyPublishedWidgetManifest: async (definitionName) => (
-          (await loadActorService()).getVibecanvasJson(definitionName)
         ),
       });
     },
@@ -425,53 +371,8 @@ function setupServices(config: ICliConfig) {
     // Exact OSS document access is resolved once by the storage authority so
     // WebSocket admission and durable validation cannot drift.
     authorizeDocument: () => true,
-    async onElementCreate(event, handle) {
-      try {
-        const element = event.element;
-        if (element.data.type !== 'widget' || !element.data.actorDefinitionName) return;
-
-        const tenant = event.tenantContext;
-        const canvases = await dbService.canvas.listAll(tenant);
-        const canvas = canvases.find(row => row.automerge_url === event.automergeUrl);
-        if (!canvas) return;
-
-        const actor = await (await actorService.forTenant(tenant))
-          .createInstance(element.data.actorDefinitionName, canvas.id, element.id)
-        if (actor === null) return
-
-        handle.change((doc) => {
-          const currentElement = doc.elements[element.id];
-          if (!currentElement) return;
-          if (currentElement.data.type !== 'widget') return;
-
-          currentElement.data.actorInstanceId = actor.getId();
-          currentElement.updatedAt = Date.now();
-        });
-      } catch (error) {
-        eventPublisher.publishNotification(event.tenantContext, {
-          type: 'error',
-          title: 'Failed to create widget actor',
-          description: error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
-    async onElementDelete(event, handle) {
-      try {
-        const element = event.element;
-        if (element.data.type === 'widget') {
-          const tenant = event.tenantContext;
-          const instance = await dbService.actor.getInstanceByElementId(tenant, event.element.id)
-          if (!instance) return
-          await (await actorService.forTenant(tenant)).removeInstance(instance.id)
-        }
-      } catch (error) {
-        eventPublisher.publishNotification(event.tenantContext, {
-          type: 'error',
-          title: 'Failed to remove widget actor',
-          description: error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
+    onElementCreate: legacyActor?.onElementCreate ?? (() => undefined),
+    onElementDelete: legacyActor?.onElementDelete ?? (() => undefined),
     onDocumentSnapshot(event) {
       const result = widgetInstanceProjection.enqueue(event.tenantContext, {
         canvasId: event.canvasId,
@@ -502,7 +403,6 @@ function setupServices(config: ICliConfig) {
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);
-  services.provide('actor', 60, actorService);
   services.provide('functionOwner', 61, functionService);
   services.provide('functionInvocation', 61, functionCapability);
   services.provide('previewFunctionInvocation', 61, previewFunctionCapability);
@@ -522,3 +422,4 @@ function setupServices(config: ICliConfig) {
 }
 
 export { setupServices };
+export type { TSetupServicesOptions };

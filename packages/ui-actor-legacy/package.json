@@ -15,7 +15,13 @@
     "test:screenshot": "playwright test"
   },
   "dependencies": {
+    "@arrow-js/core": "^1.0.6",
+    "@arrow-js/sandbox": "1.0.6",
+    "@vibecanvas/api": "workspace:*",
+    "@vibecanvas/orpc-client": "workspace:*",
     "@vibecanvas/service-actor": "workspace:*",
+    "@vibecanvas/service-db": "workspace:*",
+    "@vibecanvas/ui-ai-chat": "workspace:*",
     "solid-js": "catalog:"
   },
   "devDependencies": {

@@ -704,7 +704,13 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     limit?: number;
   }) {
     const resource = await this.#requireDataResource(tenant, args.resourceId);
-    return this.#managementCall(tenant, resource.id, resource.kind, 'listData', args);
+    return this.#managementCall<ReturnType<typeof fnResourceDataPage>>(
+      tenant,
+      resource.id,
+      resource.kind,
+      'listData',
+      args,
+    );
   }
 
   async getResourceDataEntry(
@@ -768,7 +774,13 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     value: TResourceJson;
   }) {
     const resource = await this.#requireDataResource(tenant, args.resourceId);
-    return this.#managementCall(tenant, resource.id, resource.kind, 'setData', args);
+    return this.#managementCall<ReturnType<typeof fnResourceDataMutationResult>>(
+      tenant,
+      resource.id,
+      resource.kind,
+      'setData',
+      args,
+    );
   }
 
   async deleteResourceDataEntry(tenant: TTenantContext, args: {
@@ -781,14 +793,24 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   }
 
   dbResourceImpact(tenant: TTenantContext, resourceId: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'impact', { resourceId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['impact']>>>(
+      tenant,
+      resourceId,
+      'impact',
+      { resourceId },
+    );
   }
 
   inspectDbResource(
     tenant: TTenantContext,
     args: { resourceId: string; target: 'live' | 'draft'; draftId?: string },
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'inspect', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['inspect']>> | null>(
+      tenant,
+      args.resourceId,
+      'inspect',
+      args,
+    );
   }
 
   executeDbLiveSql(tenant: TTenantContext, args: {
@@ -797,42 +819,72 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     parameters?: readonly TDbCellValue[] | Readonly<Record<string, TDbCellValue>>;
     approved: boolean;
   }) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'executeLiveSql', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['executeLiveSql']>>>(
+      tenant,
+      args.resourceId,
+      'executeLiveSql',
+      args,
+    );
   }
 
   listDbRows(
     tenant: TTenantContext,
     args: { resourceId: string; object: string; cursor?: TDbRowIdentity | null; limit?: number },
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'listRows', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['listRows']>>>(
+      tenant,
+      args.resourceId,
+      'listRows',
+      args,
+    );
   }
 
   getDbRow(
     tenant: TTenantContext,
     args: { resourceId: string; object: string; identity: TDbRowIdentity; columns?: readonly string[] },
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'getRow', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['getRow']>>>(
+      tenant,
+      args.resourceId,
+      'getRow',
+      args,
+    );
   }
 
   createDbRow(
     tenant: TTenantContext,
     args: { resourceId: string; object: string; values: TDbRowCreate['values'] },
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'createRow', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['createRow']>>>(
+      tenant,
+      args.resourceId,
+      'createRow',
+      args,
+    );
   }
 
   updateDbRow(
     tenant: TTenantContext,
     args: { resourceId: string; object: string } & Omit<TDbRowUpdate, 'kind'>,
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'updateRow', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['updateRow']>>>(
+      tenant,
+      args.resourceId,
+      'updateRow',
+      args,
+    );
   }
 
   deleteDbRow(
     tenant: TTenantContext,
     args: { resourceId: string; object: string } & Omit<TDbRowDelete, 'kind'>,
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'deleteRow', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['deleteRow']>>>(
+      tenant,
+      args.resourceId,
+      'deleteRow',
+      args,
+    );
   }
 
   bulkDbRows(tenant: TTenantContext, args: {
@@ -840,32 +892,62 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     object: string;
     operations: readonly (TDbRowCreate | TDbRowUpdate | TDbRowDelete)[];
   }) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'bulkRows', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResource['bulkRows']>>>(
+      tenant,
+      args.resourceId,
+      'bulkRows',
+      args,
+    );
   }
 
   createDbDraft(tenant: TTenantContext, resourceId: string, name: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'createDraft', { resourceId, name });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['createDraft']>>>(
+      tenant,
+      resourceId,
+      'createDraft',
+      { resourceId, name },
+    );
   }
 
   listDbDrafts(
     tenant: TTenantContext,
     args: { resourceId: string; before?: { createdAt: string; id: string }; limit?: number },
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'listDrafts', args);
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['listDrafts']>>>(
+      tenant,
+      args.resourceId,
+      'listDrafts',
+      args,
+    );
   }
 
   async getDbDraft(tenant: TTenantContext, draftId: string) {
     const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
-    return this.#dbManagementCall(tenant, resourceId, 'getDraft', { draftId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['getDraft']>>>(
+      tenant,
+      resourceId,
+      'getDraft',
+      { draftId },
+    );
   }
 
   getActiveDbDraft(tenant: TTenantContext, resourceId: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'getActiveDraft', { resourceId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['getActiveDraft']>>>(
+      tenant,
+      resourceId,
+      'getActiveDraft',
+      { resourceId },
+    );
   }
 
   async changeDbDraft(tenant: TTenantContext, draftId: string, operation: TDbDraftOperation) {
     const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
-    return this.#dbManagementCall(tenant, resourceId, 'changeDraft', { draftId, operation });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['changeDraft']>>>(
+      tenant,
+      resourceId,
+      'changeDraft',
+      { draftId, operation },
+    );
   }
 
   async executeDbDraftSql(
@@ -875,55 +957,99 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     parameters?: readonly TDbCellValue[],
   ) {
     const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
-    return this.#dbManagementCall(tenant, resourceId, 'executeDraftSql', { draftId, sql, parameters });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['executeDraftSql']>>>(
+      tenant,
+      resourceId,
+      'executeDraftSql',
+      { draftId, sql, parameters },
+    );
   }
 
   async discardDbDraft(tenant: TTenantContext, draftId: string) {
     const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
-    return this.#dbManagementCall(tenant, resourceId, 'discardDraft', { draftId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['discardDraft']>>>(
+      tenant,
+      resourceId,
+      'discardDraft',
+      { draftId },
+    );
   }
 
   async previewDbApply(tenant: TTenantContext, draftId: string) {
     const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
-    return this.#dbManagementCall(tenant, resourceId, 'previewApply', { draftId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['previewApply']>>>(
+      tenant,
+      resourceId,
+      'previewApply',
+      { draftId },
+    );
   }
 
   async confirmDbApply(tenant: TTenantContext, draftId: string) {
     const resourceId = await this.#resolveDraftResourceId(tenant, draftId);
-    return this.#dbManagementCall(tenant, resourceId, 'confirmApply', { draftId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['confirmApply']>>>(
+      tenant,
+      resourceId,
+      'confirmApply',
+      { draftId },
+    );
   }
 
   async getDbApply(tenant: TTenantContext, applyId: string) {
     const resourceId = await this.#resolveApplyResourceId(tenant, applyId);
-    return this.#dbManagementCall(tenant, resourceId, 'getApply', { applyId });
+    await this.#requireOwnedDbLifecycleResource(tenant, resourceId);
+    return this.#dbCoordinator.getApply(applyId);
   }
 
   listDbApplies(
     tenant: TTenantContext,
     args: { resourceId: string; before?: { createdAt: string; id: string }; limit?: number },
   ) {
-    return this.#dbManagementCall(tenant, args.resourceId, 'listApplies', args);
+    return this.#requireOwnedDbLifecycleResource(tenant, args.resourceId).then(() => (
+      this.#dbCoordinator.listApplies(args)
+    ));
   }
 
   getDbBackup(tenant: TTenantContext, resourceId: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'getBackup', { resourceId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['getBackup']>>>(
+      tenant,
+      resourceId,
+      'getBackup',
+      { resourceId },
+    );
   }
 
   discardDbBackup(tenant: TTenantContext, resourceId: string, applyId: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'discardBackup', { resourceId, applyId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['discardBackup']>>>(
+      tenant,
+      resourceId,
+      'discardBackup',
+      { resourceId, applyId },
+    );
   }
 
   previewDbBackupRestore(tenant: TTenantContext, resourceId: string, applyId: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'previewRestore', { resourceId, applyId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['previewRestore']>>>(
+      tenant,
+      resourceId,
+      'previewRestore',
+      { resourceId, applyId },
+    );
   }
 
   restoreDbBackup(tenant: TTenantContext, resourceId: string, applyId: string) {
-    return this.#dbManagementCall(tenant, resourceId, 'restore', { resourceId, applyId });
+    return this.#dbManagementCall<Awaited<ReturnType<DbResourceCoordinator['restore']>>>(
+      tenant,
+      resourceId,
+      'restore',
+      { resourceId, applyId },
+    );
   }
 
   async getDbRestoreStatus(tenant: TTenantContext, restoreId: string) {
     const resourceId = await this.#resolveApplyResourceId(tenant, restoreId);
-    return this.#dbManagementCall(tenant, resourceId, 'restoreStatus', { restoreId });
+    await this.#requireOwnedDbLifecycleResource(tenant, resourceId);
+    return this.#dbCoordinator.restoreStatus(restoreId);
   }
 
   async #dispatchKeyValueManagement(
@@ -1134,14 +1260,14 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     throw new ResourceError('RESOURCE_CALL_INVALID', 'Unknown database management operation.');
   }
 
-  #dbManagementCall(
+  #dbManagementCall<TOutput = unknown>(
     tenant: TTenantContext,
     resourceId: string,
     action: string,
     args: unknown,
-  ) {
+  ): Promise<TOutput> {
     return this.#requireDbResource(tenant, resourceId).then(() => (
-      this.#managementCall(tenant, resourceId, 'db', action, args)
+      this.#managementCall<TOutput>(tenant, resourceId, 'db', action, args)
     ));
   }
 
@@ -1191,6 +1317,36 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     return resource;
   }
 
+  async #requireOwnedDbLifecycleResource(
+    tenant: TTenantContext,
+    resourceId: string,
+  ): Promise<TResourceCatalogRecord> {
+    this.#requireStore();
+    const resource = await this.#requireDbResource(tenant, resourceId);
+    const [ownedResource, placement] = await Promise.all([
+      this.#controlStore.getResource(tenant, resourceId),
+      this.#controlStore.getPlacement(tenant, resourceId),
+    ]);
+    if (!ownedResource || !placement) {
+      throw new ResourceError('RESOURCE_NOT_FOUND', 'Resource was not found.');
+    }
+    if (
+      ownedResource.orgId !== tenant.orgId
+      || ownedResource.id !== resourceId
+      || placement.orgId !== tenant.orgId
+      || placement.resourceId !== resourceId
+      || placement.status !== 'active'
+      || placement.cellId !== tenant.cellId
+      || placement.placementEpoch !== tenant.placementEpoch
+    ) {
+      throw new ResourceError(
+        'RESOURCE_PLACEMENT_STALE',
+        'Resource catalog or placement identity is stale for this cell.',
+      );
+    }
+    return resource;
+  }
+
   async #resolveDraftResourceId(tenant: TTenantContext, draftId: string): Promise<string> {
     this.#assertTenantPlacement(tenant);
     const details = await this.#dbCoordinator.getDraft(draftId);
@@ -1220,8 +1376,8 @@ class ResourceService implements IService, IStartableService<object, object>, IS
 
   #resolveRequirements(definitionName: string): Readonly<Record<string, TManagedResourceRequirement>> | null {
     for (const consumer of this.#consumers) {
-      const requirements = consumer.getVibecanvasJson(definitionName)?.actor.resources;
-      if (requirements) return requirements;
+      const manifest = consumer.getVibecanvasJson(definitionName);
+      if (manifest) return manifest.actor.resources ?? {};
     }
     return null;
   }

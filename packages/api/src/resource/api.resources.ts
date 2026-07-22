@@ -66,17 +66,3 @@ export const apiUnbindResource = baseResourceOs.resources.unbind.handler(async (
   const deleted = await withResourceApiError(() => context.resource.unbindResource(context.tenant, input));
   return { deleted };
 });
-
-export const apiListActorResources = apiListResources;
-export const apiGetActorResource = apiGetResource;
-export const apiCreateActorResource = apiCreateResource;
-export const apiRenameActorResource = apiRenameResource;
-export const apiDeleteActorResource = apiDeleteResource;
-export const apiListActorResourceReferences = apiListResourceReferences;
-export const apiListActorResourceData = apiListResourceData;
-export const apiSetActorResourceData = apiSetResourceData;
-export const apiDeleteActorResourceData = apiDeleteResourceData;
-export const apiRevealActorResourceSecret = apiRevealResourceSecret;
-export const apiActorDefinitionResourceStatus = apiDefinitionResourceStatus;
-export const apiBindActorResource = apiBindResource;
-export const apiUnbindActorResource = apiUnbindResource;

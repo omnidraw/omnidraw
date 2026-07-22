@@ -1,5 +1,6 @@
 export { createWidgetFunctionHostBridge } from './create-widget-function-host-bridge';
 export { createWidgetCollaborativeStatePort } from './create-widget-collaborative-state-port';
+export { WIDGET_SANDBOX_TRUSTED_HOST_LAYOUT_CSS } from './CONSTANTS';
 export { fxDecodeAndVerifyUiArtifact } from './fx.decode-and-verify-ui-artifact';
 export {
   fnNormalizeWidgetCollaborativeJson,

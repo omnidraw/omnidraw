@@ -124,13 +124,7 @@ function extension(chatApi: unknown) {
   return createAiChatCanvasExtension({
     chatApi: chatApi as never,
     widgetTransport: {
-      api: {
-        actors: {
-          definitions: { list: vi.fn(async () => [undefined, []]), get: vi.fn() },
-          instances: {} as never,
-          events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-        },
-      },
+      api: {},
     } as never,
     chatBrowser: createTestChatBrowser(),
     widgetBrowser: createTestWidgetBrowser(),

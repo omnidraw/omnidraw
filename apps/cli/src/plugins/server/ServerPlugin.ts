@@ -70,7 +70,14 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
               return new Response('Database service not available', { status: 500 });
             }
 
-            return handleHttpRequest(req, { compiled: ctx.config.compiled, version: ctx.config.version }, db, tenant, import.meta.dir);
+            return handleHttpRequest(req, {
+              compiled: ctx.config.compiled,
+              legacyActorEnabled: ctx.config.legacyActorEnabled,
+              version: ctx.config.version,
+            }, db, tenant, import.meta.dir, {
+              activeLegacyProcessCount: ctx.services.get('actor')
+                ?.diagnostics().activeLegacyProcessCount ?? 0,
+            });
           },
           websocket: {
             data: {} as TOrpcWebSocketData,

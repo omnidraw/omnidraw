@@ -3,7 +3,10 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { AgentService } from '../src/AgentService';
+import { createLegacyActorAgentCapabilityFactory } from '../src/legacy/LegacyActorAgentCapability';
+import { Actor } from '@vibecanvas/service-actor/Actor';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { ILegacyActorAgentCapability, TLegacyActorServiceCapability } from '../src/legacy/interface';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { createFakeSessionManager } from './tool.test-helpers';
 import { TestTenantEventPublisher } from './tenant.fixture';
@@ -22,6 +25,24 @@ class TestEventPublisherService extends TestTenantEventPublisher {
 }
 
 const tempDirs: string[] = [];
+
+function createTestLegacyActor(
+  overrides: TLegacyActorServiceCapability = {},
+  onCreate?: (capability: ILegacyActorAgentCapability) => void,
+  onClose?: (capability: ILegacyActorAgentCapability) => void,
+) {
+  const actorService: TLegacyActorServiceCapability = {
+    ...overrides,
+  };
+  return createLegacyActorAgentCapabilityFactory({
+    actorService,
+    resolvePublishedWidgetManifest: async (definitionName) => (
+      actorService.getVibecanvasJson?.(definitionName) ?? null
+    ),
+    onCreate,
+    onClose,
+  });
+}
 
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) {
@@ -44,17 +65,23 @@ async function createMountedWidgetRoot(args: {
   return root;
 }
 
-async function createServiceFixture(actorService?: ConstructorParameters<typeof AgentService>[0]['actorService']) {
+async function createServiceFixture(actorService?: TLegacyActorServiceCapability) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-'));
   tempDirs.push(dataPath);
 
   const eventPublisher = new TestEventPublisherService();
+  let legacyCapability!: ILegacyActorAgentCapability;
+  let legacyCloseCount = 0;
   const service = new AgentService({
     cachePath: join(dataPath, 'cache'),
     dataPath,
     configPath: join(dataPath, 'config'),
     eventPublisherService: eventPublisher,
-    actorService,
+    legacyActor: createTestLegacyActor(
+      actorService,
+      (capability) => { legacyCapability = capability; },
+      () => { legacyCloseCount += 1; },
+    ),
   });
 
   const widgetId = 'widget-a';
@@ -125,13 +152,94 @@ async function createServiceFixture(actorService?: ConstructorParameters<typeof 
   ].join('\n'), 'utf8');
 
   service.sessionMap[widgetId] = {
-    [sessionId]: { unsub: () => {}, session: {} as never, sessionManager: { getEntries: () => [] } as never },
+    [sessionId]: {
+      unsub: () => {},
+      session: { dispose: () => {} } as never,
+      sessionManager: { getEntries: () => [] } as never,
+    },
   };
 
-  return { service, eventPublisher, widgetId, sessionId };
+  return {
+    service,
+    eventPublisher,
+    widgetId,
+    sessionId,
+    cwd,
+    legacyCapability,
+    getLegacyCloseCount: () => legacyCloseCount,
+  };
 }
 
 describe('AgentService draft actor runtime', () => {
+  test('awaits delayed draft child reaping for explicit stop and service shutdown', async () => {
+    const { service, widgetId, sessionId, cwd, legacyCapability } = await createServiceFixture();
+    await writeFile(join(cwd, 'actor', 'functions.ts'), [
+      "process.on('SIGTERM', () => { setTimeout(() => process.exit(0), 120); });",
+      'export default { fn: {}, fx: {}, tx: {} };',
+      '',
+    ].join('\n'), 'utf8');
+
+    const first = await service.startDraftActorChat(widgetId, sessionId);
+    expect(first.ready).toBe(true);
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(1);
+    let draftStopSettled = false;
+    const stoppingDraft = service.stopDraftActorChat(widgetId, sessionId).then((result) => {
+      draftStopSettled = true;
+      return result;
+    });
+    await Bun.sleep(30);
+    expect(draftStopSettled).toBe(false);
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(1);
+    expect(await stoppingDraft).toEqual({ stopped: true });
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(0);
+
+    const second = await service.startDraftActorChat(widgetId, sessionId);
+    expect(second.ready).toBe(true);
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(1);
+    let serviceStopSettled = false;
+    const stoppingService = service.stop().then(() => { serviceStopSettled = true; });
+    await Bun.sleep(30);
+    expect(serviceStopSettled).toBe(false);
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(1);
+    await stoppingService;
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(0);
+  });
+
+  test('keeps a failed capability shutdown registered and diagnostic-visible until retry reaps it', async () => {
+    const {
+      service,
+      widgetId,
+      sessionId,
+      cwd,
+      legacyCapability,
+      getLegacyCloseCount,
+    } = await createServiceFixture();
+    await writeFile(join(cwd, 'actor', 'functions.ts'), [
+      "process.on('SIGTERM', () => { setTimeout(() => process.exit(0), 120); });",
+      'export default { fn: {}, fx: {}, tx: {} };',
+      '',
+    ].join('\n'), 'utf8');
+    expect((await service.startDraftActorChat(widgetId, sessionId)).ready).toBe(true);
+
+    const originalCloseAndWait = Actor.prototype.closeAndWait;
+    Actor.prototype.closeAndWait = async function closeWithoutReaping() {
+      this.close();
+      return false;
+    };
+    try {
+      await expect(legacyCapability.close()).rejects.toBeInstanceOf(AggregateError);
+      expect(getLegacyCloseCount()).toBe(0);
+      expect(legacyCapability.diagnostics().activeProcessCount).toBe(1);
+    } finally {
+      Actor.prototype.closeAndWait = originalCloseAndWait;
+    }
+
+    await legacyCapability.close();
+    expect(getLegacyCloseCount()).toBe(1);
+    expect(legacyCapability.diagnostics().activeProcessCount).toBe(0);
+    await service.stop();
+  });
+
   test('keeps the mentioned database bound after a mentionless continuation prompt', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-resource-continuation-'));
     tempDirs.push(dataPath);
@@ -162,7 +270,6 @@ describe('AgentService draft actor runtime', () => {
       },
     ];
     const directCalls: Array<{ call: unknown; binding: unknown }> = [];
-    const persistedBindings: unknown[] = [];
     const service = new AgentService({
       cachePath: join(dataPath, 'cache'),
       dataPath,
@@ -172,12 +279,7 @@ describe('AgentService draft actor runtime', () => {
         listResources: async () => resources,
         getResource: async (id) => resources.find((resource) => resource.id === id) ?? null,
       },
-      actorService: {
-        reload: async () => {},
-        listResourceBindingsForDefinition: async () => [],
-        transitionDefinitionPublication: async ({ definitionName, bindings }) => {
-          persistedBindings.push(...bindings.map((binding) => ({ definitionName, ...binding })));
-        },
+      legacyActor: createTestLegacyActor({
         callWithDirectResourceBinding: async (call, binding) => {
           directCalls.push({ call, binding });
           return [
@@ -185,7 +287,7 @@ describe('AgentService draft actor runtime', () => {
             { id: 250n, title: 'Last QA row' },
           ];
         },
-      },
+      }),
     });
     const sessionManager = createFakeSessionManager();
     service.sessionMap[widgetId] = {
@@ -291,15 +393,10 @@ describe('AgentService draft actor runtime', () => {
         scope: ['read'],
       },
     });
-    const publishResult = await service.publishChat(widgetId, sessionId);
-    if (!publishResult.published) throw new Error(publishResult.message);
-    expect(publishResult.published).toBe(true);
-    expect(persistedBindings).toEqual([{
-      definitionName: 'Manual QA Data Viewer',
-      slot: 'database',
-      resourceId: 'manual-qa-database',
-      scope: ['read'],
-    }]);
+    expect(await service.publishChat(widgetId, sessionId)).toMatchObject({
+      published: false,
+      message: expect.stringContaining('Publish manifest v2'),
+    });
   });
 
   test('preserves the neutral resource-service receiver during implicit Preview resource discovery', async () => {
@@ -347,10 +444,9 @@ describe('AgentService draft actor runtime', () => {
       configPath: join(dataPath, 'config'),
       eventPublisherService: new TestEventPublisherService(),
       resourceService: new StatefulResourceService(),
-      actorService: {
-        reload: async () => {},
+      legacyActor: createTestLegacyActor({
         callWithDirectResourceBinding: async () => undefined,
-      },
+      }),
     });
     service.sessionMap[widgetId] = {
       [sessionId]: {
@@ -364,7 +460,7 @@ describe('AgentService draft actor runtime', () => {
       const result = await service.startDraftActorChat(widgetId, sessionId);
       expect(result.ready).toBe(true);
     } finally {
-      service.stopDraftActorChat(widgetId, sessionId);
+      await service.stopDraftActorChat(widgetId, sessionId);
     }
   });
 
@@ -409,10 +505,9 @@ describe('AgentService draft actor runtime', () => {
           updated_at: '2026-07-13T00:00:00.000Z',
         })),
       },
-      actorService: {
-        reload: async () => {},
+      legacyActor: createTestLegacyActor({
         callWithDirectResourceBinding: async () => { gatewayCalls += 1; return []; },
-      },
+      }),
     });
     service.sessionMap[widgetId] = {
       [sessionId]: {
@@ -469,10 +564,9 @@ describe('AgentService draft actor runtime', () => {
       dataPath,
       configPath,
       eventPublisherService: new TestEventPublisherService(),
-      actorService: {
-        reload: async () => {},
+      legacyActor: createTestLegacyActor({
         getVibecanvasJson: () => manifest,
-      },
+      }),
     });
 
     const result = await service.startWidgetEditChat('widget-edit', 'session-edit', 'Counter Widget');
@@ -515,6 +609,7 @@ describe('AgentService draft actor runtime', () => {
       dataPath,
       configPath: join(dataPath, 'config'),
       eventPublisherService: new TestEventPublisherService(),
+      legacyActor: createTestLegacyActor(),
     });
     const widgetId = 'widget-manifest';
     const sessionId = 'session-manifest';
@@ -596,7 +691,7 @@ describe('AgentService draft actor runtime', () => {
     if (!reloadResult.ready) throw new Error(reloadResult.message);
     expect(reloadResult.snapshot).toEqual({ state: 'ready', context: { count: 0 } });
 
-    expect(service.stopDraftActorChat(widgetId, sessionId)).toEqual({ stopped: true });
+    expect(await service.stopDraftActorChat(widgetId, sessionId)).toEqual({ stopped: true });
     const stoppedInspect = service.inspectDraftActorChat(widgetId, sessionId);
     expect(stoppedInspect.ready).toBe(false);
   });
@@ -613,43 +708,19 @@ describe('AgentService draft actor runtime', () => {
     expect(result.sources['main.css']).toContain('color: red');
   });
 
-  test('emits widget update event after publishing draft', async () => {
+  test('refuses legacy publication without emitting a widget update event', async () => {
     const { service, eventPublisher, widgetId, sessionId } = await createServiceFixture();
 
     const result = await service.publishChat(widgetId, sessionId);
-    expect(result.published).toBe(true);
-    if (!result.published) throw new Error(result.message);
-
-    const updateEvent = eventPublisher.agentEvents.find((event) => 'kind' in event && event.kind === 'widgetupdate');
-    expect(updateEvent).toEqual({
-      kind: 'widgetupdate',
-      widgetId,
-      sessionId,
-      cwd: result.destination,
-      files: result.files,
+    expect(result).toEqual({
+      published: false,
+      manifest: null,
+      destination: null,
+      message: 'Legacy actor publication is unavailable. Publish manifest v2 through the widget draft API.',
     });
-  });
-
-  test('service publish removes persisted bindings for slots deleted from the manifest', async () => {
-    const persistedBindings = new Map([['removed-database', 'db-old']]);
-    const { service, widgetId, sessionId } = await createServiceFixture({
-      reload: async () => {},
-      listResourceBindingsForDefinition: async () => [...persistedBindings].map(([slot_name, resource_id]) => ({
-        slot_name,
-        resource_id,
-        allow_read: true,
-        allow_write: true,
-      })),
-      transitionDefinitionPublication: async ({ bindings }) => {
-        persistedBindings.clear();
-        for (const binding of bindings) persistedBindings.set(binding.slot, binding.resourceId);
-      },
-    });
-
-    const result = await service.publishChat(widgetId, sessionId);
-
-    expect(result.published).toBe(true);
-    expect(persistedBindings.size).toBe(0);
+    expect(eventPublisher.agentEvents.some(
+      (event) => 'kind' in event && event.kind === 'widgetupdate',
+    )).toBe(false);
   });
 
   test('patches draft tool icon metadata and rejects invalid lucid keys', async () => {
@@ -685,7 +756,7 @@ describe('AgentService draft actor runtime', () => {
     expect(cleared.manifest.widget.tool.icon).toBeUndefined();
   });
 
-  test('returns not-ready when manifest is missing', async () => {
+  test('cannot start a draft actor when legacy compatibility is not injected', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-missing-'));
     tempDirs.push(dataPath);
     const service = new AgentService({
@@ -701,8 +772,8 @@ describe('AgentService draft actor runtime', () => {
     const result = await service.startDraftActorChat('widget', 'session');
     expect(result).toEqual({
       ready: false,
-      reason: 'manifest-missing',
-      message: "Draft vibecanvas.json does not exist for widget 'widget' and session 'session'",
+      reason: 'legacy-disabled',
+      message: "Legacy actor compatibility is disabled for widget 'widget' and session 'session'",
     });
   });
 });

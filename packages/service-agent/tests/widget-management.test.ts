@@ -6,6 +6,7 @@ import type {
   TAgentEvent,
 } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { AgentService } from '../src/AgentService';
+import { createLegacyActorAgentCapabilityFactory } from '../src/legacy/LegacyActorAgentCapability';
 import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
 import { WidgetManagement } from '../src/widget-management/WidgetManagement';
@@ -545,13 +546,13 @@ describe('WidgetManagement', () => {
         resolvedIdentities.push(identity);
         return v2Active ? neutralTarget : null;
       },
-      actorService: {
-        reload: async () => undefined,
-        getVibecanvasJson: () => {
+      legacyActor: createLegacyActorAgentCapabilityFactory({
+        actorService: {},
+        resolvePublishedWidgetManifest: async () => {
           legacyActorLookups += 1;
           return legacyRuntimeManifest as never;
         },
-      },
+      }),
     });
     await service.start({ config: {}, hooks: {} });
 

@@ -8,6 +8,8 @@ import pingPongActorConfigJson from "./fixtures/ping-pong-actor/vibecanvas.json"
 const rootDir = new URL("./fixtures/account-fund-actor", import.meta.url).pathname;
 const bookkeeperRootDir = new URL("./fixtures/account-bookkeeper-actor", import.meta.url).pathname;
 const pingPongRootDir = new URL("./fixtures/ping-pong-actor", import.meta.url).pathname;
+const slowExitRootDir = new URL("./fixtures/slow-exit-actor", import.meta.url).pathname;
+const stubbornExitRootDir = new URL("./fixtures/stubborn-exit-actor", import.meta.url).pathname;
 const testActorConfig = testActorConfigJson as TVibecanvasJson;
 const bookkeeperActorConfig = bookkeeperActorConfigJson as TVibecanvasJson;
 const pingPongActorConfig = pingPongActorConfigJson as TVibecanvasJson;
@@ -26,6 +28,15 @@ async function waitFor(predicate: () => boolean, message: string) {
         await Bun.sleep(10)
     }
     throw new Error(message)
+}
+
+function isProcessAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0)
+        return true
+    } catch {
+        return false
+    }
 }
 
 describe("Actor", () => {
@@ -71,7 +82,9 @@ describe("Actor", () => {
             vsJson: testActorConfig
         })
 
+        expect(actor.hasActiveProcess()).toBe(false)
         actor.start()
+        expect(actor.hasActiveProcess()).toBe(true)
         const messageId = actor.inbox('add-funds', {accountId: '1', amount: 100})
         await waitForIdle(actor)
 
@@ -79,7 +92,58 @@ describe("Actor", () => {
         expect(actor.getId()).toBe("fund-actor-1")
         expect(actor.getData()).toEqual({ balance: 100 })
 
-        actor.close()
+        expect(await actor.closeAndWait()).toBe(true)
+        expect(actor.hasActiveProcess()).toBe(false)
+    })
+
+    test("retains a delayed child in diagnostics until SIGTERM shutdown is reaped", async () => {
+        const actor = new Actor({
+            id: "slow-exit-actor",
+            rootDir: slowExitRootDir,
+            vsJson: testActorConfig,
+        })
+        actor.start()
+        await actor.waitUntilReady()
+        const pid = actor.getActiveProcessId()
+        if (pid === null) throw new Error("Expected a child process id")
+
+        let settled = false
+        const closing = actor.closeAndWait(500).then((result) => {
+            settled = true
+            return result
+        })
+        await Bun.sleep(30)
+
+        expect(settled).toBe(false)
+        expect(actor.hasActiveProcess()).toBe(true)
+        expect(actor.getActiveProcessId()).toBe(pid)
+        expect(isProcessAlive(pid)).toBe(true)
+        expect(await closing).toBe(true)
+        expect(actor.hasActiveProcess()).toBe(false)
+        expect(actor.getActiveProcessId()).toBeNull()
+        expect(isProcessAlive(pid)).toBe(false)
+    })
+
+    test("escalates a stubborn child to SIGKILL and reaps it before shutdown resolves", async () => {
+        const actor = new Actor({
+            id: "stubborn-exit-actor",
+            rootDir: stubbornExitRootDir,
+            vsJson: testActorConfig,
+        })
+        actor.start()
+        await actor.waitUntilReady()
+        const pid = actor.getActiveProcessId()
+        if (pid === null) throw new Error("Expected a child process id")
+
+        const closing = actor.closeAndWait(50)
+        await Bun.sleep(20)
+        expect(actor.hasActiveProcess()).toBe(true)
+        expect(isProcessAlive(pid)).toBe(true)
+
+        expect(await closing).toBe(true)
+        expect(actor.hasActiveProcess()).toBe(false)
+        expect(actor.getActiveProcessId()).toBeNull()
+        expect(isProcessAlive(pid)).toBe(false)
     })
 
     test("sends timeout system message after entering waiting state", async () => {

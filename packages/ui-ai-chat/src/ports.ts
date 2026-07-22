@@ -16,7 +16,6 @@ export type TAiChatApiPort = {
 
 export type TWidgetTransportPort = {
   api: {
-    actors: Pick<TApi["actors"], "definitions" | "instances" | "events">;
     agent?: Pick<TApi["agent"], "events" | "widgets">;
     widget: Pick<TApi['widget'], 'runtime'>;
     function: Pick<TApi['function'], 'invoke' | 'get'>;

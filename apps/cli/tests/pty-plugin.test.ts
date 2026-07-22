@@ -41,6 +41,7 @@ function createConfig(overrides?: Partial<ICliConfig>): ICliConfig {
     cwd: process.cwd(),
     dev: true,
     compiled: false,
+    legacyActorEnabled: false,
     version: '0.0.0',
     command: 'serve',
     rawArgv: ['bun', 'run'],

@@ -146,7 +146,7 @@ describe('resource reveal API', () => {
       throw new Error('Expected reveal to fail.');
     } catch (error) {
       expect(error).toMatchObject({
-        code: 'ACTOR_RESOURCE_ERROR',
+        code: 'RESOURCE_ERROR',
         message: 'Secret-store resource is unavailable.',
         data: { code: 'SECRET_STORE_UNAVAILABLE' },
       });

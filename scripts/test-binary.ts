@@ -26,6 +26,7 @@ type TBinaryScenario = {
   port: number
   cmd: string[]
   env: NodeJS.ProcessEnv
+  expectedLegacyActorEnabled: boolean
   expectedDbPath?: string
   expectedAbsentPaths?: string[]
   cleanupPaths: string[]
@@ -189,6 +190,41 @@ async function assertHttpAsset(baseUrl: string, assetPath: string, timeoutMs: nu
   const bytes = await response.arrayBuffer()
   if (bytes.byteLength === 0) {
     throw new Error(`Asset ${assetPath} returned empty body`)
+  }
+}
+
+async function assertHealthDiagnostics(
+  baseUrl: string,
+  timeoutMs: number,
+  expectedLegacyActorEnabled: boolean,
+): Promise<void> {
+  const response = await withTimeout(fetch(`${baseUrl}/health`), timeoutMs, "fetch /health")
+  if (!response.ok) {
+    throw new Error(`GET /health failed with ${response.status}`)
+  }
+
+  const health = await response.json() as Record<string, unknown>
+  if (health.ok !== true || health.service !== "vibecanvas") {
+    throw new Error(`GET /health returned an invalid service status: ${JSON.stringify(health)}`)
+  }
+  if (health.legacy_actor_enabled !== expectedLegacyActorEnabled) {
+    throw new Error(
+      `GET /health legacy_actor_enabled mismatch: ${JSON.stringify(health)}`,
+    )
+  }
+  if (
+    typeof health.active_legacy_process_count !== "number"
+    || !Number.isInteger(health.active_legacy_process_count)
+    || health.active_legacy_process_count < 0
+  ) {
+    throw new Error(
+      `GET /health active_legacy_process_count is invalid: ${JSON.stringify(health)}`,
+    )
+  }
+  if (health.active_legacy_process_count !== 0) {
+    throw new Error(
+      `Fresh binary unexpectedly owns active legacy processes: ${JSON.stringify(health)}`,
+    )
   }
 }
 
@@ -682,6 +718,7 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
     env: {
       ...process.env,
       ...scenario.env,
+      VIBECANVAS_LEGACY_ACTOR_ENABLED: scenario.expectedLegacyActorEnabled ? "1" : "0",
     },
   })
 
@@ -706,6 +743,13 @@ async function runBinaryScenario(binaryPath: string, args: TArgs, scenario: TBin
       throw new Error("GET / html does not include root mount node")
     }
     console.log(`[test-binary] PASS ${scenario.name} GET /`)
+
+    await assertHealthDiagnostics(
+      baseUrl,
+      args.requestTimeoutMs,
+      scenario.expectedLegacyActorEnabled,
+    )
+    console.log(`[test-binary] PASS ${scenario.name} GET /health legacy diagnostics`)
 
     const assetUrls = extractAssetUrls(rootHtml)
     if (assetUrls.length === 0) {
@@ -777,6 +821,7 @@ async function main() {
   const envHome = path.join(tempRoot, "env-home")
   const compiledHome = path.join(tempRoot, "compiled-home")
   const explicitHome = path.join(tempRoot, "explicit-home")
+  const legacyEnabledHome = path.join(tempRoot, "legacy-enabled-home")
   const ignoredEnvHome = path.join(tempRoot, "ignored-env-home")
   const widgetToolchains = await createWidgetToolchainFixtures(tempRoot)
 
@@ -828,6 +873,7 @@ async function main() {
     env: {
       VIBECANVAS_HOME: envHome,
     },
+    expectedLegacyActorEnabled: false,
     expectedDbPath: path.join(envHome, "main.db"),
     cleanupPaths: [envHome],
   })
@@ -839,9 +885,22 @@ async function main() {
     env: {
       VIBECANVAS_HOME: ignoredEnvHome,
     },
+    expectedLegacyActorEnabled: false,
     expectedDbPath: path.join(explicitHome, "main.db"),
     expectedAbsentPaths: [ignoredEnvHome],
     cleanupPaths: [explicitHome, ignoredEnvHome],
+  })
+
+  await runBinaryScenario(binaryPath, args, {
+    name: "legacy-actor-enabled",
+    port: args.port + 3,
+    cmd: ["serve", "--port", String(args.port + 3)],
+    env: {
+      VIBECANVAS_HOME: legacyEnabledHome,
+    },
+    expectedLegacyActorEnabled: true,
+    expectedDbPath: path.join(legacyEnabledHome, "main.db"),
+    cleanupPaths: [legacyEnabledHome],
   })
 
   const defaultCompiledPort = 7496
@@ -854,6 +913,7 @@ async function main() {
       env: {
         VIBECANVAS_HOME: compiledHome,
       },
+      expectedLegacyActorEnabled: false,
       expectedDbPath: path.join(compiledHome, "main.db"),
       cleanupPaths: [compiledHome],
     })

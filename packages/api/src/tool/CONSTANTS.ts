@@ -1,4 +1,4 @@
-import { ZVibecanvasToolIcon } from "@vibecanvas/service-actor/core/vibecanvasjson.zod";
+import { ZVibecanvasToolIcon } from "@vibecanvas/widget-contract";
 import { z } from "zod";
 
 export const ZToolGroupJson = ZVibecanvasToolIcon.nullable();

@@ -7,7 +7,6 @@ import {
   ZWidgetError,
 } from '@vibecanvas/service-db/model';
 import { z } from 'zod';
-import { resourceContract, ZActorResourceApiErrorData } from '../resource/contract';
 
 const ZActorDefListItem = ZVibecanvasJson.extend(ZActorDefinition.shape);
 const ZActorDefinitionListItem = ZActorDefinition.extend({
@@ -100,13 +99,7 @@ export const ZActorEvent = z.union([
 
 export type TActorEvent = z.infer<typeof ZActorEvent>;
 
-export const actorsContract = oc.errors({
-  ACTOR_RESOURCE_ERROR: {
-    status: 409,
-    message: 'Actor resource operation failed.',
-    data: ZActorResourceApiErrorData,
-  },
-}).router({
+export const actorsContract = oc.router({
   definitions: {
     list: oc.output(ZActorDefinitionListItem.array()),
     get: oc.input(z.object({ name: z.string() }))
@@ -131,12 +124,4 @@ export const actorsContract = oc.errors({
       .input(z.object({ name: z.string(), payload: z.unknown(), instanceId: z.string() }))
       .output(ZActorSendMessageResult),
   },
-  resources: resourceContract.resources,
-  dbResources: resourceContract.dbResources,
-  dbRows: resourceContract.dbRows,
-  dbDrafts: resourceContract.dbDrafts,
-  dbApplies: resourceContract.dbApplies,
-  dbBackups: resourceContract.dbBackups,
 });
-
-export * from '../resource/contract';

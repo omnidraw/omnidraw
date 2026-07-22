@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
+import type { TDatabaseFactory } from '@vibecanvas/resource-runtime/local';
 import { ActorService } from '../src/ActorService';
-import type { TDatabaseFactory } from '../src/resources/DbResource';
-import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
+import { createNeutralActorResourceComposition, type TNeutralActorResourceComposition } from './neutral-resource.fixture';
 import { createTestCrypto, testUuid } from './test-uuid';
 import { bindTestTenantDb, createTestTenantEvents, TEST_TENANT, type TActorTestDb } from './tenant.fixture';
 
@@ -29,16 +29,38 @@ function manifest() {
   } as const;
 }
 
-describe('ActorService DbResource coordinated apply lifecycle', () => {
+describe('neutral ResourceService database apply with actor coordination', () => {
   let rootDir = '';
   let dataRoot = '';
   let functionsPath = '';
   let dbService: DbServiceTurso;
   let db: TActorTestDb;
-  let service: ActorService;
+  let actorService: ActorService;
+  let resources: TNeutralActorResourceComposition['resourceService'];
+  let composition: TNeutralActorResourceComposition;
   let testCrypto: Pick<Crypto, 'randomUUID'>;
   let beforePrepare: ((databasePath: string, sql: string) => Promise<void>) | null;
   let afterRun: ((databasePath: string, sql: string, args: readonly unknown[]) => Promise<void>) | null;
+
+  const createComposition = (databaseFactory?: TDatabaseFactory): TNeutralActorResourceComposition => (
+    createNeutralActorResourceComposition({
+      tenant: TEST_TENANT,
+      dbService,
+      db,
+      crypto: testCrypto,
+      configPath: join(rootDir, 'config'),
+      dataRoot,
+      eventPublisherService: createTestTenantEvents(),
+      ...(databaseFactory ? { databaseFactory } : {}),
+    })
+  );
+
+  const startFreshComposition = async (databaseFactory?: TDatabaseFactory): Promise<void> => {
+    composition = createComposition(databaseFactory);
+    actorService = composition.actor;
+    resources = composition.resourceService;
+    await composition.start();
+  };
 
   beforeEach(async () => {
     rootDir = await mkdtemp(join(tmpdir(), 'vibecanvas-actor-service-db-apply-'));
@@ -72,28 +94,18 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       }) as typeof database.run;
       return database;
     };
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath,
-      dataRoot,
-      dbResourceDatabaseFactory: databaseFactory,
-      secretStoreKeyProvider: testSecretStoreKeyProvider,
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await startFreshComposition(databaseFactory);
   });
 
   afterEach(async () => {
-    await service.stop().catch(() => undefined);
+    await composition.stop().catch(() => undefined);
     await db.db.close().catch(() => undefined);
     await rm(rootDir, { recursive: true, force: true });
   });
 
   async function waitForApply(applyId: string) {
     for (let attempt = 0; attempt < 200; attempt += 1) {
-      const details = await service.getDbApply(applyId);
+      const details = await resources.getDbApply(applyId);
       if (['succeeded', 'failed', 'recovered'].includes(details.apply.status)) return details;
       await Bun.sleep(10);
     }
@@ -102,9 +114,9 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
 
   test('previews impact, applies exact draft SQL, persists stopped-instance outcomes, and restores retained backup', async () => {
     await db.canvas.create({ id: testUuid('draft-canvas'), name: 'Draft Canvas', automerge_url: 'automerge:db-draft-test' });
-    const resource = await service.createResource({ kind: 'db', name: 'Shared Draft Notes' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const runningActor = await service.createInstance(DEFINITION_NAME, testUuid('draft-canvas'), 'running-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Shared Draft Notes' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const runningActor = await actorService.createInstance(DEFINITION_NAME, testUuid('draft-canvas'), 'running-element');
     expect(runningActor).not.toBeNull();
     const runningInstanceId = runningActor!.getId();
     await db.actor.insertInstance({
@@ -119,8 +131,8 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       machine_context: {},
     });
 
-    const draft = await service.createDbDraft(resource.id, 'Add notes table');
-    const change = await service.changeDbDraft(draft.draft.id, {
+    const draft = await resources.createDbDraft(resource.id, 'Add notes table');
+    const change = await resources.changeDbDraft(draft.draft.id, {
       kind: 'createTable',
       table: 'notes',
       columns: [
@@ -129,10 +141,10 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       ],
     });
     expect(change.sql).toContain('CREATE TABLE');
-    expect((await service.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects).toEqual([]);
-    expect((await service.inspectDbResource({ resourceId: resource.id, target: 'draft', draftId: draft.draft.id }))?.objects[0].name).toBe('notes');
+    expect((await resources.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects).toEqual([]);
+    expect((await resources.inspectDbResource({ resourceId: resource.id, target: 'draft', draftId: draft.draft.id }))?.objects[0].name).toBe('notes');
 
-    const preview = await service.previewDbApply(draft.draft.id);
+    const preview = await resources.previewDbApply(draft.draft.id);
     expect(preview.compatibilityNotice).toContain('cannot be guaranteed');
     expect(preview.impact.definitions).toEqual([{ definitionName: DEFINITION_NAME, slots: [{ slot: 'notes', scope: ['read', 'write'] }] }]);
     expect(preview.impact.instances).toEqual(expect.arrayContaining([
@@ -140,7 +152,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       expect.objectContaining({ instanceId: testUuid('stopped-draft-instance'), running: false }),
     ]));
 
-    const started = await service.confirmDbApply(draft.draft.id);
+    const started = await resources.confirmDbApply(draft.draft.id);
     const completed = await waitForApply(started.id);
     expect(completed.apply.status).toBe('succeeded');
     expect(completed.apply.backup_retained).toBe(true);
@@ -148,38 +160,38 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       expect.objectContaining({ actor_instance_id: runningInstanceId, status: 'restarted', was_running: true }),
       expect.objectContaining({ actor_instance_id: testUuid('stopped-draft-instance'), status: 'notRunning', was_running: false }),
     ]));
-    expect((await service.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects[0].name).toBe('notes');
+    expect((await resources.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects[0].name).toBe('notes');
 
-    const backup = await service.getDbBackup(resource.id);
+    const backup = await resources.getDbBackup(resource.id);
     expect(backup?.applyId).toBe(started.id);
-    await service.createDbRow({ resourceId: resource.id, object: 'notes', values: { id: { type: 'integer', value: '1' }, title: { type: 'text', value: 'newer write' } } });
-    const restorePreview = await service.previewDbBackupRestore(resource.id, started.id);
+    await resources.createDbRow({ resourceId: resource.id, object: 'notes', values: { id: { type: 'integer', value: '1' }, title: { type: 'text', value: 'newer write' } } });
+    const restorePreview = await resources.previewDbBackupRestore(resource.id, started.id);
     expect(restorePreview.warning).toContain('permanently loses');
-    const restore = await service.restoreDbBackup(resource.id, started.id);
+    const restore = await resources.restoreDbBackup(resource.id, started.id);
     expect((await waitForApply(restore.id)).apply.status).toBe('succeeded');
-    expect((await service.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects).toEqual([]);
+    expect((await resources.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects).toEqual([]);
   });
 
   test('applies a table assembled from structured and advanced draft changes', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Mixed Draft Notes' });
-    const draft = await service.createDbDraft(resource.id, 'Build notes incrementally');
-    await service.changeDbDraft(draft.draft.id, {
+    const resource = await resources.createResource({ kind: 'db', name: 'Mixed Draft Notes' });
+    const draft = await resources.createDbDraft(resource.id, 'Build notes incrementally');
+    await resources.changeDbDraft(draft.draft.id, {
       kind: 'createTable',
       table: 'browser_final_notes',
       columns: [{ name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 }],
     });
-    await service.changeDbDraft(draft.draft.id, {
+    await resources.changeDbDraft(draft.draft.id, {
       kind: 'addColumn',
       table: 'browser_final_notes',
       column: { name: 'title', declaredType: 'TEXT', nullable: false },
     });
-    await service.executeDbDraftSql(draft.draft.id, 'ALTER TABLE browser_final_notes ADD COLUMN amount REAL;');
-    await service.executeDbDraftSql(draft.draft.id, 'ALTER TABLE browser_final_notes ADD COLUMN payload BLOB;');
+    await resources.executeDbDraftSql(draft.draft.id, 'ALTER TABLE browser_final_notes ADD COLUMN amount REAL;');
+    await resources.executeDbDraftSql(draft.draft.id, 'ALTER TABLE browser_final_notes ADD COLUMN payload BLOB;');
 
-    const started = await service.confirmDbApply(draft.draft.id);
+    const started = await resources.confirmDbApply(draft.draft.id);
     const completed = await waitForApply(started.id);
     expect(completed.apply).toMatchObject({ status: 'succeeded', backup_retained: true, last_error: null });
-    expect((await service.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects).toEqual([
+    expect((await resources.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects).toEqual([
       expect.objectContaining({
         name: 'browser_final_notes',
         columns: [
@@ -193,9 +205,9 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
   });
 
   test('persists bound SQLite parameters and commits them through the coordinated apply record', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Bound Parameter Notes' });
-    const schemaDraft = await service.createDbDraft(resource.id, 'Create parameter notes');
-    await service.changeDbDraft(schemaDraft.draft.id, {
+    const resource = await resources.createResource({ kind: 'db', name: 'Bound Parameter Notes' });
+    const schemaDraft = await resources.createDbDraft(resource.id, 'Create parameter notes');
+    await resources.changeDbDraft(schemaDraft.draft.id, {
       kind: 'createTable',
       table: 'notes',
       columns: [
@@ -203,13 +215,13 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
         { name: 'title', declaredType: 'TEXT', nullable: false },
       ],
     });
-    const schemaApply = await service.confirmDbApply(schemaDraft.draft.id);
+    const schemaApply = await resources.confirmDbApply(schemaDraft.draft.id);
     expect((await waitForApply(schemaApply.id)).apply.status).toBe('succeeded');
 
-    const dataDraft = await service.createDbDraft(resource.id, 'Write parameter notes');
+    const dataDraft = await resources.createDbDraft(resource.id, 'Write parameter notes');
     const parameters = [{ type: 'integer', value: '7' }, { type: 'text', value: 'Bound value' }] as const;
-    await service.executeDbDraftSql(dataDraft.draft.id, 'INSERT INTO notes(id, title) VALUES (?, ?)', parameters);
-    expect((await service.getDbDraft(dataDraft.draft.id)).changes).toEqual([
+    await resources.executeDbDraftSql(dataDraft.draft.id, 'INSERT INTO notes(id, title) VALUES (?, ?)', parameters);
+    expect((await resources.getDbDraft(dataDraft.draft.id)).changes).toEqual([
       expect.objectContaining({
         kind: 'sql',
         sql: 'INSERT INTO notes(id, title) VALUES (?, ?)',
@@ -217,9 +229,9 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       }),
     ]);
 
-    const dataApply = await service.confirmDbApply(dataDraft.draft.id);
+    const dataApply = await resources.confirmDbApply(dataDraft.draft.id);
     expect((await waitForApply(dataApply.id)).apply).toMatchObject({ status: 'succeeded', draft_id: dataDraft.draft.id });
-    await expect(service.executeDbLiveSql({
+    await expect(resources.executeDbLiveSql({
       resourceId: resource.id,
       sql: 'SELECT id, title FROM notes WHERE id = ?',
       parameters: [{ type: 'integer', value: '7' }],
@@ -231,46 +243,46 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
   });
 
   test('rejects multiple statements in one draft write with or without parameters', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Single Statement Notes' });
-    const draft = await service.createDbDraft(resource.id, 'Reject compound writes');
+    const resource = await resources.createResource({ kind: 'db', name: 'Single Statement Notes' });
+    const draft = await resources.createDbDraft(resource.id, 'Reject compound writes');
     const compoundSql = 'CREATE TABLE first_note(id INTEGER); CREATE TABLE second_note(id INTEGER);';
 
-    await expect(service.executeDbDraftSql(draft.draft.id, compoundSql)).rejects.toMatchObject({
+    await expect(resources.executeDbDraftSql(draft.draft.id, compoundSql)).rejects.toMatchObject({
       code: 'DB_OPERATION_PARAMETERS_INVALID',
     });
-    await expect(service.executeDbDraftSql(draft.draft.id, compoundSql, [])).rejects.toMatchObject({
+    await expect(resources.executeDbDraftSql(draft.draft.id, compoundSql, [])).rejects.toMatchObject({
       code: 'DB_OPERATION_PARAMETERS_INVALID',
     });
-    expect((await service.getDbDraft(draft.draft.id)).changes).toEqual([]);
+    expect((await resources.getDbDraft(draft.draft.id)).changes).toEqual([]);
   });
 
   test('keeps a successful database outcome separate from an actor restart failure', async () => {
     await db.canvas.create({ id: testUuid('restart-canvas'), name: 'Restart Canvas', automerge_url: 'automerge:db-restart-test' });
-    const resource = await service.createResource({ kind: 'db', name: 'Restart Outcome Notes' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const actor = await service.createInstance(DEFINITION_NAME, testUuid('restart-canvas'), 'restart-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Restart Outcome Notes' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const actor = await actorService.createInstance(DEFINITION_NAME, testUuid('restart-canvas'), 'restart-element');
     expect(actor).not.toBeNull();
     const actorId = actor!.getId();
-    const draft = await service.createDbDraft(resource.id, 'Create notes');
-    await service.changeDbDraft(draft.draft.id, {
+    const draft = await resources.createDbDraft(resource.id, 'Create notes');
+    await resources.changeDbDraft(draft.draft.id, {
       kind: 'createTable',
       table: 'notes',
       columns: [{ name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 }],
     });
     await rm(functionsPath);
-    const apply = await service.confirmDbApply(draft.draft.id);
+    const apply = await resources.confirmDbApply(draft.draft.id);
     const completed = await waitForApply(apply.id);
     expect(completed.apply.status).toBe('succeeded');
     expect(completed.instances).toEqual([
       expect.objectContaining({ actor_instance_id: actorId, status: 'startFailed', was_running: true }),
     ]);
-    expect((await service.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects[0].name).toBe('notes');
+    expect((await resources.inspectDbResource({ resourceId: resource.id, target: 'live' }))?.objects[0].name).toBe('notes');
   });
 
   test('recovers a committed apply outcome when post-apply bookkeeping fails', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Bookkeeping Failure Notes' });
-    const draft = await service.createDbDraft(resource.id, 'Create notes before bookkeeping failure');
-    await service.changeDbDraft(draft.draft.id, {
+    const resource = await resources.createResource({ kind: 'db', name: 'Bookkeeping Failure Notes' });
+    const draft = await resources.createDbDraft(resource.id, 'Create notes before bookkeeping failure');
+    await resources.changeDbDraft(draft.draft.id, {
       kind: 'createTable',
       table: 'notes',
       columns: [{ name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 }],
@@ -286,20 +298,20 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       return update(args);
     };
 
-    const started = await service.confirmDbApply(draft.draft.id);
+    const started = await resources.confirmDbApply(draft.draft.id);
     const completed = await waitForApply(started.id);
     expect(completed.apply).toMatchObject({ status: 'succeeded', backup_retained: true });
-    expect(await service.getDbBackup(resource.id)).toMatchObject({ applyId: started.id });
+    expect(await resources.getDbBackup(resource.id)).toMatchObject({ applyId: started.id });
   });
 
   test('restarts a bound running actor after committed apply bookkeeping fails', async () => {
     await db.canvas.create({ id: testUuid('apply-bookkeeping-canvas'), name: 'Apply bookkeeping', automerge_url: 'automerge:apply-bookkeeping' });
-    const resource = await service.createResource({ kind: 'db', name: 'Bound Apply Bookkeeping' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const actor = await service.createInstance(DEFINITION_NAME, testUuid('apply-bookkeeping-canvas'), 'apply-bookkeeping-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Bound Apply Bookkeeping' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const actor = await actorService.createInstance(DEFINITION_NAME, testUuid('apply-bookkeeping-canvas'), 'apply-bookkeeping-element');
     expect(actor).not.toBeNull();
     const actorId = actor!.getId();
-    const draft = await service.createDbDraft(resource.id, 'Committed apply');
+    const draft = await resources.createDbDraft(resource.id, 'Committed apply');
 
     const update = db.dbResource.apply.update;
     let failRestartingUpdate = true;
@@ -311,7 +323,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       return update(args);
     };
 
-    const started = await service.confirmDbApply(draft.draft.id);
+    const started = await resources.confirmDbApply(draft.draft.id);
     const completed = await waitForApply(started.id);
     expect(completed.apply.status).toBe('succeeded');
     expect(completed.instances).toEqual([
@@ -322,13 +334,13 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
 
   test('restarts a bound running actor after committed restore bookkeeping fails', async () => {
     await db.canvas.create({ id: testUuid('restore-bookkeeping-canvas'), name: 'Restore bookkeeping', automerge_url: 'automerge:restore-bookkeeping' });
-    const resource = await service.createResource({ kind: 'db', name: 'Bound Restore Bookkeeping' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const actor = await service.createInstance(DEFINITION_NAME, testUuid('restore-bookkeeping-canvas'), 'restore-bookkeeping-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Bound Restore Bookkeeping' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const actor = await actorService.createInstance(DEFINITION_NAME, testUuid('restore-bookkeeping-canvas'), 'restore-bookkeeping-element');
     expect(actor).not.toBeNull();
     const actorId = actor!.getId();
-    const draft = await service.createDbDraft(resource.id, 'Retained restore source');
-    const source = await service.confirmDbApply(draft.draft.id);
+    const draft = await resources.createDbDraft(resource.id, 'Retained restore source');
+    const source = await resources.confirmDbApply(draft.draft.id);
     expect((await waitForApply(source.id)).apply.status).toBe('succeeded');
 
     const updateProviderState = db.actorResource.updateProviderState;
@@ -341,7 +353,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       return updateProviderState(args);
     };
 
-    const restore = await service.restoreDbBackup(resource.id, source.id);
+    const restore = await resources.restoreDbBackup(resource.id, source.id);
     const completed = await waitForApply(restore.id);
     expect(completed.apply.status).toBe('succeeded');
     expect(completed.instances).toEqual([
@@ -352,13 +364,13 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
 
   test('keeps a bound actor stopped when post-commit apply health and backup recovery both fail', async () => {
     await db.canvas.create({ id: testUuid('unrecoverable-apply-canvas'), name: 'Unrecoverable apply', automerge_url: 'automerge:unrecoverable-apply' });
-    const resource = await service.createResource({ kind: 'db', name: 'Unrecoverable Apply Notes' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const actor = await service.createInstance(DEFINITION_NAME, testUuid('unrecoverable-apply-canvas'), 'unrecoverable-apply-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Unrecoverable Apply Notes' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const actor = await actorService.createInstance(DEFINITION_NAME, testUuid('unrecoverable-apply-canvas'), 'unrecoverable-apply-element');
     expect(actor).not.toBeNull();
     const actorId = actor!.getId();
-    const draft = await service.createDbDraft(resource.id, 'Apply that cannot recover');
-    await service.changeDbDraft(draft.draft.id, {
+    const draft = await resources.createDbDraft(resource.id, 'Apply that cannot recover');
+    await resources.changeDbDraft(draft.draft.id, {
       kind: 'createTable',
       table: 'notes',
       columns: [{ name: 'id', declaredType: 'INTEGER', nullable: false, primaryKeyOrder: 1 }],
@@ -379,16 +391,16 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       throw new Error('simulated post-commit health and backup recovery failure');
     };
 
-    const started = await service.confirmDbApply(draft.draft.id);
+    const started = await resources.confirmDbApply(draft.draft.id);
     const completed = await waitForApply(started.id);
     expect(String(committedApplyId)).toBe(started.id);
     expect(completed.apply).toMatchObject({ status: 'failed', last_error: { code: 'DB_RESOURCE_RECOVERY_FAILED' } });
     expect(completed.instances).toEqual([
       expect.objectContaining({ actor_instance_id: actorId, was_running: true, status: 'stopped' }),
     ]);
-    expect(await service.getResource(resource.id)).toMatchObject({ status: 'error', last_error: { code: 'DB_RESOURCE_RECOVERY_FAILED' } });
+    expect(await resources.getResource(resource.id)).toMatchObject({ status: 'error', last_error: { code: 'DB_RESOURCE_RECOVERY_FAILED' } });
     expect(await db.actor.getInstanceById(actorId)).toMatchObject({ status: 'blocked' });
-    expect(service.listenToActorEvents(actorId, () => undefined)).toBeNull();
+    expect(actorService.listenToActorEvents(actorId, () => undefined)).toBeNull();
 
     const physical = new Database(livePath, { fileMustExist: true });
     await physical.connect();
@@ -400,13 +412,13 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
 
   test('keeps a bound actor stopped when restore copy verification remains unrecoverable', async () => {
     await db.canvas.create({ id: testUuid('unrecoverable-restore-canvas'), name: 'Unrecoverable restore', automerge_url: 'automerge:unrecoverable-restore' });
-    const resource = await service.createResource({ kind: 'db', name: 'Unrecoverable Restore Notes' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const actor = await service.createInstance(DEFINITION_NAME, testUuid('unrecoverable-restore-canvas'), 'unrecoverable-restore-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Unrecoverable Restore Notes' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const actor = await actorService.createInstance(DEFINITION_NAME, testUuid('unrecoverable-restore-canvas'), 'unrecoverable-restore-element');
     expect(actor).not.toBeNull();
     const actorId = actor!.getId();
-    const draft = await service.createDbDraft(resource.id, 'Retained restore source');
-    const source = await service.confirmDbApply(draft.draft.id);
+    const draft = await resources.createDbDraft(resource.id, 'Retained restore source');
+    const source = await resources.confirmDbApply(draft.draft.id);
     expect((await waitForApply(source.id)).apply.status).toBe('succeeded');
 
     const livePath = join(dataRoot, resource.id, 'data.db');
@@ -416,15 +428,15 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       }
     };
 
-    const restore = await service.restoreDbBackup(resource.id, source.id);
+    const restore = await resources.restoreDbBackup(resource.id, source.id);
     const completed = await waitForApply(restore.id);
     expect(completed.apply).toMatchObject({ status: 'failed', last_error: { code: 'DB_RESOURCE_RESTORE_FAILED' } });
     expect(completed.instances).toEqual([
       expect.objectContaining({ actor_instance_id: actorId, was_running: true, status: 'stopped' }),
     ]);
-    expect(await service.getResource(resource.id)).toMatchObject({ status: 'error', last_error: { code: 'DB_RESOURCE_RESTORE_FAILED' } });
+    expect(await resources.getResource(resource.id)).toMatchObject({ status: 'error', last_error: { code: 'DB_RESOURCE_RESTORE_FAILED' } });
     expect(await db.actor.getInstanceById(actorId)).toMatchObject({ status: 'blocked' });
-    expect(service.listenToActorEvents(actorId, () => undefined)).toBeNull();
+    expect(actorService.listenToActorEvents(actorId, () => undefined)).toBeNull();
 
     const physical = new Database(livePath, { fileMustExist: true });
     await physical.connect();
@@ -435,27 +447,27 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
   });
 
   test('finds retained backup metadata beyond the newest history page', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Deep Backup History' });
-    const draft = await service.createDbDraft(resource.id, 'Retained physical backup');
-    const retained = await service.confirmDbApply(draft.draft.id);
+    const resource = await resources.createResource({ kind: 'db', name: 'Deep Backup History' });
+    const draft = await resources.createDbDraft(resource.id, 'Retained physical backup');
+    const retained = await resources.confirmDbApply(draft.draft.id);
     expect((await waitForApply(retained.id)).apply.status).toBe('succeeded');
     for (let index = 0; index < 100; index += 1) {
       const id = testUuid(`newer-${index.toString().padStart(3, '0')}`);
       await db.dbResource.apply.create({ id, resourceId: resource.id });
       await db.dbResource.apply.update({ id, status: 'succeeded' });
     }
-    expect(await service.getDbBackup(resource.id)).toMatchObject({ applyId: retained.id });
+    expect(await resources.getDbBackup(resource.id)).toMatchObject({ applyId: retained.id });
   });
 
   test('reconciles an interrupted apply before restarting its previously blocked actor', async () => {
     await db.canvas.create({ id: testUuid('recovery-canvas'), name: 'Recovery Canvas', automerge_url: 'automerge:db-recovery-test' });
-    const resource = await service.createResource({ kind: 'db', name: 'Interrupted Recovery Notes' });
-    await service.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
-    const actor = await service.createInstance(DEFINITION_NAME, testUuid('recovery-canvas'), 'recovery-element');
+    const resource = await resources.createResource({ kind: 'db', name: 'Interrupted Recovery Notes' });
+    await resources.bindResource({ definitionName: DEFINITION_NAME, slot: 'notes', resourceId: resource.id });
+    const actor = await actorService.createInstance(DEFINITION_NAME, testUuid('recovery-canvas'), 'recovery-element');
     expect(actor).not.toBeNull();
     const actorId = actor!.getId();
 
-    await service.stop();
+    await composition.stop();
     await db.actor.updateInstanceHealth({
       id: actorId,
       status: 'blocked',
@@ -483,30 +495,21 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       error: null,
     });
 
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath: join(rootDir, 'config'),
-      dataRoot,
-      secretStoreKeyProvider: testSecretStoreKeyProvider,
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await startFreshComposition();
 
-    expect(await service.getResource(resource.id)).toMatchObject({ status: 'ready' });
-    expect((await service.getDbApply(apply.id)).apply.status).toBe('failed');
-    expect((await service.getDbApply(apply.id)).instances).toEqual([
+    expect(await resources.getResource(resource.id)).toMatchObject({ status: 'ready' });
+    expect((await resources.getDbApply(apply.id)).apply.status).toBe('failed');
+    expect((await resources.getDbApply(apply.id)).instances).toEqual([
       expect.objectContaining({ actor_instance_id: actorId, status: 'restarted', was_running: true }),
     ]);
     expect(await db.actor.getInstanceById(actorId)).toMatchObject({ status: 'running', last_error: null });
-    expect(service.listenToActorEvents(actorId, () => undefined)).toBeFunction();
+    expect(actorService.listenToActorEvents(actorId, () => undefined)).toBeFunction();
   });
 
   test('detects physical draft evidence that was not durably appended to the control log after restart', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Draft Evidence Notes' });
-    const draft = await service.createDbDraft(resource.id, 'Crash-window evidence');
-    await service.stop();
+    const resource = await resources.createResource({ kind: 'db', name: 'Draft Evidence Notes' });
+    const draft = await resources.createDbDraft(resource.id, 'Crash-window evidence');
+    await composition.stop();
 
     const physical = new Database(join(dataRoot, '.drafts', draft.draft.id, 'data.db'), {
       fileMustExist: true,
@@ -526,66 +529,57 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
     await mutate();
     await physical.close();
 
-    service = new ActorService({
-      tenant: TEST_TENANT,
-      db,
-      crypto: testCrypto,
-      configPath: join(rootDir, 'config'),
-      dataRoot,
-      secretStoreKeyProvider: testSecretStoreKeyProvider,
-      eventPublisherService: createTestTenantEvents(),
-    });
-    await service.start({} as never);
+    await startFreshComposition();
     expect(await db.dbResource.draft.get({ id: draft.draft.id })).toMatchObject({
       status: 'error',
       last_error: { code: 'DB_RESOURCE_DRAFT_INVALID' },
     });
-    expect((await service.getDbDraft(draft.draft.id)).changes).toEqual([]);
+    expect((await resources.getDbDraft(draft.draft.id)).changes).toEqual([]);
   });
 
   test('mutually excludes drafts, applies, restores, deletion, and non-ready resources', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Admission Notes' });
+    const resource = await resources.createResource({ kind: 'db', name: 'Admission Notes' });
     const activeBeforeDraft = await db.dbResource.apply.create({ id: testUuid('active-before-draft'), resourceId: resource.id });
-    await expect(service.createDbDraft(resource.id, 'Blocked draft')).rejects.toMatchObject({ code: 'DB_RESOURCE_APPLY_IN_PROGRESS' });
-    await expect(service.deleteResource(resource.id)).rejects.toMatchObject({ code: 'RESOURCE_NOT_READY' });
+    await expect(resources.createDbDraft(resource.id, 'Blocked draft')).rejects.toMatchObject({ code: 'DB_RESOURCE_APPLY_IN_PROGRESS' });
+    await expect(resources.deleteResource(resource.id)).rejects.toMatchObject({ code: 'RESOURCE_NOT_READY' });
     await db.dbResource.apply.update({ id: activeBeforeDraft.id, status: 'failed' });
 
-    const draft = await service.createDbDraft(resource.id, 'Apply admission');
-    await expect(service.deleteResource(resource.id)).rejects.toMatchObject({ code: 'RESOURCE_NOT_READY' });
+    const draft = await resources.createDbDraft(resource.id, 'Apply admission');
+    await expect(resources.deleteResource(resource.id)).rejects.toMatchObject({ code: 'RESOURCE_NOT_READY' });
     const competing = await db.dbResource.apply.create({ id: testUuid('competing-apply'), resourceId: resource.id });
-    await expect(service.confirmDbApply(draft.draft.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_APPLY_IN_PROGRESS' });
+    await expect(resources.confirmDbApply(draft.draft.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_APPLY_IN_PROGRESS' });
     await db.dbResource.apply.update({ id: competing.id, status: 'failed' });
-    const retained = await service.confirmDbApply(draft.draft.id);
+    const retained = await resources.confirmDbApply(draft.draft.id);
     expect((await waitForApply(retained.id)).apply.status).toBe('succeeded');
 
-    const restoreBlockingDraft = await service.createDbDraft(resource.id, 'Blocks restore');
-    await expect(service.restoreDbBackup(resource.id, retained.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_DRAFT_EXISTS' });
-    await service.discardDbDraft(restoreBlockingDraft.draft.id);
+    const restoreBlockingDraft = await resources.createDbDraft(resource.id, 'Blocks restore');
+    await expect(resources.restoreDbBackup(resource.id, retained.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_DRAFT_EXISTS' });
+    await resources.discardDbDraft(restoreBlockingDraft.draft.id);
     const activeBeforeRestore = await db.dbResource.apply.create({ id: testUuid('active-before-restore'), resourceId: resource.id });
-    await expect(service.restoreDbBackup(resource.id, retained.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_APPLY_IN_PROGRESS' });
+    await expect(resources.restoreDbBackup(resource.id, retained.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_APPLY_IN_PROGRESS' });
     await db.dbResource.apply.update({ id: activeBeforeRestore.id, status: 'failed' });
     await db.actorResource.updateProviderState({ id: resource.id, status: 'error', lastError: { code: 'TEST', message: 'not ready' } });
-    await expect(service.restoreDbBackup(resource.id, retained.id)).rejects.toMatchObject({ code: 'RESOURCE_NOT_READY' });
+    await expect(resources.restoreDbBackup(resource.id, retained.id)).rejects.toMatchObject({ code: 'RESOURCE_NOT_READY' });
   });
 
   test('clears phantom retained-backup metadata before get or restore preview', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Phantom Backup Notes' });
-    const draft = await service.createDbDraft(resource.id, 'Physical backup');
-    const retained = await service.confirmDbApply(draft.draft.id);
+    const resource = await resources.createResource({ kind: 'db', name: 'Phantom Backup Notes' });
+    const draft = await resources.createDbDraft(resource.id, 'Physical backup');
+    const retained = await resources.confirmDbApply(draft.draft.id);
     expect((await waitForApply(retained.id)).apply.status).toBe('succeeded');
     await rm(join(dataRoot, resource.id, 'backups', retained.id), { recursive: true, force: true });
-    expect(await service.getDbBackup(resource.id)).toBeNull();
+    expect(await resources.getDbBackup(resource.id)).toBeNull();
     expect(await db.dbResource.apply.get({ id: retained.id })).toMatchObject({ backup_retained: false });
-    await expect(service.previewDbBackupRestore(resource.id, retained.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_RESTORE_FAILED' });
+    await expect(resources.previewDbBackupRestore(resource.id, retained.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_RESTORE_FAILED' });
   });
 
   test('shutdown drains accepted apply work and rejects later coordinator work', async () => {
-    const resource = await service.createResource({ kind: 'db', name: 'Shutdown Apply Notes' });
-    const draft = await service.createDbDraft(resource.id, 'Accepted before shutdown');
-    const apply = await service.confirmDbApply(draft.draft.id);
-    await service.stop();
+    const resource = await resources.createResource({ kind: 'db', name: 'Shutdown Apply Notes' });
+    const draft = await resources.createDbDraft(resource.id, 'Accepted before shutdown');
+    const apply = await resources.confirmDbApply(draft.draft.id);
+    await composition.stop();
     expect(await db.dbResource.apply.get({ id: apply.id })).toMatchObject({ status: 'succeeded' });
-    await expect(service.getDbApply(apply.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_UNAVAILABLE' });
-    await expect(service.createDbDraft(resource.id, 'Rejected after shutdown')).rejects.toMatchObject({ code: 'DB_RESOURCE_UNAVAILABLE' });
+    await expect(resources.getDbApply(apply.id)).rejects.toMatchObject({ code: 'DB_RESOURCE_UNAVAILABLE' });
+    await expect(resources.createDbDraft(resource.id, 'Rejected after shutdown')).rejects.toMatchObject({ code: 'RESOURCE_PROVIDER_UNAVAILABLE' });
   });
 });

@@ -4,7 +4,7 @@ import { EventPublisherService } from "@vibecanvas/service-event-publisher/Event
 import type { ITenantEventPublisherService } from "@vibecanvas/service-event-publisher/IEventPublisherService";
 import { ActorSupervisor } from "../src/ActorSupervisor";
 import type { TActorEvent } from "../src/Actor";
-import type { TActorStartAdmission } from "../src/resources/resource-types";
+import type { TActorStartAdmission } from "../src/legacy/resource-protocol";
 import path from "node:path";
 import { access, cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -57,6 +57,7 @@ function createSupervisorWithPaths(args: {
   actorEvents?: TActorEvent[];
   absWidgetDir: string;
   configPath: string;
+  actorShutdownTimeoutMs?: number;
 }) {
   return new ActorSupervisor({
     absWidgetDir: args.absWidgetDir,
@@ -64,7 +65,17 @@ function createSupervisorWithPaths(args: {
     db: args.db,
     crypto: createTestCrypto("actor-supervisor-with-paths"),
     eventPublisherService: createEventPublisherService(args.notifications, args.actorEvents ?? []),
+    actorShutdownTimeoutMs: args.actorShutdownTimeoutMs,
   });
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function waitForIdle(actor: { isIdle(): boolean }) {
@@ -139,7 +150,7 @@ describe("ActorSupervisor", () => {
     await supervisor.closeActors();
   });
 
-  test("definition-only publication reload does not start instances before the transition completes", async () => {
+  test("definition-only reload does not start persisted instances", async () => {
     const supervisor = createSupervisor(db, notifications);
     await supervisor.init();
     await db.canvas.create({
@@ -161,9 +172,6 @@ describe("ActorSupervisor", () => {
 
     await supervisor.reloadDefinitionsOnly();
     expect(supervisor.actorMap[testUuid("publication-instance")]).toBeUndefined();
-
-    await supervisor.completeDefinitionPublication("Account Funds Test", false);
-    expect(supervisor.actorMap[testUuid("publication-instance")]).toBeDefined();
     await supervisor.closeActors();
   });
 
@@ -914,5 +922,104 @@ describe("ActorSupervisor", () => {
     await closing;
     expect(completions).toEqual([false]);
     expect(supervisor.actorMap[actor.getId()]).toBeUndefined();
+  });
+
+  test("removeInstance retains and counts a delayed child until its exit is reaped", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-delayed-remove-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const definitionDir = path.join(tempWidgetDir, "delayed-remove");
+    await cp(path.join(widgetDir, "slow-exit-actor"), definitionDir, { recursive: true });
+    await writeFile(path.join(definitionDir, "vibecanvas.json"), JSON.stringify({
+      ...fundActorConfigJson,
+      name: "Delayed Remove Actor",
+      slug: "delayed-remove",
+    }), "utf8");
+    const supervisor = createSupervisorWithPaths({
+      db,
+      notifications,
+      absWidgetDir: tempWidgetDir,
+      configPath: tempConfigPath,
+      actorShutdownTimeoutMs: 500,
+    });
+
+    try {
+      await supervisor.init();
+      const canvasId = testUuid("canvas-delayed-remove");
+      await db.canvas.create({
+        id: canvasId,
+        name: "Delayed remove",
+        automerge_url: "automerge:delayed-remove",
+      });
+      const actor = await supervisor.createInstance("Delayed Remove Actor", canvasId, "element-delayed-remove");
+      if (!actor) throw new Error("Expected delayed actor instance");
+      const pid = actor.getActiveProcessId();
+      if (pid === null) throw new Error("Expected delayed actor process id");
+
+      let settled = false;
+      const removing = supervisor.removeInstance(actor.getId()).then(() => { settled = true; });
+      await Bun.sleep(30);
+      expect(settled).toBe(false);
+      expect(supervisor.getActiveProcessCount()).toBe(1);
+      expect(supervisor.actorMap[actor.getId()]).toBe(actor);
+      expect(isProcessAlive(pid)).toBe(true);
+
+      await removing;
+      expect(supervisor.getActiveProcessCount()).toBe(0);
+      expect(supervisor.actorMap[actor.getId()]).toBeUndefined();
+      expect(await db.actor.getInstanceById(actor.getId())).toBeNull();
+      expect(isProcessAlive(pid)).toBe(false);
+    } finally {
+      await supervisor.closeActors();
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
+  });
+
+  test("closeActors force-kills a stubborn child and resolves with no live pid or count", async () => {
+    const tempConfigPath = await mkdtemp(path.join(tmpdir(), "vibecanvas-actor-stubborn-close-"));
+    const tempWidgetDir = path.join(tempConfigPath, "widgets");
+    const definitionDir = path.join(tempWidgetDir, "stubborn-close");
+    await cp(path.join(widgetDir, "stubborn-exit-actor"), definitionDir, { recursive: true });
+    await writeFile(path.join(definitionDir, "vibecanvas.json"), JSON.stringify({
+      ...fundActorConfigJson,
+      name: "Stubborn Close Actor",
+      slug: "stubborn-close",
+    }), "utf8");
+    const supervisor = createSupervisorWithPaths({
+      db,
+      notifications,
+      absWidgetDir: tempWidgetDir,
+      configPath: tempConfigPath,
+      actorShutdownTimeoutMs: 50,
+    });
+
+    try {
+      await supervisor.init();
+      const canvasId = testUuid("canvas-stubborn-close");
+      await db.canvas.create({
+        id: canvasId,
+        name: "Stubborn close",
+        automerge_url: "automerge:stubborn-close",
+      });
+      const actor = await supervisor.createInstance("Stubborn Close Actor", canvasId, "element-stubborn-close");
+      if (!actor) throw new Error("Expected stubborn actor instance");
+      const pid = actor.getActiveProcessId();
+      if (pid === null) throw new Error("Expected stubborn actor process id");
+
+      let settled = false;
+      const closing = supervisor.closeActors().then(() => { settled = true; });
+      await Bun.sleep(20);
+      expect(settled).toBe(false);
+      expect(supervisor.getActiveProcessCount()).toBe(1);
+      expect(supervisor.actorMap[actor.getId()]).toBe(actor);
+      expect(isProcessAlive(pid)).toBe(true);
+
+      await closing;
+      expect(supervisor.getActiveProcessCount()).toBe(0);
+      expect(supervisor.actorMap[actor.getId()]).toBeUndefined();
+      expect(isProcessAlive(pid)).toBe(false);
+    } finally {
+      await supervisor.closeActors();
+      await rm(tempConfigPath, { recursive: true, force: true });
+    }
   });
 });

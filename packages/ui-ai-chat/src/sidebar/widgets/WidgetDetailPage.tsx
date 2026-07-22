@@ -1,7 +1,6 @@
 import * as AlertDialog from '@kobalte/core/alert-dialog';
 import { Button } from '@kobalte/core/button';
 import * as Tabs from '@kobalte/core/tabs';
-import { ActorStateMachineView } from '@vibecanvas/ui-actor-legacy';
 import { ToolIconPicker } from '../ToolIconPicker/ToolIconPicker';
 import type { TWidgetDetail, TWidgetFileEntry, TWidgetFilePreview, TWidgetSource } from '@vibecanvas/orpc-client';
 import File from 'lucide-solid/icons/file';
@@ -16,14 +15,51 @@ import styles from './WidgetDetailPage.module.css';
 import type { TSidebarController, TWidgetDetailQueryPort } from '../ports';
 import { WidgetPublicationDialog } from '../../publication/WidgetPublicationDialog';
 import type { TWidgetPublicationState } from '../../publication/interface';
+import type { TLegacyActorUiCapability } from '../../legacy';
 
 export type TWidgetDetailPageProps = {
   source: TWidgetSource | null;
   name: string | null;
   controller: TSidebarController;
   query: TWidgetDetailQueryPort;
+  legacy?: Pick<TLegacyActorUiCapability, 'StateMachineView'>;
 };
-type TTab = 'overview' | 'config' | 'messages' | 'states' | 'files';
+
+type TTab =
+  | 'overview'
+  | 'config'
+  | 'messages'
+  | 'states'
+  | 'functions'
+  | 'collaborative-state'
+  | 'runs'
+  | 'logs'
+  | 'resources'
+  | 'files';
+
+type TTabDefinition = Readonly<{
+  value: TTab;
+  label: string;
+}>;
+
+const LEGACY_TABS = Object.freeze([
+  { value: 'overview', label: 'Overview' },
+  { value: 'config', label: 'Config' },
+  { value: 'messages', label: 'Messages' },
+  { value: 'states', label: 'States' },
+  { value: 'files', label: 'Files' },
+] satisfies readonly TTabDefinition[]);
+
+const V2_TABS = Object.freeze([
+  { value: 'overview', label: 'Overview' },
+  { value: 'config', label: 'Config' },
+  { value: 'functions', label: 'Functions' },
+  { value: 'collaborative-state', label: 'Collaborative State' },
+  { value: 'runs', label: 'Runs' },
+  { value: 'logs', label: 'Logs' },
+  { value: 'resources', label: 'Resources' },
+  { value: 'files', label: 'Files' },
+] satisfies readonly TTabDefinition[]);
 
 export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   const application = props.controller.application;
@@ -50,18 +86,25 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   let fileListRequest = 0;
   let previewRequest = 0;
 
-  const activeTab = (): TTab => props.query.tab() === 'config'
-    || props.query.tab() === 'messages'
-    || props.query.tab() === 'states'
-    || props.query.tab() === 'files'
-    ? props.query.tab() as TTab
-    : 'overview';
   const selectedPath = () => props.query.path() ?? '';
   const messages = createMemo(() => fnWidgetMessageRows(detail()?.manifest ?? null));
   const legacyManifest = createMemo(() => {
     const manifest = detail()?.manifest;
     return manifest && 'actor' in manifest ? manifest : null;
   });
+  const v2Manifest = createMemo(() => {
+    const manifest = detail()?.manifest;
+    return manifest && !('actor' in manifest) ? manifest : null;
+  });
+  const inspectorTabs = createMemo<readonly TTabDefinition[]>(() => (
+    legacyManifest() ? LEGACY_TABS : V2_TABS
+  ));
+  const activeTab = (): TTab => {
+    const requested = props.query.tab();
+    return inspectorTabs().some((tab) => tab.value === requested)
+      ? requested as TTab
+      : 'overview';
+  };
 
   const loadDetail = async () => {
     const source = props.source;
@@ -150,7 +193,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
   });
 
   const selectTab = (value: string) => {
-    const tab: TTab = value === 'config' || value === 'messages' || value === 'states' || value === 'files' ? value : 'overview';
+    const tab = inspectorTabs().find((candidate) => candidate.value === value)?.value ?? 'overview';
     props.query.set(tab === 'files' ? { tab, path: selectedPath() || undefined } : { tab, path: undefined });
   };
 
@@ -261,7 +304,11 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
             <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
           </div>
         </header>
-        <Tabs.List class={styles.tabs}><Tabs.Trigger class={styles.tab} value="overview">Overview</Tabs.Trigger><Tabs.Trigger class={styles.tab} value="config">Config</Tabs.Trigger><Tabs.Trigger class={styles.tab} value="messages">Messages</Tabs.Trigger><Tabs.Trigger class={styles.tab} value="states">States</Tabs.Trigger><Tabs.Trigger class={styles.tab} value="files">Files</Tabs.Trigger></Tabs.List>
+        <Tabs.List class={styles.tabs}>
+          <For each={inspectorTabs()}>{(tab) => (
+            <Tabs.Trigger class={styles.tab} value={tab.value}>{tab.label}</Tabs.Trigger>
+          )}</For>
+        </Tabs.List>
 
         <Tabs.Content class={styles.content} value="overview"><div class={styles.contentInner}>
           <section class={styles.panel}><h3>Widget</h3><dl class={styles.definitionList}><dt>Slug</dt><dd>{current().variant.slug ?? '—'}</dd><dt>Health</dt><dd><Show when={current().problem} fallback={<span class={styles.healthy}>Healthy</span>}>{(problem) => <span class={styles.problem}>{problem().code}</span>}</Show></dd><dt>Description</dt><dd>{current().variant.description || 'No description.'}</dd><dt>Tool label</dt><dd>{current().variant.tool.label ?? '—'}</dd><dt>Behavior</dt><dd>{current().variant.tool.behaviorType ?? '—'}</dd><dt>Tool group</dt><dd>{current().variant.tool.group ?? 'Ungrouped'}</dd><dt>Source relationship</dt><dd>{current().relation}</dd><dt>Updated</dt><dd>{current().variant.updatedAt ?? 'Unknown'}</dd></dl></section>
@@ -284,15 +331,135 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           </Show></Show></section>
         </div></Tabs.Content>
 
-        <Tabs.Content class={styles.content} value="messages"><div class={styles.contentInner}>
-          <section class={styles.panel}><h3>Actor messages</h3><p class={styles.messageIntro}>A message is a named JSON payload sent across the widget–actor boundary. Input messages ask the actor to do something; output messages are events the actor may emit asynchronously, not direct function return values.</p></section>
-          <div class={styles.messageColumns}>
-            <section class={styles.panel}><h3>Accepted inputs</h3><For each={messages().inputs} fallback={<p class={styles.muted}>This actor declares no input messages.</p>}>{(message) => <article class={styles.messageCard}><div class={styles.messageHeader}><code>{message.name}</code><span>{message.acceptedInStates.length > 0 ? `Accepted in ${message.acceptedInStates.join(', ')}` : 'Not connected to a state transition'}</span></div><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(message.schema, null, 2)}</pre></article>}</For></section>
-            <section class={styles.panel}><h3>Emitted outputs</h3><For each={messages().outputs} fallback={<p class={styles.muted}>This actor declares no output messages.</p>}>{(message) => <article class={styles.messageCard}><div class={styles.messageHeader}><code>{message.name}</code><span>Actor event</span></div><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(message.schema, null, 2)}</pre></article>}</For></section>
-          </div>
-        </div></Tabs.Content>
+        <Show when={legacyManifest()}>{(manifest) => <>
+          <Tabs.Content class={styles.content} value="messages"><div class={styles.contentInner}>
+            <section class={styles.panel}><h3>Actor messages</h3><p class={styles.messageIntro}>A message is a named JSON payload sent across the widget–actor boundary. Input messages ask the actor to do something; output messages are events the actor may emit asynchronously, not direct function return values.</p></section>
+            <div class={styles.messageColumns}>
+              <section class={styles.panel}><h3>Accepted inputs</h3><For each={messages().inputs} fallback={<p class={styles.muted}>This actor declares no input messages.</p>}>{(message) => <article class={styles.messageCard}><div class={styles.messageHeader}><code>{message.name}</code><span>{message.acceptedInStates.length > 0 ? `Accepted in ${message.acceptedInStates.join(', ')}` : 'Not connected to a state transition'}</span></div><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(message.schema, null, 2)}</pre></article>}</For></section>
+              <section class={styles.panel}><h3>Emitted outputs</h3><For each={messages().outputs} fallback={<p class={styles.muted}>This actor declares no output messages.</p>}>{(message) => <article class={styles.messageCard}><div class={styles.messageHeader}><code>{message.name}</code><span>Actor event</span></div><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(message.schema, null, 2)}</pre></article>}</For></section>
+            </div>
+          </div></Tabs.Content>
 
-        <Tabs.Content class={`${styles.content} ${styles.statesContent}`} value="states"><Show when={legacyManifest()} fallback={<div class={styles.contentInner}><section class={styles.panel}><p class={styles.muted}>Manifest-v2 widgets use local Arrow state, collaborative state, and short server functions instead of an actor state machine.</p></section></div>}>{(manifest) => <ActorStateMachineView manifest={manifest()} variant="embedded" title={`${current().variant.displayName} actor`} />}</Show></Tabs.Content>
+          <Tabs.Content class={`${styles.content} ${styles.statesContent}`} value="states">
+            <Show when={props.legacy?.StateMachineView} fallback={<div class={styles.contentInner}><section class={styles.panel}><p class={styles.muted}>Legacy actor inspection is disabled in this host.</p></section></div>}>
+              {(StateMachineView) => { const View = StateMachineView(); return <View manifest={manifest()} variant="embedded" title={`${current().variant.displayName} actor`} />; }}
+            </Show>
+          </Tabs.Content>
+        </>}</Show>
+
+        <Show when={!legacyManifest()}><>
+          <Tabs.Content class={styles.content} value="functions"><div class={styles.contentInner}>
+            <section class={styles.panel}>
+              <h3>Server runtime</h3>
+              <Show when={v2Manifest()?.server} fallback={<p class={styles.muted}>This widget is browser-only and declares no server entry.</p>}>
+                {(server) => <dl class={styles.definitionList}>
+                  <dt>Entry</dt><dd><code>{server().entry}</code></dd>
+                  <dt>Runtime ABI</dt><dd><code>{server().runtimeAbi}</code></dd>
+                  <dt>Browser-safe functions</dt><dd>{current().functions.length}</dd>
+                </dl>}
+              </Show>
+            </section>
+            <section class={styles.panel}>
+              <h3>Functions</h3>
+              <For each={current().functions} fallback={<p class={styles.muted}>{v2Manifest()?.server ? 'No browser-safe function descriptors are available for this revision.' : 'Browser-only widgets have no server functions.'}</p>}>
+                {(descriptor) => <article class={styles.inspectorCard}>
+                  <div class={styles.inspectorCardHeader}><code>{descriptor.exportName}</code><span class={styles.badge}>{descriptor.effect}</span></div>
+                  <dl class={styles.definitionList}>
+                    <dt>Resources</dt><dd>{descriptor.resources.map((resource) => `${resource.slot} (${resource.effect})`).join(', ') || 'None'}</dd>
+                    <dt>Timeout</dt><dd>{descriptor.limits.timeoutMs} ms</dd>
+                    <dt>Memory</dt><dd>{descriptor.limits.memoryTier}</dd>
+                    <dt>Output limit</dt><dd>{descriptor.limits.outputByteLimit} bytes</dd>
+                    <dt>Log limit</dt><dd>{descriptor.limits.logByteLimit} bytes</dd>
+                    <dt>Retry</dt><dd>{descriptor.retry.mode === 'none' ? 'None' : `Up to ${descriptor.retry.maxAttempts} attempts`}</dd>
+                  </dl>
+                  <div class={styles.schemaGrid}>
+                    <div><h4>Input schema</h4><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(descriptor.inputSchema, null, 2)}</pre></div>
+                    <div><h4>Output schema</h4><pre class={`${styles.code} ${styles.schemaCode}`}>{JSON.stringify(descriptor.outputSchema, null, 2)}</pre></div>
+                  </div>
+                </article>}
+              </For>
+            </section>
+          </div></Tabs.Content>
+
+          <Tabs.Content class={styles.content} value="collaborative-state"><div class={styles.contentInner}>
+            <section class={styles.panel}>
+              <h3>Instance-scoped collaborative state</h3>
+              <p class={styles.messageIntro}>Each placed widget instance owns an Automerge state document scoped to its organization, canvas, and instance. Definition revisions do not share mutable state, and no resident actor process is created.</p>
+              <dl class={styles.definitionList}>
+                <dt>Definition revision</dt><dd><code>{current().variant.revision}</code></dd>
+                <dt>Lifecycle</dt><dd>Created when an instance is placed; synchronized by the collaboration service.</dd>
+                <dt>Manifest entry</dt><dd><code>{v2Manifest()?.ui.entry ?? 'Unavailable'}</code></dd>
+              </dl>
+            </section>
+            <section class={styles.panel}>
+              <h3>Placement</h3>
+              <Show when={current().variant.placement} fallback={<p class={styles.muted}>No placement descriptor is available for this revision.</p>}>
+                {(placement) => <dl class={styles.definitionList}>
+                  <dt>Source</dt><dd>{placement().reference.source}</dd>
+                  <dt>Reference</dt><dd><code>{placement().reference.name}</code></dd>
+                  <dt>Frame</dt><dd>{placement().bounds.width} × {placement().bounds.height}</dd>
+                </dl>}
+              </Show>
+            </section>
+          </div></Tabs.Content>
+
+          <Tabs.Content class={styles.content} value="runs"><div class={styles.contentInner}>
+            <section class={styles.panel}>
+              <h3>Invocation-scoped runs</h3>
+              <p class={styles.messageIntro}>Server functions run only when invoked. This definition has no resident actor process and does not aggregate mutable runtime state across widget instances.</p>
+            </section>
+            <div class={styles.inspectorGrid}>
+              <For each={current().functions} fallback={<section class={styles.panel}><p class={styles.muted}>There are no server functions to run for this revision.</p></section>}>
+                {(descriptor) => <article class={`${styles.panel} ${styles.compactCard}`}>
+                  <div class={styles.inspectorCardHeader}><code>{descriptor.exportName}</code><span class={styles.badge}>{descriptor.effect}</span></div>
+                  <dl class={styles.definitionList}>
+                    <dt>Deadline</dt><dd>{descriptor.limits.timeoutMs} ms</dd>
+                    <dt>Memory tier</dt><dd>{descriptor.limits.memoryTier}</dd>
+                    <dt>Retry policy</dt><dd>{descriptor.retry.mode === 'none' ? 'No automatic retry' : `${descriptor.retry.maxAttempts} attempts maximum`}</dd>
+                  </dl>
+                </article>}
+              </For>
+            </div>
+            <section class={styles.panel}><h3>Run history</h3><p class={styles.muted}>No invocation is selected. Runs are addressed by the invocation ID returned by each function call, so status and output stay attached to that exact invocation.</p></section>
+          </div></Tabs.Content>
+
+          <Tabs.Content class={styles.content} value="logs"><div class={styles.contentInner}>
+            <section class={styles.panel}>
+              <h3>Invocation logs</h3>
+              <p class={styles.messageIntro}>Logs are bounded and retained per function invocation, never as a definition-wide actor log. Select an invocation from its calling widget or session to inspect its output and logs.</p>
+            </section>
+            <section class={styles.panel}>
+              <h3>Per-invocation budgets</h3>
+              <For each={current().functions} fallback={<p class={styles.muted}>This revision declares no server-function log streams.</p>}>
+                {(descriptor) => <div class={styles.budgetRow}><code>{descriptor.exportName}</code><span>{descriptor.limits.logByteLimit} bytes maximum</span></div>}
+              </For>
+            </section>
+            <section class={styles.panel}><h3>Log stream</h3><p class={styles.muted}>No invocation is selected.</p></section>
+          </div></Tabs.Content>
+
+          <Tabs.Content class={styles.content} value="resources"><div class={styles.contentInner}>
+            <section class={styles.panel}>
+              <h3>Manifest resource requirements</h3>
+              <p class={styles.messageIntro}>Functions receive logical resource slots. Concrete resource IDs, credentials, storage paths, and writable handles remain host-owned.</p>
+            </section>
+            <div class={styles.inspectorGrid}>
+              <For each={v2Manifest()?.resources ?? []} fallback={<section class={styles.panel}><p class={styles.muted}>This widget declares no resource requirements.</p></section>}>
+                {(requirement) => {
+                  const operations = Object.keys(requirement.operations ?? {}).sort((left, right) => left.localeCompare(right));
+                  return <article class={`${styles.panel} ${styles.compactCard}`}>
+                    <div class={styles.inspectorCardHeader}><code>{requirement.slot}</code><span class={styles.badge}>{requirement.kind}</span></div>
+                    <dl class={styles.definitionList}>
+                      <dt>Effect ceiling</dt><dd>{requirement.effect === 'read_write' ? 'read + write' : requirement.effect}</dd>
+                      <dt>Binding</dt><dd>{requirement.required === undefined ? 'Manifest default' : requirement.required ? 'Required' : 'Optional'}</dd>
+                      <dt>Named operations</dt><dd>{operations.join(', ') || 'None'}</dd>
+                      <dt>Arbitrary SQL</dt><dd>{requirement.arbitrarySql ? 'Allowed by manifest' : 'Not allowed'}</dd>
+                    </dl>
+                  </article>;
+                }}
+              </For>
+            </div>
+          </div></Tabs.Content>
+        </></Show>
 
         <Tabs.Content class={`${styles.content} ${styles.filesContent}`} value="files"><div class={styles.fileWorkbench}>
           <aside class={styles.fileTree} aria-label="Widget files"><Show when={filesError()}>{(message) => <p class={styles.validationError}>{message()}</p>}</Show><For each={files()} fallback={<p class={styles.muted}>Loading files…</p>}>{(entry) => entry.kind === 'directory' ? <div class={styles.directory} style={{ 'padding-left': `${entry.path.split('/').length * .75}rem` }}><Folder size={12} /> {entry.path.split('/').at(-1)}</div> : <Button class={`${styles.fileRow} ${selectedPath() === entry.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${entry.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: entry.path })}><File size={12} /><span>{entry.path.split('/').at(-1)}</span><small>{entry.size} B</small></Button>}</For></aside>

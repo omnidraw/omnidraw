@@ -19,6 +19,23 @@ export type TWidgetSourceSnapshotId = string;
 export type TWidgetArtifactDigest = string;
 export type TWidgetArtifactReadCapability = string;
 
+export type TWidgetFrameBounds = Readonly<{
+  width: number;
+  height: number;
+}>;
+
+export type TWidgetPlacementRef =
+  | Readonly<{ source: 'published'; name: string; revision: string }>
+  | Readonly<{ source: 'draft'; name: string; revision: string }>
+  | Readonly<{ source: 'preview'; name: string; revision: string }>;
+
+export type TLucidStaticIconKey = string;
+
+export type TVibecanvasToolIcon = Readonly<{
+  lucidIcon?: TLucidStaticIconKey;
+  svgIcon?: string;
+}>;
+
 export type TWidgetSerializableJsonValue =
   | null
   | boolean

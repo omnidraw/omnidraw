@@ -40,19 +40,16 @@ import type { TWidgetBrowserPort } from "../ports";
 import type { TWidgetDropRequest, TWidgetWorldBounds } from "@vibecanvas/canvas/services";
 import { fnCreateWidgetElement } from "./fn.create-widget-element";
 import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
-import {
-  LegacyWidgetActorAdapter,
-  type TWidgetActorEvent,
-} from './LegacyWidgetActorAdapter';
 import type { TWidgetHostData } from '@vibecanvas/canvas/widget-host/types';
 import { fnIsWidgetHostData, fnNormalizeWidgetHostData } from '@vibecanvas/canvas/widget-host/fn.normalize-widget-host-data';
 import { txMountCommittedWidgetRuntime } from './tx.mount-committed-widget-runtime';
+import type {
+  TLegacyWidgetRuntimeAdapter,
+  TLegacyWidgetSandboxMountArgs,
+} from '../legacy';
 
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
-
-type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
-export type { TWidgetActorEvent } from './LegacyWidgetActorAdapter';
 
 export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-manager";
@@ -70,7 +67,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #browser: TWidgetBrowserPort;
-  #legacyActorAdapter: LegacyWidgetActorAdapter;
+  #legacyActorAdapter: TLegacyWidgetRuntimeAdapter | undefined;
   #neutralHost: IWidgetManagerServiceProps['neutralHost'];
   #started = false;
   #registeredWidgetKinds = new Set<string>();
@@ -99,11 +96,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#confirmDialogService = props.confirmDialogService;
     this.#browser = props.browser;
     this.#neutralHost = props.neutralHost;
-    this.#legacyActorAdapter = new LegacyWidgetActorAdapter({
-      browser: props.browser,
-      logging: props.loggingService,
-      transport: props.transport,
-    });
+    this.#legacyActorAdapter = props.legacy;
   }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
@@ -119,13 +112,13 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#registerNeutralWidgetDefinition();
     this.#started = true;
     if ([...this.#registeredWidgetConfigs.values()].some((config) => config.dataType === 'widget' && config.actor)) {
-      this.#legacyActorAdapter.start();
+      this.#legacyActorAdapter?.start();
     }
   }
 
   stop(): void | Promise<void> {
     this.#started = false;
-    this.#legacyActorAdapter.stop();
+    this.#legacyActorAdapter?.stop();
     [...this.#neutralPortalCleanups].forEach((cleanup) => cleanup());
     this.#neutralPortalCleanups.clear();
     this.#removeSelectionChangeListener?.();
@@ -427,16 +420,11 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     });
   }
 
-  subscribeActorInstanceEvents(actorInstanceId: string, handler: TWidgetActorEventHandler) {
-    return this.#legacyActorAdapter.subscribe(actorInstanceId, handler);
-  }
-
-  getLegacyActorSnapshot(args: Parameters<LegacyWidgetActorAdapter['getSnapshot']>[0]) {
-    return this.#legacyActorAdapter.getSnapshot(args);
-  }
-
-  sendLegacyActorMessage(args: Parameters<LegacyWidgetActorAdapter['sendMessage']>[0]) {
-    return this.#legacyActorAdapter.sendMessage(args);
+  mountLegacyWidgetSandbox(args: TLegacyWidgetSandboxMountArgs): () => void {
+    if (!this.#legacyActorAdapter) {
+      throw new Error('Legacy actor widgets are disabled in this host.');
+    }
+    return this.#legacyActorAdapter.mountSandbox(args);
   }
 
   #findWidgetNodeById(id: string) {
@@ -507,7 +495,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       return false;
     }
 
-    if (!await this.#legacyActorAdapter.deleteDefinition(kind)) return false;
+    if (!this.#legacyActorAdapter || !await this.#legacyActorAdapter.deleteDefinition(kind)) return false;
 
     const doc = this.#crdtService.doc();
     const matchingElements = Object.values(doc.elements).filter((element) => {
@@ -750,7 +738,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#registeredToolIdsByKind.set(wConfig.id, wConfig.toolId ?? wConfig.id);
     this.clearDefinitionError(wConfig.id);
     if (this.#started && wConfig.dataType === 'widget' && wConfig.actor) {
-      this.#legacyActorAdapter.start();
+      this.#legacyActorAdapter?.start();
     }
 
     if (wConfig.tool) {

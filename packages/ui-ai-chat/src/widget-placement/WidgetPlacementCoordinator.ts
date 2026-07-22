@@ -1,4 +1,4 @@
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from "@vibecanvas/service-actor/core/fn.widget-frame";
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
 
 export type TWidgetPlacementStartArgs = {
   reference: TWidgetPlacementRef;

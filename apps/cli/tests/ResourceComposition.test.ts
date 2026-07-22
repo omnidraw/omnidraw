@@ -197,27 +197,24 @@ describe('resource runtime composition', () => {
         attached = true;
         return () => { detached = true; };
       },
-      async listResourceData() {
+      async call() {
+        return 'runtime-call';
+      },
+      async callWithDirectResourceBinding() {
+        return 'direct-runtime-call';
+      },
+      async getActorStartAdmission() {
         return {
-          kind: 'kv' as const,
-          entries: [{
-            key: 'theme',
-            valuePreview: '"dark"',
-            valueTruncated: false,
-            revision: 1,
-            createdAt: '2026-01-01T00:00:00.000Z',
-            updatedAt: '2026-01-01T00:00:00.000Z',
-          }],
-          nextCursor: null,
+          allowed: true,
+          hadBlocks: false,
+          shouldRestart: false,
+          resolvedBlockResourceIds: [],
+          code: null,
+          message: null,
         };
       },
-      async inspectDbResource() {
-        return {
-          resourceId: 'database-a',
-          target: 'live' as const,
-          draftId: null,
-          objects: [],
-        };
+      async completeActorStart() {
+        return undefined;
       },
     }, {
       get(target, property, receiver) {
@@ -229,26 +226,33 @@ describe('resource runtime composition', () => {
 
     try {
       const actor = new ActorService({
-        tenant: tenant('account-a'),
         db: {} as never,
         configPath: root,
         resourceService,
         eventPublisherService: {} as never,
       });
       expect(attached).toBe(true);
-      await expect(actor.listResourceData({ resourceId: 'settings' })).resolves.toMatchObject({
+      await expect(actor.callWithDirectResourceBinding({
+        actorId: 'actor-a',
+        definitionName: 'legacy-widget',
+        runId: 1,
+        functionClass: 'fx',
+        slot: 'settings',
         kind: 'kv',
-        entries: [{ key: 'theme' }],
-      });
-      await expect(actor.inspectDbResource({ resourceId: 'database-a', target: 'live' })).resolves.toMatchObject({
-        resourceId: 'database-a',
-        target: 'live',
-      });
+        operation: 'get',
+        args: { key: 'theme' },
+      }, {
+        resourceId: 'settings-a',
+        requirement: { kind: 'kv', required: true, scope: ['read'] },
+        scope: ['read'],
+      })).resolves.toBe('direct-runtime-call');
+      expect('listResourceData' in actor).toBe(false);
+      expect('inspectDbResource' in actor).toBe(false);
       actor.addStopCleanup(() => { stoppedCleanup = true; });
       await actor.stop();
       expect(detached).toBe(true);
       expect(stoppedCleanup).toBe(true);
-      expect(resourceAccesses).toEqual(['attachConsumer', 'listResourceData', 'inspectDbResource']);
+      expect(resourceAccesses).toEqual(['attachConsumer', 'callWithDirectResourceBinding']);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -297,5 +301,65 @@ describe('resource runtime composition', () => {
     await expect(listResources({})).resolves.toHaveLength(1);
     expect(actorCreates).toBe(0);
     expect(agentCreates).toBe(0);
+  });
+
+  test('creates an inert actor compatibility context without resolving a legacy pool', async () => {
+    const context = createOrpcTenantContext(tenant('account-a'), {
+      agent: { forTenant: async () => ({}) },
+      resource: {},
+      humanResourceSecret: {},
+      automerge: {},
+      db: {},
+      eventPublisher: {},
+      filesystem: {},
+      functionInvocation: {},
+      pty: {},
+      widget: {},
+      widgetRuntimeLoadAdmission: {},
+    } as unknown as TOrpcTenantContextServices);
+
+    expect(await context.actor.getVibecanvasJson('missing')).toBeNull();
+    await expect(context.actor.getWidgetCode('missing')).resolves.toBeNull();
+    await expect(context.actor.deleteDefinition('missing')).rejects.toMatchObject({
+      code: 'LEGACY_ACTOR_DISABLED',
+    });
+    await expect(context.actor.sendMessage('instance', 'message', {})).rejects.toMatchObject({
+      code: 'LEGACY_ACTOR_DISABLED',
+    });
+  });
+
+  test('retains lazy actor API compatibility when the explicit pool is present', async () => {
+    let resolveCount = 0;
+    const context = createOrpcTenantContext(tenant('account-a'), {
+      actor: {
+        forTenant: async () => {
+          resolveCount += 1;
+          return {
+            deleteDefinition: async () => true,
+            getVibecanvasJson: () => null,
+            getWidgetCode: async () => [{ content: 'legacy', path: 'widget/main.ts' }],
+            sendMessage: async () => 'message-id',
+          };
+        },
+      },
+      agent: { forTenant: async () => ({}) },
+      resource: {},
+      humanResourceSecret: {},
+      automerge: {},
+      db: {},
+      eventPublisher: {},
+      filesystem: {},
+      functionInvocation: {},
+      pty: {},
+      widget: {},
+      widgetRuntimeLoadAdmission: {},
+    } as unknown as TOrpcTenantContextServices);
+
+    expect(resolveCount).toBe(0);
+    await expect(context.actor.getWidgetCode('legacy')).resolves.toEqual([
+      { content: 'legacy', path: 'widget/main.ts' },
+    ]);
+    await expect(context.actor.sendMessage('instance', 'message', {})).resolves.toBe('message-id');
+    expect(resolveCount).toBe(1);
   });
 });

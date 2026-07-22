@@ -4,7 +4,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.ts"
+    "./Actor": "./src/Actor.ts",
+    "./core/fn.normalize-actor-manifest": "./src/core/fn.normalize-actor-manifest.ts",
+    "./core/types": "./src/core/types.ts",
+    "./core/vibecanvasjson.zod": "./src/core/vibecanvasjson.zod.ts",
+    "./icp-client": "./src/icp-client.ts",
+    "./legacy/resource-protocol": "./src/legacy/resource-protocol.ts"
   },
   "scripts": {
     "typecheck": "bun x tsc -p tsconfig.json --noEmit",
@@ -15,9 +20,9 @@
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",
+    "@vibecanvas/widget-contract": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "lucide-static": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

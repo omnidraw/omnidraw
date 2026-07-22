@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
-import { createFileResponse, createPublicAssetLookup } from '../src/plugins/server/http';
+import {
+  createFileResponse,
+  createPublicAssetLookup,
+  handleHttpRequest,
+} from '../src/plugins/server/http';
 import { OSS_FAKE_SESSION, OSS_TENANT_CONTEXT_PROVIDER } from '../src/plugins/auth/AuthPlugin';
 
 type TFileSeed = Parameters<DbServiceTurso['file']['create']>[1];
@@ -32,6 +36,38 @@ async function closeDb(db: DbServiceTurso): Promise<void> {
 }
 
 describe('server http helpers', () => {
+  test('reports legacy enablement and exact active process cost in health diagnostics', async () => {
+    const db = await createDb();
+    try {
+      const disabled = await handleHttpRequest(
+        new Request('http://localhost/health'),
+        { compiled: false, legacyActorEnabled: false, version: 'test' },
+        db,
+        tenant,
+        import.meta.dir,
+      );
+      expect(await disabled.json()).toMatchObject({
+        legacy_actor_enabled: false,
+        active_legacy_process_count: 0,
+      });
+
+      const enabled = await handleHttpRequest(
+        new Request('http://localhost/health'),
+        { compiled: false, legacyActorEnabled: true, version: 'test' },
+        db,
+        tenant,
+        import.meta.dir,
+        { activeLegacyProcessCount: 3 },
+      );
+      expect(await enabled.json()).toMatchObject({
+        legacy_actor_enabled: true,
+        active_legacy_process_count: 3,
+      });
+    } finally {
+      await closeDb(db);
+    }
+  });
+
   test('serves persisted file blobs with cache headers and etag', async () => {
     const db = await createDb([{
       id: '123e4567-e89b-12d3-a456-426614174000',

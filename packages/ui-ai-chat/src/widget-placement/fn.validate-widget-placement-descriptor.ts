@@ -3,8 +3,8 @@ import {
   WIDGET_FRAME_MAX_WIDTH,
   WIDGET_FRAME_MIN_HEIGHT,
   WIDGET_FRAME_MIN_WIDTH,
-} from '@vibecanvas/service-actor/core/CONSTANTS';
-import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/service-actor/core/fn.widget-frame';
+} from '@vibecanvas/widget-contract/CONSTANTS';
+import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
 import type { TWidgetPlacementResolveResult } from '@vibecanvas/orpc-client';
 
 type TWidgetPlacementDescriptor = Extract<

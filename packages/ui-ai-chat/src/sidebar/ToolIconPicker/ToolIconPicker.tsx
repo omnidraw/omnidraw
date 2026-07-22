@@ -1,5 +1,5 @@
 import { TextField } from "@kobalte/core/text-field";
-import type { TVibecanvasToolIcon } from "@vibecanvas/service-actor/core/tool-icon";
+import type { TVibecanvasToolIcon } from '@vibecanvas/widget-contract';
 import DOMPurify from "dompurify";
 import * as Lucide from "lucide-static";
 import Code from "lucide-static/icons/code.svg?raw";

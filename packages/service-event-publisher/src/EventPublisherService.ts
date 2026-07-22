@@ -1,6 +1,11 @@
 import { fnScopedKey } from '@vibecanvas/tenant-core';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
+  IScopedEventBus,
+  TScopedEventRecord,
+  TScopedEventTopic,
+} from '@vibecanvas/runtime';
+import type {
   IEventPublisherService,
   ITenantEventPublisherService,
   TActorEvent,
@@ -13,7 +18,12 @@ import type {
 } from './IEventPublisherService';
 import { ScopedEventBus } from './ScopedEventBus';
 
-export class EventPublisherService implements IEventPublisherService {
+type TPublicScopedEvent = Readonly<{
+  event: unknown;
+  publishedAtMs: number;
+}>;
+
+export class EventPublisherService implements IEventPublisherService, IScopedEventBus<unknown> {
   readonly name = 'eventPublisher';
 
   readonly #db = new ScopedEventBus<TDbEvent>();
@@ -21,6 +31,7 @@ export class EventPublisherService implements IEventPublisherService {
   readonly #agent = new ScopedEventBus<TAgentEvent>();
   readonly #filesystem = new ScopedEventBus<TFilesystemEvent>();
   readonly #notification = new ScopedEventBus<TNotificationEvent>();
+  readonly #scoped = new ScopedEventBus<TPublicScopedEvent>();
   readonly #latestNotification = new Map<string, TNotificationEvent>();
 
   forTenant(tenant: TTenantContext): ITenantEventPublisherService {
@@ -135,6 +146,51 @@ export class EventPublisherService implements IEventPublisherService {
 
   getLatestNotification(tenant: TTenantContext): TNotificationEvent | null {
     return this.#latestNotification.get(this.#accountScope(tenant, 'notification')) ?? null;
+  }
+
+  async publish(
+    tenant: TTenantContext,
+    topic: TScopedEventTopic,
+    event: unknown,
+  ): Promise<TScopedEventRecord<unknown>> {
+    const scope = this.#orgScope(tenant, 'scoped-event');
+    const publishedAtMs = Date.now();
+    const sequence = this.#scoped.publish(scope, JSON.stringify(topic), { event, publishedAtMs });
+    return Object.freeze({
+      eventId: fnScopedKey('scoped-event-record', [tenant.orgId, String(sequence)]),
+      orgId: tenant.orgId,
+      topic,
+      sequence,
+      publishedAtMs,
+      event,
+    });
+  }
+
+  subscribe(
+    tenant: TTenantContext,
+    topic: TScopedEventTopic,
+    options?: TEventSubscriptionOptions,
+  ): AsyncIterable<TScopedEventRecord<unknown>> {
+    const records = this.#scoped.subscribeRecords(
+      this.#orgScope(tenant, 'scoped-event'),
+      JSON.stringify(topic),
+      options,
+    );
+    const orgId = tenant.orgId;
+    return {
+      async *[Symbol.asyncIterator]() {
+        for await (const record of records) {
+          yield Object.freeze({
+            eventId: fnScopedKey('scoped-event-record', [orgId, String(record.sequence)]),
+            orgId,
+            topic,
+            sequence: record.sequence,
+            publishedAtMs: record.event.publishedAtMs,
+            event: record.event.event,
+          });
+        }
+      },
+    };
   }
 
   #orgScope(tenant: TTenantContext, namespace: string): string {

@@ -1,10 +1,19 @@
 import type { DocHandle } from '@automerge/automerge-repo';
-import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
+import type {
+  ICollaborationService,
+  IService,
+  IStartableService,
+  IStoppableService,
+} from '@vibecanvas/runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { WebSocketWithIsAlive } from './adapters/websocket.adapter';
 import type { TAutomergeTenantMetrics } from './types/automerge-service.types';
 
-export interface IAutomergeService extends IService, IStartableService, IStoppableService {
+export interface IAutomergeService extends
+  IService,
+  IStartableService,
+  IStoppableService,
+  ICollaborationService {
   createDocument<T>(tenantContext: TTenantContext, initialValue?: T): Promise<DocHandle<T>>;
   findDocument<T>(tenantContext: TTenantContext, automergeUrl: string): Promise<DocHandle<T>>;
   deleteDocument(tenantContext: TTenantContext, automergeUrl: string): Promise<void>;

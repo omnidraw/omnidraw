@@ -16,8 +16,9 @@ import type {
   ToolService,
 } from "@vibecanvas/canvas/services";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { TWidgetBrowserPort, TWidgetTransportPort } from "../ports";
+import type { TWidgetBrowserPort } from "../ports";
 import type { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
+import type { TLegacyWidgetRuntimeAdapter } from '../legacy';
 
 export interface IWidgetManagerServiceHooks {
   widgetChange: SyncHook<[]>;
@@ -37,7 +38,7 @@ export interface IWidgetManagerServiceProps {
   cameraService: CameraService;
   confirmDialogService: ConfirmDialogService;
   browser: TWidgetBrowserPort;
-  transport: TWidgetTransportPort;
+  legacy?: TLegacyWidgetRuntimeAdapter;
   neutralHost?: Readonly<{
     canvasId: string;
     runtime: WidgetUiRuntime;

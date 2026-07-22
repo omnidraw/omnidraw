@@ -7,7 +7,7 @@ export async function withResourceApiError<T>(operation: () => T): Promise<Await
   } catch (error) {
     if (error instanceof ORPCError) throw error;
     const safe = toSafeResourceError(error);
-    throw new ORPCError('ACTOR_RESOURCE_ERROR', {
+    throw new ORPCError('RESOURCE_ERROR', {
       message: safe.message,
       data: {
         code: safe.code,
@@ -16,5 +16,3 @@ export async function withResourceApiError<T>(operation: () => T): Promise<Await
     });
   }
 }
-
-export const withActorResourceApiError = withResourceApiError;

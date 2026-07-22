@@ -1,23 +1,20 @@
 import { AuthStorage, createAgentSessionFromServices, createAgentSessionServices, ModelRegistry, SessionManager, SettingsManager, type AgentSession } from '@earendil-works/pi-coding-agent';
-import { Actor, type TActorEvent } from '@vibecanvas/service-actor/Actor';
-import { ActorResourceError } from '@vibecanvas/service-actor';
-import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { ITenantEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetRevisionDescriptor, TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
-import { execFile } from 'node:child_process';
-import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, join, relative as relativePath, resolve } from 'node:path';
+import {
+  ZWidgetBrowserFunctionDescriptors,
+  type TWidgetRevisionDescriptor,
+  type TWidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract';
+import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fnMergeDraftResourceSelections } from './core/fn.draft-resource-bindings';
 import { fnWidgetMentionContext, type TWidgetMentionContextItem } from './core/fn.widget-mention-context';
-import { fnPatchDraftManifest, type TWidgetManifestPatch } from './core/fn.patch-draft-manifest';
-import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord, fxLatestWidgetEditSessionRecord } from './core/fx.session-records';
-import { txPublishWidgetDraft } from './core/tx.publish-widget-draft';
+import { fxEffectiveWidgetDraftResourceBindingSelectionRecord, fxLatestWidgetDbChangeProposalRecord } from './core/fx.session-records';
 import { txNormalizeSessionCwd } from './core/tx.session-cwd';
-import { txValidateWidgetFiles } from './core/tx.validate-widget-files';
 import { txAppendWidgetDbChangeProposalRecord, txAppendWidgetDraftResourceBindingSelectionRecord, txAppendWidgetEditSessionRecord, txAppendWidgetResourceSelectionRecord } from './core/tx.session-records';
 import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
@@ -26,8 +23,20 @@ import { createToolRegistry } from './tools/ToolRegistry';
 import type { TAgentResourceService } from './tools/resource-service';
 import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
-import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from './tools/resource-bindings';
-import type { TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
+import type { TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
+import type {
+  ILegacyActorAgentCapability,
+  TAgentChatPublishResult,
+  TAgentDraftActorNotReadyResult,
+  TAgentDraftActorResult,
+  TAgentDraftActorSendResult,
+  TAgentDraftActorStopResult,
+  TAgentDraftManifestPatch,
+  TAgentDraftManifestPatchResult,
+  TAgentDraftManifestReadResult,
+  TAgentPreviewSourceResult,
+  TLegacyActorAgentCapabilityFactory,
+} from './legacy/interface';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
@@ -84,16 +93,13 @@ export interface IAgentServiceConfig {
   createId?: () => string;
   nowMs?: () => number;
   widgetBuilderIdentity?: string;
-  actorService?: TActorServiceReloader;
+  legacyActor?: TLegacyActorAgentCapabilityFactory;
   resourceService?: TAgentResourceService;
   bashCapability?: TAgentBashCapability;
   listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
   resolvePublishedWidgetPlacement?: (
     target: TPublishedWidgetPlacementIdentity,
   ) => Promise<TPublishedWidgetPlacementTarget | null>;
-  resolveLegacyPublishedWidgetManifest?: (
-    definitionName: string,
-  ) => Promise<(TVibecanvasJson & { manifest_path: string }) | null>;
   authorizeToolCall?: TToolAuthorizer;
   approvalTimeoutMs?: number;
 }
@@ -165,68 +171,6 @@ type TChatConnectGenerationResult =
   | { status: 'connected'; result: TAgentConnectResult }
   | { status: 'superseded' };
 
-type TDraftActorKey = `${TWidgetId}:${TVibecanvasChatId}`;
-
-type TAgentDraftActorSnapshot = {
-  state: TActorState;
-  context: TActorData;
-};
-
-type TDraftActorEntry = {
-  actor: Actor;
-  rootDir: string;
-  manifest: TVibecanvasJson;
-  unlisten: () => void;
-};
-
-type TDraftActorNotReadyReason =
-  | 'manifest-missing'
-  | 'manifest-invalid'
-  | 'actor-functions-missing'
-  | 'session-missing'
-  | 'resource-binding-invalid'
-  | 'actor-not-running';
-
-type TAgentDraftActorReadyResult = {
-  ready: true;
-  actorId: string;
-  snapshot: TAgentDraftActorSnapshot;
-};
-
-type TAgentDraftActorNotReadyResult = {
-  ready: false;
-  reason: TDraftActorNotReadyReason;
-  message: string;
-};
-
-type TAgentDraftActorResult = TAgentDraftActorReadyResult | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftActorSendResult =
-  | { ready: true; messageId: string; snapshot: TAgentDraftActorSnapshot }
-  | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftActorStopResult = {
-  stopped: boolean;
-};
-
-type TAgentPreviewSourceResult =
-  | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
-  | TAgentDraftActorNotReadyResult;
-
-type TAgentDraftManifestReadResult =
-  | { ready: true; source: 'file'; manifest: TVibecanvasJson }
-  | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
-
-type TAgentDraftManifestPatch = TWidgetManifestPatch;
-
-type TAgentDraftManifestPatchResult =
-  | { ok: true; source: 'file'; manifest: TVibecanvasJson }
-  | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
-
-type TAgentChatPublishResult =
-  | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
-  | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
-
 type TAgentChatStartWidgetEditResult =
   | { ok: true; vcJson: TVibecanvasJson; editSession: TWidgetEditSessionRecord; messageHistory: AgentSession['messages'] }
   | { ok: false; message: string };
@@ -247,7 +191,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   settingsManager: SettingsManager;
   sessionMap: Record<TWidgetId, Record<TVibecanvasChatId, TChatSessionEntry>> = {}
   #loginMap: Record<TLoginId, TLoginSession> = {}
-  #draftActorMap = new Map<TDraftActorKey, TDraftActorEntry>();
+  #legacyActor?: ILegacyActorAgentCapability;
   #dbChangeProposalResolutions = new Set<string>();
   #workspace: WidgetWorkspace;
   #widgetDrafts: WidgetDraftController;
@@ -262,7 +206,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   constructor(config: IAgentServiceConfig) {
     this.#config = config
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
-    this.#workspace = new WidgetWorkspace({ dataPath: config.dataPath, configPath: config.configPath })
+    this.#workspace = new WidgetWorkspace({
+      dataPath: config.dataPath,
+      configPath: config.configPath,
+      parseLegacyManifest: config.legacyActor?.parseManifest,
+    })
     this.#widgetDrafts = config.tenant
       && config.authoringStore
       && config.widgetAuthoringCapability
@@ -293,11 +241,23 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           builderIdentity: config.widgetBuilderIdentity,
         })
       : this.#legacyUnavailableWidgetDrafts()
+    this.#legacyActor = config.legacyActor?.create({
+      workspace: this.#workspace,
+      eventPublisherService: config.eventPublisherService,
+      resourceService: config.resourceService,
+      getSessionManager: (widgetId, sessionId) => (
+        this.sessionMap[widgetId]?.[sessionId]?.sessionManager ?? null
+      ),
+      resolveActiveMount: (widgetId, sessionId) => (
+        this.#resolveActiveMount(widgetId, sessionId).catch(() => null)
+      ),
+    })
     this.#widgetManagement = new WidgetManagement({
       workspace: this.#workspace,
       drafts: this.#widgetDrafts,
-      deletePublishedDefinition: config.actorService?.deleteDefinition
-        ? (name) => config.actorService!.deleteDefinition!(name)
+      parseLegacyManifest: config.legacyActor?.parseManifest,
+      deletePublishedDefinition: this.#legacyActor
+        ? (name) => this.#legacyActor!.deletePublishedDefinition(name)
         : undefined,
     })
     this.#approvals = new ApprovalCoordinator({
@@ -331,23 +291,45 @@ export class AgentService implements IService, IStartableService, IStoppableServ
 
   async stop(): Promise<void> {
     this.#isStopping = true
+    const failures: unknown[] = []
     for (const sessionId of this.#chatConnectionGenerations.keys()) {
       this.#chatConnectionGenerations.set(sessionId, (this.#chatConnectionGenerations.get(sessionId) ?? 0) + 1)
     }
-    await Promise.all(this.#chatConnectionLanes.values())
+    const connectionResults = await Promise.allSettled(this.#chatConnectionLanes.values())
+    failures.push(...connectionResults
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason))
+    const chatDisposals: Promise<void>[] = []
     for (const [id, sessions] of Object.entries(this.sessionMap)) {
       for (const sessionId of Object.keys(sessions)) {
-        this.#disposeChatSession(id, sessionId)
+        chatDisposals.push(this.#disposeChatSession(id, sessionId))
       }
     }
+    const disposalResults = await Promise.allSettled(chatDisposals)
+    failures.push(...disposalResults
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason))
     this.#chatWidgetIds.clear()
     this.#chatConnectionGenerations.clear()
     this.#chatConnectionLanes.clear()
     this.#chatReplacementGenerations.clear()
-    this.#approvals.close()
-    await this.#widgetDrafts.close()
-    this.#disposeAllDraftActors()
+    try {
+      this.#approvals.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      await this.#widgetDrafts.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      await this.#legacyActor?.close()
+    } catch (error) {
+      failures.push(error)
+    }
     console.log('stop', this.name)
+    if (failures.length > 0) throw new AggregateError(failures, 'Agent service shutdown failed.')
   }
 
   async connectChat(
@@ -384,7 +366,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       if (generation !== this.#chatConnectionGenerations.get(sessionId)) return
       const currentWidgetId = this.#chatWidgetIds.get(sessionId)
       if (currentWidgetId && currentWidgetId !== id) throw new Error(`Chat '${sessionId}' is connected to a different widget.`)
-      this.#disposeChatSession(id, sessionId)
+      await this.#disposeChatSession(id, sessionId)
       this.#chatReplacementGenerations.delete(sessionId)
     })
   }
@@ -714,6 +696,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       }),
       sibling: draft?.variant ?? null,
       manifest: selected.revision.manifest,
+      functions: ZWidgetBrowserFunctionDescriptors.parse(
+        selected.revision.functionDescriptors.map(({ modulePath: _modulePath, ...descriptor }) => descriptor),
+      ),
       problem: null,
     }
   }
@@ -849,7 +834,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async resolveWidgetPlacement(
-    reference: import('@vibecanvas/service-actor/core/fn.widget-frame').TWidgetPlacementRef,
+    reference: import('@vibecanvas/widget-contract').TWidgetPlacementRef,
     previewId?: string,
     expectedDraftId?: string,
   ): Promise<import('./widget-management/types').TWidgetPlacementResolveResult> {
@@ -988,100 +973,17 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async #resolveLegacyPublishedWidgetManifest(
     definitionName: string,
   ): Promise<(TVibecanvasJson & { manifest_path: string }) | null> {
-    if (this.#config.resolveLegacyPublishedWidgetManifest) {
-      return this.#config.resolveLegacyPublishedWidgetManifest(definitionName)
-    }
-    return this.#config.actorService?.getVibecanvasJson?.(definitionName) ?? null
+    return this.#legacyActor?.resolvePublishedWidgetManifest(definitionName) ?? null
   }
 
   inspectDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorResult {
-    const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
-    if (!entry) {
-      return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
-    }
-
-    return {
-      ready: true,
-      actorId: entry.actor.getId(),
-      snapshot: this.#draftActorSnapshot(entry.actor),
-    }
+    return this.#legacyActor?.inspectDraftActorChat(id, sessionId)
+      ?? this.#legacyActorNotReady(id, sessionId)
   }
 
   async startDraftActorChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      return this.#draftActorNotReady(id, sessionId, 'session-missing')
-    }
-
-    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
-    if (!mount) return this.#draftActorNotReady(id, sessionId, 'manifest-missing')
-    const rootDir = mount.targetPath
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (!manifestResult.ready) return manifestResult
-
-    const actorFunctionPath = join(rootDir, manifestResult.manifest.actor.relFunctionPath)
-    if (!await Bun.file(actorFunctionPath).exists()) {
-      return {
-        ready: false,
-        reason: 'actor-functions-missing',
-        message: `Draft actor functions file does not exist: ${manifestResult.manifest.actor.relFunctionPath}`,
-      }
-    }
-
-    this.#disposeDraftActor(id, sessionId)
-
-    const bindingPlan = await this.#chatResourceBindingPlan(manifestResult.manifest, sessionEntry.sessionManager)
-    if (!bindingPlan.ok) {
-      return { ready: false, reason: 'resource-binding-invalid', message: bindingPlan.message }
-    }
-    if (bindingPlan.bindings.length > 0 && !this.#config.actorService?.callWithDirectResourceBinding) {
-      return {
-        ready: false,
-        reason: 'resource-binding-invalid',
-        message: 'Selected resources cannot be used by Preview in this host.',
-      }
-    }
-    const directBindings = new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]))
-    const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
-      ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
-          const binding = directBindings.get(call.slot)
-          const requirement = manifestResult.manifest.actor.resources?.[call.slot]
-          if (!binding || !requirement) {
-            throw new ActorResourceError('RESOURCE_NOT_BOUND', `Draft resource slot '${call.slot}' has no selected Preview binding.`)
-          }
-          return this.#config.actorService!.callWithDirectResourceBinding!(call, {
-            resourceId: binding.resource.id,
-            requirement,
-            scope: binding.scope,
-          })
-        }
-      : undefined
-
-    const actor = new Actor({
-      id: `draft:${id}:${sessionId}`,
-      vsJson: manifestResult.manifest,
-      rootDir,
-      resourceGateway,
-    })
-
-    const unlisten = actor.listen((event) => {
-      this.#publishDraftActorEvent(id, sessionId, actor, event)
-    })
-
-    actor.start()
-
-    this.#draftActorMap.set(this.#draftActorKey(id, sessionId), {
-      actor,
-      rootDir,
-      manifest: manifestResult.manifest,
-      unlisten,
-    })
-
-    return {
-      ready: true,
-      actorId: actor.getId(),
-      snapshot: this.#draftActorSnapshot(actor),
-    }
+    return this.#legacyActor?.startDraftActorChat(id, sessionId)
+      ?? this.#legacyActorNotReady(id, sessionId)
   }
 
   async reloadDraftActorChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorResult> {
@@ -1092,348 +994,42 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.startDraftActorChat(id, sessionId)
   }
 
-  stopDraftActorChat(id: TWidgetId, sessionId: string): TAgentDraftActorStopResult {
-    const key = this.#draftActorKey(id, sessionId)
-    const stopped = this.#draftActorMap.has(key)
-
-    this.#disposeDraftActor(id, sessionId)
-
-    return { stopped }
+  async stopDraftActorChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftActorStopResult> {
+    return this.#legacyActor?.stopDraftActorChat(id, sessionId) ?? { stopped: false }
   }
 
   sendDraftActorChat(id: TWidgetId, sessionId: string, name: string, payload: unknown): TAgentDraftActorSendResult {
-    const entry = this.#draftActorMap.get(this.#draftActorKey(id, sessionId))
-    if (!entry) {
-      return this.#draftActorNotReady(id, sessionId, 'actor-not-running')
-    }
-
-    const messageId = entry.actor.inbox(name, payload)
-
-    return {
-      ready: true,
-      messageId,
-      snapshot: this.#draftActorSnapshot(entry.actor),
-    }
+    return this.#legacyActor?.sendDraftActorChat(id, sessionId, name, payload)
+      ?? this.#legacyActorNotReady(id, sessionId)
   }
 
   async previewSourceChat(id: TWidgetId, sessionId: string): Promise<TAgentPreviewSourceResult> {
-    if (!this.sessionMap[id]?.[sessionId]) {
-      return this.#draftActorNotReady(id, sessionId, 'session-missing')
-    }
-
-    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
-    if (!mount) return this.#draftActorNotReady(id, sessionId, 'manifest-missing')
-    const rootDir = mount.targetPath
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (!manifestResult.ready) return manifestResult
-
-    return {
-      ready: true,
-      manifest: manifestResult.manifest,
-      sources: await this.#readWidgetSourceMap(rootDir, manifestResult.manifest.widget.relWidgetDir),
-    }
+    return this.#legacyActor?.previewSourceChat(id, sessionId)
+      ?? this.#legacyActorNotReady(id, sessionId)
   }
 
   async readDraftManifestChat(id: TWidgetId, sessionId: string): Promise<TAgentDraftManifestReadResult> {
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      return {
-        ready: false,
-        reason: 'session-missing',
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
-    }
-
-    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
-    if (!mount) {
-      return {
-        ready: false,
-        reason: 'manifest-missing',
-        message: 'No widget is selected in this chat. Load or create a widget first.',
-      }
-    }
-    const rootDir = mount.targetPath
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (manifestResult.ready) {
-      return {
-        ready: true,
-        source: 'file',
-        manifest: manifestResult.manifest,
-      }
-    }
-
-    return {
+    return this.#legacyActor?.readDraftManifestChat(id, sessionId) ?? {
       ready: false,
-      reason: manifestResult.reason === 'session-missing' ? 'session-missing' : manifestResult.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-      message: manifestResult.message,
+      reason: 'legacy-disabled',
+      message: this.#legacyActorDisabledMessage(id, sessionId),
     }
   }
 
   async patchDraftManifestChat(id: TWidgetId, sessionId: string, patch: TAgentDraftManifestPatch): Promise<TAgentDraftManifestPatchResult> {
-    if (!this.sessionMap[id]?.[sessionId]) {
-      return {
-        ok: false,
-        reason: 'session-missing',
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
-    }
-
-    const sessionEntry = this.sessionMap[id]?.[sessionId]
-    if (!sessionEntry) {
-      return {
-        ok: false,
-        reason: 'session-missing',
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
-    }
-
-    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
-    if (!mount) return { ok: false, reason: 'manifest-missing', message: 'No widget is selected in this chat. Load or create a widget first.' }
-    const currentManifest = await this.#readDraftActorManifest(mount.targetPath)
-    if (!currentManifest.ready) {
-      return {
-        ok: false,
-        reason: currentManifest.reason === 'session-missing' ? 'session-missing' : currentManifest.reason === 'manifest-missing' ? 'manifest-missing' : 'manifest-invalid',
-        message: currentManifest.message,
-      }
-    }
-
-    const editResult = this.#applyDraftManifestPatch(currentManifest.manifest, patch)
-    if (!editResult.ok) return editResult
-    if (editResult.manifest.name !== mount.name) {
-      return {
-        ok: false,
-        reason: 'edit-invalid',
-        message: `Published identity is '${mount.name}'. Renaming requires creating and publishing a new widget.`,
-        issues: ['In-place widget rename is not supported.'],
-      }
-    }
-
-    await this.#workspace.writeMountedFileAtomic(sessionId, `widgets/${mount.name}/vibecanvas.json`, `${JSON.stringify(editResult.manifest, null, 2)}\n`)
-
-    return {
-      ...editResult,
-      source: 'file',
+    return this.#legacyActor?.patchDraftManifestChat(id, sessionId, patch) ?? {
+      ok: false,
+      reason: 'legacy-disabled',
+      message: this.#legacyActorDisabledMessage(id, sessionId),
     }
   }
 
   async publishChat(id: TWidgetId, sessionId: string): Promise<TAgentChatPublishResult> {
-    if (!this.sessionMap[id]?.[sessionId]) {
-      return {
-        published: false,
-        manifest: null,
-        destination: null,
-        message: this.#draftManifestMessage(id, sessionId, 'session-missing'),
-      }
-    }
-
-    const mount = await this.#resolveActiveMount(id, sessionId).catch(() => null)
-    if (!mount) {
-      return {
-        published: false,
-        manifest: null,
-        destination: null,
-        message: 'No widget is selected in this chat. Load or create a widget first.',
-      }
-    }
-    let rootDir = mount.targetPath
-    const manifestResult = await this.#readDraftActorManifest(rootDir)
-    if (!manifestResult.ready) {
-      return {
-        published: false,
-        manifest: null,
-        destination: null,
-        message: manifestResult.message,
-      }
-    }
-    if (manifestResult.manifest.name !== mount.name) {
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: `Published identity is '${mount.name}', but vibecanvas.json declares '${manifestResult.manifest.name}'. Create a new widget to rename it.`,
-      }
-    }
-
-    const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative: relativePath }, {
-      cwd: rootDir,
-      sdkActorTypePath: join(this.#workspace.sdkPackagePath, 'src', 'actor.ts'),
-    })
-    if (!validation.ok) {
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: validation.errors.join('\n') || 'Widget is invalid and was not published.',
-        errors: validation.errors,
-        warnings: validation.warnings,
-      }
-    }
-
-    const editSession = fxLatestWidgetEditSessionRecord({ sessionManager: this.sessionMap[id][sessionId].sessionManager })
-    const bindingPlan = await this.#chatResourceBindingPlan(manifestResult.manifest, this.sessionMap[id][sessionId].sessionManager)
-    if (!bindingPlan.ok) {
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: bindingPlan.message,
-      }
-    }
-    if (this.#config.actorService && (
-      !this.#config.actorService.transitionDefinitionPublication
-      || !this.#config.actorService.listResourceBindingsForDefinition
-    )) {
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: 'This host cannot coordinate definition, binding, and instance publication atomically.',
-      }
-    }
-    const previousCanonicalPath = join(this.#workspace.publishedRoot, mount.name)
-    if (await stat(previousCanonicalPath).catch(() => null)) {
-      const previousManifest = await this.#readDraftActorManifest(previousCanonicalPath)
-      if (!previousManifest.ready) {
-        return {
-          published: false,
-          manifest: manifestResult.manifest,
-          destination: null,
-          message: `The existing published manifest for '${mount.name}' is invalid: ${previousManifest.message}`,
-        }
-      }
-      if (previousManifest.manifest.slug !== manifestResult.manifest.slug) {
-        return {
-          published: false,
-          manifest: manifestResult.manifest,
-          destination: null,
-          message: `Published slug '${previousManifest.manifest.slug}' is immutable. Create a new widget to publish as '${manifestResult.manifest.slug}'.`,
-        }
-      }
-    }
-    let previousBindings: Awaited<ReturnType<NonNullable<TActorServiceReloader['listResourceBindingsForDefinition']>>> = []
-    try {
-      previousBindings = await this.#config.actorService?.listResourceBindingsForDefinition?.(manifestResult.manifest.name) ?? []
-    } catch (error) {
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: error instanceof Error ? error.message : String(error),
-      }
-    }
-    const previousBindingSet = previousBindings.map((binding) => ({
-      slot: binding.slot_name,
-      resourceId: binding.resource_id,
-      scope: [
-        ...(binding.allow_read ? ['read' as const] : []),
-        ...(binding.allow_write ? ['write' as const] : []),
-      ],
-    }))
-    const desiredBindingSet = bindingPlan.bindings.map((binding) => ({
-      slot: binding.slot,
-      resourceId: binding.resource.id,
-      scope: binding.scope,
-    }))
-    const shouldReloadEditedInstances = editSession !== null
-      && editSession.sourceName === manifestResult.manifest.name
-      && editSession.sourceSlug === manifestResult.manifest.slug
-    const finalWidgetsDir = join(this.#config.configPath, 'widgets')
-    const publishSnapshot = await this.#workspace.beginDraftPublish(mount.name, manifestResult.manifest.slug)
-    rootDir = publishSnapshot.canonicalPath
-    if (!publishSnapshot.wasExisting && await stat(join(finalWidgetsDir, manifestResult.manifest.slug)).catch(() => null)) {
-      await publishSnapshot.rollback()
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: `A published widget already uses slug '${manifestResult.manifest.slug}'.`,
-      }
-    }
-
-    let result: Awaited<ReturnType<typeof txPublishWidgetDraft>>
-    let transitionAttempted = false
-    let bindingReplacementCommitted = false
-    try {
-      publishSnapshot.markInstalledMutation()
-      result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative: relativePath, resolve, basename }, {
-        cwd: rootDir,
-        finalWidgetsDir,
-        actorService: undefined,
-        sdkActorTypePath: join(this.#workspace.sdkPackagePath, 'src', 'actor.ts'),
-      })
-      if (!result.published) {
-        await publishSnapshot.rollback()
-        return {
-          published: false,
-          manifest: result.manifest,
-          destination: null,
-          message: result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
-          errors: result.validation.errors,
-          warnings: result.validation.warnings,
-        }
-      }
-      if (this.#config.actorService) {
-        transitionAttempted = true
-        try {
-          await this.#config.actorService.transitionDefinitionPublication!({
-            definitionName: result.manifest.name,
-            expectedBindings: previousBindingSet,
-            bindings: desiredBindingSet,
-            reloadInstances: publishSnapshot.wasExisting || shouldReloadEditedInstances,
-          })
-          bindingReplacementCommitted = true
-        } catch (transitionError) {
-          bindingReplacementCommitted = Boolean(
-            typeof transitionError === 'object'
-            && transitionError !== null
-            && (transitionError as { bindingReplacementCommitted?: unknown }).bindingReplacementCommitted,
-          )
-          throw transitionError
-        }
-      }
-      this.#disposeDraftActor(id, sessionId)
-      if (!result.destination) throw new Error('Widget publish completed without a destination path.')
-      await publishSnapshot.commit()
-    } catch (error) {
-      const recoveryErrors: string[] = []
-      try {
-        await publishSnapshot.rollback()
-      } catch (recoveryError) {
-        recoveryErrors.push(`filesystem rollback: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`)
-      }
-      if (transitionAttempted && this.#config.actorService?.transitionDefinitionPublication) {
-        try {
-          await this.#config.actorService.transitionDefinitionPublication({
-            definitionName: manifestResult.manifest.name,
-            expectedBindings: bindingReplacementCommitted ? desiredBindingSet : previousBindingSet,
-            bindings: previousBindingSet,
-            reloadInstances: publishSnapshot.wasExisting || shouldReloadEditedInstances,
-          })
-        } catch (recoveryError) {
-          recoveryErrors.push(`actor publication restore: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`)
-        }
-      }
-      const originalMessage = error instanceof Error ? error.message : String(error)
-      const recoveryMessage = recoveryErrors.length > 0
-        ? `Publication failed: ${originalMessage}. Recovery also failed: ${recoveryErrors.join('; ')}`
-        : originalMessage
-      return {
-        published: false,
-        manifest: manifestResult.manifest,
-        destination: null,
-        message: recoveryMessage,
-        errors: recoveryErrors.length > 0 ? [`PUBLISH_RECOVERY_FAILED: ${recoveryErrors.join('; ')}`] : undefined,
-      }
-    }
-
-    this.#publishToolEvent(id, sessionId, { type: 'widgetupdate', cwd: result.destination, files: result.files })
-
-    return {
-      published: true,
-      manifest: result.manifest,
-      destination: result.destination,
-      files: result.files,
+    return this.#legacyActor?.publishChat(id, sessionId) ?? {
+      published: false,
+      manifest: null,
+      destination: null,
+      message: this.#legacyActorDisabledMessage(id, sessionId),
     }
   }
 
@@ -1527,41 +1123,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
-  #applyDraftManifestPatch(manifest: TVibecanvasJson, patch: TAgentDraftManifestPatch): TAgentDraftManifestPatchResult {
-    const plan = fnPatchDraftManifest({ manifest, patch })
-    if (plan.issues.length > 0) {
-      return {
-        ok: false,
-        reason: 'edit-invalid',
-        message: plan.issues.join('; '),
-        issues: plan.issues,
-      }
-    }
-    const parsedManifest = ZVibecanvasJson.safeParse(plan.manifest)
-    if (!parsedManifest.success) {
-      const manifestIssues = parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      const reason = 'initialData' in patch || 'dataSchema' in patch || patch.tool !== undefined
-        ? 'edit-invalid' as const
-        : 'manifest-invalid' as const
-      return {
-        ok: false,
-        reason,
-        message: manifestIssues.join('; '),
-        issues: manifestIssues,
-      }
-    }
-
-    return {
-      ok: true,
-      source: 'file',
-      manifest: parsedManifest.data as TVibecanvasJson,
-    }
-  }
-
-  #draftActorKey(id: TWidgetId, sessionId: TVibecanvasChatId): TDraftActorKey {
-    return `${id}:${sessionId}`;
-  }
-
   #nextChatConnectionGeneration(sessionId: TVibecanvasChatId): number {
     const generation = (this.#chatConnectionGenerations.get(sessionId) ?? 0) + 1
     this.#chatConnectionGenerations.set(sessionId, generation)
@@ -1626,7 +1187,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       return { status: 'superseded' }
     }
 
-    this.#installChatSessionEntry(id, sessionId, sessionEntry, replacementGeneration !== undefined
+    await this.#installChatSessionEntry(id, sessionId, sessionEntry, replacementGeneration !== undefined
       ? 'Chat runtime was intentionally replaced.'
       : 'Chat ownership changed before approval.')
     if (replacementGeneration !== undefined && replacementGeneration <= generation) {
@@ -1667,7 +1228,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         this.#releaseUnpublishedChatSessionEntry(candidate)
         return { ok: false, message: this.#isStopping ? 'Agent service is stopping.' : 'Widget edit connection was superseded by a newer request.' }
       }
-      this.#installChatSessionEntry(id, sessionId, candidate, replacementGeneration !== undefined
+      await this.#installChatSessionEntry(id, sessionId, candidate, replacementGeneration !== undefined
         ? 'Chat runtime was intentionally replaced.'
         : 'Chat ownership changed before approval.')
       if (replacementGeneration !== undefined && replacementGeneration <= generation) {
@@ -1859,12 +1420,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return Object.assign(new Error(message), { code })
   }
 
-  #installChatSessionEntry(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry, approvalReason: string): void {
+  async #installChatSessionEntry(id: TWidgetId, sessionId: TVibecanvasChatId, sessionEntry: TChatSessionEntry, approvalReason: string): Promise<void> {
     const previousWidgetId = this.#chatWidgetIds.get(sessionId)
     const previousEntry = previousWidgetId ? this.sessionMap[previousWidgetId]?.[sessionId] : undefined
 
     if (previousEntry) this.#approvals.cancelChat(sessionId, approvalReason)
-    if (previousWidgetId && previousWidgetId !== id) this.#disposeDraftActor(previousWidgetId, sessionId)
+    if (previousWidgetId && previousWidgetId !== id) {
+      try {
+        await this.#legacyActor?.disposeChat(previousWidgetId, sessionId)
+      } catch (error) {
+        this.#releaseUnpublishedChatSessionEntry(sessionEntry)
+        throw error
+      }
+    }
 
     if (!this.sessionMap[id]) this.sessionMap[id] = {}
     this.sessionMap[id][sessionId] = sessionEntry
@@ -1973,27 +1541,17 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   }
 
   async #readMountedManifest(mount: TWidgetMount): Promise<TVibecanvasJson> {
-    const parsed = ZVibecanvasJson.safeParse(JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')))
-    if (!parsed.success) throw new Error(parsed.error.message)
-    return parsed.data as TVibecanvasJson
+    const parsed = this.#legacyActor?.parseManifest(
+      JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')),
+    )
+    if (!parsed) throw new Error('Mounted source is not an enabled legacy actor manifest.')
+    return parsed
   }
 
   #assertChatScope(id: TWidgetId, sessionId: TVibecanvasChatId): void {
     if (this.#chatWidgetIds.get(sessionId) !== id || !this.sessionMap[id]?.[sessionId]) {
       throw new Error(`No connected agent session for widget '${id}' and session '${sessionId}'`)
     }
-  }
-
-  #publishToolEvent(id: TWidgetId, sessionId: TVibecanvasChatId, event: TToolEvent): void {
-    if (event.type !== 'widgetupdate') return
-
-    this.#config.eventPublisherService.publishAgentEvent({
-      kind: 'widgetupdate',
-      widgetId: id,
-      sessionId,
-      cwd: event.cwd,
-      files: event.files,
-    })
   }
 
   async #resolveChatResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
@@ -2034,28 +1592,6 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return selected
   }
 
-  async #chatResourceBindingPlan(manifest: TVibecanvasJson, sessionManager: SessionManager): Promise<{ ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string }> {
-    const requirements = Object.keys(manifest.actor.resources ?? {})
-    if (requirements.length === 0) return { ok: true, bindings: [] }
-
-    const selectedRecord = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
-    let selected = selectedRecord?.resources ?? []
-    if (!selectedRecord) {
-      const resourceService = this.#config.resourceService
-      if (!resourceService?.listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
-      const available = await resourceService.listResources({ status: 'ready' })
-      const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
-        id: resource.id,
-        kind: resource.kind,
-        name: resource.name,
-        status: resource.status,
-      })))
-      if (!implicit.ok) return implicit
-      selected = implicit.resources
-    }
-    return planSelectedResourceBindings(manifest, selected)
-  }
-
   #normalizePromptImages(images: TPromptInputImage[] | undefined): TPromptImage[] {
     if (!images || images.length === 0) {
       return []
@@ -2082,9 +1618,10 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     })
   }
 
-  #disposeChatSession(id: TWidgetId, sessionId: TVibecanvasChatId): void {
-    this.#disposeDraftActor(id, sessionId)
+  async #disposeChatSession(id: TWidgetId, sessionId: TVibecanvasChatId): Promise<void> {
+    const legacyActorDisposal = this.#legacyActor?.disposeChat(id, sessionId)
     this.#disposeAgentSession(id, sessionId)
+    await legacyActorDisposal
   }
 
   #claimDbChangeProposalResolution(id: TWidgetId, sessionId: TVibecanvasChatId, proposalId: string): () => void {
@@ -2125,139 +1662,19 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     sessionEntry.session.dispose()
   }
 
-  #disposeDraftActor(id: TWidgetId, sessionId: TVibecanvasChatId): void {
-    const key = this.#draftActorKey(id, sessionId);
-    const entry = this.#draftActorMap.get(key);
-    if (!entry) return;
-
-    entry.unlisten();
-    entry.actor.close();
-    this.#draftActorMap.delete(key);
-
-    this.#publishDraftActorEvent(id, sessionId, entry.actor, {
-      kind: 'lifecycle',
-      type: 'stopped',
-      actorId: entry.actor.getId(),
-    })
-  }
-
-  #disposeAllDraftActors(): void {
-    for (const key of Array.from(this.#draftActorMap.keys())) {
-      const [id, sessionId] = key.split(':', 2)
-      this.#disposeDraftActor(id, sessionId)
-    }
-  }
-
-  #draftActorSnapshot(actor: Actor): TAgentDraftActorSnapshot {
-    return {
-      state: actor.getState(),
-      context: actor.getData(),
-    }
-  }
-
-  async #readDraftActorManifest(rootDir: string): Promise<
-    | { ready: true; manifest: TVibecanvasJson }
-    | TAgentDraftActorNotReadyResult
-  > {
-    const manifestPath = join(rootDir, 'vibecanvas.json')
-
-    if (!await Bun.file(manifestPath).exists()) {
-      return {
-        ready: false,
-        reason: 'manifest-missing',
-        message: 'Draft vibecanvas.json does not exist yet.',
-      }
-    }
-
-    try {
-      const parsedJson = await Bun.file(manifestPath).json()
-      const parsedManifest = ZVibecanvasJson.safeParse(parsedJson)
-      if (!parsedManifest.success) {
-        return {
-          ready: false,
-          reason: 'manifest-invalid',
-          message: parsedManifest.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; '),
-        }
-      }
-
-      return {
-        ready: true,
-        manifest: parsedManifest.data as TVibecanvasJson,
-      }
-    } catch (error) {
-      return {
-        ready: false,
-        reason: 'manifest-invalid',
-        message: error instanceof Error ? error.message : String(error),
-      }
-    }
-  }
-
-  async #readWidgetSourceMap(rootDir: string, relWidgetDir: string): Promise<Record<string, string>> {
-    const root = resolve(rootDir)
-    const widgetDir = resolve(root, relWidgetDir)
-    if (widgetDir !== root && !widgetDir.startsWith(`${root}/`)) return {}
-    const widgetDirStat = await stat(widgetDir).catch(() => null)
-    if (!widgetDirStat?.isDirectory()) return {}
-
-    const sources: Record<string, string> = {}
-    await this.#readSourceMapRecursive(widgetDir, widgetDir, sources)
-    return sources
-  }
-
-  async #readSourceMapRecursive(rootDir: string, dir: string, sources: Record<string, string>): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true })
-    for (const entry of entries) {
-      const absPath = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        await this.#readSourceMapRecursive(rootDir, absPath, sources)
-        continue
-      }
-      if (!entry.isFile()) continue
-
-      sources[relativePath(rootDir, absPath)] = await Bun.file(absPath).text()
-    }
-  }
-
-  #draftActorNotReady(id: TWidgetId, sessionId: TVibecanvasChatId, reason: TDraftActorNotReadyReason): TAgentDraftActorNotReadyResult {
-    const label = `widget '${id}' and session '${sessionId}'`
-    const messageMap: Record<TDraftActorNotReadyReason, string> = {
-      'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
-      'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
-      'actor-functions-missing': `Draft actor functions file does not exist for ${label}`,
-      'session-missing': `No connected agent session for ${label}`,
-      'resource-binding-invalid': `Draft resources cannot be bound for ${label}`,
-      'actor-not-running': `No draft actor is running for ${label}`,
-    }
-
+  #legacyActorNotReady(
+    id: TWidgetId,
+    sessionId: TVibecanvasChatId,
+  ): TAgentDraftActorNotReadyResult {
     return {
       ready: false,
-      reason,
-      message: messageMap[reason],
+      reason: 'legacy-disabled',
+      message: this.#legacyActorDisabledMessage(id, sessionId),
     }
   }
 
-  #draftManifestMessage(id: TWidgetId, sessionId: TVibecanvasChatId, reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'): string {
-    const label = `widget '${id}' and session '${sessionId}'`
-    const messageMap: Record<typeof reason, string> = {
-      'manifest-missing': `Draft vibecanvas.json does not exist for ${label}`,
-      'manifest-invalid': `Draft vibecanvas.json is invalid for ${label}`,
-      'session-missing': `No connected agent session for ${label}`,
-    }
-
-    return messageMap[reason]
-  }
-
-  #publishDraftActorEvent(id: TWidgetId, sessionId: TVibecanvasChatId, actor: Actor, event: TAgentDraftActorEvent['event']): void {
-    const publishEvent: TAgentDraftActorEvent = {
-      kind: 'draft-actor',
-      widgetId: id,
-      sessionId,
-      event,
-      snapshot: this.#draftActorSnapshot(actor),
-    }
-
-    this.#config.eventPublisherService.publishAgentEvent(publishEvent)
+  #legacyActorDisabledMessage(id: TWidgetId, sessionId: TVibecanvasChatId): string {
+    return `Legacy actor compatibility is disabled for widget '${id}' and session '${sessionId}'`
   }
 
   /** Explicit legacy-only adapter used when the host has not installed v2 authoring capabilities. */

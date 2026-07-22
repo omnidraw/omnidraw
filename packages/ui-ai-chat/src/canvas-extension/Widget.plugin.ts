@@ -1,7 +1,7 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "@vibecanvas/canvas";
 import type { TWidgetCatalog, TWidgetPlacementRef, TWidgetVariantSummary } from "@vibecanvas/orpc-client";
-import { fnWidgetPlacementToolId } from "@vibecanvas/service-actor/core/fn.widget-frame";
+import { fnWidgetPlacementToolId } from '@vibecanvas/widget-contract';
 import { fnResolveWidgetToolIcon } from "../widget/fn.resolve-widget-tool-icon";
 import type { TAiChatApplicationPort, TWidgetTransportPort } from "../ports";
 import type { WidgetManagerService } from "../widget/WidgetManagerService";
@@ -16,7 +16,6 @@ export function createWidgetPlugin(portal: {
   return {
     name: "widget-plugin",
     apply(ctx) {
-      const publishedRegistrationFingerprints = new Map<string, string>();
       const placementToolFingerprints = new Map<string, string>();
       let refreshGeneration = 0;
 
@@ -55,118 +54,35 @@ export function createWidgetPlugin(portal: {
         placementToolFingerprints.set(id, fingerprint);
       };
 
-      const registerPublished = async (
-        actorDefinitionName: string,
-        fingerprint: string,
-        generation: number,
-      ) => {
-        if (publishedRegistrationFingerprints.get(actorDefinitionName) === fingerprint) return;
-        const [error, actor] = await portal.transport.api.actors.definitions.get({ name: actorDefinitionName });
-        if (generation !== refreshGeneration) return;
-        if (error) {
-          portal.widgetManager.setDefinitionError(actorDefinitionName, {
-            phase: "definition-fetch",
-            code: "WIDGET_DEFINITION_UNAVAILABLE",
-            message: `Could not load widget definition "${actorDefinitionName}".`,
-            retryable: true,
-          });
-          return;
-        }
-        const arrowjs = actor.widgetCode.reduce<Record<string, string>>((sources, file) => {
-          sources[file.path] = file.content;
-          return sources;
-        }, {});
-        portal.widgetManager.registerWidget({
-          id: actor.def.name,
-          dataType: "widget",
-          getTitle: () => actor.def.widget.tool.label,
-          actor: { actorDefinitionName: actor.def.name },
-          sandbox: {
-            // @ts-expect-error Published definitions guarantee main.ts or main.js after backend validation.
-            arrowjs,
-          },
-        });
-        publishedRegistrationFingerprints.set(actorDefinitionName, fingerprint);
-      };
-
       const refreshWidgets = async () => {
         const generation = ++refreshGeneration;
-        const [definitionsResult, catalogResult] = await Promise.all([
-          portal.transport.api.actors.definitions.list(),
-          portal.transport.api.agent?.widgets?.catalog({}) ?? Promise.resolve([new Error("Widget catalog is unavailable."), null] as const),
-        ]);
+        const catalogResult = await (
+          portal.transport.api.agent?.widgets?.catalog({})
+          ?? Promise.resolve([new Error("Widget catalog is unavailable."), null] as const)
+        );
         if (generation !== refreshGeneration) return;
-        const [definitionsError, actorDefs] = definitionsResult;
         const [catalogError, catalogValue] = catalogResult;
-        if (definitionsError && (catalogError || !catalogValue)) {
+        if (catalogError || !catalogValue) {
           portal.widgetManager.setGlobalDefinitionError({
             phase: "definition-discovery",
             code: "WIDGET_DEFINITION_UNAVAILABLE",
-            message: "Widget definitions or placement catalog could not be loaded.",
+            message: "Widget placement catalog could not be loaded.",
             retryable: true,
           });
-          portal.widgetManager.completeDefinitionDiscovery();
-          return;
-        }
-        if (catalogError || !catalogValue) {
-          portal.widgetManager.setGlobalDefinitionError(null);
-          placementToolFingerprints.forEach((_fingerprint, id) => portal.widgetManager.unregisterPlacementTool(id));
-          placementToolFingerprints.clear();
-          const availableActorDefs = actorDefs ?? [];
-          const nextPublishedKinds = new Set(availableActorDefs.filter((definition) => definition.health !== "error").map((definition) => definition.name));
-          publishedRegistrationFingerprints.forEach((_fingerprint, name) => {
-            if (nextPublishedKinds.has(name)) return;
-            portal.widgetManager.unregisterWidget(name);
-            publishedRegistrationFingerprints.delete(name);
-          });
-          await Promise.all(availableActorDefs.flatMap((definition) => {
-            if (definition.health === "error") return [];
-            return [registerPublished(definition.name, `fallback:${definition.updated_at}`, generation)];
-          }));
           portal.widgetManager.completeDefinitionDiscovery();
           return;
         }
         const catalog: TWidgetCatalog = catalogValue;
-        portal.widgetManager.setGlobalDefinitionError(definitionsError ? {
-          phase: "definition-discovery",
-          code: "WIDGET_DEFINITION_UNAVAILABLE",
-          message: "Legacy widget definitions could not be loaded.",
-          retryable: true,
-        } : null);
+        portal.widgetManager.setGlobalDefinitionError(null);
 
-        const availableActorDefs = definitionsError ? [] : (actorDefs ?? []);
-        const definitionsByName = new Map(availableActorDefs.map((definition) => [definition.name, definition]));
-        const nextPublishedKinds = new Set<string>();
         const nextPlacementToolIds = new Set<string>();
         const availableReferences: TWidgetPlacementRef[] = [];
-        const registrations: Promise<void>[] = [];
         for (const entry of catalog.widgets) {
           const published = entry.published;
           if (published) {
             if (published.placement) {
               availableReferences.push(published.placement.reference);
               placementTool(published, nextPlacementToolIds);
-            }
-            const actorDefinition = definitionsByName.get(published.displayName) ?? definitionsByName.get(entry.name);
-            if (actorDefinition?.health === "error") {
-              portal.widgetManager.setDefinitionError(actorDefinition.name, actorDefinition.error ?? {
-                phase: "definition-fetch",
-                code: "WIDGET_DEFINITION_UNAVAILABLE",
-                message: `Could not load widget definition "${actorDefinition.name}".`,
-                retryable: true,
-              });
-            } else if (actorDefinition) {
-              nextPublishedKinds.add(actorDefinition.name);
-              registrations.push(registerPublished(
-                actorDefinition.name,
-                JSON.stringify({
-                  revision: published.revision,
-                  updatedAt: actorDefinition.updated_at,
-                  placement: published.placement,
-                  tool: published.tool,
-                }),
-                generation,
-              ));
             }
           }
           if (entry.draft?.placement) availableReferences.push(entry.draft.placement.reference);
@@ -180,12 +96,6 @@ export function createWidgetPlugin(portal: {
           portal.widgetManager.unregisterPlacementTool(id);
           placementToolFingerprints.delete(id);
         });
-        publishedRegistrationFingerprints.forEach((_fingerprint, name) => {
-          if (nextPublishedKinds.has(name)) return;
-          portal.widgetManager.unregisterWidget(name);
-          publishedRegistrationFingerprints.delete(name);
-        });
-        await Promise.all(registrations);
         portal.widgetManager.completeDefinitionDiscovery();
       };
 

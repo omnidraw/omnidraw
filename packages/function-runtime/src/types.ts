@@ -30,6 +30,19 @@ export type TFunctionInvocationSubject =
       previewRevisionId: string;
     }>;
 
+export type TFunctionDispatchRequest = Readonly<{
+  widgetDefinitionId: string;
+  widgetRevisionId: string;
+  subject: TFunctionInvocationSubject;
+  functionName: string;
+  input: unknown;
+  idempotencyKey: string;
+  idempotencyScope?: TInvocationIdempotencyScope;
+  idempotencyExpiresAtMs?: number | null;
+  priority?: number;
+  deadlineAtMs?: number;
+}>;
+
 export type TFunctionMemoryTier = 'small' | 'medium' | 'large';
 export type TInvocationStatus =
   | 'queued'
@@ -325,6 +338,14 @@ export type TInvocationAttemptCompletionResult =
   | Readonly<{ status: 'already_completed'; invocation: TInvocationRecord; attempt: TFunctionAttempt }>
   | Readonly<{ status: 'stale' }>
   | Readonly<{ status: 'permit_active' }>;
+
+export type TFunctionExecutionOutcome =
+  | Readonly<{ status: 'not_claimed'; reason: string }>
+  | Readonly<{
+      status: 'completed';
+      completion: TInvocationAttemptCompletionResult;
+      attempt: TFunctionAttempt;
+    }>;
 
 export type TInvocationRecoveryRequest = Readonly<{
   nowMs: number;

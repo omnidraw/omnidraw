@@ -20,7 +20,6 @@ type TOrpcWebSocketData = {
 };
 
 type TOrpcTenantContextServices = Pick<IRuntimeServices,
-  | 'actor'
   | 'agent'
   | 'automerge'
   | 'db'
@@ -32,7 +31,29 @@ type TOrpcTenantContextServices = Pick<IRuntimeServices,
   | 'resource'
   | 'widget'
   | 'widgetRuntimeLoadAdmission'
->;
+> & Readonly<{
+  actor?: Readonly<{
+    forTenant(tenant: TTenantContext): Promise<TActorApiCapability>;
+  }>;
+}>;
+
+function legacyActorDisabledError(): Error {
+  return Object.assign(
+    new Error('Legacy actor compatibility is disabled.'),
+    { code: 'LEGACY_ACTOR_DISABLED' },
+  );
+}
+
+const DISABLED_LEGACY_ACTOR_CAPABILITY: TActorApiCapability = Object.freeze({
+  deleteDefinition: async () => {
+    throw legacyActorDisabledError();
+  },
+  getVibecanvasJson: () => null,
+  getWidgetCode: async () => null,
+  sendMessage: async () => {
+    throw legacyActorDisabledError();
+  },
+});
 
 function createOrpcTenantContext(
   tenant: TTenantContext,
@@ -50,9 +71,11 @@ function createOrpcTenantContext(
     resource: services.resource,
     widget: services.widget,
     widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
-    actor: createLazyTenantServiceCapability<TActorApiCapability>(
-      () => services.actor.forTenant(tenant),
-    ),
+    actor: services.actor
+      ? createLazyTenantServiceCapability<TActorApiCapability>(
+          () => services.actor!.forTenant(tenant),
+        )
+      : DISABLED_LEGACY_ACTOR_CAPABILITY,
     agent: createLazyTenantServiceCapability<TAgentApiCapability>(
       () => services.agent.forTenant(tenant),
     ),
@@ -62,6 +85,7 @@ function createOrpcTenantContext(
 function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   return {
     name: 'orpc',
+    after: ['legacy-actor?'],
     apply(ctx) {
       if (ctx.config.command !== 'serve' || ctx.config.helpRequested || ctx.config.versionRequested) {
         return;
@@ -77,7 +101,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const resource = ctx.services.require('resource');
       const widget = ctx.services.require('widget');
       const widgetRuntimeLoadAdmission = ctx.services.require('widgetRuntimeLoadAdmission');
-      const actor = ctx.services.require('actor');
+      const actor = ctx.services.get('actor');
       const agent = ctx.services.require('agent');
       const handler = new RPCHandler(baseOs.router(router), {
         interceptors: [
@@ -127,5 +151,9 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
   };
 }
 
-export { createOrpcPlugin, createOrpcTenantContext };
+export {
+  DISABLED_LEGACY_ACTOR_CAPABILITY,
+  createOrpcPlugin,
+  createOrpcTenantContext,
+};
 export type { TOrpcTenantContextServices, TOrpcWebSocketData };

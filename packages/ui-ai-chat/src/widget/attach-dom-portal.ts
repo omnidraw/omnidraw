@@ -1,4 +1,3 @@
-// NOTE: do not rename to tx.* this file is exception to rule because of './mount-arrow-sandbox' import
 import type { TElement, TUiWidgetData, TWidgetData, TWidgetInstanceData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { CameraService, SceneService, SelectionService } from '@vibecanvas/canvas/services';
 import { ThemeService } from '@vibecanvas/service-theme';
@@ -6,7 +5,7 @@ import { ELEMENT_DATA_ATTR } from '@vibecanvas/canvas/core/CONSTANTS';
 import { isKonvaGroup, isKonvaRect, isKonvaText } from '@vibecanvas/canvas/core/GUARDS';
 import { createSignal } from 'solid-js';
 import { createComponent, render } from 'solid-js/web';
-import type { WidgetManagerService, TWidgetActorEvent } from './WidgetManagerService';
+import type { WidgetManagerService } from './WidgetManagerService';
 import type { TWidgetBrowserPort } from '../ports';
 import {
   WIDGET_DOM_CONTENT_SCALE,
@@ -39,8 +38,6 @@ import { txRenderWidgetLoading } from './tx.render-widget-loading';
 import { fnIsWidgetHostData } from '@vibecanvas/canvas/widget-host/fn.normalize-widget-host-data';
 import type { TWidgetHostData } from '@vibecanvas/canvas/widget-host/types';
 import { fnIsWidgetPortalVisible } from './fn.widget-portal-visibility';
-// @ts-ignore keep this way as rules should not applied for this import
-import { mountArrowSandbox } from './mount-arrow-sandbox';
 
 type TPortal = {
   node: unknown;
@@ -64,8 +61,6 @@ const WIDGET_TITLE_ACTION_BORDER = 'color-mix(in srgb, currentColor 13%, transpa
 type TArgs = {
   element: TElement;
 };
-
-type TWidgetActorEventHandler = (event: TWidgetActorEvent) => void;
 
 const WIDGET_TITLE_ACTION_GAP = 4;
 const WIDGET_TITLE_ACTION_HORIZONTAL_PADDING = 8;
@@ -512,14 +507,11 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
 
   if (args.element.data.type === 'widget' && portal.widgetConfig?.sandbox) {
     try {
-      const cleanupSandbox = mountArrowSandbox({
+      const cleanupSandbox = portal.widgetServie.mountLegacyWidgetSandbox({
       root: contentRoot,
       browser: portal.browser,
-      getActorSnapshot: (snapshotArgs) => portal.widgetServie.getLegacyActorSnapshot(snapshotArgs),
-      sendActorMessage: (messageArgs) => portal.widgetServie.sendLegacyActorMessage(messageArgs),
-      subscribeActorInstanceEvents: (actorInstanceId: string, handler: TWidgetActorEventHandler) => {
-        return portal.widgetServie.subscribeActorInstanceEvents(actorInstanceId, handler);
-      },
+      element: args.element,
+      sandbox: portal.widgetConfig.sandbox,
       getActorInstanceId: () => {
         if (!isKonvaGroup(portal.node)) return null;
         const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | TWidgetInstanceData | undefined;
@@ -533,7 +525,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
           contentRoot.querySelector('[data-widget-host-loading]')?.remove();
         }
       },
-    }, { element: args.element, sandbox: portal.widgetConfig.sandbox });
+    });
       const cleanupDomRender = cleanupRender;
       cleanupRender = () => {
         try { cleanupWidgetRender(cleanupDomRender); } finally { cleanupSandbox(); }

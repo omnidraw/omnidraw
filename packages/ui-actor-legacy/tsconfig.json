@@ -2,8 +2,10 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "jsx": "preserve",
+    "jsxImportSource": "solid-js",
     "noEmit": true,
-    "types": ["bun-types"]
+    "types": ["bun-types", "vite/client"],
+    "verbatimModuleSyntax": false
   },
   "include": [
     "demo/**/*.ts",

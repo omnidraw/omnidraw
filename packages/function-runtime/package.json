@@ -12,9 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/resource-runtime": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*",
-    "@vibecanvas/widget-contract": "workspace:*",
+    "@vibecanvas/resource-runtime": "0.1.0",
+    "@vibecanvas/tenant-core": "0.1.0",
+    "@vibecanvas/widget-contract": "0.1.0",
     "ajv": "^8.20.0"
   }
 }

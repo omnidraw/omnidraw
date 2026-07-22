@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./browser": "./src/browser/index.ts",
+    "./CONSTANTS": "./src/CONSTANTS.ts",
+    "./core/fn.widget-frame": "./src/core/fn.widget-frame.ts",
+    "./fn.widget-frame": "./src/core/fn.widget-frame.ts",
     "./local": "./src/local/index.ts"
   },
   "scripts": {
@@ -12,8 +15,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vibecanvas/resource-runtime": "workspace:*",
-    "@vibecanvas/tenant-core": "workspace:*",
+    "@vibecanvas/resource-runtime": "0.1.0",
+    "@vibecanvas/tenant-core": "0.1.0",
+    "lucide-static": "catalog:",
     "zod": "catalog:"
   }
 }

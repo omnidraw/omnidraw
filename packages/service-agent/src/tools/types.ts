@@ -1,7 +1,7 @@
 import type { SessionManager, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { TValidationResult } from '../core/types';
 import type { TWidgetDraftSummary } from '../widget-drafts/types';
-export type { TActorServiceReloader, TValidationResult } from '../core/types';
+export type { TValidationResult } from '../core/types';
 
 export type TWidgetEditSessionRecord = {
   mode: 'edit-published-widget';

@@ -2,10 +2,21 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { buildCliConfig } from '../src/build-config';
+import { buildCliConfig, resolveLegacyActorEnabled } from '../src/build-config';
 import { parseCliArgv } from '../src/parse-argv';
 
 describe('parseCliArgv command resolution', () => {
+  test('keeps legacy actors disabled by default and accepts only explicit boolean env values', () => {
+    expect(resolveLegacyActorEnabled(undefined)).toBe(false);
+    expect(resolveLegacyActorEnabled('0')).toBe(false);
+    expect(resolveLegacyActorEnabled('false')).toBe(false);
+    expect(resolveLegacyActorEnabled('1')).toBe(true);
+    expect(resolveLegacyActorEnabled('true')).toBe(true);
+    expect(() => resolveLegacyActorEnabled('yes')).toThrow(
+      'VIBECANVAS_LEGACY_ACTOR_ENABLED must be one of: 0, 1, false, true.',
+    );
+  });
+
   test('defaults to serve when no subcommand is provided', () => {
     const parsed = parseCliArgv(['bun', 'run']);
 

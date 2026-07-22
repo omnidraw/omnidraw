@@ -159,30 +159,30 @@ function boundedRecord<TKey extends string, TValue>(
   });
 }
 
-export const ZActorResourceKind = z.enum(['kv', 'secretStore', 'db']);
-export const ZActorResourceStatus = z.enum(['created', 'provisioning', 'ready', 'migrating', 'error', 'deleting']);
-export const ZActorResourcePermission = z.enum(['read', 'write']);
-export const ZActorResourceScope = z.array(ZActorResourcePermission).min(1).max(2).refine(
+export const ZResourceKind = z.enum(['kv', 'secretStore', 'db']);
+export const ZResourceStatus = z.enum(['created', 'provisioning', 'ready', 'migrating', 'error', 'deleting']);
+export const ZResourcePermission = z.enum(['read', 'write']);
+export const ZResourceScope = z.array(ZResourcePermission).min(1).max(2).refine(
   (scope) => new Set(scope).size === scope.length,
   'Resource scope permissions must be unique.',
 );
 
-export const ZActorResourceApiErrorData = z.object({
+export const ZResourceApiErrorData = z.object({
   code: z.string(),
   details: ZJson.optional(),
 });
 
-export const ZActorResource = z.object({
+export const ZResource = z.object({
   id: z.string(),
-  kind: ZActorResourceKind,
+  kind: ZResourceKind,
   name: z.string(),
-  status: ZActorResourceStatus,
+  status: ZResourceStatus,
   last_error: ZJson.nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 });
 
-export const ZActorResourceBinding = z.object({
+export const ZResourceBinding = z.object({
   actor_definition_name: z.string(),
   slot_name: z.string(),
   resource_id: z.string(),
@@ -192,7 +192,7 @@ export const ZActorResourceBinding = z.object({
   updated_at: z.string(),
 });
 
-const ZActorResourceKvDataEntry = z.object({
+const ZResourceKvDataEntry = z.object({
   key: z.string().max(1_024),
   valuePreview: z.string().max(4_096),
   valueTruncated: z.boolean(),
@@ -200,39 +200,39 @@ const ZActorResourceKvDataEntry = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 }).strict();
-const ZActorResourceSecretDataEntry = z.object({
+const ZResourceSecretDataEntry = z.object({
   name: z.string().max(256),
   revision: z.number().int().positive(),
   createdAt: z.string(),
   updatedAt: z.string(),
 }).strict();
 
-export const ZActorResourceDataPage = z.discriminatedUnion('kind', [
+export const ZResourceDataPage = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('kv'),
-    entries: z.array(ZActorResourceKvDataEntry).max(100),
+    entries: z.array(ZResourceKvDataEntry).max(100),
     nextCursor: z.string().max(1_024).nullable(),
   }).strict(),
   z.object({
     kind: z.literal('secretStore'),
-    entries: z.array(ZActorResourceSecretDataEntry).max(100),
+    entries: z.array(ZResourceSecretDataEntry).max(100),
     nextCursor: z.string().max(256).nullable(),
   }).strict(),
 ]);
 
-export const ZActorResourceDataMutationResult = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('kv'), entry: ZActorResourceKvDataEntry }).strict(),
-  z.object({ kind: z.literal('secretStore'), entry: ZActorResourceSecretDataEntry }).strict(),
+export const ZResourceDataMutationResult = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('kv'), entry: ZResourceKvDataEntry }).strict(),
+  z.object({ kind: z.literal('secretStore'), entry: ZResourceSecretDataEntry }).strict(),
 ]);
 
-export const ZActorResourceSecretReveal = z.object({
+export const ZResourceSecretReveal = z.object({
   kind: z.literal('secretStore'),
   name: z.string().min(1).max(256).refine((value) => value.trim().length > 0, 'Value must not be blank.'),
   value: z.string().min(1).max(1_048_576),
   revision: z.number().int().positive(),
 }).strict();
 
-const ZActorResourceDataValue = ZJson.refine((value) => {
+const ZResourceDataValue = ZJson.refine((value) => {
   try {
     return (JSON.stringify(value)?.length ?? 0) <= 1_048_576;
   } catch {
@@ -252,7 +252,7 @@ const ZHostId = boundedNonBlankString(128);
 const ZObjectName = boundedNonBlankString(256).refine((value) => !/[\u0000-\u001f\u007f]/.test(value), 'Database object name contains control characters.');
 const ZDraftSql = z.string().min(1).max(1_048_576).refine((value) => value.trim().length > 0, 'Draft SQL must not be blank.');
 
-export const ZCreateActorResourceInput = z.discriminatedUnion('kind', [
+export const ZCreateResourceInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('kv'), name: ZResourceName }).strict(),
   z.object({ kind: z.literal('secretStore'), name: ZResourceName }).strict(),
   z.object({ kind: z.literal('db'), name: ZResourceName }).strict(),
@@ -261,7 +261,7 @@ export const ZCreateActorResourceInput = z.discriminatedUnion('kind', [
 const ZResourceIdentifier = z.string()
   .max(RESOURCE_IDENTIFIER_MAX_LENGTH)
   .refine(isNonBlank, 'resource identifier must not be blank');
-const ZResourceRequirementScope = z.array(ZActorResourcePermission)
+const ZResourceRequirementScope = z.array(ZResourcePermission)
   .min(1)
   .max(2)
   .superRefine((scope, context) => {
@@ -275,7 +275,7 @@ const ZDbOperationParameterDeclaration = z.object({
   nullable: z.boolean().default(false),
 });
 const ZDbNamedOperation = z.object({
-  effect: ZActorResourcePermission,
+  effect: ZResourcePermission,
   sql: z.string()
     .max(DB_NAMED_OPERATION_SQL_MAX_LENGTH)
     .refine(isNonBlank, 'named operation SQL must not be blank')
@@ -320,13 +320,13 @@ const ZResourceRequirement = z.discriminatedUnion('kind', [
     }
   }),
 ]);
-export const ZActorResourceBindingStatus = z.object({
+export const ZResourceBindingStatus = z.object({
   slot: z.string(),
   requirement: ZResourceRequirement,
   bound: z.boolean(),
-  resource: ZActorResource.nullable(),
-  requestedScope: ZActorResourceScope,
-  bindingScope: ZActorResourceScope.nullable(),
+  resource: ZResource.nullable(),
+  requestedScope: ZResourceScope,
+  bindingScope: ZResourceScope.nullable(),
   scopeValid: z.boolean(),
   kindMatches: z.boolean(),
   ready: z.boolean(),
@@ -460,14 +460,14 @@ export const ZDbDraftOperation = z.discriminatedUnion('kind', [
 ]);
 
 const ZDbImpact = z.object({
-  resource: ZActorResource,
-  definitions: z.array(z.object({ definitionName: z.string(), slots: z.array(z.object({ slot: z.string(), scope: ZActorResourceScope })) })),
+  resource: ZResource,
+  definitions: z.array(z.object({ definitionName: z.string(), slots: z.array(z.object({ slot: z.string(), scope: ZResourceScope })) })),
   instances: z.array(z.object({ instanceId: z.string(), definitionName: z.string(), status: z.string(), running: z.boolean() })),
 });
 const ZDbDraftDetails = z.object({ draft: ZDbResourceDraft, changes: z.array(ZDbResourceDraftChange) });
 const ZDbApplyDetails = z.object({ apply: ZDbResourceApplyRun, instances: z.array(ZDbResourceApplyInstanceResult) });
 const ZDbApplyPreview = ZDbDraftDetails.extend({
-  resource: ZActorResource,
+  resource: ZResource,
   impact: ZDbImpact,
   warnings: z.array(z.string()),
   compatibilityNotice: z.string(),
@@ -475,28 +475,28 @@ const ZDbApplyPreview = ZDbDraftDetails.extend({
 const ZCursor = z.object({ createdAt: z.string(), id: z.string() });
 
 export const resourceContract = oc.errors({
-  ACTOR_RESOURCE_ERROR: {
+  RESOURCE_ERROR: {
     status: 409,
-    message: 'Actor resource operation failed.',
-    data: ZActorResourceApiErrorData,
+    message: 'Resource operation failed.',
+    data: ZResourceApiErrorData,
   },
 }).router({
   resources: {
     list: oc
-      .input(z.object({ kind: ZActorResourceKind.optional(), status: ZActorResourceStatus.optional() }).optional())
-      .output(ZActorResource.array()),
-    get: oc.input(z.object({ resourceId: ZResourceId })).output(ZActorResource),
-    create: oc.input(ZCreateActorResourceInput).output(ZActorResource),
+      .input(z.object({ kind: ZResourceKind.optional(), status: ZResourceStatus.optional() }).optional())
+      .output(ZResource.array()),
+    get: oc.input(z.object({ resourceId: ZResourceId })).output(ZResource),
+    create: oc.input(ZCreateResourceInput).output(ZResource),
     rename: oc
       .input(z.object({ resourceId: ZResourceId, name: ZResourceName }))
-      .output(ZActorResource),
+      .output(ZResource),
     delete: oc
       .input(z.object({ resourceId: ZResourceId }))
       .route({ method: 'DELETE' })
       .output(z.object({ deleted: z.boolean() })),
     references: oc
       .input(z.object({ resourceId: ZResourceId }))
-      .output(ZActorResourceBinding.array()),
+      .output(ZResourceBinding.array()),
     data: oc
       .input(z.object({
         resourceId: ZResourceId,
@@ -504,15 +504,15 @@ export const resourceContract = oc.errors({
         cursor: z.string().min(1).max(1_024).optional(),
         limit: z.number().int().min(1).max(100).optional(),
       }).strict())
-      .output(ZActorResourceDataPage),
+      .output(ZResourceDataPage),
     dataSet: oc
       .input(z.object({
         resourceId: ZResourceId,
         key: boundedNonBlankString(1_024),
         expectedRevision: z.number().int().positive().nullable(),
-        value: ZActorResourceDataValue,
+        value: ZResourceDataValue,
       }).strict())
-      .output(ZActorResourceDataMutationResult),
+      .output(ZResourceDataMutationResult),
     dataDelete: oc
       .input(z.object({
         resourceId: ZResourceId,
@@ -527,18 +527,18 @@ export const resourceContract = oc.errors({
         name: ZResourceName,
       }).strict())
       .route({ method: 'POST' })
-      .output(ZActorResourceSecretReveal),
+      .output(ZResourceSecretReveal),
     definitionStatus: oc
       .input(z.object({ definitionName: ZDefinitionName }))
-      .output(ZActorResourceBindingStatus.array()),
+      .output(ZResourceBindingStatus.array()),
     bind: oc
       .input(z.object({
         definitionName: ZDefinitionName,
         slot: ZSlotName,
         resourceId: ZResourceId,
-        scope: ZActorResourceScope.optional(),
+        scope: ZResourceScope.optional(),
       }))
-      .output(ZActorResourceBinding),
+      .output(ZResourceBinding),
     unbind: oc
       .input(z.object({ definitionName: ZDefinitionName, slot: ZSlotName }))
       .route({ method: 'DELETE' })
