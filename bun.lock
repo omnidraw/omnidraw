@@ -210,10 +210,13 @@
       "name": "@vibecanvas/resource-runtime",
       "version": "0.1.0",
       "dependencies": {
-        "@vibecanvas/tenant-core": "workspace:*",
+        "@vibecanvas/tenant-core": "0.1.0",
       },
       "devDependencies": {
         "@tursodatabase/database": "catalog:",
+      },
+      "peerDependencies": {
+        "@tursodatabase/database": "0.6.1",
       },
     },
     "packages/runtime": {
