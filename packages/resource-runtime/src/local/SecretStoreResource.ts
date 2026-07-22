@@ -1,4 +1,5 @@
 import { ResourceError as ActorResourceError, toResourceError as toActorResourceError } from '../ResourceError';
+import type { IResourceWritePermitGuard } from '../interface';
 import type {
   IResourceKeyValuePersistence as IActorResourceKeyValuePersistence,
   TResourceKeyValueDeleteResult as TActorResourceKeyValueDeleteResult,
@@ -12,6 +13,9 @@ import type {
   TLocalResolvedResourceCall as TActorResolvedResourceCall,
   TLocalResource as TActorResource,
   TLocalResourceRequirement as TActorResourceRequirement,
+  TLocalResourceOperationIdentity,
+  TLocalResourceCommittedOperation,
+  TLocalResourceDispatchReceipt,
 } from './ResourceProviderTypes';
 
 type TActorResourceProviderCreateArgs = unknown;
@@ -327,6 +331,82 @@ export class SecretStoreResource implements IActorResourceProvider {
       throw new ActorResourceError('SECRET_OPERATION_FAILED', `Unknown secret-store operation "${operation}".`);
     } catch (error) {
       throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async dispatchWithReceipt(
+    context: TActorResolvedResourceCall,
+    operation: string,
+    rawArgs: unknown,
+    identity: TLocalResourceOperationIdentity,
+    guard: IResourceWritePermitGuard,
+  ): Promise<TLocalResourceDispatchReceipt> {
+    try {
+      if (
+        context.resource.kind !== this.kind
+        || context.requirement.kind !== this.kind
+        || context.resource.id !== identity.resourceId
+        || (context.tenant !== undefined && context.tenant.orgId !== identity.orgId)
+      ) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret receipt identity does not match the resolved resource.');
+      const args = recordArgs(rawArgs);
+      const mutation = operation === 'set'
+        ? {
+            operation: 'set' as const,
+            key: secretName(args.name),
+            value: secretValue(args.value),
+          }
+        : operation === 'delete'
+          ? {
+              operation: 'delete' as const,
+              key: secretName(args.name),
+              expectedRevision: optionalExpectedRevision(args.expectedRevision),
+            }
+          : operation === 'compareAndSet'
+            ? {
+                operation: 'compareAndSet' as const,
+                key: secretName(args.name),
+                expectedRevision: expectedRevision(args.expectedRevision),
+                value: secretValue(args.value),
+              }
+            : null;
+      if (mutation === null) {
+        throw new ActorResourceError('SECRET_WRITE_NOT_ALLOWED', 'Durable secret receipts apply only to write operations.');
+      }
+      return await this.persistence.mutateWithReceipt({
+        resourceId: identity.resourceId,
+        invocationId: identity.invocationId,
+        attemptId: identity.attemptId,
+        operationId: identity.operationId,
+        operationFingerprintSha256: identity.operationFingerprintSha256,
+        mutation,
+      }, guard);
+    } catch (error) {
+      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+    }
+  }
+
+  async readCommittedOperation(
+    resource: TActorResource,
+    request: Readonly<{ invocationId: string; operationId: string }>,
+  ): Promise<TLocalResourceCommittedOperation | null> {
+    if (resource.kind !== this.kind) {
+      throw new ActorResourceError(
+        'RESOURCE_KIND_MISMATCH',
+        'Secret-store receipt resource kind is invalid.',
+      );
+    }
+    try {
+      return await this.persistence.readCommittedOperation({
+        resourceId: resource.id,
+        invocationId: request.invocationId,
+        operationId: request.operationId,
+      });
+    } catch (error) {
+      throw toActorResourceError(
+        error,
+        'SECRET_OPERATION_FAILED',
+        'Secret-store receipt recovery failed.',
+      );
     }
   }
 }

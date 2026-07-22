@@ -1,10 +1,20 @@
 import { createServiceRegistry } from '@vibecanvas/runtime';
 import { randomBytes } from 'node:crypto';
+import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
+import {
+  BunChildFunctionDescriptorExtractor,
+  BunChildSandboxDriver,
+  FunctionExecutor,
+  JsonSchemaFunctionValidator,
+  LocalFunctionDispatcher,
+  ResourceWriteCapabilityAuthority,
+} from '@vibecanvas/function-runtime/local';
 import { ActorService } from '@vibecanvas/service-actor';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { AgentService } from '@vibecanvas/service-agent';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
+import { FunctionControlStoreTurso } from '@vibecanvas/service-db/FunctionControlStoreTurso';
 import { ResourceControlStoreTurso } from '@vibecanvas/service-db/ResourceControlStoreTurso';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { IEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
@@ -13,13 +23,21 @@ import type { IFilesystemService } from '@vibecanvas/service-filesystem/IFilesys
 import type { IPtyService } from '@vibecanvas/service-pty/IPtyService';
 import { PtyServiceBunPty } from '@vibecanvas/service-pty/PtyServiceBunPty';
 import { mkdir } from 'node:fs/promises';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { fnScopedKey } from '@vibecanvas/tenant-core';
 import type {
   IHumanResourceSecretService,
   TResourceApiCapability,
 } from '@vibecanvas/api/resource/types';
 import type { ICliConfig } from './config';
+import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
+import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
+import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
+import { FunctionService } from './services/FunctionService';
+import {
+  createFunctionInvocationCapability,
+  FunctionServicePool,
+} from './services/FunctionServicePool';
 import { ResourceService } from './services/ResourceService';
 import {
   createResourceServiceCapabilities,
@@ -29,13 +47,37 @@ import { ResourceUseCoordinatorBridge } from './services/ResourceUseCoordinatorB
 import { TenantServicePool } from './services/TenantServicePool';
 import { TenantResourceService } from './services/TenantResourceService';
 import { WidgetService } from './services/WidgetService';
+import { WidgetFunctionArtifactReader } from './services/WidgetFunctionArtifactReader';
 import {
+  createWidgetServerArtifactCapability,
   createWidgetServiceCapability,
   WidgetServicePool,
   type TWidgetServiceCapability,
 } from './services/WidgetServicePool';
 
 const WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS = 5 * 60 * 1_000;
+const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
+  session: OSS_FAKE_SESSION,
+  requestId: 'function-runtime-placement-bootstrap',
+});
+const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
+  '@vibecanvas/sdk/server',
+  '@vibecanvas/sdk/function-client',
+  '@vibecanvas/sdk/widget',
+  'zod',
+]);
+
+function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
+  if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
+    throw new Error(`Widget build package '${specifier}' is not trusted by the host.`);
+  }
+  // Bun 1.3.x can flatten Zod's ESM `util` namespace into an invalid server
+  // artifact. The package's equivalent CJS entry bundles deterministically.
+  if (specifier === 'zod') {
+    return join(dirname(Bun.resolveSync('zod/package.json', import.meta.dir)), 'index.cjs');
+  }
+  return Bun.resolveSync(specifier, import.meta.dir);
+}
 
 export interface IRuntimeServices {
   automerge: IAutomergeService;
@@ -48,6 +90,8 @@ export interface IRuntimeServices {
   humanResourceSecret: IHumanResourceSecretService;
   widgetOwner: WidgetServicePool;
   widget: TWidgetServiceCapability;
+  functionOwner: FunctionServicePool;
+  functionInvocation: IFunctionInvocationApiCapability;
   actor: TenantServicePool<ActorService>;
   agent: TenantServicePool<AgentService>;
 }
@@ -76,6 +120,12 @@ function setupServices(config: ICliConfig) {
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
   const filesystemService = new FilesystemServiceNode(eventPublisher);
+  const functionStore = new FunctionControlStoreTurso(dbService.db);
+  const functionSchemas = new JsonSchemaFunctionValidator();
+  const functionWriteCapabilities = new ResourceWriteCapabilityAuthority({
+    secret: randomBytes(32),
+    permits: functionStore,
+  });
   const ptyService = new PtyServiceBunPty({
     resolveWorkingDirectory: (tenant, args) => filesystemService.resolveHostPath(tenant, args),
   });
@@ -89,9 +139,11 @@ function setupServices(config: ICliConfig) {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
       const artifactsRoot = join(organizationRoot, 'artifacts');
       const buildTempRoot = join(organizationRoot, 'temp', 'widget-builds');
+      const functionTempRoot = join(organizationRoot, 'temp', 'widget-functions');
       await Promise.all([
         mkdir(artifactsRoot, { recursive: true, mode: 0o700 }),
         mkdir(buildTempRoot, { recursive: true, mode: 0o700 }),
+        mkdir(functionTempRoot, { recursive: true, mode: 0o700 }),
       ]);
       return new WidgetService({
         placement: tenant,
@@ -101,10 +153,19 @@ function setupServices(config: ICliConfig) {
         builderIdentity: `vibecanvas-widget-bun/${Bun.version}`,
         artifactReadSecret: randomBytes(32),
         artifactReadMaximumTtlMs: WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS,
+        functionDescriptorExtractor: new BunChildFunctionDescriptorExtractor({
+          compiledExecutable: config.compiled,
+          tempRoot: functionTempRoot,
+        }),
+        resolveTrustedPackageImport: resolveTrustedWidgetBuildPackageImport,
       });
     },
   });
   const widgetCapability = createWidgetServiceCapability(widgetService);
+  const widgetServerArtifacts = createWidgetServerArtifactCapability(widgetService);
+  const functionArtifactReader = new WidgetFunctionArtifactReader({
+    widgets: widgetServerArtifacts,
+  });
 
   const resourceBridgeKey = (tenant: Parameters<DbServiceTurso['forTenant']>[0]) => fnScopedKey(
     'resource-store',
@@ -126,10 +187,71 @@ function setupServices(config: ICliConfig) {
         dataRoot: resourcesRoot,
         useCoordinator,
         resolveConsumer: () => actorService.forTenant(tenant),
+        writeCapabilityVerifier: functionWriteCapabilities,
+        writePermitCoordinator: functionStore,
       });
     },
   });
   const resourceCapabilities = createResourceServiceCapabilities(resourceService);
+  const functionResourceGateways = new FunctionResourceGatewayFactory({
+    resources: resourceService,
+    widgets: widgetServerArtifacts,
+    permits: functionStore,
+    writeCapabilities: functionWriteCapabilities,
+  });
+  const functionService = new FunctionServicePool({
+    bootstrapTenants: [FUNCTION_BOOTSTRAP_TENANT],
+    create: async (tenant) => {
+      const runtimeTempRoot = join(
+        config.home.organizationsDir,
+        tenant.orgId,
+        'temp',
+        'function-runtime',
+      );
+      await mkdir(runtimeTempRoot, { recursive: true, mode: 0o700 });
+      const workerId = fnScopedKey('function-worker', [
+        tenant.orgId,
+        tenant.cellId,
+        String(tenant.placementEpoch),
+      ]);
+      const driver = new BunChildSandboxDriver({
+        compiledExecutable: config.compiled,
+        tempRoot: runtimeTempRoot,
+      });
+      const executor = new FunctionExecutor({
+        workerId,
+        store: functionStore,
+        artifacts: functionArtifactReader,
+        resources: functionResourceGateways,
+        driver,
+        schemas: functionSchemas,
+      });
+      const dispatcher = new LocalFunctionDispatcher({
+        orgId: tenant.orgId,
+        cellId: tenant.cellId,
+        placementEpoch: tenant.placementEpoch,
+        recoveryTenant: tenant,
+        workerId,
+        schedulingDomain: fnScopedKey('function-scheduling-domain', [
+          tenant.orgId,
+          tenant.cellId,
+          String(tenant.placementEpoch),
+        ]),
+        memoryTiers: ['small', 'medium', 'large'],
+        store: functionStore,
+        scheduler: functionStore,
+        executor,
+        schemas: functionSchemas,
+      });
+      return new FunctionService({
+        placement: tenant,
+        database: dbService.db,
+        store: functionStore,
+        dispatcher,
+      });
+    },
+  });
+  const functionCapability = createFunctionInvocationCapability(functionService);
   actorService = new TenantServicePool<ActorService>('actor-service-pool', {
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
@@ -141,6 +263,7 @@ function setupServices(config: ICliConfig) {
         tenant,
       );
       const service = new ActorService({
+        tenant,
         db: tenantDb,
         configPath: artifactsRoot,
         resourceService: sharedResources,
@@ -233,6 +356,8 @@ function setupServices(config: ICliConfig) {
   services.provide('resource', 59, resourceCapabilities.resource);
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);
   services.provide('actor', 60, actorService);
+  services.provide('functionOwner', 61, functionService);
+  services.provide('functionInvocation', 61, functionCapability);
   services.provide('agent', 62, agentService);
 
   return {
@@ -243,6 +368,7 @@ function setupServices(config: ICliConfig) {
     filesystemService,
     ptyService,
     resourceService,
+    functionService,
     widgetService,
   };
 }

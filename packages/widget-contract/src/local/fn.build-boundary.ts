@@ -2,6 +2,8 @@ export type TWidgetBuildImportResolution =
   | Readonly<{ kind: 'snapshot'; path: string }>
   | Readonly<{ kind: 'package'; specifier: string }>;
 
+export type TWidgetBuildTargetKind = 'ui' | 'server';
+
 const MODULE_SUFFIXES = [
   '.tsx',
   '.ts',
@@ -139,6 +141,20 @@ export function fnNormalizeWidgetBuildAllowedPackageImports(
   return normalized;
 }
 
+export function fnWidgetBuildPackageImportAllowedForTarget(args: Readonly<{
+  kind: TWidgetBuildTargetKind;
+  specifier: string;
+  allowedPackageImports: readonly string[];
+}>): boolean {
+  if (!args.allowedPackageImports.includes(args.specifier)) return false;
+  if (args.specifier === '@vibecanvas/sdk/server') return args.kind === 'server';
+  if (
+    args.specifier === '@vibecanvas/sdk/widget'
+    || args.specifier === '@vibecanvas/sdk/function-client'
+  ) return args.kind === 'ui';
+  return true;
+}
+
 /** Resolves a source import only to snapshot bytes or an exact trusted external package. */
 export function fnResolveWidgetBuildImport(args: Readonly<{
   importerPath: string;
@@ -182,6 +198,21 @@ export function fnWidgetBuildSourceHasForbiddenImportSyntax(sourceText: string):
     || /\bimport\s*\.\s*meta\b/.test(code)
     || /\brequire\b/.test(code)
     || /["'`]require["'`]\s*\]/.test(sourceText);
+}
+
+/** Server functions must be direct exports from their declaring module. */
+export function fnWidgetBuildSourceHasRuntimeReExport(sourceText: string): boolean {
+  const code = codeWithoutCommentsAndQuotedStrings(sourceText);
+  if (/\bexport\s+\*(?:\s+as\s+[A-Za-z_$][A-Za-z0-9_$]*)?\s+from\b/.test(code)) {
+    return true;
+  }
+  for (const match of code.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
+    const exports = match[1]?.split(',') ?? [];
+    if (exports.some((value) => value.trim().length > 0 && !/^type\b/.test(value.trim()))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** UI builds may never resolve configured or convention-based server modules. */

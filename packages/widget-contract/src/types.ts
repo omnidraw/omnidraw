@@ -17,6 +17,17 @@ export type TWidgetSourceSnapshotId = string;
 export type TWidgetArtifactDigest = string;
 export type TWidgetArtifactReadCapability = string;
 
+export type TWidgetSerializableJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly TWidgetSerializableJsonValue[]
+  | TWidgetSerializableJsonObject;
+export type TWidgetSerializableJsonObject = Readonly<{
+  [key: string]: TWidgetSerializableJsonValue;
+}>;
+
 export type TWidgetArtifactKind = 'ui' | 'server' | 'source' | 'source_map';
 export type TWidgetBuildArtifactKind = Extract<TWidgetArtifactKind, 'ui' | 'server'>;
 export type TWidgetDefinitionStatus = 'draft' | 'published' | 'archived';
@@ -38,6 +49,64 @@ export type TWidgetServerManifest = Readonly<{
   entry: string;
   runtimeAbi: string;
 }>;
+
+/** Short-lived server-function effect ceiling emitted by the trusted build. */
+export type TWidgetServerFunctionEffect = 'fn' | 'fx' | 'tx';
+
+export type TWidgetServerFunctionResourceAccess = Readonly<{
+  slot: string;
+  effect: 'read' | 'write' | 'read_write';
+}>;
+
+export type TWidgetServerFunctionLimits = Readonly<{
+  timeoutMs: number;
+  memoryTier: 'small' | 'medium' | 'large';
+  outputByteLimit: number;
+  logByteLimit: number;
+}>;
+
+export type TWidgetServerFunctionRetry = Readonly<{
+  mode: 'none' | 'idempotent';
+  maxAttempts: number;
+  initialBackoffMs: number;
+  maxBackoffMs: number;
+}>;
+
+/**
+ * Canonical, serializable registration emitted for one direct named export.
+ * Host-owned identity, revision, artifact digest, and runtime ABI are bound by
+ * the publication/store record rather than trusted from guest code.
+ */
+export type TWidgetServerFunctionDescriptor = Readonly<{
+  schemaVersion: 1;
+  exportName: string;
+  /** Host-derived source module containing the direct export. */
+  modulePath?: string;
+  effect: TWidgetServerFunctionEffect;
+  inputSchema: TWidgetSerializableJsonObject;
+  outputSchema: TWidgetSerializableJsonObject;
+  resources: readonly TWidgetServerFunctionResourceAccess[];
+  limits: TWidgetServerFunctionLimits;
+  retry: TWidgetServerFunctionRetry;
+}>;
+
+export type TWidgetServerFunctionDescriptorValidation =
+  | Readonly<{ valid: true }>
+  | Readonly<{
+      valid: false;
+      reason:
+        | 'browser_only_has_functions'
+        | 'server_has_no_functions'
+        | 'missing_module_path'
+        | 'duplicate_export'
+        | 'duplicate_resource_slot'
+        | 'fn_has_resources'
+        | 'fx_has_write_resource'
+        | 'unknown_resource_slot'
+        | 'resource_effect_exceeded';
+      exportName?: string;
+      slot?: string;
+    }>;
 
 /** Actor/v1 fields are intentionally absent and rejected by the runtime schema. */
 export type TWidgetManifestV2 = Readonly<{
@@ -81,6 +150,8 @@ export type TWidgetBuildResult = Readonly<{
   sourceDigestSha256: TWidgetArtifactDigest;
   builderIdentity: string;
   canonicalManifestJson: string;
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
   contractDigestSha256: TWidgetArtifactDigest;
   uiArtifact: TWidgetBuildArtifact;
   serverArtifact: TWidgetBuildArtifact | null;
@@ -92,6 +163,13 @@ export type TWidgetContractPayloadInput = Readonly<{
   uiDigestSha256: TWidgetArtifactDigest;
   serverDigestSha256: TWidgetArtifactDigest | null;
   runtimeAbi: string | null;
+  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
+}>;
+
+export type TWidgetServerFunctionDescriptorExtractionRequest = Readonly<{
+  serverArtifact: TWidgetBuildArtifact;
+  serverEntry: string;
+  runtimeAbi: string;
 }>;
 
 export type TWidgetArtifactDescriptor = Readonly<{
@@ -183,6 +261,8 @@ export type TWidgetRevisionDescriptor = Readonly<{
   revisionNumber: number;
   manifest: TWidgetManifestV2;
   canonicalManifestJson: string;
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
   contractDigestSha256: TWidgetArtifactDigest;
   uiArtifact: TWidgetArtifactDescriptor;
   serverArtifact: TWidgetArtifactDescriptor | null;

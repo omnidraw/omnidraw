@@ -2,8 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   ZWidgetManifestV2,
+  ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnValidateWidgetServerFunctionDescriptors,
   fnValidateWidgetResourceBindings,
   type IWidgetArtifactBuilder,
   type IWidgetArtifactMutationCoordinator,
@@ -83,12 +86,36 @@ export class WidgetPublicationService implements IWidgetPublicationService {
         code: 'WIDGET_BUILD_INTEGRITY_FAILED',
       });
     }
+    const parsedFunctionDescriptors = ZWidgetServerFunctionDescriptors.safeParse(
+      build.functionDescriptors,
+    );
+    if (!parsedFunctionDescriptors.success) {
+      throw Object.assign(new Error('Widget builder returned malformed server-function descriptors.'), {
+        code: 'WIDGET_BUILD_INTEGRITY_FAILED',
+      });
+    }
+    const functionDescriptors = parsedFunctionDescriptors.data;
+    const functionValidation = fnValidateWidgetServerFunctionDescriptors(manifest, functionDescriptors);
+    if (!functionValidation.valid) {
+      throw Object.assign(new Error('Widget builder returned invalid server-function descriptors.'), {
+        code: 'WIDGET_BUILD_INTEGRITY_FAILED',
+      });
+    }
+    const expectedFunctionDescriptorsDigestSha256 = createHash('sha256')
+      .update(fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors))
+      .digest('hex');
+    if (build.functionDescriptorsDigestSha256 !== expectedFunctionDescriptorsDigestSha256) {
+      throw Object.assign(new Error('Widget builder returned an invalid function descriptor digest.'), {
+        code: 'WIDGET_BUILD_INTEGRITY_FAILED',
+      });
+    }
     const expectedContractDigestSha256 = createHash('sha256')
       .update(fnCanonicalizeWidgetContractPayload({
         canonicalManifestJson,
         uiDigestSha256: build.uiArtifact.digestSha256,
         serverDigestSha256: build.serverArtifact?.digestSha256 ?? null,
         runtimeAbi: manifest.server?.runtimeAbi ?? null,
+        functionDescriptorsDigestSha256: expectedFunctionDescriptorsDigestSha256,
       }))
       .digest('hex');
     if (build.contractDigestSha256 !== expectedContractDigestSha256) {
@@ -130,6 +157,8 @@ export class WidgetPublicationService implements IWidgetPublicationService {
             definitionId: request.definitionId,
             manifest,
             canonicalManifestJson,
+            functionDescriptors,
+            functionDescriptorsDigestSha256: expectedFunctionDescriptorsDigestSha256,
             contractDigestSha256: expectedContractDigestSha256,
             uiArtifact,
             serverArtifact,

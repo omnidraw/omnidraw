@@ -16,6 +16,8 @@ import type {
   IResourceRequirementResolver,
   IResourceStore,
   IResourceWriteCapabilityVerifier,
+  IResourceWritePermitGuard,
+  IResourceWritePermitCoordinator,
   TResolvedResourceCall,
   TResourceCall,
   TResourceCallResult,
@@ -25,6 +27,8 @@ import type {
   TResourcePlacement,
   TResourcePermission,
   TResourceRequirement,
+  TResourceWriteCapabilityClaims,
+  TResourceWritePermitRecoveryCandidate,
 } from '../index';
 import { claimResourceOwner, type ResourceOwnerLease } from './ResourceOwnerLock';
 import type { ILocalResourceProvider } from './ResourceProviderTypes';
@@ -60,6 +64,7 @@ export type TResourceStoreServiceConfig = Readonly<{
   /** Explicit host authority for one-shot recovery of catalog rows with no placement. */
   reconciliationAuthority?: TResourceReconciliationAuthority;
   writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
+  writePermitCoordinator?: IResourceWritePermitCoordinator;
   allowUnfencedWrites?: boolean;
   nowMs?: () => number;
 }>;
@@ -107,6 +112,7 @@ export class ResourceStoreService implements IResourceStore {
   readonly #controlStore: IResourceControlStore;
   readonly #providers = new Map<TResourceKind, ILocalResourceStoreProvider>();
   readonly #writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
+  readonly #writePermitCoordinator?: IResourceWritePermitCoordinator;
   readonly #allowUnfencedWrites: boolean;
   readonly #reconciliationAuthority?: TResourceReconciliationAuthority;
   readonly #nowMs: () => number;
@@ -122,6 +128,7 @@ export class ResourceStoreService implements IResourceStore {
   ) {
     this.#controlStore = config.controlStore;
     this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
+    this.#writePermitCoordinator = config.writePermitCoordinator;
     this.#allowUnfencedWrites = config.allowUnfencedWrites ?? false;
     this.#reconciliationAuthority = config.reconciliationAuthority;
     this.#nowMs = config.nowMs ?? (() => Date.now());
@@ -213,21 +220,110 @@ export class ResourceStoreService implements IResourceStore {
     if (effect !== call.effect) {
       throw new ResourceError('RESOURCE_CALL_INVALID', 'Resource operation effect does not match the resolved call.');
     }
-    if (call.effect === 'write') await this.#verifyWriteCapability(tenant, call);
-
-    const output = await provider.dispatch({
+    const providerContext = {
       tenant,
       resource,
       requirement,
       canRead: call.effect === 'read',
       canWrite: call.effect === 'write',
-    }, call.operation, call.input) as TOutput;
-    return {
-      output,
-      ...(call.operationId
-        ? { receipt: this.#receipt(call, true) }
-        : {}),
     };
+    const claims = call.effect === 'write'
+      ? await this.#verifyWriteCapability(tenant, call)
+      : null;
+    const dispatch = async (
+      guard?: IResourceWritePermitGuard,
+    ): Promise<TResourceCallResult<TOutput>> => {
+      if (call.effect === 'write' && call.operationId && claims) {
+        if (!provider.dispatchWithReceipt) {
+          throw new ResourceError(
+            'RESOURCE_PROVIDER_UNAVAILABLE',
+            'Resource provider does not support durable operation receipts.',
+          );
+        }
+        const result = await provider.dispatchWithReceipt(
+          providerContext,
+          call.operation,
+          call.input,
+          {
+            orgId: tenant.orgId,
+            resourceId: call.resourceId,
+            invocationId: claims.invocationId,
+            attemptId: claims.attemptId,
+            operationId: call.operationId,
+            operationFingerprintSha256: claims.operationFingerprintSha256,
+          },
+          guard ?? {
+            assertCanCommit: async () => {
+              throw new ResourceError(
+                'RESOURCE_WRITE_CAPABILITY_STALE',
+                'A fenced resource mutation requires a live precommit guard.',
+              );
+            },
+          },
+        );
+        if (!result.committed) {
+          throw new ResourceError(
+            'RESOURCE_PROVIDER_UNAVAILABLE',
+            'Resource provider returned an uncommitted operation receipt.',
+          );
+        }
+        return {
+          output: result.output as TOutput,
+          receipt: this.#receipt(call, true, result.replayed),
+        };
+      }
+
+      const output = await provider.dispatch(
+        providerContext,
+        call.operation,
+        call.input,
+      ) as TOutput;
+      return {
+        output,
+        ...(call.operationId
+          ? { receipt: this.#receipt(call, true) }
+          : {}),
+      };
+    };
+
+    if (
+      call.effect === 'write'
+      && call.operationId
+      && claims
+      && this.#writePermitCoordinator
+    ) {
+      const candidate: TResourceWritePermitRecoveryCandidate = {
+        permitId: claims.permitId,
+        resourceId: call.resourceId,
+        invocationId: claims.invocationId,
+        attemptId: claims.attemptId,
+        leaseEpoch: claims.leaseEpoch,
+        operationName: call.operation,
+        operationId: call.operationId,
+        operationFingerprintSha256: claims.operationFingerprintSha256,
+      };
+      try {
+        return await this.#writePermitCoordinator.runWithWritePermit(tenant, {
+          claims,
+          slot: call.slot,
+          kind: call.kind,
+          resourceId: call.resourceId,
+          operation: call.operation,
+          operationId: call.operationId,
+          operationFingerprintSha256: claims.operationFingerprintSha256,
+        }, dispatch);
+      } catch (error) {
+        const recovered = await this.#recoverCommittedWrite(
+          tenant,
+          resource,
+          provider,
+          candidate,
+        );
+        if (recovered !== null) return recovered as TResourceCallResult<TOutput>;
+        throw error;
+      }
+    }
+    return dispatch();
   }
 
   async reconcile(tenant: TTenantContext): Promise<void> {
@@ -251,7 +347,86 @@ export class ResourceStoreService implements IResourceStore {
         continue;
       }
       await this.#reconcileResource(tenant, resource, placement);
+      const reconciled = await this.#controlStore.getResource(tenant, resource.id);
+      if (reconciled?.status === 'ready' && resourceMatches(tenant, resource.id, reconciled)) {
+        await this.#reconcileCommittedWrites(tenant, reconciled);
+      }
     }
+  }
+
+  async #reconcileCommittedWrites(
+    tenant: TTenantContext,
+    resource: TResourceDescriptor,
+  ): Promise<void> {
+    const coordinator = this.#writePermitCoordinator;
+    const provider = this.#providers.get(resource.kind);
+    if (
+      !coordinator?.listRecoverableWritePermits
+      || !coordinator.reconcileCommittedWritePermit
+      || !provider?.readCommittedOperation
+    ) return;
+    let afterPermitId: string | undefined;
+    while (true) {
+      const candidates = await coordinator.listRecoverableWritePermits(tenant, {
+        resourceId: resource.id,
+        ...(afterPermitId === undefined ? {} : { afterPermitId }),
+        limit: 100,
+      });
+      for (const candidate of candidates) {
+        await this.#recoverCommittedWrite(tenant, resource, provider, candidate);
+      }
+      if (candidates.length < 100) return;
+      afterPermitId = candidates[candidates.length - 1]?.permitId;
+      if (afterPermitId === undefined) return;
+    }
+  }
+
+  async #recoverCommittedWrite(
+    tenant: TTenantContext,
+    resource: TResourceDescriptor,
+    provider: ILocalResourceStoreProvider,
+    candidate: TResourceWritePermitRecoveryCandidate,
+  ): Promise<TResourceCallResult | null> {
+    const coordinator = this.#writePermitCoordinator;
+    const reconcile = coordinator?.reconcileCommittedWritePermit;
+    if (!provider.readCommittedOperation || !coordinator || !reconcile) return null;
+    const receipt = await provider.readCommittedOperation(resource, {
+      invocationId: candidate.invocationId,
+      operationId: candidate.operationId,
+    });
+    if (receipt === null) return null;
+    if (
+      receipt.invocationId !== candidate.invocationId
+      || receipt.operationId !== candidate.operationId
+      || receipt.operationName !== candidate.operationName
+      || receipt.operationFingerprintSha256 !== candidate.operationFingerprintSha256
+    ) {
+      throw new ResourceError(
+        'RESOURCE_WRITE_CAPABILITY_STALE',
+        'Provider receipt conflicts with its authoritative write permit.',
+      );
+    }
+    const result = await reconcile.call(coordinator, tenant, {
+      ...candidate,
+      output: receipt.output,
+      recordedAtMs: this.#nowMs(),
+    });
+    if (result.status === 'missing' || result.status === 'conflict') {
+      throw new ResourceError(
+        'RESOURCE_WRITE_CAPABILITY_STALE',
+        'Provider receipt could not be reconciled with its authoritative write permit.',
+      );
+    }
+    return {
+      output: receipt.output,
+      receipt: {
+        operationId: candidate.operationId,
+        resourceId: candidate.resourceId,
+        effect: 'write',
+        committed: true,
+        replayed: true,
+      },
+    };
   }
 
   /** Atomically reserves catalog + placement, then provisions and activates it. */
@@ -476,10 +651,16 @@ export class ResourceStoreService implements IResourceStore {
   async #verifyWriteCapability(
     tenant: TTenantContext,
     call: TResolvedResourceCall,
-  ): Promise<void> {
+  ): Promise<TResourceWriteCapabilityClaims | null> {
     if (!call.writeCapability) {
-      if (this.#allowUnfencedWrites) return;
+      if (this.#allowUnfencedWrites) return null;
       throw new ResourceError('RESOURCE_WRITE_CAPABILITY_INVALID', 'A write capability is required.');
+    }
+    if (!call.operationId) {
+      throw new ResourceError(
+        'RESOURCE_WRITE_CAPABILITY_INVALID',
+        'A fenced write requires a host-owned operation id.',
+      );
     }
     const claims = await this.#writeCapabilityVerifier?.verifyWriteCapability(
       tenant,
@@ -495,17 +676,24 @@ export class ResourceStoreService implements IResourceStore {
       claims.orgId !== tenant.orgId
       || claims.resourceId !== call.resourceId
       || claims.operation !== call.operation
+      || claims.operationId !== call.operationId
     ) {
       throw new ResourceError('RESOURCE_WRITE_CAPABILITY_STALE', 'Resource write capability scope is stale.');
     }
+    return claims;
   }
 
-  #receipt(call: TResolvedResourceCall, committed: boolean): TResourceOperationReceipt {
+  #receipt(
+    call: TResolvedResourceCall,
+    committed: boolean,
+    replayed?: boolean,
+  ): TResourceOperationReceipt {
     return {
       operationId: call.operationId!,
       resourceId: call.resourceId,
       effect: call.effect,
       committed,
+      ...(replayed === undefined ? {} : { replayed }),
     };
   }
 

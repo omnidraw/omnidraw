@@ -19,6 +19,7 @@ const tenant = {
   capabilities: [],
   requestId: 'request-a',
 } as const;
+const OPERATION_FINGERPRINT = 'a'.repeat(64);
 
 const roots: string[] = [];
 
@@ -198,16 +199,30 @@ describe('single-owner Resource Store', () => {
     let active = 0;
     let maximumActive = 0;
     let started = 0;
+    let activePermitCallbacks = 0;
+    let maximumPermitCallbacks = 0;
+    const durableReceipts = new Map<string, { output: unknown }>();
+    const identities: unknown[] = [];
     const provider: ILocalResourceStoreProvider = {
       kind: 'kv',
       effect: () => 'write',
       dispatch: async () => {
+        throw new Error('Fenced writes must use the durable receipt seam.');
+      },
+      dispatchWithReceipt: async (_context, _operation, _input, identity) => {
+        identities.push(identity);
+        const durable = durableReceipts.get(identity.operationId);
+        if (durable) {
+          return { output: durable.output, committed: true, replayed: true };
+        }
         started += 1;
         active += 1;
         maximumActive = Math.max(maximumActive, active);
         await new Promise<void>((resolve) => releases.push(resolve));
         active -= 1;
-        return { revision: started };
+        const output = { revision: started };
+        durableReceipts.set(identity.operationId, { output });
+        return { output, committed: true, replayed: false };
       },
       provision: async () => undefined,
       delete: async () => undefined,
@@ -219,17 +234,32 @@ describe('single-owner Resource Store', () => {
       providers: [provider],
       nowMs: () => 100,
       writeCapabilityVerifier: {
-        verifyWriteCapability: async (_tenant, capability) => capability === 'valid'
+        verifyWriteCapability: async (_tenant, capability) => capability.startsWith('valid:')
           ? {
             orgId: tenant.orgId,
+            permitId: `permit-${capability.slice('valid:'.length)}`,
             resourceId: state.resource.id,
+            invocationId: 'invocation-a',
             operation: 'set',
+            operationId: capability.slice('valid:'.length),
+            operationFingerprintSha256: OPERATION_FINGERPRINT,
             attemptId: 'attempt-a',
             leaseEpoch: 1,
             expiresAtMs: 200,
             nonce: 'nonce-a',
           }
           : null,
+      },
+      writePermitCoordinator: {
+        runWithWritePermit: async (_tenant, _scope, operation) => {
+          activePermitCallbacks += 1;
+          maximumPermitCallbacks = Math.max(maximumPermitCallbacks, activePermitCallbacks);
+          try {
+            return await operation({ assertCanCommit: async () => undefined });
+          } finally {
+            activePermitCallbacks -= 1;
+          }
+        },
       },
     });
     try {
@@ -242,7 +272,7 @@ describe('single-owner Resource Store', () => {
         operationId,
         effect: 'write',
         input: { key: operationId, value: true },
-        writeCapability: 'valid',
+        writeCapability: `valid:${operationId}`,
       });
       const first = call('operation-a');
       await Bun.sleep(1);
@@ -255,12 +285,106 @@ describe('single-owner Resource Store', () => {
       releases.shift()?.();
       const results = await Promise.all([first, second]);
       expect(maximumActive).toBe(1);
+      expect(maximumPermitCallbacks).toBe(1);
+      expect(activePermitCallbacks).toBe(0);
       expect(results.map((result) => result.receipt)).toEqual([
-        { operationId: 'operation-a', resourceId: 'resource-a', effect: 'write', committed: true },
-        { operationId: 'operation-b', resourceId: 'resource-a', effect: 'write', committed: true },
+        { operationId: 'operation-a', resourceId: 'resource-a', effect: 'write', committed: true, replayed: false },
+        { operationId: 'operation-b', resourceId: 'resource-a', effect: 'write', committed: true, replayed: false },
       ]);
+      expect(identities).toEqual([
+        {
+          orgId: tenant.orgId,
+          resourceId: 'resource-a',
+          invocationId: 'invocation-a',
+          attemptId: 'attempt-a',
+          operationId: 'operation-a',
+          operationFingerprintSha256: OPERATION_FINGERPRINT,
+        },
+        {
+          orgId: tenant.orgId,
+          resourceId: 'resource-a',
+          invocationId: 'invocation-a',
+          attemptId: 'attempt-a',
+          operationId: 'operation-b',
+          operationFingerprintSha256: OPERATION_FINGERPRINT,
+        },
+      ]);
+
+      const replay = await call('operation-a');
+      expect(replay).toEqual({
+        output: { revision: 1 },
+        receipt: {
+          operationId: 'operation-a',
+          resourceId: 'resource-a',
+          effect: 'write',
+          committed: true,
+          replayed: true,
+        },
+      });
+      expect(started).toBe(2);
     } finally {
       releases.splice(0).forEach((release) => release());
+      await store.close();
+    }
+  });
+
+  test('reconciles a provider-owned commit receipt into one unresolved main-ledger permit', async () => {
+    const state = { resource: descriptor(), placement: placement() };
+    const candidate = {
+      permitId: 'permit-a',
+      resourceId: state.resource.id,
+      invocationId: 'invocation-a',
+      attemptId: 'attempt-a',
+      leaseEpoch: 1,
+      operationName: 'set',
+      operationId: 'operation-a',
+      operationFingerprintSha256: OPERATION_FINGERPRINT,
+    } as const;
+    let unresolved = true;
+    const reconciled: unknown[] = [];
+    const provider: ILocalResourceStoreProvider = {
+      kind: 'kv',
+      effect: () => 'write',
+      dispatch: async () => { throw new Error('Recovery must not rerun the mutation.'); },
+      dispatchWithReceipt: async () => { throw new Error('Recovery must not rerun the mutation.'); },
+      readCommittedOperation: async () => ({
+        invocationId: candidate.invocationId,
+        operationId: candidate.operationId,
+        attemptId: candidate.attemptId,
+        operationName: candidate.operationName,
+        operationFingerprintSha256: candidate.operationFingerprintSha256,
+        output: { revision: 1 },
+      }),
+      provision: async () => undefined,
+      delete: async () => undefined,
+    };
+    const store = await ResourceStoreService.open({
+      root: await temporaryRoot(),
+      ownerId: 'store-receipt-recovery',
+      controlStore: fakeControlStore(state),
+      providers: [provider],
+      nowMs: () => 200,
+      writePermitCoordinator: {
+        runWithWritePermit: async (_tenant, _scope, operation) => (
+          operation({ assertCanCommit: async () => undefined })
+        ),
+        listRecoverableWritePermits: async () => unresolved ? [candidate] : [],
+        reconcileCommittedWritePermit: async (_tenant, write) => {
+          reconciled.push(write);
+          unresolved = false;
+          return { status: 'consumed' };
+        },
+      },
+    });
+    try {
+      await store.reconcile(tenant);
+      await store.reconcile(tenant);
+      expect(reconciled).toEqual([{
+        ...candidate,
+        output: { revision: 1 },
+        recordedAtMs: 200,
+      }]);
+    } finally {
       await store.close();
     }
   });

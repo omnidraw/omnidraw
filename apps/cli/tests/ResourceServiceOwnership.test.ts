@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import type { IResourceUseCoordinator } from '@vibecanvas/resource-runtime';
-import type { TDatabaseFactory } from '@vibecanvas/resource-runtime/local';
+import type {
+  ILocalResourceProvider,
+  TDatabaseFactory,
+} from '@vibecanvas/resource-runtime/local';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
@@ -12,6 +15,7 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ResourceManagementProvider } from '../src/services/ResourceManagementProvider';
 import { ResourceService } from '../src/services/ResourceService';
 import { ResourceServicePool } from '../src/services/ResourceServicePool';
 
@@ -46,6 +50,76 @@ const useCoordinator: IResourceUseCoordinator = {
 };
 
 describe('ResourceService ownership', () => {
+  test('preserves provider-owned function receipts through the management adapter', async () => {
+    const calls: string[] = [];
+    const provider: ILocalResourceProvider = {
+      kind: 'kv',
+      effect: () => 'write',
+      dispatch: async () => { throw new Error('Receipt path must not use plain dispatch.'); },
+      dispatchWithReceipt: async (_context, operation, _args, identity, guard) => {
+        calls.push(`dispatch:${operation}:${identity.operationId}`);
+        await guard.assertCanCommit();
+        return { output: { revision: 1 }, committed: true, replayed: false };
+      },
+      readCommittedOperation: async (_resource, request) => {
+        calls.push(`read:${request.operationId}`);
+        return {
+          invocationId: request.invocationId,
+          operationId: request.operationId,
+          attemptId: 'attempt-a',
+          operationName: 'set',
+          output: { revision: 1 },
+        };
+      },
+      provision: async () => undefined,
+      delete: async () => undefined,
+    };
+    const adapter = new ResourceManagementProvider({
+      provider,
+      effects: {},
+      dispatch: async () => { throw new Error('Management dispatch is not expected.'); },
+    });
+    const resource = { id: 'resource-a', kind: 'kv' as const };
+    const receipt = await adapter.dispatchWithReceipt(
+      {
+        tenant,
+        resource,
+        requirement: { kind: 'kv', required: true, scope: ['write'] },
+        canRead: false,
+        canWrite: true,
+      },
+      'set',
+      { key: 'theme', value: 'dark' },
+      {
+        orgId: tenant.orgId,
+        resourceId: resource.id,
+        invocationId: 'invocation-a',
+        attemptId: 'attempt-a',
+        operationId: 'operation-a',
+      },
+      { assertCanCommit: async () => { calls.push('guard'); } },
+    );
+    expect(receipt).toEqual({
+      output: { revision: 1 },
+      committed: true,
+      replayed: false,
+    });
+    await expect(adapter.readCommittedOperation(resource, {
+      invocationId: 'invocation-a',
+      operationId: 'operation-a',
+    })).resolves.toMatchObject({
+      invocationId: 'invocation-a',
+      operationId: 'operation-a',
+      operationName: 'set',
+      output: { revision: 1 },
+    });
+    expect(calls).toEqual([
+      'dispatch:set:operation-a',
+      'guard',
+      'read:operation-a',
+    ]);
+  });
+
   test('drains a queued management write before releasing ownership for takeover', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-owner-'));
     const dbService = new DbServiceTurso({

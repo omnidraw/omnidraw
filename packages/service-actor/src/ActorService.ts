@@ -1,6 +1,7 @@
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import type {
+  IResourceUseCoordinator,
   TResourceDrainLease,
   TResourceDrainRequest,
   TResourceDrainResult,
@@ -30,6 +31,8 @@ import type { TActorResourceCall, TActorResourceDataMutationResult, TActorResour
 import { ActorResourceError } from './resources/ActorResourceError';
 import { fnActorResourceDataMutationResult, fnActorResourceDataPage } from './resources/fn.resource-data';
 
+type TTenantContext = Parameters<IResourceUseCoordinator['inspect']>[0];
+
 function resolveManifestPath(configPath: string, manifestPath: string): string {
   return isAbsolute(manifestPath) ? manifestPath : join(configPath, manifestPath)
 }
@@ -49,6 +52,7 @@ interface IPublicMethods {
 }
 
 export interface IActorServiceConfig {
+  tenant: TTenantContext;
   db: TTenantDb;
   configPath: string;
   /** @deprecated Legacy/test-only storage root. Production injects resourceService. */
@@ -275,6 +279,7 @@ export class ActorService implements IService, IStartableService, IStoppableServ
       providers: [kvResource, secretStoreResource, dbResource],
     })
     const dbResourceCoordinator = new DbResourceCoordinator({
+      tenant: config.tenant,
       db: config.db,
       resourceManager,
       supervisor: this.#supervisor,

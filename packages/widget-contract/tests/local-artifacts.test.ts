@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
@@ -16,6 +16,11 @@ import {
   WidgetArtifactService,
   WidgetSourceSnapshot,
 } from '../src/local';
+import { fnWidgetBuildSourceHasRuntimeReExport } from '../src/local/fn.build-boundary';
+import {
+  TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+  TEST_SERVER_FUNCTION_DESCRIPTOR,
+} from './function-descriptor.fixture';
 
 const roots = new Set<string>();
 
@@ -79,6 +84,24 @@ function buildOutput(sourceText: string): Bun.BuildOutput {
 }
 
 describe('local immutable widget source and build runtime', () => {
+  test('distinguishes type-only exports from forbidden runtime re-exports', () => {
+    expect(fnWidgetBuildSourceHasRuntimeReExport(
+      'export type { Shape } from "./shape";',
+    )).toBe(false);
+    expect(fnWidgetBuildSourceHasRuntimeReExport(
+      'export { type Shape, type Other as Alias } from "./shape";',
+    )).toBe(false);
+    expect(fnWidgetBuildSourceHasRuntimeReExport(
+      'export { type Shape, run } from "./run";',
+    )).toBe(true);
+    expect(fnWidgetBuildSourceHasRuntimeReExport(
+      'import { run } from "./run"; export { run };',
+    )).toBe(true);
+    expect(fnWidgetBuildSourceHasRuntimeReExport(
+      'export * as functions from "./run";',
+    )).toBe(true);
+  });
+
   test('captures one deterministic sorted source snapshot and rejects symlinks', async () => {
     const root = await tempRoot();
     const source = join(root, 'source');
@@ -179,7 +202,7 @@ describe('local immutable widget source and build runtime', () => {
     await mkdir(source);
     await writeSource(source, {
       'src/ui.ts': 'export const uiMarker = "UI_MARKER";',
-      'src/server.server.ts': 'export const serverMarker = "SERVER_SECRET_MARKER";',
+      'src/server.server.ts': 'export const run = "SERVER_SECRET_MARKER";',
     });
     const snapshot = await new WidgetSourceSnapshot().capture(source, {
       id: 'source-a',
@@ -195,6 +218,7 @@ describe('local immutable widget source and build runtime', () => {
     const builder = new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
     });
     const request = {
       snapshot,
@@ -210,6 +234,99 @@ describe('local immutable widget source and build runtime', () => {
     expect(envelopeText(first.uiArtifact.bytes)).toContain('UI_MARKER');
     expect(envelopeText(first.uiArtifact.bytes)).not.toContain('SERVER_SECRET_MARKER');
     expect(envelopeText(first.serverArtifact!.bytes)).toContain('SERVER_SECRET_MARKER');
+    const serverEnvelope = JSON.parse(Buffer.from(first.serverArtifact!.bytes).toString('utf8')) as {
+      outputs: Array<{ kind: string; loader: string; path: string }>;
+    };
+    expect(serverEnvelope.outputs.filter((output) => output.kind === 'entry-point')).toEqual([
+      expect.objectContaining({ loader: 'js', path: 'output-0.js' }),
+    ]);
+  });
+
+  test('replaces an explicit server-entry import with a browser proxy module', async () => {
+    const root = await tempRoot();
+    const source = join(root, 'source');
+    await mkdir(source);
+    await writeSource(source, {
+      'src/ui.ts': 'import { run } from "./server.server.ts"; export const invoke = () => run({});',
+      'src/server.server.ts': 'export const run = "SERVER_PROXY_SECRET_MARKER";',
+    });
+    const snapshot = await new WidgetSourceSnapshot().capture(source, {
+      id: 'generated-browser-proxy',
+      createdAtMs: 1,
+    });
+    const manifest: TWidgetManifestV2 = {
+      schemaVersion: 2,
+      name: 'Generated browser proxy',
+      slug: 'generated-browser-proxy',
+      ui: { entry: 'src/ui.ts' },
+      server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:1' },
+    };
+    const result = await new WidgetArtifactBuilderBun({
+      tempRoot: join(root, 'temp'),
+      builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+      resolveTrustedPackageImport: (specifier) => {
+        if (specifier === '@vibecanvas/sdk/function-client') {
+          return resolve(import.meta.dir, '../../sdk/dist/function-client.js');
+        }
+        return Bun.resolveSync(specifier, import.meta.dir);
+      },
+    }).build(tenant, {
+      snapshot,
+      manifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(manifest),
+      builderIdentity: 'bun-test-v1',
+    });
+
+    expect(envelopeText(result.uiArtifact.bytes)).not.toContain('SERVER_PROXY_SECRET_MARKER');
+    expect(envelopeText(result.uiArtifact.bytes)).toContain('run');
+    expect(envelopeText(result.serverArtifact!.bytes)).toContain('SERVER_PROXY_SECRET_MARKER');
+    expect(result.functionDescriptors).toEqual([
+      expect.objectContaining({ exportName: 'run', modulePath: 'src/server.server.ts' }),
+    ]);
+  });
+
+  test('rejects server-function re-exports instead of inventing an ambiguous proxy mapping', async () => {
+    const root = await tempRoot();
+    const source = join(root, 'source');
+    await mkdir(source);
+    await writeSource(source, {
+      'ui/main.ts': 'import { run } from "../server/run.server"; export const invoke = () => run({});',
+      'server/index.ts': 'export { run } from "./run.server";',
+      'server/run.server.ts': 'export const run = "SERVER_PROXY_SECRET_MARKER";',
+    });
+    const snapshot = await new WidgetSourceSnapshot().capture(source, {
+      id: 'ambiguous-server-re-export',
+      createdAtMs: 1,
+    });
+    const manifest: TWidgetManifestV2 = {
+      schemaVersion: 2,
+      name: 'Ambiguous server re-export',
+      slug: 'ambiguous-server-re-export',
+      ui: { entry: 'ui/main.ts' },
+      server: { entry: 'server/index.ts', runtimeAbi: 'vibecanvas:1' },
+    };
+    let buildCalled = false;
+    const builder = new WidgetArtifactBuilderBun({
+      tempRoot: join(root, 'temp'),
+      builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+      build: (async () => {
+        buildCalled = true;
+        return buildOutput('export const unexpected = true;');
+      }) as typeof Bun.build,
+    });
+
+    await expect(builder.build(tenant, {
+      snapshot,
+      manifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(manifest),
+      builderIdentity: 'bun-test-v1',
+    })).rejects.toMatchObject({
+      code: 'WIDGET_BUILD_FAILED',
+      message: 'Widget server build failed.',
+    });
+    expect(buildCalled).toBe(false);
   });
 
   test('emits no server artifact for UI-only builds and rejects UI imports of server modules', async () => {
@@ -224,6 +341,7 @@ describe('local immutable widget source and build runtime', () => {
     const builder = new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
     });
     const browserSnapshot = await snapshots.capture(source, { id: 'browser', createdAtMs: 1 });
     const browserManifest: TWidgetManifestV2 = {
@@ -294,6 +412,7 @@ describe('local immutable widget source and build runtime', () => {
       const builder = new WidgetArtifactBuilderBun({
         tempRoot: join(root, 'temp'),
         builderIdentity: 'bun-test-v1',
+        functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
       });
 
       await expect(builder.build(tenant, {
@@ -306,6 +425,139 @@ describe('local immutable widget source and build runtime', () => {
         message: `Widget ${testCase.target} build failed.`,
       });
     }
+  });
+
+  test('allows only the target-specific SDK surface and bundles server imports', async () => {
+    const root = await tempRoot();
+    const sourceRoot = join(root, 'source');
+    await mkdir(sourceRoot);
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'export const ui = true;',
+      'src/server.ts': 'import { defineServerFunction } from "@vibecanvas/sdk/server"; export const run = defineServerFunction;',
+    });
+    const snapshot = await new WidgetSourceSnapshot().capture(sourceRoot, {
+      id: 'sdk-server-import',
+      createdAtMs: 1,
+    });
+    const manifest: TWidgetManifestV2 = {
+      schemaVersion: 2,
+      name: 'SDK server import',
+      slug: 'sdk-server-import',
+      ui: { entry: 'src/ui.ts' },
+      server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' },
+    };
+    const builder = new WidgetArtifactBuilderBun({
+      tempRoot: join(root, 'temp'),
+      builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+      resolveTrustedPackageImport: (specifier) => {
+        if (specifier === '@vibecanvas/sdk/server') {
+          return resolve(import.meta.dir, '../../sdk/dist/server.js');
+        }
+        return Bun.resolveSync(specifier, import.meta.dir);
+      },
+    });
+    const result = await builder.build(tenant, {
+      snapshot,
+      manifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(manifest),
+      builderIdentity: 'bun-test-v1',
+    });
+    expect(result.serverArtifact?.kind).toBe('server');
+    expect(envelopeText(result.serverArtifact!.bytes)).toContain('vibecanvas.server-function.v1');
+    expect(envelopeText(result.serverArtifact!.bytes)).not.toContain(
+      'from"@vibecanvas/sdk/server"',
+    );
+
+    for (const invalid of [
+      {
+        id: 'ui-imports-server-sdk',
+        ui: 'import "@vibecanvas/sdk/server"; export const ui = true;',
+        server: 'export const server = true;',
+        target: 'ui',
+      },
+      {
+        id: 'server-imports-widget-sdk',
+        ui: 'export const ui = true;',
+        server: 'import "@vibecanvas/sdk/widget"; export const server = true;',
+        target: 'server',
+      },
+    ] as const) {
+      const invalidRoot = await tempRoot();
+      const invalidSource = join(invalidRoot, 'source');
+      await mkdir(invalidSource);
+      await writeSource(invalidSource, {
+        'src/ui.ts': invalid.ui,
+        'src/server.ts': invalid.server,
+      });
+      const invalidSnapshot = await new WidgetSourceSnapshot().capture(invalidSource, {
+        id: invalid.id,
+        createdAtMs: 1,
+      });
+      const invalidManifest: TWidgetManifestV2 = {
+        ...manifest,
+        name: invalid.id,
+        slug: invalid.id,
+        ...(invalid.target === 'ui' ? { server: undefined } : {}),
+      };
+      let called = false;
+      const invalidBuilder = new WidgetArtifactBuilderBun({
+        tempRoot: join(invalidRoot, 'temp'),
+        builderIdentity: 'bun-test-v1',
+        functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+        build: (async () => {
+          called = true;
+          return buildOutput('export const unexpected = true;');
+        }) as typeof Bun.build,
+      });
+      await expect(invalidBuilder.build(tenant, {
+        snapshot: invalidSnapshot,
+        manifest: invalidManifest,
+        canonicalManifestJson: fnCanonicalizeWidgetManifest(invalidManifest),
+        builderIdentity: 'bun-test-v1',
+      })).rejects.toMatchObject({ code: 'WIDGET_BUILD_FAILED' });
+      expect(called).toBe(false);
+    }
+  });
+
+  test('rejects malformed registration-sandbox descriptor output', async () => {
+    const root = await tempRoot();
+    const sourceRoot = join(root, 'source');
+    await mkdir(sourceRoot);
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'export const ui = true;',
+      'src/server.ts': 'export const run = true;',
+    });
+    const snapshot = await new WidgetSourceSnapshot().capture(sourceRoot, {
+      id: 'malformed-descriptor',
+      createdAtMs: 1,
+    });
+    const manifest: TWidgetManifestV2 = {
+      schemaVersion: 2,
+      name: 'Malformed descriptor',
+      slug: 'malformed-descriptor',
+      ui: { entry: 'src/ui.ts' },
+      server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' },
+    };
+    const builder = new WidgetArtifactBuilderBun({
+      tempRoot: join(root, 'temp'),
+      builderIdentity: 'bun-test-v1',
+      build: (async () => buildOutput('export const bundled = true;')) as typeof Bun.build,
+      functionDescriptorExtractor: {
+        extractServerFunctionDescriptors: async () => ([{
+          ...TEST_SERVER_FUNCTION_DESCRIPTOR,
+          limits: { ...TEST_SERVER_FUNCTION_DESCRIPTOR.limits, timeoutMs: 0 },
+          durable: { waitUntilMs: 1 },
+        }] as never),
+      },
+    });
+
+    await expect(builder.build(tenant, {
+      snapshot,
+      manifest,
+      canonicalManifestJson: fnCanonicalizeWidgetManifest(manifest),
+      builderIdentity: 'bun-test-v1',
+    })).rejects.toMatchObject({ code: 'WIDGET_BUILD_FAILED' });
   });
 
   test('rejects import macros before invoking Bun', async () => {
@@ -330,6 +582,7 @@ describe('local immutable widget source and build runtime', () => {
     const builder = new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
       build: (async () => {
         buildCalled = true;
         throw new Error('Bun build must not run for forbidden import syntax.');
@@ -378,6 +631,7 @@ describe('local immutable widget source and build runtime', () => {
       const builder = new WidgetArtifactBuilderBun({
         tempRoot: join(root, 'temp'),
         builderIdentity: 'bun-test-v1',
+        functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
         build: (async () => {
           buildCalled = true;
           return buildOutput('export const unexpected = true;');
@@ -415,6 +669,7 @@ describe('local immutable widget source and build runtime', () => {
     const builder = new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
       build: (async () => {
         buildCalled = true;
         return buildOutput('export const unexpected = true;');
@@ -450,6 +705,7 @@ describe('local immutable widget source and build runtime', () => {
     const result = await new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
     }).build(tenant, {
       snapshot,
       manifest,
@@ -482,13 +738,13 @@ describe('local immutable widget source and build runtime', () => {
           ? { server: { entry: 'src/backend.ts', runtimeAbi: 'vibecanvas:1' } }
           : {}),
       };
-      let callCount = 0;
       const builder = new WidgetArtifactBuilderBun({
         tempRoot: join(root, 'temp'),
         builderIdentity: 'bun-test-v1',
-        build: (async () => {
-          callCount += 1;
-          const inject = target === 'ui' || callCount === 2;
+        functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
+        build: (async (options: Bun.BuildConfig) => {
+          const inject = (target === 'ui' && options.target === 'browser')
+            || (target === 'server' && options.target === 'bun');
           return buildOutput(inject
             ? 'export const fs = import.meta.require("node:fs");'
             : 'export const ui = true;');
@@ -531,6 +787,7 @@ describe('local immutable widget source and build runtime', () => {
     const builder = new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
       build: (async () => {
         buildCalled = true;
         return buildOutput('export const unexpected = true;');
@@ -555,7 +812,7 @@ describe('local immutable widget source and build runtime', () => {
     await mkdir(sourceRoot);
     await writeSource(sourceRoot, {
       'src/ui.ts': 'export { schema } from "./shared/schema.ts";',
-      'src/backend.ts': 'export { schema } from "./shared/schema.ts";',
+      'src/backend.ts': 'import { schema } from "./shared/schema.ts"; export const run = schema;',
       'src/shared/schema.ts': 'export const schema = Object.freeze({ version: 1 });',
     });
     const snapshot = await new WidgetSourceSnapshot().capture(sourceRoot, {
@@ -572,6 +829,7 @@ describe('local immutable widget source and build runtime', () => {
     const builder = new WidgetArtifactBuilderBun({
       tempRoot: join(root, 'temp'),
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
     });
 
     const result = await builder.build(tenant, {
@@ -613,6 +871,7 @@ describe('local immutable widget source and build runtime', () => {
     const linkedBuilder = new WidgetArtifactBuilderBun({
       tempRoot: linkedTempRoot,
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
     });
     await expect(linkedBuilder.build(tenant, request)).rejects.toThrow('symlinked ancestor');
 
@@ -620,6 +879,7 @@ describe('local immutable widget source and build runtime', () => {
     const pinnedBuilder = new WidgetArtifactBuilderBun({
       tempRoot: pinnedTempRoot,
       builderIdentity: 'bun-test-v1',
+      functionDescriptorExtractor: TEST_FUNCTION_DESCRIPTOR_EXTRACTOR,
     });
     await pinnedBuilder.build(tenant, request);
     await rename(pinnedTempRoot, join(root, 'displaced-temp'));

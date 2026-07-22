@@ -24,8 +24,10 @@
         "@orpc/server": "catalog:",
         "@tursodatabase/database": "catalog:",
         "@vibecanvas/api": "workspace:*",
+        "@vibecanvas/function-runtime": "workspace:*",
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
+        "@vibecanvas/sdk": "workspace:*",
         "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-agent": "workspace:*",
         "@vibecanvas/service-automerge": "workspace:*",
@@ -188,6 +190,7 @@
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/tenant-core": "workspace:*",
         "@vibecanvas/widget-contract": "workspace:*",
+        "ajv": "^8.20.0",
       },
     },
     "packages/orpc-client": {
@@ -278,6 +281,7 @@
       "dependencies": {
         "@tursodatabase/database": "catalog:",
         "@tursodatabase/database-common": "0.6.1",
+        "@vibecanvas/function-runtime": "workspace:*",
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",

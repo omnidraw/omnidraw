@@ -2,6 +2,17 @@ import { reactive } from '@arrow-js/core';
 
 import type { TActorRuntimeState, TMessageMap, TVibecanvasJsonValue } from './shared';
 
+export {
+  __setServerFunctionTransport,
+  createServerFunctionProxy,
+} from './function-client';
+export type {
+  IServerFunctionClientTransport,
+  TServerFunctionClient,
+  TServerFunctionClientOf,
+  TServerFunctionClientRequest,
+} from './function-client';
+
 export type {
   TWidgetManifestV2,
   TWidgetServerManifest,

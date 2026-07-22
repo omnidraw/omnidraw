@@ -12,6 +12,17 @@ const tenant = (orgId: string, accountId = 'account'): TTenantContext => ({
   requestId: `request-${orgId}`,
 });
 
+const movedTenant = (
+  orgId: string,
+  placementEpoch: number,
+  cellId = `cell-${placementEpoch}`,
+): TTenantContext => ({
+  ...tenant(orgId),
+  cellId,
+  placementEpoch,
+  requestId: `request-${orgId}-${placementEpoch}`,
+});
+
 describe('TenantServicePool', () => {
   test('deduplicates one child per tenant and isolates identical child state', async () => {
     const stopped: string[] = [];
@@ -60,6 +71,128 @@ describe('TenantServicePool', () => {
     expect(secondAccount).toBe(firstAccount);
     expect(createCount).toBe(1);
     expect(pool.getTenantCount()).toBe(1);
+  });
+
+  test('retires an old organization placement before starting its higher epoch', async () => {
+    const events: string[] = [];
+    let markOldStopEntered: (() => void) | undefined;
+    const oldStopEntered = new Promise<void>((resolve) => {
+      markOldStopEntered = resolve;
+    });
+    let releaseOldStop: (() => void) | undefined;
+    const oldStopBlocked = new Promise<void>((resolve) => {
+      releaseOldStop = resolve;
+    });
+    const pool = new TenantServicePool('placement-pool', {
+      key: (context) => [context.orgId, context.cellId, context.placementEpoch].join(':'),
+      singlePlacementPerOrganization: true,
+      create: (context) => ({
+        epoch: context.placementEpoch,
+        start: async () => { events.push(`start:${context.placementEpoch}`); },
+        stop: async () => {
+          events.push(`stop:${context.placementEpoch}`);
+          if (context.placementEpoch === 1) {
+            markOldStopEntered?.();
+            await oldStopBlocked;
+          }
+        },
+      }),
+    });
+    pool.start({ config: {}, hooks: {} });
+
+    await pool.forTenant(movedTenant('org-a', 1));
+    const replacement = pool.forTenant(movedTenant('org-a', 2));
+    await oldStopEntered;
+
+    expect(events).toEqual(['start:1', 'stop:1']);
+    expect(pool.getTenantCount()).toBe(1);
+    releaseOldStop?.();
+    await expect(replacement).resolves.toMatchObject({ epoch: 2 });
+    expect(events).toEqual(['start:1', 'stop:1', 'start:2']);
+    expect(pool.getTenantCount()).toBe(1);
+    await expect(pool.forTenant(movedTenant('org-a', 1))).rejects.toThrow(
+      'rejected stale organization placement epoch 1; current epoch is 2',
+    );
+    await pool.stop();
+  });
+
+  test('fails placement turnover closed until old-owner shutdown succeeds', async () => {
+    const created: number[] = [];
+    let failOldStop = true;
+    const pool = new TenantServicePool('placement-cleanup-pool', {
+      key: (context) => [context.orgId, context.cellId, context.placementEpoch].join(':'),
+      singlePlacementPerOrganization: true,
+      create: (context) => {
+        created.push(context.placementEpoch);
+        return {
+          epoch: context.placementEpoch,
+          stop: async () => {
+            if (context.placementEpoch === 1 && failOldStop) {
+              throw new Error('old owner still running');
+            }
+          },
+        };
+      },
+    });
+    pool.start({ config: {}, hooks: {} });
+
+    await pool.forTenant(movedTenant('org-a', 1));
+    await expect(pool.forTenant(movedTenant('org-a', 2))).rejects.toThrow(
+      'old owner still running',
+    );
+    expect(created).toEqual([1]);
+    expect(pool.getTenantCount()).toBe(1);
+    await expect(pool.forTenant(movedTenant('org-a', 1))).rejects.toThrow(
+      'rejected stale organization placement epoch 1; current epoch is 2',
+    );
+
+    failOldStop = false;
+    await expect(pool.forTenant(movedTenant('org-a', 2))).resolves.toMatchObject({ epoch: 2 });
+    expect(created).toEqual([1, 2]);
+    expect(pool.getTenantCount()).toBe(1);
+    await pool.stop();
+  });
+
+  test('coalesces superseded placement transitions without starting an intermediate epoch', async () => {
+    const events: string[] = [];
+    let markOldStopEntered: (() => void) | undefined;
+    const oldStopEntered = new Promise<void>((resolve) => {
+      markOldStopEntered = resolve;
+    });
+    let releaseOldStop: (() => void) | undefined;
+    const oldStopBlocked = new Promise<void>((resolve) => {
+      releaseOldStop = resolve;
+    });
+    const pool = new TenantServicePool('placement-coalescing-pool', {
+      key: (context) => [context.orgId, context.cellId, context.placementEpoch].join(':'),
+      singlePlacementPerOrganization: true,
+      create: (context) => ({
+        epoch: context.placementEpoch,
+        start: async () => { events.push(`start:${context.placementEpoch}`); },
+        stop: async () => {
+          events.push(`stop:${context.placementEpoch}`);
+          if (context.placementEpoch === 1) {
+            markOldStopEntered?.();
+            await oldStopBlocked;
+          }
+        },
+      }),
+    });
+    pool.start({ config: {}, hooks: {} });
+
+    await pool.forTenant(movedTenant('org-a', 1));
+    const epochTwo = pool.forTenant(movedTenant('org-a', 2));
+    await oldStopEntered;
+    const epochThree = pool.forTenant(movedTenant('org-a', 3));
+    releaseOldStop?.();
+
+    await expect(epochTwo).rejects.toThrow(
+      'rejected stale organization placement epoch 2; current epoch is 3',
+    );
+    await expect(epochThree).resolves.toMatchObject({ epoch: 3 });
+    expect(events).toEqual(['start:1', 'stop:1', 'start:3']);
+    expect(pool.getTenantCount()).toBe(1);
+    await pool.stop();
   });
 
   test('stops and evicts a child whose startup fails', async () => {

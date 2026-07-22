@@ -4,6 +4,7 @@ import type { TCanvasApiContext } from './canvas/types';
 import type { TDbApiContext } from './db/types';
 import type { TFileApiContext } from './file/types';
 import type { TFilesystemApiContext } from './filesystem/types';
+import type { TFunctionApiContext } from './function/types';
 import type { TNotificationApiContext } from './notification/types';
 import type { TPtyApiContext } from './pty/types';
 import type { TResourceApiContext } from './resource/types';
@@ -15,6 +16,7 @@ type TApiContext = TActorsApiContext
   & TDbApiContext
   & TFileApiContext
   & TFilesystemApiContext
+  & TFunctionApiContext
   & TNotificationApiContext
   & TPtyApiContext
   & TResourceApiContext
@@ -28,6 +30,7 @@ export type {
   TDbApiContext,
   TFileApiContext,
   TFilesystemApiContext,
+  TFunctionApiContext,
   TNotificationApiContext,
   TPtyApiContext,
   TResourceApiContext,

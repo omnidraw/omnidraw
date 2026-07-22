@@ -33,6 +33,7 @@
     "test:isolation": "bun run scripts/test-isolation.ts",
     "test:resource-runtime": "bun run scripts/test-resource-runtime.ts",
     "test:widget-artifacts": "bun run scripts/test-widget-artifacts.ts",
+    "test:function-runtime": "bun run scripts/test-function-runtime.ts",
     "test:managed-architecture-baseline": "bun test scripts/managed-architecture-baseline.test.ts",
     "baseline:managed-architecture": "bun run scripts/managed-architecture-baseline.ts",
     "db:schema:verify": "bun test packages/service-db/src/verification/pinned-runtime-features.test.ts packages/service-db/src/verification/baseline-schema.test.ts",

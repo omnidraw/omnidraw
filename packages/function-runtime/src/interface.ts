@@ -14,16 +14,40 @@ import type {
   TFunctionInvocationId,
   TFunctionMemoryTier,
   TFunctionName,
+  TFunctionRevisionRegistration,
   TInvocationLease,
+  TInvocationLeaseMutationResult,
   TInvocationRecord,
-  TInvocationStatus,
+  TInvocationAttemptCompletionRequest,
+  TInvocationAttemptCompletionResult,
+  TInvocationCancellationResult,
+  TInvocationClaimRequest,
+  TInvocationClaimResult,
+  TInvocationCreateRequest,
+  TInvocationCreateResult,
+  TInvocationHeartbeatRequest,
+  TInvocationRecoveryRequest,
+  TInvocationRecoveryResult,
+  TResourceWritePermit,
+  TResourceWritePermitAcquireRequest,
+  TResourceWritePermitAcquireResult,
+  TResourceWritePermitConsumeRequest,
+  TResourceWritePermitConsumeResult,
   TSandboxExecutionResult,
   TSandboxHandle,
+  TSandboxStartRequest,
+  TTerminalHistoryCompactionRequest,
+  TTerminalHistoryCompactionResult,
   TUsageMetrics,
-  TUsageReceipt,
+  TUsageOutboxRecord,
+  TUsageOutboxState,
 } from './types';
 
 export interface IFunctionRegistry {
+  registerFunctionsForRevision(
+    tenant: TTenantContext,
+    registration: TFunctionRevisionRegistration,
+  ): Promise<readonly TFunctionDefinition[]>;
   resolveFunction(
     tenant: TTenantContext,
     request: Readonly<{ widgetRevisionId: string; functionName: TFunctionName }>,
@@ -31,46 +55,81 @@ export interface IFunctionRegistry {
 }
 
 export interface IInvocationStore {
-  createInvocation(envelope: TFunctionInvocationEnvelope): Promise<TInvocationRecord>;
+  createOrReplayInvocation(
+    tenant: TTenantContext,
+    request: TInvocationCreateRequest,
+  ): Promise<TInvocationCreateResult>;
   getInvocation(
     tenant: TTenantContext,
     invocationId: TFunctionInvocationId,
   ): Promise<TInvocationRecord | null>;
-  transitionInvocation(
+  listAttempts(
     tenant: TTenantContext,
-    transition: Readonly<{
-      invocationId: TFunctionInvocationId;
-      expected: TInvocationStatus;
-      next: TInvocationStatus;
-    }>,
-  ): Promise<boolean>;
-  recordAttempt(tenant: TTenantContext, attempt: TFunctionAttempt): Promise<void>;
+    invocationId: TFunctionInvocationId,
+  ): Promise<readonly TFunctionAttempt[]>;
+  requestCancellation(
+    tenant: TTenantContext,
+    request: Readonly<{ invocationId: TFunctionInvocationId; nowMs: number }>,
+  ): Promise<TInvocationCancellationResult>;
+  completeAttempt(
+    tenant: TTenantContext,
+    request: TInvocationAttemptCompletionRequest,
+  ): Promise<TInvocationAttemptCompletionResult>;
+  recoverExpiredLeases(
+    tenant: TTenantContext,
+    request: TInvocationRecoveryRequest,
+  ): Promise<TInvocationRecoveryResult>;
+  compactTerminalHistory(
+    tenant: TTenantContext,
+    request: TTerminalHistoryCompactionRequest,
+  ): Promise<TTerminalHistoryCompactionResult>;
 }
 
 export interface IInvocationLeaseAuthority {
   claim(
     tenant: TTenantContext,
-    request: Readonly<{
-      invocationId: TFunctionInvocationId;
-      attemptId: TFunctionAttemptId;
-      workerId: string;
-      nowMs: number;
-      ttlMs: number;
-    }>,
-  ): Promise<TInvocationLease | null>;
+    request: TInvocationClaimRequest,
+  ): Promise<TInvocationClaimResult>;
+  startAttempt(
+    tenant: TTenantContext,
+    request: Readonly<{ lease: TInvocationLease; nowMs: number }>,
+  ): Promise<TInvocationLeaseMutationResult>;
+  enterGuestCode(
+    tenant: TTenantContext,
+    request: Readonly<{ lease: TInvocationLease; nowMs: number }>,
+  ): Promise<TInvocationLeaseMutationResult>;
   heartbeat(
     tenant: TTenantContext,
-    lease: TInvocationLease,
-    nowMs: number,
-  ): Promise<TInvocationLease | null>;
-  release(tenant: TTenantContext, lease: TInvocationLease): Promise<void>;
+    request: TInvocationHeartbeatRequest,
+  ): Promise<TInvocationLeaseMutationResult>;
+}
+
+export interface IResourceWritePermitAuthority {
+  acquireWritePermit(
+    tenant: TTenantContext,
+    request: TResourceWritePermitAcquireRequest,
+  ): Promise<TResourceWritePermitAcquireResult>;
+  getWritePermit(
+    tenant: TTenantContext,
+    permitId: string,
+  ): Promise<TResourceWritePermit | null>;
+  consumeWritePermit(
+    tenant: TTenantContext,
+    request: TResourceWritePermitConsumeRequest,
+  ): Promise<TResourceWritePermitConsumeResult>;
+  expireWritePermits(
+    tenant: TTenantContext,
+    request: Readonly<{ nowMs: number; limit: number }>,
+  ): Promise<number>;
 }
 
 export interface IScheduler {
   notifyQueued(envelope: TFunctionInvocationEnvelope): Promise<void>;
   takeNext(
     request: Readonly<{
+      orgId: string;
       cellId: string;
+      placementEpoch: number;
       workerId: string;
       memoryTiers: readonly TFunctionMemoryTier[];
     }>,
@@ -88,7 +147,11 @@ export interface ISandboxDriver {
     definition: TFunctionDefinition;
     artifact: Uint8Array;
   }>): Promise<TSandboxHandle>;
-  start(prepared: TSandboxHandle, attempt: TFunctionAttempt): Promise<TSandboxHandle>;
+  start(
+    prepared: TSandboxHandle,
+    attempt: TFunctionAttempt,
+    request: TSandboxStartRequest,
+  ): Promise<TSandboxHandle>;
   execute(
     running: TSandboxHandle,
     envelope: TFunctionInvocationEnvelope,
@@ -101,5 +164,24 @@ export interface ISandboxDriver {
 }
 
 export interface IUsageSink {
-  recordUsage(receipt: TUsageReceipt): Promise<void>;
+  listUsageOutbox(
+    tenant: TTenantContext,
+    request: Readonly<{ states?: readonly TUsageOutboxState[]; limit: number }>,
+  ): Promise<readonly TUsageOutboxRecord[]>;
+  transitionUsageOutbox(
+    tenant: TTenantContext,
+    request: Readonly<{
+      ids: readonly string[];
+      expected: TUsageOutboxState;
+      next: TUsageOutboxState;
+      nowMs: number;
+    }>,
+  ): Promise<number>;
 }
+
+export interface IFunctionControlStore extends
+  IFunctionRegistry,
+  IInvocationStore,
+  IInvocationLeaseAuthority,
+  IResourceWritePermitAuthority,
+  IUsageSink {}

@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
-import { fnCanonicalizeWidgetContractPayload } from '@vibecanvas/widget-contract';
+import {
+  fnCanonicalizeWidgetContractPayload,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+} from '@vibecanvas/widget-contract';
 import type {
   IWidgetArtifactMutationCoordinator,
   IWidgetControlStore,
@@ -13,9 +16,11 @@ import type {
   TWidgetManifestV2,
   TWidgetPublicationCommitResult,
   TWidgetRevisionDescriptor,
+  TWidgetServerFunctionDescriptor,
 } from '@vibecanvas/widget-contract';
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
+import { fnFunctionId } from '../FunctionControlStoreTurso/fn.function-id';
 import { WidgetControlStoreTurso } from '../WidgetControlStoreTurso';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -98,6 +103,7 @@ async function publish(
     uiArtifact?: TWidgetArtifactDescriptor;
     serverArtifact?: TWidgetArtifactDescriptor | null;
     bindings?: Parameters<IWidgetControlStore['commitPublication']>[1]['bindings'];
+    functionDescriptors?: readonly TWidgetServerFunctionDescriptor[];
     nowMs?: number;
   }>,
 ): Promise<TWidgetPublicationCommitResult> {
@@ -111,12 +117,37 @@ async function publish(
     nowMs,
   });
   const serverArtifact = args.serverArtifact ?? null;
+  const functionDescriptors = args.functionDescriptors ?? (value.server ? [{
+    schemaVersion: 1 as const,
+    exportName: 'run',
+    modulePath: 'server/run.server.ts',
+    effect: 'fn' as const,
+    inputSchema: { type: 'object' },
+    outputSchema: { type: 'object' },
+    resources: [],
+    limits: {
+      timeoutMs: 1_000,
+      memoryTier: 'small' as const,
+      outputByteLimit: 1_024,
+      logByteLimit: 1_024,
+    },
+    retry: {
+      mode: 'none' as const,
+      maxAttempts: 1,
+      initialBackoffMs: 0,
+      maxBackoffMs: 0,
+    },
+  }] : []);
+  const functionDescriptorsDigestSha256 = createHash('sha256')
+    .update(fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors))
+    .digest('hex');
   const contractDigestSha256 = args.contractDigestSha256 ?? createHash('sha256')
     .update(fnCanonicalizeWidgetContractPayload({
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
       serverDigestSha256: serverArtifact?.digestSha256 ?? null,
       runtimeAbi: value.server?.runtimeAbi ?? null,
+      functionDescriptorsDigestSha256,
     }))
     .digest('hex');
   return store.commitPublication(tenant, {
@@ -126,6 +157,8 @@ async function publish(
       definitionId: args.definitionId ?? DEFINITION_A,
       manifest: value,
       canonicalManifestJson,
+      functionDescriptors,
+      functionDescriptorsDigestSha256,
       contractDigestSha256,
       uiArtifact,
       serverArtifact,
@@ -279,8 +312,23 @@ describe('WidgetControlStoreTurso', () => {
     const secondRevision = committed(second);
     expect(secondRevision).toMatchObject({
       revisionNumber: 2,
+      functionDescriptors: [{ exportName: 'run', effect: 'fn' }],
       uiArtifact: { id: uuid(412), digestSha256: digest(1) },
       serverArtifact: { id: uuid(415), kind: 'server', digestSha256: digest(2) },
+    });
+    expect(await (await service.db.prepare(`
+      SELECT id, export_name, effect, definition_revision, artifact_digest_sha256,
+        contract_digest_sha256, runtime_abi
+      FROM function_definitions
+      WHERE org_id = ? AND widget_definition_id = ? AND widget_revision_id = ?
+    `)).get(TENANT_A.orgId, DEFINITION_A, uuid(413))).toEqual({
+      id: fnFunctionId(DEFINITION_A, 'run'),
+      export_name: 'run',
+      effect: 'fn',
+      definition_revision: 2,
+      artifact_digest_sha256: digest(2),
+      contract_digest_sha256: secondRevision.contractDigestSha256,
+      runtime_abi: 'vibecanvas:1',
     });
     expect(await rowCount(service, 'artifact_references')).toBe(2);
     expect(await store.getActiveRevision(TENANT_A, DEFINITION_A)).toMatchObject({ id: uuid(413) });
@@ -541,6 +589,78 @@ describe('WidgetControlStoreTurso', () => {
       revisionId,
     );
     await expect(store.getActiveRevision(TENANT_A, DEFINITION_A)).rejects.toMatchObject({
+      code: 'WIDGET_REVISION_INTEGRITY_FAILED',
+    });
+  });
+
+  test('reads pre-M6 v1 revisions only with the canonical empty function set', async () => {
+    const active = committed(await publish(store, TENANT_A, {
+      revisionId: uuid(641),
+      nowMs: 10,
+    }));
+    const legacyRevisionId = uuid(642);
+    const legacyArtifactId = uuid(643);
+    const legacyArtifactDigest = digest(643);
+    const legacyContractDigest = createHash('sha256').update(JSON.stringify({
+      format: 'vibecanvas.widget-contract.v1',
+      canonicalManifestJson: active.canonicalManifestJson,
+      uiDigestSha256: legacyArtifactDigest,
+      serverDigestSha256: null,
+      runtimeAbi: null,
+    })).digest('hex');
+    await (await service.db.prepare(`
+      INSERT INTO artifact_references (
+        org_id, id, kind, digest_sha256, byte_size,
+        retention_state, retain_until_ms, created_at_ms
+      ) VALUES (?, ?, 'ui', ?, 10, 'pinned', NULL, 11)
+    `)).run(TENANT_A.orgId, legacyArtifactId, legacyArtifactDigest);
+    await (await service.db.prepare(`
+      INSERT INTO widget_definition_revisions (
+        org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
+        server_artifact_id, server_artifact_kind, manifest_json,
+        contract_digest_sha256, created_at_ms
+      ) VALUES (?, ?, ?, 2, ?, 'ui', NULL, NULL, ?, ?, 11)
+    `)).run(
+      TENANT_A.orgId,
+      legacyRevisionId,
+      DEFINITION_A,
+      legacyArtifactId,
+      active.canonicalManifestJson,
+      legacyContractDigest,
+    );
+    await expect(store.getRevision(TENANT_A, legacyRevisionId)).resolves.toMatchObject({
+      id: legacyRevisionId,
+      functionDescriptors: [],
+      functionDescriptorsDigestSha256: '2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b',
+      contractDigestSha256: legacyContractDigest,
+    });
+
+    const forgedDescriptors = fnCanonicalizeWidgetServerFunctionDescriptors([{
+      schemaVersion: 1,
+      exportName: 'forged',
+      effect: 'fn',
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      resources: [],
+      limits: {
+        timeoutMs: 1_000,
+        memoryTier: 'small',
+        outputByteLimit: 1_024,
+        logByteLimit: 1_024,
+      },
+      retry: { mode: 'none', maxAttempts: 1, initialBackoffMs: 0, maxBackoffMs: 0 },
+    }]);
+    await (await service.db.prepare(`
+      UPDATE widget_definition_revisions
+      SET function_descriptors_json = ?, function_descriptors_digest_sha256 = ?
+      WHERE org_id = ? AND id = ?
+    `)).run(
+      forgedDescriptors,
+      createHash('sha256').update(forgedDescriptors).digest('hex'),
+      TENANT_A.orgId,
+      legacyRevisionId,
+    );
+    await expect(store.getRevision(TENANT_A, legacyRevisionId)).rejects.toMatchObject({
       code: 'WIDGET_REVISION_INTEGRITY_FAILED',
     });
   });
@@ -947,11 +1067,19 @@ describe('WidgetControlStoreTurso', () => {
 
   test('prunes only inactive revisions not pinned by instances, invocations, or idempotency records', async () => {
     const revisions = [uuid(451), uuid(452), uuid(453), uuid(454), uuid(455)];
+    const serverArtifacts = revisions.map((_, index) => artifact(TENANT_A, {
+      id: uuid(470 + index),
+      kind: 'server',
+      digest: digest(470 + index),
+      nowMs: 10 + index,
+    }));
     let active: string | null = null;
     for (const [index, revisionId] of revisions.entries()) {
       committed(await publish(store, TENANT_A, {
         revisionId,
         expectedActiveRevisionId: active,
+        manifest: manifest({ server: true }),
+        serverArtifact: serverArtifacts[index],
         nowMs: 10 + index,
       }));
       active = revisionId;
@@ -983,30 +1111,57 @@ describe('WidgetControlStoreTurso', () => {
     for (const [index, invocationId] of [invocationA, invocationB].entries()) {
       await (await service.db.prepare(`
         INSERT INTO function_invocations (
-          org_id, id, account_id, widget_definition_id, widget_revision_id,
-          widget_instance_id, function_name, input_json, input_digest_sha256,
-          policy_version, priority, status, result_json, output_byte_size, log_byte_size,
-          created_at_ms, deadline_at_ms, started_at_ms, finished_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, 'refresh', '{}', ?, 1, 0, 'queued', NULL, 0, 0, 22, 100, NULL, NULL)
+          org_id, id, account_id, canvas_id, widget_definition_id, widget_revision_id,
+          widget_instance_id, function_id, function_name, definition_revision,
+          artifact_digest_sha256, contract_digest_sha256, runtime_abi,
+          tenant_cell_id, tenant_placement_epoch, tenant_request_id,
+          tenant_roles_json, tenant_capabilities_json, input_json, input_digest_sha256,
+          idempotency_key, policy_version, priority, timeout_ms, memory_tier,
+          output_byte_limit, log_byte_limit, retry_mode, max_attempts,
+          initial_backoff_ms, max_backoff_ms, status, result_json, failure_json,
+          result_digest_sha256, output_byte_size, log_byte_size, body_state,
+          retains_revision, created_at_ms, available_at_ms, deadline_at_ms,
+          cancel_requested_at_ms, started_at_ms, finished_at_ms, bodies_compacted_at_ms
+        )
+        SELECT ?, ?, ?, ?, ?, ?, ?, definition.id, definition.export_name,
+          definition.definition_revision, definition.artifact_digest_sha256,
+          definition.contract_digest_sha256, definition.runtime_abi,
+          ?, 1, ?, '["owner"]', '["*"]', '{}', ?, ?, 1, 0,
+          definition.timeout_ms, definition.memory_tier, definition.output_byte_limit,
+          definition.log_byte_limit, definition.retry_mode, definition.max_attempts,
+          definition.initial_backoff_ms, definition.max_backoff_ms,
+          'queued', NULL, NULL, NULL, 0, 0, 'full', 1, 22, 22, 100,
+          NULL, NULL, NULL, NULL
+        FROM function_definitions AS definition
+        WHERE definition.org_id = ? AND definition.widget_definition_id = ?
+          AND definition.widget_revision_id = ? AND definition.export_name = 'run'
       `)).run(
         TENANT_A.orgId,
         invocationId,
         TENANT_A.accountId,
+        CANVAS_A,
         DEFINITION_A,
         revisions[index + 2],
         instances[index + 1],
+        TENANT_A.cellId,
+        `retention-request-${index}`,
         digest(80 + index),
+        `retention-key-${index}`,
+        TENANT_A.orgId,
+        DEFINITION_A,
+        revisions[index + 2],
       );
     }
     await (await service.db.prepare(`
       INSERT INTO idempotency_records (
-        org_id, id, scope_kind, canvas_id, widget_instance_id, idempotency_key,
+        org_id, id, function_id, scope_kind, canvas_id, widget_instance_id, idempotency_key,
         request_fingerprint_sha256, widget_definition_id, widget_revision_id,
         invocation_id, created_at_ms, expires_at_ms
-      ) VALUES (?, ?, 'organization', NULL, NULL, 'retention-pin', ?, ?, ?, ?, 23, NULL)
+      ) VALUES (?, ?, ?, 'organization', NULL, NULL, 'retention-pin', ?, ?, ?, ?, 23, NULL)
     `)).run(
       TENANT_A.orgId,
       uuid(461),
+      fnFunctionId(DEFINITION_A, 'run'),
       digest(82),
       DEFINITION_A,
       revisions[3],
@@ -1032,8 +1187,9 @@ describe('WidgetControlStoreTurso', () => {
       limit: 100,
     })).prunedRevisionIds).toEqual([revisions[1]]);
 
-    await (await service.db.prepare(`DELETE FROM function_invocations WHERE org_id = ? AND id = ?`))
-      .run(TENANT_A.orgId, invocationA);
+    await (await service.db.prepare(`
+      UPDATE function_invocations SET retains_revision = 0 WHERE org_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, invocationA);
     await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ? AND id = ?`))
       .run(TENANT_A.orgId, instances[1]);
     expect((await store.pruneInactiveRevisions(TENANT_A, {
@@ -1044,8 +1200,9 @@ describe('WidgetControlStoreTurso', () => {
 
     await (await service.db.prepare(`DELETE FROM idempotency_records WHERE org_id = ? AND id = ?`))
       .run(TENANT_A.orgId, uuid(461));
-    await (await service.db.prepare(`DELETE FROM function_invocations WHERE org_id = ? AND id = ?`))
-      .run(TENANT_A.orgId, invocationB);
+    await (await service.db.prepare(`
+      UPDATE function_invocations SET retains_revision = 0 WHERE org_id = ? AND id = ?
+    `)).run(TENANT_A.orgId, invocationB);
     await (await service.db.prepare(`DELETE FROM widget_instances WHERE org_id = ? AND id = ?`))
       .run(TENANT_A.orgId, instances[2]);
     expect((await store.pruneInactiveRevisions(TENANT_A, {

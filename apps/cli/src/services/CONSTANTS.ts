@@ -1,5 +1,9 @@
 export const RESOURCE_MANAGEMENT_OPERATION = 'vibecanvas.resource.management';
 
+export const FUNCTION_IDEMPOTENCY_TTL_DEFAULT_MS = 30 * 24 * 60 * 60 * 1_000;
+export const FUNCTION_IDEMPOTENCY_TTL_MINIMUM_MS = 60 * 1_000;
+export const FUNCTION_IDEMPOTENCY_TTL_MAXIMUM_MS = 90 * 24 * 60 * 60 * 1_000;
+
 export const RESOURCE_MANAGEMENT_EFFECTS = {
   kv: {
     countData: 'read',

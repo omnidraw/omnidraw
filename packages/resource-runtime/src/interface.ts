@@ -37,6 +37,10 @@ import type {
   TResourceSlot,
   TResourceUseInspection,
   TResourceWriteCapabilityClaims,
+  TCommittedResourceWrite,
+  TResourceWritePermitRecoveryCandidate,
+  TResourceWritePermitRecoveryResult,
+  TResourceWritePermitScope,
   TSafeResourceError,
   TSecretReveal,
   TUpdateResourcePlacementRequest,
@@ -100,6 +104,37 @@ export interface IResourceWriteCapabilityVerifier {
     tenant: TTenantContext,
     capability: string,
   ): Promise<TResourceWriteCapabilityClaims | null>;
+}
+
+/** Revalidates the exact permit and live lease at the provider commit edge. */
+export interface IResourceWritePermitGuard {
+  assertCanCommit(): Promise<void>;
+}
+
+/**
+ * Holds the authoritative attempt/lease permit across the provider callback.
+ * Implementations must not allow lease reassignment until the callback settles.
+ */
+export interface IResourceWritePermitCoordinator {
+  runWithWritePermit<T>(
+    tenant: TTenantContext,
+    scope: TResourceWritePermitScope,
+    operation: (guard: IResourceWritePermitGuard) => Promise<T>,
+  ): Promise<T>;
+  /** Lists unresolved intents without trusting a provider-selected permit ID. */
+  listRecoverableWritePermits?(
+    tenant: TTenantContext,
+    request: Readonly<{
+      resourceId: TResourceId;
+      afterPermitId?: string;
+      limit: number;
+    }>,
+  ): Promise<readonly TResourceWritePermitRecoveryCandidate[]>;
+  /** CAS-consumes a permit from a provider-owned durable commit proof. */
+  reconcileCommittedWritePermit?(
+    tenant: TTenantContext,
+    write: TCommittedResourceWrite,
+  ): Promise<TResourceWritePermitRecoveryResult>;
 }
 
 /** Neutral coordination for clients that currently hold a resource in active use. */

@@ -49,7 +49,10 @@ describe('function-runtime public contracts', () => {
     const driver: ISandboxDriver = {
       name: 'fake',
       prepare: async () => ({ driver: 'fake', id: 'prepared' }),
-      start: async () => ({ driver: 'fake', id: 'running' }),
+      start: async (_prepared, _attempt, request) => {
+        await request.enterGuestCode();
+        return { driver: 'fake', id: 'running' };
+      },
       execute: async () => ({
         status: 'succeeded',
         output: { ok: true },
@@ -66,7 +69,11 @@ describe('function-runtime public contracts', () => {
     const attempt = {} as TFunctionAttempt;
     const envelope = {} as TFunctionInvocationEnvelope;
     const prepared = await driver.prepare({ definition, artifact: new Uint8Array() });
-    const running = await driver.start(prepared, attempt);
+    const running = await driver.start(prepared, attempt, {
+      deadlineAtMs: Date.now() + 1_000,
+      observeMetrics: () => undefined,
+      enterGuestCode: async () => undefined,
+    });
     const result = await driver.execute(running, envelope, {
       call: async () => ({ output: undefined }),
     });

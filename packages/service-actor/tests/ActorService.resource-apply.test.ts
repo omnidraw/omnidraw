@@ -8,7 +8,7 @@ import { ActorService } from '../src/ActorService';
 import type { TDatabaseFactory } from '../src/resources/DbResource';
 import { testSecretStoreKeyProvider } from './test-secret-store-key-provider';
 import { createTestCrypto, testUuid } from './test-uuid';
-import { bindTestTenantDb, createTestTenantEvents, type TActorTestDb } from './tenant.fixture';
+import { bindTestTenantDb, createTestTenantEvents, TEST_TENANT, type TActorTestDb } from './tenant.fixture';
 
 const DEFINITION_NAME = 'Structure Draft Notes Test';
 
@@ -73,6 +73,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
       return database;
     };
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,
@@ -483,6 +484,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
     });
 
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath: join(rootDir, 'config'),
@@ -525,6 +527,7 @@ describe('ActorService DbResource coordinated apply lifecycle', () => {
     await physical.close();
 
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath: join(rootDir, 'config'),

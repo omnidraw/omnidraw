@@ -17,6 +17,16 @@ const CLI_INTEGRATION_TEST = 'apps/cli/tests/WidgetService.test.ts';
 
 const suites: TWidgetArtifactSuite[] = [
   {
+    name: 'SDK build inputs for a clean focused gate',
+    command: ['bun', 'run', '--cwd', 'packages/sdk', 'build'],
+    requiredPaths: [
+      'packages/sdk/package.json',
+      'packages/sdk/scripts/build.ts',
+      'packages/sdk/src/server.ts',
+      'packages/sdk/src/function-client.ts',
+    ],
+  },
+  {
     name: 'widget v2 contracts, immutable builds, capabilities, and garbage collection',
     command: ['bun', 'test', 'packages/widget-contract/tests', '--timeout=30000'],
     requiredPaths: [

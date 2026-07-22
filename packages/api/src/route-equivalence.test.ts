@@ -10,6 +10,7 @@ const ROUTE_KEYS = [
   'db',
   'file',
   'filesystem',
+  'function',
   'notification',
   'pty',
   'resource',
@@ -32,11 +33,11 @@ describe('unified API route equivalence', () => {
     expect(Object.keys(router.api)).toEqual(ROUTE_KEYS);
   });
 
-  test('implements all 131 existing procedures plus 39 neutral resource aliases', () => {
+  test('implements the existing routes, neutral resource aliases, and three function procedures', () => {
     const contractProcedures = collectProcedurePaths(apiContract);
     const handlerProcedures = collectProcedurePaths(router);
 
-    expect(contractProcedures).toHaveLength(170);
+    expect(contractProcedures).toHaveLength(173);
     expect(handlerProcedures.toSorted()).toEqual(contractProcedures.toSorted());
   });
 });

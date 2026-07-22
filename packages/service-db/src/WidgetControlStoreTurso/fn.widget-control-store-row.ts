@@ -4,6 +4,7 @@ import type {
   TWidgetDefinitionDescriptor,
   TWidgetManifestV2,
   TWidgetRevisionDescriptor,
+  TWidgetServerFunctionDescriptor,
 } from '@vibecanvas/widget-contract';
 
 export type TWidgetControlStoreArtifactRow = Readonly<{
@@ -101,6 +102,12 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
     ui_digest_sha256: string;
     ui_byte_size: unknown;
   };
+  const storedDescriptors = typeof value.function_descriptors_json === 'string'
+    ? JSON.parse(value.function_descriptors_json) as { functions?: unknown }
+    : value.function_descriptors_json as { functions?: unknown };
+  if (!Array.isArray(storedDescriptors?.functions)) {
+    throw new TypeError('Stored widget function descriptors are invalid.');
+  }
   return {
     orgId: value.org_id,
     id: value.id,
@@ -112,6 +119,8 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
     canonicalManifestJson: typeof value.manifest_json === 'string'
       ? value.manifest_json
       : JSON.stringify(value.manifest_json),
+    functionDescriptors: storedDescriptors.functions as readonly TWidgetServerFunctionDescriptor[],
+    functionDescriptorsDigestSha256: String(value.function_descriptors_digest_sha256),
     contractDigestSha256: value.contract_digest_sha256,
     uiArtifact: fnWidgetControlStoreArtifact({
       org_id: value.org_id,

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
@@ -33,6 +34,22 @@ const FOREIGN_TENANT = fnFreezeTenantContext({
 });
 
 const BUILDER_IDENTITY = 'vibecanvas-widget-test/bun';
+const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
+  '@vibecanvas/sdk/server',
+  '@vibecanvas/sdk/function-client',
+  '@vibecanvas/sdk/widget',
+  'zod',
+]);
+
+function resolveTrustedWidgetBuildPackageImport(specifier: string): string {
+  if (!TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS.includes(specifier)) {
+    throw new Error(`Untrusted widget build package '${specifier}'.`);
+  }
+  if (specifier === 'zod') {
+    return join(dirname(Bun.resolveSync('zod/package.json', import.meta.dir)), 'index.cjs');
+  }
+  return Bun.resolveSync(specifier, import.meta.dir);
+}
 
 async function writeSource(
   sourceRoot: string,
@@ -111,6 +128,7 @@ describe('actor-free production widget service', () => {
   let artifactsRoot: string;
   let database: DbServiceTurso;
   let service: WidgetService;
+  let functionDescriptorExtractor: BunChildFunctionDescriptorExtractor;
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'vibecanvas-widget-service-'));
@@ -123,6 +141,11 @@ describe('actor-free production widget service', () => {
       silentMigrations: true,
     });
     await database.start();
+    const functionTempRoot = join(root, 'temp', 'widget-functions');
+    await mkdir(functionTempRoot, { recursive: true, mode: 0o700 });
+    functionDescriptorExtractor = new BunChildFunctionDescriptorExtractor({
+      tempRoot: functionTempRoot,
+    });
     service = new WidgetService({
       placement: TENANT,
       database: database.db,
@@ -131,6 +154,8 @@ describe('actor-free production widget service', () => {
       builderIdentity: BUILDER_IDENTITY,
       artifactReadSecret: Buffer.alloc(32, 17),
       artifactReadMaximumTtlMs: 60_000,
+      functionDescriptorExtractor,
+      resolveTrustedPackageImport: resolveTrustedWidgetBuildPackageImport,
     });
   });
 
@@ -302,8 +327,20 @@ describe('actor-free production widget service', () => {
     if (first.status !== 'committed') throw new Error('Expected first revision to commit.');
 
     await writeSource(sourceRoot, {
-      'src/ui.ts': 'export const uiMarker = "UI_REVISION_TWO";',
-      'src/server.server.ts': 'export const serverMarker = "SERVER_PRIVATE_MARKER";',
+      'src/ui.ts': [
+        'import { serverMarker } from "./server.server";',
+        'export const uiMarker = "UI_REVISION_TWO";',
+        'export const invokeServerMarker = (value: string) => serverMarker({ value });',
+      ].join('\n'),
+      'src/server.server.ts': [
+        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { z } from "zod";',
+        'const Input = z.object({ value: z.string() });',
+        'const Output = z.object({ value: z.string() });',
+        'export const serverMarker = defineServerFunction({',
+        '  effect: "fn", input: Input, output: Output,',
+        '}, async (_ctx, input) => ({ value: `SERVER_PRIVATE_MARKER:${input.value}` }));',
+      ].join('\n'),
     });
     const secondSnapshot = await service.captureSource(TENANT, sourceRoot, {
       id: uuid(809),
@@ -326,6 +363,18 @@ describe('actor-free production widget service', () => {
     if (second.status !== 'committed') throw new Error('Expected second revision to commit.');
     expect(second.revision.revisionNumber).toBe(2);
     expect(second.revision.serverArtifact).not.toBeNull();
+    expect(second.revision.functionDescriptors).toMatchObject([{
+      exportName: 'serverMarker',
+      effect: 'fn',
+      resources: [],
+    }]);
+    expect(second.revision.functionDescriptorsDigestSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(functionDescriptorExtractor.diagnostics()).toEqual({
+      activeGuestCount: 0,
+      activeGuestPids: [],
+      activeGuestProcessGroupIds: [],
+      teardownFailures: [],
+    });
 
     const expiresAtMs = Date.now() + 30_000;
     const uiCapability = await service.issueBrowserUiArtifactReadCapability(TENANT, {

@@ -243,6 +243,7 @@ export type TResourceOperationReceipt = Readonly<{
   resourceId: TResourceId;
   effect: TResourcePermission;
   committed: boolean;
+  replayed?: boolean;
 }>;
 
 export type TResourceCallResult<TOutput = unknown> = Readonly<{
@@ -252,13 +253,50 @@ export type TResourceCallResult<TOutput = unknown> = Readonly<{
 
 export type TResourceWriteCapabilityClaims = Readonly<{
   orgId: TOrganizationId;
+  permitId: string;
   resourceId: TResourceId;
+  invocationId: string;
   operation: TResourceOperationName;
+  operationId: TResourceOperationId;
+  operationFingerprintSha256: string;
   attemptId: string;
   leaseEpoch: number;
   expiresAtMs: number;
   nonce: string;
 }>;
+
+/** Host-owned scope kept live while one resource mutation commits. */
+export type TResourceWritePermitScope = Readonly<{
+  claims: TResourceWriteCapabilityClaims;
+  slot: TResourceSlot;
+  kind: TResourceKind;
+  resourceId: TResourceId;
+  operation: TResourceOperationName;
+  operationId: TResourceOperationId;
+  operationFingerprintSha256: string;
+}>;
+
+/** Main-ledger permit that may have a matching provider-owned commit receipt. */
+export type TResourceWritePermitRecoveryCandidate = Readonly<{
+  permitId: string;
+  resourceId: TResourceId;
+  invocationId: string;
+  attemptId: string;
+  leaseEpoch: number;
+  operationName: TResourceOperationName;
+  operationId: TResourceOperationId;
+  operationFingerprintSha256: string;
+}>;
+
+/** Host-only proof copied from an authoritative Resource Store receipt. */
+export type TCommittedResourceWrite = TResourceWritePermitRecoveryCandidate & Readonly<{
+  output: unknown;
+  recordedAtMs: number;
+}>;
+
+export type TResourceWritePermitRecoveryResult =
+  | Readonly<{ status: 'consumed' | 'replayed' }>
+  | Readonly<{ status: 'missing' | 'conflict' }>;
 
 export type TResourceProviderCreateArgs = Readonly<Record<string, never>>;
 

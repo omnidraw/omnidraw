@@ -229,6 +229,7 @@ describe('resource runtime composition', () => {
 
     try {
       const actor = new ActorService({
+        tenant: tenant('account-a'),
         db: {} as never,
         configPath: root,
         resourceService,

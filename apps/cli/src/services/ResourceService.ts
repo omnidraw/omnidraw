@@ -3,8 +3,12 @@ import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import {
   ResourceError,
   fnResourceSecretRevealAllowed,
+  type IResourceBindingResolver,
   type IResourceControlStore,
+  type IResourceGateway,
   type IResourceUseCoordinator,
+  type IResourceWriteCapabilityVerifier,
+  type IResourceWritePermitCoordinator,
   type TDbCellValue,
   type TDbDraftOperation,
   type TDbRowCreate,
@@ -14,6 +18,7 @@ import {
   type TResourceJson,
   type TResourceDescriptor,
   type TResourceKind,
+  type TResourceRequirement,
   type TResourceStatus,
 } from '@vibecanvas/resource-runtime';
 import {
@@ -23,6 +28,7 @@ import {
   fnResourceDataPage,
   KvResource,
   ResourceKeyValueStore,
+  ResourceGateway,
   ResourceManager,
   ResourceManagerGateway,
   ResourceStoreService,
@@ -83,6 +89,19 @@ type TResourceServiceConfig = Readonly<{
   crypto?: Pick<Crypto, 'randomUUID'>;
   databaseFactory?: TDatabaseFactory;
   maxOpenHandles?: number;
+  writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
+  writePermitCoordinator?: IResourceWritePermitCoordinator;
+}>;
+
+type TFunctionResourceGatewayRequest = Readonly<{
+  definitionId: string;
+  revisionId: string;
+  requirements: readonly TResourceRequirement[];
+}>;
+
+type TFunctionResourceGatewayAccess = Readonly<{
+  gateway: IResourceGateway;
+  bindings: IResourceBindingResolver;
 }>;
 
 function toLocalResource(resource: TActorResource): TResourceCatalogRecord {
@@ -234,6 +253,8 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   readonly #controlStore: IResourceControlStore;
   readonly #crypto: Pick<Crypto, 'randomUUID'>;
   readonly #resolveConsumer: (() => Promise<TResourceConsumer>) | undefined;
+  readonly #writeCapabilityVerifier: IResourceWriteCapabilityVerifier | undefined;
+  readonly #writePermitCoordinator: IResourceWritePermitCoordinator | undefined;
   readonly #manager: ResourceManager;
   readonly #kvResource: KvResource;
   readonly #secretStoreResource: SecretStoreResource;
@@ -254,6 +275,8 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     this.#dataRoot = config.dataRoot;
     this.#controlStore = config.controlStore;
     this.#resolveConsumer = config.resolveConsumer;
+    this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
+    this.#writePermitCoordinator = config.writePermitCoordinator;
     const cryptoPortal = config.crypto ?? crypto;
     this.#crypto = cryptoPortal;
     const databaseFactory = config.databaseFactory
@@ -359,6 +382,8 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       ownerId,
       controlStore: this.#controlStore,
       providers: this.#providers,
+      writeCapabilityVerifier: this.#writeCapabilityVerifier,
+      writePermitCoordinator: this.#writePermitCoordinator,
       // Compatibility marker: legacy in-process actor calls do not yet carry
       // control-plane write capabilities.
       allowUnfencedWrites: true,
@@ -559,6 +584,53 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     binding: TResourceDirectBinding,
   ) {
     return this.callWithDirectBinding(tenant, call, binding);
+  }
+
+  createFunctionResourceGateway(
+    tenant: TTenantContext,
+    request: TFunctionResourceGatewayRequest,
+  ): TFunctionResourceGatewayAccess {
+    this.#assertTenantPlacement(tenant);
+    const requirements = new Map<string, TResourceRequirement>();
+    for (const requirement of request.requirements) {
+      if (requirements.has(requirement.slot)) {
+        throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Function resource slots must be unique.');
+      }
+      requirements.set(requirement.slot, requirement);
+    }
+    const bindings: IResourceBindingResolver = Object.freeze({
+      resolveBinding: async (callTenant: TTenantContext, slot: string) => {
+        this.#assertTenantPlacement(callTenant);
+        const binding = await this.#controlStore.resolveBinding(callTenant, {
+          definitionId: request.definitionId,
+          revisionId: request.revisionId,
+          slot,
+        });
+        return binding === null ? null : {
+          slot: binding.slot,
+          resourceId: binding.resourceId,
+          kind: binding.kind,
+          allowRead: binding.allowRead,
+          allowWrite: binding.allowWrite,
+          definitionId: binding.definitionId,
+          revisionId: binding.revisionId,
+          required: binding.required,
+        };
+      },
+    });
+    return Object.freeze({
+      bindings,
+      gateway: new ResourceGateway({
+        store: this.#requireStore(),
+        bindings,
+        requirements: {
+          resolveRequirement: async (callTenant, slot) => {
+            this.#assertTenantPlacement(callTenant);
+            return requirements.get(slot) ?? null;
+          },
+        },
+      }),
+    });
   }
 
   withReadyResource<T>(
@@ -1138,4 +1210,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
 }
 
 export { ResourceService };
-export type { TResourceConsumer, TResourceServiceConfig };
+export type {
+  TFunctionResourceGatewayAccess,
+  TFunctionResourceGatewayRequest,
+  TResourceConsumer,
+  TResourceServiceConfig,
+};

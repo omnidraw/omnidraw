@@ -59,6 +59,9 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/http.ts](apps/cli/src/plugins/server/http.ts) |  |
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
+| [apps/cli/src/services/FunctionResourceGatewayFactory.ts](apps/cli/src/services/FunctionResourceGatewayFactory.ts) |  |
+| [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
+| [apps/cli/src/services/FunctionServicePool.ts](apps/cli/src/services/FunctionServicePool.ts) |  |
 | [apps/cli/src/services/LazyTenantServiceCapability.ts](apps/cli/src/services/LazyTenantServiceCapability.ts) | Builds a method-only capability whose tenant service is resolved on first use. |
 | [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
@@ -66,6 +69,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
 | [apps/cli/src/services/TenantResourceService.ts](apps/cli/src/services/TenantResourceService.ts) |  |
 | [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
+| [apps/cli/src/services/WidgetFunctionArtifactReader.ts](apps/cli/src/services/WidgetFunctionArtifactReader.ts) |  |
 | [apps/cli/src/services/WidgetService.ts](apps/cli/src/services/WidgetService.ts) |  |
 | [apps/cli/src/services/WidgetServicePool.ts](apps/cli/src/services/WidgetServicePool.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
@@ -296,7 +300,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/filesystem/index.ts](packages/api/src/filesystem/index.ts) |  |
 | [packages/api/src/filesystem/orpc.ts](packages/api/src/filesystem/orpc.ts) |  |
 | [packages/api/src/filesystem/types.ts](packages/api/src/filesystem/types.ts) |  |
+| [packages/api/src/function/api.cancel-function.ts](packages/api/src/function/api.cancel-function.ts) |  |
+| [packages/api/src/function/api.function-error.ts](packages/api/src/function/api.function-error.ts) |  |
+| [packages/api/src/function/api.get-function.ts](packages/api/src/function/api.get-function.ts) |  |
+| [packages/api/src/function/api.invoke-function.ts](packages/api/src/function/api.invoke-function.ts) |  |
+| [packages/api/src/function/contract.ts](packages/api/src/function/contract.ts) |  |
+| [packages/api/src/function/handlers.ts](packages/api/src/function/handlers.ts) |  |
 | [packages/api/src/function/index.ts](packages/api/src/function/index.ts) |  |
+| [packages/api/src/function/orpc.ts](packages/api/src/function/orpc.ts) |  |
+| [packages/api/src/function/types.ts](packages/api/src/function/types.ts) |  |
 | [packages/api/src/handlers.ts](packages/api/src/handlers.ts) |  |
 | [packages/api/src/index.ts](packages/api/src/index.ts) |  |
 | [packages/api/src/interface.ts](packages/api/src/interface.ts) |  |
@@ -576,10 +588,28 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/function-runtime/package.json](packages/function-runtime/package.json) |  |
+| [packages/function-runtime/src/CONSTANTS.ts](packages/function-runtime/src/CONSTANTS.ts) | Host-owned retry bound for failures proven to precede guest module evaluation. |
 | [packages/function-runtime/src/core/fn.invocation-state.ts](packages/function-runtime/src/core/fn.invocation-state.ts) | Defines deterministic invocation and attempt state-machine transitions. |
 | [packages/function-runtime/src/core/fn.retry.ts](packages/function-runtime/src/core/fn.retry.ts) | Applies the platform-owned retry policy to a completed attempt. |
 | [packages/function-runtime/src/index.ts](packages/function-runtime/src/index.ts) | Public short-lived function runtime contract surface. |
 | [packages/function-runtime/src/interface.ts](packages/function-runtime/src/interface.ts) | Public registry, persistence, scheduling, sandbox, and usage SPIs. |
+| [packages/function-runtime/src/local/BunChildFunctionDescriptorExtractor.ts](packages/function-runtime/src/local/BunChildFunctionDescriptorExtractor.ts) | Bounded child-only server descriptor extraction adapter. |
+| [packages/function-runtime/src/local/BunChildLifecycle.ts](packages/function-runtime/src/local/BunChildLifecycle.ts) | Shared fail-closed Bun child cage and teardown helpers. |
+| [packages/function-runtime/src/local/BunChildSandboxDriver.ts](packages/function-runtime/src/local/BunChildSandboxDriver.ts) | Zero-warm Bun child SandboxDriver for local development and tests. Wall time, CPU, and RSS are host-accounted. Disk/network remain unsupported zeroes in this replaceable adapter; guest-reported metrics are never trusted. |
+| [packages/function-runtime/src/local/fn.artifact-admission.ts](packages/function-runtime/src/local/fn.artifact-admission.ts) | Pure defense-in-depth admission checks for unsupported continuations. |
+| [packages/function-runtime/src/local/fn.artifact-envelope.ts](packages/function-runtime/src/local/fn.artifact-envelope.ts) | Pure validation of the immutable server-artifact envelope. |
+| [packages/function-runtime/src/local/fn.canonical-json.ts](packages/function-runtime/src/local/fn.canonical-json.ts) | Pure canonical JSON encoding for hashes and idempotency fingerprints. |
+| [packages/function-runtime/src/local/fn.resource-call-policy.ts](packages/function-runtime/src/local/fn.resource-call-policy.ts) | Pure per-function resource ceiling enforcement. |
+| [packages/function-runtime/src/local/fn.sandbox-command.ts](packages/function-runtime/src/local/fn.sandbox-command.ts) | Pure Bun child-worker command construction. |
+| [packages/function-runtime/src/local/function-worker.ts](packages/function-runtime/src/local/function-worker.ts) | Single-invocation Bun child. Guest modules run in a blank node:vm context with imports and generated code disabled. This is defense in depth for the OSS development/test adapter, not a hostile-code production boundary. |
+| [packages/function-runtime/src/local/FunctionExecutor.ts](packages/function-runtime/src/local/FunctionExecutor.ts) | One-attempt local executor orchestration around durable leases. |
+| [packages/function-runtime/src/local/index.ts](packages/function-runtime/src/local/index.ts) | Usable OSS local short-lived function runtime adapters. |
+| [packages/function-runtime/src/local/interface.ts](packages/function-runtime/src/local/interface.ts) | Local function executor adapter seams. |
+| [packages/function-runtime/src/local/InvocationResourceGateway.ts](packages/function-runtime/src/local/InvocationResourceGateway.ts) | Invocation-scoped logical Resource Gateway facade. |
+| [packages/function-runtime/src/local/JsonSchemaFunctionValidator.ts](packages/function-runtime/src/local/JsonSchemaFunctionValidator.ts) | Bounded trusted host-side JSON Schema validator. |
+| [packages/function-runtime/src/local/LocalFunctionDispatcher.ts](packages/function-runtime/src/local/LocalFunctionDispatcher.ts) | Local invocation admission and bounded pull-dispatch orchestration. |
+| [packages/function-runtime/src/local/ResourceWriteCapabilityAuthority.ts](packages/function-runtime/src/local/ResourceWriteCapabilityAuthority.ts) | HMAC capability bridge between the function lease store and Resource Store. |
+| [packages/function-runtime/src/local/worker-types.ts](packages/function-runtime/src/local/worker-types.ts) | Private serializable protocol between the Bun host driver and one child. |
 | [packages/function-runtime/src/types.ts](packages/function-runtime/src/types.ts) | Public short-lived function definition, invocation, lease, sandbox, and usage types. |
 | [packages/function-runtime/tsconfig.json](packages/function-runtime/tsconfig.json) |  |
 
@@ -640,16 +670,25 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/sdk/actor/index.d.ts](packages/sdk/actor/index.d.ts) |  |
 | [packages/sdk/actor/index.js](packages/sdk/actor/index.js) |  |
 | [packages/sdk/actor/package.json](packages/sdk/actor/package.json) |  |
+| [packages/sdk/function-client/index.d.ts](packages/sdk/function-client/index.d.ts) |  |
+| [packages/sdk/function-client/index.js](packages/sdk/function-client/index.js) |  |
+| [packages/sdk/function-client/package.json](packages/sdk/function-client/package.json) |  |
 | [packages/sdk/package.json](packages/sdk/package.json) |  |
 | [packages/sdk/scripts/build.ts](packages/sdk/scripts/build.ts) |  |
+| [packages/sdk/server/index.d.ts](packages/sdk/server/index.d.ts) |  |
+| [packages/sdk/server/index.js](packages/sdk/server/index.js) |  |
+| [packages/sdk/server/package.json](packages/sdk/server/package.json) |  |
 | [packages/sdk/src/actor.ts](packages/sdk/src/actor.ts) |  |
 | [packages/sdk/src/example-interface.ts](packages/sdk/src/example-interface.ts) |  |
+| [packages/sdk/src/function-client.ts](packages/sdk/src/function-client.ts) | Browser-side transport contract and generated server-function proxy primitive. |
+| [packages/sdk/src/server.ts](packages/sdk/src/server.ts) | Authoring and registration surface for bounded short-lived server functions. This tiny runtime is bundled into each server artifact. |
 | [packages/sdk/src/shared.ts](packages/sdk/src/shared.ts) |  |
 | [packages/sdk/src/types.ts](packages/sdk/src/types.ts) |  |
 | [packages/sdk/src/widget-bridge.ts](packages/sdk/src/widget-bridge.ts) |  |
 | [packages/sdk/src/widget.ts](packages/sdk/src/widget.ts) |  |
 | [packages/sdk/tsconfig.build.json](packages/sdk/tsconfig.build.json) |  |
 | [packages/sdk/tsconfig.json](packages/sdk/tsconfig.json) |  |
+| [packages/sdk/tsconfig.type-tests.json](packages/sdk/tsconfig.type-tests.json) |  |
 | [packages/sdk/vibecanvas.schema.json](packages/sdk/vibecanvas.schema.json) |  |
 | [packages/sdk/widget/index.d.ts](packages/sdk/widget/index.d.ts) |  |
 | [packages/sdk/widget/index.js](packages/sdk/widget/index.js) |  |
@@ -835,9 +874,14 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/DbServiceTurso/tx.migrations.ts](packages/service-db/src/DbServiceTurso/tx.migrations.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.pragma.ts](packages/service-db/src/DbServiceTurso/tx.pragma.ts) |  |
 | [packages/service-db/src/DbServiceTurso/tx.tool-group.ts](packages/service-db/src/DbServiceTurso/tx.tool-group.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso.ts](packages/service-db/src/FunctionControlStoreTurso.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-control-store-row.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-id.ts) |  |
+| [packages/service-db/src/FunctionControlStoreTurso/fn.function-json.ts](packages/service-db/src/FunctionControlStoreTurso/fn.function-json.ts) | Deterministic JSON encoding for invocation bodies, permit receipts, and digests. |
 | [packages/service-db/src/interface.ts](packages/service-db/src/interface.ts) |  |
 | [packages/service-db/src/migrations/000-initial.sql](packages/service-db/src/migrations/000-initial.sql) |  |
 | [packages/service-db/src/migrations/001-widget-revision-sequence.sql](packages/service-db/src/migrations/001-widget-revision-sequence.sql) |  |
+| [packages/service-db/src/migrations/002-function-runtime.sql](packages/service-db/src/migrations/002-function-runtime.sql) |  |
 | [packages/service-db/src/migrations/CONSTANTS.ts](packages/service-db/src/migrations/CONSTANTS.ts) | Keeps ordered raw SQL assets on the server-only migration boundary. |
 | [packages/service-db/src/model.ts](packages/service-db/src/model.ts) |  |
 | [packages/service-db/src/ResourceControlStoreTurso.ts](packages/service-db/src/ResourceControlStoreTurso.ts) |  |
@@ -1080,13 +1124,17 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 |---|---|
 | [packages/widget-contract/package.json](packages/widget-contract/package.json) |  |
 | [packages/widget-contract/src/core/fn.contract.ts](packages/widget-contract/src/core/fn.contract.ts) |  |
+| [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
 | [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v2. |
+| [packages/widget-contract/src/core/fn.server-function-client-module.ts](packages/widget-contract/src/core/fn.server-function-client-module.ts) | Pure generation of a browser-only virtual module for discovered server exports. |
+| [packages/widget-contract/src/function-descriptor-schema.ts](packages/widget-contract/src/function-descriptor-schema.ts) | Strict runtime schema for generated server-function registrations. |
 | [packages/widget-contract/src/index.ts](packages/widget-contract/src/index.ts) | Public widget manifest and immutable artifact contract surface. |
 | [packages/widget-contract/src/interface.ts](packages/widget-contract/src/interface.ts) | Narrow public capabilities for widget build, publication, artifact access, and GC. |
 | [packages/widget-contract/src/local/CONSTANTS.ts](packages/widget-contract/src/local/CONSTANTS.ts) |  |
 | [packages/widget-contract/src/local/fn.artifact-path.ts](packages/widget-contract/src/local/fn.artifact-path.ts) |  |
 | [packages/widget-contract/src/local/fn.artifact-read-policy.ts](packages/widget-contract/src/local/fn.artifact-read-policy.ts) |  |
 | [packages/widget-contract/src/local/fn.build-boundary.ts](packages/widget-contract/src/local/fn.build-boundary.ts) |  |
+| [packages/widget-contract/src/local/fn.server-function-modules.ts](packages/widget-contract/src/local/fn.server-function-modules.ts) | Pure server-function export mapping and synthetic entry generation. |
 | [packages/widget-contract/src/local/fn.source-snapshot.ts](packages/widget-contract/src/local/fn.source-snapshot.ts) |  |
 | [packages/widget-contract/src/local/index.ts](packages/widget-contract/src/local/index.ts) |  |
 | [packages/widget-contract/src/local/LocalWidgetArtifactStore.ts](packages/widget-contract/src/local/LocalWidgetArtifactStore.ts) |  |
@@ -1123,6 +1171,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/sort-filename.ts](scripts/sort-filename.ts) | Sorts legacy FILES.md filepath table rows by path. |
 | [scripts/test-binary.ts](scripts/test-binary.ts) | Verifies a built vibecanvas binary serves assets, websockets, and expected database paths. |
 | [scripts/test-canvas-regression.ts](scripts/test-canvas-regression.ts) | Durable M0 gate for renderer, widget-host, collaboration, and actor compatibility behavior. |
+| [scripts/test-function-runtime.ts](scripts/test-function-runtime.ts) | Durable M6 gate for typed, bounded, scale-to-zero server functions. |
 | [scripts/test-isolation.ts](scripts/test-isolation.ts) | Durable M3 gate for tenant authority, collision, and foreign-ID behavior. |
 | [scripts/test-local-upgrade.ts](scripts/test-local-upgrade.ts) | Builds two signed local binaries and exercises transactional upgrades against a loopback release server. |
 | [scripts/test-resource-runtime.ts](scripts/test-resource-runtime.ts) | Durable M4 gate for the actor-independent, single-owner resource runtime. |

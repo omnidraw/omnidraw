@@ -8,6 +8,7 @@ import type {
   IWidgetArtifactReader,
   IWidgetPublicationService,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
+  IWidgetServerFunctionDescriptorExtractor,
   TWidgetActiveRevisionCasResult,
   TWidgetArtifactDescriptor,
   TWidgetArtifactGcRequest,
@@ -46,6 +47,8 @@ type TWidgetServiceConfig = Readonly<{
   builderIdentity: string;
   artifactReadSecret: Uint8Array;
   artifactReadMaximumTtlMs: number;
+  functionDescriptorExtractor: IWidgetServerFunctionDescriptorExtractor;
+  resolveTrustedPackageImport: (specifier: string) => string;
 }>;
 
 type TWidgetSourceCaptureArgs = Readonly<{
@@ -95,6 +98,8 @@ class WidgetService implements
         tempRoot: config.buildTempRoot,
         builderIdentity: config.builderIdentity,
         snapshotService: this.#sourceSnapshot,
+        functionDescriptorExtractor: config.functionDescriptorExtractor,
+        resolveTrustedPackageImport: config.resolveTrustedPackageImport,
       }),
       artifacts: this.#artifacts,
       controlStore,

@@ -11,6 +11,7 @@
   "dependencies": {
     "@tursodatabase/database": "catalog:",
     "@tursodatabase/database-common": "0.6.1",
+    "@vibecanvas/function-runtime": "workspace:*",
     "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/runtime": "workspace:*",
     "@vibecanvas/shared-functions": "workspace:*",

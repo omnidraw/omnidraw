@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./local": "./src/local/index.ts",
     "./*": "./src/*"
   },
   "scripts": {
@@ -13,6 +14,7 @@
   "dependencies": {
     "@vibecanvas/resource-runtime": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
-    "@vibecanvas/widget-contract": "workspace:*"
+    "@vibecanvas/widget-contract": "workspace:*",
+    "ajv": "^8.20.0"
   }
 }

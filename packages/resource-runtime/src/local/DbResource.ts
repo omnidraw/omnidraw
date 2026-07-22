@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { ResourceError, toResourceError } from '../ResourceError';
+import type { IResourceWritePermitGuard } from '../interface';
 import type {
   TDbCellValue,
   TDbColumn,
@@ -26,6 +27,11 @@ import type {
 } from '../types';
 import type {
   ILocalResourceProvider,
+  TLocalResourceCommittedOperation,
+  TLocalResourceDispatchReceipt,
+  TLocalResourceOperationIdentity,
+  TLocalResolvedResourceCall,
+  TLocalResourceRequirement,
   TLocalResourceReconcileResult,
   TResourceIdleSweepScheduler,
 } from './ResourceProviderTypes';
@@ -62,12 +68,7 @@ type TResourceProviderRequirement = Readonly<{
 type TDbProviderResource = Readonly<{ id: string; kind: TResourceKind }>;
 type TResourceProviderCreateArgs = Readonly<Record<string, never>>;
 
-type TDbResolvedProviderCall = Readonly<{
-  resource: TDbProviderResource;
-  requirement: TResourceProviderRequirement;
-  canRead: boolean;
-  canWrite: boolean;
-}>;
+type TDbResolvedProviderCall = TLocalResolvedResourceCall;
 
 type TDbDraftChangeRecord = Readonly<{
   draft_id?: string;
@@ -121,6 +122,16 @@ const SQLITE_INTEGER_MIN = -9_223_372_036_854_775_808n;
 const SQLITE_INTEGER_MAX = 9_223_372_036_854_775_807n;
 const SQLITE_STRICT_COLUMN_TYPES = ['INT', 'INTEGER', 'REAL', 'TEXT', 'BLOB', 'ANY'] as const;
 
+type TReceiptEncodedValue =
+  | null
+  | boolean
+  | number
+  | string
+  | Readonly<{ type: 'bigint'; value: string }>
+  | Readonly<{ type: 'bytes'; value: string }>
+  | Readonly<{ type: 'array'; value: readonly TReceiptEncodedValue[] }>
+  | Readonly<{ type: 'object'; value: readonly (readonly [string, TReceiptEncodedValue])[] }>;
+
 export const DB_RESOURCE_DEFAULT_MAX_OPEN_HANDLES = 32;
 export const DB_RESOURCE_DEFAULT_IDLE_HANDLE_TIMEOUT_MS = 60_000;
 
@@ -136,6 +147,23 @@ CREATE TABLE IF NOT EXISTS \`_vibecanvas_draft_change_evidence\` (
   \`sequence\` INTEGER PRIMARY KEY NOT NULL CHECK (\`sequence\` >= 1),
   \`kind\` TEXT NOT NULL CHECK (\`kind\` IN ('structure', 'sql')),
   \`sql\` TEXT NOT NULL CHECK (length(trim(\`sql\`)) > 0)
+) STRICT;
+`;
+
+const FUNCTION_OPERATION_RECEIPTS_SQL = `
+CREATE TABLE IF NOT EXISTS \`_vibecanvas_function_operation_receipts\` (
+  \`invocation_id\` TEXT NOT NULL,
+  \`operation_id\` TEXT NOT NULL,
+  \`attempt_id\` TEXT NOT NULL,
+  \`operation_name\` TEXT NOT NULL,
+  \`operation_fingerprint_sha256\` TEXT NOT NULL CHECK (
+    length(\`operation_fingerprint_sha256\`) = 64
+    AND \`operation_fingerprint_sha256\` = lower(\`operation_fingerprint_sha256\`)
+    AND \`operation_fingerprint_sha256\` NOT GLOB '*[^0-9a-f]*'
+  ),
+  \`output_json\` TEXT NOT NULL,
+  \`committed_at\` TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  PRIMARY KEY (\`invocation_id\`, \`operation_id\`)
 ) STRICT;
 `;
 
@@ -217,6 +245,31 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function encodeReceiptValue(value: unknown): TReceiptEncodedValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'bigint') return { type: 'bigint', value: value.toString() };
+  if (value instanceof Uint8Array) return { type: 'bytes', value: Buffer.from(value).toString('base64') };
+  if (Array.isArray(value)) return { type: 'array', value: value.map(encodeReceiptValue) };
+  if (isPlainObject(value)) {
+    return {
+      type: 'object',
+      value: Object.entries(value)
+        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([key, nested]) => [key, encodeReceiptValue(nested)] as const),
+    };
+  }
+  throw new ResourceError('DB_RESULT_LIMIT_EXCEEDED', 'Database receipt output is not serializable.');
+}
+
+function decodeReceiptValue(value: TReceiptEncodedValue): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (value.type === 'bigint') return BigInt(value.value);
+  if (value.type === 'bytes') return new Uint8Array(Buffer.from(value.value, 'base64'));
+  if (value.type === 'array') return value.value.map(decodeReceiptValue);
+  return Object.fromEntries(value.value.map(([key, nested]) => [key, decodeReceiptValue(nested)]));
 }
 
 function recordArgs(value: unknown): Record<string, unknown> {
@@ -647,6 +700,7 @@ export class DbResource implements ILocalResourceProvider {
       await mkdir(directory);
       const database = await this.#open(resourceId, false);
       await database.exec(APPLY_MARKER_SQL);
+      await database.exec(FUNCTION_OPERATION_RECEIPTS_SQL);
       await database.exec('DROP TABLE IF EXISTS `_vibecanvas_migrations`;');
       await this.#closeHandle(resourceId);
       await this.#verifyDatabaseFile(this.#databasePath(resourceId), new Set());
@@ -680,7 +734,7 @@ export class DbResource implements ILocalResourceProvider {
     }
   }
 
-  effect(operation: string, requirement: TResourceProviderRequirement, rawArgs: unknown): 'read' | 'write' | null {
+  effect(operation: string, requirement: TLocalResourceRequirement, rawArgs: unknown): 'read' | 'write' | null {
     if (requirement.kind !== 'db') return null;
     if (operation === 'query') return 'read';
     if (operation === 'execute') return 'write';
@@ -694,7 +748,142 @@ export class DbResource implements ILocalResourceProvider {
     const resourceId = validateHostId(context.resource.id);
     this.#assertAvailable(resourceId);
     if (context.requirement.kind !== 'db') throw new ResourceError('DB_RESOURCE_UNAVAILABLE', 'Bound resource is not a DbResource.');
-    return this.#track(resourceId, this.#dispatchGuest(context, context.requirement, operation, rawArgs));
+    return this.#track(resourceId, this.#dispatchGuest(
+      context,
+      context.requirement as TDbProviderRequirement,
+      operation,
+      rawArgs,
+    ));
+  }
+
+  async dispatchWithReceipt(
+    context: TDbResolvedProviderCall,
+    operation: string,
+    rawArgs: unknown,
+    identity: TLocalResourceOperationIdentity,
+    guard: IResourceWritePermitGuard,
+  ): Promise<TLocalResourceDispatchReceipt> {
+    const resourceId = validateHostId(context.resource.id);
+    this.#assertAvailable(resourceId);
+    if (
+      context.requirement.kind !== 'db'
+      || identity.resourceId !== resourceId
+      || !/^[0-9a-f]{64}$/.test(identity.operationFingerprintSha256)
+      || (context.tenant !== undefined && context.tenant.orgId !== identity.orgId)
+    ) throw new ResourceError('DB_RESOURCE_UNAVAILABLE', 'Database receipt identity does not match the resolved resource.');
+    const requirement = context.requirement as TDbProviderRequirement;
+    if (this.effect(operation, requirement, rawArgs) !== 'write') {
+      throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Durable database receipts apply only to write operations.');
+    }
+    return this.#track(resourceId, this.#serializeWrite(resourceId, async () => {
+      const database = await this.#open(resourceId, true);
+      const transaction = database.transaction(async (): Promise<TLocalResourceDispatchReceipt> => {
+        const statement = await database.prepare(`
+          SELECT operation_name, operation_fingerprint_sha256, output_json
+          FROM _vibecanvas_function_operation_receipts
+          WHERE invocation_id = ? AND operation_id = ?
+        `);
+        let prior: TNativeRow | undefined;
+        try {
+          prior = (await statement.all([identity.invocationId, identity.operationId]))[0] as TNativeRow | undefined;
+        } finally {
+          statement.close();
+        }
+        if (prior) {
+          if (
+            prior.operation_name !== operation
+            || prior.operation_fingerprint_sha256 !== identity.operationFingerprintSha256
+            || typeof prior.output_json !== 'string'
+          ) {
+            throw new ResourceError('DB_EXECUTE_FAILED', 'Database operation receipt conflicts with its mutation.');
+          }
+          let encoded: TReceiptEncodedValue;
+          try { encoded = JSON.parse(prior.output_json) as TReceiptEncodedValue; }
+          catch { throw new ResourceError('DB_EXECUTE_FAILED', 'Database operation receipt is invalid.'); }
+          await guard.assertCanCommit();
+          return { output: decodeReceiptValue(encoded), committed: true, replayed: true };
+        }
+        const output = await this.#dispatchGuestWriteDatabase(
+          database,
+          context,
+          requirement,
+          operation,
+          rawArgs,
+        );
+        const outputJson = JSON.stringify(encodeReceiptValue(output));
+        await guard.assertCanCommit();
+        const insert = await database.prepare(`
+          INSERT INTO _vibecanvas_function_operation_receipts (
+            invocation_id, operation_id, attempt_id, operation_name,
+            operation_fingerprint_sha256, output_json
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        try {
+          await insert.run([
+            identity.invocationId,
+            identity.operationId,
+            identity.attemptId,
+            operation,
+            identity.operationFingerprintSha256,
+            outputJson,
+          ]);
+        } finally {
+          insert.close();
+        }
+        return { output, committed: true, replayed: false };
+      });
+      try { return await transaction(); }
+      catch (error) {
+        if (error instanceof ResourceError) throw error;
+        throw new ResourceError('DB_EXECUTE_FAILED', 'Database receipt transaction failed.');
+      }
+    }));
+  }
+
+  async readCommittedOperation(
+    resource: TDbProviderResource,
+    request: Readonly<{ invocationId: string; operationId: string }>,
+  ): Promise<TLocalResourceCommittedOperation | null> {
+    const resourceId = validateHostId(resource.id);
+    this.#assertAvailable(resourceId);
+    if (resource.kind !== this.kind || request.invocationId.length === 0 || request.operationId.length === 0) {
+      throw new ResourceError('DB_RESOURCE_UNAVAILABLE', 'Database receipt identity is invalid.');
+    }
+    return this.#track(resourceId, (async () => {
+      const database = await this.#open(resourceId, true);
+      const statement = await database.prepare(`
+        SELECT invocation_id, operation_id, attempt_id, operation_name,
+          operation_fingerprint_sha256, output_json
+        FROM _vibecanvas_function_operation_receipts
+        WHERE invocation_id = ? AND operation_id = ?
+      `);
+      let row: TNativeRow | undefined;
+      try {
+        row = (await statement.all([request.invocationId, request.operationId]))[0] as TNativeRow | undefined;
+      } finally {
+        statement.close();
+      }
+      if (!row) return null;
+      if (
+        typeof row.invocation_id !== 'string'
+        || typeof row.operation_id !== 'string'
+        || typeof row.attempt_id !== 'string'
+        || typeof row.operation_name !== 'string'
+        || typeof row.operation_fingerprint_sha256 !== 'string'
+        || typeof row.output_json !== 'string'
+      ) throw new ResourceError('DB_EXECUTE_FAILED', 'Database operation receipt is invalid.');
+      let encoded: TReceiptEncodedValue;
+      try { encoded = JSON.parse(row.output_json) as TReceiptEncodedValue; }
+      catch { throw new ResourceError('DB_EXECUTE_FAILED', 'Database operation receipt is invalid.'); }
+      return {
+        invocationId: row.invocation_id,
+        operationId: row.operation_id,
+        attemptId: row.attempt_id,
+        operationName: row.operation_name,
+        operationFingerprintSha256: row.operation_fingerprint_sha256,
+        output: decodeReceiptValue(encoded),
+      };
+    })());
   }
 
   async reconcile(resource: TDbProviderResource): Promise<TLocalResourceReconcileResult> {
@@ -706,6 +895,7 @@ export class DbResource implements ILocalResourceProvider {
       await this.#verifiedSnapshotForeignKeys(this.#databasePath(resourceId));
       const database = await this.#open(resourceId, true);
       await database.exec(APPLY_MARKER_SQL);
+      await database.exec(FUNCTION_OPERATION_RECEIPTS_SQL);
       await database.exec('DROP TABLE IF EXISTS `_vibecanvas_migrations`;');
       await this.#removeDatabaseFiles(`${this.#databasePath(resourceId)}.pre-migration`);
       return { status: 'ready' as const };
@@ -1415,6 +1605,56 @@ export class DbResource implements ILocalResourceProvider {
       if (error instanceof ResourceError) throw error;
       throw new ResourceError('DB_RESOURCE_UNAVAILABLE', 'DbResource operation failed.');
     }
+  }
+
+  async #dispatchGuestWriteDatabase(
+    database: Database,
+    context: TDbResolvedProviderCall,
+    requirement: TDbProviderRequirement,
+    operation: string,
+    rawArgs: unknown,
+  ): Promise<unknown> {
+    const args = recordArgs(rawArgs);
+    if (operation === 'invoke') {
+      if (typeof args.operation !== 'string') {
+        throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Named database operation is invalid.');
+      }
+      const declared = requirement.operations?.[args.operation];
+      if (!declared) {
+        throw new ResourceError('DB_NAMED_OPERATION_UNKNOWN', `Named database operation "${args.operation}" is not declared.`);
+      }
+      if (declared.effect !== 'write' || !context.canWrite) {
+        throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Write access is not allowed for this database operation.');
+      }
+      const parameters = bindNamedParameters(requirement, args.operation, args.parameters);
+      const sql = boundedActorSql(declared.sql);
+      return declared.result === 'rows'
+        ? this.#queryGuestRows(database, sql, parameters)
+        : this.#runNative(database, sql, parameters);
+    }
+    if (operation !== 'execute' || requirement.arbitrarySql !== true || !context.canWrite) {
+      throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Database write operation is not allowed.');
+    }
+    if (args.operations !== undefined) {
+      if (
+        !Array.isArray(args.operations)
+        || args.operations.length < 1
+        || args.operations.length > EXECUTE_OPERATION_MAX_COUNT
+      ) throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute operations are invalid.');
+      let totalSql = 0;
+      const results: { rowsAffected: number; lastInsertRowId?: bigint }[] = [];
+      for (const value of args.operations) {
+        const item = recordArgs(value);
+        const sql = boundedActorSql(item.sql);
+        totalSql += sql.length;
+        if (totalSql > EXECUTE_TOTAL_SQL_MAX_LENGTH) {
+          throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute SQL exceeds the host limit.');
+        }
+        results.push(await this.#runNative(database, sql, bindParameters(item.parameters)));
+      }
+      return results;
+    }
+    return this.#runNative(database, boundedActorSql(args.sql), bindParameters(args.parameters));
   }
 
   async #executeLiveSqlDatabase(

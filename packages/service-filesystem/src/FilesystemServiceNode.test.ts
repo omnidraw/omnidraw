@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { EventEmitter } from 'events';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync, type FSWatcher } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { FilesystemServiceNode } from './FilesystemServiceNode';
+import type { TFilesystemNativeWatch } from './types';
 
 const TENANT_A = tenant('org-a', 'account-a');
 const TENANT_B = tenant('org-b', 'account-b');
@@ -41,6 +43,13 @@ async function nextEvent<T>(iterator: AsyncIterable<T>, timeoutMs = 3000): Promi
   return result.value;
 }
 
+const asyncFailingNativeWatch: TFilesystemNativeWatch = (_path, options) => {
+  const watcher = new EventEmitter() as unknown as FSWatcher;
+  options.signal.addEventListener('abort', () => watcher.emit('close'), { once: true });
+  queueMicrotask(() => watcher.emit('error', Object.assign(new Error('watch capacity exhausted'), { code: 'EMFILE' })));
+  return watcher;
+};
+
 describe('FilesystemServiceNode', () => {
   let tempRoot: string;
   let rootA: string;
@@ -55,7 +64,11 @@ describe('FilesystemServiceNode', () => {
     mkdirSync(rootB);
     rootA = realpathSync(rootA);
     rootB = realpathSync(rootB);
-    service = new FilesystemServiceNode(new EventPublisherService(), { watchTtlMs: 10_000 });
+    service = new FilesystemServiceNode(new EventPublisherService(), {
+      nativeWatch: asyncFailingNativeWatch,
+      watchPollIntervalMs: 15,
+      watchTtlMs: 10_000,
+    });
     service.registerRoot(TENANT_A, { filesystemId: 'fs-local', rootPath: rootA });
     service.registerRoot(TENANT_B, { filesystemId: 'fs-local', rootPath: rootB });
   });
@@ -283,7 +296,11 @@ describe('FilesystemServiceNode', () => {
 
   test('stale watches expire and root revocation tears down remaining authority', async () => {
     service.stop();
-    service = new FilesystemServiceNode(new EventPublisherService(), { watchTtlMs: 40 });
+    service = new FilesystemServiceNode(new EventPublisherService(), {
+      nativeWatch: asyncFailingNativeWatch,
+      watchPollIntervalMs: 15,
+      watchTtlMs: 40,
+    });
     service.registerRoot(TENANT_A, { filesystemId: 'fs-local', rootPath: rootA });
 
     const staleIterator = service.watch(TENANT_A, {

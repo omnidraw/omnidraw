@@ -1,7 +1,13 @@
-import { ResourceError } from '@vibecanvas/resource-runtime';
+import {
+  ResourceError,
+  type IResourceWritePermitGuard,
+} from '@vibecanvas/resource-runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   ILocalResourceProvider,
+  TLocalResourceCommittedOperation,
+  TLocalResourceDispatchReceipt,
+  TLocalResourceOperationIdentity,
   TLocalResolvedResourceCall,
   TLocalResource,
   TLocalResourceRequirement,
@@ -93,6 +99,29 @@ class ResourceManagementProvider implements ILocalResourceProvider {
       throw new ResourceError('RESOURCE_CALL_INVALID', 'Unknown resource management operation.');
     }
     return this.#dispatchManagement(context.tenant, context.resource, envelope.action, envelope.args);
+  }
+
+  dispatchWithReceipt(
+    context: TLocalResolvedResourceCall,
+    operation: string,
+    args: unknown,
+    identity: TLocalResourceOperationIdentity,
+    guard: IResourceWritePermitGuard,
+  ): Promise<TLocalResourceDispatchReceipt> {
+    if (operation === RESOURCE_MANAGEMENT_OPERATION || !this.#provider.dispatchWithReceipt) {
+      throw new ResourceError(
+        'RESOURCE_PROVIDER_UNAVAILABLE',
+        'Resource provider does not support durable function operation receipts.',
+      );
+    }
+    return this.#provider.dispatchWithReceipt(context, operation, args, identity, guard);
+  }
+
+  readCommittedOperation(
+    resource: TLocalResource,
+    request: Readonly<{ invocationId: string; operationId: string }>,
+  ): Promise<TLocalResourceCommittedOperation | null> {
+    return this.#provider.readCommittedOperation?.(resource, request) ?? Promise.resolve(null);
   }
 
   #envelope(value: unknown): TResourceManagementEnvelope {

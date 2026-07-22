@@ -2,6 +2,7 @@ import {
   type IWidgetBrowserUiArtifactReadCapabilityIssuer,
   type IWidgetArtifactReader,
   type IWidgetPublicationService,
+  type IWidgetRevisionReader,
   type IWidgetServerExecutionArtifactReadCapabilityIssuer,
   type TWidgetArtifactGcRequest,
   type TWidgetArtifactGcResult,
@@ -26,7 +27,8 @@ type TWidgetServiceCapability = IWidgetPublicationService
   & IWidgetBrowserUiArtifactReadCapabilityIssuer;
 
 type TWidgetServerArtifactCapability = IWidgetArtifactReader
-  & IWidgetServerExecutionArtifactReadCapabilityIssuer;
+  & IWidgetServerExecutionArtifactReadCapabilityIssuer
+  & Pick<IWidgetRevisionReader, 'getRevision'>;
 
 /** One physical widget artifact owner per organization placement, shared by accounts. */
 class WidgetServicePool extends TenantServicePool<WidgetService>
@@ -130,6 +132,7 @@ function createWidgetServerArtifactCapability(
   pool: WidgetServicePool,
 ): TWidgetServerArtifactCapability {
   return Object.freeze({
+    getRevision: pool.getRevision,
     issueServerExecutionArtifactReadCapability: pool.issueServerExecutionArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,

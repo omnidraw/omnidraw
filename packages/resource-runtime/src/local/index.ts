@@ -48,6 +48,7 @@ export type {
 } from './ResourceKeyValueStore';
 export type {
   IResourceKeyValuePersistence,
+  TResourceKeyValueCommittedOperation,
   TResourceKeyValueCompareAndSetResult,
   TResourceKeyValueDeleteResult,
   TResourceKeyValueEntry,
@@ -76,7 +77,10 @@ export { SecretStoreResource } from './SecretStoreResource';
 export type { TSecretStoreCompareAndSetResult } from './SecretStoreResource';
 export type {
   ILocalResourceProvider,
+  TLocalResourceCommittedOperation,
   TLocalResolvedResourceCall,
+  TLocalResourceDispatchReceipt,
+  TLocalResourceOperationIdentity,
   TLocalResource,
   TLocalResourceReconcileResult,
   TLocalResourceRequirement,

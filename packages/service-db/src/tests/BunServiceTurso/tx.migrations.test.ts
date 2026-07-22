@@ -8,11 +8,15 @@ import {
   DATABASE_SCHEMA_VERSION,
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_ORGANIZATION_ID,
+  FUNCTION_RUNTIME_MIGRATION_NAME,
+  FUNCTION_RUNTIME_MIGRATION_VERSION,
   INITIAL_MIGRATION_NAME,
   INITIAL_MIGRATION_VERSION,
   WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+  WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
 } from '../../../src/CONSTANTS';
 import {
+  FUNCTION_RUNTIME_MIGRATION,
   INITIAL_MIGRATION,
   WIDGET_REVISION_SEQUENCE_MIGRATION,
 } from '../../../src/migrations/CONSTANTS';
@@ -28,8 +32,8 @@ import { fxPreflightMigrationState } from '../../../src/DbServiceTurso/fx.migrat
 import { txRunMigrations } from '../../../src/DbServiceTurso/tx.migrations';
 import { listEmbeddedMigrationFiles } from '../../../src/_embedded-migrations';
 import {
-  EXPECTED_APPLICATION_TABLES,
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
+  EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES,
 } from '../../../src/schema/expected-schema';
 
 const temporaryRoots: string[] = [];
@@ -79,9 +83,14 @@ function syntheticPreflightArgs() {
         checksumSha256: 'a'.repeat(64),
       },
       {
-        version: DATABASE_SCHEMA_VERSION,
+        version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
         name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
         checksumSha256: 'b'.repeat(64),
+      },
+      {
+        version: FUNCTION_RUNTIME_MIGRATION_VERSION,
+        name: FUNCTION_RUNTIME_MIGRATION_NAME,
+        checksumSha256: 'c'.repeat(64),
       },
     ],
   } as const;
@@ -224,12 +233,18 @@ describe('ordered managed migration runner', () => {
       expect.objectContaining({
         type: 'sql',
         name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
-        version: DATABASE_SCHEMA_VERSION,
+        version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
+      }),
+      expect.objectContaining({
+        type: 'sql',
+        name: FUNCTION_RUNTIME_MIGRATION_NAME,
+        version: FUNCTION_RUNTIME_MIGRATION_VERSION,
       }),
     ]);
     expect(listEmbeddedMigrationFiles()).toEqual([
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+      FUNCTION_RUNTIME_MIGRATION_NAME,
     ]);
 
     const migrationDirectory = new URL('../../../src/migrations/', import.meta.url).pathname;
@@ -239,6 +254,7 @@ describe('ordered managed migration runner', () => {
     expect(discovered).toEqual([
       INITIAL_MIGRATION_NAME,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+      FUNCTION_RUNTIME_MIGRATION_NAME,
     ]);
   });
 
@@ -266,8 +282,15 @@ describe('ordered managed migration runner', () => {
         application_version: '1.2.3-test',
       },
       {
-        version: DATABASE_SCHEMA_VERSION,
+        version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
         name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
+        checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        applied_at_ms: 1_753_113_600_000,
+        application_version: '1.2.3-test',
+      },
+      {
+        version: FUNCTION_RUNTIME_MIGRATION_VERSION,
+        name: FUNCTION_RUNTIME_MIGRATION_NAME,
         checksum_sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
         applied_at_ms: 1_753_113_600_000,
         application_version: '1.2.3-test',
@@ -298,7 +321,9 @@ describe('ordered managed migration runner', () => {
     const tables = tableRows
       .filter((row) => row.schema === 'main' && row.type === 'table' && !String(row.name).startsWith('sqlite_'))
       .sort((left, right) => String(left.name).localeCompare(String(right.name)));
-    expect(tables.map((row) => row.name)).toEqual([...EXPECTED_APPLICATION_TABLES].sort());
+    expect(tables.map((row) => row.name)).toEqual(
+      [...EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES].sort(),
+    );
     expect(tables.every((row) => row.strict === 1)).toBe(true);
   });
 
@@ -344,7 +369,8 @@ describe('ordered managed migration runner', () => {
       SELECT version, name FROM schema_migrations ORDER BY version
     `)).all()).toEqual([
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
-      { version: DATABASE_SCHEMA_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
+      { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
+      { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
     ]);
 
     const ledger = await (await db.prepare('SELECT * FROM schema_migrations ORDER BY version')).all();
@@ -658,11 +684,11 @@ describe('ordered managed migration runner', () => {
         version, name, checksum_sha256, applied_at_ms, application_version
       ) VALUES (?, ?, ?, 2, 'forged-v1')
     `)).run(
-      DATABASE_SCHEMA_VERSION,
+      WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION,
       WIDGET_REVISION_SEQUENCE_MIGRATION_NAME,
       await migrationChecksum(WIDGET_REVISION_SEQUENCE_MIGRATION.path),
     );
-    await db.exec(`PRAGMA user_version = ${DATABASE_SCHEMA_VERSION}`);
+    await db.exec(`PRAGMA user_version = ${WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION}`);
     const ledgerBefore = await (
       await db.prepare('SELECT * FROM schema_migrations ORDER BY version')
     ).all();
@@ -677,7 +703,7 @@ describe('ordered managed migration runner', () => {
     expect(await (
       await db.prepare('SELECT * FROM schema_migrations ORDER BY version')
     ).all()).toEqual(ledgerBefore);
-    expect(await pragma(db, 'user_version')).toBe(DATABASE_SCHEMA_VERSION);
+    expect(await pragma(db, 'user_version')).toBe(WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION);
   });
 
   test('refuses a v0 foreign-key orphan before upgrade and preserves the damage', async () => {
@@ -763,7 +789,8 @@ describe('ordered managed migration runner', () => {
       SELECT version, name FROM schema_migrations ORDER BY version
     `)).all()).toEqual([
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
-      { version: DATABASE_SCHEMA_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
+      { version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION, name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME },
+      { version: FUNCTION_RUNTIME_MIGRATION_VERSION, name: FUNCTION_RUNTIME_MIGRATION_NAME },
     ]);
   });
 
@@ -962,6 +989,15 @@ describe('read-only startup preflight', () => {
       databasePath: path.join(homeDir, 'main.db'),
     })).resolves.toEqual({ status: 'empty' });
 
+    await fs.copyFile(
+      FUNCTION_RUNTIME_MIGRATION.path,
+      path.join(migrationDir, FUNCTION_RUNTIME_MIGRATION_NAME),
+    );
+    await expect(preflightDbServiceDatabase({
+      homeDir,
+      databasePath: path.join(homeDir, 'main.db'),
+    })).resolves.toEqual({ status: 'empty' });
+
     await fs.rm(path.join(migrationDir, INITIAL_MIGRATION_NAME));
     await expect(preflightDbServiceDatabase({
       homeDir,
@@ -1023,7 +1059,8 @@ describe('read-only startup preflight', () => {
       currentVersion: DATABASE_SCHEMA_VERSION,
       appliedMigrations: [
         { name: INITIAL_MIGRATION_NAME, version: INITIAL_MIGRATION_VERSION },
-        { name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME, version: DATABASE_SCHEMA_VERSION },
+        { name: WIDGET_REVISION_SEQUENCE_MIGRATION_NAME, version: WIDGET_REVISION_SEQUENCE_MIGRATION_VERSION },
+        { name: FUNCTION_RUNTIME_MIGRATION_NAME, version: FUNCTION_RUNTIME_MIGRATION_VERSION },
       ],
     });
     expect((await fs.readdir(homeDir)).sort()).toEqual(entriesBefore);

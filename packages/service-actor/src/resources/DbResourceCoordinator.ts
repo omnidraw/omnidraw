@@ -15,11 +15,6 @@ import type {
 import {
   DbResourceCoordinator as LocalDbResourceCoordinator,
 } from '@vibecanvas/resource-runtime/local';
-import {
-  DEFAULT_OSS_ACCOUNT_ID,
-  DEFAULT_OSS_CELL_ID,
-  DEFAULT_OSS_ORGANIZATION_ID,
-} from '@vibecanvas/service-db/CONSTANTS';
 import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import type { ActorSupervisor } from '../ActorSupervisor';
 import type { ActorResourceManager } from './ActorResourceManager';
@@ -27,23 +22,13 @@ import type { DbResource } from './DbResource';
 
 type TTenantContext = Parameters<IResourceUseCoordinator['inspect']>[0];
 
-const LEGACY_ACTOR_TENANT = Object.freeze({
-  orgId: DEFAULT_OSS_ORGANIZATION_ID,
-  accountId: DEFAULT_OSS_ACCOUNT_ID,
-  cellId: DEFAULT_OSS_CELL_ID,
-  placementEpoch: 1,
-  roles: Object.freeze(['owner']),
-  capabilities: Object.freeze(['*']),
-  requestId: 'legacy-actor-resource-coordinator',
-}) satisfies TTenantContext;
-
 type TDbResourceCoordinatorConfig = {
+  readonly tenant: TTenantContext;
   readonly db: TTenantDb;
   readonly resourceManager: ActorResourceManager;
   readonly supervisor: ActorSupervisor;
   readonly dbResource: DbResource;
   readonly crypto: Pick<Crypto, 'randomUUID'>;
-  readonly tenant?: TTenantContext;
 };
 
 class ActorResourceUseCoordinator implements IResourceUseCoordinator {
@@ -136,7 +121,7 @@ class ActorResourceUseCoordinator implements IResourceUseCoordinator {
 export class DbResourceCoordinator extends LocalDbResourceCoordinator {
   constructor(config: TDbResourceCoordinatorConfig) {
     super({
-      tenant: config.tenant ?? LEGACY_ACTOR_TENANT,
+      tenant: config.tenant,
       controlStore: config.db,
       resourceManager: config.resourceManager,
       useCoordinator: new ActorResourceUseCoordinator(config.db, config.supervisor),

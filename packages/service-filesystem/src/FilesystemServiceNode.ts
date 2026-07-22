@@ -3,6 +3,7 @@ import { fnScopedKey } from '@vibecanvas/tenant-core';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   existsSync,
+  lstatSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -12,10 +13,11 @@ import {
   writeFileSync,
   type FSWatcher,
 } from 'fs';
-import { dirname, isAbsolute, relative, resolve, sep, win32 } from 'path';
+import { basename, dirname, isAbsolute, relative, resolve, sep, win32 } from 'path';
 import type { IFilesystemService } from './IFilesystemService';
 import type {
   TFilesystemPathArgs,
+  TFilesystemNativeWatch,
   TFilesystemRenameArgs,
   TFilesystemRootRegistrationArgs,
   TFilesystemScopeArgs,
@@ -28,12 +30,20 @@ import type {
 
 type TWatchEntry = {
   rootKey: string;
-  watcher: FSWatcher;
-  abortController: AbortController;
+  path: string;
+  tenant: TTenantContext;
+  filesystemId: string;
+  virtualPath: string;
+  watcher: FSWatcher | null;
+  abortController: AbortController | null;
+  pollTimer: ReturnType<typeof setInterval> | null;
+  snapshot: TWatchSnapshot | null;
   listeners: Set<string>;
   subscriptions: Map<string, AsyncIterator<TFilesystemWatchEvent>>;
   timeouts: Map<string, ReturnType<typeof setTimeout>>;
 };
+
+type TWatchSnapshot = Map<string, string>;
 
 type TPathScopeFailure = 'capability_not_found' | 'outside_root';
 
@@ -42,6 +52,9 @@ type TResolvedPath =
   | { ok: false; reason: TPathScopeFailure };
 
 const DEFAULT_WATCH_TTL_MS = 60 * 1000;
+const DEFAULT_WATCH_POLL_INTERVAL_MS = 500;
+const MIN_WATCH_POLL_INTERVAL_MS = 10;
+const MAX_WATCH_POLL_INTERVAL_MS = 60 * 1000;
 
 // TODO: [S57]
 export class FilesystemServiceNode implements IFilesystemService {
@@ -50,12 +63,22 @@ export class FilesystemServiceNode implements IFilesystemService {
   readonly #roots = new Map<string, string>();
   readonly #watchersByPath = new Map<string, TWatchEntry>();
   readonly #watchIdToPath = new Map<string, string>();
+  readonly #nativeWatch: TFilesystemNativeWatch;
+  readonly #watchPollIntervalMs: number;
   readonly #watchTtlMs: number;
 
   constructor(
     private readonly eventPublisher: IEventPublisherService,
     options: TFilesystemServiceOptions = {},
   ) {
+    this.#nativeWatch = options.nativeWatch ?? watch;
+    const requestedPollIntervalMs = options.watchPollIntervalMs ?? DEFAULT_WATCH_POLL_INTERVAL_MS;
+    this.#watchPollIntervalMs = Number.isFinite(requestedPollIntervalMs)
+      ? Math.min(
+        MAX_WATCH_POLL_INTERVAL_MS,
+        Math.max(MIN_WATCH_POLL_INTERVAL_MS, Math.floor(requestedPollIntervalMs)),
+      )
+      : DEFAULT_WATCH_POLL_INTERVAL_MS;
     this.#watchTtlMs = options.watchTtlMs ?? DEFAULT_WATCH_TTL_MS;
   }
 
@@ -180,36 +203,24 @@ export class FilesystemServiceNode implements IFilesystemService {
     let entry = this.#watchersByPath.get(pathKey);
 
     if (!entry) {
-      const abortController = new AbortController();
-      const watcher = watch(resolved.path, { signal: abortController.signal });
       entry = {
         rootKey: resolved.rootKey,
-        watcher,
-        abortController,
+        path: resolved.path,
+        tenant,
+        filesystemId: args.filesystemId,
+        virtualPath: resolved.virtualPath,
+        watcher: null,
+        abortController: null,
+        pollTimer: null,
+        snapshot: this.#readWatchSnapshot(resolved.path),
         listeners: new Set(),
         subscriptions: new Map(),
         timeouts: new Map(),
       };
-
-      watcher.on('change', (eventType: 'rename' | 'change', fileName) => {
-        if (typeof fileName !== 'string') return;
-        this.eventPublisher.publishFilesystemEvent(
-          tenant,
-          args.filesystemId,
-          resolved.virtualPath,
-          { eventType, fileName },
-        );
-      });
-
-      watcher.on('close', () => {
-        this.#releasePath(pathKey);
-      });
-
-      watcher.on('error', () => {
-        this.#releasePath(pathKey);
-      });
-
       this.#watchersByPath.set(pathKey, entry);
+      entry.pollTimer = setInterval(() => this.#pollWatchPath(pathKey), this.#watchPollIntervalMs);
+      entry.pollTimer.unref?.();
+      this.#startNativeWatch(pathKey, entry);
     }
 
     entry.listeners.add(watchKey);
@@ -371,6 +382,92 @@ export class FilesystemServiceNode implements IFilesystemService {
     }, this.#watchTtlMs));
   }
 
+  #startNativeWatch(pathKey: string, entry: TWatchEntry): void {
+    const abortController = new AbortController();
+    let watcher: FSWatcher;
+    try {
+      watcher = this.#nativeWatch(entry.path, { signal: abortController.signal });
+    } catch {
+      abortController.abort();
+      return;
+    }
+
+    entry.watcher = watcher;
+    entry.abortController = abortController;
+    watcher.on('change', () => {
+      const currentEntry = this.#watchersByPath.get(pathKey);
+      if (currentEntry !== entry || currentEntry.watcher !== watcher) return;
+      this.#pollWatchPath(pathKey);
+    });
+    watcher.on('close', () => {
+      if (entry.watcher !== watcher) return;
+      entry.watcher = null;
+      entry.abortController = null;
+    });
+    watcher.on('error', () => {
+      if (entry.watcher !== watcher) return;
+      entry.watcher = null;
+      entry.abortController = null;
+      abortController.abort();
+    });
+  }
+
+  #pollWatchPath(pathKey: string): void {
+    const entry = this.#watchersByPath.get(pathKey);
+    if (!entry) return;
+    const nextSnapshot = this.#readWatchSnapshot(entry.path);
+    if (!nextSnapshot) return;
+    const previousSnapshot = entry.snapshot;
+    entry.snapshot = nextSnapshot;
+    if (!previousSnapshot) return;
+
+    for (const fileName of previousSnapshot.keys()) {
+      if (!nextSnapshot.has(fileName)) this.#publishWatchEvent(entry, 'rename', fileName);
+    }
+    for (const [fileName, fingerprint] of nextSnapshot) {
+      const previousFingerprint = previousSnapshot.get(fileName);
+      if (previousFingerprint === undefined) {
+        this.#publishWatchEvent(entry, 'rename', fileName);
+      } else if (previousFingerprint !== fingerprint) {
+        this.#publishWatchEvent(entry, 'change', fileName);
+      }
+    }
+  }
+
+  #readWatchSnapshot(path: string): TWatchSnapshot | null {
+    try {
+      const stats = lstatSync(path);
+      if (!stats.isDirectory()) {
+        return new Map([[basename(path), this.#watchFingerprint(stats)]]);
+      }
+
+      const snapshot: TWatchSnapshot = new Map();
+      for (const dirent of readdirSync(path, { withFileTypes: true })) {
+        try {
+          snapshot.set(dirent.name, this.#watchFingerprint(lstatSync(resolve(path, dirent.name))));
+        } catch {
+          snapshot.set(dirent.name, `entry:${dirent.isDirectory() ? 'directory' : dirent.isFile() ? 'file' : 'other'}`);
+        }
+      }
+      return snapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  #watchFingerprint(stats: import('fs').Stats): string {
+    return `${stats.mode}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+  }
+
+  #publishWatchEvent(entry: TWatchEntry, eventType: 'rename' | 'change', fileName: string): void {
+    this.eventPublisher.publishFilesystemEvent(
+      entry.tenant,
+      entry.filesystemId,
+      entry.virtualPath,
+      { eventType, fileName },
+    );
+  }
+
   #unwatchKeys(watchKey: string): void {
     const pathKey = this.#watchIdToPath.get(watchKey);
     if (!pathKey) return;
@@ -391,7 +488,8 @@ export class FilesystemServiceNode implements IFilesystemService {
     if (entry.listeners.size > 0) return;
 
     this.#watchersByPath.delete(pathKey);
-    entry.abortController.abort();
+    if (entry.pollTimer !== null) clearInterval(entry.pollTimer);
+    entry.abortController?.abort();
   }
 
   #releasePath(pathKey: string): void {
@@ -399,7 +497,8 @@ export class FilesystemServiceNode implements IFilesystemService {
     if (!entry) return;
 
     this.#watchersByPath.delete(pathKey);
-    entry.abortController.abort();
+    if (entry.pollTimer !== null) clearInterval(entry.pollTimer);
+    entry.abortController?.abort();
 
     for (const watchKey of entry.listeners) {
       this.#watchIdToPath.delete(watchKey);

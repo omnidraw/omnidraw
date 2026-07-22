@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   fnCanonicalizeWidgetContractPayload,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
   type IWidgetArtifactBuilder,
   type IWidgetArtifactMutationCoordinator,
   type IWidgetArtifactStore,
@@ -129,17 +130,24 @@ function successfulBuilder(bytes = new TextEncoder().encode('immutable ui artifa
   return {
     async build(_tenant: TTenantContext, request: TWidgetBuildRequest): Promise<TWidgetBuildResult> {
       const uiDigestSha256 = sha256(bytes);
+      const functionDescriptors = Object.freeze([]);
+      const functionDescriptorsDigestSha256 = sha256(new TextEncoder().encode(
+        fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors),
+      ));
       return Object.freeze({
         sourceSnapshotId: request.snapshot.id,
         sourceDigestSha256: request.snapshot.digestSha256,
         builderIdentity: request.builderIdentity,
         canonicalManifestJson: request.canonicalManifestJson,
+        functionDescriptors,
+        functionDescriptorsDigestSha256,
         contractDigestSha256: sha256(new TextEncoder().encode(
           fnCanonicalizeWidgetContractPayload({
             canonicalManifestJson: request.canonicalManifestJson,
             uiDigestSha256,
             serverDigestSha256: null,
             runtimeAbi: null,
+            functionDescriptorsDigestSha256,
           }),
         )),
         uiArtifact: Object.freeze({ kind: 'ui', digestSha256: uiDigestSha256, bytes }),

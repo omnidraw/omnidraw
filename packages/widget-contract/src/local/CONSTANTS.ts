@@ -5,4 +5,11 @@ export const WIDGET_ARTIFACT_MAX_BYTES = 16 * 1024 * 1024;
 export const WIDGET_ARTIFACT_BLOB_DIRECTORY = 'blobs';
 export const WIDGET_ARTIFACT_DIGEST_ALGORITHM = 'sha256';
 export const WIDGET_ARTIFACT_TEMP_SUFFIX = '.tmp';
-export const WIDGET_BUILD_DEFAULT_ALLOWED_PACKAGE_IMPORTS: readonly string[] = Object.freeze([]);
+export const WIDGET_BUILD_DEFAULT_ALLOWED_UI_PACKAGE_IMPORTS: readonly string[] = Object.freeze([
+  '@vibecanvas/sdk/function-client',
+  '@vibecanvas/sdk/widget',
+]);
+export const WIDGET_BUILD_DEFAULT_ALLOWED_SERVER_PACKAGE_IMPORTS: readonly string[] = Object.freeze([
+  '@vibecanvas/sdk/server',
+  'zod',
+]);

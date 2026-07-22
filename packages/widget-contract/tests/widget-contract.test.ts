@@ -2,10 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   ZWidgetManifestV2,
+  ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnGenerateWidgetServerFunctionClientModule,
   fnNormalizeWidgetRelativePath,
   fnValidateWidgetResourceBindings,
+  fnValidateWidgetServerFunctionDescriptors,
   fnWidgetManifestAllowsResource,
   fnWidgetRevisionArtifactsMatchManifest,
   type IWidgetArtifactBuilder,
@@ -14,6 +18,7 @@ import {
   type TWidgetManifestV2,
   type TWidgetRevisionDescriptor,
 } from '../src';
+import { TEST_SERVER_FUNCTION_DESCRIPTOR } from './function-descriptor.fixture';
 
 const tenant: TTenantContext = {
   orgId: 'org-a',
@@ -46,6 +51,8 @@ const revision: TWidgetRevisionDescriptor = {
   revisionNumber: 1,
   manifest: serverManifest,
   canonicalManifestJson: fnCanonicalizeWidgetManifest(serverManifest),
+  functionDescriptors: [TEST_SERVER_FUNCTION_DESCRIPTOR],
+  functionDescriptorsDigestSha256: 'functions-digest',
   contractDigestSha256: 'contract-digest',
   uiArtifact: {
     orgId: 'org-a',
@@ -272,9 +279,54 @@ describe('widget publication contract invariants', () => {
       uiDigestSha256: 'ui-digest',
       serverDigestSha256: 'server-digest',
       runtimeAbi: 'vibecanvas:1',
+      functionDescriptorsDigestSha256: 'functions-digest',
     })).toBe(
-      '{"format":"vibecanvas.widget-contract.v1","canonicalManifestJson":"{\\"schemaVersion\\":2}","uiDigestSha256":"ui-digest","serverDigestSha256":"server-digest","runtimeAbi":"vibecanvas:1"}',
+      '{"format":"vibecanvas.widget-contract.v2","canonicalManifestJson":"{\\"schemaVersion\\":2}","uiDigestSha256":"ui-digest","serverDigestSha256":"server-digest","runtimeAbi":"vibecanvas:1","functionDescriptorsDigestSha256":"functions-digest"}',
     );
+  });
+
+  test('normalizes generated descriptors and enforces fn/fx/tx resource ceilings', () => {
+    expect(ZWidgetServerFunctionDescriptors.parse([TEST_SERVER_FUNCTION_DESCRIPTOR]))
+      .toEqual([TEST_SERVER_FUNCTION_DESCRIPTOR]);
+    expect(fnValidateWidgetServerFunctionDescriptors(serverManifest, [{
+      ...TEST_SERVER_FUNCTION_DESCRIPTOR,
+      modulePath: undefined,
+    }])).toMatchObject({ valid: false, reason: 'missing_module_path' });
+    expect(ZWidgetServerFunctionDescriptors.safeParse([{
+      ...TEST_SERVER_FUNCTION_DESCRIPTOR,
+      modulePath: '../server/run.server.ts',
+    }]).success).toBe(false);
+    expect(fnValidateWidgetServerFunctionDescriptors(serverManifest, [{
+      ...TEST_SERVER_FUNCTION_DESCRIPTOR,
+      effect: 'fx',
+      resources: [{ slot: 'preferences', effect: 'read' }],
+    }])).toEqual({ valid: true });
+    expect(fnValidateWidgetServerFunctionDescriptors(serverManifest, [{
+      ...TEST_SERVER_FUNCTION_DESCRIPTOR,
+      effect: 'fx',
+      resources: [{ slot: 'preferences', effect: 'write' }],
+    }])).toMatchObject({ valid: false, reason: 'fx_has_write_resource' });
+    expect(ZWidgetServerFunctionDescriptors.safeParse([{
+      ...TEST_SERVER_FUNCTION_DESCRIPTOR,
+      wait: { until: 'tomorrow' },
+    }]).success).toBe(false);
+    expect(fnCanonicalizeWidgetServerFunctionDescriptors([
+      { ...TEST_SERVER_FUNCTION_DESCRIPTOR, exportName: 'zeta' },
+      { ...TEST_SERVER_FUNCTION_DESCRIPTOR, exportName: 'alpha' },
+    ])).toContain('"exportName":"alpha"');
+    expect(fnGenerateWidgetServerFunctionClientModule({
+      descriptors: [
+        { ...TEST_SERVER_FUNCTION_DESCRIPTOR, exportName: 'zeta' },
+        { ...TEST_SERVER_FUNCTION_DESCRIPTOR, exportName: 'alpha' },
+      ],
+      serverModuleSpecifier: '../server/index',
+    })).toBe([
+      'import { createServerFunctionProxy as __vibecanvasCreateProxy } from "@vibecanvas/sdk/function-client";',
+      'import type { TServerFunctionClientOf as __VibecanvasClientOf } from "@vibecanvas/sdk/function-client";',
+      'export const alpha: __VibecanvasClientOf<typeof import("../server/index")["alpha"]> = __vibecanvasCreateProxy("alpha");',
+      'export const zeta: __VibecanvasClientOf<typeof import("../server/index")["zeta"]> = __vibecanvasCreateProxy("zeta");',
+      '',
+    ].join('\n'));
   });
 
   test('declares only logical resource access', () => {
@@ -370,6 +422,10 @@ describe('widget publication contract invariants', () => {
         sourceDigestSha256: request.snapshot.digestSha256,
         builderIdentity: request.builderIdentity,
         canonicalManifestJson: request.canonicalManifestJson,
+        functionDescriptors: request.manifest.server === undefined
+          ? []
+          : [TEST_SERVER_FUNCTION_DESCRIPTOR],
+        functionDescriptorsDigestSha256: 'functions-digest',
         contractDigestSha256: 'contract-digest',
         uiArtifact: { kind: 'ui', digestSha256: 'ui-digest', bytes: new Uint8Array([1]) },
         serverArtifact: request.manifest.server === undefined

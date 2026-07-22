@@ -587,6 +587,8 @@ describe('ActorResourceKeyValueStore', () => {
       async set() { return entry; },
       async delete() { return { deleted: true }; },
       async compareAndSet() { return { ok: true, entry }; },
+      async mutateWithReceipt() { throw new Error('Unexpected receipt mutation.'); },
+      async readCommittedOperation() { return null; },
       async close() {},
     };
     const resource = new SecretStoreResource(persistence);

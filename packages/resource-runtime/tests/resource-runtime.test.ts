@@ -85,8 +85,12 @@ describe('resource-runtime public contracts', () => {
   test('fences decoded write capabilities by tenant, attempt, epoch, and expiry', () => {
     const claims = {
       orgId: 'org-a',
+      permitId: 'permit-a',
       resourceId: 'resource-a',
+      invocationId: 'invocation-a',
       operation: 'set',
+      operationId: 'operation-a',
+      operationFingerprintSha256: 'a'.repeat(64),
       attemptId: 'attempt-a',
       leaseEpoch: 3,
       expiresAtMs: 200,
@@ -97,7 +101,10 @@ describe('resource-runtime public contracts', () => {
       nowMs: 100,
       orgId: 'org-a',
       resourceId: 'resource-a',
+      invocationId: 'invocation-a',
       operation: 'set',
+      operationId: 'operation-a',
+      operationFingerprintSha256: 'a'.repeat(64),
       attemptId: 'attempt-a',
       leaseEpoch: 3,
     })).toBe(true);
@@ -105,7 +112,10 @@ describe('resource-runtime public contracts', () => {
       nowMs: 200,
       orgId: 'org-a',
       resourceId: 'resource-a',
+      invocationId: 'invocation-a',
       operation: 'set',
+      operationId: 'operation-a',
+      operationFingerprintSha256: 'a'.repeat(64),
       attemptId: 'attempt-a',
       leaseEpoch: 3,
     })).toBe(false);

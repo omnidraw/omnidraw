@@ -10,16 +10,27 @@
     "./actor": {
       "types": "./dist/actor.d.ts",
       "default": "./dist/actor.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./function-client": {
+      "types": "./dist/function-client.d.ts",
+      "default": "./dist/function-client.js"
     }
   },
   "files": [
     "dist",
     "actor",
+    "function-client",
+    "server",
     "widget"
   ],
   "scripts": {
     "build": "bun scripts/build.ts",
-    "test": "bun test --pass-with-no-tests"
+    "test": "bun test --pass-with-no-tests",
+    "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
     "@arrow-js/core": "^1.0.6",

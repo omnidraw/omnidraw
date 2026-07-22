@@ -5,10 +5,11 @@ export function fnCanonicalizeWidgetContractPayload(
   input: TWidgetContractPayloadInput,
 ): string {
   return JSON.stringify({
-    format: 'vibecanvas.widget-contract.v1',
+    format: 'vibecanvas.widget-contract.v2',
     canonicalManifestJson: input.canonicalManifestJson,
     uiDigestSha256: input.uiDigestSha256,
     serverDigestSha256: input.serverDigestSha256,
     runtimeAbi: input.runtimeAbi,
+    functionDescriptorsDigestSha256: input.functionDescriptorsDigestSha256,
   });
 }

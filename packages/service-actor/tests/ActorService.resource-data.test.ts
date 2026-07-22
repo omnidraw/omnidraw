@@ -7,7 +7,7 @@ import { ActorService, type IActorResourceService } from '../src/ActorService';
 import { ActorResourceError } from '../src/resources/ActorResourceError';
 import { SecretStoreDatabaseKeyProvider } from '../src/resources/SecretStoreKeyProvider';
 import { createTestCrypto, testUuid } from './test-uuid';
-import { bindTestTenantDb, createTestTenantEvents, type TActorTestDb } from './tenant.fixture';
+import { bindTestTenantDb, createTestTenantEvents, TEST_TENANT, type TActorTestDb } from './tenant.fixture';
 
 describe('ActorService KV and secret management', () => {
   let rootDir = '';
@@ -29,6 +29,7 @@ describe('ActorService KV and secret management', () => {
     db = bindTestTenantDb(dbService);
     testCrypto = createTestCrypto('actor-service-resource-data');
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,
@@ -51,6 +52,7 @@ describe('ActorService KV and secret management', () => {
 
   test('rejects a second legacy ActorService owner for the same resource root', async () => {
     const competing = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,
@@ -157,6 +159,7 @@ describe('ActorService KV and secret management', () => {
     expect((await stat(join(dataRoot, secrets.id, 'data.db'))).isFile()).toBe(true);
     await service.stop();
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,
@@ -192,6 +195,7 @@ describe('ActorService KV and secret management', () => {
     await service.stop();
     const before = await readFile(databasePath);
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,
@@ -228,6 +232,7 @@ describe('ActorService KV and secret management', () => {
       WHERE resource_id = ?
     `)).run(secrets.id);
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,
@@ -263,6 +268,7 @@ describe('ActorService KV and secret management', () => {
     await rm(missingPath);
 
     service = new ActorService({
+      tenant: TEST_TENANT,
       db,
       crypto: testCrypto,
       configPath,

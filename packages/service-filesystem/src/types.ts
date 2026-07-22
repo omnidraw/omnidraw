@@ -1,3 +1,5 @@
+import type { FSWatcher } from 'fs';
+
 export type TFilesystemWatchEvent = {
   eventType: 'rename' | 'change';
   fileName: string;
@@ -33,8 +35,15 @@ export type TFilesystemWatchControlArgs = TFilesystemScopeArgs & {
 };
 
 export type TFilesystemServiceOptions = {
+  nativeWatch?: TFilesystemNativeWatch;
+  watchPollIntervalMs?: number;
   watchTtlMs?: number;
 };
+
+export type TFilesystemNativeWatch = (
+  path: string,
+  options: Readonly<{ signal: AbortSignal }>,
+) => FSWatcher;
 
 export type TFilesystemListArgs = {
   path: string;

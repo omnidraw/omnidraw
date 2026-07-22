@@ -6,5 +6,5 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/widget.ts", "src/widget-bridge.ts", "src/actor.ts", "src/shared.ts", "src/types.ts"]
+  "include": ["src/widget.ts", "src/widget-bridge.ts", "src/function-client.ts", "src/server.ts", "src/actor.ts", "src/shared.ts", "src/types.ts"]
 }

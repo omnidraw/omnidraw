@@ -40,10 +40,23 @@ import type {
   TWidgetRevisionPruneRequest,
   TWidgetRevisionPruneResult,
   TWidgetRollbackInput,
+  TWidgetServerFunctionDescriptor,
+  TWidgetServerFunctionDescriptorExtractionRequest,
 } from './types';
 
 export interface IWidgetArtifactBuilder {
   build(tenant: TTenantContext, request: TWidgetBuildRequest): Promise<TWidgetBuildResult>;
+}
+
+/**
+ * Loads an already-built server artifact only inside a bounded registration
+ * sandbox and returns its generated, serializable named-export descriptors.
+ */
+export interface IWidgetServerFunctionDescriptorExtractor {
+  extractServerFunctionDescriptors(
+    tenant: TTenantContext,
+    request: TWidgetServerFunctionDescriptorExtractionRequest,
+  ): Promise<readonly TWidgetServerFunctionDescriptor[]>;
 }
 
 export interface IWidgetBrowserUiArtifactReadCapabilityIssuer {

@@ -88,6 +88,14 @@ export const EXPECTED_APPLICATION_TABLES = [
 
 export const EXPECTED_APPLICATION_TABLE_COUNT = EXPECTED_APPLICATION_TABLES.length;
 
+export const EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES = [
+  ...EXPECTED_APPLICATION_TABLES,
+  "function_definitions",
+] as const;
+
+export const EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLE_COUNT =
+  EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES.length;
+
 export const EXPECTED_APPLICATION_SCHEMA_OBJECTS = Object.freeze({
   views: Object.freeze([]),
   triggers: Object.freeze([]),
@@ -444,6 +452,162 @@ export const EXPECTED_SCHEMA = {
   },
 } satisfies Record<(typeof EXPECTED_APPLICATION_TABLES)[number], TExpectedTable>;
 
+export const EXPECTED_FUNCTION_RUNTIME_SCHEMA = {
+  ...EXPECTED_SCHEMA,
+  widget_definition_revisions: {
+    ...EXPECTED_SCHEMA.widget_definition_revisions,
+    columns: [
+      ...EXPECTED_SCHEMA.widget_definition_revisions.columns,
+      text("function_descriptors_json"),
+      text("function_descriptors_digest_sha256"),
+      integer("contract_format_version"),
+    ],
+  },
+  function_definitions: {
+    columns: [
+      tenantId("org_id", 1),
+      text("id", true, 4),
+      tenantId("widget_definition_id", 2),
+      tenantId("widget_revision_id", 3),
+      text("export_name"),
+      text("effect"),
+      integer("definition_revision"),
+      tenantId("server_artifact_id"),
+      text("server_artifact_kind"),
+      text("artifact_digest_sha256"),
+      text("contract_digest_sha256"),
+      text("descriptor_digest_sha256"),
+      text("runtime_abi"),
+      text("input_schema_json"),
+      text("output_schema_json"),
+      text("resources_json"),
+      integer("timeout_ms"),
+      text("memory_tier"),
+      integer("output_byte_limit"),
+      integer("log_byte_limit"),
+      text("retry_mode"),
+      integer("max_attempts"),
+      integer("initial_backoff_ms"),
+      integer("max_backoff_ms"),
+      integer("created_at_ms"),
+    ],
+    primaryKey: ["org_id", "widget_definition_id", "widget_revision_id", "id"],
+    unique: [["org_id", "widget_definition_id", "widget_revision_id", "export_name"]],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "widget_definition_id", "widget_revision_id"], referencesTable: "widget_definition_revisions", referencesColumns: ["org_id", "definition_id", "id"], onDelete: "CASCADE" },
+      { columns: ["org_id", "server_artifact_id", "server_artifact_kind"], referencesTable: "artifact_references", referencesColumns: ["org_id", "id", "kind"], onDelete: "RESTRICT" },
+    ],
+  },
+  function_invocations: {
+    columns: [
+      tenantId("org_id", 1), tenantId("id", 2), tenantId("account_id"),
+      tenantId("canvas_id"),
+      tenantId("widget_definition_id"), tenantId("widget_revision_id"),
+      tenantId("widget_instance_id"), text("function_id"), text("function_name"),
+      integer("definition_revision"), text("artifact_digest_sha256"),
+      text("contract_digest_sha256"), text("runtime_abi"), text("tenant_cell_id"),
+      integer("tenant_placement_epoch"), text("tenant_request_id"),
+      text("tenant_roles_json"), text("tenant_capabilities_json"),
+      text("input_json", false), text("input_digest_sha256"), text("idempotency_key"),
+      integer("policy_version"), integer("priority"), integer("timeout_ms"),
+      text("memory_tier"), integer("output_byte_limit"), integer("log_byte_limit"),
+      text("retry_mode"), integer("max_attempts"), integer("initial_backoff_ms"),
+      integer("max_backoff_ms"), text("status"), text("result_json", false),
+      text("failure_json", false), text("result_digest_sha256", false),
+      integer("output_byte_size"), integer("log_byte_size"), text("body_state"),
+      integer("retains_revision"), integer("created_at_ms"), integer("available_at_ms"),
+      integer("deadline_at_ms"), integer("cancel_requested_at_ms", false),
+      integer("started_at_ms", false), integer("finished_at_ms", false),
+      integer("bodies_compacted_at_ms", false),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "account_id"], referencesTable: "organization_memberships", referencesColumns: ["org_id", "account_id"], onDelete: "RESTRICT" },
+    ],
+  },
+  function_attempts: {
+    columns: [
+      tenantId("org_id", 1), tenantId("id", 2), tenantId("invocation_id"),
+      integer("attempt_number"), integer("lease_epoch"), text("status"),
+      text("sandbox_driver"), text("memory_tier"), integer("active_wall_ms"),
+      integer("cpu_ms"), integer("allocated_memory_byte_ms"), integer("peak_rss_bytes"),
+      integer("disk_read_bytes"), integer("disk_write_bytes"), integer("network_rx_bytes"),
+      integer("network_tx_bytes"), integer("output_byte_size"), integer("log_byte_size"),
+      integer("cold_start"), text("failure_owner", false), text("failure_json", false),
+      integer("billable"), integer("created_at_ms"), integer("started_at_ms", false),
+      integer("guest_code_entered_at_ms", false),
+      integer("finished_at_ms", false),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [
+      ["org_id", "invocation_id", "id"],
+      ["org_id", "invocation_id", "attempt_number"],
+      ["org_id", "invocation_id", "lease_epoch"],
+    ],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "invocation_id"], referencesTable: "function_invocations", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+    ],
+  },
+  idempotency_records: {
+    ...EXPECTED_SCHEMA.idempotency_records,
+    columns: [
+      tenantId("org_id", 1), tenantId("id", 2), text("function_id"),
+      text("scope_kind"), text("canvas_id", false), text("widget_instance_id", false),
+      text("idempotency_key"), text("request_fingerprint_sha256"),
+      tenantId("widget_definition_id"), tenantId("widget_revision_id"),
+      tenantId("invocation_id"), integer("created_at_ms"), integer("expires_at_ms", false),
+    ],
+  },
+  resource_write_permits: {
+    columns: [
+      tenantId("org_id", 1), tenantId("id", 2), tenantId("resource_id"),
+      tenantId("invocation_id"), tenantId("attempt_id"), integer("lease_epoch"),
+      text("operation_name"), text("operation_id"), text("operation_fingerprint_sha256"),
+      text("status"),
+      text("result_json", false), text("result_digest_sha256", false),
+      integer("issued_at_ms"), integer("expires_at_ms"), integer("consumed_at_ms", false),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [
+      ["org_id", "resource_id", "id"],
+      ["org_id", "resource_id", "invocation_id", "operation_id"],
+    ],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "resource_id"], referencesTable: "resource_catalog", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "invocation_id"], referencesTable: "function_invocations", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "invocation_id", "attempt_id"], referencesTable: "function_attempts", referencesColumns: ["org_id", "invocation_id", "id"], onDelete: "RESTRICT" },
+    ],
+  },
+  usage_outbox: {
+    columns: [
+      tenantId("org_id", 1), tenantId("id", 2), tenantId("account_id"),
+      text("attempt_id", false), tenantId("invocation_id"), text("function_id"),
+      integer("definition_revision"), text("sandbox_driver"), text("memory_tier"),
+      integer("queued_at_ms"), integer("started_at_ms", false), integer("finished_at_ms"),
+      integer("cold_start"), text("resource_id", false), text("resource_permit_id", false),
+      text("state"), text("outcome"), text("failure_owner", false), integer("billable"),
+      integer("policy_version"), integer("active_wall_ms"), integer("cpu_ms"),
+      integer("allocated_memory_byte_ms"), integer("peak_rss_bytes"),
+      integer("disk_read_bytes"), integer("disk_write_bytes"), integer("network_rx_bytes"),
+      integer("network_tx_bytes"), integer("created_at_ms"), integer("imported_at_ms", false),
+    ],
+    primaryKey: ["org_id", "id"],
+    unique: [],
+    foreignKeys: [
+      { columns: ["org_id"], referencesTable: "organizations", referencesColumns: ["id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "account_id"], referencesTable: "organization_memberships", referencesColumns: ["org_id", "account_id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "invocation_id"], referencesTable: "function_invocations", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "attempt_id"], referencesTable: "function_attempts", referencesColumns: ["org_id", "id"], onDelete: "RESTRICT" },
+      { columns: ["org_id", "resource_id", "resource_permit_id"], referencesTable: "resource_write_permits", referencesColumns: ["org_id", "resource_id", "id"], onDelete: "RESTRICT" },
+    ],
+  },
+} satisfies Record<(typeof EXPECTED_FUNCTION_RUNTIME_APPLICATION_TABLES)[number], TExpectedTable>;
+
 export const EXPECTED_INDEXES = {
   organization_memberships_account_idx: { table: "organization_memberships", columns: ["account_id", "org_id"], unique: false, partial: false },
   organization_memberships_status_idx: { table: "organization_memberships", columns: ["org_id", "status", "role"], unique: false, partial: false },
@@ -513,6 +677,18 @@ export const EXPECTED_INDEXES = {
   legacy_actor_apply_results_instance_fk_idx: { table: "legacy_actor_apply_results", columns: ["org_id", "actor_instance_id", "actor_definition_name"], unique: false, partial: false },
 } satisfies Record<string, TExpectedIndex>;
 
+export const EXPECTED_FUNCTION_RUNTIME_INDEXES = {
+  ...EXPECTED_INDEXES,
+  function_definitions_lookup_idx: { table: "function_definitions", columns: ["org_id", "widget_revision_id", "export_name"], unique: false, partial: false },
+  function_definitions_artifact_idx: { table: "function_definitions", columns: ["org_id", "server_artifact_id", "server_artifact_kind"], unique: false, partial: false },
+  function_invocations_queue_idx: { table: "function_invocations", columns: ["org_id", "status", "memory_tier", "available_at_ms", "priority", "created_at_ms"], unique: false, partial: false },
+  function_invocations_revision_idx: { table: "function_invocations", columns: ["org_id", "widget_definition_id", "widget_revision_id", "retains_revision", "created_at_ms"], unique: false, partial: false },
+  idempotency_records_org_key_idx: { table: "idempotency_records", columns: ["org_id", "function_id", "idempotency_key"], unique: true, partial: true },
+  idempotency_records_canvas_key_idx: { table: "idempotency_records", columns: ["org_id", "canvas_id", "function_id", "idempotency_key"], unique: true, partial: true },
+  idempotency_records_widget_key_idx: { table: "idempotency_records", columns: ["org_id", "widget_instance_id", "function_id", "idempotency_key"], unique: true, partial: true },
+  resource_write_permits_attempt_idx: { table: "resource_write_permits", columns: ["org_id", "invocation_id", "attempt_id", "lease_epoch"], unique: false, partial: false },
+} satisfies Record<string, TExpectedIndex>;
+
 export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
   Object.freeze({
     fingerprintSha256: 'fe0edf0f26dc7d0093527bfc60e8780eaad4b2be6b30ecfa9630835ff4a8366a',
@@ -527,5 +703,12 @@ export const EXPECTED_DATABASE_SCHEMA_CONTRACTS = Object.freeze([
     objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
     tables: EXPECTED_SCHEMA,
     version: 1,
+  }),
+  Object.freeze({
+    fingerprintSha256: '42ac80bd88a898f61d87c0852bcd5ee96a09fbeba32983f7e2b03898bb4ea17d',
+    indexes: EXPECTED_FUNCTION_RUNTIME_INDEXES,
+    objects: EXPECTED_APPLICATION_SCHEMA_OBJECTS,
+    tables: EXPECTED_FUNCTION_RUNTIME_SCHEMA,
+    version: 2,
   }),
 ]) satisfies readonly TExpectedDatabaseSchemaContract[];

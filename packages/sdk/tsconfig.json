@@ -10,6 +10,8 @@
     "paths": {
       "@vibecanvas/sdk/widget": ["./src/widget.ts"],
       "@vibecanvas/sdk/actor": ["./src/actor.ts"],
+      "@vibecanvas/sdk/server": ["./src/server.ts"],
+      "@vibecanvas/sdk/function-client": ["./src/function-client.ts"],
       "@vibecanvas/canvas/*": ["../canvas/src/*"],
       "@vibecanvas/service-automerge/*": ["../service-automerge/src/*"]
     }
