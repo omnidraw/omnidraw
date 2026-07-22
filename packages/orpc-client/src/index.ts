@@ -24,8 +24,8 @@ export type {
   TWidgetCatalogPreviewSummary,
   TWidgetDraftSummary,
   TWidgetPreviewCloseResult,
+  TWidgetPreviewFunctionInvocationView,
   TWidgetPreviewResult,
-  TWidgetPreviewSendResult,
 } from "@vibecanvas/api/agent/contract";
 import type { TNotificationEvent } from "@vibecanvas/api/notification/contract";
 import type { TPtyImageFormat } from "@vibecanvas/api/pty/contract";

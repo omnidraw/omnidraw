@@ -368,6 +368,29 @@ export type TWidgetPublicationCommitResult =
       currentActiveRevisionId: TWidgetRevisionId | null;
     }>;
 
+/** CAS archive removes one publication from the active catalog without erasing provenance. */
+export type TWidgetDefinitionArchiveInput = Readonly<{
+  definitionId: TWidgetDefinitionId;
+  expectedActiveRevisionId: TWidgetRevisionId;
+  nowMs: number;
+}>;
+
+export type TWidgetDefinitionArchiveResult =
+  | Readonly<{
+      status: 'archived';
+      definition: TWidgetDefinitionDescriptor;
+      previousActiveRevisionId: TWidgetRevisionId;
+    }>
+  | Readonly<{
+      status: 'conflict';
+      currentActiveRevisionId: TWidgetRevisionId | null;
+    }>;
+
+export type TWidgetRevisionSourceSnapshotReadRequest = Readonly<{
+  definitionId: TWidgetDefinitionId;
+  revisionId: TWidgetRevisionId;
+}>;
+
 export type TWidgetRollbackInput = Readonly<{
   definitionId: TWidgetDefinitionId;
   expectedActiveRevisionId: TWidgetRevisionId;

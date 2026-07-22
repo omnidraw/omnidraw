@@ -1,11 +1,11 @@
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { TValidationResult } from '../types';
 
 export function fnNormalizeRelativeFilePath(path: string): string {
   return path.replace(/^\.\//, '');
 }
 
-export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TVibecanvasJson }): TValidationResult {
+export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TWidgetManifestV2 }): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const hasFile = (path: string) => args.files.includes(fnNormalizeRelativeFilePath(path));
@@ -13,11 +13,15 @@ export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TV
   if (!hasFile('vibecanvas.json')) errors.push('Missing vibecanvas.json');
 
   if (args.manifest) {
-    const actorFunctionPath = fnNormalizeRelativeFilePath(args.manifest.actor.relFunctionPath);
-    const widgetMainPath = `${fnNormalizeRelativeFilePath(args.manifest.widget.relWidgetDir).replace(/\/$/, '')}/main.ts`;
+    const uiEntryPath = fnNormalizeRelativeFilePath(args.manifest.ui.entry);
+    const serverEntryPath = args.manifest.server
+      ? fnNormalizeRelativeFilePath(args.manifest.server.entry)
+      : null;
 
-    if (!hasFile(actorFunctionPath)) errors.push(`Missing ${actorFunctionPath}`);
-    if (!hasFile(widgetMainPath)) errors.push(`Missing ${widgetMainPath}`);
+    if (!hasFile(uiEntryPath)) errors.push(`Missing ${uiEntryPath}`);
+    if (serverEntryPath !== null && !hasFile(serverEntryPath)) {
+      errors.push(`Missing ${serverEntryPath}`);
+    }
   }
 
   return { ok: errors.length === 0, errors, warnings };

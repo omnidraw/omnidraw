@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 async function createService(
-  actorService?: ConstructorParameters<typeof AgentService>[0]['actorService'],
+  resourceService?: ConstructorParameters<typeof AgentService>[0]['resourceService'],
   authorizeToolCall?: ConstructorParameters<typeof AgentService>[0]['authorizeToolCall'],
 ) {
   const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-prompt-'));
@@ -26,7 +26,7 @@ async function createService(
     dataPath,
     configPath: join(dataPath, 'config'),
     eventPublisherService: createTestTenantEvents(),
-    actorService,
+    resourceService,
     authorizeToolCall,
   });
 }
@@ -41,34 +41,30 @@ async function waitForChatApproval(service: AgentService, widgetId: string, sess
 }
 
 describe('AgentService.promptChat', () => {
-  test('teaches widget agents the actor lifecycle and activity contract', () => {
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('New transitions use `{ func: ["tx.name"], targetState: "ready" }`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Never write a loop or sleep/retry cycle inside it');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('args.msg.kind === "activity.tick"');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('recover: { targetState: "ready" }');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('accepted only so existing widgets keep working');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('widget.tool.group: omit by default');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('actor.resources: optional definition-level map');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.kv("slot")');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Secret-store database pages are encrypted at rest');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('portal.resources.db("notes").invoke');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('DB slots are schema-agnostic');
+  test('teaches widget agents the browser-first v2 and short-function contract', () => {
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"schemaVersion": 2');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Omit `server` and `resources` for a UI-only widget');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('UI-only widgets start no backend process');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('defineServerFunction');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`fn` is deterministic and has no resources');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`fx` may read only declared resource slots');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`tx` may perform declared writes');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Preview bindings are temporary');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `context.resources.read` or `context.resources.write`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Search, Plus, Minus, Check');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('vc_widget_create({ name, description? })');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('complete runnable unpublished actor/widget draft');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('read `vibecanvas.json`, the actor registry/reset transaction, and the widget entry/CSS');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update an existing draft with `read`, `edit`, or `patch`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('complete UI-only manifest-v2 draft');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read `vibecanvas.json`, `ui/main.ts`, and `ui/styles.css`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `vc_widget_validate`, inspect every diagnostic, and fix all errors');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot publish a draft');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('**Republish** when updating an existing widget');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“ready” never means published');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('validation publishes');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“Ready” never means published');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Never import actor APIs in manifest-v2 widget code');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor/functions.ts');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_create({ name, kind');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('choose `widget` or `actor-widget`');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Accessibility,');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('Host-published DbResource schema context');
   });
 
   test('passes image-only prompts to Pi with fallback text', async () => {
@@ -119,7 +115,6 @@ describe('AgentService.promptChat', () => {
 
   test('resolves typed resource IDs and persists trusted selection metadata', async () => {
     const service = await createService({
-      reload: async () => {},
       getResource: async (id) => ({
         id,
         kind: id === 'kv-1' ? 'kv' : 'db',
@@ -161,7 +156,6 @@ describe('AgentService.promptChat', () => {
   test('rejects a stale widget mention instead of resolving a replacement by display name', async () => {
     let resourceRead = false;
     const service = await createService({
-      reload: async () => {},
       getResource: async (id) => {
         resourceRead = true;
         return {
@@ -258,7 +252,6 @@ describe('AgentService.promptChat', () => {
       { id: 'kv-1', kind: 'kv' as const, name: 'Preferences' },
     ];
     const service = await createService({
-      reload: async () => {},
       getResource: async (id) => {
         const resource = resources.find((candidate) => candidate.id === id);
         return resource ? {
@@ -318,7 +311,6 @@ describe('AgentService.promptChat', () => {
 
   test('reuses duplicate same-scope connections without canceling pending approvals', async () => {
     const service = await createService({
-      reload: async () => {},
       createResource: async ({ kind, name }) => ({
         id: 'resource-1',
         kind,
@@ -363,7 +355,6 @@ describe('AgentService.promptChat', () => {
 
   test('keeps the old scope live during overlapping replacements and commits only the latest generation', async () => {
     const service = await createService({
-      reload: async () => {},
       createResource: async ({ kind, name }) => ({
         id: 'resource-2',
         kind,
@@ -411,7 +402,6 @@ describe('AgentService.promptChat', () => {
   test('refreshes request authorization, reauthorizes approval, and rejects account ownership changes', async () => {
     const authorizationChecks: Array<{ toolName: string; accountId?: string; requestId?: string }> = [];
     const service = await createService({
-      reload: async () => {},
       createResource: async ({ kind, name }) => ({
         id: 'resource-authorization',
         kind,
@@ -476,7 +466,6 @@ describe('AgentService.promptChat', () => {
 
   test('new chat deliberately retires the runtime and cancels its pending approvals', async () => {
     const service = await createService({
-      reload: async () => {},
       createResource: async ({ kind, name }) => ({
         id: 'resource-new-chat',
         kind,

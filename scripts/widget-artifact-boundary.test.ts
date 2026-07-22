@@ -147,7 +147,20 @@ describe('M5 immutable widget artifact boundaries', () => {
       }
     }
 
-    expect([...writers]).toEqual(['packages/service-db/src/WidgetControlStoreTurso.ts']);
+    expect([...writers].sort()).toEqual([
+      'packages/service-db/src/AgentAuthoringStoreTurso.ts',
+      'packages/service-db/src/WidgetControlStoreTurso.ts',
+    ]);
+    const authoringStore = await Bun.file(resolve(
+      REPO_ROOT,
+      'packages/service-db/src/AgentAuthoringStoreTurso.ts',
+    )).text();
+    expect(authoringStore).toContain(
+      'return this.mutationCoordinator.runArtifactMutation(tenant, operation);',
+    );
+    expect(authoringStore).not.toContain(
+      'private readonly mutationCoordinator?: IWidgetArtifactMutationCoordinator',
+    );
   });
 
   test('strictly rejects legacy actor manifest fields at the v2 boundary', () => {
@@ -204,9 +217,12 @@ describe('M5 immutable widget artifact boundaries', () => {
         'getActiveRevision',
         'getArtifact',
         'getRevision',
+        'getRevisionSource',
         'issueBrowserUiArtifactReadCapability',
+        'listPublishedPlacements',
         'publish',
         'readArtifact',
+        'resolvePublishedPlacement',
         'rollback',
       ]);
       for (const forbidden of [
@@ -219,7 +235,14 @@ describe('M5 immutable widget artifact boundaries', () => {
         'collect',
         'digestSha256',
         'issueArtifactReadCapability',
+        'issueSourceBuildArtifactReadCapability',
+        'issueUiPreviewArtifactReadCapability',
         'issueServerExecutionArtifactReadCapability',
+        'buildPreview',
+        'getPreview',
+        'getPreviewRevision',
+        'stopPreview',
+        'captureSource',
       ]) {
         expect(forbidden in capability).toBe(false);
       }
@@ -228,7 +251,9 @@ describe('M5 immutable widget artifact boundaries', () => {
     const capabilitySource = serviceFiles.find((path) => path.endsWith('WidgetServicePool.ts'));
     if (capabilitySource !== undefined) {
       const source = await Bun.file(resolve(REPO_ROOT, capabilitySource)).text();
-      expect(source).toMatch(/type\s+TWidgetServiceCapability\s*=\s*IWidgetPublicationService/);
+      expect(source).toMatch(
+        /type\s+TWidgetServiceCapability\s*=\s*Omit<IWidgetPublicationService,\s*'archive'>/,
+      );
       expect(source).toMatch(/\bIWidgetArtifactReader\b/);
       expect(source).toMatch(/\bIWidgetBrowserUiArtifactReadCapabilityIssuer\b/);
       expect(source).toMatch(/createWidgetServerArtifactCapability/);

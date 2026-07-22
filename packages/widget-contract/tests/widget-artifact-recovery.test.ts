@@ -222,6 +222,10 @@ function controlStoreHarness(overrides: Partial<IWidgetControlStore> = {}): Read
       calls.push('getDefinitionBySlug');
       return null;
     },
+    async archiveDefinition() {
+      calls.push('archiveDefinition');
+      return { status: 'conflict', currentActiveRevisionId: null };
+    },
     async getRevision() {
       calls.push('getRevision');
       return null;

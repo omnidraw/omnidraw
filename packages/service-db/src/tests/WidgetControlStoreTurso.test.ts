@@ -574,6 +574,36 @@ describe('WidgetControlStoreTurso', () => {
     expect(await store.getActiveRevision(TENANT_B, DEFINITION_A)).toBeNull();
   });
 
+  test('archives only the exact tenant-owned active publication and retains immutable provenance', async () => {
+    const revisionId = uuid(1_644);
+    committed(await publish(store, TENANT_A, { revisionId, nowMs: 10 }));
+
+    expect(await store.archiveDefinition(TENANT_B, {
+      definitionId: DEFINITION_A,
+      expectedActiveRevisionId: revisionId,
+      nowMs: 11,
+    })).toEqual({ status: 'conflict', currentActiveRevisionId: null });
+    expect(await store.archiveDefinition(TENANT_A, {
+      definitionId: DEFINITION_A,
+      expectedActiveRevisionId: uuid(1_645),
+      nowMs: 11,
+    })).toEqual({ status: 'conflict', currentActiveRevisionId: revisionId });
+
+    expect(await store.archiveDefinition(TENANT_A, {
+      definitionId: DEFINITION_A,
+      expectedActiveRevisionId: revisionId,
+      nowMs: 11,
+    })).toMatchObject({
+      status: 'archived',
+      previousActiveRevisionId: revisionId,
+      definition: { status: 'archived', activeRevisionId: null, updatedAtMs: 11 },
+    });
+    expect(await store.listPublishedDefinitions(TENANT_A, 10)).toEqual([]);
+    expect(await store.getActiveRevision(TENANT_A, DEFINITION_A)).toBeNull();
+    expect(await store.getRevision(TENANT_A, revisionId)).toMatchObject({ id: revisionId });
+    expect(await store.getRevisionSource(TENANT_A, revisionId)).toMatchObject({ revisionId });
+  });
+
   test('rejects mismatched publication contracts and fails closed on stored revision tampering', async () => {
     const rejectedDefinition = uuid(444);
     await expect(publish(store, TENANT_A, {

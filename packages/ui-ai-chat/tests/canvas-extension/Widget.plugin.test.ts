@@ -110,6 +110,7 @@ describe("Widget plugin catalog reconciliation", () => {
       ok: true,
       descriptor: {
         kind: "published-v2",
+        draftId: null,
         reference,
         bounds: { width: 360, height: 320 },
         definitionId: DEFINITION_ID,

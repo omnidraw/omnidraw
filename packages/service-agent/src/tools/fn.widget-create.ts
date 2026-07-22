@@ -1,4 +1,4 @@
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import { Z_VIBECANVAS_JSON } from './CONSTANTS';
 
 function slugify(name: string): string {
@@ -10,45 +10,19 @@ function slugify(name: string): string {
   return slug || 'widget';
 }
 
-export function fnBuildWidgetCreateManifest(args: { name: string; description?: string }): TVibecanvasJson {
+export function fnBuildWidgetCreateManifest(args: { name: string; description?: string }): TWidgetManifestV2 {
   const manifest = {
+    schemaVersion: 2 as const,
     slug: slugify(args.name),
     name: args.name,
     ...(args.description === undefined ? {} : { description: args.description }),
-    actor: {
-      relFunctionPath: './actor/functions.ts',
-      initialState: 'ready',
-      initialData: {},
-      dataSchema: { type: 'object', properties: {}, additionalProperties: false },
-      resources: {},
-      states: {
-        ready: { on: {} },
-        error: {
-          on: {
-            'in.resetError': {
-              func: ['tx.resetError'],
-              targetState: 'ready',
-            },
-          },
-        },
-      },
-      inputMsgSchema: {
-        'in.resetError': { type: 'object', properties: {}, additionalProperties: false },
-      },
-      outputMsgSchema: {},
-    },
-    widget: {
-      relWidgetDir: './widget',
-      frame: { width: 360, height: 320 },
-      tool: {
-        label: args.name,
-        behavior: { type: 'mode', mode: 'draw-create' },
-      },
+    ui: {
+      entry: 'ui/main.ts',
     },
   };
   const result = Z_VIBECANVAS_JSON.safeParse(manifest);
   if (!result.success) {
     throw new Error(result.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') || 'Generated widget manifest is invalid.');
   }
-  return result.data as TVibecanvasJson;
+  return result.data;
 }

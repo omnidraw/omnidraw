@@ -108,7 +108,7 @@ export const apiWidgetsDelete = baseAgentOs.widgets.delete.handler(async ({ cont
 });
 
 export const apiWidgetsResolvePlacement = baseAgentOs.widgets.resolvePlacement.handler(async ({ context, input }) => {
-  return context.agent.resolveWidgetPlacement(input.reference, input.previewId);
+  return context.agent.resolveWidgetPlacement(input.reference, input.previewId, input.expectedDraftId);
 });
 
 export const apiWidgetsGroupsCreate = baseAgentOs.widgets.groups.create.handler(async ({ context, input }) => {

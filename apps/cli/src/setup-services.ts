@@ -1,6 +1,6 @@
 import { isValidAutomergeUrl } from '@automerge/automerge-repo';
 import { createServiceRegistry } from '@vibecanvas/runtime';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { IFunctionInvocationApiCapability } from '@vibecanvas/api/function';
 import {
   BunChildFunctionDescriptorExtractor,
@@ -15,6 +15,10 @@ import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService
 import { WidgetInstanceMetadataProjector } from '@vibecanvas/service-automerge/projection';
 import { AgentService } from '@vibecanvas/service-agent';
 import type { TActorServiceReloader } from '@vibecanvas/service-agent/core/types';
+import {
+  planImplicitResourceSelections,
+  planSelectedResourceBindings,
+} from '@vibecanvas/service-agent/tools/resource-bindings';
 import type { IAutomergeService } from '@vibecanvas/service-automerge/IAutomergeService';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { FunctionControlStoreTurso } from '@vibecanvas/service-db/FunctionControlStoreTurso';
@@ -47,6 +51,7 @@ import {
   FunctionServicePool,
 } from './services/FunctionServicePool';
 import { ResourceService } from './services/ResourceService';
+import { createAgentResourceService } from './services/AgentResourceService';
 import {
   createResourceServiceCapabilities,
   ResourceServicePool,
@@ -58,6 +63,7 @@ import { WidgetService } from './services/WidgetService';
 import { WidgetFunctionArtifactReader } from './services/WidgetFunctionArtifactReader';
 import { WidgetRuntimeLoadAdmission } from './services/WidgetRuntimeLoadAdmission';
 import {
+  createWidgetAuthoringCapability,
   createWidgetServerArtifactCapability,
   createWidgetServiceCapability,
   WidgetServicePool,
@@ -159,6 +165,7 @@ function setupServices(config: ICliConfig) {
     cacheDir: config.home.cacheRoot,
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
+  const widgetBuilderIdentity = `vibecanvas-widget-bun/${Bun.version}`;
   const filesystemService = new FilesystemServiceNode(eventPublisher);
   const functionStore = new FunctionControlStoreTurso(dbService.db);
   const functionSchemas = new JsonSchemaFunctionValidator();
@@ -190,9 +197,10 @@ function setupServices(config: ICliConfig) {
         database: dbService.db,
         artifactsRoot,
         buildTempRoot,
-        builderIdentity: `vibecanvas-widget-bun/${Bun.version}`,
+        builderIdentity: widgetBuilderIdentity,
         artifactReadSecret: randomBytes(32),
         artifactReadMaximumTtlMs: WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS,
+        compiledExecutable: config.compiled,
         functionDescriptorExtractor: new BunChildFunctionDescriptorExtractor({
           compiledExecutable: config.compiled,
           tempRoot: functionTempRoot,
@@ -202,6 +210,7 @@ function setupServices(config: ICliConfig) {
     },
   });
   const widgetCapability = createWidgetServiceCapability(widgetService);
+  const widgetAuthoringCapability = createWidgetAuthoringCapability(widgetService);
   const widgetRuntimeLoadAdmission = new WidgetRuntimeLoadAdmission();
   const widgetServerArtifacts = createWidgetServerArtifactCapability(widgetService);
   const functionArtifactReader = new WidgetFunctionArtifactReader({
@@ -329,11 +338,65 @@ function setupServices(config: ICliConfig) {
         mkdir(cacheRoot, { recursive: true }),
       ]);
       const loadActorService = () => actorService.forTenant(tenant);
+      const widgetOwner = await widgetService.forTenant(tenant);
+      const agentResources = createAgentResourceService(
+        await resourceService.forTenant(tenant),
+        tenant,
+      );
       return new AgentService({
         dataPath: agentRoot,
         cachePath: cacheRoot,
         configPath: artifactsRoot,
         eventPublisherService: eventPublisher.forTenant(tenant),
+        tenant,
+        authoringStore: widgetOwner.authoringStore,
+        widgetAuthoringCapability,
+        previewFunctionCapability,
+        resourceService: agentResources,
+        resolveWidgetResourceBindings: async (
+          resolutionTenant,
+          { manifest, selectedResources },
+        ) => {
+          let resources;
+          if (selectedResources === undefined) {
+            const available = (await agentResources.listResources!({
+              status: 'ready',
+            })).map((resource) => ({
+              id: resource.id,
+              kind: resource.kind,
+              name: resource.name,
+              status: resource.status,
+            }));
+            const implicit = planImplicitResourceSelections(manifest, available);
+            if (!implicit.ok) throw new Error(implicit.message);
+            resources = implicit.resources;
+          } else {
+            resources = await Promise.all(selectedResources.map(async (selection) => {
+              const current = await agentResources.getResource!(selection.id);
+              if (!current) {
+                throw new Error(`Selected resource is no longer available: ${selection.id}`);
+              }
+              return {
+                id: current.id,
+                kind: current.kind,
+                name: current.name,
+                status: current.status,
+              };
+            }));
+          }
+          const planned = planSelectedResourceBindings(manifest, resources);
+          if (!planned.ok) throw new Error(planned.message);
+          return planned.bindings.map((binding) => ({
+            slot: binding.slot,
+            resourceId: binding.resource.id,
+            kind: binding.resource.kind,
+            allowRead: binding.scope.includes('read'),
+            allowWrite: binding.scope.includes('write'),
+          }));
+        },
+        createId: randomUUID,
+        nowMs: Date.now,
+        widgetBuilderIdentity,
         actorService: createDeferredActorService(loadActorService),
         listPublishedWidgetPlacements: () => (
           widgetCapability.listPublishedPlacements(tenant)

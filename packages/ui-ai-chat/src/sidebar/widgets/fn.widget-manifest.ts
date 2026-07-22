@@ -15,7 +15,7 @@ export function fnWidgetMessageRows(manifest: TWidgetDetail['manifest']): {
   inputs: TWidgetInputMessageRow[];
   outputs: TWidgetOutputMessageRow[];
 } {
-  if (!manifest) return { inputs: [], outputs: [] };
+  if (!manifest || !('actor' in manifest)) return { inputs: [], outputs: [] };
   const acceptedStates = new Map<string, string[]>();
   for (const [stateName, state] of Object.entries(manifest.actor.states)) {
     for (const messageName of Object.keys(state?.on ?? {})) {

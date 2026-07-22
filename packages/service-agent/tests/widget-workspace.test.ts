@@ -250,6 +250,21 @@ describe('WidgetWorkspace', () => {
     await expect(workspace.resolveMountedPath('chat-a', 'widgets/Weather/escape/secret.txt')).rejects.toThrow('outside');
   });
 
+  test('rejects draft symlinks before a Preview snapshot can follow their targets', async () => {
+    const { workspace, root } = await createWorkspace();
+    await createWidgetFolder(workspace.draftRoot, 'Weather');
+    const outside = join(root, 'outside-preview-target');
+    await mkdir(outside);
+    await writeFile(join(outside, 'large-secret.txt'), 'must-not-be-copied', 'utf8');
+    await symlink(outside, join(workspace.draftRoot, 'Weather', 'escape'), 'dir');
+    const draft = await workspace.getDraft('Weather');
+    if (!draft) throw new Error('Expected Weather draft.');
+
+    await expect(workspace.createPreviewSnapshot('Weather', draft.revision))
+      .rejects.toMatchObject({ code: 'WIDGET_DRAFT_SYMLINK_FORBIDDEN' });
+    expect(await readdir(workspace.previewSnapshotRoot)).toEqual([]);
+  });
+
   test('rolls back partial draft scaffolds and atomically mounts complete drafts', async () => {
     const { workspace } = await createWorkspace();
     await expect(workspace.createDraft('chat-a', { name: 'Broken' }, async ({ cwd }) => {

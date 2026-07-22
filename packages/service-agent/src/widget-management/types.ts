@@ -1,9 +1,11 @@
 import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/service-actor/core/fn.widget-frame';
+import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 
 export type TWidgetSource = 'published' | 'draft';
+export type TWidgetManagementManifest = TWidgetManifestV2 | TVibecanvasJson;
 export type TWidgetRelation = 'published-only' | 'draft-only' | 'same' | 'different' | 'unknown';
 
 export type TWidgetCatalogProblem = {
@@ -22,6 +24,7 @@ export type TWidgetPlacementSummary = {
 };
 
 export type TWidgetVariantSummary = {
+  draftId: string | null;
   source: TWidgetSource;
   displayName: string;
   kind: 'widget' | 'actor-widget' | null;
@@ -75,7 +78,7 @@ export type TWidgetDetail = {
   relation: TWidgetRelation;
   variant: TWidgetVariantSummary;
   sibling: TWidgetVariantSummary | null;
-  manifest: TVibecanvasJson | null;
+  manifest: TWidgetManagementManifest | null;
   problem: TWidgetCatalogProblem | null;
 };
 
@@ -159,6 +162,7 @@ export type TPublishedWidgetPlacementTarget = TPublishedWidgetPlacementIdentity 
 export type TWidgetPlacementDescriptor =
   | (TWidgetPlacementDescriptorBase & {
       kind: 'published-v2';
+      draftId: null;
       definitionId: string;
       revisionId: string;
       definitionName: null;
@@ -167,6 +171,7 @@ export type TWidgetPlacementDescriptor =
     })
   | (TWidgetPlacementDescriptorBase & {
       kind: 'published-legacy';
+      draftId: null;
       definitionId: null;
       revisionId: null;
       definitionName: string;
@@ -175,6 +180,7 @@ export type TWidgetPlacementDescriptor =
     })
   | (TWidgetPlacementDescriptorBase & {
       kind: 'preview';
+      draftId: string | null;
       definitionId: null;
       revisionId: null;
       definitionName: null;

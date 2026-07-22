@@ -5,6 +5,7 @@ import { ChatTab } from "./tabs/ChatTab"
 import { SettingsTab } from "./tabs/SettingsTab"
 import { fnCreateAiChatWidgetError } from "./fn.error"
 import { fnFindApprovalResourceId, fnGetApprovalResourceId } from "./tabs/fn.tool-call"
+import type { TChatWidgetDraftReference } from "./tabs/fn.tool-call"
 import type { TAiChatApproval, TAiChatApprovalStatus, TAiChatWidgetError, TAiChatWidgetErrorKind } from "./types"
 import type { TWidgetTitleBarPortal } from "../../widget/interface"
 import type { TChatComposerMention, TChatPromptImage } from "./ChatComposer/interface"
@@ -29,7 +30,7 @@ interface IProps {
   sessionId: string
   aiChatPreference?: TAiChatPreference
   onAiChatPreferenceChange?: (preference: TAiChatPreference) => void
-  onOpenWidgetPreview: (draftName: string) => Promise<void>
+  onOpenWidgetPreview: (reference: TChatWidgetDraftReference) => Promise<void>
   onResetSessionId: () => string
 }
 
@@ -360,10 +361,10 @@ export function AiChat(props: IProps) {
     setSelectedView("settings")
   }
 
-  const openWidgetPreview = async (draftName: string) => {
+  const openWidgetPreview = async (reference: TChatWidgetDraftReference) => {
     clearWidgetError("preview")
     try {
-      await props.onOpenWidgetPreview(draftName)
+      await props.onOpenWidgetPreview(reference)
     } catch (error) {
       reportWidgetError("preview", error)
     }

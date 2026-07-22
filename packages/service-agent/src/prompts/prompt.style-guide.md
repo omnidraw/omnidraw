@@ -67,7 +67,7 @@ Prefer token-based styling first; mode selectors should be rare.
 
 ## Widget CSS rules
 
-- Write CSS in `widget/main.css`.
+- Write CSS in `ui/styles.css`.
 - Scope selectors with a root class, for example `.todo-widget`.
 - Use `box-sizing: border-box` on the root and descendants.
 - Use `width: 100%` and `height: 100%` for canvas-sized widgets.

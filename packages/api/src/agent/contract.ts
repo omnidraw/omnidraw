@@ -1,11 +1,29 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
-import type { TVibecanvasToolIcon } from '@vibecanvas/service-actor/core/tool-icon';
-import type { TActorData, TActorState, TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasToolIcon } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
-import type { TWidgetDraftSummary, TWidgetPreviewCloseResult, TWidgetPreviewResult, TWidgetPreviewSendResult, TWidgetPublishResult } from '@vibecanvas/service-agent/widget-drafts/types';
+import type {
+  TWidgetDraftSummary,
+  TWidgetPreviewCloseResult,
+  TWidgetPreviewFunctionInvocationView,
+  TWidgetPreviewResult,
+} from '@vibecanvas/service-agent/widget-drafts/types';
 import type { TWidgetCatalog, TWidgetCatalogGroup, TWidgetDeleteResult, TWidgetDetail, TWidgetDraftMetadataPatchResult, TWidgetFileEntry, TWidgetFilePreview, TWidgetPlacementResolveResult, TWidgetVariantSummary } from '@vibecanvas/service-agent/widget-management/types';
 import { z } from 'zod';
+import { ZFunctionJson } from '../function/contract';
+import {
+  ZAgentFunctionName,
+  ZAgentIdempotencyKey,
+  ZAgentOpaqueId,
+  ZAgentPreviewOwnerId,
+  ZAgentRevisionDigest,
+  ZAgentWidgetDraftSummaries,
+  ZAgentWidgetDraftSummary,
+  ZAgentWidgetPreviewCloseResult,
+  ZAgentWidgetPreviewFunctionInvocationView,
+  ZAgentWidgetPreviewResult,
+  ZAgentWidgetPublishResult,
+} from './authoring-schema';
 
 const ZThinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
@@ -60,11 +78,21 @@ const ZAgentLoginStatus = z.discriminatedUnion('status', [
 const ZAgentChatScope = z.object({ widgetId: z.string(), sessionId: z.string() })
 const ZAgentChatConnectInput = ZAgentChatScope.extend({ mode: z.enum(['reuse', 'replace']).optional() })
 const ZWidgetName = z.string().min(1).max(120).refine((value) => value.trim() === value && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !value.includes('\0'), 'Unsafe widget name')
-const ZCanonicalWidgetName = ZWidgetName.refine((value) => value.normalize('NFKC').replace(/\s+/g, ' ') === value, 'Non-canonical widget name')
-const ZAgentWidgetDraftRef = z.object({ draftId: ZCanonicalWidgetName })
-const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({ expectedRevision: z.string().min(1).max(256) })
-const ZAgentWidgetPreviewRef = ZAgentWidgetDraftRef.extend({ previewId: z.string().min(1).max(256) })
-const ZAgentWidgetPreviewRevisionRef = ZAgentWidgetPreviewRef.extend({ expectedRevision: z.string().min(1).max(256) })
+const ZAgentWidgetDraftRef = z.object({ draftId: ZAgentOpaqueId }).strict()
+const ZAgentWidgetDraftRevisionRef = ZAgentWidgetDraftRef.extend({
+  expectedRevision: ZAgentRevisionDigest,
+})
+const ZAgentWidgetPreviewRef = ZAgentWidgetDraftRef.extend({ previewId: ZAgentPreviewOwnerId })
+const ZAgentWidgetPreviewBuild = ZAgentWidgetPreviewRef.extend({
+  expectedDraftRevision: ZAgentRevisionDigest,
+  expectedActivePreviewRevisionId: ZAgentOpaqueId.nullable(),
+})
+const ZAgentWidgetPreviewRevisionRef = ZAgentWidgetPreviewRef.extend({
+  previewRevisionId: ZAgentOpaqueId,
+})
+const ZAgentWidgetPreviewInvocationRef = ZAgentWidgetPreviewRevisionRef.extend({
+  invocationId: ZAgentOpaqueId,
+})
 const ZWidgetSource = z.enum(['published', 'draft'])
 const ZWidgetVariantRef = z.object({ name: ZWidgetName, source: ZWidgetSource })
 const ZWidgetPlacementRef = z.object({
@@ -144,32 +172,12 @@ const ZAgentApproval = z.object({
   expiresAt: z.string(),
 })
 
-const ZAgentChatDraftActorSend = ZAgentChatScope.extend({
-  name: z.string().min(1),
-  payload: z.unknown(),
-})
-
-const ZAgentChatDraftManifestPatch = ZAgentChatScope.extend({
-  patch: z.object({
-    name: z.string().min(1).optional(),
-    description: z.string().optional(),
-    initialData: z.unknown().optional(),
-    dataSchema: z.unknown().optional(),
-    tool: z.object({
-      label: z.string().optional(),
-      icon: ZVibecanvasToolIcon.nullable().optional(),
-      group: z.string().nullable().optional(),
-      priority: z.number().nullable().optional(),
-    }).strict().optional(),
-  }).strict(),
-})
-
 export type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 export type {
   TWidgetDraftSummary,
   TWidgetPreviewCloseResult,
+  TWidgetPreviewFunctionInvocationView,
   TWidgetPreviewResult,
-  TWidgetPreviewSendResult,
 } from '@vibecanvas/service-agent/widget-drafts/types';
 export type {
   TWidgetCatalog,
@@ -207,60 +215,6 @@ export type TAgentChatConnect = {
   } | null;
 }
 
-export type TAgentDraftActorSnapshot = {
-  state: TActorState;
-  context: TActorData;
-};
-
-export type TAgentDraftActorNotReadyReason =
-  | 'manifest-missing'
-  | 'manifest-invalid'
-  | 'actor-functions-missing'
-  | 'session-missing'
-  | 'resource-binding-invalid'
-  | 'actor-not-running';
-
-export type TAgentDraftActorResult =
-  | { ready: true; actorId: string; snapshot: TAgentDraftActorSnapshot }
-  | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
-
-export type TAgentDraftActorSendResult =
-  | { ready: true; messageId: string; snapshot: TAgentDraftActorSnapshot }
-  | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
-
-export type TAgentDraftActorStopResult = {
-  stopped: boolean;
-};
-
-export type TAgentPreviewSourceResult =
-  | { ready: true; manifest: TVibecanvasJson; sources: Record<string, string> }
-  | { ready: false; reason: TAgentDraftActorNotReadyReason; message: string };
-
-export type TAgentDraftManifestReadResult =
-  | { ready: true; source: 'file'; manifest: TVibecanvasJson }
-  | { ready: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid'; message: string };
-
-export type TAgentDraftManifestPatch = {
-  name?: string;
-  description?: string;
-  initialData?: unknown;
-  dataSchema?: unknown;
-  tool?: {
-    label?: string;
-    icon?: TVibecanvasToolIcon | null;
-    group?: string | null;
-    priority?: number | null;
-  };
-};
-
-export type TAgentDraftManifestPatchResult =
-  | { ok: true; source: 'file'; manifest: TVibecanvasJson }
-  | { ok: false; reason: 'session-missing' | 'manifest-missing' | 'manifest-invalid' | 'edit-invalid'; message: string; issues?: string[] };
-
-export type TAgentChatPublishResult =
-  | { published: true; manifest: TVibecanvasJson; destination: string; files: string[] }
-  | { published: false; manifest: TVibecanvasJson | null; destination: null; message: string; errors?: string[]; warnings?: string[] };
-
 export type TAgentChatStartWidgetEditResult =
   | { ok: true; vcJson: TVibecanvasJson; editSession: NonNullable<TAgentChatConnect['editSession']>; messageHistory: unknown[] }
   | { ok: false; message: string };
@@ -297,39 +251,32 @@ export const agentContract = oc.router({
     },
     cancel: oc.input(ZAgentChatScope).output(ZAgentChatCancel),
     newSession: oc.input(ZAgentChatScope),
-    previewSource: oc.input(ZAgentChatScope).output(orpcType<TAgentPreviewSourceResult>()),
-    publish: oc.input(ZAgentChatScope).output(orpcType<TAgentChatPublishResult>()),
-    draftManifest: {
-      read: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftManifestReadResult>()),
-      patch: oc.input(ZAgentChatDraftManifestPatch).output(orpcType<TAgentDraftManifestPatchResult>()),
-    },
-    draftActor: {
-      start: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
-      reload: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
-      reset: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
-      stop: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorStopResult>()),
-      inspect: oc.input(ZAgentChatScope).output(orpcType<TAgentDraftActorResult>()),
-      send: oc.input(ZAgentChatDraftActorSend).output(orpcType<TAgentDraftActorSendResult>()),
-    },
   },
   widgetDraft: {
-    list: oc.input(z.object({})).output(orpcType<TWidgetDraftSummary[]>()),
-    get: oc.input(ZAgentWidgetDraftRef).output(orpcType<TWidgetDraftSummary | null>()),
-    validate: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetDraftSummary | null>()),
+    list: oc.input(z.object({}).strict()).output(ZAgentWidgetDraftSummaries),
+    get: oc.input(ZAgentWidgetDraftRef).output(ZAgentWidgetDraftSummary.nullable()),
+    validate: oc.input(ZAgentWidgetDraftRevisionRef).output(ZAgentWidgetDraftSummary.nullable()),
   },
   widgetPreview: {
-    get: oc.input(ZAgentWidgetPreviewRef).output(orpcType<TWidgetPreviewResult>()),
-    build: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewResult>()),
-    refresh: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewResult>()),
-    reset: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewResult>()),
-    close: oc.input(ZAgentWidgetPreviewRevisionRef).output(orpcType<TWidgetPreviewCloseResult>()),
-    send: oc.input(ZAgentWidgetPreviewRevisionRef.extend({
-      name: z.string().min(1).max(120),
-      payload: z.unknown(),
-    })).output(orpcType<TWidgetPreviewSendResult>()),
+    get: oc.input(ZAgentWidgetPreviewRef).output(ZAgentWidgetPreviewResult),
+    build: oc.input(ZAgentWidgetPreviewBuild).output(ZAgentWidgetPreviewResult),
+    close: oc.input(ZAgentWidgetPreviewRef.extend({
+      expectedPreviewRevisionId: ZAgentOpaqueId,
+    })).output(ZAgentWidgetPreviewCloseResult),
+    invoke: oc.input(ZAgentWidgetPreviewRevisionRef.extend({
+      functionName: ZAgentFunctionName,
+      input: ZFunctionJson,
+      idempotencyKey: ZAgentIdempotencyKey,
+    })).output(ZAgentWidgetPreviewFunctionInvocationView),
+    invocation: {
+      get: oc.input(ZAgentWidgetPreviewInvocationRef)
+        .output(ZAgentWidgetPreviewFunctionInvocationView.nullable()),
+      cancel: oc.input(ZAgentWidgetPreviewInvocationRef)
+        .output(ZAgentWidgetPreviewFunctionInvocationView.nullable()),
+    },
   },
   widgetPublish: {
-    publish: oc.input(ZAgentWidgetDraftRevisionRef).output(orpcType<TWidgetPublishResult>()),
+    publish: oc.input(ZAgentWidgetDraftRevisionRef).output(ZAgentWidgetPublishResult),
   },
   widgets: {
     catalog: oc.input(z.object({})).output(orpcType<TWidgetCatalog>()),
@@ -354,6 +301,15 @@ export const agentContract = oc.router({
     resolvePlacement: oc.input(z.object({
       reference: ZWidgetPlacementRef,
       previewId: z.string().min(1).max(256).optional(),
+      expectedDraftId: ZAgentOpaqueId.optional(),
+    }).superRefine((input, context) => {
+      if (input.reference.source !== 'published' && input.expectedDraftId === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['expectedDraftId'],
+          message: 'Draft and Preview placement require an exact durable draft owner.',
+        });
+      }
     })).output(orpcType<TWidgetPlacementResolveResult>()),
     groups: {
       create: oc.input(ZWidgetGroup).output(orpcType<TWidgetCatalogGroup>()),

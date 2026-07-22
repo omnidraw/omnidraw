@@ -1,28 +1,134 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { createHash } from "node:crypto"
+import { Buffer } from "node:buffer"
+import type { TWidgetBrowserFunctionDescriptor } from "@vibecanvas/widget-contract"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import { createPreviewFunctionHostBridge } from "../../src/draft-preview/create-preview-function-host-bridge"
 import { mountDraftPreview } from "../../src/draft-preview/mount"
-import type { TDraftPreviewReady } from "../../src/draft-preview/typed"
-import { mountArrowSandboxBridge, type TArrowSandboxBridge } from "../../src/widget/mount-arrow-sandbox"
+import type { TDraftPreviewReady, TDraftPreviewSummary } from "../../src/draft-preview/typed"
+import type { TWidgetBrowserPort } from "../../src/ports"
+import type { TWidgetUiArtifactMountPort } from "../../src/widget-runtime/interface"
+
+const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
+const DEFINITION_ID = "20000000-0000-4000-8000-000000000001"
+const PREVIEW_ID = "00000000-0000-4000-8000-000000000001"
+const PREVIEW_REVISION_ONE = "30000000-0000-4000-8000-000000000001"
+const PREVIEW_REVISION_TWO = "30000000-0000-4000-8000-000000000002"
+const DRAFT_REVISION_ONE = "a".repeat(64)
+const DRAFT_REVISION_TWO = "b".repeat(64)
 
 let root: HTMLDivElement | undefined
 
-function deferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void
-  const promise = new Promise<T>((done) => { resolve = done })
-  return { promise, resolve }
+function digest(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex")
 }
 
-function ready(revision: string, state = "idle", currentRevision = revision): TDraftPreviewReady {
+function uiArtifact(source = "export default 'preview';") {
+  const outputBytes = Buffer.from(source, "utf8")
+  const envelopeBytes = Buffer.from(JSON.stringify({
+    format: "vibecanvas.widget-artifact.v1",
+    kind: "ui",
+    entry: "ui/main.ts",
+    sourceDigestSha256: "c".repeat(64),
+    builderIdentity: "bun-browser-v1",
+    runtimeAbi: null,
+    outputs: [{
+      path: "output-0.js",
+      loader: "js",
+      kind: "entry-point",
+      digestSha256: digest(outputBytes),
+      bytesBase64: outputBytes.toString("base64"),
+    }],
+  }), "utf8")
+  return {
+    digestSha256: digest(envelopeBytes),
+    byteSize: envelopeBytes.byteLength,
+    bytesBase64: envelopeBytes.toString("base64"),
+  }
+}
+
+function functionDescriptor(exportName = "loadWeather"): TWidgetBrowserFunctionDescriptor {
+  return {
+    schemaVersion: 1,
+    exportName,
+    effect: "fx",
+    inputSchema: {},
+    outputSchema: {},
+    resources: [],
+    limits: {
+      timeoutMs: 1_000,
+      memoryTier: "small",
+      outputByteLimit: 1_024,
+      logByteLimit: 1_024,
+    },
+    retry: {
+      mode: "none",
+      maxAttempts: 1,
+      initialBackoffMs: 0,
+      maxBackoffMs: 0,
+    },
+  }
+}
+
+function ready(args: Readonly<{
+  draftRevision?: string
+  previewRevisionId?: string
+  functions?: readonly TWidgetBrowserFunctionDescriptor[]
+  artifact?: ReturnType<typeof uiArtifact>
+}> = {}): TDraftPreviewReady {
+  const draftRevision = args.draftRevision ?? DRAFT_REVISION_ONE
   return {
     ready: true,
-    draftId: "Weather",
+    draftId: DRAFT_ID,
+    definitionId: DEFINITION_ID,
     name: "Weather",
-    revision,
-    currentRevision,
-    stale: currentRevision !== revision,
-    manifest: {} as TDraftPreviewReady["manifest"],
-    sources: { "main.ts": `export const revision = '${revision}'` },
-    snapshot: { state, context: { revision, state } },
+    previewId: PREVIEW_ID,
+    previewRevisionId: args.previewRevisionId ?? PREVIEW_REVISION_ONE,
+    revision: draftRevision,
+    currentRevision: draftRevision,
+    stale: false,
+    manifest: {
+      schemaVersion: 2,
+      name: "Weather",
+      slug: "weather",
+      ui: { entry: "ui/main.ts" },
+      ...(args.functions?.length ? { server: { entry: "server/main.ts" } } : {}),
+    },
+    uiArtifact: args.artifact ?? uiArtifact(),
+    contract: {
+      digestSha256: "d".repeat(64),
+      functions: args.functions ?? [],
+    },
     diagnostics: [],
+    expiresAtMs: 10_000,
+  }
+}
+
+function summary(revision = DRAFT_REVISION_TWO): TDraftPreviewSummary {
+  return {
+    draftId: DRAFT_ID,
+    definitionId: DEFINITION_ID,
+    name: "Weather",
+    displayName: "Weather",
+    revision,
+  }
+}
+
+function browser(): TWidgetBrowserPort {
+  let id = 0
+  return {
+    document,
+    createId: () => `preview-key-${++id}`,
+    organizationId: () => "org-1",
+    tenantAuthorityKey: () => "authority-1",
+    now: () => 1,
+    nowDate: () => new Date(1),
+    setTimeout: (callback, timeout) => window.setTimeout(callback, timeout),
+    clearTimeout: (timer) => window.clearTimeout(timer as number),
+    setInterval: (callback, timeout) => window.setInterval(callback, timeout),
+    clearInterval: (timer) => window.clearInterval(timer as number),
+    decodeBase64: (value) => Buffer.from(value, "base64"),
+    decodeUtf8: (value) => Buffer.from(value).toString("utf8"),
+    digestSha256: async (value) => digest(value),
   }
 }
 
@@ -32,940 +138,511 @@ function createRoot() {
   return root
 }
 
+function fixture(args: Readonly<{
+  initial?: TDraftPreviewReady
+  build?: ReturnType<typeof vi.fn>
+  getPreview?: ReturnType<typeof vi.fn>
+  invoke?: ReturnType<typeof vi.fn>
+  getInvocation?: ReturnType<typeof vi.fn>
+  cancelInvocation?: ReturnType<typeof vi.fn>
+  mount?: ReturnType<typeof vi.fn>
+}> = {}) {
+  const initial = args.initial ?? ready()
+  const build = args.build ?? vi.fn()
+  const invoke = args.invoke ?? vi.fn()
+  const getInvocation = args.getInvocation ?? vi.fn()
+  const cancelInvocation = args.cancelInvocation ?? vi.fn(async () => [undefined, null] as const)
+  const cleanup = vi.fn()
+  const mount = args.mount ?? vi.fn(() => cleanup)
+  const getPreview = args.getPreview ?? vi.fn()
+  const getDraft = vi.fn()
+  const close = vi.fn()
+  const persist = vi.fn()
+  const release = vi.fn()
+  const logError = vi.fn()
+  const resetState = vi.fn()
+  const runtime = mountDraftPreview({
+    root: createRoot(),
+    api: {
+      api: {
+        agent: {
+          widgetDraft: { get: getDraft },
+          widgetPreview: {
+            get: getPreview,
+            build,
+            close,
+            invoke,
+            invocation: { get: getInvocation, cancel: cancelInvocation },
+          },
+        },
+      },
+    } as never,
+    browser: browser(),
+    payload: {
+      draftId: DRAFT_ID,
+      draftName: "Weather",
+      draftRevision: initial.revision,
+      previewId: PREVIEW_ID,
+      previewRevisionId: initial.previewRevisionId,
+      originChatElementId: "chat-1",
+    },
+    initialResult: initial,
+    mountArtifact: { mount } as TWidgetUiArtifactMountPort,
+    onPersistOwnership: persist,
+    onReleaseOwnership: release,
+    onLogError: logError,
+    onResetStateChange: resetState,
+  })
+  return {
+    build,
+    cancelInvocation,
+    cleanup,
+    close,
+    getDraft,
+    getInvocation,
+    getPreview,
+    initial,
+    invoke,
+    logError,
+    mount,
+    persist,
+    release,
+    resetState,
+    runtime,
+  }
+}
+
 afterEach(() => {
   root?.remove()
   root = undefined
 })
 
-describe("draft Preview runtime", () => {
-  it("keeps a prepared Preview disposable when sandbox mounting throws", async () => {
-    const returnEvents = vi.fn(async () => ({ done: true, value: undefined }) as IteratorResult<unknown>)
-    const nextEvent = vi.fn(() => new Promise<IteratorResult<unknown>>(() => undefined))
-    const releaseRevision = vi.fn()
-    const logError = vi.fn()
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, {
-              [Symbol.asyncIterator]() {
-                return { next: nextEvent, return: returnEvents }
-              },
-            }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn(() => { throw new Error("Injected sandbox mount failure.") }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: releaseRevision,
-      onLogError: logError,
+describe("draft Preview artifact runtime", () => {
+  test("verifies and mounts a UI-only artifact with Preview identity and ephemeral state", async () => {
+    const current = fixture()
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
+
+    const mounted = current.mount.mock.calls[0]![0]
+    expect(mounted.identity).toEqual({
+      kind: "agent_preview",
+      definitionId: DEFINITION_ID,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ONE,
     })
+    expect(mounted.artifact.digestSha256).toBe(current.initial.uiArtifact.digestSha256)
+    expect(await mounted.collaborativeStateBridge.get()).toEqual({ version: 1, value: null })
+    expect(current.getPreview).not.toHaveBeenCalled()
+    expect(current.build).not.toHaveBeenCalled()
 
-    expect(root?.textContent).toContain("Injected sandbox mount failure")
-    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ message: "Injected sandbox mount failure." }))
-    await vi.waitFor(() => expect(nextEvent).toHaveBeenCalledOnce())
-
-    await runtime.dispose()
-    expect(returnEvents).toHaveBeenCalledOnce()
-    expect(releaseRevision).toHaveBeenCalledWith("rev-1")
+    await current.runtime.dispose()
+    expect(current.release).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_ONE,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+    })
   })
 
-  it("unsubscribes the actor bridge when sandbox mounting fails after subscription", () => {
-    const sandboxRoot = createRoot()
-    const unsubscribe = vi.fn()
-    sandboxRoot.querySelectorAll = vi.fn(() => { throw new Error("Injected sandbox binding failure.") }) as never
+  test("rejects a mismatched UI artifact digest before mounting", async () => {
+    const current = fixture({
+      initial: ready({ artifact: { ...uiArtifact(), digestSha256: "0".repeat(64) } }),
+    })
 
-    expect(() => mountArrowSandboxBridge({
-      root: sandboxRoot,
-      onError: vi.fn(),
-    }, {
-      sources: { "main.ts": "export default {}" },
-      bridge: {
-        getSnapshot: vi.fn(),
-        sendMessage: vi.fn(),
-        subscribeSnapshots: vi.fn(() => unsubscribe),
-      },
-    })).toThrow("Injected sandbox binding failure")
-    expect(unsubscribe).toHaveBeenCalledOnce()
-    expect(sandboxRoot.childElementCount).toBe(0)
+    await vi.waitFor(() => expect(root?.textContent).toContain("digest mismatch"))
+    expect(current.mount).not.toHaveBeenCalled()
+    expect(current.logError).toHaveBeenCalledWith(expect.objectContaining({
+      message: "Widget UI artifact digest mismatch.",
+    }))
+    await current.runtime.dispose()
   })
 
-  it("bridges pinned snapshots and messages, refetches matching events, and cleans up", async () => {
-    let resolveEvent!: (result: IteratorResult<unknown>) => void
-    const returnEvents = vi.fn(async () => ({ done: true, value: undefined }) as IteratorResult<unknown>)
-    const nextEvent = vi.fn(() => new Promise<IteratorResult<unknown>>((resolve) => { resolveEvent = resolve }))
-    const getPreview = vi.fn(async () => [undefined, ready("rev-1", "updated")] as const)
-    const pendingSend = deferred<readonly [undefined, {
-      ready: true,
-      revision: "rev-1",
-      messageId: "message-1",
-      snapshot: { state: "sent", context: { count: 1 } },
-    }]>()
-    const sendPreview = vi.fn(() => pendingSend.promise)
-    const cleanupSandbox = vi.fn()
-    let bridge: TArrowSandboxBridge | undefined
-    const mountSandbox = vi.fn((_portal, sandboxArgs) => {
-      bridge = sandboxArgs.bridge
-      return cleanupSandbox
-    })
-    const releaseRevision = vi.fn()
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: getPreview,
-              build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: sendPreview,
-            },
-            events: async () => [undefined, {
-              [Symbol.asyncIterator]() {
-                return { next: nextEvent, return: returnEvents }
-              },
-            }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: mountSandbox as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: releaseRevision,
-      onLogError: vi.fn(),
-    })
+  test("reset remounts the same immutable artifact with fresh local state and no API call", async () => {
+    const current = fixture()
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
+    const first = current.mount.mock.calls[0]![0]
+    await first.collaborativeStateBridge.change({ count: 2 })
 
-    expect(mountSandbox).toHaveBeenCalledOnce()
-    expect(await bridge?.getSnapshot()).toMatchObject({ status: "running", state: "idle", context: { revision: "rev-1" } })
-    const snapshots = vi.fn()
-    const unsubscribe = bridge?.subscribeSnapshots(snapshots)
-    const sending = bridge?.sendMessage({ name: "increment", payload: { by: 1 } })
-    expect(sendPreview).toHaveBeenCalledWith({
-      draftId: "Weather",
-      previewId: "preview-1",
-      expectedRevision: "rev-1",
-      name: "increment",
-      payload: { by: 1 },
-    })
-    expect(snapshots).not.toHaveBeenCalled()
-
-    await vi.waitFor(() => expect(nextEvent).toHaveBeenCalledOnce())
-    resolveEvent({
-      done: false,
-      value: { kind: "widget-preview", type: "changed", draftId: "Weather", revision: "rev-1" },
-    })
-    await vi.waitFor(() => expect(getPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1" }))
-    await vi.waitFor(() => expect(snapshots).toHaveBeenCalledWith(expect.objectContaining({ state: "updated" })))
-
-    pendingSend.resolve([undefined, {
-      ready: true,
-      revision: "rev-1",
-      messageId: "message-1",
-      snapshot: { state: "sent", context: { count: 1 } },
-    }])
-    expect(await sending).toEqual({ ok: true, messageId: "message-1" })
-    expect(snapshots).not.toHaveBeenCalledWith(expect.objectContaining({ state: "sent" }))
-    expect(await bridge?.getSnapshot()).toMatchObject({ state: "updated" })
-
-    unsubscribe?.()
-    runtime.dispose()
-    expect(cleanupSandbox).toHaveBeenCalledOnce()
-    expect(returnEvents).toHaveBeenCalledOnce()
-    expect(releaseRevision).toHaveBeenCalledWith("rev-1")
+    await current.runtime.reset()
+    expect(current.mount).toHaveBeenCalledTimes(2)
+    const second = current.mount.mock.calls[1]![0]
+    expect(second.artifact).toBe(first.artifact)
+    expect(second.functionBridge).not.toBe(first.functionBridge)
+    expect(await second.collaborativeStateBridge.get()).toEqual({ version: 1, value: null })
+    expect(current.getPreview).not.toHaveBeenCalled()
+    expect(current.getDraft).not.toHaveBeenCalled()
+    expect(current.build).not.toHaveBeenCalled()
+    expect(current.close).not.toHaveBeenCalled()
+    await current.runtime.dispose()
   })
 
-  it("ignores Preview events for unrelated drafts and revisions", async () => {
-    const getPreview = vi.fn(async () => [undefined, ready("rev-1", "updated")] as const)
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: getPreview,
-              build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, {
-              async *[Symbol.asyncIterator]() {
-                yield { kind: "widget-preview", type: "changed", draftId: "Other", revision: "rev-1" }
-                yield { kind: "widget-preview", type: "changed", draftId: "Weather", revision: "rev-other" }
-                yield { kind: "widget-preview", type: "changed", draftId: "Weather", revision: "rev-1" }
-              },
-            }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn(() => () => {}) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
+  test("refresh CAS-swaps the exact draft and Preview revisions and persists both", async () => {
+    const next = ready({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
     })
+    const build = vi.fn(async () => [undefined, next] as const)
+    const current = fixture({ build })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
 
-    await vi.waitFor(() => expect(getPreview).toHaveBeenCalledOnce())
-    expect(getPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1" })
-    runtime.dispose()
+    await current.runtime.refresh(summary())
+    expect(build).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      expectedDraftRevision: DRAFT_REVISION_TWO,
+      expectedActivePreviewRevisionId: PREVIEW_REVISION_ONE,
+    })
+    expect(current.mount).toHaveBeenCalledTimes(2)
+    expect(current.persist).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    await current.runtime.dispose()
   })
 
-  it("ignores an obsolete event-refetch failure after refresh adopts a newer revision", async () => {
-    const pendingGet = deferred<readonly [{ message: string }, undefined]>()
-    const getPreview = vi.fn(() => pendingGet.promise)
-    const cleanupFirstSandbox = vi.fn()
-    const cleanupSecondSandbox = vi.fn()
-    let mountCount = 0
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: getPreview,
-              build: vi.fn(),
-              refresh: vi.fn(async () => [undefined, ready("rev-2")] as const),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, {
-              async *[Symbol.asyncIterator]() {
-                yield { kind: "widget-preview", type: "changed", draftId: "Weather", revision: "rev-1" }
-                await new Promise(() => {})
-              },
-            }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn(() => (++mountCount === 1 ? cleanupFirstSandbox : cleanupSecondSandbox)) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
+  test("adopts the committed refresh authority before artifact verification fails", async () => {
+    const next = ready({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+      artifact: { ...uiArtifact(), digestSha256: "0".repeat(64) },
     })
+    const current = fixture({
+      build: vi.fn(async () => [undefined, next] as const),
+    })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
 
-    await vi.waitFor(() => expect(getPreview).toHaveBeenCalledOnce())
-    await runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
-    pendingGet.resolve([{ message: "obsolete rev-1 refetch failed" }, undefined])
-    await Promise.resolve()
+    await current.runtime.refresh(summary())
 
-    expect(runtime.getOwnedRevision()).toBe("rev-2")
-    expect(root?.querySelector(".vc-draft-preview__sandbox-error")).toBeNull()
-    expect(root?.textContent).not.toContain("obsolete rev-1 refetch failed")
-    expect(cleanupSecondSandbox).not.toHaveBeenCalled()
+    expect(current.mount).toHaveBeenCalledOnce()
+    expect(current.cleanup).not.toHaveBeenCalled()
+    expect(current.persist).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    expect(root?.textContent).toContain("digest mismatch")
 
-    await runtime.dispose()
+    await current.runtime.reset()
+    expect(current.mount).toHaveBeenCalledOnce()
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    expect(current.resetState).toHaveBeenLastCalledWith({ disabled: true })
+
+    await current.runtime.dispose()
+    expect(current.release).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
   })
 
-  it("does not start a refresh mutation after disposal while draft lookup is pending", async () => {
-    const pendingDraft = deferred<readonly [undefined, {
-      draftId: string
-      name: string
-      displayName: string
-      revision: string
-    }]>()
-    const refreshPreview = vi.fn()
-    const releaseRevision = vi.fn()
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn(() => pendingDraft.promise) },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: refreshPreview,
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn(() => () => {}) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: releaseRevision,
-      onLogError: vi.fn(),
+  test("keeps the committed refresh authority when the replacement mount fails", async () => {
+    const cleanup = vi.fn()
+    const mount = vi.fn()
+      .mockImplementationOnce(() => cleanup)
+      .mockImplementationOnce(() => { throw new Error("replacement mount failed") })
+    const next = ready({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
     })
+    const current = fixture({
+      build: vi.fn(async () => [undefined, next] as const),
+      mount,
+    })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
 
-    const refreshing = runtime.refresh()
-    const disposing = runtime.dispose()
-    pendingDraft.resolve([undefined, {
-      draftId: "Weather",
-      name: "Weather",
-      displayName: "Weather",
-      revision: "rev-2",
-    }])
-    await Promise.all([refreshing, disposing])
+    await current.runtime.refresh(summary())
 
-    expect(refreshPreview).not.toHaveBeenCalled()
-    expect(releaseRevision).toHaveBeenCalledTimes(1)
-    expect(releaseRevision).toHaveBeenCalledWith("rev-1")
+    expect(current.mount).toHaveBeenCalledTimes(2)
+    expect(cleanup).not.toHaveBeenCalled()
+    expect(current.persist).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    expect(root?.textContent).toContain("replacement mount failed")
+
+    await current.runtime.reset()
+    expect(current.mount).toHaveBeenCalledTimes(2)
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    expect(current.resetState).toHaveBeenLastCalledWith({ disabled: true })
+
+    await current.runtime.dispose()
+    expect(current.release).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
   })
 
-  it("waits for an in-flight replacement and releases its late owned revision on disposal", async () => {
-    const pendingRefresh = deferred<readonly [undefined, TDraftPreviewReady]>()
-    const releaseRevision = vi.fn()
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(() => pendingRefresh.promise),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn(() => () => {}) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: releaseRevision,
-      onLogError: vi.fn(),
+  test("re-fetches and adopts the exact active revision when a refresh loses CAS", async () => {
+    const active = ready({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
     })
-
-    const refreshing = runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
-    const disposing = runtime.dispose()
-    expect(releaseRevision).toHaveBeenCalledWith("rev-1")
-    pendingRefresh.resolve([undefined, ready("rev-2")])
-    await Promise.all([refreshing, disposing])
-
-    expect(releaseRevision).toHaveBeenCalledTimes(2)
-    expect(releaseRevision).toHaveBeenLastCalledWith("rev-2")
-  })
-
-  it("ignores an old send completion after refresh adopts a new revision", async () => {
-    const pendingSend = deferred<readonly [undefined, {
-      ready: true,
-      revision: string,
-      messageId: string,
-      snapshot: { state: string, context: unknown },
-    }]>()
-    const cleanupFirstSandbox = vi.fn()
-    const cleanupSecondSandbox = vi.fn()
-    const bridges: TArrowSandboxBridge[] = []
-    const mountSandbox = vi.fn((_portal, sandboxArgs) => {
-      bridges.push(sandboxArgs.bridge)
-      return bridges.length === 1 ? cleanupFirstSandbox : cleanupSecondSandbox
-    })
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(async () => [undefined, ready("rev-2")] as const),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(() => pendingSend.promise),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: mountSandbox as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
-    })
-
-    const sending = bridges[0]!.sendMessage({ name: "increment", payload: { by: 1 } })
-    await runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
-    expect(cleanupFirstSandbox).toHaveBeenCalledOnce()
-    expect(runtime.getOwnedRevision()).toBe("rev-2")
-
-    pendingSend.resolve([undefined, {
-      ready: true,
-      revision: "rev-1",
-      messageId: "message-old",
-      snapshot: { state: "old-send", context: { revision: "rev-1" } },
-    }])
-    expect(await sending).toEqual({ ok: true, messageId: "message-old" })
-    expect(await bridges[1]!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-2" } })
-    expect(cleanupSecondSandbox).not.toHaveBeenCalled()
-
-    runtime.dispose()
-    expect(cleanupSecondSandbox).toHaveBeenCalledOnce()
-  })
-
-  it("ignores a failed send completion after disposal", async () => {
-    const pendingSend = deferred<readonly [undefined, {
+    const build = vi.fn(async () => [undefined, {
       ready: false,
-      draftId: string,
-      revision: string,
-      currentRevision: string,
-      reason: string,
-      message: string,
-      diagnostics: string[],
-    }]>()
-    const cleanupSandbox = vi.fn()
-    let bridge: TArrowSandboxBridge | undefined
-    const releaseRevision = vi.fn()
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(() => pendingSend.promise),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn((_portal, sandboxArgs) => {
-        bridge = sandboxArgs.bridge
-        return cleanupSandbox
-      }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: releaseRevision,
-      onLogError: vi.fn(),
-    })
-
-    const sending = bridge!.sendMessage({ name: "increment", payload: {} })
-    runtime.dispose()
-    pendingSend.resolve([undefined, {
-      ready: false,
-      draftId: "Weather",
-      revision: "rev-1",
-      currentRevision: "rev-2",
-      reason: "stale-revision",
-      message: "Late stale response must not render.",
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+      revision: DRAFT_REVISION_TWO,
+      currentRevision: DRAFT_REVISION_TWO,
+      reason: "preview-conflict",
+      message: "Another refresh won the Preview CAS.",
       diagnostics: [],
-    }])
-
-    expect(await sending).toMatchObject({ ok: false })
-    expect(cleanupSandbox).toHaveBeenCalledOnce()
-    expect(releaseRevision).toHaveBeenCalledOnce()
-    expect(root?.textContent).not.toContain("Late stale response must not render.")
-  })
-
-  it("keeps the immutable sandbox mounted when send reports a stale revision", async () => {
-    const cleanupSandbox = vi.fn()
-    let bridge: TArrowSandboxBridge | undefined
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(async () => [undefined, {
-                ready: false,
-                draftId: "Weather",
-                revision: "rev-1",
-                currentRevision: "rev-2",
-                reason: "stale-revision",
-                message: "Refresh Preview before interacting with this changed draft.",
-                diagnostics: [],
-              }] as const),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn((_portal, sandboxArgs) => {
-        bridge = sandboxArgs.bridge
-        return cleanupSandbox
-      }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
-    })
-
-    expect(await bridge!.sendMessage({ name: "increment", payload: {} })).toMatchObject({ ok: false })
-    expect(cleanupSandbox).not.toHaveBeenCalled()
-    expect(root?.querySelector(".vc-draft-preview__sandbox")).not.toBeNull()
-    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
-    expect(await bridge!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-1" } })
-
-    runtime.dispose()
-    expect(cleanupSandbox).toHaveBeenCalledOnce()
-  })
-
-  it("keeps a changed draft stale until refresh adopts and persists the newest ready revision", async () => {
-    const cleanupFirstSandbox = vi.fn()
-    const cleanupSecondSandbox = vi.fn()
-    let mountCount = 0
-    const mountSandbox = vi.fn(() => (++mountCount === 1 ? cleanupFirstSandbox : cleanupSecondSandbox))
-    const refreshPreview = vi.fn(async () => [undefined, ready("rev-2")] as const)
-    const persistRevision = vi.fn()
-    const releaseRevision = vi.fn()
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: refreshPreview,
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1", "idle", "rev-2"),
-      mountSandbox: mountSandbox as never,
-      onPersistRevision: persistRevision,
-      onReleaseRevision: releaseRevision,
-      onLogError: vi.fn(),
-    })
-
-    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
-    expect(runtime.getOwnedRevision()).toBe("rev-1")
-    await runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
-    expect(refreshPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1", expectedRevision: "rev-2" })
-    expect(cleanupFirstSandbox).toHaveBeenCalledOnce()
-    expect(mountSandbox).toHaveBeenCalledTimes(2)
-    expect(persistRevision).toHaveBeenCalledWith("rev-2")
-    expect(runtime.getOwnedRevision()).toBe("rev-2")
-    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
-
-    runtime.dispose()
-    expect(cleanupSecondSandbox).toHaveBeenCalledOnce()
-    expect(releaseRevision).toHaveBeenCalledWith("rev-2")
-  })
-
-  it("preserves the current sandbox when refresh or reset reports a stale conflict", async () => {
-    const cleanupSandbox = vi.fn()
-    let bridge: TArrowSandboxBridge | undefined
-    const staleFailure = {
-      ready: false as const,
-      draftId: "Weather",
-      revision: "rev-1",
-      currentRevision: "rev-2",
-      reason: "stale-revision",
-      message: "The draft changed before the operation was accepted.",
-      diagnostics: [],
-    }
-    const refreshPreview = vi.fn(async () => [undefined, staleFailure] as const)
-    const resetPreview = vi.fn(async () => [undefined, staleFailure] as const)
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: refreshPreview,
-              reset: resetPreview,
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn((_portal, sandboxArgs) => {
-        bridge = sandboxArgs.bridge
-        return cleanupSandbox
-      }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
-    })
-
-    await runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
-    expect(refreshPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1", expectedRevision: "rev-2" })
-    expect(cleanupSandbox).not.toHaveBeenCalled()
-    expect(root?.querySelector(".vc-draft-preview__sandbox")).not.toBeNull()
-    expect(root?.querySelector(".vc-draft-preview__status")).toBeNull()
-    expect(await bridge!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-1" } })
-
-    await runtime.reset()
-    expect(resetPreview).toHaveBeenCalledWith({ draftId: "Weather", previewId: "preview-1", expectedRevision: "rev-1" })
-    expect(cleanupSandbox).not.toHaveBeenCalled()
-    expect(root?.querySelector(".vc-draft-preview__sandbox")).not.toBeNull()
-
-    runtime.dispose()
-    expect(cleanupSandbox).toHaveBeenCalledOnce()
-  })
-
-  it("preserves the current sandbox when refresh fails to build the replacement", async () => {
-    const cleanupSandbox = vi.fn()
-    let bridge: TArrowSandboxBridge | undefined
-    const failure = {
-      ready: false as const,
-      draftId: "Weather",
-      revision: "rev-2",
-      currentRevision: "rev-2",
-      reason: "validation-failed",
-      message: "Fix validation errors before Preview can refresh.",
-      diagnostics: ["widget/main.ts: invalid"],
-    }
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(async () => [undefined, failure] as const),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn((_portal, sandboxArgs) => {
-        bridge = sandboxArgs.bridge
-        return cleanupSandbox
-      }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
-    })
-
-    await runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" })
-    expect(cleanupSandbox).not.toHaveBeenCalled()
-    expect(root?.querySelector(".vc-draft-preview__sandbox")).not.toBeNull()
-    expect(root?.textContent).toContain(failure.message)
-    expect(root?.querySelector("[role='alert']")).not.toBeNull()
-    expect(await bridge!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-1" } })
-
-    runtime.dispose()
-    expect(cleanupSandbox).toHaveBeenCalledOnce()
-  })
-
-  it("closes an attempted revision when a refresh response is lost", async () => {
-    const cleanupSandbox = vi.fn()
-    const closePreview = vi.fn(async () => [undefined, {
-      closed: true,
-      draftId: "Weather",
-      revision: "rev-2",
     }] as const)
-    let bridge: TArrowSandboxBridge | undefined
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-runtime-owner",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: vi.fn(async () => [{ message: "Preview refresh response was lost." }, undefined] as const),
-              reset: vi.fn(),
-              close: closePreview,
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn((_portal, sandboxArgs) => {
-        bridge = sandboxArgs.bridge
-        return cleanupSandbox
-      }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
+    const current = fixture({
+      build,
+      getPreview: vi.fn(async () => [undefined, active] as const),
     })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
 
-    await expect(runtime.refresh({
-      draftId: "Weather",
-      name: "Weather",
-      displayName: "Weather",
-      revision: "rev-2",
-    })).rejects.toThrow("response was lost")
-
-    expect(closePreview).toHaveBeenCalledOnce()
-    expect(closePreview).toHaveBeenCalledWith({
-      draftId: "Weather",
-      previewId: "preview-runtime-owner",
-      expectedRevision: "rev-2",
+    await current.runtime.refresh(summary())
+    expect(current.getPreview).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
     })
-    expect(cleanupSandbox).not.toHaveBeenCalled()
-    expect(await bridge!.getSnapshot()).toMatchObject({ state: "idle", context: { revision: "rev-1" } })
-    expect(root?.textContent).toContain("Preview refresh response was lost.")
-
-    await runtime.dispose()
+    expect(current.mount).toHaveBeenCalledTimes(2)
+    expect(current.persist).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    await current.runtime.dispose()
   })
 
-  it("serializes same-owner mutations so an older completion cannot close a newer replacement", async () => {
-    const firstRefresh = deferred<readonly [undefined, TDraftPreviewReady]>()
-    const secondRefresh = deferred<readonly [undefined, TDraftPreviewReady]>()
-    const refreshPreview = vi.fn()
-      .mockImplementationOnce(() => firstRefresh.promise)
-      .mockImplementationOnce(() => secondRefresh.promise)
-    const closePreview = vi.fn()
-    const bridges: TArrowSandboxBridge[] = []
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-runtime-owner",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: { get: vi.fn() },
-            widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: refreshPreview,
-              reset: vi.fn(),
-              close: closePreview,
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      initialResult: ready("rev-1"),
-      mountSandbox: vi.fn((_portal, sandboxArgs) => {
-        bridges.push(sandboxArgs.bridge)
-        return () => {}
-      }) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
-      onLogError: vi.fn(),
+  test("fences the inactive mounted revision when a Preview conflict cannot be re-fetched", async () => {
+    const build = vi.fn(async () => [undefined, {
+      ready: false,
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+      revision: DRAFT_REVISION_TWO,
+      currentRevision: DRAFT_REVISION_TWO,
+      reason: "preview-conflict",
+      message: "Another refresh won the Preview CAS.",
+      diagnostics: [],
+    }] as const)
+    const current = fixture({
+      build,
+      getPreview: vi.fn(async () => [{ message: "active Preview unavailable" }, undefined] as const),
     })
-    const summary = { draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-2" }
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
 
-    const older = runtime.refresh(summary)
-    const newer = runtime.refresh(summary)
-    await vi.waitFor(() => expect(refreshPreview).toHaveBeenCalledTimes(1))
+    await current.runtime.refresh(summary())
+    await current.runtime.reset()
 
-    firstRefresh.resolve([undefined, ready("rev-2", "first")])
-    await older
-    await vi.waitFor(() => expect(refreshPreview).toHaveBeenCalledTimes(2))
-    secondRefresh.resolve([undefined, ready("rev-2", "second")])
-    await newer
-
-    expect(closePreview).not.toHaveBeenCalled()
-    expect(runtime.getOwnedRevision()).toBe("rev-2")
-    expect(await bridges.at(-1)!.getSnapshot()).toMatchObject({ state: "second" })
-    await runtime.dispose()
+    expect(current.mount).toHaveBeenCalledOnce()
+    expect(current.persist).not.toHaveBeenCalled()
+    expect(current.resetState).toHaveBeenLastCalledWith({ disabled: true })
+    expect(root?.textContent).toContain("active Preview unavailable")
+    await current.runtime.dispose()
   })
 
-  it("does not release a ready Preview merely observed by a late get", async () => {
-    const pendingGet = deferred<readonly [undefined, TDraftPreviewReady]>()
-    const releaseRevision = vi.fn()
-    const mountSandbox = vi.fn()
-    const getPreview = vi.fn(() => pendingGet.promise)
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
-      api: {
-        api: {
-          agent: {
-            widgetDraft: {
-              get: vi.fn(async () => [undefined, {
-                draftId: "Weather",
-                name: "Weather",
-                displayName: "Weather",
-                revision: "rev-1",
-              }] as const),
-            },
-            widgetPreview: {
-              get: getPreview,
-              build: vi.fn(),
-              refresh: vi.fn(),
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
-            },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
-          },
-        },
-      } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
-      },
-      mountSandbox: mountSandbox as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: releaseRevision,
-      onLogError: vi.fn(),
+  test("fences a cached revision when a post-commit build failure leaves no active Preview", async () => {
+    const build = vi.fn(async () => [undefined, {
+      ready: false,
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+      revision: DRAFT_REVISION_TWO,
+      currentRevision: DRAFT_REVISION_TWO,
+      reason: "artifact-unavailable",
+      message: "Committed Preview artifact could not be read.",
+      diagnostics: ["artifact unavailable"],
+    }] as const)
+    const current = fixture({
+      build,
+      getPreview: vi.fn(async () => [undefined, {
+        ready: false,
+        draftId: DRAFT_ID,
+        previewId: PREVIEW_ID,
+        reason: "not-built",
+        message: "Preview has not been built for this draft.",
+        diagnostics: [],
+      }] as const),
     })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
 
-    await vi.waitFor(() => expect(getPreview).toHaveBeenCalledOnce())
-    runtime.dispose()
-    pendingGet.resolve([undefined, ready("rev-1")])
-    await vi.waitFor(() => expect(releaseRevision).toHaveBeenCalledTimes(1))
-    expect(releaseRevision).toHaveBeenCalledWith("rev-1")
-    expect(mountSandbox).not.toHaveBeenCalled()
+    await current.runtime.refresh(summary())
+    await current.runtime.reset()
+
+    expect(current.mount).toHaveBeenCalledOnce()
+    expect(current.persist).not.toHaveBeenCalled()
+    expect(current.resetState).toHaveBeenLastCalledWith({ disabled: true })
+    expect(root?.textContent).toContain("Committed Preview artifact could not be read.")
+    await current.runtime.dispose()
   })
 
-  it("surfaces Preview transport and actor failures inside the frame", async () => {
-    const refreshPreview = vi.fn(async () => [{ message: "Preview transport offline" }, undefined] as const)
-    const runtime = mountDraftPreview({
-      root: createRoot(),
-      previewId: "preview-1",
+  test("recovers and adopts a committed Preview after the build transport loses its response", async () => {
+    const active = ready({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    const current = fixture({
+      build: vi.fn(async () => [{ message: "response transport lost" }, undefined] as const),
+      getPreview: vi.fn(async () => [undefined, active] as const),
+    })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
+
+    await current.runtime.refresh(summary())
+
+    expect(current.getPreview).toHaveBeenCalledOnce()
+    expect(current.mount).toHaveBeenCalledTimes(2)
+    expect(current.persist).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    expect(current.runtime.getOwnedRevision()).toBe(DRAFT_REVISION_TWO)
+    expect(current.runtime.getOwnedPreviewRevisionId()).toBe(PREVIEW_REVISION_TWO)
+    await current.runtime.dispose()
+  })
+
+  test("fences cached authority when a build transport failure leaves no active Preview", async () => {
+    const current = fixture({
+      build: vi.fn(async () => [{ message: "response transport lost" }, undefined] as const),
+      getPreview: vi.fn(async () => [undefined, {
+        ready: false,
+        draftId: DRAFT_ID,
+        previewId: PREVIEW_ID,
+        reason: "not-built",
+        message: "Preview has not been built for this draft.",
+        diagnostics: [],
+      }] as const),
+    })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
+
+    await current.runtime.refresh(summary())
+    await current.runtime.reset()
+
+    expect(current.mount).toHaveBeenCalledOnce()
+    expect(current.persist).not.toHaveBeenCalled()
+    expect(current.resetState).toHaveBeenLastCalledWith({ disabled: true })
+    expect(root?.textContent).toContain("response transport lost")
+    await current.runtime.dispose()
+  })
+
+  test("releases both exact authorities when a refresh completes after disposal", async () => {
+    let resolveBuild!: (value: readonly [undefined, TDraftPreviewReady]) => void
+    const build = vi.fn(() => new Promise<readonly [undefined, TDraftPreviewReady]>((resolve) => {
+      resolveBuild = resolve
+    }))
+    const current = fixture({ build })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
+    const refreshing = current.runtime.refresh(summary())
+    await vi.waitFor(() => expect(build).toHaveBeenCalledOnce())
+    const disposing = current.runtime.dispose()
+    resolveBuild([undefined, ready({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })])
+    await Promise.all([refreshing, disposing])
+
+    expect(current.mount).toHaveBeenCalledOnce()
+    expect(current.release).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_TWO,
+      previewRevisionId: PREVIEW_REVISION_TWO,
+    })
+    expect(current.release).toHaveBeenCalledWith({
+      draftRevision: DRAFT_REVISION_ONE,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+    })
+  })
+
+  test("server-backed artifacts invoke only through their exact Preview subject", async () => {
+    const descriptor = functionDescriptor()
+    const invocation = {
+      id: "40000000-0000-4000-8000-000000000001",
+      functionName: descriptor.exportName,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      status: "succeeded" as const,
+      output: { temperature: 21 },
+      failure: null,
+      createdAtMs: 1,
+      startedAtMs: 1,
+      finishedAtMs: 1,
+    }
+    const invoke = vi.fn(async () => [undefined, invocation] as const)
+    const current = fixture({ initial: ready({ functions: [descriptor] }), invoke })
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledOnce())
+    const bridge = current.mount.mock.calls[0]![0].functionBridge
+
+    await expect(bridge.invoke({
+      functionName: descriptor.exportName,
+      input: { city: "Berlin" },
+      idempotencyKey: "weather-1",
+    })).resolves.toEqual({ temperature: 21 })
+    expect(invoke).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      functionName: descriptor.exportName,
+      input: { city: "Berlin" },
+      idempotencyKey: "weather-1",
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(JSON.stringify(invoke.mock.calls)).not.toContain("widgetInstanceId")
+    await current.runtime.dispose()
+  })
+
+  test("rejects mismatched invocation ownership and cancels work on disposal", async () => {
+    const descriptor = functionDescriptor()
+    const queued = {
+      id: "40000000-0000-4000-8000-000000000001",
+      functionName: descriptor.exportName,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      status: "queued" as const,
+      output: null,
+      failure: null,
+      createdAtMs: 1,
+      startedAtMs: null,
+      finishedAtMs: null,
+    }
+    const invoke = vi.fn(async () => [undefined, queued] as const)
+    const cancel = vi.fn(async () => [undefined, { ...queued, status: "cancelled" as const }] as const)
+    const wait = vi.fn((_timeout: number, signal: AbortSignal) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })
+    }))
+    const bridge = createPreviewFunctionHostBridge({
       api: {
         api: {
           agent: {
-            widgetDraft: { get: vi.fn() },
             widgetPreview: {
-              get: vi.fn(),
-              build: vi.fn(),
-              refresh: refreshPreview,
-              reset: vi.fn(),
-              close: vi.fn(),
-              send: vi.fn(),
+              invoke,
+              invocation: { get: vi.fn(), cancel },
             },
-            events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
         },
       } as never,
-      payload: {
-        draftId: "Weather",
-        pinnedRevision: "rev-1",
-        originChatElementId: "chat-1",
+      draftId: DRAFT_ID,
+      identity: {
+        kind: "agent_preview",
+        definitionId: DEFINITION_ID,
+        previewId: PREVIEW_ID,
+        previewRevisionId: PREVIEW_REVISION_ONE,
       },
-      initialResult: ready("rev-1", "error"),
-      mountSandbox: vi.fn(() => () => {}) as never,
-      onPersistRevision: vi.fn(),
-      onReleaseRevision: vi.fn(),
+      functionDescriptors: [descriptor],
+      createId: () => "preview-function-key",
+      nowMs: () => 1,
+      wait,
+      isCurrent: () => true,
       onLogError: vi.fn(),
     })
-
-    expect(root?.textContent).toContain("The Preview actor entered an error state")
-    await expect(runtime.refresh({ draftId: "Weather", name: "Weather", displayName: "Weather", revision: "rev-1" }))
-      .rejects.toThrow("Preview transport offline")
-    expect(root?.textContent).toContain("Preview transport offline")
-    expect(root?.querySelector("[role='alert']")).not.toBeNull()
-    runtime.dispose()
+    const pending = bridge.invoke({
+      functionName: descriptor.exportName,
+      input: {},
+      idempotencyKey: "weather-2",
+    })
+    await vi.waitFor(() => expect(wait).toHaveBeenCalledOnce())
+    bridge.dispose()
+    await expect(pending).rejects.toThrow()
+    expect(cancel).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      previewRevisionId: PREVIEW_REVISION_ONE,
+      invocationId: queued.id,
+    })
   })
 })

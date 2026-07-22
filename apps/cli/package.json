@@ -32,6 +32,7 @@
     "@vibecanvas/tapable": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
     "@vibecanvas/widget-contract": "workspace:*",
+    "typescript": "5.9.3",
     "zod": "catalog:"
   }
 }

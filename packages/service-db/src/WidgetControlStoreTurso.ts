@@ -27,6 +27,8 @@ import type {
   TWidgetArtifactRetentionReconcileResult,
   TWidgetArtifactRetentionRestoreRequest,
   TWidgetDefinitionCreate,
+  TWidgetDefinitionArchiveInput,
+  TWidgetDefinitionArchiveResult,
   TWidgetDefinitionDescriptor,
   TWidgetDefinitionId,
   TWidgetManifestV2,
@@ -160,6 +162,59 @@ export class WidgetControlStoreTurso implements
       WHERE org_id = ? AND slug = ?
     `)).get(tenant.orgId, slug);
     return row ? fnWidgetControlStoreDefinition(row) : null;
+  }
+
+  async archiveDefinition(
+    tenant: TTenantContext,
+    request: TWidgetDefinitionArchiveInput,
+  ): Promise<TWidgetDefinitionArchiveResult> {
+    const transitionAtMs = this.#timestamp(request.nowMs, 'widget archive transition timestamp');
+    return this.#runImmediate(tenant, async () => {
+      const definition = await this.getDefinition(tenant, request.definitionId);
+      if (
+        !definition
+        || definition.status !== 'published'
+        || definition.activeRevisionId !== request.expectedActiveRevisionId
+      ) {
+        return {
+          status: 'conflict',
+          currentActiveRevisionId: definition?.activeRevisionId ?? null,
+        } as const;
+      }
+      if (transitionAtMs < definition.updatedAtMs) {
+        throw widgetStoreError(
+          'WIDGET_TRANSITION_TIMESTAMP_REGRESSION',
+          'Widget archive transition time cannot move backwards.',
+        );
+      }
+      const update = await (await this.database.prepare(`
+        UPDATE widget_definitions
+        SET status = 'archived', active_revision_id = NULL, updated_at_ms = ?
+        WHERE org_id = ? AND id = ?
+          AND status = 'published' AND active_revision_id = ?
+      `)).run(
+        transitionAtMs,
+        tenant.orgId,
+        request.definitionId,
+        request.expectedActiveRevisionId,
+      );
+      if (update.changes !== 1) {
+        const current = await this.getDefinition(tenant, request.definitionId);
+        return {
+          status: 'conflict',
+          currentActiveRevisionId: current?.activeRevisionId ?? null,
+        } as const;
+      }
+      const archived = await this.getDefinition(tenant, request.definitionId);
+      if (!archived || archived.status !== 'archived' || archived.activeRevisionId !== null) {
+        throw new Error('Archived widget definition could not be read back.');
+      }
+      return {
+        status: 'archived',
+        definition: archived,
+        previousActiveRevisionId: request.expectedActiveRevisionId,
+      } as const;
+    });
   }
 
   async listPublishedDefinitions(

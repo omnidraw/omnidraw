@@ -1,11 +1,13 @@
-import { ThemeService } from "@vibecanvas/service-theme";
-import { buildRuntime } from "@vibecanvas/canvas/runtime";
-import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS";
-import { afterEach, describe, expect, test, vi } from "vitest";
-import { createAiChatCanvasExtension } from "../../src/canvas-extension";
-import { DRAFT_PREVIEW_WIDGET_KIND } from "../../src/draft-preview/CONSTANTS";
-import type { DraftPreviewFrameService } from "../../src/draft-preview/DraftPreviewFrameService";
-import { fnDraftPreviewElementId } from "../../src/draft-preview/fn.element-id";
+import { Buffer } from "node:buffer"
+import { createHash } from "node:crypto"
+import { LOCAL_BROWSER_TENANT_SCOPE } from "@vibecanvas/canvas/CONSTANTS"
+import { buildRuntime } from "@vibecanvas/canvas/runtime"
+import { ThemeService } from "@vibecanvas/service-theme"
+import { afterEach, describe, expect, test, vi } from "vitest"
+import { createAiChatCanvasExtension } from "../../src/canvas-extension"
+import { DRAFT_PREVIEW_WIDGET_KIND } from "../../src/draft-preview/CONSTANTS"
+import type { DraftPreviewFrameService } from "../../src/draft-preview/DraftPreviewFrameService"
+import { fnDraftPreviewElementId } from "../../src/draft-preview/fn.element-id"
 import {
   createMockDocHandle,
   createTestApplication,
@@ -13,89 +15,188 @@ import {
   createTestContainer,
   createTestWidgetBrowser,
   ensureCanvasDom,
-} from "../test-setup";
+} from "../test-setup"
+
+const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
+const DEFINITION_ID = "20000000-0000-4000-8000-000000000001"
+const PREVIEW_ID_ONE = "60000000-0000-4000-8000-000000000001"
+const PREVIEW_ID_TWO = "60000000-0000-4000-8000-000000000002"
+const DRAFT_REVISION = "a".repeat(64)
+
+function digest(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex")
+}
+
+function uiArtifact() {
+  const outputBytes = Buffer.from("export default 'preview';", "utf8")
+  const envelopeBytes = Buffer.from(JSON.stringify({
+    format: "vibecanvas.widget-artifact.v1",
+    kind: "ui",
+    entry: "ui/main.ts",
+    sourceDigestSha256: "c".repeat(64),
+    builderIdentity: "placement-test",
+    runtimeAbi: null,
+    outputs: [{
+      path: "output-0.js",
+      loader: "js",
+      kind: "entry-point",
+      digestSha256: digest(outputBytes),
+      bytesBase64: outputBytes.toString("base64"),
+    }],
+  }), "utf8")
+  return {
+    digestSha256: digest(envelopeBytes),
+    byteSize: envelopeBytes.byteLength,
+    bytesBase64: envelopeBytes.toString("base64"),
+  }
+}
+
+function ready(previewId: string, previewRevisionId: string) {
+  return {
+    ready: true as const,
+    draftId: DRAFT_ID,
+    definitionId: DEFINITION_ID,
+    name: "Blobby",
+    previewId,
+    previewRevisionId,
+    revision: DRAFT_REVISION,
+    currentRevision: DRAFT_REVISION,
+    stale: false,
+    manifest: {
+      schemaVersion: 2 as const,
+      name: "Blobby",
+      slug: "blobby",
+      ui: { entry: "ui/main.ts" },
+    },
+    uiArtifact: uiArtifact(),
+    contract: { digestSha256: "d".repeat(64), functions: [] },
+    diagnostics: [],
+    expiresAtMs: 10_000,
+  }
+}
 
 describe("DraftPreviewFrameService placement", () => {
-  let container: HTMLDivElement | undefined;
+  let container: HTMLDivElement | undefined
 
   afterEach(() => {
-    container?.remove();
-    container = undefined;
-  });
+    container?.remove()
+    container = undefined
+  })
 
-  test("places multiple independent frames for the same draft revision", async () => {
-    ensureCanvasDom();
-    container = createTestContainer();
-    const docHandle = createMockDocHandle();
+  test("recovers a committed build after response loss, persists ownership, and closes exact revisions", async () => {
+    ensureCanvasDom()
+    container = createTestContainer()
+    const docHandle = createMockDocHandle()
     const summary = {
-      draftId: "Blobby",
+      draftId: DRAFT_ID,
+      definitionId: DEFINITION_ID,
+      chatId: "50000000-0000-4000-8000-000000000001",
       name: "Blobby",
       displayName: "Blobby",
-      revision: "revision-blobby",
-    };
-    const ready = {
-      ready: true as const,
-      draftId: summary.draftId,
-      name: summary.name,
-      revision: summary.revision,
-      currentRevision: summary.revision,
-      stale: false,
-      manifest: {},
-      sources: { "main.ts": "export default {}" },
-      snapshot: { state: "idle", context: {} },
-      diagnostics: [],
-    };
-    const resolvePreviewGets: Array<(value: readonly [undefined, typeof ready]) => void> = [];
-    const getPreview = vi.fn(() => new Promise<readonly [undefined, typeof ready]>((resolve) => {
-      resolvePreviewGets.push(resolve);
-    }));
-    const closePreview = vi.fn(async ({ draftId, expectedRevision }: { draftId: string; expectedRevision: string }) => [undefined, {
+      state: "modified" as const,
+      revision: DRAFT_REVISION,
+      publishedRevisionId: null,
+      updatedAt: new Date(1).toISOString(),
+      validation: { status: "valid" as const, errors: [], warnings: [], validatedRevision: DRAFT_REVISION },
+      previewAvailable: true,
+      publishReady: true,
+    }
+    const previewRevisionByOwner = new Map([
+      [PREVIEW_ID_ONE, "30000000-0000-4000-8000-000000000001"],
+      [PREVIEW_ID_TWO, "30000000-0000-4000-8000-000000000002"],
+    ])
+    const getCallsByOwner = new Map<string, number>()
+    const getPreview = vi.fn(async ({ previewId }: { previewId: string }) => {
+      const call = (getCallsByOwner.get(previewId) ?? 0) + 1
+      getCallsByOwner.set(previewId, call)
+      if (previewId === PREVIEW_ID_ONE && call === 1) {
+        return [undefined, {
+          ready: false as const,
+          draftId: DRAFT_ID,
+          previewId,
+          reason: "not-built" as const,
+          message: "Preview has not been built.",
+          diagnostics: [],
+        }] as const
+      }
+      return [undefined, ready(previewId, previewRevisionByOwner.get(previewId)!)] as const
+    })
+    let lostFirstBuildResponse = false
+    const buildPreview = vi.fn(async ({ previewId }: { previewId: string }) => {
+      if (previewId === PREVIEW_ID_ONE && !lostFirstBuildResponse) {
+        lostFirstBuildResponse = true
+        return [{ message: "Preview response was lost after commit." }, undefined] as const
+      }
+      const nextRevision = "30000000-0000-4000-8000-000000000003"
+      previewRevisionByOwner.set(previewId, nextRevision)
+      return [undefined, ready(previewId, nextRevision)] as const
+    })
+    const closePreview = vi.fn(async ({
+      draftId,
+      previewId,
+      expectedPreviewRevisionId,
+    }: {
+      draftId: string
+      previewId: string
+      expectedPreviewRevisionId: string
+    }) => [undefined, {
       closed: true,
       draftId,
-      revision: expectedRevision,
-    }] as const);
-    const refreshPreview = vi.fn(async () => [undefined, ready] as const);
-    const resetPreview = vi.fn(async () => [undefined, ready] as const);
+      previewId,
+      previewRevisionId: expectedPreviewRevisionId,
+    }] as const)
     const publish = vi.fn(async () => [undefined, {
-      published: true,
-      draftId: summary.draftId,
-      revision: summary.revision,
-      definitionName: summary.name,
-      manifest: {},
-    }] as const);
+      published: true as const,
+      draftId: DRAFT_ID,
+      definitionId: DEFINITION_ID,
+      revision: DRAFT_REVISION,
+      publishedRevisionId: "40000000-0000-4000-8000-000000000001",
+      manifest: {
+        schemaVersion: 2 as const,
+        name: "Blobby",
+        slug: "blobby",
+        ui: { entry: "ui/main.ts" },
+      },
+    }] as const)
+    const detail = vi.fn(async () => [undefined, {
+      name: "Blobby",
+      source: "draft" as const,
+      relation: "draft-only" as const,
+      sibling: null,
+      manifest: {
+        schemaVersion: 2 as const,
+        name: "Blobby",
+        slug: "blobby",
+        ui: { entry: "ui/main.ts" },
+      },
+      problem: null,
+      variant: {
+        source: "draft" as const,
+        draftId: DRAFT_ID,
+        displayName: "Blobby",
+        kind: "widget" as const,
+        slug: "blobby",
+        description: null,
+        revision: DRAFT_REVISION,
+        contentFingerprint: null,
+        updatedAt: null,
+        tool: { label: "Blobby", icon: null, group: null, priority: null, behaviorType: null },
+        validation: summary.validation,
+      },
+    }] as const)
     const extension = createAiChatCanvasExtension({
       chatApi: {
         api: {
           agent: {
-            widgets: { detail: vi.fn(async () => [undefined, {
-              name: summary.name,
-              source: "draft",
-              relation: "draft-only",
-              sibling: null,
-              manifest: null,
-              problem: null,
-              variant: {
-                source: "draft",
-                displayName: summary.displayName,
-                kind: "actor-widget",
-                slug: "blobby",
-                description: null,
-                revision: summary.revision,
-                contentFingerprint: null,
-                updatedAt: null,
-                tool: { label: summary.displayName, icon: null, group: null, priority: null, behaviorType: "mode" },
-                validation: null,
-              },
-            }] as const) },
+            widgets: { detail },
             widgetPublish: { publish },
             widgetDraft: { get: vi.fn(async () => [undefined, summary] as const) },
             widgetPreview: {
               get: getPreview,
-              build: vi.fn(),
-              refresh: refreshPreview,
-              reset: resetPreview,
+              build: buildPreview,
               close: closePreview,
-              send: vi.fn(),
+              invoke: vi.fn(),
+              invocation: { get: vi.fn(), cancel: vi.fn() },
             },
             events: async () => [undefined, { async *[Symbol.asyncIterator]() {} }],
           },
@@ -114,7 +215,7 @@ describe("DraftPreviewFrameService placement", () => {
       chatBrowser: createTestChatBrowser(),
       widgetBrowser: createTestWidgetBrowser(),
       application: createTestApplication(),
-    });
+    })
     const runtime = buildRuntime({
       canvasId: "multi-preview-placement-test",
       tenant: LOCAL_BROWSER_TENANT_SCOPE,
@@ -128,77 +229,95 @@ describe("DraftPreviewFrameService placement", () => {
         cloneImage: async () => ({ url: "memory://cloned" }),
         deleteImage: async () => ({ ok: true }),
       },
-    }, [extension]);
+    }, [extension])
 
-    await runtime.boot();
+    await runtime.boot()
     const previewFrames = (runtime.services as unknown as { require(name: string): unknown })
-      .require("draft-preview-frame") as DraftPreviewFrameService;
+      .require("draft-preview-frame") as DraftPreviewFrameService
     await previewFrames.place({
-      draftName: summary.draftId,
-      expectedRevision: summary.revision,
-      previewId: "preview-owner-1",
+      draftId: DRAFT_ID,
+      expectedRevision: DRAFT_REVISION,
+      previewId: PREVIEW_ID_ONE,
       bounds: { x: 100, y: 120, width: 360, height: 320 },
-    });
-    expect(getPreview).toHaveBeenCalledOnce();
-    expect(docHandle.doc().elements[fnDraftPreviewElementId(summary.draftId, "preview-owner-1")]).toBeDefined();
+    })
     await previewFrames.place({
-      draftName: summary.draftId,
-      expectedRevision: summary.revision,
-      previewId: "preview-owner-2",
+      draftId: DRAFT_ID,
+      expectedRevision: DRAFT_REVISION,
+      previewId: PREVIEW_ID_TWO,
       bounds: { x: 520, y: 120, width: 360, height: 320 },
-    });
+    })
 
     const frames = Object.values(docHandle.doc().elements).filter((element) => (
       element.data.type === "ui-widget"
       && element.data.kind === DRAFT_PREVIEW_WIDGET_KIND
-      && element.data.payload?.draftId === summary.draftId
-    ));
-    expect(frames).toHaveLength(2);
-    expect(frames.map((frame) => frame.id)).toEqual([
-      fnDraftPreviewElementId(summary.draftId, "preview-owner-1"),
-      fnDraftPreviewElementId(summary.draftId, "preview-owner-2"),
-    ]);
-    expect(frames.map(({ x, y }) => ({ x, y }))).toEqual([{ x: 100, y: 120 }, { x: 520, y: 120 }]);
-    expect(getPreview).toHaveBeenCalledTimes(2);
-    expect(runtime.services.require("selection").focusedId).toBe(frames[1]?.id);
+      && element.data.payload?.draftId === DRAFT_ID
+    ))
+    const elementIdOne = fnDraftPreviewElementId(DRAFT_ID, PREVIEW_ID_ONE)
+    const elementIdTwo = fnDraftPreviewElementId(DRAFT_ID, PREVIEW_ID_TWO)
+    expect(frames.map((frame) => frame.id)).toEqual([elementIdOne, elementIdTwo])
+    expect(frames.map((frame) => frame.data.type === "ui-widget" ? frame.data.payload : null)).toEqual([
+      {
+        draftId: DRAFT_ID,
+        draftName: "Blobby",
+        draftRevision: DRAFT_REVISION,
+        previewId: PREVIEW_ID_ONE,
+        previewRevisionId: "30000000-0000-4000-8000-000000000001",
+      },
+      {
+        draftId: DRAFT_ID,
+        draftName: "Blobby",
+        draftRevision: DRAFT_REVISION,
+        previewId: PREVIEW_ID_TWO,
+        previewRevisionId: "30000000-0000-4000-8000-000000000002",
+      },
+    ])
+    expect(runtime.services.require("selection").focusedId).toBe(elementIdTwo)
 
-    resolvePreviewGets.forEach((resolve) => resolve([undefined, ready]));
     const resetActions = await vi.waitFor(() => {
-      const buttons = container!.querySelectorAll<HTMLButtonElement>("[data-widget-title-action-id='reset']");
-      expect(buttons.length).toBeGreaterThanOrEqual(2);
-      expect(buttons[0]!.disabled).toBe(false);
-      return buttons;
-    });
-    expect(container!.querySelector(".vc-draft-preview__status")).toBeNull();
-    resetActions[0]!.click();
-    await vi.waitFor(() => expect(resetPreview).toHaveBeenCalledWith({
-      draftId: summary.draftId,
-      previewId: "preview-owner-1",
-      expectedRevision: summary.revision,
-    }));
-    const publishActions = await vi.waitFor(() => {
-      const buttons = container!.querySelectorAll<HTMLButtonElement>("[data-widget-title-action-id='publish']");
-      expect(buttons.length).toBeGreaterThanOrEqual(2);
-      return buttons;
-    });
-    publishActions[0]!.click();
+      const buttons = container!.querySelectorAll<HTMLButtonElement>("[data-widget-title-action-id='reset']")
+      expect(buttons).toHaveLength(2)
+      expect(buttons[0]!.disabled).toBe(false)
+      return buttons
+    })
+    resetActions[0]!.click()
+    await Promise.resolve()
+    expect(buildPreview).toHaveBeenCalledTimes(1)
+    expect(closePreview).not.toHaveBeenCalled()
+
+    const publishAction = container!.querySelectorAll<HTMLButtonElement>("[data-widget-title-action-id='publish']")[0]!
+    publishAction.click()
     const confirm = await vi.waitFor(() => {
       const button = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
-        .find((candidate) => candidate.textContent === "Publish" && !candidate.disabled);
-      expect(button).toBeDefined();
-      return button!;
-    });
-    confirm.click();
+        .find((candidate) => candidate.textContent === "Publish" && !candidate.disabled)
+      expect(button).toBeDefined()
+      return button!
+    })
+    confirm.click()
     await vi.waitFor(() => expect(publish).toHaveBeenCalledWith({
-      draftId: summary.draftId,
-      expectedRevision: summary.revision,
-    }));
-    await vi.waitFor(() => expect(refreshPreview).toHaveBeenCalledWith({
-      draftId: summary.draftId,
-      previewId: "preview-owner-1",
-      expectedRevision: summary.revision,
-    }));
-    expect(Object.values(docHandle.doc().elements)).toHaveLength(2);
-    await runtime.shutdown();
-  });
-});
+      draftId: DRAFT_ID,
+      expectedRevision: DRAFT_REVISION,
+    }))
+    await vi.waitFor(() => expect(buildPreview).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID_ONE,
+      expectedDraftRevision: DRAFT_REVISION,
+      expectedActivePreviewRevisionId: "30000000-0000-4000-8000-000000000001",
+    }))
+    expect(buildPreview).toHaveBeenCalledTimes(2)
+    await vi.waitFor(() => expect(
+      (docHandle.doc().elements[elementIdOne]?.data as { payload?: { previewRevisionId?: string } }).payload?.previewRevisionId,
+    ).toBe("30000000-0000-4000-8000-000000000003"))
+
+    await runtime.shutdown()
+    expect(closePreview).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID_ONE,
+      expectedPreviewRevisionId: "30000000-0000-4000-8000-000000000003",
+    })
+    expect(closePreview).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID_TWO,
+      expectedPreviewRevisionId: "30000000-0000-4000-8000-000000000002",
+    })
+  }, 20_000)
+})

@@ -29,7 +29,6 @@ import type {
 } from '@vibecanvas/widget-contract';
 import { fnWidgetControlStoreArtifact } from './WidgetControlStoreTurso/fn.widget-control-store-row';
 import { fnWidgetControlStoreResourceCeiling } from './WidgetControlStoreTurso/fn.widget-control-store-row';
-import { txRunDatabaseTransaction } from './tx.run-database-transaction';
 
 export type TAgentAuthoringChatDescriptor = Readonly<{
   orgId: string;
@@ -78,14 +77,22 @@ export type TAgentAuthoringDraftDescriptor = Readonly<{
   updatedAtMs: number;
 }>;
 
+export type TAgentAuthoringDraftPublicationSeed = Readonly<{
+  definitionId: string;
+  publishedRevisionId: string;
+  sourceDigestSha256: string;
+}>;
+
 export type TAgentAuthoringDraftCreate = Readonly<{
   id: string;
   chatId: string;
-  definitionId: string;
   name: string;
   sourceRelativePath: string;
   nowMs: number;
-}>;
+}> & (
+  | Readonly<{ definitionId: string; publicationSeed?: undefined }>
+  | Readonly<{ definitionId?: undefined; publicationSeed: TAgentAuthoringDraftPublicationSeed }>
+);
 
 export type TAgentAuthoringDraftCas = Readonly<{
   draftId: string;
@@ -151,7 +158,7 @@ function parsedObject(value: unknown): Readonly<Record<string, unknown>> | null 
 export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
   constructor(
     private readonly database: Database,
-    private readonly mutationCoordinator?: IWidgetArtifactMutationCoordinator,
+    private readonly mutationCoordinator: IWidgetArtifactMutationCoordinator,
   ) {}
 
   async createChat(
@@ -160,9 +167,8 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
   ): Promise<TAgentAuthoringChatDescriptor> {
     this.#timestamp(request.nowMs, 'chat creation timestamp');
     this.#boundedText(request.externalSessionKey, 300, 'external session key');
-    return txRunDatabaseTransaction({ database: this.database }, {
-      operation: async () => {
-        await (await this.database.prepare(`
+    return this.#runArtifactMutation(tenant, async () => {
+      await (await this.database.prepare(`
           INSERT INTO agent_chats (
             org_id, id, account_id, canvas_id, name, status,
             workspace_relative_path, history_relative_path,
@@ -180,10 +186,9 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
           request.nowMs,
           request.externalSessionKey,
         );
-        const created = await this.getChat(tenant, request.id);
-        if (!created) throw new Error(`Failed to create agent chat '${request.id}'.`);
-        return created;
-      },
+      const created = await this.getChat(tenant, request.id);
+      if (!created) throw new Error(`Failed to create agent chat '${request.id}'.`);
+      return created;
     });
   }
 
@@ -215,10 +220,44 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     request: TAgentAuthoringDraftCreate,
   ): Promise<TAgentAuthoringDraftDescriptor> {
     this.#timestamp(request.nowMs, 'draft creation timestamp');
-    return txRunDatabaseTransaction({ database: this.database }, {
-      operation: async () => {
+    const publicationSeed = request.publicationSeed;
+    const definitionId = publicationSeed?.definitionId ?? request.definitionId;
+    if (publicationSeed) {
+      this.#sha256Digest(publicationSeed.sourceDigestSha256, 'publication source digest');
+    }
+    return this.#runArtifactMutation(tenant, async () => {
         const chat = await this.getChat(tenant, request.chatId);
         if (!chat) throw authoringError('AGENT_CHAT_NOT_FOUND', 'Agent chat is unavailable.');
+        if (publicationSeed) {
+          const publication = await (await this.database.prepare(`
+            SELECT 1
+            FROM widget_definition_revisions AS revision
+            JOIN widget_definitions AS definition
+              ON definition.org_id = revision.org_id
+             AND definition.id = revision.definition_id
+            JOIN widget_revision_sources AS source
+              ON source.org_id = revision.org_id
+             AND source.definition_id = revision.definition_id
+             AND source.revision_id = revision.id
+            WHERE revision.org_id = ?
+              AND revision.definition_id = ?
+              AND revision.id = ?
+              AND definition.status = 'published'
+              AND definition.active_revision_id = revision.id
+              AND source.source_digest_sha256 = ?
+          `)).get(
+            tenant.orgId,
+            publicationSeed.definitionId,
+            publicationSeed.publishedRevisionId,
+            publicationSeed.sourceDigestSha256,
+          );
+          if (!publication) {
+            throw authoringError(
+              'AGENT_DRAFT_PUBLICATION_NOT_FOUND',
+              'Published revision does not belong to the seeded draft definition.',
+            );
+          }
+        }
         const duplicate = await this.getDraftByName(tenant, request.name);
         if (duplicate && duplicate.status !== 'discarded') {
           throw authoringError(
@@ -226,26 +265,98 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
             `An active draft named '${request.name}' already exists for this account.`,
           );
         }
+        const existingPathRow = await (await this.database.prepare(`
+          ${this.#draftSelect()}
+          WHERE draft.org_id = ? AND chat.account_id = ?
+            AND draft.chat_id = ? AND draft.source_relative_path = ?
+          LIMIT 1
+        `)).get(
+          tenant.orgId,
+          tenant.accountId,
+          request.chatId,
+          request.sourceRelativePath,
+        );
+        const existingPath = existingPathRow ? this.#draft(existingPathRow) : null;
+        if (existingPath) {
+          if (existingPath.status !== 'discarded') {
+            throw authoringError(
+              'AGENT_DRAFT_PATH_CONFLICT',
+              'An active draft already owns this source path.',
+            );
+          }
+          if (request.nowMs < existingPath.updatedAtMs) {
+            throw authoringError(
+              'AGENT_DRAFT_TIMESTAMP_REGRESSION',
+              'Agent draft recreation time cannot move backwards.',
+            );
+          }
+          const revived = publicationSeed
+            ? await (await this.database.prepare(`
+                UPDATE agent_drafts
+                SET name = ?, status = 'published', source_digest_sha256 = ?,
+                  last_error_json = NULL, updated_at_ms = ?, definition_id = ?,
+                  published_revision_id = ?
+                WHERE org_id = ? AND id = ? AND status = 'discarded'
+                  AND chat_id = ? AND source_relative_path = ?
+              `)).run(
+                request.name,
+                publicationSeed.sourceDigestSha256,
+                request.nowMs,
+                publicationSeed.definitionId,
+                publicationSeed.publishedRevisionId,
+                tenant.orgId,
+                existingPath.id,
+                request.chatId,
+                request.sourceRelativePath,
+              )
+            : await (await this.database.prepare(`
+                UPDATE agent_drafts
+                SET name = ?, status = 'editing', source_digest_sha256 = NULL,
+                  last_error_json = NULL, updated_at_ms = ?,
+                  definition_id = COALESCE(definition_id, ?)
+                WHERE org_id = ? AND id = ? AND status = 'discarded'
+                  AND chat_id = ? AND source_relative_path = ?
+              `)).run(
+                request.name,
+                request.nowMs,
+                definitionId,
+                tenant.orgId,
+                existingPath.id,
+                request.chatId,
+                request.sourceRelativePath,
+              );
+          if (revived.changes !== 1) {
+            throw authoringError(
+              'AGENT_DRAFT_CONFLICT',
+              'Discarded draft changed before it could be recreated.',
+            );
+          }
+          const recreated = await this.getDraft(tenant, existingPath.id);
+          if (!recreated) throw new Error(`Failed to recreate agent draft '${existingPath.id}'.`);
+          return recreated;
+        }
         await (await this.database.prepare(`
           INSERT INTO agent_drafts (
             org_id, id, chat_id, name, status, source_relative_path,
             source_digest_sha256, last_error_json, created_at_ms, updated_at_ms,
             definition_id, published_revision_id
-          ) VALUES (?, ?, ?, ?, 'editing', ?, NULL, NULL, ?, ?, ?, NULL)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
         `)).run(
           tenant.orgId,
           request.id,
           request.chatId,
           request.name,
+          publicationSeed ? 'published' : 'editing',
           request.sourceRelativePath,
+          publicationSeed?.sourceDigestSha256 ?? null,
           request.nowMs,
           request.nowMs,
-          request.definitionId,
+          definitionId,
+          publicationSeed?.publishedRevisionId ?? null,
         );
         const created = await this.getDraft(tenant, request.id);
         if (!created) throw new Error(`Failed to create agent draft '${request.id}'.`);
         return created;
-      },
     });
   }
 
@@ -290,12 +401,12 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     request: TAgentAuthoringDraftCas,
   ): Promise<TAgentAuthoringDraftCasResult> {
     this.#timestamp(request.nowMs, 'draft transition timestamp');
-    return txRunDatabaseTransaction({ database: this.database }, {
-      operation: async () => {
-        const current = await this.getDraft(tenant, request.draftId);
+    return this.#runArtifactMutation(tenant, async () => {
+      const current = await this.getDraft(tenant, request.draftId);
         if (!current || current.sourceDigestSha256 !== request.expectedSourceDigestSha256) {
           return { status: 'conflict', current } as const;
         }
+        if (current.status === 'discarded') return { status: 'conflict', current } as const;
         if (request.nowMs < current.updatedAtMs) {
           throw authoringError(
             'AGENT_DRAFT_TIMESTAMP_REGRESSION',
@@ -321,6 +432,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
             published_revision_id = CASE WHEN ? = 1 THEN ? ELSE published_revision_id END,
             updated_at_ms = ?
           WHERE org_id = ? AND id = ? AND source_digest_sha256 IS ?
+            AND status <> 'discarded'
             AND EXISTS (
               SELECT 1 FROM agent_chats AS chat
               WHERE chat.org_id = agent_drafts.org_id
@@ -347,8 +459,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         }
         const draft = await this.getDraft(tenant, request.draftId);
         if (!draft) throw new Error('Updated agent draft could not be read back.');
-        return { status: 'updated', draft } as const;
-      },
+      return { status: 'updated', draft } as const;
     });
   }
 
@@ -359,9 +470,8 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     this.#timestamp(request.nowMs, 'draft rename timestamp');
     this.#boundedText(request.nextName, 200, 'draft name');
     this.#boundedText(request.nextSourceRelativePath, 1_000, 'draft source path');
-    return txRunDatabaseTransaction({ database: this.database }, {
-      operation: async () => {
-        const current = await this.getDraft(tenant, request.draftId);
+    return this.#runArtifactMutation(tenant, async () => {
+      const current = await this.getDraft(tenant, request.draftId);
         if (
           !current
           || current.name !== request.expectedName
@@ -407,10 +517,31 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         if (result.changes !== 1) {
           return { status: 'conflict', current: await this.getDraft(tenant, request.draftId) } as const;
         }
+        await (await this.database.prepare(`
+          UPDATE agent_previews
+          SET active_revision_id = NULL, status = 'stopped',
+            updated_at_ms = CASE WHEN updated_at_ms < ? THEN ? ELSE updated_at_ms END
+          WHERE org_id = ? AND draft_id = ?
+            AND status IN ('queued', 'building', 'ready', 'failed')
+            AND EXISTS (
+              SELECT 1
+              FROM agent_drafts AS draft
+              JOIN agent_chats AS chat
+                ON chat.org_id = draft.org_id AND chat.id = draft.chat_id
+              WHERE draft.org_id = agent_previews.org_id
+                AND draft.id = agent_previews.draft_id
+                AND chat.account_id = ?
+            )
+        `)).run(
+          request.nowMs,
+          request.nowMs,
+          tenant.orgId,
+          request.draftId,
+          tenant.accountId,
+        );
         const draft = await this.getDraft(tenant, request.draftId);
         if (!draft) throw new Error('Renamed agent draft could not be read back.');
-        return { status: 'updated', draft } as const;
-      },
+      return { status: 'updated', draft } as const;
     });
   }
 
@@ -419,20 +550,19 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     request: TAgentAuthoringDraftDiscard,
   ): Promise<TAgentAuthoringDraftCasResult> {
     this.#timestamp(request.nowMs, 'draft discard timestamp');
-    return txRunDatabaseTransaction({ database: this.database }, {
-      operation: async () => {
-        const current = await this.getDraft(tenant, request.draftId);
-        if (!current || current.sourceDigestSha256 !== request.expectedSourceDigestSha256) {
-          return { status: 'conflict', current } as const;
-        }
-        if (current.status === 'discarded') return { status: 'conflict', current } as const;
-        if (request.nowMs < current.updatedAtMs) {
-          throw authoringError(
-            'AGENT_DRAFT_TIMESTAMP_REGRESSION',
-            'Agent draft discard time cannot move backwards.',
-          );
-        }
-        const result = await (await this.database.prepare(`
+    return this.#runArtifactMutation(tenant, async () => {
+      const current = await this.getDraft(tenant, request.draftId);
+      if (!current || current.sourceDigestSha256 !== request.expectedSourceDigestSha256) {
+        return { status: 'conflict', current } as const;
+      }
+      if (current.status === 'discarded') return { status: 'conflict', current } as const;
+      if (request.nowMs < current.updatedAtMs) {
+        throw authoringError(
+          'AGENT_DRAFT_TIMESTAMP_REGRESSION',
+          'Agent draft discard time cannot move backwards.',
+        );
+      }
+      const result = await (await this.database.prepare(`
           UPDATE agent_drafts
           SET status = 'discarded', last_error_json = NULL, updated_at_ms = ?
           WHERE org_id = ? AND id = ? AND source_digest_sha256 IS ?
@@ -443,27 +573,26 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
                 AND chat.id = agent_drafts.chat_id
                 AND chat.account_id = ?
             )
-        `)).run(
-          request.nowMs,
-          tenant.orgId,
-          request.draftId,
-          request.expectedSourceDigestSha256,
-          tenant.accountId,
-        );
-        if (result.changes !== 1) {
-          return { status: 'conflict', current: await this.getDraft(tenant, request.draftId) } as const;
-        }
-        await (await this.database.prepare(`
+      `)).run(
+        request.nowMs,
+        tenant.orgId,
+        request.draftId,
+        request.expectedSourceDigestSha256,
+        tenant.accountId,
+      );
+      if (result.changes !== 1) {
+        return { status: 'conflict', current: await this.getDraft(tenant, request.draftId) } as const;
+      }
+      await (await this.database.prepare(`
           UPDATE agent_previews
           SET active_revision_id = NULL, status = 'stopped',
             updated_at_ms = CASE WHEN updated_at_ms < ? THEN ? ELSE updated_at_ms END
           WHERE org_id = ? AND draft_id = ?
             AND status IN ('queued', 'building', 'ready', 'failed')
-        `)).run(request.nowMs, request.nowMs, tenant.orgId, request.draftId);
-        const draft = await this.getDraft(tenant, request.draftId);
-        if (!draft) throw new Error('Discarded agent draft could not be read back.');
-        return { status: 'updated', draft } as const;
-      },
+      `)).run(request.nowMs, request.nowMs, tenant.orgId, request.draftId);
+      const draft = await this.getDraft(tenant, request.draftId);
+      if (!draft) throw new Error('Discarded agent draft could not be read back.');
+      return { status: 'updated', draft } as const;
     });
   }
 
@@ -494,6 +623,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         !draft
         || draft.definitionId !== revision.definitionId
         || draft.sourceDigestSha256 !== revision.draftRevisionSha256
+        || draft.status === 'discarded'
       ) {
         throw authoringError(
           'WIDGET_PREVIEW_DRAFT_STALE',
@@ -612,6 +742,16 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         WHERE org_id = ? AND id = ? AND draft_id = ?
           AND active_revision_id IS ?
           AND updated_at_ms <= ?
+          AND EXISTS (
+            SELECT 1
+            FROM agent_drafts AS draft
+            JOIN agent_chats AS chat
+              ON chat.org_id = draft.org_id AND chat.id = draft.chat_id
+            WHERE draft.org_id = agent_previews.org_id
+              AND draft.id = agent_previews.draft_id
+              AND draft.status <> 'discarded'
+              AND chat.account_id = ?
+          )
       `)).run(
         revision.id,
         uiArtifact.id,
@@ -622,6 +762,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
         revision.draftId,
         request.expectedActiveRevisionId,
         request.nowMs,
+        tenant.accountId,
       );
       if (activation.changes !== 1) {
         throw authoringError('WIDGET_PREVIEW_CONFLICT', 'Widget preview active revision changed during commit.');
@@ -1086,10 +1227,7 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     tenant: TTenantContext,
     operation: () => Promise<T>,
   ): Promise<T> {
-    if (this.mutationCoordinator) {
-      return this.mutationCoordinator.runArtifactMutation(tenant, operation);
-    }
-    return txRunDatabaseTransaction({ database: this.database }, { operation });
+    return this.mutationCoordinator.runArtifactMutation(tenant, operation);
   }
 
   #digest(value: string): string {
@@ -1100,6 +1238,11 @@ export class AgentAuthoringStoreTurso implements IWidgetPreviewStore {
     if (!Number.isSafeInteger(value) || value < 0) {
       throw new TypeError(`${label} must be a non-negative safe integer.`);
     }
+    return value;
+  }
+
+  #sha256Digest(value: string, label: string): string {
+    if (!/^[0-9a-f]{64}$/.test(value)) throw new TypeError(`${label} is invalid.`);
     return value;
   }
 

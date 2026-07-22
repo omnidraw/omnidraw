@@ -18,6 +18,8 @@
     "@vibecanvas/service-db": "workspace:*",
     "@vibecanvas/service-actor": "workspace:*",
     "@vibecanvas/service-event-publisher": "workspace:*",
+    "@vibecanvas/tenant-core": "workspace:*",
+    "@vibecanvas/widget-contract": "workspace:*",
     "ajv": "^8.20.0",
     "typebox": "^1.3.6",
     "ajv-formats": "^3.0.1",

@@ -8,6 +8,7 @@ export type TMountWidgetPublicationDialogArgs = {
   document: Document
   api: TWidgetPublicationApi
   draftId: string
+  draftName: string
   getPinnedRevision: () => string
   titleBar: TWidgetTitleBarPortal
   onPublished: (success: TWidgetPublicationSuccess) => void | Promise<void>
@@ -37,6 +38,7 @@ export function mountWidgetPublicationDialog(args: TMountWidgetPublicationDialog
       <WidgetPublicationDialog
         api={args.api}
         draftId={args.draftId}
+        draftName={args.draftName}
         getPinnedRevision={args.getPinnedRevision}
         open={open()}
         onOpenChange={setDialogOpen}

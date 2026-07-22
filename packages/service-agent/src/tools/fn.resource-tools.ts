@@ -1,13 +1,13 @@
-import type { TActorResource } from '@vibecanvas/service-db/model';
 import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
 import type { TDbInspection, TDbObject } from '@vibecanvas/resource-runtime';
+import type { TAgentResource } from './resource-service';
 
-type TResourceKind = TActorResource['kind'];
+type TResourceKind = TAgentResource['kind'];
 
 export type TSafeResource = {
   name: string;
   kind: TResourceKind;
-  status: TActorResource['status'];
+  status: TAgentResource['status'];
 };
 
 export type TSafeResourceError = {
@@ -28,7 +28,7 @@ function fnCursorChecksum(value: string): string {
   return hash.toString(36);
 }
 
-export function fnSafeResource(resource: TActorResource): TSafeResource {
+export function fnSafeResource(resource: TAgentResource): TSafeResource {
   return {
     name: resource.name,
     kind: resource.kind,
@@ -36,7 +36,7 @@ export function fnSafeResource(resource: TActorResource): TSafeResource {
   };
 }
 
-export function fnSafeResourceMetadata(resource: TActorResource) {
+export function fnSafeResourceMetadata(resource: TAgentResource) {
   return {
     ...fnSafeResource(resource),
     createdAt: resource.created_at,
@@ -44,7 +44,7 @@ export function fnSafeResourceMetadata(resource: TActorResource) {
   };
 }
 
-export function fnSortResources(resources: readonly TActorResource[]): TActorResource[] {
+export function fnSortResources(resources: readonly TAgentResource[]): TAgentResource[] {
   return [...resources].sort((left, right) => (
     fnCompareStrings(fnResourceNameKey(left.name), fnResourceNameKey(right.name))
     || fnCompareStrings(left.kind, right.kind)
@@ -74,7 +74,7 @@ export function fnRedactResourceError(error: TSafeResourceError, values: readonl
   return { code, message };
 }
 
-export function fnResourceListFingerprint(resources: readonly TActorResource[]): string {
+export function fnResourceListFingerprint(resources: readonly TAgentResource[]): string {
   return fnCursorChecksum(resources.map((resource) => (
     `${fnResourceNameKey(resource.name)}\u0000${resource.kind}\u0000${resource.status}\u0000${resource.id}`
   )).join('\u0001'));
@@ -136,7 +136,7 @@ export function fnParseDbSchemaCursor(
   return Number.isSafeInteger(offset) && offset >= 0 ? { ok: true, offset } : { ok: false };
 }
 
-export function fnResourceCapabilities(resource: TActorResource, bindingCount: number) {
+export function fnResourceCapabilities(resource: TAgentResource, bindingCount: number) {
   const ready = resource.status === 'ready';
   const lifecycleBusy = resource.status === 'provisioning'
     || resource.status === 'migrating'

@@ -2,7 +2,11 @@ import * as AlertDialog from "@kobalte/core/alert-dialog"
 import { Button } from "@kobalte/core/button"
 import type { TWidgetDetail } from "@vibecanvas/orpc-client"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, untrack, type Component } from "solid-js"
-import { fnPublicationContract, fnPublicationFailureTitle } from "./fn.publication-contract"
+import {
+  fnIsExactPublicationDraftDetail,
+  fnPublicationContract,
+  fnPublicationFailureTitle,
+} from "./fn.publication-contract"
 import type {
   TWidgetPublicationApi,
   TWidgetPublicationState,
@@ -20,6 +24,7 @@ type TDialogIssue = {
 export type TWidgetPublicationDialogProps = {
   api: TWidgetPublicationApi
   draftId: string
+  draftName: string
   open: boolean
   getPinnedRevision?: () => string
   onOpenChange: (open: boolean) => void
@@ -57,14 +62,27 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
     setLoading(true)
     setIssue(null)
     emitState()
-    const [loadError, value] = await props.api.widgets.detail({ name: props.draftId, source: "draft" })
+    const [loadError, value] = await props.api.widgets.detail({ name: props.draftName, source: "draft" })
     if (request !== detailRequest) return null
     setLoading(false)
     if (loadError || !value || value.source !== "draft") {
       setDetail(null)
       setIssue({
         title: value ? "Widget draft is unavailable" : "Widget draft not found",
-        message: loadError?.message ?? `The widget draft “${props.draftId}” could not be loaded.`,
+        message: loadError?.message ?? `The widget draft “${props.draftName}” could not be loaded.`,
+        tone: "error",
+      })
+      emitState()
+      return null
+    }
+    if (!fnIsExactPublicationDraftDetail(value, {
+      draftId: props.draftId,
+      draftName: props.draftName,
+    })) {
+      setDetail(null)
+      setIssue({
+        title: "Widget draft identity changed",
+        message: `The draft returned for “${props.draftName}” does not belong to this Preview. Refresh or reopen the Preview before publishing.`,
         tone: "error",
       })
       emitState()
@@ -77,6 +95,7 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
 
   createEffect(() => {
     void props.draftId
+    void props.draftName
     untrack(() => { void loadCurrentDetail() })
   })
 
@@ -118,12 +137,26 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
     setIssue(null)
     emitState()
 
-    const [refreshError, current] = await props.api.widgets.detail({ name: props.draftId, source: "draft" })
+    const [refreshError, current] = await props.api.widgets.detail({ name: props.draftName, source: "draft" })
     if (refreshError || !current || current.source !== "draft") {
       setPublishing(false)
       setIssue({
         title: "Could not verify the draft",
-        message: refreshError?.message ?? `The widget draft “${props.draftId}” is no longer available.`,
+        message: refreshError?.message ?? `The widget draft “${props.draftName}” is no longer available.`,
+        tone: "error",
+      })
+      emitState()
+      return
+    }
+    if (!fnIsExactPublicationDraftDetail(current, {
+      draftId: props.draftId,
+      draftName: props.draftName,
+    })) {
+      setDetail(null)
+      setPublishing(false)
+      setIssue({
+        title: "Draft identity changed before publication",
+        message: "The current draft no longer belongs to this Preview. Refresh or reopen the Preview before publishing.",
         tone: "error",
       })
       emitState()
@@ -142,7 +175,7 @@ export const WidgetPublicationDialog: Component<TWidgetPublicationDialogProps> =
     }
 
     const [publishError, result] = await props.api.widgetPublish.publish({
-      draftId: current.name,
+      draftId: props.draftId,
       expectedRevision: current.variant.revision,
     })
     if (publishError) {

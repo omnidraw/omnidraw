@@ -3,8 +3,11 @@ import { afterEach, describe, expect, test, vi } from "vitest"
 import { mountWidgetPublicationDialog } from "../../src/publication/mount"
 import type { TWidgetTitleBarActionState, TWidgetTitleBarPortal } from "../../src/widget/interface"
 
+const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
+
 function detail(args: { revision?: string; published?: boolean } = {}): TWidgetDetail {
   const variant: TWidgetDetail["variant"] = {
+    draftId: DRAFT_ID,
     source: "draft",
     displayName: "Weather board",
     kind: "actor-widget",
@@ -20,7 +23,7 @@ function detail(args: { revision?: string; published?: boolean } = {}): TWidgetD
     name: "Weather",
     source: "draft",
     relation: args.published ? "different" : "draft-only",
-    sibling: args.published ? { ...variant, source: "published" } : null,
+    sibling: args.published ? { ...variant, draftId: null, source: "published" } : null,
     manifest: null,
     problem: null,
     variant,
@@ -31,7 +34,12 @@ function button(label: string) {
   return [...document.querySelectorAll<HTMLButtonElement>("button")].find((candidate) => candidate.textContent === label)
 }
 
-function setup(args: { pinnedRevision?: string; current?: TWidgetDetail; publishResult?: unknown } = {}) {
+function setup(args: {
+  pinnedRevision?: string
+  current?: TWidgetDetail
+  detailResponses?: readonly TWidgetDetail[]
+  publishResult?: unknown
+} = {}) {
   let action = () => undefined
   const states: TWidgetTitleBarActionState[] = []
   const titleBar: TWidgetTitleBarPortal = {
@@ -39,20 +47,28 @@ function setup(args: { pinnedRevision?: string; current?: TWidgetDetail; publish
     setActionState: (_id, state) => states.push(state),
   }
   const current = args.current ?? detail()
-  const detailApi = vi.fn(async () => [undefined, current] as const)
+  const detailResponses = args.detailResponses ?? [current]
+  let detailResponseIndex = 0
+  const detailApi = vi.fn(async () => {
+    const response = detailResponses[Math.min(detailResponseIndex, detailResponses.length - 1)]!
+    detailResponseIndex += 1
+    return [undefined, response] as const
+  })
   const publish = vi.fn(async () => [undefined, args.publishResult ?? {
     published: true,
-    draftId: "Weather",
+    draftId: DRAFT_ID,
+    definitionId: "20000000-0000-4000-8000-000000000001",
     revision: current.variant.revision,
-    definitionName: "Weather",
-    manifest: {},
+    publishedRevisionId: "30000000-0000-4000-8000-000000000001",
+    manifest: { schemaVersion: 2, name: "Weather", slug: "weather", ui: { entry: "ui/main.ts" } },
   }] as const)
   const refreshPreview = vi.fn(async () => undefined)
   const published = vi.fn(async () => undefined)
   const dispose = mountWidgetPublicationDialog({
     document,
     api: { widgets: { detail: detailApi }, widgetPublish: { publish } } as never,
-    draftId: "Weather",
+    draftId: DRAFT_ID,
+    draftName: "Weather",
     getPinnedRevision: () => args.pinnedRevision ?? current.variant.revision,
     titleBar,
     onPublished: published,
@@ -78,7 +94,7 @@ describe("mounted publication coordinator", () => {
     expect(mounted.publish).not.toHaveBeenCalled()
     button("Publish")?.click()
 
-    await vi.waitFor(() => expect(mounted.publish).toHaveBeenCalledWith({ draftId: "Weather", expectedRevision: "rev-2" }))
+    await vi.waitFor(() => expect(mounted.publish).toHaveBeenCalledWith({ draftId: DRAFT_ID, expectedRevision: "rev-2" }))
     expect(mounted.published).toHaveBeenCalledOnce()
     expect(document.body.textContent).toContain("Widget published")
     await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({ label: "Republish" }))
@@ -99,13 +115,49 @@ describe("mounted publication coordinator", () => {
     })
     await vi.waitFor(() => expect(mounted.states.at(-1)).toMatchObject({ disabled: false, label: "Republish" }))
     mounted.invokeAction()
-    await vi.waitFor(() => expect(document.body.textContent).toContain("Every existing canvas instance"))
+    await vi.waitFor(() => expect(document.body.textContent).toContain("remain pinned to their current revision"))
     expect(document.body.textContent).toContain("Republish Weather board?")
     button("Republish")?.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain("Draft validation failed"))
     expect(document.body.textContent).toContain("Missing actor state")
     expect(button("Cancel")).toBeDefined()
     expect(mounted.published).not.toHaveBeenCalled()
+    mounted.dispose()
+  })
+
+  test("fails closed when the loaded detail belongs to another draft", async () => {
+    const current = detail()
+    const mounted = setup({
+      current: {
+        ...current,
+        variant: { ...current.variant, draftId: "10000000-0000-4000-8000-000000000002" },
+      },
+    })
+    await vi.waitFor(() => expect(mounted.states.at(-1)?.disabled).toBe(false))
+    mounted.invokeAction()
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Widget draft identity changed"))
+    expect(button("Publish")?.disabled).toBe(true)
+    expect(mounted.publish).not.toHaveBeenCalled()
+    mounted.dispose()
+  })
+
+  test("rechecks exact draft identity immediately before submission", async () => {
+    const current = detail()
+    const mismatched = {
+      ...current,
+      variant: { ...current.variant, draftId: "10000000-0000-4000-8000-000000000002" },
+    }
+    const mounted = setup({
+      current,
+      detailResponses: [current, current, mismatched],
+    })
+    await vi.waitFor(() => expect(mounted.states.at(-1)?.disabled).toBe(false))
+    mounted.invokeAction()
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Publish Weather board?"))
+    button("Publish")?.click()
+    await vi.waitFor(() => expect(document.body.textContent).toContain("Draft identity changed before publication"))
+    expect(mounted.publish).not.toHaveBeenCalled()
+    expect(button("Publish")?.disabled).toBe(true)
     mounted.dispose()
   })
 

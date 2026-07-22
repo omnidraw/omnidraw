@@ -501,6 +501,7 @@ describe("AiChat shell", () => {
     container = document.createElement("div")
     document.body.appendChild(container)
     const apiService = createApiService() as any
+    const draftId = "10000000-0000-4000-8000-000000000001"
     apiService.api.agent.chat.connect = async () => [undefined, {
       actorCandidate: null,
       editSession: null,
@@ -509,7 +510,7 @@ describe("AiChat shell", () => {
         toolCallId: "call-widget-create",
         toolName: "vc_widget_create",
         content: [{ type: "text", text: "Created Shared Timer." }],
-        details: { name: "Shared Timer", source: "draft", draft: true },
+        details: { draftId, name: "Shared Timer", source: "draft", draft: true },
       }],
       vcJson: null,
     }]
@@ -532,7 +533,7 @@ describe("AiChat shell", () => {
     await vi.waitFor(() => expect(container?.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")).not.toBeNull())
     container.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")?.click()
 
-    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith("Shared Timer"))
+    await vi.waitFor(() => expect(onOpenWidgetPreview).toHaveBeenCalledWith({ draftId, name: "Shared Timer" }))
     await vi.waitFor(() => expect(container?.querySelector(".ai-chat-widget-error")?.textContent).toContain("Widget draft 'Shared Timer' no longer exists."))
 
     container.querySelector<HTMLButtonElement>(".ai-chat-history__preview-action button")?.click()

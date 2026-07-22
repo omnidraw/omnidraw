@@ -6,14 +6,14 @@ import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import { fnApplyExactEdits } from './fn.apply-exact-edits';
 import { fnApplyUnifiedPatch } from './fn.apply-unified-patch';
 import { fnToolError, fnToolSuccess } from './fn.result';
-import type { TToolDefinition, TWidgetDraftChange } from './types';
+import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 
 type TCreateWorkspaceFileToolsArgs = {
   workspace: WidgetWorkspace;
   chatId: string;
   cwd: string;
   authorize: (toolName: 'read' | 'edit' | 'patch' | 'grep') => Promise<boolean>;
-  onDraftChanged?: (change: TWidgetDraftChange) => void | Promise<void>;
+  onDraftChanged?: TWidgetDraftChangeHandler;
 };
 
 function mountedWidgetName(path: string): string | undefined {

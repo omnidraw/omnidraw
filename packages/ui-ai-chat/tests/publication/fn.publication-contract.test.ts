@@ -1,6 +1,10 @@
 import type { TWidgetDetail } from "@vibecanvas/orpc-client"
 import { describe, expect, test } from "vitest"
-import { fnPublicationContract, fnPublicationFailureTitle } from "../../src/publication/fn.publication-contract"
+import {
+  fnIsExactPublicationDraftDetail,
+  fnPublicationContract,
+  fnPublicationFailureTitle,
+} from "../../src/publication/fn.publication-contract"
 
 function detail(sibling: TWidgetDetail["sibling"]): TWidgetDetail {
   return {
@@ -11,6 +15,7 @@ function detail(sibling: TWidgetDetail["sibling"]): TWidgetDetail {
     manifest: null,
     problem: null,
     variant: {
+      draftId: "10000000-0000-4000-8000-000000000001",
       source: "draft",
       displayName: "Weather board",
       kind: "actor-widget",
@@ -34,19 +39,35 @@ describe("publication contract", () => {
     expect(contract.description).not.toContain("existing canvas instance")
   })
 
-  test("warns that republishing updates existing instances while preserving their data", () => {
-    const published = { ...detail(null).variant, source: "published" as const }
+  test("explains that existing instances stay pinned across republishing", () => {
+    const published = { ...detail(null).variant, draftId: null, source: "published" as const }
     const contract = fnPublicationContract(detail(published))
     expect(contract.isUpdate).toBe(true)
     expect(contract.actionLabel).toBe("Republish")
     expect(contract.title).toBe("Republish Weather board?")
-    expect(contract.description).toContain("Every existing canvas instance")
-    expect(contract.description).toContain("preserving its instance identity and data")
+    expect(contract.description).toContain("remain pinned to their current revision")
+    expect(contract.description).toContain("explicit remount or runtime policy")
+    expect(contract.description).not.toContain("will reload")
+  })
+
+  test("binds publication detail to the exact draft identity", () => {
+    const current = detail(null)
+    expect(fnIsExactPublicationDraftDetail(current, {
+      draftId: current.variant.draftId!,
+      draftName: current.name,
+    })).toBe(true)
+    expect(fnIsExactPublicationDraftDetail({
+      ...current,
+      variant: { ...current.variant, draftId: "10000000-0000-4000-8000-000000000002" },
+    }, {
+      draftId: current.variant.draftId!,
+      draftName: current.name,
+    })).toBe(false)
   })
 
   test("keeps result reasons distinguishable", () => {
     expect(fnPublicationFailureTitle("validation-failed")).toBe("Draft validation failed")
-    expect(fnPublicationFailureTitle("permission-failed")).toBe("Publication permission denied")
-    expect(fnPublicationFailureTitle("recovery-failed")).toBe("Publication recovery failed")
+    expect(fnPublicationFailureTitle("resource-binding-invalid")).toBe("Resource bindings are invalid")
+    expect(fnPublicationFailureTitle("publication-conflict")).toBe("Widget publication conflicted")
   })
 })

@@ -13,7 +13,7 @@ import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "@vibecanvas/canvas/core/CO
 import { isKonvaGroup } from "@vibecanvas/canvas/core/GUARDS"
 import Konva from "konva"
 import type { TAiChatApiPort, TAiChatApplicationPort, TWidgetBrowserPort } from "../ports"
-import { mountArrowSandboxBridge } from "../widget/mount-arrow-sandbox"
+import { widgetUiArtifactMount } from "../widget-runtime"
 import type { TWidgetTitleBarPortal } from "../widget/interface"
 import { mountWidgetPublicationDialog } from "../publication/mount"
 import type { TWidgetPublicationApi } from "../publication/interface"
@@ -27,6 +27,8 @@ import { fnDraftPreviewElementId } from "./fn.element-id"
 import { mountDraftPreview } from "./mount"
 import type {
   TDraftPreviewPayload,
+  TDraftPreviewOwnership,
+  TDraftPreviewReady,
   TDraftPreviewResult,
   TDraftPreviewRuntime,
   TDraftPreviewSummary,
@@ -48,6 +50,14 @@ type TDraftPreviewFrameServiceArgs = {
 
 type TNodeOnRemove = (args: { node: unknown }) => void
 
+type TDraftPreviewOpenArgs = {
+  draftId?: string
+  draftName: string
+  originChatElementId: string
+}
+
+const LOWERCASE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "string" && error.trim()) return error.trim()
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -61,24 +71,31 @@ export function getDraftPreviewPayload(element: TElement): TDraftPreviewPayload 
   if (element.data.type !== "ui-widget" || element.data.kind !== DRAFT_PREVIEW_WIDGET_KIND) return undefined
   const payload = element.data.payload
   const draftId = payload?.draftId
-  const pinnedRevision = payload?.pinnedRevision
+  const draftName = payload?.draftName
+  const draftRevision = payload?.draftRevision
+  const previewId = payload?.previewId
+  const previewRevisionId = payload?.previewRevisionId
   const originChatElementId = payload?.originChatElementId
   if (typeof draftId !== "string" || !draftId.trim()) return undefined
-  if (typeof pinnedRevision !== "string" || !pinnedRevision.trim()) return undefined
+  if (typeof draftName !== "string" || !draftName.trim()) return undefined
+  if (typeof draftRevision !== "string" || !draftRevision.trim()) return undefined
+  if (typeof previewId !== "string" || !LOWERCASE_UUID_PATTERN.test(previewId)) return undefined
+  if (typeof previewRevisionId !== "string" || !previewRevisionId.trim()) return undefined
   if (originChatElementId !== undefined && (typeof originChatElementId !== "string" || !originChatElementId.trim())) return undefined
-  return { draftId, pinnedRevision, ...(originChatElementId ? { originChatElementId } : {}) }
+  return { draftId, draftName, draftRevision, previewId, previewRevisionId, ...(originChatElementId ? { originChatElementId } : {}) }
 }
 
 export class DraftPreviewFrameService implements IService, IStoppableService {
   readonly name = "draft-preview-frame"
   readonly #args: TDraftPreviewFrameServiceArgs
-  readonly #initialResults = new Map<string, {
-    previewId: string
-    result?: TDraftPreviewResult
-    ownedRevision?: { draftId: string; revision: string }
-  }>()
+  readonly #initialResults = new Map<string, TDraftPreviewReady>()
   readonly #runtimes = new Map<string, { payload: TDraftPreviewPayload; runtime: TDraftPreviewRuntime }>()
-  readonly #pendingReleases = new Map<string, { timer: unknown; draftId: string; revision: string }>()
+  readonly #pendingReleases = new Map<string, {
+    timer: unknown
+    previewId: string
+    draftId: string
+    previewRevisionId: string
+  }>()
   readonly #frameQueues = new Map<string, Promise<unknown>>()
   readonly #framePromises = new Set<Promise<unknown>>()
   readonly #cleanupPromises = new Set<Promise<unknown>>()
@@ -91,17 +108,22 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
   async stop() {
     this.#stopping = true
 
-    this.#initialResults.forEach(({ previewId, result, ownedRevision }) => {
-      const owned = result?.ready
-        ? { draftId: result.draftId, revision: result.revision }
-        : ownedRevision
-      if (owned) this.#trackCleanup(this.#closePreview(previewId, owned.draftId, owned.revision))
+    this.#initialResults.forEach((result) => {
+      this.#trackCleanup(this.#closePreview(
+        result.previewId,
+        result.draftId,
+        result.previewRevisionId,
+      ))
     })
     this.#initialResults.clear()
 
-    this.#pendingReleases.forEach((release, previewId) => {
+    this.#pendingReleases.forEach((release) => {
       this.#args.browser.clearTimeout(release.timer)
-      this.#trackCleanup(this.#closePreview(previewId, release.draftId, release.revision))
+      this.#trackCleanup(this.#closePreview(
+        release.previewId,
+        release.draftId,
+        release.previewRevisionId,
+      ))
     })
     this.#pendingReleases.clear()
 
@@ -116,7 +138,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
 
   getTitle(element: TElement) {
     const payload = getDraftPreviewPayload(element)
-    return payload ? `${payload.draftId} Preview` : "Draft Preview"
+    return payload ? `${payload.draftName} Preview` : "Draft Preview"
   }
 
   mount(args: { root: HTMLDivElement; element: TElement; titleBar?: TWidgetTitleBarPortal }) {
@@ -144,17 +166,26 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     }
     const prepared = this.#initialResults.get(args.element.id)
     this.#initialResults.delete(args.element.id)
-    const previewId = prepared?.previewId ?? this.#args.browser.createId()
+    const previewId = payload.previewId
+    this.#cancelPendingRelease(previewId, payload.previewRevisionId)
     let runtime!: TDraftPreviewRuntime
     runtime = mountDraftPreview({
       root: args.root,
       api: this.#args.api,
-      previewId,
+      browser: this.#args.browser,
       payload,
-      initialResult: prepared?.result,
-      mountSandbox: mountArrowSandboxBridge,
-      onPersistRevision: (revision) => this.#persistRevision(args.element.id, revision),
-      onReleaseRevision: (revision) => this.#scheduleRelease(previewId, payload.draftId, revision),
+      initialResult: prepared,
+      mountArtifact: widgetUiArtifactMount,
+      onPersistOwnership: (ownership) => this.#persistOwnership(args.element.id, ownership),
+      onReleaseOwnership: (ownership) => {
+        const replacement = this.#runtimes.get(args.element.id)?.runtime
+        if (
+          replacement
+          && replacement !== runtime
+          && replacement.getOwnedPreviewRevisionId() === ownership.previewRevisionId
+        ) return
+        this.#scheduleRelease(previewId, payload.draftId, ownership.previewRevisionId)
+      },
       onResetStateChange: (state) => args.titleBar?.setActionState("reset", state),
       onLogError: this.#args.application.logError,
     })
@@ -170,6 +201,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
         document: args.root.ownerDocument,
         api: publicationApi as TWidgetPublicationApi,
         draftId: payload.draftId,
+        draftName: payload.draftName,
         getPinnedRevision: () => runtime.getOwnedRevision(),
         titleBar: args.titleBar,
         onRequestPreviewRefresh: () => runtime.refresh(),
@@ -191,15 +223,15 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     }
   }
 
-  open(args: { draftName: string; originChatElementId: string }) {
+  open(args: TDraftPreviewOpenArgs) {
     if (this.#stopping) {
       return Promise.reject(new Error("Draft Preview opening was cancelled because the canvas is stopping."))
     }
-    return this.#queueFrame(args.draftName, () => this.#open(args))
+    return this.#queueFrame(args.draftId ?? `name:${args.draftName}`, () => this.#open(args))
   }
 
   place(args: {
-    draftName: string
+    draftId: string
     expectedRevision: string
     previewId: string
     bounds: TWidgetWorldBounds
@@ -207,19 +239,29 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     if (this.#stopping) {
       return Promise.reject(new Error("Draft Preview placement was cancelled because the canvas is stopping."))
     }
-    return this.#queueFrame(args.draftName, () => this.#place(args))
+    return this.#queueFrame(args.draftId, () => this.#place(args))
   }
 
   async #place(args: {
-    draftName: string
+    draftId: string
     expectedRevision: string
     previewId: string
     bounds: TWidgetWorldBounds
   }) {
     this.#throwIfStopping()
+    this.#assertPreviewId(args.previewId)
+    const result = await this.#preparePreview({
+      draftId: args.draftId,
+      revision: args.expectedRevision,
+    }, args.previewId)
+    if (this.#stopping) {
+      await this.#closePreview(result.previewId, result.draftId, result.previewRevisionId)
+      this.#throwIfStopping()
+    }
     const timestamp = this.#args.browser.now()
+    const elementId = fnDraftPreviewElementId(result.draftId, args.previewId)
     const element: TElement = {
-      id: fnDraftPreviewElementId(args.draftName, args.previewId),
+      id: elementId,
       x: args.bounds.x,
       y: args.bounds.y,
       rotation: 0,
@@ -237,16 +279,16 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
         expanded: true,
         window: "contained",
         payload: {
-          draftId: args.draftName,
-          pinnedRevision: args.expectedRevision,
+          draftId: result.draftId,
+          draftName: result.name,
+          draftRevision: result.revision,
+          previewId: result.previewId,
+          previewRevisionId: result.previewRevisionId,
         } satisfies TDraftPreviewPayload,
       },
       style: {},
     }
-    this.#initialResults.set(element.id, {
-      previewId: args.previewId,
-      ownedRevision: { draftId: args.draftName, revision: args.expectedRevision },
-    })
+    this.#initialResults.set(element.id, result)
     let node: Konva.Group | undefined
     try {
       const createdNode = this.#args.element.createNodeFromElement(element)
@@ -268,7 +310,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     } catch (error) {
       node?.destroy()
       this.#initialResults.delete(element.id)
-      this.#scheduleRelease(args.previewId, args.draftName, args.expectedRevision)
+      this.#scheduleRelease(args.previewId, result.draftId, result.previewRevisionId)
       throw error
     }
   }
@@ -291,8 +333,8 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     return queued
   }
 
-  async #open(args: { draftName: string; originChatElementId: string }) {
-    const summary = await this.#getDraft(args.draftName)
+  async #open(args: TDraftPreviewOpenArgs) {
+    const summary = await this.#resolveDraft(args)
     this.#throwIfStopping()
     const existing = this.#findFrame(summary.draftId)
     if (existing) {
@@ -313,6 +355,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
 
     const elementId = fnDraftPreviewElementId(summary.draftId)
     const previewId = this.#args.browser.createId()
+    this.#assertPreviewId(previewId)
     const result = await this.#preparePreview(summary, previewId)
     let element!: TElement
     let node: Konva.Group | undefined
@@ -322,7 +365,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
       this.#throwIfStopping()
       const concurrentFrame = this.#findFrame(summary.draftId)
       if (concurrentFrame) {
-        if (result.ready) await this.#closePreview(previewId, result.draftId, result.revision)
+        await this.#closePreview(previewId, result.draftId, result.previewRevisionId)
         const concurrentNode = this.#ensureNode(concurrentFrame)
         this.#focusNode(concurrentNode)
         const concurrentRuntime = this.#runtimes.get(concurrentFrame.id)?.runtime
@@ -353,14 +396,17 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
           window: "contained",
           payload: {
             draftId: summary.draftId,
-            pinnedRevision: summary.revision,
+            draftName: result.name,
+            draftRevision: result.revision,
+            previewId,
+            previewRevisionId: result.previewRevisionId,
             originChatElementId: args.originChatElementId,
           } satisfies TDraftPreviewPayload,
         },
         style: {},
       }
 
-      this.#initialResults.set(element.id, { previewId, result })
+      this.#initialResults.set(element.id, result)
       const createdNode = this.#args.element.createNodeFromElement(element)
       if (!isKonvaGroup(createdNode)) throw new Error("The draft Preview frame could not be created.")
       node = createdNode
@@ -377,7 +423,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     } catch (error) {
       node?.destroy()
       this.#initialResults.delete(elementId)
-      if (result.ready) this.#scheduleRelease(previewId, result.draftId, result.revision)
+      this.#scheduleRelease(previewId, result.draftId, result.previewRevisionId)
       throw error
     }
     this.#focusNode(node)
@@ -385,14 +431,35 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     this.#recordCreateHistory(persisted, node, commitResult)
   }
 
-  async #getDraft(draftName: string): Promise<TDraftPreviewSummary> {
-    const [error, summary] = await this.#args.api.api.agent.widgetDraft.get({ draftId: draftName })
-    if (error) throw new Error(getErrorMessage(error, "Could not read the widget draft."))
-    if (!summary) throw new Error(`Widget draft '${draftName}' was not found.`)
+  async #resolveDraft(args: Pick<TDraftPreviewOpenArgs, "draftId" | "draftName">): Promise<TDraftPreviewSummary> {
+    if (args.draftId) return this.#getDraft(args.draftId)
+
+    const [listError, summaries] = await this.#args.api.api.agent.widgetDraft.list({})
+    if (listError) throw new Error(getErrorMessage(listError, "Could not list widget drafts."))
+    const matches = summaries.filter((summary) => summary.name === args.draftName)
+    if (matches.length !== 1) {
+      throw new Error(matches.length === 0
+        ? `Widget draft '${args.draftName}' was not found.`
+        : `Widget draft name '${args.draftName}' is ambiguous.`)
+    }
+    const summary = await this.#getDraft(matches[0]!.draftId)
+    if (summary.name !== args.draftName) {
+      throw new Error(`Widget draft '${args.draftName}' changed before Preview could open.`)
+    }
     return summary
   }
 
-  async #preparePreview(summary: TDraftPreviewSummary, previewId: string): Promise<TDraftPreviewResult> {
+  async #getDraft(draftId: string): Promise<TDraftPreviewSummary> {
+    const [error, summary] = await this.#args.api.api.agent.widgetDraft.get({ draftId })
+    if (error) throw new Error(getErrorMessage(error, "Could not read the widget draft."))
+    if (!summary) throw new Error(`Widget draft '${draftId}' was not found.`)
+    return summary
+  }
+
+  async #preparePreview(
+    summary: Pick<TDraftPreviewSummary, "draftId" | "revision">,
+    previewId: string,
+  ): Promise<TDraftPreviewReady> {
     const [getError, existing] = await this.#args.api.api.agent.widgetPreview.get({
       draftId: summary.draftId,
       previewId,
@@ -401,29 +468,90 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     if (!existing) throw new Error("Preview state was unavailable.")
     const current: TDraftPreviewResult = existing
     this.#throwIfPreviewMissing(current, summary.draftId)
-    if (current.ready && current.draftId === summary.draftId && current.revision === summary.revision) return current
+    if (
+      current.ready
+      && current.draftId === summary.draftId
+      && current.previewId === previewId
+      && current.revision === summary.revision
+    ) return current
     this.#throwIfStopping()
 
-    const [buildError, built] = await this.#args.api.api.agent.widgetPreview.build({
+    let buildResponse: Awaited<ReturnType<
+      TAiChatApiPort["api"]["agent"]["widgetPreview"]["build"]
+    >>
+    try {
+      buildResponse = await this.#args.api.api.agent.widgetPreview.build({
         draftId: summary.draftId,
         previewId,
-        expectedRevision: summary.revision,
+        expectedDraftRevision: summary.revision,
+        expectedActivePreviewRevisionId: current.ready
+          ? current.previewRevisionId
+          : current.previewRevisionId ?? null,
       })
-      .catch(async (error) => {
-        await this.#closePreview(previewId, summary.draftId, summary.revision)
-        throw error
-      })
-    if (buildError) {
-      await this.#closePreview(previewId, summary.draftId, summary.revision)
-      throw new Error(getErrorMessage(buildError, "Could not build Preview."))
+    } catch (error) {
+      return this.#reconcileAmbiguousPreviewBuild(summary, previewId, error)
     }
-    if (!built) {
-      await this.#closePreview(previewId, summary.draftId, summary.revision)
-      throw new Error("Preview build returned no result.")
+    const [buildError, built] = buildResponse
+    if (buildError || !built) {
+      return this.#reconcileAmbiguousPreviewBuild(
+        summary,
+        previewId,
+        buildError ?? new Error("Preview build returned no result."),
+      )
     }
     const result: TDraftPreviewResult = built
     this.#throwIfPreviewMissing(result, summary.draftId)
+    if (!result.ready) throw new Error(result.message || "Preview build failed.")
+    if (
+      result.draftId !== summary.draftId
+      || result.previewId !== previewId
+      || result.revision !== summary.revision
+    ) {
+      this.#scheduleRelease(result.previewId, result.draftId, result.previewRevisionId)
+      throw new Error("Preview build returned a different owner or draft revision.")
+    }
     return result
+  }
+
+  async #reconcileAmbiguousPreviewBuild(
+    summary: Pick<TDraftPreviewSummary, "draftId" | "revision">,
+    previewId: string,
+    buildError: unknown,
+  ): Promise<TDraftPreviewReady> {
+    const failure = new Error(getErrorMessage(buildError, "Could not build Preview."))
+    let response: Awaited<ReturnType<
+      TAiChatApiPort["api"]["agent"]["widgetPreview"]["get"]
+    >>
+    try {
+      response = await this.#args.api.api.agent.widgetPreview.get({
+        draftId: summary.draftId,
+        previewId,
+      })
+    } catch (error) {
+      this.#args.application.logError(error)
+      throw failure
+    }
+    const [getError, recovered] = response
+    if (getError || !recovered) {
+      if (getError) this.#args.application.logError(getError)
+      throw failure
+    }
+    const result: TDraftPreviewResult = recovered
+    if (
+      result.ready
+      && result.draftId === summary.draftId
+      && result.previewId === previewId
+      && result.revision === summary.revision
+    ) return result
+
+    if (
+      result.draftId === summary.draftId
+      && result.previewId === previewId
+      && result.previewRevisionId
+    ) {
+      await this.#closePreview(previewId, summary.draftId, result.previewRevisionId)
+    }
+    throw failure
   }
 
   #findFrame(draftId: string) {
@@ -470,6 +598,12 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     if (this.#stopping) throw new Error("Draft Preview opening was cancelled because the canvas is stopping.")
   }
 
+  #assertPreviewId(previewId: string) {
+    if (!LOWERCASE_UUID_PATTERN.test(previewId)) {
+      throw new Error("Draft Preview owner identity must be a lowercase UUID.")
+    }
+  }
+
   #ensureNode(element: TElement) {
     const existing = this.#findNode(element.id)
     if (existing) return existing
@@ -489,20 +623,31 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     this.#args.scene.staticForegroundLayer.batchDraw()
   }
 
-  #persistRevision(elementId: string, revision: string) {
+  #persistOwnership(elementId: string, ownership: TDraftPreviewOwnership) {
     const current = this.#args.crdt.doc().elements[elementId]
     if (!current || current.data.type !== "ui-widget" || current.data.kind !== DRAFT_PREVIEW_WIDGET_KIND) return
     const payload = getDraftPreviewPayload(current)
-    if (!payload || payload.pinnedRevision === revision) return
+    if (
+      !payload
+      || (
+        payload.draftRevision === ownership.draftRevision
+        && payload.previewRevisionId === ownership.previewRevisionId
+      )
+    ) return
+    const nextPayload: TDraftPreviewPayload = {
+      ...payload,
+      draftRevision: ownership.draftRevision,
+      previewRevisionId: ownership.previewRevisionId,
+    }
     const nextData: TUiWidgetData = {
       ...current.data,
-      payload: { ...payload, pinnedRevision: revision },
+      payload: nextPayload,
     }
     const node = this.#findNode(elementId)
     node?.setAttr(ELEMENT_DATA_ATTR, nextData)
     this.#args.crdt.build().patchElement(elementId, "data", nextData).commit()
     const runtimeEntry = this.#runtimes.get(elementId)
-    if (runtimeEntry) runtimeEntry.payload = { ...runtimeEntry.payload, pinnedRevision: revision }
+    if (runtimeEntry) runtimeEntry.payload = nextPayload
   }
 
   #recordCreateHistory(
@@ -539,34 +684,40 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     })
   }
 
-  #scheduleRelease(previewId: string, draftId: string, revision: string) {
-    this.#cancelPendingRelease(previewId)
+  #releaseKey(previewId: string, previewRevisionId: string) {
+    return `${previewId}\u0000${previewRevisionId}`
+  }
+
+  #scheduleRelease(previewId: string, draftId: string, previewRevisionId: string) {
+    const key = this.#releaseKey(previewId, previewRevisionId)
+    this.#cancelPendingRelease(previewId, previewRevisionId)
     if (this.#stopping) {
-      this.#trackCleanup(this.#closePreview(previewId, draftId, revision))
+      this.#trackCleanup(this.#closePreview(previewId, draftId, previewRevisionId))
       return
     }
     const timer = this.#args.browser.setTimeout(() => {
-      const pending = this.#pendingReleases.get(previewId)
+      const pending = this.#pendingReleases.get(key)
       if (!pending || pending.timer !== timer) return
-      this.#pendingReleases.delete(previewId)
-      this.#trackCleanup(this.#closePreview(previewId, draftId, revision))
+      this.#pendingReleases.delete(key)
+      this.#trackCleanup(this.#closePreview(previewId, draftId, previewRevisionId))
     }, 0)
-    this.#pendingReleases.set(previewId, { timer, draftId, revision })
+    this.#pendingReleases.set(key, { timer, previewId, draftId, previewRevisionId })
   }
 
-  #cancelPendingRelease(previewId: string) {
-    const pending = this.#pendingReleases.get(previewId)
+  #cancelPendingRelease(previewId: string, previewRevisionId: string) {
+    const key = this.#releaseKey(previewId, previewRevisionId)
+    const pending = this.#pendingReleases.get(key)
     if (!pending) return
     this.#args.browser.clearTimeout(pending.timer)
-    this.#pendingReleases.delete(previewId)
+    this.#pendingReleases.delete(key)
   }
 
-  async #closePreview(previewId: string, draftId: string, revision: string) {
+  async #closePreview(previewId: string, draftId: string, previewRevisionId: string) {
     try {
       const [error] = await this.#args.api.api.agent.widgetPreview.close({
         draftId,
         previewId,
-        expectedRevision: revision,
+        expectedPreviewRevisionId: previewRevisionId,
       })
       if (error) this.#args.application.logError(error)
     } catch (error) {

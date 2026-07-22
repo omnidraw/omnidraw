@@ -168,10 +168,12 @@ describe('AgentService draft actor runtime', () => {
       dataPath,
       configPath: join(dataPath, 'config'),
       eventPublisherService: new TestEventPublisherService(),
-      actorService: {
-        reload: async () => {},
+      resourceService: {
         listResources: async () => resources,
         getResource: async (id) => resources.find((resource) => resource.id === id) ?? null,
+      },
+      actorService: {
+        reload: async () => {},
         listResourceBindingsForDefinition: async () => [],
         transitionDefinitionPublication: async ({ definitionName, bindings }) => {
           persistedBindings.push(...bindings.map((binding) => ({ definitionName, ...binding })));
@@ -300,7 +302,7 @@ describe('AgentService draft actor runtime', () => {
     }]);
   });
 
-  test('preserves the actor-service receiver during implicit Preview resource discovery', async () => {
+  test('preserves the neutral resource-service receiver during implicit Preview resource discovery', async () => {
     const dataPath = await mkdtemp(join(tmpdir(), 'vc-agent-draft-resource-receiver-'));
     tempDirs.push(dataPath);
     const widgetId = 'implicit-resource-widget';
@@ -325,7 +327,7 @@ describe('AgentService draft actor runtime', () => {
     }, null, 2)}\n`, 'utf8');
     await writeFile(join(cwd, 'actor', 'functions.ts'), 'export default { fn: {}, fx: {}, tx: {} };\n', 'utf8');
 
-    class StatefulActorService {
+    class StatefulResourceService {
       readonly resources = [{
         id: 'only-kv',
         kind: 'kv' as const,
@@ -336,9 +338,7 @@ describe('AgentService draft actor runtime', () => {
         updated_at: '2026-07-14T00:00:00.000Z',
       }];
 
-      async reload() {}
       async listResources() { return this.resources; }
-      async callWithDirectResourceBinding() {}
     }
 
     const service = new AgentService({
@@ -346,7 +346,11 @@ describe('AgentService draft actor runtime', () => {
       dataPath,
       configPath: join(dataPath, 'config'),
       eventPublisherService: new TestEventPublisherService(),
-      actorService: new StatefulActorService(),
+      resourceService: new StatefulResourceService(),
+      actorService: {
+        reload: async () => {},
+        callWithDirectResourceBinding: async () => undefined,
+      },
     });
     service.sessionMap[widgetId] = {
       [sessionId]: {
@@ -394,8 +398,7 @@ describe('AgentService draft actor runtime', () => {
       dataPath,
       configPath: join(dataPath, 'config'),
       eventPublisherService: new TestEventPublisherService(),
-      actorService: {
-        reload: async () => {},
+      resourceService: {
         listResources: async () => ['qa', 'manual'].map((id) => ({
           id,
           kind: 'db' as const,
@@ -405,6 +408,9 @@ describe('AgentService draft actor runtime', () => {
           created_at: '2026-07-13T00:00:00.000Z',
           updated_at: '2026-07-13T00:00:00.000Z',
         })),
+      },
+      actorService: {
+        reload: async () => {},
         callWithDirectResourceBinding: async () => { gatewayCalls += 1; return []; },
       },
     });

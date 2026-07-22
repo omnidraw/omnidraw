@@ -4,12 +4,13 @@ import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetMount } from '../workspace/types';
 import { AI_CHAT_TOOL_NAMES } from './CONSTANTS';
 import { fnToolError } from './fn.result';
-import { createBashTool } from './tool.bash';
+import { createBashTool, type TAgentBashCapability } from './tool.bash';
 import { createResourceTools } from './tool.resources';
+import type { TAgentResourceService } from './resource-service';
 import { createWebFetchTool } from './tool.web-fetch';
 import { createWidgetWorkspaceTools } from './tool.widget-workspace';
 import { createWorkspaceFileTools } from './tool.workspace-files';
-import type { TActorServiceReloader, TToolDefinition, TWidgetDraftChange } from './types';
+import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 
 type TCreateToolRegistryArgs = {
   chatId: string;
@@ -18,9 +19,10 @@ type TCreateToolRegistryArgs = {
   authorize?: TToolAuthorizer;
   workspace: WidgetWorkspace;
   approvals: ApprovalCoordinator;
-  actorService?: TActorServiceReloader;
+  resourceService?: TAgentResourceService;
+  bashCapability?: TAgentBashCapability;
   onMounted?: (mount: TWidgetMount) => void;
-  onDraftChanged?: (change: TWidgetDraftChange) => void | Promise<void>;
+  onDraftChanged?: TWidgetDraftChangeHandler;
   takeSensitiveToolArgs?: (toolCallId: string) => unknown;
 };
 
@@ -45,25 +47,32 @@ export function createToolRegistry(args: TCreateToolRegistryArgs): { toolNames: 
       chatId: args.chatId,
       authorize: (toolName) => authorize(toolName),
       onMounted: args.onMounted,
-      onDraftChanged: args.onDraftChanged,
+      onDraftChanged: args.onDraftChanged
+        ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
+        : undefined,
     }),
     ...createWorkspaceFileTools({
       workspace: args.workspace,
       chatId: args.chatId,
       cwd: args.cwd,
       authorize: (toolName) => authorize(toolName),
-      onDraftChanged: args.onDraftChanged,
+      onDraftChanged: args.onDraftChanged
+        ? (change) => args.onDraftChanged?.({ ...change, chatId: args.chatId })
+        : undefined,
     }),
     ...createResourceTools({
       chatId: args.chatId,
       authorization: args.authorization,
-      actorService: args.actorService,
+      resourceService: args.resourceService,
       approvals: args.approvals,
       authorize,
       takeSensitiveToolArgs: args.takeSensitiveToolArgs,
     }),
     wrapAuthorized(createWebFetchTool(), () => authorize('web_fetch')),
-    createBashTool({ cwd: args.cwd, authorize: () => authorize('bash') }),
+    createBashTool({
+      authorize: () => authorize('bash'),
+      capability: args.bashCapability,
+    }),
   ];
   const definitions = new Map(tools.map((tool) => [tool.name, tool]));
   const missing = AI_CHAT_TOOL_NAMES.filter((name) => !definitions.has(name));

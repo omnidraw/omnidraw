@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
-import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
@@ -176,6 +175,136 @@ describe('actor-free production widget service', () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  test('rejects invalid UI TypeScript during trusted validation without durable writes', async () => {
+    const sourceRoot = join(root, 'invalid-ui-validation');
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'export const broken: = 1;\n',
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(840),
+      createdAtMs: 10,
+    });
+    const result = await service.validateBuild(TENANT, {
+      snapshot,
+      manifest: {
+        schemaVersion: 2,
+        name: 'Invalid UI',
+        slug: 'invalid-ui',
+        ui: { entry: 'src/ui.ts' },
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toEqual(['Widget source build failed.']);
+    expect(await tableCount(database, 'widget_definitions')).toBe(0);
+    expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
+    expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
+    expect(await tableCount(database, 'artifact_references')).toBe(0);
+    expect(await filesBelow(artifactsRoot)).toEqual([]);
+  });
+
+  test('rejects semantic TypeScript errors during trusted validation without durable writes', async () => {
+    const sourceRoot = join(root, 'semantic-error-validation');
+    await writeSource(sourceRoot, {
+      'ui/main.ts': 'const value: string = 42;\nexport default value;\n',
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(843),
+      createdAtMs: 10,
+    });
+    const result = await service.validateBuild(TENANT, {
+      snapshot,
+      manifest: {
+        schemaVersion: 2,
+        name: 'Semantic error',
+        slug: 'semantic-error',
+        ui: { entry: 'ui/main.ts' },
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toEqual([
+      "ui/main.ts:1:7 TS2322: Type 'number' is not assignable to type 'string'.",
+    ]);
+    expect(await tableCount(database, 'widget_definitions')).toBe(0);
+    expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
+    expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
+    expect(await tableCount(database, 'artifact_references')).toBe(0);
+    expect(await filesBelow(artifactsRoot)).toEqual([]);
+  });
+
+  test('rejects invalid server TypeScript during trusted validation without durable writes', async () => {
+    const sourceRoot = join(root, 'invalid-server-validation');
+    await writeSource(sourceRoot, {
+      'src/ui.ts': 'export const validUi = true;\n',
+      'src/server.server.ts': 'export const broken: = 1;\n',
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(841),
+      createdAtMs: 10,
+    });
+    const result = await service.validateBuild(TENANT, {
+      snapshot,
+      manifest: {
+        schemaVersion: 2,
+        name: 'Invalid server',
+        slug: 'invalid-server',
+        ui: { entry: 'src/ui.ts' },
+        server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toEqual(['Widget source build failed.']);
+    expect(await tableCount(database, 'widget_definitions')).toBe(0);
+    expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
+    expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
+    expect(await tableCount(database, 'artifact_references')).toBe(0);
+    expect(await filesBelow(artifactsRoot)).toEqual([]);
+  });
+
+  test('validates the exact documented direct server entry without durable writes', async () => {
+    const sourceRoot = join(root, 'documented-server-validation');
+    await writeSource(sourceRoot, {
+      'ui/main.ts': 'export default function mount() {}\n',
+      'server/main.server.ts': [
+        'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+        'import { z } from "zod";',
+        '',
+        'export const calculate = defineServerFunction({',
+        '  effect: "fn",',
+        '  input: z.object({ value: z.number().finite() }),',
+        '  output: z.object({ doubled: z.number().finite() }),',
+        '}, async (_context, input) => ({ doubled: input.value * 2 }));',
+        '',
+      ].join('\n'),
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(842),
+      createdAtMs: 10,
+    });
+    const result = await service.validateBuild(TENANT, {
+      snapshot,
+      manifest: {
+        schemaVersion: 2,
+        name: 'Documented server widget',
+        slug: 'documented-server-widget',
+        ui: { entry: 'ui/main.ts' },
+        server: {
+          entry: 'server/main.server.ts',
+          runtimeAbi: 'vibecanvas-function-v1',
+        },
+      },
+    });
+
+    expect(result).toEqual({ valid: true, diagnostics: [] });
+    expect(await tableCount(database, 'widget_definitions')).toBe(0);
+    expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
+    expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
+    expect(await tableCount(database, 'artifact_references')).toBe(0);
+    expect(await filesBelow(artifactsRoot)).toEqual([]);
+  });
+
   test('publishes and reads a browser-only definition without actor rows or actor files', async () => {
     const sourceRoot = join(root, 'source');
     await writeSource(sourceRoot, {
@@ -274,6 +403,18 @@ describe('actor-free production widget service', () => {
       expectedSourceDigestSha256: snapshot.digestSha256,
       expectedBuilderIdentity: BUILDER_IDENTITY,
     }).files).toEqual(snapshot.files);
+    await expect(service.readRevisionSourceSnapshot(TENANT, {
+      definitionId: published.definition.id,
+      revisionId: published.revision.id,
+    })).resolves.toMatchObject({
+      id: snapshot.id,
+      digestSha256: snapshot.digestSha256,
+      files: snapshot.files,
+    });
+    await expect(service.readRevisionSourceSnapshot(TENANT, {
+      definitionId: uuid(896),
+      revisionId: published.revision.id,
+    })).resolves.toBeNull();
     const artifact = published.revision.uiArtifact;
     const capability = await service.issueBrowserUiArtifactReadCapability(TENANT, {
       definitionId: published.definition.id,
@@ -306,6 +447,19 @@ describe('actor-free production widget service', () => {
     await expect(service.readArtifact(TENANT, request)).rejects.toMatchObject({
       code: 'WIDGET_ARTIFACT_INTEGRITY_FAILED',
     });
+    await expect(service.archive(TENANT, {
+      definitionId: published.definition.id,
+      expectedActiveRevisionId: published.revision.id,
+      nowMs: 21,
+    })).resolves.toMatchObject({
+      status: 'archived',
+      definition: { status: 'archived', activeRevisionId: null },
+    });
+    await expect(service.listPublishedPlacements(TENANT)).resolves.toEqual([]);
+    await expect(service.resolvePublishedPlacement(TENANT, {
+      definitionId: published.definition.id,
+      revisionId: published.revision.id,
+    })).resolves.toBeNull();
   });
 
   test('fails closed for capability issuance and reads after stored revision contract tampering', async () => {
@@ -378,7 +532,7 @@ describe('actor-free production widget service', () => {
       ) VALUES (?, ?, 'member', 'active', 1, ?, ?)
     `)).run(TENANT.orgId, OTHER_ACCOUNT_TENANT.accountId, nowMs, nowMs);
 
-    const authoring = new AgentAuthoringStoreTurso(database.db);
+    const authoring = service.authoringStore;
     const chatId = uuid(820);
     const draftId = uuid(821);
     const definitionId = uuid(822);
@@ -760,23 +914,18 @@ describe('actor-free production widget service', () => {
     expect(registrations.get('widget')).toBe(56);
     expect(registrations.get('actor')).toBe(60);
     expect(Reflect.ownKeys(widgetCapability).sort()).toEqual([
-      'buildPreview',
       'getActiveRevision',
       'getArtifact',
-      'getPreview',
-      'getPreviewRevision',
       'getRevision',
       'getRevisionSource',
       'issueBrowserUiArtifactReadCapability',
-      'issueSourceBuildArtifactReadCapability',
-      'issueUiPreviewArtifactReadCapability',
       'listPublishedPlacements',
       'publish',
       'readArtifact',
       'resolvePublishedPlacement',
       'rollback',
-      'stopPreview',
     ]);
+    expect('buildPreview' in widgetCapability).toBe(false);
     expect('issueServerExecutionArtifactReadCapability' in widgetCapability).toBe(false);
 
     await compositionDatabase.start();

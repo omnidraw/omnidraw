@@ -1,5 +1,5 @@
-import { fnDecodeWidgetUiArtifactEnvelope } from '@vibecanvas/widget-contract/browser';
 import { createWidgetFunctionHostBridge } from './create-widget-function-host-bridge';
+import { fxDecodeAndVerifyUiArtifact } from './fx.decode-and-verify-ui-artifact';
 import { fnWidgetCollaborativeStateIdentitiesMatch } from './fn.collaborative-state-json';
 import { fnWidgetUiArtifactCacheKey } from './fn.artifact-cache-key';
 import {
@@ -475,10 +475,10 @@ export class WidgetUiRuntime {
     if (!artifact) {
       let pending = this.#inFlightArtifacts.get(cacheKey);
       if (!pending) {
-        pending = this.#decodeAndVerifyArtifact(
-          response.artifact.digestSha256,
-          response.artifact.bytesBase64,
-        ).then((verified) => {
+        pending = fxDecodeAndVerifyUiArtifact({ codec: this.config.codec }, {
+          expectedDigestSha256: response.artifact.digestSha256,
+          bytesBase64: response.artifact.bytesBase64,
+        }).then((verified) => {
           this.#cache.set(cacheKey, verified);
           return verified;
         }).finally(() => {
@@ -549,40 +549,4 @@ export class WidgetUiRuntime {
     return tenantAuthorityKey;
   }
 
-  async #decodeAndVerifyArtifact(
-    expectedDigestSha256: string,
-    bytesBase64: string,
-  ): Promise<TVerifiedWidgetUiArtifact> {
-    const artifactBytes = this.config.codec.decodeBase64(bytesBase64);
-    const digestSha256 = await this.config.codec.digestSha256(artifactBytes);
-    if (digestSha256 !== expectedDigestSha256) {
-      throw new Error('Widget UI artifact digest mismatch.');
-    }
-    const envelope = fnDecodeWidgetUiArtifactEnvelope(this.config.codec.decodeUtf8(artifactBytes));
-    const outputs = await Promise.all(envelope.outputs.map(async (descriptor) => {
-      const bytes = this.config.codec.decodeBase64(descriptor.bytesBase64);
-      if (await this.config.codec.digestSha256(bytes) !== descriptor.digestSha256) {
-        throw new Error('Widget UI artifact output digest mismatch.');
-      }
-      return Object.freeze({
-        descriptor,
-        bytes,
-        text: descriptor.loader === 'js' || descriptor.loader === 'css' || descriptor.loader === 'json'
-          ? this.config.codec.decodeUtf8(bytes)
-          : null,
-      });
-    }));
-    const retainedByteSize = outputs.reduce((size, output) => {
-      return size
-        + output.bytes.byteLength
-        + output.descriptor.bytesBase64.length
-        + (output.text?.length ?? 0) * 2;
-    }, 0);
-    return Object.freeze({
-      digestSha256,
-      envelope,
-      outputs: Object.freeze(outputs),
-      retainedByteSize,
-    });
-  }
 }

@@ -3,6 +3,7 @@ import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import { ZWidgetManifestV2, type TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { WidgetDraftController } from '../widget-drafts/WidgetDraftController';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import { fnPatchDraftManifest } from '../core/fn.patch-draft-manifest';
@@ -37,6 +38,7 @@ import type {
   TWidgetDraftToolPatch,
   TWidgetFileEntry,
   TWidgetFilePreview,
+  TWidgetManagementManifest,
   TWidgetSource,
   TWidgetVariantSummary,
 } from './types';
@@ -60,7 +62,7 @@ type TTreeFingerprint = {
 
 type TVariantRead = {
   summary: TWidgetVariantSummary;
-  manifest: TVibecanvasJson | null;
+  manifest: TWidgetManagementManifest | null;
   problem: TWidgetCatalogProblem | null;
 };
 
@@ -138,6 +140,7 @@ export class WidgetManagement {
           reference,
           bounds: detail.variant.placement.bounds,
           kind: 'published-legacy',
+          draftId: null,
           definitionId: null,
           revisionId: null,
           definitionName: detail.manifest.name,
@@ -152,6 +155,7 @@ export class WidgetManagement {
         reference,
         bounds: detail.variant.placement.bounds,
         kind: 'preview',
+        draftId: null,
         definitionId: null,
         revisionId: null,
         definitionName: null,
@@ -255,7 +259,11 @@ export class WidgetManagement {
     if (!Object.prototype.hasOwnProperty.call(patch, 'icon') && !Object.prototype.hasOwnProperty.call(patch, 'group')) {
       throw new Error('INVALID_MANIFEST: No editable tool field was supplied.');
     }
-    await this.#workspace.updateDraftManifestAtomic(name, expectedRevision, (manifestValue) => {
+    const workspaceRevision = await this.#drafts.getWorkspaceRevision(name, expectedRevision);
+    await this.#workspace.updateDraftManifestAtomic(name, workspaceRevision, (manifestValue) => {
+      if (ZWidgetManifestV2.safeParse(manifestValue).success) {
+        throw new Error('INVALID_MANIFEST: Manifest v2 does not expose legacy tool metadata.');
+      }
       const parsed = ZVibecanvasJson.safeParse(manifestValue);
       if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
       const plan = fnPatchDraftManifest({
@@ -280,8 +288,24 @@ export class WidgetManagement {
       && patch.tool === undefined) {
       throw new Error('INVALID_MANIFEST: No editable metadata field was supplied.');
     }
+    const workspaceRevision = await this.#drafts.getWorkspaceRevision(name, expectedRevision);
     const updateDraft = (coordinateCommit?: (commit: () => Promise<void>) => Promise<void>) => {
-      return this.#workspace.updateDraftManifestAndNameAtomic(name, nextName, expectedRevision, (manifestValue) => {
+      return this.#workspace.updateDraftManifestAndNameAtomic(name, nextName, workspaceRevision, (manifestValue) => {
+        const v2 = ZWidgetManifestV2.safeParse(manifestValue);
+        if (v2.success) {
+          if (patch.tool !== undefined) {
+            throw new Error('INVALID_MANIFEST: Manifest v2 does not expose legacy tool metadata.');
+          }
+          const description = patch.description === undefined
+            ? v2.data.description
+            : patch.description.trim() || undefined;
+          const { description: _description, ...withoutDescription } = v2.data;
+          return {
+            ...withoutDescription,
+            name: nextName,
+            ...(description === undefined ? {} : { description }),
+          };
+        }
         const parsed = ZVibecanvasJson.safeParse(manifestValue);
         if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
         const plan = fnPatchDraftManifest({
@@ -300,11 +324,8 @@ export class WidgetManagement {
     };
     const result = nextName === name
       ? await updateDraft()
-      : await this.#drafts.withPreviewRenameCleanup(name, nextName, (cleanup) => {
-          return updateDraft(async (commit) => {
-            await cleanup();
-            await commit();
-          });
+      : await this.#drafts.withPreviewRenameCleanup(name, nextName, (_cleanup, coordinateCommit) => {
+          return updateDraft(coordinateCommit);
         });
     await this.#drafts.handleToolChange({ name: result.name, type: 'changed' });
     return { name: result.name, variant: (await this.#readVariant(result.name, 'draft')).summary };
@@ -316,8 +337,8 @@ export class WidgetManagement {
     if (source === 'draft') {
       let deletedDraft = false;
       try {
-        await this.#drafts.withPreviewCleanup(name, async (cleanup) => {
-          await cleanup();
+        await this.#drafts.withPreviewCleanup(name, async (_cleanup, discardBeforeRemoval) => {
+          await discardBeforeRemoval();
           deletedDraft = await this.#workspace.removeDraft(name);
         });
         return {
@@ -348,8 +369,9 @@ export class WidgetManagement {
     const issues: TWidgetDeleteResult['issues'] = [];
     let deletedDefinition = false;
 
-    const [publishedCleanup, draftCleanup] = await this.#drafts.withPreviewCleanup(name, async (cleanup) => {
+    const [publishedCleanup, draftCleanup] = await this.#drafts.withPreviewCleanup(name, async (cleanup, discardBeforeRemoval) => {
       await cleanup();
+      await discardBeforeRemoval();
       if (this.#deletePublishedDefinition) {
         try {
           deletedDefinition = await this.#deletePublishedDefinition(definitionName);
@@ -373,7 +395,7 @@ export class WidgetManagement {
       }
       return Promise.allSettled([
         this.#workspace.removePublished(name),
-        this.#workspace.removeDraft(name),
+        hadDraft ? this.#workspace.removeDraft(name) : Promise.resolve(false),
       ]);
     });
     if (publishedCleanup.status === 'rejected') {
@@ -462,7 +484,7 @@ export class WidgetManagement {
       const before = await this.#fingerprint(root);
       await this.#afterVariantFingerprint?.({ name, source, attempt });
       const manifestResult = await this.#readManifest(root);
-      const draft = source === 'draft' ? await this.#drafts.get(name) : null;
+      const draft = source === 'draft' ? await this.#drafts.getByName(name) : null;
       const after = await this.#fingerprint(root);
       latestFingerprint = after;
       if (before.fingerprint !== after.fingerprint) continue;
@@ -471,6 +493,7 @@ export class WidgetManagement {
         ? draft?.revision ?? after.fingerprint ?? 'unknown'
         : after.fingerprint ?? 'unknown';
       const summary = fnWidgetVariantSummary({
+        draftId: draft?.draftId ?? null,
         source,
         fallbackName: name,
         manifest: safeManifest,
@@ -488,12 +511,13 @@ export class WidgetManagement {
         problem: after.problem ?? manifestResult.problem,
       };
     }
-    const draft = source === 'draft' ? await this.#drafts.get(name) : null;
+    const draft = source === 'draft' ? await this.#drafts.getByName(name) : null;
     const revision = source === 'draft'
       ? draft?.revision ?? latestFingerprint.fingerprint ?? 'unknown'
       : latestFingerprint.fingerprint ?? 'unknown';
     return {
       summary: fnWidgetVariantSummary({
+        draftId: draft?.draftId ?? null,
         source,
         fallbackName: name,
         manifest: null,
@@ -510,7 +534,7 @@ export class WidgetManagement {
     };
   }
 
-  async #readManifest(root: string): Promise<{ manifest: TVibecanvasJson | null; problem: TWidgetCatalogProblem | null; groupReference: string | null }> {
+  async #readManifest(root: string): Promise<{ manifest: TWidgetManagementManifest | null; problem: TWidgetCatalogProblem | null; groupReference: string | null }> {
     try {
       const raw: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
       const rawGroup = raw && typeof raw === 'object' && 'widget' in raw
@@ -521,9 +545,13 @@ export class WidgetManagement {
       const groupReference = typeof rawGroup === 'string' && rawGroup.trim().length > 0 && rawGroup.trim().length <= 120
         ? rawGroup.trim()
         : null;
-      const parsed = ZVibecanvasJson.safeParse(raw);
-      if (!parsed.success) return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference };
-      return { manifest: parsed.data as TVibecanvasJson, problem: null, groupReference };
+      const v2 = ZWidgetManifestV2.safeParse(raw);
+      if (v2.success) {
+        return { manifest: v2.data as TWidgetManifestV2, problem: null, groupReference: null };
+      }
+      const legacy = ZVibecanvasJson.safeParse(raw);
+      if (!legacy.success) return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference };
+      return { manifest: legacy.data as TVibecanvasJson, problem: null, groupReference };
     } catch {
       return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is missing, unreadable, or invalid JSON.'), groupReference: null };
     }

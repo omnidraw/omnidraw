@@ -1,749 +1,1530 @@
-import { Actor } from '@vibecanvas/service-actor/Actor';
-import { ActorResourceError } from '@vibecanvas/service-actor';
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
-import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, isAbsolute, join, relative, resolve } from 'node:path';
-import { txPublishWidgetDraft } from '../core/tx.publish-widget-draft';
+import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+import {
+  ZWidgetBrowserFunctionDescriptors,
+  ZWidgetManifestV2,
+  type TWidgetManifestV2,
+  type TWidgetPreviewRevisionDescriptor,
+  type TWidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract';
+import { fnDecodeWidgetUiArtifactEnvelope } from '@vibecanvas/widget-contract/browser';
+import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
-import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from '../tools/resource-bindings';
-import type { TActorServiceReloader, TValidationResult, TWidgetDraftChange } from '../tools/types';
+import type { TValidationResult } from '../core/types';
+import type { TWidgetDraftChange } from '../tools/types';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
-import { fnNormalizeWidgetName } from '../workspace/fn.names';
 import type { TWidgetDraftWorkspaceEntry } from '../workspace/types';
 import type {
+  IAgentAuthoringStore,
+  IWidgetPreviewFunctionCapability,
+  TAgentAuthoringDraftDescriptor,
+  TWidgetAuthoringCapability,
   TWidgetDraftSummary,
+  TWidgetPreviewCatalogState,
   TWidgetPreviewCloseResult,
   TWidgetPreviewFailureReason,
+  TWidgetPreviewFunctionCapabilityView,
+  TWidgetPreviewFunctionInvocationView,
   TWidgetPreviewReady,
   TWidgetPreviewResult,
-  TWidgetPreviewSendResult,
   TWidgetPublishResult,
+  TWidgetResourceBindingResolver,
 } from './types';
 
-type TWidgetDraftControllerConfig = {
-  configPath: string;
-  workspace: WidgetWorkspace;
-  eventPublisher: ITenantEventPublisherService;
-  actorService?: TActorServiceReloader;
-};
+const WIDGET_PREVIEW_DEFAULT_TTL_MS = 15 * 60 * 1_000;
+const WIDGET_PREVIEW_DEFAULT_RETENTION_MS = 60 * 60 * 1_000;
+const WIDGET_PREVIEW_ARTIFACT_READ_TTL_MS = 60 * 1_000;
+const WIDGET_UI_ARTIFACT_MAX_BYTES = 16 * 1_024 * 1_024;
+const WIDGET_PREVIEW_STOP_ATTEMPTS = 3;
 
 type TValidationCacheEntry = TValidationResult & { revision: string };
 
-type TPreviewEntry = {
-  actor: Actor;
-  draftId: string;
-  previewId: string;
-  revision: string;
-  manifest: TVibecanvasJson;
-  sources: Record<string, string>;
-  snapshot: Awaited<ReturnType<WidgetWorkspace['createPreviewSnapshot']>>;
-  unlisten: () => void;
-};
+type TCapturedDraft = Readonly<{
+  workspace: TWidgetDraftWorkspaceEntry;
+  rootPath: string;
+  snapshot: TWidgetSourceSnapshot;
+}>;
 
-type TResourceBindingResult =
-  | { ok: true; bindings: TResourceBindingPlan[] }
-  | { ok: false; message: string };
+export type TWidgetDraftControllerConfig = Readonly<{
+  tenant: TTenantContext;
+  workspace: WidgetWorkspace;
+  eventPublisher: ITenantEventPublisherService;
+  authoringStore: IAgentAuthoringStore;
+  widgets: TWidgetAuthoringCapability;
+  resolveResourceBindings: TWidgetResourceBindingResolver;
+  previewFunctions: IWidgetPreviewFunctionCapability;
+  createId: () => string;
+  nowMs: () => number;
+  builderIdentity: string;
+  previewTtlMs?: number;
+  previewRetentionMs?: number;
+}>;
 
-function previewOwnerKey(draftId: string, previewId: string): string {
-  return JSON.stringify([draftId, previewId]);
+function controllerError(code: string, message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code });
 }
 
-function previewDraftQueueKey(draftId: string): string {
-  const normalized = fnNormalizeWidgetName(draftId);
-  return normalized.ok ? normalized.caseKey : draftId.normalize('NFKC').toLocaleLowerCase('en-US');
+function errorCode(error: unknown): string {
+  return error !== null && typeof error === 'object' && 'code' in error
+    ? String(error.code)
+    : '';
 }
 
-async function waitForPreviewCleanups(operations: Promise<unknown>[]): Promise<void> {
-  const results = await Promise.allSettled(operations);
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-  if (failure) throw failure.reason;
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
+function errorCurrentRevision(error: unknown): string | null {
+  if (error === null || typeof error !== 'object' || !('currentRevision' in error)) return null;
+  const currentRevision = error.currentRevision;
+  return typeof currentRevision === 'string' ? currentRevision : null;
+}
+
+function previewKey(previewId: string, previewRevisionId: string): string {
+  return JSON.stringify([previewId, previewRevisionId]);
+}
+
+function browserInvocationView(
+  view: TWidgetPreviewFunctionCapabilityView,
+): TWidgetPreviewFunctionInvocationView {
+  return Object.freeze({
+    id: view.id,
+    functionName: view.functionName,
+    previewId: view.subject.previewId,
+    previewRevisionId: view.subject.previewRevisionId,
+    status: view.status,
+    output: view.output,
+    failure: view.failure,
+    createdAtMs: view.createdAtMs,
+    startedAtMs: view.startedAtMs,
+    finishedAtMs: view.finishedAtMs,
+  });
+}
+
+/** Durable actor-free v2 draft, preview, and publication orchestration. */
 export class WidgetDraftController {
   readonly #config: TWidgetDraftControllerConfig;
   readonly #validationByDraft = new Map<string, TValidationCacheEntry>();
-  readonly #previews = new Map<string, TPreviewEntry>();
-  readonly #previewDraftQueues = new Map<string, Promise<unknown>>();
-  readonly #previewDraftOperations = new Set<Promise<unknown>>();
-  readonly #previewBuildQueues = new Map<string, Promise<unknown>>();
-  readonly #previewBuilds = new Set<Promise<unknown>>();
+  readonly #operations = new Map<string, Promise<unknown>>();
+  readonly #activePreviewRevisions = new Map<string, Map<string, string>>();
   #closing = false;
 
   constructor(config: TWidgetDraftControllerConfig) {
     this.#config = config;
+    if (!config.builderIdentity.trim()) {
+      throw new TypeError('Widget authoring builder identity is required.');
+    }
   }
 
   async close(): Promise<void> {
     this.#closing = true;
-    await Promise.allSettled([...this.#previewDraftOperations]);
-    await Promise.allSettled([...this.#previewBuilds]);
-    await waitForPreviewCleanups([...this.#previews.values()].map((preview) => {
-      return this.#disposePreview(preview.draftId, preview.previewId);
-    }));
-  }
-
-  async forget(name: string): Promise<void> {
-    await this.withPreviewCleanup(name, async (cleanup) => cleanup());
-  }
-
-  async withPreviewCleanup<T>(name: string, operation: (cleanup: () => Promise<void>) => Promise<T>): Promise<T> {
-    return this.#withPreviewCleanup([name], operation);
-  }
-
-  async withPreviewRenameCleanup<T>(name: string, nextName: string, operation: (cleanup: () => Promise<void>) => Promise<T>): Promise<T> {
-    return this.#withPreviewCleanup([name, nextName], operation);
-  }
-
-  async #withPreviewCleanup<T>(names: string[], operation: (cleanup: () => Promise<void>) => Promise<T>): Promise<T> {
-    if (this.#closing) throw new Error('Preview service is closing.');
-    const draftIdsByQueueKey = new Map(names.map((draftId) => [previewDraftQueueKey(draftId), draftId]));
-    const draftQueueKeys = [...draftIdsByQueueKey.keys()].sort();
-    const draftIds = draftQueueKeys.map((queueKey) => draftIdsByQueueKey.get(queueKey)!);
-    const draftQueueKeySet = new Set(draftQueueKeys);
-    return this.#queueDraftPreviews(draftIds, async () => {
-      let cleaned = false;
-      const cleanup = async () => {
-        if (cleaned) return;
-        cleaned = true;
-        for (const draftId of this.#validationByDraft.keys()) {
-          if (draftQueueKeySet.has(previewDraftQueueKey(draftId))) this.#validationByDraft.delete(draftId);
-        }
-        const previews = [...this.#previews.values()].filter((preview) => {
-          return draftQueueKeySet.has(previewDraftQueueKey(preview.draftId));
-        });
-        await waitForPreviewCleanups(previews.map((preview) => {
-          return this.#queuePreviewBuild(preview.draftId, preview.previewId, () => {
-            return this.#disposePreview(preview.draftId, preview.previewId);
-          });
+    await Promise.allSettled(this.#operations.values());
+    const cleanup: Promise<unknown>[] = [];
+    for (const [draftId, previews] of this.#activePreviewRevisions) {
+      for (const [previewId, revisionId] of previews) {
+        cleanup.push(this.#stopPreviewRevision(previewId, revisionId).then((stopped) => {
+          if (stopped) this.#forgetPreview(draftId, previewId, revisionId);
         }));
-      };
-      return operation(cleanup);
-    });
+      }
+    }
+    await Promise.allSettled(cleanup);
   }
 
-  async handleToolChange(change: TWidgetDraftChange): Promise<void> {
-    const draft = await this.#config.workspace.getDraft(change.name);
-    if (!draft) return;
+  async handleToolChange(change: TWidgetDraftChange): Promise<TWidgetDraftSummary | null> {
+    const durable = await this.#config.authoringStore.getDraftByName(
+      this.#config.tenant,
+      change.name,
+    );
+    return this.#queue(durable ? this.#draftOperationKey(durable.id) : `name:${change.name}`, async () => {
+      const workspace = await this.#config.workspace.getDraft(change.name);
+      if (!workspace) return null;
+      return this.#withCapturedWorkspace(workspace, async (captured) => {
+        const draft = await this.#ensureDurableDraft(captured, change.chatId);
+        if (!draft) return null;
+        const synced = await this.#compareAndSetDraft(draft, captured.snapshot.digestSha256, {
+          status: 'editing',
+          lastError: null,
+        });
+        if (!synced) return null;
 
-    if (change.type === 'validated' && change.validation) {
-      this.#validationByDraft.set(change.name, { ...change.validation, revision: draft.revision });
-    } else {
-      this.#validationByDraft.delete(change.name);
-    }
-
-    this.#config.eventPublisher.publishAgentEvent({
-      kind: 'widget-draft',
-      type: change.type,
-      draftId: draft.name,
-      revision: draft.revision,
+        if (change.type === 'validated') {
+          await this.#validateCaptured(synced, captured);
+          const validated = await this.#activeDraft(synced.id);
+          return validated ? this.#summary(validated, captured.workspace) : null;
+        }
+        this.#validationByDraft.delete(synced.id);
+        this.#publishDraftEvent(change.type, synced.id, captured.snapshot.digestSha256);
+        return this.#summary(synced, captured.workspace);
+      });
     });
   }
 
   async list(): Promise<TWidgetDraftSummary[]> {
-    const drafts = await this.#config.workspace.listDrafts();
-    return Promise.all(drafts.map((draft) => this.#summary(draft)));
+    const drafts = await this.#config.authoringStore.listDrafts(this.#config.tenant);
+    const summaries = await Promise.all(drafts
+      .filter((draft) => draft.status !== 'discarded')
+      .map((draft) => this.#refreshAndSummarize(draft)));
+    return summaries
+      .filter((summary): summary is TWidgetDraftSummary => summary !== null)
+      .sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  async get(name: string): Promise<TWidgetDraftSummary | null> {
-    const draft = await this.#config.workspace.getDraft(name);
-    return draft ? this.#summary(draft) : null;
+  async get(draftId: string): Promise<TWidgetDraftSummary | null> {
+    const draft = await this.#config.authoringStore.getDraft(this.#config.tenant, draftId);
+    return draft && draft.status !== 'discarded' ? this.#refreshAndSummarize(draft) : null;
   }
 
-  async validate(name: string, expectedRevision?: string): Promise<TWidgetDraftSummary | null> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return null;
-    if (expectedRevision !== undefined && draft.revision !== expectedRevision) {
-      return this.#summary(draft);
-    }
+  async getByName(name: string): Promise<TWidgetDraftSummary | null> {
+    const draft = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
+    return draft && draft.status !== 'discarded' ? this.#refreshAndSummarize(draft) : null;
+  }
 
-    const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
-      cwd: draft.draftPath,
-      sdkActorTypePath: join(this.#config.workspace.sdkPackagePath, 'src', 'actor.ts'),
+  /** Reconstructs an editable draft from one exact durable publication source. */
+  async materializePublishedDraft(request: Readonly<{
+    name: string;
+    definitionId: string;
+    publishedRevisionId: string;
+    snapshot: TWidgetSourceSnapshot;
+  }>): Promise<TWidgetDraftSummary> {
+    const initial = await this.#config.authoringStore.getDraftByName(
+      this.#config.tenant,
+      request.name,
+    );
+    return this.#queue(initial ? this.#draftOperationKey(initial.id) : `name:${request.name}`, async () => {
+      const materialized = await this.#config.workspace.materializeDraftFromSnapshot(
+        request.name,
+        request.snapshot,
+        {
+          definitionId: request.definitionId,
+          publishedRevisionId: request.publishedRevisionId,
+        },
+      );
+      const existing = await this.#config.authoringStore.getDraftByName(
+        this.#config.tenant,
+        request.name,
+      );
+      if (existing && existing.status !== 'discarded') {
+        if (
+          (materialized.pending && !this.#matchesPublicationSeed(existing, request))
+          || (!materialized.pending && existing.definitionId !== request.definitionId)
+        ) {
+          if (materialized.pending) await materialized.rollback().catch(() => false);
+          throw controllerError(
+            'AGENT_AUTHORING_INTEGRITY_FAILED',
+            'Widget source conflicts with its active durable publication identity.',
+          );
+        }
+        if (materialized.pending) {
+          await materialized.commitSeed(async () => existing);
+        }
+        await this.#mountDurableDraft(existing);
+        return this.#summary(existing, materialized.draft);
+      }
+      if (!materialized.pending) {
+        throw controllerError(
+          'AGENT_AUTHORING_INTEGRITY_FAILED',
+          'Untracked widget source cannot be claimed as an immutable publication draft.',
+        );
+      }
+
+      const externalSessionKey = this.#managementChatExternalKey(request.definitionId);
+      await this.#config.workspace.ensureChat(externalSessionKey);
+      let chat = await this.#config.authoringStore.getChatByExternalSessionKey(
+        this.#config.tenant,
+        externalSessionKey,
+      );
+      if (!chat) {
+        try {
+          chat = await this.#config.authoringStore.createChat(this.#config.tenant, {
+            id: this.#config.createId(),
+            canvasId: this.#config.tenant.canvasId ?? null,
+            externalSessionKey,
+            name: request.name,
+            workspaceRelativePath: relative(
+              this.#config.workspace.agentRoot,
+              this.#config.workspace.getChatRoot(externalSessionKey),
+            ),
+            historyRelativePath: relative(
+              this.#config.workspace.agentRoot,
+              this.#config.workspace.getChatHistoryRoot(externalSessionKey),
+            ),
+            nowMs: this.#now(),
+          });
+        } catch {
+          chat = await this.#config.authoringStore.getChatByExternalSessionKey(
+            this.#config.tenant,
+            externalSessionKey,
+          );
+        }
+      }
+      if (!chat) throw controllerError('AGENT_CHAT_CREATE_FAILED', 'Widget management chat could not be created.');
+
+      let seeded: TAgentAuthoringDraftDescriptor;
+      try {
+        seeded = await materialized.commitSeed(() => (
+          this.#config.authoringStore.createDraft(this.#config.tenant, {
+            id: this.#config.createId(),
+            chatId: chat.id,
+            name: request.name,
+            sourceRelativePath: this.#sourceRelativePath(materialized.draft),
+            publicationSeed: {
+              definitionId: request.definitionId,
+              publishedRevisionId: request.publishedRevisionId,
+              sourceDigestSha256: request.snapshot.digestSha256,
+            },
+            nowMs: this.#now(),
+          })
+        ));
+      } catch (error) {
+        const winner = await this.#config.authoringStore.getDraftByName(
+          this.#config.tenant,
+          request.name,
+        );
+        if (!winner || winner.status === 'discarded') {
+          await materialized.rollback().catch(() => false);
+          throw error;
+        }
+        if (!this.#matchesPublicationSeed(winner, request)) {
+          await materialized.rollback().catch(() => false);
+          throw controllerError(
+            'AGENT_AUTHORING_INTEGRITY_FAILED',
+            'Newly materialized widget source conflicts with its active durable draft.',
+          );
+        }
+        await materialized.commitSeed(async () => winner);
+        await this.#mountDurableDraft(winner);
+        return this.#summary(winner, materialized.draft);
+      }
+      if (
+        seeded.definitionId !== request.definitionId
+        || seeded.publishedRevisionId !== request.publishedRevisionId
+        || seeded.sourceDigestSha256 !== request.snapshot.digestSha256
+        || seeded.status !== 'published'
+      ) {
+        throw controllerError(
+          'AGENT_AUTHORING_INTEGRITY_FAILED',
+          'Materialized widget draft does not match its durable publication seed.',
+        );
+      }
+      await this.#mountDurableDraft(seeded);
+      this.#validationByDraft.delete(seeded.id);
+      this.#publishDraftEvent('created', seeded.id, request.snapshot.digestSha256);
+      return this.#summary(seeded, materialized.draft);
     });
-    const current = await this.#config.workspace.getDraft(name);
-    if (!current) return null;
-    if (current.revision === draft.revision) {
-      this.#validationByDraft.set(name, {
-        revision: current.revision,
-        ok: validation.ok,
-        errors: validation.errors.slice(0, 40),
-        warnings: validation.warnings.slice(0, 40),
-      });
-      this.#config.eventPublisher.publishAgentEvent({
-        kind: 'widget-draft',
-        type: 'validated',
-        draftId: current.name,
-        revision: current.revision,
-      });
-    }
-    return this.#summary(current);
   }
 
-  async getPreview(name: string, previewId: string): Promise<TWidgetPreviewResult> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-    const preview = this.#previews.get(previewOwnerKey(draft.name, previewId));
-    if (!preview) {
-      return this.#previewFailure(draft.name, 'not-built', 'Preview has not been built for this draft.', draft);
+  /** Resolves a public immutable source revision to the current private workspace CAS token. */
+  async getWorkspaceRevision(name: string, expectedSourceRevision: string): Promise<string> {
+    const draft = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
+    if (!draft || draft.status === 'discarded') {
+      throw controllerError('WIDGET_DRAFT_NOT_FOUND', `Widget draft '${name}' was not found.`);
     }
-    return this.#previewReady(draft, preview);
-  }
-
-  async getPreviewCatalogState(name: string): Promise<import('./types').TWidgetPreviewCatalogState | null> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return null;
-    const ready = [...this.#previews.values()].find((preview) => {
-      return preview.draftId === draft.name && preview.revision === draft.revision;
+    const workspace = await this.#config.workspace.getDraft(name);
+    if (!workspace) throw controllerError('WIDGET_DRAFT_NOT_FOUND', `Widget draft '${name}' was not found.`);
+    return this.#withCapturedWorkspace(workspace, async (captured) => {
+      if (captured.snapshot.digestSha256 !== expectedSourceRevision) {
+        throw controllerError(
+          'STALE_REVISION',
+          `STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`,
+        );
+      }
+      return workspace.revision;
     });
-    if (ready) return { status: 'ready', revision: ready.revision };
-    const validation = this.#validationByDraft.get(draft.name);
-    if (validation?.revision === draft.revision && !validation.ok) {
+  }
+
+  async validate(draftId: string, expectedRevision?: string): Promise<TWidgetDraftSummary | null> {
+    return this.#queue(`draft:${draftId}`, async () => {
+      const draft = await this.#activeDraft(draftId);
+      if (!draft) return null;
+      const workspace = await this.#config.workspace.getDraft(draft.name);
+      if (!workspace) return null;
+
+      return this.#withCapturedWorkspace(workspace, async (captured) => {
+        const currentRevision = captured.snapshot.digestSha256;
+        const synced = await this.#compareAndSetDraft(draft, currentRevision, { status: 'editing' });
+        if (!synced) return this.get(draftId);
+        if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
+          return this.#summary(synced, captured.workspace);
+        }
+        await this.#validateCaptured(synced, captured);
+        const current = await this.#activeDraft(draftId);
+        return current ? this.#summary(current, captured.workspace) : null;
+      });
+    });
+  }
+
+  async getPreview(draftId: string, previewId: string): Promise<TWidgetPreviewResult> {
+    const draft = await this.#activeDraft(draftId);
+    if (!draft) return this.#previewFailure(draftId, 'not-found', 'Widget draft was not found.', { previewId });
+    const preview = await this.#config.widgets.getPreview(this.#config.tenant, {
+      previewId,
+      nowMs: this.#now(),
+    });
+    if (!preview || preview.draftId !== draft.id || preview.definitionId !== draft.definitionId) {
+      return this.#previewFailure(draft.id, 'not-built', 'Preview has not been built for this draft.', { previewId });
+    }
+    const current = await this.#currentDraftRevision(draft);
+    return this.#previewReady(preview, current ?? preview.draftRevisionSha256);
+  }
+
+  async getPreviewCatalogState(name: string): Promise<TWidgetPreviewCatalogState | null> {
+    const draft = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
+    if (!draft || draft.status === 'discarded') return null;
+    const currentRevision = draft.sourceDigestSha256 ?? '';
+    const previews = this.#activePreviewRevisions.get(draft.id);
+    if (previews) {
+      for (const [previewId] of previews) {
+        const preview = await this.#config.widgets.getPreview(this.#config.tenant, {
+          previewId,
+          nowMs: this.#now(),
+        });
+        if (
+          preview
+          && preview.draftId === draft.id
+          && preview.definitionId === draft.definitionId
+          && preview.draftRevisionSha256 === currentRevision
+        ) return { status: 'ready', revision: currentRevision };
+      }
+    }
+    const validation = this.#validationForDraft(draft, currentRevision);
+    if (validation.status === 'invalid') {
       return {
         status: 'failed',
-        revision: draft.revision,
+        revision: currentRevision,
         message: 'Draft validation failed. Open the draft for diagnostics.',
       };
     }
-    return { status: 'not-ready', revision: draft.revision, message: null };
+    return { status: 'not-ready', revision: currentRevision, message: null };
   }
 
-  async buildPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    return this.#queueDraftPreview(name, async () => {
-      const draft = await this.#config.workspace.getDraft(name);
-      if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
+  async buildPreview(
+    draftId: string,
+    previewId: string,
+    expectedDraftRevision: string,
+    expectedActivePreviewRevisionId: string | null,
+  ): Promise<TWidgetPreviewResult> {
+    return this.#queue(`draft:${draftId}`, async () => {
       if (this.#closing) {
-        return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
+        return this.#previewFailure(draftId, 'build-failed', 'Preview service is closing.', {
+          previewId,
+          revision: expectedDraftRevision,
+        });
       }
-      return this.#queuePreviewBuild(draft.name, previewId, () => this.#buildPreview(draft.name, previewId, expectedRevision));
-    });
-  }
+      const draft = await this.#activeDraft(draftId);
+      if (!draft) return this.#previewFailure(draftId, 'not-found', 'Widget draft was not found.', { previewId });
+      const workspace = await this.#config.workspace.getDraft(draft.name);
+      if (!workspace) return this.#previewFailure(draft.id, 'not-found', 'Widget draft source was not found.', { previewId });
 
-  async #buildPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-    if (this.#closing) {
-      return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
-    }
-    if (draft.revision !== expectedRevision) {
-      return this.#previewFailure(draft.name, 'stale-revision', 'The widget draft changed before Preview opened.', draft, expectedRevision);
-    }
-    await this.#disposePreview(draft.name, previewId);
-    let ownedSnapshot: Awaited<ReturnType<WidgetWorkspace['createPreviewSnapshot']>> | undefined;
-    try {
-      ownedSnapshot = await this.#config.workspace.createPreviewSnapshot(draft.name, expectedRevision);
-      const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
-        cwd: ownedSnapshot.rootPath,
-        sdkActorTypePath: join(this.#config.workspace.sdkPackagePath, 'src', 'actor.ts'),
-      });
-      let current = await this.#config.workspace.getDraft(draft.name);
-      if (!current) {
-        await ownedSnapshot.dispose();
-        return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
-      }
-      if (current.revision === expectedRevision) {
-        this.#validationByDraft.set(draft.name, {
-          revision: expectedRevision,
-          ok: validation.ok,
-          errors: validation.errors.slice(0, 40),
-          warnings: validation.warnings.slice(0, 40),
-        });
-        this.#config.eventPublisher.publishAgentEvent({
-          kind: 'widget-draft',
-          type: 'validated',
-          draftId: current.name,
-          revision: current.revision,
-        });
-      }
-      if (!validation.ok) {
-        await ownedSnapshot.dispose();
-        return this.#previewFailure(
-          draft.name,
-          'validation-failed',
-          'The widget draft must pass validation before it can be previewed.',
-          current,
-          expectedRevision,
-          validation.errors,
-        );
-      }
-      const manifestResult = await this.#readManifest(ownedSnapshot.rootPath);
-      if (!manifestResult.ok) {
-        await ownedSnapshot.dispose();
-        return this.#previewFailure(draft.name, 'manifest-invalid', manifestResult.message, current, expectedRevision, [manifestResult.message]);
-      }
-      const sources = await this.#readWidgetSourceMap(ownedSnapshot.rootPath, manifestResult.manifest.widget.relWidgetDir);
-      if (!sources['main.ts'] && !sources['main.js']) {
-        await ownedSnapshot.dispose();
-        return this.#previewFailure(
-          draft.name,
-          'source-missing',
-          `Preview requires main.ts or main.js inside ${manifestResult.manifest.widget.relWidgetDir}.`,
-          current,
-          expectedRevision,
-        );
-      }
-      const bindingPlan = await this.#resourceBindingPlan(manifestResult.manifest);
-      if (!bindingPlan.ok) {
-        await ownedSnapshot.dispose();
-        return this.#previewFailure(draft.name, 'resource-binding-invalid', bindingPlan.message, current, expectedRevision, [bindingPlan.message]);
-      }
-      const directBindings = new Map(bindingPlan.bindings.map((binding) => [binding.slot, binding]));
-      const resourceGateway = this.#config.actorService?.callWithDirectResourceBinding
-        ? (call: Parameters<NonNullable<TActorServiceReloader['callWithDirectResourceBinding']>>[0]) => {
-            const binding = directBindings.get(call.slot);
-            const requirement = manifestResult.manifest.actor.resources?.[call.slot];
-            if (!binding || !requirement) {
-              throw new ActorResourceError('RESOURCE_NOT_BOUND', `Preview resource slot '${call.slot}' is not bound.`);
-            }
-            return this.#config.actorService!.callWithDirectResourceBinding!(call, {
-              resourceId: binding.resource.id,
-              requirement,
-              scope: binding.scope,
+      return this.#withCapturedWorkspace(workspace, async (captured) => {
+        const currentRevision = captured.snapshot.digestSha256;
+        const synced = await this.#compareAndSetDraft(draft, currentRevision, { status: 'editing' });
+        if (!synced) {
+          return this.#previewFailure(draft.id, 'stale-revision', 'The widget draft changed before Preview opened.', {
+            previewId,
+            revision: expectedDraftRevision,
+            currentRevision,
+          });
+        }
+        if (expectedDraftRevision !== currentRevision) {
+          return this.#previewFailure(draft.id, 'stale-revision', 'The widget draft changed before Preview opened.', {
+            previewId,
+            revision: expectedDraftRevision,
+            currentRevision,
+          });
+        }
+
+        const validation = await this.#validateCaptured(synced, captured);
+        if (!validation.ok) {
+          return this.#previewFailure(draft.id, 'validation-failed', 'The widget draft must pass validation before it can be previewed.', {
+            previewId,
+            revision: expectedDraftRevision,
+            currentRevision,
+            diagnostics: validation.errors,
+          });
+        }
+        const manifest = await this.#readManifest(captured.rootPath);
+        if (!manifest.ok) {
+          return this.#previewFailure(draft.id, 'manifest-invalid', manifest.message, {
+            previewId,
+            revision: expectedDraftRevision,
+            currentRevision,
+            diagnostics: [manifest.message],
+          });
+        }
+        if (manifest.manifest.name !== draft.name) {
+          const message = `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`;
+          return this.#previewFailure(draft.id, 'manifest-invalid', message, {
+            previewId,
+            revision: expectedDraftRevision,
+            currentRevision,
+            diagnostics: [message],
+          });
+        }
+
+        let bindings;
+        try {
+          bindings = await this.#config.resolveResourceBindings(this.#config.tenant, {
+            draft: synced,
+            manifest: manifest.manifest,
+          });
+        } catch (error) {
+          const message = errorMessage(error);
+          return this.#previewFailure(draft.id, 'resource-binding-invalid', message, {
+            previewId,
+            revision: expectedDraftRevision,
+            currentRevision,
+            diagnostics: [message],
+          });
+        }
+
+        const nowMs = this.#now();
+        const previewRevisionId = this.#config.createId();
+        try {
+          const fenced = await this.#config.workspace.withDraftRevisionFence(
+            draft.name,
+            captured.workspace.revision,
+            async () => {
+              const commitDraft = await this.#activeDraft(draft.id);
+              if (!commitDraft) {
+                return {
+                  status: 'failed' as const,
+                  result: this.#previewFailure(
+                    draft.id,
+                    'not-found',
+                    'Widget draft was discarded before Preview opened.',
+                    { previewId, revision: expectedDraftRevision, currentRevision },
+                  ),
+                };
+              }
+              if (commitDraft.sourceDigestSha256 !== currentRevision) {
+                return {
+                  status: 'failed' as const,
+                  result: this.#previewFailure(
+                    draft.id,
+                    'stale-revision',
+                    'The widget draft changed before Preview opened.',
+                    {
+                      previewId,
+                      revision: expectedDraftRevision,
+                      currentRevision: commitDraft.sourceDigestSha256 ?? currentRevision,
+                    },
+                  ),
+                };
+              }
+
+              const result = await this.#config.widgets.buildPreview(this.#config.tenant, {
+                previewId,
+                expectedActiveRevisionId: expectedActivePreviewRevisionId,
+                revisionId: previewRevisionId,
+                draftId: draft.id,
+                definitionId: draft.definitionId,
+                draftRevisionSha256: currentRevision,
+                snapshot: captured.snapshot,
+                manifest: manifest.manifest,
+                bindings,
+                builderIdentity: this.#config.builderIdentity,
+                nowMs,
+                expiresAtMs: nowMs + (this.#config.previewTtlMs ?? WIDGET_PREVIEW_DEFAULT_TTL_MS),
+                retainUntilMs: nowMs + (this.#config.previewRetentionMs ?? WIDGET_PREVIEW_DEFAULT_RETENTION_MS),
+              });
+              if (result.status === 'conflict') {
+                return {
+                  status: 'failed' as const,
+                  result: this.#previewFailure(
+                    draft.id,
+                    'preview-conflict',
+                    'Preview changed before the new revision could be activated.',
+                    {
+                      previewId,
+                      previewRevisionId: result.currentActiveRevisionId ?? undefined,
+                      revision: expectedDraftRevision,
+                      currentRevision,
+                    },
+                  ),
+                };
+              }
+              // Adopt cleanup ownership synchronously at the commit boundary,
+              // before any subsequent durable read can fail.
+              this.#rememberPreview(draft.id, previewId, result.revision.id);
+              const committedDraft = await this.#activeDraft(draft.id);
+              if (!committedDraft) {
+                const stopped = await this.#stopPreviewRevision(previewId, result.revision.id);
+                if (stopped) this.#forgetPreview(draft.id, previewId, result.revision.id);
+                return {
+                  status: 'failed' as const,
+                  result: this.#previewFailure(
+                    draft.id,
+                    'not-found',
+                    'Widget draft was discarded while Preview was building.',
+                    { previewId, previewRevisionId: result.revision.id, revision: currentRevision },
+                  ),
+                };
+              }
+              return { status: 'committed' as const, revision: result.revision };
+            },
+          );
+          if (fenced.status === 'failed') return fenced.result;
+
+          let ready: TWidgetPreviewResult;
+          try {
+            ready = await this.#previewReady(fenced.revision, currentRevision);
+          } catch (error) {
+            const message = errorMessage(error);
+            ready = this.#previewFailure(draft.id, 'artifact-unavailable', message, {
+              previewId,
+              previewRevisionId: fenced.revision.id,
+              revision: currentRevision,
+              currentRevision,
+              diagnostics: [message],
             });
           }
-        : undefined;
-      const actor = new Actor({
-        id: `preview:${previewOwnerKey(draft.name, previewId)}`,
-        vsJson: manifestResult.manifest,
-        rootDir: ownedSnapshot.rootPath,
-        resourceGateway,
+          if (!ready.ready) {
+            const stopped = await this.#stopPreviewRevision(previewId, fenced.revision.id);
+            if (stopped) this.#forgetPreview(draft.id, previewId, fenced.revision.id);
+            return ready;
+          }
+
+          // Preview activation and artifact verification are authoritative from
+          // here onward. Event delivery remains best-effort.
+          try {
+            this.#config.eventPublisher.publishAgentEvent({
+              kind: 'widget-preview',
+              type: 'catalog-changed',
+              draftId: draft.id,
+              revision: currentRevision,
+            });
+          } catch {}
+          return ready;
+        } catch (error) {
+          if (this.#isRememberedPreview(draft.id, previewId, previewRevisionId)) {
+            const stopped = await this.#stopPreviewRevision(previewId, previewRevisionId);
+            if (stopped) this.#forgetPreview(draft.id, previewId, previewRevisionId);
+          }
+          const message = errorMessage(error);
+          const code = errorCode(error);
+          const failureCurrentRevision = code === 'WIDGET_DRAFT_REVISION_CHANGED'
+            ? await this.#currentWorkspaceSourceRevision(
+              draft.name,
+              errorCurrentRevision(error) ?? currentRevision,
+            )
+            : currentRevision;
+          const reason: TWidgetPreviewFailureReason = code === 'WIDGET_DRAFT_REVISION_CHANGED'
+            ? 'stale-revision'
+            : code === 'WIDGET_RESOURCE_BINDINGS_INVALID'
+            ? 'resource-binding-invalid'
+            : code === 'WIDGET_PREVIEW_DRAFT_STALE'
+              ? 'stale-revision'
+              : 'build-failed';
+          return this.#previewFailure(draft.id, reason, message, {
+            previewId,
+            previewRevisionId,
+            revision: expectedDraftRevision,
+            currentRevision: failureCurrentRevision,
+            diagnostics: [message],
+          });
+        }
       });
-      const preview: TPreviewEntry = {
-        actor,
-        draftId: draft.name,
+    });
+  }
+
+  async closePreview(
+    draftId: string,
+    previewId: string,
+    expectedPreviewRevisionId: string,
+  ): Promise<TWidgetPreviewCloseResult> {
+    return this.#queue(`draft:${draftId}`, async () => {
+      const draft = await this.#activeDraft(draftId);
+      if (!draft || this.#closing) {
+        return { closed: false, draftId, previewId, previewRevisionId: expectedPreviewRevisionId };
+      }
+      const preview = await this.#ownedPreviewRevision(
+        draft,
         previewId,
-        revision: expectedRevision,
-        manifest: manifestResult.manifest,
-        sources,
-        snapshot: ownedSnapshot,
-        unlisten: () => undefined,
-      };
-      preview.unlisten = actor.listen(() => {
-        this.#config.eventPublisher.publishAgentEvent({
-          kind: 'widget-preview',
-          type: 'changed',
-          draftId: draft.name,
-          revision: preview.revision,
-        });
-      });
-      this.#previews.set(previewOwnerKey(draft.name, previewId), preview);
-      actor.start();
-      this.#config.eventPublisher.publishAgentEvent({
-        kind: 'widget-preview',
-        type: 'catalog-changed',
-        draftId: draft.name,
-        revision: preview.revision,
-      });
-      await actor.waitUntilReady();
-      current = await this.#config.workspace.getDraft(draft.name);
-      if (!current) {
-        await this.#disposePreview(draft.name, previewId);
-        return this.#previewFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
-      }
-      return this.#previewReady(current, preview);
-    } catch (error) {
-      await this.#disposePreview(draft.name, previewId);
-      await ownedSnapshot?.dispose().catch(() => undefined);
-      const message = error instanceof Error ? error.message : String(error);
-      const latest = await this.#config.workspace.getDraft(draft.name);
-      const stale = typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'WIDGET_DRAFT_REVISION_CHANGED';
-      return this.#previewFailure(
-        draft.name,
-        stale ? 'stale-revision' : 'build-failed',
-        message,
-        latest ?? undefined,
-        expectedRevision,
-        [message],
+        expectedPreviewRevisionId,
       );
-    }
-  }
-
-  async refreshPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    return this.buildPreview(name, previewId, expectedRevision);
-  }
-
-  async resetPreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewResult> {
-    return this.buildPreview(name, previewId, expectedRevision);
-  }
-
-  async closePreview(name: string, previewId: string, expectedRevision: string): Promise<TWidgetPreviewCloseResult> {
-    return this.#queueDraftPreview(name, async () => {
-      const draft = await this.#config.workspace.getDraft(name);
-      const draftId = draft?.name ?? name;
-      const result = { draftId, revision: expectedRevision };
-      if (this.#closing) return { ...result, closed: false };
-      return this.#queuePreviewBuild(draftId, previewId, async () => {
-        const preview = this.#previews.get(previewOwnerKey(draftId, previewId));
-        if (!preview || preview.revision !== expectedRevision) return { ...result, closed: false };
-        await this.#disposePreview(draftId, previewId);
-        return { ...result, closed: true };
-      });
+      if (!preview) {
+        return { closed: false, draftId, previewId, previewRevisionId: expectedPreviewRevisionId };
+      }
+      const closed = await this.#stopPreviewRevision(previewId, expectedPreviewRevisionId);
+      if (closed) this.#forgetPreview(draftId, previewId, expectedPreviewRevisionId);
+      return { closed, draftId, previewId, previewRevisionId: expectedPreviewRevisionId };
     });
   }
 
-  async sendPreview(name: string, previewId: string, expectedRevision: string, messageName: string, payload: unknown): Promise<TWidgetPreviewSendResult> {
-    return this.#queueDraftPreview(name, async () => {
-      const draft = await this.#config.workspace.getDraft(name);
-      if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-      if (this.#closing) {
-        return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
-      }
-      return this.#queuePreviewBuild(draft.name, previewId, () => {
-        return this.#sendPreview(draft.name, previewId, expectedRevision, messageName, payload);
-      });
+  async invokePreviewFunction(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+    functionName: string,
+    input: unknown,
+    idempotencyKey: string,
+  ): Promise<TWidgetPreviewFunctionInvocationView> {
+    const draft = await this.#requireOwnedPreview(draftId, previewId, previewRevisionId);
+    const view = await this.#config.previewFunctions.invokePreviewFunction(this.#config.tenant, {
+      previewId,
+      previewRevisionId,
+      widgetDefinitionId: draft.definitionId,
+      functionName,
+      input,
+      idempotencyKey,
     });
+    if (
+      view.subject.previewId !== previewId
+      || view.subject.previewRevisionId !== previewRevisionId
+    ) throw controllerError('PREVIEW_FUNCTION_OWNERSHIP_FAILED', 'Preview function ownership could not be verified.');
+    return browserInvocationView(view);
   }
 
-  async #sendPreview(name: string, previewId: string, expectedRevision: string, messageName: string, payload: unknown): Promise<TWidgetPreviewSendResult> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return this.#previewFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-    if (this.#closing) {
-      return this.#previewFailure(draft.name, 'build-failed', 'Preview service is closing.', draft, expectedRevision);
-    }
-    const preview = this.#previews.get(previewOwnerKey(draft.name, previewId));
-    if (!preview) return this.#previewFailure(draft.name, 'not-built', 'Preview has not been built for this draft.', draft);
-    if (draft.revision !== expectedRevision || preview.revision !== expectedRevision) {
-      return this.#previewFailure(draft.name, 'stale-revision', 'Refresh Preview before interacting with this changed draft.', draft, expectedRevision);
-    }
-
-    const messageId = preview.actor.inbox(messageName, payload);
-    return {
-      ready: true,
-      revision: preview.revision,
-      messageId,
-      snapshot: this.#snapshot(preview.actor),
-    };
+  async getPreviewFunctionInvocation(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+    invocationId: string,
+  ): Promise<TWidgetPreviewFunctionInvocationView | null> {
+    const draft = await this.#activeDraft(draftId);
+    if (!draft || !await this.#ownedPreviewRevision(draft, previewId, previewRevisionId)) return null;
+    const view = await this.#config.previewFunctions.getPreviewFunctionInvocation(this.#config.tenant, {
+      invocationId,
+      previewId,
+      previewRevisionId,
+    });
+    return view ? browserInvocationView(view) : null;
   }
 
-  async publish(name: string, expectedRevision: string): Promise<TWidgetPublishResult> {
-    const draft = await this.#config.workspace.getDraft(name);
-    if (!draft) return this.#publishFailure(name, 'not-found', `Widget draft '${name}' was not found.`);
-    if (draft.revision !== expectedRevision) {
-      return this.#publishFailure(draft.name, 'stale-revision', 'The widget draft changed before publication started.', draft.revision);
-    }
+  async cancelPreviewFunctionInvocation(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+    invocationId: string,
+  ): Promise<TWidgetPreviewFunctionInvocationView | null> {
+    const draft = await this.#activeDraft(draftId);
+    if (!draft || !await this.#ownedPreviewRevision(draft, previewId, previewRevisionId)) return null;
+    const view = await this.#config.previewFunctions.cancelPreviewFunctionInvocation(this.#config.tenant, {
+      invocationId,
+      previewId,
+      previewRevisionId,
+    });
+    return view ? browserInvocationView(view) : null;
+  }
 
-    const summary = await this.validate(draft.name, expectedRevision);
-    const current = await this.#config.workspace.getDraft(draft.name);
-    if (!summary || !current) return this.#publishFailure(draft.name, 'not-found', `Widget draft '${draft.name}' was not found.`);
-    if (current.revision !== expectedRevision) {
-      return this.#publishFailure(draft.name, 'stale-revision', 'The widget draft changed while publication was validating.', current.revision);
-    }
-    if (summary.validation.status !== 'valid') {
-      return this.#publishFailure(
-        draft.name,
-        'validation-failed',
-        'The widget draft must pass validation before publication.',
-        current.revision,
-        summary.validation.errors,
-        summary.validation.warnings,
-      );
-    }
+  async publish(draftId: string, expectedRevision: string): Promise<TWidgetPublishResult> {
+    return this.#queue(`draft:${draftId}`, async () => {
+      const draft = await this.#activeDraft(draftId);
+      if (!draft) return this.#publishFailure(draftId, 'not-found', 'Widget draft was not found.');
+      const workspace = await this.#config.workspace.getDraft(draft.name);
+      if (!workspace) return this.#publishFailure(draft.id, 'not-found', 'Widget draft source was not found.');
 
-    const manifestResult = await this.#readManifest(current.draftPath);
-    if (!manifestResult.ok) {
-      return this.#publishFailure(draft.name, 'validation-failed', manifestResult.message, current.revision, [manifestResult.message]);
-    }
-    if (manifestResult.manifest.name !== current.name) {
-      return this.#publishFailure(
-        draft.name,
-        'validation-failed',
-        `Published identity is '${current.name}', but vibecanvas.json declares '${manifestResult.manifest.name}'.`,
-        current.revision,
-      );
-    }
-
-    const bindingPlan = await this.#resourceBindingPlan(manifestResult.manifest);
-    if (!bindingPlan.ok) {
-      return this.#publishFailure(draft.name, 'publication-failed', bindingPlan.message, current.revision, [bindingPlan.message]);
-    }
-    if (this.#config.actorService && (
-      !this.#config.actorService.transitionDefinitionPublication
-      || !this.#config.actorService.listResourceBindingsForDefinition
-    )) {
-      return this.#publishFailure(
-        draft.name,
-        'publication-failed',
-        'This host cannot coordinate definition, binding, and instance publication atomically.',
-        current.revision,
-      );
-    }
-
-    const finalWidgetsDir = join(this.#config.configPath, 'widgets');
-    const installedPath = join(finalWidgetsDir, manifestResult.manifest.slug);
-    const canonicalEntry = await stat(join(this.#config.workspace.publishedRoot, current.name)).catch(() => null);
-    if (canonicalEntry) {
-      const previousManifest = await this.#readManifest(join(this.#config.workspace.publishedRoot, current.name));
-      if (!previousManifest.ok) {
-        return this.#publishFailure(
-          draft.name,
-          'publication-failed',
-          `The existing published manifest for '${current.name}' is invalid: ${previousManifest.message}`,
-          current.revision,
-        );
-      }
-      if (previousManifest.manifest.slug !== manifestResult.manifest.slug) {
-        return this.#publishFailure(
-          draft.name,
-          'publication-failed',
-          `Published slug '${previousManifest.manifest.slug}' is immutable. Create a new widget to publish as '${manifestResult.manifest.slug}'.`,
-          current.revision,
-        );
-      }
-    }
-    if (await stat(installedPath).catch(() => null)) {
-      const publishedManifest = await this.#readManifest(join(this.#config.workspace.publishedRoot, current.name));
-      if (!publishedManifest.ok || publishedManifest.manifest.slug !== manifestResult.manifest.slug) {
-        return this.#publishFailure(
-          draft.name,
-          'publication-failed',
-          `A published widget already uses slug '${manifestResult.manifest.slug}'.`,
-          current.revision,
-        );
-      }
-    }
-    let previousBindings: Awaited<ReturnType<NonNullable<TActorServiceReloader['listResourceBindingsForDefinition']>>> = [];
-    try {
-      previousBindings = await this.#config.actorService?.listResourceBindingsForDefinition?.(manifestResult.manifest.name) ?? [];
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return this.#publishFailure(draft.name, 'publication-failed', message, current.revision, [message]);
-    }
-    const previousBindingSet = previousBindings.map((binding) => ({
-      slot: binding.slot_name,
-      resourceId: binding.resource_id,
-      scope: [
-        ...(binding.allow_read ? ['read' as const] : []),
-        ...(binding.allow_write ? ['write' as const] : []),
-      ],
-    }));
-    const desiredBindingSet = bindingPlan.bindings.map((binding) => ({
-      slot: binding.slot,
-      resourceId: binding.resource.id,
-      scope: binding.scope,
-    }));
-    let snapshot: Awaited<ReturnType<WidgetWorkspace['beginDraftPublish']>> | undefined;
-    let transitionAttempted = false;
-    let bindingReplacementCommitted = false;
-    try {
-      snapshot = await this.#config.workspace.beginDraftPublish(current.name, manifestResult.manifest.slug, expectedRevision);
-      snapshot.markInstalledMutation();
-      const result = await txPublishWidgetDraft({ readdir, readFile, writeFile, mkdir, rm, cp, execFile, join, relative, resolve, basename }, {
-        cwd: snapshot.canonicalPath,
-        finalWidgetsDir,
-        actorService: undefined,
-        sdkActorTypePath: join(this.#config.workspace.sdkPackagePath, 'src', 'actor.ts'),
-      });
-      if (!result.published) {
-        await snapshot.rollback();
-        return this.#publishFailure(
-          draft.name,
-          'validation-failed',
-          result.validation.errors.join('\n') || 'Widget draft is invalid and was not published.',
-          current.revision,
-          result.validation.errors,
-          result.validation.warnings,
-        );
-      }
-
-      if (this.#config.actorService) {
-        transitionAttempted = true;
-        try {
-          await this.#config.actorService.transitionDefinitionPublication!({
-            definitionName: result.manifest.name,
-            expectedBindings: previousBindingSet,
-            bindings: desiredBindingSet,
-            reloadInstances: snapshot.wasExisting,
-          });
-          bindingReplacementCommitted = true;
-        } catch (transitionError) {
-          bindingReplacementCommitted = Boolean(
-            typeof transitionError === 'object'
-            && transitionError !== null
-            && (transitionError as { bindingReplacementCommitted?: unknown }).bindingReplacementCommitted,
+      return this.#withCapturedWorkspace(workspace, async (captured) => {
+        const currentRevision = captured.snapshot.digestSha256;
+        const synced = await this.#compareAndSetDraft(draft, currentRevision, { status: 'editing' });
+        if (!synced || expectedRevision !== currentRevision) {
+          return this.#publishFailure(
+            draft.id,
+            'stale-revision',
+            'The widget draft changed before publication started.',
+            currentRevision,
           );
-          throw transitionError;
         }
-      }
-      await snapshot.commit();
-
-      this.#config.eventPublisher.publishAgentEvent({
-        kind: 'widget-published',
-        draftId: current.name,
-        revision: current.revision,
-        definitionName: result.manifest.name,
-      });
-      return {
-        published: true,
-        draftId: current.name,
-        revision: current.revision,
-        definitionName: result.manifest.name,
-        manifest: result.manifest,
-      };
-    } catch (error) {
-      const recoveryErrors: string[] = [];
-      try {
-        await snapshot?.rollback();
-      } catch (recoveryError) {
-        recoveryErrors.push(`filesystem rollback: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
-      }
-      if (transitionAttempted && this.#config.actorService?.transitionDefinitionPublication) {
+        const validation = await this.#validateCaptured(synced, captured);
+        if (!validation.ok) {
+          return this.#publishFailure(
+            draft.id,
+            'validation-failed',
+            'The widget draft must pass validation before publication.',
+            currentRevision,
+            validation.errors,
+            validation.warnings,
+          );
+        }
+        const manifest = await this.#readManifest(captured.rootPath);
+        if (!manifest.ok || manifest.manifest.name !== draft.name) {
+          const message = manifest.ok
+            ? `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`
+            : manifest.message;
+          return this.#publishFailure(draft.id, 'validation-failed', message, currentRevision, [message]);
+        }
+        let bindings;
         try {
-          await this.#config.actorService.transitionDefinitionPublication({
-            definitionName: manifestResult.manifest.name,
-            expectedBindings: bindingReplacementCommitted ? desiredBindingSet : previousBindingSet,
-            bindings: previousBindingSet,
-            reloadInstances: snapshot?.wasExisting ?? false,
+          bindings = await this.#config.resolveResourceBindings(this.#config.tenant, {
+            draft: synced,
+            manifest: manifest.manifest,
           });
-        } catch (recoveryError) {
-          recoveryErrors.push(`actor publication restore: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+        } catch (error) {
+          const message = errorMessage(error);
+          return this.#publishFailure(draft.id, 'resource-binding-invalid', message, currentRevision, [message]);
         }
-      }
-      const message = error instanceof Error ? error.message : String(error);
-      const latest = await this.#config.workspace.getDraft(draft.name);
-      if (recoveryErrors.length > 0) {
-        const recoveryMessage = `Publication failed: ${message}. Recovery also failed: ${recoveryErrors.join('; ')}`;
-        return this.#publishFailure(
-          draft.name,
-          'recovery-failed',
-          recoveryMessage,
-          latest?.revision,
-          [`PUBLISH_RECOVERY_FAILED: ${recoveryErrors.join('; ')}`],
-        );
-      }
-      const stale = latest !== null && latest.revision !== expectedRevision;
-      return this.#publishFailure(
-        draft.name,
-        stale ? 'stale-revision' : /permission|authoriz/i.test(message) ? 'permission-failed' : 'publication-failed',
-        message,
-        latest?.revision,
-      );
-    }
+
+        let publishedRevisionId: string;
+        try {
+          const fenced = await this.#config.workspace.withDraftRevisionFence(
+            draft.name,
+            captured.workspace.revision,
+            async () => {
+              const commitDraft = await this.#activeDraft(draft.id);
+              if (!commitDraft) {
+                return {
+                  status: 'failed' as const,
+                  result: this.#publishFailure(
+                    draft.id,
+                    'not-found',
+                    'Widget draft was discarded before publication committed.',
+                  ),
+                };
+              }
+              if (commitDraft.sourceDigestSha256 !== currentRevision) {
+                return {
+                  status: 'failed' as const,
+                  result: this.#publishFailure(
+                    draft.id,
+                    'stale-revision',
+                    'The widget draft changed before publication committed.',
+                    commitDraft.sourceDigestSha256 ?? currentRevision,
+                  ),
+                };
+              }
+
+              const result = await this.#config.widgets.publish(this.#config.tenant, {
+                definitionId: draft.definitionId,
+                expectedActiveRevisionId: commitDraft.publishedRevisionId,
+                revisionId: this.#config.createId(),
+                snapshot: captured.snapshot,
+                manifest: manifest.manifest,
+                bindings,
+                builderIdentity: this.#config.builderIdentity,
+                nowMs: this.#now(),
+              });
+              if (result.status === 'conflict') {
+                const idempotentRevisionId = await this.#idempotentPublishedRevisionId(
+                  draft,
+                  currentRevision,
+                  result.currentActiveRevisionId,
+                );
+                if (!idempotentRevisionId) {
+                  return {
+                    status: 'failed' as const,
+                    result: this.#publishFailure(
+                      draft.id,
+                      'publication-conflict',
+                      'Published widget changed before this exact draft revision could be committed.',
+                      currentRevision,
+                    ),
+                  };
+                }
+                return { status: 'committed' as const, publishedRevisionId: idempotentRevisionId };
+              }
+              return { status: 'committed' as const, publishedRevisionId: result.revision.id };
+            },
+          );
+          if (fenced.status === 'failed') return fenced.result;
+          publishedRevisionId = fenced.publishedRevisionId;
+        } catch (error) {
+          const message = errorMessage(error);
+          if (errorCode(error) === 'WIDGET_DRAFT_REVISION_CHANGED') {
+            return this.#publishFailure(
+              draft.id,
+              'stale-revision',
+              'The widget draft changed before publication committed.',
+              await this.#currentWorkspaceSourceRevision(
+                draft.name,
+                errorCurrentRevision(error) ?? currentRevision,
+              ),
+            );
+          }
+          return this.#publishFailure(
+            draft.id,
+            'publication-failed',
+            message,
+            currentRevision,
+            [message],
+          );
+        }
+
+        // Publication is committed from here onward. Reconciliation and event
+        // delivery are best-effort and must never turn a committed response
+        // into a false publication failure.
+        try {
+          await this.#recordPublishedRevision(draft, currentRevision, publishedRevisionId);
+        } catch {}
+        try {
+          this.#config.eventPublisher.publishAgentEvent({
+            kind: 'widget-published',
+            draftId: draft.id,
+            revision: currentRevision,
+            definitionName: manifest.manifest.name,
+          });
+        } catch {}
+        return {
+          published: true,
+          draftId: draft.id,
+          definitionId: draft.definitionId,
+          revision: currentRevision,
+          publishedRevisionId,
+          manifest: manifest.manifest,
+        };
+      });
+    });
   }
 
-  async #summary(draft: TWidgetDraftWorkspaceEntry): Promise<TWidgetDraftSummary> {
-    const manifest = await this.#readManifest(draft.draftPath);
-    const validation = this.#validationByDraft.get(draft.name);
-    const currentValidation = validation?.revision === draft.revision ? validation : undefined;
-    const previewAvailable = manifest.ok && await this.#hasPreviewEntry(draft.draftPath, manifest.manifest.widget.relWidgetDir);
+  async forget(name: string): Promise<void> {
+    const initial = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
+    if (!initial) return;
+    await this.#queue(this.#draftOperationKey(initial.id), async () => {
+      const draft = await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id);
+      if (!draft || draft.status === 'discarded' || draft.name !== name) return;
+      await this.#stopDraftPreviews(draft.id);
+      const result = await this.#config.authoringStore.discardDraft(this.#config.tenant, {
+        draftId: draft.id,
+        expectedSourceDigestSha256: draft.sourceDigestSha256,
+        nowMs: this.#now(),
+      });
+      if (result.status !== 'updated') {
+        throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before it could be discarded.');
+      }
+      this.#validationByDraft.delete(draft.id);
+    });
+  }
 
+  async withPreviewCleanup<T>(
+    name: string,
+    operation: (
+      cleanup: () => Promise<void>,
+      discardBeforeRemoval: () => Promise<void>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const initial = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
+    return this.#queue(initial ? this.#draftOperationKey(initial.id) : `name:${name}`, async () => {
+      const current = initial
+        ? await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id)
+        : null;
+      const draft = current?.status !== 'discarded' && current?.name === name ? current : null;
+      let cleaned = false;
+      const cleanup = async () => {
+        if (cleaned) return;
+        cleaned = true;
+        if (draft) await this.#stopDraftPreviews(draft.id);
+      };
+      let discarded = false;
+      const discardBeforeRemoval = async () => {
+        if (discarded) return;
+        await cleanup();
+        if (!draft) {
+          discarded = true;
+          return;
+        }
+        const discardResult = await this.#config.authoringStore.discardDraft(this.#config.tenant, {
+          draftId: draft.id,
+          expectedSourceDigestSha256: draft.sourceDigestSha256,
+          nowMs: this.#now(),
+        });
+        if (discardResult.status !== 'updated') {
+          throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before deletion was recorded.');
+        }
+        this.#validationByDraft.delete(draft.id);
+        discarded = true;
+      };
+      return operation(cleanup, discardBeforeRemoval);
+    });
+  }
+
+  async withPreviewRenameCleanup<T>(
+    name: string,
+    nextName: string,
+    operation: (
+      cleanup: () => Promise<void>,
+      coordinateCommit: (commit: () => Promise<void>) => Promise<void>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const [initial, target] = await Promise.all([
+      this.#config.authoringStore.getDraftByName(this.#config.tenant, name),
+      this.#config.authoringStore.getDraftByName(this.#config.tenant, nextName),
+    ]);
+    const keys = initial
+      ? [this.#draftOperationKey(initial.id), ...(target ? [this.#draftOperationKey(target.id)] : [`name:${nextName}`])]
+      : [`name:${name}`, ...(target ? [this.#draftOperationKey(target.id)] : [`name:${nextName}`])];
+    return this.#queueMany(keys, async () => {
+      const current = initial
+        ? await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id)
+        : null;
+      const draft = current?.status !== 'discarded' && current?.name === name ? current : null;
+      let cleaned = false;
+      const cleanup = async () => {
+        if (cleaned) return;
+        cleaned = true;
+        if (draft) await this.#stopDraftPreviews(draft.id);
+      };
+      let coordinated = false;
+      const coordinateCommit = async (commit: () => Promise<void>) => {
+        await cleanup();
+        await commit();
+        if (draft && name !== nextName) {
+          const beforeCapture = await this.#config.workspace.getDraft(nextName);
+          if (!beforeCapture) {
+            throw controllerError('AGENT_DRAFT_RENAME_FAILED', 'Renamed widget source was not found.');
+          }
+          const snapshot = await this.#config.widgets.captureSource(
+            this.#config.tenant,
+            beforeCapture.draftPath,
+            { id: this.#config.createId(), createdAtMs: this.#now() },
+          );
+          const afterCapture = await this.#config.workspace.getDraft(nextName);
+          if (!afterCapture || afterCapture.revision !== beforeCapture.revision) {
+            throw controllerError(
+              'WIDGET_DRAFT_REVISION_CHANGED',
+              'Widget draft changed while its rename was being committed.',
+            );
+          }
+          const renamed = await this.#config.authoringStore.renameDraft(this.#config.tenant, {
+            draftId: draft.id,
+            expectedName: name,
+            nextName,
+            nextSourceRelativePath: this.#sourceRelativePath(afterCapture),
+            expectedSourceDigestSha256: draft.sourceDigestSha256,
+            nextSourceDigestSha256: snapshot.digestSha256,
+            nowMs: this.#now(),
+          });
+          if (renamed.status !== 'updated') {
+            throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed before rename was recorded.');
+          }
+          this.#validationByDraft.delete(draft.id);
+        }
+        coordinated = true;
+      };
+      const result = await operation(cleanup, coordinateCommit);
+      if (!coordinated) {
+        throw controllerError(
+          'AGENT_DRAFT_RENAME_FAILED',
+          'Widget draft rename did not use its coordinated commit boundary.',
+        );
+      }
+      return result;
+    });
+  }
+
+  async #refreshAndSummarize(
+    draft: TAgentAuthoringDraftDescriptor,
+  ): Promise<TWidgetDraftSummary | null> {
+    const workspace = await this.#config.workspace.getDraft(draft.name);
+    if (!workspace) return null;
+    return this.#summary(draft, workspace);
+  }
+
+  async #summary(
+    draft: TAgentAuthoringDraftDescriptor,
+    workspace: TWidgetDraftWorkspaceEntry,
+  ): Promise<TWidgetDraftSummary> {
+    const manifest = await this.#readManifest(workspace.draftPath);
+    const revision = draft.sourceDigestSha256 ?? workspace.revision;
+    const validation = this.#validationForDraft(draft, revision);
+    const previewAvailable = manifest.ok && await this.#hasUiEntry(
+      workspace.draftPath,
+      manifest.manifest.ui.entry,
+    );
     return {
-      draftId: draft.name,
+      draftId: draft.id,
+      definitionId: draft.definitionId,
+      chatId: draft.chatId,
       name: draft.name,
       displayName: manifest.ok ? manifest.manifest.name : draft.name,
-      state: draft.published ? 'modified' : 'new',
-      revision: draft.revision,
-      updatedAt: draft.updatedAt,
-      validation: currentValidation ? {
-        status: currentValidation.ok ? 'valid' : 'invalid',
-        errors: currentValidation.errors,
-        warnings: currentValidation.warnings,
-        validatedRevision: currentValidation.revision,
-      } : {
-        status: 'unknown',
-        errors: [],
-        warnings: [],
-      },
+      state: draft.status === 'published'
+        ? 'published'
+        : draft.publishedRevisionId ? 'modified' : 'new',
+      revision,
+      publishedRevisionId: draft.publishedRevisionId,
+      updatedAt: new Date(draft.updatedAtMs).toISOString(),
+      validation,
       previewAvailable,
-      publishReady: currentValidation?.ok === true,
+      publishReady: validation.status === 'valid',
     };
   }
 
-  async #readManifest(root: string): Promise<{ ok: true; manifest: TVibecanvasJson } | { ok: false; message: string }> {
-    try {
-      const parsed = ZVibecanvasJson.safeParse(JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8')));
-      if (!parsed.success) {
-        return { ok: false, message: parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') };
+  async #validateCaptured(
+    draft: TAgentAuthoringDraftDescriptor,
+    captured: TCapturedDraft,
+  ): Promise<TValidationResult> {
+    const validation = await txValidateWidgetFiles(
+      { readdir, readFile, writeFile, rm, execFile, join, relative },
+      { cwd: captured.rootPath },
+    );
+    const manifest = await this.#readManifest(captured.rootPath);
+    if (manifest.ok && manifest.manifest.name !== draft.name) {
+      validation.ok = false;
+      validation.errors.push(
+        `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`,
+      );
+    }
+    if (validation.ok && manifest.ok) {
+      try {
+        const trusted = await this.#config.widgets.validateBuild(this.#config.tenant, {
+          snapshot: captured.snapshot,
+          manifest: manifest.manifest,
+        });
+        if (!trusted.valid) {
+          validation.ok = false;
+          validation.errors.push(...trusted.diagnostics.slice(0, 40));
+        }
+      } catch (error) {
+        validation.ok = false;
+        validation.errors.push(errorMessage(error));
       }
-      return { ok: true, manifest: parsed.data as TVibecanvasJson };
+    }
+    const errors = validation.errors.slice(0, 40);
+    const warnings = validation.warnings.slice(0, 40);
+    this.#validationByDraft.set(draft.id, {
+      revision: captured.snapshot.digestSha256,
+      ok: validation.ok,
+      errors,
+      warnings,
+    });
+    const transitioned = await this.#config.authoringStore.compareAndSetDraft(this.#config.tenant, {
+      draftId: draft.id,
+      expectedSourceDigestSha256: captured.snapshot.digestSha256,
+      nextSourceDigestSha256: captured.snapshot.digestSha256,
+      nextStatus: validation.ok ? 'ready' : 'error',
+      lastError: validation.ok ? null : this.#validationError({ ok: false, errors, warnings }),
+      nowMs: this.#now(),
+    });
+    if (transitioned.status !== 'updated') {
+      throw controllerError('AGENT_DRAFT_CONFLICT', 'Widget draft changed while validation was finishing.');
+    }
+    this.#publishDraftEvent('validated', draft.id, captured.snapshot.digestSha256);
+    return { ok: validation.ok, errors, warnings };
+  }
+
+  async #previewReady(
+    preview: TWidgetPreviewRevisionDescriptor,
+    currentRevision: string,
+  ): Promise<TWidgetPreviewResult> {
+    try {
+      const uiArtifact = preview.uiArtifact;
+      if (
+        uiArtifact.byteSize < 1
+        || uiArtifact.byteSize > WIDGET_UI_ARTIFACT_MAX_BYTES
+      ) throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact exceeds its safe size limit.');
+      const nowMs = this.#now();
+      const readCapability = await this.#config.widgets.issueUiPreviewArtifactReadCapability(
+        this.#config.tenant,
+        {
+          previewId: preview.previewId,
+          previewRevisionId: preview.id,
+          artifactId: uiArtifact.id,
+          artifactKind: 'ui',
+          digestSha256: uiArtifact.digestSha256,
+          expiresAtMs: Math.min(preview.expiresAtMs, nowMs + WIDGET_PREVIEW_ARTIFACT_READ_TTL_MS),
+        },
+      );
+      const bytes = await this.#config.widgets.readArtifact(this.#config.tenant, {
+        artifactId: uiArtifact.id,
+        readCapability,
+        purpose: 'preview_ui',
+      });
+      if (!bytes || bytes.byteLength !== uiArtifact.byteSize) {
+        throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact bytes are unavailable or incomplete.');
+      }
+      if (createHash('sha256').update(bytes).digest('hex') !== uiArtifact.digestSha256) {
+        throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact integrity verification failed.');
+      }
+      const envelope = fnDecodeWidgetUiArtifactEnvelope(
+        new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      );
+      if (
+        envelope.sourceDigestSha256 !== preview.sourceDigestSha256
+        || envelope.builderIdentity !== preview.builderIdentity
+      ) throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact identity is inconsistent.');
+      const browserDescriptors = ZWidgetBrowserFunctionDescriptors.parse(
+        preview.functionDescriptors.map(({ modulePath: _modulePath, ...descriptor }) => descriptor),
+      );
+      const ready: TWidgetPreviewReady = {
+        ready: true,
+        draftId: preview.draftId,
+        definitionId: preview.definitionId,
+        name: preview.manifest.name,
+        previewId: preview.previewId,
+        previewRevisionId: preview.id,
+        revision: preview.draftRevisionSha256,
+        currentRevision,
+        stale: preview.draftRevisionSha256 !== currentRevision,
+        manifest: preview.manifest,
+        uiArtifact: {
+          digestSha256: uiArtifact.digestSha256,
+          byteSize: bytes.byteLength,
+          bytesBase64: Buffer.from(bytes).toString('base64'),
+        },
+        contract: {
+          digestSha256: preview.contractDigestSha256,
+          functions: browserDescriptors,
+        },
+        diagnostics: [],
+        expiresAtMs: preview.expiresAtMs,
+      };
+      return ready;
     } catch (error) {
-      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      const message = errorMessage(error);
+      return this.#previewFailure(preview.draftId, 'artifact-unavailable', message, {
+        previewId: preview.previewId,
+        previewRevisionId: preview.id,
+        revision: preview.draftRevisionSha256,
+        currentRevision,
+        diagnostics: [message],
+      });
     }
   }
 
-  async #hasPreviewEntry(root: string, relWidgetDir: string): Promise<boolean> {
-    const widgetRoot = resolve(root, relWidgetDir);
-    if (!this.#isInside(root, widgetRoot)) return false;
-    return Boolean(
-      await stat(join(widgetRoot, 'main.ts')).catch(() => null)
-      ?? await stat(join(widgetRoot, 'main.js')).catch(() => null),
+  async #ensureDurableDraft(
+    captured: TCapturedDraft,
+    chatExternalKey?: string,
+  ): Promise<TAgentAuthoringDraftDescriptor | null> {
+    const existing = await this.#config.authoringStore.getDraftByName(
+      this.#config.tenant,
+      captured.workspace.name,
     );
-  }
-
-  async #readWidgetSourceMap(root: string, relWidgetDir: string): Promise<Record<string, string>> {
-    const widgetRoot = resolve(root, relWidgetDir);
-    if (!this.#isInside(root, widgetRoot)) return {};
-    const details = await stat(widgetRoot).catch(() => null);
-    if (!details?.isDirectory()) return {};
-    const sources: Record<string, string> = {};
-
-    const walk = async (dir: string): Promise<void> => {
-      for (const entry of await readdir(dir, { withFileTypes: true })) {
-        const absolutePath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(absolutePath);
-        } else if (entry.isFile()) {
-          sources[relative(widgetRoot, absolutePath)] = await readFile(absolutePath, 'utf8');
-        }
+    if (existing) return existing;
+    if (!chatExternalKey) return null;
+    let chat = await this.#config.authoringStore.getChatByExternalSessionKey(
+      this.#config.tenant,
+      chatExternalKey,
+    );
+    if (!chat) {
+      try {
+        chat = await this.#config.authoringStore.createChat(this.#config.tenant, {
+          id: this.#config.createId(),
+          canvasId: this.#config.tenant.canvasId ?? null,
+          externalSessionKey: chatExternalKey,
+          name: chatExternalKey,
+          workspaceRelativePath: relative(
+            this.#config.workspace.agentRoot,
+            this.#config.workspace.getChatRoot(chatExternalKey),
+          ),
+          historyRelativePath: relative(
+            this.#config.workspace.agentRoot,
+            this.#config.workspace.getChatHistoryRoot(chatExternalKey),
+          ),
+          nowMs: this.#now(),
+        });
+      } catch {
+        chat = await this.#config.authoringStore.getChatByExternalSessionKey(
+          this.#config.tenant,
+          chatExternalKey,
+        );
       }
-    };
-    await walk(widgetRoot);
-    return sources;
+    }
+    if (!chat) throw controllerError('AGENT_CHAT_CREATE_FAILED', 'Agent chat could not be created.');
+    try {
+      return await this.#config.authoringStore.createDraft(this.#config.tenant, {
+        id: this.#config.createId(),
+        chatId: chat.id,
+        definitionId: this.#config.createId(),
+        name: captured.workspace.name,
+        sourceRelativePath: this.#sourceRelativePath(captured.workspace),
+        nowMs: this.#now(),
+      });
+    } catch {
+      const raced = await this.#config.authoringStore.getDraftByName(
+        this.#config.tenant,
+        captured.workspace.name,
+      );
+      if (raced) return raced;
+      throw controllerError('AGENT_DRAFT_CREATE_FAILED', 'Widget draft metadata could not be created.');
+    }
   }
 
-  #isInside(root: string, candidate: string): boolean {
+  async #compareAndSetDraft(
+    draft: TAgentAuthoringDraftDescriptor,
+    nextDigest: string,
+    args: Readonly<{
+      status: TAgentAuthoringDraftDescriptor['status'];
+      lastError?: Readonly<Record<string, unknown>> | null;
+    }>,
+  ): Promise<TAgentAuthoringDraftDescriptor | null> {
+    if (draft.status === 'discarded') return null;
+    if (
+      draft.sourceDigestSha256 === nextDigest
+      && draft.status === args.status
+      && args.lastError === undefined
+    ) return draft;
+    const result = await this.#config.authoringStore.compareAndSetDraft(this.#config.tenant, {
+      draftId: draft.id,
+      expectedSourceDigestSha256: draft.sourceDigestSha256,
+      nextSourceDigestSha256: nextDigest,
+      nextStatus: args.status,
+      ...(args.lastError === undefined ? {} : { lastError: args.lastError }),
+      nowMs: this.#now(),
+    });
+    if (result.status === 'updated') {
+      return result.draft.status === 'discarded' ? null : result.draft;
+    }
+    if (
+      result.current
+      && result.current.id === draft.id
+      && result.current.status !== 'discarded'
+      && result.current.sourceDigestSha256 === nextDigest
+    ) return result.current;
+    return null;
+  }
+
+  async #recordPublishedRevision(
+    original: TAgentAuthoringDraftDescriptor,
+    publishedSourceRevision: string,
+    publishedRevisionId: string,
+  ): Promise<void> {
+    let current = original;
+    // Publication is already committed before this metadata transition. Make
+    // a bounded best-effort attempt instead of risking an unbounded API call.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      if (current.id !== original.id || current.definitionId !== original.definitionId) {
+        throw controllerError(
+          'AGENT_AUTHORING_INTEGRITY_FAILED',
+          'Published revision does not belong to the durable widget draft.',
+        );
+      }
+      if (current.status === 'discarded') return;
+      const sourceAdvanced = current.sourceDigestSha256 !== publishedSourceRevision;
+      const result = await this.#config.authoringStore.compareAndSetDraft(this.#config.tenant, {
+        draftId: original.id,
+        expectedSourceDigestSha256: current.sourceDigestSha256,
+        nextSourceDigestSha256: current.sourceDigestSha256 ?? publishedSourceRevision,
+        nextStatus: sourceAdvanced ? current.status : 'published',
+        publishedRevisionId,
+        ...(sourceAdvanced ? {} : { lastError: null }),
+        nowMs: this.#now(),
+      });
+      if (result.status === 'updated') return;
+      if (!result.current) {
+        throw controllerError(
+          'AGENT_AUTHORING_INTEGRITY_FAILED',
+          'Durable widget draft disappeared after publication committed.',
+        );
+      }
+      current = result.current;
+    }
+  }
+
+  async #idempotentPublishedRevisionId(
+    draft: TAgentAuthoringDraftDescriptor,
+    sourceDigestSha256: string,
+    currentActiveRevisionId: string | null,
+  ): Promise<string | null> {
+    if (!currentActiveRevisionId) return null;
+    const [active, source] = await Promise.all([
+      this.#config.widgets.getActiveRevision(this.#config.tenant, draft.definitionId),
+      this.#config.widgets.getRevisionSource(this.#config.tenant, currentActiveRevisionId),
+    ]);
+    return active?.id === currentActiveRevisionId
+      && active.definitionId === draft.definitionId
+      && source?.revisionId === currentActiveRevisionId
+      && source.definitionId === draft.definitionId
+      && source.sourceDigestSha256 === sourceDigestSha256
+      ? currentActiveRevisionId
+      : null;
+  }
+
+  async #withCapturedWorkspace<T>(
+    workspace: TWidgetDraftWorkspaceEntry,
+    operation: (captured: TCapturedDraft) => Promise<T>,
+  ): Promise<T> {
+    const copied = await this.#config.workspace.createPreviewSnapshot(
+      workspace.name,
+      workspace.revision,
+    );
+    try {
+      const snapshot = await this.#config.widgets.captureSource(
+        this.#config.tenant,
+        copied.rootPath,
+        { id: this.#config.createId(), createdAtMs: this.#now() },
+      );
+      return await operation({ workspace, rootPath: copied.rootPath, snapshot });
+    } finally {
+      await copied.dispose().catch(() => undefined);
+    }
+  }
+
+  async #currentDraftRevision(
+    draft: TAgentAuthoringDraftDescriptor,
+  ): Promise<string | null> {
+    const workspace = await this.#config.workspace.getDraft(draft.name);
+    if (!workspace) return null;
+    return this.#withCapturedWorkspace(workspace, async (captured) => {
+      const current = await this.#compareAndSetDraft(draft, captured.snapshot.digestSha256, {
+        status: draft.sourceDigestSha256 === captured.snapshot.digestSha256
+          ? draft.status
+          : 'editing',
+      });
+      return current?.sourceDigestSha256 ?? captured.snapshot.digestSha256;
+    });
+  }
+
+  async #currentWorkspaceSourceRevision(name: string, fallback: string): Promise<string> {
+    const workspace = await this.#config.workspace.getDraft(name).catch(() => null);
+    if (!workspace) return fallback;
+    try {
+      return await this.#withCapturedWorkspace(
+        workspace,
+        async (captured) => captured.snapshot.digestSha256,
+      );
+    } catch {
+      return fallback;
+    }
+  }
+
+  #managementChatExternalKey(definitionId: string): string {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(definitionId)) {
+      throw controllerError('WIDGET_DEFINITION_ID_INVALID', 'Published widget definition identity is invalid.');
+    }
+    return `widget-management-${definitionId}`;
+  }
+
+  #matchesPublicationSeed(
+    draft: TAgentAuthoringDraftDescriptor,
+    request: Readonly<{
+      definitionId: string;
+      publishedRevisionId: string;
+      snapshot: TWidgetSourceSnapshot;
+    }>,
+  ): boolean {
+    return draft.definitionId === request.definitionId
+      && draft.publishedRevisionId === request.publishedRevisionId
+      && draft.sourceDigestSha256 === request.snapshot.digestSha256;
+  }
+
+  async #mountDurableDraft(draft: TAgentAuthoringDraftDescriptor): Promise<void> {
+    const chat = await this.#config.authoringStore.getChat(this.#config.tenant, draft.chatId);
+    if (!chat) {
+      throw controllerError('AGENT_AUTHORING_INTEGRITY_FAILED', 'Durable widget draft chat is unavailable.');
+    }
+    await this.#config.workspace.ensureChat(chat.externalSessionKey);
+    await this.#config.workspace.loadWidget(chat.externalSessionKey, draft.name);
+  }
+
+  async #ownedPreviewRevision(
+    draft: TAgentAuthoringDraftDescriptor,
+    previewId: string,
+    previewRevisionId: string,
+  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
+    const preview = await this.#config.widgets.getPreviewRevision(this.#config.tenant, {
+      previewId,
+      revisionId: previewRevisionId,
+      nowMs: this.#now(),
+    });
+    return preview
+      && preview.draftId === draft.id
+      && preview.definitionId === draft.definitionId
+      ? preview
+      : null;
+  }
+
+  async #requireOwnedPreview(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+  ): Promise<TAgentAuthoringDraftDescriptor> {
+    const draft = await this.#activeDraft(draftId);
+    if (!draft || !await this.#ownedPreviewRevision(draft, previewId, previewRevisionId)) {
+      throw controllerError('PREVIEW_NOT_FOUND', 'Preview was not found.');
+    }
+    return draft;
+  }
+
+  async #activeDraft(draftId: string): Promise<TAgentAuthoringDraftDescriptor | null> {
+    const draft = await this.#config.authoringStore.getDraft(this.#config.tenant, draftId);
+    return draft && draft.status !== 'discarded' ? draft : null;
+  }
+
+  async #readManifest(
+    root: string,
+  ): Promise<{ ok: true; manifest: TWidgetManifestV2 } | { ok: false; message: string }> {
+    try {
+      const parsed = ZWidgetManifestV2.safeParse(
+        JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8')),
+      );
+      if (!parsed.success) {
+        return {
+          ok: false,
+          message: parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; '),
+        };
+      }
+      return { ok: true, manifest: parsed.data };
+    } catch (error) {
+      return { ok: false, message: errorMessage(error) };
+    }
+  }
+
+  async #hasUiEntry(root: string, entry: string): Promise<boolean> {
+    const candidate = resolve(root, entry);
     const rel = relative(resolve(root), candidate);
-    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+    if (rel.startsWith('..') || isAbsolute(rel)) return false;
+    return Boolean((await stat(candidate).catch(() => null))?.isFile());
   }
 
-  async #resourceBindingPlan(manifest: TVibecanvasJson): Promise<TResourceBindingResult> {
-    const requirements = Object.keys(manifest.actor.resources ?? {});
-    if (requirements.length === 0) return { ok: true, bindings: [] };
-    const actorService = this.#config.actorService;
-    if (!actorService?.listResources) return { ok: false, message: 'Resources cannot be discovered in this host.' };
-    const available = await actorService.listResources({ status: 'ready' });
-    const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
-      id: resource.id,
-      kind: resource.kind,
-      name: resource.name,
-      status: resource.status,
-    })));
-    if (!implicit.ok) return implicit;
-    return planSelectedResourceBindings(manifest, implicit.resources);
+  #validationForDraft(
+    draft: TAgentAuthoringDraftDescriptor,
+    revision: string,
+  ): TWidgetDraftSummary['validation'] {
+    const cached = this.#validationByDraft.get(draft.id);
+    if (cached?.revision === revision) {
+      return {
+        status: cached.ok ? 'valid' : 'invalid',
+        errors: cached.errors,
+        warnings: cached.warnings,
+        validatedRevision: revision,
+      };
+    }
+    if (
+      draft.sourceDigestSha256 === revision
+      && (draft.status === 'ready' || draft.status === 'published')
+    ) {
+      return { status: 'valid', errors: [], warnings: [], validatedRevision: revision };
+    }
+    if (draft.sourceDigestSha256 === revision && draft.status === 'error') {
+      const errors = Array.isArray(draft.lastError?.errors)
+        ? draft.lastError.errors.filter((value): value is string => typeof value === 'string').slice(0, 40)
+        : [];
+      const warnings = Array.isArray(draft.lastError?.warnings)
+        ? draft.lastError.warnings.filter((value): value is string => typeof value === 'string').slice(0, 40)
+        : [];
+      return { status: 'invalid', errors, warnings, validatedRevision: revision };
+    }
+    return { status: 'unknown', errors: [], warnings: [] };
   }
 
-  #previewReady(draft: TWidgetDraftWorkspaceEntry, preview: TPreviewEntry): TWidgetPreviewReady {
-    return {
-      ready: true,
-      draftId: draft.name,
-      name: preview.manifest.name,
-      revision: preview.revision,
-      currentRevision: draft.revision,
-      stale: preview.revision !== draft.revision,
-      manifest: preview.manifest,
-      sources: preview.sources,
-      snapshot: this.#snapshot(preview.actor),
-      diagnostics: [],
-    };
+  #validationError(validation: TValidationResult): Readonly<Record<string, unknown>> {
+    return Object.freeze({
+      kind: 'validation',
+      errors: validation.errors.slice(0, 40),
+      warnings: validation.warnings.slice(0, 40),
+    });
+  }
+
+  #sourceRelativePath(workspace: TWidgetDraftWorkspaceEntry): string {
+    const value = relative(this.#config.workspace.agentRoot, workspace.draftPath);
+    if (!value || value.startsWith('..') || isAbsolute(value)) {
+      throw controllerError('AGENT_DRAFT_PATH_INVALID', 'Widget draft path is outside the agent workspace.');
+    }
+    return value.split('\\').join('/');
   }
 
   #previewFailure(
     draftId: string,
     reason: TWidgetPreviewFailureReason,
     message: string,
-    draft?: TWidgetDraftWorkspaceEntry,
-    revision?: string,
-    diagnostics: string[] = [],
+    details: Readonly<{
+      previewId?: string;
+      previewRevisionId?: string;
+      revision?: string;
+      currentRevision?: string;
+      diagnostics?: readonly string[];
+    }> = {},
   ): Exclude<TWidgetPreviewResult, { ready: true }> {
     return {
       ready: false,
       draftId,
-      revision,
-      currentRevision: draft?.revision,
+      ...details,
       reason,
       message,
-      diagnostics,
+      diagnostics: details.diagnostics ?? [],
     };
   }
 
@@ -752,67 +1533,117 @@ export class WidgetDraftController {
     reason: Exclude<TWidgetPublishResult, { published: true }>['reason'],
     message: string,
     currentRevision?: string,
-    errors: string[] = [],
-    warnings: string[] = [],
+    errors: readonly string[] = [],
+    warnings: readonly string[] = [],
   ): Exclude<TWidgetPublishResult, { published: true }> {
-    return { published: false, draftId, reason, message, currentRevision, errors, warnings };
+    return {
+      published: false,
+      draftId,
+      reason,
+      message,
+      ...(currentRevision === undefined ? {} : { currentRevision }),
+      errors,
+      warnings,
+    };
   }
 
-  #snapshot(actor: Actor): TWidgetPreviewReady['snapshot'] {
-    return { state: actor.getState(), context: actor.getData() };
-  }
-
-  #queueDraftPreviews<T>(draftIds: string[], operation: () => Promise<T>): Promise<T> {
-    const [draftId, ...rest] = draftIds;
-    if (!draftId) return operation();
-    return this.#queueDraftPreview(draftId, () => this.#queueDraftPreviews(rest, operation));
-  }
-
-  async #queueDraftPreview<T>(draftId: string, operation: () => Promise<T>): Promise<T> {
-    const queueKey = previewDraftQueueKey(draftId);
-    const previous = this.#previewDraftQueues.get(queueKey) ?? Promise.resolve();
-    const running = previous.catch(() => undefined).then(operation);
-    this.#previewDraftQueues.set(queueKey, running);
-    this.#previewDraftOperations.add(running);
+  #publishDraftEvent(
+    type: 'created' | 'changed' | 'validated',
+    draftId: string,
+    revision: string,
+  ): void {
     try {
-      return await running;
-    } finally {
-      this.#previewDraftOperations.delete(running);
-      if (this.#previewDraftQueues.get(queueKey) === running) this.#previewDraftQueues.delete(queueKey);
-    }
-  }
-
-  async #queuePreviewBuild<T>(draftId: string, previewId: string, operation: () => Promise<T>): Promise<T> {
-    const ownerKey = previewOwnerKey(draftId, previewId);
-    const previous = this.#previewBuildQueues.get(ownerKey) ?? Promise.resolve();
-    const running = previous.catch(() => undefined).then(operation);
-    this.#previewBuildQueues.set(ownerKey, running);
-    this.#previewBuilds.add(running);
-    try {
-      return await running;
-    } finally {
-      this.#previewBuilds.delete(running);
-      if (this.#previewBuildQueues.get(ownerKey) === running) this.#previewBuildQueues.delete(ownerKey);
-    }
-  }
-
-  async #disposePreview(draftId: string, previewId: string): Promise<void> {
-    const ownerKey = previewOwnerKey(draftId, previewId);
-    const preview = this.#previews.get(ownerKey);
-    if (!preview) return;
-    preview.unlisten();
-    if (!await preview.actor.closeAndWait()) {
-      throw new Error(`Preview Actor '${draftId}' for owner '${previewId}' did not stop; its snapshot was retained.`);
-    }
-    await preview.snapshot.dispose();
-    if (this.#previews.get(ownerKey) === preview) {
-      this.#previews.delete(ownerKey);
       this.#config.eventPublisher.publishAgentEvent({
-        kind: 'widget-preview',
-        type: 'catalog-changed',
+        kind: 'widget-draft',
+        type,
         draftId,
-        revision: preview.revision,
+        revision,
       });
+    } catch {}
+  }
+
+  #rememberPreview(draftId: string, previewId: string, revisionId: string): void {
+    let previews = this.#activePreviewRevisions.get(draftId);
+    if (!previews) {
+      previews = new Map();
+      this.#activePreviewRevisions.set(draftId, previews);
     }
+    previews.set(previewId, revisionId);
+  }
+
+  #isRememberedPreview(draftId: string, previewId: string, revisionId: string): boolean {
+    return this.#activePreviewRevisions.get(draftId)?.get(previewId) === revisionId;
+  }
+
+  #forgetPreview(draftId: string, previewId: string, revisionId: string): void {
+    const previews = this.#activePreviewRevisions.get(draftId);
+    if (previews?.get(previewId) === revisionId) previews.delete(previewId);
+    if (previews?.size === 0) this.#activePreviewRevisions.delete(draftId);
+  }
+
+  async #stopPreviewRevision(previewId: string, revisionId: string): Promise<boolean> {
+    for (let attempt = 0; attempt < WIDGET_PREVIEW_STOP_ATTEMPTS; attempt += 1) {
+      try {
+        const stopped = await this.#config.widgets.stopPreview(this.#config.tenant, {
+          previewId,
+          expectedActiveRevisionId: revisionId,
+          nowMs: this.#now(),
+        });
+        if (stopped) return true;
+        const current = await this.#config.widgets.getPreview(this.#config.tenant, {
+          previewId,
+          nowMs: this.#now(),
+        });
+        if (!current || current.id !== revisionId) return true;
+      } catch {}
+    }
+    return false;
+  }
+
+  async #stopDraftPreviews(draftId: string): Promise<void> {
+    const previews = this.#activePreviewRevisions.get(draftId);
+    if (!previews) return;
+    const results = await Promise.all([...previews].map(async ([previewId, revisionId]) => {
+      const stopped = await this.#stopPreviewRevision(previewId, revisionId);
+      if (stopped) this.#forgetPreview(draftId, previewId, revisionId);
+      return stopped;
+    }));
+    if (results.some((stopped) => !stopped)) {
+      throw controllerError(
+        'WIDGET_PREVIEW_CLEANUP_FAILED',
+        'One or more active Preview revisions could not be stopped.',
+      );
+    }
+  }
+
+  #now(): number {
+    const value = this.#config.nowMs();
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new TypeError('Widget authoring clock returned an invalid timestamp.');
+    }
+    return value;
+  }
+
+  #queue<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    return this.#queueMany([key], operation);
+  }
+
+  #queueMany<T>(keys: readonly string[], operation: () => Promise<T>): Promise<T> {
+    const uniqueKeys = [...new Set(keys)].sort();
+    const previous = Promise.all(uniqueKeys.map((key) => (
+      this.#operations.get(key)?.catch(() => undefined) ?? Promise.resolve()
+    )));
+    const current = previous.then(operation);
+    const tracked = current.finally(() => {
+      for (const key of uniqueKeys) {
+        if (this.#operations.get(key) === tracked) this.#operations.delete(key);
+      }
+    });
+    for (const key of uniqueKeys) this.#operations.set(key, tracked);
+    return tracked;
+  }
+
+  #draftOperationKey(draftId: string): string {
+    return `draft:${draftId}`;
   }
 }

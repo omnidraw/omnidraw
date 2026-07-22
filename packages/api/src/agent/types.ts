@@ -75,49 +75,6 @@ export type TAgentApiCapability = {
     widgetId: TAgentInputs['chat']['newSession']['widgetId'],
     sessionId: TAgentInputs['chat']['newSession']['sessionId'],
   ): Promise<void>;
-  previewSourceChat(
-    widgetId: TAgentInputs['chat']['previewSource']['widgetId'],
-    sessionId: TAgentInputs['chat']['previewSource']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['previewSource']>;
-  publishChat(
-    widgetId: TAgentInputs['chat']['publish']['widgetId'],
-    sessionId: TAgentInputs['chat']['publish']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['publish']>;
-  readDraftManifestChat(
-    widgetId: TAgentInputs['chat']['draftManifest']['read']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftManifest']['read']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['draftManifest']['read']>;
-  patchDraftManifestChat(
-    widgetId: TAgentInputs['chat']['draftManifest']['patch']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftManifest']['patch']['sessionId'],
-    patch: TAgentInputs['chat']['draftManifest']['patch']['patch'],
-  ): Promise<TAgentOutputs['chat']['draftManifest']['patch']>;
-  inspectDraftActorChat(
-    widgetId: TAgentInputs['chat']['draftActor']['inspect']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftActor']['inspect']['sessionId'],
-  ): TAgentOutputs['chat']['draftActor']['inspect'];
-  startDraftActorChat(
-    widgetId: TAgentInputs['chat']['draftActor']['start']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftActor']['start']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['draftActor']['start']>;
-  reloadDraftActorChat(
-    widgetId: TAgentInputs['chat']['draftActor']['reload']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftActor']['reload']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['draftActor']['reload']>;
-  resetDraftActorChat(
-    widgetId: TAgentInputs['chat']['draftActor']['reset']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftActor']['reset']['sessionId'],
-  ): Promise<TAgentOutputs['chat']['draftActor']['reset']>;
-  stopDraftActorChat(
-    widgetId: TAgentInputs['chat']['draftActor']['stop']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftActor']['stop']['sessionId'],
-  ): TAgentOutputs['chat']['draftActor']['stop'];
-  sendDraftActorChat(
-    widgetId: TAgentInputs['chat']['draftActor']['send']['widgetId'],
-    sessionId: TAgentInputs['chat']['draftActor']['send']['sessionId'],
-    name: TAgentInputs['chat']['draftActor']['send']['name'],
-    payload: TAgentInputs['chat']['draftActor']['send']['payload'],
-  ): TAgentOutputs['chat']['draftActor']['send'];
 
   listWidgetDrafts(): Promise<TAgentOutputs['widgetDraft']['list']>;
   getWidgetDraft(
@@ -135,30 +92,36 @@ export type TAgentApiCapability = {
   buildWidgetPreview(
     draftId: TAgentInputs['widgetPreview']['build']['draftId'],
     previewId: TAgentInputs['widgetPreview']['build']['previewId'],
-    expectedRevision: TAgentInputs['widgetPreview']['build']['expectedRevision'],
+    expectedDraftRevision: TAgentInputs['widgetPreview']['build']['expectedDraftRevision'],
+    expectedActivePreviewRevisionId:
+      TAgentInputs['widgetPreview']['build']['expectedActivePreviewRevisionId'],
   ): Promise<TAgentOutputs['widgetPreview']['build']>;
-  refreshWidgetPreview(
-    draftId: TAgentInputs['widgetPreview']['refresh']['draftId'],
-    previewId: TAgentInputs['widgetPreview']['refresh']['previewId'],
-    expectedRevision: TAgentInputs['widgetPreview']['refresh']['expectedRevision'],
-  ): Promise<TAgentOutputs['widgetPreview']['refresh']>;
-  resetWidgetPreview(
-    draftId: TAgentInputs['widgetPreview']['reset']['draftId'],
-    previewId: TAgentInputs['widgetPreview']['reset']['previewId'],
-    expectedRevision: TAgentInputs['widgetPreview']['reset']['expectedRevision'],
-  ): Promise<TAgentOutputs['widgetPreview']['reset']>;
   closeWidgetPreview(
     draftId: TAgentInputs['widgetPreview']['close']['draftId'],
     previewId: TAgentInputs['widgetPreview']['close']['previewId'],
-    expectedRevision: TAgentInputs['widgetPreview']['close']['expectedRevision'],
+    expectedPreviewRevisionId:
+      TAgentInputs['widgetPreview']['close']['expectedPreviewRevisionId'],
   ): Promise<TAgentOutputs['widgetPreview']['close']>;
-  sendWidgetPreview(
-    draftId: TAgentInputs['widgetPreview']['send']['draftId'],
-    previewId: TAgentInputs['widgetPreview']['send']['previewId'],
-    expectedRevision: TAgentInputs['widgetPreview']['send']['expectedRevision'],
-    name: TAgentInputs['widgetPreview']['send']['name'],
-    payload: TAgentInputs['widgetPreview']['send']['payload'],
-  ): Promise<TAgentOutputs['widgetPreview']['send']>;
+  invokeWidgetPreviewFunction(
+    draftId: TAgentInputs['widgetPreview']['invoke']['draftId'],
+    previewId: TAgentInputs['widgetPreview']['invoke']['previewId'],
+    previewRevisionId: TAgentInputs['widgetPreview']['invoke']['previewRevisionId'],
+    functionName: TAgentInputs['widgetPreview']['invoke']['functionName'],
+    input: TAgentInputs['widgetPreview']['invoke']['input'],
+    idempotencyKey: TAgentInputs['widgetPreview']['invoke']['idempotencyKey'],
+  ): Promise<TAgentOutputs['widgetPreview']['invoke']>;
+  getWidgetPreviewFunctionInvocation(
+    draftId: TAgentInputs['widgetPreview']['invocation']['get']['draftId'],
+    previewId: TAgentInputs['widgetPreview']['invocation']['get']['previewId'],
+    previewRevisionId: TAgentInputs['widgetPreview']['invocation']['get']['previewRevisionId'],
+    invocationId: TAgentInputs['widgetPreview']['invocation']['get']['invocationId'],
+  ): Promise<TAgentOutputs['widgetPreview']['invocation']['get']>;
+  cancelWidgetPreviewFunctionInvocation(
+    draftId: TAgentInputs['widgetPreview']['invocation']['cancel']['draftId'],
+    previewId: TAgentInputs['widgetPreview']['invocation']['cancel']['previewId'],
+    previewRevisionId: TAgentInputs['widgetPreview']['invocation']['cancel']['previewRevisionId'],
+    invocationId: TAgentInputs['widgetPreview']['invocation']['cancel']['invocationId'],
+  ): Promise<TAgentOutputs['widgetPreview']['invocation']['cancel']>;
   publishWidgetDraft(
     draftId: TAgentInputs['widgetPublish']['publish']['draftId'],
     expectedRevision: TAgentInputs['widgetPublish']['publish']['expectedRevision'],
@@ -201,6 +164,7 @@ export type TAgentApiCapability = {
   resolveWidgetPlacement(
     reference: TAgentInputs['widgets']['resolvePlacement']['reference'],
     previewId?: TAgentInputs['widgets']['resolvePlacement']['previewId'],
+    expectedDraftId?: TAgentInputs['widgets']['resolvePlacement']['expectedDraftId'],
   ): Promise<TAgentOutputs['widgets']['resolvePlacement']>;
 
   login(providerId: TAgentInputs['auth']['login']['providerId']): TAgentOutputs['auth']['login']['loginId'];

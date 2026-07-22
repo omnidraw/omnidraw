@@ -16,6 +16,18 @@ export type TWidgetRuntimeIdentity = Readonly<{
   revisionId: string;
 }>;
 
+/** Draft Preview is an authoring subject, never a fabricated canvas instance. */
+export type TWidgetPreviewRuntimeIdentity = Readonly<{
+  kind: 'agent_preview';
+  definitionId: string;
+  previewId: string;
+  previewRevisionId: string;
+}>;
+
+export type TWidgetArtifactRuntimeIdentity =
+  | TWidgetRuntimeIdentity
+  | TWidgetPreviewRuntimeIdentity;
+
 export type TWidgetRuntimeLoadRequest = Omit<TWidgetRuntimeIdentity, 'orgId'>;
 
 export type TWidgetRuntimeLocalTarget = TWidgetRuntimeLoadRequest & Readonly<{
@@ -59,6 +71,11 @@ export type TWidgetCollaborativeStateSession = Readonly<{
   cancel(waitId: string): void;
   dispose(): void;
 }>;
+
+export type TWidgetCollaborativeStateBridge = Pick<
+  TWidgetCollaborativeStateSession,
+  'get' | 'change' | 'next' | 'cancel' | 'dispose'
+>;
 
 export type TWidgetCollaborativeStatePort = Readonly<{
   open(args: Readonly<{
@@ -112,7 +129,7 @@ export type TWidgetServerFunctionClientRequest = Readonly<{
 }>;
 
 export type TWidgetFunctionHostBridge = Readonly<{
-  identity: TWidgetRuntimeIdentity;
+  identity: TWidgetArtifactRuntimeIdentity;
   createIdempotencyKey(): string;
   invoke<TOutput = unknown>(request: TWidgetServerFunctionClientRequest): Promise<TOutput>;
   dispose(): void;
@@ -121,10 +138,10 @@ export type TWidgetFunctionHostBridge = Readonly<{
 export type TWidgetUiArtifactMountPort = Readonly<{
   mount(args: Readonly<{
     root: HTMLDivElement;
-    identity: TWidgetRuntimeIdentity;
+    identity: TWidgetArtifactRuntimeIdentity;
     artifact: TVerifiedWidgetUiArtifact;
     functionBridge: TWidgetFunctionHostBridge;
-    collaborativeStateBridge: TWidgetCollaborativeStateSession | null;
+    collaborativeStateBridge: TWidgetCollaborativeStateBridge | null;
     onFatal(error: unknown): void;
   }>): () => void;
 }>;

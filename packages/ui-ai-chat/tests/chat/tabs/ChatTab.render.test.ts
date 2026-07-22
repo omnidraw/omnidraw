@@ -323,13 +323,15 @@ describe("ChatTab rendered message history", () => {
     const pendingOpenPreview = new Promise<void>((resolve) => {
       completeOpenPreview = () => resolve()
     })
-    const onOpenWidgetPreview = vi.fn((_draftName: string) => pendingOpenPreview)
+    const draftId = "10000000-0000-4000-8000-000000000001"
+    const onOpenWidgetPreview = vi.fn(() => pendingOpenPreview)
     const root = renderChatTab(undefined, [{
       role: "toolResult",
       toolCallId: "call-widget-create",
       toolName: "vc_widget_create",
       content: [{ type: "text", text: "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7" }],
       details: {
+        draftId,
         name: "Shared Timer",
         mountPath: "widgets/Shared Timer",
         source: "draft",
@@ -348,7 +350,7 @@ describe("ChatTab rendered message history", () => {
 
     openPreview()?.click()
 
-    expect(onOpenWidgetPreview).toHaveBeenCalledWith("Shared Timer")
+    expect(onOpenWidgetPreview).toHaveBeenCalledWith({ draftId, name: "Shared Timer" })
     expect(onOpenWidgetPreview).toHaveBeenCalledTimes(1)
     expect(openPreview()?.disabled).toBe(true)
     expect(openPreview()?.getAttribute("aria-busy")).toBe("true")
@@ -373,7 +375,12 @@ describe("ChatTab rendered message history", () => {
   })
 
   it("does not offer Open Preview for failed, malformed, prose-derived, or unrelated results", () => {
-    const trustedDetails = { name: "Shared Timer", source: "draft", draft: true }
+    const trustedDetails = {
+      draftId: "10000000-0000-4000-8000-000000000001",
+      name: "Shared Timer",
+      source: "draft",
+      draft: true,
+    }
     const root = renderChatTab(undefined, [
       {
         role: "toolResult",
@@ -387,6 +394,12 @@ describe("ChatTab rendered message history", () => {
         toolName: "vc_widget_create",
         content: [{ type: "text", text: "created" }],
         details: { ...trustedDetails, name: "../Shared Timer" },
+      },
+      {
+        role: "toolResult",
+        toolName: "vc_widget_create",
+        content: [{ type: "text", text: "created" }],
+        details: { ...trustedDetails, draftId: "draft-preview-v1-forged" },
       },
       {
         role: "toolResult",

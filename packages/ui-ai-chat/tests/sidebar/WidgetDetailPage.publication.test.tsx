@@ -7,7 +7,10 @@ import { WidgetDetailPage } from "../../src/sidebar/widgets/WidgetDetailPage"
 
 let dispose: (() => void) | undefined
 
+const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
+
 const variant: TWidgetVariantSummary = {
+  draftId: DRAFT_ID,
   source: "draft",
   displayName: "Blobby",
   kind: "actor-widget",
@@ -47,12 +50,19 @@ describe("WidgetDetailPage publication", () => {
   test("refreshes the catalog and replaces the consumed draft route with published detail", async () => {
     const navigate = vi.fn()
     const refreshCatalog = vi.fn(async () => [undefined, catalog] as const)
+    const detailApi = vi.fn(async () => [undefined, detail] as const)
     const publish = vi.fn(async () => [undefined, {
       published: true,
-      draftId: "Blobby",
+      draftId: DRAFT_ID,
+      definitionId: "20000000-0000-4000-8000-000000000001",
       revision: "draft-revision",
-      definitionName: "Blobby",
-      manifest: {},
+      publishedRevisionId: "30000000-0000-4000-8000-000000000001",
+      manifest: {
+        schemaVersion: 2,
+        name: "Blobby",
+        slug: "blobby",
+        ui: { entry: "ui/main.ts" },
+      },
     }] as const)
     const controller = {
       apiService: {
@@ -61,7 +71,7 @@ describe("WidgetDetailPage publication", () => {
             events: vi.fn(async () => [undefined, { async *[Symbol.asyncIterator]() {} }]),
             widgets: {
               catalog: refreshCatalog,
-              detail: vi.fn(async () => [undefined, detail] as const),
+              detail: detailApi,
             },
             widgetPublish: { publish },
           },
@@ -109,8 +119,110 @@ describe("WidgetDetailPage publication", () => {
     })
     confirm.click()
 
-    await vi.waitFor(() => expect(publish).toHaveBeenCalledWith({ draftId: "Blobby", expectedRevision: "draft-revision" }))
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledWith({ draftId: DRAFT_ID, expectedRevision: "draft-revision" }))
+    expect(detailApi).toHaveBeenCalledWith({ name: "Blobby", source: "draft" })
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith("/widgets/published/Blobby?tab=overview", { replace: true }))
     expect(refreshCatalog.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test("describes v2 deletion as archival and keeps pinned canvas instances", async () => {
+    const publishedVariant: TWidgetVariantSummary = {
+      ...variant,
+      draftId: null,
+      source: "published",
+      kind: "widget",
+      revision: "30000000-0000-4000-8000-000000000001",
+      validation: null,
+    }
+    const publishedDetail: TWidgetDetail = {
+      ...detail,
+      source: "published",
+      relation: "published-only",
+      variant: publishedVariant,
+      manifest: {
+        schemaVersion: 2,
+        name: "Blobby",
+        slug: "blobby",
+        ui: { entry: "ui/main.ts" },
+      },
+    }
+    const publishedCatalog: TWidgetCatalog = {
+      generation: "published-generation",
+      groups: [],
+      widgets: [{
+        name: "Blobby",
+        relation: "published-only",
+        published: publishedVariant,
+        draft: null,
+        problem: null,
+      }],
+    }
+    const remove = vi.fn(async () => [undefined, {
+      name: "Blobby",
+      source: "published",
+      deletedDefinition: true,
+      deletedPublished: true,
+      deletedDraft: true,
+      deletedInstances: false,
+      issues: [],
+    }] as const)
+    const notifySuccess = vi.fn()
+    const controller = {
+      apiService: {
+        api: {
+          agent: {
+            events: vi.fn(async () => [undefined, { async *[Symbol.asyncIterator]() {} }]),
+            widgets: {
+              catalog: vi.fn(async () => [undefined, publishedCatalog] as const),
+              detail: vi.fn(async () => [undefined, publishedDetail] as const),
+              delete: remove,
+            },
+          },
+        },
+      },
+      invalidation: createCatalogInvalidation(),
+      browser: {
+        setTimeout: (callback: () => void, timeout: number) => window.setTimeout(callback, timeout),
+        clearTimeout: (timer: unknown) => window.clearTimeout(timer as number),
+      },
+      application: {
+        pathname: () => "/widgets/published/Blobby",
+        navigate: vi.fn(),
+        notifySuccess,
+        notifyError: vi.fn(),
+        toggleSidebar: vi.fn(),
+      },
+    } as never
+    const host = document.createElement("div")
+    document.body.appendChild(host)
+    dispose = render(() => (
+      <WidgetCatalogProvider controller={controller}>
+        <WidgetDetailPage
+          source="published"
+          name="Blobby"
+          controller={controller}
+          query={{ tab: () => "overview", path: () => undefined, set: vi.fn() } as never}
+        />
+      </WidgetCatalogProvider>
+    ), host)
+
+    const archive = await vi.waitFor(() => {
+      expect(host.textContent).toContain("Existing canvas instances stay pinned")
+      const button = [...host.querySelectorAll<HTMLButtonElement>("button")]
+        .find((candidate) => candidate.textContent?.includes("Archive publication"))
+      expect(button).toBeDefined()
+      return button!
+    })
+    archive.click()
+    const confirm = await vi.waitFor(() => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')]
+        .find((candidate) => candidate.textContent === "Archive publication")
+      expect(button).toBeDefined()
+      return button!
+    })
+    confirm.click()
+
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith({ name: "Blobby", source: "published" }))
+    expect(notifySuccess).toHaveBeenCalledWith("Published widget archived")
   })
 })

@@ -8,11 +8,14 @@ import type {
 import { AgentService } from '../src/AgentService';
 import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
-import { WidgetDraftController } from '../src/widget-drafts/WidgetDraftController';
 import { WidgetManagement } from '../src/widget-management/WidgetManagement';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
 import { executeTool } from './tool.test-helpers';
-import { TestTenantEventPublisher } from './tenant.fixture';
+import { TEST_TENANT, TestTenantEventPublisher } from './tenant.fixture';
+import {
+  createWidgetAuthoringHarness,
+  createWidgetDraftControllerForWorkspace,
+} from './widget-authoring.fixture';
 
 class TestEvents extends TestTenantEventPublisher {
   events: TAgentEvent[] = [];
@@ -37,24 +40,54 @@ async function fixture() {
   const workspace = new WidgetWorkspace({ dataPath, configPath });
   await workspace.init();
   const events = new TestEvents();
-  const controller = new WidgetDraftController({ configPath, workspace, eventPublisher: events });
+  const { controller, store, widgets } = createWidgetDraftControllerForWorkspace(workspace, events);
   const manager = new WidgetManagement({ workspace, drafts: controller });
   const tools = createWidgetWorkspaceTools({
     workspace,
     chatId: 'catalog-test',
     authorize: async () => true,
-    onDraftChanged: (change) => controller.handleToolChange(change),
+    onDraftChanged: (change) => controller.handleToolChange({ ...change, chatId: 'catalog-test' }),
   });
-  await executeTool(tools.find((tool) => tool.name === 'vc_widget_create')!, {
+  const created = await executeTool(tools.find((tool) => tool.name === 'vc_widget_create')!, {
     name: 'Camera',
     description: 'Captures a frame.',
   });
-  return { root, workspace, controller, manager, events };
+  return { root, workspace, controller, store, manager, events, widgets, tools, created };
 }
 
 describe('WidgetManagement', () => {
+  test('reports trusted controller validation and durable identity from the validate tool', async () => {
+    const { controller, widgets, tools, created } = await fixture();
+    const draft = await controller.getByName('Camera');
+    expect(created.details).toMatchObject({ draftId: draft!.draftId });
+    widgets.validateBuildResult = {
+      valid: false,
+      diagnostics: ['Widget ui build failed.'],
+    };
+
+    const validated = await executeTool(
+      tools.find((tool) => tool.name === 'vc_widget_validate')!,
+      { name: 'Camera' },
+    );
+
+    expect(validated.details).toMatchObject({
+      draftId: draft!.draftId,
+      revision: draft!.revision,
+      ok: false,
+      errors: ['Widget ui build failed.'],
+    });
+    expect(await controller.get(draft!.draftId)).toMatchObject({
+      validation: {
+        status: 'invalid',
+        errors: ['Widget ui build failed.'],
+        validatedRevision: draft!.revision,
+      },
+      publishReady: false,
+    });
+  });
+
   test('collapses identical drafts and exposes divergent versions after a byte change', async () => {
-    const { workspace, controller, manager } = await fixture();
+    const { workspace, controller, manager, widgets } = await fixture();
     await cp(join(workspace.draftRoot, 'Camera'), join(workspace.publishedRoot, 'Camera'), { recursive: true });
 
     const same = await manager.catalog([{ name: 'Media', icon: null }]);
@@ -66,7 +99,7 @@ describe('WidgetManagement', () => {
       bounds: { width: 360, height: 320 },
     });
 
-    await writeFile(join(workspace.draftRoot, 'Camera', 'widget', 'main.css'), '.draft-change {}\n', 'utf8');
+    await writeFile(join(workspace.draftRoot, 'Camera', 'ui', 'styles.css'), '.draft-change {}\n', 'utf8');
     await controller.handleToolChange({ name: 'Camera', type: 'changed' });
     const different = await manager.catalog([{ name: 'Media', icon: null }]);
     expect(different.widgets[0]?.relation).toBe('different');
@@ -75,20 +108,17 @@ describe('WidgetManagement', () => {
   });
 
   test('uses fallback placement bounds and exposes only a ready current Preview', async () => {
-    const { workspace, controller, manager } = await fixture();
-    const manifestPath = join(workspace.draftRoot, 'Camera', 'vibecanvas.json');
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    delete manifest.widget.frame;
-    await writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
+    const { workspace, controller, manager, widgets } = await fixture();
     await controller.handleToolChange({ name: 'Camera', type: 'changed' });
     const before = await manager.catalog([]);
     expect(before.widgets[0]?.draft?.placement?.bounds).toEqual({ width: 360, height: 320 });
     expect(before.widgets[0]?.preview).toMatchObject({ status: 'not-ready', placement: null });
 
+    widgets.validateBuildResult = { valid: false, diagnostics: ['private diagnostic'] };
     await controller.handleToolChange({
       name: 'Camera',
       type: 'validated',
-      validation: { ok: false, errors: ['private diagnostic'], warnings: [] },
+      validation: { ok: true, errors: [], warnings: [] },
     });
     expect((await manager.catalog([])).widgets[0]?.preview).toEqual({
       status: 'failed',
@@ -96,10 +126,12 @@ describe('WidgetManagement', () => {
       message: 'Draft validation failed. Open the draft for diagnostics.',
       placement: null,
     });
+    widgets.validateBuildResult = { valid: true, diagnostics: [] };
     await controller.handleToolChange({ name: 'Camera', type: 'changed' });
 
     const revision = before.widgets[0]!.draft!.revision;
-    expect(await controller.buildPreview('Camera', 'catalog-owner', revision)).toMatchObject({ ready: true, revision });
+    const draft = await controller.getByName('Camera');
+    expect(await controller.buildPreview(draft!.draftId, 'catalog-owner', revision, null)).toMatchObject({ ready: true, revision });
     const ready = await manager.catalog([]);
     expect(ready.widgets[0]?.preview).toMatchObject({
       status: 'ready',
@@ -119,8 +151,8 @@ describe('WidgetManagement', () => {
 
     const files = await manager.files('Camera', 'draft');
     expect(files?.some((entry) => entry.path.includes('node_modules'))).toBe(false);
-    expect(files?.some((entry) => entry.path === 'widget/main.ts')).toBe(true);
-    expect(await manager.file('Camera', 'draft', 'widget/main.ts')).toMatchObject({ binary: false, truncated: false });
+    expect(files?.some((entry) => entry.path === 'ui/main.ts')).toBe(true);
+    expect(await manager.file('Camera', 'draft', 'ui/main.ts')).toMatchObject({ binary: false, truncated: false });
     await expect(manager.file('Camera', 'draft', '../vibecanvas.json')).rejects.toThrow('UNSAFE_PATH');
     const outside = join(root, 'outside');
     await mkdir(outside);
@@ -130,7 +162,7 @@ describe('WidgetManagement', () => {
     controller.close();
   });
 
-  test('fails equality closed for symlinks and applies optimistic tool edits', async () => {
+  test('fails equality closed for symlinks and applies optimistic v2 metadata edits', async () => {
     const { root, workspace, controller, manager } = await fixture();
     await cp(join(workspace.draftRoot, 'Camera'), join(workspace.publishedRoot, 'Camera'), { recursive: true });
     const outside = join(root, 'outside.txt');
@@ -140,11 +172,13 @@ describe('WidgetManagement', () => {
     await rm(join(workspace.draftRoot, 'Camera', 'outside-link'));
 
     const detail = await manager.detail('Camera', 'draft');
-    const updated = await manager.patchDraftTool('Camera', detail!.variant.revision, { group: 'Media', icon: null });
-    expect(updated.tool.group).toBe('Media');
+    const updated = await manager.patchDraftMetadata('Camera', detail!.variant.revision, { description: 'Updated camera.' });
+    expect(updated.variant.description).toBe('Updated camera.');
     const manifest = JSON.parse(await readFile(join(workspace.draftRoot, 'Camera', 'vibecanvas.json'), 'utf8'));
-    expect(manifest.widget.tool.group).toBe('Media');
-    await expect(manager.patchDraftTool('Camera', detail!.variant.revision, { group: null })).rejects.toThrow('STALE_REVISION');
+    expect(manifest.description).toBe('Updated camera.');
+    await expect(manager.patchDraftMetadata('Camera', detail!.variant.revision, { description: 'Stale.' })).rejects.toThrow('STALE_REVISION');
+    const current = await manager.detail('Camera', 'draft');
+    await expect(manager.patchDraftTool('Camera', current!.variant.revision, { group: null })).rejects.toThrow('Manifest v2');
     controller.close();
   });
 
@@ -170,7 +204,6 @@ describe('WidgetManagement', () => {
     const result = await manager.patchDraftMetadata('Camera', detail!.variant.revision, {
       name: 'Studio Camera',
       description: 'Captures a studio frame.',
-      tool: { label: 'Studio capture', group: null, priority: 7 },
     });
 
     expect(result).toMatchObject({
@@ -178,7 +211,7 @@ describe('WidgetManagement', () => {
       variant: {
         displayName: 'Studio Camera',
         description: 'Captures a studio frame.',
-        tool: { label: 'Studio capture', priority: 7 },
+        tool: { label: 'Studio Camera' },
       },
     });
     expect(await workspace.getDraft('Camera')).toBeNull();
@@ -190,7 +223,7 @@ describe('WidgetManagement', () => {
       expect.objectContaining({ name: 'Studio Camera', source: 'draft' }),
     ]);
     const manifest = JSON.parse(await readFile(join(workspace.draftRoot, 'Studio Camera', 'vibecanvas.json'), 'utf8'));
-    expect(manifest).toMatchObject({ name: 'Studio Camera', description: 'Captures a studio frame.', widget: { tool: { label: 'Studio capture', priority: 7 } } });
+    expect(manifest).toMatchObject({ schemaVersion: 2, name: 'Studio Camera', description: 'Captures a studio frame.' });
     controller.close();
   });
 
@@ -198,8 +231,12 @@ describe('WidgetManagement', () => {
     const { workspace, controller, manager } = await fixture();
     const detail = await manager.detail('Camera', 'draft');
     controller.withPreviewRenameCleanup = async (_name, _nextName, operation) => {
-      return operation(async () => {
+      const cleanup = async () => {
         throw new Error('Preview Actor did not stop.');
+      };
+      return operation(cleanup, async (commit) => {
+        await cleanup();
+        await commit();
       });
     };
 
@@ -214,14 +251,18 @@ describe('WidgetManagement', () => {
   test('validates a rename before cleaning up its active Preview', async () => {
     const { workspace, controller, manager } = await fixture();
     const detail = await manager.detail('Camera', 'draft');
-    expect((await controller.buildPreview('Camera', 'rename-owner', detail!.variant.revision)).ready).toBe(true);
+    const draft = await controller.getByName('Camera');
+    expect((await controller.buildPreview(draft!.draftId, 'rename-owner', detail!.variant.revision, null)).ready).toBe(true);
     const original = controller.withPreviewRenameCleanup.bind(controller);
     let cleanupCalls = 0;
     controller.withPreviewRenameCleanup = (name, nextName, operation) => {
-      return original(name, nextName, (cleanup) => operation(async () => {
-        cleanupCalls += 1;
-        await cleanup();
-      }));
+      return original(name, nextName, (cleanup, coordinateCommit) => operation(
+        cleanup,
+        async (commit) => coordinateCommit(async () => {
+          cleanupCalls += 1;
+          await commit();
+        }),
+      ));
     };
 
     await expect(manager.patchDraftMetadata('Camera', 'stale-revision', {
@@ -230,7 +271,7 @@ describe('WidgetManagement', () => {
 
     expect(cleanupCalls).toBe(0);
     expect(await workspace.getDraft('Camera')).not.toBeNull();
-    expect(await controller.getPreview('Camera', 'rename-owner')).toMatchObject({ ready: true });
+    expect(await controller.getPreview(draft!.draftId, 'rename-owner')).toMatchObject({ ready: true });
     await controller.close();
   });
 
@@ -283,9 +324,10 @@ describe('WidgetManagement', () => {
       },
     });
     controller.withPreviewCleanup = async (_name, operation) => {
-      return operation(async () => {
+      const cleanup = async () => {
         throw new Error('Preview cleanup failed.');
-      });
+      };
+      return operation(cleanup, cleanup);
     };
 
     await expect(manager.delete('Camera', 'published')).rejects.toThrow('Preview cleanup failed');
@@ -293,6 +335,32 @@ describe('WidgetManagement', () => {
     expect(await workspace.getDraft('Camera')).not.toBeNull();
     expect(await manager.detail('Camera', 'published')).not.toBeNull();
     await controller.close();
+  });
+
+  test('leaves runtime and both sources untouched when durable discard conflicts or throws', async () => {
+    for (const fault of ['conflict', 'throw'] as const) {
+      const { workspace, controller, store } = await fixture();
+      const draft = await controller.getByName('Camera');
+      await cp(join(workspace.draftRoot, 'Camera'), join(workspace.publishedRoot, 'Camera'), { recursive: true });
+      if (fault === 'conflict') store.conflictDiscardDraft = true;
+      else store.throwDiscardDraftError = true;
+      const deletedDefinitions: string[] = [];
+      const manager = new WidgetManagement({
+        workspace,
+        drafts: controller,
+        deletePublishedDefinition: async (name) => {
+          deletedDefinitions.push(name);
+          return true;
+        },
+      });
+
+      await expect(manager.delete('Camera', 'published')).rejects.toThrow();
+      expect(deletedDefinitions).toEqual([]);
+      expect(await workspace.getDraft('Camera')).not.toBeNull();
+      expect(await manager.detail('Camera', 'published')).not.toBeNull();
+      expect(store.drafts.get(draft!.draftId)).toMatchObject({ status: 'editing' });
+      await controller.close();
+    }
   });
 
   test('removes orphaned published sources and drafts when no runtime definition exists', async () => {
@@ -348,19 +416,15 @@ describe('WidgetManagement', () => {
     await mkdir(join(configPath, 'widgets'), { recursive: true });
     const workspace = new WidgetWorkspace({ dataPath, configPath });
     await workspace.init();
-    const controller = new WidgetDraftController({
-      configPath,
-      workspace,
-      eventPublisher: new TestEvents(),
-    });
+    const { controller } = createWidgetDraftControllerForWorkspace(workspace, new TestEvents());
     const publishedRoot = join(workspace.publishedRoot, 'Camera');
-    await mkdir(join(publishedRoot, 'widget'), { recursive: true });
+    await mkdir(join(publishedRoot, 'ui'), { recursive: true });
     await writeFile(
       join(publishedRoot, 'vibecanvas.json'),
       JSON.stringify(fnBuildWidgetCreateManifest({ name: 'Camera' })),
       'utf8',
     );
-    await writeFile(join(publishedRoot, 'widget', 'main.ts'), 'export default {}', 'utf8');
+    await writeFile(join(publishedRoot, 'ui', 'main.ts'), 'export default {}', 'utf8');
     const manager = new WidgetManagement({ workspace, drafts: controller });
     const before = (await manager.catalog([])).widgets[0]?.published;
     if (!before?.placement) throw new Error('Expected published placement fixture.');
@@ -375,7 +439,6 @@ describe('WidgetManagement', () => {
         const manifestPath = join(workspace.publishedRoot, 'Camera', 'vibecanvas.json');
         const nextManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
         nextManifest.slug = 'camera-v2';
-        nextManifest.widget.frame = { width: 512, height: 384 };
         await writeFile(manifestPath, JSON.stringify(nextManifest), 'utf8');
       },
     });
@@ -387,10 +450,64 @@ describe('WidgetManagement', () => {
     const after = (await raced.catalog([])).widgets[0]?.published;
     expect(after).toMatchObject({
       slug: 'camera-v2',
-      placement: { bounds: { width: 512, height: 384 } },
+      placement: { bounds: { width: 360, height: 320 } },
     });
     expect(after?.revision).not.toBe(before.revision);
     await controller.close();
+  });
+
+  test('fences Preview placement when a name changes durable draft ownership after pre-resolution', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'vc-widget-placement-owner-race-'));
+    roots.push(root);
+    const events = new TestEvents();
+    const harness = await createWidgetAuthoringHarness(root, events);
+    const original = await harness.createDraft('Camera');
+    let id = 100;
+    let nowMs = 20_000;
+    const service = new AgentService({
+      cachePath: join(root, 'cache'),
+      dataPath: root,
+      configPath: join(root, 'config'),
+      eventPublisherService: events,
+      tenant: TEST_TENANT,
+      authoringStore: harness.store,
+      widgetAuthoringCapability: harness.widgets,
+      previewFunctionCapability: harness.previewFunctions,
+      resolveWidgetResourceBindings: async () => [],
+      createId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
+      nowMs: () => ++nowMs,
+      widgetBuilderIdentity: 'placement-owner-race/1',
+    });
+    await service.start({ config: {}, hooks: {} });
+
+    const detail = await service.getWidgetDetail('Camera', 'draft');
+    const reference = detail?.variant.placement?.reference;
+    if (!reference) throw new Error('Expected a draft placement reference.');
+    const replacementDraftId = '00000000-0000-4000-8000-000000000999';
+    const durable = harness.store.drafts.get(original.draftId);
+    if (!durable) throw new Error('Expected the original durable draft.');
+    harness.store.drafts.set(original.draftId, { ...durable, status: 'discarded' });
+    harness.store.drafts.set(replacementDraftId, {
+      ...durable,
+      id: replacementDraftId,
+      definitionId: '00000000-0000-4000-8000-000000000998',
+      status: 'editing',
+    });
+
+    const previewId = '00000000-0000-4000-8000-000000000997';
+    await expect(service.resolveWidgetPlacement(
+      reference,
+      previewId,
+      original.draftId,
+    )).resolves.toMatchObject({
+      ok: false,
+      code: 'STALE_REVISION',
+      currentRevision: detail.variant.revision,
+    });
+    expect(harness.widgets.previews.has(previewId)).toBe(false);
+
+    await service.stop();
+    await harness.controller.close();
   });
 
   test('resolves exact v2 placement before consulting the explicit legacy actor fallback', async () => {
@@ -432,7 +549,7 @@ describe('WidgetManagement', () => {
         reload: async () => undefined,
         getVibecanvasJson: () => {
           legacyActorLookups += 1;
-          return legacyRuntimeManifest;
+          return legacyRuntimeManifest as never;
         },
       },
     });
@@ -446,6 +563,7 @@ describe('WidgetManagement', () => {
       ok: true,
       descriptor: {
         kind: 'published-v2',
+        draftId: null,
         definitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
         revisionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7',
         definitionName: null,
@@ -483,6 +601,7 @@ describe('WidgetManagement', () => {
       ok: true,
       descriptor: {
         kind: 'published-legacy',
+        draftId: null,
         definitionId: null,
         revisionId: null,
         definitionName: manifest.name,

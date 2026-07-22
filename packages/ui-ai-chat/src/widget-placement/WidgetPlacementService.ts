@@ -25,6 +25,8 @@ type TWidgetPlacementServiceArgs = {
   widgetManager: WidgetManagerService;
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export class WidgetPlacementService implements IService, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
   readonly name = "widget-placement";
   readonly #args: TWidgetPlacementServiceArgs;
@@ -137,10 +139,15 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
     clientPoint: { x: number; y: number };
   }, label: string): Promise<void> {
     const previewId = args.reference.source === "published" ? undefined : this.#args.browser.createId();
+    let durableDraftId: string | undefined;
     try {
+      if (previewId) {
+        durableDraftId = await this.#resolveDurableDraftOwner(args.reference);
+      }
       const [error, result] = await this.#args.api.api.agent.widgets.resolvePlacement({
         reference: args.reference,
         ...(previewId ? { previewId } : {}),
+        ...(durableDraftId ? { expectedDraftId: durableDraftId } : {}),
       });
       if (error) throw error;
       if (!result.ok) throw new Error(result.message);
@@ -159,9 +166,12 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
         if (!descriptor.definitionName) throw new Error("The published widget definition is unavailable.");
         this.#args.widgetManager.placeLegacyPublishedWidget(descriptor.definitionName, worldBounds);
       } else {
-        if (!descriptor.previewId) throw new Error("The Preview owner is unavailable.");
+        if (!descriptor.previewId || !descriptor.draftId) throw new Error("The Preview authority is unavailable.");
+        if (descriptor.draftId !== durableDraftId) {
+          throw new Error("The placement resolver returned a different durable draft owner.");
+        }
         await this.#args.previewFrames.place({
-          draftName: descriptor.reference.name,
+          draftId: descriptor.draftId,
           expectedRevision: descriptor.reference.revision,
           previewId: descriptor.previewId,
           bounds: worldBounds,
@@ -169,15 +179,45 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       }
       this.#notification?.showSuccess(`${label} added to canvas`, descriptor.reference.source === "draft" ? "Draft built as a pinned Preview." : undefined);
     } catch (error) {
-      if (previewId) {
-        await this.#args.api.api.agent.widgetPreview.close({
-          draftId: args.reference.name,
-          previewId,
-          expectedRevision: args.reference.revision,
-        }).catch(() => undefined);
+      if (previewId && durableDraftId) {
+        await this.#releasePreviewOwner(durableDraftId, previewId);
       }
       throw error;
     }
+  }
+
+  async #resolveDurableDraftOwner(reference: TWidgetPlacementRef): Promise<string> {
+    const [error, detail] = await this.#args.api.api.agent.widgets.detail({
+      name: reference.name,
+      source: "draft",
+    });
+    if (error) throw error;
+    const draftId = detail?.variant.draftId;
+    if (
+      !detail
+      || detail.name !== reference.name
+      || detail.source !== "draft"
+      || detail.variant.source !== "draft"
+      || detail.variant.revision !== reference.revision
+      || typeof draftId !== "string"
+      || !UUID_PATTERN.test(draftId)
+    ) {
+      throw new Error("The widget draft changed before Preview placement.");
+    }
+    return draftId;
+  }
+
+  async #releasePreviewOwner(draftId: string, previewId: string): Promise<void> {
+    const [, current] = await this.#args.api.api.agent.widgetPreview.get({
+      draftId,
+      previewId,
+    }).catch(() => [undefined, undefined] as const);
+    if (!current?.ready || current.draftId !== draftId || current.previewId !== previewId) return;
+    await this.#args.api.api.agent.widgetPreview.close({
+      draftId,
+      previewId,
+      expectedPreviewRevisionId: current.previewRevisionId,
+    }).catch(() => undefined);
   }
 
   #showCommitError(error: unknown): void {

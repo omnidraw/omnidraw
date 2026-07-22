@@ -12,6 +12,8 @@ import {
   type IWidgetControlStore,
   type IWidgetPublicationService,
   type TWidgetActiveRevisionCasResult,
+  type TWidgetDefinitionArchiveInput,
+  type TWidgetDefinitionArchiveResult,
   type TWidgetPublishRequest,
   type TWidgetPublishResult,
   type TWidgetRevisionDescriptor,
@@ -185,5 +187,14 @@ export class WidgetPublicationService implements IWidgetPublicationService {
     request: TWidgetRollbackInput,
   ): Promise<TWidgetActiveRevisionCasResult> {
     return this.config.controlStore.rollbackPublication(tenant, request);
+  }
+
+  archive(
+    tenant: TTenantContext,
+    request: TWidgetDefinitionArchiveInput,
+  ): Promise<TWidgetDefinitionArchiveResult> {
+    return this.#operationLane.run(() => (
+      this.config.controlStore.archiveDefinition(tenant, request)
+    ));
   }
 }

@@ -1,20 +1,38 @@
-import { createBashToolDefinition } from '@earendil-works/pi-coding-agent';
+import {
+  defineTool,
+  type AgentToolResult,
+  type AgentToolUpdateCallback,
+  type ExtensionContext,
+} from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { BASH_DEFAULT_TIMEOUT_SECONDS, BASH_MAX_TIMEOUT_SECONDS } from './CONSTANTS';
 import { fnToolError } from './fn.result';
 import type { TToolDefinition } from './types';
 
 type TCreateBashToolArgs = {
-  cwd: string;
   authorize: () => Promise<boolean>;
+  capability?: TAgentBashCapability;
 };
 
+export type TAgentBashRunArgs = Readonly<{
+  toolCallId: string;
+  command: string;
+  timeoutSeconds: number;
+  signal?: AbortSignal;
+  onUpdate?: AgentToolUpdateCallback<unknown>;
+  context?: ExtensionContext;
+}>;
+
+/** Host-provided, pre-confined command runner. */
+export type TAgentBashCapability = Readonly<{
+  run(args: TAgentBashRunArgs): AgentToolResult<unknown> | Promise<AgentToolResult<unknown>>;
+}>;
+
 export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
-  const definition = createBashToolDefinition(args.cwd) as TToolDefinition;
-  const execute = definition.execute.bind(definition);
-  return {
-    ...definition,
-    description: `Execute a normal Pi bash command starting in the chat workspace. The workspace is not a filesystem sandbox. Defaults to ${BASH_DEFAULT_TIMEOUT_SECONDS} seconds and accepts at most ${BASH_MAX_TIMEOUT_SECONDS} seconds. Use structured read, edit, patch, and grep for normal mounted-widget changes.`,
+  return defineTool({
+    name: 'bash',
+    label: 'Bash',
+    description: `Execute a command through the host-provided confined bash capability. Defaults to ${BASH_DEFAULT_TIMEOUT_SECONDS} seconds and accepts at most ${BASH_MAX_TIMEOUT_SECONDS} seconds. Use structured read, edit, patch, and grep for normal mounted-widget changes.`,
     parameters: Type.Object({
       command: Type.String({ minLength: 1, description: 'Bash command to execute.' }),
       timeout: Type.Optional(Type.Number({
@@ -34,7 +52,20 @@ export function createBashTool(args: TCreateBashToolArgs): TToolDefinition {
           message: `Bash timeout must be greater than 0 and no more than ${BASH_MAX_TIMEOUT_SECONDS} seconds.`,
         });
       }
-      return execute(toolCallId, { command: params.command, timeout }, signal, onUpdate, context);
+      if (!args.capability) {
+        return fnToolError({
+          code: 'BASH_UNAVAILABLE',
+          message: 'Bash is unavailable because this host did not provide a confined command capability.',
+        });
+      }
+      return args.capability.run({
+        toolCallId,
+        command: params.command,
+        timeoutSeconds: timeout,
+        signal,
+        onUpdate,
+        context,
+      });
     },
-  } as TToolDefinition;
+  }) as TToolDefinition;
 }

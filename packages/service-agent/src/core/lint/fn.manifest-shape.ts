@@ -1,8 +1,8 @@
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { TValidationResult } from '../types';
 import { Z_VIBECANVAS_JSON } from '../../tools/CONSTANTS';
 
-export function fnLintManifestShape(manifest: TVibecanvasJson): TValidationResult {
+export function fnLintManifestShape(manifest: TWidgetManifestV2): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const zodResult = Z_VIBECANVAS_JSON.safeParse(manifest);

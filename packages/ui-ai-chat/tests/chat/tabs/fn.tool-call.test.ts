@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest"
 import { fnGetWidgetCreateDraftReference } from "../../../src/chat/components/tabs/fn.tool-call"
 
+const DRAFT_ID = "10000000-0000-4000-8000-000000000001"
+
 const TRUSTED_WIDGET_CREATE_RESULT = {
   role: "toolResult",
   toolCallId: "call-create",
   toolName: "vc_widget_create",
   content: [{ type: "text", text: "Created a widget draft." }],
   details: {
+    draftId: DRAFT_ID,
     name: "Shared Timer",
     mountPath: "widgets/Shared Timer",
     source: "draft",
@@ -17,8 +20,16 @@ const TRUSTED_WIDGET_CREATE_RESULT = {
 
 describe("widget-create tool-result extraction", () => {
   it("returns only the structured draft identity from an exact successful create result", () => {
-    expect(fnGetWidgetCreateDraftReference(TRUSTED_WIDGET_CREATE_RESULT)).toEqual({ name: "Shared Timer" })
-    expect(fnGetWidgetCreateDraftReference({ ...TRUSTED_WIDGET_CREATE_RESULT, isError: false })).toEqual({ name: "Shared Timer" })
+    const reference = { draftId: DRAFT_ID, name: "Shared Timer" }
+    expect(fnGetWidgetCreateDraftReference(TRUSTED_WIDGET_CREATE_RESULT)).toEqual(reference)
+    expect(fnGetWidgetCreateDraftReference({ ...TRUSTED_WIDGET_CREATE_RESULT, isError: false })).toEqual(reference)
+  })
+
+  it("retains a safe exact-name fallback for historical create results", () => {
+    expect(fnGetWidgetCreateDraftReference({
+      ...TRUSTED_WIDGET_CREATE_RESULT,
+      details: { ...TRUSTED_WIDGET_CREATE_RESULT.details, draftId: undefined },
+    })).toEqual({ name: "Shared Timer" })
   })
 
   it.each([
@@ -53,6 +64,14 @@ describe("widget-create tool-result extraction", () => {
     ["missing draft marker", {
       ...TRUSTED_WIDGET_CREATE_RESULT,
       details: { name: "Shared Timer", source: "draft" },
+    }],
+    ["non-UUID draft identity", {
+      ...TRUSTED_WIDGET_CREATE_RESULT,
+      details: { ...TRUSTED_WIDGET_CREATE_RESULT.details, draftId: "Shared Timer" },
+    }],
+    ["non-lowercase draft identity", {
+      ...TRUSTED_WIDGET_CREATE_RESULT,
+      details: { ...TRUSTED_WIDGET_CREATE_RESULT.details, draftId: "A0000000-0000-4000-8000-000000000001" },
     }],
   ])("rejects %s", (_label, message) => {
     expect(fnGetWidgetCreateDraftReference(message)).toBeUndefined()

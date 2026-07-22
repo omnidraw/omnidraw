@@ -84,7 +84,7 @@ The implementation agent updates this table as the run progresses. `Evidence` sh
 | M5 — Widget artifacts | `PASSED` | Manifest v2 and immutable publication work without actors | commit `4e0fa769`; [`m5-widget-artifacts.md`](./baselines/m5-widget-artifacts.md) |
 | M6 — Function runtime | `PASSED` | Typed local functions, gateway calls, receipts, limits, and scale-to-zero pass | commit `43fc5713`; [`m6-function-runtime.md`](./baselines/m6-function-runtime.md) |
 | M7 — Widget-host cutover | `PASSED` | Existing canvas renderer runs browser-only/function/legacy adapters unchanged | commit `c2705894`; [`m7-widget-host.md`](./baselines/m7-widget-host.md) |
-| M8 — Authoring cutover | `IN_PROGRESS` | AI authoring, preview, validation, and publish use v2 safely | — |
+| M8 — Authoring cutover | `VERIFYING` | AI authoring, preview, validation, and publish use v2 safely | — |
 | M9 — Managed-ready OSS | `NOT_STARTED` | Legacy actors are optional and external private-style composition works | — |
 | M10 — Final acceptance | `NOT_STARTED` | Clean checkout, empty home, full tests, load, integrity, backup/restore pass | — |
 

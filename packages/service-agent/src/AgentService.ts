@@ -6,6 +6,8 @@ import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.z
 import type { ITenantEventPublisherService, TAgentDraftActorEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type { IService, IStartableService, IStoppableService } from '@vibecanvas/runtime';
 import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
+import type { TTenantContext } from '@vibecanvas/tenant-core';
+import type { TWidgetRevisionDescriptor, TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
 import { execFile } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, join, relative as relativePath, resolve } from 'node:path';
@@ -21,21 +23,41 @@ import { WIDGET_CHAT_SYSTEM_PROMPT } from './prompts/index';
 import { ApprovalCoordinator } from './approval/ApprovalCoordinator';
 import type { TApprovalDecision, TApprovalView, TToolAuthorizationContext, TToolAuthorizer } from './approval/types';
 import { createToolRegistry } from './tools/ToolRegistry';
+import type { TAgentResourceService } from './tools/resource-service';
+import type { TAgentBashCapability } from './tools/tool.bash';
 import { fnRedactSecretResourceWriteMessage } from './tools/fn.redact-secret-resource-write';
 import { planImplicitResourceSelections, planSelectedResourceBindings, type TResourceBindingPlan } from './tools/resource-bindings';
 import type { TActorServiceReloader, TToolEvent, TWidgetDbChangeProposalRecord, TWidgetEditSessionRecord, TWidgetResourceSelection } from './tools/types';
 import { WidgetWorkspace } from './workspace/WidgetWorkspace';
 import type { TWidgetMount } from './workspace/types';
 import { WidgetDraftController } from './widget-drafts/WidgetDraftController';
+import type {
+  IAgentAuthoringStore,
+  IWidgetPreviewFunctionCapability,
+  TAgentAuthoringDraftDescriptor,
+  TWidgetAuthoringCapability,
+  TWidgetAuthoringResourceSelection,
+  TWidgetResourceBindingResolver,
+} from './widget-drafts/types';
 import { WidgetManagement } from './widget-management/WidgetManagement';
 import {
   fnMergeV2WidgetPlacementCatalog,
   fnParseV2WidgetPlacementReference,
+  fnV2PublishedWidgetRelation,
+  fnV2PublishedWidgetVariant,
   fnValidateV2WidgetPlacementTargets,
 } from './widget-management/fn.v2-widget-placement';
+import {
+  fnV2PublishedWidgetFile,
+  fnV2PublishedWidgetFiles,
+} from './widget-management/fn.v2-published-source';
 import type {
   TPublishedWidgetPlacementIdentity,
   TPublishedWidgetPlacementTarget,
+  TWidgetDeleteResult,
+  TWidgetDetail,
+  TWidgetFileEntry,
+  TWidgetFilePreview,
   TWidgetCatalogGroup,
   TWidgetDraftMetadataPatch,
   TWidgetDraftToolPatch,
@@ -48,12 +70,23 @@ interface IPublicMethods {
   removeApiKey(providerId: string): void;
 }
 
-interface IActorServiceConfig {
+export interface IAgentServiceConfig {
   cachePath: string;
   dataPath: string;
   configPath: string;
   eventPublisherService: ITenantEventPublisherService,
+  /** Required by the actor-free v2 authoring surface. Optional only for the explicit legacy adapter. */
+  tenant?: TTenantContext;
+  authoringStore?: IAgentAuthoringStore;
+  widgetAuthoringCapability?: TWidgetAuthoringCapability;
+  previewFunctionCapability?: IWidgetPreviewFunctionCapability;
+  resolveWidgetResourceBindings?: TWidgetResourceBindingResolver;
+  createId?: () => string;
+  nowMs?: () => number;
+  widgetBuilderIdentity?: string;
   actorService?: TActorServiceReloader;
+  resourceService?: TAgentResourceService;
+  bashCapability?: TAgentBashCapability;
   listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
   resolvePublishedWidgetPlacement?: (
     target: TPublishedWidgetPlacementIdentity,
@@ -66,6 +99,13 @@ interface IActorServiceConfig {
 }
 
 type TWidgetId = string;
+type TV2PublishedWidgetSelection =
+  | Readonly<{ matched: false }>
+  | Readonly<{
+      matched: true;
+      target: TPublishedWidgetPlacementTarget;
+      revision: TWidgetRevisionDescriptor | null;
+    }>;
 // Persisted/API `sessionId` is the Vibecanvas chat identity. Pi owns a separate
 // session ID inside each JSONL transcript header and filename.
 type TVibecanvasChatId = string;
@@ -200,7 +240,7 @@ const PROMPT_IMAGE_BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/
 
 export class AgentService implements IService, IStartableService, IStoppableService, IPublicMethods {
   name = 'agent-service'
-  #config: IActorServiceConfig;
+  #config: IAgentServiceConfig;
   #piAgentDir: string;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
@@ -219,16 +259,40 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   #chatReplacementGenerations = new Map<TVibecanvasChatId, number>();
   #isStopping = false;
 
-  constructor(config: IActorServiceConfig) {
+  constructor(config: IAgentServiceConfig) {
     this.#config = config
     this.#piAgentDir = join(config.dataPath, 'pi', 'agent')
     this.#workspace = new WidgetWorkspace({ dataPath: config.dataPath, configPath: config.configPath })
-    this.#widgetDrafts = new WidgetDraftController({
-      configPath: config.configPath,
-      workspace: this.#workspace,
-      eventPublisher: config.eventPublisherService,
-      actorService: config.actorService,
-    })
+    this.#widgetDrafts = config.tenant
+      && config.authoringStore
+      && config.widgetAuthoringCapability
+      && config.previewFunctionCapability
+      && config.resolveWidgetResourceBindings
+      && config.createId
+      && config.nowMs
+      && config.widgetBuilderIdentity
+      ? new WidgetDraftController({
+          tenant: config.tenant,
+          workspace: this.#workspace,
+          eventPublisher: config.eventPublisherService,
+          authoringStore: config.authoringStore,
+          widgets: config.widgetAuthoringCapability,
+          resolveResourceBindings: async (tenant, request) => (
+            config.resolveWidgetResourceBindings!(tenant, {
+              ...request,
+              selectedResources: await this.#draftResourceSelections(
+                config.authoringStore!,
+                tenant,
+                request.draft,
+              ),
+            })
+          ),
+          previewFunctions: config.previewFunctionCapability,
+          createId: config.createId,
+          nowMs: config.nowMs,
+          builderIdentity: config.widgetBuilderIdentity,
+        })
+      : this.#legacyUnavailableWidgetDrafts()
     this.#widgetManagement = new WidgetManagement({
       workspace: this.#workspace,
       drafts: this.#widgetDrafts,
@@ -420,21 +484,21 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       if (!proposal) throw new Error('Database change proposal was not found.')
       if (proposal.status !== 'pending') throw new Error(`Database change proposal is already ${proposal.status}.`)
 
-      const actorService = this.#config.actorService
-      if (!actorService?.createDbDraft || !actorService.executeDbDraftSql || !actorService.discardDbDraft || !actorService.previewDbApply || !actorService.confirmDbApply) {
+      const resourceService = this.#config.resourceService
+      if (!resourceService?.createDbDraft || !resourceService.executeDbDraftSql || !resourceService.discardDbDraft || !resourceService.previewDbApply || !resourceService.confirmDbApply) {
         throw new Error('Coordinated database changes are unavailable in this host.')
       }
 
-      const details = await actorService.createDbDraft(proposal.resourceId, `AI Chat: ${proposal.reason}`)
+      const details = await resourceService.createDbDraft(proposal.resourceId, `AI Chat: ${proposal.reason}`)
       const draftId = details.draft.id
-      let preview: { warnings: string[] }
-      let apply: Awaited<ReturnType<NonNullable<TActorServiceReloader['confirmDbApply']>>>
+      let preview: { warnings: readonly string[] }
+      let apply: Awaited<ReturnType<NonNullable<TAgentResourceService['confirmDbApply']>>>
       try {
-        await actorService.executeDbDraftSql(draftId, proposal.sql)
-        preview = await actorService.previewDbApply(draftId)
-        apply = await actorService.confirmDbApply(draftId)
+        await resourceService.executeDbDraftSql(draftId, proposal.sql)
+        preview = await resourceService.previewDbApply(draftId)
+        apply = await resourceService.confirmDbApply(draftId)
       } catch (error) {
-        await actorService.discardDbDraft(draftId).catch(() => undefined)
+        await resourceService.discardDbDraft(draftId).catch(() => undefined)
         throw error
       }
       const approved = {
@@ -443,7 +507,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         resolvedAt: new Date().toISOString(),
         draftId,
         applyId: apply.id,
-        warnings: preview.warnings,
+        warnings: [...preview.warnings],
       }
       txAppendWidgetDbChangeProposalRecord({ sessionManager: sessionEntry.sessionManager }, approved)
       return approved
@@ -510,66 +574,227 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetDrafts.list()
   }
 
-  getWidgetDraft(name: string) {
-    return this.#widgetDrafts.get(name)
+  getWidgetDraft(draftId: string) {
+    return this.#widgetDrafts.get(draftId)
   }
 
-  validateWidgetDraft(name: string, expectedRevision?: string) {
-    return this.#widgetDrafts.validate(name, expectedRevision)
+  validateWidgetDraft(draftId: string, expectedRevision?: string) {
+    return this.#widgetDrafts.validate(draftId, expectedRevision)
   }
 
-  getWidgetPreview(name: string, previewId: string) {
-    return this.#widgetDrafts.getPreview(name, previewId)
+  getWidgetPreview(draftId: string, previewId: string) {
+    return this.#widgetDrafts.getPreview(draftId, previewId)
   }
 
-  buildWidgetPreview(name: string, previewId: string, expectedRevision: string) {
-    return this.#widgetDrafts.buildPreview(name, previewId, expectedRevision)
+  buildWidgetPreview(
+    draftId: string,
+    previewId: string,
+    expectedDraftRevision: string,
+    expectedActivePreviewRevisionId: string | null,
+  ) {
+    return this.#widgetDrafts.buildPreview(
+      draftId,
+      previewId,
+      expectedDraftRevision,
+      expectedActivePreviewRevisionId,
+    )
   }
 
-  refreshWidgetPreview(name: string, previewId: string, expectedRevision: string) {
-    return this.#widgetDrafts.refreshPreview(name, previewId, expectedRevision)
+  closeWidgetPreview(draftId: string, previewId: string, expectedPreviewRevisionId: string) {
+    return this.#widgetDrafts.closePreview(draftId, previewId, expectedPreviewRevisionId)
   }
 
-  resetWidgetPreview(name: string, previewId: string, expectedRevision: string) {
-    return this.#widgetDrafts.resetPreview(name, previewId, expectedRevision)
+  invokeWidgetPreviewFunction(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+    functionName: string,
+    input: unknown,
+    idempotencyKey: string,
+  ) {
+    return this.#widgetDrafts.invokePreviewFunction(
+      draftId,
+      previewId,
+      previewRevisionId,
+      functionName,
+      input,
+      idempotencyKey,
+    )
   }
 
-  closeWidgetPreview(name: string, previewId: string, expectedRevision: string) {
-    return this.#widgetDrafts.closePreview(name, previewId, expectedRevision)
+  getWidgetPreviewFunctionInvocation(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+    invocationId: string,
+  ) {
+    return this.#widgetDrafts.getPreviewFunctionInvocation(
+      draftId,
+      previewId,
+      previewRevisionId,
+      invocationId,
+    )
   }
 
-  sendWidgetPreview(name: string, previewId: string, expectedRevision: string, messageName: string, payload: unknown) {
-    return this.#widgetDrafts.sendPreview(name, previewId, expectedRevision, messageName, payload)
+  cancelWidgetPreviewFunctionInvocation(
+    draftId: string,
+    previewId: string,
+    previewRevisionId: string,
+    invocationId: string,
+  ) {
+    return this.#widgetDrafts.cancelPreviewFunctionInvocation(
+      draftId,
+      previewId,
+      previewRevisionId,
+      invocationId,
+    )
   }
 
-  publishWidgetDraft(name: string, expectedRevision: string) {
-    return this.#widgetDrafts.publish(name, expectedRevision)
+  publishWidgetDraft(draftId: string, expectedRevision: string) {
+    return this.#widgetDrafts.publish(draftId, expectedRevision)
   }
 
   async getWidgetCatalog(groups: TWidgetCatalogGroup[]) {
-    const [legacyCatalog, targets] = await Promise.all([
+    const [unfilteredLegacyCatalog, targets] = await Promise.all([
       this.#widgetManagement.catalog(groups),
       this.#config.listPublishedWidgetPlacements?.() ?? Promise.resolve([]),
     ])
+    const visibleLegacyWidgets = (await Promise.all(unfilteredLegacyCatalog.widgets.map(async (entry) => (
+      await this.#workspace.isDraftMaterializationPending(entry.name) ? null : entry
+    )))).filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    const legacyCatalog = visibleLegacyWidgets.length === unfilteredLegacyCatalog.widgets.length
+      ? unfilteredLegacyCatalog
+      : {
+          ...unfilteredLegacyCatalog,
+          generation: `${unfilteredLegacyCatalog.generation}:pending-materializations-hidden`,
+          widgets: visibleLegacyWidgets,
+        }
     const validated = fnValidateV2WidgetPlacementTargets(targets)
     if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
-    return fnMergeV2WidgetPlacementCatalog({ legacyCatalog, targets: validated.targets })
+    const draftPublicationStates = this.#config.tenant && this.#config.authoringStore
+      ? (await this.#config.authoringStore.listDrafts(this.#config.tenant)).map((draft) => ({
+          draftId: draft.id,
+          definitionId: draft.definitionId,
+          name: draft.name,
+          status: draft.status,
+          publishedRevisionId: draft.publishedRevisionId,
+        }))
+      : []
+    return fnMergeV2WidgetPlacementCatalog({
+      legacyCatalog,
+      targets: validated.targets,
+      draftPublicationStates,
+    })
   }
 
-  getWidgetDetail(name: string, source: TWidgetSource) {
-    return this.#widgetManagement.detail(name, source)
+  async getWidgetDetail(name: string, source: TWidgetSource): Promise<TWidgetDetail | null> {
+    if (source === 'draft') {
+      return await this.#workspace.isDraftMaterializationPending(name)
+        ? null
+        : this.#widgetManagement.detail(name, source)
+    }
+    const selected = await this.#v2PublishedWidget(name)
+    if (!selected.matched) return this.#widgetManagement.detail(name, source)
+    if (!selected.revision) return null
+    const draft = await this.#workspace.isDraftMaterializationPending(name)
+      ? null
+      : await this.#widgetManagement.detail(name, 'draft')
+    const draftPublicationStates = await this.#v2DraftPublicationStates(name)
+    return {
+      name,
+      source: 'published',
+      relation: fnV2PublishedWidgetRelation({
+        target: selected.target,
+        draft: draft?.variant ?? null,
+        draftPublicationStates,
+      }),
+      variant: fnV2PublishedWidgetVariant({
+        target: selected.target,
+        updatedAt: new Date(selected.revision.createdAtMs).toISOString(),
+      }),
+      sibling: draft?.variant ?? null,
+      manifest: selected.revision.manifest,
+      problem: null,
+    }
   }
 
-  listWidgetFiles(name: string, source: TWidgetSource) {
-    return this.#widgetManagement.files(name, source)
+  async listWidgetFiles(
+    name: string,
+    source: TWidgetSource,
+  ): Promise<TWidgetFileEntry[] | null> {
+    if (source === 'draft') {
+      return await this.#workspace.isDraftMaterializationPending(name)
+        ? null
+        : this.#widgetManagement.files(name, source)
+    }
+    const selected = await this.#v2PublishedWidget(name)
+    if (!selected.matched) return this.#widgetManagement.files(name, source)
+    if (!selected.revision) return null
+    return fnV2PublishedWidgetFiles({
+      snapshot: await this.#v2PublishedSource(selected.target, selected.revision),
+    })
   }
 
-  readWidgetFile(name: string, source: TWidgetSource, path: string) {
-    return this.#widgetManagement.file(name, source, path)
+  async readWidgetFile(
+    name: string,
+    source: TWidgetSource,
+    path: string,
+  ): Promise<TWidgetFilePreview | null> {
+    if (source === 'draft') {
+      return await this.#workspace.isDraftMaterializationPending(name)
+        ? null
+        : this.#widgetManagement.file(name, source, path)
+    }
+    const selected = await this.#v2PublishedWidget(name)
+    if (!selected.matched) return this.#widgetManagement.file(name, source, path)
+    if (!selected.revision) return null
+    return fnV2PublishedWidgetFile({
+      snapshot: await this.#v2PublishedSource(selected.target, selected.revision),
+      path,
+      decodeUtf8: (bytes) => new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+    })
   }
 
-  ensureWidgetDraft(name: string, expectedPublishedFingerprint?: string) {
-    return this.#widgetManagement.ensureDraft(name, expectedPublishedFingerprint)
+  async ensureWidgetDraft(name: string, expectedPublishedFingerprint?: string) {
+    const selected = await this.#v2PublishedWidget(name)
+    if (!selected.matched) {
+      return this.#widgetManagement.ensureDraft(name, expectedPublishedFingerprint)
+    }
+    if (
+      !selected.revision
+      || (
+        expectedPublishedFingerprint !== undefined
+        && expectedPublishedFingerprint !== selected.target.contractDigestSha256
+      )
+    ) {
+      throw new Error('STALE_REVISION: Published widget changed before the draft could be created.')
+    }
+
+    const snapshot = await this.#v2PublishedSource(selected.target, selected.revision)
+    // Source reads are immutable, but active publication is mutable. Recheck
+    // the exact placement immediately before materialization so this operation
+    // has one explicit active-revision linearization point.
+    const current = await this.#v2PublishedWidget(name)
+    if (
+      !current.matched
+      || !current.revision
+      || current.target.definitionId !== selected.target.definitionId
+      || current.target.revisionId !== selected.target.revisionId
+      || current.target.contractDigestSha256 !== selected.target.contractDigestSha256
+    ) {
+      throw new Error('STALE_REVISION: Published widget changed before the draft could be created.')
+    }
+    await this.#widgetDrafts.materializePublishedDraft({
+      name,
+      definitionId: selected.target.definitionId,
+      publishedRevisionId: selected.target.revisionId,
+      snapshot,
+    })
+    const materialized = await this.#widgetManagement.detail(name, 'draft')
+    if (!materialized) {
+      throw new Error('OPERATION_UNAVAILABLE: Materialized widget draft could not be read.')
+    }
+    return materialized.variant
   }
 
   patchWidgetDraftTool(name: string, expectedRevision: string, patch: TWidgetDraftToolPatch) {
@@ -580,13 +805,53 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#widgetManagement.patchDraftMetadata(name, expectedRevision, patch)
   }
 
-  deleteWidget(name: string, source: TWidgetSource) {
-    return this.#widgetManagement.delete(name, source)
+  async deleteWidget(name: string, source: TWidgetSource): Promise<TWidgetDeleteResult | null> {
+    if (source === 'draft') return this.#widgetManagement.delete(name, source)
+    const selected = await this.#v2PublishedWidget(name)
+    if (!selected.matched) return this.#widgetManagement.delete(name, source)
+    if (!selected.revision) return null
+    const tenant = this.#config.tenant
+    const widgets = this.#config.widgetAuthoringCapability
+    if (!tenant || !widgets || !this.#config.nowMs) {
+      throw new Error('OPERATION_UNAVAILABLE: Published v2 widget deletion is unavailable in this host.')
+    }
+    const archived = await widgets.archive(tenant, {
+      definitionId: selected.target.definitionId,
+      expectedActiveRevisionId: selected.target.revisionId,
+      nowMs: this.#config.nowMs(),
+    })
+    if (archived.status !== 'archived') {
+      throw new Error('STALE_REVISION: Published widget changed before it could be deleted.')
+    }
+    let deletedDraft = false
+    const issues: TWidgetDeleteResult['issues'] = []
+    const durableDraft = this.#config.authoringStore
+      ? await this.#config.authoringStore.getDraftByName(tenant, name)
+      : null
+    if (
+      durableDraft
+      && durableDraft.definitionId === selected.target.definitionId
+      && durableDraft.status !== 'discarded'
+    ) {
+      const result = await this.#widgetManagement.delete(name, 'draft')
+      deletedDraft = result?.deletedDraft ?? false
+      issues.push(...(result?.issues ?? []))
+    }
+    return {
+      name,
+      source,
+      deletedDefinition: true,
+      deletedPublished: true,
+      deletedDraft,
+      deletedInstances: false,
+      issues,
+    }
   }
 
   async resolveWidgetPlacement(
     reference: import('@vibecanvas/service-actor/core/fn.widget-frame').TWidgetPlacementRef,
     previewId?: string,
+    expectedDraftId?: string,
   ): Promise<import('./widget-management/types').TWidgetPlacementResolveResult> {
     const v2Identity = fnParseV2WidgetPlacementReference(reference)
     if (v2Identity) {
@@ -610,6 +875,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           reference,
           bounds: target.bounds,
           kind: 'published-v2',
+          draftId: null,
           definitionId: target.definitionId,
           revisionId: target.revisionId,
           definitionName: null,
@@ -661,6 +927,13 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     if (!previewId) {
       return { ok: false, code: 'UNSUPPORTED_BEHAVIOR', message: 'Preview placement requires an owner identity.' }
     }
+    if (!expectedDraftId) {
+      return {
+        ok: false,
+        code: 'UNSUPPORTED_BEHAVIOR',
+        message: 'Preview placement requires an exact durable draft owner.',
+      }
+    }
     if (reference.source === 'preview') {
       const state = await this.#widgetDrafts.getPreviewCatalogState(reference.name)
       if (!state || state.status !== 'ready' || state.revision !== reference.revision) {
@@ -674,7 +947,28 @@ export class AgentService implements IService, IStartableService, IStoppableServ
         }
       }
     }
-    const preview = await this.#widgetDrafts.buildPreview(reference.name, previewId, reference.revision)
+    const durableDraft = await this.#widgetDrafts.getByName(reference.name)
+    if (!durableDraft) {
+      return { ok: false, code: 'NOT_FOUND', message: `Widget draft '${reference.name}' is unavailable.` }
+    }
+    if (durableDraft.draftId !== expectedDraftId) {
+      return {
+        ok: false,
+        code: 'STALE_REVISION',
+        message: `Widget draft '${reference.name}' changed ownership before placement.`,
+        currentRevision: durableDraft.revision,
+      }
+    }
+    const activePreview = await this.#widgetDrafts.getPreview(durableDraft.draftId, previewId)
+    const expectedActivePreviewRevisionId = activePreview.ready
+      ? activePreview.previewRevisionId
+      : null
+    const preview = await this.#widgetDrafts.buildPreview(
+      durableDraft.draftId,
+      previewId,
+      reference.revision,
+      expectedActivePreviewRevisionId,
+    )
     if (!preview.ready) {
       const code = preview.reason === 'stale-revision'
         ? 'STALE_REVISION'
@@ -687,7 +981,7 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
     return {
       ok: true,
-      descriptor: { ...resolved.descriptor, previewId },
+      descriptor: { ...resolved.descriptor, draftId: durableDraft.draftId, previewId },
     }
   }
 
@@ -1427,9 +1721,122 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
   }
 
+  async #v2PublishedWidget(name: string): Promise<TV2PublishedWidgetSelection> {
+    if (!this.#config.listPublishedWidgetPlacements) return { matched: false }
+    const targets = await this.#config.listPublishedWidgetPlacements()
+    const validated = fnValidateV2WidgetPlacementTargets(targets)
+    if (!validated.ok) throw new Error(`OPERATION_UNAVAILABLE: ${validated.message}`)
+    const target = validated.targets.find((candidate) => candidate.name === name)
+    if (!target) return { matched: false }
+    const resolved = this.#config.resolvePublishedWidgetPlacement
+      ? await this.#config.resolvePublishedWidgetPlacement({
+          definitionId: target.definitionId,
+          revisionId: target.revisionId,
+        })
+      : target
+    if (!resolved) return { matched: true, target, revision: null }
+    const resolvedValidation = fnValidateV2WidgetPlacementTargets([resolved])
+    if (
+      !resolvedValidation.ok
+      || resolved.definitionId !== target.definitionId
+      || resolved.revisionId !== target.revisionId
+      || resolved.name !== target.name
+      || resolved.slug !== target.slug
+      || resolved.description !== target.description
+      || resolved.contractDigestSha256 !== target.contractDigestSha256
+      || resolved.updatedAtMs !== target.updatedAtMs
+      || resolved.bounds.width !== target.bounds.width
+      || resolved.bounds.height !== target.bounds.height
+    ) return { matched: true, target, revision: null }
+    const tenant = this.#config.tenant
+    const widgets = this.#config.widgetAuthoringCapability
+    if (!tenant || !widgets) {
+      throw new Error('OPERATION_UNAVAILABLE: Published v2 widget inspection is unavailable in this host.')
+    }
+    const revision = await widgets.getActiveRevision(tenant, target.definitionId)
+    if (
+      !revision
+      || revision.orgId !== tenant.orgId
+      || revision.id !== target.revisionId
+      || revision.definitionId !== target.definitionId
+      || revision.manifest.name !== target.name
+      || revision.manifest.slug !== target.slug
+      || (revision.manifest.description ?? null) !== target.description
+      || revision.contractDigestSha256 !== target.contractDigestSha256
+      || revision.createdAtMs !== target.updatedAtMs
+    ) return { matched: true, target, revision: null }
+    return { matched: true, target, revision }
+  }
+
+  async #v2PublishedSource(
+    target: TPublishedWidgetPlacementTarget,
+    revision: TWidgetRevisionDescriptor,
+  ): Promise<TWidgetSourceSnapshot> {
+    const tenant = this.#config.tenant
+    const widgets = this.#config.widgetAuthoringCapability
+    if (!tenant || !widgets) {
+      throw new Error('OPERATION_UNAVAILABLE: Published v2 widget source inspection is unavailable in this host.')
+    }
+    const [source, snapshot] = await Promise.all([
+      widgets.getRevisionSource(tenant, revision.id),
+      widgets.readRevisionSourceSnapshot(tenant, {
+        definitionId: target.definitionId,
+        revisionId: revision.id,
+      }),
+    ])
+    if (
+      !source
+      || !snapshot
+      || source.orgId !== tenant.orgId
+      || source.definitionId !== target.definitionId
+      || source.revisionId !== revision.id
+      || snapshot.id !== source.sourceSnapshotId
+      || snapshot.digestSha256 !== source.sourceDigestSha256
+    ) {
+      throw new Error('OPERATION_UNAVAILABLE: Published v2 widget source is unavailable.')
+    }
+    return snapshot
+  }
+
+  async #v2DraftPublicationStates(name: string) {
+    const tenant = this.#config.tenant
+    const store = this.#config.authoringStore
+    if (!tenant || !store) return []
+    const draft = await store.getDraftByName(tenant, name)
+    return draft && draft.status !== 'discarded'
+      ? [{
+          draftId: draft.id,
+          definitionId: draft.definitionId,
+          name: draft.name,
+          status: draft.status,
+          publishedRevisionId: draft.publishedRevisionId,
+        }]
+      : []
+  }
+
   #chatSessionEntry(sessionId: TVibecanvasChatId): TChatSessionEntry | undefined {
     const widgetId = this.#chatWidgetIds.get(sessionId)
     return widgetId ? this.sessionMap[widgetId]?.[sessionId] : undefined
+  }
+
+  async #draftResourceSelections(
+    authoringStore: IAgentAuthoringStore,
+    tenant: TTenantContext,
+    draft: TAgentAuthoringDraftDescriptor,
+  ): Promise<readonly TWidgetAuthoringResourceSelection[] | undefined> {
+    const chat = await authoringStore.getChat(tenant, draft.chatId)
+    if (!chat) {
+      throw Object.assign(new Error('Durable widget draft chat was not found.'), {
+        code: 'AGENT_CHAT_NOT_FOUND',
+      })
+    }
+    const connected = this.#chatSessionEntry(chat.externalSessionKey)
+    const sessionManager = connected?.sessionManager ?? SessionManager.continueRecent(
+      this.#workspace.getChatRoot(chat.externalSessionKey),
+      this.#workspace.getChatHistoryRoot(chat.externalSessionKey),
+    )
+    const record = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
+    return record?.resources
   }
 
   #assertChatAuthorizationOwner(sessionEntry: TChatSessionEntry, authorization: TToolAuthorizationContext): void {
@@ -1485,7 +1892,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       authorize: this.#config.authorizeToolCall,
       workspace: this.#workspace,
       approvals: this.#approvals,
-      actorService: this.#config.actorService,
+      resourceService: this.#config.resourceService,
+      bashCapability: this.#config.bashCapability,
       onMounted: (mount) => this.#recordActiveMount(sessionManager, mount),
       onDraftChanged: (change) => this.#widgetDrafts.handleToolChange(change),
       takeSensitiveToolArgs: (toolCallId) => {
@@ -1591,11 +1999,11 @@ export class AgentService implements IService, IStartableService, IStoppableServ
   async #resolveChatResourceSelections(resourceIds: readonly string[]): Promise<TWidgetResourceSelection[]> {
     if (resourceIds.length > 16) throw new Error('A prompt can select at most 16 resources.')
     const ids = [...new Set(resourceIds)]
-    if (!this.#config.actorService?.getResource) throw new Error('Resource selection is unavailable in this host.')
+    if (!this.#config.resourceService?.getResource) throw new Error('Resource selection is unavailable in this host.')
 
     const selected: TWidgetResourceSelection[] = []
     for (const resourceId of ids) {
-      const resource = await this.#config.actorService.getResource(resourceId)
+      const resource = await this.#config.resourceService.getResource(resourceId)
       if (!resource) throw new Error(`Selected resource was not found: ${resourceId}`)
       selected.push({
         id: resource.id,
@@ -1633,9 +2041,9 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     const selectedRecord = fxEffectiveWidgetDraftResourceBindingSelectionRecord({ sessionManager }, {})
     let selected = selectedRecord?.resources ?? []
     if (!selectedRecord) {
-      const actorService = this.#config.actorService
-      if (!actorService?.listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
-      const available = await actorService.listResources({ status: 'ready' })
+      const resourceService = this.#config.resourceService
+      if (!resourceService?.listResources) return { ok: false, message: 'Resources cannot be discovered in this host. The widget was not published.' }
+      const available = await resourceService.listResources({ status: 'ready' })
       const implicit = planImplicitResourceSelections(manifest, available.map((resource) => ({
         id: resource.id,
         kind: resource.kind,
@@ -1850,6 +2258,41 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     }
 
     this.#config.eventPublisherService.publishAgentEvent(publishEvent)
+  }
+
+  /** Explicit legacy-only adapter used when the host has not installed v2 authoring capabilities. */
+  #legacyUnavailableWidgetDrafts(): WidgetDraftController {
+    const unavailable = () => {
+      throw Object.assign(new Error('Actor-free widget authoring is unavailable in this host.'), {
+        code: 'WIDGET_AUTHORING_UNAVAILABLE',
+      })
+    }
+    return {
+      close: async () => undefined,
+      handleToolChange: async () => undefined,
+      list: async () => [],
+      get: async () => null,
+      getByName: async () => null,
+      getWorkspaceRevision: async () => unavailable(),
+      validate: async () => null,
+      getPreview: async () => unavailable(),
+      getPreviewCatalogState: async () => null,
+      buildPreview: async () => unavailable(),
+      closePreview: async () => unavailable(),
+      invokePreviewFunction: async () => unavailable(),
+      getPreviewFunctionInvocation: async () => null,
+      cancelPreviewFunctionInvocation: async () => null,
+      publish: async () => unavailable(),
+      forget: async () => undefined,
+      withPreviewCleanup: async (_name: string, operation: (cleanup: () => Promise<void>) => Promise<unknown>) => (
+        operation(async () => undefined)
+      ),
+      withPreviewRenameCleanup: async (
+        _name: string,
+        _nextName: string,
+        operation: (cleanup: () => Promise<void>) => Promise<unknown>,
+      ) => operation(async () => undefined),
+    } as unknown as WidgetDraftController
   }
 
 }

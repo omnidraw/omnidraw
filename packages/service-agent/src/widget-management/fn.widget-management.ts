@@ -1,10 +1,12 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import { fnNormalizeWidgetFrame } from '@vibecanvas/service-actor/core/fn.widget-frame';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 import { fnNormalizeWidgetName } from '../workspace/fn.names';
 import type {
   TWidgetCatalogEntry,
   TWidgetCatalogProblem,
+  TWidgetManagementManifest,
   TWidgetRelation,
   TWidgetSource,
   TWidgetVariantSummary,
@@ -40,26 +42,34 @@ export function fnWidgetRelation(args: {
 }
 
 export function fnWidgetVariantSummary(args: {
+  draftId: string | null;
   source: TWidgetSource;
   fallbackName: string;
-  manifest: TVibecanvasJson | null;
+  manifest: TWidgetManagementManifest | null;
   revision: string;
   fingerprint: string | null;
   updatedAt: string | null;
   validation: TWidgetDraftValidation | null;
 }): TWidgetVariantSummary {
-  const tool = args.manifest?.widget.tool;
+  const legacyManifest = args.manifest && 'actor' in args.manifest
+    ? args.manifest as TVibecanvasJson
+    : null;
+  const v2Manifest = args.manifest && 'schemaVersion' in args.manifest
+    ? args.manifest as TWidgetManifestV2
+    : null;
+  const tool = legacyManifest?.widget.tool;
   return {
+    draftId: args.draftId,
     source: args.source,
     displayName: args.manifest?.name ?? args.fallbackName,
-    kind: args.manifest ? 'actor-widget' : null,
+    kind: v2Manifest ? 'widget' : legacyManifest ? 'actor-widget' : null,
     slug: args.manifest?.slug ?? null,
     description: args.manifest?.description ?? null,
     revision: args.revision,
     contentFingerprint: args.fingerprint,
     updatedAt: args.updatedAt,
     tool: {
-      label: tool?.label ?? null,
+      label: tool?.label ?? v2Manifest?.name ?? null,
       icon: tool?.icon ?? null,
       group: tool?.group?.trim() || null,
       priority: tool?.priority ?? null,
@@ -72,7 +82,9 @@ export function fnWidgetVariantSummary(args: {
         name: args.fallbackName,
         revision: args.revision,
       },
-      bounds: fnNormalizeWidgetFrame(args.manifest.widget.frame),
+      bounds: legacyManifest
+        ? fnNormalizeWidgetFrame(legacyManifest.widget.frame)
+        : { width: 360, height: 320 },
     } : null,
   };
 }

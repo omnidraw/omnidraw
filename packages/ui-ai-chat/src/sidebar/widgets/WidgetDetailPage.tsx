@@ -58,6 +58,10 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     : 'overview';
   const selectedPath = () => props.query.path() ?? '';
   const messages = createMemo(() => fnWidgetMessageRows(detail()?.manifest ?? null));
+  const legacyManifest = createMemo(() => {
+    const manifest = detail()?.manifest;
+    return manifest && 'actor' in manifest ? manifest : null;
+  });
 
   const loadDetail = async () => {
     const source = props.source;
@@ -90,8 +94,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
     setGroup(value.variant.tool.group ?? '');
     setMetadataName(value.manifest?.name ?? value.name);
     setDescription(value.manifest?.description ?? '');
-    setToolLabel(value.manifest?.widget.tool.label ?? value.variant.tool.label ?? '');
-    setPriority(value.manifest?.widget.tool.priority === undefined ? '' : String(value.manifest.widget.tool.priority));
+    const legacy = value.manifest && 'actor' in value.manifest ? value.manifest : null;
+    setToolLabel(legacy?.widget.tool.label ?? value.variant.tool.label ?? '');
+    setPriority(legacy?.widget.tool.priority === undefined ? '' : String(legacy.widget.tool.priority));
   };
 
   const loadFiles = async () => {
@@ -180,7 +185,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       patch: {
         name: nextName,
         description: description(),
-        tool: { label: nextLabel, icon: icon(), group: group() || null, priority: nextPriority },
+        ...(legacyManifest()
+          ? { tool: { label: nextLabel, icon: icon(), group: group() || null, priority: nextPriority } }
+          : {}),
       },
     });
     setSaving(false);
@@ -229,7 +236,11 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
       if (selectedSourceDeleted) application.notifySuccess(title, issueDescription);
       else application.notifyError(title, issueDescription);
     } else {
-      application.notifySuccess(current.source === 'published' ? 'Published widget, draft, and instances deleted' : 'Widget draft deleted');
+      application.notifySuccess(current.source === 'published'
+        ? result.deletedInstances
+          ? 'Published widget, draft, and instances deleted'
+          : 'Published widget archived'
+        : 'Widget draft deleted');
     }
     await catalogState.refresh();
     if (selectedSourceDeleted) application.navigate('/');
@@ -246,7 +257,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           </div>
           <div class={styles.headerActions}>
             <Show when={current().source === 'published'}><Button class={styles.button} disabled={saving()} onClick={editAsDraft}>Edit as draft</Button></Show>
-            <Show when={current().source === 'draft'}><Button class={`${styles.button} ${styles.primary}`} disabled={saving() || publicationState().loading || publicationState().open || publicationState().publishing} aria-busy={publicationState().publishing} onClick={() => setPublishOpen(true)}>{publicationState().publishing ? `${publicationState().actionLabel}ing…` : publicationState().loading ? 'Checking…' : publicationState().actionLabel}</Button></Show>
+            <Show when={current().source === 'draft'}><Button class={`${styles.button} ${styles.primary}`} disabled={!current().variant.draftId || saving() || publicationState().loading || publicationState().open || publicationState().publishing} aria-busy={publicationState().publishing} onClick={() => setPublishOpen(true)}>{publicationState().publishing ? `${publicationState().actionLabel}ing…` : publicationState().loading ? 'Checking…' : publicationState().actionLabel}</Button></Show>
             <Button class={`${styles.button} ${styles.iconButton}`} aria-label="Toggle sidebar" onClick={application.toggleSidebar}><PanelLeft size={15} /></Button>
           </div>
         </header>
@@ -256,7 +267,7 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           <section class={styles.panel}><h3>Widget</h3><dl class={styles.definitionList}><dt>Slug</dt><dd>{current().variant.slug ?? '—'}</dd><dt>Health</dt><dd><Show when={current().problem} fallback={<span class={styles.healthy}>Healthy</span>}>{(problem) => <span class={styles.problem}>{problem().code}</span>}</Show></dd><dt>Description</dt><dd>{current().variant.description || 'No description.'}</dd><dt>Tool label</dt><dd>{current().variant.tool.label ?? '—'}</dd><dt>Behavior</dt><dd>{current().variant.tool.behaviorType ?? '—'}</dd><dt>Tool group</dt><dd>{current().variant.tool.group ?? 'Ungrouped'}</dd><dt>Source relationship</dt><dd>{current().relation}</dd><dt>Updated</dt><dd>{current().variant.updatedAt ?? 'Unknown'}</dd></dl></section>
           <Show when={current().source === 'draft'}><section class={styles.panel}><h3>Validation</h3><p class={styles.muted}>{current().variant.validation?.status ?? 'unknown'}</p><For each={current().variant.validation?.errors}>{(item) => <p class={styles.validationError}>{item}</p>}</For><For each={current().variant.validation?.warnings}>{(item) => <p class={styles.validationWarning}>{item}</p>}</For></section></Show>
           <Show when={current().problem}>{(problem) => <section class={styles.problemPanel}><h3>{problem().code}</h3><p>{problem().message}</p></section>}</Show>
-          <section class={`${styles.panel} ${styles.dangerPanel}`}><div><h3>Delete {current().source === 'published' ? 'published widget' : 'draft'}</h3><p class={styles.muted}>{current().source === 'published' ? 'Permanently removes the published widget, its draft if one exists, and all canvas actor instances.' : 'Permanently removes only this draft. The published widget and all of its canvas instances remain unchanged.'}</p></div><Button class={`${styles.button} ${styles.dangerButton}`} onClick={() => setDeleteOpen(true)}><Trash2 size={13} /> {current().source === 'published' ? 'Delete widget' : 'Delete draft'}</Button></section>
+          <section class={`${styles.panel} ${styles.dangerPanel}`}><div><h3>Delete {current().source === 'published' ? 'published widget' : 'draft'}</h3><p class={styles.muted}>{current().source === 'published' ? current().variant.kind === 'widget' ? 'Archives this publication and deletes its draft if one exists. Existing canvas instances stay pinned to their immutable revision.' : 'Permanently removes the published widget, its draft if one exists, and all canvas actor instances.' : 'Permanently removes only this draft. The published widget and all of its canvas instances remain unchanged.'}</p></div><Button class={`${styles.button} ${styles.dangerButton}`} onClick={() => setDeleteOpen(true)}><Trash2 size={13} /> {current().source === 'published' ? current().variant.kind === 'widget' ? 'Archive publication' : 'Delete widget' : 'Delete draft'}</Button></section>
         </div></Tabs.Content>
 
         <Tabs.Content class={styles.content} value="config"><div class={styles.contentInner}>
@@ -281,18 +292,19 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
           </div>
         </div></Tabs.Content>
 
-        <Tabs.Content class={`${styles.content} ${styles.statesContent}`} value="states"><Show when={current().manifest} fallback={<div class={styles.contentInner}><section class={styles.panel}><p class={styles.validationError}>The state machine cannot be displayed because the manifest is invalid.</p></section></div>}>{(manifest) => <ActorStateMachineView manifest={manifest()} variant="embedded" title={`${current().variant.displayName} actor`} />}</Show></Tabs.Content>
+        <Tabs.Content class={`${styles.content} ${styles.statesContent}`} value="states"><Show when={legacyManifest()} fallback={<div class={styles.contentInner}><section class={styles.panel}><p class={styles.muted}>Manifest-v2 widgets use local Arrow state, collaborative state, and short server functions instead of an actor state machine.</p></section></div>}>{(manifest) => <ActorStateMachineView manifest={manifest()} variant="embedded" title={`${current().variant.displayName} actor`} />}</Show></Tabs.Content>
 
         <Tabs.Content class={`${styles.content} ${styles.filesContent}`} value="files"><div class={styles.fileWorkbench}>
           <aside class={styles.fileTree} aria-label="Widget files"><Show when={filesError()}>{(message) => <p class={styles.validationError}>{message()}</p>}</Show><For each={files()} fallback={<p class={styles.muted}>Loading files…</p>}>{(entry) => entry.kind === 'directory' ? <div class={styles.directory} style={{ 'padding-left': `${entry.path.split('/').length * .75}rem` }}><Folder size={12} /> {entry.path.split('/').at(-1)}</div> : <Button class={`${styles.fileRow} ${selectedPath() === entry.path ? styles.fileSelected : ''}`} style={{ 'padding-left': `${entry.path.split('/').length * .75}rem` }} onClick={() => props.query.set({ tab: 'files', path: entry.path })}><File size={12} /><span>{entry.path.split('/').at(-1)}</span><small>{entry.size} B</small></Button>}</For></aside>
           <section class={styles.preview}><Show when={previewError()}>{(message) => <p class={styles.validationError}>{message()}</p>}</Show><Show when={preview()} fallback={<p class={styles.muted}>Select a file to inspect it.</p>}>{(file) => <><div class={styles.previewHeader}><strong>{file().path}</strong><span>{file().size} bytes{file().truncated ? ' · preview truncated' : ''}</span></div>{file().binary ? <p class={styles.muted}>Binary file. Content preview is unavailable.</p> : <pre class={styles.code}>{file().text}</pre>}</>}</Show></section>
         </div></Tabs.Content>
 
-        <AlertDialog.Root open={deleteOpen()} onOpenChange={(open) => { if (!deleting()) setDeleteOpen(open); }}><AlertDialog.Portal><AlertDialog.Overlay class={styles.dialogOverlay} /><AlertDialog.Content class={styles.dialogContent}><AlertDialog.Title class={styles.dialogTitle}>{current().source === 'published' ? 'Delete published widget' : 'Delete widget draft'}</AlertDialog.Title><AlertDialog.Description class={styles.dialogDescription}>{current().source === 'published' ? `Delete the published widget “${current().variant.displayName}”? Its draft, toolbar definition, and all canvas actor instances will also be permanently deleted. This cannot be undone.` : `Delete only the draft “${current().variant.displayName}”? The published widget and all of its canvas instances will remain unchanged. This cannot be undone.`}</AlertDialog.Description><div class={styles.dialogActions}><AlertDialog.CloseButton class={styles.button} disabled={deleting()}>Cancel</AlertDialog.CloseButton><Button class={`${styles.button} ${styles.dangerButton}`} disabled={deleting()} onClick={removeWidget}>{deleting() ? 'Deleting…' : current().source === 'published' ? 'Delete widget and instances' : 'Delete draft only'}</Button></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>
-        <Show when={current().source === 'draft'}>
-          <WidgetPublicationDialog
+        <AlertDialog.Root open={deleteOpen()} onOpenChange={(open) => { if (!deleting()) setDeleteOpen(open); }}><AlertDialog.Portal><AlertDialog.Overlay class={styles.dialogOverlay} /><AlertDialog.Content class={styles.dialogContent}><AlertDialog.Title class={styles.dialogTitle}>{current().source === 'published' ? current().variant.kind === 'widget' ? 'Archive published widget' : 'Delete published widget' : 'Delete widget draft'}</AlertDialog.Title><AlertDialog.Description class={styles.dialogDescription}>{current().source === 'published' ? current().variant.kind === 'widget' ? `Archive the published widget “${current().variant.displayName}” and delete its draft if one exists? Existing canvas instances remain pinned to this immutable revision.` : `Delete the published widget “${current().variant.displayName}”? Its draft, toolbar definition, and all canvas actor instances will also be permanently deleted. This cannot be undone.` : `Delete only the draft “${current().variant.displayName}”? The published widget and all of its canvas instances will remain unchanged. This cannot be undone.`}</AlertDialog.Description><div class={styles.dialogActions}><AlertDialog.CloseButton class={styles.button} disabled={deleting()}>Cancel</AlertDialog.CloseButton><Button class={`${styles.button} ${styles.dangerButton}`} disabled={deleting()} onClick={removeWidget}>{deleting() ? 'Deleting…' : current().source === 'published' ? current().variant.kind === 'widget' ? 'Archive publication' : 'Delete widget and instances' : 'Delete draft only'}</Button></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>
+        <Show when={current().source === 'draft' ? current().variant.draftId : null}>
+          {(draftId) => <WidgetPublicationDialog
             api={props.controller.apiService.api.agent}
-            draftId={current().name}
+            draftId={draftId()}
+            draftName={current().name}
             open={publishOpen()}
             onOpenChange={setPublishOpen}
             onStateChange={setPublicationState}
@@ -301,9 +313,9 @@ export const WidgetDetailPage: Component<TWidgetDetailPageProps> = (props) => {
               props.controller.invalidation.invalidate('widgets');
               await catalogState.refresh();
               setPublishOpen(false);
-              application.navigate(`/widgets/published/${encodeURIComponent(result.definitionName)}?tab=overview`, { replace: true });
+              application.navigate(`/widgets/published/${encodeURIComponent(result.manifest.name)}?tab=overview`, { replace: true });
             }}
-          />
+          />}
         </Show>
       </Tabs.Root>}
     </Show>

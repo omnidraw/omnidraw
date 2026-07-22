@@ -10,7 +10,7 @@ import { fnSerializeChatMessagesAsMarkdown } from "./fn.chat-message-markdown"
 import { fnParseMarkdownBlocks } from "./fn.markdown-blocks"
 import { fnNormalizeAssistantMarkdown } from "./fn.markdown"
 import { ApprovalList } from "../ApprovalList"
-import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetWidgetCreateDraftReference } from "./fn.tool-call"
+import { fnGetChatToolCalls, fnGetToolNameLabel, fnGetToolResultResource, fnGetWidgetCreateDraftReference, type TChatWidgetDraftReference } from "./fn.tool-call"
 import type { TAiChatApproval, TAiChatAssistantError, TAiChatWidgetError, TAiChatWidgetErrorKind } from "../types"
 import type { TAiChatBrowserPort } from "../../../ports"
 
@@ -50,7 +50,7 @@ interface IProps {
   approvals: readonly TAiChatApproval[]
   onPrompt: (args: { text: string; images: TChatPromptImage[]; resourceIds?: string[]; widgetRefs?: Array<{ name: string; source: "draft" | "published" }>; model?: TChatComposerModel; thinkingLevel: TChatComposerThinkingLevel }) => Promise<void>
   onResolveApproval: (approvalId: string, decision: "approve" | "reject") => Promise<void>
-  onOpenWidgetPreview: (draftName: string) => Promise<void>
+  onOpenWidgetPreview: (reference: TChatWidgetDraftReference) => Promise<void>
   onOpenResource?: (resourceId: string) => void
   onCancel: () => void
   onDismissError: () => void
@@ -498,12 +498,12 @@ function ChatHistoryMessage(props: {
       setIsExpanded((value) => !value)
     }
   }
-  const openWidgetPreview = async (draftName: string) => {
+  const openWidgetPreview = async (reference: TChatWidgetDraftReference) => {
     if (isOpeningPreview()) return
 
     setIsOpeningPreview(true)
     try {
-      await props.onOpenWidgetPreview(draftName)
+      await props.onOpenWidgetPreview(reference)
     } catch (error) {
       props.onReportError("preview", error)
     } finally {
@@ -571,7 +571,7 @@ function ChatHistoryMessage(props: {
               disabled={isOpeningPreview()}
               onClick={(event) => {
                 event.stopPropagation()
-                void openWidgetPreview(draftReference().name)
+                void openWidgetPreview(draftReference())
               }}
             >
               Open Preview

@@ -14,8 +14,11 @@ export type TChatResourceSummary = TChatResourceLink & {
 }
 
 export type TChatWidgetDraftReference = {
+  draftId?: string
   name: string
 }
+
+const LOWERCASE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const RESERVED_WINDOWS_WIDGET_NAMES = new Set([
   "con",
@@ -106,7 +109,12 @@ export function fnGetWidgetCreateDraftReference(message: unknown): TChatWidgetDr
   const name = getSafeWidgetDraftName(details?.name)
   if (!name || details?.source !== "draft" || details.draft !== true) return undefined
 
-  return { name }
+  const draftIdValue = details.draftId
+  if (draftIdValue !== undefined && (typeof draftIdValue !== "string" || !LOWERCASE_UUID_PATTERN.test(draftIdValue))) {
+    return undefined
+  }
+
+  return { name, ...(typeof draftIdValue === "string" ? { draftId: draftIdValue } : {}) }
 }
 
 export function fnGetApprovalResourceId(details: unknown): string | undefined {

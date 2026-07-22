@@ -1,4 +1,6 @@
 import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
+import type { TResourceEffect } from '@vibecanvas/resource-runtime';
+import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { TWidgetResourceSelection } from './types';
 
 export type TResourceBindingPlan = {
@@ -7,19 +9,50 @@ export type TResourceBindingPlan = {
   scope: ('read' | 'write')[];
 };
 
-export function planSelectedResourceBindings(manifest: TVibecanvasJson, selected: readonly TWidgetResourceSelection[]): { ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string } {
-  const requirements = Object.entries(manifest.actor.resources ?? {});
-  const availableSlots = new Set(requirements.map(([slot]) => slot));
+type TResourceManifest = TVibecanvasJson | TWidgetManifestV2;
+type TNormalizedRequirement = {
+  slot: string;
+  kind: TWidgetResourceSelection['kind'];
+  required: boolean;
+  scope: ('read' | 'write')[];
+};
+
+function scopeFromEffect(effect: TResourceEffect): ('read' | 'write')[] {
+  if (effect === 'read') return ['read'];
+  if (effect === 'write') return ['write'];
+  return ['read', 'write'];
+}
+
+function requirementsFromManifest(manifest: TResourceManifest): TNormalizedRequirement[] {
+  if (!('actor' in manifest)) {
+    return (manifest.resources ?? []).map((requirement) => ({
+      slot: requirement.slot,
+      kind: requirement.kind,
+      required: requirement.required ?? false,
+      scope: scopeFromEffect(requirement.effect),
+    }));
+  }
+  return Object.entries(manifest.actor.resources ?? {}).map(([slot, requirement]) => ({
+    slot,
+    kind: requirement.kind,
+    required: requirement.required,
+    scope: [...requirement.scope],
+  }));
+}
+
+export function planSelectedResourceBindings(manifest: TResourceManifest, selected: readonly TWidgetResourceSelection[]): { ok: true; bindings: TResourceBindingPlan[] } | { ok: false; message: string } {
+  const requirements = requirementsFromManifest(manifest);
+  const availableSlots = new Set(requirements.map((requirement) => requirement.slot));
   const bindings: TResourceBindingPlan[] = [];
 
   for (const resource of selected) {
     if (resource.status !== 'ready') {
       return { ok: false, message: `Selected resource '${resource.name}' is ${resource.status}, not ready.` };
     }
-    const exact = requirements.find(([slot, requirement]) => availableSlots.has(slot)
+    const exact = requirements.find((requirement) => availableSlots.has(requirement.slot)
       && requirement.kind === resource.kind
-      && slot.toLocaleLowerCase() === resource.name.toLocaleLowerCase());
-    const compatible = requirements.filter(([slot, requirement]) => availableSlots.has(slot) && requirement.kind === resource.kind);
+      && requirement.slot.toLocaleLowerCase() === resource.name.toLocaleLowerCase());
+    const compatible = requirements.filter((requirement) => availableSlots.has(requirement.slot) && requirement.kind === resource.kind);
     const match = exact ?? (compatible.length === 1 ? compatible[0] : undefined);
     if (!match) {
       return {
@@ -27,36 +60,34 @@ export function planSelectedResourceBindings(manifest: TVibecanvasJson, selected
         message: `Selected resource '${resource.name}' cannot be mapped safely. Declare exactly one remaining ${resource.kind} slot or name a slot '${resource.name}'.`,
       };
     }
-    const [slot, requirement] = match;
-    availableSlots.delete(slot);
-    bindings.push({ slot, resource, scope: [...requirement.scope] });
+    availableSlots.delete(match.slot);
+    bindings.push({ slot: match.slot, resource, scope: [...match.scope] });
   }
 
-  const missingRequired = requirements.find(([slot, requirement]) => availableSlots.has(slot) && requirement.required);
+  const missingRequired = requirements.find((requirement) => availableSlots.has(requirement.slot) && requirement.required);
   if (missingRequired) {
-    const [slot, requirement] = missingRequired;
     return {
       ok: false,
-      message: `Required ${requirement.kind} resource slot '${slot}' has no selected binding. @mention the intended resource before Preview or Publish.`,
+      message: `Required ${missingRequired.kind} resource slot '${missingRequired.slot}' has no selected binding. @mention the intended resource before Preview or Publish.`,
     };
   }
 
   return { ok: true, bindings };
 }
 
-export function planImplicitResourceSelections(manifest: TVibecanvasJson, available: readonly TWidgetResourceSelection[]): { ok: true; resources: TWidgetResourceSelection[] } | { ok: false; message: string } {
+export function planImplicitResourceSelections(manifest: TResourceManifest, available: readonly TWidgetResourceSelection[]): { ok: true; resources: TWidgetResourceSelection[] } | { ok: false; message: string } {
   const resources: TWidgetResourceSelection[] = [];
-  const requirements = Object.entries(manifest.actor.resources ?? {});
+  const requirements = requirementsFromManifest(manifest);
   for (const kind of ['kv', 'secretStore', 'db'] as const) {
-    const slots = requirements.filter(([, requirement]) => requirement.kind === kind);
+    const slots = requirements.filter((requirement) => requirement.kind === kind);
     if (slots.length === 0) continue;
     const ready = available.filter((resource) => resource.kind === kind && resource.status === 'ready');
     if (slots.length === 1 && ready.length === 1) {
       resources.push(ready[0]);
       continue;
     }
-    if (slots.some(([, requirement]) => requirement.required)) {
-      if (ready.length === 0) return { ok: false, message: `No ready ${kind} resource is available for required slot '${slots[0][0]}'.` };
+    if (slots.some((requirement) => requirement.required)) {
+      if (ready.length === 0) return { ok: false, message: `No ready ${kind} resource is available for required slot '${slots[0]!.slot}'.` };
       return { ok: false, message: `Multiple ${kind} resources or slots are available. Ask the user to @mention the intended resource before publishing.` };
     }
   }

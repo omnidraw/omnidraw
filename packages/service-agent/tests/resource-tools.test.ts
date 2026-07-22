@@ -1,19 +1,19 @@
 import { describe, expect, test } from 'bun:test';
-import type { TActorResource, TJson } from '@vibecanvas/service-db/model';
+import type { TResourceJson } from '@vibecanvas/resource-runtime';
 import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
-import type { TActorServiceReloader } from '../src/core/types';
+import type { TAgentResource, TAgentResourceService } from '../src/tools/resource-service';
 import { createResourceTools } from '../src/tools/tool.resources';
 import { executeTool } from './tool.test-helpers';
 
 const timestamp = '2026-07-16T00:00:00.000Z';
 
-function resource(id: string, kind: TActorResource['kind'], name: string, status: TActorResource['status'] = 'ready'): TActorResource {
+function resource(id: string, kind: TAgentResource['kind'], name: string, status: TAgentResource['status'] = 'ready'): TAgentResource {
   return { id, kind, name, status, last_error: null, created_at: timestamp, updated_at: timestamp };
 }
 
 function tools(
-  actorService: TActorServiceReloader,
+  resourceService: TAgentResourceService,
   approvals = new ApprovalCoordinator(),
   authorize = async () => true,
   takeSensitiveToolArgs?: (toolCallId: string) => unknown,
@@ -23,7 +23,7 @@ function tools(
     byName: new Map(createResourceTools({
       chatId: 'chat-a',
       authorization: { accountId: 'user-a' },
-      actorService,
+      resourceService,
       approvals,
       authorize,
       takeSensitiveToolArgs,
@@ -39,9 +39,8 @@ function providerModelData(result: any): any {
   return JSON.parse(text.slice(start + marker.length));
 }
 
-function resolvingService(resources: TActorResource[]): TActorServiceReloader {
+function resolvingService(resources: TAgentResource[]): TAgentResourceService {
   return {
-    reload: async () => {},
     listResources: async (filter = {}) => resources.filter((entry) => !filter.kind || entry.kind === filter.kind),
     getResource: async (id) => resources.find((entry) => entry.id === id) ?? null,
     resolveResourceByName: async (name, options) => {
@@ -100,7 +99,7 @@ describe('resource tools', () => {
     ];
     const dbCalls: unknown[] = [];
     const dataListCalls: unknown[] = [];
-    const actorService: TActorServiceReloader = {
+    const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
       listResourceReferences: async (id) => id === 'db-1' ? [{ slot_name: 'storage' }] : [],
       countResourceData: async () => 1,
@@ -123,7 +122,7 @@ describe('resource tools', () => {
         return { kind: 'rows', columns: ['id'], rows: [{ id: { type: 'integer', value: '7' } }], rowCount: 1, rowsAffected: 0, truncated: false };
       },
     };
-    const { byName } = tools(actorService);
+    const { byName } = tools(resourceService);
 
     const firstPage = await executeTool(byName.get('vc_resource_list')!, { limit: 2 });
     const firstData = providerModelData(firstPage);
@@ -262,11 +261,11 @@ describe('resource tools', () => {
       editable: true,
       readOnlyReason: null,
     }));
-    const actorService: TActorServiceReloader = {
+    const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
       inspectDbResource: async () => ({ objects } as never),
     };
-    const { byName } = tools(actorService);
+    const { byName } = tools(resourceService);
 
     const inspected = providerModelData(await executeTool(byName.get('vc_resource_inspect')!, { resourceName: 'Warehouse' }));
     expect(inspected.schema.objects).toHaveLength(100);
@@ -314,9 +313,9 @@ describe('resource tools', () => {
   });
 
   test('chains create, inspect, write, read, and delete using the returned name only', async () => {
-    const resources: TActorResource[] = [];
-    const entries = new Map<string, { value: TJson; revision: number }>();
-    const actorService: TActorServiceReloader = {
+    const resources: TAgentResource[] = [];
+    const entries = new Map<string, { value: TResourceJson; revision: number }>();
+    const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
       createResource: async ({ kind, name }) => {
         const created = resource('internal-chain-id', kind, name.trim());
@@ -350,7 +349,7 @@ describe('resource tools', () => {
       },
     };
     const approvals = new ApprovalCoordinator();
-    const { byName } = tools(actorService, approvals);
+    const { byName } = tools(resourceService, approvals);
 
     const create = executeTool(byName.get('vc_resource_create')!, { kind: 'kv', name: 'Team Preferences' });
     const createApproval = await pendingApproval(approvals);
@@ -385,7 +384,7 @@ describe('resource tools', () => {
 
   test('freezes internal IDs before approvals while returning names only', async () => {
     const resources = [resource('kv-stable-id', 'kv', 'Preferences')];
-    const actorService: TActorServiceReloader = {
+    const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
       createResource: async ({ kind, name }) => {
         const created = resource(`created-${resources.length}`, kind, name.trim());
@@ -405,7 +404,7 @@ describe('resource tools', () => {
     };
     let approvalId = 0;
     const approvals = new ApprovalCoordinator({ createId: () => `approval-${++approvalId}` });
-    const { byName } = tools(actorService, approvals);
+    const { byName } = tools(resourceService, approvals);
 
     for (const input of [
       { kind: 'kv', name: 'Cache', expectedName: 'Cache' },
@@ -441,7 +440,7 @@ describe('resource tools', () => {
     const resources = [resource('secret-1', 'secretStore', 'Credentials'), resource('db-1', 'db', 'Notes')];
     const secretValues: unknown[] = [];
     const draftCalls: unknown[] = [];
-    const actorService: TActorServiceReloader = {
+    const resourceService: TAgentResourceService = {
       ...resolvingService(resources),
       getResourceDataEntry: async () => null,
       setResourceDataEntry: async ({ key, value }) => {
@@ -468,7 +467,7 @@ describe('resource tools', () => {
       resourceName: 'Credentials',
       operations: [{ operation: 'set', key: 'TOKEN', value: 'super-secret-value' }],
     };
-    const { byName } = tools(actorService, approvals, async () => true, () => {
+    const { byName } = tools(resourceService, approvals, async () => true, () => {
       const stored = exactSecretArgs;
       exactSecretArgs = undefined;
       return stored;

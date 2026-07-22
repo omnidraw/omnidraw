@@ -4,6 +4,7 @@ import { fnWidgetGroupMembers } from './fn.widget-groups';
 
 function variant(source: 'published' | 'draft', group: string | null): TWidgetVariantSummary {
   return {
+    draftId: null,
     source,
     displayName: 'Camera',
     kind: 'actor-widget',

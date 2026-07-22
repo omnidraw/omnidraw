@@ -1,18 +1,20 @@
 import type { Database } from '@tursodatabase/database';
+import { createHash } from 'node:crypto';
 import type { IService, IStoppableService } from '@vibecanvas/runtime';
 import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
 import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlStoreTurso';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   IWidgetArtifactGarbageCollector,
+  IWidgetArtifactBuilder,
   IWidgetArtifactMutationCoordinator,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
   IWidgetArtifactReader,
   IWidgetControlStore,
   IWidgetPreviewService,
-  IWidgetPreviewStore,
   IWidgetPublishedPlacementReader,
   IWidgetPublicationService,
+  IWidgetRevisionSourceSnapshotReader,
   IWidgetServerPreviewArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
   IWidgetSourceBuildArtifactReadCapabilityIssuer,
@@ -26,6 +28,9 @@ import type {
   TWidgetArtifactReadCapabilityIssueRequest,
   TWidgetArtifactReadRequest,
   TWidgetDefinitionDescriptor,
+  TWidgetDefinitionArchiveInput,
+  TWidgetDefinitionArchiveResult,
+  TWidgetManifestV2,
   TWidgetPublishRequest,
   TWidgetPublishResult,
   TWidgetPublishedPlacementDescriptor,
@@ -40,7 +45,15 @@ import type {
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRevisionSourceDescriptor,
+  TWidgetRevisionSourceSnapshotReadRequest,
   TWidgetRollbackInput,
+  TWidgetSourceSnapshot,
+} from '@vibecanvas/widget-contract';
+import {
+  ZWidgetManifestV2,
+  ZWidgetServerFunctionDescriptors,
+  fnCanonicalizeWidgetManifest,
+  fnValidateWidgetBuildIntegrity,
 } from '@vibecanvas/widget-contract';
 import {
   LocalWidgetArtifactStore,
@@ -54,6 +67,7 @@ import {
   WidgetSourceSnapshot,
   type TCapturedWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract/local';
+import { WidgetTypeScriptValidator } from './WidgetTypeScriptValidator';
 
 type TWidgetServicePlacement = Readonly<Pick<
   TTenantContext,
@@ -68,6 +82,8 @@ type TWidgetServiceConfig = Readonly<{
   builderIdentity: string;
   artifactReadSecret: Uint8Array;
   artifactReadMaximumTtlMs: number;
+  compiledExecutable?: boolean;
+  nowMs?: () => number;
   functionDescriptorExtractor: IWidgetServerFunctionDescriptorExtractor;
   resolveTrustedPackageImport: (specifier: string) => string;
 }>;
@@ -76,6 +92,16 @@ type TWidgetSourceCaptureArgs = Readonly<{
   id?: string;
   createdAtMs?: number;
   expectedDigestSha256?: string;
+}>;
+
+type TWidgetBuildValidationRequest = Readonly<{
+  snapshot: TWidgetSourceSnapshot;
+  manifest: TWidgetManifestV2;
+}>;
+
+type TWidgetBuildValidationResult = Readonly<{
+  valid: boolean;
+  diagnostics: readonly string[];
 }>;
 
 const WIDGET_PLACEMENT_FALLBACK_BOUNDS = Object.freeze({ width: 360, height: 320 });
@@ -87,6 +113,7 @@ class WidgetService implements
   IService,
   IStoppableService,
   IWidgetPublicationService,
+  IWidgetRevisionSourceSnapshotReader,
   IWidgetPublishedPlacementReader,
   IWidgetArtifactReader,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
@@ -98,8 +125,14 @@ class WidgetService implements
   IWidgetArtifactGarbageCollector {
   readonly name = 'widget-service';
   readonly #placement: TWidgetServicePlacement;
+  readonly #builderIdentity: string;
+  readonly #artifactReadMaximumTtlMs: number;
+  readonly #nowMs: () => number;
   readonly #controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator;
+  readonly authoringStore: AgentAuthoringStoreTurso;
   readonly #sourceSnapshot: WidgetSourceSnapshot;
+  readonly #builder: IWidgetArtifactBuilder;
+  readonly #typescriptValidator: WidgetTypeScriptValidator;
   readonly #publication: WidgetPublicationService;
   readonly #preview: WidgetPreviewService;
   readonly #artifacts: WidgetArtifactService;
@@ -107,14 +140,21 @@ class WidgetService implements
 
   constructor(config: TWidgetServiceConfig) {
     this.#placement = Object.freeze({ ...config.placement });
+    this.#builderIdentity = config.builderIdentity;
+    this.#artifactReadMaximumTtlMs = config.artifactReadMaximumTtlMs;
+    this.#nowMs = config.nowMs ?? Date.now;
     this.#sourceSnapshot = new WidgetSourceSnapshot();
+    this.#typescriptValidator = new WidgetTypeScriptValidator({
+      compiledExecutable: config.compiledExecutable,
+    });
 
     const controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator =
       new WidgetControlStoreTurso(config.database);
-    const previewStore: IWidgetPreviewStore = new AgentAuthoringStoreTurso(
+    const previewStore = new AgentAuthoringStoreTurso(
       config.database,
       controlStore,
     );
+    this.authoringStore = previewStore;
     this.#controlStore = controlStore;
     const blobs = new LocalWidgetArtifactStore({
       orgId: config.placement.orgId,
@@ -124,6 +164,7 @@ class WidgetService implements
     const readAuthority = new WidgetArtifactReadAuthority({
       secret: config.artifactReadSecret,
       maximumTtlMs: config.artifactReadMaximumTtlMs,
+      now: this.#nowMs,
     });
     this.#artifacts = new WidgetArtifactService({
       controlStore,
@@ -139,6 +180,7 @@ class WidgetService implements
       functionDescriptorExtractor: config.functionDescriptorExtractor,
       resolveTrustedPackageImport: config.resolveTrustedPackageImport,
     });
+    this.#builder = builder;
     this.#publication = new WidgetPublicationService({
       builder,
       artifacts: this.#artifacts,
@@ -172,6 +214,60 @@ class WidgetService implements
     return this.#sourceSnapshot.capture(sourceRoot, args);
   }
 
+  /** Trusted, no-commit build validation over one exact immutable source snapshot. */
+  async validateBuild(
+    tenant: TTenantContext,
+    request: TWidgetBuildValidationRequest,
+  ): Promise<TWidgetBuildValidationResult> {
+    this.#assertPlacement(tenant);
+    try {
+      const manifest = ZWidgetManifestV2.parse(request.manifest);
+      const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifest);
+      const build = await this.#builder.build(tenant, {
+        snapshot: request.snapshot,
+        manifest,
+        canonicalManifestJson,
+        builderIdentity: this.#builderIdentity,
+      });
+      const descriptors = ZWidgetServerFunctionDescriptors.safeParse(build.functionDescriptors);
+      if (!descriptors.success) {
+        return Object.freeze({
+          valid: false,
+          diagnostics: Object.freeze(['Widget builder returned malformed server-function descriptors.']),
+        });
+      }
+      const integrity = fnValidateWidgetBuildIntegrity({
+        snapshot: request.snapshot,
+        manifest,
+        canonicalManifestJson,
+        builderIdentity: this.#builderIdentity,
+        build: { ...build, functionDescriptors: descriptors.data },
+        digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
+      });
+      if (!integrity.valid) {
+        return Object.freeze({
+          valid: false,
+          diagnostics: Object.freeze([
+            `Widget builder integrity check failed: ${integrity.reason}.`,
+          ]),
+        });
+      }
+      const typeDiagnostics = await this.#typescriptValidator.validate(request.snapshot);
+      if (typeDiagnostics.length > 0) {
+        return Object.freeze({
+          valid: false,
+          diagnostics: typeDiagnostics,
+        });
+      }
+      return Object.freeze({ valid: true, diagnostics: Object.freeze([]) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const bounded = message.replace(/\s+/g, ' ').trim().slice(0, 512)
+        || 'Widget build validation failed.';
+      return Object.freeze({ valid: false, diagnostics: Object.freeze([bounded]) });
+    }
+  }
+
   publish(
     tenant: TTenantContext,
     request: TWidgetPublishRequest,
@@ -186,6 +282,14 @@ class WidgetService implements
   ): Promise<TWidgetActiveRevisionCasResult> {
     this.#assertPlacement(tenant);
     return this.#publication.rollback(tenant, request);
+  }
+
+  archive(
+    tenant: TTenantContext,
+    request: TWidgetDefinitionArchiveInput,
+  ): Promise<TWidgetDefinitionArchiveResult> {
+    this.#assertPlacement(tenant);
+    return this.#publication.archive(tenant, request);
   }
 
   getRevision(
@@ -210,6 +314,43 @@ class WidgetService implements
   ): Promise<TWidgetRevisionSourceDescriptor | null> {
     this.#assertPlacement(tenant);
     return this.#publication.getRevisionSource(tenant, revisionId);
+  }
+
+  async readRevisionSourceSnapshot(
+    tenant: TTenantContext,
+    request: TWidgetRevisionSourceSnapshotReadRequest,
+  ): Promise<TWidgetSourceSnapshot | null> {
+    this.#assertPlacement(tenant);
+    const source = await this.#publication.getRevisionSource(tenant, request.revisionId);
+    if (
+      !source
+      || source.definitionId !== request.definitionId
+      || source.revisionId !== request.revisionId
+      || source.sourceArtifact.kind !== 'source'
+    ) return null;
+    const capability = await this.#artifacts.issueSourceBuildArtifactReadCapability(tenant, {
+      definitionId: source.definitionId,
+      revisionId: source.revisionId,
+      artifactId: source.sourceArtifact.id,
+      artifactKind: 'source',
+      digestSha256: source.sourceArtifact.digestSha256,
+      expiresAtMs: this.#nowMs() + this.#artifactReadMaximumTtlMs,
+    });
+    const bytes = await this.#artifacts.readArtifact(tenant, {
+      artifactId: source.sourceArtifact.id,
+      readCapability: capability,
+      purpose: 'source_build',
+    });
+    if (!bytes) return null;
+    return this.#sourceSnapshot.decodeArtifact({
+      kind: 'source',
+      digestSha256: source.sourceArtifact.digestSha256,
+      bytes,
+    }, {
+      expectedSnapshotId: source.sourceSnapshotId,
+      expectedSourceDigestSha256: source.sourceDigestSha256,
+      expectedBuilderIdentity: source.builderIdentity,
+    });
   }
 
   buildPreview(
@@ -413,6 +554,8 @@ class WidgetService implements
 
 export { WidgetService };
 export type {
+  TWidgetBuildValidationRequest,
+  TWidgetBuildValidationResult,
   TWidgetServiceConfig,
   TWidgetServicePlacement,
   TWidgetSourceCaptureArgs,

@@ -3,12 +3,36 @@ import { WidgetPlacementService } from "../../src/widget-placement/WidgetPlaceme
 
 const DEFINITION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 const REVISION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7";
+const DRAFT_ID = "cccccccc-cccc-4ccc-8ccc-ccccccccccc2";
+const OTHER_DRAFT_ID = "cccccccc-cccc-4ccc-8ccc-ccccccccccc5";
+const PREVIEW_REVISION_ID = "dddddddd-dddd-4ddd-8ddd-ddddddddddd3";
+const PREVIEW_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4";
 
 function fixture(result: unknown, options: {
   resolvePlacement?: ReturnType<typeof vi.fn>;
+  detail?: ReturnType<typeof vi.fn>;
+  draftRevision?: string;
 } = {}) {
   const resolvePlacement = options.resolvePlacement ?? vi.fn(async () => [undefined, result] as const);
+  const inferredRevision = (
+    result as { descriptor?: { reference?: { revision?: unknown } } } | undefined
+  )?.descriptor?.reference?.revision;
+  const detail = options.detail ?? vi.fn(async ({ name }: { name: string }) => [undefined, {
+    name,
+    source: "draft",
+    variant: {
+      source: "draft",
+      draftId: DRAFT_ID,
+      revision: options.draftRevision ?? (typeof inferredRevision === "string" ? inferredRevision : "e".repeat(64)),
+    },
+  }] as const);
   const close = vi.fn(async () => [undefined, { closed: true }] as const);
+  const get = vi.fn(async ({ draftId, previewId }: { draftId: string; previewId: string }) => [undefined, {
+    ready: true,
+    draftId,
+    previewId,
+    previewRevisionId: PREVIEW_REVISION_ID,
+  }] as const);
   const placeWidgetInstance = vi.fn();
   const placeLegacyPublishedWidget = vi.fn();
   const placePreview = vi.fn(async () => undefined);
@@ -17,12 +41,12 @@ function fixture(result: unknown, options: {
     api: {
       api: {
         agent: {
-          widgets: { resolvePlacement },
-          widgetPreview: { close },
+          widgets: { detail, resolvePlacement },
+          widgetPreview: { get, close },
         },
       },
     } as never,
-    browser: { createId: () => "preview-owner" } as never,
+    browser: { createId: () => PREVIEW_ID } as never,
     coordinator: { register: vi.fn(() => () => undefined) } as never,
     dropPlacement: { resolveWorldBounds } as never,
     previewFrames: { place: placePreview } as never,
@@ -30,8 +54,10 @@ function fixture(result: unknown, options: {
   });
   return {
     service,
+    detail,
     resolvePlacement,
     close,
+    get,
     placeWidgetInstance,
     placeLegacyPublishedWidget,
     placePreview,
@@ -113,6 +139,7 @@ describe("WidgetPlacementService", () => {
       ok: true,
       descriptor: {
         kind: "published-legacy",
+        draftId: null,
         reference,
         bounds: { width: 420, height: 300 },
         definitionId: null,
@@ -160,6 +187,7 @@ describe("WidgetPlacementService", () => {
       ok: true,
       descriptor: {
         kind: "published-legacy",
+        draftId: null,
         reference,
         bounds: { width: 420, height: 300 },
         definitionId: null,
@@ -182,18 +210,19 @@ describe("WidgetPlacementService", () => {
   });
 
   test("builds an exact draft revision and places it only as a pinned Preview", async () => {
-    const reference = { source: "draft" as const, name: "Weather", revision: "draft-r2" };
+    const reference = { source: "draft" as const, name: "Weather", revision: "e".repeat(64) };
     const { service, resolvePlacement, placeWidgetInstance, placeLegacyPublishedWidget, placePreview } = fixture({
       ok: true,
       descriptor: {
         kind: "preview",
+        draftId: DRAFT_ID,
         reference,
         bounds: { width: 360, height: 320 },
         definitionId: null,
         revisionId: null,
         definitionName: null,
         definitionSlug: null,
-        previewId: "preview-owner",
+        previewId: PREVIEW_ID,
       },
     });
 
@@ -203,13 +232,17 @@ describe("WidgetPlacementService", () => {
       clientPoint: { x: 100, y: 120 },
     });
 
-    expect(resolvePlacement).toHaveBeenCalledWith({ reference, previewId: "preview-owner" });
+    expect(resolvePlacement).toHaveBeenCalledWith({
+      reference,
+      previewId: PREVIEW_ID,
+      expectedDraftId: DRAFT_ID,
+    });
     expect(placeWidgetInstance).not.toHaveBeenCalled();
     expect(placeLegacyPublishedWidget).not.toHaveBeenCalled();
     expect(placePreview).toHaveBeenCalledWith({
-      draftName: "Weather",
-      expectedRevision: "draft-r2",
-      previewId: "preview-owner",
+      draftId: DRAFT_ID,
+      expectedRevision: "e".repeat(64),
+      previewId: PREVIEW_ID,
       bounds: { x: 40, y: 50, width: 420, height: 300 },
     });
   });
@@ -220,15 +253,16 @@ describe("WidgetPlacementService", () => {
       ok: true,
       descriptor: {
         kind: "preview",
+        draftId: DRAFT_ID,
         reference: { ...reference, revision: "preview-r3" },
         bounds: { width: 360, height: 320 },
         definitionId: null,
         revisionId: null,
         definitionName: null,
         definitionSlug: null,
-        previewId: "preview-owner",
+        previewId: PREVIEW_ID,
       },
-    });
+    }, { draftRevision: reference.revision });
 
     await service.createDropRequest({ reference, bounds: { width: 360, height: 320 }, label: "Weather Preview" }).onCommit({
       reference,
@@ -240,9 +274,75 @@ describe("WidgetPlacementService", () => {
     expect(placeLegacyPublishedWidget).not.toHaveBeenCalled();
     expect(placePreview).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledWith({
-      draftId: "Weather",
-      previewId: "preview-owner",
-      expectedRevision: "preview-r2",
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      expectedPreviewRevisionId: PREVIEW_REVISION_ID,
+    });
+  });
+
+  test("closes the exact pre-resolved Preview when resolvePlacement loses its response after commit", async () => {
+    const reference = { source: "draft" as const, name: "Weather", revision: "e".repeat(64) };
+    const resolvePlacement = vi.fn(async () => {
+      throw new Error("transport response lost after commit");
+    });
+    const {
+      service,
+      detail,
+      get,
+      close,
+      placePreview,
+    } = fixture(undefined, { resolvePlacement });
+
+    await service.createDropRequest({ reference, bounds: { width: 360, height: 320 }, label: "Weather" }).onCommit({
+      reference,
+      bounds: { width: 360, height: 320 },
+      clientPoint: { x: 100, y: 120 },
+    });
+
+    expect(detail).toHaveBeenCalledWith({ name: "Weather", source: "draft" });
+    expect(resolvePlacement).toHaveBeenCalledWith({
+      reference,
+      previewId: PREVIEW_ID,
+      expectedDraftId: DRAFT_ID,
+    });
+    expect(get).toHaveBeenCalledWith({ draftId: DRAFT_ID, previewId: PREVIEW_ID });
+    expect(close).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      expectedPreviewRevisionId: PREVIEW_REVISION_ID,
+    });
+    expect(placePreview).not.toHaveBeenCalled();
+  });
+
+  test("keeps the pre-resolved owner when a resolver returns a different draft identity", async () => {
+    const reference = { source: "preview" as const, name: "Weather", revision: "e".repeat(64) };
+    const { service, get, close, placePreview } = fixture({
+      ok: true,
+      descriptor: {
+        kind: "preview",
+        draftId: OTHER_DRAFT_ID,
+        reference,
+        bounds: { width: 360, height: 320 },
+        definitionId: null,
+        revisionId: null,
+        definitionName: null,
+        definitionSlug: null,
+        previewId: PREVIEW_ID,
+      },
+    });
+
+    await service.createDropRequest({ reference, bounds: { width: 360, height: 320 }, label: "Weather" }).onCommit({
+      reference,
+      bounds: { width: 360, height: 320 },
+      clientPoint: { x: 100, y: 120 },
+    });
+
+    expect(placePreview).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledWith({ draftId: DRAFT_ID, previewId: PREVIEW_ID });
+    expect(close).toHaveBeenCalledWith({
+      draftId: DRAFT_ID,
+      previewId: PREVIEW_ID,
+      expectedPreviewRevisionId: PREVIEW_REVISION_ID,
     });
   });
 
@@ -323,6 +423,7 @@ describe("WidgetPlacementService", () => {
       ok: true,
       descriptor: {
         kind: "published-legacy",
+        draftId: null,
         reference,
         bounds: { width: 420, height: 300 },
         definitionId: null,

@@ -5,6 +5,7 @@ import {
   type IWidgetPublicationService,
   type IWidgetPublishedPlacementReader,
   type IWidgetRevisionReader,
+  type IWidgetRevisionSourceSnapshotReader,
   type IWidgetServerPreviewArtifactReadCapabilityIssuer,
   type IWidgetServerExecutionArtifactReadCapabilityIssuer,
   type IWidgetSourceBuildArtifactReadCapabilityIssuer,
@@ -19,6 +20,8 @@ import {
 } from './TenantServicePool';
 import {
   WidgetService,
+  type TWidgetBuildValidationRequest,
+  type TWidgetBuildValidationResult,
   type TWidgetSourceCaptureArgs,
 } from './WidgetService';
 
@@ -27,21 +30,23 @@ type TWidgetServicePoolOptions = Omit<
   'key' | 'singlePlacementPerOrganization'
 >;
 
-type TWidgetServiceCapability = IWidgetPublicationService
-  & IWidgetPreviewService
+type TWidgetServiceCapability = Omit<IWidgetPublicationService, 'archive'>
   & IWidgetArtifactReader
   & IWidgetBrowserUiArtifactReadCapabilityIssuer
-  & IWidgetUiPreviewArtifactReadCapabilityIssuer
-  & IWidgetSourceBuildArtifactReadCapabilityIssuer
   & IWidgetPublishedPlacementReader;
 
 /** Trusted authoring surface; captureSource accepts a host path and is never public API authority. */
 type TWidgetAuthoringCapability = IWidgetPublicationService
   & IWidgetPreviewService
+  & IWidgetRevisionSourceSnapshotReader
   & IWidgetArtifactReader
   & IWidgetUiPreviewArtifactReadCapabilityIssuer
   & Readonly<{
     captureSource: WidgetService['captureSource'];
+    validateBuild(
+      tenant: TTenantContext,
+      request: TWidgetBuildValidationRequest,
+    ): Promise<TWidgetBuildValidationResult>;
   }>;
 
 type TWidgetServerArtifactCapability = IWidgetArtifactReader
@@ -73,6 +78,10 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
     this.#delegate(tenant, (service) => service.rollback(tenant, request))
   );
 
+  archive: IWidgetPublicationService['archive'] = (tenant, request) => (
+    this.#delegate(tenant, (service) => service.archive(tenant, request))
+  );
+
   getRevision: IWidgetPublicationService['getRevision'] = (tenant, revisionId) => (
     this.#delegate(tenant, (service) => service.getRevision(tenant, revisionId))
   );
@@ -84,6 +93,11 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
   getRevisionSource: IWidgetPublicationService['getRevisionSource'] = (tenant, revisionId) => (
     this.#delegate(tenant, (service) => service.getRevisionSource(tenant, revisionId))
   );
+
+  readRevisionSourceSnapshot:
+    IWidgetRevisionSourceSnapshotReader['readRevisionSourceSnapshot'] = (tenant, request) => (
+      this.#delegate(tenant, (service) => service.readRevisionSourceSnapshot(tenant, request))
+    );
 
   buildPreview: IWidgetPreviewService['buildPreview'] = (tenant, request) => (
     this.#delegate(tenant, (service) => service.buildPreview(tenant, request))
@@ -182,6 +196,16 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
     );
   }
 
+  validateBuild(
+    tenant: TTenantContext,
+    request: TWidgetBuildValidationRequest,
+  ): Promise<TWidgetBuildValidationResult> {
+    return this.#delegate(
+      tenant,
+      (service) => service.validateBuild(tenant, request),
+    );
+  }
+
   collect(
     tenant: TTenantContext,
     request: TWidgetArtifactGcRequest,
@@ -207,15 +231,9 @@ function createWidgetServiceCapability(
     getRevision: pool.getRevision,
     getActiveRevision: pool.getActiveRevision,
     getRevisionSource: pool.getRevisionSource,
-    buildPreview: pool.buildPreview,
-    getPreview: pool.getPreview,
-    getPreviewRevision: pool.getPreviewRevision,
-    stopPreview: pool.stopPreview,
     listPublishedPlacements: pool.listPublishedPlacements,
     resolvePublishedPlacement: pool.resolvePublishedPlacement,
     issueBrowserUiArtifactReadCapability: pool.issueBrowserUiArtifactReadCapability,
-    issueUiPreviewArtifactReadCapability: pool.issueUiPreviewArtifactReadCapability,
-    issueSourceBuildArtifactReadCapability: pool.issueSourceBuildArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,
   });
@@ -227,9 +245,11 @@ function createWidgetAuthoringCapability(
   return Object.freeze({
     publish: pool.publish,
     rollback: pool.rollback,
+    archive: pool.archive,
     getRevision: pool.getRevision,
     getActiveRevision: pool.getActiveRevision,
     getRevisionSource: pool.getRevisionSource,
+    readRevisionSourceSnapshot: pool.readRevisionSourceSnapshot,
     buildPreview: pool.buildPreview,
     getPreview: pool.getPreview,
     getPreviewRevision: pool.getPreviewRevision,
@@ -238,6 +258,7 @@ function createWidgetAuthoringCapability(
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,
     captureSource: pool.captureSource,
+    validateBuild: pool.validateBuild,
   });
 }
 

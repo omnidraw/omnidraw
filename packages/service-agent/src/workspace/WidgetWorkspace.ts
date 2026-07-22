@@ -17,6 +17,8 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { ZVibecanvasJson } from '@vibecanvas/service-actor/core/vibecanvasjson.zod';
+import { ZWidgetManifestV2, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
+import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
 import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
 import { fnAssertSafeFinalDestination } from '../core/fn.safe-destination';
 import { fnMatchesGlob } from './fn.glob';
@@ -59,6 +61,30 @@ type TPublishSnapshot = {
   commit(): Promise<void>;
   rollback(): Promise<void>;
 };
+
+type TDraftMaterializationIdentity = Readonly<{
+  definitionId: string;
+  publishedRevisionId: string;
+  sourceDigestSha256: string;
+}>;
+
+type TDraftMaterializationMarker = TDraftMaterializationIdentity & Readonly<{
+  version: 1;
+  name: string;
+}>;
+
+type TDraftMaterializationResult = Readonly<{
+  draft: TWidgetDraftWorkspaceEntry;
+  created: boolean;
+  pending: boolean;
+  commitSeed<T>(operation: () => Promise<T>): Promise<T>;
+  rollback(): Promise<boolean>;
+}>;
+
+type TDraftMaterializationMarkerRead =
+  | Readonly<{ status: 'missing' }>
+  | Readonly<{ status: 'invalid' }>
+  | Readonly<{ status: 'valid'; marker: TDraftMaterializationMarker }>;
 
 type TScaffold = (args: TWidgetCreateInput & { cwd: string; name: string }) => Promise<string[]>;
 
@@ -255,6 +281,100 @@ export class WidgetWorkspace {
     return draft;
   }
 
+  /** Atomically promotes one verified immutable v2 snapshot into draft storage. */
+  async materializeDraftFromSnapshot(
+    requestedName: string,
+    snapshot: TWidgetSourceSnapshot,
+    publication: Readonly<{ definitionId: string; publishedRevisionId: string }>,
+  ): Promise<TDraftMaterializationResult> {
+    const name = this.#normalizeName(requestedName);
+    const draftPath = join(this.draftRoot, name);
+    const marker: TDraftMaterializationMarker = {
+      version: 1,
+      name,
+      definitionId: publication.definitionId,
+      publishedRevisionId: publication.publishedRevisionId,
+      sourceDigestSha256: snapshot.digestSha256,
+    };
+    return this.#withWidgetWrite(draftPath, async () => {
+      await this.#assertNoCaseCollision(this.draftRoot, name);
+      const targetEntry = await lstat(draftPath).catch(() => null);
+      if (targetEntry) {
+        if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+          throw new Error(`Widget draft '${name}' is not a managed directory.`);
+        }
+        const markerRead = await this.#readDraftMaterializationMarker(name);
+        if (markerRead.status === 'invalid') {
+          throw Object.assign(
+            new Error(`Widget draft '${name}' has invalid pending materialization authority.`),
+            { code: 'WIDGET_DRAFT_MATERIALIZATION_INVALID' },
+          );
+        }
+        const draft = await this.#readDraftEntry(name, draftPath);
+        if (!draft) throw new Error(`Widget draft '${name}' could not be read.`);
+        if (markerRead.status === 'missing') {
+          return {
+            draft,
+            created: false,
+            pending: false,
+            commitSeed: async () => {
+              throw new Error(`Widget draft '${name}' is not pending publication materialization.`);
+            },
+            rollback: async () => false,
+          };
+        }
+        if (
+          !this.#matchesDraftMaterializationMarker(markerRead.marker, marker)
+          || !await this.#draftSourceMatchesDigest(draftPath, marker.sourceDigestSha256)
+        ) {
+          await this.#removePendingDraftMaterialization(name, draftPath);
+          throw Object.assign(
+            new Error(`Widget draft '${name}' does not match its pending immutable publication source.`),
+            { code: 'WIDGET_DRAFT_MATERIALIZATION_MISMATCH' },
+          );
+        }
+        return this.#pendingDraftMaterializationResult(name, draftPath, draft, marker, false);
+      }
+
+      await rm(this.#draftMaterializationMarkerPath(name), { force: true }).catch(() => undefined);
+
+      const temporary = join(this.draftRoot, `.materialize-${this.#safeId()}`);
+      let markerWritten = false;
+      let promoted = false;
+      try {
+        await new WidgetSourceSnapshotMaterializer().materialize(snapshot, temporary);
+        const manifest = ZWidgetManifestV2.safeParse(await this.#readManifest(temporary));
+        if (!manifest.success) {
+          throw new Error('INVALID_MANIFEST: Published widget source has no valid v2 manifest.');
+        }
+        if (manifest.data.name !== name) {
+          throw new Error(
+            `INVALID_MANIFEST: Published widget identity is '${name}', but vibecanvas.json declares '${manifest.data.name}'.`,
+          );
+        }
+        await this.#writeDraftMaterializationMarker(marker);
+        markerWritten = true;
+        await rename(temporary, draftPath);
+        promoted = true;
+        const draft = await this.#readDraftEntry(name, draftPath);
+        if (!draft) throw new Error(`Widget draft '${name}' could not be read after materialization.`);
+        return this.#pendingDraftMaterializationResult(name, draftPath, draft, marker, true);
+      } catch (error) {
+        if (markerWritten && !promoted) {
+          await rm(this.#draftMaterializationMarkerPath(name), { force: true }).catch(() => undefined);
+        }
+        throw error;
+      } finally {
+        await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
+      }
+    });
+  }
+
+  async isDraftMaterializationPending(requestedName: string): Promise<boolean> {
+    const name = this.#normalizeName(requestedName);
+    return (await this.#readDraftMaterializationMarker(name)).status !== 'missing';
+  }
+
   async updateDraftManifestAtomic<T>(
     requestedName: string,
     expectedRevision: string,
@@ -294,7 +414,7 @@ export class WidgetWorkspace {
     const nextName = this.#normalizeName(requestedNextName);
     const draftPath = join(this.draftRoot, name);
     const nextDraftPath = join(this.draftRoot, nextName);
-    return this.#withWidgetWrite(draftPath, async () => {
+    return this.#withWidgetWrites([draftPath, nextDraftPath], async () => {
       if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
       const currentRevision = await this.#readDraftRevision(draftPath);
       if (currentRevision.value !== expectedRevision) {
@@ -318,6 +438,7 @@ export class WidgetWorkspace {
       const temporary = join(draftPath, `.vibecanvas.json.edit-${this.#safeId()}.tmp`);
       let renamed = false;
       let manifestReplaced = false;
+      let rollbackMounts: (() => Promise<void>) | null = null;
       const commit = async () => {
         await writeFile(temporary, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
         await rename(temporary, manifestPath);
@@ -325,7 +446,7 @@ export class WidgetWorkspace {
         if (nextName !== name) {
           await rename(draftPath, nextDraftPath);
           renamed = true;
-          await this.#moveDraftMount(name, nextName, nextDraftPath);
+          rollbackMounts = await this.#moveDraftMount(name, nextName, nextDraftPath);
         }
       };
       try {
@@ -333,6 +454,8 @@ export class WidgetWorkspace {
         else await commit();
       } catch (error) {
         await rm(temporary, { force: true }).catch(() => undefined);
+        const rollback = rollbackMounts as (() => Promise<void>) | null;
+        if (rollback) await rollback().catch(() => undefined);
         if (renamed && !await lstat(draftPath).catch(() => null)) {
           await rename(nextDraftPath, draftPath).catch(() => undefined);
         }
@@ -353,9 +476,13 @@ export class WidgetWorkspace {
     const name = this.#normalizeName(requestedName);
     const draftPath = join(this.draftRoot, name);
     return this.#withWidgetWrite(draftPath, async () => {
-      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return false;
+      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+        await rm(this.#draftMaterializationMarkerPath(name), { force: true });
+        return false;
+      }
       await rm(draftPath, { recursive: true, force: false });
       await this.#removeDraftMount(name);
+      await rm(this.#draftMaterializationMarkerPath(name), { force: true });
       return true;
     });
   }
@@ -446,16 +573,8 @@ export class WidgetWorkspace {
     const name = this.#normalizeName(requestedName);
     await this.#assertNoCaseCollision(this.draftRoot, name);
     const draftPath = join(this.draftRoot, name);
-    if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return null;
-
-    const revision = await this.#readDraftRevision(draftPath);
-    return {
-      name,
-      draftPath,
-      published: await this.#isDirectDirectory(this.publishedRoot, join(this.publishedRoot, name)),
-      revision: revision.value,
-      updatedAt: new Date(revision.updatedAtMs).toISOString(),
-    };
+    if (await this.isDraftMaterializationPending(name)) return null;
+    return this.#readDraftEntry(name, draftPath);
   }
 
   async getCleanDraftRevision(requestedName: string): Promise<string | null> {
@@ -480,6 +599,10 @@ export class WidgetWorkspace {
       join,
       dirname,
       parseManifest: (value) => {
+        const v2 = ZWidgetManifestV2.safeParse(value);
+        if (v2.success) {
+          return { ok: true as const, name: v2.data.name, kind: 'widget' as const };
+        }
         const parsed = ZVibecanvasJson.safeParse(value);
         return parsed.success
           ? { ok: true as const, name: parsed.data.name, kind: parsed.data.kind ?? null }
@@ -851,6 +974,34 @@ export class WidgetWorkspace {
     };
   }
 
+  /**
+   * Runs a durable authoring commit only while the live draft still matches
+   * the immutable source revision that was validated. The operation executes
+   * inside the draft's write lane and must not call another workspace mutation
+   * for the same draft.
+   */
+  async withDraftRevisionFence<T>(
+    requestedName: string,
+    expectedRevision: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const name = this.#normalizeName(requestedName);
+    const draftPath = join(this.draftRoot, name);
+    return this.#withWidgetWrite(draftPath, async () => {
+      if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+        throw new Error(`Widget draft '${name}' does not exist.`);
+      }
+      const currentRevision = (await this.#readDraftRevision(draftPath)).value;
+      if (currentRevision !== expectedRevision) {
+        throw Object.assign(
+          new Error(`Widget draft '${name}' changed. Expected revision '${expectedRevision}', current revision '${currentRevision}'.`),
+          { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision },
+        );
+      }
+      return operation();
+    });
+  }
+
   async findMountedWidget(chatId: string, requestedName?: string): Promise<TWidgetMount> {
     const mounts = await this.listMounts(chatId);
     if (requestedName) {
@@ -866,6 +1017,9 @@ export class WidgetWorkspace {
 
   async #resolveDraftTarget(name: string): Promise<string> {
     const draft = join(this.draftRoot, name);
+    if (await this.isDraftMaterializationPending(name)) {
+      throw new Error(`Widget draft '${name}' is still pending durable materialization.`);
+    }
     const draftExists = await this.#isDirectDirectory(this.draftRoot, draft);
     if (!draftExists) {
       if (await this.#isDirectDirectory(this.publishedRoot, join(this.publishedRoot, name))) {
@@ -886,7 +1040,10 @@ export class WidgetWorkspace {
       const mountPath = join(widgetsRoot, entry.name);
       const ownedKind = await this.#ownedMountKind(mountPath, entry.name).catch(() => null);
       if (ownedKind !== 'draft') continue;
-      if (await this.#isDirectDirectory(this.draftRoot, join(this.draftRoot, entry.name))) continue;
+      if (
+        await this.#isDirectDirectory(this.draftRoot, join(this.draftRoot, entry.name))
+        && !await this.isDraftMaterializationPending(entry.name)
+      ) continue;
       await rm(mountPath, { force: true });
     }
 
@@ -895,6 +1052,7 @@ export class WidgetWorkspace {
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
       const normalized = fnNormalizeWidgetName(entry.name);
       if (!normalized.ok || normalized.value !== entry.name) continue;
+      if (await this.isDraftMaterializationPending(entry.name)) continue;
       const targetPath = await realpath(join(this.draftRoot, entry.name));
       const mountPath = join(widgetsRoot, entry.name);
       const existing = await lstat(mountPath).catch(() => null);
@@ -992,7 +1150,11 @@ export class WidgetWorkspace {
     }
   }
 
-  async #moveDraftMount(name: string, nextName: string, nextDraftPath: string): Promise<void> {
+  async #moveDraftMount(
+    name: string,
+    nextName: string,
+    nextDraftPath: string,
+  ): Promise<() => Promise<void>> {
     const moves: { mountPath: string; nextMountPath: string; root: string }[] = [];
     for (const root of await this.#existingChatWorkspaceRoots()) {
       const mountPath = join(root, 'widgets', name);
@@ -1009,8 +1171,20 @@ export class WidgetWorkspace {
       for (const move of moves) {
         await this.#withWidgetWrite(move.root, async () => {
           await rm(move.mountPath, { force: true });
-          const linkTarget = await this.#mountLinkTarget(move.nextMountPath, nextDraftPath);
-          await symlink(linkTarget, move.nextMountPath, this.#platform === 'win32' ? 'junction' : 'dir');
+          try {
+            const linkTarget = await this.#mountLinkTarget(move.nextMountPath, nextDraftPath);
+            await symlink(linkTarget, move.nextMountPath, this.#platform === 'win32' ? 'junction' : 'dir');
+          } catch (error) {
+            await rm(move.nextMountPath, { force: true }).catch(() => undefined);
+            const draftPath = join(this.draftRoot, name);
+            const linkTarget = await this.#mountLinkTarget(move.mountPath, draftPath);
+            await symlink(
+              linkTarget,
+              move.mountPath,
+              this.#platform === 'win32' ? 'junction' : 'dir',
+            ).catch(() => undefined);
+            throw error;
+          }
         });
         completed.push(move);
       }
@@ -1025,6 +1199,23 @@ export class WidgetWorkspace {
       }
       throw error;
     }
+    let rolledBack = false;
+    return async () => {
+      if (rolledBack) return;
+      rolledBack = true;
+      const draftPath = join(this.draftRoot, name);
+      for (const move of [...completed].reverse()) {
+        await this.#withWidgetWrite(move.root, async () => {
+          await rm(move.nextMountPath, { force: true }).catch(() => undefined);
+          const linkTarget = await this.#mountLinkTarget(move.mountPath, draftPath);
+          await symlink(
+            linkTarget,
+            move.mountPath,
+            this.#platform === 'win32' ? 'junction' : 'dir',
+          );
+        });
+      }
+    };
   }
 
   async #existingChatWorkspaceRoots(): Promise<string[]> {
@@ -1044,6 +1235,175 @@ export class WidgetWorkspace {
     return roots;
   }
 
+  async #readDraftEntry(
+    name: string,
+    draftPath: string,
+  ): Promise<TWidgetDraftWorkspaceEntry | null> {
+    if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) return null;
+    const revision = await this.#readDraftRevision(draftPath);
+    return {
+      name,
+      draftPath,
+      published: await this.#isDirectDirectory(this.publishedRoot, join(this.publishedRoot, name)),
+      revision: revision.value,
+      updatedAt: new Date(revision.updatedAtMs).toISOString(),
+    };
+  }
+
+  #draftMaterializationMarkerPath(name: string): string {
+    const key = createHash('sha256').update(name).digest('hex');
+    return join(this.publicationStateRoot, `materialization-${key}.json`);
+  }
+
+  async #readDraftMaterializationMarker(name: string): Promise<TDraftMaterializationMarkerRead> {
+    let source: string;
+    try {
+      source = await readFile(this.#draftMaterializationMarkerPath(name), 'utf8');
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? { status: 'missing' }
+        : { status: 'invalid' };
+    }
+    try {
+      const value: unknown = JSON.parse(source);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return { status: 'invalid' };
+      const candidate = value as Record<string, unknown>;
+      const keys = Object.keys(candidate).sort();
+      if (keys.join('\0') !== [
+        'definitionId',
+        'name',
+        'publishedRevisionId',
+        'sourceDigestSha256',
+        'version',
+      ].join('\0')) return { status: 'invalid' };
+      if (
+        candidate.version !== 1
+        || candidate.name !== name
+        || typeof candidate.definitionId !== 'string'
+        || typeof candidate.publishedRevisionId !== 'string'
+        || typeof candidate.sourceDigestSha256 !== 'string'
+        || !/^[0-9a-f]{64}$/.test(candidate.sourceDigestSha256)
+      ) return { status: 'invalid' };
+      return {
+        status: 'valid',
+        marker: {
+          version: 1,
+          name,
+          definitionId: candidate.definitionId,
+          publishedRevisionId: candidate.publishedRevisionId,
+          sourceDigestSha256: candidate.sourceDigestSha256,
+        },
+      };
+    } catch {
+      return { status: 'invalid' };
+    }
+  }
+
+  async #writeDraftMaterializationMarker(marker: TDraftMaterializationMarker): Promise<void> {
+    const markerPath = this.#draftMaterializationMarkerPath(marker.name);
+    const temporary = `${markerPath}.tmp-${this.#safeId()}`;
+    try {
+      await writeFile(temporary, `${JSON.stringify(marker)}\n`, 'utf8');
+      await rename(temporary, markerPath);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
+  #matchesDraftMaterializationMarker(
+    current: TDraftMaterializationMarker,
+    expected: TDraftMaterializationMarker,
+  ): boolean {
+    return current.version === expected.version
+      && current.name === expected.name
+      && current.definitionId === expected.definitionId
+      && current.publishedRevisionId === expected.publishedRevisionId
+      && current.sourceDigestSha256 === expected.sourceDigestSha256;
+  }
+
+  async #draftSourceMatchesDigest(draftPath: string, expectedDigestSha256: string): Promise<boolean> {
+    try {
+      const snapshot = await new WidgetSourceSnapshotMaterializer().capture(draftPath, {
+        expectedDigestSha256,
+      });
+      return snapshot.digestSha256 === expectedDigestSha256;
+    } catch {
+      return false;
+    }
+  }
+
+  async #removePendingDraftMaterialization(name: string, draftPath: string): Promise<void> {
+    if (await this.#isDirectDirectory(this.draftRoot, draftPath)) {
+      await rm(draftPath, { recursive: true, force: false });
+    }
+    await this.#removeDraftMount(name);
+    await rm(this.#draftMaterializationMarkerPath(name), { force: true });
+  }
+
+  async #pendingDraftMaterializationResult(
+    name: string,
+    draftPath: string,
+    draft: TWidgetDraftWorkspaceEntry,
+    marker: TDraftMaterializationMarker,
+    created: boolean,
+  ): Promise<TDraftMaterializationResult> {
+    const createdEntry = await lstat(draftPath);
+    const assertExact = async () => {
+      const markerRead = await this.#readDraftMaterializationMarker(name);
+      if (
+        markerRead.status !== 'valid'
+        || !this.#matchesDraftMaterializationMarker(markerRead.marker, marker)
+      ) {
+        throw Object.assign(
+          new Error(`Widget draft '${name}' pending materialization authority changed.`),
+          { code: 'WIDGET_DRAFT_MATERIALIZATION_INVALID' },
+        );
+      }
+      const currentEntry = await lstat(draftPath).catch(() => null);
+      if (
+        !currentEntry
+        || currentEntry.dev !== createdEntry.dev
+        || currentEntry.ino !== createdEntry.ino
+      ) {
+        throw Object.assign(
+          new Error(`Widget draft '${name}' pending materialization source was replaced.`),
+          { code: 'WIDGET_DRAFT_MATERIALIZATION_INVALID' },
+        );
+      }
+      if (!await this.#draftSourceMatchesDigest(draftPath, marker.sourceDigestSha256)) {
+        await this.#removePendingDraftMaterialization(name, draftPath);
+        throw Object.assign(
+          new Error(`Widget draft '${name}' pending immutable source changed.`),
+          { code: 'WIDGET_DRAFT_MATERIALIZATION_MISMATCH' },
+        );
+      }
+    };
+    return {
+      draft,
+      created,
+      pending: true,
+      commitSeed: <T>(operation: () => Promise<T>) => this.#withWidgetWrite(draftPath, async () => {
+        await assertExact();
+        const result = await operation();
+        await rm(this.#draftMaterializationMarkerPath(name), { force: true });
+        return result;
+      }),
+      rollback: () => this.#withWidgetWrite(draftPath, async () => {
+        const markerRead = await this.#readDraftMaterializationMarker(name);
+        const currentEntry = await lstat(draftPath).catch(() => null);
+        if (
+          markerRead.status !== 'valid'
+          || !this.#matchesDraftMaterializationMarker(markerRead.marker, marker)
+          || !currentEntry
+          || currentEntry.dev !== createdEntry.dev
+          || currentEntry.ino !== createdEntry.ino
+        ) return false;
+        await this.#removePendingDraftMaterialization(name, draftPath);
+        return true;
+      }),
+    };
+  }
+
   #assertInside(root: string, candidate: string): void {
     const rel = relative(root, candidate);
     if (rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))) return;
@@ -1056,32 +1416,59 @@ export class WidgetWorkspace {
   }
 
   async #withWidgetWrite<T>(widgetRoot: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.#writeQueues.get(widgetRoot) ?? Promise.resolve();
-    let settle: (() => void) | undefined;
-    const gate = new Promise<void>((resolveGate) => { settle = resolveGate; });
-    const tail = previous.catch(() => undefined).then(() => gate);
-    this.#writeQueues.set(widgetRoot, tail);
-    await previous.catch(() => undefined);
+    return this.#withWidgetWrites([widgetRoot], operation);
+  }
+
+  async #withWidgetWrites<T>(widgetRoots: readonly string[], operation: () => Promise<T>): Promise<T> {
+    const canonicalRoots = await Promise.all(widgetRoots.map((root) => this.#canonicalWriteLaneKey(root)));
+    const roots = [...new Set(canonicalRoots)].sort((left, right) => left.localeCompare(right));
+    const reservations = roots.map((root) => {
+      const previous = this.#writeQueues.get(root) ?? Promise.resolve();
+      let settle: (() => void) | undefined;
+      const gate = new Promise<void>((resolveGate) => { settle = resolveGate; });
+      const tail = previous.catch(() => undefined).then(() => gate);
+      this.#writeQueues.set(root, tail);
+      return { root, previous, tail, settle };
+    });
+    await Promise.all(reservations.map(({ previous }) => previous.catch(() => undefined)));
     try {
       return await operation();
     } finally {
-      settle?.();
-      if (this.#writeQueues.get(widgetRoot) === tail) this.#writeQueues.delete(widgetRoot);
+      for (const reservation of reservations) reservation.settle?.();
+      for (const { root, tail } of reservations) {
+        if (this.#writeQueues.get(root) === tail) this.#writeQueues.delete(root);
+      }
     }
+  }
+
+  async #canonicalWriteLaneKey(candidate: string): Promise<string> {
+    const absolute = resolve(candidate);
+    const canonical = await realpath(absolute).catch(() => null);
+    if (canonical) return canonical;
+    const canonicalParent = await realpath(dirname(absolute)).catch(() => null);
+    return canonicalParent ? join(canonicalParent, basename(absolute)) : absolute;
   }
 
   async #copyWidgetFolder(source: string, target: string): Promise<void> {
     await this.#copyDirectory(source, target, {
       recursive: true,
-      dereference: true,
-      filter: (candidate) => {
+      dereference: false,
+      verbatimSymlinks: true,
+      filter: async (candidate) => {
         const rel = relative(source, candidate);
-        return !rel.split(sep).some((part) => (
+        if (rel.split(sep).some((part) => (
           part === 'node_modules'
           || part === '.git'
           || part === '.vibecanvas-wizard'
           || part === '.vibecanvas-validate.tsconfig.json'
-        ));
+        ))) return false;
+        if ((await lstat(candidate)).isSymbolicLink()) {
+          throw Object.assign(
+            new Error('Widget source snapshots cannot contain symbolic links.'),
+            { code: 'WIDGET_DRAFT_SYMLINK_FORBIDDEN' },
+          );
+        }
+        return true;
       },
     });
   }

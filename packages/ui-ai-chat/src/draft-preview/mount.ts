@@ -1,16 +1,22 @@
-import type { TWidgetError } from "@vibecanvas/service-db/model"
+import { fxDecodeAndVerifyUiArtifact } from "../widget-runtime/fx.decode-and-verify-ui-artifact"
+import type {
+  TWidgetPreviewRuntimeIdentity,
+  TVerifiedWidgetUiArtifact,
+} from "../widget-runtime/interface"
+import { createEphemeralCollaborativeStateBridge } from "./create-ephemeral-collaborative-state-bridge"
+import { createPreviewFunctionHostBridge } from "./create-preview-function-host-bridge"
 import type {
   TDraftPreviewFailure,
+  TDraftPreviewOwnership,
   TDraftPreviewReady,
   TDraftPreviewResult,
   TDraftPreviewRuntime,
-  TDraftPreviewSendResult,
   TDraftPreviewSummary,
   TMountDraftPreviewArgs,
 } from "./typed"
 import "./widget.css"
 
-function errorMessage(error: unknown, fallback: string) {
+function errorMessage(error: unknown, fallback: string): string {
   if (typeof error === "string" && error.trim()) return error.trim()
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = (error as { message?: unknown }).message
@@ -19,40 +25,35 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
-function toFailure(args: {
+function toFailure(args: Readonly<{
   draftId: string
-  revision: string
-  reason: TDraftPreviewFailure["reason"]
+  revision?: string
+  previewId?: string
+  previewRevisionId?: string
+  reason: "transport-failed" | "artifact-invalid"
   message: string
-  diagnostics?: string[]
-}): TDraftPreviewFailure {
+}>): TDraftPreviewFailure {
   return {
     ready: false,
     draftId: args.draftId,
-    revision: args.revision,
+    ...(args.revision ? { revision: args.revision } : {}),
+    ...(args.previewId ? { previewId: args.previewId } : {}),
+    ...(args.previewRevisionId ? { previewRevisionId: args.previewRevisionId } : {}),
     reason: args.reason,
     message: args.message,
-    diagnostics: args.diagnostics ?? [],
+    diagnostics: [],
   }
 }
 
-function actorErrorMessage(snapshot: TDraftPreviewReady["snapshot"]) {
-  if (snapshot.state !== "error") return undefined
-  if (typeof snapshot.context === "object" && snapshot.context !== null && "message" in snapshot.context) {
-    const message = (snapshot.context as { message?: unknown }).message
-    if (typeof message === "string" && message.trim()) return message.trim()
+function ownership(result: TDraftPreviewReady): TDraftPreviewOwnership {
+  return {
+    draftRevision: result.revision,
+    previewRevisionId: result.previewRevisionId,
   }
-  return "The Preview actor entered an error state. Reset Preview to try again."
 }
 
-function closeIterator(iterator: AsyncIterator<unknown> | undefined) {
-  if (!iterator?.return) return
-  try {
-    const closing = iterator.return()
-    if (closing) void Promise.resolve(closing).catch(() => undefined)
-  } catch {
-    // Cleanup must remain safe when an iterator closes synchronously.
-  }
+function ownershipKey(candidate: TDraftPreviewOwnership): string {
+  return `${candidate.draftRevision}\u0000${candidate.previewRevisionId}`
 }
 
 export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRuntime {
@@ -61,20 +62,24 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
   const body = dom.createElement("div")
   let disposed = false
   let requestId = 0
-  let ownedRevision = args.payload.pinnedRevision
-  let currentRevision = args.payload.pinnedRevision
+  let owned: TDraftPreviewOwnership = {
+    draftRevision: args.payload.draftRevision,
+    previewRevisionId: args.payload.previewRevisionId,
+  }
+  let authorityPreviewRevisionId = owned.previewRevisionId
   let currentReady: TDraftPreviewReady | undefined
-  let cleanupSandbox: (() => void) | undefined
-  let eventIterator: AsyncIterator<unknown> | undefined
+  let currentArtifact: TVerifiedWidgetUiArtifact | undefined
+  let cleanupMounted: (() => void) | undefined
   let disposalPromise: Promise<void> | undefined
   let mutationTail: Promise<void> | undefined
   const activeOperations = new Set<Promise<unknown>>()
-  const snapshotSubscribers = new Set<(snapshot: {
-    status: "running" | "error"
-    state: string
-    context: unknown
-    error: TWidgetError | null
-  }) => void>()
+  const releasedOwnership = new Set<string>()
+
+  shell.className = "vc-draft-preview"
+  shell.setAttribute("aria-label", `${args.payload.draftName} Preview`)
+  body.className = "vc-draft-preview__body"
+  shell.append(body)
+  args.root.replaceChildren(shell)
 
   const trackOperation = <T>(operation: Promise<T>): Promise<T> => {
     activeOperations.add(operation)
@@ -85,30 +90,35 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     return operation
   }
 
-  const enqueueMutation = (operation: () => Promise<void>) => {
+  const enqueueMutation = (operation: () => Promise<void>): Promise<void> => {
     if (disposed) return Promise.resolve()
-    const previous = mutationTail
-    const queued = previous
-      ? previous.catch(() => undefined).then(() => disposed ? undefined : operation())
-      : operation()
+    const queued = (mutationTail ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => disposed ? undefined : operation())
     const tail = queued.catch(() => undefined)
     mutationTail = tail
-    void tail.then(() => {
+    void tail.finally(() => {
       if (mutationTail === tail) mutationTail = undefined
     })
     return trackOperation(queued)
   }
 
-  shell.className = "vc-draft-preview"
-  shell.setAttribute("aria-label", `${args.payload.draftId} Preview`)
-  body.className = "vc-draft-preview__body"
-  shell.append(body)
-  args.root.replaceChildren(shell)
+  const release = (candidate: TDraftPreviewOwnership) => {
+    const key = ownershipKey(candidate)
+    if (releasedOwnership.has(key)) return
+    releasedOwnership.add(key)
+    args.onReleaseOwnership(candidate)
+  }
+
+  const clearMount = () => {
+    cleanupMounted?.()
+    cleanupMounted = undefined
+    currentReady = undefined
+    currentArtifact = undefined
+  }
 
   const setBusy = (message: string) => {
-    cleanupSandbox?.()
-    cleanupSandbox = undefined
-    currentReady = undefined
+    clearMount()
     body.replaceChildren()
     const loading = dom.createElement("div")
     loading.className = "vc-draft-preview__state vc-draft-preview__state--loading"
@@ -119,32 +129,35 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     args.onResetStateChange?.({ disabled: true })
   }
 
-  const setOperationBusy = (_message: string) => {
-    args.onResetStateChange?.({ disabled: true })
-  }
+  const removeOverlay = () => body.querySelector(".vc-draft-preview__sandbox-error")?.remove()
 
-  const syncStatus = (_stale: boolean, _message = "") => {
-    args.onResetStateChange?.({ disabled: false })
+  const renderOverlay = (message: string) => {
+    removeOverlay()
+    const overlay = dom.createElement("div")
+    const heading = dom.createElement("strong")
+    const detail = dom.createElement("p")
+    overlay.className = "vc-draft-preview__sandbox-error"
+    overlay.setAttribute("role", "alert")
+    heading.textContent = "Preview could not update"
+    detail.textContent = message
+    overlay.append(heading, detail)
+    body.appendChild(overlay)
   }
 
   const renderFailure = (failure: TDraftPreviewFailure) => {
-    cleanupSandbox?.()
-    cleanupSandbox = undefined
-    currentReady = undefined
-    if (failure.currentRevision) currentRevision = failure.currentRevision
-    const stale = currentRevision !== ownedRevision || failure.reason === "stale-revision"
-    syncStatus(stale, failure.reason.replaceAll("-", " "))
+    clearMount()
     body.replaceChildren()
-
     const state = dom.createElement("div")
     const heading = dom.createElement("strong")
     const message = dom.createElement("p")
     state.className = "vc-draft-preview__state vc-draft-preview__state--error"
     state.setAttribute("role", "alert")
-    heading.textContent = failure.reason === "stale-revision" ? "Preview revision is stale" : "Preview could not load"
+    heading.textContent = failure.reason === "stale-revision"
+      || failure.reason === "preview-conflict"
+      ? "Preview revision is stale"
+      : "Preview could not load"
     message.textContent = failure.message
     state.append(heading, message)
-
     if (failure.diagnostics.length > 0) {
       const diagnostics = dom.createElement("ul")
       diagnostics.className = "vc-draft-preview__diagnostics"
@@ -155,56 +168,128 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
       })
       state.appendChild(diagnostics)
     }
-
     body.appendChild(state)
+    args.onResetStateChange?.({ disabled: true })
   }
 
-  const emitSnapshot = (snapshot: TDraftPreviewReady["snapshot"]) => {
-    const errorText = actorErrorMessage(snapshot)
-    const actorError: TWidgetError | null = errorText ? {
-      phase: "sandbox-runtime",
-      code: "DRAFT_PREVIEW_ACTOR_ERROR",
-      message: errorText,
-      retryable: true,
-    } : null
-    const bridged = {
-      status: errorText ? "error" as const : "running" as const,
-      state: snapshot.state,
-      context: snapshot.context,
-      error: actorError,
-    }
-    snapshotSubscribers.forEach((subscriber) => subscriber(bridged))
-  }
-
-  const renderSandboxError = (error: TWidgetError) => {
-    body.querySelector(".vc-draft-preview__sandbox-error")?.remove()
-    const overlay = dom.createElement("div")
-    const heading = dom.createElement("strong")
-    const message = dom.createElement("p")
-    overlay.className = "vc-draft-preview__sandbox-error"
-    overlay.setAttribute("role", "alert")
-    heading.textContent = error.phase === "sandbox-compile" ? "Preview compile failed" : "Preview runtime failed"
-    message.textContent = error.message
-    overlay.append(heading, message)
-    body.appendChild(overlay)
-  }
-
-  const preserveSandboxFailure = (failure: TDraftPreviewFailure) => {
-    if (!currentReady || !cleanupSandbox) {
-      renderFailure(failure)
+  const wait = (timeoutMs: number, signal: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("Draft Preview function wait was cancelled."))
       return
     }
-    if (failure.currentRevision) currentRevision = failure.currentRevision
-    const stale = currentRevision !== ownedRevision || failure.reason === "stale-revision"
-    if (failure.reason !== "stale-revision") {
-      renderSandboxError({
-        phase: "snapshot",
-        code: `DRAFT_PREVIEW_${failure.reason.replaceAll("-", "_").toUpperCase()}`,
-        message: failure.message,
-        retryable: true,
-      })
+    const timer = args.browser.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, timeoutMs)
+    const onAbort = () => {
+      args.browser.clearTimeout(timer)
+      reject(new Error("Draft Preview function wait was cancelled."))
     }
-    syncStatus(stale, failure.message)
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+
+  const assertReadyOwnership = (result: TDraftPreviewReady) => {
+    if (result.draftId !== args.payload.draftId || result.previewId !== args.payload.previewId) {
+      throw new Error("Draft Preview response owner mismatch.")
+    }
+  }
+
+  const readyMatchesOwnedAuthority = (result: TDraftPreviewReady | undefined): boolean => (
+    result !== undefined
+    && result.revision === owned.draftRevision
+    && result.previewRevisionId === owned.previewRevisionId
+    && authorityPreviewRevisionId === owned.previewRevisionId
+  )
+
+  const mountVerified = (
+    result: TDraftPreviewReady,
+    artifact: TVerifiedWidgetUiArtifact,
+    persist: boolean,
+  ) => {
+    assertReadyOwnership(result)
+    const identity: TWidgetPreviewRuntimeIdentity = Object.freeze({
+      kind: "agent_preview",
+      definitionId: result.definitionId,
+      previewId: result.previewId,
+      previewRevisionId: result.previewRevisionId,
+    })
+    const previousAuthority = authorityPreviewRevisionId
+    authorityPreviewRevisionId = result.previewRevisionId
+    const functionBridge = createPreviewFunctionHostBridge({
+      api: args.api,
+      draftId: result.draftId,
+      identity,
+      functionDescriptors: result.contract.functions,
+      createId: args.browser.createId,
+      nowMs: args.browser.now,
+      wait,
+      isCurrent: () => !disposed && authorityPreviewRevisionId === result.previewRevisionId,
+      onLogError: args.onLogError,
+    })
+    const collaborativeStateBridge = createEphemeralCollaborativeStateBridge()
+    const nextRoot = dom.createElement("div")
+    nextRoot.className = "vc-draft-preview__sandbox"
+    let cleanupArtifact: (() => void) | undefined
+    try {
+      cleanupArtifact = args.mountArtifact.mount({
+        root: nextRoot,
+        identity,
+        artifact,
+        functionBridge,
+        collaborativeStateBridge,
+        onFatal(error) {
+          if (disposed || authorityPreviewRevisionId !== result.previewRevisionId) return
+          args.onLogError(error)
+          renderOverlay(errorMessage(error, "Preview runtime failed."))
+        },
+      })
+    } catch (error) {
+      authorityPreviewRevisionId = previousAuthority
+      functionBridge.dispose()
+      collaborativeStateBridge.dispose()
+      throw error
+    }
+    if (disposed) {
+      cleanupArtifact()
+      release(ownership(result))
+      return
+    }
+    cleanupMounted?.()
+    cleanupMounted = () => {
+      cleanupArtifact?.()
+      functionBridge.dispose()
+      collaborativeStateBridge.dispose()
+    }
+    currentReady = result
+    currentArtifact = artifact
+    const nextOwnership = ownership(result)
+    const changed = ownershipKey(nextOwnership) !== ownershipKey(owned)
+    owned = nextOwnership
+    authorityPreviewRevisionId = nextOwnership.previewRevisionId
+    body.replaceChildren(nextRoot)
+    args.onResetStateChange?.({ disabled: false })
+    if (persist && changed) args.onPersistOwnership(nextOwnership)
+  }
+
+  const verifyAndMount = async (
+    result: TDraftPreviewReady,
+    persist: boolean,
+    activeRequest: number,
+  ) => {
+    assertReadyOwnership(result)
+    const encodedBytes = args.browser.decodeBase64(result.uiArtifact.bytesBase64)
+    if (encodedBytes.byteLength !== result.uiArtifact.byteSize) {
+      throw new Error("Widget UI artifact byte size mismatch.")
+    }
+    const artifact = await fxDecodeAndVerifyUiArtifact({ codec: args.browser }, {
+      expectedDigestSha256: result.uiArtifact.digestSha256,
+      bytesBase64: result.uiArtifact.bytesBase64,
+    })
+    if (disposed || activeRequest !== requestId) {
+      release(ownership(result))
+      return
+    }
+    mountVerified(result, artifact, persist)
   }
 
   const callDraftGet = async (): Promise<TDraftPreviewSummary> => {
@@ -217,206 +302,83 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
   const callPreviewGet = async (): Promise<TDraftPreviewResult> => {
     const [error, result] = await args.api.api.agent.widgetPreview.get({
       draftId: args.payload.draftId,
-      previewId: args.previewId,
+      previewId: args.payload.previewId,
     })
     if (error) throw new Error(errorMessage(error, "Could not read Preview state."))
     if (!result) throw new Error("Preview state was unavailable.")
     return result
   }
 
-  const closeAttemptedPreview = async (revision: string) => {
-    try {
-      const [error] = await args.api.api.agent.widgetPreview.close({
-        draftId: args.payload.draftId,
-        previewId: args.previewId,
-        expectedRevision: revision,
-      })
-      if (error) args.onLogError(error)
-    } catch (error) {
-      args.onLogError(error)
-    }
-  }
-
-  const releaseLateMutationResult = (result: TDraftPreviewResult) => {
-    if (!result.ready) return
-    if (!disposed && result.revision === ownedRevision) return
-    args.onReleaseRevision(result.revision)
-  }
-
-  const renderReady = (result: TDraftPreviewReady, persistRevision: boolean) => {
-    if (disposed) {
-      releaseLateMutationResult(result)
+  const reconcileAfterBuildAttempt = async (
+    failure: TDraftPreviewFailure,
+    activeRequest: number,
+  ) => {
+    // Once the build RPC has been sent, transport failure is commit-ambiguous.
+    // Fence cached authority until an exact active revision is re-read.
+    authorityPreviewRevisionId = ""
+    const active = await callPreviewGet()
+    if (disposed || activeRequest !== requestId) {
+      // This revision was only observed; this frame did not create or adopt
+      // it, so cleanup remains with its current owner.
       return
     }
-
-    cleanupSandbox?.()
-    cleanupSandbox = undefined
-    ownedRevision = result.revision
-    currentRevision = result.currentRevision
-    currentReady = result
-    if (persistRevision) args.onPersistRevision(result.revision)
-    syncStatus(result.stale || result.currentRevision !== result.revision, actorErrorMessage(result.snapshot) ? "actor error" : "Interactive Preview")
-    body.replaceChildren()
-
-    const sandboxRoot = dom.createElement("div")
-    sandboxRoot.className = "vc-draft-preview__sandbox"
-    body.appendChild(sandboxRoot)
-    try {
-      cleanupSandbox = args.mountSandbox({
-        root: sandboxRoot,
-        onError: renderSandboxError,
-      }, {
-        sources: result.sources,
-        bridge: {
-          async getSnapshot() {
-            const ready = currentReady
-            if (!ready) throw new Error("Preview actor is not ready.")
-            const message = actorErrorMessage(ready.snapshot)
-            return {
-              status: message ? "error" : "running",
-              state: ready.snapshot.state,
-              context: ready.snapshot.context,
-              error: message ? {
-                phase: "sandbox-runtime",
-                code: "DRAFT_PREVIEW_ACTOR_ERROR",
-                message,
-                retryable: true,
-              } : null,
-            }
-          },
-          async sendMessage(message) {
-            const ready = currentReady
-            if (!ready || ready.revision !== ownedRevision) {
-              return { ok: false, code: "DRAFT_PREVIEW_NOT_READY", message: "Preview actor is not ready." }
-            }
-            if (currentRevision !== ownedRevision) {
-              return { ok: false, code: "DRAFT_PREVIEW_STALE", message: "Refresh Preview before sending messages." }
-            }
-
-            const sendRequestId = requestId
-            const sendRevision = ownedRevision
-
-            try {
-              const [error, sendResult] = await args.api.api.agent.widgetPreview.send({
-                draftId: args.payload.draftId,
-                previewId: args.previewId,
-                expectedRevision: ownedRevision,
-                name: message.name,
-                payload: message.payload,
-              })
-              if (error) {
-                return { ok: false, code: "DRAFT_PREVIEW_SEND_FAILED", message: errorMessage(error, "Preview message failed.") }
-              }
-              if (!sendResult) {
-                return { ok: false, code: "DRAFT_PREVIEW_SEND_FAILED", message: "Preview message returned no result." }
-              }
-              const result: TDraftPreviewSendResult = sendResult
-              const isCurrent = !disposed
-                && sendRequestId === requestId
-                && sendRevision === ownedRevision
-                && currentReady?.revision === sendRevision
-              if (!result.ready) {
-                if (isCurrent) {
-                  if (result.reason === "stale-revision") preserveSandboxFailure(result)
-                  else renderFailure(result)
-                }
-                return { ok: false, code: "DRAFT_PREVIEW_SEND_FAILED", message: result.message }
-              }
-              if (result.revision !== sendRevision) {
-                return { ok: false, code: "DRAFT_PREVIEW_SEND_FAILED", message: "Preview message revision did not match the active Preview." }
-              }
-              return { ok: true, messageId: result.messageId }
-            } catch (error) {
-              const message = errorMessage(error, "Preview message failed.")
-              if (!disposed && sendRequestId === requestId && sendRevision === ownedRevision) {
-                renderSandboxError({
-                  phase: "snapshot",
-                  code: "DRAFT_PREVIEW_SEND_FAILED",
-                  message,
-                  retryable: true,
-                })
-              }
-              return { ok: false, code: "DRAFT_PREVIEW_SEND_FAILED", message }
-            }
-          },
-          subscribeSnapshots(handler) {
-            snapshotSubscribers.add(handler)
-            return () => snapshotSubscribers.delete(handler)
-          },
-        },
-      })
-    } catch (error) {
-      cleanupSandbox = undefined
-      args.onLogError(error)
-      renderSandboxError({
-        phase: "sandbox-compile",
-        code: "DRAFT_PREVIEW_SANDBOX_MOUNT_FAILED",
-        message: errorMessage(error, "Preview sandbox could not mount."),
-        retryable: true,
-      })
+    if (!active.ready) {
+      if (currentReady) renderOverlay(failure.message)
+      else renderFailure(failure)
+      return
     }
-    const actorMessage = actorErrorMessage(result.snapshot)
-    if (actorMessage) {
-      renderSandboxError({
-        phase: "sandbox-runtime",
-        code: "DRAFT_PREVIEW_ACTOR_ERROR",
-        message: actorMessage,
-        retryable: true,
-      })
+    const activeOwnership = ownership(active)
+    const mountedActive = currentReady !== undefined
+      && currentArtifact !== undefined
+      && ownershipKey(ownership(currentReady)) === ownershipKey(activeOwnership)
+    if (ownershipKey(activeOwnership) !== ownershipKey(owned)) {
+      owned = activeOwnership
+      args.onPersistOwnership(activeOwnership)
     }
+    authorityPreviewRevisionId = activeOwnership.previewRevisionId
+    if (mountedActive) {
+      renderOverlay(failure.message)
+      return
+    }
+    await verifyAndMount(active, false, activeRequest)
   }
 
   const initialize = async () => {
     const activeRequest = ++requestId
-    let attemptedBuildRevision: string | undefined
     setBusy("Loading Preview…")
     try {
-      const summary = await callDraftGet()
-      if (disposed || activeRequest !== requestId) return
-      currentRevision = summary.revision
-      const existing = await callPreviewGet()
+      const result = args.initialResult ?? await callPreviewGet()
       if (disposed || activeRequest !== requestId) {
+        if (result.ready) release(ownership(result))
         return
       }
-      if (existing.ready && existing.draftId === args.payload.draftId && existing.revision === ownedRevision) {
-        renderReady(existing, false)
-        return
-      }
-      if (summary.revision !== ownedRevision) {
-        renderFailure(toFailure({
+      if (
+        !result.ready
+        || result.previewRevisionId !== owned.previewRevisionId
+        || result.revision !== owned.draftRevision
+      ) {
+        renderFailure(result.ready ? {
+          ready: false,
           draftId: args.payload.draftId,
-          revision: ownedRevision,
+          revision: owned.draftRevision,
+          previewId: args.payload.previewId,
+          previewRevisionId: owned.previewRevisionId,
           reason: "stale-revision",
-          message: "This persisted Preview revision is no longer built. Refresh to adopt the latest draft revision.",
-        }))
-        currentRevision = summary.revision
-        syncStatus(true, "stale revision")
+          message: "The persisted Preview revision is no longer active. Refresh it from the draft.",
+          diagnostics: [],
+        } : result)
         return
       }
-      attemptedBuildRevision = ownedRevision
-      const [error, built] = await args.api.api.agent.widgetPreview.build({
-        draftId: args.payload.draftId,
-        previewId: args.previewId,
-        expectedRevision: ownedRevision,
-      })
-      if (error) throw new Error(errorMessage(error, "Could not build Preview."))
-      if (!built) throw new Error("Preview build returned no result.")
-      const result: TDraftPreviewResult = built
-      if (disposed || activeRequest !== requestId) {
-        releaseLateMutationResult(result)
-        return
-      }
-      if (result.ready) renderReady(result, false)
-      else renderFailure(result)
+      await verifyAndMount(result, false, activeRequest)
     } catch (error) {
-      if (attemptedBuildRevision && (disposed || activeRequest === requestId)) {
-        await closeAttemptedPreview(attemptedBuildRevision)
-      }
       if (disposed || activeRequest !== requestId) return
+      args.onLogError(error)
       renderFailure(toFailure({
         draftId: args.payload.draftId,
-        revision: ownedRevision,
-        reason: "transport-failed",
+        revision: owned.draftRevision,
+        previewId: args.payload.previewId,
+        previewRevisionId: owned.previewRevisionId,
+        reason: errorMessage(error, "").includes("artifact") ? "artifact-invalid" : "transport-failed",
         message: errorMessage(error, "Could not load Preview."),
       }))
     }
@@ -424,169 +386,118 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
 
   const runRefresh = async (providedSummary?: TDraftPreviewSummary) => {
     const activeRequest = ++requestId
-    const previousRevision = ownedRevision
-    let attemptedRevision: string | undefined
-    setOperationBusy("Refreshing Preview…")
+    let buildRequested = false
+    let reconciliationAttempted = false
+    args.onResetStateChange?.({ disabled: true })
     try {
       const summary = providedSummary ?? await callDraftGet()
       if (disposed || activeRequest !== requestId) return
-      currentRevision = summary.revision
-      attemptedRevision = summary.revision
-      const [error, refreshed] = await args.api.api.agent.widgetPreview.refresh({
+      buildRequested = true
+      const [error, built] = await args.api.api.agent.widgetPreview.build({
         draftId: args.payload.draftId,
-        previewId: args.previewId,
-        expectedRevision: summary.revision,
+        previewId: args.payload.previewId,
+        expectedDraftRevision: summary.revision,
+        expectedActivePreviewRevisionId: owned.previewRevisionId,
       })
-      if (error) throw new Error(errorMessage(error, "Could not refresh Preview."))
-      if (!refreshed) throw new Error("Preview refresh returned no result.")
-      const result: TDraftPreviewResult = refreshed
+      if (error) throw new Error(errorMessage(error, "Could not build Preview."))
+      if (!built) throw new Error("Preview build returned no result.")
+      const result: TDraftPreviewResult = built
       if (disposed || activeRequest !== requestId) {
-        releaseLateMutationResult(result)
+        if (result.ready) release(ownership(result))
         return
       }
-      if (result.ready) renderReady(result, result.revision !== previousRevision)
-      else preserveSandboxFailure(result)
+      if (!result.ready) {
+        reconciliationAttempted = true
+        await reconcileAfterBuildAttempt(result, activeRequest)
+        return
+      }
+      if (result.revision !== summary.revision) {
+        release(ownership(result))
+        throw new Error("Preview build returned a different draft revision.")
+      }
+      // The server CAS has already made this exact Preview revision
+      // authoritative. Persist/adopt that ownership before any fallible local
+      // decode or mount work so a bad artifact cannot leave the frame pointing
+      // at the now-inactive previous revision. The old UI may remain visible
+      // behind an error overlay, but its function bridge is fenced immediately
+      // and the next refresh replaces the newly adopted authority.
+      const nextOwnership = ownership(result)
+      if (ownershipKey(nextOwnership) !== ownershipKey(owned)) {
+        owned = nextOwnership
+        authorityPreviewRevisionId = nextOwnership.previewRevisionId
+        args.onPersistOwnership(nextOwnership)
+      }
+      await verifyAndMount(result, false, activeRequest)
     } catch (error) {
-      if (attemptedRevision && (disposed || activeRequest === requestId)) {
-        await closeAttemptedPreview(attemptedRevision)
+      if (disposed || activeRequest !== requestId) return
+      args.onLogError(error)
+      const message = errorMessage(error, "Could not refresh Preview.")
+      const failure = toFailure({
+        draftId: args.payload.draftId,
+        revision: owned.draftRevision,
+        previewId: args.payload.previewId,
+        previewRevisionId: owned.previewRevisionId,
+        reason: message.includes("artifact") ? "artifact-invalid" : "transport-failed",
+        message,
+      })
+      if (buildRequested && !reconciliationAttempted) {
+        reconciliationAttempted = true
+        try {
+          await reconcileAfterBuildAttempt(failure, activeRequest)
+          return
+        } catch (reconcileError) {
+          if (disposed || activeRequest !== requestId) return
+          args.onLogError(reconcileError)
+        }
       }
+      if (currentReady) renderOverlay(message)
+      else renderFailure(failure)
+    } finally {
       if (!disposed && activeRequest === requestId) {
-        preserveSandboxFailure(toFailure({
-          draftId: args.payload.draftId,
-          revision: previousRevision,
-          reason: "transport-failed",
-          message: errorMessage(error, "Could not refresh Preview."),
-        }))
+        args.onResetStateChange?.({ disabled: !readyMatchesOwnedAuthority(currentReady) })
       }
-      throw error
     }
-  }
-
-  const refresh = (providedSummary?: TDraftPreviewSummary) => {
-    if (disposed) return Promise.resolve()
-    return enqueueMutation(() => runRefresh(providedSummary))
   }
 
   const runReset = async () => {
     const activeRequest = ++requestId
-    const revision = ownedRevision
-    setOperationBusy("Resetting Preview…")
-    try {
-      const [error, resetResult] = await args.api.api.agent.widgetPreview.reset({
-        draftId: args.payload.draftId,
-        previewId: args.previewId,
-        expectedRevision: revision,
-      })
-      if (error) throw new Error(errorMessage(error, "Could not reset Preview."))
-      if (!resetResult) throw new Error("Preview reset returned no result.")
-      const result: TDraftPreviewResult = resetResult
-      if (disposed || activeRequest !== requestId) {
-        releaseLateMutationResult(result)
-        return
-      }
-      if (result.ready) renderReady(result, false)
-      else preserveSandboxFailure(result)
-    } catch (error) {
-      if (disposed || activeRequest === requestId) await closeAttemptedPreview(revision)
-      if (!disposed && activeRequest === requestId) {
-        preserveSandboxFailure(toFailure({
-          draftId: args.payload.draftId,
-          revision,
-          reason: "transport-failed",
-          message: errorMessage(error, "Could not reset Preview."),
-        }))
-      }
-    }
-  }
-
-  const reset = () => {
-    if (disposed) return Promise.resolve()
-    return enqueueMutation(runReset)
-  }
-
-  void args.api.api.agent.events({}).then(async ([error, events]) => {
-    if (error) throw new Error(errorMessage(error, "Preview updates disconnected."))
-    const iterator = events[Symbol.asyncIterator]()
-    if (disposed) {
-      closeIterator(iterator)
+    const ready = currentReady
+    const artifact = currentArtifact
+    if (!ready || !artifact || !readyMatchesOwnedAuthority(ready)) {
+      args.onResetStateChange?.({ disabled: true })
       return
     }
-    eventIterator = iterator
-    while (!disposed) {
-      const next = await iterator.next()
-      if (next.done || disposed) break
-      const event = next.value
-      if (!("kind" in event) || !("draftId" in event) || event.draftId !== args.payload.draftId) continue
-      if (event.kind === "widget-draft") {
-        currentRevision = event.revision
-        syncStatus(currentRevision !== ownedRevision, currentRevision !== ownedRevision ? "draft changed" : "Interactive Preview")
-        continue
-      }
-      if (event.kind !== "widget-preview" || event.revision !== ownedRevision) continue
-      const eventRequestId = requestId
-      try {
-        const result = await callPreviewGet()
-        if (disposed || eventRequestId !== requestId || !result.ready || result.revision !== ownedRevision) continue
-        currentReady = result
-        currentRevision = result.currentRevision
-        const actorMessage = actorErrorMessage(result.snapshot)
-        syncStatus(result.stale, actorMessage ? "actor error" : "Interactive Preview")
-        if (actorMessage) {
-          renderSandboxError({
-            phase: "sandbox-runtime",
-            code: "DRAFT_PREVIEW_ACTOR_ERROR",
-            message: actorMessage,
-            retryable: true,
-          })
-        } else {
-          body.querySelector(".vc-draft-preview__sandbox-error")?.remove()
-        }
-        emitSnapshot(result.snapshot)
-      } catch (error) {
-        if (!disposed && eventRequestId === requestId) renderSandboxError({
-          phase: "snapshot",
-          code: "DRAFT_PREVIEW_REFETCH_FAILED",
-          message: errorMessage(error, "Could not refresh Preview state."),
-          retryable: true,
-        })
-      }
-    }
-  }).catch((error) => {
-    if (!disposed) {
+    args.onResetStateChange?.({ disabled: true })
+    try {
+      if (disposed || activeRequest !== requestId) return
+      mountVerified(ready, artifact, false)
+    } catch (error) {
+      if (disposed || activeRequest !== requestId) return
       args.onLogError(error)
+      renderOverlay(errorMessage(error, "Could not reset Preview locally."))
+    } finally {
+      if (!disposed && activeRequest === requestId) args.onResetStateChange?.({ disabled: false })
     }
-  })
-
-  if (args.initialResult) {
-    if (args.initialResult.ready) {
-      renderReady(args.initialResult, false)
-    } else {
-      if (args.initialResult.currentRevision) currentRevision = args.initialResult.currentRevision
-      renderFailure(args.initialResult)
-    }
-  } else {
-    void enqueueMutation(initialize)
   }
 
-  const dispose = () => {
-    if (disposalPromise) return disposalPromise
-    disposed = true
-    requestId += 1
-    cleanupSandbox?.()
-    cleanupSandbox = undefined
-    snapshotSubscribers.clear()
-    const iterator = eventIterator
-    eventIterator = undefined
-    closeIterator(iterator)
-    args.onReleaseRevision(ownedRevision)
-    disposalPromise = Promise.allSettled([...activeOperations]).then(() => undefined)
-    return disposalPromise
-  }
+  trackOperation(initialize()).catch(() => undefined)
 
   return {
-    refresh,
-    reset,
-    dispose,
-    getOwnedRevision: () => ownedRevision,
+    refresh: (summary) => enqueueMutation(() => runRefresh(summary)),
+    reset: () => enqueueMutation(runReset),
+    dispose() {
+      if (disposalPromise) return disposalPromise
+      disposed = true
+      requestId += 1
+      clearMount()
+      args.root.replaceChildren()
+      disposalPromise = (async () => {
+        await Promise.allSettled([...activeOperations])
+        release(owned)
+      })()
+      return disposalPromise
+    },
+    getOwnedRevision: () => owned.draftRevision,
+    getOwnedPreviewRevisionId: () => owned.previewRevisionId,
   }
 }

@@ -2,14 +2,12 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { lstat, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { Check } from 'typebox/value';
-import { AgentService } from '../src/AgentService';
 import { fnBuildWidgetCreateManifest } from '../src/tools/fn.widget-create';
+import { createWorkspaceFileTools } from '../src/tools/tool.workspace-files';
 import { createWidgetWorkspaceTools } from '../src/tools/tool.widget-workspace';
 import { WidgetWorkspace } from '../src/workspace/WidgetWorkspace';
-import { createFakeSessionManager, executeTool } from './tool.test-helpers';
-import { createTestTenantEvents } from './tenant.fixture';
+import { executeTool } from './tool.test-helpers';
 
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
@@ -32,12 +30,11 @@ async function createDiscoverableWidget(
 ) {
   const folder = join(root, name);
   await mkdir(folder, { recursive: true });
-  const value = manifest as { name?: unknown; kind?: unknown };
+  const value = manifest as { name?: unknown };
   const content = typeof manifest === 'string'
     ? manifest
     : JSON.stringify({
         ...fnBuildWidgetCreateManifest({ name: typeof value.name === 'string' ? value.name : name }),
-        ...(value.kind === 'widget' || value.kind === 'actor-widget' ? { kind: value.kind } : {}),
       });
   await writeFile(join(folder, 'vibecanvas.json'), content, 'utf8');
 }
@@ -135,8 +132,7 @@ describe('widget tools and publish integration', () => {
       source: 'draft',
       draft: true,
       files: [
-        'vibecanvas.json', 'package.json', 'tsconfig.json', 'actor/functions.ts', 'actor/types.ts',
-        'actor/tx.resetError.ts', 'widget/main.ts', 'widget/main.css',
+        'vibecanvas.json', 'package.json', 'tsconfig.json', 'ui/main.ts', 'ui/styles.css',
       ],
     });
     expect(JSON.stringify(created)).not.toContain('"kind"');
@@ -144,42 +140,22 @@ describe('widget tools and publish integration', () => {
     expect(mounted).toEqual(['Shared Timer']);
     const manifest = JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'vibecanvas.json'), 'utf8'));
     expect(manifest).toMatchObject({
-      slug: 'shared-timer', name: 'Shared Timer', description: 'A shared timer.',
-      actor: {
-        initialState: 'ready',
-        initialData: {},
-        dataSchema: { type: 'object', properties: {}, additionalProperties: false },
-        resources: {},
-        states: {
-          ready: { on: {} },
-          error: { on: { 'in.resetError': { func: ['tx.resetError'], targetState: 'ready' } } },
-        },
-        inputMsgSchema: {
-          'in.resetError': { type: 'object', properties: {}, additionalProperties: false },
-        },
-        outputMsgSchema: {},
-      },
+      schemaVersion: 2,
+      slug: 'shared-timer',
+      name: 'Shared Timer',
+      description: 'A shared timer.',
+      ui: { entry: 'ui/main.ts' },
     });
+    expect(manifest.server).toBeUndefined();
+    expect(manifest.resources).toBeUndefined();
     expect(manifest.kind).toBeUndefined();
     expect(JSON.stringify(manifest)).not.toContain('in.update');
     expect(JSON.stringify(manifest)).not.toContain('tx.update');
-    const resetSource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'actor', 'tx.resetError.ts'), 'utf8');
-    expect(resetSource).toContain('export async function txResetError(portal: TPortal, args: TArgs)');
-    expect(resetSource).toContain('await portal.next();');
-    const resetModule = await import(pathToFileURL(join(workspace.draftRoot, 'Shared Timer', 'actor', 'tx.resetError.ts')).href);
-    let resetTransitions = 0;
-    await resetModule.txResetError({ next: async () => { resetTransitions += 1; } } as never, {} as never);
-    expect(resetTransitions).toBe(1);
-    const registrySource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'actor', 'functions.ts'), 'utf8');
-    expect(registrySource).toContain('"tx.resetError": txResetError');
-    expect(registrySource).not.toContain('tx.update');
-    const widgetSource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'widget', 'main.ts'), 'utf8');
-    expect(widgetSource).toContain('state === family || state.startsWith(`${family}.`)');
-    expect(widgetSource).toContain('Starting widget...');
-    expect(widgetSource).toContain('Widget under construction...');
-    expect(widgetSource).toContain('Widget encountered an error.');
-    expect(widgetSource).toContain('actor.sendMessage("in.resetError", {})');
-    expect(widgetSource).toContain('>Reset</button>');
+    const widgetSource = await readFile(join(workspace.draftRoot, 'Shared Timer', 'ui', 'main.ts'), 'utf8');
+    expect(widgetSource).toContain('reactive({ count: 0 })');
+    expect(widgetSource).toContain('state.count += 1');
+    expect(widgetSource).toContain('Widget under construction');
+    expect(widgetSource).not.toContain('@vibecanvas/sdk/actor');
     const generatedSources = await Promise.all(created.details.files.map((file: string) => (
       readFile(join(workspace.draftRoot, 'Shared Timer', file), 'utf8')
     )));
@@ -187,7 +163,43 @@ describe('widget tools and publish integration', () => {
     expect(JSON.parse(await readFile(join(workspace.draftRoot, 'Shared Timer', 'package.json'), 'utf8'))).toMatchObject({
       dependencies: { '@vibecanvas/sdk': `file:${workspace.sdkPackagePath}` },
     });
-    expect((await stat(join(workspace.sdkPackagePath, 'src', 'actor.ts'))).isFile()).toBe(true);
+    expect((await stat(join(workspace.sdkPackagePath, 'src', 'server.ts'))).isFile()).toBe(true);
+    expect((await stat(join(workspace.sdkPackagePath, 'src', 'function-client.ts'))).isFile()).toBe(true);
+    expect((await stat(join(workspace.draftRoot, 'Shared Timer', 'server'))).isDirectory()).toBe(true);
+
+    const fileTools = createWorkspaceFileTools({
+      workspace,
+      chatId: 'chat-a',
+      cwd: workspace.getChatRoot('chat-a'),
+      authorize: async () => true,
+    });
+    const patch = fileTools.find((tool) => tool.name === 'patch')!;
+    const edit = fileTools.find((tool) => tool.name === 'edit')!;
+    const serverSource = [
+      'import { defineServerFunction } from "@vibecanvas/sdk/server";',
+      'import { z } from "zod";',
+      '',
+      'export const calculate = defineServerFunction({',
+      '  effect: "fn",',
+      '  input: z.object({ value: z.number().finite() }),',
+      '  output: z.object({ doubled: z.number().finite() }),',
+      '}, async (_context, input) => ({ doubled: input.value * 2 }));',
+    ];
+    const serverPatch = ['@@ -1,1 +1,8 @@', '-', ...serverSource.map((line) => `+${line}`)].join('\n');
+    expect((await executeTool(patch, {
+      path: 'widgets/Shared Timer/server/main.server.ts',
+      patch: serverPatch,
+    })).isError).toBeUndefined();
+    const oldManifestTail = '  "ui": {\n    "entry": "ui/main.ts"\n  }\n}';
+    const newManifestTail = '  "ui": {\n    "entry": "ui/main.ts"\n  },\n  "server": {\n    "entry": "server/main.server.ts",\n    "runtimeAbi": "vibecanvas-function-v1"\n  }\n}';
+    expect((await executeTool(edit, {
+      path: 'widgets/Shared Timer/vibecanvas.json',
+      edits: [{ oldText: oldManifestTail, newText: newManifestTail }],
+    })).isError).toBeUndefined();
+    expect(await readFile(
+      join(workspace.draftRoot, 'Shared Timer', 'server', 'main.server.ts'),
+      'utf8',
+    )).toContain('export const calculate = defineServerFunction');
 
     const secondTools = createWidgetWorkspaceTools({ workspace, chatId: 'chat-b', authorize: async () => true });
     expect(secondTools.map((tool) => tool.name)).toEqual(['vc_widget_list', 'vc_widget_create', 'vc_widget_validate']);
@@ -200,6 +212,7 @@ describe('widget tools and publish integration', () => {
       { name: 'Shared Timer' },
     );
     expect(validation.details).toMatchObject({ name: 'Shared Timer', source: 'draft', ok: true });
+    expect(validation.details.files).toContain('server/main.server.ts');
     expect(validation.content[0]?.text).toContain('"ok": true');
     expect(validation.content[0]?.text).toContain('"errors": []');
     const unmounted = await executeTool(
@@ -228,153 +241,18 @@ describe('widget tools and publish integration', () => {
       .toBe(await realpath(join(workspace.draftRoot, 'Weather')));
   });
 
-  test('rolls back failed first publish and preserves every draft mount', async () => {
-    const { dataPath, configPath, workspace } = await fixture();
+  test('keeps v2 publication out of the explicit legacy chat adapter', async () => {
+    const { workspace } = await fixture();
     const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
       .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Rollback Timer' });
-    await workspace.loadWidget('chat-b', 'Rollback Timer');
-
-    const service = new AgentService({
-      cachePath: join(dataPath, 'cache'),
-      dataPath,
-      configPath,
-      eventPublisherService: createTestTenantEvents(),
-      actorService: {
-        reload: async () => {},
-        listResourceBindingsForDefinition: async () => [],
-        transitionDefinitionPublication: async () => { throw new Error('reload failed'); },
-      },
-    });
-    service.sessionMap.widget = {
-      'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },
-    };
-
-    const result = await service.publishChat('widget', 'chat-a');
-    expect(result).toMatchObject({
-      published: false,
-      message: expect.stringContaining('Recovery also failed: actor publication restore: reload failed'),
-      errors: [expect.stringContaining('PUBLISH_RECOVERY_FAILED')],
-    });
-    expect((await stat(join(workspace.draftRoot, 'Rollback Timer'))).isDirectory()).toBe(true);
-    await expect(lstat(join(workspace.publishedRoot, 'Rollback Timer'))).rejects.toThrow();
-    await expect(lstat(join(configPath, 'widgets', 'rollback-timer'))).rejects.toThrow();
-    expect((await workspace.listMounts('chat-a'))[0]).toMatchObject({ name: 'Rollback Timer', source: 'draft' });
-    expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Rollback Timer', source: 'draft' });
-  });
-
-  test('rolls back first publish when post-reload binding reconciliation fails', async () => {
-    const { dataPath, configPath, workspace } = await fixture();
-    const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
-      .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Binding Rollback' });
-    await workspace.loadWidget('chat-b', 'Binding Rollback');
-    let reloads = 0;
-
-    const service = new AgentService({
-      cachePath: join(dataPath, 'cache'),
-      dataPath,
-      configPath,
-      eventPublisherService: createTestTenantEvents(),
-      actorService: {
-        reload: async () => {},
-        transitionDefinitionPublication: async () => { reloads += 1; },
-        listResourceBindingsForDefinition: async () => { throw new Error('binding reconciliation failed'); },
-      },
-    });
-    service.sessionMap.widget = {
-      'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },
-    };
-
-    const result = await service.publishChat('widget', 'chat-a');
-    expect(result).toMatchObject({ published: false, message: 'binding reconciliation failed' });
-    expect(reloads).toBe(0);
-    expect((await stat(join(workspace.draftRoot, 'Binding Rollback'))).isDirectory()).toBe(true);
-    await expect(lstat(join(workspace.publishedRoot, 'Binding Rollback'))).rejects.toThrow();
-    await expect(lstat(join(configPath, 'widgets', 'binding-rollback'))).rejects.toThrow();
-    expect((await workspace.listMounts('chat-a'))[0]).toMatchObject({ name: 'Binding Rollback', source: 'draft' });
-    expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Binding Rollback', source: 'draft' });
-  });
-
-  test('first publish retains the shared draft and republish records its latest clean revision', async () => {
-    const { dataPath, configPath, workspace } = await fixture();
-    const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
-      .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Published Timer' });
-    await workspace.loadWidget('chat-b', 'Published Timer');
-
-    const service = new AgentService({
-      cachePath: join(dataPath, 'cache'),
-      dataPath,
-      configPath,
-      eventPublisherService: createTestTenantEvents(),
-      actorService: {
-        reload: async () => {},
-        listResourceBindingsForDefinition: async () => [],
-        transitionDefinitionPublication: async () => {},
-      },
-    });
-    service.sessionMap.widget = {
-      'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },
-    };
-
-    const result = await service.publishChat('widget', 'chat-a');
-    expect(result.published).toBe(true);
-    expect((await workspace.listMounts('chat-a'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
-    expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
-    expect((await stat(join(configPath, 'widgets', 'published-timer'))).isDirectory()).toBe(true);
-    expect((await stat(join(workspace.publishedRoot, 'Published Timer'))).isDirectory()).toBe(true);
-    const firstPublishedRevision = (await workspace.getDraft('Published Timer'))!.revision;
-    expect(await workspace.getCleanDraftRevision('Published Timer')).toBe(firstPublishedRevision);
-
-    await writeFile(join(workspace.draftRoot, 'Published Timer', 'widget', 'main.css'), '.republished { color: red; }\n', 'utf8');
-    const republished = await service.publishChat('widget', 'chat-a');
-    expect(republished.published).toBe(true);
-    expect(await readFile(join(workspace.publishedRoot, 'Published Timer', 'widget', 'main.css'), 'utf8')).toContain('.republished');
-    expect(await readFile(join(configPath, 'widgets', 'published-timer', 'widget', 'main.css'), 'utf8')).toContain('.republished');
-    expect((await workspace.listMounts('chat-a'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
-    expect((await workspace.listMounts('chat-b'))[0]).toMatchObject({ name: 'Published Timer', source: 'draft' });
-    expect(await workspace.getCleanDraftRevision('Published Timer'))
-      .toBe((await workspace.getDraft('Published Timer'))!.revision);
-  });
-
-  test('restores the previous canonical and installed widget when an existing publish fails after copy', async () => {
-    const { dataPath, configPath, workspace } = await fixture();
-    const create = createWidgetWorkspaceTools({ workspace, chatId: 'chat-a', authorize: async () => true })
-      .find((tool) => tool.name === 'vc_widget_create')!;
-    await executeTool(create, { name: 'Atomic Timer' });
-    let rejectReload = false;
-    let rejectedOnce = false;
-    const service = new AgentService({
-      cachePath: join(dataPath, 'cache'),
-      dataPath,
-      configPath,
-      eventPublisherService: createTestTenantEvents(),
-      actorService: {
-        reload: async () => {},
-        listResourceBindingsForDefinition: async () => [],
-        transitionDefinitionPublication: async () => {
-        if (rejectReload && !rejectedOnce) {
-          rejectedOnce = true;
-          throw new Error('reload failed');
-        }
-      } },
-    });
-    service.sessionMap.widget = {
-      'chat-a': { unsub: () => {}, session: {} as never, sessionManager: createFakeSessionManager() as never },
-    };
-
-    expect((await service.publishChat('widget', 'chat-a')).published).toBe(true);
-    const cleanRevision = await workspace.getCleanDraftRevision('Atomic Timer');
-    await writeFile(join(workspace.draftRoot, 'Atomic Timer', 'widget', 'main.css'), '.new-draft { color: red; }\n', 'utf8');
-    rejectReload = true;
-
-    const failed = await service.publishChat('widget', 'chat-a');
-    expect(failed).toMatchObject({ published: false, message: 'reload failed' });
-    expect(await readFile(join(workspace.draftRoot, 'Atomic Timer', 'widget', 'main.css'), 'utf8')).toContain('.new-draft');
-    expect(await readFile(join(workspace.publishedRoot, 'Atomic Timer', 'widget', 'main.css'), 'utf8')).not.toContain('.new-draft');
-    expect(await readFile(join(configPath, 'widgets', 'atomic-timer', 'widget', 'main.css'), 'utf8')).not.toContain('.new-draft');
-    expect(await workspace.getCleanDraftRevision('Atomic Timer')).toBe(cleanRevision);
-    expect((await workspace.getDraft('Atomic Timer'))!.revision).not.toBe(cleanRevision);
+    await executeTool(create, { name: 'V2 Only Timer' });
+    const manifest = JSON.parse(await readFile(
+      join(workspace.draftRoot, 'V2 Only Timer', 'vibecanvas.json'),
+      'utf8',
+    ));
+    expect(manifest.schemaVersion).toBe(2);
+    expect(manifest.actor).toBeUndefined();
+    expect(await workspace.getDraft('V2 Only Timer')).not.toBeNull();
+    await expect(lstat(join(workspace.publishedRoot, 'V2 Only Timer'))).rejects.toThrow();
   });
 });

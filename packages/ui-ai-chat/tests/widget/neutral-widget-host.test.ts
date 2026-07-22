@@ -268,6 +268,7 @@ describe('neutral widget host', () => {
       ok: true,
       descriptor: {
         kind: 'published-v2',
+        draftId: null,
         reference,
         bounds: { width: 420, height: 300 },
         definitionId: DEFINITION_ID,

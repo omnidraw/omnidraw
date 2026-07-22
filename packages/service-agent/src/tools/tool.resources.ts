@@ -1,6 +1,5 @@
 import { defineTool } from '@earendil-works/pi-coding-agent';
-import type { TDbCellValue } from '@vibecanvas/resource-runtime';
-import type { TActorResource, TJson } from '@vibecanvas/service-db/model';
+import type { TDbCellValue, TResourceJson } from '@vibecanvas/resource-runtime';
 import { Type } from 'typebox';
 import type { ApprovalCoordinator } from '../approval/ApprovalCoordinator';
 import type { TToolAuthorizationContext } from '../approval/types';
@@ -20,9 +19,10 @@ import {
   fnSortResources,
 } from './fn.resource-tools';
 import { fnToolError, fnToolSuccess } from './fn.result';
-import type { TActorServiceReloader, TToolDefinition } from './types';
+import type { TAgentResource, TAgentResourceService } from './resource-service';
+import type { TToolDefinition } from './types';
 
-type TResourceKind = TActorResource['kind'];
+type TResourceKind = TAgentResource['kind'];
 type TDbParameter = string | number | boolean | null | { type: 'integer'; value: string } | { type: 'blob'; base64: string };
 type TResourceDataReadQuery =
   | { operation: 'get' | 'has'; key: string }
@@ -30,14 +30,14 @@ type TResourceDataReadQuery =
   | { operation: 'sql'; sql: string; parameters?: TDbParameter[] }
   | { operation: 'schema'; object?: string; cursor?: string; limit?: number };
 type TResourceDataWriteOperation =
-  | { operation: 'set'; key: string; value: TJson | string }
+  | { operation: 'set'; key: string; value: TResourceJson | string }
   | { operation: 'delete'; key: string }
   | { operation: 'sql'; sql: string; parameters?: TDbParameter[] };
 
 type TCreateResourceToolsArgs = {
   chatId: string;
   authorization: TToolAuthorizationContext;
-  actorService?: TActorServiceReloader;
+  resourceService?: TAgentResourceService;
   approvals: ApprovalCoordinator;
   authorize: (toolName: string) => Promise<boolean>;
   takeSensitiveToolArgs?: (toolCallId: string) => unknown;
@@ -121,27 +121,27 @@ function toWireParameters(parameters: TDbParameter[] | undefined): TDbCellValue[
 }
 
 async function resolveResource(
-  actorService: TActorServiceReloader | undefined,
+  resourceService: TAgentResourceService | undefined,
   resourceName: string,
   requireReady: boolean,
-): Promise<TActorResource> {
-  if (!actorService?.resolveResourceByName) {
+): Promise<TAgentResource> {
+  if (!resourceService?.resolveResourceByName) {
     throw Object.assign(new Error('Resource name resolution is unavailable in this host.'), { code: 'RESOURCE_LOOKUP_UNAVAILABLE' });
   }
-  return actorService.resolveResourceByName(resourceName, { requireReady });
+  return resourceService.resolveResourceByName(resourceName, { requireReady });
 }
 
 async function executeReadQuery(
-  actorService: TActorServiceReloader | undefined,
-  resource: TActorResource,
+  resourceService: TAgentResourceService | undefined,
+  resource: TAgentResource,
   query: TResourceDataReadQuery,
 ): Promise<unknown> {
   if (query.operation === 'schema') {
     if (resource.kind !== 'db') {
       throw Object.assign(new Error(`Schema inspection is unsupported for ${resource.kind} resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
     }
-    if (!actorService?.inspectDbResource) throw new Error('Database schema inspection is unavailable in this host.');
-    const inspection = await actorService.inspectDbResource({ resourceId: resource.id, target: 'live' });
+    if (!resourceService?.inspectDbResource) throw new Error('Database schema inspection is unavailable in this host.');
+    const inspection = await resourceService.inspectDbResource({ resourceId: resource.id, target: 'live' });
     if (!query.object) {
       const fingerprint = fnDbSchemaFingerprint(inspection?.objects ?? []);
       const parsedCursor = query.cursor
@@ -169,8 +169,8 @@ async function executeReadQuery(
     if (resource.kind !== 'db') {
       throw Object.assign(new Error(`SQL reads are unsupported for ${resource.kind} resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
     }
-    if (!actorService?.executeDbLiveSql) throw new Error('Database queries are unavailable in this host.');
-    return actorService.executeDbLiveSql({
+    if (!resourceService?.executeDbLiveSql) throw new Error('Database queries are unavailable in this host.');
+    return resourceService.executeDbLiveSql({
       resourceId: resource.id,
       sql: query.sql,
       parameters: toWireParameters(query.parameters),
@@ -184,13 +184,13 @@ async function executeReadQuery(
     throw Object.assign(new Error('Secret plaintext reads are unsupported. Use has or list for key metadata.'), { code: 'SECRET_READ_UNSUPPORTED' });
   }
   if (query.operation === 'list') {
-    if (!actorService?.listResourceData || !actorService.countResourceData) {
+    if (!resourceService?.listResourceData || !resourceService.countResourceData) {
       throw new Error('Resource key discovery is unavailable in this host.');
     }
     const filter = { resourceId: resource.id, prefix: query.prefix, search: query.search };
     const [page, matchingCount] = await Promise.all([
-      actorService.listResourceData({ ...filter, cursor: query.cursor, limit: query.limit ?? 20 }),
-      actorService.countResourceData(filter),
+      resourceService.listResourceData({ ...filter, cursor: query.cursor, limit: query.limit ?? 20 }),
+      resourceService.countResourceData(filter),
     ]);
     const entries = page.kind === 'kv'
       ? page.entries.map(({ key, revision, createdAt, updatedAt }) => ({ key, revision, createdAt, updatedAt }))
@@ -202,12 +202,12 @@ async function executeReadQuery(
       nextCursor: page.nextCursor,
     };
   }
-  if (!actorService?.getResourceDataEntry) throw new Error('Resource data reads are unavailable in this host.');
-  const entry = await actorService.getResourceDataEntry({ resourceId: resource.id, key: query.key });
+  if (!resourceService?.getResourceDataEntry) throw new Error('Resource data reads are unavailable in this host.');
+  const entry = await resourceService.getResourceDataEntry({ resourceId: resource.id, key: query.key });
   return query.operation === 'has' ? { exists: entry !== null } : entry;
 }
 
-function validateWriteOperation(resource: TActorResource, operation: TResourceDataWriteOperation): void {
+function validateWriteOperation(resource: TAgentResource, operation: TResourceDataWriteOperation): void {
   if (resource.kind === 'db') {
     if (operation.operation !== 'sql') {
       throw Object.assign(new Error(`Operation '${operation.operation}' is unsupported for db resources.`), { code: 'RESOURCE_OPERATION_UNSUPPORTED' });
@@ -229,19 +229,19 @@ function validateWriteOperation(resource: TActorResource, operation: TResourceDa
 }
 
 async function executeWriteOperation(
-  actorService: TActorServiceReloader | undefined,
-  resource: TActorResource,
+  resourceService: TAgentResourceService | undefined,
+  resource: TAgentResource,
   operation: Exclude<TResourceDataWriteOperation, { operation: 'sql' }>,
 ): Promise<unknown> {
-  if (!actorService?.getResourceDataEntry || !actorService.setResourceDataEntry || !actorService.deleteResourceDataEntry) {
+  if (!resourceService?.getResourceDataEntry || !resourceService.setResourceDataEntry || !resourceService.deleteResourceDataEntry) {
     throw new Error('Resource data writes are unavailable in this host.');
   }
-  const current = await actorService.getResourceDataEntry({ resourceId: resource.id, key: operation.key });
+  const current = await resourceService.getResourceDataEntry({ resourceId: resource.id, key: operation.key });
   if (operation.operation === 'delete') {
     if (!current) return { deleted: false };
-    return actorService.deleteResourceDataEntry({ resourceId: resource.id, key: operation.key, expectedRevision: current.revision });
+    return resourceService.deleteResourceDataEntry({ resourceId: resource.id, key: operation.key, expectedRevision: current.revision });
   }
-  const result = await actorService.setResourceDataEntry({
+  const result = await resourceService.setResourceDataEntry({
     resourceId: resource.id,
     key: operation.key,
     expectedRevision: current?.revision ?? null,
@@ -251,22 +251,22 @@ async function executeWriteOperation(
 }
 
 async function executeDbWriteBatch(
-  actorService: TActorServiceReloader | undefined,
-  resource: TActorResource,
+  resourceService: TAgentResourceService | undefined,
+  resource: TAgentResource,
   operations: Extract<TResourceDataWriteOperation, { operation: 'sql' }>[],
 ): Promise<{ results: unknown[]; atomicity: string; apply: unknown }> {
-  if (!actorService?.createDbDraft || !actorService.executeDbDraftSql || !actorService.previewDbApply || !actorService.confirmDbApply || !actorService.discardDbDraft) {
+  if (!resourceService?.createDbDraft || !resourceService.executeDbDraftSql || !resourceService.previewDbApply || !resourceService.confirmDbApply || !resourceService.discardDbDraft) {
     throw new Error('Durable database writes are unavailable in this host.');
   }
-  const details = await actorService.createDbDraft(resource.id, 'AI Chat protected resource write');
+  const details = await resourceService.createDbDraft(resource.id, 'AI Chat protected resource write');
   const draftId = details.draft.id;
   let applyStarted = false;
   try {
     for (const operation of operations) {
-      await actorService.executeDbDraftSql(draftId, operation.sql, toWireParameters(operation.parameters));
+      await resourceService.executeDbDraftSql(draftId, operation.sql, toWireParameters(operation.parameters));
     }
-    const preview = await actorService.previewDbApply(draftId);
-    const apply = await actorService.confirmDbApply(draftId);
+    const preview = await resourceService.previewDbApply(draftId);
+    const apply = await resourceService.confirmDbApply(draftId);
     applyStarted = true;
     const warnings = preview.warnings.slice(0, 40);
     return {
@@ -279,19 +279,19 @@ async function executeDbWriteBatch(
       },
     };
   } catch (error) {
-    if (!applyStarted) await actorService.discardDbDraft(draftId).catch(() => undefined);
+    if (!applyStarted) await resourceService.discardDbDraft(draftId).catch(() => undefined);
     throw error;
   }
 }
 
-function secretWriteValues(resource: TActorResource | undefined, operations: readonly TResourceDataWriteOperation[]): string[] {
+function secretWriteValues(resource: TAgentResource | undefined, operations: readonly TResourceDataWriteOperation[]): string[] {
   if (resource?.kind !== 'secretStore') return [];
   return operations.flatMap((operation) => (
     operation.operation === 'set' && typeof operation.value === 'string' ? [operation.value] : []
   ));
 }
 
-function safeWriteApprovalDetails(resource: TActorResource, operations: readonly TResourceDataWriteOperation[]) {
+function safeWriteApprovalDetails(resource: TAgentResource, operations: readonly TResourceDataWriteOperation[]) {
   return {
     resource: fnSafeResource(resource),
     operations: operations.map((operation, index) => (
@@ -317,9 +317,9 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     }, { additionalProperties: false }),
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('vc_resource_list')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
-      if (!args.actorService?.listResources) return toolUnavailable('RESOURCE_LIST_UNAVAILABLE', 'Resource discovery is unavailable in this host.');
+      if (!args.resourceService?.listResources) return toolUnavailable('RESOURCE_LIST_UNAVAILABLE', 'Resource discovery is unavailable in this host.');
       try {
-        const resources = fnSortResources(await args.actorService.listResources(params.kind ? { kind: params.kind } : {}));
+        const resources = fnSortResources(await args.resourceService.listResources(params.kind ? { kind: params.kind } : {}));
         const fingerprint = fnResourceListFingerprint(resources);
         const parsedCursor = params.cursor
           ? fnParseResourceListCursor(params.cursor, fingerprint, params.kind)
@@ -354,9 +354,9 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
       if (!await args.authorize('vc_resource_inspect')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       let internalResourceId: string | undefined;
       try {
-        const resource = await resolveResource(args.actorService, params.resourceName, false);
+        const resource = await resolveResource(args.resourceService, params.resourceName, false);
         internalResourceId = resource.id;
-        const bindings = await args.actorService?.listResourceReferences?.(resource.id) ?? [];
+        const bindings = await args.resourceService?.listResourceReferences?.(resource.id) ?? [];
         const lifecycle = fnResourceCapabilities(resource, bindings.length);
         const base = {
           resource: fnSafeResourceMetadata(resource),
@@ -369,7 +369,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
         let modelData: Record<string, unknown>;
         if (resource.kind === 'db') {
           const inspection = resource.status === 'ready'
-            ? await args.actorService?.inspectDbResource?.({ resourceId: resource.id, target: 'live' })
+            ? await args.resourceService?.inspectDbResource?.({ resourceId: resource.id, target: 'live' })
             : null;
           modelData = {
             ...base,
@@ -377,7 +377,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           };
         } else {
           const count = resource.status === 'ready'
-            ? await args.actorService?.countResourceData?.({ resourceId: resource.id }) ?? null
+            ? await args.resourceService?.countResourceData?.({ resourceId: resource.id }) ?? null
             : null;
           modelData = {
             ...base,
@@ -406,7 +406,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     ]),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_create')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
-      if (!args.actorService?.createResource) return toolUnavailable('RESOURCE_CREATE_UNAVAILABLE', 'Resource creation is unavailable in this host.');
+      if (!args.resourceService?.createResource) return toolUnavailable('RESOURCE_CREATE_UNAVAILABLE', 'Resource creation is unavailable in this host.');
       try {
         const resource = await args.approvals.request({
           chatId: args.chatId,
@@ -418,7 +418,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           risk: 'medium',
           safeDetails: { kind: params.kind, name: params.name, engine: params.kind === 'db' ? 'sqlite' : undefined },
           signal,
-          execute: async (stored) => args.actorService!.createResource!({ kind: stored.kind, name: stored.name }),
+          execute: async (stored) => args.resourceService!.createResource!({ kind: stored.kind, name: stored.name }),
         });
         const modelData = { resource: fnSafeResource(resource) };
         return fnToolSuccess({ summary: `Created resource '${resource.name}'.`, modelData, details: modelData });
@@ -438,10 +438,10 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_update')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
-      if (!args.actorService?.renameResource) return toolUnavailable('RESOURCE_UPDATE_UNAVAILABLE', 'Resource rename is unavailable in this host.');
+      if (!args.resourceService?.renameResource) return toolUnavailable('RESOURCE_UPDATE_UNAVAILABLE', 'Resource rename is unavailable in this host.');
       let internalResourceId: string | undefined;
       try {
-        const current = await resolveResource(args.actorService, params.resourceName, false);
+        const current = await resolveResource(args.resourceService, params.resourceName, false);
         internalResourceId = current.id;
         const resource = await args.approvals.request({
           chatId: args.chatId,
@@ -453,7 +453,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           risk: 'medium',
           safeDetails: { resource: fnSafeResource(current), newName: params.newName },
           signal,
-          execute: async (stored) => args.actorService!.renameResource!({ id: stored.resourceId, name: stored.newName }),
+          execute: async (stored) => args.resourceService!.renameResource!({ id: stored.resourceId, name: stored.newName }),
         });
         const modelData = { resource: fnSafeResource(resource) };
         return fnToolSuccess({ summary: `Renamed resource to '${resource.name}'.`, modelData, details: modelData });
@@ -470,10 +470,10 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     parameters: Type.Object({ resourceName: RESOURCE_NAME_SCHEMA }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_delete')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
-      if (!args.actorService?.deleteResource) return toolUnavailable('RESOURCE_DELETE_UNAVAILABLE', 'Resource deletion is unavailable in this host.');
+      if (!args.resourceService?.deleteResource) return toolUnavailable('RESOURCE_DELETE_UNAVAILABLE', 'Resource deletion is unavailable in this host.');
       let internalResourceId: string | undefined;
       try {
-        const current = await resolveResource(args.actorService, params.resourceName, false);
+        const current = await resolveResource(args.resourceService, params.resourceName, false);
         internalResourceId = current.id;
         await args.approvals.request({
           chatId: args.chatId,
@@ -486,7 +486,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           warnings: ['Deletion fails while live widget bindings still reference this resource.'],
           safeDetails: { resource: fnSafeResource(current) },
           signal,
-          execute: async (stored) => args.actorService!.deleteResource!(stored.resourceId),
+          execute: async (stored) => args.resourceService!.deleteResource!(stored.resourceId),
         });
         const modelData = { deleted: true, resourceName: current.name };
         return fnToolSuccess({ summary: `Deleted resource '${current.name}'.`, modelData, details: modelData });
@@ -507,13 +507,13 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('vc_resource_data_read')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
       try {
-        const resource = await resolveResource(args.actorService, params.resourceName, true);
+        const resource = await resolveResource(args.resourceService, params.resourceName, true);
         const queries = params.queries as TResourceDataReadQuery[];
         assertBatchBound(queries);
         const results = [];
         for (const [index, query] of queries.entries()) {
           try {
-            results.push({ index, ok: true, value: await executeReadQuery(args.actorService, resource, query) });
+            results.push({ index, ok: true, value: await executeReadQuery(args.resourceService, resource, query) });
           } catch (error) {
             results.push({ index, ok: false, error: fnRedactResourceError(fnSafeResourceError(error), [resource.id]) });
           }
@@ -540,11 +540,11 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
     }, { additionalProperties: false }),
     async execute(toolCallId, params: any, signal?: AbortSignal) {
       if (!await args.authorize('vc_resource_data_write')) return toolUnavailable('TOOL_NOT_AUTHORIZED', 'This tool call is not authorized.');
-      let resource: TActorResource | undefined;
+      let resource: TAgentResource | undefined;
       let operations: TResourceDataWriteOperation[] = [];
       try {
         params = args.takeSensitiveToolArgs?.(toolCallId) ?? params;
-        resource = await resolveResource(args.actorService, params.resourceName, true);
+        resource = await resolveResource(args.resourceService, params.resourceName, true);
         operations = params.operations as TResourceDataWriteOperation[];
         assertBatchBound(operations);
         const invalidResults = operations.flatMap((operation, index) => {
@@ -575,12 +575,12 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
           safeDetails: safeWriteApprovalDetails(resource, operations),
           signal,
           execute: async (stored) => {
-            const current = await args.actorService?.getResource?.(stored.resourceId);
+            const current = await args.resourceService?.getResource?.(stored.resourceId);
             if (!current) throw Object.assign(new Error('The approved resource no longer exists.'), { code: 'RESOURCE_NOT_FOUND' });
             if (current.status !== 'ready') throw Object.assign(new Error(`Resource '${current.name}' is not ready.`), { code: 'RESOURCE_NOT_READY' });
             if (current.kind === 'db') {
               return executeDbWriteBatch(
-                args.actorService,
+                args.resourceService,
                 current,
                 stored.operations as Extract<TResourceDataWriteOperation, { operation: 'sql' }>[],
               );
@@ -592,7 +592,7 @@ export function createResourceTools(args: TCreateResourceToolsArgs): TToolDefini
                   index,
                   ok: true,
                   value: await executeWriteOperation(
-                    args.actorService,
+                    args.resourceService,
                     current,
                     operation as Exclude<TResourceDataWriteOperation, { operation: 'sql' }>,
                   ),

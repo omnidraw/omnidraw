@@ -11,6 +11,7 @@ import { AiChat } from "../chat/components";
 import type { TAiChatApiPort, TAiChatApplicationPort, TAiChatBrowserPort } from "../ports";
 import type { TWidgetTitleBarPortal } from "../widget/interface";
 import type { WidgetManagerService } from "../widget/WidgetManagerService";
+import type { TChatWidgetDraftReference } from "../chat/components/tabs/fn.tool-call";
 
 const AI_WIDGET_KIND = "ai";
 
@@ -98,7 +99,7 @@ function mountAiWidget(portal: {
   scene: SceneService;
   tool: ToolService;
   createSessionId: () => string;
-  openWidgetPreview: (args: { draftName: string; originChatElementId: string }) => Promise<void>;
+  openWidgetPreview: (args: { draftId?: string; draftName: string; originChatElementId: string }) => Promise<void>;
 }, args: { root: HTMLDivElement; element: TElement, id: string; titleBar: TWidgetTitleBarPortal }) {
   args.root.replaceChildren();
 
@@ -143,8 +144,9 @@ function mountAiWidget(portal: {
       });
       return sessionId;
     },
-    onOpenWidgetPreview: (draftName) => portal.openWidgetPreview({
-      draftName,
+    onOpenWidgetPreview: (reference: TChatWidgetDraftReference) => portal.openWidgetPreview({
+      ...(reference.draftId ? { draftId: reference.draftId } : {}),
+      draftName: reference.name,
       originChatElementId: args.id,
     }),
   }), args.root)
@@ -162,7 +164,7 @@ export function createAiPlugin(portal: {
   createId: () => string;
   nowDate: () => Date;
   widgetManager: WidgetManagerService;
-  openWidgetPreview: (args: { draftName: string; originChatElementId: string }) => Promise<void>;
+  openWidgetPreview: (args: { draftId?: string; draftName: string; originChatElementId: string }) => Promise<void>;
 }): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   const createSessionId = () => createAiSessionId({ createId: portal.createId, nowDate: portal.nowDate });
   return {

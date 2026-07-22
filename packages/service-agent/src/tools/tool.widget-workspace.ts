@@ -16,14 +16,14 @@ import {
 } from './fn.widget-list';
 import { fnToolError, fnToolSuccess } from './fn.result';
 import { txWriteWidgetScaffold } from './tx.scaffold';
-import type { TToolDefinition, TWidgetDraftChange } from './types';
+import type { TToolDefinition, TWidgetDraftChangeHandler } from './types';
 
 type TCreateWidgetWorkspaceToolsArgs = {
   workspace: WidgetWorkspace;
   chatId: string;
   authorize: (toolName: 'vc_widget_list' | 'vc_widget_create' | 'vc_widget_validate') => Promise<boolean>;
   onMounted?: (mount: TWidgetMount) => void;
-  onDraftChanged?: (change: TWidgetDraftChange) => void | Promise<void>;
+  onDraftChanged?: TWidgetDraftChangeHandler;
 };
 
 const WIDGET_CREATE_PARAMETERS = Type.Object({
@@ -76,7 +76,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   const create = defineTool({
     name: 'vc_widget_create',
     label: 'Create Widget Draft',
-    description: 'Create and mount one complete runnable unpublished actor/widget draft. Continue by reading the generated files, editing or patching the construction scaffold, then call vc_widget_validate. Create is not an update workflow.',
+    description: 'Create and mount one complete browser-first manifest-v2 widget draft. Continue by reading the generated files, editing the construction scaffold, then call vc_widget_validate. Add server files only when the requested widget needs a short server function.',
     parameters: WIDGET_CREATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('vc_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });
@@ -104,9 +104,10 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           return files;
         });
         args.onMounted?.(created.mount);
-        await args.onDraftChanged?.({ name: created.mount.name, type: 'created' });
+        const durable = await args.onDraftChanged?.({ name: created.mount.name, type: 'created' });
         const modelData = {
           name: created.mount.name,
+          ...(durable ? { draftId: durable.draftId } : {}),
           mountPath: `widgets/${created.mount.name}`,
           source: created.mount.source,
           draft: true,
@@ -143,32 +144,41 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
           validation.ok = false;
           validation.errors.push(`Published identity is '${mount.name}', but vibecanvas.json declares '${String(manifest.name)}'. Create and publish a new widget to rename it.`);
         }
-        await args.onDraftChanged?.({
+        const durable = await args.onDraftChanged?.({
           name: mount.name,
           type: 'validated',
-          validation: {
-            ok: validation.ok,
-            errors: validation.errors,
-            warnings: validation.warnings,
-          },
         });
-        const errors = validation.errors.slice(0, 40);
-        const warnings = validation.warnings.slice(0, 40);
+        if (args.onDraftChanged && !durable) {
+          throw new Error('Trusted widget validation did not return durable draft status.');
+        }
+        if (durable && durable.validation.status === 'unknown') {
+          throw new Error('Trusted widget validation did not complete for the current draft revision.');
+        }
+        const authoritative = durable
+          ? {
+              ok: durable.validation.status === 'valid',
+              errors: [...durable.validation.errors],
+              warnings: [...durable.validation.warnings],
+            }
+          : validation;
+        const errors = authoritative.errors.slice(0, 40);
+        const warnings = authoritative.warnings.slice(0, 40);
         const files = validation.files.slice(0, 500);
         const modelData = {
           name: mount.name,
+          ...(durable ? { draftId: durable.draftId, revision: durable.revision } : {}),
           mountPath: `widgets/${mount.name}`,
           source: mount.source,
-          ok: validation.ok,
+          ok: authoritative.ok,
           errors,
           warnings,
           files,
-          errorsTruncated: validation.errors.length > errors.length,
-          warningsTruncated: validation.warnings.length > warnings.length,
+          errorsTruncated: authoritative.errors.length > errors.length,
+          warningsTruncated: authoritative.warnings.length > warnings.length,
           filesTruncated: validation.files.length > files.length,
         };
         return fnToolSuccess({
-          summary: `Widget '${mount.name}' is ${validation.ok ? 'valid' : 'invalid'}.`,
+          summary: `Widget '${mount.name}' is ${authoritative.ok ? 'valid' : 'invalid'}.`,
           modelData,
           details: modelData,
         });

@@ -1,119 +1,24 @@
-# Arrow JS essentials for widgets
+# Arrow UI
 
-Widget UI uses `@arrow-js/core` inside an Arrow sandbox. Use plain TypeScript and `html` tagged templates. Do not use React, JSX, Solid, Vue, or Svelte.
-
-## Imports
+Use `@arrow-js/core` for the browser UI. Keep ordinary interaction state local and reactive:
 
 ```ts
 import { html, reactive } from "@arrow-js/core";
-import { actor } from "@vibecanvas/sdk/widget";
-```
+import "./styles.css";
 
-Use only widget-safe imports. Do not import backend packages, host internals, node modules, filesystem APIs, ORPC clients, Automerge, or `@vibecanvas/sdk` without `/widget`.
+const state = reactive({ count: 0 });
+const increment = () => { state.count += 1; };
 
-## Reactive values
-
-Use `reactive()` for local widget state:
-
-```ts
-const ui = reactive({ title: "" });
-```
-
-In templates, wrap reactive reads in functions so Arrow can update them:
-
-```ts
-html`<span>${() => ui.title}</span>`
-```
-
-A plain expression like `${ui.title}` renders only once.
-
-## Events
-
-Use event bindings with `@event` attributes:
-
-```ts
-html`<button @click="${() => actor.sendMessage("in.clear", {})}">Clear</button>`
-```
-
-For forms, prevent default submission:
-
-```ts
-html`
-  <form @submit="${(event: Event) => { event.preventDefault(); void save(); }}">
-    <button type="submit">Save</button>
-  </form>
-`
-```
-
-## Inputs
-
-Keep local input state in `reactive()` and send JSON payloads to the actor:
-
-```ts
-const ui = reactive({ title: "" });
-
-const add = async () => {
-  const title = ui.title.trim();
-  if (!title) return;
-  await actor.sendMessage("in.addTodo", { title });
-  ui.title = "";
-};
-
-html`
-  <input
-    value="${() => ui.title}"
-    @input="${(event: Event) => {
-      ui.title = (event.target as HTMLInputElement).value;
-    }}"
-  />
-  <button @click="${() => void add()}">Add</button>
-`
-```
-
-## Lists
-
-Return arrays of templates from inside a reactive function. Prefer the simplest unkeyed pattern first.
-
-```ts
-html`
-  <ul>
-    ${() => {
-      const currentTodos = todos();
-      return currentTodos.map((todo) => html`
-        <li>${todo.title}</li>
-      `);
-    }}
-  </ul>
-`
-```
-
-Avoid `.key(...)` unless identity preservation is actually required. In sandboxed widgets, complex/keyed list templates can be fragile; first prove a plain mapped list renders.
-
-## Actor data
-
-`actor.context.value` can be null or incomplete on first render. Always provide fallbacks.
-
-If actor context visibly contains data but the UI is empty, debug the template before the backend: confirm reads are inside `${() => ...}`, then reduce rendering to the smallest plain mapped list. Do not keep adding backend logs or fetch comparisons once data is present.
-
-```ts
-const todos = () => ((actor.context.value as any)?.todos ?? []);
-const state = () => actor.state.value;
-```
-
-Send only manifest-declared input messages:
-
-```ts
-await actor.sendMessage("in.toggleTodo", { id: todo.id });
-```
-
-## Export
-
-Export one default `html` template from `widget/main.ts`:
-
-```ts
 export default html`
-  <section class="my-widget">
-    <strong>${() => actor.state.value}</strong>
-  </section>
+  <button type="button" @click="${increment}">
+    ${() => state.count}
+  </button>
 `;
 ```
+
+- Put reactive reads inside `${() => ...}`.
+- Use small event handlers and immutable or explicit local updates.
+- Import static CSS from the UI graph.
+- Use semantic elements, labels, keyboard access, and visible focus.
+- Do not import server-only modules except a direct module that exports declared server functions; the trusted builder replaces that import with generated client proxies.
+- Do not fetch an internal API, embed credentials, or access host files.

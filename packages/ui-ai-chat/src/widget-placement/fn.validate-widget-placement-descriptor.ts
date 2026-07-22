@@ -46,6 +46,7 @@ const DESCRIPTOR_KEYS = Object.freeze([
   'definitionId',
   'definitionName',
   'definitionSlug',
+  'draftId',
   'kind',
   'previewId',
   'reference',
@@ -150,6 +151,7 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
       : null;
     if (
       args.expectedReference.source !== 'published'
+      || descriptor.draftId !== null
       || typeof descriptor.definitionId !== 'string'
       || !UUID_PATTERN.test(descriptor.definitionId)
       || descriptor.definitionId !== encodedDefinitionId
@@ -169,6 +171,7 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
   if (descriptor.kind === 'published-legacy') {
     if (
       args.expectedReference.source !== 'published'
+      || descriptor.draftId !== null
       || descriptor.definitionId !== null
       || descriptor.revisionId !== null
       || !isNonEmptyString(descriptor.definitionName)
@@ -185,6 +188,8 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
   if (descriptor.kind === 'preview') {
     if (
       args.expectedReference.source === 'published'
+      || typeof descriptor.draftId !== 'string'
+      || !UUID_PATTERN.test(descriptor.draftId)
       || descriptor.definitionId !== null
       || descriptor.revisionId !== null
       || descriptor.definitionName !== null

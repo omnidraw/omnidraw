@@ -14,13 +14,13 @@ const proposal = {
   proposedAt: '2026-01-01T00:00:00.000Z',
 };
 
-function createService(actorService: ConstructorParameters<typeof AgentService>[0]['actorService']) {
+function createService(resourceService: ConstructorParameters<typeof AgentService>[0]['resourceService']) {
   const service = new AgentService({
     cachePath: '/tmp/cache',
     dataPath: '/tmp/data',
     configPath: '/tmp/config',
     eventPublisherService: createTestTenantEvents(),
-    actorService,
+    resourceService,
   });
   const sessionManager = createFakeSessionManager();
   txAppendWidgetDbChangeProposalRecord({ sessionManager }, proposal);
@@ -38,7 +38,6 @@ describe('AgentService database change approval', () => {
   test('executes only through explicit approval and records the coordinated apply', async () => {
     const calls: string[] = [];
     const service = createService({
-      reload: async () => {},
       createDbDraft: async () => { calls.push('create'); return { draft: { id: 'draft-1' } }; },
       executeDbDraftSql: async (_draftId, sql) => { calls.push(`execute:${sql}`); },
       discardDbDraft: async () => { calls.push('discard'); },
@@ -62,7 +61,6 @@ describe('AgentService database change approval', () => {
   test('discards a created draft when SQL validation or apply preparation fails', async () => {
     const calls: string[] = [];
     const service = createService({
-      reload: async () => {},
       createDbDraft: async () => { calls.push('create'); return { draft: { id: 'draft-1' } }; },
       executeDbDraftSql: async () => { calls.push('execute'); throw new Error('invalid SQL'); },
       discardDbDraft: async (draftId) => { calls.push(`discard:${draftId}`); },
@@ -81,7 +79,6 @@ describe('AgentService database change approval', () => {
     const draftCreationBlocked = new Promise<void>((resolve) => { releaseDraftCreation = resolve; });
     const draftCreationStarted = new Promise<void>((resolve) => { reportDraftCreationStarted = resolve; });
     const service = createService({
-      reload: async () => {},
       createDbDraft: async () => {
         calls.push('create');
         reportDraftCreationStarted();

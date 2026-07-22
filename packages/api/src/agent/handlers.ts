@@ -11,19 +11,9 @@ import { apiChatApprovalGet } from "./api.chat.approval.get";
 import { apiChatApprovalList } from "./api.chat.approval.list";
 import { apiChatApprovalResolve } from "./api.chat.approval.resolve";
 import { apiChatConnect } from "./api.chat.connect";
-import { apiChatDraftManifestPatch } from "./api.chat.draftManifest.patch";
-import { apiChatDraftManifestRead } from "./api.chat.draftManifest.read";
 import { apiChatDbChangeApprove } from "./api.chat.dbChange.approve";
 import { apiChatDbChangeReject } from "./api.chat.dbChange.reject";
-import { apiChatDraftActorInspect } from "./api.chat.draftActor.inspect";
-import { apiChatDraftActorReload } from "./api.chat.draftActor.reload";
-import { apiChatDraftActorReset } from "./api.chat.draftActor.reset";
-import { apiChatDraftActorSend } from "./api.chat.draftActor.send";
-import { apiChatDraftActorStart } from "./api.chat.draftActor.start";
-import { apiChatDraftActorStop } from "./api.chat.draftActor.stop";
 import { apiChatNewSession } from "./api.chat.newSession";
-import { apiChatPreviewSource } from "./api.chat.previewSource";
-import { apiChatPublish } from "./api.chat.publish";
 import { apiChatPrompt } from "./api.chat.prompt";
 import { apiChatResourceBindingsClear } from "./api.chat.resourceBindings.clear";
 import { apiChatStartWidgetEdit } from "./api.chat.startWidgetEdit";
@@ -32,11 +22,11 @@ import { apiWidgetDraftGet } from './api.widgetDraft.get';
 import { apiWidgetDraftList } from './api.widgetDraft.list';
 import { apiWidgetDraftValidate } from './api.widgetDraft.validate';
 import { apiWidgetPreviewBuild } from './api.widgetPreview.build';
+import { apiWidgetPreviewCancelInvocation } from './api.widgetPreview.invocation.cancel';
 import { apiWidgetPreviewClose } from './api.widgetPreview.close';
 import { apiWidgetPreviewGet } from './api.widgetPreview.get';
-import { apiWidgetPreviewRefresh } from './api.widgetPreview.refresh';
-import { apiWidgetPreviewReset } from './api.widgetPreview.reset';
-import { apiWidgetPreviewSend } from './api.widgetPreview.send';
+import { apiWidgetPreviewGetInvocation } from './api.widgetPreview.invocation.get';
+import { apiWidgetPreviewInvoke } from './api.widgetPreview.invoke';
 import { apiWidgetPublishPublish } from './api.widgetPublish.publish';
 import { apiApprovalGet } from './api.approval.get';
 import { apiApprovalList } from './api.approval.list';
@@ -88,20 +78,6 @@ const agentHandlers = {
         },
         cancel: apiChatCancel,
         newSession: apiChatNewSession,
-        previewSource: apiChatPreviewSource,
-        publish: apiChatPublish,
-        draftManifest: {
-            read: apiChatDraftManifestRead,
-            patch: apiChatDraftManifestPatch,
-        },
-        draftActor: {
-            start: apiChatDraftActorStart,
-            reload: apiChatDraftActorReload,
-            reset: apiChatDraftActorReset,
-            stop: apiChatDraftActorStop,
-            inspect: apiChatDraftActorInspect,
-            send: apiChatDraftActorSend,
-        },
     },
     widgetDraft: {
         list: apiWidgetDraftList,
@@ -111,10 +87,12 @@ const agentHandlers = {
     widgetPreview: {
         get: apiWidgetPreviewGet,
         build: apiWidgetPreviewBuild,
-        refresh: apiWidgetPreviewRefresh,
-        reset: apiWidgetPreviewReset,
         close: apiWidgetPreviewClose,
-        send: apiWidgetPreviewSend,
+        invoke: apiWidgetPreviewInvoke,
+        invocation: {
+            get: apiWidgetPreviewGetInvocation,
+            cancel: apiWidgetPreviewCancelInvocation,
+        },
     },
     widgetPublish: {
         publish: apiWidgetPublishPublish,

@@ -1,48 +1,64 @@
 import type {
   TWidgetDraftSummary,
   TWidgetPreviewResult,
-  TWidgetPreviewSendResult,
 } from "@vibecanvas/orpc-client"
-import type { TAiChatApiPort } from "../ports"
-import type { TArrowSandboxBridge, mountArrowSandboxBridge } from "../widget/mount-arrow-sandbox"
+import type {
+  TWidgetUiArtifactMountPort,
+} from "../widget-runtime/interface"
+import type { TAiChatApiPort, TWidgetBrowserPort } from "../ports"
 
 export type TDraftPreviewPayload = {
   draftId: string
-  pinnedRevision: string
+  draftName: string
+  draftRevision: string
+  previewId: string
+  previewRevisionId: string
   originChatElementId?: string
 }
 
-export type TDraftPreviewSummary = Pick<TWidgetDraftSummary, "draftId" | "name" | "displayName" | "revision">
+export type TDraftPreviewOwnership = Readonly<{
+  draftRevision: string
+  previewRevisionId: string
+}>
+
+export type TDraftPreviewSummary = Pick<
+  TWidgetDraftSummary,
+  "draftId" | "definitionId" | "name" | "displayName" | "revision"
+>
 
 type TBackendDraftPreviewFailure = Extract<TWidgetPreviewResult, { ready: false }>
 
 export type TDraftPreviewReady = Extract<TWidgetPreviewResult, { ready: true }>
-export type TDraftPreviewFailure = TBackendDraftPreviewFailure | (
-  Omit<TBackendDraftPreviewFailure, "reason"> & { reason: "transport-failed" }
-)
+export type TDraftPreviewFailure = TBackendDraftPreviewFailure | Readonly<{
+  ready: false
+  draftId: string
+  revision?: string
+  currentRevision?: string
+  previewId?: string
+  previewRevisionId?: string
+  reason: "transport-failed" | "artifact-invalid"
+  message: string
+  diagnostics: readonly string[]
+}>
 export type TDraftPreviewResult = TDraftPreviewReady | TDraftPreviewFailure
-export type TDraftPreviewSendResult = TWidgetPreviewSendResult
-
-export type TDraftPreviewSandboxMount = typeof mountArrowSandboxBridge
 
 export type TDraftPreviewRuntime = {
   refresh: (summary?: TDraftPreviewSummary) => Promise<void>
   reset: () => Promise<void>
   dispose: () => Promise<void>
   getOwnedRevision: () => string
+  getOwnedPreviewRevisionId: () => string
 }
 
 export type TMountDraftPreviewArgs = {
   root: HTMLDivElement
   api: TAiChatApiPort
-  previewId: string
+  browser: TWidgetBrowserPort
   payload: TDraftPreviewPayload
   initialResult?: TDraftPreviewResult
-  mountSandbox: TDraftPreviewSandboxMount
-  onPersistRevision: (revision: string) => void
-  onReleaseRevision: (revision: string) => void
+  mountArtifact: TWidgetUiArtifactMountPort
+  onPersistOwnership: (ownership: TDraftPreviewOwnership) => void
+  onReleaseOwnership: (ownership: TDraftPreviewOwnership) => void
   onResetStateChange?: (state: { disabled: boolean }) => void
   onLogError: (error: unknown) => void
 }
-
-export type TDraftPreviewBridge = TArrowSandboxBridge

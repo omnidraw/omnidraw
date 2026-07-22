@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ApprovalCoordinator } from '../src/approval/ApprovalCoordinator';
@@ -35,8 +35,35 @@ describe('AI Chat tool registry', () => {
     expect(registry.toolNames).toHaveLength(16);
 
     const bash = registry.customTools.find((tool) => tool.name === 'bash')!;
-    const bashResult = await executeTool(bash, { command: 'pwd' });
-    expect(bashResult.content[0]?.text.trim()).toBe(await realpath(cwd));
+    const unavailable = await executeTool(bash, { command: 'pwd' });
+    expect(unavailable.isError).toBe(true);
+    expect(unavailable.content[0]?.text).toContain('BASH_UNAVAILABLE');
+
+    const bashRuns: unknown[] = [];
+    const injectedRegistry = createToolRegistry({
+      chatId: 'chat-a',
+      cwd,
+      authorization: {},
+      workspace,
+      approvals: new ApprovalCoordinator(),
+      bashCapability: {
+        run: async (call) => {
+          bashRuns.push(call);
+          return { content: [{ type: 'text', text: 'confined runner invoked' }], details: undefined };
+        },
+      },
+    });
+    const injected = await executeTool(injectedRegistry.customTools.find((tool) => tool.name === 'bash')!, {
+      command: 'pwd',
+      timeout: 12,
+    });
+    expect(injected.content[0]?.text).toBe('confined runner invoked');
+    expect(bashRuns).toHaveLength(1);
+    expect(bashRuns[0]).toMatchObject({
+      toolCallId: 'tool-call',
+      command: 'pwd',
+      timeoutSeconds: 12,
+    });
 
     const deniedRegistry = createToolRegistry({
       chatId: 'chat-a',
@@ -45,9 +72,16 @@ describe('AI Chat tool registry', () => {
       authorize: ({ toolName }) => toolName !== 'bash',
       workspace,
       approvals: new ApprovalCoordinator(),
+      bashCapability: {
+        run: async (call) => {
+          bashRuns.push(call);
+          return { content: [{ type: 'text', text: 'must not run' }], details: undefined };
+        },
+      },
     });
     const denied = await executeTool(deniedRegistry.customTools.find((tool) => tool.name === 'bash')!, { command: 'pwd' });
     expect(denied.isError).toBe(true);
     expect(denied.content[0]?.text).toContain('TOOL_NOT_AUTHORIZED');
+    expect(bashRuns).toHaveLength(1);
   });
 });

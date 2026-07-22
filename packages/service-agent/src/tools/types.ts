@@ -1,5 +1,6 @@
 import type { SessionManager, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { TValidationResult } from '../core/types';
+import type { TWidgetDraftSummary } from '../widget-drafts/types';
 export type { TActorServiceReloader, TValidationResult } from '../core/types';
 
 export type TWidgetEditSessionRecord = {
@@ -52,9 +53,16 @@ export type TToolEventSink = (event: TToolEvent) => void | Promise<void>;
 
 export type TWidgetDraftChange = {
   name: string;
+  chatId?: string;
   type: 'created' | 'changed' | 'validated';
   validation?: TValidationResult;
 };
+
+export type TWidgetDraftChangeResult = TWidgetDraftSummary | null | void;
+
+export type TWidgetDraftChangeHandler = (
+  change: TWidgetDraftChange,
+) => TWidgetDraftChangeResult | Promise<TWidgetDraftChangeResult>;
 
 export type TToolDefinition = ToolDefinition<any, unknown, any>;
 

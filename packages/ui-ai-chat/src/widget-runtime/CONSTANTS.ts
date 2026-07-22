@@ -1,3 +1,5 @@
+import { fnDecodeWidgetUiArtifactEnvelope } from '@vibecanvas/widget-contract/browser';
+
 export const WIDGET_SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY = '__VIBECANVAS_SERVER_FUNCTION_TRANSPORT_V1__';
 export const WIDGET_SERVER_FUNCTION_HOST_MODULE = 'host-bridge:vibecanvas-server-functions';
 export const WIDGET_COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY = '__VIBECANVAS_COLLABORATIVE_STATE_TRANSPORT_V1__';
@@ -30,3 +32,5 @@ export const WIDGET_SANDBOX_TRUSTED_HOST_LAYOUT_CSS = `/* vibecanvas-trusted-hos
   box-sizing: border-box;
 }
 `;
+
+export const WIDGET_UI_ARTIFACT_ENVELOPE_DECODER = fnDecodeWidgetUiArtifactEnvelope;

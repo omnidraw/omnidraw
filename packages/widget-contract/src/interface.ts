@@ -28,6 +28,8 @@ import type {
   TWidgetBuildRequest,
   TWidgetBuildResult,
   TWidgetDefinitionCreate,
+  TWidgetDefinitionArchiveInput,
+  TWidgetDefinitionArchiveResult,
   TWidgetDefinitionDescriptor,
   TWidgetDefinitionId,
   TWidgetPublicationCommitInput,
@@ -50,11 +52,13 @@ import type {
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRevisionSourceDescriptor,
+  TWidgetRevisionSourceSnapshotReadRequest,
   TWidgetRevisionPruneRequest,
   TWidgetRevisionPruneResult,
   TWidgetRollbackInput,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorExtractionRequest,
+  TWidgetSourceSnapshot,
 } from './types';
 
 export interface IWidgetArtifactBuilder {
@@ -165,6 +169,14 @@ export interface IWidgetRevisionSourceReader {
   ): Promise<TWidgetRevisionSourceDescriptor | null>;
 }
 
+/** Trusted source inspector returning a decoded, integrity-checked immutable snapshot. */
+export interface IWidgetRevisionSourceSnapshotReader {
+  readRevisionSourceSnapshot(
+    tenant: TTenantContext,
+    request: TWidgetRevisionSourceSnapshotReadRequest,
+  ): Promise<TWidgetSourceSnapshot | null>;
+}
+
 export interface IWidgetPreviewRevisionReader {
   getPreview(
     tenant: TTenantContext,
@@ -239,6 +251,11 @@ export interface IWidgetControlStore extends IWidgetRevisionReader, IWidgetRevis
     tenant: TTenantContext,
     slug: string,
   ): Promise<TWidgetDefinitionDescriptor | null>;
+
+  archiveDefinition(
+    tenant: TTenantContext,
+    request: TWidgetDefinitionArchiveInput,
+  ): Promise<TWidgetDefinitionArchiveResult>;
 
   commitPublication(
     tenant: TTenantContext,
@@ -319,6 +336,11 @@ export interface IWidgetPublicationService extends IWidgetRevisionReader, IWidge
     tenant: TTenantContext,
     request: TWidgetRollbackInput,
   ): Promise<TWidgetActiveRevisionCasResult>;
+
+  archive(
+    tenant: TTenantContext,
+    request: TWidgetDefinitionArchiveInput,
+  ): Promise<TWidgetDefinitionArchiveResult>;
 }
 
 export interface IWidgetArtifactGarbageCollector {
