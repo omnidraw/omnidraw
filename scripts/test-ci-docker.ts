@@ -105,8 +105,6 @@ try {
     '--env',
     'VIBECANVAS_CLEAN_TRACKED_SNAPSHOT=1',
     '--env',
-    'VIBECANVAS_LEGACY_ACTOR_ENABLED=0',
-    '--env',
     'VIBECANVAS_REQUIRE_FD_INSPECTION=1',
     imageTag,
   ]);

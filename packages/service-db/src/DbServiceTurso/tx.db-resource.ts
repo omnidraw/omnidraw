@@ -1,21 +1,17 @@
 import type { Database } from "@tursodatabase/database"
 import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type {
-  TDbResourceApplyInstanceResult,
-  TDbResourceApplyInstanceStatus,
   TDbResourceApplyRun,
   TDbResourceApplyStatus,
   TDbResourceDraft,
   TDbResourceDraftChange,
   TDbResourceDraftChangeKind,
   TDbResourceDraftStatus,
-  TActorResourceStatus,
   TJson,
 } from "../model"
 import { txRunDatabaseTransaction } from "../tx.run-database-transaction"
-import { fnSerializeJsonValue } from "./fn.actor-resource-row"
-import { fnParseDbResourceApplyInstanceResultRow, fnParseDbResourceDraftChangeRow } from "./fn.db-resource"
-import { fxActorResourceGet } from "./fx.actor-resource"
+import { fnSerializeJsonValue } from "./fn.json"
+import { fnParseDbResourceDraftChangeRow } from "./fn.db-resource"
 import { fxDbResourceApplyGet, fxDbResourceDraftGet } from "./fx.db-resource"
 
 type TPortal = {
@@ -94,16 +90,6 @@ type TArgsApplyUpdate = {
   backupRetained?: boolean
 }
 
-type TArgsApplyInstanceResultUpsert = {
-  tenant: TTenantContext
-  applyId: string
-  actorInstanceId: string
-  actorDefinitionName: string
-  wasRunning: boolean
-  status: TDbResourceApplyInstanceStatus
-  error?: TJson | null
-}
-
 function serializedJson(value: TJson | null | undefined): string | null {
   return value === null || value === undefined ? null : fnSerializeJsonValue(value)
 }
@@ -112,11 +98,13 @@ async function requireDbResource(
   portal: TPortal,
   tenant: TTenantContext,
   resourceId: string,
-  allowedStatuses: readonly TActorResourceStatus[],
+  allowedStatuses: readonly string[],
 ): Promise<void> {
-  const resource = await fxActorResourceGet(portal, { tenant, id: resourceId })
-  if (!resource || resource.kind !== "db" || !allowedStatuses.includes(resource.status)) {
-    throw new Error(`Actor resource "${resourceId}" is not an available DbResource`)
+  const resource = await (await portal.db.prepare(`
+    SELECT kind, status FROM resource_catalog WHERE org_id = ? AND id = ?
+  `)).get(tenant.orgId, resourceId) as { kind?: unknown; status?: unknown } | null;
+  if (!resource || resource.kind !== "db" || !allowedStatuses.includes(String(resource.status))) {
+    throw new Error(`Resource "${resourceId}" is not an available DbResource`)
   }
 }
 
@@ -384,43 +372,4 @@ export async function txDbResourceApplyUpdate(portal: TPortal, args: TArgsApplyU
       )
   if (result.changes === 0) return null
   return fxDbResourceApplyGet(portal, { tenant: args.tenant, id: args.id })
-}
-
-export async function txDbResourceApplyInstanceResultUpsert(
-  portal: TPortal,
-  args: TArgsApplyInstanceResultUpsert,
-): Promise<TDbResourceApplyInstanceResult> {
-  await (await portal.db.prepare(`
-    INSERT INTO legacy_actor_apply_results (
-      org_id,
-      apply_id,
-      actor_instance_id,
-      actor_definition_name,
-      was_running,
-      status,
-      error_json,
-      updated_at_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, CAST(unixepoch('subsec') * 1000 AS INTEGER))
-    ON CONFLICT (org_id, apply_id, actor_instance_id) DO UPDATE SET
-      actor_definition_name = excluded.actor_definition_name,
-      was_running = excluded.was_running,
-      status = excluded.status,
-      error_json = excluded.error_json,
-      updated_at_ms = CAST(unixepoch('subsec') * 1000 AS INTEGER)
-  `)).run(
-    args.tenant.orgId,
-    args.applyId,
-    args.actorInstanceId,
-    args.actorDefinitionName,
-    args.wasRunning,
-    args.status,
-    serializedJson(args.error),
-  )
-  const row = await (await portal.db.prepare(`
-    SELECT *
-    FROM legacy_actor_apply_results
-    WHERE org_id = ? AND apply_id = ? AND actor_instance_id = ?
-  `)).get(args.tenant.orgId, args.applyId, args.actorInstanceId)
-  if (row === undefined || row === null) throw new Error("Failed to persist DbResource apply instance result")
-  return fnParseDbResourceApplyInstanceResultRow(row)
 }

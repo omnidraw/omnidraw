@@ -139,18 +139,6 @@ export const zImageData = z.object({
 
 export const zWidgetWindow = z.enum(['contained', 'minimized', 'fullscreen']);
 
-export const zWidgetData = z.object({
-  type: z.literal('widget'),
-  kind: z.string(),
-  w: z.number(),
-  h: z.number(),
-  expanded: z.boolean(),
-  window: zWidgetWindow,
-  actorDefinitionName: z.string(),
-  actorInstanceId: z.string().optional(),
-  uiProps: z.record(z.string(), zJsonValue).optional(),
-}).strict();
-
 export const zUiWidgetData = z.object({
   type: z.literal('ui-widget'),
   kind: z.string(),
@@ -183,7 +171,6 @@ export const zElementData = z.union([
   zPenData,
   zTextData,
   zImageData,
-  zWidgetData,
   zUiWidgetData,
   zWidgetInstanceData,
 ]);

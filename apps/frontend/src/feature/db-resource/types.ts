@@ -79,10 +79,16 @@ export type TDbInspection = {
 };
 
 export type TDbScope = Array<"read" | "write">;
-export type TDbDefinitionImpact = { definitionName: string; slots: Array<{ slot: string; scope: TDbScope }> };
-export type TDbInstanceImpact = { instanceId: string; definitionName: string; status: string; running: boolean };
-export type TDbImpact = { resource: TResource; definitions: TDbDefinitionImpact[]; instances: TDbInstanceImpact[] };
-export type TDbImpactSlot = { definitionName: string; slot: string; scope: TDbScope };
+export type TDbResourceBinding = {
+  definitionId: string;
+  revisionId: string;
+  slot: string;
+  allowRead: boolean;
+  allowWrite: boolean;
+};
+export type TDbResourceUse = { id: string; kind: string; state: "active" | "draining" | "stopped"; label?: string };
+export type TDbImpact = { resource: TResource; bindings: TDbResourceBinding[]; uses: { resourceId: string; uses: TDbResourceUse[] } };
+export type TDbImpactSlot = { definitionId: string; revisionId: string; slot: string; scope: TDbScope };
 
 export type TDbDraftChange = {
   draft_id: string;
@@ -106,34 +112,24 @@ export type TDbDraft = {
 
 export type TDbDraftDetails = { draft: TDbDraft; changes: TDbDraftChange[] };
 
-export type TDbApplyInstance = {
-  apply_id: string;
-  actor_instance_id: string;
-  actor_definition_name: string;
-  was_running: boolean;
-  status: "notRunning" | "pendingStop" | "stopped" | "stopFailed" | "pendingRestart" | "restarted" | "startFailed" | "crashed";
-  error: unknown | null;
-  updated_at: string;
-};
-
 export type TDbApplyRun = {
   id: string;
   resource_id: string;
   draft_id: string | null;
-  status: "preparing" | "stopping" | "applying" | "restarting" | "succeeded" | "failed" | "recovered";
+  source_apply_id: string | null;
+  status: "preparing" | "applying" | "succeeded" | "failed" | "recovered";
   last_error: unknown | null;
   backup_retained: boolean;
   created_at: string;
   completed_at: string | null;
 };
 
-export type TDbApplyDetails = { apply: TDbApplyRun; instances: TDbApplyInstance[] };
+export type TDbApplyDetails = { apply: TDbApplyRun; drain: null | { resourceId: string; leaseId: string; leaseEpoch: number; expiresAtMs: number; drainedUses: TDbResourceUse[] } };
 
 export type TDbApplyPreview = TDbDraftDetails & {
   resource: TResource;
   impact: TDbImpact;
   warnings: string[];
-  compatibilityNotice: string;
 };
 
 export type TDbBackupMetadata = { resourceId: string; applyId: string; createdAt: string };
@@ -142,7 +138,6 @@ export type TDbRestorePreview = {
   backup: TDbBackupMetadata;
   impact: TDbImpact;
   warning: string;
-  compatibilityNotice: string;
 };
 
 export type TDbRowIdentity =

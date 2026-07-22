@@ -12,7 +12,6 @@ import CanvasPage from "./pages/canvas";
 import WelcomePage from "./pages/welcome";
 import ResourcePage from "./pages/resource";
 import WidgetPage from "./pages/widget";
-import { configureFrontendLegacyActorUi } from "./ai-chat-adapters";
 import { store } from "./store";
 import routeStateStyles from "./styles/route-state.module.css";
 
@@ -42,7 +41,6 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   );
 }
 
-await configureFrontendLegacyActorUi();
 
 render(
   () => (

@@ -10,7 +10,15 @@ describe("widget definition errors", () => {
       crdtService: {
         doc: () => ({
           elements: {
-            "widget-1": { id: "widget-1", data: { type: "widget", kind: "Weather" } },
+            "widget-1": {
+              id: "widget-1",
+              data: {
+                type: "widget-instance",
+                definitionId: "00000000-0000-4000-8000-000000000001",
+                revisionId: "00000000-0000-4000-8000-000000000002",
+                instanceId: "00000000-0000-4000-8000-000000000003",
+              },
+            },
           },
         }),
       } as never,

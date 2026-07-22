@@ -15,31 +15,30 @@ type TWidgetPlacementDescriptor = Extract<
 type TArgsDescriptor = Readonly<{
   descriptor: unknown;
   expectedReference: TWidgetPlacementRef;
-  expectedPreviewId: string | null;
 }>;
 
 type TResultDescriptor =
   | Readonly<{ ok: true; descriptor: TWidgetPlacementDescriptor }>
   | Readonly<{ ok: false; message: string }>;
 
-type TDirectV2WidgetPlacementDescriptor = Readonly<{
+type TDirectPublishedWidgetPlacementDescriptor = Readonly<{
   reference: Extract<TWidgetPlacementRef, Readonly<{ source: 'published' }>>;
   bounds: TWidgetFrameBounds;
   definitionId: string;
   revisionId: string;
 }>;
 
-type TArgsDirectV2 = Readonly<{
+type TArgsDirectPublished = Readonly<{
   reference: unknown;
   bounds: unknown;
 }>;
 
-type TResultDirectV2 =
-  | Readonly<{ kind: 'not-v2' }>
+type TResultDirectPublished =
+  | Readonly<{ kind: 'not-published' }>
   | Readonly<{ kind: 'invalid'; message: string }>
-  | Readonly<{ kind: 'valid'; descriptor: TDirectV2WidgetPlacementDescriptor }>;
+  | Readonly<{ kind: 'valid'; descriptor: TDirectPublishedWidgetPlacementDescriptor }>;
 
-const V2_REFERENCE_PREFIX = 'v2:';
+const PUBLISHED_REFERENCE_PREFIX = 'published:';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DESCRIPTOR_KEYS = Object.freeze([
   'bounds',
@@ -48,7 +47,6 @@ const DESCRIPTOR_KEYS = Object.freeze([
   'definitionSlug',
   'draftId',
   'kind',
-  'previewId',
   'reference',
   'revisionId',
 ]);
@@ -92,25 +90,25 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-export function fnValidateDirectV2WidgetPlacement(args: TArgsDirectV2): TResultDirectV2 {
+export function fnValidateDirectPublishedWidgetPlacement(args: TArgsDirectPublished): TResultDirectPublished {
   const reference = args.reference;
   if (
     !isRecord(reference)
     || reference.source !== 'published'
     || typeof reference.name !== 'string'
-    || !reference.name.startsWith(V2_REFERENCE_PREFIX)
+    || !reference.name.startsWith(PUBLISHED_REFERENCE_PREFIX)
   ) {
-    return { kind: 'not-v2' };
+    return { kind: 'not-published' };
   }
   if (!hasExactKeys(reference, REFERENCE_KEYS) || typeof reference.revision !== 'string') {
-    return { kind: 'invalid', message: 'The v2 catalog returned an invalid widget reference.' };
+    return { kind: 'invalid', message: 'The published catalog returned an invalid widget reference.' };
   }
-  const definitionId = reference.name.slice(V2_REFERENCE_PREFIX.length);
+  const definitionId = reference.name.slice(PUBLISHED_REFERENCE_PREFIX.length);
   if (!UUID_PATTERN.test(definitionId) || !UUID_PATTERN.test(reference.revision)) {
-    return { kind: 'invalid', message: 'The v2 catalog returned an invalid widget identity.' };
+    return { kind: 'invalid', message: 'The published catalog returned an invalid widget identity.' };
   }
   if (!isCanonicalBounds(args.bounds)) {
-    return { kind: 'invalid', message: 'The v2 catalog returned invalid widget bounds.' };
+    return { kind: 'invalid', message: 'The published catalog returned invalid widget bounds.' };
   }
   return {
     kind: 'valid',
@@ -145,9 +143,9 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
     return { ok: false, message: 'The placement resolver returned invalid widget bounds.' };
   }
 
-  if (descriptor.kind === 'published-v2') {
-    const encodedDefinitionId = args.expectedReference.name.startsWith(V2_REFERENCE_PREFIX)
-      ? args.expectedReference.name.slice(V2_REFERENCE_PREFIX.length)
+  if (descriptor.kind === 'published') {
+    const encodedDefinitionId = args.expectedReference.name.startsWith(PUBLISHED_REFERENCE_PREFIX)
+      ? args.expectedReference.name.slice(PUBLISHED_REFERENCE_PREFIX.length)
       : null;
     if (
       args.expectedReference.source !== 'published'
@@ -160,27 +158,8 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
       || descriptor.revisionId !== args.expectedReference.revision
       || descriptor.definitionName !== null
       || !isNonEmptyString(descriptor.definitionSlug)
-      || descriptor.previewId !== null
-      || args.expectedPreviewId !== null
     ) {
-      return { ok: false, message: 'The placement resolver returned an invalid v2 widget identity.' };
-    }
-    return { ok: true, descriptor: descriptor as TWidgetPlacementDescriptor };
-  }
-
-  if (descriptor.kind === 'published-legacy') {
-    if (
-      args.expectedReference.source !== 'published'
-      || descriptor.draftId !== null
-      || descriptor.definitionId !== null
-      || descriptor.revisionId !== null
-      || !isNonEmptyString(descriptor.definitionName)
-      || descriptor.definitionName !== args.expectedReference.name
-      || !isNonEmptyString(descriptor.definitionSlug)
-      || descriptor.previewId !== null
-      || args.expectedPreviewId !== null
-    ) {
-      return { ok: false, message: 'The placement resolver returned an invalid legacy widget identity.' };
+      return { ok: false, message: 'The placement resolver returned an invalid published widget identity.' };
     }
     return { ok: true, descriptor: descriptor as TWidgetPlacementDescriptor };
   }
@@ -194,8 +173,6 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
       || descriptor.revisionId !== null
       || descriptor.definitionName !== null
       || descriptor.definitionSlug !== null
-      || !isNonEmptyString(descriptor.previewId)
-      || descriptor.previewId !== args.expectedPreviewId
     ) {
       return { ok: false, message: 'The placement resolver returned an invalid Preview identity.' };
     }
@@ -207,8 +184,8 @@ export function fnValidateWidgetPlacementDescriptor(args: TArgsDescriptor): TRes
 
 export type {
   TArgsDescriptor,
-  TArgsDirectV2,
-  TDirectV2WidgetPlacementDescriptor,
+  TArgsDirectPublished,
+  TDirectPublishedWidgetPlacementDescriptor,
   TResultDescriptor,
-  TResultDirectV2,
+  TResultDirectPublished,
 };

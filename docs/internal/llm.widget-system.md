@@ -1,30 +1,31 @@
 # Vibecanvas widget and AI Chat system
 
-This is the onboarding map for engineers working on widgets, actors, resources, AI Chat workspaces, preview, publishing, and runtime instances. It describes the S84 runtime as of 2026-07-17. Code and tests remain authoritative.
+This is the onboarding map for engineers working on widget authoring, Draft Preview, publication, collaborative state, server functions, and resources. It describes the post-S106/S107/S108 architecture as of 2026-07-22. Code and tests remain authoritative.
 
-## Mental model
+## Authority model
 
-A published Vibecanvas definition has two guest-authored halves:
+A widget has two lifecycle states:
 
-- Widget UI: Arrow code running in the browser-side QuickJS/WASM sandbox.
-- Actor backend: state-machine functions running in a Bun child process.
+- A draft is mutable source in `<dataPath>/pi/agent/widgets/drafts/<name>`.
+- A publication is an active database revision plus immutable `source`, `ui`, and optional `server` artifacts.
 
-AI Chat does not own widget source. Every independent conversation uses one backend-owned shared working directory containing mounts for all shared draft folders. Published widgets have one canonical snapshot that is never mounted into AI Chat. Conversations keep separate transcripts while seeing and editing the same real draft files.
+There is no published source folder. Published catalog, detail, file inspection, placement, and edit-as-draft operations resolve the active revision and verify the source artifact's tenant, kind, size, digest, snapshot identity, and revision identity.
 
 ```mermaid
 flowchart LR
-  U["Independent AI Chat transcripts"] --> C["shared-cwd"]
-  C --> M["widgets/name mounts"]
-  M --> D["widget-drafts/name"]
-  P["widget-cwd/name"] -->|"explicit sync overwrites draft"| D
-  D --> V["Trusted host validation"]
-  V --> H["User-controlled publish API"]
-  D -->|"publish snapshots"| P
-  H --> I["config widgets/slug installation"]
-  I --> A["Actor definition + canvas tool"]
-  A --> E["Canvas element + actor instance"]
-  R["Host resource catalog"] --> B["Definition resource bindings"]
-  B --> A
+  C["Independent AI Chat transcripts"] --> M["chat workspace widget mounts"]
+  M --> D["shared editable drafts"]
+  D --> V["trusted validation"]
+  D --> P["stateless UI-only Preview build"]
+  D --> U["user-confirmed Publish"]
+  U --> R["active durable revision"]
+  R --> S["immutable source artifact"]
+  R --> B["immutable UI/server artifacts"]
+  R --> G["revision resource bindings"]
+  B --> I["pinned widget instance"]
+  I --> A["Automerge collaborative state"]
+  I --> F["bounded server-function invocation"]
+  F --> G
 ```
 
 ## Filesystem ownership
@@ -32,205 +33,133 @@ flowchart LR
 Current agent data lives below `<dataPath>/pi/agent`:
 
 ```text
-shared-cwd/
-  widgets/
-    Weather -> ../../widget-drafts/Weather
-    Timer   -> ../../widget-drafts/Timer
-widget-cwd/
-  Weather/
-    vibecanvas.json
-    ...
-widget-drafts/
-  Weather/
-  Timer/
-    vibecanvas.json
-    ...
-sessions/
-  <chat-id>/
-    ... Pi transcript/provider-session files ...
+chats/<date>/<chat-id>/
+  chat.json
+  history/
+  workspace/widgets/<name> -> shared draft
+widgets/drafts/<name>/
+  vibecanvas.json
+  ui/
+  server/                 # optional
+draft-state/              # draft materialization coordination
+sdk/                      # host-materialized authoring SDK
 ```
 
 The ownership rules are strict:
 
-- A chat owns only its transcript and provider state; it does not own draft source or a mount set.
-- `shared-cwd/widgets` is the one backend-owned working view used by every conversation.
-- `widget-cwd/<name>` is the canonical published snapshot and is never mounted into AI Chat.
-- `widget-drafts/<name>` is the only source AI Chat mounts and edits.
-- A mount is a Unix directory symlink or Windows directory junction created only by the backend.
-- Backend draft sync may atomically copy published content into the shared draft. Removing a managed mount never removes its target.
-- Reconnect and new-chat operations leave shared drafts and mounts intact. Reconciliation replaces legacy canonical mounts with draft mounts.
-- Reconciliation creates a missing canonical published folder and never overwrites an existing folder.
-- Old workspaces and transcript entries remain readable but are not current source authority.
+- A chat owns its transcript, provider state, and backend-created draft mounts.
+- `widgets/drafts/<name>` is the only mutable widget source tree.
+- Published source exists only as verified immutable artifact bytes referenced by durable revision metadata.
+- Editing a publication materializes a draft from the selected source artifact.
+- Request-time snapshots are hidden temporary siblings under `widgets/drafts/` and are deleted before validation, Preview, or publication returns.
+- An arbitrary old `widgets/published/` or installed source folder is ignored; it is never imported or reconciled.
 
-Widget and chat names pass deterministic filesystem-safe validation. Empty names, separators, traversal, control characters, reserved names, and case collisions are rejected. Names do not receive hashes, random suffixes, entity IDs, or timestamps.
+Generic file tools must enter through `widgets/<mounted-name>/...`. The backend validates both the mount and resolved target, rejects escaping symlinks and direct shared-root access, and serializes atomic file updates per real draft root.
 
-## Mounted path security
+## Authoring and validation
 
-Generic file tools start from `shared-cwd`. Widget paths must enter lexically through `widgets/<mounted-name>/...`.
+Manifest schema version 2 is the only accepted widget manifest. It describes browser UI, optional server entry/runtime ABI, collaborative-state defaults, resource requirements, and tool metadata.
 
-The path guard validates both the direct mount and its resolved target. The final path must remain inside that mount's exact registered `widget-drafts/<name>` root. Direct absolute access to shared roots, injected mounts, nested escaping symlinks, and arbitrary link creation are rejected.
+`vc_widget_create` creates a complete UI-first draft. `vc_widget_validate` uses the host-selected compiler and SDK declarations and never publishes. Persistent instance state belongs in collaborative state. Backend work belongs in short-lived typed functions; no resident guest runtime exists.
 
-`edit` and `patch` serialize the complete read/transform/write transaction per real widget root. Writes use a sibling temporary file followed by atomic rename. S84 intentionally adds no merge engine, revision ledger, change set, checkpoint, fingerprint, or undo history. Draft revisions are lightweight current-filesystem signatures used for stale user actions, not a history system.
+Every conversation receives the fixed tool registry enforced by `ToolRegistry`: widget creation/validation and mounted file tools, resource tools, `web_fetch`, and bounded `bash`. Publish and protected approval decisions remain direct user actions rather than model-callable tools.
 
-## Fixed AI tool registry
+## Stateless Draft Preview
 
-Every conversation receives the same exact registry from connect through reconnect and continuation:
+Draft Preview is a request-time UI build of the current coherent draft snapshot:
 
-1. `vc_widget_create`
-2. `vc_widget_validate`
-3. `read`
-4. `edit`
-5. `patch`
-6. `grep`
-7. `vc_resource_list`
-8. `vc_resource_inspect`
-9. `vc_resource_create`
-10. `vc_resource_update`
-11. `vc_resource_delete`
-12. `vc_resource_data_read`
-13. `vc_resource_data_write`
-14. `web_fetch`
+1. Resolve the current durable draft and source digest.
+2. Capture a temporary coherent filesystem snapshot.
+3. Validate and build UI bytes without writing an artifact or database row.
+4. Return bounded base64 bytes plus their digest.
+5. Verify and mount those bytes in the browser with fresh ephemeral collaborative state.
+6. Delete the temporary snapshot before the request returns.
 
-`ToolRegistry` rejects missing, duplicate, or extra definitions. Backend authorization runs for every call. There are no phase switches and no model-callable publish, approval, rejection, widget deletion, unload, symlink, bash, or unrestricted write commands.
+Persisted Preview frames contain only `draftId`, `draftName`, and optional originating chat element ID. Mount, refresh, and reset build the current draft again. Frame deletion, application shutdown, and restart require no Preview cleanup call.
 
-### Widget tools
+Server functions and resources are intentionally unavailable in Draft Preview. The browser bridge rejects calls with `PREVIEW_FUNCTIONS_UNAVAILABLE` and explains that those capabilities become available after Publish. No function invocation is created.
 
-`vc_widget_create` atomically creates a complete draft scaffold and exposes it in the shared workspace. The scaffold includes the validated manifest, widget source and styles, package/TypeScript configuration, and actor files required for an actor-widget. Partial scaffolds are removed.
+## Publication and published reads
 
-`vc_widget_validate` accepts only a mounted widget. It invokes the host-selected compiler and SDK declarations, returns bounded diagnostics, and never publishes.
+Publish accepts a draft ID and expected source revision and remains explicitly user-confirmed. The publication service validates the captured source, builds immutable artifacts, freezes function descriptors and bindings, and atomically activates the revision.
 
-### Resource tools
+The active revision is the only published authority. A published canvas reference is `published:<definitionId>` plus the exact revision ID. Placed elements persist `definitionId`, `revisionId`, and `instanceId`; existing instances remain pinned when a later revision becomes active.
 
-Resources are host-global catalog entries of kind `kv`, `secretStore`, or `db`. Tool responses expose stable IDs and safe metadata, never provider handles, physical paths, native configuration, or secret plaintext.
+Edit-as-draft reads and verifies the revision source artifact, materializes it into draft storage, and records the publication seed. Missing, corrupt, cross-tenant, or identity-mismatched source bytes fail explicitly with no mutable fallback.
 
-Secret-store Turso files use native AEGIS-256 page encryption. The main database keeps the actual independent database keys in a general-purpose `encryption_keys` table with no actor columns. A separate `actor_resource_encryption_keys` table links each secret resource to one key. The persistence interface atomically creates or reads that link but exposes no key listing or transport API.
+## Browser runtime
 
-This deliberately favors operational simplicity over local ciphertext/key separation. Anyone who can read both the main database and actor-resource files can recover the secrets. Encryption still protects an individual secret database/WAL copied without the main database and supports managed deployments where the control database lives on another server. A usable restore requires the main database and corresponding actor-resource data; plaintext in memory and a host/account compromise remain outside this protection.
+The UI artifact runs in the browser sandbox through `WidgetUiRuntime`. Each placed instance owns an Automerge state document. Definition revisions do not share mutable state.
 
-- `vc_resource_list` returns stable bounded cursor pages.
-- `vc_resource_inspect` returns KV/secret key metadata or bounded SQLite schema metadata. It returns no DB rows or secret values.
-- Create, rename, and binding-aware delete require protected approval.
-- `vc_resource_data_read` accepts one query or an ordered query array. It returns one success/error result per query.
-- KV supports get/has/list; secret stores support has/list only; SQLite reads are parameterized, bounded, single-statement, and read-only.
-- `vc_resource_data_write` accepts one operation or a same-resource ordered batch. KV and secret operations use provider revisions. SQLite writes use one durable DB draft/apply path with bound parameters.
+Published UI receives two host bridges:
 
-The resource-management UI has a separate, explicit one-secret reveal operation for the local human operator. It is not registered as an AI tool, actor IPC operation, SDK resource method, or generic resource-data read. Bound actor code retains its existing authorized secret `get` capability; model-facing management tools do not.
+- Collaborative state: get/change/wait/cancel against the instance document.
+- Server functions: invoke a named function for the pinned definition/revision/instance identity.
 
-Result metadata states the applicable atomicity. S84 does not claim a cross-provider or cross-operation transaction for KV and secret batches.
+The browser never chooses tenant, revision, function artifact, concrete resource ID, provider handle, credential, or storage path.
 
-## Protected approvals and secret handling
+## Server functions and resources
 
-Resource create, update, delete, and data-write calls pause in the process-local `ApprovalCoordinator`.
+Server functions are short-lived and bounded by deadline, memory tier, output size, logs, retries, leases, and cancellation. The only invocation subject is `widget_instance` with canvas and widget-instance identity.
 
-1. The coordinator deep-clones and freezes exact arguments in server memory.
-2. Clients receive only the approval ID, originating tool-call ID, summary, risk, warnings, and safe details.
-3. Approval resolution accepts only the ID and approve/reject decision.
-4. Approval rechecks current authorization and claims execution once.
-5. Reject, timeout, prompt cancellation, disconnect, or service stop cancels without execution.
-6. Resolved/canceled entries are removed and do not survive restart.
-
-For secret-store set operations, a Pi message-end extension captures the original tool arguments into a one-shot process-local vault and replaces secret values with `[redacted]` before event emission and transcript persistence. The protected tool consumes the original arguments once; approval details and tool results remain redacted.
-
-There is no approval table, protected-execution ledger, generic persisted tool execution, or S84 database migration.
-
-The canvas AI Chat renders each approval inside its originating tool-call row and mirrors pending approvals in a floating card so the decision stays visible while the transcript is scrolled. Successful resource tool results expose their safe resource ID as an explicit detail-page action. Approved mutations invalidate both the chat resource mentions and the frontend sidebar catalog.
-
-## Validation and publishing
-
-Publishing remains outside the AI registry and is invoked only through the direct user-controlled widget-draft API. It accepts a draft identity and expected revision.
-
-The first S84 frontend shipped a widget-draft strip with Preview and Publish controls. Product review removed that visible strip and its preview entry point pending a replacement design; the backend draft, preview, validation, and publication APIs remain available and user-only.
-
-For every publish:
-
-1. Reject a stale expected draft revision.
-2. Validate the draft with the trusted host compiler and reject manifest identity or slug collisions.
-3. Atomically snapshot `widget-drafts/<name>` into `widget-cwd/<name>` while leaving the shared draft and mount intact.
-4. Install/register the published definition, reconcile resource bindings, and refresh running instances when needed.
-5. On failure, remove a partial installation and restore the previous canonical and installed snapshots.
-
-Renaming a published widget in place is unsupported. A new name means creating and publishing a new draft; the old definition remains independent.
-
-## Preview, actors, and resources
-
-Preview is a direct user action. It validates and pins one draft revision, then starts an ephemeral `Actor` from that draft. Preview actor IDs begin with `preview:` and state exists in memory only. Each mounted client runtime creates a fresh ephemeral owner `previewId` that is never persisted in canvas data, so simultaneous clients hold independent actors and immutable snapshots. Draft Preview frames use one merge-stable element identity per draft to prevent collaborator-created duplicates. A changed draft revision marks the preview stale until the user refreshes it; revision-aware close releases only that owner's matching build.
-
-Actor functions execute in a child Bun process. The host derives definition/run identity, resource binding, effective scope, and lifecycle. Guest code chooses a logical manifest slot, never a concrete resource ID or native handle.
-
-Effective resource access remains:
+Effective resource access is:
 
 ```text
-manifest scope ∩ binding restriction ∩ function-class ceiling
+manifest requirement ∩ revision binding ∩ function effect ceiling
 ```
 
-- `fn.*` receives no resource portal.
-- `fx.*` may read resources.
-- `tx.*` may read/write within effective scope.
-- Required unbound, mismatched, non-ready, or over-scoped resources block actor admission.
+- `fn` receives no resource portal.
+- `fx` may read declared slots.
+- `tx` may read and write declared slots.
 
-Preview and publish derive unambiguous ready resource bindings from the host catalog. They are separate from AI resource-tool authorization, which is checked for every model tool call.
+Resources are neutral catalog records. Bindings are keyed by widget definition ID, revision ID, slot, resource ID, and effect. Database schema apply drains active resource uses, fences writes, applies or restores the physical database, releases the drain lease, and records preparation/apply/terminal audit states. It does not stop or restart resident guest processes.
 
-KV and secret entries live in resource-scoped control-DB storage. Each database resource owns a separate physical SQLite-compatible database. SQLite structural/data mutations continue to use existing durable draft/apply records and coordinated actor stop/restart behavior.
+Secret values never appear in model-facing lists, approvals, transcripts, events, logs, or generic reads. The resource UI has a separate bounded reveal action for the local operator. Secret-store databases use independent encrypted files with keys linked from the main control database.
 
 ## Public API surfaces
 
-Product clients use the typed ORPC agent contract:
+Product clients use the typed consolidated ORPC contract:
 
-- `agent.chat.connect`, `prompt`, `cancel`, `newSession`
 - `agent.widgetDraft.list`, `get`, `validate`
-- `agent.widgetPreview.get`, `build`, `refresh`, `reset`, `send`, `close`
+- `agent.widgetPreview.build`
 - `agent.widgetPublish.publish`
-- `agent.approval.list`, `get`, `resolve`
-- `agent.chat.resourceBindings.clear`
-- compatibility chat draft/preview/publish routes remain available to older clients but are not used by S84 AI Chat
-- historical DB proposal resolution endpoints remain available for old session records
-- the agent event stream carries Pi events and small widget-draft, preview, publication, and safe approval invalidations
+- `agent.widgets.catalog`, `detail`, `files`, `file`, `resolvePlacement`, `delete`
+- `function.invoke`, run status/cancel, logs, and subscriptions
+- neutral resource catalog, binding, data, draft/apply, restore, and backup routes
 
-`chat.connect` restores the independent message history. Approvals are refreshed from their query API, and product clients that surface widget drafts must use the draft query APIs; transcript text and tool results are not draft state authority.
+There is no Preview get/close/invoke lifecycle, no Preview function subject, and no resident-runtime API/event router.
 
 ## Important implementation files
 
-AI Chat runtime:
+Authoring and publication:
 
 - [`packages/service-agent/src/AgentService.ts`](../../packages/service-agent/src/AgentService.ts)
 - [`packages/service-agent/src/workspace/WidgetWorkspace.ts`](../../packages/service-agent/src/workspace/WidgetWorkspace.ts)
 - [`packages/service-agent/src/widget-drafts/WidgetDraftController.ts`](../../packages/service-agent/src/widget-drafts/WidgetDraftController.ts)
-- [`packages/service-agent/src/tools/ToolRegistry.ts`](../../packages/service-agent/src/tools/ToolRegistry.ts)
-- [`packages/service-agent/src/tools/tool.widget-workspace.ts`](../../packages/service-agent/src/tools/tool.widget-workspace.ts)
-- [`packages/service-agent/src/tools/tool.workspace-files.ts`](../../packages/service-agent/src/tools/tool.workspace-files.ts)
-- [`packages/service-agent/src/tools/tool.resources.ts`](../../packages/service-agent/src/tools/tool.resources.ts)
-- [`packages/service-agent/src/approval/ApprovalCoordinator.ts`](../../packages/service-agent/src/approval/ApprovalCoordinator.ts)
-- [`packages/service-agent/src/core/fx.session-records.ts`](../../packages/service-agent/src/core/fx.session-records.ts) and [`tx.session-records.ts`](../../packages/service-agent/src/core/tx.session-records.ts)
-- [`packages/service-agent/src/prompts/prompt.tools.md`](../../packages/service-agent/src/prompts/prompt.tools.md)
-- [`packages/api-agent/src/contract.ts`](../../packages/api-agent/src/contract.ts)
+- [`packages/widget-contract/src/local/WidgetPublicationService.ts`](../../packages/widget-contract/src/local/WidgetPublicationService.ts)
+- [`packages/widget-contract/src/local/WidgetPreviewService.ts`](../../packages/widget-contract/src/local/WidgetPreviewService.ts)
 
-Actor/resource runtime:
+Browser:
 
-- [`packages/service-actor/src/Actor.ts`](../../packages/service-actor/src/Actor.ts)
-- [`packages/service-actor/src/ActorService.ts`](../../packages/service-actor/src/ActorService.ts)
-- [`packages/service-actor/src/ActorSupervisor.ts`](../../packages/service-actor/src/ActorSupervisor.ts)
-- [`packages/service-actor/src/icp-client.ts`](../../packages/service-actor/src/icp-client.ts)
-- [`packages/service-actor/src/resources/ActorResourceManager.ts`](../../packages/service-actor/src/resources/ActorResourceManager.ts)
-- [`packages/service-actor/src/resources/DbResource.ts`](../../packages/service-actor/src/resources/DbResource.ts)
-- [`packages/service-actor/src/resources/DbResourceCoordinator.ts`](../../packages/service-actor/src/resources/DbResourceCoordinator.ts)
-- [`packages/service-db/src/model.ts`](../../packages/service-db/src/model.ts)
+- [`packages/ui-ai-chat/src/draft-preview/mount.ts`](../../packages/ui-ai-chat/src/draft-preview/mount.ts)
+- [`packages/ui-ai-chat/src/draft-preview/DraftPreviewFrameService.ts`](../../packages/ui-ai-chat/src/draft-preview/DraftPreviewFrameService.ts)
+- [`packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts`](../../packages/ui-ai-chat/src/widget-runtime/WidgetUiRuntime.ts)
+- [`packages/service-automerge/src/types/canvas-doc.zod.ts`](../../packages/service-automerge/src/types/canvas-doc.zod.ts)
 
-Widget/canvas runtime:
+Functions, resources, and persistence:
 
-- [`packages/sdk/src/widget.ts`](../../packages/sdk/src/widget.ts)
-- [`packages/sdk/src/actor.ts`](../../packages/sdk/src/actor.ts)
-- [`packages/canvas/src/plugins/widget/Widget.plugin.ts`](../../packages/canvas/src/plugins/widget/Widget.plugin.ts)
-- [`packages/canvas/src/services/widget/WidgetManagerService.ts`](../../packages/canvas/src/services/widget/WidgetManagerService.ts)
-- [`packages/canvas/src/services/widget/mount-arrow-sandbox.ts`](../../packages/canvas/src/services/widget/mount-arrow-sandbox.ts)
+- [`packages/function-runtime/src`](../../packages/function-runtime/src)
+- [`packages/resource-runtime/src/local/DbResourceCoordinator.ts`](../../packages/resource-runtime/src/local/DbResourceCoordinator.ts)
+- [`packages/service-db/src/WidgetControlStoreTurso.ts`](../../packages/service-db/src/WidgetControlStoreTurso.ts)
+- [`packages/service-db/src/FunctionControlStoreTurso.ts`](../../packages/service-db/src/FunctionControlStoreTurso.ts)
+- [`packages/service-db/src/ResourceControlStoreTurso.ts`](../../packages/service-db/src/ResourceControlStoreTurso.ts)
 
 ## Change checklist
 
-Before changing this system:
-
-1. Identify the owner: shared mount, canonical source, unpublished draft, installed definition, actor instance, binding, or resource provider.
-2. Preserve the exact 14-tool registry and per-call authorization unless a later task explicitly replaces S84.
-3. Keep mounted path validation at the backend boundary.
-4. Keep model-authored files away from host compiler/executable selection.
-5. Keep secret plaintext out of model-facing and generic reads, approval views, events, transcripts, logs, and results; the dedicated human reveal handler is the only management exception.
-6. Keep publishing and approval user-controlled.
-7. Add focused tests for persistence, rollback, lifecycle, authorization, and concurrency behavior.
+1. Identify whether the owner is a mutable draft, immutable revision artifact, widget instance, function invocation, resource binding, or resource provider.
+2. Keep published reads artifact-authoritative and verify identity before returning bytes.
+3. Keep Draft Preview stateless and UI-only.
+4. Keep mounted path validation and host-selected compilers at the backend boundary.
+5. Keep server/resource authority host-derived and secret plaintext out of model-facing surfaces.
+6. Keep Publish and approvals user-controlled.
+7. Add focused tests for integrity, stale revisions, restart behavior, recovery, authorization, and concurrency.

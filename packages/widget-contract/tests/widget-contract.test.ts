@@ -409,7 +409,7 @@ describe('widget publication contract invariants', () => {
     })).toBe(true);
   });
 
-  test('supports fake immutable reader and builder capabilities without actor contracts', async () => {
+  test('supports fake immutable reader and builder capabilities through narrow contracts', async () => {
     const reader: IWidgetRevisionReader = {
       getRevision: async (_tenant, id) => id === revision.id ? revision : null,
       getActiveRevision: async (_tenant, definitionId) => (

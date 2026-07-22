@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable M7 gate for the neutral renderer host and actor-free UI scale.
+ * @file Durable M7 gate for the neutral renderer host and UI scale.
  */
 
 import { resolve } from 'node:path';

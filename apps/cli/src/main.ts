@@ -14,10 +14,6 @@ if (args.includes('--widget-typecheck-worker')) {
     '@vibecanvas/function-runtime/local'
   );
   runFunctionWorker();
-} else if (args.includes("--icp-client")) {
-  const { runActorIpcClient } = await import("@vibecanvas/service-actor/icp-client");
-  await runActorIpcClient(args);
-  process.exit(process.exitCode ?? 0);
 } else {
   const { runCliMain } = await import("./main-app");
   await runCliMain();

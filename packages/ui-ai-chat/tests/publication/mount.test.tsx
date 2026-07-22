@@ -10,7 +10,7 @@ function detail(args: { revision?: string; published?: boolean } = {}): TWidgetD
     draftId: DRAFT_ID,
     source: "draft",
     displayName: "Weather board",
-    kind: "actor-widget",
+    kind: "notes-widget",
     slug: "weather",
     description: null,
     revision: args.revision ?? "rev-2",
@@ -109,7 +109,7 @@ describe("mounted publication coordinator", () => {
         draftId: "Weather",
         reason: "validation-failed",
         message: "The draft is invalid.",
-        errors: ["Missing actor state"],
+        errors: ["Missing widget state"],
         warnings: [],
       },
     })
@@ -119,7 +119,7 @@ describe("mounted publication coordinator", () => {
     expect(document.body.textContent).toContain("Republish Weather board?")
     button("Republish")?.click()
     await vi.waitFor(() => expect(document.body.textContent).toContain("Draft validation failed"))
-    expect(document.body.textContent).toContain("Missing actor state")
+    expect(document.body.textContent).toContain("Missing widget state")
     expect(button("Cancel")).toBeDefined()
     expect(mounted.published).not.toHaveBeenCalled()
     mounted.dispose()

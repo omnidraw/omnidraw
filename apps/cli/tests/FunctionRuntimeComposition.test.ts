@@ -61,7 +61,6 @@ describe('production short-lived function composition', () => {
       cwd: root,
       dev: true,
       compiled: false,
-      legacyActorEnabled: false,
       version: '0.0.0-test',
       command: 'serve',
       rawArgv: ['bun', 'run'],

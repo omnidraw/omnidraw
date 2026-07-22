@@ -1,14 +1,3 @@
-ALTER TABLE agent_previews
-  ADD COLUMN active_revision_id TEXT CHECK (
-    active_revision_id IS NULL OR (
-      length(active_revision_id) = 36 AND active_revision_id = lower(active_revision_id)
-      AND substr(active_revision_id, 9, 1) = '-' AND substr(active_revision_id, 14, 1) = '-'
-      AND substr(active_revision_id, 19, 1) = '-' AND substr(active_revision_id, 24, 1) = '-'
-      AND length(replace(active_revision_id, '-', '')) = 32
-      AND replace(active_revision_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  );
-
 ALTER TABLE agent_chats
   ADD COLUMN external_session_key TEXT CHECK (
     external_session_key IS NULL OR (
@@ -103,207 +92,6 @@ CREATE TABLE widget_revision_sources (
 CREATE INDEX widget_revision_sources_artifact_idx
   ON widget_revision_sources (org_id, source_artifact_id, source_artifact_kind);
 
-CREATE TABLE agent_preview_revisions (
-  org_id TEXT NOT NULL CHECK (
-    length(org_id) = 36 AND org_id = lower(org_id)
-    AND substr(org_id, 9, 1) = '-' AND substr(org_id, 14, 1) = '-'
-    AND substr(org_id, 19, 1) = '-' AND substr(org_id, 24, 1) = '-'
-    AND length(replace(org_id, '-', '')) = 32
-    AND replace(org_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  id TEXT NOT NULL CHECK (
-    length(id) = 36 AND id = lower(id)
-    AND substr(id, 9, 1) = '-' AND substr(id, 14, 1) = '-'
-    AND substr(id, 19, 1) = '-' AND substr(id, 24, 1) = '-'
-    AND length(replace(id, '-', '')) = 32
-    AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  preview_id TEXT NOT NULL CHECK (
-    length(preview_id) = 36 AND preview_id = lower(preview_id)
-    AND substr(preview_id, 9, 1) = '-' AND substr(preview_id, 14, 1) = '-'
-    AND substr(preview_id, 19, 1) = '-' AND substr(preview_id, 24, 1) = '-'
-    AND length(replace(preview_id, '-', '')) = 32
-    AND replace(preview_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  draft_id TEXT NOT NULL CHECK (
-    length(draft_id) = 36 AND draft_id = lower(draft_id)
-    AND substr(draft_id, 9, 1) = '-' AND substr(draft_id, 14, 1) = '-'
-    AND substr(draft_id, 19, 1) = '-' AND substr(draft_id, 24, 1) = '-'
-    AND length(replace(draft_id, '-', '')) = 32
-    AND replace(draft_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  definition_id TEXT NOT NULL CHECK (
-    length(definition_id) = 36 AND definition_id = lower(definition_id)
-    AND substr(definition_id, 9, 1) = '-' AND substr(definition_id, 14, 1) = '-'
-    AND substr(definition_id, 19, 1) = '-' AND substr(definition_id, 24, 1) = '-'
-    AND length(replace(definition_id, '-', '')) = 32
-    AND replace(definition_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  draft_revision_sha256 TEXT NOT NULL CHECK (
-    length(draft_revision_sha256) = 64
-    AND draft_revision_sha256 = lower(draft_revision_sha256)
-    AND draft_revision_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  source_snapshot_id TEXT NOT NULL CHECK (
-    length(source_snapshot_id) = 36 AND source_snapshot_id = lower(source_snapshot_id)
-    AND substr(source_snapshot_id, 9, 1) = '-' AND substr(source_snapshot_id, 14, 1) = '-'
-    AND substr(source_snapshot_id, 19, 1) = '-' AND substr(source_snapshot_id, 24, 1) = '-'
-    AND length(replace(source_snapshot_id, '-', '')) = 32
-    AND replace(source_snapshot_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  source_artifact_id TEXT NOT NULL CHECK (
-    length(source_artifact_id) = 36 AND source_artifact_id = lower(source_artifact_id)
-    AND substr(source_artifact_id, 9, 1) = '-' AND substr(source_artifact_id, 14, 1) = '-'
-    AND substr(source_artifact_id, 19, 1) = '-' AND substr(source_artifact_id, 24, 1) = '-'
-    AND length(replace(source_artifact_id, '-', '')) = 32
-    AND replace(source_artifact_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  source_artifact_kind TEXT NOT NULL DEFAULT 'source' CHECK (source_artifact_kind = 'source'),
-  source_digest_sha256 TEXT NOT NULL CHECK (
-    length(source_digest_sha256) = 64
-    AND source_digest_sha256 = lower(source_digest_sha256)
-    AND source_digest_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  manifest_json TEXT NOT NULL CHECK (json_valid(manifest_json) AND json_type(manifest_json) = 'object'),
-  runtime_abi TEXT CHECK (runtime_abi IS NULL OR length(trim(runtime_abi)) BETWEEN 1 AND 100),
-  function_descriptors_json TEXT NOT NULL CHECK (
-    json_valid(function_descriptors_json)
-    AND json_type(function_descriptors_json) = 'object'
-    AND json_extract(function_descriptors_json, '$.format') = 'vibecanvas.server-functions.v1'
-    AND json_type(function_descriptors_json, '$.functions') = 'array'
-  ),
-  function_descriptors_digest_sha256 TEXT NOT NULL CHECK (
-    length(function_descriptors_digest_sha256) = 64
-    AND function_descriptors_digest_sha256 = lower(function_descriptors_digest_sha256)
-    AND function_descriptors_digest_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  contract_digest_sha256 TEXT NOT NULL CHECK (
-    length(contract_digest_sha256) = 64
-    AND contract_digest_sha256 = lower(contract_digest_sha256)
-    AND contract_digest_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  builder_identity TEXT NOT NULL CHECK (length(trim(builder_identity)) BETWEEN 1 AND 300),
-  ui_artifact_id TEXT NOT NULL CHECK (
-    length(ui_artifact_id) = 36 AND ui_artifact_id = lower(ui_artifact_id)
-    AND substr(ui_artifact_id, 9, 1) = '-' AND substr(ui_artifact_id, 14, 1) = '-'
-    AND substr(ui_artifact_id, 19, 1) = '-' AND substr(ui_artifact_id, 24, 1) = '-'
-    AND length(replace(ui_artifact_id, '-', '')) = 32
-    AND replace(ui_artifact_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  ui_artifact_kind TEXT NOT NULL DEFAULT 'ui' CHECK (ui_artifact_kind = 'ui'),
-  ui_artifact_digest_sha256 TEXT NOT NULL CHECK (
-    length(ui_artifact_digest_sha256) = 64
-    AND ui_artifact_digest_sha256 = lower(ui_artifact_digest_sha256)
-    AND ui_artifact_digest_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  server_artifact_id TEXT CHECK (
-    server_artifact_id IS NULL OR (
-      length(server_artifact_id) = 36 AND server_artifact_id = lower(server_artifact_id)
-      AND substr(server_artifact_id, 9, 1) = '-' AND substr(server_artifact_id, 14, 1) = '-'
-      AND substr(server_artifact_id, 19, 1) = '-' AND substr(server_artifact_id, 24, 1) = '-'
-      AND length(replace(server_artifact_id, '-', '')) = 32
-      AND replace(server_artifact_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  server_artifact_kind TEXT CHECK (
-    (server_artifact_id IS NULL AND server_artifact_kind IS NULL)
-    OR (server_artifact_id IS NOT NULL AND server_artifact_kind = 'server')
-  ),
-  server_artifact_digest_sha256 TEXT CHECK (
-    server_artifact_digest_sha256 IS NULL OR (
-      length(server_artifact_digest_sha256) = 64
-      AND server_artifact_digest_sha256 = lower(server_artifact_digest_sha256)
-      AND server_artifact_digest_sha256 NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  retain_until_ms INTEGER NOT NULL CHECK (retain_until_ms >= created_at_ms),
-  expires_at_ms INTEGER NOT NULL CHECK (expires_at_ms > created_at_ms),
-  PRIMARY KEY (org_id, id),
-  UNIQUE (org_id, preview_id, id),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, preview_id) REFERENCES agent_previews (org_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, draft_id) REFERENCES agent_drafts (org_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, source_artifact_id, source_artifact_kind)
-    REFERENCES artifact_references (org_id, id, kind) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, ui_artifact_id, ui_artifact_kind)
-    REFERENCES artifact_references (org_id, id, kind) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, server_artifact_id, server_artifact_kind)
-    REFERENCES artifact_references (org_id, id, kind) ON DELETE RESTRICT,
-  CHECK (
-    (runtime_abi IS NULL AND server_artifact_id IS NULL
-      AND server_artifact_kind IS NULL AND server_artifact_digest_sha256 IS NULL)
-    OR (runtime_abi IS NOT NULL AND server_artifact_id IS NOT NULL
-      AND server_artifact_kind = 'server' AND server_artifact_digest_sha256 IS NOT NULL)
-  ),
-  CHECK (source_artifact_id <> ui_artifact_id),
-  CHECK (server_artifact_id IS NULL OR (
-    server_artifact_id <> source_artifact_id AND server_artifact_id <> ui_artifact_id
-  ))
-) STRICT;
-
-CREATE INDEX agent_preview_revisions_preview_idx
-  ON agent_preview_revisions (org_id, preview_id, expires_at_ms, retain_until_ms);
-CREATE INDEX agent_preview_revisions_source_artifact_idx
-  ON agent_preview_revisions (org_id, source_artifact_id, source_artifact_kind);
-CREATE INDEX agent_preview_revisions_ui_artifact_idx
-  ON agent_preview_revisions (org_id, ui_artifact_id, ui_artifact_kind);
-CREATE INDEX agent_preview_revisions_server_artifact_idx
-  ON agent_preview_revisions (org_id, server_artifact_id, server_artifact_kind);
-CREATE INDEX agent_previews_active_revision_idx
-  ON agent_previews (org_id, id, active_revision_id, status, expires_at_ms);
-
-CREATE TABLE agent_preview_resource_bindings (
-  org_id TEXT NOT NULL CHECK (
-    length(org_id) = 36 AND org_id = lower(org_id)
-    AND substr(org_id, 9, 1) = '-' AND substr(org_id, 14, 1) = '-'
-    AND substr(org_id, 19, 1) = '-' AND substr(org_id, 24, 1) = '-'
-    AND length(replace(org_id, '-', '')) = 32
-    AND replace(org_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  preview_id TEXT NOT NULL CHECK (
-    length(preview_id) = 36 AND preview_id = lower(preview_id)
-    AND substr(preview_id, 9, 1) = '-' AND substr(preview_id, 14, 1) = '-'
-    AND substr(preview_id, 19, 1) = '-' AND substr(preview_id, 24, 1) = '-'
-    AND length(replace(preview_id, '-', '')) = 32
-    AND replace(preview_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  revision_id TEXT NOT NULL CHECK (
-    length(revision_id) = 36 AND revision_id = lower(revision_id)
-    AND substr(revision_id, 9, 1) = '-' AND substr(revision_id, 14, 1) = '-'
-    AND substr(revision_id, 19, 1) = '-' AND substr(revision_id, 24, 1) = '-'
-    AND length(replace(revision_id, '-', '')) = 32
-    AND replace(revision_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  slot_name TEXT NOT NULL CHECK (length(trim(slot_name)) BETWEEN 1 AND 100),
-  resource_id TEXT NOT NULL CHECK (
-    length(resource_id) = 36 AND resource_id = lower(resource_id)
-    AND substr(resource_id, 9, 1) = '-' AND substr(resource_id, 14, 1) = '-'
-    AND substr(resource_id, 19, 1) = '-' AND substr(resource_id, 24, 1) = '-'
-    AND length(replace(resource_id, '-', '')) = 32
-    AND replace(resource_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-  ),
-  resource_kind TEXT NOT NULL CHECK (resource_kind IN ('kv', 'secretStore', 'db')),
-  is_required INTEGER NOT NULL CHECK (is_required IN (0, 1)),
-  manifest_allow_read INTEGER NOT NULL CHECK (manifest_allow_read IN (0, 1)),
-  manifest_allow_write INTEGER NOT NULL CHECK (manifest_allow_write IN (0, 1)),
-  allow_read INTEGER NOT NULL CHECK (allow_read IN (0, 1)),
-  allow_write INTEGER NOT NULL CHECK (allow_write IN (0, 1)),
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  PRIMARY KEY (org_id, preview_id, revision_id, slot_name),
-  FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, preview_id, revision_id)
-    REFERENCES agent_preview_revisions (org_id, preview_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (org_id, resource_id, resource_kind)
-    REFERENCES resource_catalog (org_id, id, kind) ON DELETE RESTRICT,
-  CHECK (allow_read = 1 OR allow_write = 1),
-  CHECK (allow_read <= manifest_allow_read),
-  CHECK (allow_write <= manifest_allow_write)
-) STRICT;
-
-CREATE INDEX agent_preview_resource_bindings_resource_idx
-  ON agent_preview_resource_bindings (org_id, resource_id, resource_kind);
-
 DROP INDEX function_invocations_queue_idx;
 DROP INDEX function_invocations_revision_idx;
 DROP INDEX function_invocations_account_idx;
@@ -354,7 +142,7 @@ CREATE TABLE function_invocations (
     AND length(replace(account_id, '-', '')) = 32
     AND replace(account_id, '-', '') NOT GLOB '*[^0-9a-f]*'
   ),
-  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('widget_instance', 'agent_preview')),
+  subject_kind TEXT NOT NULL CHECK (subject_kind = 'widget_instance'),
   canvas_id TEXT CHECK (
     canvas_id IS NULL OR (
       length(canvas_id) = 36 AND canvas_id = lower(canvas_id)
@@ -385,24 +173,6 @@ CREATE TABLE function_invocations (
       AND substr(widget_instance_id, 19, 1) = '-' AND substr(widget_instance_id, 24, 1) = '-'
       AND length(replace(widget_instance_id, '-', '')) = 32
       AND replace(widget_instance_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  preview_id TEXT CHECK (
-    preview_id IS NULL OR (
-      length(preview_id) = 36 AND preview_id = lower(preview_id)
-      AND substr(preview_id, 9, 1) = '-' AND substr(preview_id, 14, 1) = '-'
-      AND substr(preview_id, 19, 1) = '-' AND substr(preview_id, 24, 1) = '-'
-      AND length(replace(preview_id, '-', '')) = 32
-      AND replace(preview_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  preview_revision_id TEXT CHECK (
-    preview_revision_id IS NULL OR (
-      length(preview_revision_id) = 36 AND preview_revision_id = lower(preview_revision_id)
-      AND substr(preview_revision_id, 9, 1) = '-' AND substr(preview_revision_id, 14, 1) = '-'
-      AND substr(preview_revision_id, 19, 1) = '-' AND substr(preview_revision_id, 24, 1) = '-'
-      AND length(replace(preview_revision_id, '-', '')) = 32
-      AND replace(preview_revision_id, '-', '') NOT GLOB '*[^0-9a-f]*'
     )
   ),
   function_id TEXT NOT NULL CHECK (length(trim(function_id)) BETWEEN 1 AND 200),
@@ -480,12 +250,7 @@ CREATE TABLE function_invocations (
   FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE RESTRICT,
   FOREIGN KEY (org_id, account_id)
     REFERENCES organization_memberships (org_id, account_id) ON DELETE RESTRICT,
-  CHECK (
-    (subject_kind = 'widget_instance' AND canvas_id IS NOT NULL
-      AND widget_instance_id IS NOT NULL AND preview_id IS NULL AND preview_revision_id IS NULL)
-    OR (subject_kind = 'agent_preview' AND canvas_id IS NULL
-      AND widget_instance_id IS NULL AND preview_id IS NOT NULL AND preview_revision_id IS NOT NULL)
-  ),
+  CHECK (canvas_id IS NOT NULL AND widget_instance_id IS NOT NULL),
   CHECK (
     (status IN ('succeeded', 'failed', 'cancelled', 'timed_out') AND finished_at_ms IS NOT NULL)
     OR (status IN ('queued', 'claimed', 'running') AND finished_at_ms IS NULL)
@@ -520,9 +285,6 @@ CREATE INDEX function_invocations_instance_idx
   ON function_invocations (
     org_id, widget_definition_id, widget_revision_id, widget_instance_id
   );
-CREATE INDEX function_invocations_preview_idx
-  ON function_invocations (org_id, preview_id, preview_revision_id, created_at_ms);
-
 CREATE TABLE function_attempts (
   org_id TEXT NOT NULL CHECK (
     length(org_id) = 36 AND org_id = lower(org_id)
@@ -656,9 +418,7 @@ CREATE TABLE idempotency_records (
     AND replace(id, '-', '') NOT GLOB '*[^0-9a-f]*'
   ),
   function_id TEXT NOT NULL CHECK (length(trim(function_id)) BETWEEN 1 AND 200),
-  scope_kind TEXT NOT NULL CHECK (
-    scope_kind IN ('organization', 'canvas', 'widget_instance', 'agent_preview')
-  ),
+  scope_kind TEXT NOT NULL CHECK (scope_kind IN ('organization', 'canvas', 'widget_instance')),
   canvas_id TEXT CHECK (
     canvas_id IS NULL OR (
       length(canvas_id) = 36 AND canvas_id = lower(canvas_id)
@@ -675,24 +435,6 @@ CREATE TABLE idempotency_records (
       AND substr(widget_instance_id, 19, 1) = '-' AND substr(widget_instance_id, 24, 1) = '-'
       AND length(replace(widget_instance_id, '-', '')) = 32
       AND replace(widget_instance_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  preview_id TEXT CHECK (
-    preview_id IS NULL OR (
-      length(preview_id) = 36 AND preview_id = lower(preview_id)
-      AND substr(preview_id, 9, 1) = '-' AND substr(preview_id, 14, 1) = '-'
-      AND substr(preview_id, 19, 1) = '-' AND substr(preview_id, 24, 1) = '-'
-      AND length(replace(preview_id, '-', '')) = 32
-      AND replace(preview_id, '-', '') NOT GLOB '*[^0-9a-f]*'
-    )
-  ),
-  preview_revision_id TEXT CHECK (
-    preview_revision_id IS NULL OR (
-      length(preview_revision_id) = 36 AND preview_revision_id = lower(preview_revision_id)
-      AND substr(preview_revision_id, 9, 1) = '-' AND substr(preview_revision_id, 14, 1) = '-'
-      AND substr(preview_revision_id, 19, 1) = '-' AND substr(preview_revision_id, 24, 1) = '-'
-      AND length(replace(preview_revision_id, '-', '')) = 32
-      AND replace(preview_revision_id, '-', '') NOT GLOB '*[^0-9a-f]*'
     )
   ),
   idempotency_key TEXT NOT NULL CHECK (length(trim(idempotency_key)) BETWEEN 1 AND 300),
@@ -728,18 +470,11 @@ CREATE TABLE idempotency_records (
   FOREIGN KEY (org_id) REFERENCES organizations (id) ON DELETE RESTRICT,
   FOREIGN KEY (org_id, canvas_id) REFERENCES canvases (org_id, id) ON DELETE RESTRICT,
   FOREIGN KEY (org_id, widget_instance_id) REFERENCES widget_instances (org_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (org_id, preview_id, preview_revision_id)
-    REFERENCES agent_preview_revisions (org_id, preview_id, id) ON DELETE RESTRICT,
   FOREIGN KEY (org_id, invocation_id) REFERENCES function_invocations (org_id, id) ON DELETE RESTRICT,
   CHECK (
-    (scope_kind = 'organization' AND canvas_id IS NULL AND widget_instance_id IS NULL
-      AND preview_id IS NULL AND preview_revision_id IS NULL)
-    OR (scope_kind = 'canvas' AND canvas_id IS NOT NULL AND widget_instance_id IS NULL
-      AND preview_id IS NULL AND preview_revision_id IS NULL)
-    OR (scope_kind = 'widget_instance' AND canvas_id IS NULL AND widget_instance_id IS NOT NULL
-      AND preview_id IS NULL AND preview_revision_id IS NULL)
-    OR (scope_kind = 'agent_preview' AND canvas_id IS NULL AND widget_instance_id IS NULL
-      AND preview_id IS NOT NULL AND preview_revision_id IS NOT NULL)
+    (scope_kind = 'organization' AND canvas_id IS NULL AND widget_instance_id IS NULL)
+    OR (scope_kind = 'canvas' AND canvas_id IS NOT NULL AND widget_instance_id IS NULL)
+    OR (scope_kind = 'widget_instance' AND canvas_id IS NULL AND widget_instance_id IS NOT NULL)
   )
 ) STRICT;
 
@@ -752,10 +487,6 @@ CREATE UNIQUE INDEX idempotency_records_canvas_key_idx
 CREATE UNIQUE INDEX idempotency_records_widget_key_idx
   ON idempotency_records (org_id, widget_instance_id, function_id, idempotency_key)
   WHERE scope_kind = 'widget_instance';
-CREATE UNIQUE INDEX idempotency_records_preview_key_idx
-  ON idempotency_records (
-    org_id, preview_id, preview_revision_id, function_id, idempotency_key
-  ) WHERE scope_kind = 'agent_preview';
 CREATE INDEX idempotency_records_expiry_idx
   ON idempotency_records (org_id, expires_at_ms);
 CREATE INDEX idempotency_records_revision_idx
@@ -954,7 +685,6 @@ CREATE INDEX usage_outbox_resource_permit_idx
 INSERT INTO function_invocations (
   org_id, id, account_id, subject_kind, canvas_id,
   widget_definition_id, widget_revision_id, widget_instance_id,
-  preview_id, preview_revision_id,
   function_id, function_name, definition_revision, artifact_digest_sha256,
   contract_digest_sha256, runtime_abi, tenant_cell_id, tenant_placement_epoch,
   tenant_request_id, tenant_roles_json, tenant_capabilities_json, input_json,
@@ -968,7 +698,6 @@ INSERT INTO function_invocations (
 SELECT
   org_id, id, account_id, 'widget_instance', canvas_id,
   widget_definition_id, widget_revision_id, widget_instance_id,
-  NULL, NULL,
   function_id, function_name, definition_revision, artifact_digest_sha256,
   contract_digest_sha256, runtime_abi, tenant_cell_id, tenant_placement_epoch,
   tenant_request_id, tenant_roles_json, tenant_capabilities_json, input_json,
@@ -985,12 +714,12 @@ INSERT INTO invocation_leases SELECT * FROM invocation_leases_m8;
 
 INSERT INTO idempotency_records (
   org_id, id, function_id, scope_kind, canvas_id, widget_instance_id,
-  preview_id, preview_revision_id, idempotency_key, request_fingerprint_sha256,
+  idempotency_key, request_fingerprint_sha256,
   widget_definition_id, widget_revision_id, invocation_id, created_at_ms, expires_at_ms
 )
 SELECT
   org_id, id, function_id, scope_kind, canvas_id, widget_instance_id,
-  NULL, NULL, idempotency_key, request_fingerprint_sha256,
+  idempotency_key, request_fingerprint_sha256,
   widget_definition_id, widget_revision_id, invocation_id, created_at_ms, expires_at_ms
 FROM idempotency_records_m8;
 

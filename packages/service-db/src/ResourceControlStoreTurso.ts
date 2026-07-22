@@ -46,7 +46,7 @@ function resourceNameError(code: 'RESOURCE_NAME_INVALID' | 'RESOURCE_NAME_CONFLI
   return Object.assign(new Error(message), { code });
 }
 
-/** Turso-backed implementation of the actor-independent resource control-plane SPI. */
+/** Turso-backed implementation of the resource control-plane SPI. */
 export class ResourceControlStoreTurso implements IResourceControlStore {
   constructor(private readonly database: Database) {}
 
@@ -187,10 +187,6 @@ export class ResourceControlStoreTurso implements IResourceControlStore {
           WHERE org_id = ? AND id = ? AND status = 'deleting'
             AND NOT EXISTS (
               SELECT 1 FROM resource_bindings
-              WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM legacy_actor_resource_bindings
               WHERE org_id = resource_catalog.org_id AND resource_id = resource_catalog.id
             )
         `)).get(tenant.orgId, resourceId);

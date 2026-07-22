@@ -22,7 +22,7 @@ describe("package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps legacy actor runtime ownership out of AI Chat", () => {
+  it("keeps retired resident runtime ownership out of AI Chat", () => {
     const forbiddenDependency = /@vibecanvas\/(?:service-actor|ui-actor-legacy)(?:[/'"]|$)/;
     const forbiddenActorTransport = /\bapi\.actors\b|\bactors\s*:/;
     const packageSource = readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8");

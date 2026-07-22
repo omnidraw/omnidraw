@@ -7,10 +7,6 @@
       "types": "./dist/widget.d.ts",
       "default": "./dist/widget.js"
     },
-    "./actor": {
-      "types": "./dist/actor.d.ts",
-      "default": "./dist/actor.js"
-    },
     "./server": {
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
@@ -22,7 +18,6 @@
   },
   "files": [
     "dist",
-    "actor",
     "function-client",
     "server",
     "widget"

@@ -7,7 +7,7 @@ function variant(source: 'published' | 'draft', group: string | null): TWidgetVa
     draftId: null,
     source,
     displayName: 'Camera',
-    kind: 'actor-widget',
+    kind: 'widget',
     slug: 'camera',
     description: null,
     revision: source,

@@ -47,8 +47,6 @@ function claimsAreValid(value: unknown): value is TWidgetArtifactReadCapabilityC
     || ![
       'browser_ui',
       'server_execution',
-      'preview_ui',
-      'preview_server',
       'source_build',
       'source_map',
       'cell_move',

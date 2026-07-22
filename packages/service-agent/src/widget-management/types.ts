@@ -1,4 +1,3 @@
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type {
   TVibecanvasToolIcon,
   TWidgetBrowserFunctionDescriptor,
@@ -9,7 +8,7 @@ import type {
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 
 export type TWidgetSource = 'published' | 'draft';
-export type TWidgetManagementManifest = TWidgetManifestV2 | TVibecanvasJson;
+export type TWidgetManagementManifest = TWidgetManifestV2;
 export type TWidgetRelation = 'published-only' | 'draft-only' | 'same' | 'different' | 'unknown';
 
 export type TWidgetCatalogProblem = {
@@ -31,7 +30,7 @@ export type TWidgetVariantSummary = {
   draftId: string | null;
   source: TWidgetSource;
   displayName: string;
-  kind: 'widget' | 'actor-widget' | null;
+  kind: 'widget' | null;
   slug: string | null;
   description: string | null;
   revision: string;
@@ -166,22 +165,12 @@ export type TPublishedWidgetPlacementTarget = TPublishedWidgetPlacementIdentity 
 
 export type TWidgetPlacementDescriptor =
   | (TWidgetPlacementDescriptorBase & {
-      kind: 'published-v2';
+      kind: 'published';
       draftId: null;
       definitionId: string;
       revisionId: string;
       definitionName: null;
       definitionSlug: string;
-      previewId: null;
-    })
-  | (TWidgetPlacementDescriptorBase & {
-      kind: 'published-legacy';
-      draftId: null;
-      definitionId: null;
-      revisionId: null;
-      definitionName: string;
-      definitionSlug: string;
-      previewId: null;
     })
   | (TWidgetPlacementDescriptorBase & {
       kind: 'preview';
@@ -190,7 +179,6 @@ export type TWidgetPlacementDescriptor =
       revisionId: null;
       definitionName: null;
       definitionSlug: null;
-      previewId: string | null;
     });
 
 export type TWidgetPlacementResolveResult =

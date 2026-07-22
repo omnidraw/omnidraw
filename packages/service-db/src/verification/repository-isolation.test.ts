@@ -39,15 +39,6 @@ async function seedSecondTenant(service: DbServiceTurso): Promise<void> {
   `)).run(ORG_B, ACCOUNT_B, now, now);
 }
 
-async function rejectionMessage(action: Promise<unknown>): Promise<string> {
-  try {
-    await action;
-    throw new Error('Expected rejection.');
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-}
-
 describe('tenant-qualified DB repositories', () => {
   let service!: DbServiceTurso;
   let tenantA!: TTenantDb;
@@ -164,108 +155,19 @@ describe('tenant-qualified DB repositories', () => {
     await expect(tenantA.toolGroup.getByName({ name: 'Foreign tools' })).resolves.not.toBeNull();
   });
 
-  test('isolates legacy actors, resource bindings, and encryption keys', async () => {
-    const canvasId = uuid(40);
-    await tenantA.canvas.create({ id: canvasId, name: 'Actors', automerge_url: 'automerge:actors-a' });
-    await tenantB.canvas.create({ id: canvasId, name: 'Actors', automerge_url: 'automerge:actors-b' });
-    await tenantA.actor.insertDefinition({
-      name: 'Shared actor', slug: 'shared-actor-a', url: null, description: 'A', manifest_path: 'actors/a/vibecanvas.json',
-    });
-    await tenantB.actor.insertDefinition({
-      name: 'Shared actor', slug: 'shared-actor-b', url: null, description: 'B', manifest_path: 'actors/b/vibecanvas.json',
-    });
-    await tenantA.actor.insertDefinition({
-      name: 'Foreign actor', slug: 'foreign-actor', url: null, description: null, manifest_path: 'actors/foreign/vibecanvas.json',
-    });
-    await expect(tenantA.actor.getDefinition('Shared actor')).resolves.toMatchObject({ description: 'A' });
-    await expect(tenantB.actor.getDefinition('Shared actor')).resolves.toMatchObject({ description: 'B' });
-    await expect(tenantB.actor.getDefinition('Foreign actor')).resolves.toBeNull();
-    await expect(tenantB.actor.getDefinition('Unknown actor')).resolves.toBeNull();
-    await tenantB.actor.deleteDefinition('Foreign actor');
-    await tenantB.actor.deleteDefinition('Unknown actor');
-    await expect(tenantA.actor.getDefinition('Foreign actor')).resolves.not.toBeNull();
-
-    const sharedInstanceId = uuid(41);
-    const foreignInstanceId = uuid(42);
-    const instance = (id: string, label: string) => ({
-      id,
-      canvas_id: canvasId,
-      element_id: `element-${label}`,
-      actor_definition_name: 'Shared actor',
-      display_name: label,
-      status: 'created' as const,
-      machine_state: 'idle',
-      machine_context: { tenant: label },
-    });
-    await tenantA.actor.insertInstance(instance(sharedInstanceId, 'A'));
-    await tenantB.actor.insertInstance(instance(sharedInstanceId, 'B'));
-    await tenantA.actor.insertInstance(instance(foreignInstanceId, 'A-only'));
-    await expect(tenantA.actor.getInstanceById(sharedInstanceId)).resolves.toMatchObject({ display_name: 'A' });
-    await expect(tenantB.actor.getInstanceById(sharedInstanceId)).resolves.toMatchObject({ display_name: 'B' });
-    await expect(tenantB.actor.getInstanceById(foreignInstanceId)).resolves.toBeNull();
-    await expect(tenantB.actor.getInstanceById(UNKNOWN_ID)).resolves.toBeNull();
-    await expect(tenantB.actor.updateInstanceStatus({ id: foreignInstanceId, status: 'running' })).resolves.toBeNull();
-    await expect(tenantB.actor.updateInstanceStatus({ id: UNKNOWN_ID, status: 'running' })).resolves.toBeNull();
-    await tenantB.actor.deleteInstance(foreignInstanceId);
-    await tenantB.actor.deleteInstance(UNKNOWN_ID);
-    await expect(tenantA.actor.getInstanceById(foreignInstanceId)).resolves.not.toBeNull();
-
-    const sharedResourceId = uuid(50);
-    const foreignResourceId = uuid(51);
-    await tenantA.actorResource.create({ id: sharedResourceId, kind: 'secretStore', name: 'Shared secret', status: 'ready' });
-    await tenantB.actorResource.create({ id: sharedResourceId, kind: 'secretStore', name: 'Shared secret', status: 'ready' });
-    await tenantA.actorResource.create({ id: foreignResourceId, kind: 'secretStore', name: 'Foreign secret', status: 'ready' });
-    await expect(tenantB.actorResource.get({ id: foreignResourceId })).resolves.toBeNull();
-    await expect(tenantB.actorResource.get({ id: UNKNOWN_ID })).resolves.toBeNull();
-    await expect(tenantB.actorResource.beginDelete({ id: foreignResourceId })).resolves.toBeNull();
-    await expect(tenantB.actorResource.beginDelete({ id: UNKNOWN_ID })).resolves.toBeNull();
-
-    await tenantA.actorResource.upsertBinding({
-      definitionName: 'Shared actor', slotName: 'secret', resourceId: sharedResourceId, allowRead: true, allowWrite: false,
-    });
-    await tenantB.actorResource.upsertBinding({
-      definitionName: 'Shared actor', slotName: 'secret', resourceId: sharedResourceId, allowRead: true, allowWrite: true,
-    });
-    await expect(tenantA.actorResource.listBindingsForDefinition({ definitionName: 'Shared actor' }))
-      .resolves.toMatchObject([{ allow_write: false }]);
-    await expect(tenantB.actorResource.listBindingsForDefinition({ definitionName: 'Shared actor' }))
-      .resolves.toMatchObject([{ allow_write: true }]);
-    await expect(tenantB.actorResource.listBindingsForDefinition({ definitionName: 'Foreign actor' })).resolves.toEqual([]);
-    await expect(tenantB.actorResource.listBindingsForDefinition({ definitionName: 'Unknown actor' })).resolves.toEqual([]);
-
-    const sharedKeyId = uuid(52);
-    const keyArgs = (resourceId: string, keyHex: string) => ({
-      resourceId,
-      keyId: sharedKeyId,
-      purpose: 'actor-resource-secret-store',
-      algorithm: 'aegis256',
-      keyHex,
-    });
-    await tenantA.actorResourceEncryptionKey.getOrCreate(keyArgs(sharedResourceId, '11'.repeat(32)));
-    await tenantB.actorResourceEncryptionKey.getOrCreate(keyArgs(sharedResourceId, '22'.repeat(32)));
-    await expect(tenantA.actorResourceEncryptionKey.get({ resourceId: sharedResourceId }))
-      .resolves.toMatchObject({ key_hex: '11'.repeat(32) });
-    await expect(tenantB.actorResourceEncryptionKey.get({ resourceId: sharedResourceId }))
-      .resolves.toMatchObject({ key_hex: '22'.repeat(32) });
-    await expect(tenantB.actorResourceEncryptionKey.get({ resourceId: foreignResourceId })).resolves.toBeNull();
-    await expect(tenantB.actorResourceEncryptionKey.get({ resourceId: UNKNOWN_ID })).resolves.toBeNull();
-    const foreignError = await rejectionMessage(
-      tenantB.actorResourceEncryptionKey.getOrCreate(keyArgs(foreignResourceId, '33'.repeat(32))),
-    );
-    const unknownError = await rejectionMessage(
-      tenantB.actorResourceEncryptionKey.getOrCreate(keyArgs(UNKNOWN_ID, '33'.repeat(32))),
-    );
-    expect(foreignError).toBe(unknownError);
-  });
-
   test('isolates resource draft and apply IDs, lists, and foreign mutations', async () => {
     const sharedResourceId = uuid(60);
     const sharedDraftId = uuid(61);
     const foreignDraftId = uuid(62);
     const sharedApplyId = uuid(63);
     const foreignApplyId = uuid(64);
-    await tenantA.actorResource.create({ id: sharedResourceId, kind: 'db', name: 'Shared DB', status: 'ready' });
-    await tenantB.actorResource.create({ id: sharedResourceId, kind: 'db', name: 'Shared DB', status: 'ready' });
+    for (const tenant of [TEST_TENANT, TENANT_B]) {
+      await (await service.db.prepare(`
+        INSERT INTO resource_catalog (
+          org_id, id, kind, name, status, last_error_json, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, 'db', 'Shared DB', 'ready', NULL, 1, 1)
+      `)).run(tenant.orgId, sharedResourceId);
+    }
     await tenantA.dbResource.draft.create({ id: sharedDraftId, resourceId: sharedResourceId, name: 'Draft A' });
     await tenantB.dbResource.draft.create({ id: sharedDraftId, resourceId: sharedResourceId, name: 'Draft B' });
     await tenantA.dbResource.draft.discard({ id: sharedDraftId });

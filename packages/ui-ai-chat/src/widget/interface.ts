@@ -18,7 +18,6 @@ import type {
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TWidgetBrowserPort } from "../ports";
 import type { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
-import type { TLegacyWidgetRuntimeAdapter } from '../legacy';
 
 export interface IWidgetManagerServiceHooks {
   widgetChange: SyncHook<[]>;
@@ -38,7 +37,6 @@ export interface IWidgetManagerServiceProps {
   cameraService: CameraService;
   confirmDialogService: ConfirmDialogService;
   browser: TWidgetBrowserPort;
-  legacy?: TLegacyWidgetRuntimeAdapter;
   neutralHost?: Readonly<{
     canvasId: string;
     runtime: WidgetUiRuntime;
@@ -81,7 +79,7 @@ export type TWidgetFullscreenHostActions = {
 export interface IWidgetConfig {
   id: string;
   toolId?: string;
-  dataType?: "widget" | "ui-widget";
+  dataType?: "ui-widget";
   cloneable?: boolean;
   tool?: Pick<TTool, "label"> & Partial<Pick<TTool, "group" | "icon" | "priority" | "shortcuts">>
   widgetPlacement?: TWidgetDropRequest;
@@ -89,9 +87,6 @@ export interface IWidgetConfig {
   initialPayload?: Record<string, any>;
   createInitialPayload?: () => Record<string, any>;
   createClonePayload?: (sourcePayload: Record<string, any>) => Record<string, any>;
-  actor?: {
-    actorDefinitionName: string;
-  };
   titleBarActions?: readonly TWidgetTitleBarAction[];
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
   sandbox?: IWidgetSandboxConfig;

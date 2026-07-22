@@ -10,7 +10,7 @@ All screenshots are optimized WebP files under [`assets/`](assets/). Capture a n
 | --- | --- | --- |
 | [App shell](#app-shell) | `/` | Welcome, create canvas, create resource |
 | [Canvas](#canvas) | `/c/:id` | Populated canvas, selection/style tools, widget actions/fullscreen, AI chat/settings, draft Preview, direct widget placement |
-| [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, messages, states, files, draft editing |
+| [Widget inspector](#widget-inspector) | `/widgets/:source/:name` | Overview, config, functions, collaborative state, runs, logs, resources, files, draft editing |
 | [Key-value and secret resources](#key-value-and-secret-resources) | `/resources/:id?tab=overview\|data` | Overview, empty/populated data, add value, add/rotate/reveal secret |
 | [Database resources](#database-resources) | `/resources/:id?tab=overview\|schema\|data\|sql` | Lifecycle, schema drafting/apply, row editing, SQL and write approval |
 | [Public website](#public-website) | `/`, `/docs`, `/docs/*` | Landing page, documentation index, article layout |
@@ -35,8 +35,8 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 
 | Populated canvas | Selection and style tools |
 | --- | --- |
-| ![Canvas containing a Todo Actor widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with fill, stroke, text, size, and alignment controls](assets/11-canvas-selection-style.webp) |
-| **`/c/:id` — Hosted widget.** A Todo Actor instance placed and resized on the grid. | **Selected shape.** Transformer handles and the contextual style panel for a rectangle. |
+| ![Canvas containing a hosted widget](assets/10-canvas-populated-widget.webp) | ![Selected rectangle with fill, stroke, text, size, and alignment controls](assets/11-canvas-selection-style.webp) |
+| **`/c/:id` — Hosted widget.** A pinned widget revision placed and resized on the grid. | **Selected shape.** Transformer handles and the contextual style panel for a rectangle. |
 
 | Widget actions | Widget fullscreen |
 | --- | --- |
@@ -51,12 +51,12 @@ The canvas combines the infinite workspace, drawing tools, hosted widgets, and t
 | AI draft Preview |
 | --- |
 | ![AI Chat widget-create result beside an interactive draft Preview frame](assets/16-canvas-ai-draft-preview.webp) |
-| **AI assistant — Draft Preview.** A trusted widget-create result opens one revision-pinned interactive Preview beside its originating chat. Draft Preview host chrome exposes **Publish** or **Republish** before the window menu; publishing always opens a current-state confirmation dialog. |
+| **AI assistant — Draft Preview.** A trusted widget-create result opens a UI-only Preview beside its originating chat. Mount, refresh, and reset build the current draft with ephemeral collaborative state; functions and resources become available only after Publish. |
 
 | Direct widget placement |
 | --- |
 | ![Sidebar showing published and Draft widget sources beside directly placed canvas widgets](assets/17-canvas-widget-placement.webp) |
-| **Sidebar/toolbar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances; Preview readiness stays internal. Every successful Draft drop builds the exact revision into a new independently owned pinned Preview frame at the world-space drop point. |
+| **Sidebar/toolbar — Direct placement.** Published and Draft sources expose drag and keyboard-add affordances. Published placement pins an immutable revision; every successful Draft drop creates a new frame and builds the current draft at the world-space drop point. |
 
 ## Widget inspector
 
@@ -67,10 +67,7 @@ The widget route provides one tabbed workspace for published and draft widget de
 | ![Published Hacker News widget overview](assets/20-widget-published-overview.webp) | ![Read-only configuration for a published widget](assets/21-widget-published-config.webp) |
 | **`?tab=overview`.** Identity, metadata, runtime details, and the destructive delete area. | **`?tab=config`.** Immutable published configuration with the edit-as-draft entry point. |
 
-| Messages | States |
-| --- | --- |
-| ![Actor message contracts in the widget inspector](assets/22-widget-messages.webp) | ![Actor state-transition graph in the widget inspector](assets/23-widget-states.webp) |
-| **`?tab=messages`.** Accepted inputs and emitted outputs for each actor message. | **`?tab=states`.** Current actor state, transition counts, and transition graph. |
+The current inspector tabs are **Overview**, **Config**, **Functions**, **Collaborative State**, **Runs**, **Logs**, **Resources**, and **Files**. Published configuration and source are read from the active immutable revision; draft configuration edits the mutable draft.
 
 | Files | Draft config |
 | --- | --- |
@@ -84,7 +81,7 @@ Key-value and secret resources share the same overview/data shell. Secret values
 | Key-value overview | Empty key-value data |
 | --- | --- |
 | ![Key-value resource overview](assets/30-resource-kv-overview.webp) | ![Empty key-value resource data table](assets/31-resource-kv-data-empty.webp) |
-| **`?tab=overview`.** Status, type, revision, settings, and actor references. | **`?tab=data`.** Key filter, pagination, empty state, and the add-value action. |
+| **`?tab=overview`.** Status, type, revision, settings, revision bindings, and active uses. | **`?tab=data`.** Key filter, pagination, empty state, and the add-value action. |
 
 | Add value | Populated key-value data |
 | --- | --- |
@@ -105,12 +102,12 @@ Database resources add schema, data, and SQL workspaces. Schema edits remain a d
 | Database overview | Create table |
 | --- | --- |
 | ![Database resource overview with lifecycle and backup details](assets/40-resource-db-overview.webp) | ![Create table dialog in the database schema editor](assets/41-resource-db-create-table.webp) |
-| **`?tab=overview`.** Runtime status, instances, apply history, and retained backup. | **`?tab=schema` — Create table.** Table options and the initial column definition. |
+| **`?tab=overview`.** Resource status, active uses, apply history, and retained backup. | **`?tab=schema` — Create table.** Table options and the initial column definition. |
 
 | Schema draft | Review and apply |
 | --- | --- |
 | ![Database schema draft with pending table and columns](assets/42-resource-db-schema-draft.webp) | ![Review and Apply dialog for database schema changes](assets/43-resource-db-review-apply.webp) |
-| **Schema draft.** Pending changes, table details, columns, indexes, triggers, and generated SQL. | **Review & apply.** Ordered changes, affected instances/bindings, and coordinated-operation acknowledgement. |
+| **Schema draft.** Pending changes, table details, columns, indexes, triggers, and generated SQL. | **Review & apply.** Ordered changes, affected revision bindings/active uses, and coordinated-operation acknowledgement. |
 
 | Add row | Data table |
 | --- | --- |
@@ -124,7 +121,7 @@ Database resources add schema, data, and SQL workspaces. Schema edits remain a d
 
 ## Public website
 
-The public site uses a separate light visual system. The documentation index and one article capture the two distinct documentation layouts; `/docs/widgets-and-actors`, `/docs/installation`, and `/docs/faq` reuse the article shell.
+The public site uses a separate light visual system. The documentation index and one article capture the two distinct documentation layouts; `/docs/widgets-and-functions`, `/docs/installation`, and `/docs/faq` reuse the article shell.
 
 | Landing page | Documentation index |
 | --- | --- |

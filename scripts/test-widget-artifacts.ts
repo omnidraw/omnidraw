@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable M5 gate for immutable, actor-free widget artifacts.
+ * @file Durable M5 gate for immutable widget artifacts.
  */
 
 import { resolve } from 'node:path';
@@ -52,12 +52,12 @@ const suites: TWidgetArtifactSuite[] = [
     ],
   },
   {
-    name: 'production widget publication composition and actor-free persistence',
+    name: 'production widget publication composition and immutable persistence',
     command: ['bun', 'test', CLI_INTEGRATION_TEST, '--timeout=30000'],
     requiredPaths: [CLI_INTEGRATION_TEST],
   },
   {
-    name: 'browser, actor-independence, capability, and artifact-path boundaries',
+    name: 'browser safety, capability, and artifact-path boundaries',
     command: ['bun', 'test', 'scripts/widget-artifact-boundary.test.ts'],
     requiredPaths: ['scripts/widget-artifact-boundary.test.ts'],
   },

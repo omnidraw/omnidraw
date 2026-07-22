@@ -14,12 +14,12 @@ import type {
 } from './types';
 
 type TMergeArgs = Readonly<{
-  legacyCatalog: TWidgetCatalog;
+  draftCatalog: TWidgetCatalog;
   targets: readonly TPublishedWidgetPlacementTarget[];
-  draftPublicationStates?: readonly TV2DraftPublicationState[];
+  draftPublicationStates?: readonly TDraftPublicationState[];
 }>;
 
-type TV2DraftPublicationState = Readonly<{
+type TDraftPublicationState = Readonly<{
   draftId: string;
   definitionId: string;
   name: string;
@@ -27,11 +27,11 @@ type TV2DraftPublicationState = Readonly<{
   publishedRevisionId: string | null;
 }>;
 
-const V2_REFERENCE_PREFIX = 'v2:';
+const PUBLISHED_REFERENCE_PREFIX = 'published:';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const V2_CATALOG_MAX_TARGETS = 1_000;
+const PUBLISHED_CATALOG_MAX_TARGETS = 1_000;
 const TARGET_KEYS = Object.freeze([
   'bounds',
   'contractDigestSha256',
@@ -94,9 +94,9 @@ function fnIsPlacementTarget(value: unknown): value is TPublishedWidgetPlacement
     && fnIsCanonicalDimension(value.bounds.height, WIDGET_FRAME_MIN_HEIGHT, WIDGET_FRAME_MAX_HEIGHT);
 }
 
-export function fnValidateV2WidgetPlacementTargets(value: unknown): TTargetValidationResult {
-  if (!Array.isArray(value) || value.length > V2_CATALOG_MAX_TARGETS) {
-    return { ok: false, message: 'Published v2 widget catalog exceeds its safe boundary.' };
+export function fnValidatePublishedWidgetPlacementTargets(value: unknown): TTargetValidationResult {
+  if (!Array.isArray(value) || value.length > PUBLISHED_CATALOG_MAX_TARGETS) {
+    return { ok: false, message: 'Published widget catalog exceeds its safe boundary.' };
   }
   const definitionIds = new Set<string>();
   const revisionIds = new Set<string>();
@@ -110,7 +110,7 @@ export function fnValidateV2WidgetPlacementTargets(value: unknown): TTargetValid
       || names.has(target.name)
       || slugs.has(target.slug)
     ) {
-      return { ok: false, message: 'Published v2 widget catalog is invalid.' };
+      return { ok: false, message: 'Published widget catalog is invalid.' };
     }
     definitionIds.add(target.definitionId);
     revisionIds.add(target.revisionId);
@@ -120,7 +120,7 @@ export function fnValidateV2WidgetPlacementTargets(value: unknown): TTargetValid
   return { ok: true, targets: value };
 }
 
-function fnV2PlacementGeneration(targets: readonly TPublishedWidgetPlacementTarget[]): string {
+function fnPublishedPlacementGeneration(targets: readonly TPublishedWidgetPlacementTarget[]): string {
   let first = 0x811c9dc5;
   let second = 0x9e3779b9;
   const pairs = targets
@@ -138,26 +138,26 @@ function fnV2PlacementGeneration(targets: readonly TPublishedWidgetPlacementTarg
   return `${first.toString(16).padStart(8, '0')}${second.toString(16).padStart(8, '0')}`;
 }
 
-export function fnV2WidgetPlacementReference(
+export function fnPublishedWidgetPlacementReference(
   target: TPublishedWidgetPlacementIdentity,
 ): TWidgetPlacementRef {
   return {
     source: 'published',
-    name: `${V2_REFERENCE_PREFIX}${target.definitionId}`,
+    name: `${PUBLISHED_REFERENCE_PREFIX}${target.definitionId}`,
     revision: target.revisionId,
   };
 }
 
-export function fnParseV2WidgetPlacementReference(
+export function fnParsePublishedWidgetPlacementReference(
   reference: TWidgetPlacementRef,
 ): TPublishedWidgetPlacementIdentity | null {
-  if (reference.source !== 'published' || !reference.name.startsWith(V2_REFERENCE_PREFIX)) return null;
-  const definitionId = reference.name.slice(V2_REFERENCE_PREFIX.length);
+  if (reference.source !== 'published' || !reference.name.startsWith(PUBLISHED_REFERENCE_PREFIX)) return null;
+  const definitionId = reference.name.slice(PUBLISHED_REFERENCE_PREFIX.length);
   if (!UUID_PATTERN.test(definitionId) || !UUID_PATTERN.test(reference.revision)) return null;
   return { definitionId, revisionId: reference.revision };
 }
 
-export function fnV2PublishedWidgetVariant(args: Readonly<{
+export function fnPublishedWidgetVariant(args: Readonly<{
   target: TPublishedWidgetPlacementTarget;
   updatedAt: string | null;
 }>): TWidgetVariantSummary {
@@ -180,16 +180,16 @@ export function fnV2PublishedWidgetVariant(args: Readonly<{
     },
     validation: null,
     placement: {
-      reference: fnV2WidgetPlacementReference(args.target),
+      reference: fnPublishedWidgetPlacementReference(args.target),
       bounds: args.target.bounds,
     },
   };
 }
 
-export function fnV2PublishedWidgetRelation(args: Readonly<{
+export function fnPublishedWidgetRelation(args: Readonly<{
   target: TPublishedWidgetPlacementTarget;
   draft: TWidgetVariantSummary | null;
-  draftPublicationStates: readonly TV2DraftPublicationState[];
+  draftPublicationStates: readonly TDraftPublicationState[];
 }>): TWidgetCatalogEntry['relation'] {
   if (!args.draft) return 'published-only';
   const state = args.draftPublicationStates.find((candidate) => (
@@ -205,18 +205,18 @@ export function fnV2PublishedWidgetRelation(args: Readonly<{
     : 'different';
 }
 
-export function fnMergeV2WidgetPlacementCatalog(args: TMergeArgs): TWidgetCatalog {
-  if (args.targets.length === 0) return args.legacyCatalog;
-  const remaining = [...args.legacyCatalog.widgets];
-  const v2Entries = args.targets.map((target): TWidgetCatalogEntry => {
+export function fnMergePublishedWidgetPlacementCatalog(args: TMergeArgs): TWidgetCatalog {
+  if (args.targets.length === 0) return args.draftCatalog;
+  const remaining = [...args.draftCatalog.widgets];
+  const publishedEntries = args.targets.map((target): TWidgetCatalogEntry => {
     const matchIndex = remaining.findIndex((entry) => (
       entry.published?.slug === target.slug || entry.name === target.name
     ));
     const matched = matchIndex < 0 ? null : remaining.splice(matchIndex, 1)[0] ?? null;
-    const published = fnV2PublishedWidgetVariant({ target, updatedAt: null });
+    const published = fnPublishedWidgetVariant({ target, updatedAt: null });
     return {
       name: target.name,
-      relation: fnV2PublishedWidgetRelation({
+      relation: fnPublishedWidgetRelation({
         target,
         draft: matched?.draft ?? null,
         draftPublicationStates: args.draftPublicationStates ?? [],
@@ -227,17 +227,17 @@ export function fnMergeV2WidgetPlacementCatalog(args: TMergeArgs): TWidgetCatalo
       problem: matched?.problem ?? null,
     };
   });
-  const widgets = [...remaining, ...v2Entries].sort((left, right) => {
+  const widgets = [...remaining, ...publishedEntries].sort((left, right) => {
     const nameOrder = left.name.localeCompare(right.name);
     if (nameOrder !== 0) return nameOrder;
     return (left.published?.placement?.reference.name ?? '')
       .localeCompare(right.published?.placement?.reference.name ?? '');
   });
   return {
-    ...args.legacyCatalog,
-    generation: `${args.legacyCatalog.generation}:v2:${fnV2PlacementGeneration(args.targets)}`,
+    ...args.draftCatalog,
+    generation: `${args.draftCatalog.generation}:published:${fnPublishedPlacementGeneration(args.targets)}`,
     widgets,
   };
 }
 
-export type { TMergeArgs, TV2DraftPublicationState };
+export type { TMergeArgs, TDraftPublicationState };

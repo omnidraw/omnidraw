@@ -72,12 +72,8 @@ function createServerPlugin(): IPlugin<{ eventPublisher: IEventPublisherService 
 
             return handleHttpRequest(req, {
               compiled: ctx.config.compiled,
-              legacyActorEnabled: ctx.config.legacyActorEnabled,
               version: ctx.config.version,
-            }, db, tenant, import.meta.dir, {
-              activeLegacyProcessCount: ctx.services.get('actor')
-                ?.diagnostics().activeLegacyProcessCount ?? 0,
-            });
+            }, db, tenant, import.meta.dir);
           },
           websocket: {
             data: {} as TOrpcWebSocketData,

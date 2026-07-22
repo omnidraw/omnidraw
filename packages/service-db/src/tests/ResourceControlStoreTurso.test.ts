@@ -319,7 +319,7 @@ describe('ResourceControlStoreTurso', () => {
     })).toBeNull();
     await expect(store.updateDbApply(TENANT_A, {
       applyId: APPLY_A,
-      expectedStatus: ['preparing', 'stopping'],
+      expectedStatus: ['preparing', 'applying'],
       status: 'succeeded',
       lastError: null,
       backupRetained: true,
@@ -388,12 +388,12 @@ describe('ResourceControlStoreTurso', () => {
     const key = await tenantDb.resourceEncryptionKey.getOrCreate({
       resourceId: SECRET_RESOURCE,
       keyId: ENCRYPTION_KEY,
-      purpose: 'actor-resource-secret-store',
+      purpose: 'resource-secret-store',
       algorithm: 'aegis256',
       keyHex: 'd'.repeat(64),
     });
     expect(key.key_hex).toBe('d'.repeat(64));
-    await expect(tenantDb.actorResourceEncryptionKey.get({ resourceId: SECRET_RESOURCE }))
+    await expect(tenantDb.resourceEncryptionKey.get({ resourceId: SECRET_RESOURCE }))
       .resolves.toEqual(key);
     await expect(service.forTenant(TENANT_B).resourceEncryptionKey.get({ resourceId: SECRET_RESOURCE }))
       .resolves.toBeNull();

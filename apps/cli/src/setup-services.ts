@@ -32,17 +32,14 @@ import type {
   TResourceApiCapability,
 } from '@vibecanvas/api/resource/types';
 import type { ICliConfig } from './config';
-import type { TLegacyActorComposition } from './plugins/legacy-actor/LegacyActorPlugin';
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
 import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
 import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
 import {
   FunctionService,
-  type TPreviewFunctionInvocationCapability,
 } from './services/FunctionService';
 import {
   createFunctionInvocationCapability,
-  createPreviewFunctionInvocationCapability,
   FunctionServicePool,
 } from './services/FunctionServicePool';
 import { ResourceService } from './services/ResourceService';
@@ -102,7 +99,6 @@ export interface IRuntimeServices {
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   functionOwner: FunctionServicePool;
   functionInvocation: IFunctionInvocationApiCapability;
-  previewFunctionInvocation: TPreviewFunctionInvocationCapability;
   agent: TenantServicePool<AgentService>;
 }
 
@@ -111,7 +107,6 @@ declare module '@vibecanvas/runtime' {
 }
 
 type TSetupServicesOptions = Readonly<{
-  legacyActor?: TLegacyActorComposition;
   createFunctionSandboxDriver?: (args: Readonly<{
     compiledExecutable: boolean;
     tempRoot: string;
@@ -120,7 +115,6 @@ type TSetupServicesOptions = Readonly<{
 
 function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) {
   const services = createServiceRegistry();
-  const legacyActor = options.legacyActor;
   const eventPublisher = new EventPublisherService();
   services.provide('eventPublisher', 10, eventPublisher);
 
@@ -189,16 +183,12 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
       const resourcesRoot = join(organizationRoot, 'resources');
       await mkdir(resourcesRoot, { recursive: true });
       const useCoordinator = new ResourceUseCoordinatorBridge();
-      legacyActor?.registerResourceUseBridge(tenant, useCoordinator);
       return new ResourceService({
         tenant,
         db: dbService.forTenant(tenant),
         controlStore: new ResourceControlStoreTurso(dbService.db),
         dataRoot: resourcesRoot,
         useCoordinator,
-        resolveConsumer: legacyActor
-          ? () => legacyActor.resolveResourceConsumer(tenant)
-          : undefined,
         writeCapabilityVerifier: functionWriteCapabilities,
         writePermitCoordinator: functionStore,
       });
@@ -206,7 +196,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   });
   const resourceCapabilities = createResourceServiceCapabilities(resourceService);
   const functionResourceGateways = new FunctionResourceGatewayFactory({
-    database: dbService.db,
     resources: resourceService,
     widgets: widgetServerArtifacts,
     permits: functionStore,
@@ -268,7 +257,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     },
   });
   const functionCapability = createFunctionInvocationCapability(functionService);
-  const previewFunctionCapability = createPreviewFunctionInvocationCapability(functionService);
   const agentService = new TenantServicePool<AgentService>('agent-service-pool', {
     create: async (tenant) => {
       const organizationRoot = join(config.home.organizationsDir, tenant.orgId);
@@ -285,7 +273,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         await resourceService.forTenant(tenant),
         tenant,
       );
-      const legacyAgentConfig = legacyActor?.agentConfig(tenant);
       return new AgentService({
         dataPath: agentRoot,
         cachePath: cacheRoot,
@@ -294,7 +281,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         tenant,
         authoringStore: widgetOwner.authoringStore,
         widgetAuthoringCapability,
-        previewFunctionCapability,
         resourceService: agentResources,
         resolveWidgetResourceBindings: async (
           resolutionTenant,
@@ -340,7 +326,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         createId: randomUUID,
         nowMs: Date.now,
         widgetBuilderIdentity,
-        ...legacyAgentConfig,
         listPublishedWidgetPlacements: () => (
           widgetCapability.listPublishedPlacements(tenant)
         ),
@@ -365,8 +350,8 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     // Exact OSS document access is resolved once by the storage authority so
     // WebSocket admission and durable validation cannot drift.
     authorizeDocument: () => true,
-    onElementCreate: legacyActor?.onElementCreate ?? (() => undefined),
-    onElementDelete: legacyActor?.onElementDelete ?? (() => undefined),
+    onElementCreate: () => undefined,
+    onElementDelete: () => undefined,
     onDocumentSnapshot(event) {
       const result = widgetInstanceProjection.enqueue(event.tenantContext, {
         canvasId: event.canvasId,
@@ -399,7 +384,6 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   services.provide('humanResourceSecret', 59, resourceCapabilities.humanSecret);
   services.provide('functionOwner', 61, functionService);
   services.provide('functionInvocation', 61, functionCapability);
-  services.provide('previewFunctionInvocation', 61, previewFunctionCapability);
   services.provide('agent', 62, agentService);
 
   return {

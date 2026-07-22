@@ -48,7 +48,7 @@ type TResourceUseCoordinatorBridgeConfig = Readonly<{
 /**
  * Connects the neutral resource lifecycle to any active legacy consumers.
  * During cold-start reconciliation there are no active consumers, so the
- * bridge deliberately reports an empty use set without constructing actors.
+ * bridge deliberately reports an empty use set when no consumers are attached.
  */
 class ResourceUseCoordinatorBridge implements IResourceUseCoordinator {
   readonly #consumers = new Set<TResourceUseConsumer>();

@@ -1,6 +1,5 @@
 import type {
   TUiWidgetData,
-  TWidgetData,
   TWidgetInstanceData,
   TWidgetWindow,
 } from "@vibecanvas/service-automerge/types/canvas-doc.types";
@@ -17,10 +16,10 @@ export type THostThemeColors = {
   maximizeButtonFill: string;
 };
 
-export type TWidgetHostData = TWidgetData | TUiWidgetData | TWidgetInstanceData;
+export type TWidgetHostData = TUiWidgetData | TWidgetInstanceData;
 
 export type TNormalizedWidgetHostData = {
-  source: "legacy-actor" | "browser-only" | "revision";
+  source: "browser-only" | "revision";
   hostKey: string;
   w: number;
   h: number;

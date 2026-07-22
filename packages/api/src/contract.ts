@@ -1,5 +1,4 @@
 import { oc, populateContractRouterPaths } from '@orpc/contract';
-import { actorsContract } from './actor/contract';
 import { agentContract } from './agent/contract';
 import { canvasContract } from './canvas/contract';
 import { dbContract } from './db/contract';
@@ -11,7 +10,6 @@ import { toolContract } from './tool/contract';
 import { widgetContract } from './widget/contract';
 
 const contract = oc.router({
-  actors: actorsContract,
   agent: agentContract,
   canvas: canvasContract,
   db: dbContract,
@@ -28,7 +26,6 @@ const apiContract = populateContractRouterPaths(
 );
 
 export {
-  actorsContract,
   agentContract,
   apiContract,
   canvasContract,

@@ -15,11 +15,9 @@ import type {
   IWidgetPublishedPlacementReader,
   IWidgetPublicationService,
   IWidgetRevisionSourceSnapshotReader,
-  IWidgetServerPreviewArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
   IWidgetSourceBuildArtifactReadCapabilityIssuer,
   IWidgetServerFunctionDescriptorExtractor,
-  IWidgetUiPreviewArtifactReadCapabilityIssuer,
   TWidgetActiveRevisionCasResult,
   TWidgetArtifactDescriptor,
   TWidgetArtifactGcRequest,
@@ -35,13 +33,8 @@ import type {
   TWidgetPublishResult,
   TWidgetPublishedPlacementDescriptor,
   TWidgetPublishedPlacementTarget,
-  TWidgetPreviewArtifactReadCapabilityIssueRequest,
   TWidgetPreviewBuildRequest,
   TWidgetPreviewBuildResult,
-  TWidgetPreviewGetRequest,
-  TWidgetPreviewRevisionDescriptor,
-  TWidgetPreviewRevisionGetRequest,
-  TWidgetPreviewStopRequest,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRevisionSourceDescriptor,
@@ -108,7 +101,7 @@ const WIDGET_PLACEMENT_FALLBACK_BOUNDS = Object.freeze({ width: 360, height: 320
 const WIDGET_PLACEMENT_CATALOG_MAX_DEFINITIONS = 1_000;
 const WIDGET_PLACEMENT_CATALOG_READ_CONCURRENCY = 8;
 
-/** Organization-placement owner for actor-free v2 widget artifacts and revisions. */
+/** Organization-placement owner for manifest-v2 widget artifacts and revisions. */
 class WidgetService implements
   IService,
   IStoppableService,
@@ -119,8 +112,6 @@ class WidgetService implements
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
   IWidgetServerExecutionArtifactReadCapabilityIssuer,
   IWidgetSourceBuildArtifactReadCapabilityIssuer,
-  IWidgetUiPreviewArtifactReadCapabilityIssuer,
-  IWidgetServerPreviewArtifactReadCapabilityIssuer,
   IWidgetPreviewService,
   IWidgetArtifactGarbageCollector {
   readonly name = 'widget-service';
@@ -150,11 +141,11 @@ class WidgetService implements
 
     const controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator =
       new WidgetControlStoreTurso(config.database);
-    const previewStore = new AgentAuthoringStoreTurso(
+    const authoringStore = new AgentAuthoringStoreTurso(
       config.database,
       controlStore,
     );
-    this.authoringStore = previewStore;
+    this.authoringStore = authoringStore;
     this.#controlStore = controlStore;
     const blobs = new LocalWidgetArtifactStore({
       orgId: config.placement.orgId,
@@ -168,7 +159,6 @@ class WidgetService implements
     });
     this.#artifacts = new WidgetArtifactService({
       controlStore,
-      previewStore,
       blobs,
       capabilityIssuer: readAuthority,
       capabilityVerifier: readAuthority,
@@ -191,11 +181,6 @@ class WidgetService implements
     });
     this.#preview = new WidgetPreviewService({
       builder,
-      artifacts: this.#artifacts,
-      previewStore,
-      mutationCoordinator: controlStore,
-      operationLane,
-      sourceSnapshots: this.#sourceSnapshot,
     });
     this.#garbageCollector = new WidgetArtifactGarbageCollector({
       controlStore,
@@ -361,27 +346,6 @@ class WidgetService implements
     return this.#preview.buildPreview(tenant, request);
   }
 
-  getPreview(
-    tenant: TTenantContext,
-    request: TWidgetPreviewGetRequest,
-  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
-    this.#assertPlacement(tenant);
-    return this.#preview.getPreview(tenant, request);
-  }
-
-  getPreviewRevision(
-    tenant: TTenantContext,
-    request: TWidgetPreviewRevisionGetRequest,
-  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
-    this.#assertPlacement(tenant);
-    return this.#preview.getPreviewRevision(tenant, request);
-  }
-
-  stopPreview(tenant: TTenantContext, request: TWidgetPreviewStopRequest): Promise<boolean> {
-    this.#assertPlacement(tenant);
-    return this.#preview.stopPreview(tenant, request);
-  }
-
   async listPublishedPlacements(
     tenant: TTenantContext,
   ): Promise<readonly TWidgetPublishedPlacementDescriptor[]> {
@@ -466,24 +430,6 @@ class WidgetService implements
   ): Promise<TWidgetArtifactReadCapability> {
     this.#assertPlacement(tenant);
     return this.#artifacts.issueSourceBuildArtifactReadCapability(tenant, request);
-  }
-
-  issueUiPreviewArtifactReadCapability(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'ui' }>,
-  ): Promise<TWidgetArtifactReadCapability> {
-    this.#assertPlacement(tenant);
-    return this.#artifacts.issueUiPreviewArtifactReadCapability(tenant, request);
-  }
-
-  issueServerPreviewArtifactReadCapability(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{
-      artifactKind: 'server';
-    }>,
-  ): Promise<TWidgetArtifactReadCapability> {
-    this.#assertPlacement(tenant);
-    return this.#artifacts.issueServerPreviewArtifactReadCapability(tenant, request);
   }
 
   getArtifact(

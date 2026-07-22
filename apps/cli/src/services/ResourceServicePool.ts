@@ -76,18 +76,6 @@ implements TResourceApiCapability, IHumanResourceSecretService {
     this.#delegate(tenant, (service) => service.revealSecret(tenant, input))
   );
 
-  getDefinitionResourceStatus: TResourceApiCapability['getDefinitionResourceStatus'] = (tenant, definitionName) => (
-    this.#delegate(tenant, (service) => service.getDefinitionResourceStatus(tenant, definitionName))
-  );
-
-  bindResource: TResourceApiCapability['bindResource'] = (tenant, input) => (
-    this.#delegate(tenant, (service) => service.bindResource(tenant, input))
-  );
-
-  unbindResource: TResourceApiCapability['unbindResource'] = (tenant, input) => (
-    this.#delegate(tenant, (service) => service.unbindResource(tenant, input))
-  );
-
   dbResourceImpact: TResourceApiCapability['dbResourceImpact'] = (tenant, resourceId) => (
     this.#delegate(tenant, (service) => service.dbResourceImpact(tenant, resourceId))
   );
@@ -215,9 +203,6 @@ function createResourceServiceCapabilities(
     listResourceData: pool.listResourceData,
     setResourceDataEntry: pool.setResourceDataEntry,
     deleteResourceDataEntry: pool.deleteResourceDataEntry,
-    getDefinitionResourceStatus: pool.getDefinitionResourceStatus,
-    bindResource: pool.bindResource,
-    unbindResource: pool.unbindResource,
     dbResourceImpact: pool.dbResourceImpact,
     inspectDbResource: pool.inspectDbResource,
     executeDbLiveSql: pool.executeDbLiveSql,

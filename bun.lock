@@ -30,7 +30,6 @@
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
         "@vibecanvas/sdk": "workspace:*",
-        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-agent": "workspace:*",
         "@vibecanvas/service-automerge": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
@@ -62,7 +61,6 @@
         "@vibecanvas/service-automerge": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-theme": "workspace:*",
-        "@vibecanvas/ui-actor-legacy": "workspace:*",
         "@vibecanvas/ui-ai-chat": "workspace:*",
         "dompurify": "^3.3.3",
         "konva": "^10.3.0",
@@ -111,7 +109,6 @@
         "@orpc/contract": "catalog:",
         "@orpc/server": "catalog:",
         "@vibecanvas/resource-runtime": "workspace:*",
-        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-agent": "workspace:*",
         "@vibecanvas/service-automerge": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
@@ -232,29 +229,12 @@
         "typescript": "catalog:",
       },
     },
-    "packages/service-actor": {
-      "name": "@vibecanvas/service-actor",
-      "dependencies": {
-        "@vibecanvas/resource-runtime": "workspace:*",
-        "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/service-event-publisher": "workspace:*",
-        "@vibecanvas/widget-contract": "workspace:*",
-        "ajv": "^8.20.0",
-        "ajv-formats": "^3.0.1",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "typescript": "catalog:",
-      },
-    },
     "packages/service-agent": {
       "name": "@vibecanvas/service-agent",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "catalog:",
         "@vibecanvas/resource-runtime": "workspace:*",
         "@vibecanvas/runtime": "workspace:*",
-        "@vibecanvas/service-actor": "workspace:*",
         "@vibecanvas/service-db": "workspace:*",
         "@vibecanvas/service-event-publisher": "workspace:*",
         "@vibecanvas/shared-functions": "workspace:*",
@@ -331,27 +311,6 @@
     "packages/tenant-core": {
       "name": "@vibecanvas/tenant-core",
       "version": "0.1.0",
-    },
-    "packages/ui-actor-legacy": {
-      "name": "@vibecanvas/ui-actor-legacy",
-      "dependencies": {
-        "@arrow-js/core": "^1.0.6",
-        "@arrow-js/sandbox": "1.0.6",
-        "@vibecanvas/api": "workspace:*",
-        "@vibecanvas/orpc-client": "workspace:*",
-        "@vibecanvas/service-actor": "workspace:*",
-        "@vibecanvas/service-db": "workspace:*",
-        "@vibecanvas/ui-ai-chat": "workspace:*",
-        "solid-js": "catalog:",
-      },
-      "devDependencies": {
-        "@playwright/test": "^1.61.1",
-        "jsdom": "^29.1.1",
-        "typescript": "catalog:",
-        "vite": "^8.1.4",
-        "vite-plugin-solid": "^2.11.10",
-        "vitest": "^4.1.10",
-      },
     },
     "packages/ui-ai-chat": {
       "name": "@vibecanvas/ui-ai-chat",
@@ -982,8 +941,6 @@
 
     "@pixi/colord": ["@pixi/colord@2.9.6", "", {}, "sha512-nezytU2pw587fQstUu1AsJZDVEynjskwOL+kibwcdxsMBFqPsFFNA7xl0ii/gXuDi6M0xj3mfRJj8pBSc2jCfA=="],
 
-    "@playwright/test": ["@playwright/test@1.61.1", "", { "dependencies": { "playwright": "1.61.1" }, "bin": { "playwright": "cli.js" } }, "sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig=="],
-
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 
     "@protobufjs/base64": ["@protobufjs/base64@1.1.2", "", {}, "sha512-AZkcAA5vnN/v4PDqKyMR5lx7hZttPDgClv83E//FMNhR2TMcLUhfRUBHCmSl0oi9zMgDDqRUJkSxO3wm85+XLg=="],
@@ -1328,8 +1285,6 @@
 
     "@vibecanvas/sdk": ["@vibecanvas/sdk@workspace:packages/sdk"],
 
-    "@vibecanvas/service-actor": ["@vibecanvas/service-actor@workspace:packages/service-actor"],
-
     "@vibecanvas/service-agent": ["@vibecanvas/service-agent@workspace:packages/service-agent"],
 
     "@vibecanvas/service-automerge": ["@vibecanvas/service-automerge@workspace:packages/service-automerge"],
@@ -1347,8 +1302,6 @@
     "@vibecanvas/tapable": ["@vibecanvas/tapable@workspace:packages/tapable"],
 
     "@vibecanvas/tenant-core": ["@vibecanvas/tenant-core@workspace:packages/tenant-core"],
-
-    "@vibecanvas/ui-actor-legacy": ["@vibecanvas/ui-actor-legacy@workspace:packages/ui-actor-legacy"],
 
     "@vibecanvas/ui-ai-chat": ["@vibecanvas/ui-ai-chat@workspace:packages/ui-ai-chat"],
 
@@ -2058,10 +2011,6 @@
 
     "pixi.js": ["pixi.js@8.19.0", "", { "dependencies": { "@pixi/colord": "^2.9.6", "@types/earcut": "^3.0.0", "@webgpu/types": "^0.1.69", "@xmldom/xmldom": "^0.8.13", "earcut": "^3.0.2", "eventemitter3": "^5.0.1", "gifuct-js": "^2.1.2", "ismobilejs": "^1.1.1", "parse-svg-path": "^0.2.0", "tiny-lru": "^11.4.7" } }, "sha512-pq1O6emA/GFjjeF+8d3Pb5t7knD8FsnfWGqQcRjYjsqFZ7QdzG1XgjLDUu0DFJRbafjV5+g8iNLFBx0b9649lg=="],
 
-    "playwright": ["playwright@1.61.1", "", { "dependencies": { "playwright-core": "1.61.1" }, "optionalDependencies": { "fsevents": "2.3.2" }, "bin": { "playwright": "cli.js" } }, "sha512-DWnY5o3YbLWK4GovuAVwpqL+1VwGNdUGrRr++8j8PtQQzvAVZUIMjKQ90fY689sEJZJBbZVw1rXaOKSTitkzPQ=="],
-
-    "playwright-core": ["playwright-core@1.61.1", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg=="],
-
     "postcss": ["postcss@8.5.16", "", { "dependencies": { "nanoid": "^3.3.12", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg=="],
 
     "prebuild-install": ["prebuild-install@7.1.3", "", { "dependencies": { "detect-libc": "^2.0.0", "expand-template": "^2.0.3", "github-from-package": "0.0.0", "minimist": "^1.2.3", "mkdirp-classic": "^0.5.3", "napi-build-utils": "^2.0.0", "node-abi": "^3.3.0", "pump": "^3.0.0", "rc": "^1.2.7", "simple-get": "^4.0.0", "tar-fs": "^2.0.0", "tunnel-agent": "^0.6.0" }, "bin": { "prebuild-install": "bin.js" } }, "sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug=="],
@@ -2509,8 +2458,6 @@
     "parse-entities/@types/unist": ["@types/unist@2.0.11", "", {}, "sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA=="],
 
     "path-scurry/lru-cache": ["lru-cache@11.3.0", "", {}, "sha512-sr8xPKE25m6vJVcrdn6NxtC0fVfuPowbscLypegRgOm0yXSqr5JNHCAY3hnusdJ7HRBW04j6Ip4khvHU778DuQ=="],
-
-    "playwright/fsevents": ["fsevents@2.3.2", "", { "os": "darwin" }, "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA=="],
 
     "sharp/semver": ["semver@7.7.4", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA=="],
 

@@ -1,6 +1,6 @@
 import type { IService, IStartableService } from "@vibecanvas/runtime";
 import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
-import type { TUiWidgetData, TWidgetData, TWidgetInstanceData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TUiWidgetData, TWidgetInstanceData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import Konva from "konva";
 import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, HistoryService, RenderOrderService, SceneService, SelectionService, ToolService } from "@vibecanvas/canvas/services";
@@ -43,10 +43,6 @@ import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
 import type { TWidgetHostData } from '@vibecanvas/canvas/widget-host/types';
 import { fnIsWidgetHostData, fnNormalizeWidgetHostData } from '@vibecanvas/canvas/widget-host/fn.normalize-widget-host-data';
 import { txMountCommittedWidgetRuntime } from './tx.mount-committed-widget-runtime';
-import type {
-  TLegacyWidgetRuntimeAdapter,
-  TLegacyWidgetSandboxMountArgs,
-} from '../legacy';
 
 type TWidgetDomPortalSync = () => void;
 type TNodeOnRemove = (args: { node: unknown }) => void;
@@ -67,7 +63,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
   #widgetPortal!: HTMLDivElement;
   #removeSelectionChangeListener?: () => boolean;
   #browser: TWidgetBrowserPort;
-  #legacyActorAdapter: TLegacyWidgetRuntimeAdapter | undefined;
   #neutralHost: IWidgetManagerServiceProps['neutralHost'];
   #started = false;
   #registeredWidgetKinds = new Set<string>();
@@ -96,7 +91,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#confirmDialogService = props.confirmDialogService;
     this.#browser = props.browser;
     this.#neutralHost = props.neutralHost;
-    this.#legacyActorAdapter = props.legacy;
   }
 
   start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
@@ -111,14 +105,10 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#registerFallbackWidgetDefinition();
     this.#registerNeutralWidgetDefinition();
     this.#started = true;
-    if ([...this.#registeredWidgetConfigs.values()].some((config) => config.dataType === 'widget' && config.actor)) {
-      this.#legacyActorAdapter?.start();
-    }
   }
 
   stop(): void | Promise<void> {
     this.#started = false;
-    this.#legacyActorAdapter?.stop();
     [...this.#neutralPortalCleanups].forEach((cleanup) => cleanup());
     this.#neutralPortalCleanups.clear();
     this.#removeSelectionChangeListener?.();
@@ -203,16 +193,16 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       id: '__widget-error-fallback',
       priority: 20_000,
       matchesElement: (element) => {
-        return (element.data.type === 'widget' || element.data.type === 'ui-widget')
+        return element.data.type === 'ui-widget'
           && !this.#registeredWidgetKinds.has(element.data.kind);
       },
       matchesNode: (node) => {
-        const data = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | TUiWidgetData | undefined;
-        return (data?.type === 'widget' || data?.type === 'ui-widget') && !this.#registeredWidgetKinds.has(data.kind);
+        const data = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined;
+        return data?.type === 'ui-widget' && !this.#registeredWidgetKinds.has(data.kind);
       },
       toElement: (node) => fnToWidgetElement(node, this.#browser.now()),
       createNode: (element) => {
-        if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return null;
+        if (element.data.type !== 'ui-widget') return null;
         const colors = fnGetHostThemeColors(this.#themeService, element.data.type);
         const node = fnCreateWidgetNode(Konva, colors, element, { label: element.data.kind });
         const onRemove = txAttachDomPortal({
@@ -236,7 +226,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       },
       getTransformOptions: () => ({ flipEnabled: false, keepRatio: false }),
       onResize: ({ node, element, anchors }) => {
-        if (element.data.type !== 'widget' && element.data.type !== 'ui-widget') return;
+        if (element.data.type !== 'ui-widget') return;
         txResizeWidgetHost({ Circle: Konva.Circle, Group: Konva.Group, Line: Konva.Line, Rect: Konva.Rect, Text: Konva.Text }, { node, anchors });
         this.#syncWidgetDomPortal(node);
         return { cancel: true, crdt: false };
@@ -420,13 +410,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     });
   }
 
-  mountLegacyWidgetSandbox(args: TLegacyWidgetSandboxMountArgs): () => void {
-    if (!this.#legacyActorAdapter) {
-      throw new Error('Legacy actor widgets are disabled in this host.');
-    }
-    return this.#legacyActorAdapter.mountSandbox(args);
-  }
-
   #findWidgetNodeById(id: string) {
     const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
       return candidate instanceof Konva.Group && candidate.id() === id;
@@ -479,46 +462,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       },
     });
 
-    return true;
-  }
-
-  async #deleteWidgetDefinition(kind: string) {
-    this.#contextMenuService.close();
-    const confirmed = await this.#confirmDialogService.confirm({
-      title: "Delete widget",
-      description: `Delete the published widget "${kind}"? This removes all current canvas instances and unregisters the widget from the toolbar. This action cannot be undone.`,
-      confirmLabel: "Delete widget",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!confirmed) {
-      return false;
-    }
-
-    if (!this.#legacyActorAdapter || !await this.#legacyActorAdapter.deleteDefinition(kind)) return false;
-
-    const doc = this.#crdtService.doc();
-    const matchingElements = Object.values(doc.elements).filter((element) => {
-      return element.data.type === "widget" && element.data.kind === kind;
-    });
-
-    if (matchingElements.length > 0) {
-      let builder = this.#crdtService.build();
-      matchingElements.forEach((element) => {
-        const node = this.#findWidgetNodeById(element.id);
-        if (node) {
-          builder = this.#elementService.removeElement(node, builder);
-          return;
-        }
-
-        builder.deleteElement(element.id);
-      });
-      builder.commit();
-    }
-
-    this.unregisterWidget(kind);
-    this.#selectionService.clear();
-    this.#sceneService.staticForegroundLayer.batchDraw();
     return true;
   }
 
@@ -662,19 +605,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         this.#removeWidgetNode(args.node, { recordHistory: true });
       },
     };
-    const deleteActions = widgetData.type === "widget"
-      ? [
-        deleteInstanceAction,
-        {
-          id: "widget-delete-definition",
-          label: "Delete widget",
-          priority: 40,
-          onSelect: () => {
-            void this.#deleteWidgetDefinition(widgetData.kind);
-          },
-        },
-      ]
-      : widgetData.type === 'widget-instance' && this.#neutralHost?.deleteDefinition
+    const deleteActions = widgetData.type === 'widget-instance' && this.#neutralHost?.deleteDefinition
         ? [
             deleteInstanceAction,
             {
@@ -737,10 +668,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     this.#registeredWidgetConfigs.set(wConfig.id, wConfig);
     this.#registeredToolIdsByKind.set(wConfig.id, wConfig.toolId ?? wConfig.id);
     this.clearDefinitionError(wConfig.id);
-    if (this.#started && wConfig.dataType === 'widget' && wConfig.actor) {
-      this.#legacyActorAdapter?.start();
-    }
-
     if (wConfig.tool) {
       fxRegisterWidgetTool({
         toolService: this.#toolService,
@@ -755,10 +682,10 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       id: wConfig.id,
       toElement: (node) => fnToWidgetElement(node, this.#browser.now()),
       matchesNode: (node) => {
-        const data = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetData | TUiWidgetData | undefined;
-        return (data?.type === 'widget' || data?.type === 'ui-widget') && data.kind === wConfig.id;
+        const data = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined;
+        return data?.type === 'ui-widget' && data.kind === wConfig.id;
       },
-      matchesElement: (element) => (element.data.type === "widget" || element.data.type === "ui-widget") && element.data.kind === wConfig.id,
+      matchesElement: (element) => element.data.type === "ui-widget" && element.data.kind === wConfig.id,
       createNode: (element) => {
         const colors = fnGetHostThemeColors(this.#themeService, wConfig.dataType ?? 'ui-widget')
         const node = fnCreateWidgetNode(Konva, colors, element, {
@@ -788,15 +715,9 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         }
         return node
       },
-      onDelete: (element) => {
-        if (element.data.type !== "widget" || element.data.kind !== wConfig.id) {
-          return {};
-        }
-
-        return {};
-      },
+      onDelete: () => ({}),
       updateElement: (element) => {
-        if ((element.data.type !== "widget" && element.data.type !== "ui-widget") || element.data.kind !== wConfig.id) {
+        if (element.data.type !== "ui-widget" || element.data.kind !== wConfig.id) {
           return false;
         }
 
@@ -879,7 +800,7 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
         }
       },
       onResize: ({ node, element, anchors }) => {
-        if (element.data.type !== "widget" && element.data.type !== "ui-widget") return;
+        if (element.data.type !== "ui-widget") return;
 
         txResizeWidgetHost({
           Circle: Konva.Circle,
@@ -947,26 +868,6 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
 
   unregisterPlacementTool(id: string) {
     this.#toolService.unregisterTool(id);
-  }
-
-  placeLegacyPublishedWidget(kind: string, bounds: TWidgetWorldBounds) {
-    const config = this.#registeredWidgetConfigs.get(kind);
-    if (!config || config.dataType !== "widget" || !config.actor) {
-      throw new Error(`Published widget definition '${kind}' is unavailable.`);
-    }
-    const timestamp = this.#browser.now();
-    const element = fnCreateWidgetElement({
-      id: this.#browser.createId(),
-      kind,
-      dataType: "widget",
-      actorDefinitionName: config.actor.actorDefinitionName,
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-      now: timestamp,
-    });
-    return this.#placeWidgetElement(element, `Published widget '${kind}'`);
   }
 
   placeWidgetInstance(args: Readonly<{

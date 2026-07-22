@@ -12,8 +12,6 @@ import type { TOrganizationId } from '@vibecanvas/tenant-core';
 
 export type TWidgetDefinitionId = string;
 export type TWidgetRevisionId = string;
-export type TWidgetPreviewId = string;
-export type TWidgetPreviewRevisionId = string;
 export type TWidgetArtifactId = string;
 export type TWidgetSourceSnapshotId = string;
 export type TWidgetArtifactDigest = string;
@@ -26,8 +24,7 @@ export type TWidgetFrameBounds = Readonly<{
 
 export type TWidgetPlacementRef =
   | Readonly<{ source: 'published'; name: string; revision: string }>
-  | Readonly<{ source: 'draft'; name: string; revision: string }>
-  | Readonly<{ source: 'preview'; name: string; revision: string }>;
+  | Readonly<{ source: 'draft'; name: string; revision: string }>;
 
 export type TLucidStaticIconKey = string;
 
@@ -54,8 +51,6 @@ export type TWidgetArtifactRetentionState = 'pinned' | 'eligible' | 'deleting';
 export type TWidgetArtifactReadPurpose =
   | 'browser_ui'
   | 'server_execution'
-  | 'preview_ui'
-  | 'preview_server'
   | 'source_build'
   | 'source_map'
   | 'cell_move';
@@ -130,7 +125,7 @@ export type TWidgetServerFunctionDescriptorValidation =
       slot?: string;
     }>;
 
-/** Actor/v1 fields are intentionally absent and rejected by the runtime schema. */
+/** Fields outside the current manifest contract are rejected by the runtime schema. */
 export type TWidgetManifestV2 = Readonly<{
   schemaVersion: 2;
   name: string;
@@ -489,112 +484,28 @@ export type TWidgetArtifactRetentionRestoreRequest = Readonly<{
   expectedDigestSha256: TWidgetArtifactDigest;
 }>;
 
-export type TWidgetPreviewArtifactKind = Extract<TWidgetArtifactKind, 'ui' | 'server'>;
-
-/** One immutable preview revision. The active pointer may advance independently. */
-export type TWidgetPreviewRevisionDescriptor = Readonly<{
-  orgId: TOrganizationId;
-  id: TWidgetPreviewRevisionId;
-  previewId: TWidgetPreviewId;
-  draftId: string;
-  definitionId: TWidgetDefinitionId;
-  draftRevisionSha256: TWidgetArtifactDigest;
-  sourceSnapshotId: TWidgetSourceSnapshotId;
-  sourceDigestSha256: TWidgetArtifactDigest;
-  sourceArtifact: TWidgetArtifactDescriptor;
-  manifest: TWidgetManifestV2;
-  canonicalManifestJson: string;
-  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
-  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
-  contractDigestSha256: TWidgetArtifactDigest;
-  builderIdentity: string;
-  uiArtifact: TWidgetArtifactDescriptor;
-  serverArtifact: TWidgetArtifactDescriptor | null;
-  createdAtMs: number;
-  retainUntilMs: number;
-  expiresAtMs: number;
-}>;
-
-export type TWidgetPreviewRevisionCreate = Omit<TWidgetPreviewRevisionDescriptor, 'orgId'>;
-
-export type TWidgetPreviewCommitInput = Readonly<{
-  expectedActiveRevisionId: TWidgetPreviewRevisionId | null;
-  revision: TWidgetPreviewRevisionCreate;
-  bindings: readonly TWidgetResourceBindingInput[];
-  nowMs: number;
-}>;
-
-export type TWidgetPreviewCommitResult =
-  | Readonly<{
-      status: 'committed';
-      revision: TWidgetPreviewRevisionDescriptor;
-      previousActiveRevisionId: TWidgetPreviewRevisionId | null;
-    }>
-  | Readonly<{
-      status: 'conflict';
-      currentActiveRevisionId: TWidgetPreviewRevisionId | null;
-    }>;
-
-export type TWidgetPreviewGetRequest = Readonly<{
-  previewId: TWidgetPreviewId;
-  nowMs: number;
-}>;
-
-export type TWidgetPreviewRevisionGetRequest = TWidgetPreviewGetRequest & Readonly<{
-  revisionId: TWidgetPreviewRevisionId;
-}>;
-
-export type TWidgetPreviewStopRequest = Readonly<{
-  previewId: TWidgetPreviewId;
-  expectedActiveRevisionId: TWidgetPreviewRevisionId;
-  nowMs: number;
-}>;
-
-export type TWidgetPreviewArtifactResolutionRequest = Readonly<{
-  previewId: TWidgetPreviewId;
-  revisionId: TWidgetPreviewRevisionId;
-  artifactId: TWidgetArtifactId;
-  kind: TWidgetPreviewArtifactKind;
-  digestSha256: TWidgetArtifactDigest;
-  nowMs: number;
-}>;
-
-export type TWidgetPreviewArtifactReadCapabilityIssueRequest = Omit<
-  TWidgetArtifactReadCapabilityIssueRequest,
-  'definitionId' | 'revisionId' | 'artifactKind'
-> & Readonly<{
-  previewId: TWidgetPreviewId;
-  previewRevisionId: TWidgetPreviewRevisionId;
-  artifactKind: TWidgetPreviewArtifactKind;
-}>;
-
+/** Stateless UI-only build of the current editable draft snapshot. */
 export type TWidgetPreviewBuildRequest = Readonly<{
-  previewId: TWidgetPreviewId;
-  expectedActiveRevisionId: TWidgetPreviewRevisionId | null;
-  revisionId: TWidgetPreviewRevisionId;
   draftId: string;
   definitionId: TWidgetDefinitionId;
   draftRevisionSha256: TWidgetArtifactDigest;
   snapshot: TWidgetSourceSnapshot;
   manifest: TWidgetManifestV2;
-  bindings: readonly TWidgetResourceBindingInput[];
   builderIdentity: string;
-  nowMs: number;
-  retainUntilMs: number;
-  expiresAtMs: number;
 }>;
 
-export type TWidgetPreviewBuildResult = TWidgetPreviewCommitResult;
-
-/**
- * Activates an existing preview through the same metadata fence as artifact GC.
- * The artifact digest is an integrity check, never read authority.
- */
-export type TWidgetPreviewArtifactActivationRequest = Readonly<{
-  previewId: string;
-  artifactId: TWidgetArtifactId;
-  expectedDigestSha256: TWidgetArtifactDigest;
-  nowMs: number;
+export type TWidgetPreviewBuildResult = Readonly<{
+  draftId: string;
+  definitionId: TWidgetDefinitionId;
+  draftRevisionSha256: TWidgetArtifactDigest;
+  manifest: TWidgetManifestV2;
+  builderIdentity: string;
+  uiArtifact: Readonly<{
+    digestSha256: TWidgetArtifactDigest;
+    bytes: Uint8Array;
+  }>;
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+  contractDigestSha256: TWidgetArtifactDigest;
 }>;
 
 export type TWidgetArtifactGcRequest = Readonly<{

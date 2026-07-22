@@ -33,8 +33,6 @@ describe("widget-instance canvas data", () => {
   });
 
   test.each([
-    ["actor instance", { actorInstanceId: "actor-process-1" }],
-    ["actor definition", { actorDefinitionName: "ActorDefinition" }],
     ["process", { processId: "pid-1" }],
     ["server path", { serverPath: "/private/server.js" }],
     ["artifact path", { artifactPath: "/private/artifact.js" }],

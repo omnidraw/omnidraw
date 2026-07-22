@@ -34,7 +34,6 @@ import type {
   TWidgetManifestV2,
   TWidgetPublicationCommitInput,
   TWidgetPublicationCommitResult,
-  TWidgetPreviewArtifactActivationRequest,
   TWidgetRevisionDescriptor,
   TWidgetRevisionId,
   TWidgetRevisionSourceDescriptor,
@@ -87,14 +86,6 @@ const DURABLE_ARTIFACT_REFERENCE_SQL = `
     WHERE source.org_id = artifact_references.org_id
       AND source.source_artifact_id = artifact_references.id
       AND source.source_artifact_kind = artifact_references.kind
-  )
-  OR EXISTS (
-    SELECT 1
-    FROM agent_previews AS preview
-    WHERE preview.org_id = artifact_references.org_id
-      AND preview.artifact_id = artifact_references.id
-      AND preview.artifact_kind = artifact_references.kind
-      AND preview.status IN ('queued', 'building', 'ready')
   )
 `;
 
@@ -635,7 +626,6 @@ export class WidgetControlStoreTurso implements
     const cutoff = Math.min(nowMs,
       this.#timestamp(request.inactiveBeforeMs, 'inactive revision cutoff'));
     return this.#runImmediate(tenant, async () => {
-      await this.#expireLivePreviews(tenant, nowMs, limit);
       // An offline Automerge document can still contain a revision placement
       // that has not reached the asynchronous widget_instances projection.
       // Until placements have a durable reservation/ack protocol, the only
@@ -673,13 +663,6 @@ export class WidgetControlStoreTurso implements
               AND idempotency.widget_definition_id = revision.definition_id
               AND idempotency.widget_revision_id = revision.id
           )
-          AND NOT EXISTS (
-            SELECT 1 FROM agent_previews AS preview
-            WHERE preview.org_id = revision.org_id
-              AND preview.artifact_id = revision.ui_artifact_id
-              AND preview.artifact_kind = revision.ui_artifact_kind
-              AND preview.status IN ('queued', 'building', 'ready')
-          )
         ORDER BY definition.updated_at_ms ASC, revision.revision_number ASC, revision.id ASC
         LIMIT ?
       `)).all(tenant.orgId, cutoff, limit) as Array<{ id: string }>;
@@ -715,13 +698,6 @@ export class WidgetControlStoreTurso implements
                 AND idempotency.widget_definition_id = revision.definition_id
                 AND idempotency.widget_revision_id = revision.id
             )
-            AND NOT EXISTS (
-              SELECT 1 FROM agent_previews AS preview
-              WHERE preview.org_id = revision.org_id
-                AND preview.artifact_id = revision.ui_artifact_id
-                AND preview.artifact_kind = revision.ui_artifact_kind
-                AND preview.status IN ('queued', 'building', 'ready')
-            )
         `)).run(tenant.orgId, row.id, cutoff);
         if (result.changes === 1) pruned.push(row.id);
       }
@@ -740,9 +716,7 @@ export class WidgetControlStoreTurso implements
     if (!Number.isSafeInteger(retainUntilMs)) throw new TypeError('Artifact retention timestamp is invalid.');
 
     return this.#runImmediate(tenant, async () => {
-      await this.#expireLivePreviews(tenant, nowMs, limit);
-      await this.#pruneExpiredPreviewRevisions(tenant, nowMs, limit);
-      const artifactIsReferenced = this.#artifactIsReferenced(nowMs);
+      const artifactIsReferenced = this.#artifactIsReferenced();
 
       const referenced = await (await this.database.prepare(`
         SELECT id
@@ -818,7 +792,7 @@ export class WidgetControlStoreTurso implements
   ): Promise<TWidgetArtifactDescriptor | null> {
     return this.#runImmediate(tenant, async () => {
       const nowMs = this.#timestamp(request.nowMs, 'current timestamp');
-      const artifactIsReferenced = this.#artifactIsReferenced(nowMs);
+      const artifactIsReferenced = this.#artifactIsReferenced();
       const result = await (await this.database.prepare(`
         UPDATE artifact_references
         SET retention_state = 'deleting'
@@ -858,13 +832,6 @@ export class WidgetControlStoreTurso implements
       `)).get(tenant.orgId, request.artifactId, request.expectedDigestSha256);
       if (!row) return { completed: false, deleteBlob: false };
 
-      await (await this.database.prepare(`
-        UPDATE agent_previews
-        SET artifact_id = NULL, artifact_kind = NULL
-        WHERE org_id = ? AND artifact_id = ?
-          AND status IN ('failed', 'stopped')
-      `)).run(tenant.orgId, request.artifactId);
-
       const result = await (await this.database.prepare(`
         DELETE FROM artifact_references
         WHERE org_id = ? AND id = ? AND digest_sha256 = ? AND retention_state = 'deleting'
@@ -903,190 +870,8 @@ export class WidgetControlStoreTurso implements
     return result.changes === 1;
   }
 
-  async activatePreviewArtifact(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactActivationRequest,
-  ): Promise<boolean> {
-    const activatedAtMs = this.#timestamp(request.nowMs, 'preview activation timestamp');
-    return this.#runImmediate(tenant, async () => {
-      const preview = await (await this.database.prepare(`
-        UPDATE agent_previews
-        SET artifact_id = ?, artifact_kind = 'ui', status = 'ready',
-          last_error_json = NULL, updated_at_ms = ?
-        WHERE org_id = ? AND id = ?
-          AND status IN ('queued', 'building', 'failed', 'stopped')
-          AND updated_at_ms <= ?
-          AND expires_at_ms > ?
-          AND (
-            artifact_id IS NULL
-            OR (artifact_id = ? AND artifact_kind = 'ui')
-          )
-          AND EXISTS (
-            SELECT 1
-            FROM artifact_references AS artifact
-            WHERE artifact.org_id = agent_previews.org_id
-              AND artifact.id = ?
-              AND artifact.kind = 'ui'
-              AND artifact.digest_sha256 = ?
-              AND artifact.retention_state IN ('pinned', 'eligible')
-          )
-      `)).run(
-        request.artifactId,
-        activatedAtMs,
-        tenant.orgId,
-        request.previewId,
-        activatedAtMs,
-        activatedAtMs,
-        request.artifactId,
-        request.artifactId,
-        request.expectedDigestSha256,
-      );
-      if (preview.changes !== 1) return false;
-
-      const artifact = await (await this.database.prepare(`
-        UPDATE artifact_references
-        SET retention_state = 'pinned', retain_until_ms = NULL
-        WHERE org_id = ? AND id = ? AND kind = 'ui'
-          AND digest_sha256 = ?
-          AND retention_state IN ('pinned', 'eligible')
-      `)).run(tenant.orgId, request.artifactId, request.expectedDigestSha256);
-      if (artifact.changes !== 1) {
-        throw new Error('Preview artifact changed during activation.');
-      }
-      return true;
-    });
-  }
-
-  async #expireLivePreviews(
-    tenant: TTenantContext,
-    nowMs: number,
-    limit: number,
-  ): Promise<void> {
-    const expiredPreviews = await (await this.database.prepare(`
-      SELECT id
-      FROM agent_previews
-      WHERE org_id = ?
-        AND status IN ('queued', 'building', 'ready')
-        AND expires_at_ms <= ?
-      ORDER BY expires_at_ms ASC, id ASC
-      LIMIT ?
-    `)).all(tenant.orgId, nowMs, limit) as Array<{ id: string }>;
-    for (const row of expiredPreviews) {
-      await (await this.database.prepare(`
-        UPDATE agent_previews
-        SET status = 'stopped', active_revision_id = NULL,
-          updated_at_ms = CASE WHEN updated_at_ms < ? THEN ? ELSE updated_at_ms END
-        WHERE org_id = ? AND id = ?
-          AND status IN ('queued', 'building', 'ready')
-          AND expires_at_ms <= ?
-      `)).run(nowMs, nowMs, tenant.orgId, row.id, nowMs);
-    }
-  }
-
-  async #pruneExpiredPreviewRevisions(
-    tenant: TTenantContext,
-    nowMs: number,
-    limit: number,
-  ): Promise<void> {
-    const rows = await (await this.database.prepare(`
-      SELECT revision.preview_id, revision.id
-      FROM agent_preview_revisions AS revision
-      WHERE revision.org_id = ? AND revision.retain_until_ms <= ?
-        AND NOT EXISTS (
-          SELECT 1 FROM agent_previews AS preview
-          WHERE preview.org_id = revision.org_id
-            AND preview.id = revision.preview_id
-            AND preview.active_revision_id = revision.id
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM function_invocations AS invocation
-          WHERE invocation.org_id = revision.org_id
-            AND invocation.subject_kind = 'agent_preview'
-            AND invocation.preview_id = revision.preview_id
-            AND invocation.preview_revision_id = revision.id
-            AND invocation.retains_revision = 1
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM idempotency_records AS idempotency
-          WHERE idempotency.org_id = revision.org_id
-            AND idempotency.scope_kind = 'agent_preview'
-            AND idempotency.preview_id = revision.preview_id
-            AND idempotency.preview_revision_id = revision.id
-        )
-      ORDER BY revision.retain_until_ms ASC, revision.id ASC
-      LIMIT ?
-    `)).all(tenant.orgId, nowMs, limit) as Array<{ preview_id: string; id: string }>;
-    for (const row of rows) {
-      await (await this.database.prepare(`
-        DELETE FROM agent_preview_revisions AS revision
-        WHERE revision.org_id = ? AND revision.preview_id = ? AND revision.id = ?
-          AND revision.retain_until_ms <= ?
-          AND NOT EXISTS (
-            SELECT 1 FROM agent_previews AS preview
-            WHERE preview.org_id = revision.org_id
-              AND preview.id = revision.preview_id
-              AND preview.active_revision_id = revision.id
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM function_invocations AS invocation
-            WHERE invocation.org_id = revision.org_id
-              AND invocation.subject_kind = 'agent_preview'
-              AND invocation.preview_id = revision.preview_id
-              AND invocation.preview_revision_id = revision.id
-              AND invocation.retains_revision = 1
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM idempotency_records AS idempotency
-            WHERE idempotency.org_id = revision.org_id
-              AND idempotency.scope_kind = 'agent_preview'
-              AND idempotency.preview_id = revision.preview_id
-              AND idempotency.preview_revision_id = revision.id
-          )
-      `)).run(tenant.orgId, row.preview_id, row.id, nowMs);
-    }
-  }
-
-  #artifactIsReferenced(nowMs?: number): string {
-    const retentionReference = nowMs === undefined
-      ? ''
-      : `OR revision.retain_until_ms > ${this.#timestamp(nowMs, 'current timestamp')}`;
-    return `
-      ${DURABLE_ARTIFACT_REFERENCE_SQL}
-      OR EXISTS (
-        SELECT 1
-        FROM agent_preview_revisions AS revision
-        JOIN agent_previews AS preview
-          ON preview.org_id = revision.org_id AND preview.id = revision.preview_id
-        WHERE revision.org_id = artifact_references.org_id
-          AND (
-            (revision.source_artifact_id = artifact_references.id
-              AND revision.source_artifact_kind = artifact_references.kind)
-            OR (revision.ui_artifact_id = artifact_references.id
-              AND revision.ui_artifact_kind = artifact_references.kind)
-            OR (revision.server_artifact_id = artifact_references.id
-              AND revision.server_artifact_kind = artifact_references.kind)
-          )
-          AND (
-            (preview.status = 'ready' AND preview.active_revision_id = revision.id)
-            ${retentionReference}
-            OR EXISTS (
-              SELECT 1 FROM function_invocations AS invocation
-              WHERE invocation.org_id = revision.org_id
-                AND invocation.subject_kind = 'agent_preview'
-                AND invocation.preview_id = revision.preview_id
-                AND invocation.preview_revision_id = revision.id
-                AND invocation.retains_revision = 1
-            )
-            OR EXISTS (
-              SELECT 1 FROM idempotency_records AS idempotency
-              WHERE idempotency.org_id = revision.org_id
-                AND idempotency.scope_kind = 'agent_preview'
-                AND idempotency.preview_id = revision.preview_id
-                AND idempotency.preview_revision_id = revision.id
-            )
-          )
-      )
-    `;
+  #artifactIsReferenced(): string {
+    return DURABLE_ARTIFACT_REFERENCE_SQL;
   }
 
   #revisionSelect(): string {

@@ -1,20 +1,9 @@
 import type {
-  TActorDefinition,
-  TActorInstance,
   TCanvas,
   TMediaFile,
   TToolGroup,
 } from '@vibecanvas/service-db/model';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
-
-export type TActorDatabaseCapability = {
-  actor: {
-    getDefinition(tenant: TTenantContext, name: string): Promise<TActorDefinition | null>;
-    getInstanceByElementId(tenant: TTenantContext, elementId: string): Promise<TActorInstance | null>;
-    getInstanceById(tenant: TTenantContext, instanceId: string): Promise<TActorInstance | null>;
-    listDefinitions(tenant: TTenantContext): Promise<TActorDefinition[]>;
-  };
-};
 
 export type TCanvasDatabaseCapability = {
   canvas: {

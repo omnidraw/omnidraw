@@ -18,22 +18,10 @@ const ZSqlBoolean = z.union([z.boolean(), z.literal(0), z.literal(1)]).transform
 const ZDbResourceDraftStatus = z.enum(['editing', 'applying', 'applied', 'discarded', 'error']);
 const ZDbResourceApplyStatus = z.enum([
   'preparing',
-  'stopping',
   'applying',
-  'restarting',
   'succeeded',
   'failed',
   'recovered',
-]);
-const ZDbResourceApplyInstanceStatus = z.enum([
-  'notRunning',
-  'pendingStop',
-  'stopped',
-  'stopFailed',
-  'pendingRestart',
-  'restarted',
-  'startFailed',
-  'crashed',
 ]);
 const ZDbResourceDraft = z.object({
   id: z.string(),
@@ -63,15 +51,6 @@ const ZDbResourceApplyRun = z.object({
   backup_retained: ZSqlBoolean,
   created_at: z.string(),
   completed_at: z.string().nullable(),
-});
-const ZDbResourceApplyInstanceResult = z.object({
-  apply_id: z.string(),
-  actor_instance_id: z.string(),
-  actor_definition_name: z.string(),
-  was_running: ZSqlBoolean,
-  status: ZDbResourceApplyInstanceStatus,
-  error: ZJson.nullable(),
-  updated_at: z.string(),
 });
 
 function isNonBlank(value: string): boolean {
@@ -183,13 +162,18 @@ export const ZResource = z.object({
 });
 
 export const ZResourceBinding = z.object({
-  actor_definition_name: z.string(),
-  slot_name: z.string(),
-  resource_id: z.string(),
-  allow_read: z.boolean(),
-  allow_write: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
+  definitionId: z.string(),
+  revisionId: z.string(),
+  slot: z.string(),
+  resourceId: z.string(),
+  kind: ZResourceKind,
+  required: z.boolean(),
+  manifestAllowRead: z.boolean(),
+  manifestAllowWrite: z.boolean(),
+  allowRead: z.boolean(),
+  allowWrite: z.boolean(),
+  createdAtMs: z.number().int().nonnegative(),
+  updatedAtMs: z.number().int().nonnegative(),
 });
 
 const ZResourceKvDataEntry = z.object({
@@ -320,20 +304,6 @@ const ZResourceRequirement = z.discriminatedUnion('kind', [
     }
   }),
 ]);
-export const ZResourceBindingStatus = z.object({
-  slot: z.string(),
-  requirement: ZResourceRequirement,
-  bound: z.boolean(),
-  resource: ZResource.nullable(),
-  requestedScope: ZResourceScope,
-  bindingScope: ZResourceScope.nullable(),
-  scopeValid: z.boolean(),
-  kindMatches: z.boolean(),
-  ready: z.boolean(),
-  blockedCode: z.string().nullable(),
-  blockedMessage: z.string().nullable(),
-});
-
 const ZDbIntegerString = z.string().min(1).max(20).regex(/^-?(?:0|[1-9][0-9]*)$/).refine((value) => {
   try {
     const integer = BigInt(value);
@@ -459,18 +429,34 @@ export const ZDbDraftOperation = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('dropForeignKey'), table: ZObjectName, id: z.number().int().nonnegative() }).strict(),
 ]);
 
+const ZResourceUse = z.object({
+  id: z.string(),
+  kind: z.string(),
+  state: z.enum(['active', 'draining', 'stopped']),
+  label: z.string().optional(),
+});
+const ZResourceUseInspection = z.object({
+  resourceId: z.string(),
+  uses: z.array(ZResourceUse),
+});
+const ZResourceDrainLease = z.object({
+  resourceId: z.string(),
+  leaseId: z.string(),
+  leaseEpoch: z.number().int().positive(),
+  expiresAtMs: z.number().int().nonnegative(),
+  drainedUses: z.array(ZResourceUse),
+});
 const ZDbImpact = z.object({
   resource: ZResource,
-  definitions: z.array(z.object({ definitionName: z.string(), slots: z.array(z.object({ slot: z.string(), scope: ZResourceScope })) })),
-  instances: z.array(z.object({ instanceId: z.string(), definitionName: z.string(), status: z.string(), running: z.boolean() })),
+  bindings: z.array(ZResourceBinding),
+  uses: ZResourceUseInspection,
 });
 const ZDbDraftDetails = z.object({ draft: ZDbResourceDraft, changes: z.array(ZDbResourceDraftChange) });
-const ZDbApplyDetails = z.object({ apply: ZDbResourceApplyRun, instances: z.array(ZDbResourceApplyInstanceResult) });
+const ZDbApplyDetails = z.object({ apply: ZDbResourceApplyRun, drain: ZResourceDrainLease.nullable() });
 const ZDbApplyPreview = ZDbDraftDetails.extend({
   resource: ZResource,
   impact: ZDbImpact,
   warnings: z.array(z.string()),
-  compatibilityNotice: z.string(),
 });
 const ZCursor = z.object({ createdAt: z.string(), id: z.string() });
 
@@ -528,21 +514,6 @@ export const resourceContract = oc.errors({
       }).strict())
       .route({ method: 'POST' })
       .output(ZResourceSecretReveal),
-    definitionStatus: oc
-      .input(z.object({ definitionName: ZDefinitionName }))
-      .output(ZResourceBindingStatus.array()),
-    bind: oc
-      .input(z.object({
-        definitionName: ZDefinitionName,
-        slot: ZSlotName,
-        resourceId: ZResourceId,
-        scope: ZResourceScope.optional(),
-      }))
-      .output(ZResourceBinding),
-    unbind: oc
-      .input(z.object({ definitionName: ZDefinitionName, slot: ZSlotName }))
-      .route({ method: 'DELETE' })
-      .output(z.object({ deleted: z.boolean() })),
   },
   dbResources: {
     impact: oc
@@ -618,7 +589,6 @@ export const resourceContract = oc.errors({
       backup: z.object({ resourceId: z.string(), applyId: z.string(), createdAt: z.string() }),
       impact: ZDbImpact,
       warning: z.string(),
-      compatibilityNotice: z.string(),
     })),
     restore: oc.input(z.object({ resourceId: ZResourceId, applyId: ZHostId })).output(ZDbResourceApplyRun),
     restoreStatus: oc.input(z.object({ restoreId: ZHostId })).output(ZDbApplyDetails),

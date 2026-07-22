@@ -14,7 +14,7 @@ function variant(source: 'published' | 'draft'): TWidgetVariantSummary {
   return {
     source,
     displayName: 'Camera',
-    kind: 'actor-widget',
+    kind: 'notes-widget',
     slug: 'camera',
     description: null,
     revision: source,

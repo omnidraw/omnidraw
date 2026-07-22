@@ -36,17 +36,8 @@ import type {
   TWidgetPublicationCommitResult,
   TWidgetPublishedPlacementDescriptor,
   TWidgetPublishedPlacementTarget,
-  TWidgetPreviewArtifactReadCapabilityIssueRequest,
-  TWidgetPreviewArtifactResolutionRequest,
-  TWidgetPreviewArtifactActivationRequest,
   TWidgetPreviewBuildRequest,
   TWidgetPreviewBuildResult,
-  TWidgetPreviewCommitInput,
-  TWidgetPreviewCommitResult,
-  TWidgetPreviewGetRequest,
-  TWidgetPreviewRevisionDescriptor,
-  TWidgetPreviewRevisionGetRequest,
-  TWidgetPreviewStopRequest,
   TWidgetPublishRequest,
   TWidgetPublishResult,
   TWidgetRevisionDescriptor,
@@ -94,20 +85,6 @@ export interface IWidgetSourceBuildArtifactReadCapabilityIssuer {
   issueSourceBuildArtifactReadCapability(
     tenant: TTenantContext,
     request: TWidgetArtifactReadCapabilityIssueRequest,
-  ): Promise<TWidgetArtifactReadCapability>;
-}
-
-export interface IWidgetUiPreviewArtifactReadCapabilityIssuer {
-  issueUiPreviewArtifactReadCapability(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'ui' }>,
-  ): Promise<TWidgetArtifactReadCapability>;
-}
-
-export interface IWidgetServerPreviewArtifactReadCapabilityIssuer {
-  issueServerPreviewArtifactReadCapability(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactReadCapabilityIssueRequest & Readonly<{ artifactKind: 'server' }>,
   ): Promise<TWidgetArtifactReadCapability>;
 }
 
@@ -177,46 +154,11 @@ export interface IWidgetRevisionSourceSnapshotReader {
   ): Promise<TWidgetSourceSnapshot | null>;
 }
 
-export interface IWidgetPreviewRevisionReader {
-  getPreview(
-    tenant: TTenantContext,
-    request: TWidgetPreviewGetRequest,
-  ): Promise<TWidgetPreviewRevisionDescriptor | null>;
-
-  getPreviewRevision(
-    tenant: TTenantContext,
-    request: TWidgetPreviewRevisionGetRequest,
-  ): Promise<TWidgetPreviewRevisionDescriptor | null>;
-}
-
-/** Tenant-qualified immutable preview revisions behind one CAS-swapped active pointer. */
-export interface IWidgetPreviewStore extends IWidgetPreviewRevisionReader {
-  commitPreview(
-    tenant: TTenantContext,
-    request: TWidgetPreviewCommitInput,
-  ): Promise<TWidgetPreviewCommitResult>;
-
-  stopPreview(
-    tenant: TTenantContext,
-    request: TWidgetPreviewStopRequest,
-  ): Promise<boolean>;
-
-  resolvePreviewArtifact(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactResolutionRequest,
-  ): Promise<TWidgetArtifactDescriptor | null>;
-}
-
-export interface IWidgetPreviewService extends IWidgetPreviewRevisionReader {
+export interface IWidgetPreviewService {
   buildPreview(
     tenant: TTenantContext,
     request: TWidgetPreviewBuildRequest,
   ): Promise<TWidgetPreviewBuildResult>;
-
-  stopPreview(
-    tenant: TTenantContext,
-    request: TWidgetPreviewStopRequest,
-  ): Promise<boolean>;
 }
 
 export interface IWidgetPublishedPlacementReader {
@@ -315,15 +257,6 @@ export interface IWidgetControlStore extends IWidgetRevisionReader, IWidgetRevis
     request: TWidgetArtifactRetentionRestoreRequest,
   ): Promise<boolean>;
 
-  /**
-   * Attaches a UI artifact to an existing non-ready preview and marks it ready.
-   * Implementations must reject a committed deletion tombstone and serialize
-   * the preview reference with artifact claim/completion.
-   */
-  activatePreviewArtifact(
-    tenant: TTenantContext,
-    request: TWidgetPreviewArtifactActivationRequest,
-  ): Promise<boolean>;
 }
 
 export interface IWidgetPublicationService extends IWidgetRevisionReader, IWidgetRevisionSourceReader {

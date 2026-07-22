@@ -1,4 +1,4 @@
-import type { TElement, TUiWidgetData, TWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ThemeService, THEME_ID_DARK, THEME_ID_LIGHT } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
 import Konva from "konva";
@@ -22,9 +22,9 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-type TWidgetFixtureKind = "widget" | "ui-widget" | "widget-instance";
+type TWidgetFixtureKind = "ui-widget" | "widget-instance";
 
-function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
+function createWidgetElement(type: TWidgetFixtureKind = "widget-instance"): TElement {
   return {
     id: "widget-fullscreen-1",
     x: 10,
@@ -94,7 +94,8 @@ function setWidgetData(
 }
 
 describe("txAttachDomPortal fullscreen", () => {
-  test.each(["widget", "widget-instance"] as const)("keeps the mounted %s body while Solid chrome enters and exits fullscreen, then disposes completely", (type) => {
+  test("keeps the mounted widget instance body while Solid chrome enters and exits fullscreen, then disposes completely", () => {
+    const type = "widget-instance" as const;
     ensureDom();
 
     const element = createWidgetElement(type);

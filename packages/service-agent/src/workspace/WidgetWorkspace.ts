@@ -19,7 +19,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { ZWidgetManifestV2, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
 import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
-import { fnAssertSafeFinalDestination } from '../core/fn.safe-destination';
 import { fnMatchesGlob } from './fn.glob';
 import { fnAssertSafeSearchPattern } from './fn.safe-search-pattern';
 import { fnNormalizeWidgetName } from './fn.names';
@@ -37,32 +36,16 @@ import type {
 
 type TWidgetWorkspaceConfig = {
   dataPath: string;
-  configPath: string;
-  parseLegacyManifest?: (value: unknown) => Readonly<{
-    name: string;
-    kind?: 'widget' | 'actor-widget' | null;
-  }> | null;
   platform?: NodeJS.Platform;
   createId?: () => string;
   copyDirectory?: typeof cp;
 };
 
-type TPreviewSnapshot = {
+type TTransientDraftSnapshot = {
   name: string;
   revision: string;
   rootPath: string;
   dispose(): Promise<void>;
-};
-
-type TPublishSnapshot = {
-  name: string;
-  draftPath: string;
-  canonicalPath: string;
-  wasExisting: boolean;
-  wasInstalledExisting: boolean;
-  markInstalledMutation(): void;
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
 };
 
 type TDraftMaterializationIdentity = Readonly<{
@@ -99,37 +82,23 @@ const MUTATION_FILE_BYTE_LIMIT = 5_000_000;
 export class WidgetWorkspace {
   readonly agentRoot: string;
   readonly chatRoot: string;
-  readonly publishedRoot: string;
   readonly draftRoot: string;
-  readonly previewSnapshotRoot: string;
-  readonly publicationBackupRoot: string;
-  readonly publicationStateRoot: string;
-  readonly installedPublicationBackupRoot: string;
+  readonly draftStateRoot: string;
   readonly sdkPackagePath: string;
-  readonly installedWidgetsRoot: string;
   readonly #platform: NodeJS.Platform;
   readonly #createId: () => string;
   readonly #copyDirectory: typeof cp;
-  readonly #parseLegacyManifest?: TWidgetWorkspaceConfig['parseLegacyManifest'];
   readonly #writeQueues = new Map<string, Promise<unknown>>();
-  readonly #activePublishes = new Set<string>();
-  readonly #activeInstalledPublishes = new Set<string>();
 
   constructor(config: TWidgetWorkspaceConfig) {
     this.agentRoot = join(config.dataPath, 'pi', 'agent');
     this.chatRoot = join(this.agentRoot, 'chats');
-    this.publishedRoot = join(this.agentRoot, 'widgets', 'published');
     this.draftRoot = join(this.agentRoot, 'widgets', 'drafts');
-    this.previewSnapshotRoot = join(this.agentRoot, 'preview-snapshots');
-    this.publicationBackupRoot = join(this.agentRoot, 'publication-backups');
-    this.publicationStateRoot = join(this.agentRoot, 'publication-state');
-    this.installedPublicationBackupRoot = join(config.configPath, '.publication-backups');
+    this.draftStateRoot = join(this.agentRoot, 'draft-state');
     this.sdkPackagePath = join(this.agentRoot, 'sdk');
-    this.installedWidgetsRoot = join(config.configPath, 'widgets');
     this.#platform = config.platform ?? process.platform;
     this.#createId = config.createId ?? randomUUID;
     this.#copyDirectory = config.copyDirectory ?? cp;
-    this.#parseLegacyManifest = config.parseLegacyManifest;
   }
 
   async init(): Promise<void> {
@@ -138,14 +107,9 @@ export class WidgetWorkspace {
     });
     await Promise.all([
       mkdir(this.chatRoot, { recursive: true }),
-      mkdir(this.publishedRoot, { recursive: true }),
       mkdir(this.draftRoot, { recursive: true }),
-      mkdir(this.publicationBackupRoot, { recursive: true }),
-      mkdir(this.publicationStateRoot, { recursive: true }),
-      mkdir(this.installedPublicationBackupRoot, { recursive: true }),
-      rm(this.previewSnapshotRoot, { recursive: true, force: true }).then(() => mkdir(this.previewSnapshotRoot, { recursive: true })),
+      mkdir(this.draftStateRoot, { recursive: true }),
     ]);
-    await this.reconcilePublishedWidgets();
   }
 
   getChatRoot(chatId: string): string {
@@ -169,52 +133,6 @@ export class WidgetWorkspace {
       await this.#reconcileSharedMounts(root);
     });
     return root;
-  }
-
-  async reconcilePublishedWidgets(): Promise<{ created: string[]; preserved: string[] }> {
-    await Promise.all([
-      mkdir(this.publishedRoot, { recursive: true }),
-      mkdir(this.draftRoot, { recursive: true }),
-    ]);
-    const installed = await readdir(this.installedWidgetsRoot, { withFileTypes: true }).catch(() => []);
-    const created: string[] = [];
-    const preserved: string[] = [];
-
-    for (const entry of installed) {
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      const source = join(this.installedWidgetsRoot, entry.name);
-      const sourceStat = await stat(source).catch(() => null);
-      if (!sourceStat?.isDirectory()) continue;
-      const manifest = await this.#readManifest(source);
-      if (!manifest || typeof manifest.name !== 'string') continue;
-      const normalized = fnNormalizeWidgetName(manifest.name);
-      if (!normalized.ok) continue;
-
-      const target = join(this.publishedRoot, normalized.value);
-      const existing = await lstat(target).catch(() => null);
-      if (existing) {
-        preserved.push(normalized.value);
-        continue;
-      }
-      await this.#assertNoCaseCollision(this.publishedRoot, normalized.value);
-      await this.#assertNoCaseCollision(this.draftRoot, normalized.value);
-
-      const temporary = join(this.publishedRoot, `.reconcile-${this.#safeId()}`);
-      try {
-        await this.#copyWidgetFolder(source, temporary);
-        try {
-          await rename(temporary, target);
-          created.push(normalized.value);
-        } catch (error) {
-          if (!await lstat(target).catch(() => null)) throw error;
-          preserved.push(normalized.value);
-        }
-      } finally {
-        await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
-      }
-    }
-
-    return { created, preserved };
   }
 
   async createDraft(chatId: string, input: TWidgetCreateInput, scaffold: TScaffold): Promise<{ mount: TWidgetMount; files: string[] }> {
@@ -257,11 +175,7 @@ export class WidgetWorkspace {
       if (existingTarget === targetPath) {
         return { name, source: 'draft', chatRoot, mountPath, targetPath };
       }
-      if (await this.#ownedMountKind(mountPath, name) === 'published') {
-        await rm(mountPath, { force: true });
-      } else {
-        throw new Error(`Widget mount '${name}' already points to a different target.`);
-      }
+      throw new Error(`Widget mount '${name}' already points to a different target.`);
     }
 
     const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
@@ -269,24 +183,7 @@ export class WidgetWorkspace {
     return { name, source: 'draft', chatRoot, mountPath, targetPath };
   }
 
-  async syncDraftFromPublished(chatId: string, requestedName: string): Promise<TWidgetMount> {
-    const name = this.#normalizeName(requestedName);
-    await this.ensureChat(chatId);
-    await this.#syncDraftFromPublished(name, false);
-    return this.loadWidget(chatId, name);
-  }
-
-  async ensureDraftFromPublished(requestedName: string): Promise<TWidgetDraftWorkspaceEntry> {
-    const name = this.#normalizeName(requestedName);
-    const existing = await this.getDraft(name);
-    if (existing) return existing;
-    await this.#syncDraftFromPublished(name, true);
-    const draft = await this.getDraft(name);
-    if (!draft) throw new Error(`Widget draft '${name}' could not be created.`);
-    return draft;
-  }
-
-  /** Atomically promotes one verified immutable v2 snapshot into draft storage. */
+  /** Atomically promotes one verified immutable published snapshot into draft storage. */
   async materializeDraftFromSnapshot(
     requestedName: string,
     snapshot: TWidgetSourceSnapshot,
@@ -350,7 +247,7 @@ export class WidgetWorkspace {
         await new WidgetSourceSnapshotMaterializer().materialize(snapshot, temporary);
         const manifest = ZWidgetManifestV2.safeParse(await this.#readManifest(temporary));
         if (!manifest.success) {
-          throw new Error('INVALID_MANIFEST: Published widget source has no valid v2 manifest.');
+          throw new Error('INVALID_MANIFEST: Published widget source has no valid manifest-v2.');
         }
         if (manifest.data.name !== name) {
           throw new Error(
@@ -426,11 +323,8 @@ export class WidgetWorkspace {
         throw new Error(`STALE_REVISION: Widget draft '${name}' changed before the edit was saved.`);
       }
       if (nextName !== name) {
-        await Promise.all([
-          this.#assertNoCaseCollision(this.draftRoot, nextName),
-          this.#assertNoCaseCollision(this.publishedRoot, nextName),
-        ]);
-        if (await lstat(nextDraftPath).catch(() => null) || await lstat(join(this.publishedRoot, nextName)).catch(() => null)) {
+        await this.#assertNoCaseCollision(this.draftRoot, nextName);
+        if (await lstat(nextDraftPath).catch(() => null)) {
           throw new Error(`NAME_IN_USE: Widget name '${nextName}' is already in use.`);
         }
       }
@@ -492,61 +386,6 @@ export class WidgetWorkspace {
     });
   }
 
-  async removePublished(requestedName: string): Promise<boolean> {
-    const name = this.#normalizeName(requestedName);
-    const publishedPath = join(this.publishedRoot, name);
-    return this.#withWidgetWrite(publishedPath, async () => {
-      if (!await this.#isDirectDirectory(this.publishedRoot, publishedPath)) return false;
-      await rm(publishedPath, { recursive: true, force: false });
-      return true;
-    });
-  }
-
-  async #syncDraftFromPublished(name: string, onlyIfMissing: boolean): Promise<void> {
-    const source = join(this.publishedRoot, name);
-    if (!await this.#isDirectDirectory(this.publishedRoot, source)) {
-      throw new Error(`Published widget '${name}' does not exist.`);
-    }
-    await this.#assertNoCaseCollision(this.draftRoot, name);
-    const target = join(this.draftRoot, name);
-
-    await this.#withWidgetWrite(target, async () => {
-      if (onlyIfMissing && await this.#isDirectDirectory(this.draftRoot, target)) return;
-      const temporary = join(this.draftRoot, `.sync-${this.#safeId()}`);
-      const backup = join(this.draftRoot, `.sync-backup-${this.#safeId()}`);
-      let movedExisting = false;
-      try {
-        await this.#copyWidgetFolder(source, temporary);
-        const existing = await lstat(target).catch(() => null);
-        if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
-          throw new Error(`Widget draft '${name}' is not a managed directory.`);
-        }
-        if (existing) {
-          await rename(target, backup);
-          movedExisting = true;
-        }
-        try {
-          await rename(temporary, target);
-        } catch (error) {
-          if (movedExisting && !await lstat(target).catch(() => null)) {
-            await rename(backup, target);
-            movedExisting = false;
-          }
-          throw error;
-        }
-        if (movedExisting) {
-          await rm(backup, { recursive: true, force: true }).catch(() => undefined);
-          movedExisting = false;
-        }
-        const revision = await this.#readDraftRevision(target);
-        await this.#writeCleanDraftRevision(name, revision.value);
-      } finally {
-        await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
-        if (!movedExisting) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
-      }
-    });
-  }
-
   async listMounts(chatId: string): Promise<TWidgetMount[]> {
     const chatRoot = await this.ensureChat(chatId);
     const widgetsRoot = join(chatRoot, 'widgets');
@@ -582,18 +421,6 @@ export class WidgetWorkspace {
     return this.#readDraftEntry(name, draftPath);
   }
 
-  async getCleanDraftRevision(requestedName: string): Promise<string | null> {
-    const name = this.#normalizeName(requestedName);
-    try {
-      const value: unknown = JSON.parse(await readFile(this.#publicationStatePath(name), 'utf8'));
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-      const revision = (value as { cleanDraftRevision?: unknown }).cleanDraftRevision;
-      return typeof revision === 'string' && /^[a-f0-9]{64}$/.test(revision) ? revision : null;
-    } catch {
-      return null;
-    }
-  }
-
   async listAvailableWidgets(chatId: string): Promise<TAvailableWidget[]> {
     const mounts = await this.listMounts(chatId);
     return fxWidgetCatalog({
@@ -608,14 +435,10 @@ export class WidgetWorkspace {
         if (v2.success) {
           return { ok: true as const, name: v2.data.name, kind: 'widget' as const };
         }
-        const parsed = this.#parseLegacyManifest?.(value) ?? null;
-        return parsed
-          ? { ok: true as const, name: parsed.name, kind: parsed.kind ?? null }
-          : { ok: false as const };
+        return { ok: false as const };
       },
     }, {
       draftRoot: this.draftRoot,
-      publishedRoot: this.publishedRoot,
       mountedNames: mounts.map((mount) => mount.name),
     });
   }
@@ -801,139 +624,10 @@ export class WidgetWorkspace {
     return { matches, truncated, filesSearched };
   }
 
-  async beginDraftPublish(requestedName: string, installedSlug?: string, expectedRevision?: string): Promise<TPublishSnapshot> {
+  async createTransientDraftSnapshot(requestedName: string, expectedRevision: string): Promise<TTransientDraftSnapshot> {
     const name = this.#normalizeName(requestedName);
     const draftPath = join(this.draftRoot, name);
-    const canonicalPath = join(this.publishedRoot, name);
-    const installedPath = installedSlug === undefined
-      ? null
-      : fnAssertSafeFinalDestination({ finalWidgetsDir: this.installedWidgetsRoot, slug: installedSlug, basename, resolve });
-    const publishId = this.#safeId();
-    await this.#assertNoCaseCollision(this.publishedRoot, name);
-    if (this.#activePublishes.has(name)) throw new Error(`Widget '${name}' is already being published.`);
-    if (installedPath !== null && this.#activeInstalledPublishes.has(installedPath)) {
-      throw new Error(`Installed widget slug '${installedSlug}' is already being published.`);
-    }
-    this.#activePublishes.add(name);
-    if (installedPath !== null) this.#activeInstalledPublishes.add(installedPath);
-    const transactionRoot = join(this.publicationBackupRoot, publishId);
-    const installedTransactionRoot = join(this.installedPublicationBackupRoot, publishId);
-    const temporary = join(transactionRoot, 'canonical-next');
-    const backup = join(transactionRoot, 'canonical-previous');
-    const installedBackup = installedPath === null ? null : join(installedTransactionRoot, 'installed-previous');
-    let wasExisting = false;
-    let wasInstalledExisting = false;
-    let acceptedDraftRevision = '';
-    try {
-      await mkdir(transactionRoot, { recursive: true });
-      if (installedPath !== null && installedBackup !== null) {
-        await mkdir(this.installedWidgetsRoot, { recursive: true });
-        await mkdir(installedTransactionRoot, { recursive: true });
-        const installedEntry = await lstat(installedPath).catch(() => null);
-        if (installedEntry) {
-          const installedTarget = await stat(installedPath).catch(() => null);
-          if (!installedTarget?.isDirectory()) throw new Error(`Installed widget '${installedSlug}' is not a managed directory.`);
-          await this.#copyWidgetFolder(installedPath, installedBackup);
-          wasInstalledExisting = true;
-        }
-      }
-      await this.#withWidgetWrite(draftPath, async () => {
-        if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) throw new Error(`Widget draft '${name}' does not exist.`);
-        const currentRevision = await this.#readDraftRevision(draftPath);
-        acceptedDraftRevision = currentRevision.value;
-        if (expectedRevision !== undefined) {
-          if (acceptedDraftRevision !== expectedRevision) {
-            throw new Error(`Widget draft '${name}' changed. Expected revision '${expectedRevision}', current revision '${currentRevision.value}'.`);
-          }
-        }
-        await this.#copyWidgetFolder(draftPath, temporary);
-        const existing = await lstat(canonicalPath).catch(() => null);
-        if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
-          throw new Error(`Published widget '${name}' is not a managed directory.`);
-        }
-        if (existing) {
-          await rename(canonicalPath, backup);
-          wasExisting = true;
-        }
-        try {
-          await rename(temporary, canonicalPath);
-        } catch (error) {
-          if (wasExisting && !await lstat(canonicalPath).catch(() => null)) await rename(backup, canonicalPath);
-          throw error;
-        }
-      });
-    } catch (error) {
-      await rm(temporary, { recursive: true, force: true }).catch(() => undefined);
-      if (wasExisting && !await lstat(canonicalPath).catch(() => null)) {
-        await rename(backup, canonicalPath).catch(() => undefined);
-      }
-      await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined);
-      await rm(installedTransactionRoot, { recursive: true, force: true }).catch(() => undefined);
-      this.#activePublishes.delete(name);
-      if (installedPath !== null) this.#activeInstalledPublishes.delete(installedPath);
-      throw error;
-    }
-
-    let settled = false;
-    let installedMutationStarted = false;
-    return {
-      name,
-      draftPath,
-      canonicalPath,
-      wasExisting,
-      wasInstalledExisting,
-      markInstalledMutation: () => {
-        installedMutationStarted = true;
-      },
-      commit: async () => {
-        if (settled) return;
-        try {
-          await this.#withWidgetWrite(draftPath, async () => {
-            if (!await this.#isDirectDirectory(this.draftRoot, draftPath)) {
-              throw new Error(`Widget draft '${name}' does not exist.`);
-            }
-            const currentRevision = await this.#readDraftRevision(draftPath);
-            if (currentRevision.value !== acceptedDraftRevision) {
-              throw new Error(`Widget draft '${name}' changed. Expected revision '${acceptedDraftRevision}', current revision '${currentRevision.value}'.`);
-            }
-            await this.#writeCleanDraftRevision(name, acceptedDraftRevision);
-          });
-          settled = true;
-          await Promise.all([
-            rm(transactionRoot, { recursive: true, force: true }),
-            rm(installedTransactionRoot, { recursive: true, force: true }),
-          ].map((operation) => operation.catch(() => undefined)));
-        } finally {
-          this.#activePublishes.delete(name);
-          if (installedPath !== null) this.#activeInstalledPublishes.delete(installedPath);
-        }
-      },
-      rollback: async () => {
-        if (settled) return;
-        try {
-          await rm(canonicalPath, { recursive: true, force: true });
-          if (wasExisting) await rename(backup, canonicalPath);
-          if (installedMutationStarted && installedPath !== null) {
-            await rm(installedPath, { recursive: true, force: true });
-            if (wasInstalledExisting && installedBackup !== null) await rename(installedBackup, installedPath);
-          } else if (wasInstalledExisting && installedBackup !== null) {
-            await rm(installedTransactionRoot, { recursive: true, force: true });
-          }
-          await rm(transactionRoot, { recursive: true, force: true });
-          await rm(installedTransactionRoot, { recursive: true, force: true });
-          settled = true;
-        } finally {
-          this.#activePublishes.delete(name);
-          if (installedPath !== null) this.#activeInstalledPublishes.delete(installedPath);
-        }
-      },
-    };
-  }
-
-  async createPreviewSnapshot(requestedName: string, expectedRevision: string): Promise<TPreviewSnapshot> {
-    const name = this.#normalizeName(requestedName);
-    const draftPath = join(this.draftRoot, name);
-    const rootPath = join(this.previewSnapshotRoot, `${this.#safeId()}-${name}`);
+    const rootPath = join(this.draftRoot, `.snapshot-${this.#safeId()}-${name}`);
     let settled = false;
     try {
       await this.#withWidgetWrite(draftPath, async () => {
@@ -951,14 +645,14 @@ export class WidgetWorkspace {
         const after = await this.#readDraftRevision(draftPath);
         if (after.value !== before.value) {
           throw Object.assign(
-            new Error(`Widget draft '${name}' changed while its Preview snapshot was being created.`),
+            new Error(`Widget draft '${name}' changed while its request snapshot was being created.`),
             { code: 'WIDGET_DRAFT_REVISION_CHANGED', currentRevision: after.value },
           );
         }
         const snapshot = await this.#readDraftRevision(rootPath);
         if (snapshot.value !== before.value) {
           throw Object.assign(
-            new Error(`Widget draft '${name}' could not be copied into one coherent Preview snapshot.`),
+            new Error(`Widget draft '${name}' could not be copied into one coherent request snapshot.`),
             { code: 'WIDGET_DRAFT_SNAPSHOT_MISMATCH', currentRevision: after.value },
           );
         }
@@ -1026,12 +720,7 @@ export class WidgetWorkspace {
       throw new Error(`Widget draft '${name}' is still pending durable materialization.`);
     }
     const draftExists = await this.#isDirectDirectory(this.draftRoot, draft);
-    if (!draftExists) {
-      if (await this.#isDirectDirectory(this.publishedRoot, join(this.publishedRoot, name))) {
-        throw new Error(`Widget draft '${name}' does not exist. Sync it from the published widget before loading.`);
-      }
-      throw new Error(`Widget draft '${name}' does not exist.`);
-    }
+    if (!draftExists) throw new Error(`Widget draft '${name}' does not exist.`);
     return realpath(draft);
   }
 
@@ -1065,10 +754,7 @@ export class WidgetWorkspace {
         if (!existing.isSymbolicLink()) continue;
         const existingTarget = await realpath(mountPath).catch(() => null);
         if (existingTarget === targetPath) continue;
-        if (await this.#ownedMountKind(mountPath, entry.name) !== 'published') {
-          continue;
-        }
-        await rm(mountPath);
+        continue;
       }
       const linkTarget = await this.#mountLinkTarget(mountPath, targetPath);
       await symlink(linkTarget, mountPath, this.#platform === 'win32' ? 'junction' : 'dir');
@@ -1093,13 +779,12 @@ export class WidgetWorkspace {
     if (!await this.#ownedMountKind(mountPath, name)) throw new Error(`Widget mount '${name}' is not owned by the backend.`);
   }
 
-  async #ownedMountKind(mountPath: string, name: string): Promise<'draft' | 'published' | null> {
+  async #ownedMountKind(mountPath: string, name: string): Promise<'draft' | null> {
     const link = await readlink(mountPath);
     const lexicalTarget = resolve(await realpath(dirname(mountPath)), link);
     const linkedTarget = await realpath(mountPath).catch(() => lexicalTarget);
-    const [draftRoot, publishedRoot] = await Promise.all([realpath(this.draftRoot), realpath(this.publishedRoot)]);
+    const draftRoot = await realpath(this.draftRoot);
     if (linkedTarget === join(draftRoot, name)) return 'draft';
-    if (linkedTarget === join(publishedRoot, name)) return 'published';
     return null;
   }
 
@@ -1114,11 +799,10 @@ export class WidgetWorkspace {
 
   async #assertNameAvailable(chatId: string, name: string): Promise<void> {
     await Promise.all([
-      this.#assertNoCaseCollision(this.publishedRoot, name),
       this.#assertNoCaseCollision(this.draftRoot, name),
       this.#assertNoCaseCollision(join(this.getChatRoot(chatId), 'widgets'), name),
     ]);
-    const paths = [join(this.publishedRoot, name), join(this.draftRoot, name), join(this.getChatRoot(chatId), 'widgets', name)];
+    const paths = [join(this.draftRoot, name), join(this.getChatRoot(chatId), 'widgets', name)];
     if ((await Promise.all(paths.map((path) => lstat(path).catch(() => null)))).some(Boolean)) {
       throw new Error(`Widget name '${name}' is already in use.`);
     }
@@ -1249,7 +933,7 @@ export class WidgetWorkspace {
     return {
       name,
       draftPath,
-      published: await this.#isDirectDirectory(this.publishedRoot, join(this.publishedRoot, name)),
+      published: false,
       revision: revision.value,
       updatedAt: new Date(revision.updatedAtMs).toISOString(),
     };
@@ -1257,7 +941,7 @@ export class WidgetWorkspace {
 
   #draftMaterializationMarkerPath(name: string): string {
     const key = createHash('sha256').update(name).digest('hex');
-    return join(this.publicationStateRoot, `materialization-${key}.json`);
+    return join(this.draftStateRoot, `materialization-${key}.json`);
   }
 
   async #readDraftMaterializationMarker(name: string): Promise<TDraftMaterializationMarkerRead> {
@@ -1522,22 +1206,6 @@ export class WidgetWorkspace {
       value: hash.digest('hex'),
       updatedAtMs: updatedAtMicros / 1_000,
     };
-  }
-
-  #publicationStatePath(name: string): string {
-    return join(this.publicationStateRoot, `${name}.json`);
-  }
-
-  async #writeCleanDraftRevision(name: string, revision: string): Promise<void> {
-    const target = this.#publicationStatePath(name);
-    const temporary = join(this.publicationStateRoot, `.write-${this.#safeId()}`);
-    try {
-      await mkdir(this.publicationStateRoot, { recursive: true });
-      await writeFile(temporary, JSON.stringify({ version: 1, cleanDraftRevision: revision }), { encoding: 'utf8', flag: 'wx' });
-      await rename(temporary, target);
-    } finally {
-      await rm(temporary, { force: true }).catch(() => undefined);
-    }
   }
 
   async #readManifest(root: string): Promise<Record<string, unknown> | null> {

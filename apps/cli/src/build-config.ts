@@ -8,12 +8,6 @@ function getDefaultPort(compiled: boolean): number {
   return compiled ? 7496 : 3000;
 }
 
-function resolveLegacyActorEnabled(value: string | undefined): boolean {
-  if (value === undefined || value === '0' || value === 'false') return false;
-  if (value === '1' || value === 'true') return true;
-  throw new Error('VIBECANVAS_LEGACY_ACTOR_ENABLED must be one of: 0, 1, false, true.');
-}
-
 function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
   const cwd = process.cwd();
   const compiled =
@@ -35,7 +29,6 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
     cwd,
     dev,
     compiled,
-    legacyActorEnabled: resolveLegacyActorEnabled(process.env.VIBECANVAS_LEGACY_ACTOR_ENABLED),
     version,
     command: parsed.command,
     subcommand: parsed.subcommand,
@@ -50,4 +43,4 @@ function buildCliConfig(parsed: TCliParsedArgv): ICliConfig {
   };
 }
 
-export { buildCliConfig, resolveLegacyActorEnabled };
+export { buildCliConfig };

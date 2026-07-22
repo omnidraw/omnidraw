@@ -5,7 +5,6 @@ import {
 import { EventPublisherService } from '@vibecanvas/service-event-publisher/EventPublisherService';
 import type {
   ITenantEventPublisherService,
-  TActorEvent,
   TAgentEvent,
   TDbEvent,
   TEventSubscriptionOptions,
@@ -43,18 +42,6 @@ export class TestTenantEventPublisher implements ITenantEventPublisherService {
 
   getDbEventCursor(): number {
     return this.delegate.getDbEventCursor();
-  }
-
-  publishActorEvent(event: TActorEvent): number {
-    return this.delegate.publishActorEvent(event);
-  }
-
-  subscribeActorEvents(options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent> {
-    return this.delegate.subscribeActorEvents(options);
-  }
-
-  getActorEventCursor(): number {
-    return this.delegate.getActorEventCursor();
   }
 
   publishAgentEvent(event: TAgentEvent): number {

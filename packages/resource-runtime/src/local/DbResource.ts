@@ -98,7 +98,7 @@ type TDbResourceControlStore = Readonly<{
 
 const RESOURCE_ID_MAX_LENGTH = 128;
 const IDENTIFIER_MAX_LENGTH = 256;
-const ACTOR_SQL_MAX_LENGTH = 65_536;
+const GUEST_SQL_MAX_LENGTH = 65_536;
 const DRAFT_SQL_MAX_LENGTH = 1_048_576;
 const DRAFT_STATEMENT_MAX_COUNT = 256;
 const PARAMETER_MAX_COUNT = 128;
@@ -344,8 +344,8 @@ function hasHostFileSql(tokens: readonly string[]): boolean {
   return vacuum >= 0 && tokens.slice(vacuum + 1).includes('INTO');
 }
 
-function boundedActorSql(value: unknown): string {
-  if (typeof value !== 'string' || value.trim().length === 0 || value.length > ACTOR_SQL_MAX_LENGTH) {
+function boundedGuestSql(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > GUEST_SQL_MAX_LENGTH) {
     throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database SQL is blank or exceeds the host limit.');
   }
   const summary = sqlSummary(value);
@@ -1024,7 +1024,7 @@ export class DbResource implements ILocalResourceProvider {
   }): Promise<TDbLiveSqlResult> {
     const resourceId = validateHostId(args.resourceId);
     this.#assertAvailable(resourceId);
-    const sql = boundedActorSql(args.sql);
+    const sql = boundedGuestSql(args.sql);
     const parameters = bindWireParameters(args.parameters);
     const execute = args.approved
       ? this.#serializeWrite(resourceId, async () => {
@@ -1568,7 +1568,7 @@ export class DbResource implements ILocalResourceProvider {
         if (declared.effect === 'read' && !context.canRead) throw new ResourceError('DB_READ_NOT_ALLOWED', 'Read access is not allowed for this DbResource slot.');
         if (declared.effect === 'write' && !context.canWrite) throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Write access is not allowed for this DbResource slot.');
         const parameters = bindNamedParameters(requirement, args.operation, args.parameters);
-        const sql = boundedActorSql(declared.sql);
+        const sql = boundedGuestSql(declared.sql);
         const run = (): Promise<unknown> => declared.effect === 'read'
           ? declared.result === 'rows'
             ? this.#queryGuest(context.resource.id, sql, parameters)
@@ -1581,7 +1581,7 @@ export class DbResource implements ILocalResourceProvider {
       if (operation === 'query') {
         if (requirement.arbitrarySql !== true) throw new ResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', 'Arbitrary SQL is not enabled for this DbResource slot.');
         if (!context.canRead) throw new ResourceError('DB_READ_NOT_ALLOWED', 'Read access is not allowed for this DbResource slot.');
-        return this.#queryGuest(context.resource.id, boundedActorSql(args.sql), bindParameters(args.parameters));
+        return this.#queryGuest(context.resource.id, boundedGuestSql(args.sql), bindParameters(args.parameters));
       }
       if (operation === 'execute') {
         if (requirement.arbitrarySql !== true) throw new ResourceError('DB_ARBITRARY_SQL_NOT_ALLOWED', 'Arbitrary SQL is not enabled for this DbResource slot.');
@@ -1591,14 +1591,14 @@ export class DbResource implements ILocalResourceProvider {
           let totalSql = 0;
           const operations: TDbExecuteOperation[] = args.operations.map((value) => {
             const item = recordArgs(value);
-            const sql = boundedActorSql(item.sql);
+            const sql = boundedGuestSql(item.sql);
             totalSql += sql.length;
             if (totalSql > EXECUTE_TOTAL_SQL_MAX_LENGTH) throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute SQL exceeds the host limit.');
             return { sql, parameters: bindParameters(item.parameters) };
           });
           return this.#serializeWrite(context.resource.id, () => this.#executeGuestOperations(context.resource.id, operations));
         }
-        return this.#serializeWrite(context.resource.id, () => this.#executeGuest(context.resource.id, boundedActorSql(args.sql), bindParameters(args.parameters)));
+        return this.#serializeWrite(context.resource.id, () => this.#executeGuest(context.resource.id, boundedGuestSql(args.sql), bindParameters(args.parameters)));
       }
       throw new ResourceError('DB_RESOURCE_UNAVAILABLE', `Unknown DbResource operation "${operation}".`);
     } catch (error) {
@@ -1627,7 +1627,7 @@ export class DbResource implements ILocalResourceProvider {
         throw new ResourceError('DB_WRITE_NOT_ALLOWED', 'Write access is not allowed for this database operation.');
       }
       const parameters = bindNamedParameters(requirement, args.operation, args.parameters);
-      const sql = boundedActorSql(declared.sql);
+      const sql = boundedGuestSql(declared.sql);
       return declared.result === 'rows'
         ? this.#queryGuestRows(database, sql, parameters)
         : this.#runNative(database, sql, parameters);
@@ -1645,7 +1645,7 @@ export class DbResource implements ILocalResourceProvider {
       const results: { rowsAffected: number; lastInsertRowId?: bigint }[] = [];
       for (const value of args.operations) {
         const item = recordArgs(value);
-        const sql = boundedActorSql(item.sql);
+        const sql = boundedGuestSql(item.sql);
         totalSql += sql.length;
         if (totalSql > EXECUTE_TOTAL_SQL_MAX_LENGTH) {
           throw new ResourceError('DB_OPERATION_PARAMETERS_INVALID', 'Database execute SQL exceeds the host limit.');
@@ -1654,7 +1654,7 @@ export class DbResource implements ILocalResourceProvider {
       }
       return results;
     }
-    return this.#runNative(database, boundedActorSql(args.sql), bindParameters(args.parameters));
+    return this.#runNative(database, boundedGuestSql(args.sql), bindParameters(args.parameters));
   }
 
   async #executeLiveSqlDatabase(

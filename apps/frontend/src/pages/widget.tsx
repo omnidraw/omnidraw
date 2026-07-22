@@ -2,7 +2,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from '@solidjs/r
 import type { TWidgetSource } from '@vibecanvas/orpc-client';
 import { type Component } from 'solid-js';
 import { WidgetDetailPage } from '@vibecanvas/ui-ai-chat';
-import { createFrontendSidebarController, legacyActorUiCapability } from '@/ai-chat-adapters';
+import { createFrontendSidebarController } from '@/ai-chat-adapters';
 
 const WidgetPage: Component = () => {
   const params = useParams<{ source: string; name: string }>();
@@ -18,7 +18,6 @@ const WidgetPage: Component = () => {
     source={source()}
     name={name()}
     controller={controller}
-    legacy={legacyActorUiCapability}
     query={{
       tab: () => typeof searchParams.tab === 'string' ? searchParams.tab : undefined,
       path: () => typeof searchParams.path === 'string' ? searchParams.path : undefined,

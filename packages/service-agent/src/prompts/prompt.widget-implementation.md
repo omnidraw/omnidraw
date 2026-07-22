@@ -6,4 +6,4 @@ For shared published-instance state, use the collaborative-state exports from `@
 
 For optional server work, import a direct named function from a `server/*.server.ts` module and call its generated proxy from an event handler. Show pending, success, and safe error states. Do not expose invocation ids, artifact ids, resource ids, internal paths, or server diagnostics in normal UI.
 
-Never import actor APIs in manifest-v2 widget code. Never create a state machine or long-lived backend loop.
+Use collaborative state for persistent browser state and short server functions for backend work. Never create a long-lived backend loop.

@@ -22,7 +22,6 @@ export type {
   TDbApplyDetails,
   TDbApplyPreview,
   TDbBackup,
-  TDbCoordinatorApplyInstanceResult,
   TDbCoordinatorApplyRun,
   TDbCoordinatorDraft,
   TDbCoordinatorDraftChange,

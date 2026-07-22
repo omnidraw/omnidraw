@@ -6,8 +6,7 @@ import type {
 } from "./types";
 
 export function fnIsWidgetHostData(data: TElementData): data is TWidgetHostData {
-  return data.type === "widget"
-    || data.type === "ui-widget"
+  return data.type === "ui-widget"
     || data.type === "widget-instance";
 }
 
@@ -32,21 +31,6 @@ export function fnNormalizeWidgetHostData(
   if (data.type === "ui-widget") {
     return {
       source: "browser-only",
-      hostKey: data.kind,
-      w: data.w,
-      h: data.h,
-      expanded: data.expanded,
-      window: data.window,
-      definitionId: null,
-      revisionId: null,
-      instanceId: null,
-      stateDocumentId: null,
-    };
-  }
-
-  if (data.type === "widget") {
-    return {
-      source: "legacy-actor",
       hostKey: data.kind,
       w: data.w,
       h: data.h,

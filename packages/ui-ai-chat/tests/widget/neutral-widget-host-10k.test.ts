@@ -127,10 +127,6 @@ test('10,000 committed widget instances use bounded production UI realms without
     }),
   );
   const crdtChange = new SyncHook<[TCrdtChangeSummary]>();
-  const actorEvents = vi.fn();
-  const actorDeleteDefinition = vi.fn();
-  const actorSnapshot = vi.fn();
-  const actorSendMessage = vi.fn();
   const functionInvoke = vi.fn();
   const functionGet = vi.fn();
   const runtimeLoads = vi.fn(async (request: Readonly<{
@@ -239,11 +235,6 @@ test('10,000 committed widget instances use bounded production UI realms without
     browser: createTestWidgetBrowser(),
     transport: {
       api: {
-        actors: {
-          events: actorEvents,
-          definitions: { delete: actorDeleteDefinition },
-          instances: { snapshot: actorSnapshot, sendMessage: actorSendMessage },
-        },
         widget: { runtime: { load: runtimeLoads } },
         function: { invoke: functionInvoke, get: functionGet },
       },
@@ -293,10 +284,6 @@ test('10,000 committed widget instances use bounded production UI realms without
       INSTANCE_COUNT - PRELOADED_INSTANCE_COUNT,
     );
     expect(runtimeLoads).toHaveBeenCalledTimes(WIDGET_UI_MAX_ACTIVE_RENDERS);
-    expect(actorEvents).not.toHaveBeenCalled();
-    expect(actorDeleteDefinition).not.toHaveBeenCalled();
-    expect(actorSnapshot).not.toHaveBeenCalled();
-    expect(actorSendMessage).not.toHaveBeenCalled();
     expect(functionInvoke).not.toHaveBeenCalled();
     expect(functionGet).not.toHaveBeenCalled();
 
@@ -313,7 +300,6 @@ test('10,000 committed widget instances use bounded production UI realms without
       rssBeforeBytes: rssBefore,
       rssAfterBytes: rssAfter,
       rssGrowthBytes: Math.max(0, rssAfter - rssBefore),
-      actorTransportCalls: 0,
       functionTransportCalls: 0,
     })}\n`);
   } finally {

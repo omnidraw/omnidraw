@@ -113,7 +113,7 @@ describe('M5 immutable widget artifact boundaries', () => {
     expect(rootEntry).not.toMatch(/['"]\.\/?local(?:\/|['"])/);
   });
 
-  test('keeps v2 storage, local publication, and dedicated CLI widget services actor-free', async () => {
+  test('keeps immutable storage, local publication, and dedicated CLI widget services runtime-neutral', async () => {
     const controlStoreFiles = [
       'packages/service-db/src/WidgetControlStoreTurso.ts',
       ...(await sourceFiles(WIDGET_CONTROL_STORE_SOURCE)),
@@ -133,13 +133,13 @@ describe('M5 immutable widget artifact boundaries', () => {
       violations.push(...linesMatching(
         source,
         /@vibecanvas\/service-actor|(?:^|[^A-Za-z])ActorService(?:[^A-Za-z]|$)/,
-        'v2 widget publication depends on the legacy actor service',
+        'widget publication depends on a retired resident runtime',
       ));
     }
     expect(violations).toEqual([]);
   });
 
-  test('centralizes persisted preview transitions behind the artifact tombstone fence', async () => {
+  test('contains no durable Draft Preview records or writers', async () => {
     const writers = new Set<string>();
     for (const source of await sources(await sourceFiles('packages/service-db/src'))) {
       if (/\b(?:INSERT\s+INTO|UPDATE)\s+agent_previews\b/i.test(source.text)) {
@@ -147,23 +147,16 @@ describe('M5 immutable widget artifact boundaries', () => {
       }
     }
 
-    expect([...writers].sort()).toEqual([
-      'packages/service-db/src/AgentAuthoringStoreTurso.ts',
-      'packages/service-db/src/WidgetControlStoreTurso.ts',
-    ]);
+    expect([...writers].sort()).toEqual([]);
     const authoringStore = await Bun.file(resolve(
       REPO_ROOT,
       'packages/service-db/src/AgentAuthoringStoreTurso.ts',
     )).text();
-    expect(authoringStore).toContain(
-      'return this.mutationCoordinator.runArtifactMutation(tenant, operation);',
-    );
-    expect(authoringStore).not.toContain(
-      'private readonly mutationCoordinator?: IWidgetArtifactMutationCoordinator',
-    );
+    expect(authoringStore).not.toContain('IWidgetPreviewStore');
+    expect(authoringStore).not.toContain('agent_preview');
   });
 
-  test('strictly rejects legacy actor manifest fields at the v2 boundary', () => {
+  test('strictly rejects fields outside the current widget manifest', () => {
     const validManifest = {
       schemaVersion: 2,
       name: 'Clock',
@@ -173,16 +166,15 @@ describe('M5 immutable widget artifact boundaries', () => {
     expect(ZWidgetManifestV2.safeParse(validManifest).success).toBe(true);
     expect(ZWidgetManifestV2.safeParse({
       ...validManifest,
-      actor: {
-        entry: 'src/actor.ts',
-        resources: {},
+      residentRuntime: {
+        entry: 'src/runtime.ts',
       },
     }).success).toBe(false);
     expect(ZWidgetManifestV2.safeParse({
       schemaVersion: 1,
-      name: 'Legacy actor',
-      slug: 'legacy-actor',
-      actor: { entry: 'src/actor.ts' },
+      name: 'Old widget',
+      slug: 'old-widget',
+      runtime: { entry: 'src/runtime.ts' },
     }).success).toBe(false);
   });
 

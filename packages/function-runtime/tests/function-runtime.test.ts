@@ -45,7 +45,7 @@ describe('function-runtime public contracts', () => {
     })).toBe(false);
   });
 
-  test('supports a fake sandbox driver without storage or actor dependencies', async () => {
+  test('supports a fake sandbox driver without storage or process-runtime dependencies', async () => {
     const driver: ISandboxDriver = {
       name: 'fake',
       prepare: async () => ({ driver: 'fake', id: 'prepared' }),

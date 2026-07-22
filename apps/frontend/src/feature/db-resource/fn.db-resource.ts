@@ -9,7 +9,7 @@ import type {
   TDbIndex,
   TDbImpactSlot,
   TDbInspection,
-  TDbInstanceImpact,
+  TDbResourceUse,
   TDbObject,
   TDbPreviewCellValue,
   TDbSqlResult,
@@ -25,10 +25,18 @@ export const fnActiveDraft = (drafts: TDbDraft[]): TDbDraft | null =>
   drafts.find((draft) => draft.status === "editing" || draft.status === "applying") ?? null;
 
 export const fnImpactSlots = (impact: TDbImpact | null | undefined): TDbImpactSlot[] =>
-  (impact?.definitions ?? []).flatMap((definition) => definition.slots.map((slot) => ({ definitionName: definition.definitionName, ...slot })));
+  (impact?.bindings ?? []).map((binding) => ({
+    definitionId: binding.definitionId,
+    revisionId: binding.revisionId,
+    slot: binding.slot,
+    scope: [
+      ...(binding.allowRead ? ["read" as const] : []),
+      ...(binding.allowWrite ? ["write" as const] : []),
+    ],
+  }));
 
-export const fnImpactInstances = (impact: TDbImpact | null | undefined): TDbInstanceImpact[] =>
-  impact?.instances ?? [];
+export const fnImpactUses = (impact: TDbImpact | null | undefined): TDbResourceUse[] =>
+  impact?.uses.uses ?? [];
 
 export const fnCellText = (cell: TDbPreviewCellValue | undefined): string => {
   if (!cell || cell.type === "null") return "NULL";

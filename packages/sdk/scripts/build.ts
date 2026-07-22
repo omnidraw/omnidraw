@@ -5,13 +5,11 @@ import { mkdirSync, rmSync } from "fs"
 
 const sdkDir = path.join(import.meta.dir, "..")
 const distDir = path.join(sdkDir, "dist")
-const actorSubpathDir = path.join(sdkDir, "actor")
 const functionClientSubpathDir = path.join(sdkDir, "function-client")
 const serverSubpathDir = path.join(sdkDir, "server")
 const widgetSubpathDir = path.join(sdkDir, "widget")
 
 rmSync(distDir, { recursive: true, force: true })
-rmSync(actorSubpathDir, { recursive: true, force: true })
 rmSync(functionClientSubpathDir, { recursive: true, force: true })
 rmSync(serverSubpathDir, { recursive: true, force: true })
 rmSync(widgetSubpathDir, { recursive: true, force: true })
@@ -32,7 +30,6 @@ if (tsc.exitCode !== 0) {
 const result = await Bun.build({
   entrypoints: [
     path.join(sdkDir, "src/widget.ts"),
-    path.join(sdkDir, "src/actor.ts"),
     path.join(sdkDir, "src/function-client.ts"),
     path.join(sdkDir, "src/server.ts"),
   ],
@@ -60,7 +57,6 @@ async function writeSubpathFallback(subpathDir: string, distName: string) {
   await Bun.write(path.join(subpathDir, "index.d.ts"), `export * from "../dist/${distName}";\n`)
 }
 
-await writeSubpathFallback(actorSubpathDir, "actor")
 await writeSubpathFallback(functionClientSubpathDir, "function-client")
 await writeSubpathFallback(serverSubpathDir, "server")
 await writeSubpathFallback(widgetSubpathDir, "widget")

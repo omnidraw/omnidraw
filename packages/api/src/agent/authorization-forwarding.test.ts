@@ -3,7 +3,6 @@ import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import { apiApprovalResolve } from './api.approval.resolve';
 import { apiChatApprovalResolve } from './api.chat.approval.resolve';
 import { apiChatConnect } from './api.chat.connect';
-import { apiChatStartWidgetEdit } from './api.chat.startWidgetEdit';
 
 const tenant = fnFreezeTenantContext({
   orgId: 'org-agent-api',
@@ -28,23 +27,16 @@ describe('agent API authorization forwarding', () => {
       agent: {
         async connectChat(...args: unknown[]) {
           calls.push(['connect', ...args]);
-          return { vcJson: null, messageHistory: [], editSession: null };
-        },
-        async startWidgetEditChat(...args: unknown[]) {
-          calls.push(['start-widget-edit', ...args]);
-          return { ok: false as const, message: 'Published widget not found.' };
+          return { vcJson: null, messageHistory: [] };
         },
       },
     } as never;
     const connect = apiChatConnect.callable({ context });
-    const startWidgetEdit = apiChatStartWidgetEdit.callable({ context });
 
     await connect({ widgetId: 'widget-1', sessionId: 'session-1', mode: 'replace' });
-    await startWidgetEdit({ widgetId: 'widget-1', sessionId: 'session-1', definitionName: 'Clock' });
 
     expect(calls).toEqual([
       ['connect', 'widget-1', 'session-1', expectedAuthorization, 'replace'],
-      ['start-widget-edit', 'widget-1', 'session-1', 'Clock', expectedAuthorization],
     ]);
   });
 

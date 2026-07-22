@@ -17,18 +17,11 @@ export type TFunctionInvocationId = string;
 export type TFunctionAttemptId = string;
 export type TFunctionResolutionPurpose = 'admission' | 'execution';
 
-/** Host-resolved execution subject. Preview calls never fabricate canvas/widget identities. */
-export type TFunctionInvocationSubject =
-  | Readonly<{
-      kind: 'widget_instance';
-      canvasId: string;
-      widgetInstanceId: string;
-    }>
-  | Readonly<{
-      kind: 'agent_preview';
-      previewId: string;
-      previewRevisionId: string;
-    }>;
+export type TFunctionInvocationSubject = Readonly<{
+  kind: 'widget_instance';
+  canvasId: string;
+  widgetInstanceId: string;
+}>;
 
 export type TFunctionDispatchRequest = Readonly<{
   widgetDefinitionId: string;
@@ -250,12 +243,7 @@ export type TFunctionRevisionRegistration = Readonly<{
 export type TInvocationIdempotencyScope =
   | Readonly<{ kind: 'organization' }>
   | Readonly<{ kind: 'canvas'; canvasId: string }>
-  | Readonly<{ kind: 'widget_instance'; widgetInstanceId: string }>
-  | Readonly<{
-      kind: 'agent_preview';
-      previewId: string;
-      previewRevisionId: string;
-    }>;
+  | Readonly<{ kind: 'widget_instance'; widgetInstanceId: string }>;
 
 export type TInvocationCreateRequest = Readonly<{
   envelope: TFunctionInvocationEnvelope;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { extname, join, relative, resolve, sep } from 'node:path'
 import {
   type ICollaborationService,
@@ -7,8 +7,6 @@ import {
   type IServiceRegistry,
 } from '../packages/runtime/src'
 import type { IAutomergeService } from '../packages/service-automerge/src/IAutomergeService'
-import { actorsContract } from '../packages/api/src/actor/contract'
-import { actorsHandlers } from '../packages/api/src/actor/handlers'
 
 const ROOT = resolve(import.meta.dir, '..')
 const FIXTURE_ROOT = join(ROOT, 'scripts/fixtures/external-composition')
@@ -29,14 +27,6 @@ const UI_PACKAGES = Object.freeze({
       './sidebar': './src/sidebar/index.ts',
       './widget': './src/widget/index.ts',
       './widget-runtime': './src/widget-runtime/index.ts',
-    },
-  },
-  '@vibecanvas/ui-actor-legacy': {
-    directory: 'packages/ui-actor-legacy',
-    exports: {
-      '.': './src/index.ts',
-      './*': './src/*',
-      './styles.css': './src/styles.css',
     },
   },
 })
@@ -434,138 +424,4 @@ describe('managed composition architecture boundaries', () => {
     }
   })
 
-  test('keeps generic widget frame and tool contracts out of the legacy actor package', async () => {
-    const consumerRoots = [
-      'packages/api/src',
-      'packages/canvas/src',
-      'packages/orpc-client/src',
-      'packages/service-agent/src',
-      'packages/ui-ai-chat/src',
-      'apps/frontend/src',
-    ]
-    const violations: string[] = []
-    const forbiddenPath = /@vibecanvas\/service-actor\/core\/(?:fn\.widget-frame|CONSTANTS|tool-icon)/
-    const actorToolSchema = /import\s*\{[^}]*\bZVibecanvasToolIcon\b[^}]*\}\s*from\s*['"]@vibecanvas\/service-actor\/core\/vibecanvasjson\.zod['"]/s
-
-    for (const directory of consumerRoots) {
-      for (const file of await sourceFiles(join(ROOT, directory))) {
-        const source = await readFile(file, 'utf8')
-        if (forbiddenPath.test(source) || actorToolSchema.test(source)) {
-          violations.push(relative(ROOT, file))
-        }
-      }
-    }
-    expect(violations).toEqual([])
-  })
-
-  test('keeps legacy actor processes and publication behind the explicit plugin capability', async () => {
-    const [agentSource, capabilitySource, legacyInterfaceSource, coreTypesSource, pluginSource, setupSource] = await Promise.all([
-      readFile(join(ROOT, 'packages/service-agent/src/AgentService.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/service-agent/src/legacy/LegacyActorAgentCapability.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/service-agent/src/legacy/interface.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/service-agent/src/core/types.ts'), 'utf8'),
-      readFile(join(ROOT, 'apps/cli/src/plugins/legacy-actor/LegacyActorPlugin.ts'), 'utf8'),
-      readFile(join(ROOT, 'apps/cli/src/setup-services.ts'), 'utf8'),
-    ])
-    const runtimeActorImport = /import\s+(?!type\b)[^;\n]*from\s*['"]@vibecanvas\/service-actor/
-    const defaultAgentActorRuntimeImports: string[] = []
-    for (const file of await sourceFiles(join(ROOT, 'packages/service-agent/src'))) {
-      if (file.includes(`${sep}legacy${sep}`)) continue
-      if (runtimeActorImport.test(await readFile(file, 'utf8'))) {
-        defaultAgentActorRuntimeImports.push(relative(ROOT, file))
-      }
-    }
-
-    expect(defaultAgentActorRuntimeImports).toEqual([])
-    expect(agentSource).not.toMatch(runtimeActorImport)
-    expect(agentSource).not.toContain('new Actor(')
-    expect(agentSource).not.toContain('ActorResourceError')
-    expect(agentSource).not.toContain('txPublishWidgetDraft')
-    expect(agentSource).not.toContain('actorService?:')
-    expect(agentSource).toContain('legacyActor?: TLegacyActorAgentCapabilityFactory')
-
-    expect(capabilitySource).toMatch(runtimeActorImport)
-    expect(capabilitySource).toContain('new Actor(')
-    expect(capabilitySource).not.toContain('txPublishWidgetDraft')
-    expect(capabilitySource).not.toContain('transitionDefinitionPublication')
-    expect(capabilitySource).toContain('Publish manifest v2 through the widget draft API')
-    expect(legacyInterfaceSource).toContain('TLegacyActorServiceCapability')
-    expect(coreTypesSource).not.toContain('TActorServiceReloader')
-    expect(coreTypesSource).not.toContain('ActorResource')
-    expect(pluginSource).toContain('createLegacyActorAgentCapabilityFactory')
-    expect(pluginSource).toContain('capability.diagnostics().activeProcessCount')
-    expect(setupSource).not.toContain("from '@vibecanvas/service-actor'")
-    expect(setupSource).not.toContain('new ActorService')
-  })
-
-  test('keeps actor compatibility routes exact and leaves resources neutral-only', async () => {
-    expect(Object.keys(actorsContract).sort()).toEqual(['definitions', 'events', 'instances'])
-    expect(Object.keys(actorsHandlers).sort()).toEqual(['definitions', 'events', 'instances'])
-    expect(Object.keys(actorsContract.definitions).sort()).toEqual(['delete', 'get', 'list'])
-    expect(Object.keys(actorsContract.instances).sort()).toEqual(['sendMessage', 'snapshot'])
-    expect(Object.keys(actorsHandlers.definitions).sort()).toEqual(['delete', 'get', 'list'])
-    expect(Object.keys(actorsHandlers.instances).sort()).toEqual(['sendMessage', 'snapshot'])
-
-    const [contractSource, handlerSource, resourceContractSource, resourceApiSource, resourceErrorSource] = await Promise.all([
-      readFile(join(ROOT, 'packages/api/src/actor/contract.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/api/src/actor/handlers.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/api/src/resource/contract.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/api/src/resource/api.resources.ts'), 'utf8'),
-      readFile(join(ROOT, 'packages/api/src/resource/api.resource-error.ts'), 'utf8'),
-    ])
-    for (const source of [contractSource, handlerSource]) {
-      expect(source).not.toMatch(/\.\.\/resource\//)
-      expect(source).not.toMatch(/\bresource(?:Contract|Handlers)\b/)
-      expect(source).not.toMatch(/\b(?:resources|dbResources|dbRows|dbDrafts|dbApplies|dbBackups)\s*:/)
-    }
-    expect(resourceContractSource).not.toMatch(/export\s+const\s+Z(?:Create)?ActorResource/)
-    expect(resourceContractSource).not.toContain('ACTOR_RESOURCE_ERROR')
-    expect(resourceApiSource).not.toMatch(/export\s+const\s+api\w*ActorResource/)
-    expect(resourceErrorSource).not.toContain('withActorResourceApiError')
-  })
-
-  test('keeps the legacy actor package free of resource ownership modules and wildcard exports', async () => {
-    const actorPackageRoot = join(ROOT, 'packages/service-actor')
-    const retiredFiles = [
-      'src/resources/ActorResourceError.ts',
-      'src/resources/ActorResourceKeyValuePersistence.ts',
-      'src/resources/ActorResourceKeyValueStore.ts',
-      'src/resources/ActorResourceManager.ts',
-      'src/resources/DbResource.ts',
-      'src/resources/DbResourceCoordinator.ts',
-      'src/resources/KvResource.ts',
-      'src/resources/SecretStoreKeyProvider.ts',
-      'src/resources/SecretStoreResource.ts',
-      'src/resources/fn.actor-resource-key-value.ts',
-      'src/resources/fn.resource-data.ts',
-      'src/resources/resource-types.ts',
-    ]
-    for (const path of retiredFiles) {
-      expect(
-        await stat(join(actorPackageRoot, path)).then(() => true).catch(() => false),
-        `${path} must stay retired`,
-      ).toBe(false)
-    }
-
-    const packageJson = JSON.parse(
-      await readFile(join(actorPackageRoot, 'package.json'), 'utf8'),
-    ) as { exports: Record<string, string> }
-    expect(packageJson.exports['./*']).toBeUndefined()
-    expect(Object.keys(packageJson.exports).sort()).toEqual([
-      '.',
-      './Actor',
-      './core/fn.normalize-actor-manifest',
-      './core/types',
-      './core/vibecanvasjson.zod',
-      './icp-client',
-      './legacy/resource-protocol',
-    ])
-
-    const protocol = await readFile(
-      join(actorPackageRoot, 'src/legacy/resource-protocol.ts'),
-      'utf8',
-    )
-    expect(protocol).not.toContain('@vibecanvas/service-db')
-    expect(protocol).not.toMatch(/\b(?:Provider|Persistence|Manager|Draft|Apply|Backup|Restore)\b/)
-  })
 })

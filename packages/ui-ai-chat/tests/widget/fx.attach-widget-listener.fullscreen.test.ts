@@ -25,9 +25,7 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-type TWidgetFixtureKind = "widget" | "widget-instance";
-
-function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
+function createWidgetElement(): TElement {
   return {
     id: "widget-fullscreen-button-1",
     x: 10,
@@ -42,27 +40,17 @@ function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
     createdAt: 1,
     updatedAt: 1,
     style: {},
-    data: type === "widget-instance"
-      ? {
-          type,
-          definitionId: "definition-1",
-          revisionId: "revision-1",
-          instanceId: "instance-1",
-          stateDocumentId: "state-1",
-          w: 160,
-          h: 120,
-          expanded: true,
-          window: "contained",
-        }
-      : {
-          type,
-          kind: "example",
-          w: 160,
-          h: 120,
-          expanded: true,
-          window: "contained",
-          payload: {},
-        },
+    data: {
+      type: "widget-instance",
+      definitionId: "definition-1",
+      revisionId: "revision-1",
+      instanceId: "instance-1",
+      stateDocumentId: "state-1",
+      w: 160,
+      h: 120,
+      expanded: true,
+      window: "contained",
+    },
   };
 }
 
@@ -83,10 +71,11 @@ function createHooks() {
 }
 
 describe("widget fullscreen button", () => {
-  test.each(["widget", "widget-instance"] as const)("toggles fullscreen for %s without replacing the mounted body div", (type) => {
+  test("toggles fullscreen for widget-instance without replacing the mounted body div", () => {
+    const type = "widget-instance" as const;
     ensureDom();
 
-    const element = createWidgetElement(type);
+    const element = createWidgetElement();
     const container = createTestContainer({ width: 900, height: 700 });
     const stage = new Konva.Stage({ container, width: 900, height: 700 });
     const layer = new Konva.Layer();

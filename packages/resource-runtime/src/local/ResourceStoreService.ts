@@ -65,6 +65,8 @@ export type TResourceStoreServiceConfig = Readonly<{
   reconciliationAuthority?: TResourceReconciliationAuthority;
   writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
   writePermitCoordinator?: IResourceWritePermitCoordinator;
+  /** Process-local authority for trusted host management writes. */
+  hostWriteCapability?: string;
   allowUnfencedWrites?: boolean;
   nowMs?: () => number;
 }>;
@@ -113,6 +115,7 @@ export class ResourceStoreService implements IResourceStore {
   readonly #providers = new Map<TResourceKind, ILocalResourceStoreProvider>();
   readonly #writeCapabilityVerifier?: IResourceWriteCapabilityVerifier;
   readonly #writePermitCoordinator?: IResourceWritePermitCoordinator;
+  readonly #hostWriteCapability?: string;
   readonly #allowUnfencedWrites: boolean;
   readonly #reconciliationAuthority?: TResourceReconciliationAuthority;
   readonly #nowMs: () => number;
@@ -129,6 +132,7 @@ export class ResourceStoreService implements IResourceStore {
     this.#controlStore = config.controlStore;
     this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
     this.#writePermitCoordinator = config.writePermitCoordinator;
+    this.#hostWriteCapability = config.hostWriteCapability;
     this.#allowUnfencedWrites = config.allowUnfencedWrites ?? false;
     this.#reconciliationAuthority = config.reconciliationAuthority;
     this.#nowMs = config.nowMs ?? (() => Date.now());
@@ -652,6 +656,7 @@ export class ResourceStoreService implements IResourceStore {
     tenant: TTenantContext,
     call: TResolvedResourceCall,
   ): Promise<TResourceWriteCapabilityClaims | null> {
+    if (call.writeCapability && call.writeCapability === this.#hostWriteCapability) return null;
     if (!call.writeCapability) {
       if (this.#allowUnfencedWrites) return null;
       throw new ResourceError('RESOURCE_WRITE_CAPABILITY_INVALID', 'A write capability is required.');

@@ -9,7 +9,6 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { FunctionService } from '../src/services/FunctionService';
 import {
   createFunctionInvocationCapability,
-  createPreviewFunctionInvocationCapability,
   FunctionServicePool,
 } from '../src/services/FunctionServicePool';
 
@@ -47,8 +46,6 @@ const OTHER_MEMBER_TENANT: TTenantContext = Object.freeze({
 });
 
 const WIDGET_INSTANCE_ID = '00000000-0000-4000-8000-000000000022';
-const PREVIEW_ID = '00000000-0000-4000-8000-000000000023';
-const PREVIEW_REVISION_ID = '00000000-0000-4000-8000-000000000024';
 
 function record(
   status: TInvocationRecord['status'] = 'queued',
@@ -99,24 +96,6 @@ function record(
     startedAtMs: null,
     finishedAtMs: null,
     bodiesCompactedAtMs: null,
-  };
-}
-
-function previewRecord(
-  status: TInvocationRecord['status'] = 'queued',
-): TInvocationRecord {
-  const value = record(status, WS_TENANT);
-  return {
-    ...value,
-    envelope: {
-      ...value.envelope,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      subject: {
-        kind: 'agent_preview',
-        previewId: PREVIEW_ID,
-        previewRevisionId: PREVIEW_REVISION_ID,
-      },
-    },
   };
 }
 
@@ -516,85 +495,4 @@ describe('FunctionService host authority', () => {
     await missingCanvas.service.stop();
   });
 
-  test('invokes and polls an immutable preview without fabricating a widget instance', async () => {
-    const invocation = previewRecord();
-    const { calls, cancellationCalls, service } = createService({
-      invocation,
-      idempotencyTtlMs: 60_000,
-      nowMs: () => 500,
-    });
-    const request = {
-      previewId: PREVIEW_ID,
-      previewRevisionId: PREVIEW_REVISION_ID,
-      widgetDefinitionId: invocation.envelope.widgetDefinitionId,
-      functionName: 'run',
-      input: { value: 1 },
-      idempotencyKey: 'preview-key',
-    } as const;
-
-    await expect(service.invokePreviewFunction(WS_TENANT, request)).resolves.toEqual(
-      expect.objectContaining({
-        id: invocation.envelope.id,
-        widgetRevisionId: PREVIEW_REVISION_ID,
-        subject: {
-          kind: 'agent_preview',
-          previewId: PREVIEW_ID,
-          previewRevisionId: PREVIEW_REVISION_ID,
-        },
-      }),
-    );
-    expect(calls).toEqual([expect.objectContaining({
-      widgetDefinitionId: invocation.envelope.widgetDefinitionId,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      subject: {
-        kind: 'agent_preview',
-        previewId: PREVIEW_ID,
-        previewRevisionId: PREVIEW_REVISION_ID,
-      },
-      idempotencyScope: {
-        kind: 'agent_preview',
-        previewId: PREVIEW_ID,
-        previewRevisionId: PREVIEW_REVISION_ID,
-      },
-      idempotencyExpiresAtMs: 60_500,
-    })]);
-    expect(calls[0]).not.toHaveProperty('widgetInstanceId');
-
-    const lookup = {
-      invocationId: invocation.envelope.id,
-      previewId: PREVIEW_ID,
-      previewRevisionId: PREVIEW_REVISION_ID,
-    } as const;
-    await expect(service.getPreviewFunctionInvocation(WS_TENANT, lookup))
-      .resolves.toMatchObject({ subject: { kind: 'agent_preview' } });
-    await expect(service.getPreviewFunctionInvocation(WS_TENANT, {
-      ...lookup,
-      previewRevisionId: 'preview-revision-other',
-    })).resolves.toBeNull();
-    await expect(service.cancelPreviewFunctionInvocation(WS_TENANT, lookup))
-      .resolves.toMatchObject({ subject: { kind: 'agent_preview' }, status: 'cancelled' });
-    expect(cancellationCalls).toHaveLength(1);
-    await service.stop();
-  });
-
-  test('keeps preview records out of the public function capability', async () => {
-    const invocation = previewRecord();
-    const { cancellationCalls, service } = createService({ invocation });
-    await expect(service.getFunctionInvocation(WS_TENANT, invocation.envelope.id))
-      .resolves.toBeNull();
-    await expect(service.cancelFunctionInvocation(WS_TENANT, invocation.envelope.id))
-      .resolves.toBeNull();
-    expect(cancellationCalls).toHaveLength(0);
-
-    const publicCapability = createFunctionInvocationCapability(
-      service as unknown as FunctionServicePool,
-    ) as unknown as Record<string, unknown>;
-    const previewCapability = createPreviewFunctionInvocationCapability(
-      service as unknown as FunctionServicePool,
-    ) as unknown as Record<string, unknown>;
-    expect(publicCapability).not.toHaveProperty('invokePreviewFunction');
-    expect(previewCapability).toHaveProperty('invokePreviewFunction');
-    expect(previewCapability).not.toHaveProperty('invokeFunction');
-    await service.stop();
-  });
 });

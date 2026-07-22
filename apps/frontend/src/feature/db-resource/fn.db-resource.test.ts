@@ -6,7 +6,7 @@ import {
   fnBoundedPage,
   fnCellInputError,
   fnCellText,
-  fnImpactInstances,
+  fnImpactUses,
   fnImpactSlots,
   fnInspectionTables,
   fnInputCell,
@@ -54,15 +54,15 @@ describe("database resource workbench functions", () => {
     expect(fnRowInputOmitted("edit", "", { ...column({ name: "id", declaredType: "INTEGER", nullable: false }), primaryKeyOrder: 1 })).toBe(false);
   });
 
-  test("normalizes nested impact definitions and persisted instances", () => {
+  test("normalizes revision bindings and active uses", () => {
     const impact: TDbImpact = {
       resource: { id: "resource-1", kind: "db", name: "Notes DB", status: "ready", last_error: null, created_at: "now", updated_at: "now" },
-      definitions: [{ definitionName: "Notes", slots: [{ slot: "database", scope: ["read", "write"] }] }],
-      instances: [{ instanceId: "instance-1", definitionName: "Notes", status: "running", running: true }],
+      bindings: [{ definitionId: "definition-1", revisionId: "revision-1", slot: "database", allowRead: true, allowWrite: true }],
+      uses: { resourceId: "resource-1", uses: [{ id: "invocation-1", kind: "function", state: "active" }] },
     };
 
-    expect(fnImpactSlots(impact)).toEqual([{ definitionName: "Notes", slot: "database", scope: ["read", "write"] }]);
-    expect(fnImpactInstances(impact)).toEqual(impact.instances);
+    expect(fnImpactSlots(impact)).toEqual([{ definitionId: "definition-1", revisionId: "revision-1", slot: "database", scope: ["read", "write"] }]);
+    expect(fnImpactUses(impact)).toEqual(impact.uses.uses);
   });
 
   test("selects only editing or applying drafts and uses applying UI wording", () => {
@@ -73,7 +73,7 @@ describe("database resource workbench functions", () => {
   });
 
   test("reads stable management error codes from the API envelope", () => {
-    const error = Object.assign(new Error("Actor resource operation failed."), { data: { code: "DB_RESOURCE_ROW_CONFLICT" } });
+    const error = Object.assign(new Error("Resource operation failed."), { data: { code: "DB_RESOURCE_ROW_CONFLICT" } });
     expect(fnApiErrorCode(error)).toBe("DB_RESOURCE_ROW_CONFLICT");
   });
 

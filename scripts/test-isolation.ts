@@ -28,7 +28,7 @@ const suites: readonly TIsolationSuite[] = [
     ],
   },
   {
-    name: 'repository collisions, resources, agents, actors, and foreign IDs',
+    name: 'repository collisions, resources, agents, widgets, and foreign IDs',
     command: [
       'bun',
       'test',

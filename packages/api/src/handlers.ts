@@ -1,4 +1,3 @@
-import { actorsHandlers } from './actor/handlers';
 import { agentHandlers } from './agent/handlers';
 import { canvasHandlers } from './canvas/handlers';
 import { dbHandlers } from './db/handlers';
@@ -10,7 +9,6 @@ import { toolHandlers } from './tool/handlers';
 import { widgetHandlers } from './widget/handlers';
 
 const handlers = {
-  actors: actorsHandlers,
   agent: agentHandlers,
   canvas: canvasHandlers,
   db: dbHandlers,
@@ -23,7 +21,6 @@ const handlers = {
 };
 
 export {
-  actorsHandlers,
   agentHandlers,
   canvasHandlers,
   dbHandlers,

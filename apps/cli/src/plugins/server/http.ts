@@ -119,13 +119,10 @@ async function createFileResponse(req: Request, db: DbServiceTurso, tenant: TTen
 
 async function handleHttpRequest(
   req: Request,
-  config: Pick<ICliConfig, 'compiled' | 'legacyActorEnabled' | 'version'>,
+  config: Pick<ICliConfig, 'compiled' | 'version'>,
   db: DbServiceTurso,
   tenant: TTenantContext,
   importMetaDir: string,
-  diagnostics: Readonly<{ activeLegacyProcessCount: number }> = {
-    activeLegacyProcessCount: 0,
-  },
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -135,8 +132,6 @@ async function handleHttpRequest(
       service: 'vibecanvas',
       version: config.version,
       compiled: config.compiled,
-      legacy_actor_enabled: config.legacyActorEnabled,
-      active_legacy_process_count: diagnostics.activeLegacyProcessCount,
     });
   }
 

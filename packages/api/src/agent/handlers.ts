@@ -16,17 +16,11 @@ import { apiChatDbChangeReject } from "./api.chat.dbChange.reject";
 import { apiChatNewSession } from "./api.chat.newSession";
 import { apiChatPrompt } from "./api.chat.prompt";
 import { apiChatResourceBindingsClear } from "./api.chat.resourceBindings.clear";
-import { apiChatStartWidgetEdit } from "./api.chat.startWidgetEdit";
 import { baseAgentOs } from './orpc';
 import { apiWidgetDraftGet } from './api.widgetDraft.get';
 import { apiWidgetDraftList } from './api.widgetDraft.list';
 import { apiWidgetDraftValidate } from './api.widgetDraft.validate';
 import { apiWidgetPreviewBuild } from './api.widgetPreview.build';
-import { apiWidgetPreviewCancelInvocation } from './api.widgetPreview.invocation.cancel';
-import { apiWidgetPreviewClose } from './api.widgetPreview.close';
-import { apiWidgetPreviewGet } from './api.widgetPreview.get';
-import { apiWidgetPreviewGetInvocation } from './api.widgetPreview.invocation.get';
-import { apiWidgetPreviewInvoke } from './api.widgetPreview.invoke';
 import { apiWidgetPublishPublish } from './api.widgetPublish.publish';
 import { apiApprovalGet } from './api.approval.get';
 import { apiApprovalList } from './api.approval.list';
@@ -62,7 +56,6 @@ const agentHandlers = {
     },
     chat: {
         connect: apiChatConnect,
-        startWidgetEdit: apiChatStartWidgetEdit,
         prompt: apiChatPrompt,
         resourceBindings: {
             clear: apiChatResourceBindingsClear,
@@ -85,14 +78,7 @@ const agentHandlers = {
         validate: apiWidgetDraftValidate,
     },
     widgetPreview: {
-        get: apiWidgetPreviewGet,
         build: apiWidgetPreviewBuild,
-        close: apiWidgetPreviewClose,
-        invoke: apiWidgetPreviewInvoke,
-        invocation: {
-            get: apiWidgetPreviewGetInvocation,
-            cancel: apiWidgetPreviewCancelInvocation,
-        },
     },
     widgetPublish: {
         publish: apiWidgetPublishPublish,

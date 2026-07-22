@@ -45,8 +45,8 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
           <Dialog.Title class={styles.dialogTitle}>{title()}</Dialog.Title>
           <Dialog.Description class={styles.dialogDescription}>
             {props.mode === "apply"
-              ? "Affected actors are stopped before live mutation and restarted afterward. Database outcome and actor restart outcomes are reported separately."
-              : "Restore uses the same coordinated stop, drain, and restart workflow as apply."}
+              ? "Active function invocations are drained and fenced before the schema is applied."
+              : "Active function invocations are drained and fenced before the verified backup is restored."}
           </Dialog.Description>
 
           <Show when={props.loading}><p class={styles.muted}>Fetching a fresh preview…</p></Show>
@@ -65,14 +65,14 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
                 </Show>
               </section>
               <section class={styles.ruledSection}>
-                <h4 class={styles.sectionTitle}>Affected persisted instances</h4>
+                <h4 class={styles.sectionTitle}>Active resource uses</h4>
                 <table class={styles.table}>
-                  <thead><tr><th>Definition</th><th>Instance</th><th>Observed</th></tr></thead>
-                  <tbody><For each={props.preview?.impact.instances ?? []} fallback={<tr><td colSpan={3} class={styles.muted}>No persisted instances.</td></tr>}>{(instance) => (
+                  <thead><tr><th>Use</th><th>Kind</th><th>Observed</th></tr></thead>
+                  <tbody><For each={props.preview?.impact.uses.uses ?? []} fallback={<tr><td colSpan={3} class={styles.muted}>No active uses.</td></tr>}>{(use) => (
                     <tr>
-                      <td>{instance.definitionName}</td>
-                      <td>{instance.instanceId}</td>
-                      <td>{instance.running ? "running · will restart" : instance.status}</td>
+                      <td>{use.label ?? use.id}</td>
+                      <td>{use.kind}</td>
+                      <td>{use.state}</td>
                     </tr>
                   )}</For></tbody>
                 </table>
@@ -82,13 +82,12 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
                 <table class={styles.table}>
                   <thead><tr><th>Definition</th><th>Slot</th><th>Effective access</th></tr></thead>
                   <tbody><For each={fnImpactSlots(props.preview?.impact)} fallback={<tr><td colSpan={3} class={styles.muted}>No bound slots.</td></tr>}>{(slot) => (
-                    <tr><td>{slot.definitionName}</td><td>{slot.slot}</td><td>{slot.scope.join(" + ")}</td></tr>
+                    <tr><td>{slot.definitionId} · {slot.revisionId}</td><td>{slot.slot}</td><td>{slot.scope.join(" + ")}</td></tr>
                   )}</For></tbody>
                 </table>
               </section>
             </div>
             <For each={previewWarnings(props.preview)}>{(warning) => <p class={styles.warning}>{warning}</p>}</For>
-            <p class={styles.warning}>{props.preview?.compatibilityNotice}</p>
             <Show when={props.mode === "restore"}><p class={styles.warning}>Writes made after this retained backup will be permanently lost.</p></Show>
             <Checkbox.Root checked={acknowledged()} onChange={setAcknowledged} class={`${styles.checkboxRoot} ${styles.acknowledgementRoot}`}>
               <Checkbox.Input />
@@ -101,23 +100,13 @@ export const CoordinatedOperationDialog: Component<TCoordinatedOperationDialogPr
             {(run) => (
               <div class={styles.runStatus}>
                 <div class={styles.phaseStrip} aria-label={`${props.mode} progress`}>
-                  <For each={props.mode === "apply" ? ["preparing", "stopping", "applying", "health check / recovery", "restarting"] : ["preparing", "stopping", "restoring", "health check / recovery", "restarting"]}>
+                  <For each={props.mode === "apply" ? ["preparing", "draining", "applying", "recovery"] : ["preparing", "draining", "restoring", "recovery"]}>
                     {(phase) => <span class={styles.phase}>{phase}</span>}
                   </For>
                 </div>
                 <p class={styles.statusLine}><i class={styles.statusDot} /> Database outcome: {fnStatusLabel(run().apply.status)}</p>
                 <Show when={run().apply.last_error}><pre class={styles.errorBox}>{JSON.stringify(run().apply.last_error, null, 2)}</pre></Show>
-                <h4 class={styles.sectionTitle}>Actor restart outcomes</h4>
-                <table class={styles.table}>
-                  <thead><tr><th>Actor</th><th>Was running</th><th>Restart outcome</th></tr></thead>
-                  <tbody><For each={run().instances} fallback={<tr><td colSpan={3} class={styles.muted}>No actor restart outcomes yet.</td></tr>}>{(instance) => (
-                    <tr>
-                      <td>{instance.actor_definition_name} · {instance.actor_instance_id}</td>
-                      <td>{instance.was_running ? "yes" : "no"}</td>
-                      <td>{instance.status === "restarted" ? "restart succeeded" : instance.status === "startFailed" ? "start failed" : instance.status === "crashed" ? "actor crashed" : fnStatusLabel(instance.status)}</td>
-                    </tr>
-                  )}</For></tbody>
-                </table>
+                <Show when={run().drain}><p class={styles.statusLine}>Drain lease {run().drain?.leaseId} fenced {run().drain?.drainedUses.length ?? 0} active use(s).</p></Show>
               </div>
             )}
           </Show>

@@ -1,4 +1,3 @@
-import type { TActorsApiContext } from './actor/types';
 import type { TAgentApiContext } from './agent/types';
 import type { TCanvasApiContext } from './canvas/types';
 import type { TDbApiContext } from './db/types';
@@ -9,8 +8,7 @@ import type { TResourceApiContext } from './resource/types';
 import type { TToolApiContext } from './tool/types';
 import type { TWidgetApiContext } from './widget/types';
 
-type TApiContext = TActorsApiContext
-  & TAgentApiContext
+type TApiContext = TAgentApiContext
   & TCanvasApiContext
   & TDbApiContext
   & TFileApiContext
@@ -21,7 +19,6 @@ type TApiContext = TActorsApiContext
   & TWidgetApiContext;
 
 export type {
-  TActorsApiContext,
   TAgentApiContext,
   TApiContext,
   TCanvasApiContext,

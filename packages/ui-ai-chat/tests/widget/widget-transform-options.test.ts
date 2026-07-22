@@ -80,18 +80,6 @@ describe("widget transform options", () => {
 
     service.registerWidget({ id: "terminal" });
 
-    const terminalNode = new Konva.Group();
-    terminalNode.setAttr(ELEMENT_DATA_ATTR, {
-      type: "widget",
-      kind: "terminal",
-    });
-
-    const filesystemNode = new Konva.Group();
-    filesystemNode.setAttr(ELEMENT_DATA_ATTR, {
-      type: "widget",
-      kind: "filesystem",
-    });
-
     const uiTerminalNode = new Konva.Group();
     uiTerminalNode.setAttr(ELEMENT_DATA_ATTR, {
       type: "ui-widget",
@@ -100,8 +88,6 @@ describe("widget transform options", () => {
 
     expect(registeredDefinition).not.toBeNull();
     const definition = registeredDefinition as unknown as { matchesNode?: (node: Konva.Node) => boolean };
-    expect(definition.matchesNode?.(terminalNode)).toBe(true);
     expect(definition.matchesNode?.(uiTerminalNode)).toBe(true);
-    expect(definition.matchesNode?.(filesystemNode)).toBe(false);
   });
 });

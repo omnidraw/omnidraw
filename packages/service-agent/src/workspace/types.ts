@@ -27,7 +27,7 @@ export type TWidgetCreateInput = {
 
 export type TAvailableWidget = {
   name: string;
-  kind: 'widget' | 'actor-widget' | null;
+  kind: 'widget' | null;
   hasDraft: boolean;
   hasPublished: boolean;
   mountedInThisChat: boolean;

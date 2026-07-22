@@ -1080,7 +1080,7 @@ describe('read-only startup preflight', () => {
     await expect(preflightDbServiceDatabase({
       homeDir,
       databasePath: path.join(homeDir, 'main.db'),
-    })).rejects.toThrow(/actor-era or unknown database-migrations/i);
+    })).rejects.toThrow(/unknown database-migrations/i);
   });
 
   test('recognizes a valid v0 database as pending without modifying it', async () => {

@@ -1,19 +1,15 @@
 import type { Database } from "@tursodatabase/database"
 import type { TTenantContext } from "@vibecanvas/tenant-core"
 import type {
-  TActorInstance,
-  TDbResourceApplyInstanceResult,
   TDbResourceApplyRun,
   TDbResourceApplyStatus,
   TDbResourceDraft,
   TDbResourceDraftChange,
   TDbResourceDraftStatus,
 } from "../model"
-import { fnParseActorInstanceRow } from "./fn.actor-resource-row"
 import {
   fnDbResourceApplyListLimit,
   fnDbResourceDraftListLimit,
-  fnParseDbResourceApplyInstanceResultRow,
   fnParseDbResourceApplyRunRow,
   fnParseDbResourceDraftChangeRow,
   fnParseDbResourceDraftRow,
@@ -58,21 +54,6 @@ type TArgsApplyList = {
   status?: TDbResourceApplyStatus
   before?: { createdAt: string; id: string }
   limit?: number
-}
-
-type TArgsApplyInstanceResultListByApply = {
-  tenant: TTenantContext
-  applyId: string
-}
-
-type TArgsApplyInstanceResultListByInstance = {
-  tenant: TTenantContext
-  actorInstanceId: string
-}
-
-type TArgsListAffectedInstances = {
-  tenant: TTenantContext
-  resourceId: string
 }
 
 export async function fxDbResourceDraftGet(portal: TPortal, args: TArgsDraftGet): Promise<TDbResourceDraft | null> {
@@ -202,49 +183,4 @@ export async function fxDbResourceApplyList(portal: TPortal, args: TArgsApplyLis
     `)).all(args.tenant.orgId, args.resourceId, limit)
   }
   return rows.map(fnParseDbResourceApplyRunRow)
-}
-
-export async function fxDbResourceApplyInstanceResultListByApply(
-  portal: TPortal,
-  args: TArgsApplyInstanceResultListByApply,
-): Promise<TDbResourceApplyInstanceResult[]> {
-  const rows = await (await portal.db.prepare(`
-    SELECT *
-    FROM legacy_actor_apply_results
-    WHERE org_id = ? AND apply_id = ?
-    ORDER BY actor_definition_name ASC, actor_instance_id ASC
-  `)).all(args.tenant.orgId, args.applyId)
-  return rows.map(fnParseDbResourceApplyInstanceResultRow)
-}
-
-export async function fxDbResourceApplyInstanceResultListByInstance(
-  portal: TPortal,
-  args: TArgsApplyInstanceResultListByInstance,
-): Promise<TDbResourceApplyInstanceResult[]> {
-  const rows = await (await portal.db.prepare(`
-    SELECT results.*
-    FROM legacy_actor_apply_results AS results
-    INNER JOIN db_resource_apply_runs
-      ON db_resource_apply_runs.org_id = results.org_id
-      AND db_resource_apply_runs.id = results.apply_id
-    WHERE results.org_id = ? AND results.actor_instance_id = ?
-    ORDER BY db_resource_apply_runs.created_at_ms DESC, db_resource_apply_runs.id DESC
-  `)).all(args.tenant.orgId, args.actorInstanceId)
-  return rows.map(fnParseDbResourceApplyInstanceResultRow)
-}
-
-export async function fxDbResourceListAffectedInstances(
-  portal: TPortal,
-  args: TArgsListAffectedInstances,
-): Promise<TActorInstance[]> {
-  const rows = await (await portal.db.prepare(`
-    SELECT DISTINCT instances.*
-    FROM legacy_actor_instances AS instances
-    INNER JOIN legacy_actor_resource_bindings AS bindings
-      ON bindings.org_id = instances.org_id
-      AND bindings.definition_name = instances.actor_definition_name
-    WHERE instances.org_id = ? AND bindings.resource_id = ?
-    ORDER BY instances.created_at_ms ASC, instances.id ASC
-  `)).all(args.tenant.orgId, args.resourceId)
-  return rows.map(fnParseActorInstanceRow)
 }

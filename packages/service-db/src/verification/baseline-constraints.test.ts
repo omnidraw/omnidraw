@@ -587,58 +587,6 @@ describe("managed schema constraints", () => {
     ));
   });
 
-  test("enforces the legacy resource binding and coordinated apply-result contracts", async () => {
-    const db = await openBaseline();
-    await seedCanvas(db);
-    await seedResource(db);
-    await run(
-      db,
-      "INSERT INTO db_resource_apply_runs (org_id, id, resource_id, draft_id, source_apply_id, status, last_error_json, backup_retained, created_at_ms, completed_at_ms) VALUES (?, ?, ?, NULL, NULL, 'succeeded', NULL, 1, 1, 2)",
-      ORG_A,
-      APPLY_A,
-      RESOURCE_A,
-    );
-    await run(
-      db,
-      "INSERT INTO legacy_actor_definitions (org_id, name, slug, url, description, manifest_relative_path, created_at_ms, updated_at_ms) VALUES (?, 'Legacy Weather', 'legacy-weather', NULL, NULL, 'actors/weather/vibecanvas.json', 1, 1)",
-      ORG_A,
-    );
-    const actorId = "00000000-0000-4000-8000-000000000060";
-    await run(
-      db,
-      "INSERT INTO legacy_actor_instances (org_id, id, canvas_id, element_id, actor_definition_name, display_name, status, machine_state, machine_context_json, last_error_json, created_at_ms, updated_at_ms) VALUES (?, ?, ?, 'actor-element', 'Legacy Weather', 'Weather', 'stopped', 'idle', '{}', NULL, 1, 1)",
-      ORG_A,
-      actorId,
-      CANVAS_A,
-    );
-    await run(
-      db,
-      "INSERT INTO legacy_actor_resource_bindings (org_id, definition_name, slot_name, resource_id, allow_read, allow_write, created_at_ms, updated_at_ms) VALUES (?, 'Legacy Weather', 'db', ?, 1, 0, 1, 1)",
-      ORG_A,
-      RESOURCE_A,
-    );
-    await expectRejected(run(
-      db,
-      "INSERT INTO legacy_actor_resource_bindings (org_id, definition_name, slot_name, resource_id, allow_read, allow_write, created_at_ms, updated_at_ms) VALUES (?, 'Legacy Weather', 'none', ?, 0, 0, 1, 1)",
-      ORG_A,
-      RESOURCE_A,
-    ));
-    await run(
-      db,
-      "INSERT INTO legacy_actor_apply_results (org_id, apply_id, actor_instance_id, actor_definition_name, was_running, status, error_json, updated_at_ms) VALUES (?, ?, ?, 'Legacy Weather', 0, 'notRunning', NULL, 2)",
-      ORG_A,
-      APPLY_A,
-      actorId,
-    );
-    await expectRejected(run(
-      db,
-      "UPDATE legacy_actor_apply_results SET status = 'stopFailed', error_json = NULL WHERE org_id = ? AND apply_id = ? AND actor_instance_id = ?",
-      ORG_A,
-      APPLY_A,
-      actorId,
-    ));
-  });
-
   test("allows only validated boundSql metadata on SQL draft changes", async () => {
     const db = await openBaseline();
     await seedResource(db);

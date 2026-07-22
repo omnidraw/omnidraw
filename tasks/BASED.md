@@ -356,9 +356,9 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S103](s/S103.md) - remove PTY service, API, canvas terminal, and SQL metadata
 - [x]: [S104](s/S104.md) - remove filesystem service, API, canvas plugin, and SQL table
 - [x]: [S105](s/S105.md) - remove scoped_events table and related code
-- [ ]: [S106](s/S106.md) - widgets: remove published source folders and use source artifacts only
-- [ ]: [S107](s/S107.md) - widgets: remove the actor system completely
-- [ ]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
+- [x]: [S106](s/S106.md) - widgets: remove published source folders and use source artifacts only
+- [x]: [S107](s/S107.md) - widgets: remove the actor system completely
+- [x]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

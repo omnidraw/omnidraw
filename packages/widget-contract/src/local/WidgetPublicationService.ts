@@ -42,7 +42,7 @@ function invalidBindings(reason: string, slot?: string): Error {
   ), { code: 'WIDGET_RESOURCE_BINDINGS_INVALID' });
 }
 
-/** Actor-free build-and-commit orchestration for immutable v2 widget revisions. */
+/** Build-and-commit orchestration for immutable published widget revisions. */
 export class WidgetPublicationService implements IWidgetPublicationService {
   readonly #createId: () => string;
   readonly #operationLane: WidgetArtifactOperationLane;

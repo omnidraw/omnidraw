@@ -1,5 +1,4 @@
 import type {
-  TDbResourceApplyInstanceResult,
   TDbResourceApplyRun,
   TDbResourceDraft,
   TDbResourceDraftChange,
@@ -11,7 +10,7 @@ import {
   DB_RESOURCE_DRAFT_LIST_DEFAULT_LIMIT,
   DB_RESOURCE_DRAFT_LIST_MAX_LIMIT,
 } from "../CONSTANTS"
-import { fnParseJsonValue } from "./fn.actor-resource-row"
+import { fnParseJsonValue } from "./fn.json"
 import { fnBooleanFromSql, fnNullableTimestampFromMs, fnTimestampFromMs } from "./fn.legacy-row"
 
 function parseNullableJson(value: unknown): TJson | null {
@@ -98,26 +97,5 @@ export function fnParseDbResourceApplyRunRow(row: unknown): TDbResourceApplyRun 
     backup_retained: fnBooleanFromSql(value.backup_retained),
     created_at: fnTimestampFromMs(value.created_at_ms),
     completed_at: fnNullableTimestampFromMs(value.completed_at_ms),
-  }
-}
-
-export function fnParseDbResourceApplyInstanceResultRow(row: unknown): TDbResourceApplyInstanceResult {
-  const value = row as {
-    apply_id: string
-    actor_instance_id: string
-    actor_definition_name: string
-    was_running: unknown
-    status: TDbResourceApplyInstanceResult["status"]
-    error_json: unknown | null
-    updated_at_ms: unknown
-  }
-  return {
-    apply_id: value.apply_id,
-    actor_instance_id: value.actor_instance_id,
-    actor_definition_name: value.actor_definition_name,
-    was_running: fnBooleanFromSql(value.was_running),
-    status: value.status,
-    error: parseNullableJson(value.error_json),
-    updated_at: fnTimestampFromMs(value.updated_at_ms),
   }
 }

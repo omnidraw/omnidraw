@@ -86,17 +86,11 @@ export function fnFunctionControlStoreDefinition(row: unknown): TFunctionDefinit
 export function fnFunctionControlStoreInvocation(row: unknown): TInvocationRecord {
   const value = row as Record<string, unknown>;
   const bodyState = value.body_state as TInvocationRecord['bodyState'];
-  const subject = value.subject_kind === 'agent_preview'
-    ? {
-        kind: 'agent_preview' as const,
-        previewId: String(value.preview_id),
-        previewRevisionId: String(value.preview_revision_id),
-      }
-    : {
-        kind: 'widget_instance' as const,
-        canvasId: String(value.canvas_id),
-        widgetInstanceId: String(value.widget_instance_id),
-      };
+  const subject = {
+    kind: 'widget_instance' as const,
+    canvasId: String(value.canvas_id),
+    widgetInstanceId: String(value.widget_instance_id),
+  };
   return {
     envelope: {
       id: String(value.id),

@@ -1,57 +1,57 @@
-import { ResourceError as ActorResourceError, toResourceError as toActorResourceError } from '../ResourceError';
+import { ResourceError, toResourceError } from '../ResourceError';
 import type { IResourceWritePermitGuard } from '../interface';
 import type {
-  IResourceKeyValuePersistence as IActorResourceKeyValuePersistence,
-  TResourceKeyValueDeleteResult as TActorResourceKeyValueDeleteResult,
-  TResourceKeyValueEntry as TActorResourceKeyValueEntry,
-  TResourceKeyValueEntryMetadata as TActorResourceKeyValueEntryMetadata,
-  TResourceKeyValuePage as TActorResourceKeyValuePage,
+  IResourceKeyValuePersistence,
+  TResourceKeyValueDeleteResult,
+  TResourceKeyValueEntry,
+  TResourceKeyValueEntryMetadata,
+  TResourceKeyValuePage,
 } from './ResourceKeyValuePersistence';
 import type {
-  ILocalResourceProvider as IActorResourceProvider,
+  ILocalResourceProvider,
   TLocalResourceReconcileResult,
-  TLocalResolvedResourceCall as TActorResolvedResourceCall,
-  TLocalResource as TActorResource,
-  TLocalResourceRequirement as TActorResourceRequirement,
+  TLocalResolvedResourceCall,
+  TLocalResource,
+  TLocalResourceRequirement,
   TLocalResourceOperationIdentity,
   TLocalResourceCommittedOperation,
   TLocalResourceDispatchReceipt,
 } from './ResourceProviderTypes';
 
-type TActorResourceProviderCreateArgs = unknown;
+type TResourceProviderCreateArgs = unknown;
 
 const SECRET_NAME_MAX_LENGTH = 256;
 const SECRET_VALUE_MAX_LENGTH = 1_048_576;
 const LIST_MAX_LIMIT = 500;
 
 export type TSecretStoreCompareAndSetResult =
-  | { readonly ok: true; readonly entry: TActorResourceKeyValueEntryMetadata }
+  | { readonly ok: true; readonly entry: TResourceKeyValueEntryMetadata }
   | { readonly ok: false; readonly expectedRevision: number | null; readonly currentRevision: number | null };
 
 function recordArgs(args: unknown): Record<string, unknown> {
   if (typeof args !== 'object' || args === null || Array.isArray(args)) {
-    throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Secret-store operation arguments must be an object.');
+    throw new ResourceError('SECRET_OPERATION_FAILED', 'Secret-store operation arguments must be an object.');
   }
   return args as Record<string, unknown>;
 }
 
 function secretName(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > SECRET_NAME_MAX_LENGTH) {
-    throw new ActorResourceError('SECRET_NAME_INVALID', `Secret names must be non-blank strings no longer than ${SECRET_NAME_MAX_LENGTH} characters.`);
+    throw new ResourceError('SECRET_NAME_INVALID', `Secret names must be non-blank strings no longer than ${SECRET_NAME_MAX_LENGTH} characters.`);
   }
   return value;
 }
 
 function secretValue(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > SECRET_VALUE_MAX_LENGTH) {
-    throw new ActorResourceError('SECRET_VALUE_INVALID', `Secret values must be non-empty strings no longer than ${SECRET_VALUE_MAX_LENGTH} characters.`);
+    throw new ResourceError('SECRET_VALUE_INVALID', `Secret values must be non-empty strings no longer than ${SECRET_VALUE_MAX_LENGTH} characters.`);
   }
   return value;
 }
 
 function listTextArg(value: unknown, label: string, allowEmpty: boolean): string {
   if (typeof value !== 'string' || (!allowEmpty && value.trim().length === 0) || value.length > SECRET_NAME_MAX_LENGTH) {
-    throw new ActorResourceError('SECRET_NAME_INVALID', `${label} must be a string no longer than ${SECRET_NAME_MAX_LENGTH} characters.`);
+    throw new ResourceError('SECRET_NAME_INVALID', `${label} must be a string no longer than ${SECRET_NAME_MAX_LENGTH} characters.`);
   }
   return value;
 }
@@ -59,7 +59,7 @@ function listTextArg(value: unknown, label: string, allowEmpty: boolean): string
 function listLimit(value: unknown): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isInteger(value) || (value as number) < 1 || (value as number) > LIST_MAX_LIMIT) {
-    throw new ActorResourceError('SECRET_OPERATION_FAILED', `Secret list limit must be between 1 and ${LIST_MAX_LIMIT}.`);
+    throw new ResourceError('SECRET_OPERATION_FAILED', `Secret list limit must be between 1 and ${LIST_MAX_LIMIT}.`);
   }
   return value as number;
 }
@@ -67,7 +67,7 @@ function listLimit(value: unknown): number | undefined {
 function expectedRevision(value: unknown): number | null {
   if (value === null) return null;
   if (!Number.isInteger(value) || (value as number) < 1) {
-    throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Expected revision must be null or a positive integer.');
+    throw new ResourceError('SECRET_OPERATION_FAILED', 'Expected revision must be null or a positive integer.');
   }
   return value as number;
 }
@@ -75,12 +75,12 @@ function expectedRevision(value: unknown): number | null {
 function optionalExpectedRevision(value: unknown): number | undefined {
   if (value === undefined) return undefined;
   if (!Number.isInteger(value) || (value as number) < 1) {
-    throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Expected revision must be a positive integer.');
+    throw new ResourceError('SECRET_OPERATION_FAILED', 'Expected revision must be a positive integer.');
   }
   return value as number;
 }
 
-function entryMetadata(entry: TActorResourceKeyValueEntry): TActorResourceKeyValueEntryMetadata {
+function entryMetadata(entry: TResourceKeyValueEntry): TResourceKeyValueEntryMetadata {
   return {
     key: entry.key,
     revision: entry.revision,
@@ -89,31 +89,31 @@ function entryMetadata(entry: TActorResourceKeyValueEntry): TActorResourceKeyVal
   };
 }
 
-export class SecretStoreResource implements IActorResourceProvider {
+export class SecretStoreResource implements ILocalResourceProvider {
   readonly kind = 'secretStore' as const;
   readonly reconcileReady = true;
 
-  constructor(private readonly persistence: IActorResourceKeyValuePersistence) {}
+  constructor(private readonly persistence: IResourceKeyValuePersistence) {}
 
-  async provision(resource: TActorResource, _args: TActorResourceProviderCreateArgs): Promise<void> {
-    if (resource.kind !== this.kind) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource catalog kind is invalid.');
+  async provision(resource: TLocalResource, _args: TResourceProviderCreateArgs): Promise<void> {
+    if (resource.kind !== this.kind) throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource catalog kind is invalid.');
     try {
       await this.persistence.provision({ resourceId: resource.id, kind: this.kind });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Secret-store resource provisioning failed.');
+      throw toResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Secret-store resource provisioning failed.');
     }
   }
 
-  async delete(resource: TActorResource): Promise<void> {
-    if (resource.kind !== this.kind) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource catalog kind is invalid.');
+  async delete(resource: TLocalResource): Promise<void> {
+    if (resource.kind !== this.kind) throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource catalog kind is invalid.');
     try {
       await this.persistence.deleteResource({ resourceId: resource.id, kind: this.kind });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Secret-store physical deletion failed.');
+      throw toResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Secret-store physical deletion failed.');
     }
   }
 
-  async reconcile(resource: TActorResource): Promise<TLocalResourceReconcileResult> {
+  async reconcile(resource: TLocalResource): Promise<TLocalResourceReconcileResult> {
     if (resource.kind !== this.kind) {
       return {
         status: 'error' as const,
@@ -125,7 +125,7 @@ export class SecretStoreResource implements IActorResourceProvider {
       return { status: 'ready' as const };
     } catch (error) {
       if (
-        error instanceof ActorResourceError
+        error instanceof ResourceError
         && (error.code === 'SECRET_STORE_KEY_UNAVAILABLE' || error.code === 'SECRET_STORE_DECRYPTION_FAILED')
       ) {
         return {
@@ -144,7 +144,7 @@ export class SecretStoreResource implements IActorResourceProvider {
     return this.persistence.close();
   }
 
-  effect(operation: string, _requirement: TActorResourceRequirement): 'read' | 'write' | null {
+  effect(operation: string, _requirement: TLocalResourceRequirement): 'read' | 'write' | null {
     if (operation === 'get' || operation === 'has' || operation === 'list') return 'read';
     if (operation === 'set' || operation === 'delete' || operation === 'compareAndSet') return 'write';
     return null;
@@ -158,7 +158,7 @@ export class SecretStoreResource implements IActorResourceProvider {
         search: args.search === undefined ? undefined : listTextArg(args.search, 'Secret list search', true),
       });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
@@ -168,7 +168,7 @@ export class SecretStoreResource implements IActorResourceProvider {
     search?: string;
     cursor?: string;
     limit?: number;
-  }): Promise<TActorResourceKeyValuePage<TActorResourceKeyValueEntryMetadata>> {
+  }): Promise<TResourceKeyValuePage<TResourceKeyValueEntryMetadata>> {
     try {
       return await this.persistence.listMetadata({
         resourceId: args.resourceId,
@@ -178,15 +178,15 @@ export class SecretStoreResource implements IActorResourceProvider {
         limit: listLimit(args.limit),
       });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
-  async getEntryMetadata(args: { resourceId: string; name: unknown }): Promise<TActorResourceKeyValueEntryMetadata | null> {
+  async getEntryMetadata(args: { resourceId: string; name: unknown }): Promise<TResourceKeyValueEntryMetadata | null> {
     try {
       return await this.persistence.getMetadata({ resourceId: args.resourceId, key: secretName(args.name) });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
@@ -204,7 +204,7 @@ export class SecretStoreResource implements IActorResourceProvider {
       }
       return { key: entry.key, value: entry.value, revision: entry.revision };
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Stored secret could not be revealed.');
+      throw toResourceError(error, 'SECRET_STORE_UNAVAILABLE', 'Stored secret could not be revealed.');
     }
   }
 
@@ -212,7 +212,7 @@ export class SecretStoreResource implements IActorResourceProvider {
     try {
       return await this.persistence.has({ resourceId: args.resourceId, key: secretName(args.name) });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
@@ -220,7 +220,7 @@ export class SecretStoreResource implements IActorResourceProvider {
     resourceId: string;
     name: unknown;
     value: unknown;
-  }): Promise<TActorResourceKeyValueEntryMetadata> {
+  }): Promise<TResourceKeyValueEntryMetadata> {
     try {
       const entry = await this.persistence.set({
         resourceId: args.resourceId,
@@ -229,7 +229,7 @@ export class SecretStoreResource implements IActorResourceProvider {
       });
       return entryMetadata(entry);
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
@@ -237,7 +237,7 @@ export class SecretStoreResource implements IActorResourceProvider {
     resourceId: string;
     name: unknown;
     expectedRevision?: unknown;
-  }): Promise<TActorResourceKeyValueDeleteResult> {
+  }): Promise<TResourceKeyValueDeleteResult> {
     try {
       return await this.persistence.delete({
         resourceId: args.resourceId,
@@ -245,7 +245,7 @@ export class SecretStoreResource implements IActorResourceProvider {
         expectedRevision: optionalExpectedRevision(args.expectedRevision),
       });
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
@@ -264,26 +264,26 @@ export class SecretStoreResource implements IActorResourceProvider {
       });
       return result.ok ? { ok: true, entry: entryMetadata(result.entry) } : result;
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
-  async #getPlaintextEntry(args: { resourceId: string; name: unknown }): Promise<TActorResourceKeyValueEntry | null> {
+  async #getPlaintextEntry(args: { resourceId: string; name: unknown }): Promise<TResourceKeyValueEntry | null> {
     try {
       const entry = await this.persistence.get({ resourceId: args.resourceId, key: secretName(args.name) });
       if (entry && typeof entry.value !== 'string') {
-        throw new ActorResourceError('SECRET_OPERATION_FAILED', 'Stored secret value has an invalid type.');
+        throw new ResourceError('SECRET_OPERATION_FAILED', 'Stored secret value has an invalid type.');
       }
       return entry;
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
-  async dispatch(context: TActorResolvedResourceCall, operation: string, rawArgs: unknown): Promise<unknown> {
+  async dispatch(context: TLocalResolvedResourceCall, operation: string, rawArgs: unknown): Promise<unknown> {
     try {
       if (context.resource.kind !== this.kind || context.requirement.kind !== this.kind) {
-        throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource kind does not match the resolved slot.');
+        throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Secret-store resource kind does not match the resolved slot.');
       }
       const args = recordArgs(rawArgs);
       if (operation === 'get') {
@@ -328,14 +328,14 @@ export class SecretStoreResource implements IActorResourceProvider {
           ? { ok: true, entry: { name: result.entry.key, revision: result.entry.revision } }
           : { ok: false, currentRevision: result.currentRevision };
       }
-      throw new ActorResourceError('SECRET_OPERATION_FAILED', `Unknown secret-store operation "${operation}".`);
+      throw new ResourceError('SECRET_OPERATION_FAILED', `Unknown secret-store operation "${operation}".`);
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
   async dispatchWithReceipt(
-    context: TActorResolvedResourceCall,
+    context: TLocalResolvedResourceCall,
     operation: string,
     rawArgs: unknown,
     identity: TLocalResourceOperationIdentity,
@@ -347,7 +347,7 @@ export class SecretStoreResource implements IActorResourceProvider {
         || context.requirement.kind !== this.kind
         || context.resource.id !== identity.resourceId
         || (context.tenant !== undefined && context.tenant.orgId !== identity.orgId)
-      ) throw new ActorResourceError('RESOURCE_KIND_MISMATCH', 'Secret receipt identity does not match the resolved resource.');
+      ) throw new ResourceError('RESOURCE_KIND_MISMATCH', 'Secret receipt identity does not match the resolved resource.');
       const args = recordArgs(rawArgs);
       const mutation = operation === 'set'
         ? {
@@ -370,7 +370,7 @@ export class SecretStoreResource implements IActorResourceProvider {
               }
             : null;
       if (mutation === null) {
-        throw new ActorResourceError('SECRET_WRITE_NOT_ALLOWED', 'Durable secret receipts apply only to write operations.');
+        throw new ResourceError('SECRET_WRITE_NOT_ALLOWED', 'Durable secret receipts apply only to write operations.');
       }
       return await this.persistence.mutateWithReceipt({
         resourceId: identity.resourceId,
@@ -381,16 +381,16 @@ export class SecretStoreResource implements IActorResourceProvider {
         mutation,
       }, guard);
     } catch (error) {
-      throw toActorResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
+      throw toResourceError(error, 'SECRET_OPERATION_FAILED', 'Secret-store operation failed.');
     }
   }
 
   async readCommittedOperation(
-    resource: TActorResource,
+    resource: TLocalResource,
     request: Readonly<{ invocationId: string; operationId: string }>,
   ): Promise<TLocalResourceCommittedOperation | null> {
     if (resource.kind !== this.kind) {
-      throw new ActorResourceError(
+      throw new ResourceError(
         'RESOURCE_KIND_MISMATCH',
         'Secret-store receipt resource kind is invalid.',
       );
@@ -402,7 +402,7 @@ export class SecretStoreResource implements IActorResourceProvider {
         operationId: request.operationId,
       });
     } catch (error) {
-      throw toActorResourceError(
+      throw toResourceError(
         error,
         'SECRET_OPERATION_FAILED',
         'Secret-store receipt recovery failed.',

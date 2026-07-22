@@ -47,19 +47,6 @@ export type TResourceApiCapability = {
     tenant: TTenantContext,
     input: TResourceInputs['resources']['dataDelete'],
   ): Promise<TResourceOutputs['resources']['dataDelete']>;
-  getDefinitionResourceStatus(
-    tenant: TTenantContext,
-    definitionName: TResourceInputs['resources']['definitionStatus']['definitionName'],
-  ): Promise<TResourceOutputs['resources']['definitionStatus']>;
-  bindResource(
-    tenant: TTenantContext,
-    input: TResourceInputs['resources']['bind'],
-  ): Promise<TResourceOutputs['resources']['bind']>;
-  unbindResource(
-    tenant: TTenantContext,
-    input: TResourceInputs['resources']['unbind'],
-  ): Promise<TResourceOutputs['resources']['unbind']['deleted']>;
-
   dbResourceImpact(
     tenant: TTenantContext,
     resourceId: TResourceInputs['dbResources']['impact']['resourceId'],

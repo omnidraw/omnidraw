@@ -42,29 +42,12 @@ type TBinaryScenario = {
   port: number
   cmd: string[]
   env: NodeJS.ProcessEnv
-  expectedLegacyActorEnabled: boolean
   expectedDbPath?: string
   expectedAbsentPaths?: string[]
   verifyForeignKeysAfterShutdown?: boolean
   shutdownSignal?: number
   cleanupPaths: string[]
 }
-
-type TActorIpcChildMessage =
-  | { type: "ready" }
-  | {
-      type: "resourceCall"
-      id: number
-      callId: string
-      slot: string
-      kind: "kv" | "secretStore" | "db"
-      operation: string
-      args: unknown
-    }
-  | { type: "setData"; id: number; data: unknown }
-  | { type: "emitMessage"; id: number; msg: unknown }
-  | { type: "done"; id: number }
-  | { type: "error"; id?: number; msg: unknown; error?: boolean }
 
 type TMigrationIdentity = Readonly<{
   version: number
@@ -240,7 +223,6 @@ async function assertHttpAsset(baseUrl: string, assetPath: string, timeoutMs: nu
 async function assertHealthDiagnostics(
   baseUrl: string,
   timeoutMs: number,
-  expectedLegacyActorEnabled: boolean,
 ): Promise<void> {
   const response = await withTimeout(fetch(`${baseUrl}/health`), timeoutMs, "fetch /health")
   if (!response.ok) {
@@ -250,25 +232,6 @@ async function assertHealthDiagnostics(
   const health = await response.json() as Record<string, unknown>
   if (health.ok !== true || health.service !== "vibecanvas") {
     throw new Error(`GET /health returned an invalid service status: ${JSON.stringify(health)}`)
-  }
-  if (health.legacy_actor_enabled !== expectedLegacyActorEnabled) {
-    throw new Error(
-      `GET /health legacy_actor_enabled mismatch: ${JSON.stringify(health)}`,
-    )
-  }
-  if (
-    typeof health.active_legacy_process_count !== "number"
-    || !Number.isInteger(health.active_legacy_process_count)
-    || health.active_legacy_process_count < 0
-  ) {
-    throw new Error(
-      `GET /health active_legacy_process_count is invalid: ${JSON.stringify(health)}`,
-    )
-  }
-  if (health.active_legacy_process_count !== 0) {
-    throw new Error(
-      `Fresh binary unexpectedly owns active legacy processes: ${JSON.stringify(health)}`,
-    )
   }
 }
 
@@ -674,246 +637,6 @@ async function createPortBlocker(port: number): Promise<{ close: () => Promise<v
   }
 }
 
-async function createActorIpcFixture(tempRoot: string): Promise<string> {
-  const fixtureDir = path.join(tempRoot, "actor-ipc-fixture")
-  const sdkDistDir = path.join(fixtureDir, "node_modules", "@vibecanvas", "sdk", "dist")
-  await Bun.$`mkdir -p ${fixtureDir}`.quiet()
-  await Bun.write(path.join(fixtureDir, "package.json"), JSON.stringify({
-    name: "actor-ipc-fixture",
-    version: "1.0.0",
-    type: "module",
-    dependencies: {
-      "@vibecanvas/sdk": "0.1.0",
-    },
-  }, null, 2))
-  await Bun.$`mkdir -p ${sdkDistDir}`.quiet()
-  await Bun.write(path.join(fixtureDir, "node_modules", "@vibecanvas", "sdk", "package.json"), JSON.stringify({
-    name: "@vibecanvas/sdk",
-    version: "0.1.0",
-    type: "module",
-    exports: {
-      "./actor": {
-        types: "./dist/actor.d.ts",
-        default: "./dist/actor.js",
-      },
-    },
-  }, null, 2))
-  await Bun.write(path.join(sdkDistDir, "actor.js"), `
-export function defineFn(fn) { return fn; }
-export function defineTx(tx) { return tx; }
-`)
-  const functionPath = path.join(fixtureDir, "functions.ts")
-  await Bun.write(functionPath, `
-import { defineFn, defineTx } from "@vibecanvas/sdk/actor";
-
-export default {
-  fn: {
-    "fn.throwDomException": defineFn(async () => {
-      throw new DOMException("The object can not be cloned.", "DataCloneError");
-    }),
-  },
-  fx: {},
-  tx: {
-    "tx.addFunds": defineTx(async (portal, args) => {
-      const data = { balance: args.data.balance + args.msg.amount };
-      const stored = await portal.resources.kv("balances").set({
-        key: args.msg.accountId,
-        value: data.balance,
-      });
-      if (stored.revision !== 17) throw new Error("compiled resource IPC result mismatch");
-      await portal.setData(data);
-      await portal.emitMessage({
-        type: "funds-added",
-        payload: {
-          accountId: args.msg.accountId,
-          amount: args.msg.amount,
-          balance: data.balance,
-        },
-      });
-    }),
-  },
-};
-`)
-  return functionPath
-}
-
-async function assertActorIpcBinary(binaryPath: string, tempRoot: string, timeoutMs: number): Promise<void> {
-  const functionPath = await createActorIpcFixture(tempRoot)
-  const messages: TActorIpcChildMessage[] = []
-
-  console.log(`[test-binary] Scenario 'actor-ipc' using ${functionPath}`)
-
-  let proc: Bun.Subprocess | null = null
-  const done = withTimeout(new Promise<void>((resolve, reject) => {
-    proc = Bun.spawn({
-      cmd: [binaryPath, "--icp-client", "--functionPath", functionPath],
-      cwd: path.dirname(functionPath),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env },
-      ipc(message) {
-        const childMessage = message as TActorIpcChildMessage
-        messages.push(childMessage)
-
-        if (childMessage.type === "ready") {
-          proc?.send({
-            type: "run",
-            id: 1,
-            func: ["tx.addFunds"],
-            payload: { accountId: "compiled", amount: 29 },
-            data: { balance: 13 },
-          })
-          return
-        }
-
-        if (childMessage.type === "resourceCall") {
-          const expectedCall = {
-            id: 1,
-            slot: "balances",
-            kind: "kv",
-            operation: "set",
-            args: { key: "compiled", value: 42 },
-          }
-          const actualCall = {
-            id: childMessage.id,
-            slot: childMessage.slot,
-            kind: childMessage.kind,
-            operation: childMessage.operation,
-            args: childMessage.args,
-          }
-          if (!childMessage.callId || JSON.stringify(actualCall) !== JSON.stringify(expectedCall)) {
-            reject(new Error(`actor-ipc resourceCall mismatch: ${JSON.stringify(childMessage)}`))
-            return
-          }
-          proc?.send({
-            type: "resourceResult",
-            callId: childMessage.callId,
-            ok: true,
-            result: { value: 42, revision: 17 },
-          })
-          return
-        }
-
-        if (childMessage.type === "setData") {
-          proc?.send({ type: "ack", id: childMessage.id, action: "setData" })
-          return
-        }
-
-        if (childMessage.type === "emitMessage") {
-          proc?.send({ type: "ack", id: childMessage.id, action: "emitMessage" })
-          return
-        }
-
-        if (childMessage.type === "done") {
-          resolve()
-          return
-        }
-
-        if (childMessage.type === "error") {
-          reject(new Error(`actor-ipc child error: ${JSON.stringify(childMessage.msg)}`))
-        }
-      },
-    })
-  }), timeoutMs, "actor-ipc")
-
-  try {
-    await done
-  } finally {
-    const activeProc = proc as Bun.Subprocess | null
-    activeProc?.kill()
-    if (activeProc) {
-      const result = await Promise.race([
-        activeProc.exited,
-        Bun.sleep(5000).then(() => "timeout"),
-      ])
-      if (result === "timeout") {
-        activeProc.kill(9)
-        await activeProc.exited
-      }
-    }
-  }
-
-  const types = messages.map((message) => message.type)
-  if (JSON.stringify(types) !== JSON.stringify(["ready", "resourceCall", "setData", "emitMessage", "done"])) {
-    throw new Error(`actor-ipc message sequence mismatch: ${JSON.stringify(types)}`)
-  }
-
-  const setData = messages.find((message) => message.type === "setData")
-  if (setData?.type !== "setData" || JSON.stringify(setData.data) !== JSON.stringify({ balance: 42 })) {
-    throw new Error(`actor-ipc setData mismatch: ${JSON.stringify(setData)}`)
-  }
-
-  const emitMessage = messages.find((message) => message.type === "emitMessage")
-  const expectedMsg = {
-    type: "funds-added",
-    payload: { accountId: "compiled", amount: 29, balance: 42 },
-  }
-  if (emitMessage?.type !== "emitMessage" || JSON.stringify(emitMessage.msg) !== JSON.stringify(expectedMsg)) {
-    throw new Error(`actor-ipc emitMessage mismatch: ${JSON.stringify(emitMessage)}`)
-  }
-
-  console.log("[test-binary] PASS actor-ipc resourceCall/resourceResult/setData/emitMessage/done")
-
-  const errorMessages: TActorIpcChildMessage[] = []
-  let errorProc: Bun.Subprocess | null = null
-  const gotError = withTimeout(new Promise<void>((resolve, reject) => {
-    errorProc = Bun.spawn({
-      cmd: [binaryPath, "--icp-client", "--functionPath", functionPath],
-      cwd: path.dirname(functionPath),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env },
-      ipc(message) {
-        const childMessage = message as TActorIpcChildMessage
-        errorMessages.push(childMessage)
-
-        if (childMessage.type === "ready") {
-          errorProc?.send({
-            type: "run",
-            id: 2,
-            func: ["fn.throwDomException"],
-            payload: {},
-            data: {},
-          })
-          return
-        }
-
-        if (childMessage.type === "error") {
-          const msg = childMessage.msg as { name?: unknown; message?: unknown; code?: unknown }
-          if (msg.name !== "DataCloneError" || msg.message !== "The object can not be cloned." || msg.code !== 25) {
-            reject(new Error(`actor-ipc serialized error mismatch: ${JSON.stringify(childMessage)}`))
-            return
-          }
-          resolve()
-        }
-      },
-    })
-  }), timeoutMs, "actor-ipc DOMException serialization")
-
-  try {
-    await gotError
-  } finally {
-    const activeErrorProc = errorProc as Bun.Subprocess | null
-    activeErrorProc?.kill()
-    if (activeErrorProc) {
-      const result = await Promise.race([
-        activeErrorProc.exited,
-        Bun.sleep(5000).then(() => "timeout"),
-      ])
-      if (result === "timeout") {
-        activeErrorProc.kill(9)
-        await activeErrorProc.exited
-      }
-    }
-  }
-
-  const errorTypes = errorMessages.map((message) => message.type)
-  if (JSON.stringify(errorTypes) !== JSON.stringify(["ready", "error"])) {
-    throw new Error(`actor-ipc error message sequence mismatch: ${JSON.stringify(errorTypes)}`)
-  }
-  console.log("[test-binary] PASS actor-ipc serializes DOMException errors")
-}
-
 async function runBinaryScenario(
   binaryPath: string,
   args: TArgs,
@@ -931,7 +654,6 @@ async function runBinaryScenario(
     env: {
       ...process.env,
       ...scenario.env,
-      VIBECANVAS_LEGACY_ACTOR_ENABLED: scenario.expectedLegacyActorEnabled ? "1" : "0",
     },
   })
 
@@ -957,12 +679,8 @@ async function runBinaryScenario(
     }
     console.log(`[test-binary] PASS ${scenario.name} GET /`)
 
-    await assertHealthDiagnostics(
-      baseUrl,
-      args.requestTimeoutMs,
-      scenario.expectedLegacyActorEnabled,
-    )
-    console.log(`[test-binary] PASS ${scenario.name} GET /health legacy diagnostics`)
+    await assertHealthDiagnostics(baseUrl, args.requestTimeoutMs)
+    console.log(`[test-binary] PASS ${scenario.name} GET /health`)
 
     const assetUrls = extractAssetUrls(rootHtml)
     if (assetUrls.length === 0) {
@@ -1072,7 +790,6 @@ async function main() {
   const envHome = path.join(tempRoot, "env-home")
   const compiledHome = path.join(tempRoot, "compiled-home")
   const explicitHome = path.join(tempRoot, "explicit-home")
-  const legacyEnabledHome = path.join(tempRoot, "legacy-enabled-home")
   const ignoredEnvHome = path.join(tempRoot, "ignored-env-home")
   const widgetToolchains = await createWidgetToolchainFixtures(tempRoot)
 
@@ -1114,8 +831,6 @@ async function main() {
     return
   }
 
-  await assertActorIpcBinary(binaryPath, tempRoot, args.requestTimeoutMs)
-
   const firstHomeBoot = await runBinaryScenario(binaryPath, args, {
     name: "home-env-first-boot",
     port: args.port,
@@ -1123,7 +838,6 @@ async function main() {
     env: {
       VIBECANVAS_HOME: envHome,
     },
-    expectedLegacyActorEnabled: false,
     expectedDbPath: path.join(envHome, "main.db"),
     verifyForeignKeysAfterShutdown: true,
     shutdownSignal: 9,
@@ -1137,7 +851,6 @@ async function main() {
     env: {
       VIBECANVAS_HOME: envHome,
     },
-    expectedLegacyActorEnabled: false,
     expectedDbPath: path.join(envHome, "main.db"),
     verifyForeignKeysAfterShutdown: true,
     cleanupPaths: [envHome],
@@ -1152,22 +865,9 @@ async function main() {
     env: {
       VIBECANVAS_HOME: ignoredEnvHome,
     },
-    expectedLegacyActorEnabled: false,
     expectedDbPath: path.join(explicitHome, "main.db"),
     expectedAbsentPaths: [ignoredEnvHome],
     cleanupPaths: [explicitHome, ignoredEnvHome],
-  })
-
-  await runBinaryScenario(binaryPath, args, {
-    name: "legacy-actor-enabled",
-    port: args.port + 3,
-    cmd: ["serve", "--port", String(args.port + 3)],
-    env: {
-      VIBECANVAS_HOME: legacyEnabledHome,
-    },
-    expectedLegacyActorEnabled: true,
-    expectedDbPath: path.join(legacyEnabledHome, "main.db"),
-    cleanupPaths: [legacyEnabledHome],
   })
 
   const defaultCompiledPort = 7496
@@ -1180,7 +880,6 @@ async function main() {
       env: {
         VIBECANVAS_HOME: compiledHome,
       },
-      expectedLegacyActorEnabled: false,
       expectedDbPath: path.join(compiledHome, "main.db"),
       cleanupPaths: [compiledHome],
     })

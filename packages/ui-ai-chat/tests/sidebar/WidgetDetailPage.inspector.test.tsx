@@ -38,15 +38,15 @@ function variant(kind: TWidgetVariantSummary['kind']): TWidgetVariantSummary {
   return {
     draftId: null,
     source: 'published',
-    displayName: kind === 'actor-widget' ? 'Legacy Counter' : 'Notes Board',
+    displayName: 'Notes Board',
     kind,
-    slug: kind === 'actor-widget' ? 'legacy-counter' : 'notes-board',
+    slug: 'notes-board',
     description: 'Inspector fixture.',
     revision: 'revision-7',
     contentFingerprint: 'a'.repeat(64),
     updatedAt: '2026-07-22T00:00:00.000Z',
     tool: {
-      label: kind === 'actor-widget' ? 'Legacy Counter' : 'Notes Board',
+      label: 'Notes Board',
       icon: null,
       group: null,
       priority: null,
@@ -54,33 +54,13 @@ function variant(kind: TWidgetVariantSummary['kind']): TWidgetVariantSummary {
     },
     validation: null,
     placement: kind === 'widget' ? {
-      reference: { source: 'published', name: 'v2:definition-7', revision: 'revision-7' },
+      reference: { source: 'published', name: 'published:definition-7', revision: 'revision-7' },
       bounds: { width: 420, height: 320 },
     } : null,
   };
 }
 
-const legacyDetail: TWidgetDetail = {
-  name: 'Legacy Counter',
-  source: 'published',
-  relation: 'published-only',
-  variant: variant('actor-widget'),
-  sibling: null,
-  manifest: {
-    name: 'Legacy Counter',
-    slug: 'legacy-counter',
-    actor: {
-      inputMsgSchema: { increment: { type: 'number' } },
-      outputMsgSchema: { changed: { type: 'number' } },
-      states: { ready: { on: { increment: {} } } },
-    },
-    widget: { tool: { label: 'Legacy Counter', priority: 1 } },
-  } as unknown as NonNullable<TWidgetDetail['manifest']>,
-  functions: [],
-  problem: null,
-};
-
-const v2Detail: TWidgetDetail = {
+const widgetDetail: TWidgetDetail = {
   name: 'Notes Board',
   source: 'published',
   relation: 'published-only',
@@ -184,20 +164,8 @@ afterEach(() => {
 });
 
 describe('WidgetDetailPage inspector tabs', () => {
-  test('renders only the legacy actor inspector tabs for an actor manifest', async () => {
-    const { host } = mountDetail(legacyDetail);
-
-    expect(await tabLabels(host)).toEqual([
-      'Overview',
-      'Config',
-      'Messages',
-      'States',
-      'Files',
-    ]);
-  });
-
-  test('renders only the v2 inspector tabs for a manifest-v2 widget', async () => {
-    const { host } = mountDetail(v2Detail);
+  test('renders the published widget inspector tabs', async () => {
+    const { host } = mountDetail(widgetDetail);
 
     expect(await tabLabels(host)).toEqual([
       'Overview',
@@ -211,8 +179,8 @@ describe('WidgetDetailPage inspector tabs', () => {
     ]);
   });
 
-  test('renders meaningful revision, invocation, and resource data in v2 panels', async () => {
-    const { host, selectTab } = mountDetail(v2Detail, 'functions');
+  test('renders meaningful revision, invocation, and resource data', async () => {
+    const { host, selectTab } = mountDetail(widgetDetail, 'functions');
 
     await vi.waitFor(() => {
       expect(host.textContent).toContain('server/main.ts');
@@ -232,7 +200,7 @@ describe('WidgetDetailPage inspector tabs', () => {
     selectTab('runs');
     await vi.waitFor(() => {
       expect(host.textContent).toContain('Invocation-scoped runs');
-      expect(host.textContent).toContain('no resident actor process');
+      expect(host.textContent).toContain('do not aggregate mutable runtime state');
       expect(host.textContent).toContain('invocation ID');
     });
 

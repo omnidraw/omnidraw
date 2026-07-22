@@ -77,7 +77,6 @@ try {
     CI: process.env.CI ?? '1',
     VIBECANVAS_CLEAN_TRACKED_SNAPSHOT: cleanSnapshot ? '1' : process.env.VIBECANVAS_CLEAN_TRACKED_SNAPSHOT,
     VIBECANVAS_HOME: acceptanceHome,
-    VIBECANVAS_LEGACY_ACTOR_ENABLED: '0',
     VIBECANVAS_REQUIRE_FD_INSPECTION: '1',
     VIBECANVAS_SILENT_DB_MIGRATIONS: '1',
     VITEST_MAX_WORKERS: process.env.VITEST_MAX_WORKERS ?? '2',
@@ -96,4 +95,4 @@ try {
   await rm(acceptanceHome, { recursive: true, force: true });
 }
 
-console.log('\n[final-acceptance] all durable, common, build, and binary gates passed with legacy actors disabled');
+console.log('\n[final-acceptance] all durable, common, build, and binary gates passed');

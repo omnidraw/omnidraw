@@ -7,7 +7,7 @@ import { ResourceError } from '../ResourceError';
 const DATABASE_KEY_BYTE_LENGTH = 32;
 const DATABASE_KEY_HEX_LENGTH = DATABASE_KEY_BYTE_LENGTH * 2;
 
-export const SECRET_STORE_DATABASE_KEY_PURPOSE = 'actor-resource-secret-store';
+export const SECRET_STORE_DATABASE_KEY_PURPOSE = 'resource-secret-store';
 export const SECRET_STORE_DATABASE_KEY_ALGORITHM = 'aegis256';
 
 export interface ISecretStoreKeyProvider {

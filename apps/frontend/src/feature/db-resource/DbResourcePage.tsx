@@ -30,7 +30,7 @@ import {
   fnBoundedPage,
   fnCellText,
   fnChangeSummary,
-  fnImpactInstances,
+  fnImpactUses,
   fnImpactSlots,
   fnInspectionTables,
   fnLiveSqlApprovalRequired,
@@ -203,7 +203,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     const applyDetailsResponses = await Promise.all((applyValues ?? []).map(async (run) => ({ run, response: await fxApply(portal, { applyId: run.id }) })));
     const applyDetailsError = applyDetailsResponses.find(({ response }) => response[0])?.response[0];
     if (applyDetailsError) setError(applyDetailsError.message);
-    setApplyRuns(applyDetailsResponses.map(({ run, response: [, details] }) => details ?? { apply: run, instances: [] }));
+    setApplyRuns(applyDetailsResponses.map(({ run, response: [, details] }) => details ?? { apply: run, drain: null }));
     setBackup(backupValue ?? null);
     const openDraft = activeDraftValue?.draft ?? fnActiveDraft(draftValues ?? []);
     if (openDraft) {
@@ -570,7 +570,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     const [applyError, run] = await txConfirmApply(portal, { draftId: draft.id });
     setBusy(false);
     if (applyError || !run) return setOperationError(applyError?.message ?? "Apply confirmation response was empty.");
-    setOperationRun({ apply: run, instances: [] });
+    setOperationRun({ apply: run, drain: null });
     void pollApply(run.id);
   };
 
@@ -596,7 +596,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
     const [restoreError, run] = await txRestoreBackup(portal, { resourceId: props.resourceId, applyId: retained.applyId });
     setBusy(false);
     if (restoreError || !run) return setOperationError(restoreError?.message ?? "Restore response was empty.");
-    setOperationRun({ apply: run, instances: [] });
+    setOperationRun({ apply: run, drain: null });
     void pollRestore(run.id);
   };
 
@@ -670,18 +670,18 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                     <div class={styles.panelHeader}><h3>Bindings</h3><span>{fnImpactSlots(impact()).length}</span></div>
                     <table class={styles.table}>
                       <thead><tr><th>Definition</th><th>Slot</th><th>Effective access</th></tr></thead>
-                      <tbody><For each={fnImpactSlots(impact())} fallback={<tr><td colSpan={3} class={styles.muted}>No actor bindings.</td></tr>}>{(slot) => (
-                        <tr><td>{slot.definitionName}</td><td>{slot.slot}</td><td>{slot.scope.join(" + ")}</td></tr>
+                      <tbody><For each={fnImpactSlots(impact())} fallback={<tr><td colSpan={3} class={styles.muted}>No revision bindings.</td></tr>}>{(slot) => (
+                        <tr><td>{slot.definitionId} · {slot.revisionId}</td><td>{slot.slot}</td><td>{slot.scope.join(" + ")}</td></tr>
                       )}</For></tbody>
                     </table>
                   </section>
                 </div>
                 <section class={styles.panel}>
-                  <div class={styles.panelHeader}><h3>Persisted instances</h3><span>{fnImpactInstances(impact()).length}</span></div>
+                  <div class={styles.panelHeader}><h3>Active resource uses</h3><span>{fnImpactUses(impact()).length}</span></div>
                   <table class={styles.table}>
-                    <thead><tr><th>Definition</th><th>Instance</th><th>Observed status</th><th>Running</th></tr></thead>
-                    <tbody><For each={fnImpactInstances(impact())} fallback={<tr><td colSpan={4} class={styles.muted}>No affected persisted instances.</td></tr>}>{(instance) => (
-                      <tr><td>{instance.definitionName}</td><td>{instance.instanceId}</td><td>{instance.status}</td><td>{instance.running ? "yes" : "no"}</td></tr>
+                    <thead><tr><th>Use</th><th>Kind</th><th>Observed status</th><th>Label</th></tr></thead>
+                    <tbody><For each={fnImpactUses(impact())} fallback={<tr><td colSpan={4} class={styles.muted}>No active resource uses.</td></tr>}>{(use) => (
+                      <tr><td>{use.id}</td><td>{use.kind}</td><td>{use.state}</td><td>{use.label ?? "—"}</td></tr>
                     )}</For></tbody>
                   </table>
                 </section>
@@ -691,7 +691,7 @@ export const DbResourcePage: Component<TDbResourcePageProps> = (props) => {
                     <For each={applyRuns()} fallback={<p class={styles.empty}>No coordinated applies yet.</p>}>{(details) => (
                       <div class={styles.applyRow}>
                         <div><strong>{fnStatusLabel(details.apply.status)}</strong><small>{fnTimestamp(details.apply.created_at)}</small></div>
-                        <div><span>Database: {details.apply.status === "succeeded" ? "succeeded" : fnStatusLabel(details.apply.status)}</span><span>Actors: {details.instances.filter((item) => item.status === "restarted").length} restart succeeded · {details.instances.filter((item) => item.status === "startFailed").length} start failed · {details.instances.filter((item) => item.status === "crashed").length} actor crashed</span></div>
+                        <div><span>Database: {details.apply.status === "succeeded" ? "succeeded" : fnStatusLabel(details.apply.status)}</span><span>{details.drain ? `${details.drain.drainedUses.length} use(s) drained` : "No active drain lease"}</span></div>
                       </div>
                     )}</For>
                   </section>

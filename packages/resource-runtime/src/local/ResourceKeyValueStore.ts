@@ -5,29 +5,29 @@ import { constants as fsConstants } from 'node:fs';
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
-  IResourceKeyValuePersistence as IActorResourceKeyValuePersistence,
+  IResourceKeyValuePersistence,
   TResourceJson as TJson,
-  TResourceKeyValueCompareAndSetResult as TActorResourceKeyValueCompareAndSetResult,
-  TResourceKeyValueDeleteResult as TActorResourceKeyValueDeleteResult,
-  TResourceKeyValueEntry as TActorResourceKeyValueEntry,
-  TResourceKeyValueEntryMetadata as TActorResourceKeyValueEntryMetadata,
-  TResourceKeyValueIdentity as TActorResourceKeyValueIdentity,
-  TResourceKeyValueKind as TActorResourceKeyValueKind,
-  TResourceKeyValuePage as TActorResourceKeyValuePage,
+  TResourceKeyValueCompareAndSetResult,
+  TResourceKeyValueDeleteResult,
+  TResourceKeyValueEntry,
+  TResourceKeyValueEntryMetadata,
+  TResourceKeyValueIdentity,
+  TResourceKeyValueKind,
+  TResourceKeyValuePage,
   TResourceKeyValueCommittedOperation,
   TResourceKeyValueReceiptMutationRequest,
   TResourceKeyValueMutationReceipt,
 } from './ResourceKeyValuePersistence';
 import type { IResourceWritePermitGuard } from '../interface';
 import {
-  fnResourceKeyValueEntry as fnActorResourceKeyValueEntry,
-  fnResourceKeyValueEntryMetadata as fnActorResourceKeyValueEntryMetadata,
-  fnResourceKeyValueHostId as fnActorResourceKeyValueHostId,
-  fnResourceKeyValueListLimit as fnActorResourceKeyValueListLimit,
-  fnResourceKeyValueParse as fnActorResourceKeyValueParse,
-  fnResourceKeyValueSerialize as fnActorResourceKeyValueSerialize,
+  fnResourceKeyValueEntry,
+  fnResourceKeyValueEntryMetadata,
+  fnResourceKeyValueHostId,
+  fnResourceKeyValueListLimit,
+  fnResourceKeyValueParse,
+  fnResourceKeyValueSerialize,
 } from './fn.resource-key-value';
-import { ResourceError as ActorResourceError } from '../ResourceError';
+import { ResourceError } from '../ResourceError';
 import type { ISecretStoreKeyProvider } from './SecretStoreKeyProvider';
 import type { TResourceIdleSweepScheduler } from './ResourceProviderTypes';
 
@@ -83,7 +83,7 @@ CREATE TABLE \`_vibecanvas_resource_metadata\` (
 `;
 
 const RESOURCE_ENTRIES_SCHEMA_SQL = `
-CREATE TABLE \`actor_resource_entries\` (
+CREATE TABLE \`resource_entries\` (
   \`key\` TEXT PRIMARY KEY,
   \`value\` JSON NOT NULL,
   \`revision\` INTEGER NOT NULL DEFAULT 1 CHECK (\`revision\` >= 1),
@@ -93,12 +93,12 @@ CREATE TABLE \`actor_resource_entries\` (
 `;
 
 const RESOURCE_UPDATED_AT_TRIGGER_SQL = `
-CREATE TRIGGER \`actor_resource_entries_updated_at_after_update\`
-AFTER UPDATE OF \`value\`, \`revision\` ON \`actor_resource_entries\`
+CREATE TRIGGER \`resource_entries_updated_at_after_update\`
+AFTER UPDATE OF \`value\`, \`revision\` ON \`resource_entries\`
 FOR EACH ROW
 WHEN NEW.\`updated_at\` = OLD.\`updated_at\`
 BEGIN
-  UPDATE \`actor_resource_entries\`
+  UPDATE \`resource_entries\`
   SET \`updated_at\` = CASE
     WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > OLD.\`updated_at\`
       THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -161,7 +161,7 @@ export type TSecretStoreConversionCheckpoint =
 
 export type TResourceKeyValueStoreConfig = {
   readonly dataRoot: string;
-  readonly kind: TActorResourceKeyValueKind;
+  readonly kind: TResourceKeyValueKind;
   readonly secretStoreKeyProvider?: ISecretStoreKeyProvider;
   readonly secretStoreConversionCheckpoint?: (
     checkpoint: TSecretStoreConversionCheckpoint,
@@ -229,9 +229,9 @@ function defaultIdleSweepScheduler(
   return () => clearTimeout(timer);
 }
 
-export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence {
+export class ResourceKeyValueStore implements IResourceKeyValuePersistence {
   readonly #dataRoot: string;
-  readonly #kind: TActorResourceKeyValueKind;
+  readonly #kind: TResourceKeyValueKind;
   readonly #secretStoreKeyProvider: ISecretStoreKeyProvider | undefined;
   readonly #secretStoreConversionCheckpoint: TResourceKeyValueStoreConfig['secretStoreConversionCheckpoint'];
   readonly #databaseFactory: TResourceKeyValueDatabaseFactory;
@@ -261,13 +261,13 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     const queryTimeoutMs = config.queryTimeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS;
     const idleHandleTimeoutMs = config.idleHandleTimeoutMs ?? RESOURCE_KEY_VALUE_DEFAULT_IDLE_HANDLE_TIMEOUT_MS;
     if (!Number.isInteger(maxOpenHandles) || maxOpenHandles < 1) {
-      throw new RangeError('Actor resource key-value maximum open handles must be a positive integer.');
+      throw new RangeError('Resource key-value maximum open handles must be a positive integer.');
     }
     if (!Number.isInteger(queryTimeoutMs) || queryTimeoutMs < 1) {
-      throw new RangeError('Actor resource key-value query timeout must be a positive integer.');
+      throw new RangeError('Resource key-value query timeout must be a positive integer.');
     }
     if (!Number.isInteger(idleHandleTimeoutMs) || idleHandleTimeoutMs < 1) {
-      throw new RangeError('Actor resource key-value idle-handle timeout must be a positive integer.');
+      throw new RangeError('Resource key-value idle-handle timeout must be a positive integer.');
     }
     this.#dataRoot = config.dataRoot;
     this.#kind = config.kind;
@@ -288,14 +288,14 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     return this.#handles.size + this.#failedCloses.size + this.#closingHandleCount;
   }
 
-  async provision(identity: TActorResourceKeyValueIdentity): Promise<void> {
+  async provision(identity: TResourceKeyValueIdentity): Promise<void> {
     this.#assertAvailable();
     this.#assertIdentity(identity);
     return this.#scheduleLifecycle(identity.resourceId, (resourceId) => this.#provision(resourceId));
   }
 
   async #provision(resourceIdValue: string): Promise<void> {
-    const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
+    const resourceId = fnResourceKeyValueHostId(resourceIdValue);
     const directory = this.#resourceDirectory(resourceId);
     let directoryCreated = false;
     try {
@@ -326,34 +326,34 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     }
   }
 
-  async verify(identity: TActorResourceKeyValueIdentity): Promise<void> {
+  async verify(identity: TResourceKeyValueIdentity): Promise<void> {
     this.#assertAvailable();
     this.#assertIdentity(identity);
     return this.#scheduleLifecycle(identity.resourceId, (resourceId) => this.#verifyResource(resourceId));
   }
 
   async #verifyResource(resourceIdValue: string): Promise<void> {
-    const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
+    const resourceId = fnResourceKeyValueHostId(resourceIdValue);
     await this.#drain(resourceId);
     await this.#closeHandle(resourceId);
     await this.#verifyStandalone(resourceId);
   }
 
-  async deleteResource(identity: TActorResourceKeyValueIdentity): Promise<void> {
+  async deleteResource(identity: TResourceKeyValueIdentity): Promise<void> {
     this.#assertAvailable();
     this.#assertIdentity(identity);
     return this.#scheduleLifecycle(identity.resourceId, (resourceId) => this.#deleteResource(resourceId));
   }
 
   async #deleteResource(resourceIdValue: string): Promise<void> {
-    const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
+    const resourceId = fnResourceKeyValueHostId(resourceIdValue);
     await this.#drain(resourceId);
     await this.#writeTails.get(resourceId);
     await this.#closeHandle(resourceId);
     await rm(this.#resourceDirectory(resourceId), { recursive: true, force: true });
   }
 
-  async get(args: { readonly resourceId: string; readonly key: string }): Promise<TActorResourceKeyValueEntry | null> {
+  async get(args: { readonly resourceId: string; readonly key: string }): Promise<TResourceKeyValueEntry | null> {
     const resourceId = this.#operationResourceId(args.resourceId);
     return this.#track(resourceId, this.#getEntry(resourceId, args.key));
   }
@@ -361,7 +361,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
   async getMetadata(args: {
     readonly resourceId: string;
     readonly key: string;
-  }): Promise<TActorResourceKeyValueEntryMetadata | null> {
+  }): Promise<TResourceKeyValueEntryMetadata | null> {
     const resourceId = this.#operationResourceId(args.resourceId);
     return this.#track(resourceId, this.#getEntryMetadata(resourceId, args.key));
   }
@@ -371,7 +371,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     return this.#track(resourceId, this.#withHandle(resourceId, async (database) => {
       const row = await (await database.prepare(`
         SELECT 1 AS present
-        FROM actor_resource_entries
+        FROM resource_entries
         WHERE key = ?
       `)).get(args.key);
       return row !== null && row !== undefined;
@@ -385,7 +385,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
       const search = args.search ?? null;
       const row = await (await database.prepare(`
         SELECT COUNT(*) AS count
-        FROM actor_resource_entries
+        FROM resource_entries
         WHERE (? IS NULL OR substr(key, 1, length(?)) = ?)
           AND (? IS NULL OR instr(key, ?) > 0)
       `)).get(prefix, prefix, prefix, search, search) as { count?: unknown } | null | undefined;
@@ -399,23 +399,23 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     readonly search?: string;
     readonly cursor?: string;
     readonly limit?: number;
-  }): Promise<TActorResourceKeyValuePage> {
+  }): Promise<TResourceKeyValuePage> {
     const resourceId = this.#operationResourceId(args.resourceId);
-    const limit = fnActorResourceKeyValueListLimit(args.limit);
+    const limit = fnResourceKeyValueListLimit(args.limit);
     return this.#track(resourceId, this.#withHandle(resourceId, async (database) => {
       const prefix = args.prefix ?? null;
       const search = args.search ?? null;
       const cursor = args.cursor ?? null;
       const rows = await (await database.prepare(`
         SELECT key, value, revision, created_at, updated_at
-        FROM actor_resource_entries
+        FROM resource_entries
         WHERE (? IS NULL OR substr(key, 1, length(?)) = ?)
           AND (? IS NULL OR instr(key, ?) > 0)
           AND (? IS NULL OR key > ?)
         ORDER BY key ASC
         LIMIT ?
       `)).all(prefix, prefix, prefix, search, search, cursor, cursor, limit + 1);
-      const parsed = rows.map(fnActorResourceKeyValueEntry);
+      const parsed = rows.map(fnResourceKeyValueEntry);
       const entries = parsed.slice(0, limit);
       return {
         entries,
@@ -430,23 +430,23 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     readonly search?: string;
     readonly cursor?: string;
     readonly limit?: number;
-  }): Promise<TActorResourceKeyValuePage<TActorResourceKeyValueEntryMetadata>> {
+  }): Promise<TResourceKeyValuePage<TResourceKeyValueEntryMetadata>> {
     const resourceId = this.#operationResourceId(args.resourceId);
-    const limit = fnActorResourceKeyValueListLimit(args.limit);
+    const limit = fnResourceKeyValueListLimit(args.limit);
     return this.#track(resourceId, this.#withHandle(resourceId, async (database) => {
       const prefix = args.prefix ?? null;
       const search = args.search ?? null;
       const cursor = args.cursor ?? null;
       const rows = await (await database.prepare(`
         SELECT key, revision, created_at, updated_at
-        FROM actor_resource_entries
+        FROM resource_entries
         WHERE (? IS NULL OR substr(key, 1, length(?)) = ?)
           AND (? IS NULL OR instr(key, ?) > 0)
           AND (? IS NULL OR key > ?)
         ORDER BY key ASC
         LIMIT ?
       `)).all(prefix, prefix, prefix, search, search, cursor, cursor, limit + 1);
-      const parsed = rows.map(fnActorResourceKeyValueEntryMetadata);
+      const parsed = rows.map(fnResourceKeyValueEntryMetadata);
       const entries = parsed.slice(0, limit);
       return {
         entries,
@@ -455,21 +455,21 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     }));
   }
 
-  async set(args: { readonly resourceId: string; readonly key: string; readonly value: TJson }): Promise<TActorResourceKeyValueEntry> {
+  async set(args: { readonly resourceId: string; readonly key: string; readonly value: TJson }): Promise<TResourceKeyValueEntry> {
     const resourceId = this.#operationResourceId(args.resourceId);
-    const serialized = fnActorResourceKeyValueSerialize(args.value);
+    const serialized = fnResourceKeyValueSerialize(args.value);
     return this.#scheduleWrite(resourceId, async () => {
       await this.#withHandle(resourceId, async (database) => {
         await (await database.prepare(`
-          INSERT INTO actor_resource_entries (key, value)
+          INSERT INTO resource_entries (key, value)
           VALUES (?, ?)
           ON CONFLICT (key) DO UPDATE SET
             value = excluded.value,
-            revision = actor_resource_entries.revision + 1
+            revision = resource_entries.revision + 1
         `)).run(args.key, serialized);
       });
       const entry = await this.#getEntry(resourceId, args.key);
-      if (!entry) throw new Error('Actor resource key-value set succeeded without a persisted entry.');
+      if (!entry) throw new Error('Resource key-value set succeeded without a persisted entry.');
       return entry;
     });
   }
@@ -478,14 +478,14 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     readonly resourceId: string;
     readonly key: string;
     readonly expectedRevision?: number;
-  }): Promise<TActorResourceKeyValueDeleteResult> {
+  }): Promise<TResourceKeyValueDeleteResult> {
     const resourceId = this.#operationResourceId(args.resourceId);
     if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision < 1)) {
       throw new RangeError('Expected revision must be a positive integer.');
     }
     return this.#scheduleWrite(resourceId, () => this.#withHandle(resourceId, async (database) => {
       const result = await (await database.prepare(`
-        DELETE FROM actor_resource_entries
+        DELETE FROM resource_entries
         WHERE key = ? AND (? IS NULL OR revision = ?)
       `)).run(args.key, args.expectedRevision ?? null, args.expectedRevision ?? null);
       return { deleted: result.changes > 0 };
@@ -497,22 +497,22 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     readonly key: string;
     readonly expectedRevision: number | null;
     readonly value: TJson;
-  }): Promise<TActorResourceKeyValueCompareAndSetResult> {
+  }): Promise<TResourceKeyValueCompareAndSetResult> {
     const resourceId = this.#operationResourceId(args.resourceId);
     if (args.expectedRevision !== null && (!Number.isInteger(args.expectedRevision) || args.expectedRevision < 1)) {
       throw new RangeError('Expected revision must be null or a positive integer.');
     }
-    const serialized = fnActorResourceKeyValueSerialize(args.value);
+    const serialized = fnResourceKeyValueSerialize(args.value);
     return this.#scheduleWrite(resourceId, async () => {
       const changes = await this.#withHandle(resourceId, async (database) => {
         const result = args.expectedRevision === null
           ? await (await database.prepare(`
-              INSERT INTO actor_resource_entries (key, value)
+              INSERT INTO resource_entries (key, value)
               VALUES (?, ?)
               ON CONFLICT (key) DO NOTHING
             `)).run(args.key, serialized)
           : await (await database.prepare(`
-              UPDATE actor_resource_entries
+              UPDATE resource_entries
               SET value = ?, revision = revision + 1
               WHERE key = ? AND revision = ?
             `)).run(serialized, args.key, args.expectedRevision);
@@ -526,7 +526,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
           currentRevision: current?.revision ?? null,
         };
       }
-      if (!current) throw new Error('Actor resource key-value CAS succeeded without a persisted entry.');
+      if (!current) throw new Error('Resource key-value CAS succeeded without a persisted entry.');
       return { ok: true, entry: current };
     });
   }
@@ -547,7 +547,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     const mutation = request.mutation;
     const serializedValue = mutation.operation === 'delete'
       ? null
-      : fnActorResourceKeyValueSerialize(mutation.value);
+      : fnResourceKeyValueSerialize(mutation.value);
     if (
       mutation.operation === 'delete'
       && mutation.expectedRevision !== undefined
@@ -574,7 +574,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
           ) {
             throw new Error('Resource operation receipt identity conflicts with its persisted mutation.');
           }
-          const output = fnActorResourceKeyValueParse(prior.output_json);
+          const output = fnResourceKeyValueParse(prior.output_json);
           await guard.assertCanCommit();
           await database.exec('COMMIT;', { queryTimeout: this.#queryTimeoutMs });
           return { output, committed: true, replayed: true };
@@ -583,11 +583,11 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
         let output: TJson;
         if (mutation.operation === 'set') {
           await (await database.prepare(`
-            INSERT INTO actor_resource_entries (key, value)
+            INSERT INTO resource_entries (key, value)
             VALUES (?, ?)
             ON CONFLICT (key) DO UPDATE SET
               value = excluded.value,
-              revision = actor_resource_entries.revision + 1
+              revision = resource_entries.revision + 1
           `)).run(mutation.key, serializedValue);
           const entry = await this.#getEntryFromDatabase(database, mutation.key);
           if (!entry) throw new Error('Resource set succeeded without a persisted entry.');
@@ -596,7 +596,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
             : { name: entry.key, revision: entry.revision };
         } else if (mutation.operation === 'delete') {
           const result = await (await database.prepare(`
-            DELETE FROM actor_resource_entries
+            DELETE FROM resource_entries
             WHERE key = ? AND (? IS NULL OR revision = ?)
           `)).run(
             mutation.key,
@@ -607,12 +607,12 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
         } else {
           const result = mutation.expectedRevision === null
             ? await (await database.prepare(`
-                INSERT INTO actor_resource_entries (key, value)
+                INSERT INTO resource_entries (key, value)
                 VALUES (?, ?)
                 ON CONFLICT (key) DO NOTHING
               `)).run(mutation.key, serializedValue)
             : await (await database.prepare(`
-                UPDATE actor_resource_entries
+                UPDATE resource_entries
                 SET value = ?, revision = revision + 1
                 WHERE key = ? AND revision = ?
               `)).run(serializedValue, mutation.key, mutation.expectedRevision);
@@ -625,7 +625,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
                 ? { ok: true, entry: { value: current.value, revision: current.revision } }
                 : { ok: true, entry: { name: current.key, revision: current.revision } };
         }
-        const outputJson = fnActorResourceKeyValueSerialize(output);
+        const outputJson = fnResourceKeyValueSerialize(output);
         await guard.assertCanCommit();
         await (await database.prepare(`
           INSERT INTO _vibecanvas_function_operation_receipts (
@@ -679,7 +679,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
         attemptId: row.attempt_id,
         operationName: row.operation_name,
         operationFingerprintSha256: row.operation_fingerprint_sha256,
-        output: fnActorResourceKeyValueParse(row.output_json),
+        output: fnResourceKeyValueParse(row.output_json),
       };
     });
   }
@@ -706,7 +706,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
       failures.push(...retryResults
         .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
         .map((result) => result.reason));
-      if (failures.length > 0) throw new AggregateError(failures, 'One or more actor resource key-value handles failed to close.');
+      if (failures.length > 0) throw new AggregateError(failures, 'One or more resource key-value handles failed to close.');
     })();
     this.#closePromise = closing;
     void closing.catch(() => {
@@ -736,7 +736,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
   async #verifyDatabase(database: Database, resourceId: string, formatVersion: number): Promise<void> {
     const health = await (await database.prepare('PRAGMA quick_check;')).all();
     if (health.length !== 1 || !Object.values(health[0] ?? {}).some((value) => value === 'ok')) {
-      throw new Error('Actor resource key-value database health check failed.');
+      throw new Error('Resource key-value database health check failed.');
     }
     const metadata = await (await database.prepare(`
       SELECT singleton, resource_id, resource_kind, format_version
@@ -751,11 +751,11 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
       || row?.resource_kind !== this.#kind
       || Number(row?.format_version) !== formatVersion
     ) {
-      throw new Error('Actor resource key-value physical identity does not match its catalog resource.');
+      throw new Error('Resource key-value physical identity does not match its catalog resource.');
     }
     await (await database.prepare(`
       SELECT key, value, revision, created_at, updated_at
-      FROM actor_resource_entries
+      FROM resource_entries
       LIMIT 0
     `)).all();
     await (await database.prepare(`
@@ -765,7 +765,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
       LIMIT 0
     `)).all();
     const metadataColumns = await (await database.prepare('PRAGMA table_info(_vibecanvas_resource_metadata);')).all() as TTableInfoRow[];
-    const entryColumns = await (await database.prepare('PRAGMA table_info(actor_resource_entries);')).all() as TTableInfoRow[];
+    const entryColumns = await (await database.prepare('PRAGMA table_info(resource_entries);')).all() as TTableInfoRow[];
     const receiptColumns = await (await database.prepare('PRAGMA table_info(_vibecanvas_function_operation_receipts);')).all() as TTableInfoRow[];
     const columnsMatch = (actual: readonly TTableInfoRow[], expected: readonly (readonly [string, string, number, number])[]) => (
       actual.length === expected.length
@@ -796,17 +796,17 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
       ['output_json', 'JSON', 1, 0],
       ['committed_at', 'TEXT', 1, 0],
     ])) {
-      throw new Error('Actor resource key-value physical columns are invalid.');
+      throw new Error('Resource key-value physical columns are invalid.');
     }
     const tableList = await (await database.prepare('PRAGMA table_list;')).all() as TTableListRow[];
     for (const tableName of [
       '_vibecanvas_resource_metadata',
-      'actor_resource_entries',
+      'resource_entries',
       '_vibecanvas_function_operation_receipts',
     ]) {
       const table = tableList.find((candidate) => candidate.name === tableName);
       if (Number(table?.strict) !== 1 || Number(table?.wr) !== 0) {
-        throw new Error('Actor resource key-value physical tables must use strict rowid storage.');
+        throw new Error('Resource key-value physical tables must use strict rowid storage.');
       }
     }
     const schemaObjects = await (await database.prepare(`
@@ -818,8 +818,8 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     const expectedSchemaObjects = [
       ['table', '_vibecanvas_function_operation_receipts', '_vibecanvas_function_operation_receipts', RESOURCE_OPERATION_RECEIPTS_SCHEMA_SQL],
       ['table', '_vibecanvas_resource_metadata', '_vibecanvas_resource_metadata', RESOURCE_METADATA_SCHEMA_SQL],
-      ['table', 'actor_resource_entries', 'actor_resource_entries', RESOURCE_ENTRIES_SCHEMA_SQL],
-      ['trigger', 'actor_resource_entries_updated_at_after_update', 'actor_resource_entries', RESOURCE_UPDATED_AT_TRIGGER_SQL],
+      ['table', 'resource_entries', 'resource_entries', RESOURCE_ENTRIES_SCHEMA_SQL],
+      ['trigger', 'resource_entries_updated_at_after_update', 'resource_entries', RESOURCE_UPDATED_AT_TRIGGER_SQL],
     ] as const;
     if (
       schemaObjects.length !== expectedSchemaObjects.length
@@ -831,7 +831,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
         || normalizeSchemaSql(schemaObjects[index].sql) !== normalizeSchemaSql(sql)
       ))
     ) {
-      throw new Error('Actor resource key-value physical schema is incomplete.');
+      throw new Error('Resource key-value physical schema is incomplete.');
     }
   }
 
@@ -971,7 +971,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
   async #copyEntries(source: Database, destination: Database): Promise<void> {
     let cursor: string | null = null;
     const insert = await destination.prepare(`
-      INSERT INTO actor_resource_entries (key, value, revision, created_at, updated_at)
+      INSERT INTO resource_entries (key, value, revision, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
     `);
     while (true) {
@@ -1042,7 +1042,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
   }[]> {
     const rows = await (await database.prepare(`
       SELECT key, CAST(value AS TEXT) AS serialized_value, revision, created_at, updated_at
-      FROM actor_resource_entries
+      FROM resource_entries
       WHERE (? IS NULL OR key > ?)
       ORDER BY key ASC
       LIMIT ?
@@ -1231,8 +1231,8 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     }
   }
 
-  #decryptionFailed(): ActorResourceError {
-    return new ActorResourceError(
+  #decryptionFailed(): ResourceError {
+    return new ResourceError(
       'SECRET_STORE_DECRYPTION_FAILED',
       'The secret-store database could not be decrypted or verified.',
     );
@@ -1473,7 +1473,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     resourceIdValue: string,
     operation: (resourceId: string) => Promise<T>,
   ): Promise<T> {
-    const resourceId = fnActorResourceKeyValueHostId(resourceIdValue);
+    const resourceId = fnResourceKeyValueHostId(resourceIdValue);
     this.#blockedLifecycleCounts.set(
       resourceId,
       (this.#blockedLifecycleCounts.get(resourceId) ?? 0) + 1,
@@ -1502,7 +1502,7 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
     if (calls?.size) await Promise.allSettled([...calls]);
   }
 
-  #getEntry(resourceId: string, key: string): Promise<TActorResourceKeyValueEntry | null> {
+  #getEntry(resourceId: string, key: string): Promise<TResourceKeyValueEntry | null> {
     return this.#withHandle(resourceId, async (database) => {
       return this.#getEntryFromDatabase(database, key);
     });
@@ -1511,42 +1511,42 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
   async #getEntryFromDatabase(
     database: Database,
     key: string,
-  ): Promise<TActorResourceKeyValueEntry | null> {
+  ): Promise<TResourceKeyValueEntry | null> {
     const row = await (await database.prepare(`
       SELECT key, value, revision, created_at, updated_at
-      FROM actor_resource_entries
+      FROM resource_entries
       WHERE key = ?
     `)).get(key);
-    return row ? fnActorResourceKeyValueEntry(row) : null;
+    return row ? fnResourceKeyValueEntry(row) : null;
   }
 
-  #getEntryMetadata(resourceId: string, key: string): Promise<TActorResourceKeyValueEntryMetadata | null> {
+  #getEntryMetadata(resourceId: string, key: string): Promise<TResourceKeyValueEntryMetadata | null> {
     return this.#withHandle(resourceId, async (database) => {
       const row = await (await database.prepare(`
         SELECT key, revision, created_at, updated_at
-        FROM actor_resource_entries
+        FROM resource_entries
         WHERE key = ?
       `)).get(key);
-      return row ? fnActorResourceKeyValueEntryMetadata(row) : null;
+      return row ? fnResourceKeyValueEntryMetadata(row) : null;
     });
   }
 
   #operationResourceId(resourceId: string): string {
     this.#assertAvailable(resourceId);
-    return fnActorResourceKeyValueHostId(resourceId);
+    return fnResourceKeyValueHostId(resourceId);
   }
 
-  #assertIdentity(identity: TActorResourceKeyValueIdentity): void {
-    fnActorResourceKeyValueHostId(identity.resourceId);
+  #assertIdentity(identity: TResourceKeyValueIdentity): void {
+    fnResourceKeyValueHostId(identity.resourceId);
     if (identity.kind !== this.#kind) {
-      throw new TypeError('Actor resource kind does not match the physical key-value store.');
+      throw new TypeError('Resource kind does not match the physical key-value store.');
     }
   }
 
   #assertAvailable(resourceId?: string): void {
-    if (this.#closed) throw new Error('Actor resource key-value store is closed.');
+    if (this.#closed) throw new Error('Resource key-value store is closed.');
     if (resourceId && (this.#blockedLifecycleCounts.get(resourceId) ?? 0) > 0) {
-      throw new Error('Actor resource key-value store is unavailable during lifecycle work.');
+      throw new Error('Resource key-value store is unavailable during lifecycle work.');
     }
   }
 
@@ -1583,8 +1583,8 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
       if (!/^[0-9a-f]{64}$/.test(databaseHexKey)) throw new Error('Invalid secret-store database key.');
       return databaseHexKey;
     } catch (error) {
-      if (error instanceof ActorResourceError && error.code === 'SECRET_STORE_KEY_UNAVAILABLE') throw error;
-      throw new ActorResourceError(
+      if (error instanceof ResourceError && error.code === 'SECRET_STORE_KEY_UNAVAILABLE') throw error;
+      throw new ResourceError(
         'SECRET_STORE_KEY_UNAVAILABLE',
         'The secret-store database encryption key is unavailable or invalid.',
       );
@@ -1594,12 +1594,12 @@ export class ResourceKeyValueStore implements IActorResourceKeyValuePersistence 
   async #assertDatabaseFile(resourceId: string): Promise<void> {
     const details = await lstat(this.#databasePath(resourceId));
     if (details.isSymbolicLink() || !details.isFile()) {
-      throw new Error('Actor resource key-value database file is missing.');
+      throw new Error('Resource key-value database file is missing.');
     }
   }
 
   #resourceDirectory(resourceId: string): string {
-    return join(this.#dataRoot, fnActorResourceKeyValueHostId(resourceId));
+    return join(this.#dataRoot, fnResourceKeyValueHostId(resourceId));
   }
 
   #databasePath(resourceId: string): string {

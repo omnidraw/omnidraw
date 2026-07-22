@@ -1,10 +1,8 @@
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
-  IWidgetArtifactReader,
   IWidgetPreviewService,
   IWidgetPublicationService,
   IWidgetRevisionSourceSnapshotReader,
-  IWidgetUiPreviewArtifactReadCapabilityIssuer,
   TWidgetBrowserFunctionDescriptor,
   TWidgetManifestV2,
   TWidgetResourceBindingInput,
@@ -149,9 +147,7 @@ export type TWidgetAuthoringCapability = TWidgetSourceCaptureCapability
   & TWidgetBuildValidationCapability
   & IWidgetPreviewService
   & IWidgetPublicationService
-  & IWidgetRevisionSourceSnapshotReader
-  & IWidgetUiPreviewArtifactReadCapabilityIssuer
-  & Pick<IWidgetArtifactReader, 'readArtifact'>;
+  & IWidgetRevisionSourceSnapshotReader;
 
 export type TWidgetResourceBindingResolver = (
   tenant: TTenantContext,
@@ -169,60 +165,6 @@ export type TWidgetAuthoringResourceSelection = Readonly<{
   name: string;
   status: 'created' | 'provisioning' | 'ready' | 'migrating' | 'error' | 'deleting';
 }>;
-
-export type TWidgetPreviewFunctionInvocationStatus =
-  | 'queued'
-  | 'claimed'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled'
-  | 'timed_out';
-
-export type TWidgetPreviewFunctionFailure = Readonly<{
-  owner: 'user' | 'platform' | 'cancelled';
-  code: string;
-  message: string;
-  retryable: boolean;
-}>;
-
-export type TWidgetPreviewFunctionCapabilityView = Readonly<{
-  id: string;
-  functionName: string;
-  widgetRevisionId: string;
-  subject: Readonly<{
-    kind: 'agent_preview';
-    previewId: string;
-    previewRevisionId: string;
-  }>;
-  status: TWidgetPreviewFunctionInvocationStatus;
-  output: unknown | null;
-  failure: TWidgetPreviewFunctionFailure | null;
-  createdAtMs: number;
-  startedAtMs: number | null;
-  finishedAtMs: number | null;
-}>;
-
-export interface IWidgetPreviewFunctionCapability {
-  invokePreviewFunction(tenant: TTenantContext, request: Readonly<{
-    previewId: string;
-    previewRevisionId: string;
-    widgetDefinitionId: string;
-    functionName: string;
-    input: unknown;
-    idempotencyKey: string;
-  }>): Promise<TWidgetPreviewFunctionCapabilityView>;
-  getPreviewFunctionInvocation(tenant: TTenantContext, request: Readonly<{
-    invocationId: string;
-    previewId: string;
-    previewRevisionId: string;
-  }>): Promise<TWidgetPreviewFunctionCapabilityView | null>;
-  cancelPreviewFunctionInvocation(tenant: TTenantContext, request: Readonly<{
-    invocationId: string;
-    previewId: string;
-    previewRevisionId: string;
-  }>): Promise<TWidgetPreviewFunctionCapabilityView | null>;
-}
 
 export type TWidgetDraftValidation = Readonly<{
   status: 'unknown' | 'valid' | 'invalid';
@@ -251,11 +193,7 @@ export type TWidgetPreviewReady = Readonly<{
   draftId: string;
   definitionId: string;
   name: string;
-  previewId: string;
-  previewRevisionId: string;
   revision: string;
-  currentRevision: string;
-  stale: boolean;
   manifest: TWidgetManifestV2;
   uiArtifact: Readonly<{
     digestSha256: string;
@@ -267,17 +205,12 @@ export type TWidgetPreviewReady = Readonly<{
     functions: readonly TWidgetBrowserFunctionDescriptor[];
   }>;
   diagnostics: readonly string[];
-  expiresAtMs: number;
 }>;
 
 export type TWidgetPreviewFailureReason =
   | 'not-found'
-  | 'not-built'
-  | 'stale-revision'
   | 'validation-failed'
   | 'manifest-invalid'
-  | 'resource-binding-invalid'
-  | 'preview-conflict'
   | 'artifact-unavailable'
   | 'build-failed';
 
@@ -285,38 +218,15 @@ export type TWidgetPreviewResult = TWidgetPreviewReady | Readonly<{
   ready: false;
   draftId: string;
   revision?: string;
-  currentRevision?: string;
-  previewId?: string;
-  previewRevisionId?: string;
   reason: TWidgetPreviewFailureReason;
   message: string;
   diagnostics: readonly string[];
-}>;
-
-export type TWidgetPreviewCloseResult = Readonly<{
-  closed: boolean;
-  draftId: string;
-  previewId: string;
-  previewRevisionId: string;
 }>;
 
 export type TWidgetPreviewCatalogState =
   | Readonly<{ status: 'ready'; revision: string }>
   | Readonly<{ status: 'failed'; revision: string; message: string }>
   | Readonly<{ status: 'not-ready'; revision: string; message: string | null }>;
-
-export type TWidgetPreviewFunctionInvocationView = Readonly<{
-  id: string;
-  functionName: string;
-  previewId: string;
-  previewRevisionId: string;
-  status: TWidgetPreviewFunctionInvocationStatus;
-  output: unknown | null;
-  failure: TWidgetPreviewFunctionFailure | null;
-  createdAtMs: number;
-  startedAtMs: number | null;
-  finishedAtMs: number | null;
-}>;
 
 export type TWidgetPublishResult =
   | Readonly<{

@@ -15,7 +15,7 @@ Production adapters live in `apps/frontend/src/ai-chat-adapters.ts`. Package sou
 
 ## Lifecycle
 
-The canvas extension registers the widget manager service and AI/published-widget plugins before scene hydration. Runtime shutdown stops actor iterators and reconnect timers, removes widget DOM portals and Solid roots, unregisters tools, and releases extension cleanup in reverse install order.
+The canvas extension registers the widget manager service and AI/published-widget plugins before scene hydration. Runtime shutdown stops reconnect timers, removes widget DOM portals and Solid roots, unregisters tools, and releases extension cleanup in reverse install order.
 
 ## Tests
 

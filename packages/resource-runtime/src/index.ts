@@ -1,5 +1,5 @@
 /**
- * @file Public actor-independent resource runtime contract surface.
+ * @file Public resource runtime contract surface.
  */
 
 export type * from './interface';

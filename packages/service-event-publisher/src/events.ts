@@ -27,51 +27,10 @@ export type TNotificationEvent = Readonly<{
   description?: string;
 }>;
 
-export type TActorStatus =
-  | 'created'
-  | 'starting'
-  | 'running'
-  | 'paused'
-  | 'stopping'
-  | 'stopped'
-  | 'error'
-  | 'blocked';
-
-export type TActorEvent =
-  | Readonly<{ kind: 'system'; actorId: string; type: 'ack'; messageId: string; inputName: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'state.changed'; from: string; to: string; messageId?: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'status.changed'; from: TActorStatus | null; to: TActorStatus }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'data.changed'; data: TEventJson; messageId?: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'snapshot'; revision: number; state: string; data: TEventJson; cause: 'startup' | 'input' | 'activity' | 'error'; jobId?: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'error'; code: string; message: string; details?: TEventJson; messageId?: string }>
-  | Readonly<{ kind: 'actor'; actorId: string; name: string; payload: TEventJson; messageId?: string }>;
-
-export type TAgentDraftActorSnapshot = Readonly<{
-  state: string;
-  context: unknown;
-}>;
-
 export type TAgentChatEvent = Readonly<{
   widgetId: string;
   sessionId: string;
   event: AgentSessionEvent;
-}>;
-
-export type TAgentDraftActorRuntimeEvent =
-  | Readonly<{ kind: 'system'; actorId: string; type: 'ack'; messageId: string; inputName: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'state.changed'; from: string; to: string; messageId?: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'status.changed'; from: string | null; to: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'data.changed'; data: unknown; messageId?: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'snapshot'; revision: number; state: string; data: unknown; cause: 'startup' | 'input' | 'activity' | 'error'; jobId?: string }>
-  | Readonly<{ kind: 'system'; actorId: string; type: 'error'; code: string; message: string; details?: unknown; messageId?: string }>
-  | Readonly<{ kind: 'actor'; actorId: string; name: string; payload: unknown; messageId?: string }>;
-
-export type TAgentDraftActorEvent = Readonly<{
-  kind: 'draft-actor';
-  widgetId: string;
-  sessionId: string;
-  event: TAgentDraftActorRuntimeEvent | Readonly<{ kind: 'lifecycle'; type: 'stopped'; actorId: string }>;
-  snapshot?: TAgentDraftActorSnapshot;
 }>;
 
 export type TAgentWidgetUpdateEvent = Readonly<{
@@ -131,7 +90,6 @@ export type TAgentWidgetCatalogEvent = Readonly<{
 
 export type TAgentEvent =
   | TAgentChatEvent
-  | TAgentDraftActorEvent
   | TAgentWidgetUpdateEvent
   | TAgentApprovalEvent
   | TAgentWidgetDraftEvent

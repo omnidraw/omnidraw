@@ -11,8 +11,8 @@ describe('txRenderWidgetLoading', () => {
       root,
       error: {
         phase: 'snapshot',
-        code: 'ACTOR_INSTANCE_NOT_READY',
-        message: 'Widget actor is starting.',
+        code: 'WIDGET_RUNTIME_PENDING',
+        message: 'Widget runtime is starting.',
         retryable: true,
       },
       replaceContent: false,

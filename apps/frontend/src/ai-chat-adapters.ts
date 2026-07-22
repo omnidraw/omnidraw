@@ -13,12 +13,10 @@ import {
   type TAiChatBrowserPort,
   type TSidebarApiPort,
   type TSidebarController,
-  type TLegacyActorUiCapability,
   type TWidgetBrowserPort,
   type TWidgetTransportPort,
 } from "@vibecanvas/ui-ai-chat";
 import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "@vibecanvas/canvas";
-import { configureLegacyActorUiStartup } from "./legacy-actor-ui-startup";
 
 export const catalogInvalidation = createCatalogInvalidation();
 export const widgetPlacementCoordinator = createWidgetPlacementCoordinator();
@@ -76,24 +74,6 @@ export const widgetBrowserPort: TWidgetBrowserPort = {
 
 const apiService = orpcWebsocketService.apiService;
 
-export let legacyActorUiCapability: TLegacyActorUiCapability | undefined;
-
-export async function configureFrontendLegacyActorUi(): Promise<void> {
-  await configureLegacyActorUiStartup({
-    requestHealth: () => fetch("/health", {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    }),
-    loadLegacyActorUi: () => import("@vibecanvas/ui-actor-legacy"),
-    install: (capability) => {
-      legacyActorUiCapability = capability;
-    },
-  }, {
-    browser: widgetBrowserPort,
-    transport: apiService,
-  });
-}
-
 export const canvasImagePort: TCanvasImagePort = {
   async uploadImage(body) {
     const [error, result] = await apiService.api.file.put({
@@ -145,7 +125,6 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
     },
     widgetPlacement: widgetPlacementCoordinator,
     widgetCollaborativeState: widgetCollaborativeStatePort,
-    legacy: legacyActorUiCapability,
   });
 }
 

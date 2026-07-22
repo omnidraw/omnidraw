@@ -23,14 +23,14 @@ function parseEncryptionKey(row: unknown): TEncryptionKey {
   }
   return {
     id: value.id,
-    purpose: 'actor-resource-secret-store',
+    purpose: 'resource-secret-store',
     algorithm: 'aegis256',
     key_hex: value.key_hex,
     created_at: fnTimestampFromMs(value.created_at_ms),
   };
 }
 
-export async function fxActorResourceEncryptionKeyGet(
+export async function fxResourceEncryptionKeyGet(
   portal: TPortal,
   args: TArgs,
 ): Promise<TEncryptionKey | null> {

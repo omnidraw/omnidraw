@@ -38,17 +38,7 @@ function createNeutralElement(): TElement {
 }
 
 describe("neutral widget host", () => {
-  test("normalizes legacy, browser-only, and revision-pinned metadata without process identity", () => {
-    const legacy = fnNormalizeWidgetHostData({
-      type: "widget",
-      kind: "legacy-kind",
-      actorDefinitionName: "LegacyActor",
-      actorInstanceId: "actor-process-1",
-      w: 320,
-      h: 200,
-      expanded: true,
-      window: "contained",
-    });
+  test("normalizes browser-only and revision-pinned metadata", () => {
     const browserOnly = fnNormalizeWidgetHostData({
       type: "ui-widget",
       kind: "filesystem",
@@ -60,13 +50,6 @@ describe("neutral widget host", () => {
     });
     const revision = fnNormalizeWidgetHostData(createNeutralElement().data);
 
-    expect(legacy).toMatchObject({
-      source: "legacy-actor",
-      hostKey: "legacy-kind",
-      definitionId: null,
-      instanceId: null,
-    });
-    expect(legacy).not.toHaveProperty("actorInstanceId");
     expect(browserOnly).toMatchObject({
       source: "browser-only",
       hostKey: "filesystem",

@@ -5,20 +5,14 @@
 import type { IService } from '@vibecanvas/runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
-  TActorEvent,
   TAgentEvent,
   TDbEvent,
   TNotificationEvent,
 } from './events';
 
 export type {
-  TActorEvent,
-  TActorStatus,
   TAgentApprovalEvent,
   TAgentChatEvent,
-  TAgentDraftActorEvent,
-  TAgentDraftActorRuntimeEvent,
-  TAgentDraftActorSnapshot,
   TAgentEvent,
   TAgentWidgetCatalogEvent,
   TAgentWidgetDraftEvent,
@@ -37,10 +31,6 @@ export interface IEventPublisherService extends IService {
   subscribeDbEvents(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
   subscribeDbEventRecords(tenant: TTenantContext, canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
   getDbEventCursor(tenant: TTenantContext): number;
-
-  publishActorEvent(tenant: TTenantContext, event: TActorEvent): number;
-  subscribeActorEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent>;
-  getActorEventCursor(tenant: TTenantContext): number;
 
   publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number;
   subscribeAgentEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
@@ -65,9 +55,6 @@ export interface ITenantEventPublisherService {
   subscribeDbEvents(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TDbEvent>;
   subscribeDbEventRecords(canvasId: string, options?: TEventSubscriptionOptions): AsyncIterable<TSequencedEvent<TDbEvent>>;
   getDbEventCursor(): number;
-  publishActorEvent(event: TActorEvent): number;
-  subscribeActorEvents(options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent>;
-  getActorEventCursor(): number;
   publishAgentEvent(event: TAgentEvent): number;
   subscribeAgentEvents(options?: TEventSubscriptionOptions): AsyncIterable<TAgentEvent>;
   getAgentEventCursor(): number;

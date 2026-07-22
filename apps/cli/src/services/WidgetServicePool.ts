@@ -6,10 +6,8 @@ import {
   type IWidgetPublishedPlacementReader,
   type IWidgetRevisionReader,
   type IWidgetRevisionSourceSnapshotReader,
-  type IWidgetServerPreviewArtifactReadCapabilityIssuer,
   type IWidgetServerExecutionArtifactReadCapabilityIssuer,
   type IWidgetSourceBuildArtifactReadCapabilityIssuer,
-  type IWidgetUiPreviewArtifactReadCapabilityIssuer,
   type TWidgetArtifactGcRequest,
   type TWidgetArtifactGcResult,
 } from '@vibecanvas/widget-contract';
@@ -40,7 +38,6 @@ type TWidgetAuthoringCapability = IWidgetPublicationService
   & IWidgetPreviewService
   & IWidgetRevisionSourceSnapshotReader
   & IWidgetArtifactReader
-  & IWidgetUiPreviewArtifactReadCapabilityIssuer
   & Readonly<{
     captureSource: WidgetService['captureSource'];
     validateBuild(
@@ -51,9 +48,7 @@ type TWidgetAuthoringCapability = IWidgetPublicationService
 
 type TWidgetServerArtifactCapability = IWidgetArtifactReader
   & IWidgetServerExecutionArtifactReadCapabilityIssuer
-  & IWidgetServerPreviewArtifactReadCapabilityIssuer
-  & Pick<IWidgetRevisionReader, 'getRevision'>
-  & Pick<IWidgetPreviewService, 'getPreviewRevision'>;
+  & Pick<IWidgetRevisionReader, 'getRevision'>;
 
 /** One physical widget artifact owner per organization placement, shared by accounts. */
 class WidgetServicePool extends TenantServicePool<WidgetService>
@@ -103,18 +98,6 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
     this.#delegate(tenant, (service) => service.buildPreview(tenant, request))
   );
 
-  getPreview: IWidgetPreviewService['getPreview'] = (tenant, request) => (
-    this.#delegate(tenant, (service) => service.getPreview(tenant, request))
-  );
-
-  getPreviewRevision: IWidgetPreviewService['getPreviewRevision'] = (tenant, request) => (
-    this.#delegate(tenant, (service) => service.getPreviewRevision(tenant, request))
-  );
-
-  stopPreview: IWidgetPreviewService['stopPreview'] = (tenant, request) => (
-    this.#delegate(tenant, (service) => service.stopPreview(tenant, request))
-  );
-
   listPublishedPlacements: IWidgetPublishedPlacementReader['listPublishedPlacements'] = (
     tenant,
   ) => this.#delegate(
@@ -157,24 +140,6 @@ implements TWidgetServiceCapability, TWidgetServerArtifactCapability {
   ) => this.#delegate(
     tenant,
     (service) => service.issueSourceBuildArtifactReadCapability(tenant, request),
-  );
-
-  issueUiPreviewArtifactReadCapability:
-    IWidgetUiPreviewArtifactReadCapabilityIssuer['issueUiPreviewArtifactReadCapability'] = (
-    tenant,
-    request,
-  ) => this.#delegate(
-    tenant,
-    (service) => service.issueUiPreviewArtifactReadCapability(tenant, request),
-  );
-
-  issueServerPreviewArtifactReadCapability:
-    IWidgetServerPreviewArtifactReadCapabilityIssuer['issueServerPreviewArtifactReadCapability'] = (
-    tenant,
-    request,
-  ) => this.#delegate(
-    tenant,
-    (service) => service.issueServerPreviewArtifactReadCapability(tenant, request),
   );
 
   getArtifact: IWidgetArtifactReader['getArtifact'] = (tenant, request) => (
@@ -251,10 +216,6 @@ function createWidgetAuthoringCapability(
     getRevisionSource: pool.getRevisionSource,
     readRevisionSourceSnapshot: pool.readRevisionSourceSnapshot,
     buildPreview: pool.buildPreview,
-    getPreview: pool.getPreview,
-    getPreviewRevision: pool.getPreviewRevision,
-    stopPreview: pool.stopPreview,
-    issueUiPreviewArtifactReadCapability: pool.issueUiPreviewArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,
     captureSource: pool.captureSource,
@@ -268,9 +229,7 @@ function createWidgetServerArtifactCapability(
 ): TWidgetServerArtifactCapability {
   return Object.freeze({
     getRevision: pool.getRevision,
-    getPreviewRevision: pool.getPreviewRevision,
     issueServerExecutionArtifactReadCapability: pool.issueServerExecutionArtifactReadCapability,
-    issueServerPreviewArtifactReadCapability: pool.issueServerPreviewArtifactReadCapability,
     getArtifact: pool.getArtifact,
     readArtifact: pool.readArtifact,
   });

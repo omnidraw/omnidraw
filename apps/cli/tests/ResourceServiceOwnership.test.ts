@@ -137,7 +137,7 @@ describe('ResourceService ownership', () => {
       const prepare = database.prepare.bind(database);
       database.prepare = async (...args) => {
         const statement = await prepare(...args);
-        if (!heldWrite && String(args[0]).includes('INSERT INTO actor_resource_entries (key, value)')) {
+        if (!heldWrite && String(args[0]).includes('INSERT INTO resource_entries (key, value)')) {
           const run = statement.run.bind(statement);
           statement.run = async (...runArgs) => {
             heldWrite = true;
@@ -166,32 +166,6 @@ describe('ResourceService ownership', () => {
       });
       owner = createService(databaseFactory);
       await owner.start({ config: {}, hooks: {} });
-      const consumer = (definitionName: string) => ({
-        getVibecanvasJson: (candidate: string) => candidate === definitionName
-          ? {
-              actor: {
-                resources: {
-                  preferences: {
-                    kind: 'kv' as const,
-                    required: true,
-                    scope: ['read' as const],
-                  },
-                },
-              },
-            }
-          : null,
-      });
-      const detachFirstConsumer = owner.attachConsumer(consumer('definition-a'));
-      const detachSecondConsumer = owner.attachConsumer(consumer('definition-b'));
-      await expect(owner.getDefinitionResourceStatus(tenant, 'definition-a')).resolves.toHaveLength(1);
-      await expect(owner.getDefinitionResourceStatus(tenant, 'definition-b')).resolves.toHaveLength(1);
-      detachFirstConsumer();
-      await expect(owner.getDefinitionResourceStatus(tenant, 'definition-a')).rejects.toMatchObject({
-        code: 'RESOURCE_DEFINITION_NOT_FOUND',
-      });
-      await expect(owner.getDefinitionResourceStatus(tenant, 'definition-b')).resolves.toHaveLength(1);
-      detachSecondConsumer();
-
       const resource = await owner.createResource(tenant, { kind: 'kv', name: 'Held write' });
       await expect(controlStore.getPlacement(tenant, resource.id)).resolves.toMatchObject({
         resourceId: resource.id,
@@ -262,8 +236,8 @@ describe('ResourceService ownership', () => {
       database.prepare = async (...args) => {
         const statement = await prepare(...args);
         if (
-          String(args[0]).includes('INSERT INTO actor_resource_entries (key, value)')
-          || String(args[0]).includes('UPDATE actor_resource_entries')
+          String(args[0]).includes('INSERT INTO resource_entries (key, value)')
+          || String(args[0]).includes('UPDATE resource_entries')
         ) {
           const run = statement.run.bind(statement);
           statement.run = async (...runArgs) => {
@@ -314,189 +288,6 @@ describe('ResourceService ownership', () => {
       expect(writeRuns).toBe(2);
     } finally {
       releaseFirst?.();
-      await service?.stop().catch(() => undefined);
-      await dbService.stop().catch(() => undefined);
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test('does not claim an unplaced resource without explicit migration authority', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-adopt-'));
-    const dbService = new DbServiceTurso({
-      databasePath: ':memory:',
-      dataDir: root,
-      cacheDir: root,
-    });
-    const resourceId = '00000000-0000-4000-8000-000000000011';
-    let service: ResourceService | null = null;
-    let successor: ResourceService | null = null;
-    try {
-      await dbService.start();
-      const db = dbService.forTenant(tenant);
-      const controlStore = new ResourceControlStoreTurso(dbService.db);
-      await db.actorResource.create({
-        id: resourceId,
-        kind: 'db',
-        name: 'Legacy database',
-        status: 'created',
-      });
-      await expect(controlStore.getPlacement(tenant, resourceId)).resolves.toBeNull();
-
-      const createService = () => new ResourceService({
-        tenant,
-        db,
-        controlStore,
-        dataRoot: root,
-        useCoordinator,
-      });
-      service = createService();
-      await service.start({ config: {}, hooks: {} });
-      await expect(controlStore.getResource(tenant, resourceId)).resolves.toMatchObject({
-        id: resourceId,
-        status: 'created',
-      });
-      await expect(controlStore.getPlacement(tenant, resourceId)).resolves.toBeNull();
-      await expect(access(join(root, resourceId, 'data.db'))).rejects.toBeDefined();
-
-      await service.stop();
-      service = null;
-      successor = createService();
-      await successor.start({ config: {}, hooks: {} });
-      await expect(successor.getResource(tenant, resourceId)).resolves.toMatchObject({
-        id: resourceId,
-        status: 'created',
-      });
-      await expect(controlStore.getPlacement(tenant, resourceId)).resolves.toBeNull();
-    } finally {
-      await successor?.stop().catch(() => undefined);
-      await service?.stop().catch(() => undefined);
-      await dbService.stop().catch(() => undefined);
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test('routes an exact named database operation through the canonical gateway', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-gateway-'));
-    const dbService = new DbServiceTurso({
-      databasePath: ':memory:',
-      dataDir: root,
-      cacheDir: root,
-    });
-    let service: ResourceService | null = null;
-    try {
-      await dbService.start();
-      const controlStore = new ResourceControlStoreTurso(dbService.db);
-      const db = dbService.forTenant(tenant);
-      await db.actor.insertDefinition({
-        name: 'settings-widget',
-        slug: 'settings-widget',
-        url: null,
-        description: null,
-        manifest_path: 'widgets/settings/vibecanvas.json',
-      });
-      service = new ResourceService({
-        tenant,
-        db,
-        controlStore,
-        dataRoot: root,
-        useCoordinator,
-      });
-      service.attachConsumer({
-        getVibecanvasJson: (definitionName) => definitionName === 'settings-widget'
-          ? {
-              actor: {
-                resources: {
-                  settings: {
-                    kind: 'db',
-                    required: true,
-                    scope: ['read', 'write'],
-                    arbitrarySql: false,
-                    operations: {
-                      setSetting: {
-                        effect: 'write',
-                        sql: `
-                          INSERT INTO settings (name, value) VALUES (:name, :value)
-                          ON CONFLICT(name) DO UPDATE SET value = excluded.value
-                        `,
-                        parameters: {
-                          name: { type: 'string' },
-                          value: { type: 'string' },
-                        },
-                        result: 'execute',
-                      },
-                      getSetting: {
-                        effect: 'read',
-                        sql: 'SELECT value FROM settings WHERE name = :name',
-                        parameters: { name: { type: 'string' } },
-                        result: 'rows',
-                      },
-                    },
-                  },
-                },
-              },
-            }
-          : null,
-      });
-      await service.start({ config: {}, hooks: {} });
-      const resource = await service.createResource(tenant, { kind: 'db', name: 'Settings database' });
-      await service.executeDbLiveSql(tenant, {
-        resourceId: resource.id,
-        sql: 'CREATE TABLE settings (name TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL) STRICT',
-        approved: true,
-      });
-      await service.bindResource(tenant, {
-        definitionName: 'settings-widget',
-        slot: 'settings',
-        resourceId: resource.id,
-      });
-      const call = (
-        functionClass: 'fx' | 'tx',
-        operation: string,
-        args: unknown,
-      ) => service!.call(tenant, {
-        actorId: 'settings-actor',
-        definitionName: 'settings-widget',
-        runId: 1,
-        functionClass,
-        slot: 'settings',
-        kind: 'db',
-        operation,
-        args,
-      });
-
-      await expect(call('tx', 'invoke', {
-        operation: 'setSetting',
-        parameters: { name: 'theme', value: 'dark' },
-      })).resolves.toMatchObject({ rowsAffected: 1 });
-      await expect(call('fx', 'invoke', {
-        operation: 'getSetting',
-        parameters: { name: 'theme' },
-      })).resolves.toEqual([{ value: 'dark' }]);
-      await expect(call('fx', 'query', {
-        sql: 'SELECT value FROM settings',
-        parameters: {},
-      })).rejects.toMatchObject({ code: 'DB_ARBITRARY_SQL_NOT_ALLOWED' });
-      await expect(call('fx', 'invoke', {
-        operation: 'getSetting',
-        parameters: { name: 42 },
-      })).rejects.toMatchObject({ code: 'DB_OPERATION_PARAMETERS_INVALID' });
-
-      const placement = await controlStore.getPlacement(tenant, resource.id);
-      expect(placement).not.toBeNull();
-      await controlStore.updatePlacement(tenant, {
-        resourceId: resource.id,
-        expectedEpoch: placement!.placementEpoch,
-        placementEpoch: placement!.placementEpoch,
-        cellId: placement!.cellId,
-        storageKey: placement!.storageKey,
-        status: 'reserved',
-        nowMs: Date.now(),
-      });
-      await expect(call('fx', 'invoke', {
-        operation: 'getSetting',
-        parameters: { name: 'theme' },
-      })).rejects.toMatchObject({ code: 'RESOURCE_PLACEMENT_STALE' });
-    } finally {
       await service?.stop().catch(() => undefined);
       await dbService.stop().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
@@ -598,7 +389,7 @@ describe('ResourceService ownership', () => {
     }
   });
 
-  test('keeps apply and restore status reads observable while a database resource is migrating', async () => {
+  test('keeps apply and restore status reads observable while active uses drain', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vibecanvas-resource-service-migration-status-'));
     const dbService = new DbServiceTurso({
       databasePath: ':memory:',
@@ -639,7 +430,7 @@ describe('ResourceService ownership', () => {
 
       await drainStarted;
       await expect(controlStore.getResource(tenant, database.id)).resolves.toMatchObject({
-        status: 'migrating',
+        status: 'ready',
       });
       await expect(service.getDbApply(tenant, apply.id)).resolves.toMatchObject({
         apply: { id: apply.id },

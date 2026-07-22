@@ -43,7 +43,7 @@ function recordingOwner(
 }
 
 describe('createAgentResourceService', () => {
-  test('exposes only the frozen actor-free agent resource capability', async () => {
+  test('exposes only the frozen agent resource capability', async () => {
     const capability = createAgentResourceService(recordingOwner([]), tenant);
 
     expect(Object.isFrozen(capability)).toBe(true);
@@ -72,13 +72,6 @@ describe('createAgentResourceService', () => {
     expect('forTenant' in capability).toBe(false);
     expect('call' in capability).toBe(false);
     expect('bindResource' in capability).toBe(false);
-    expect('getActorStartAdmission' in capability).toBe(false);
-
-    const source = await Bun.file(new URL(
-      '../src/services/AgentResourceService.ts',
-      import.meta.url,
-    )).text();
-    expect(source).not.toContain('@vibecanvas/service-actor');
   });
 
   test('forwards every operation with the exact bound tenant and unchanged arguments', async () => {

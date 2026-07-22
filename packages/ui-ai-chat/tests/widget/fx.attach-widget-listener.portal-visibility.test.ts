@@ -23,9 +23,7 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-type TWidgetFixtureKind = "widget" | "widget-instance";
-
-function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
+function createWidgetElement(): TElement {
   return {
     id: "widget-button-1",
     x: 10,
@@ -40,27 +38,17 @@ function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
     createdAt: 1,
     updatedAt: 1,
     style: {},
-    data: type === "widget-instance"
-      ? {
-          type,
-          definitionId: "definition-1",
-          revisionId: "revision-1",
-          instanceId: "instance-1",
-          stateDocumentId: "state-1",
-          w: 160,
-          h: 120,
-          expanded: true,
-          window: "contained",
-        }
-      : {
-          type,
-          kind: "example",
-          w: 160,
-          h: 120,
-          expanded: true,
-          window: "contained",
-          payload: {},
-        },
+    data: {
+      type: "widget-instance",
+      definitionId: "definition-1",
+      revisionId: "revision-1",
+      instanceId: "instance-1",
+      stateDocumentId: "state-1",
+      w: 160,
+      h: 120,
+      expanded: true,
+      window: "contained",
+    },
   };
 }
 
@@ -81,10 +69,11 @@ function createHooks() {
 }
 
 describe("widget button portal visibility", () => {
-  test.each(["widget", "widget-instance"] as const)("keeps the mounted %s body div synced while dragging after listeners attach", (type) => {
+  test("keeps the mounted widget instance body div synced while dragging after listeners attach", () => {
+    const type = "widget-instance" as const;
     ensureDom();
 
-    const element = createWidgetElement(type);
+    const element = createWidgetElement();
     const container = createTestContainer();
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
@@ -138,10 +127,11 @@ describe("widget button portal visibility", () => {
     widgetPortal.remove();
   });
 
-  test.each(["widget", "widget-instance"] as const)("hides the mounted %s body div when minimize toggles expanded false", (type) => {
+  test("hides the mounted widget instance body div when minimize toggles expanded false", () => {
+    const type = "widget-instance" as const;
     ensureDom();
 
-    const element = createWidgetElement(type);
+    const element = createWidgetElement();
     const container = createTestContainer();
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
@@ -197,7 +187,7 @@ describe("widget button portal visibility", () => {
   test("activates neutral DOM pointer handling only while the exact host is focused", () => {
     ensureDom();
 
-    const element = createWidgetElement("widget-instance");
+    const element = createWidgetElement();
     const container = createTestContainer();
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
@@ -261,7 +251,7 @@ describe("widget button portal visibility", () => {
 
   test('mounts a neutral runtime only inside the preloaded viewport and tears it down offscreen', () => {
     ensureDom();
-    const element = createWidgetElement('widget-instance');
+    const element = createWidgetElement();
     element.x = 5_000;
     const container = createTestContainer({ width: 800, height: 600 });
     const stage = new Konva.Stage({ container, width: 800, height: 600 });

@@ -17,15 +17,7 @@ function unusedCapability(): never {
   throw new Error('Unused fake capability method');
 }
 
-const fakeActorCapability = {
-  deleteDefinition: unusedCapability,
-  getVibecanvasJson: unusedCapability,
-  getWidgetCode: unusedCapability,
-  sendMessage: unusedCapability,
-} satisfies TApiContext['actor'];
-
 const fakeResourceCapability = {
-  bindResource: unusedCapability,
   bulkDbRows: unusedCapability,
   changeDbDraft: unusedCapability,
   confirmDbApply: unusedCapability,
@@ -46,7 +38,6 @@ const fakeResourceCapability = {
   getDbDraft: unusedCapability,
   getDbRestoreStatus: unusedCapability,
   getDbRow: unusedCapability,
-  getDefinitionResourceStatus: unusedCapability,
   getResource: unusedCapability,
   inspectDbResource: unusedCapability,
   listDbApplies: unusedCapability,
@@ -60,7 +51,6 @@ const fakeResourceCapability = {
   renameResource: unusedCapability,
   restoreDbBackup: unusedCapability,
   setResourceDataEntry: unusedCapability,
-  unbindResource: unusedCapability,
   updateDbRow: unusedCapability,
 } satisfies TApiContext['resource'];
 
@@ -74,7 +64,6 @@ const fakeAgentCapability = {
   buildWidgetPreview: unusedCapability,
   cancelChat: unusedCapability,
   clearDraftResourceBindingsChat: unusedCapability,
-  closeWidgetPreview: unusedCapability,
   connectChat: unusedCapability,
   deleteWidget: unusedCapability,
   ensureWidgetDraft: unusedCapability,
@@ -83,9 +72,6 @@ const fakeAgentCapability = {
   getWidgetCatalog: unusedCapability,
   getWidgetDetail: unusedCapability,
   getWidgetDraft: unusedCapability,
-  getWidgetPreview: unusedCapability,
-  getWidgetPreviewFunctionInvocation: unusedCapability,
-  invokeWidgetPreviewFunction: unusedCapability,
   listChatApprovals: unusedCapability,
   listWidgetDrafts: unusedCapability,
   listWidgetFiles: unusedCapability,
@@ -103,8 +89,6 @@ const fakeAgentCapability = {
   resolveWidgetPlacement: unusedCapability,
   setApiKey: unusedCapability,
   settings: unusedCapability,
-  startWidgetEditChat: unusedCapability,
-  cancelWidgetPreviewFunctionInvocation: unusedCapability,
   validateWidgetDraft: unusedCapability,
 } satisfies TApiContext['agent'];
 
@@ -120,11 +104,9 @@ const tenant = fnFreezeTenantContext({
 
 const fakeContext = {
   tenant,
-  actor: fakeActorCapability,
   agent: fakeAgentCapability,
   automerge: fakeCapability<TApiContext['automerge']>(),
   db: {
-    actor: fakeCapability<TApiContext['db']['actor']>(),
     canvas: fakeCapability<TApiContext['db']['canvas']>(),
     file: fakeCapability<TApiContext['db']['file']>(),
     toolGroup: {
@@ -137,7 +119,6 @@ const fakeContext = {
   },
   eventPublisher: {
     publishAgentEvent: () => 1,
-    subscribeActorEvents: async function* () {},
     subscribeAgentEvents: async function* () {},
     subscribeDbEventRecords: async function* () {},
     subscribeNotificationRecords: async function* () {},
@@ -167,7 +148,6 @@ describe('API context composition', () => {
       .router(router);
 
     expect(Object.keys(composed.api)).toEqual([
-      'actors',
       'agent',
       'canvas',
       'db',

@@ -94,10 +94,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
             manifest,
             sdkDependency: `file:${args.workspace.sdkPackagePath}`,
           });
-          const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
-            cwd,
-            sdkActorTypePath: join(args.workspace.sdkPackagePath, 'src', 'actor.ts'),
-          });
+          const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, { cwd });
           if (!validation.ok) {
             throw new Error(`Generated widget scaffold is invalid: ${validation.errors.join('; ')}`);
           }
@@ -137,7 +134,6 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
         const mount = await args.workspace.findMountedWidget(args.chatId, params.name);
         const validation = await txValidateWidgetFiles({ readdir, readFile, writeFile, rm, execFile, join, relative }, {
           cwd: mount.targetPath,
-          sdkActorTypePath: join(args.workspace.sdkPackagePath, 'src', 'actor.ts'),
         });
         const manifest = JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')) as { name?: unknown };
         if (manifest.name !== mount.name) {

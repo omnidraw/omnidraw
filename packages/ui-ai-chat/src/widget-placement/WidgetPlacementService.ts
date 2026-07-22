@@ -11,10 +11,10 @@ import type {
   TWidgetPlacementStartArgs,
 } from "./WidgetPlacementCoordinator";
 import {
-  fnValidateDirectV2WidgetPlacement,
+  fnValidateDirectPublishedWidgetPlacement,
   fnValidateWidgetPlacementDescriptor,
 } from "./fn.validate-widget-placement-descriptor";
-import type { TDirectV2WidgetPlacementDescriptor } from "./fn.validate-widget-placement-descriptor";
+import type { TDirectPublishedWidgetPlacementDescriptor } from "./fn.validate-widget-placement-descriptor";
 
 type TWidgetPlacementServiceArgs = {
   api: TAiChatApiPort;
@@ -72,7 +72,7 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
   }
 
   #request(args: Omit<TWidgetPlacementStartArgs, "event">) {
-    const directV2Placement = fnValidateDirectV2WidgetPlacement({
+    const directPublishedPlacement = fnValidateDirectPublishedWidgetPlacement({
       reference: args.reference,
       bounds: args.bounds,
     });
@@ -88,12 +88,12 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
         bounds: TWidgetFrameBounds;
         clientPoint: { x: number; y: number };
       }) => {
-        if (directV2Placement.kind !== "not-v2") {
+        if (directPublishedPlacement.kind !== "not-published") {
           try {
-            if (directV2Placement.kind === "invalid") {
-              throw new Error(directV2Placement.message);
+            if (directPublishedPlacement.kind === "invalid") {
+              throw new Error(directPublishedPlacement.message);
             }
-            this.#commitDirectV2(commitArgs, directV2Placement.descriptor, args.label);
+            this.#commitDirectPublished(commitArgs, directPublishedPlacement.descriptor, args.label);
           } catch (error) {
             this.#showCommitError(error);
           }
@@ -106,12 +106,12 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
     };
   }
 
-  #commitDirectV2(args: {
+  #commitDirectPublished(args: {
     reference: TWidgetPlacementRef;
     bounds: TWidgetFrameBounds;
     clientPoint: { x: number; y: number };
-  }, expected: TDirectV2WidgetPlacementDescriptor, label: string): void {
-    const validated = fnValidateDirectV2WidgetPlacement({
+  }, expected: TDirectPublishedWidgetPlacementDescriptor, label: string): void {
+    const validated = fnValidateDirectPublishedWidgetPlacement({
       reference: args.reference,
       bounds: args.bounds,
     });
@@ -122,7 +122,7 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       || validated.descriptor.bounds.width !== expected.bounds.width
       || validated.descriptor.bounds.height !== expected.bounds.height
     ) {
-      throw new Error("The committed v2 widget placement differs from its catalog descriptor.");
+      throw new Error("The committed published widget placement differs from its catalog descriptor.");
     }
     const worldBounds = this.#args.dropPlacement.resolveWorldBounds(args.clientPoint, expected.bounds);
     this.#args.widgetManager.placeWidgetInstance({
@@ -138,15 +138,13 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
     bounds: TWidgetFrameBounds;
     clientPoint: { x: number; y: number };
   }, label: string): Promise<void> {
-    const previewId = args.reference.source === "published" ? undefined : this.#args.browser.createId();
     let durableDraftId: string | undefined;
-    try {
-      if (previewId) {
+    {
+      if (args.reference.source === "draft") {
         durableDraftId = await this.#resolveDurableDraftOwner(args.reference);
       }
       const [error, result] = await this.#args.api.api.agent.widgets.resolvePlacement({
         reference: args.reference,
-        ...(previewId ? { previewId } : {}),
         ...(durableDraftId ? { expectedDraftId: durableDraftId } : {}),
       });
       if (error) throw error;
@@ -154,35 +152,25 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       const validated = fnValidateWidgetPlacementDescriptor({
         descriptor: result.descriptor,
         expectedReference: args.reference,
-        expectedPreviewId: previewId ?? null,
       });
       if (!validated.ok) throw new Error(validated.message);
       const descriptor = validated.descriptor;
       const worldBounds = this.#args.dropPlacement.resolveWorldBounds(args.clientPoint, descriptor.bounds);
-      if (descriptor.kind === "published-v2") {
-        throw new Error("Published v2 widgets must be placed from their local catalog descriptor.");
+      if (descriptor.kind === "published") {
+        throw new Error("Published widgets must be placed from their local catalog descriptor.");
       }
-      if (descriptor.kind === "published-legacy") {
-        if (!descriptor.definitionName) throw new Error("The published widget definition is unavailable.");
-        this.#args.widgetManager.placeLegacyPublishedWidget(descriptor.definitionName, worldBounds);
-      } else {
-        if (!descriptor.previewId || !descriptor.draftId) throw new Error("The Preview authority is unavailable.");
+      {
+        if (!descriptor.draftId) throw new Error("The draft identity is unavailable.");
         if (descriptor.draftId !== durableDraftId) {
           throw new Error("The placement resolver returned a different durable draft owner.");
         }
         await this.#args.previewFrames.place({
           draftId: descriptor.draftId,
           expectedRevision: descriptor.reference.revision,
-          previewId: descriptor.previewId,
           bounds: worldBounds,
         });
       }
       this.#notification?.showSuccess(`${label} added to canvas`, descriptor.reference.source === "draft" ? "Draft built as a pinned Preview." : undefined);
-    } catch (error) {
-      if (previewId && durableDraftId) {
-        await this.#releasePreviewOwner(durableDraftId, previewId);
-      }
-      throw error;
     }
   }
 
@@ -205,19 +193,6 @@ export class WidgetPlacementService implements IService, IStartableService<IRunt
       throw new Error("The widget draft changed before Preview placement.");
     }
     return draftId;
-  }
-
-  async #releasePreviewOwner(draftId: string, previewId: string): Promise<void> {
-    const [, current] = await this.#args.api.api.agent.widgetPreview.get({
-      draftId,
-      previewId,
-    }).catch(() => [undefined, undefined] as const);
-    if (!current?.ready || current.draftId !== draftId || current.previewId !== previewId) return;
-    await this.#args.api.api.agent.widgetPreview.close({
-      draftId,
-      previewId,
-      expectedPreviewRevisionId: current.previewRevisionId,
-    }).catch(() => undefined);
   }
 
   #showCommitError(error: unknown): void {

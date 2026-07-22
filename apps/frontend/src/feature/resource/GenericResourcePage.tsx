@@ -19,7 +19,7 @@ import {
 } from "./fn.secret-reveal";
 
 export type TGenericResourcePageProps = { resource: TRouteResource };
-type TReference = { actor_definition_name: string; slot_name: string; allow_read: boolean; allow_write: boolean };
+type TReference = { definitionId: string; revisionId: string; slot: string; allowRead: boolean; allowWrite: boolean };
 type TKvDataEntry = { key: string; valuePreview: string; valueTruncated: boolean; revision: number; createdAt: string; updatedAt: string };
 type TSecretDataEntry = { name: string; revision: number; createdAt: string; updatedAt: string };
 type TDataPage =
@@ -420,7 +420,7 @@ export const GenericResourcePage: Component<TGenericResourcePageProps> = (props)
             <section class={styles.summary}><div class={styles.summaryItem}><span class={styles.label}>Status</span><span class={styles.status}>{props.resource.status}</span></div><div class={styles.summaryItem}><span class={styles.label}>Type</span><span class={styles.value}>{props.resource.kind}</span></div><div class={styles.summaryItem}><span class={styles.label}>Created</span><span class={styles.value}>{props.resource.created_at}</span></div><div class={styles.summaryItem}><span class={styles.label}>ID</span><span class={styles.value} title={props.resource.id}>{props.resource.id}</span></div></section>
             <div class={styles.twoColumn}>
               <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>Settings</h3></div><div class={styles.panelBody}><TextField.Root value={name()} onChange={setName}><TextField.Label class={styles.label}>Display name</TextField.Label><TextField.Input class={styles.input} /></TextField.Root><div class={styles.actions}><Button class={`${styles.button} ${styles.primary}`} disabled={busy() || !name().trim() || name().trim() === displayName()} onClick={rename}>Save name</Button></div></div></section>
-              <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>References</h3><span>{references().length}</span></div><table class={styles.table}><thead><tr><th>Definition</th><th>Slot</th><th>Access</th></tr></thead><tbody><For each={references()} fallback={<tr><td colSpan={3} class={styles.muted}>Not bound to an actor definition.</td></tr>}>{(reference) => <tr><td>{reference.actor_definition_name}</td><td>{reference.slot_name}</td><td>{[reference.allow_read && "read", reference.allow_write && "write"].filter(Boolean).join(" + ")}</td></tr>}</For></tbody></table></section>
+              <section class={styles.panel}><div class={styles.panelHeader}><h3 class={styles.panelTitle}>References</h3><span>{references().length}</span></div><table class={styles.table}><thead><tr><th>Revision</th><th>Slot</th><th>Access</th></tr></thead><tbody><For each={references()} fallback={<tr><td colSpan={3} class={styles.muted}>Not bound to a published widget revision.</td></tr>}>{(reference) => <tr><td>{reference.definitionId} · {reference.revisionId}</td><td>{reference.slot}</td><td>{[reference.allowRead && "read", reference.allowWrite && "write"].filter(Boolean).join(" + ")}</td></tr>}</For></tbody></table></section>
             </div>
           </main>
         </Tabs.Content>

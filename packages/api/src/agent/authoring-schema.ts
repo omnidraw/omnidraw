@@ -1,7 +1,5 @@
 import type {
   TWidgetDraftSummary,
-  TWidgetPreviewCloseResult,
-  TWidgetPreviewFunctionInvocationView,
   TWidgetPreviewResult,
   TWidgetPublishResult,
 } from '@vibecanvas/service-agent/widget-drafts/types';
@@ -10,7 +8,6 @@ import {
   ZWidgetManifestV2,
 } from '@vibecanvas/widget-contract';
 import { z } from 'zod';
-import { ZFunctionJson } from '../function/contract';
 
 const WIDGET_ARTIFACT_MAX_BYTES = 16 * 1_024 * 1_024;
 const WIDGET_ARTIFACT_MAX_BASE64_LENGTH = Math.ceil(WIDGET_ARTIFACT_MAX_BYTES / 3) * 4;
@@ -18,8 +15,6 @@ const DIAGNOSTIC_MAX_COUNT = 256;
 const DIAGNOSTIC_MAX_LENGTH = 4_096;
 
 const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
-const FUNCTION_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
-const LOWERCASE_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const REVISION_DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 
 function decodedBase64ByteLength(value: string): number {
@@ -30,9 +25,6 @@ function decodedBase64ByteLength(value: string): number {
 
 export const ZAgentOpaqueId = z.string().uuid();
 export const ZAgentRevisionDigest = z.string().regex(REVISION_DIGEST_PATTERN);
-export const ZAgentPreviewOwnerId = z.string().uuid().regex(LOWERCASE_UUID_PATTERN);
-export const ZAgentFunctionName = z.string().regex(FUNCTION_NAME_PATTERN);
-export const ZAgentIdempotencyKey = z.string().min(1).max(200);
 
 const ZDiagnostic = z.string().max(DIAGNOSTIC_MAX_LENGTH);
 const ZDiagnostics = z.array(ZDiagnostic).max(DIAGNOSTIC_MAX_COUNT);
@@ -93,11 +85,7 @@ const ZWidgetPreviewReady = z.object({
   draftId: ZAgentOpaqueId,
   definitionId: ZAgentOpaqueId,
   name: z.string().min(1).max(200),
-  previewId: ZAgentPreviewOwnerId,
-  previewRevisionId: ZAgentOpaqueId,
   revision: ZAgentRevisionDigest,
-  currentRevision: ZAgentRevisionDigest,
-  stale: z.boolean(),
   manifest: ZWidgetManifestV2,
   uiArtifact: ZWidgetPreviewUiArtifact,
   contract: z.object({
@@ -105,24 +93,16 @@ const ZWidgetPreviewReady = z.object({
     functions: ZWidgetBrowserFunctionDescriptors,
   }).strict(),
   diagnostics: ZDiagnostics,
-  expiresAtMs: z.number().int().nonnegative(),
 }).strict();
 
 const ZWidgetPreviewFailure = z.object({
   ready: z.literal(false),
   draftId: ZAgentOpaqueId,
   revision: ZAgentRevisionDigest.optional(),
-  currentRevision: ZAgentRevisionDigest.optional(),
-  previewId: ZAgentPreviewOwnerId.optional(),
-  previewRevisionId: ZAgentOpaqueId.optional(),
   reason: z.enum([
     'not-found',
-    'not-built',
-    'stale-revision',
     'validation-failed',
     'manifest-invalid',
-    'resource-binding-invalid',
-    'preview-conflict',
     'artifact-unavailable',
     'build-failed',
   ]),
@@ -132,43 +112,6 @@ const ZWidgetPreviewFailure = z.object({
 
 export const ZAgentWidgetPreviewResult: z.ZodType<TWidgetPreviewResult> =
   z.discriminatedUnion('ready', [ZWidgetPreviewReady, ZWidgetPreviewFailure]);
-
-export const ZAgentWidgetPreviewCloseResult: z.ZodType<TWidgetPreviewCloseResult> =
-  z.object({
-    closed: z.boolean(),
-    draftId: ZAgentOpaqueId,
-    previewId: ZAgentPreviewOwnerId,
-    previewRevisionId: ZAgentOpaqueId,
-  }).strict();
-
-const ZWidgetPreviewFunctionFailure = z.object({
-  owner: z.enum(['user', 'platform', 'cancelled']),
-  code: z.string().min(1).max(128),
-  message: z.string().min(1).max(DIAGNOSTIC_MAX_LENGTH),
-  retryable: z.boolean(),
-}).strict();
-
-export const ZAgentWidgetPreviewFunctionInvocationView:
-z.ZodType<TWidgetPreviewFunctionInvocationView> = z.object({
-  id: ZAgentOpaqueId,
-  functionName: ZAgentFunctionName,
-  previewId: ZAgentPreviewOwnerId,
-  previewRevisionId: ZAgentOpaqueId,
-  status: z.enum([
-    'queued',
-    'claimed',
-    'running',
-    'succeeded',
-    'failed',
-    'cancelled',
-    'timed_out',
-  ]),
-  output: ZFunctionJson.nullable(),
-  failure: ZWidgetPreviewFunctionFailure.nullable(),
-  createdAtMs: z.number().int().nonnegative(),
-  startedAtMs: z.number().int().nonnegative().nullable(),
-  finishedAtMs: z.number().int().nonnegative().nullable(),
-}).strict();
 
 const ZWidgetPublishSuccess = z.object({
   published: z.literal(true),

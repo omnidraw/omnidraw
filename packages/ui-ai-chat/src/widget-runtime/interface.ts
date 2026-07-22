@@ -16,12 +16,12 @@ export type TWidgetRuntimeIdentity = Readonly<{
   revisionId: string;
 }>;
 
-/** Draft Preview is an authoring subject, never a fabricated canvas instance. */
+/** Browser-local draft Preview identity; it carries no backend execution authority. */
 export type TWidgetPreviewRuntimeIdentity = Readonly<{
-  kind: 'agent_preview';
+  kind: 'draft_preview';
+  draftId: string;
   definitionId: string;
-  previewId: string;
-  previewRevisionId: string;
+  revision: string;
 }>;
 
 export type TWidgetArtifactRuntimeIdentity =

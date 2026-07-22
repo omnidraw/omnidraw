@@ -16,7 +16,7 @@ describe('AI Chat tool registry', () => {
     const root = await mkdtemp(join(tmpdir(), 'vc-tool-registry-'));
     roots.push(root);
     await mkdir(join(root, 'config', 'widgets'), { recursive: true });
-    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data'), configPath: join(root, 'config') });
+    const workspace = new WidgetWorkspace({ dataPath: join(root, 'data') });
     await workspace.init();
     const cwd = await workspace.ensureChat('chat-a');
     const registry = createToolRegistry({

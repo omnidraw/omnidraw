@@ -31,7 +31,7 @@ function lease(
     leaseId,
     leaseEpoch: 1,
     expiresAtMs,
-    drainedUses: [{ id: leaseId, kind: 'legacy-actor', state: 'stopped' }],
+    drainedUses: [{ id: leaseId, kind: 'function-invocation', state: 'drained' }],
   };
 }
 

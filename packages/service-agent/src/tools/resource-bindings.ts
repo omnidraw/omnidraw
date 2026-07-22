@@ -1,4 +1,3 @@
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import type { TResourceEffect } from '@vibecanvas/resource-runtime';
 import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { TWidgetResourceSelection } from './types';
@@ -9,7 +8,7 @@ export type TResourceBindingPlan = {
   scope: ('read' | 'write')[];
 };
 
-type TResourceManifest = TVibecanvasJson | TWidgetManifestV2;
+type TResourceManifest = TWidgetManifestV2;
 type TNormalizedRequirement = {
   slot: string;
   kind: TWidgetResourceSelection['kind'];
@@ -24,19 +23,11 @@ function scopeFromEffect(effect: TResourceEffect): ('read' | 'write')[] {
 }
 
 function requirementsFromManifest(manifest: TResourceManifest): TNormalizedRequirement[] {
-  if (!('actor' in manifest)) {
-    return (manifest.resources ?? []).map((requirement) => ({
-      slot: requirement.slot,
-      kind: requirement.kind,
-      required: requirement.required ?? false,
-      scope: scopeFromEffect(requirement.effect),
-    }));
-  }
-  return Object.entries(manifest.actor.resources ?? {}).map(([slot, requirement]) => ({
-    slot,
+  return (manifest.resources ?? []).map((requirement) => ({
+    slot: requirement.slot,
     kind: requirement.kind,
-    required: requirement.required,
-    scope: [...requirement.scope],
+    required: requirement.required ?? false,
+    scope: scopeFromEffect(requirement.effect),
   }));
 }
 

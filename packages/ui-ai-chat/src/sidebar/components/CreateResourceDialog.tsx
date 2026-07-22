@@ -51,7 +51,7 @@ export const CreateResourceDialog: Component<CreateResourceDialogProps> = (props
         <Dialog.Content class={styles.content}>
           <Dialog.Title class={styles.title}>Create resource</Dialog.Title>
           <Dialog.Description class={styles.description}>
-            Add shared infrastructure for actor definitions.
+            Add shared infrastructure for widget revisions and server functions.
           </Dialog.Description>
           <form onSubmit={handleSubmit}>
             <div class={styles.field}>

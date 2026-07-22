@@ -33,13 +33,14 @@ function createWidgetElement(args?: {
     updatedAt: 1,
     style: {},
     data: {
-      type: "widget",
-      kind: "example",
+      type: "widget-instance",
+      definitionId: "00000000-0000-4000-8000-000000000001",
+      revisionId: "00000000-0000-4000-8000-000000000002",
+      instanceId: "00000000-0000-4000-8000-000000000003",
       w: args?.w ?? 160,
       h: args?.h ?? 120,
       expanded: true,
       window: "contained",
-      payload: {},
     },
   };
 }

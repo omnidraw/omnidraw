@@ -53,16 +53,3 @@ export const apiRevealResourceSecret = baseResourceOs.resources.dataRevealSecret
   if (!reveal) throw new ORPCError('NOT_FOUND');
   return reveal;
 });
-
-export const apiDefinitionResourceStatus = baseResourceOs.resources.definitionStatus.handler(async ({ input, context }) => {
-  return withResourceApiError(() => context.resource.getDefinitionResourceStatus(context.tenant, input.definitionName));
-});
-
-export const apiBindResource = baseResourceOs.resources.bind.handler(async ({ input, context }) => {
-  return withResourceApiError(() => context.resource.bindResource(context.tenant, input));
-});
-
-export const apiUnbindResource = baseResourceOs.resources.unbind.handler(async ({ input, context }) => {
-  const deleted = await withResourceApiError(() => context.resource.unbindResource(context.tenant, input));
-  return { deleted };
-});

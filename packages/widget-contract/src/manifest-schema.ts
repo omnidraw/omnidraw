@@ -1,5 +1,5 @@
 /**
- * @file Strict runtime schema for the actor-free widget manifest v2 contract.
+ * @file Strict runtime schema for the current widget manifest contract.
  */
 
 import { z } from 'zod';

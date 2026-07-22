@@ -1,7 +1,6 @@
 import type {
   TElement,
   TUiWidgetData,
-  TWidgetData,
   TWidgetInstanceData,
 } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
@@ -14,10 +13,9 @@ type TBaseCreateWidgetElementArgs = {
   now: number;
 };
 
-type TCreateLegacyOrUiWidgetElementArgs = TBaseCreateWidgetElementArgs & {
+type TCreateUiWidgetElementArgs = TBaseCreateWidgetElementArgs & {
   kind: string;
-  dataType: "widget" | "ui-widget";
-  actorDefinitionName?: string;
+  dataType: "ui-widget";
   payload?: Record<string, unknown>;
 };
 
@@ -30,11 +28,11 @@ type TCreateWidgetInstanceElementArgs = TBaseCreateWidgetElementArgs & {
 };
 
 export type TFnCreateWidgetElementArgs =
-  | TCreateLegacyOrUiWidgetElementArgs
+  | TCreateUiWidgetElementArgs
   | TCreateWidgetInstanceElementArgs;
 
 export function fnCreateWidgetElement(args: TFnCreateWidgetElementArgs): TElement {
-  let data: TWidgetData | TUiWidgetData | TWidgetInstanceData;
+  let data: TUiWidgetData | TWidgetInstanceData;
   if ("definitionId" in args) {
     data = {
       type: "widget-instance",
@@ -48,16 +46,6 @@ export function fnCreateWidgetElement(args: TFnCreateWidgetElementArgs): TElemen
       window: "contained",
       h: args.height,
       w: args.width,
-    };
-  } else if (args.dataType === "widget") {
-    data = {
-      type: "widget",
-      expanded: true,
-      kind: args.kind,
-      window: "contained",
-      h: args.height,
-      w: args.width,
-      actorDefinitionName: args.actorDefinitionName ?? args.kind,
     };
   } else {
     data = {

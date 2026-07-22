@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable M4 gate for the actor-independent, single-owner resource runtime.
+ * @file Durable M4 gate for the single-owner resource runtime.
  */
 
 import { resolve } from 'node:path';
@@ -27,7 +27,7 @@ const suites: readonly TResourceRuntimeSuite[] = [
     command: ['bun', 'test', 'packages/service-db/src/tests/ResourceControlStoreTurso.test.ts'],
   },
   {
-    name: 'neutral resource API, legacy delegation, and tenant-first composition',
+    name: 'neutral resource API and tenant-first composition',
     command: [
       'bun',
       'test',
@@ -47,8 +47,6 @@ const suites: readonly TResourceRuntimeSuite[] = [
       'apps/cli/tests/ResourceUseCoordinatorBridge.test.ts',
       'apps/cli/tests/TenantServicePool.test.ts',
       'apps/cli/tests/LazyTenantServiceCapability.test.ts',
-      'packages/service-actor/tests/ActorService.resource-apply.test.ts',
-      'packages/service-actor/tests/ActorService.resource-data.test.ts',
       '--timeout=30000',
     ],
   },

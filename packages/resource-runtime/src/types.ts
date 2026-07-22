@@ -1,5 +1,5 @@
 /**
- * @file Actor-independent resource catalog, capability, data, and lifecycle types.
+ * @file Resource catalog, capability, data, and lifecycle types.
  */
 
 import type {
@@ -576,9 +576,7 @@ export type TDbResourceDraftStatus = 'editing' | 'applying' | 'applied' | 'disca
 export type TDbResourceDraftChangeKind = 'structure' | 'sql';
 export type TDbResourceApplyStatus =
   | 'preparing'
-  | 'stopping'
   | 'applying'
-  | 'restarting'
   | 'succeeded'
   | 'failed'
   | 'recovered';

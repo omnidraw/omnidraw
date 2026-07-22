@@ -17,9 +17,9 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-type TWidgetFixtureKind = "widget" | "ui-widget" | "widget-instance";
+type TWidgetFixtureKind = "ui-widget" | "widget-instance";
 
-function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
+function createWidgetElement(type: TWidgetFixtureKind = "widget-instance"): TElement {
   return {
     id: "widget-1",
     x: 10,
@@ -66,7 +66,7 @@ function createCameraService() {
   } as unknown as CameraService;
 }
 
-function createMountedWidget(type: TWidgetFixtureKind = "widget") {
+function createMountedWidget(type: TWidgetFixtureKind = "widget-instance") {
   ensureDom();
 
   const element = createWidgetElement(type);
@@ -221,7 +221,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test.each(["widget", "widget-instance"] as const)("renders the %s body div from the canvas transform", async (type) => {
+  test("renders the widget-instance body div from the canvas transform", async () => {
+    const type = "widget-instance" as const;
     const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget(type);
     layer.position({ x: 50, y: 60 });
     layer.scale({ x: 2, y: 2 });
@@ -246,7 +247,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test.each(["widget", "widget-instance"] as const)("updates the %s body div when the camera changes", (type) => {
+  test("updates the widget-instance body div when the camera changes", () => {
+    const type = "widget-instance" as const;
     const { cameraService, element, group, layer, stage, widgetPortal } = createMountedWidget(type);
 
     const removeListener = txAttachDomPortal({
@@ -272,7 +274,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test.each(["widget", "widget-instance"] as const)("syncs the %s body div after resize", (type) => {
+  test("syncs the widget-instance body div after resize", () => {
+    const type = "widget-instance" as const;
     const { cameraService, element, group, stage, widgetPortal } = createMountedWidget(type);
 
     const removeListener = txAttachDomPortal({
@@ -306,7 +309,8 @@ describe("txAttachDomPortal", () => {
     widgetPortal.remove();
   });
 
-  test.each(["widget", "widget-instance"] as const)("updates the %s body div when the host is dragged", (type) => {
+  test("updates the widget-instance body div when the host is dragged", () => {
+    const type = "widget-instance" as const;
     const { cameraService, element, group, stage, widgetPortal } = createMountedWidget(type);
 
     const removeListener = txAttachDomPortal({

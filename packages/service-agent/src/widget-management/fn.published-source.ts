@@ -42,7 +42,7 @@ function visibleFiles(snapshot: TWidgetSourceSnapshot) {
   return { files, paths };
 }
 
-export function fnV2PublishedWidgetFiles(args: TSourceArgs): TWidgetFileEntry[] {
+export function fnPublishedWidgetFiles(args: TSourceArgs): TWidgetFileEntry[] {
   const { files, paths } = visibleFiles(args.snapshot);
   const directories = new Set<string>();
   for (const file of files) {
@@ -64,7 +64,7 @@ export function fnV2PublishedWidgetFiles(args: TSourceArgs): TWidgetFileEntry[] 
   return entries;
 }
 
-export function fnV2PublishedWidgetFile(args: TFileArgs): TWidgetFilePreview | null {
+export function fnPublishedWidgetFile(args: TFileArgs): TWidgetFilePreview | null {
   if (!fnIsSafeWidgetRelativePath(args.path) || pathIsPrivate(args.path)) {
     throw new Error('UNSAFE_PATH: Widget file path is unsafe.');
   }

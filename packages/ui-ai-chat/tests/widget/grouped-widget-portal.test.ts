@@ -21,9 +21,7 @@ const txAttachDomPortal = (portal: Omit<Parameters<typeof txAttachDomPortalWithB
   txAttachDomPortalWithBrowser({ ...portal, browser: createTestWidgetBrowser() }, args)
 );
 
-type TWidgetFixtureKind = "widget" | "widget-instance";
-
-function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
+function createWidgetElement(): TElement {
   return {
     id: "grouped-widget-1",
     x: 10,
@@ -38,27 +36,17 @@ function createWidgetElement(type: TWidgetFixtureKind = "widget"): TElement {
     createdAt: 1,
     updatedAt: 1,
     style: {},
-    data: type === "widget-instance"
-      ? {
-          type,
-          definitionId: "definition-1",
-          revisionId: "revision-1",
-          instanceId: "instance-1",
-          stateDocumentId: "state-1",
-          w: 160,
-          h: 120,
-          expanded: true,
-          window: "contained",
-        }
-      : {
-          type,
-          kind: "example",
-          w: 160,
-          h: 120,
-          expanded: true,
-          window: "contained",
-          payload: {},
-        },
+    data: {
+      type: "widget-instance",
+      definitionId: "definition-1",
+      revisionId: "revision-1",
+      instanceId: "instance-1",
+      stateDocumentId: "state-1",
+      w: 160,
+      h: 120,
+      expanded: true,
+      window: "contained",
+    },
   };
 }
 
@@ -96,10 +84,10 @@ function firstPortalDiv(widgetPortal: HTMLDivElement) {
 }
 
 describe("grouped widget portal regression", () => {
-  test.each(["widget", "widget-instance"] as const)("keeps the mounted %s body div synced when its containing group moves", (type) => {
+  test("keeps the mounted widget-instance body div synced when its containing group moves", () => {
     ensureDom();
 
-    const element = createWidgetElement(type);
+    const element = createWidgetElement();
     const container = createTestContainer();
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
@@ -108,7 +96,7 @@ describe("grouped widget portal regression", () => {
     const widgetPortal = document.createElement("div");
     const cameraService = createCameraService();
     const selectionService = new SelectionService();
-    const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), type), element);
+    const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), "widget-instance"), element);
     const patchedElements: TElement[][] = [];
 
     expect(widgetNode).toBeInstanceOf(Konva.Group);
@@ -166,16 +154,16 @@ describe("grouped widget portal regression", () => {
     widgetPortal.remove();
   });
 
-  test.each(["widget", "widget-instance"] as const)("serializes a grouped %s with parent transform baked into world geometry", (type) => {
+  test("serializes a grouped widget-instance with parent transform baked into world geometry", () => {
     ensureDom();
 
-    const element = createWidgetElement(type);
+    const element = createWidgetElement();
     const container = createTestContainer();
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
     const parentGroup = new Konva.Group({ id: "group-1", x: 100, y: 50, scaleX: 2, scaleY: 2 });
     parentGroup.setAttr(VC_NODE_KIND_ATTR, "group");
-    const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), type), element);
+    const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), "widget-instance"), element);
 
     expect(widgetNode).toBeInstanceOf(Konva.Group);
 
@@ -191,7 +179,7 @@ describe("grouped widget portal regression", () => {
       y: 90,
       parentGroupId: "group-1",
       data: {
-        type,
+        type: "widget-instance",
         w: 320,
         h: 240,
       },
@@ -200,10 +188,10 @@ describe("grouped widget portal regression", () => {
     stage.destroy();
   });
 
-  test.each(["widget", "widget-instance"] as const)("replays grouped %s geometry and syncs its mounted body div", (type) => {
+  test("replays grouped widget-instance geometry and syncs its mounted body div", () => {
     ensureDom();
 
-    const element = createWidgetElement(type);
+    const element = createWidgetElement();
     const container = createTestContainer();
     const stage = new Konva.Stage({ container, width: 800, height: 600 });
     const layer = new Konva.Layer();
@@ -212,11 +200,11 @@ describe("grouped widget portal regression", () => {
     const widgetPortal = document.createElement("div");
     const cameraService = createCameraService();
     const selectionService = new SelectionService();
-    const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), type), element);
+    const widgetNode = fnCreateWidgetNode(Konva, fnGetHostThemeColors(new ThemeService(), "widget-instance"), element);
 
     expect(widgetNode).toBeInstanceOf(Konva.Group);
     const widgetGroup = widgetNode as Konva.Group;
-    if (element.data.type !== "widget" && element.data.type !== "widget-instance") {
+    if (element.data.type !== "widget-instance") {
       throw new Error("expected hosted widget test element");
     }
 

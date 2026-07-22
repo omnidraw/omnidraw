@@ -11,7 +11,7 @@ export function fnWidgetArtifactAudience(
   tenant: TTenantContext,
   purpose: TWidgetArtifactReadPurpose,
 ): string {
-  if (purpose === 'browser_ui' || purpose === 'preview_ui' || purpose === 'source_map') {
+  if (purpose === 'browser_ui' || purpose === 'source_map') {
     return `account:${tenant.orgId}:${tenant.accountId}:${purpose}`;
   }
   return `cell:${tenant.orgId}:${tenant.cellId}:${tenant.placementEpoch}:${purpose}`;
@@ -30,8 +30,6 @@ export function fnWidgetArtifactPurposeAllowsKind(
   kind: TWidgetArtifactKind,
 ): boolean {
   if (purpose === 'cell_move') return true;
-  if (purpose === 'preview_ui') return kind === 'ui';
-  if (purpose === 'preview_server') return kind === 'server';
   if (purpose === 'browser_ui') return kind === 'ui';
   if (purpose === 'server_execution') return kind === 'server';
   if (purpose === 'source_build') return kind === 'source';

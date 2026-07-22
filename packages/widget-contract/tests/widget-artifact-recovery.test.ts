@@ -278,10 +278,6 @@ function controlStoreHarness(overrides: Partial<IWidgetControlStore> = {}): Read
       calls.push('restoreArtifactRetention');
       return false;
     },
-    async activatePreviewArtifact() {
-      calls.push('activatePreviewArtifact');
-      return false;
-    },
     ...overrides,
   };
   return Object.freeze({ store, calls });

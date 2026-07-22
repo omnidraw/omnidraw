@@ -1267,23 +1267,8 @@ describe('local artifact integrity and authorization', () => {
         && descriptor.digestSha256 === request.digestSha256
       )) ?? null,
     } as unknown as IWidgetControlStore;
-    const previewStore = {
-      resolvePreviewArtifact: async (
-        _tenant: TTenantContext,
-        request: {
-          artifactId: string;
-          kind: string;
-          digestSha256: string;
-        },
-      ) => descriptors.find((descriptor) => (
-        descriptor.id === request.artifactId
-        && descriptor.kind === request.kind
-        && descriptor.digestSha256 === request.digestSha256
-      )) ?? null,
-    };
     const artifacts = new WidgetArtifactService({
       controlStore,
-      previewStore,
       blobs,
       capabilityIssuer: authority,
       capabilityVerifier: authority,
@@ -1315,41 +1300,6 @@ describe('local artifact integrity and authorization', () => {
         expiresAtMs: nowMs + 5_000,
       })).rejects.toMatchObject({ code: 'WIDGET_ARTIFACT_NOT_FOUND' });
     }
-
-    const serverPreviewCapability = await artifacts.issueServerPreviewArtifactReadCapability(
-      tenant,
-      {
-        previewId: 'preview-a',
-        previewRevisionId: 'preview-revision-a',
-        artifactId: descriptors[1]!.id,
-        artifactKind: 'server',
-        digestSha256: descriptors[1]!.digestSha256,
-        expiresAtMs: nowMs + 5_000,
-      },
-    );
-    const serverPreviewClaims = JSON.parse(
-      Buffer.from(serverPreviewCapability.split('.')[0]!, 'base64url').toString('utf8'),
-    ) as { audience: string; purpose: string };
-    expect(serverPreviewClaims).toMatchObject({
-      audience: 'cell:org-a:cell-a:1:preview_server',
-      purpose: 'preview_server',
-    });
-
-    const uiPreviewCapability = await artifacts.issueUiPreviewArtifactReadCapability(tenant, {
-      previewId: 'preview-a',
-      previewRevisionId: 'preview-revision-a',
-      artifactId: descriptors[0]!.id,
-      artifactKind: 'ui',
-      digestSha256: descriptors[0]!.digestSha256,
-      expiresAtMs: nowMs + 5_000,
-    });
-    const uiPreviewClaims = JSON.parse(
-      Buffer.from(uiPreviewCapability.split('.')[0]!, 'base64url').toString('utf8'),
-    ) as { audience: string; purpose: string };
-    expect(uiPreviewClaims).toMatchObject({
-      audience: 'account:org-a:account-a:preview_ui',
-      purpose: 'preview_ui',
-    });
 
     const uiDescriptor = descriptors[0]!;
     const forgedCapability = await authority.issueArtifactReadCapability(tenant, {

@@ -13,4 +13,4 @@ For a new widget:
 
 Use resource discovery and inspection only when the user selected or requested shared data. Protected database or secret changes require host approval. Never bypass an approval, expose a secret, copy a host path, or turn validation into publication.
 
-Do not create timers, sleeps, retry loops, background workers, HTTP handlers, actor state machines, or durable guest processes. Short server calls are scheduled and bounded by the host.
+Do not create timers, sleeps, retry loops, background workers, HTTP handlers, state-machine runtimes, or durable guest processes. Short server calls are scheduled and bounded by the host.

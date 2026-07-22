@@ -16,7 +16,6 @@ import {
   type TDbRowIdentity,
   type TDbRowUpdate,
   type TResourceJson,
-  type TResourceBinding,
   type TResourceDescriptor,
   type TResourceKind,
   type TResourceRequirement,
@@ -39,7 +38,6 @@ import {
   type IResourceManagerStore,
   type ILocalResourceProvider,
   type TDatabaseFactory,
-  type TManagedResourceRequirement,
   type TResourceKeyValueDatabaseFactory,
   type TResourceCatalogRecord,
   type TResourceDirectBinding,
@@ -47,11 +45,7 @@ import {
 } from '@vibecanvas/resource-runtime/local';
 import type { TTenantDb } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import { Database } from '@vibecanvas/service-db/DbServiceTurso/turso-native';
-import type {
-  TActorResource,
-  TActorResourceBinding,
-  TJson,
-} from '@vibecanvas/service-db/model';
+import { fnResourceNameKey } from '@vibecanvas/service-db/core/fn.resource-name';
 import { fnScopedKey, type TTenantContext } from '@vibecanvas/tenant-core';
 import {
   RESOURCE_MANAGEMENT_EFFECTS,
@@ -59,34 +53,12 @@ import {
 } from './CONSTANTS';
 import { ResourceManagementProvider } from './ResourceManagementProvider';
 
-type TResourceConsumerManifest = Readonly<{
-  actor: Readonly<{
-    resources?: Readonly<Record<string, TManagedResourceRequirement>>;
-  }>;
-}>;
-
-type TResourceConsumer = Readonly<{
-  getVibecanvasJson(definitionName: string): TResourceConsumerManifest | null;
-}>;
-
-type TLegacyResourceCall = Readonly<{
-  actorId: string;
-  definitionName: string;
-  runId: number;
-  functionClass: 'fn' | 'fx' | 'tx';
-  slot: string;
-  kind: TResourceKind;
-  operation: string;
-  args: unknown;
-}>;
-
 type TResourceServiceConfig = Readonly<{
   tenant: TTenantContext;
   db: TTenantDb;
   controlStore: IResourceControlStore;
   dataRoot: string;
   useCoordinator: IResourceUseCoordinator;
-  resolveConsumer?: () => Promise<TResourceConsumer>;
   crypto?: Pick<Crypto, 'randomUUID'>;
   databaseFactory?: TDatabaseFactory;
   maxOpenHandles?: number;
@@ -100,23 +72,10 @@ type TFunctionResourceGatewayRequest = Readonly<{
   requirements: readonly TResourceRequirement[];
 }>;
 
-type TPreviewFunctionResourceGatewayRequest = Readonly<{
-  requirements: readonly TResourceRequirement[];
-  bindings: readonly TResourceBinding[];
-}>;
-
 type TFunctionResourceGatewayAccess = Readonly<{
   gateway: IResourceGateway;
   bindings: IResourceBindingResolver;
 }>;
-
-function toLocalResource(resource: TActorResource): TResourceCatalogRecord {
-  return resource as unknown as TResourceCatalogRecord;
-}
-
-function toActorResource(resource: TResourceCatalogRecord): TActorResource {
-  return resource as unknown as TActorResource;
-}
 
 function toCatalogResource(resource: TResourceDescriptor): TResourceCatalogRecord {
   return {
@@ -130,126 +89,94 @@ function toCatalogResource(resource: TResourceDescriptor): TResourceCatalogRecor
   };
 }
 
-function toLocalBinding(binding: TActorResourceBinding) {
-  return {
-    definition_name: binding.actor_definition_name,
-    slot_name: binding.slot_name,
-    resource_id: binding.resource_id,
-    allow_read: binding.allow_read,
-    allow_write: binding.allow_write,
-    created_at: binding.created_at,
-    updated_at: binding.updated_at,
-  };
-}
-
-function toActorBinding(binding: ReturnType<typeof toLocalBinding>): TActorResourceBinding {
-  return {
-    actor_definition_name: binding.definition_name,
-    slot_name: binding.slot_name,
-    resource_id: binding.resource_id,
-    allow_read: binding.allow_read,
-    allow_write: binding.allow_write,
-    created_at: binding.created_at,
-    updated_at: binding.updated_at,
-  };
-}
-
-function createResourceManagerStore(db: TTenantDb): IResourceManagerStore {
+function createResourceManagerStore(
+  tenant: TTenantContext,
+  control: IResourceControlStore,
+  db: TTenantDb,
+): IResourceManagerStore {
+  const bindingRecord = (binding: Awaited<ReturnType<IResourceControlStore['listBindingsForResource']>>[number]) => ({
+    definition_name: binding.definitionId,
+    slot_name: binding.slot,
+    resource_id: binding.resourceId,
+    allow_read: binding.allowRead,
+    allow_write: binding.allowWrite,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  });
   return {
     catalog: {
-      list: async (filter) => (await db.actorResource.list(filter)).map(toLocalResource),
+      list: async (filter) => (await control.listResources(tenant, filter)).map(toCatalogResource),
       get: async (args) => {
-        const resource = await db.actorResource.get(args);
-        return resource ? toLocalResource(resource) : null;
+        const resource = await control.getResource(tenant, args.id);
+        return resource ? toCatalogResource(resource) : null;
       },
-      findByNameKey: async (args) => (await db.actorResource.findByNameKey(args)).map(toLocalResource),
-      create: async (args) => toLocalResource(await db.actorResource.create(args)),
+      findByNameKey: async (args) => (await control.listResources(tenant))
+        .filter((resource) => fnResourceNameKey(resource.name) === args.nameKey)
+        .map(toCatalogResource),
+      create: async (args) => toCatalogResource(await control.createResource(tenant, {
+        id: args.id,
+        kind: args.kind,
+        name: args.name,
+        cellId: tenant.cellId,
+        placementEpoch: tenant.placementEpoch,
+        storageKey: `${args.kind}/${args.id}`,
+        nowMs: Date.now(),
+      })),
       rename: async (args) => {
-        const resource = await db.actorResource.rename(args);
-        return resource ? toLocalResource(resource) : null;
+        const resource = await control.renameResource(tenant, {
+          resourceId: args.id, name: args.name, nowMs: Date.now(),
+        });
+        return resource ? toCatalogResource(resource) : null;
       },
       updateProviderState: async (args) => {
-        const resource = await db.actorResource.updateProviderState({
-          ...args,
-          lastError: args.lastError as TJson | null,
+        const current = await control.getResource(tenant, args.id);
+        if (!current) return null;
+        const resource = await control.updateResourceState(tenant, {
+          resourceId: args.id,
+          expectedStatus: current.status,
+          status: args.status,
+          lastError: args.lastError as TResourceDescriptor['lastError'],
+          nowMs: Date.now(),
         });
-        return resource ? toLocalResource(resource) : null;
+        return resource ? toCatalogResource(resource) : null;
       },
       beginDelete: async (args) => {
-        const resource = await db.actorResource.beginDelete(args);
-        return resource ? toLocalResource(resource) : null;
+        const current = await control.getResource(tenant, args.id);
+        if (!current) return null;
+        const resource = await control.updateResourceState(tenant, {
+          resourceId: args.id,
+          expectedStatus: current.status,
+          status: 'deleting',
+          lastError: null,
+          nowMs: Date.now(),
+        });
+        return resource ? toCatalogResource(resource) : null;
       },
-      delete: (args) => db.actorResource.delete(args),
+      delete: (args) => control.deleteResource(tenant, args.id),
       listBindingsForResource: async (args) => (
-        await db.actorResource.listBindingsForResource(args)
-      ).map(toLocalBinding),
-      listBindingsForDefinition: async (args) => (
-        await db.actorResource.listBindingsForDefinition(args)
-      ).map(toLocalBinding),
-      upsertBinding: async (args) => {
-        const binding = await db.actorResource.upsertBinding(args);
-        return binding ? toLocalBinding(binding) : null;
-      },
-      removeBinding: (args) => db.actorResource.removeBinding(args),
-      replaceBindings: async (args) => (
-        await db.actorResource.replaceBindings(args)
-      ).map(toLocalBinding),
+        await control.listBindingsForResource(tenant, args.resourceId)
+      ).map(bindingRecord),
+      listBindingsForDefinition: async () => [],
+      upsertBinding: async () => { throw new ResourceError('RESOURCE_CALL_INVALID', 'Definition-name bindings were removed.'); },
+      removeBinding: async () => false,
+      replaceBindings: async () => { throw new ResourceError('RESOURCE_CALL_INVALID', 'Definition-name bindings were removed.'); },
     },
     migration: {
       hasActiveWork: async (resourceId) => {
         const [activeDraft, ...activeApplyPages] = await Promise.all([
           db.dbResource.draft.getActive({ resourceId }),
-          ...(['preparing', 'stopping', 'applying', 'restarting'] as const).map((status) => (
+          ...(['preparing', 'applying'] as const).map((status) => (
             db.dbResource.apply.list({ resourceId, status, limit: 1 })
           )),
         ]);
         return activeDraft !== null || activeApplyPages.some((page) => page.length > 0);
       },
     },
-    consumerRecovery: {
-      listResults: async (consumerId) => (
-        await db.dbResource.apply.instanceResult.listByInstance({ actorInstanceId: consumerId })
-      ).map((result) => ({
-        migrationId: result.apply_id,
-        consumerId: result.actor_instance_id,
-        definitionName: result.actor_definition_name,
-        wasRunning: result.was_running,
-        status: result.status,
-      })),
-      getMigration: async (migrationId) => {
-        const apply = await db.dbResource.apply.get({ id: migrationId });
-        return apply ? { resourceId: apply.resource_id } : null;
-      },
-      markRestarted: async (result) => {
-        await db.dbResource.apply.instanceResult.upsert({
-          applyId: result.migrationId,
-          actorInstanceId: result.consumerId,
-          actorDefinitionName: result.definitionName,
-          wasRunning: true,
-          status: 'restarted',
-          error: null,
-        });
-      },
-    },
-  };
-}
-
-function toManagerCall(call: TResourceManagerCall | TLegacyResourceCall): TResourceManagerCall {
-  if ('consumerId' in call) return call;
-  return {
-    consumerId: call.actorId,
-    definitionName: call.definitionName,
-    invocationId: call.runId,
-    functionClass: call.functionClass,
-    slot: call.slot,
-    kind: call.kind,
-    operation: call.operation,
-    args: call.args,
   };
 }
 
 /**
- * OSS in-process Resource Store. It is actor-independent at its provider and
+ * OSS in-process Resource Store. It is runtime-neutral at its provider and
  * manager boundaries; the optional consumer bridge is attached by composition.
  */
 class ResourceService implements IService, IStartableService<object, object>, IStoppableService {
@@ -258,9 +185,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   readonly #dataRoot: string;
   readonly #controlStore: IResourceControlStore;
   readonly #crypto: Pick<Crypto, 'randomUUID'>;
-  readonly #resolveConsumer: (() => Promise<TResourceConsumer>) | undefined;
   readonly #writeCapabilityVerifier: IResourceWriteCapabilityVerifier | undefined;
   readonly #writePermitCoordinator: IResourceWritePermitCoordinator | undefined;
+  readonly #managementWriteCapability: string;
   readonly #manager: ResourceManager;
   readonly #kvResource: KvResource;
   readonly #secretStoreResource: SecretStoreResource;
@@ -271,7 +198,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     ResourceManagementProvider,
   ];
   readonly #dbCoordinator: DbResourceCoordinator;
-  readonly #consumers = new Set<TResourceConsumer>();
   #store: ResourceStoreService | null = null;
   #gateway: ResourceManagerGateway | null = null;
   #started = false;
@@ -280,11 +206,11 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     this.#tenant = config.tenant;
     this.#dataRoot = config.dataRoot;
     this.#controlStore = config.controlStore;
-    this.#resolveConsumer = config.resolveConsumer;
     this.#writeCapabilityVerifier = config.writeCapabilityVerifier;
     this.#writePermitCoordinator = config.writePermitCoordinator;
     const cryptoPortal = config.crypto ?? crypto;
     this.#crypto = cryptoPortal;
+    this.#managementWriteCapability = cryptoPortal.randomUUID();
     const databaseFactory = config.databaseFactory
       ?? ((databasePath, options) => new Database(databasePath, options));
     const keyValueDatabaseFactory = databaseFactory as unknown as TResourceKeyValueDatabaseFactory;
@@ -316,15 +242,16 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       this.#dbResource,
     ];
     this.#manager = new ResourceManager({
-      store: createResourceManagerStore(config.db),
+      store: createResourceManagerStore(config.tenant, config.controlStore, config.db),
       crypto: cryptoPortal,
-      resolveRequirements: (definitionName) => this.#resolveRequirements(definitionName),
+      resolveRequirements: () => null,
       providers: logicalProviders,
       closeProviders: false,
     });
     this.#dbCoordinator = new DbResourceCoordinator({
       tenant: config.tenant,
       controlStore: config.db as unknown as IDbResourceCoordinatorControlStore,
+      resourceControlStore: config.controlStore,
       resourceManager: {
         getResource: (resourceId) => this.#manager.getResource(resourceId),
         listResources: async (filter) => [...await this.#manager.listResources(filter)],
@@ -363,13 +290,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     ];
   }
 
-  attachConsumer(consumer: TResourceConsumer): () => void {
-    this.#consumers.add(consumer);
-    return () => {
-      this.#consumers.delete(consumer);
-    };
-  }
-
   async start(_context: IServiceContext<object, object>): Promise<void> {
     if (this.#started) return;
     if (this.#store) {
@@ -390,9 +310,8 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       providers: this.#providers,
       writeCapabilityVerifier: this.#writeCapabilityVerifier,
       writePermitCoordinator: this.#writePermitCoordinator,
-      // Compatibility marker: legacy in-process actor calls do not yet carry
-      // control-plane write capabilities.
-      allowUnfencedWrites: true,
+      hostWriteCapability: this.#managementWriteCapability,
+      allowUnfencedWrites: false,
     });
     this.#store = store;
     try {
@@ -433,9 +352,9 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   async listResources(
     tenant: TTenantContext,
     filter: { kind?: TResourceKind; status?: TResourceStatus } = {},
-  ): Promise<TActorResource[]> {
+  ): Promise<readonly TResourceCatalogRecord[]> {
     this.#assertTenantPlacement(tenant);
-    return (await this.#manager.listResources(filter)).map(toActorResource);
+    return this.#manager.listResources(filter);
   }
 
   getResource(tenant: TTenantContext, id: string) {
@@ -455,25 +374,25 @@ class ResourceService implements IService, IStartableService<object, object>, IS
   async createResource(
     tenant: TTenantContext,
     args: { kind: TResourceKind; name: string },
-  ): Promise<TActorResource> {
+  ): Promise<TResourceCatalogRecord> {
     this.#assertTenantPlacement(tenant);
     const resource = await this.#requireStore().createResource(tenant, {
       id: this.#crypto.randomUUID(),
       kind: args.kind,
       name: args.name,
     });
-    return toActorResource(toCatalogResource(resource));
+    return toCatalogResource(resource);
   }
 
   async renameResource(tenant: TTenantContext, args: { id: string; name: string }) {
     const resource = await this.#requireResource(tenant, args.id);
-    return toActorResource(await this.#managementCall<TResourceCatalogRecord>(
+    return this.#managementCall<TResourceCatalogRecord>(
       tenant,
       resource.id,
       resource.kind,
       'renameResource',
       { name: args.name },
-    ));
+    );
   }
 
   async deleteResource(tenant: TTenantContext, id: string): Promise<void> {
@@ -481,115 +400,23 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     await this.#managementCall(tenant, resource.id, resource.kind, 'deleteResource', null);
   }
 
-  async listResourceReferences(tenant: TTenantContext, resourceId: string): Promise<TActorResourceBinding[]> {
+  async listResourceReferences(tenant: TTenantContext, resourceId: string) {
     this.#assertTenantPlacement(tenant);
-    return (await this.#manager.listResourceReferences(resourceId)).map(toActorBinding);
+    return this.#controlStore.listBindingsForResource(tenant, resourceId);
   }
 
-  async listResourceBindingsForDefinition(
-    tenant: TTenantContext,
-    definitionName: string,
-  ): Promise<TActorResourceBinding[]> {
+  call(tenant: TTenantContext, call: TResourceManagerCall) {
     this.#assertTenantPlacement(tenant);
-    return (await this.#manager.listResourceBindingsForDefinition(definitionName)).map(toActorBinding);
-  }
-
-  async getDefinitionResourceStatus(tenant: TTenantContext, definitionName: string) {
-    this.#assertTenantPlacement(tenant);
-    await this.#ensureConsumer();
-    return this.#manager.getDefinitionResourceStatus(definitionName);
-  }
-
-  async bindResource(tenant: TTenantContext, args: {
-    definitionName: string;
-    slot: string;
-    resourceId: string;
-    scope?: ('read' | 'write')[];
-  }): Promise<TActorResourceBinding> {
-    this.#assertTenantPlacement(tenant);
-    await this.#ensureConsumer();
-    return toActorBinding(await this.#manager.bindResource(args));
-  }
-
-  async unbindResource(
-    tenant: TTenantContext,
-    args: { definitionName: string; slot: string },
-  ): Promise<boolean> {
-    this.#assertTenantPlacement(tenant);
-    await this.#ensureConsumer();
-    return this.#manager.unbindResource(args);
-  }
-
-  async replaceResourceBindings(tenant: TTenantContext, args: {
-    definitionName: string;
-    expectedBindings?: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
-    bindings: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
-  }): Promise<TActorResourceBinding[]> {
-    this.#assertTenantPlacement(tenant);
-    await this.#ensureConsumer();
-    return (await this.#manager.replaceResourceBindings(args)).map(toActorBinding);
-  }
-
-  async transitionResourceBindings(
-    tenant: TTenantContext,
-    args: {
-      definitionName: string;
-      expectedBindings?: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
-      bindings: readonly { slot: string; resourceId: string; scope: ('read' | 'write')[] }[];
-    },
-    beforeReplace: () => Promise<void>,
-  ): Promise<TActorResourceBinding[]> {
-    this.#assertTenantPlacement(tenant);
-    await this.#ensureConsumer();
-    return (await this.#manager.transitionResourceBindings(args, beforeReplace)).map(toActorBinding);
-  }
-
-  getActorStartAdmission(tenant: TTenantContext, args: {
-    definitionName: string;
-    actorInstanceId: string;
-    restartIfCompatible: boolean;
-  }) {
-    this.#assertTenantPlacement(tenant);
-    return this.#manager.getConsumerStartAdmission({
-      definitionName: args.definitionName,
-      consumerId: args.actorInstanceId,
-      restartIfCompatible: args.restartIfCompatible,
-    });
-  }
-
-  completeActorStart(tenant: TTenantContext, args: {
-    actorInstanceId: string;
-    resourceIds: readonly string[];
-    succeeded: boolean;
-  }) {
-    this.#assertTenantPlacement(tenant);
-    return this.#manager.completeConsumerStart({
-      consumerId: args.actorInstanceId,
-      resourceIds: args.resourceIds,
-      succeeded: args.succeeded,
-    });
-  }
-
-  call(tenant: TTenantContext, call: TResourceManagerCall | TLegacyResourceCall) {
-    this.#assertTenantPlacement(tenant);
-    return this.#requireGateway().call(tenant, toManagerCall(call));
+    return this.#requireGateway().call(tenant, call);
   }
 
   callWithDirectBinding(
     tenant: TTenantContext,
-    call: TResourceManagerCall | TLegacyResourceCall,
+    call: TResourceManagerCall,
     binding: TResourceDirectBinding,
   ) {
     this.#assertTenantPlacement(tenant);
-    return this.#requireGateway().callWithDirectBinding(tenant, toManagerCall(call), binding);
-  }
-
-  callWithDirectResourceBinding(
-    tenant: TTenantContext,
-    call: TResourceManagerCall | TLegacyResourceCall,
-    binding: TResourceDirectBinding,
-  ) {
-    return this.callWithDirectBinding(tenant, call, binding);
+    return this.#requireGateway().callWithDirectBinding(tenant, call, binding);
   }
 
   createFunctionResourceGateway(
@@ -639,53 +466,22 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     });
   }
 
-  createPreviewFunctionResourceGateway(
-    tenant: TTenantContext,
-    request: TPreviewFunctionResourceGatewayRequest,
-  ): TFunctionResourceGatewayAccess {
-    this.#assertTenantPlacement(tenant);
-    const requirements = new Map<string, TResourceRequirement>();
-    for (const requirement of request.requirements) {
-      if (requirements.has(requirement.slot)) {
-        throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Function resource slots must be unique.');
-      }
-      requirements.set(requirement.slot, requirement);
-    }
-    const storedBindings = new Map<string, TResourceBinding>();
-    for (const binding of request.bindings) {
-      if (storedBindings.has(binding.slot)) {
-        throw new ResourceError('RESOURCE_SCOPE_INVALID', 'Preview resource bindings must be unique.');
-      }
-      storedBindings.set(binding.slot, Object.freeze({ ...binding }));
-    }
-    const bindings: IResourceBindingResolver = Object.freeze({
-      resolveBinding: async (callTenant: TTenantContext, slot: string) => {
-        this.#assertTenantPlacement(callTenant);
-        return storedBindings.get(slot) ?? null;
-      },
-    });
-    return Object.freeze({
-      bindings,
-      gateway: new ResourceGateway({
-        store: this.#requireStore(),
-        bindings,
-        requirements: {
-          resolveRequirement: async (callTenant, slot) => {
-            this.#assertTenantPlacement(callTenant);
-            return requirements.get(slot) ?? null;
-          },
-        },
-      }),
-    });
-  }
-
   withReadyResource<T>(
     tenant: TTenantContext,
     resourceId: string,
-    operation: (resource: TActorResource) => Promise<T>,
+    operation: (resource: TResourceDescriptor) => Promise<T>,
   ): Promise<T> {
     this.#assertTenantPlacement(tenant);
-    return this.#manager.withReadyResource(resourceId, (resource) => operation(toActorResource(resource)));
+    return this.#manager.withReadyResource(resourceId, (resource) => operation({
+      orgId: this.#tenant.orgId,
+      id: resource.id,
+      kind: resource.kind,
+      name: resource.name,
+      status: resource.status,
+      lastError: resource.last_error as TResourceDescriptor['lastError'],
+      createdAtMs: Date.parse(resource.created_at),
+      updatedAtMs: Date.parse(resource.updated_at),
+    }));
   }
 
   async countResourceData(
@@ -1288,6 +1084,7 @@ class ResourceService implements IService, IStartableService<object, object>, IS
       effect,
       operation: RESOURCE_MANAGEMENT_OPERATION,
       input: { action, args },
+      ...(effect === 'write' ? { writeCapability: this.#managementWriteCapability } : {}),
     }) as Promise<TOutput>;
   }
 
@@ -1369,19 +1166,6 @@ class ResourceService implements IService, IStartableService<object, object>, IS
     }
   }
 
-  async #ensureConsumer(): Promise<void> {
-    if (this.#consumers.size > 0 || !this.#resolveConsumer) return;
-    this.attachConsumer(await this.#resolveConsumer());
-  }
-
-  #resolveRequirements(definitionName: string): Readonly<Record<string, TManagedResourceRequirement>> | null {
-    for (const consumer of this.#consumers) {
-      const manifest = consumer.getVibecanvasJson(definitionName);
-      if (manifest) return manifest.actor.resources ?? {};
-    }
-    return null;
-  }
-
   #requireStore(): ResourceStoreService {
     if (!this.#started || !this.#store) {
       throw new ResourceError('RESOURCE_PROVIDER_UNAVAILABLE', 'Resource Store is not running.');
@@ -1415,6 +1199,5 @@ export { ResourceService };
 export type {
   TFunctionResourceGatewayAccess,
   TFunctionResourceGatewayRequest,
-  TResourceConsumer,
   TResourceServiceConfig,
 };

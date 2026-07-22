@@ -28,7 +28,6 @@
     "@solid-primitives/scheduled": "^1.5.3",
     "@solidjs/router": "^0.15.4",
     "@vibecanvas/api": "workspace:*",
-    "@vibecanvas/ui-actor-legacy": "workspace:*",
     "@vibecanvas/ui-ai-chat": "workspace:*",
     "@vibecanvas/canvas": "workspace:*",
     "@vibecanvas/orpc-client": "workspace:*",

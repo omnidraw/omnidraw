@@ -93,17 +93,17 @@ describe("Widget plugin catalog reconciliation", () => {
     }));
   });
 
-  test("exposes and commits neutral published placement with legacy UI disabled", async () => {
+  test("exposes and commits a published revision placement", async () => {
     const reference = {
       source: "published" as const,
-      name: `v2:${DEFINITION_ID}`,
+      name: `published:${DEFINITION_ID}`,
       revision: REVISION_ID,
     };
     const catalog = widgetCatalog(reference.revision, reference.name);
     const resolvePlacement = vi.fn(async () => [undefined, {
       ok: true,
       descriptor: {
-        kind: "published-v2",
+        kind: "published",
         draftId: null,
         reference,
         bounds: { width: 360, height: 320 },
@@ -111,11 +111,9 @@ describe("Widget plugin catalog reconciliation", () => {
         revisionId: REVISION_ID,
         definitionName: null,
         definitionSlug: "weather",
-        previewId: null,
       },
     }] as const);
     const placeWidgetInstance = vi.fn();
-    const placeLegacyPublishedWidget = vi.fn();
     let registeredPlacement: { placement: ReturnType<WidgetPlacementService["createDropRequest"]> } | undefined;
     const widgetManager = {
       registerPlacementTool: vi.fn((registration: {
@@ -128,7 +126,6 @@ describe("Widget plugin catalog reconciliation", () => {
       setGlobalDefinitionError: vi.fn(),
       completeDefinitionDiscovery: vi.fn(),
       placeWidgetInstance,
-      placeLegacyPublishedWidget,
     };
     const transportApi = {
       agent: {
@@ -136,7 +133,6 @@ describe("Widget plugin catalog reconciliation", () => {
           catalog: vi.fn(async () => [undefined, catalog] as const),
           resolvePlacement,
         },
-        widgetPreview: { close: vi.fn() },
       },
     };
     const placement = new WidgetPlacementService({
@@ -183,7 +179,6 @@ describe("Widget plugin catalog reconciliation", () => {
       revisionId: REVISION_ID,
       bounds: { x: 40, y: 50, width: 360, height: 320 },
     });
-    expect(placeLegacyPublishedWidget).not.toHaveBeenCalled();
   });
 
   test("keeps unchanged placement tools stable across catalog refreshes", async () => {

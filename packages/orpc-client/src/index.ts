@@ -23,8 +23,6 @@ export type {
   TWidgetPlacementSummary,
   TWidgetCatalogPreviewSummary,
   TWidgetDraftSummary,
-  TWidgetPreviewCloseResult,
-  TWidgetPreviewFunctionInvocationView,
   TWidgetPreviewResult,
 } from "@vibecanvas/api/agent/contract";
 import type { TNotificationEvent } from "@vibecanvas/api/notification/contract";

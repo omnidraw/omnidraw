@@ -5,13 +5,8 @@
 export { EventPublisherService } from './EventPublisherService';
 export type { IEventPublisherService } from './IEventPublisherService';
 export type {
-  TActorEvent,
-  TActorStatus,
   TAgentApprovalEvent,
   TAgentChatEvent,
-  TAgentDraftActorEvent,
-  TAgentDraftActorRuntimeEvent,
-  TAgentDraftActorSnapshot,
   TAgentEvent,
   TAgentWidgetCatalogEvent,
   TAgentWidgetDraftEvent,

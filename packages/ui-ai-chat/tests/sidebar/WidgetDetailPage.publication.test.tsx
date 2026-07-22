@@ -13,7 +13,7 @@ const variant: TWidgetVariantSummary = {
   draftId: DRAFT_ID,
   source: "draft",
   displayName: "Blobby",
-  kind: "actor-widget",
+  kind: "notes-widget",
   slug: "blobby",
   description: "A test widget.",
   revision: "draft-revision",

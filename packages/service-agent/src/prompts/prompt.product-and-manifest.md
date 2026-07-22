@@ -20,4 +20,4 @@ Build browser-first widgets. `vibecanvas.json` is the authoritative manifest and
 - `resources` is an optional array of host-bound requirements. Each requirement names a stable slot and declares kind, required status, read/write ceiling, and allowed operations. Never put a concrete resource id, path, handle, credential, or secret in the manifest.
 - Source paths are relative, normalized, and contained in the draft. Never use absolute paths, `..`, symlinks, dynamic imports, runtime `require`, or caller-selected build plugins.
 
-The host pins an immutable source snapshot, validates the strict manifest, builds trusted UI and optional server artifacts, and binds the resulting digests into one contract. A Preview always refers to one immutable draft revision. “Ready” never means published.
+Publication pins an immutable source snapshot, validates the strict manifest, builds trusted UI and optional server artifacts, and binds the resulting digests into one contract. Draft Preview instead builds the current draft transiently for UI rendering; “Ready” never means published.

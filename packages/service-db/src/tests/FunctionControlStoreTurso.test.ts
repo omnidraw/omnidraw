@@ -12,8 +12,6 @@ import type {
 import { FUNCTION_PLATFORM_PRE_GUEST_MAX_ATTEMPTS } from '@vibecanvas/function-runtime';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import {
-  fnCanonicalizeWidgetContractPayload,
-  fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
 } from '@vibecanvas/widget-contract';
@@ -46,15 +44,6 @@ const CELL_ID = 'function-test-cell';
 const FUNCTION_NAME = 'updatePreferences';
 const FUNCTION_ID = fnFunctionId(DEFINITION_ID, FUNCTION_NAME);
 const OTHER_ACCOUNT_ID = uuid(799);
-const PREVIEW_ID = uuid(730);
-const PREVIEW_REVISION_ID = uuid(731);
-const PREVIEW_DRAFT_ID = uuid(732);
-const PREVIEW_CHAT_ID = uuid(733);
-const PREVIEW_SOURCE_ARTIFACT_ID = uuid(734);
-const PREVIEW_SOURCE_SNAPSHOT_ID = uuid(735);
-const PREVIEW_SOURCE_DIGEST = sha256('preview-source');
-const PREVIEW_DRAFT_REVISION = sha256('preview-draft-revision');
-
 const TENANT = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
   accountId: DEFAULT_OSS_ACCOUNT_ID,
@@ -70,16 +59,6 @@ const OTHER_MEMBER_TENANT = fnFreezeTenantContext({
   ...TENANT,
   accountId: OTHER_ACCOUNT_ID,
   requestId: 'function-control-other-member',
-});
-
-const PREVIEW_TENANT = fnFreezeTenantContext({
-  orgId: TENANT.orgId,
-  accountId: TENANT.accountId,
-  cellId: TENANT.cellId,
-  placementEpoch: TENANT.placementEpoch,
-  roles: TENANT.roles,
-  capabilities: TENANT.capabilities,
-  requestId: 'function-control-preview',
 });
 
 const DESCRIPTOR: TWidgetServerFunctionDescriptor = fnNormalizeWidgetServerFunctionDescriptor({
@@ -283,95 +262,6 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
   `)).run(DEFAULT_OSS_ORGANIZATION_ID, RESOURCE_ID);
 }
 
-async function seedPreviewControlPlane(database: TDatabase): Promise<string> {
-  const canonicalDescriptors = fnCanonicalizeWidgetServerFunctionDescriptors([DESCRIPTOR]);
-  const manifest = {
-    schemaVersion: 2 as const,
-    name: 'Preferences preview',
-    slug: 'preferences-preview',
-    ui: { entry: 'ui/main.ts' },
-    server: { entry: 'server/index.ts', runtimeAbi: 'vibecanvas:1' },
-    resources: [{ slot: 'preferences', kind: 'kv' as const, effect: 'write' as const, required: true }],
-  };
-  const manifestJson = fnCanonicalizeWidgetManifest(manifest);
-  const descriptorsDigest = sha256(canonicalDescriptors);
-  const contractDigest = sha256(fnCanonicalizeWidgetContractPayload({
-    canonicalManifestJson: manifestJson,
-    uiDigestSha256: UI_DIGEST,
-    serverDigestSha256: SERVER_DIGEST,
-    runtimeAbi: manifest.server.runtimeAbi,
-    functionDescriptorsDigestSha256: descriptorsDigest,
-  }));
-  await (await database.prepare(`
-    INSERT INTO artifact_references (
-      org_id, id, kind, digest_sha256, byte_size, retention_state, retain_until_ms, created_at_ms
-    ) VALUES (?, ?, 'source', ?, 30, 'pinned', 10000, 1)
-  `)).run(TENANT.orgId, PREVIEW_SOURCE_ARTIFACT_ID, PREVIEW_SOURCE_DIGEST);
-  await (await database.prepare(`
-    INSERT INTO agent_chats (
-      org_id, id, account_id, canvas_id, name, status,
-      workspace_relative_path, history_relative_path, created_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, NULL, 'Preview chat', 'active',
-      'agent/preview-chat/workspace', 'agent/preview-chat/history', 1, 1)
-  `)).run(TENANT.orgId, PREVIEW_CHAT_ID, TENANT.accountId);
-  await (await database.prepare(`
-    INSERT INTO agent_drafts (
-      org_id, id, chat_id, name, status, source_relative_path,
-      source_digest_sha256, last_error_json, created_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, 'Preview draft', 'ready', 'drafts/preview', ?, NULL, 1, 1)
-  `)).run(TENANT.orgId, PREVIEW_DRAFT_ID, PREVIEW_CHAT_ID, PREVIEW_DRAFT_REVISION);
-  await (await database.prepare(`
-    INSERT INTO agent_previews (
-      org_id, id, draft_id, artifact_id, artifact_kind, relative_path,
-      status, last_error_json, created_at_ms, updated_at_ms, expires_at_ms,
-      active_revision_id
-    ) VALUES (?, ?, ?, ?, 'ui', 'previews/preferences', 'ready', NULL, 1, 1, 10000, NULL)
-  `)).run(TENANT.orgId, PREVIEW_ID, PREVIEW_DRAFT_ID, UI_ARTIFACT_ID);
-  await (await database.prepare(`
-    INSERT INTO agent_preview_revisions (
-      org_id, id, preview_id, draft_id, definition_id, draft_revision_sha256,
-      source_snapshot_id, source_artifact_id, source_artifact_kind, source_digest_sha256,
-      manifest_json, runtime_abi, function_descriptors_json,
-      function_descriptors_digest_sha256, contract_digest_sha256, builder_identity,
-      ui_artifact_id, ui_artifact_kind, ui_artifact_digest_sha256,
-      server_artifact_id, server_artifact_kind, server_artifact_digest_sha256,
-      created_at_ms, retain_until_ms, expires_at_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'source', ?, ?, ?, ?, ?, ?,
-      'vibecanvas-test-builder', ?, 'ui', ?, ?, 'server', ?, 2, 10000, 10000)
-  `)).run(
-    TENANT.orgId,
-    PREVIEW_REVISION_ID,
-    PREVIEW_ID,
-    PREVIEW_DRAFT_ID,
-    DEFINITION_ID,
-    PREVIEW_DRAFT_REVISION,
-    PREVIEW_SOURCE_SNAPSHOT_ID,
-    PREVIEW_SOURCE_ARTIFACT_ID,
-    PREVIEW_SOURCE_DIGEST,
-    manifestJson,
-    manifest.server.runtimeAbi,
-    canonicalDescriptors,
-    descriptorsDigest,
-    contractDigest,
-    UI_ARTIFACT_ID,
-    UI_DIGEST,
-    SERVER_ARTIFACT_ID,
-    SERVER_DIGEST,
-  );
-  await (await database.prepare(`
-    UPDATE agent_previews SET active_revision_id = ?
-    WHERE org_id = ? AND id = ?
-  `)).run(PREVIEW_REVISION_ID, TENANT.orgId, PREVIEW_ID);
-  await (await database.prepare(`
-    INSERT INTO agent_preview_resource_bindings (
-      org_id, preview_id, revision_id, slot_name, resource_id, resource_kind,
-      is_required, manifest_allow_read, manifest_allow_write,
-      allow_read, allow_write, created_at_ms
-    ) VALUES (?, ?, ?, 'preferences', ?, 'kv', 1, 0, 1, 0, 1, 2)
-  `)).run(TENANT.orgId, PREVIEW_ID, PREVIEW_REVISION_ID, RESOURCE_ID);
-  return contractDigest;
-}
-
 async function cloneInvocationRow(
   database: TDatabase,
   source: Readonly<{ orgId: string; invocationId: string }>,
@@ -430,35 +320,6 @@ function createRequest(
     idempotencyScope: { kind: 'widget_instance', widgetInstanceId: WIDGET_INSTANCE_ID },
     requestFingerprintSha256: options.fingerprint ?? sha256(fnFunctionCanonicalJson(input)),
     idempotencyExpiresAtMs: options.expiresAtMs === undefined ? 2_000 : options.expiresAtMs,
-  };
-}
-
-function createPreviewRequest(
-  id: string,
-  input: unknown,
-  contractDigestSha256: string,
-): TInvocationCreateRequest {
-  const value: TFunctionInvocationEnvelope = {
-    ...envelope(id, input, `preview-key-${id}`),
-    tenant: PREVIEW_TENANT,
-    widgetRevisionId: PREVIEW_REVISION_ID,
-    subject: {
-      kind: 'agent_preview',
-      previewId: PREVIEW_ID,
-      previewRevisionId: PREVIEW_REVISION_ID,
-    },
-    contractDigestSha256,
-  };
-  return {
-    envelope: value,
-    idempotencyRecordId: uuid(Number(id.slice(-4)) + 3_000),
-    idempotencyScope: {
-      kind: 'agent_preview',
-      previewId: PREVIEW_ID,
-      previewRevisionId: PREVIEW_REVISION_ID,
-    },
-    requestFingerprintSha256: sha256(fnFunctionCanonicalJson(input)),
-    idempotencyExpiresAtMs: 2_000,
   };
 }
 
@@ -563,129 +424,6 @@ describe('FunctionControlStoreTurso', () => {
     expect(await (await database.prepare(`
       SELECT count(*) AS count FROM function_invocations WHERE org_id = ?
     `)).get(TENANT.orgId)).toEqual({ count: 0 });
-  });
-
-  test('admits only the owned active immutable preview without a canvas or widget instance', async () => {
-    const contractDigest = await seedPreviewControlPlane(database);
-    await (await database.prepare(`
-      UPDATE widget_instances SET status = 'archived', updated_at_ms = 4
-      WHERE org_id = ? AND id = ?
-    `)).run(TENANT.orgId, WIDGET_INSTANCE_ID);
-
-    await expect(store.resolveFunctionForSubject(PREVIEW_TENANT, {
-      subject: {
-        kind: 'agent_preview',
-        previewId: PREVIEW_ID,
-        previewRevisionId: PREVIEW_REVISION_ID,
-      },
-      widgetDefinitionId: DEFINITION_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: FUNCTION_NAME,
-      purpose: 'admission',
-    })).resolves.toMatchObject({
-      id: FUNCTION_ID,
-      widgetDefinitionId: DEFINITION_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      serverArtifactId: SERVER_ARTIFACT_ID,
-      artifactDigestSha256: SERVER_DIGEST,
-      contractDigestSha256: contractDigest,
-    });
-
-    const invocationId = uuid(736);
-    const request = createPreviewRequest(invocationId, { preview: true }, contractDigest);
-    await expect(store.createOrReplayInvocation(PREVIEW_TENANT, request)).resolves.toMatchObject({
-      status: 'created',
-      invocation: {
-        envelope: {
-          id: invocationId,
-          subject: {
-            kind: 'agent_preview',
-            previewId: PREVIEW_ID,
-            previewRevisionId: PREVIEW_REVISION_ID,
-          },
-        },
-      },
-    });
-    expect(await (await database.prepare(`
-      SELECT subject_kind, canvas_id, widget_instance_id, preview_id, preview_revision_id
-      FROM function_invocations WHERE org_id = ? AND id = ?
-    `)).get(TENANT.orgId, invocationId)).toEqual({
-      subject_kind: 'agent_preview',
-      canvas_id: null,
-      widget_instance_id: null,
-      preview_id: PREVIEW_ID,
-      preview_revision_id: PREVIEW_REVISION_ID,
-    });
-    expect(await (await database.prepare(`
-      SELECT scope_kind, canvas_id, widget_instance_id, preview_id, preview_revision_id
-      FROM idempotency_records WHERE org_id = ? AND invocation_id = ?
-    `)).get(TENANT.orgId, invocationId)).toEqual({
-      scope_kind: 'agent_preview',
-      canvas_id: null,
-      widget_instance_id: null,
-      preview_id: PREVIEW_ID,
-      preview_revision_id: PREVIEW_REVISION_ID,
-    });
-    const wrongScope = createPreviewRequest(uuid(738), { scope: 'wrong' }, contractDigest);
-    await expect(store.createOrReplayInvocation(PREVIEW_TENANT, {
-      ...wrongScope,
-      idempotencyScope: {
-        kind: 'widget_instance',
-        widgetInstanceId: WIDGET_INSTANCE_ID,
-      },
-    })).rejects.toMatchObject({ code: 'FUNCTION_IDEMPOTENCY_SCOPE_MISMATCH' });
-
-    const wrongAccount = fnFreezeTenantContext({
-      ...PREVIEW_TENANT,
-      accountId: OTHER_ACCOUNT_ID,
-      requestId: 'preview-wrong-account',
-    });
-    await expect(store.resolveFunctionForSubject(wrongAccount, {
-      subject: request.envelope.subject,
-      widgetDefinitionId: DEFINITION_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: FUNCTION_NAME,
-      purpose: 'admission',
-    })).resolves.toBeNull();
-    await expect(store.requestCancellation(wrongAccount, {
-      invocationId,
-      nowMs: 101,
-    })).resolves.toEqual({ status: 'missing' });
-
-    await (await database.prepare(`
-      UPDATE agent_previews SET active_revision_id = NULL, status = 'stopped', updated_at_ms = 102
-      WHERE org_id = ? AND id = ?
-    `)).run(TENANT.orgId, PREVIEW_ID);
-    await expect(store.resolveFunctionForSubject(PREVIEW_TENANT, {
-      subject: request.envelope.subject,
-      widgetDefinitionId: DEFINITION_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: FUNCTION_NAME,
-      purpose: 'admission',
-    })).resolves.toBeNull();
-    await expect(store.resolveFunctionForSubject(PREVIEW_TENANT, {
-      subject: request.envelope.subject,
-      widgetDefinitionId: DEFINITION_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: FUNCTION_NAME,
-      purpose: 'execution',
-    })).resolves.toMatchObject({ widgetRevisionId: PREVIEW_REVISION_ID });
-    await expect(store.createOrReplayInvocation(
-      PREVIEW_TENANT,
-      createPreviewRequest(uuid(737), { stale: true }, contractDigest),
-    )).rejects.toMatchObject({ code: 'FUNCTION_INVOCATION_AUTHORITY_MISMATCH' });
-    await expect(store.requestCancellation(PREVIEW_TENANT, {
-      invocationId,
-      nowMs: 103,
-    })).resolves.toMatchObject({ status: 'cancelled' });
-    nowMs = 10_000;
-    await expect(store.resolveFunctionForSubject(PREVIEW_TENANT, {
-      subject: request.envelope.subject,
-      widgetDefinitionId: DEFINITION_ID,
-      widgetRevisionId: PREVIEW_REVISION_ID,
-      functionName: FUNCTION_NAME,
-      purpose: 'execution',
-    })).resolves.toBeNull();
   });
 
   test('denies create and replay while the durable canvas projection is behind', async () => {

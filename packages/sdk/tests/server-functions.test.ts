@@ -74,16 +74,6 @@ const context: TServerFunctionContext<'fn', Record<never, never>> = {
   metrics: { increment: () => undefined },
 };
 
-const previewContext: TServerFunctionContext<'fn', Record<never, never>> = {
-  ...context,
-  widgetRevisionId: 'preview-revision-a',
-  subject: {
-    kind: 'agent_preview',
-    previewId: 'preview-a',
-    previewRevisionId: 'preview-revision-a',
-  },
-};
-
 afterEach(() => {
   __setServerFunctionTransport(null);
   delete (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
@@ -113,17 +103,15 @@ describe('@vibecanvas/sdk/server', () => {
     }]);
     await expect(count.__vibecanvasExecute(context, { text: 'hello' }))
       .resolves.toEqual({ length: 5 });
-    const previewIdentity = defineServerFunction({
+    const instanceIdentity = defineServerFunction({
       effect: 'fn',
       input: inputSchema,
       output: outputSchema,
     }, async (serverContext) => ({
-      length: serverContext.subject.kind === 'agent_preview'
-        ? serverContext.subject.previewId.length
-        : serverContext.subject.widgetInstanceId.length,
+      length: serverContext.subject.widgetInstanceId.length,
     }));
-    await expect(previewIdentity.__vibecanvasExecute(previewContext, { text: 'hello' }))
-      .resolves.toEqual({ length: 'preview-a'.length });
+    await expect(instanceIdentity.__vibecanvasExecute(context, { text: 'hello' }))
+      .resolves.toEqual({ length: 'instance-a'.length });
     await expect(count.__vibecanvasExecute(context, { text: '' })).rejects.toThrow('text');
 
     const invalidOutput = defineServerFunction({

@@ -1,4 +1,4 @@
-import type { TElement, TUiWidgetData, TWidgetData, TWidgetInstanceData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
+import type { TElement, TUiWidgetData, TWidgetInstanceData } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type { CameraService, SceneService, SelectionService } from '@vibecanvas/canvas/services';
 import { ThemeService } from '@vibecanvas/service-theme';
 import { ELEMENT_DATA_ATTR } from '@vibecanvas/canvas/core/CONSTANTS';
@@ -112,7 +112,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   const titleActionsRoot = portal.document.createElement('div');
   const widgetLabel = portal.widgetConfig?.getTitle?.(args.element)
     ?? portal.widgetConfig?.tool?.label
-    ?? (args.element.data.type === 'widget' || args.element.data.type === 'ui-widget'
+    ?? (args.element.data.type === 'ui-widget'
       ? args.element.data.kind
       : args.element.data.type === 'widget-instance'
         ? args.element.data.definitionId
@@ -505,40 +505,7 @@ export function txAttachDomPortal(portal: TPortal, args: TArgs) {
   if (args.element.data.type !== 'widget-instance') mountConfiguredDom();
   syncWidgetRootChildren(contentRoot);
 
-  if (args.element.data.type === 'widget' && portal.widgetConfig?.sandbox) {
-    try {
-      const cleanupSandbox = portal.widgetServie.mountLegacyWidgetSandbox({
-      root: contentRoot,
-      browser: portal.browser,
-      element: args.element,
-      sandbox: portal.widgetConfig.sandbox,
-      getActorInstanceId: () => {
-        if (!isKonvaGroup(portal.node)) return null;
-        const widgetData = portal.node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | TWidgetInstanceData | undefined;
-        return widgetData?.type === 'widget' ? widgetData.actorInstanceId ?? null : null;
-      },
-      onLoading: renderLoading,
-      onError: (error) => renderError(error, false),
-      onRecovered: () => {
-        if (!hasNonRecoverableHostError) {
-          contentRoot.querySelector('[data-widget-host-error]')?.remove();
-          contentRoot.querySelector('[data-widget-host-loading]')?.remove();
-        }
-      },
-    });
-      const cleanupDomRender = cleanupRender;
-      cleanupRender = () => {
-        try { cleanupWidgetRender(cleanupDomRender); } finally { cleanupSandbox(); }
-      };
-    } catch (error) {
-      renderError({
-        phase: 'sandbox-compile',
-        code: 'WIDGET_SANDBOX_MOUNT_FAILED',
-        message: error instanceof Error ? error.message : String(error),
-        retryable: false,
-      });
-    }
-  } else if (!portal.widgetConfig?.renderDom) {
+  if (!portal.widgetConfig?.renderDom) {
     const definitionError = portal.widgetServie.getWidgetError?.(args.element);
     if (definitionError) renderError(definitionError);
     else renderLoading();

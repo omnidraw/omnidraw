@@ -18,7 +18,7 @@ function detail(sibling: TWidgetDetail["sibling"]): TWidgetDetail {
       draftId: "10000000-0000-4000-8000-000000000001",
       source: "draft",
       displayName: "Weather board",
-      kind: "actor-widget",
+      kind: "notes-widget",
       slug: "weather",
       description: null,
       revision: "rev-current",

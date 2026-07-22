@@ -5,7 +5,6 @@ import type {
   TWidgetArtifactDescriptor,
   TWidgetManifestV2,
   TWidgetPreviewBuildRequest,
-  TWidgetPreviewRevisionDescriptor,
   TWidgetPublishRequest,
   TWidgetRevisionDescriptor,
   TWidgetRevisionSourceDescriptor,
@@ -16,7 +15,6 @@ import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
 import { WidgetDraftController } from '../src/widget-drafts/WidgetDraftController';
 import type {
   IAgentAuthoringStore,
-  IWidgetPreviewFunctionCapability,
   TAgentAuthoringChatDescriptor,
   TAgentAuthoringDraftDescriptor,
   TWidgetAuthoringCapability,
@@ -267,23 +265,15 @@ export class MemoryAuthoringStore implements IAgentAuthoringStore {
 
 export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapability {
   readonly source = new WidgetSourceSnapshot();
-  readonly previews = new Map<string, TWidgetPreviewRevisionDescriptor>();
-  readonly previewRevisions = new Map<string, TWidgetPreviewRevisionDescriptor>();
   readonly revisions = new Map<string, TWidgetRevisionDescriptor>();
   readonly revisionSources = new Map<string, TWidgetRevisionSourceDescriptor>();
   readonly revisionSnapshots = new Map<string, TWidgetSourceSnapshot>();
   readonly activeRevisions = new Map<string, string>();
   readonly artifactBytes = new Map<string, Uint8Array>();
-  tamperRead = false;
-  failArtifactRead = false;
   publishCount = 0;
-  stopPreviewCalls = 0;
-  stopPreviewFailuresRemaining = 0;
-  stopPreviewFalseFailuresRemaining = 0;
   beforeValidateBuild: (() => Promise<void>) | null = null;
   beforeBuildPreview: (() => Promise<void>) | null = null;
   beforePublish: (() => Promise<void>) | null = null;
-  afterBuildPreviewCommit: (() => Promise<void>) | null = null;
   validateBuildResult: Awaited<ReturnType<TWidgetAuthoringCapability['validateBuild']>> = {
     valid: true,
     diagnostics: [],
@@ -300,78 +290,26 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
 
   async buildPreview(_tenant: TTenantContext, request: TWidgetPreviewBuildRequest) {
     await this.beforeBuildPreview?.();
-    const active = this.previews.get(request.previewId) ?? null;
-    if ((active?.id ?? null) !== request.expectedActiveRevisionId) {
-      return { status: 'conflict' as const, currentActiveRevisionId: active?.id ?? null };
-    }
-    const artifact = this.#uiArtifact(request);
-    const descriptor: TWidgetPreviewRevisionDescriptor = {
-      orgId: TEST_TENANT.orgId,
-      id: request.revisionId,
-      previewId: request.previewId,
+    const artifact = this.#uiArtifact({
+      artifactId: `preview-ui-${request.draftId}`,
+      snapshot: request.snapshot,
+      manifest: request.manifest,
+      builderIdentity: request.builderIdentity,
+      nowMs: request.snapshot.createdAtMs,
+    });
+    return {
       draftId: request.draftId,
       definitionId: request.definitionId,
       draftRevisionSha256: request.draftRevisionSha256,
-      sourceSnapshotId: request.snapshot.id,
-      sourceDigestSha256: request.snapshot.digestSha256,
-      sourceArtifact: this.#artifact(`source-${request.revisionId}`, 'source', '0'.repeat(64), 1, request.nowMs),
       manifest: request.manifest,
-      canonicalManifestJson: JSON.stringify(request.manifest),
       functionDescriptors: request.manifest.server ? [SERVER_FUNCTION] : [],
-      functionDescriptorsDigestSha256: '1'.repeat(64),
       contractDigestSha256: '2'.repeat(64),
       builderIdentity: request.builderIdentity,
-      uiArtifact: artifact.descriptor,
-      serverArtifact: request.manifest.server
-        ? this.#artifact(`server-${request.revisionId}`, 'server', '3'.repeat(64), 4, request.nowMs)
-        : null,
-      createdAtMs: request.nowMs,
-      retainUntilMs: request.retainUntilMs,
-      expiresAtMs: request.expiresAtMs,
+      uiArtifact: {
+        digestSha256: artifact.descriptor.digestSha256,
+        bytes: artifact.bytes,
+      },
     };
-    this.previews.set(request.previewId, descriptor);
-    this.previewRevisions.set(`${request.previewId}:${request.revisionId}`, descriptor);
-    await this.afterBuildPreviewCommit?.();
-    return {
-      status: 'committed' as const,
-      revision: descriptor,
-      previousActiveRevisionId: active?.id ?? null,
-    };
-  }
-
-  async getPreview(
-    _tenant: TTenantContext,
-    request: Parameters<TWidgetAuthoringCapability['getPreview']>[1],
-  ) {
-    const preview = this.previews.get(request.previewId) ?? null;
-    return preview && preview.expiresAtMs > request.nowMs ? preview : null;
-  }
-
-  async getPreviewRevision(
-    _tenant: TTenantContext,
-    request: Parameters<TWidgetAuthoringCapability['getPreviewRevision']>[1],
-  ) {
-    const preview = this.previewRevisions.get(`${request.previewId}:${request.revisionId}`) ?? null;
-    return preview && preview.expiresAtMs > request.nowMs ? preview : null;
-  }
-
-  async stopPreview(
-    _tenant: TTenantContext,
-    request: Parameters<TWidgetAuthoringCapability['stopPreview']>[1],
-  ): Promise<boolean> {
-    this.stopPreviewCalls += 1;
-    if (this.stopPreviewFailuresRemaining > 0) {
-      this.stopPreviewFailuresRemaining -= 1;
-      throw new Error('Injected Preview stop failure.');
-    }
-    if (this.stopPreviewFalseFailuresRemaining > 0) {
-      this.stopPreviewFalseFailuresRemaining -= 1;
-      return false;
-    }
-    const active = this.previews.get(request.previewId);
-    if (!active || active.id !== request.expectedActiveRevisionId) return false;
-    this.previews.delete(request.previewId);
-    return true;
   }
 
   async publish(_tenant: TTenantContext, request: TWidgetPublishRequest) {
@@ -382,7 +320,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
     }
     this.publishCount += 1;
     const artifact = this.#uiArtifact({
-      revisionId: request.revisionId,
+      artifactId: `ui-${request.revisionId}`,
       snapshot: request.snapshot,
       manifest: request.manifest,
       builderIdentity: request.builderIdentity,
@@ -490,30 +428,13 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
         : null;
     };
 
-  async issueUiPreviewArtifactReadCapability(
-    _tenant: TTenantContext,
-    request: Parameters<TWidgetAuthoringCapability['issueUiPreviewArtifactReadCapability']>[1],
-  ) {
-    return JSON.stringify(request);
-  }
-
-  async readArtifact(
-    _tenant: TTenantContext,
-    request: Parameters<TWidgetAuthoringCapability['readArtifact']>[1],
-  ): Promise<Uint8Array | null> {
-    if (this.failArtifactRead) return null;
-    const bytes = this.artifactBytes.get(request.artifactId);
-    if (!bytes) return null;
-    if (!this.tamperRead) return new Uint8Array(bytes);
-    const tampered = new Uint8Array(bytes);
-    tampered[0] = (tampered[0] ?? 0) ^ 1;
-    return tampered;
-  }
-
-  #uiArtifact(request: Pick<
-    TWidgetPreviewBuildRequest,
-    'revisionId' | 'snapshot' | 'manifest' | 'builderIdentity' | 'nowMs'
-  >): { descriptor: TWidgetArtifactDescriptor; bytes: Uint8Array } {
+  #uiArtifact(request: Readonly<{
+    artifactId: string;
+    snapshot: TWidgetSourceSnapshot;
+    manifest: TWidgetManifestV2;
+    builderIdentity: string;
+    nowMs: number;
+  }>): { descriptor: TWidgetArtifactDescriptor; bytes: Uint8Array } {
     const outputBytes = Buffer.from('export default function mount() {}\n', 'utf8');
     const envelope = {
       format: 'vibecanvas.widget-artifact.v1',
@@ -532,7 +453,7 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
     };
     const bytes = new Uint8Array(Buffer.from(JSON.stringify(envelope), 'utf8'));
     const descriptor = this.#artifact(
-      `ui-${request.revisionId}`,
+      request.artifactId,
       'ui',
       digest(bytes),
       bytes.byteLength,
@@ -562,56 +483,6 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
   }
 }
 
-export class MemoryPreviewFunctions implements IWidgetPreviewFunctionCapability {
-  lastInvocation: Awaited<ReturnType<IWidgetPreviewFunctionCapability['invokePreviewFunction']>> | null = null;
-
-  async invokePreviewFunction(
-    _tenant: TTenantContext,
-    request: Parameters<IWidgetPreviewFunctionCapability['invokePreviewFunction']>[1],
-  ) {
-    this.lastInvocation = {
-      id: `invocation-${request.idempotencyKey}`,
-      functionName: request.functionName,
-      widgetRevisionId: request.previewRevisionId,
-      subject: {
-        kind: 'agent_preview',
-        previewId: request.previewId,
-        previewRevisionId: request.previewRevisionId,
-      },
-      status: 'succeeded',
-      output: request.input,
-      failure: null,
-      createdAtMs: 1,
-      startedAtMs: 2,
-      finishedAtMs: 3,
-    };
-    return this.lastInvocation;
-  }
-
-  async getPreviewFunctionInvocation(
-    _tenant: TTenantContext,
-    request: Parameters<IWidgetPreviewFunctionCapability['getPreviewFunctionInvocation']>[1],
-  ) {
-    const invocation = this.lastInvocation;
-    return invocation
-      && invocation.id === request.invocationId
-      && invocation.subject.previewId === request.previewId
-      && invocation.subject.previewRevisionId === request.previewRevisionId
-      ? invocation
-      : null;
-  }
-
-  async cancelPreviewFunctionInvocation(
-    tenant: TTenantContext,
-    request: Parameters<IWidgetPreviewFunctionCapability['cancelPreviewFunctionInvocation']>[1],
-  ) {
-    const invocation = await this.getPreviewFunctionInvocation(tenant, request);
-    if (!invocation) return null;
-    this.lastInvocation = { ...invocation, status: 'cancelled' };
-    return this.lastInvocation;
-  }
-}
-
 export type TWidgetAuthoringHarness = Awaited<ReturnType<typeof createWidgetAuthoringHarness>>;
 
 export function createWidgetDraftControllerForWorkspace(
@@ -620,7 +491,6 @@ export function createWidgetDraftControllerForWorkspace(
 ) {
   const store = new MemoryAuthoringStore();
   const widgets = new MemoryWidgetAuthoringCapability();
-  const previewFunctions = new MemoryPreviewFunctions();
   let id = 0;
   let nowMs = 10_000;
   const controller = new WidgetDraftController({
@@ -630,12 +500,11 @@ export function createWidgetDraftControllerForWorkspace(
     authoringStore: store,
     widgets,
     resolveResourceBindings: async () => [],
-    previewFunctions,
     createId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
     nowMs: () => ++nowMs,
     builderIdentity: 'test-widget-builder/1',
   });
-  return { controller, store, widgets, previewFunctions };
+  return { controller, store, widgets };
 }
 
 export async function createWidgetAuthoringHarness(
@@ -644,14 +513,13 @@ export async function createWidgetAuthoringHarness(
 ) {
   const workspace = new WidgetWorkspace({
     dataPath: root,
-    configPath: `${root}/config`,
     createId: (() => {
       let id = 0;
       return () => `workspace-${++id}`;
     })(),
   });
   await workspace.init();
-  const { controller, store, widgets, previewFunctions } =
+  const { controller, store, widgets } =
     createWidgetDraftControllerForWorkspace(workspace, eventPublisher);
 
   const createDraft = async (name: string, server = false) => {
@@ -683,5 +551,5 @@ export async function createWidgetAuthoringHarness(
     return summary;
   };
 
-  return { controller, workspace, store, widgets, previewFunctions, createDraft };
+  return { controller, workspace, store, widgets, createDraft };
 }

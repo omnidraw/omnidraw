@@ -20,10 +20,10 @@ function collectProcedurePaths(node: object, prefix = ''): string[] {
 }
 
 describe('neutral resource API contract', () => {
-  test('publishes the same six groups and 39 procedures', () => {
+  test('publishes the same six groups and 36 procedures', () => {
     expect(Object.keys(resourceContract)).toEqual(RESOURCE_GROUPS);
     expect(Object.keys(resourceHandlers)).toEqual(RESOURCE_GROUPS);
-    expect(collectProcedurePaths(resourceContract)).toHaveLength(39);
+    expect(collectProcedurePaths(resourceContract)).toHaveLength(36);
     expect(collectProcedurePaths(resourceHandlers).toSorted())
       .toEqual(collectProcedurePaths(resourceContract).toSorted());
   });

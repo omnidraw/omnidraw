@@ -4,7 +4,6 @@ import { handlers } from './handlers';
 import { router } from './router';
 
 const ROUTE_KEYS = [
-  'actors',
   'agent',
   'canvas',
   'db',
@@ -36,7 +35,7 @@ describe('unified API route equivalence', () => {
     const contractProcedures = collectProcedurePaths(apiContract);
     const handlerProcedures = collectProcedurePaths(router);
 
-    expect(contractProcedures).toHaveLength(108);
+    expect(contractProcedures).toHaveLength(93);
     expect(handlerProcedures.toSorted()).toEqual(contractProcedures.toSorted());
   });
 });

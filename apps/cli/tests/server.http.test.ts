@@ -36,32 +36,21 @@ async function closeDb(db: DbServiceTurso): Promise<void> {
 }
 
 describe('server http helpers', () => {
-  test('reports legacy enablement and exact active process cost in health diagnostics', async () => {
+  test('reports the neutral service health payload', async () => {
     const db = await createDb();
     try {
-      const disabled = await handleHttpRequest(
+      const response = await handleHttpRequest(
         new Request('http://localhost/health'),
-        { compiled: false, legacyActorEnabled: false, version: 'test' },
+        { compiled: false, version: 'test' },
         db,
         tenant,
         import.meta.dir,
       );
-      expect(await disabled.json()).toMatchObject({
-        legacy_actor_enabled: false,
-        active_legacy_process_count: 0,
-      });
-
-      const enabled = await handleHttpRequest(
-        new Request('http://localhost/health'),
-        { compiled: false, legacyActorEnabled: true, version: 'test' },
-        db,
-        tenant,
-        import.meta.dir,
-        { activeLegacyProcessCount: 3 },
-      );
-      expect(await enabled.json()).toMatchObject({
-        legacy_actor_enabled: true,
-        active_legacy_process_count: 3,
+      expect(await response.json()).toEqual({
+        ok: true,
+        service: 'vibecanvas',
+        version: 'test',
+        compiled: false,
       });
     } finally {
       await closeDb(db);

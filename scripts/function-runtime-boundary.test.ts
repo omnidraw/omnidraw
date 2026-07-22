@@ -16,12 +16,12 @@ async function sourceFiles(root: string): Promise<string[]> {
 }
 
 describe('M6 short-lived function runtime boundaries', () => {
-  test('keeps the public runtime independent from API, database, and actor implementations', async () => {
+  test('keeps the public runtime independent from API and database implementations', async () => {
     const root = join(REPO_ROOT, 'packages', 'function-runtime', 'src');
     const violations: string[] = [];
     for (const file of await sourceFiles(root)) {
       const source = await readFile(file, 'utf8');
-      if (/@vibecanvas\/(?:api|service-actor|service-db)/.test(source)) {
+      if (/@vibecanvas\/(?:api|service-db)/.test(source)) {
         violations.push(relative(REPO_ROOT, file));
       }
     }

@@ -55,11 +55,6 @@ function ensureComponentDomMocks() {
 function createApiService() {
   return {
     api: {
-      actors: {
-        definitions: {
-          list: async () => [undefined, []],
-        },
-      },
       resource: {
         resources: {
           list: async () => [undefined, []],
@@ -80,7 +75,6 @@ function createApiService() {
         },
         chat: {
           connect: async () => [undefined, {
-            actorCandidate: null,
             editSession: null,
             messageHistory: [],
             vcJson: null,
@@ -120,7 +114,6 @@ describe("AiChat shell", () => {
     document.body.appendChild(container)
     const apiService = createApiService() as any
     const connect = vi.fn(async () => [undefined, {
-      actorCandidate: null,
       editSession: null,
       messageHistory: [],
       vcJson: null,
@@ -189,7 +182,6 @@ describe("AiChat shell", () => {
     const connect = vi.fn((input: { sessionId: string }) => input.sessionId === "conversation-1"
       ? firstConnect
       : Promise.resolve([undefined, {
-        actorCandidate: null,
         editSession: null,
         messageHistory: [{ role: "assistant", content: [{ type: "text", text: "latest session" }] }],
         vcJson: null,
@@ -222,7 +214,6 @@ describe("AiChat shell", () => {
     expect(listApprovals).toHaveBeenCalledWith({ widgetId: "surface-1", sessionId: "conversation-2" })
 
     resolveFirstConnect?.([undefined, {
-      actorCandidate: null,
       editSession: null,
       messageHistory: [{ role: "assistant", content: [{ type: "text", text: "stale session" }] }],
       vcJson: null,
@@ -242,7 +233,6 @@ describe("AiChat shell", () => {
     let resolveFirstApprovalList: ((value: unknown) => void) | undefined
     const firstApprovalList = new Promise((resolve) => { resolveFirstApprovalList = resolve })
     apiService.api.agent.chat.connect = async () => [undefined, {
-      actorCandidate: null,
       editSession: null,
       messageHistory: [],
       vcJson: null,
@@ -305,7 +295,6 @@ describe("AiChat shell", () => {
     const connect = vi.fn()
       .mockResolvedValueOnce([{ message: "WebSocket handshake failed" }, undefined])
       .mockResolvedValueOnce([undefined, {
-        actorCandidate: null,
         editSession: null,
         messageHistory: [],
         vcJson: null,
@@ -455,7 +444,6 @@ describe("AiChat shell", () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     }]];
     apiService.api.agent.chat.connect = async () => [undefined, {
-      actorCandidate: null,
       editSession: null,
       messageHistory: [{
         role: "assistant",
@@ -503,7 +491,6 @@ describe("AiChat shell", () => {
     const apiService = createApiService() as any
     const draftId = "10000000-0000-4000-8000-000000000001"
     apiService.api.agent.chat.connect = async () => [undefined, {
-      actorCandidate: null,
       editSession: null,
       messageHistory: [{
         role: "toolResult",

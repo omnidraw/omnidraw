@@ -7,7 +7,7 @@ import {
   ZWidgetBrowserFunctionDescriptors,
   ZWidgetManifestV2,
   type TWidgetManifestV2,
-  type TWidgetPreviewRevisionDescriptor,
+  type TWidgetPreviewBuildResult,
   type TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
 import { fnDecodeWidgetUiArtifactEnvelope } from '@vibecanvas/widget-contract/browser';
@@ -19,26 +19,18 @@ import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import type { TWidgetDraftWorkspaceEntry } from '../workspace/types';
 import type {
   IAgentAuthoringStore,
-  IWidgetPreviewFunctionCapability,
   TAgentAuthoringDraftDescriptor,
   TWidgetAuthoringCapability,
   TWidgetDraftSummary,
   TWidgetPreviewCatalogState,
-  TWidgetPreviewCloseResult,
   TWidgetPreviewFailureReason,
-  TWidgetPreviewFunctionCapabilityView,
-  TWidgetPreviewFunctionInvocationView,
   TWidgetPreviewReady,
   TWidgetPreviewResult,
   TWidgetPublishResult,
   TWidgetResourceBindingResolver,
 } from './types';
 
-const WIDGET_PREVIEW_DEFAULT_TTL_MS = 15 * 60 * 1_000;
-const WIDGET_PREVIEW_DEFAULT_RETENTION_MS = 60 * 60 * 1_000;
-const WIDGET_PREVIEW_ARTIFACT_READ_TTL_MS = 60 * 1_000;
 const WIDGET_UI_ARTIFACT_MAX_BYTES = 16 * 1_024 * 1_024;
-const WIDGET_PREVIEW_STOP_ATTEMPTS = 3;
 
 type TValidationCacheEntry = TValidationResult & { revision: string };
 
@@ -55,12 +47,9 @@ export type TWidgetDraftControllerConfig = Readonly<{
   authoringStore: IAgentAuthoringStore;
   widgets: TWidgetAuthoringCapability;
   resolveResourceBindings: TWidgetResourceBindingResolver;
-  previewFunctions: IWidgetPreviewFunctionCapability;
   createId: () => string;
   nowMs: () => number;
   builderIdentity: string;
-  previewTtlMs?: number;
-  previewRetentionMs?: number;
 }>;
 
 function controllerError(code: string, message: string): Error & { code: string } {
@@ -83,33 +72,11 @@ function errorCurrentRevision(error: unknown): string | null {
   return typeof currentRevision === 'string' ? currentRevision : null;
 }
 
-function previewKey(previewId: string, previewRevisionId: string): string {
-  return JSON.stringify([previewId, previewRevisionId]);
-}
-
-function browserInvocationView(
-  view: TWidgetPreviewFunctionCapabilityView,
-): TWidgetPreviewFunctionInvocationView {
-  return Object.freeze({
-    id: view.id,
-    functionName: view.functionName,
-    previewId: view.subject.previewId,
-    previewRevisionId: view.subject.previewRevisionId,
-    status: view.status,
-    output: view.output,
-    failure: view.failure,
-    createdAtMs: view.createdAtMs,
-    startedAtMs: view.startedAtMs,
-    finishedAtMs: view.finishedAtMs,
-  });
-}
-
-/** Durable actor-free v2 draft, preview, and publication orchestration. */
+/** Durable draft/publication orchestration with stateless UI-only preview builds. */
 export class WidgetDraftController {
   readonly #config: TWidgetDraftControllerConfig;
   readonly #validationByDraft = new Map<string, TValidationCacheEntry>();
   readonly #operations = new Map<string, Promise<unknown>>();
-  readonly #activePreviewRevisions = new Map<string, Map<string, string>>();
   #closing = false;
 
   constructor(config: TWidgetDraftControllerConfig) {
@@ -122,15 +89,6 @@ export class WidgetDraftController {
   async close(): Promise<void> {
     this.#closing = true;
     await Promise.allSettled(this.#operations.values());
-    const cleanup: Promise<unknown>[] = [];
-    for (const [draftId, previews] of this.#activePreviewRevisions) {
-      for (const [previewId, revisionId] of previews) {
-        cleanup.push(this.#stopPreviewRevision(previewId, revisionId).then((stopped) => {
-          if (stopped) this.#forgetPreview(draftId, previewId, revisionId);
-        }));
-      }
-    }
-    await Promise.allSettled(cleanup);
   }
 
   async handleToolChange(change: TWidgetDraftChange): Promise<TWidgetDraftSummary | null> {
@@ -356,39 +314,10 @@ export class WidgetDraftController {
     });
   }
 
-  async getPreview(draftId: string, previewId: string): Promise<TWidgetPreviewResult> {
-    const draft = await this.#activeDraft(draftId);
-    if (!draft) return this.#previewFailure(draftId, 'not-found', 'Widget draft was not found.', { previewId });
-    const preview = await this.#config.widgets.getPreview(this.#config.tenant, {
-      previewId,
-      nowMs: this.#now(),
-    });
-    if (!preview || preview.draftId !== draft.id || preview.definitionId !== draft.definitionId) {
-      return this.#previewFailure(draft.id, 'not-built', 'Preview has not been built for this draft.', { previewId });
-    }
-    const current = await this.#currentDraftRevision(draft);
-    return this.#previewReady(preview, current ?? preview.draftRevisionSha256);
-  }
-
   async getPreviewCatalogState(name: string): Promise<TWidgetPreviewCatalogState | null> {
     const draft = await this.#config.authoringStore.getDraftByName(this.#config.tenant, name);
     if (!draft || draft.status === 'discarded') return null;
     const currentRevision = draft.sourceDigestSha256 ?? '';
-    const previews = this.#activePreviewRevisions.get(draft.id);
-    if (previews) {
-      for (const [previewId] of previews) {
-        const preview = await this.#config.widgets.getPreview(this.#config.tenant, {
-          previewId,
-          nowMs: this.#now(),
-        });
-        if (
-          preview
-          && preview.draftId === draft.id
-          && preview.definitionId === draft.definitionId
-          && preview.draftRevisionSha256 === currentRevision
-        ) return { status: 'ready', revision: currentRevision };
-      }
-    }
     const validation = this.#validationForDraft(draft, currentRevision);
     if (validation.status === 'invalid') {
       return {
@@ -397,91 +326,50 @@ export class WidgetDraftController {
         message: 'Draft validation failed. Open the draft for diagnostics.',
       };
     }
-    return { status: 'not-ready', revision: currentRevision, message: null };
+    return validation.status === 'valid'
+      ? { status: 'ready', revision: currentRevision }
+      : { status: 'not-ready', revision: currentRevision, message: null };
   }
 
-  async buildPreview(
-    draftId: string,
-    previewId: string,
-    expectedDraftRevision: string,
-    expectedActivePreviewRevisionId: string | null,
-  ): Promise<TWidgetPreviewResult> {
+  async buildPreview(draftId: string): Promise<TWidgetPreviewResult> {
     return this.#queue(`draft:${draftId}`, async () => {
       if (this.#closing) {
-        return this.#previewFailure(draftId, 'build-failed', 'Preview service is closing.', {
-          previewId,
-          revision: expectedDraftRevision,
-        });
+        return this.#previewFailure(draftId, 'build-failed', 'Preview service is closing.');
       }
       const draft = await this.#activeDraft(draftId);
-      if (!draft) return this.#previewFailure(draftId, 'not-found', 'Widget draft was not found.', { previewId });
+      if (!draft) return this.#previewFailure(draftId, 'not-found', 'Widget draft was not found.');
       const workspace = await this.#config.workspace.getDraft(draft.name);
-      if (!workspace) return this.#previewFailure(draft.id, 'not-found', 'Widget draft source was not found.', { previewId });
+      if (!workspace) return this.#previewFailure(draft.id, 'not-found', 'Widget draft source was not found.');
 
       return this.#withCapturedWorkspace(workspace, async (captured) => {
         const currentRevision = captured.snapshot.digestSha256;
         const synced = await this.#compareAndSetDraft(draft, currentRevision, { status: 'editing' });
         if (!synced) {
-          return this.#previewFailure(draft.id, 'stale-revision', 'The widget draft changed before Preview opened.', {
-            previewId,
-            revision: expectedDraftRevision,
-            currentRevision,
-          });
-        }
-        if (expectedDraftRevision !== currentRevision) {
-          return this.#previewFailure(draft.id, 'stale-revision', 'The widget draft changed before Preview opened.', {
-            previewId,
-            revision: expectedDraftRevision,
-            currentRevision,
-          });
+          return this.#previewFailure(draft.id, 'build-failed', 'The widget draft changed before Preview opened.');
         }
 
         const validation = await this.#validateCaptured(synced, captured);
         if (!validation.ok) {
           return this.#previewFailure(draft.id, 'validation-failed', 'The widget draft must pass validation before it can be previewed.', {
-            previewId,
-            revision: expectedDraftRevision,
-            currentRevision,
+            revision: currentRevision,
             diagnostics: validation.errors,
           });
         }
         const manifest = await this.#readManifest(captured.rootPath);
         if (!manifest.ok) {
           return this.#previewFailure(draft.id, 'manifest-invalid', manifest.message, {
-            previewId,
-            revision: expectedDraftRevision,
-            currentRevision,
+            revision: currentRevision,
             diagnostics: [manifest.message],
           });
         }
         if (manifest.manifest.name !== draft.name) {
           const message = `Draft identity is '${draft.name}', but vibecanvas.json declares '${manifest.manifest.name}'.`;
           return this.#previewFailure(draft.id, 'manifest-invalid', message, {
-            previewId,
-            revision: expectedDraftRevision,
-            currentRevision,
+            revision: currentRevision,
             diagnostics: [message],
           });
         }
 
-        let bindings;
-        try {
-          bindings = await this.#config.resolveResourceBindings(this.#config.tenant, {
-            draft: synced,
-            manifest: manifest.manifest,
-          });
-        } catch (error) {
-          const message = errorMessage(error);
-          return this.#previewFailure(draft.id, 'resource-binding-invalid', message, {
-            previewId,
-            revision: expectedDraftRevision,
-            currentRevision,
-            diagnostics: [message],
-          });
-        }
-
-        const nowMs = this.#now();
-        const previewRevisionId = this.#config.createId();
         try {
           const fenced = await this.#config.workspace.withDraftRevisionFence(
             draft.name,
@@ -495,7 +383,7 @@ export class WidgetDraftController {
                     draft.id,
                     'not-found',
                     'Widget draft was discarded before Preview opened.',
-                    { previewId, revision: expectedDraftRevision, currentRevision },
+                    { revision: currentRevision },
                   ),
                 };
               }
@@ -504,91 +392,30 @@ export class WidgetDraftController {
                   status: 'failed' as const,
                   result: this.#previewFailure(
                     draft.id,
-                    'stale-revision',
+                    'build-failed',
                     'The widget draft changed before Preview opened.',
                     {
-                      previewId,
-                      revision: expectedDraftRevision,
-                      currentRevision: commitDraft.sourceDigestSha256 ?? currentRevision,
+                      revision: commitDraft.sourceDigestSha256 ?? currentRevision,
                     },
                   ),
                 };
               }
 
               const result = await this.#config.widgets.buildPreview(this.#config.tenant, {
-                previewId,
-                expectedActiveRevisionId: expectedActivePreviewRevisionId,
-                revisionId: previewRevisionId,
                 draftId: draft.id,
                 definitionId: draft.definitionId,
                 draftRevisionSha256: currentRevision,
                 snapshot: captured.snapshot,
                 manifest: manifest.manifest,
-                bindings,
                 builderIdentity: this.#config.builderIdentity,
-                nowMs,
-                expiresAtMs: nowMs + (this.#config.previewTtlMs ?? WIDGET_PREVIEW_DEFAULT_TTL_MS),
-                retainUntilMs: nowMs + (this.#config.previewRetentionMs ?? WIDGET_PREVIEW_DEFAULT_RETENTION_MS),
               });
-              if (result.status === 'conflict') {
-                return {
-                  status: 'failed' as const,
-                  result: this.#previewFailure(
-                    draft.id,
-                    'preview-conflict',
-                    'Preview changed before the new revision could be activated.',
-                    {
-                      previewId,
-                      previewRevisionId: result.currentActiveRevisionId ?? undefined,
-                      revision: expectedDraftRevision,
-                      currentRevision,
-                    },
-                  ),
-                };
-              }
-              // Adopt cleanup ownership synchronously at the commit boundary,
-              // before any subsequent durable read can fail.
-              this.#rememberPreview(draft.id, previewId, result.revision.id);
-              const committedDraft = await this.#activeDraft(draft.id);
-              if (!committedDraft) {
-                const stopped = await this.#stopPreviewRevision(previewId, result.revision.id);
-                if (stopped) this.#forgetPreview(draft.id, previewId, result.revision.id);
-                return {
-                  status: 'failed' as const,
-                  result: this.#previewFailure(
-                    draft.id,
-                    'not-found',
-                    'Widget draft was discarded while Preview was building.',
-                    { previewId, previewRevisionId: result.revision.id, revision: currentRevision },
-                  ),
-                };
-              }
-              return { status: 'committed' as const, revision: result.revision };
+              return { status: 'committed' as const, result };
             },
           );
           if (fenced.status === 'failed') return fenced.result;
+          const ready = this.#previewReady(fenced.result);
 
-          let ready: TWidgetPreviewResult;
-          try {
-            ready = await this.#previewReady(fenced.revision, currentRevision);
-          } catch (error) {
-            const message = errorMessage(error);
-            ready = this.#previewFailure(draft.id, 'artifact-unavailable', message, {
-              previewId,
-              previewRevisionId: fenced.revision.id,
-              revision: currentRevision,
-              currentRevision,
-              diagnostics: [message],
-            });
-          }
-          if (!ready.ready) {
-            const stopped = await this.#stopPreviewRevision(previewId, fenced.revision.id);
-            if (stopped) this.#forgetPreview(draft.id, previewId, fenced.revision.id);
-            return ready;
-          }
-
-          // Preview activation and artifact verification are authoritative from
-          // here onward. Event delivery remains best-effort.
+          // Preview bytes are complete; event delivery remains best-effort.
           try {
             this.#config.eventPublisher.publishAgentEvent({
               kind: 'widget-preview',
@@ -599,10 +426,6 @@ export class WidgetDraftController {
           } catch {}
           return ready;
         } catch (error) {
-          if (this.#isRememberedPreview(draft.id, previewId, previewRevisionId)) {
-            const stopped = await this.#stopPreviewRevision(previewId, previewRevisionId);
-            if (stopped) this.#forgetPreview(draft.id, previewId, previewRevisionId);
-          }
           const message = errorMessage(error);
           const code = errorCode(error);
           const failureCurrentRevision = code === 'WIDGET_DRAFT_REVISION_CHANGED'
@@ -611,103 +434,13 @@ export class WidgetDraftController {
               errorCurrentRevision(error) ?? currentRevision,
             )
             : currentRevision;
-          const reason: TWidgetPreviewFailureReason = code === 'WIDGET_DRAFT_REVISION_CHANGED'
-            ? 'stale-revision'
-            : code === 'WIDGET_RESOURCE_BINDINGS_INVALID'
-            ? 'resource-binding-invalid'
-            : code === 'WIDGET_PREVIEW_DRAFT_STALE'
-              ? 'stale-revision'
-              : 'build-failed';
-          return this.#previewFailure(draft.id, reason, message, {
-            previewId,
-            previewRevisionId,
-            revision: expectedDraftRevision,
-            currentRevision: failureCurrentRevision,
+          return this.#previewFailure(draft.id, 'build-failed', message, {
+            revision: failureCurrentRevision,
             diagnostics: [message],
           });
         }
       });
     });
-  }
-
-  async closePreview(
-    draftId: string,
-    previewId: string,
-    expectedPreviewRevisionId: string,
-  ): Promise<TWidgetPreviewCloseResult> {
-    return this.#queue(`draft:${draftId}`, async () => {
-      const draft = await this.#activeDraft(draftId);
-      if (!draft || this.#closing) {
-        return { closed: false, draftId, previewId, previewRevisionId: expectedPreviewRevisionId };
-      }
-      const preview = await this.#ownedPreviewRevision(
-        draft,
-        previewId,
-        expectedPreviewRevisionId,
-      );
-      if (!preview) {
-        return { closed: false, draftId, previewId, previewRevisionId: expectedPreviewRevisionId };
-      }
-      const closed = await this.#stopPreviewRevision(previewId, expectedPreviewRevisionId);
-      if (closed) this.#forgetPreview(draftId, previewId, expectedPreviewRevisionId);
-      return { closed, draftId, previewId, previewRevisionId: expectedPreviewRevisionId };
-    });
-  }
-
-  async invokePreviewFunction(
-    draftId: string,
-    previewId: string,
-    previewRevisionId: string,
-    functionName: string,
-    input: unknown,
-    idempotencyKey: string,
-  ): Promise<TWidgetPreviewFunctionInvocationView> {
-    const draft = await this.#requireOwnedPreview(draftId, previewId, previewRevisionId);
-    const view = await this.#config.previewFunctions.invokePreviewFunction(this.#config.tenant, {
-      previewId,
-      previewRevisionId,
-      widgetDefinitionId: draft.definitionId,
-      functionName,
-      input,
-      idempotencyKey,
-    });
-    if (
-      view.subject.previewId !== previewId
-      || view.subject.previewRevisionId !== previewRevisionId
-    ) throw controllerError('PREVIEW_FUNCTION_OWNERSHIP_FAILED', 'Preview function ownership could not be verified.');
-    return browserInvocationView(view);
-  }
-
-  async getPreviewFunctionInvocation(
-    draftId: string,
-    previewId: string,
-    previewRevisionId: string,
-    invocationId: string,
-  ): Promise<TWidgetPreviewFunctionInvocationView | null> {
-    const draft = await this.#activeDraft(draftId);
-    if (!draft || !await this.#ownedPreviewRevision(draft, previewId, previewRevisionId)) return null;
-    const view = await this.#config.previewFunctions.getPreviewFunctionInvocation(this.#config.tenant, {
-      invocationId,
-      previewId,
-      previewRevisionId,
-    });
-    return view ? browserInvocationView(view) : null;
-  }
-
-  async cancelPreviewFunctionInvocation(
-    draftId: string,
-    previewId: string,
-    previewRevisionId: string,
-    invocationId: string,
-  ): Promise<TWidgetPreviewFunctionInvocationView | null> {
-    const draft = await this.#activeDraft(draftId);
-    if (!draft || !await this.#ownedPreviewRevision(draft, previewId, previewRevisionId)) return null;
-    const view = await this.#config.previewFunctions.cancelPreviewFunctionInvocation(this.#config.tenant, {
-      invocationId,
-      previewId,
-      previewRevisionId,
-    });
-    return view ? browserInvocationView(view) : null;
   }
 
   async publish(draftId: string, expectedRevision: string): Promise<TWidgetPublishResult> {
@@ -874,7 +607,6 @@ export class WidgetDraftController {
     await this.#queue(this.#draftOperationKey(initial.id), async () => {
       const draft = await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id);
       if (!draft || draft.status === 'discarded' || draft.name !== name) return;
-      await this.#stopDraftPreviews(draft.id);
       const result = await this.#config.authoringStore.discardDraft(this.#config.tenant, {
         draftId: draft.id,
         expectedSourceDigestSha256: draft.sourceDigestSha256,
@@ -887,7 +619,7 @@ export class WidgetDraftController {
     });
   }
 
-  async withPreviewCleanup<T>(
+  async withDraftDeletion<T>(
     name: string,
     operation: (
       cleanup: () => Promise<void>,
@@ -900,12 +632,7 @@ export class WidgetDraftController {
         ? await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id)
         : null;
       const draft = current?.status !== 'discarded' && current?.name === name ? current : null;
-      let cleaned = false;
-      const cleanup = async () => {
-        if (cleaned) return;
-        cleaned = true;
-        if (draft) await this.#stopDraftPreviews(draft.id);
-      };
+      const cleanup = async () => {};
       let discarded = false;
       const discardBeforeRemoval = async () => {
         if (discarded) return;
@@ -929,7 +656,7 @@ export class WidgetDraftController {
     });
   }
 
-  async withPreviewRenameCleanup<T>(
+  async withDraftRename<T>(
     name: string,
     nextName: string,
     operation: (
@@ -949,12 +676,7 @@ export class WidgetDraftController {
         ? await this.#config.authoringStore.getDraft(this.#config.tenant, initial.id)
         : null;
       const draft = current?.status !== 'discarded' && current?.name === name ? current : null;
-      let cleaned = false;
-      const cleanup = async () => {
-        if (cleaned) return;
-        cleaned = true;
-        if (draft) await this.#stopDraftPreviews(draft.id);
-      };
+      const cleanup = async () => {};
       let coordinated = false;
       const coordinateCommit = async (commit: () => Promise<void>) => {
         await cleanup();
@@ -1093,36 +815,14 @@ export class WidgetDraftController {
     return { ok: validation.ok, errors, warnings };
   }
 
-  async #previewReady(
-    preview: TWidgetPreviewRevisionDescriptor,
-    currentRevision: string,
-  ): Promise<TWidgetPreviewResult> {
+  #previewReady(preview: TWidgetPreviewBuildResult): TWidgetPreviewResult {
     try {
       const uiArtifact = preview.uiArtifact;
       if (
-        uiArtifact.byteSize < 1
-        || uiArtifact.byteSize > WIDGET_UI_ARTIFACT_MAX_BYTES
+        uiArtifact.bytes.byteLength < 1
+        || uiArtifact.bytes.byteLength > WIDGET_UI_ARTIFACT_MAX_BYTES
       ) throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact exceeds its safe size limit.');
-      const nowMs = this.#now();
-      const readCapability = await this.#config.widgets.issueUiPreviewArtifactReadCapability(
-        this.#config.tenant,
-        {
-          previewId: preview.previewId,
-          previewRevisionId: preview.id,
-          artifactId: uiArtifact.id,
-          artifactKind: 'ui',
-          digestSha256: uiArtifact.digestSha256,
-          expiresAtMs: Math.min(preview.expiresAtMs, nowMs + WIDGET_PREVIEW_ARTIFACT_READ_TTL_MS),
-        },
-      );
-      const bytes = await this.#config.widgets.readArtifact(this.#config.tenant, {
-        artifactId: uiArtifact.id,
-        readCapability,
-        purpose: 'preview_ui',
-      });
-      if (!bytes || bytes.byteLength !== uiArtifact.byteSize) {
-        throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact bytes are unavailable or incomplete.');
-      }
+      const bytes = uiArtifact.bytes;
       if (createHash('sha256').update(bytes).digest('hex') !== uiArtifact.digestSha256) {
         throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact integrity verification failed.');
       }
@@ -1130,7 +830,7 @@ export class WidgetDraftController {
         new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       );
       if (
-        envelope.sourceDigestSha256 !== preview.sourceDigestSha256
+        envelope.sourceDigestSha256 !== preview.draftRevisionSha256
         || envelope.builderIdentity !== preview.builderIdentity
       ) throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact identity is inconsistent.');
       const browserDescriptors = ZWidgetBrowserFunctionDescriptors.parse(
@@ -1141,11 +841,7 @@ export class WidgetDraftController {
         draftId: preview.draftId,
         definitionId: preview.definitionId,
         name: preview.manifest.name,
-        previewId: preview.previewId,
-        previewRevisionId: preview.id,
         revision: preview.draftRevisionSha256,
-        currentRevision,
-        stale: preview.draftRevisionSha256 !== currentRevision,
         manifest: preview.manifest,
         uiArtifact: {
           digestSha256: uiArtifact.digestSha256,
@@ -1157,16 +853,12 @@ export class WidgetDraftController {
           functions: browserDescriptors,
         },
         diagnostics: [],
-        expiresAtMs: preview.expiresAtMs,
       };
       return ready;
     } catch (error) {
       const message = errorMessage(error);
       return this.#previewFailure(preview.draftId, 'artifact-unavailable', message, {
-        previewId: preview.previewId,
-        previewRevisionId: preview.id,
         revision: preview.draftRevisionSha256,
-        currentRevision,
         diagnostics: [message],
       });
     }
@@ -1324,7 +1016,7 @@ export class WidgetDraftController {
     workspace: TWidgetDraftWorkspaceEntry,
     operation: (captured: TCapturedDraft) => Promise<T>,
   ): Promise<T> {
-    const copied = await this.#config.workspace.createPreviewSnapshot(
+    const copied = await this.#config.workspace.createTransientDraftSnapshot(
       workspace.name,
       workspace.revision,
     );
@@ -1395,35 +1087,6 @@ export class WidgetDraftController {
     }
     await this.#config.workspace.ensureChat(chat.externalSessionKey);
     await this.#config.workspace.loadWidget(chat.externalSessionKey, draft.name);
-  }
-
-  async #ownedPreviewRevision(
-    draft: TAgentAuthoringDraftDescriptor,
-    previewId: string,
-    previewRevisionId: string,
-  ): Promise<TWidgetPreviewRevisionDescriptor | null> {
-    const preview = await this.#config.widgets.getPreviewRevision(this.#config.tenant, {
-      previewId,
-      revisionId: previewRevisionId,
-      nowMs: this.#now(),
-    });
-    return preview
-      && preview.draftId === draft.id
-      && preview.definitionId === draft.definitionId
-      ? preview
-      : null;
-  }
-
-  async #requireOwnedPreview(
-    draftId: string,
-    previewId: string,
-    previewRevisionId: string,
-  ): Promise<TAgentAuthoringDraftDescriptor> {
-    const draft = await this.#activeDraft(draftId);
-    if (!draft || !await this.#ownedPreviewRevision(draft, previewId, previewRevisionId)) {
-      throw controllerError('PREVIEW_NOT_FOUND', 'Preview was not found.');
-    }
-    return draft;
   }
 
   async #activeDraft(draftId: string): Promise<TAgentAuthoringDraftDescriptor | null> {
@@ -1511,10 +1174,7 @@ export class WidgetDraftController {
     reason: TWidgetPreviewFailureReason,
     message: string,
     details: Readonly<{
-      previewId?: string;
-      previewRevisionId?: string;
       revision?: string;
-      currentRevision?: string;
       diagnostics?: readonly string[];
     }> = {},
   ): Exclude<TWidgetPreviewResult, { ready: true }> {
@@ -1560,60 +1220,6 @@ export class WidgetDraftController {
         revision,
       });
     } catch {}
-  }
-
-  #rememberPreview(draftId: string, previewId: string, revisionId: string): void {
-    let previews = this.#activePreviewRevisions.get(draftId);
-    if (!previews) {
-      previews = new Map();
-      this.#activePreviewRevisions.set(draftId, previews);
-    }
-    previews.set(previewId, revisionId);
-  }
-
-  #isRememberedPreview(draftId: string, previewId: string, revisionId: string): boolean {
-    return this.#activePreviewRevisions.get(draftId)?.get(previewId) === revisionId;
-  }
-
-  #forgetPreview(draftId: string, previewId: string, revisionId: string): void {
-    const previews = this.#activePreviewRevisions.get(draftId);
-    if (previews?.get(previewId) === revisionId) previews.delete(previewId);
-    if (previews?.size === 0) this.#activePreviewRevisions.delete(draftId);
-  }
-
-  async #stopPreviewRevision(previewId: string, revisionId: string): Promise<boolean> {
-    for (let attempt = 0; attempt < WIDGET_PREVIEW_STOP_ATTEMPTS; attempt += 1) {
-      try {
-        const stopped = await this.#config.widgets.stopPreview(this.#config.tenant, {
-          previewId,
-          expectedActiveRevisionId: revisionId,
-          nowMs: this.#now(),
-        });
-        if (stopped) return true;
-        const current = await this.#config.widgets.getPreview(this.#config.tenant, {
-          previewId,
-          nowMs: this.#now(),
-        });
-        if (!current || current.id !== revisionId) return true;
-      } catch {}
-    }
-    return false;
-  }
-
-  async #stopDraftPreviews(draftId: string): Promise<void> {
-    const previews = this.#activePreviewRevisions.get(draftId);
-    if (!previews) return;
-    const results = await Promise.all([...previews].map(async ([previewId, revisionId]) => {
-      const stopped = await this.#stopPreviewRevision(previewId, revisionId);
-      if (stopped) this.#forgetPreview(draftId, previewId, revisionId);
-      return stopped;
-    }));
-    if (results.some((stopped) => !stopped)) {
-      throw controllerError(
-        'WIDGET_PREVIEW_CLEANUP_FAILED',
-        'One or more active Preview revisions could not be stopped.',
-      );
-    }
   }
 
   #now(): number {

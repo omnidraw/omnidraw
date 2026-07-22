@@ -3,7 +3,6 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   IEventPublisherService,
   ITenantEventPublisherService,
-  TActorEvent,
   TAgentEvent,
   TDbEvent,
   TEventSubscriptionOptions,
@@ -16,7 +15,6 @@ export class EventPublisherService implements IEventPublisherService {
   readonly name = 'eventPublisher';
 
   readonly #db = new EventBus<TDbEvent>();
-  readonly #actor = new EventBus<TActorEvent>();
   readonly #agent = new EventBus<TAgentEvent>();
   readonly #notification = new EventBus<TNotificationEvent>();
   readonly #latestNotification = new Map<string, TNotificationEvent>();
@@ -29,9 +27,6 @@ export class EventPublisherService implements IEventPublisherService {
         this.subscribeDbEventRecords(tenant, canvasId, options)
       ),
       getDbEventCursor: () => this.getDbEventCursor(tenant),
-      publishActorEvent: (event: TActorEvent) => this.publishActorEvent(tenant, event),
-      subscribeActorEvents: (options?: TEventSubscriptionOptions) => this.subscribeActorEvents(tenant, options),
-      getActorEventCursor: () => this.getActorEventCursor(tenant),
       publishAgentEvent: (event: TAgentEvent) => this.publishAgentEvent(tenant, event),
       subscribeAgentEvents: (options?: TEventSubscriptionOptions) => this.subscribeAgentEvents(tenant, options),
       getAgentEventCursor: () => this.getAgentEventCursor(tenant),
@@ -63,18 +58,6 @@ export class EventPublisherService implements IEventPublisherService {
 
   getDbEventCursor(tenant: TTenantContext): number {
     return this.#db.cursor(this.#orgScope(tenant, 'db'));
-  }
-
-  publishActorEvent(tenant: TTenantContext, event: TActorEvent): number {
-    return this.#actor.publish(this.#accountScope(tenant, 'actor'), 'global', event);
-  }
-
-  subscribeActorEvents(tenant: TTenantContext, options?: TEventSubscriptionOptions): AsyncIterable<TActorEvent> {
-    return this.#actor.subscribe(this.#accountScope(tenant, 'actor'), 'global', options);
-  }
-
-  getActorEventCursor(tenant: TTenantContext): number {
-    return this.#actor.cursor(this.#accountScope(tenant, 'actor'));
   }
 
   publishAgentEvent(tenant: TTenantContext, event: TAgentEvent): number {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * @file Durable M0 gate for renderer, widget-host, collaboration, and actor compatibility behavior.
+ * @file Durable gate for renderer, widget hosting, and collaboration behavior.
  */
 
 import { resolve } from "node:path";
@@ -21,7 +21,7 @@ const suites: readonly TRegressionSuite[] = [
     command: ["bun", "run", "test"],
   },
   {
-    name: "widget frame, portal, fullscreen, placement, clone, and actor snapshots",
+    name: "widget frame, portal, fullscreen, placement, clone, and draft Preview",
     cwd: resolve(REPO_ROOT, "packages/ui-ai-chat"),
     command: [
       "node",
@@ -40,17 +40,6 @@ const suites: readonly TRegressionSuite[] = [
       "test",
       "tests/AutomergeService.test.ts",
       "tests/websocket.adapter.test.ts",
-    ],
-  },
-  {
-    name: "actor child snapshot, message, and resource IPC compatibility",
-    cwd: resolve(REPO_ROOT, "packages/service-actor"),
-    command: [
-      "bun",
-      "test",
-      "tests/Actor.test.ts",
-      "tests/Actor.resource-ipc.test.ts",
-      "--timeout=20000",
     ],
   },
 ];

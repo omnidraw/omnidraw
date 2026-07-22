@@ -1,5 +1,5 @@
 import type { ThemeService } from '@vibecanvas/service-theme'
-import type { TUiWidgetData, TWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
+import type { TUiWidgetData } from '@vibecanvas/service-automerge/types/canvas-doc.types'
 import type Konva from 'konva'
 import { ELEMENT_DATA_ATTR } from "@vibecanvas/canvas/core/CONSTANTS"
 import {
@@ -47,8 +47,8 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   if (!(body instanceof portal.konva.Rect)) return
   if (!(header instanceof portal.konva.Group)) return
 
-  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | TWidgetData | undefined
-  const widgetType = widgetData?.type === 'widget' || widgetData?.type === 'ui-widget' ? widgetData.type : 'ui-widget'
+  const widgetData = portal.group.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined
+  const widgetType = 'ui-widget'
   const hostThemeColors = fnGetHostThemeColors(portal.themeService, widgetType)
   const width = Math.max(WIDGET_HOST_MIN_WIDTH, args.point.x - portal.group.x())
   const height = Math.max(WIDGET_HOST_MIN_HEIGHT, args.point.y - portal.group.y())
@@ -88,7 +88,7 @@ export function fxUpdateHost(portal: TPortalUpdateHost, args: TArgsUpdateHost) {
   body.visible(true)
   body.listening(true)
 
-  if (widgetData?.type === 'widget' || widgetData?.type === 'ui-widget') {
+  if (widgetData?.type === 'ui-widget') {
     widgetData.w = width
     widgetData.h = WIDGET_HOST_HEADER_HEIGHT + bodyHeight
     widgetData.expanded = true
@@ -122,13 +122,11 @@ type TArgsCreateHost = { widgetConfig: IWidgetConfig } & TToolDrawCreateStartDra
 
 export function fxDrawHost(portal: TPortalCreateHost, args: TArgsCreateHost) {
   const dataType = args.widgetConfig.dataType ?? 'ui-widget'
-  if (dataType === 'widget' && !args.widgetConfig.actor) throw new Error('Actor widget config requires actor metadata')
   const hostThemeColors = fnGetHostThemeColors(portal.themeService, dataType)
   const element = fnCreateWidgetElement({
     id: portal.createId(),
     kind: args.widgetConfig.id,
     dataType,
-    actorDefinitionName: args.widgetConfig.actor?.actorDefinitionName,
     payload: args.widgetConfig.createInitialPayload?.() ?? args.widgetConfig.initialPayload ?? {},
     x: args.point.x,
     y: args.point.y,

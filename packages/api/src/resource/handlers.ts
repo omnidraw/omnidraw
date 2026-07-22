@@ -1,7 +1,5 @@
 import {
-  apiBindResource,
   apiCreateResource,
-  apiDefinitionResourceStatus,
   apiDeleteResource,
   apiDeleteResourceData,
   apiGetResource,
@@ -11,7 +9,6 @@ import {
   apiRenameResource,
   apiRevealResourceSecret,
   apiSetResourceData,
-  apiUnbindResource,
 } from './api.resources';
 import {
   apiBulkDbRows,
@@ -54,9 +51,6 @@ const resourceHandlers = {
     dataSet: apiSetResourceData,
     dataDelete: apiDeleteResourceData,
     dataRevealSecret: apiRevealResourceSecret,
-    definitionStatus: apiDefinitionResourceStatus,
-    bind: apiBindResource,
-    unbind: apiUnbindResource,
   },
   dbResources: {
     impact: apiDbResourceImpact,

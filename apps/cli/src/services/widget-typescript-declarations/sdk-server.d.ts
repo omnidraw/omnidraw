@@ -33,10 +33,6 @@ export type TServerFunctionContext<TEffect extends TWidgetServerFunctionEffect =
         kind: 'widget_instance';
         canvasId: string;
         widgetInstanceId: string;
-    }> | Readonly<{
-        kind: 'agent_preview';
-        previewId: string;
-        previewRevisionId: string;
     }>;
     attemptId: string;
     leaseEpoch: number;

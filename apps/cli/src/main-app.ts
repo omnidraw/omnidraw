@@ -68,12 +68,7 @@ export async function runCliMain() {
   }
 
   const { setupServices } = await import('./setup-services');
-  const legacyActor = config.legacyActorEnabled
-    && config.command === 'serve'
-    && !config.helpRequested
-    ? new (await import('./plugins/legacy-actor/LegacyActorPlugin')).LegacyActorPlugin()
-    : undefined;
-  const { services, eventPublisher } = setupServices(config, { legacyActor });
+  const { services, eventPublisher } = setupServices(config);
 
   if (config.command === 'serve' && !config.helpRequested) {
     void OSS_TENANT_CONTEXT_PROVIDER.resolveTenantContext({
@@ -92,7 +87,6 @@ export async function runCliMain() {
     plugins: [
       createAuthPlugin(),
       createCliPlugin(),
-      ...(legacyActor ? [legacyActor] : []),
       createOrpcPlugin(),
       createAutomergePlugin(),
       createServerPlugin(),

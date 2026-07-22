@@ -1,6 +1,3 @@
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
-import { fnNormalizeWidgetFrame } from '@vibecanvas/widget-contract/fn.widget-frame';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 import { fnNormalizeWidgetName } from '../workspace/fn.names';
 import type {
@@ -51,29 +48,23 @@ export function fnWidgetVariantSummary(args: {
   updatedAt: string | null;
   validation: TWidgetDraftValidation | null;
 }): TWidgetVariantSummary {
-  const legacyManifest = args.manifest && 'actor' in args.manifest
-    ? args.manifest as TVibecanvasJson
-    : null;
-  const v2Manifest = args.manifest && 'schemaVersion' in args.manifest
-    ? args.manifest as TWidgetManifestV2
-    : null;
-  const tool = legacyManifest?.widget.tool;
+  const manifest = args.manifest;
   return {
     draftId: args.draftId,
     source: args.source,
     displayName: args.manifest?.name ?? args.fallbackName,
-    kind: v2Manifest ? 'widget' : legacyManifest ? 'actor-widget' : null,
+    kind: manifest ? 'widget' : null,
     slug: args.manifest?.slug ?? null,
     description: args.manifest?.description ?? null,
     revision: args.revision,
     contentFingerprint: args.fingerprint,
     updatedAt: args.updatedAt,
     tool: {
-      label: tool?.label ?? v2Manifest?.name ?? null,
-      icon: tool?.icon ?? null,
-      group: tool?.group?.trim() || null,
-      priority: tool?.priority ?? null,
-      behaviorType: tool?.behavior.type ?? null,
+      label: manifest?.name ?? null,
+      icon: null,
+      group: null,
+      priority: null,
+      behaviorType: 'mode',
     },
     validation: args.validation,
     placement: args.manifest ? {
@@ -82,9 +73,7 @@ export function fnWidgetVariantSummary(args: {
         name: args.fallbackName,
         revision: args.revision,
       },
-      bounds: legacyManifest
-        ? fnNormalizeWidgetFrame(legacyManifest.widget.frame)
-        : { width: 360, height: 320 },
+      bounds: { width: 360, height: 320 },
     } : null,
   };
 }

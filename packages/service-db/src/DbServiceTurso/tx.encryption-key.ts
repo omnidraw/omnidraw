@@ -2,7 +2,7 @@ import type { Database } from '@tursodatabase/database';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { TEncryptionKey } from '../model';
 import { txRunDatabaseTransaction } from '../tx.run-database-transaction';
-import { fxActorResourceEncryptionKeyGet } from './fx.encryption-key';
+import { fxResourceEncryptionKeyGet } from './fx.encryption-key';
 
 type TPortal = {
   db: Database;
@@ -18,7 +18,7 @@ type TArgs = {
 };
 
 function assertEncryptionKeyArgs(args: TArgs): void {
-  if (args.purpose !== 'actor-resource-secret-store' || args.algorithm !== 'aegis256') {
+  if (args.purpose !== 'resource-secret-store' || args.algorithm !== 'aegis256') {
     throw new Error('Encryption key purpose or algorithm is unsupported.');
   }
   if (!/^[0-9a-f]{64}$/.test(args.keyHex)) {
@@ -26,14 +26,14 @@ function assertEncryptionKeyArgs(args: TArgs): void {
   }
 }
 
-export async function txActorResourceEncryptionKeyGetOrCreate(
+export async function txResourceEncryptionKeyGetOrCreate(
   portal: TPortal,
   args: TArgs,
 ): Promise<TEncryptionKey> {
   assertEncryptionKeyArgs(args);
   return txRunDatabaseTransaction({ database: portal.db }, {
     operation: async () => {
-      const existing = await fxActorResourceEncryptionKeyGet(portal, {
+      const existing = await fxResourceEncryptionKeyGet(portal, {
         tenant: args.tenant,
         resourceId: args.resourceId,
       });
@@ -56,11 +56,11 @@ export async function txActorResourceEncryptionKeyGetOrCreate(
         args.resourceId,
       );
 
-      const stored = await fxActorResourceEncryptionKeyGet(portal, {
+      const stored = await fxResourceEncryptionKeyGet(portal, {
         tenant: args.tenant,
         resourceId: args.resourceId,
       });
-      if (!stored) throw new Error('Secret-store actor resource was not found.');
+      if (!stored) throw new Error('Secret-store resource was not found.');
       return stored;
     },
   });

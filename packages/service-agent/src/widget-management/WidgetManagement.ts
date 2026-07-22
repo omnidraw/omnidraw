@@ -1,11 +1,9 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { TVibecanvasJson } from '@vibecanvas/service-actor/core/types';
 import { ZWidgetManifestV2, type TWidgetManifestV2 } from '@vibecanvas/widget-contract';
 import type { WidgetDraftController } from '../widget-drafts/WidgetDraftController';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
-import { fnPatchDraftManifest } from '../core/fn.patch-draft-manifest';
 import {
   WIDGET_CATALOG_MAX_BYTES,
   WIDGET_CATALOG_MAX_FILES,
@@ -21,7 +19,6 @@ import {
   fnIsSafeWidgetRelativePath,
   fnSortWidgetEntries,
   fnWidgetProblem,
-  fnWidgetRelation,
   fnWidgetVariantSummary,
 } from './fn.widget-management';
 import type {
@@ -45,8 +42,6 @@ import type {
 type TWidgetManagementConfig = {
   workspace: WidgetWorkspace;
   drafts: WidgetDraftController;
-  parseLegacyManifest?: (value: unknown) => TVibecanvasJson | null;
-  deletePublishedDefinition?: (name: string) => Promise<boolean>;
   afterVariantFingerprint?: (args: Readonly<{
     name: string;
     source: TWidgetSource;
@@ -69,25 +64,18 @@ type TVariantRead = {
 export class WidgetManagement {
   readonly #workspace: WidgetWorkspace;
   readonly #drafts: WidgetDraftController;
-  readonly #parseLegacyManifest?: TWidgetManagementConfig['parseLegacyManifest'];
-  readonly #deletePublishedDefinition?: (name: string) => Promise<boolean>;
   readonly #afterVariantFingerprint?: TWidgetManagementConfig['afterVariantFingerprint'];
 
   constructor(config: TWidgetManagementConfig) {
     this.#workspace = config.workspace;
     this.#drafts = config.drafts;
-    this.#parseLegacyManifest = config.parseLegacyManifest;
-    this.#deletePublishedDefinition = config.deletePublishedDefinition;
     this.#afterVariantFingerprint = config.afterVariantFingerprint;
   }
 
   async catalog(groups: TWidgetCatalogGroup[]): Promise<TWidgetCatalog> {
-    const [publishedNames, draftNames] = await Promise.all([
-      this.#discoverNames(this.#workspace.publishedRoot),
-      this.#discoverNames(this.#workspace.draftRoot),
-    ]);
-    const names = [...new Set([...publishedNames, ...draftNames])].sort((left, right) => left.localeCompare(right));
-    const widgets = await Promise.all(names.map((name) => this.#catalogEntry(name, publishedNames.has(name), draftNames.has(name))));
+    const draftNames = await this.#discoverNames(this.#workspace.draftRoot);
+    const names = [...draftNames].sort((left, right) => left.localeCompare(right));
+    const widgets = await Promise.all(names.map((name) => this.#catalogEntry(name, false, true)));
     const sortedGroups = [...groups].sort((left, right) => left.name.localeCompare(right.name));
     const sortedWidgets = fnSortWidgetEntries(widgets);
     const generation = createHash('sha256')
@@ -98,15 +86,10 @@ export class WidgetManagement {
 
   async detail(name: string, source: TWidgetSource): Promise<TWidgetDetail | null> {
     this.#assertName(name);
-    const [publishedExists, draftExists] = await Promise.all([
-      this.#hasVariant(name, 'published'),
-      this.#hasVariant(name, 'draft'),
-    ]);
-    const selectedExists = source === 'published' ? publishedExists : draftExists;
-    if (!selectedExists) return null;
-    const entry = await this.#catalogEntry(name, publishedExists, draftExists);
+    if (source === 'published' || !await this.#hasVariant(name, 'draft')) return null;
+    const entry = await this.#catalogEntry(name, false, true);
     const selected = await this.#readVariant(name, source);
-    const sibling = source === 'published' ? entry.draft : entry.published;
+    const sibling = entry.published;
     return {
       name,
       source,
@@ -120,7 +103,10 @@ export class WidgetManagement {
   }
 
   async resolvePlacementReference(reference: import('@vibecanvas/widget-contract').TWidgetPlacementRef): Promise<TWidgetPlacementResolveResult> {
-    const source: TWidgetSource = reference.source === 'published' ? 'published' : 'draft';
+    if (reference.source === 'published') {
+      return { ok: false, code: 'NOT_FOUND', message: `Published widget '${reference.name}' is not available in draft storage.` };
+    }
+    const source: TWidgetSource = 'draft';
     const detail = await this.detail(reference.name, source);
     if (!detail) {
       return { ok: false, code: 'NOT_FOUND', message: `Widget ${reference.source} '${reference.name}' was not found.` };
@@ -136,22 +122,6 @@ export class WidgetManagement {
         currentRevision: detail.variant.revision,
       };
     }
-    if (reference.source === 'published') {
-      return {
-        ok: true,
-        descriptor: {
-          reference,
-          bounds: detail.variant.placement.bounds,
-          kind: 'published-legacy',
-          draftId: null,
-          definitionId: null,
-          revisionId: null,
-          definitionName: detail.manifest.name,
-          definitionSlug: detail.manifest.slug,
-          previewId: null,
-        },
-      };
-    }
     return {
       ok: true,
       descriptor: {
@@ -163,7 +133,6 @@ export class WidgetManagement {
         revisionId: null,
         definitionName: null,
         definitionSlug: null,
-        previewId: null,
       },
     };
   }
@@ -233,26 +202,10 @@ export class WidgetManagement {
     };
   }
 
-  async ensureDraft(name: string, expectedPublishedFingerprint?: string): Promise<TWidgetVariantSummary> {
+  async ensureDraft(name: string, _expectedPublishedFingerprint?: string): Promise<TWidgetVariantSummary> {
     this.#assertName(name);
     const existing = await this.#workspace.getDraft(name);
-    if (!existing) {
-      const fingerprint = await this.#fingerprint(join(this.#workspace.publishedRoot, name));
-      if (fingerprint.fingerprint === null) {
-        throw new Error('INVALID_MANIFEST: Published widget source cannot be copied safely.');
-      }
-      if (expectedPublishedFingerprint && fingerprint.fingerprint !== expectedPublishedFingerprint) {
-        throw new Error('STALE_REVISION: Published widget changed before the draft was created.');
-      }
-      await this.#workspace.ensureDraftFromPublished(name);
-      if (expectedPublishedFingerprint) {
-        const copied = await this.#fingerprint(join(this.#workspace.draftRoot, name));
-        if (copied.fingerprint !== expectedPublishedFingerprint) {
-          throw new Error('STALE_REVISION: Published widget changed while the draft was being created.');
-        }
-      }
-      await this.#drafts.handleToolChange({ name, type: 'created' });
-    }
+    if (!existing) throw new Error(`NOT_FOUND: Widget draft '${name}' does not exist.`);
     const variant = await this.#readVariant(name, 'draft');
     return variant.summary;
   }
@@ -264,19 +217,9 @@ export class WidgetManagement {
     }
     const workspaceRevision = await this.#drafts.getWorkspaceRevision(name, expectedRevision);
     await this.#workspace.updateDraftManifestAtomic(name, workspaceRevision, (manifestValue) => {
-      if (ZWidgetManifestV2.safeParse(manifestValue).success) {
-        throw new Error('INVALID_MANIFEST: Manifest v2 does not expose legacy tool metadata.');
-      }
-      const parsed = this.#parseLegacyManifest?.(manifestValue) ?? null;
-      if (!parsed) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
-      const plan = fnPatchDraftManifest({
-        manifest: parsed,
-        patch: { tool: { ...patch, group: patch.group?.trim() || patch.group } },
-      });
-      if (plan.issues.length > 0) throw new Error(`INVALID_MANIFEST: ${plan.issues.join('; ')}`);
-      const validated = this.#parseLegacyManifest?.(plan.manifest) ?? null;
-      if (!validated) throw new Error('INVALID_MANIFEST: The requested tool metadata is invalid.');
-      return validated;
+      const parsed = ZWidgetManifestV2.safeParse(manifestValue);
+      if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
+      throw new Error('INVALID_MANIFEST: Manifest v2 does not expose tool metadata.');
     });
     await this.#drafts.handleToolChange({ name, type: 'changed' });
     return (await this.#readVariant(name, 'draft')).summary;
@@ -297,7 +240,7 @@ export class WidgetManagement {
         const v2 = ZWidgetManifestV2.safeParse(manifestValue);
         if (v2.success) {
           if (patch.tool !== undefined) {
-            throw new Error('INVALID_MANIFEST: Manifest v2 does not expose legacy tool metadata.');
+            throw new Error('INVALID_MANIFEST: Manifest v2 does not expose tool metadata.');
           }
           const description = patch.description === undefined
             ? v2.data.description
@@ -309,25 +252,12 @@ export class WidgetManagement {
             ...(description === undefined ? {} : { description }),
           };
         }
-        const parsed = this.#parseLegacyManifest?.(manifestValue) ?? null;
-        if (!parsed) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
-        const plan = fnPatchDraftManifest({
-          manifest: parsed,
-          patch: {
-            ...patch,
-            name: nextName,
-            tool: patch.tool ? { ...patch.tool, group: patch.tool.group?.trim() || patch.tool.group } : undefined,
-          },
-        });
-        if (plan.issues.length > 0) throw new Error(`INVALID_MANIFEST: ${plan.issues.join('; ')}`);
-        const validated = this.#parseLegacyManifest?.(plan.manifest) ?? null;
-        if (!validated) throw new Error('INVALID_MANIFEST: The requested widget metadata is invalid.');
-        return validated;
+        throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
       }, coordinateCommit);
     };
     const result = nextName === name
       ? await updateDraft()
-      : await this.#drafts.withPreviewRenameCleanup(name, nextName, (_cleanup, coordinateCommit) => {
+      : await this.#drafts.withDraftRename(name, nextName, (_cleanup, coordinateCommit) => {
           return updateDraft(coordinateCommit);
         });
     await this.#drafts.handleToolChange({ name: result.name, type: 'changed' });
@@ -340,7 +270,7 @@ export class WidgetManagement {
     if (source === 'draft') {
       let deletedDraft = false;
       try {
-        await this.#drafts.withPreviewCleanup(name, async (_cleanup, discardBeforeRemoval) => {
+        await this.#drafts.withDraftDeletion(name, async (_cleanup, discardBeforeRemoval) => {
           await discardBeforeRemoval();
           deletedDraft = await this.#workspace.removeDraft(name);
         });
@@ -366,99 +296,23 @@ export class WidgetManagement {
       }
     }
 
-    const hadDraft = await this.#hasVariant(name, 'draft');
-    const published = await this.#readVariant(name, 'published');
-    const definitionName = published.manifest?.name ?? name;
-    const issues: TWidgetDeleteResult['issues'] = [];
-    let deletedDefinition = false;
-
-    const [publishedCleanup, draftCleanup] = await this.#drafts.withPreviewCleanup(name, async (cleanup, discardBeforeRemoval) => {
-      await cleanup();
-      await discardBeforeRemoval();
-      if (this.#deletePublishedDefinition) {
-        try {
-          deletedDefinition = await this.#deletePublishedDefinition(definitionName);
-          if (!deletedDefinition) {
-            issues.push({
-              target: 'runtime-definition',
-              message: 'No matching runtime definition was found, so no associated instances could be identified.',
-            });
-          }
-        } catch {
-          issues.push({
-            target: 'runtime-definition',
-            message: 'The runtime definition and its instances could not be fully removed.',
-          });
-        }
-      } else {
-        issues.push({
-          target: 'runtime-definition',
-          message: 'Runtime cleanup is unavailable in this host.',
-        });
-      }
-      return Promise.allSettled([
-        this.#workspace.removePublished(name),
-        hadDraft ? this.#workspace.removeDraft(name) : Promise.resolve(false),
-      ]);
-    });
-    if (publishedCleanup.status === 'rejected') {
-      issues.push({ target: 'published-source', message: 'The published widget source could not be removed.' });
-    }
-    if (draftCleanup.status === 'rejected') {
-      issues.push({ target: 'draft-source', message: 'The widget draft could not be removed.' });
-    }
-
-    const [publishedRemains, draftRemains] = await Promise.all([
-      this.#hasVariant(name, 'published'),
-      this.#hasVariant(name, 'draft'),
-    ]);
-    const deletedPublished = !publishedRemains;
-    const deletedDraft = hadDraft && !draftRemains;
-    if (publishedRemains && !issues.some((issue) => issue.target === 'published-source')) {
-      issues.push({ target: 'published-source', message: 'The published widget source could not be removed.' });
-    }
-    if (hadDraft && draftRemains && !issues.some((issue) => issue.target === 'draft-source')) {
-      issues.push({ target: 'draft-source', message: 'The widget draft could not be removed.' });
-    }
-
-    return {
-      name,
-      source,
-      deletedDefinition,
-      deletedPublished,
-      deletedDraft,
-      deletedInstances: deletedDefinition,
-      issues,
-    };
+    return null;
   }
 
   async #catalogEntry(name: string, hasPublished: boolean, hasDraft: boolean): Promise<TWidgetCatalogEntry> {
-    const [published, draft, previewState, cleanDraftRevision] = await Promise.all([
-      hasPublished ? this.#readVariant(name, 'published') : Promise.resolve(null),
+    const [draft, previewState] = await Promise.all([
       hasDraft ? this.#readVariant(name, 'draft') : Promise.resolve(null),
       hasDraft ? this.#drafts.getPreviewCatalogState(name) : Promise.resolve(null),
-      hasPublished && hasDraft ? this.#workspace.getCleanDraftRevision(name) : Promise.resolve(null),
     ]);
-    let problem = published?.problem ?? draft?.problem ?? null;
-    if (!problem && published?.manifest && published.manifest.name !== name) {
-      problem = fnWidgetProblem('MANIFEST_NAME_MISMATCH', 'Published manifest name does not match its managed directory.');
-    }
+    let problem = draft?.problem ?? null;
     if (!problem && draft?.manifest && draft.manifest.name !== name) {
       problem = fnWidgetProblem('MANIFEST_NAME_MISMATCH', 'Draft manifest name does not match its managed directory.');
     }
-    const relation = fnWidgetRelation({
-      hasPublished,
-      hasDraft,
-      publishedFingerprint: published?.summary.contentFingerprint ?? null,
-      draftFingerprint: draft?.summary.contentFingerprint ?? null,
-      cleanDraftRevision,
-      draftRevision: draft?.summary.revision ?? null,
-      hasProblem: problem !== null,
-    });
+    const relation = hasDraft ? 'draft-only' : 'unknown';
     return {
       name,
       relation,
-      published: published?.summary ?? null,
+      published: null,
       draft: draft?.summary ?? null,
       preview: previewState && draft?.summary.placement
         ? previewState.status === 'ready'
@@ -466,7 +320,7 @@ export class WidgetManagement {
               status: 'ready',
               revision: previewState.revision,
               placement: {
-                reference: { source: 'preview', name, revision: previewState.revision },
+                reference: { source: 'draft', name, revision: previewState.revision },
                 bounds: draft.summary.placement.bounds,
               },
             }
@@ -477,7 +331,8 @@ export class WidgetManagement {
   }
 
   async #readVariant(name: string, source: TWidgetSource): Promise<TVariantRead> {
-    const root = join(source === 'published' ? this.#workspace.publishedRoot : this.#workspace.draftRoot, name);
+    if (source === 'published') throw new Error('Published widget source is artifact-backed.');
+    const root = join(this.#workspace.draftRoot, name);
     let latestFingerprint: TTreeFingerprint = {
       fingerprint: null,
       updatedAt: null,
@@ -540,21 +395,11 @@ export class WidgetManagement {
   async #readManifest(root: string): Promise<{ manifest: TWidgetManagementManifest | null; problem: TWidgetCatalogProblem | null; groupReference: string | null }> {
     try {
       const raw: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
-      const rawGroup = raw && typeof raw === 'object' && 'widget' in raw
-        && raw.widget && typeof raw.widget === 'object' && 'tool' in raw.widget
-        && raw.widget.tool && typeof raw.widget.tool === 'object' && 'group' in raw.widget.tool
-        ? raw.widget.tool.group
-        : null;
-      const groupReference = typeof rawGroup === 'string' && rawGroup.trim().length > 0 && rawGroup.trim().length <= 120
-        ? rawGroup.trim()
-        : null;
       const v2 = ZWidgetManifestV2.safeParse(raw);
       if (v2.success) {
         return { manifest: v2.data as TWidgetManifestV2, problem: null, groupReference: null };
       }
-      const legacy = this.#parseLegacyManifest?.(raw) ?? null;
-      if (!legacy) return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference };
-      return { manifest: legacy, problem: null, groupReference };
+      return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference: null };
     } catch {
       return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is missing, unreadable, or invalid JSON.'), groupReference: null };
     }
@@ -621,13 +466,14 @@ export class WidgetManagement {
   }
 
   async #hasVariant(name: string, source: TWidgetSource): Promise<boolean> {
-    const root = source === 'published' ? this.#workspace.publishedRoot : this.#workspace.draftRoot;
-    return Boolean(await lstat(join(root, name)).catch(() => null));
+    if (source === 'published') return false;
+    return Boolean(await lstat(join(this.#workspace.draftRoot, name)).catch(() => null));
   }
 
   async #variantRoot(name: string, source: TWidgetSource): Promise<string | null> {
     this.#assertName(name);
-    const root = source === 'published' ? this.#workspace.publishedRoot : this.#workspace.draftRoot;
+    if (source === 'published') return null;
+    const root = this.#workspace.draftRoot;
     const candidate = join(root, name);
     const entry = await lstat(candidate).catch(() => null);
     if (!entry) return null;

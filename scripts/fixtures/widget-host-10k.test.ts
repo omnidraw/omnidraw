@@ -103,7 +103,6 @@ async function seedWidgetRevision(service: DbServiceTurso): Promise<void> {
 async function countRows(service: DbServiceTurso, table: string, predicate = ''): Promise<number> {
   const allowed = new Set([
     'widget_instances',
-    'legacy_actor_instances',
     'function_invocations',
     'function_attempts',
   ]);
@@ -216,7 +215,6 @@ test('10,000 neutral widgets remain CRDT-only and converge through projection re
     expect(projectionPayloadBytes).toBeGreaterThan(initialCrdtBytes);
 
     await projector.stop();
-    expect(await countRows(service, 'legacy_actor_instances')).toBe(0);
     expect(await countRows(service, 'function_invocations')).toBe(0);
     expect(await countRows(service, 'function_attempts')).toBe(0);
     expect(spawnedProcessCount).toBe(0);
@@ -227,8 +225,7 @@ test('10,000 neutral widgets remain CRDT-only and converge through projection re
       replayCrdtBytes: replayBytes.byteLength,
       undoCrdtBytes,
       projectionPayloadBytes,
-      actorChildProcesses: spawnedProcessCount,
-      legacyActorRows: 0,
+      guestChildProcesses: spawnedProcessCount,
       functionSandboxStarts: spawnedProcessCount,
       functionInvocationRows: 0,
       widgetInstanceRows: INSTANCE_COUNT,

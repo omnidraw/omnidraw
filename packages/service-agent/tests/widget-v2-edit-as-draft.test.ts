@@ -16,7 +16,7 @@ describe('published v2 Edit as draft', () => {
   test('reconstructs the exact immutable source with publication identity and can republish', async () => {
     const root = await mkdtemp(join(tmpdir(), 'vc-v2-edit-as-draft-'));
     roots.push(root);
-    const { controller, store, widgets, previewFunctions, createDraft } =
+    const { controller, store, widgets, createDraft } =
       await createWidgetAuthoringHarness(root);
     const original = await createDraft('Published Editor', true);
     const published = await controller.publish(original.draftId, original.revision);
@@ -46,7 +46,6 @@ describe('published v2 Edit as draft', () => {
       tenant: TEST_TENANT,
       authoringStore: store,
       widgetAuthoringCapability: widgets,
-      previewFunctionCapability: previewFunctions,
       resolveWidgetResourceBindings: async () => [],
       createId: () => `90000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
       nowMs: () => ++nowMs,

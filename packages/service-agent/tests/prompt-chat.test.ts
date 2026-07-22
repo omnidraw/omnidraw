@@ -49,7 +49,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`fn` is deterministic and has no resources');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`fx` may read only declared resource slots');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`tx` may perform declared writes');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Preview bindings are temporary');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Draft Preview is UI-only');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `context.resources.read` or `context.resources.write`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('vc_widget_create({ name, description? })');
@@ -61,8 +61,7 @@ describe('AgentService.promptChat', () => {
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“Ready” never means published');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Never import actor APIs in manifest-v2 widget code');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor/functions.ts');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_create({ name, kind');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('choose `widget` or `actor-widget`');
   });
@@ -203,7 +202,7 @@ describe('AgentService.promptChat', () => {
       variant: {
         source,
         displayName: 'Weather dashboard',
-        kind: 'actor-widget',
+        kind: 'notes-widget',
         slug: 'weather',
         description: null,
         revision: 'rev-2',

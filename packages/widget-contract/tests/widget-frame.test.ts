@@ -8,7 +8,7 @@ import {
 } from '../src'
 
 describe('neutral widget frame and tool contract', () => {
-  test('normalizes frame metadata without actor ownership', () => {
+  test('normalizes frame metadata without runtime ownership', () => {
     expect(fnNormalizeWidgetFrame()).toEqual(WIDGET_FRAME_FALLBACK)
     expect(fnNormalizeWidgetFrame({ width: 480, height: 320 })).toEqual({ width: 480, height: 320 })
   })
