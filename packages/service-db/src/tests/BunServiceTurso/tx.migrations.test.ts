@@ -1105,16 +1105,22 @@ describe('read-only startup preflight', () => {
       .some((column) => column.name === 'next_revision_number')).toBe(false);
   });
 
-  test('refuses actor-era home data without creating or modifying main.db', async () => {
+  test('tolerates unknown home entries without creating or modifying main.db', async () => {
     const homeDir = await temporaryRoot();
     const legacyPath = path.join(homeDir, 'vibecanvas.turso');
+    const finderPath = path.join(homeDir, '.DS_Store');
+    const updateStatePath = path.join(homeDir, 'autoupdate-state.json');
     await fs.writeFile(legacyPath, 'legacy-bytes');
+    await fs.writeFile(finderPath, 'finder-bytes');
+    await fs.writeFile(updateStatePath, '{"version":"1"}');
 
     await expect(preflightDbServiceDatabase({
       homeDir,
       databasePath: path.join(homeDir, 'main.db'),
-    })).rejects.toThrow(/unknown entry/i);
+    })).resolves.toEqual({ status: 'empty' });
     expect(await fs.readFile(legacyPath, 'utf8')).toBe('legacy-bytes');
+    expect(await fs.readFile(finderPath, 'utf8')).toBe('finder-bytes');
+    expect(await fs.readFile(updateStatePath, 'utf8')).toBe('{"version":"1"}');
     await expect(fs.lstat(path.join(homeDir, 'main.db'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 

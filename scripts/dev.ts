@@ -289,6 +289,7 @@ try {
       NODE_ENV: "development",
       VIBECANVAS_CHANNEL: "dev",
       VIBECANVAS_COMPILED: "false",
+      VIBECANVAS_HOME: path.join(rootDir, ".vibecanvas"),
       VIBECANVAS_VERSION: "0.0.0",
     },
     output: "pipe",
