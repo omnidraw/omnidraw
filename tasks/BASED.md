@@ -249,6 +249,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [A82](a/A82.md) - AI chat: open draft Preview frame from widget-create result
 - [x]: [A83](a/A83.md) - widgets: drag published, draft, and Preview variants onto canvas
 - [ ]: [A84](a/A84.md) - AI chat: slash commands for chat actions
+- [/]: [A85](a/A85.md) - canvas-engine real widget-host qualification
+- [/]: [A86](a/A86.md) - canvas-engine collaboration and active-gesture conflict contract
 
 ## S ubtractions
 - [x]: [S1](s/S1.md) - double bun run dev -> find new port
@@ -399,6 +401,7 @@ the leaf task's `## Plan` instead of living as detached references.
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
+- [/]: [D2](d/D2.md) - canvas-engine integrated projector and product performance qualification
 ## Pragmatic Code Style
 
 Long code line for lookup / easy parts.
