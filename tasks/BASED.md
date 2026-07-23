@@ -359,8 +359,8 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S106](s/S106.md) - widgets: remove published source folders and use source artifacts only
 - [x]: [S107](s/S107.md) - widgets: remove the actor system completely
 - [x]: [S108](s/S108.md) - widgets: remove durable Preview revisions and make draft Preview UI-only
-- [ ]: [S109] - remove uuid check in db sql files.
-- [ ]: [S110] - use turso types when possible and non trivial type
+- [x]: [S109] - remove uuid check in db sql files.
+- [x]: [S110] - use Turso types and domains where they improve schema constraints
 
 ## E xplorations
 - [-]: [E1](e/E1.md) - Tauri Research

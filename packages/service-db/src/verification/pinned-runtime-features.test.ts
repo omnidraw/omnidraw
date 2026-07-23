@@ -9,7 +9,7 @@ const databases: Database[] = [];
 
 async function openTemporaryDatabase() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-turso-feature-probe-"));
-  const db = await connect(path.join(root, "probe.db"));
+  const db = await connect(path.join(root, "probe.db"), { experimental: ["custom_types"] });
   temporaryRoots.push(root);
   databases.push(db);
   return db;
@@ -29,10 +29,17 @@ describe("pinned @tursodatabase/database feature probe", () => {
     await db.exec("PRAGMA synchronous = FULL");
     await db.exec("PRAGMA busy_timeout = 5000");
     await db.exec(`
+      CREATE DOMAIN probe_order_status AS text CHECK (
+        value IN ('queued', 'processing', 'completed', 'failed', 'cancelled')
+      );
+
       CREATE TABLE probe_parents (
         org_id TEXT NOT NULL,
         id TEXT NOT NULL,
-        payload_json TEXT NOT NULL CHECK (json_valid(payload_json) AND json_type(payload_json) = 'object'),
+        payload_json JSON NOT NULL CHECK (json_type(payload_json) = 'object'),
+        status probe_order_status NOT NULL,
+        enabled boolean NOT NULL,
+        created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
         PRIMARY KEY (org_id, id),
         UNIQUE (org_id, payload_json)
       ) STRICT;
@@ -54,20 +61,25 @@ describe("pinned @tursodatabase/database feature probe", () => {
     `);
 
     const insertParent = await db.prepare(
-      "INSERT INTO probe_parents (org_id, id, payload_json) VALUES (?, ?, ?)",
+      `INSERT INTO probe_parents
+        (org_id, id, payload_json, status, enabled, created_at_ms)
+        VALUES (?, ?, ?, ?, ?, ?)`,
     );
     const insertChild = await db.prepare(
       "INSERT INTO probe_children (org_id, id, parent_id, state) VALUES (?, ?, ?, ?)",
     );
-    await insertParent.run("org-a", "parent-a", "{}");
+    await insertParent.run("org-a", "parent-a", "{}", "queued", 1, 1_753_113_600_123);
     await insertChild.run("org-a", "child-a", "parent-a", "active");
 
     await expect(insertChild.run("org-a", "child-b", "parent-a", "active")).rejects.toThrow();
     await expect(insertChild.run("org-b", "child-c", "parent-a", "closed")).rejects.toThrow();
-    await expect(insertParent.run("org-a", "parent-json", "[]")).rejects.toThrow();
+    await expect(insertParent.run("org-a", "parent-json", "[]", "queued", 1, 1)).rejects.toThrow();
+    await expect(insertParent.run("org-a", "parent-status", '{"case":"status"}', "unknown", 1, 1)).rejects.toThrow();
+    await expect(insertParent.run("org-a", "parent-bool", '{"case":"bool"}', "queued", 2, 1)).rejects.toThrow();
+    await expect(insertParent.run("org-a", "parent-time", '{"case":"time"}', "queued", 1, -1)).rejects.toThrow();
 
     const transaction = db.transaction(async () => {
-      await insertParent.run("org-a", "rolled-back", '{"ok":true}');
+      await insertParent.run("org-a", "rolled-back", '{"ok":true}', "processing", 1, 2);
       throw new Error("intentional rollback");
     });
     await expect(transaction()).rejects.toThrow("intentional rollback");

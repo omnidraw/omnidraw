@@ -34,7 +34,7 @@ const digest = (character: string) => character.repeat(64);
 
 async function openBaseline() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-constraints-"));
-  const db = await connect(path.join(root, "main.db"));
+  const db = await connect(path.join(root, "main.db"), { experimental: ["custom_types"] });
   temporaryRoots.push(root);
   databases.push(db);
   await db.exec("PRAGMA foreign_keys = ON");
@@ -149,13 +149,35 @@ async function seedInvocation(db: Database) {
   await seedWidget(db);
   await run(
     db,
-    "INSERT INTO function_invocations (org_id, id, account_id, widget_definition_id, widget_revision_id, widget_instance_id, function_name, input_json, input_digest_sha256, policy_version, priority, status, result_json, output_byte_size, log_byte_size, created_at_ms, deadline_at_ms, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'refresh', '{}', ?, 1, 0, 'queued', NULL, 0, 0, 3, 100, NULL, NULL)",
+    `INSERT INTO function_invocations (
+      org_id, id, account_id, subject_kind, canvas_id,
+      widget_definition_id, widget_revision_id, widget_instance_id,
+      function_id, function_name, definition_revision, artifact_digest_sha256,
+      contract_digest_sha256, runtime_abi, tenant_cell_id, tenant_placement_epoch,
+      tenant_request_id, tenant_roles_json, tenant_capabilities_json, input_json,
+      input_digest_sha256, idempotency_key, policy_version, priority, timeout_ms,
+      memory_tier, output_byte_limit, log_byte_limit, retry_mode, max_attempts,
+      initial_backoff_ms, max_backoff_ms, status, result_json, failure_json,
+      result_digest_sha256, output_byte_size, log_byte_size, body_state,
+      retains_revision, created_at_ms, available_at_ms, deadline_at_ms,
+      cancel_requested_at_ms, started_at_ms, finished_at_ms, bodies_compacted_at_ms
+    ) VALUES (
+      ?, ?, ?, 'widget_instance', ?, ?, ?, ?,
+      'refresh', 'refresh', 1, ?, ?, 'test-runtime',
+      '00000000-0000-4000-8000-000000000003', 1, 'constraint-test',
+      '[]', '[]', '{}', ?, 'refresh-once', 1, 0, 100,
+      'small', 100, 100, 'none', 1, 0, 0, 'queued', NULL, NULL, NULL,
+      0, 0, 'full', 1, 3, 3, 100, NULL, NULL, NULL, NULL
+    )`,
     ORG_A,
     INVOCATION_A,
     ACCOUNT_A,
+    CANVAS_A,
     DEFINITION_A,
     REVISION_A,
     INSTANCE_A,
+    digest("a"),
+    digest("b"),
     digest("1"),
   );
 }
@@ -174,7 +196,7 @@ async function insertAttempt(
     : "platform";
   await run(
     db,
-    "INSERT INTO function_attempts (org_id, id, invocation_id, attempt_number, lease_epoch, status, sandbox_driver, memory_tier, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, cold_start, failure_owner, billable, created_at_ms, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'microsandbox', 'small', 1, 1, 1, 1, 0, 0, 0, 0, 0, ?, 1, 4, ?, ?)",
+    "INSERT INTO function_attempts (org_id, id, invocation_id, attempt_number, lease_epoch, status, sandbox_driver, memory_tier, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, output_byte_size, log_byte_size, cold_start, failure_owner, failure_json, billable, created_at_ms, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'microsandbox', 'small', 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, ?, NULL, 1, 4, ?, ?)",
     ORG_A,
     id,
     INVOCATION_A,
@@ -245,13 +267,15 @@ describe("managed schema constraints", () => {
     ));
   });
 
-  test("rejects malformed/null IDs, bad enums/booleans/timestamps, invalid JSON, and bad digests", async () => {
+  test("allows arbitrary non-null IDs while rejecting null IDs, bad values, invalid JSON, and bad digests", async () => {
     const db = await openBaseline();
 
-    await expectRejected(run(
+    await run(
       db,
       "INSERT INTO organizations (id, slug, name, status, created_at_ms, updated_at_ms) VALUES ('NOT-A-UUID', 'bad', 'Bad', 'active', 0, 0)",
-    ));
+    );
+    expect(await (await db.prepare("SELECT id FROM organizations WHERE slug = 'bad'")).get())
+      .toEqual({ id: "NOT-A-UUID" });
     await expectRejected(run(
       db,
       "INSERT INTO key_values (org_id, name, kind, text_value, json_value, number_value, bool_value, blob_value, created_at_ms, updated_at_ms) VALUES (NULL, 'key', 'text', 'value', NULL, NULL, NULL, NULL, 0, 0)",
@@ -462,14 +486,9 @@ describe("managed schema constraints", () => {
 
     await expectRejected(run(
       db,
-      "INSERT INTO function_invocations (org_id, id, account_id, widget_definition_id, widget_revision_id, widget_instance_id, function_name, input_json, input_digest_sha256, policy_version, priority, status, result_json, output_byte_size, log_byte_size, created_at_ms, deadline_at_ms, started_at_ms, finished_at_ms) VALUES (?, ?, ?, ?, ?, ?, 'bad', '{}', ?, 1, 0, 'succeeded', NULL, 0, 0, 3, 100, 4, NULL)",
+      "UPDATE function_invocations SET status = 'succeeded', started_at_ms = 4 WHERE org_id = ? AND id = ?",
       ORG_A,
-      "00000000-0000-4000-8000-000000000053",
-      ACCOUNT_A,
-      DEFINITION_A,
-      REVISION_A,
-      INSTANCE_A,
-      digest("2"),
+      INVOCATION_A,
     ));
     await expectRejected(run(
       db,
@@ -486,7 +505,7 @@ describe("managed schema constraints", () => {
 
     await insertAttempt(db, ATTEMPT_A, 1);
     await expectRejected(insertAttempt(db, ATTEMPT_B, 1));
-    await insertAttempt(db, ATTEMPT_B, 2);
+    await insertAttempt(db, ATTEMPT_B, 2, "succeeded", 2);
     await run(
       db,
       "INSERT INTO invocation_leases (org_id, invocation_id, attempt_id, lease_epoch, worker_id, created_at_ms, heartbeat_at_ms, expires_at_ms) VALUES (?, ?, ?, 1, 'worker-a', 4, 5, 10)",
@@ -504,7 +523,7 @@ describe("managed schema constraints", () => {
 
     await run(
       db,
-      "INSERT INTO idempotency_records (org_id, id, scope_kind, canvas_id, widget_instance_id, idempotency_key, request_fingerprint_sha256, widget_definition_id, widget_revision_id, invocation_id, created_at_ms, expires_at_ms) VALUES (?, ?, 'organization', NULL, NULL, 'refresh-once', ?, ?, ?, ?, 3, NULL)",
+      "INSERT INTO idempotency_records (org_id, id, function_id, scope_kind, canvas_id, widget_instance_id, idempotency_key, request_fingerprint_sha256, widget_definition_id, widget_revision_id, invocation_id, created_at_ms, expires_at_ms) VALUES (?, ?, 'refresh', 'organization', NULL, NULL, 'refresh-once', ?, ?, ?, ?, 3, NULL)",
       ORG_A,
       "00000000-0000-4000-8000-000000000054",
       digest("3"),
@@ -514,7 +533,7 @@ describe("managed schema constraints", () => {
     );
     await expectRejected(run(
       db,
-      "INSERT INTO idempotency_records (org_id, id, scope_kind, canvas_id, widget_instance_id, idempotency_key, request_fingerprint_sha256, widget_definition_id, widget_revision_id, invocation_id, created_at_ms, expires_at_ms) VALUES (?, ?, 'organization', NULL, NULL, 'refresh-once', ?, ?, ?, ?, 3, NULL)",
+      "INSERT INTO idempotency_records (org_id, id, function_id, scope_kind, canvas_id, widget_instance_id, idempotency_key, request_fingerprint_sha256, widget_definition_id, widget_revision_id, invocation_id, created_at_ms, expires_at_ms) VALUES (?, ?, 'refresh', 'organization', NULL, NULL, 'refresh-once', ?, ?, ?, ?, 3, NULL)",
       ORG_A,
       "00000000-0000-4000-8000-000000000055",
       digest("4"),
@@ -563,27 +582,30 @@ describe("managed schema constraints", () => {
 
     await run(
       db,
-      "INSERT INTO usage_outbox (org_id, id, account_id, attempt_id, resource_id, resource_permit_id, state, outcome, failure_owner, billable, policy_version, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, created_at_ms, imported_at_ms) VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'succeeded', NULL, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 6, NULL)",
+      "INSERT INTO usage_outbox (org_id, id, account_id, attempt_id, invocation_id, function_id, definition_revision, sandbox_driver, memory_tier, queued_at_ms, started_at_ms, finished_at_ms, cold_start, resource_id, resource_permit_id, state, outcome, failure_owner, billable, policy_version, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, created_at_ms, imported_at_ms) VALUES (?, ?, ?, ?, ?, 'refresh', 1, 'microsandbox', 'small', 3, 5, 6, 0, NULL, NULL, 'pending', 'succeeded', NULL, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 6, NULL)",
       ORG_A,
       "00000000-0000-4000-8000-000000000056",
       ACCOUNT_A,
       ATTEMPT_A,
+      INVOCATION_A,
     );
     await expectRejected(run(
       db,
-      "INSERT INTO usage_outbox (org_id, id, account_id, attempt_id, resource_id, resource_permit_id, state, outcome, failure_owner, billable, policy_version, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, created_at_ms, imported_at_ms) VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'succeeded', NULL, 1, 1, 1, -1, 1, 1, 0, 0, 0, 0, 6, NULL)",
+      "INSERT INTO usage_outbox (org_id, id, account_id, attempt_id, invocation_id, function_id, definition_revision, sandbox_driver, memory_tier, queued_at_ms, started_at_ms, finished_at_ms, cold_start, resource_id, resource_permit_id, state, outcome, failure_owner, billable, policy_version, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, created_at_ms, imported_at_ms) VALUES (?, ?, ?, ?, ?, 'refresh', 1, 'microsandbox', 'small', 3, 5, 6, 0, NULL, NULL, 'pending', 'succeeded', NULL, 1, 1, 1, -1, 1, 1, 0, 0, 0, 0, 6, NULL)",
       ORG_A,
       "00000000-0000-4000-8000-000000000057",
       ACCOUNT_A,
       ATTEMPT_B,
+      INVOCATION_A,
     ));
     await expectRejected(run(
       db,
-      "INSERT INTO usage_outbox (org_id, id, account_id, attempt_id, resource_id, resource_permit_id, state, outcome, failure_owner, billable, policy_version, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, created_at_ms, imported_at_ms) VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'succeeded', NULL, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 6, NULL)",
+      "INSERT INTO usage_outbox (org_id, id, account_id, attempt_id, invocation_id, function_id, definition_revision, sandbox_driver, memory_tier, queued_at_ms, started_at_ms, finished_at_ms, cold_start, resource_id, resource_permit_id, state, outcome, failure_owner, billable, policy_version, active_wall_ms, cpu_ms, allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes, disk_write_bytes, network_rx_bytes, network_tx_bytes, created_at_ms, imported_at_ms) VALUES (?, ?, ?, ?, ?, 'refresh', 1, 'microsandbox', 'small', 3, 5, 6, 0, NULL, NULL, 'pending', 'succeeded', NULL, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 6, NULL)",
       ORG_A,
       "00000000-0000-4000-8000-000000000058",
       ACCOUNT_A,
       ATTEMPT_A,
+      INVOCATION_A,
     ));
   });
 

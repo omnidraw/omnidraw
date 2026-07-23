@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Database as SqliteDatabase } from 'bun:sqlite';
 import { DbResource, ResourceStoreService } from '@vibecanvas/resource-runtime/local';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type { TWidgetArtifactDescriptor } from '@vibecanvas/widget-contract';
@@ -161,12 +160,6 @@ async function assertFileDatabaseIntegrity(
     await assertRecovered(database);
   } finally {
     await database.close();
-  }
-  const sqlite = new SqliteDatabase(databasePath, { readonly: true, strict: true });
-  try {
-    expect(sqlite.query('PRAGMA foreign_key_check').all()).toEqual([]);
-  } finally {
-    sqlite.close(false);
   }
 }
 

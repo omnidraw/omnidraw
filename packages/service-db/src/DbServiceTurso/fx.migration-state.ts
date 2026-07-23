@@ -121,6 +121,8 @@ async function fxPreflightMigrationState(
   const userVersion = rowNumber(userVersionRow, 'user_version');
   const mainSchemaRows = tableRows
     .filter((row) => row.schema === 'main' && !row.name.startsWith('sqlite_'));
+  const userSchemaRows = mainSchemaRows
+    .filter((row) => !row.name.startsWith('__turso_internal_'));
   const unsupportedTableRows = mainSchemaRows
     .filter((row) => row.type !== 'table' && row.type !== 'view')
     .map((row) => `${row.type}:${row.name}`)
@@ -130,12 +132,12 @@ async function fxPreflightMigrationState(
       `found unsupported main-schema table-list objects [${unsupportedTableRows.join(', ')}].`,
     );
   }
-  const applicationTables = mainSchemaRows
+  const applicationTables = userSchemaRows
     .filter((row) => row.type === 'table')
     .sort((left, right) => left.name.localeCompare(right.name));
   const tableListApplicationTableNames = applicationTables.map((row) => row.name);
   const applicationTableNames = schemaObjectRows
-    .filter((row) => row.type === 'table')
+    .filter((row) => row.type === 'table' && !row.name.startsWith('__turso_internal_'))
     .map((row) => row.name);
   const applicationViews = schemaObjectRows
     .filter((row) => row.type === 'view')

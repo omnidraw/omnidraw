@@ -59,7 +59,7 @@ async function temporaryRoot(): Promise<string> {
 }
 
 async function openDatabase(databasePath: string): Promise<Database> {
-  const db = await connect(databasePath);
+  const db = await connect(databasePath, { experimental: ['custom_types', 'triggers', 'index_method'] });
   databases.push(db);
   return db;
 }
@@ -369,7 +369,10 @@ describe('ordered managed migration runner', () => {
 
     const tableRows = await (await db.prepare('PRAGMA table_list')).all();
     const tables = tableRows
-      .filter((row) => row.schema === 'main' && row.type === 'table' && !String(row.name).startsWith('sqlite_'))
+      .filter((row) => row.schema === 'main'
+        && row.type === 'table'
+        && !String(row.name).startsWith('sqlite_')
+        && !String(row.name).startsWith('__turso_internal_'))
       .sort((left, right) => String(left.name).localeCompare(String(right.name)));
     expect(tables.map((row) => row.name)).toEqual(
       [...EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES].sort(),
@@ -400,7 +403,7 @@ describe('ordered managed migration runner', () => {
     expect(await runMigrations(db)).toEqual({ applied: true });
   });
 
-  test('upgrades a valid v0 prefix, backfills its durable revision sequence, and is idempotent', async () => {
+  test('advances a valid consolidated v0 ledger through its placeholders and is idempotent', async () => {
     const root = await temporaryRoot();
     const db = await openDatabase(path.join(root, 'main.db'));
     await bootstrapVersionZero(db);
@@ -408,13 +411,13 @@ describe('ordered managed migration runner', () => {
 
     expect(await pragma(db, 'user_version')).toBe(INITIAL_MIGRATION_VERSION);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
 
     expect(await runMigrations(db)).toEqual({ applied: true });
     expect(await pragma(db, 'user_version')).toBe(DATABASE_SCHEMA_VERSION);
     expect(await (await db.prepare(`
       SELECT next_revision_number FROM widget_definitions WHERE org_id = ? AND id = ?
-    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_DEFINITION_ID)).toEqual({ next_revision_number: 5 });
+    `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_DEFINITION_ID)).toEqual({ next_revision_number: 1 });
     expect(await (await db.prepare(`
       SELECT version, name FROM schema_migrations ORDER BY version
     `)).all()).toEqual([
@@ -441,7 +444,7 @@ describe('ordered managed migration runner', () => {
       { version: INITIAL_MIGRATION_VERSION, name: INITIAL_MIGRATION_NAME },
     ]);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
 
     expect(await runMigrations(db)).toEqual({ applied: true });
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
@@ -474,7 +477,7 @@ describe('ordered managed migration runner', () => {
       SELECT status FROM organizations WHERE id = ?
     `)).get(DEFAULT_OSS_ORGANIZATION_ID)).toEqual({ status: 'corrupt' });
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
   });
 
   test('rejects transaction control in a pending migration before inspecting or mutating v0', async () => {
@@ -521,7 +524,7 @@ describe('ordered managed migration runner', () => {
       SELECT * FROM widget_definition_revisions WHERE org_id = ? AND id = ?
     `)).get(DEFAULT_OSS_ORGANIZATION_ID, V0_REVISION_ID)).toEqual(revisionBefore);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
   });
 
   test('rolls back an executable pending migration whose final schema contract drifts', async () => {
@@ -529,10 +532,7 @@ describe('ordered managed migration runner', () => {
     const db = await openDatabase(path.join(root, 'drifted-pending-migration.db'));
     await bootstrapVersionZero(db);
     const registeredSql = await Bun.file(WIDGET_REVISION_SEQUENCE_MIGRATION.path).text();
-    const driftedSql = registeredSql.replace(
-      'CHECK (next_revision_number >= 1)',
-      'CHECK (next_revision_number >= 0)',
-    );
+    const driftedSql = `${registeredSql}\nCREATE TABLE unexpected_pending_drift (id INTEGER) STRICT;\n`;
     expect(driftedSql).not.toBe(registeredSql);
     const driftedBytes = new TextEncoder().encode(driftedSql);
     const migrationBun = {
@@ -548,14 +548,17 @@ describe('ordered managed migration runner', () => {
     await expect(txRunMigrations(
       { db, Bun: migrationBun, TextDecoder },
       migrationArgs({ appliedAtMs: 9_999 }),
-    )).rejects.toThrow(/migration transaction|fingerprint/i);
+    )).rejects.toThrow(/migration transaction|fingerprint|manifest/i);
 
     expect(await pragma(db, 'user_version')).toBe(INITIAL_MIGRATION_VERSION);
     expect(await (
       await db.prepare('SELECT * FROM schema_migrations ORDER BY version')
     ).all()).toEqual(ledgerBefore);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
+    expect(await (await db.prepare(`
+      SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'unexpected_pending_drift'
+    `)).get()).toBeUndefined();
   });
 
   test('restart is idempotent and verifies integrity and the immutable checksum', async () => {
@@ -611,7 +614,7 @@ describe('ordered managed migration runner', () => {
       expect(await pragma(db, 'user_version')).toBe(corruption.expectedVersion);
       if (corruption.expectedVersion === INITIAL_MIGRATION_VERSION) {
         expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-          .some((column) => column.name === 'next_revision_number')).toBe(false);
+          .some((column) => column.name === 'next_revision_number')).toBe(true);
       }
     });
   }
@@ -678,13 +681,9 @@ describe('ordered managed migration runner', () => {
     {
       label: 'removed checksum CHECK',
       tableName: 'schema_migrations',
-      original: `  checksum_sha256 TEXT NOT NULL CHECK (
-    length(checksum_sha256) = 64
-    AND checksum_sha256 = lower(checksum_sha256)
-    AND checksum_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),`,
+      original: '  checksum_sha256 sha256_hex NOT NULL,',
       replacement: '  checksum_sha256 TEXT NOT NULL,',
-      removedFragment: 'length(checksum_sha256) = 64',
+      removedFragment: 'sha256_hex',
     },
     {
       label: 'removed column default',
@@ -718,19 +717,15 @@ describe('ordered managed migration runner', () => {
       ).all()).toEqual(ledgerBefore);
       expect(await pragma(db, 'user_version')).toBe(INITIAL_MIGRATION_VERSION);
       expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-        .some((column) => column.name === 'next_revision_number')).toBe(false);
+        .some((column) => column.name === 'next_revision_number')).toBe(true);
     });
   }
 
-  test('refuses a claimed v1 whose 001 column check drifted without repairing it', async () => {
+  test('refuses a claimed v1 whose consolidated schema drifted without repairing it', async () => {
     const root = await temporaryRoot();
     const db = await openDatabase(path.join(root, 'drifted-001.db'));
     await bootstrapVersionZero(db);
-    await db.exec(`
-      ALTER TABLE widget_definitions
-        ADD COLUMN next_revision_number INTEGER NOT NULL DEFAULT 1
-        CHECK (next_revision_number >= 0)
-    `);
+    await db.exec('DROP INDEX widget_definitions_active_revision_idx');
     await (await db.prepare(`
       INSERT INTO schema_migrations (
         version, name, checksum_sha256, applied_at_ms, application_version
@@ -746,12 +741,10 @@ describe('ordered managed migration runner', () => {
     ).all();
 
     await expect(runMigrations(db, { appliedAtMs: 9_999 })).rejects.toThrow(/fingerprint/i);
-    const schema = await (await db.prepare(`
-      SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'widget_definitions'
-    `)).get() as { sql: string };
-    expect(schema.sql.replace(/\s+/g, '')).toContain(
-      'next_revision_numberINTEGERNOTNULLDEFAULT1CHECK(next_revision_number>=0)',
-    );
+    expect(await (await db.prepare(`
+      SELECT 1 FROM sqlite_schema
+      WHERE type = 'index' AND name = 'widget_definitions_active_revision_idx'
+    `)).get()).toBeUndefined();
     expect(await (
       await db.prepare('SELECT * FROM schema_migrations ORDER BY version')
     ).all()).toEqual(ledgerBefore);
@@ -782,7 +775,7 @@ describe('ordered managed migration runner', () => {
     ).all()).toEqual(ledgerBefore);
     expect(await pragma(db, 'user_version')).toBe(INITIAL_MIGRATION_VERSION);
     expect((await (await db.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
   });
 
   test('checksum tampering in every applied ledger row is fatal and is not repaired', async () => {
@@ -1101,7 +1094,7 @@ describe('read-only startup preflight', () => {
     expect(await pragma(reopened, 'user_version')).toBe(INITIAL_MIGRATION_VERSION);
     expect(await (await reopened.prepare('SELECT * FROM schema_migrations')).all()).toEqual(ledgerBefore);
     expect((await (await reopened.prepare('PRAGMA table_info(widget_definitions)')).all())
-      .some((column) => column.name === 'next_revision_number')).toBe(false);
+      .some((column) => column.name === 'next_revision_number')).toBe(true);
   });
 
   test('tolerates unknown home entries without creating or modifying main.db', async () => {

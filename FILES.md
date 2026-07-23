@@ -753,6 +753,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-db/src/CONSTANTS.ts](packages/service-db/src/CONSTANTS.ts) |  |
 | [packages/service-db/src/core/fn.resource-name.ts](packages/service-db/src/core/fn.resource-name.ts) |  |
 | [packages/service-db/src/DbServiceTurso/DbServiceTurso.ts](packages/service-db/src/DbServiceTurso/DbServiceTurso.ts) |  |
+| [packages/service-db/src/DbServiceTurso/fn.database-column-type.ts](packages/service-db/src/DbServiceTurso/fn.database-column-type.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts](packages/service-db/src/DbServiceTurso/fn.database-schema-fingerprint.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.db-resource.ts](packages/service-db/src/DbServiceTurso/fn.db-resource.ts) |  |
 | [packages/service-db/src/DbServiceTurso/fn.json.ts](packages/service-db/src/DbServiceTurso/fn.json.ts) |  |

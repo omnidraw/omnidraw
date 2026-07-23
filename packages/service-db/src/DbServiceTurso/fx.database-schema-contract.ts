@@ -4,6 +4,7 @@ import type {
   TExpectedIndexManifest,
   TExpectedSchema,
 } from '../schema/expected-schema';
+import { fnDatabaseColumnBaseType } from './fn.database-column-type';
 import { fnSerializeDatabaseSchemaFingerprint } from './fn.database-schema-fingerprint';
 
 type TPortal = {
@@ -180,7 +181,7 @@ async function fxVerifyDatabaseSchemaContract(
     );
     const actualColumns = columns.map((column) => [
       column.name,
-      column.type,
+      fnDatabaseColumnBaseType(column.type),
       column.notnull === 1 ? 'required' : 'nullable',
       String(primaryKeyPositions.get(column.name) ?? 0),
     ].join('\u0000'));

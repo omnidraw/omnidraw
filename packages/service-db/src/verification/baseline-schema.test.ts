@@ -4,21 +4,22 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  EXPECTED_APPLICATION_TABLE_COUNT,
-  EXPECTED_APPLICATION_TABLES,
-  EXPECTED_BASELINE_SCHEMA as EXPECTED_SCHEMA,
-  EXPECTED_INDEXES,
-  EXPECTED_SCHEMA as EXPECTED_CURRENT_SCHEMA,
+  EXPECTED_AGENT_AUTHORING_APPLICATION_TABLE_COUNT as EXPECTED_APPLICATION_TABLE_COUNT,
+  EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES as EXPECTED_APPLICATION_TABLES,
+  EXPECTED_AGENT_AUTHORING_INDEXES as EXPECTED_INDEXES,
+  EXPECTED_AGENT_AUTHORING_SCHEMA as EXPECTED_CURRENT_SCHEMA,
+  EXPECTED_AGENT_AUTHORING_SCHEMA as EXPECTED_SCHEMA,
   type TExpectedForeignKey,
   type TExpectedTable,
 } from "../schema/expected-schema";
+import { fnDatabaseColumnBaseType } from "../DbServiceTurso/fn.database-column-type";
 
 const temporaryRoots: string[] = [];
 const databases: Database[] = [];
 
 async function openBaseline() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-schema-"));
-  const db = await connect(path.join(root, "main.db"));
+  const db = await connect(path.join(root, "main.db"), { experimental: ["custom_types"] });
   temporaryRoots.push(root);
   databases.push(db);
   await db.exec("PRAGMA foreign_keys = ON");
@@ -79,6 +80,21 @@ afterEach(async () => {
 });
 
 describe("000-initial.sql", () => {
+  test("does not constrain identifiers to UUID syntax", async () => {
+    const migrationNames = [
+      "000-initial.sql",
+      "001-widget-revision-sequence.sql",
+      "002-function-runtime.sql",
+      "003-widget-instance-projection.sql",
+      "004-agent-authoring.sql",
+    ];
+    for (const migrationName of migrationNames) {
+      const sql = await Bun.file(new URL(`../migrations/${migrationName}`, import.meta.url)).text();
+      expect(sql).not.toMatch(/length\([^)]+\) = 36/);
+      expect(sql).not.toMatch(/substr\([^)]+, (?:9|14|19|24), 1\) = '-'/);
+    }
+  });
+
   test("applies atomically with foreign-key enforcement on the pinned runtime", async () => {
     const db = await openBaseline();
     expect(await (await db.prepare("PRAGMA foreign_keys")).get()).toEqual({ foreign_keys: 1 });
@@ -89,7 +105,7 @@ describe("000-initial.sql", () => {
   test("matches the complete checked-in table, column, key, FK, and index manifest", async () => {
     const db = await openBaseline();
     expect(Object.keys(EXPECTED_SCHEMA).toSorted()).toEqual([...EXPECTED_APPLICATION_TABLES].toSorted());
-    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(31);
+    expect(EXPECTED_APPLICATION_TABLE_COUNT).toBe(34);
 
     const tableList = (await (await db.prepare("PRAGMA table_list")).all()) as Array<{
       name: string;
@@ -99,7 +115,12 @@ describe("000-initial.sql", () => {
       wr: number;
     }>;
     const applicationTables = tableList
-      .filter((row) => row.schema === "main" && row.type === "table" && !row.name.startsWith("sqlite_"))
+      .filter((row) => (
+        row.schema === "main"
+        && row.type === "table"
+        && !row.name.startsWith("sqlite_")
+        && !row.name.startsWith("__turso_internal_")
+      ))
       .toSorted((left, right) => left.name.localeCompare(right.name));
     expect(applicationTables.map((row) => row.name)).toEqual([...EXPECTED_APPLICATION_TABLES].toSorted());
     expect(applicationTables).toHaveLength(EXPECTED_APPLICATION_TABLE_COUNT);
@@ -115,7 +136,7 @@ describe("000-initial.sql", () => {
       }>;
       expect(columns.map((value) => ({
         name: value.name,
-        type: value.type,
+        type: fnDatabaseColumnBaseType(value.type),
         notNull: value.notnull === 1,
         primaryKey: value.pk > 0,
       }))).toEqual(expected.columns.map((value) => ({
@@ -189,7 +210,7 @@ describe("000-initial.sql", () => {
     }
   });
 
-  test("001 extends the current schema manifest without rewriting the immutable baseline", async () => {
+  test("unreleased ledger placeholders leave the consolidated baseline unchanged", async () => {
     const db = await openCurrentSchema();
     const expected = EXPECTED_CURRENT_SCHEMA.widget_definitions;
     const columns = (await (await db.prepare("PRAGMA table_info(widget_definitions)")).all()) as Array<{
@@ -200,7 +221,7 @@ describe("000-initial.sql", () => {
     }>;
     expect(columns.map((value) => ({
       name: value.name,
-      type: value.type,
+      type: fnDatabaseColumnBaseType(value.type),
       notNull: value.notnull === 1,
       primaryKey: value.pk > 0,
     }))).toEqual(expected.columns.map((value) => ({
@@ -294,13 +315,18 @@ describe("000-initial.sql", () => {
     }
   });
 
-  test("uses only the portable baseline DDL subset", async () => {
+  test("uses built-in scalar types and only semantic reusable domains", async () => {
     const sql = await Bun.file(new URL("../migrations/000-initial.sql", import.meta.url)).text();
     expect(sql).not.toMatch(/\bIF\s+NOT\s+EXISTS\b/i);
     expect(sql).not.toMatch(/\bANY\b/i);
-    expect(sql).not.toMatch(/\bCREATE\s+(DOMAIN|TYPE)\b/i);
+    expect(sql).toMatch(/\bCREATE\s+DOMAIN\b/i);
+    expect(sql).not.toMatch(/\bCREATE\s+TYPE\b/i);
     expect(sql).not.toMatch(/\bWITHOUT\s+ROWID\b/i);
-    expect(sql).not.toMatch(/\b(BOOLEAN|TIMESTAMP)\b/i);
+    expect(sql).toMatch(/\bboolean\b/i);
+    expect(sql).toMatch(/\bJSON\b/);
+    expect(sql).not.toMatch(/\b(entity_id|json_document|json_object_value|json_array_value)\b/);
+    expect(sql).not.toMatch(/\b(nonnegative_integer|positive_integer|trimmed_text_\d+|timestamp_ms)\b/);
+    expect(sql).toMatch(/\bfunction_invocation_status\b/);
     expect(sql).not.toMatch(/\b(BEGIN|COMMIT|ROLLBACK)\b/i);
     expect(sql).not.toMatch(/INSERT\s+INTO\s+schema_migrations/i);
   });

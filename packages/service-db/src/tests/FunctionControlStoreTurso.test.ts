@@ -1442,245 +1442,31 @@ describe('FunctionControlStoreTurso crash recovery', () => {
   }, 20_000);
 });
 
-describe('002 function runtime migration', () => {
-  test('terminalizes legacy work without inventing executable registrations', async () => {
-    const legacy = await openDatabase(':memory:', false);
-    const legacyCanvasId = uuid(780);
-    const legacyDefinitionId = uuid(781);
-    const legacyRevisionId = uuid(782);
-    const legacyUiArtifactId = uuid(783);
-    const legacyServerArtifactId = uuid(784);
-    const legacyInstanceId = uuid(785);
-    const browserDefinitionId = uuid(788);
-    const browserRevisionId = uuid(789);
-    const browserInstanceId = uuid(790);
-    const browserInvocationId = uuid(791);
-    const legacyAttemptId = uuid(792);
+describe('consolidated function runtime schema', () => {
+  test('keeps 002 as a placeholder because its final schema lives in 000', async () => {
+    const database = await openDatabase(':memory:', false);
     try {
-      for (const migration of ['000-initial.sql', '001-widget-revision-sequence.sql']) {
-        await legacy.exec(await Bun.file(new URL(`../migrations/${migration}`, import.meta.url)).text());
-      }
-      await (await legacy.prepare(`
-        INSERT INTO canvases (
-          org_id, id, name, access_policy, created_by_account_id, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, 'Legacy canvas', 'org', ?, 1, 1)
-      `)).run(DEFAULT_OSS_ORGANIZATION_ID, legacyCanvasId, DEFAULT_OSS_ACCOUNT_ID);
-      await (await legacy.prepare(`
-        INSERT INTO artifact_references (
-          org_id, id, kind, digest_sha256, byte_size,
-          retention_state, retain_until_ms, created_at_ms
-        ) VALUES (?, ?, 'ui', ?, 10, 'pinned', NULL, 1),
-          (?, ?, 'server', ?, 20, 'pinned', NULL, 1)
-      `)).run(
-        DEFAULT_OSS_ORGANIZATION_ID,
-        legacyUiArtifactId,
-        sha256('legacy-ui'),
-        DEFAULT_OSS_ORGANIZATION_ID,
-        legacyServerArtifactId,
-        sha256('legacy-server'),
-      );
-      await (await legacy.prepare(`
-        INSERT INTO widget_definitions (
-          org_id, id, slug, name, status, active_revision_id,
-          created_at_ms, updated_at_ms, next_revision_number
-        ) VALUES (?, ?, 'legacy-functions', 'Legacy functions', 'draft', NULL, 1, 1, 2)
-      `)).run(DEFAULT_OSS_ORGANIZATION_ID, legacyDefinitionId);
-      await (await legacy.prepare(`
-        INSERT INTO widget_definition_revisions (
-          org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
-          server_artifact_id, server_artifact_kind, manifest_json,
-          contract_digest_sha256, created_at_ms
-        ) VALUES (?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 2)
-      `)).run(
-        DEFAULT_OSS_ORGANIZATION_ID,
-        legacyRevisionId,
-        legacyDefinitionId,
-        legacyUiArtifactId,
-        legacyServerArtifactId,
-        fnFunctionCanonicalJson({
-          schemaVersion: 2,
-          name: 'Legacy functions',
-          slug: 'legacy-functions',
-          ui: { entry: 'ui.js' },
-          server: { entry: 'server.js', runtimeAbi: 'vibecanvas:1' },
-        }),
-        sha256('legacy-contract'),
-      );
-      await (await legacy.prepare(`
-        INSERT INTO widget_instances (
-          org_id, id, canvas_id, element_id, definition_id, revision_id,
-          status, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, 'legacy-widget', ?, ?, 'active', 3, 3)
-      `)).run(
-        DEFAULT_OSS_ORGANIZATION_ID,
-        legacyInstanceId,
-        legacyCanvasId,
-        legacyDefinitionId,
-        legacyRevisionId,
-      );
-      await (await legacy.prepare(`
-        INSERT INTO widget_definitions (
-          org_id, id, slug, name, status, active_revision_id,
-          created_at_ms, updated_at_ms, next_revision_number
-        ) VALUES (?, ?, 'legacy-browser', 'Legacy browser', 'draft', NULL, 1, 1, 2)
-      `)).run(DEFAULT_OSS_ORGANIZATION_ID, browserDefinitionId);
-      await (await legacy.prepare(`
-        INSERT INTO widget_definition_revisions (
-          org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
-          server_artifact_id, server_artifact_kind, manifest_json,
-          contract_digest_sha256, created_at_ms
-        ) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 2)
-      `)).run(
-        DEFAULT_OSS_ORGANIZATION_ID,
-        browserRevisionId,
-        browserDefinitionId,
-        legacyUiArtifactId,
-        fnFunctionCanonicalJson({
-          schemaVersion: 2,
-          name: 'Legacy browser',
-          slug: 'legacy-browser',
-          ui: { entry: 'ui.js' },
-        }),
-        sha256('legacy-browser-contract'),
-      );
-      await (await legacy.prepare(`
-        INSERT INTO widget_instances (
-          org_id, id, canvas_id, element_id, definition_id, revision_id,
-          status, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, 'legacy-browser-widget', ?, ?, 'active', 3, 3)
-      `)).run(
-        DEFAULT_OSS_ORGANIZATION_ID,
-        browserInstanceId,
-        legacyCanvasId,
-        browserDefinitionId,
-        browserRevisionId,
-      );
-      for (const [index, invocationId] of [uuid(786), uuid(787)].entries()) {
-        await (await legacy.prepare(`
-          INSERT INTO function_invocations (
-            org_id, id, account_id, widget_definition_id, widget_revision_id,
-            widget_instance_id, function_name, input_json, input_digest_sha256,
-            policy_version, priority, status, result_json, output_byte_size,
-            log_byte_size, created_at_ms, deadline_at_ms, started_at_ms, finished_at_ms
-          ) VALUES (?, ?, ?, ?, ?, ?, 'run', '{}', ?, 1, 0, 'queued', NULL,
-            ?, ?, 10, ?, NULL, NULL)
-        `)).run(
-          DEFAULT_OSS_ORGANIZATION_ID,
-          invocationId,
-          DEFAULT_OSS_ACCOUNT_ID,
-          legacyDefinitionId,
-          legacyRevisionId,
-          legacyInstanceId,
-          sha256('{}'),
-          index,
-          index,
-          index === 0 ? 110 : 210,
-        );
-      }
-      await (await legacy.prepare(`
-        UPDATE function_invocations
-        SET status = 'running', started_at_ms = 11
-        WHERE org_id = ? AND id = ?
-      `)).run(DEFAULT_OSS_ORGANIZATION_ID, uuid(787));
-      await (await legacy.prepare(`
-        INSERT INTO function_attempts (
-          org_id, id, invocation_id, attempt_number, lease_epoch, status,
-          sandbox_driver, memory_tier, active_wall_ms, cpu_ms,
-          allocated_memory_byte_ms, peak_rss_bytes, disk_read_bytes,
-          disk_write_bytes, network_rx_bytes, network_tx_bytes, cold_start,
-          failure_owner, billable, created_at_ms, started_at_ms, finished_at_ms
-        ) VALUES (?, ?, ?, 1, 1, 'running', 'legacy-child', 'small',
-          1, 2, 3, 4, 5, 6, 7, 8, 1, NULL, 1, 10, 11, NULL)
-      `)).run(DEFAULT_OSS_ORGANIZATION_ID, legacyAttemptId, uuid(787));
-      await (await legacy.prepare(`
-        INSERT INTO invocation_leases (
-          org_id, invocation_id, attempt_id, lease_epoch, worker_id,
-          created_at_ms, heartbeat_at_ms, expires_at_ms
-        ) VALUES (?, ?, ?, 1, 'legacy-worker', 10, 11, 100)
-      `)).run(DEFAULT_OSS_ORGANIZATION_ID, uuid(787), legacyAttemptId);
-      await (await legacy.prepare(`
-        INSERT INTO function_invocations (
-          org_id, id, account_id, widget_definition_id, widget_revision_id,
-          widget_instance_id, function_name, input_json, input_digest_sha256,
-          policy_version, priority, status, result_json, output_byte_size,
-          log_byte_size, created_at_ms, deadline_at_ms, started_at_ms, finished_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, 'impossibleBrowserFunction', '{}', ?, 1, 0,
-          'queued', NULL, 0, 0, 10, 110, NULL, NULL)
-      `)).run(
-        DEFAULT_OSS_ORGANIZATION_ID,
-        browserInvocationId,
-        DEFAULT_OSS_ACCOUNT_ID,
-        browserDefinitionId,
-        browserRevisionId,
-        browserInstanceId,
-        sha256('{}'),
-      );
-
-      await legacy.exec(await Bun.file(
+      const initialSql = await Bun.file(
+        new URL('../migrations/000-initial.sql', import.meta.url),
+      ).text();
+      const placeholderSql = await Bun.file(
         new URL('../migrations/002-function-runtime.sql', import.meta.url),
-      ).text());
-      expect(await (await legacy.prepare(`
-        SELECT count(*) AS count
-        FROM function_definitions
-        WHERE org_id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID)).toEqual({ count: 0 });
-      expect(await (await legacy.prepare(`
-        SELECT id, canvas_id, retry_mode, function_id, status,
-          json_extract(failure_json, '$.code') AS failure_code
-        FROM function_invocations
-        WHERE org_id = ? ORDER BY id ASC
-      `)).all(DEFAULT_OSS_ORGANIZATION_ID)).toEqual([
-        {
-          id: uuid(786), canvas_id: legacyCanvasId, retry_mode: 'none', function_id: 'run',
-          status: 'failed', failure_code: 'PRE_M6_INVOCATION_NOT_RESUMABLE',
-        },
-        {
-          id: uuid(787), canvas_id: legacyCanvasId, retry_mode: 'none', function_id: 'run',
-          status: 'failed', failure_code: 'PRE_M6_INVOCATION_NOT_RESUMABLE',
-        },
-        {
-          id: browserInvocationId, canvas_id: legacyCanvasId, retry_mode: 'none',
-          function_id: 'impossibleBrowserFunction', status: 'failed',
-          failure_code: 'PRE_M6_INVOCATION_NOT_RESUMABLE',
-        },
+      ).text();
+      await database.exec(initialSql);
+      await database.exec(placeholderSql);
+      expect(placeholderSql.trim()).toBe(
+        '-- Included in 000-initial.sql; retained as an unreleased ledger placeholder.',
+      );
+      expect(await (await database.prepare(`
+        SELECT name FROM pragma_table_info('function_invocations')
+        WHERE name IN ('subject_kind', 'function_id', 'body_state') ORDER BY name
+      `)).all()).toEqual([
+        { name: 'body_state' },
+        { name: 'function_id' },
+        { name: 'subject_kind' },
       ]);
-      expect(await (await legacy.prepare(`
-        SELECT status, failure_owner, started_at_ms, finished_at_ms
-        FROM function_attempts WHERE org_id = ? AND id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID, legacyAttemptId)).toEqual({
-        status: 'lost',
-        failure_owner: 'platform',
-        started_at_ms: 11,
-        finished_at_ms: 11,
-      });
-      expect(await (await legacy.prepare(`
-        SELECT count(*) AS count FROM invocation_leases WHERE org_id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID)).toEqual({ count: 0 });
-      expect(await (await legacy.prepare(`
-        SELECT outcome, failure_owner FROM usage_outbox
-        WHERE org_id = ? AND attempt_id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID, legacyAttemptId)).toEqual({
-        outcome: 'lost',
-        failure_owner: 'platform',
-      });
-      const migratedStore = new FunctionControlStoreTurso(legacy, { nowMs: () => 20 });
-      await expect(migratedStore.takeNext({
-        orgId: DEFAULT_OSS_ORGANIZATION_ID,
-        cellId: '00000000-0000-4000-8000-000000000003',
-        placementEpoch: 1,
-        workerId: 'post-migration-worker',
-        memoryTiers: ['small'],
-      })).resolves.toBeNull();
-      expect(await (await legacy.prepare(`
-        SELECT contract_format_version, function_descriptors_digest_sha256
-        FROM widget_definition_revisions WHERE org_id = ? AND id = ?
-      `)).get(DEFAULT_OSS_ORGANIZATION_ID, legacyRevisionId)).toEqual({
-        contract_format_version: 1,
-        function_descriptors_digest_sha256:
-          '2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b',
-      });
     } finally {
-      await legacy.close();
+      await database.close();
     }
   });
 });
