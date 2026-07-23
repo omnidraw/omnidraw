@@ -14,6 +14,7 @@
     "./*": "./src/*"
   },
   "devDependencies": {
+    "@vibecanvas/canvas-engine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/vibecanvas-canvas-engine-0.1.0.tgz",
     "canvas": "^3.2.3",
     "jsdom": "^29.1.1",
     "solid-devtools": "^0.34.3",

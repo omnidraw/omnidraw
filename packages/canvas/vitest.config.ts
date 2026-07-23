@@ -10,6 +10,9 @@ export default defineConfig({
     },
     conditions: ["browser"],
   },
+  ssr: {
+    noExternal: ["@vibecanvas/canvas-engine"],
+  },
   test: {
     environment: "jsdom",
     include: ["tests/**/*.test.ts"],

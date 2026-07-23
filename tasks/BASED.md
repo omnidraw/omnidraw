@@ -395,6 +395,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [E34](e/E34.md) - Capsule-only Vibecanvas manifest v1 and artifact boundary
 - [ ]: [E35] - Markdown Notes support
 - [x]: [E36](e/E36.md) - managed multi-tenant architecture and scale-to-zero widget functions
+- [x]: [E37](e/E37.md) - canvas-engine compatibility audit and executable migration contract
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions
