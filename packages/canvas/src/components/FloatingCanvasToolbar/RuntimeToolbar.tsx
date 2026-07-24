@@ -224,7 +224,7 @@ function RuntimeToolGroup(props: {
       onPointerLeave={scheduleClose}
       onFocusIn={openFlyout}
       onFocusOut={scheduleClose}
-      onKeyDown={onKeyDown}
+      on:keydown={onKeyDown}
     >
       <button
         ref={groupButton}
@@ -234,7 +234,7 @@ function RuntimeToolGroup(props: {
         aria-label={props.slot.label}
         aria-haspopup="menu"
         aria-expanded={isOpen()}
-        onPointerDown={() => {
+        on:pointerdown={() => {
           wasOpenBeforePointerDown = isOpen();
         }}
         onClick={(event) => {
@@ -265,7 +265,7 @@ function RuntimeToolGroup(props: {
             onPointerLeave={scheduleClose}
             onFocusIn={cancelClose}
             onFocusOut={scheduleClose}
-            onKeyDown={onKeyDown}
+            on:keydown={onKeyDown}
           >
             <For each={props.slot.tools}>
               {(tool) => (
@@ -365,7 +365,16 @@ export function RuntimeToolbar(props: TRuntimeToolbarProps) {
   });
 
   return (
-    <div class="vc-canvas-toolbar-anchor">
+    <div
+      class="vc-canvas-toolbar-anchor"
+      on:pointerdown={(event) => event.stopPropagation()}
+      on:pointermove={(event) => event.stopPropagation()}
+      on:pointerup={(event) => event.stopPropagation()}
+      on:pointercancel={(event) => event.stopPropagation()}
+      on:wheel={(event) => event.stopPropagation()}
+      on:keydown={(event) => event.stopPropagation()}
+      on:keyup={(event) => event.stopPropagation()}
+    >
       <div class="vc-runtime-toolbar-panel">
         <button
           type="button"

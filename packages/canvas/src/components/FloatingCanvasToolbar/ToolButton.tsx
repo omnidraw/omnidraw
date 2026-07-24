@@ -27,7 +27,7 @@ export function ToolButton(props: ToolButtonProps) {
     <button
       type="button"
       onClick={props.onClick}
-      onPointerDown={props.onPointerDown}
+      on:pointerdown={props.onPointerDown}
       aria-label={props.ariaLabel}
       aria-haspopup={props.ariaHasPopup}
       aria-expanded={props.ariaExpanded}

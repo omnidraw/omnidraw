@@ -2,17 +2,12 @@ import type { IService, IStoppableService } from "@vibecanvas/runtime"
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types"
 import type {
   CrdtService,
-  ElementService,
   HistoryService,
   RenderOrderService,
-  SceneService,
   SelectionService,
   ToolService,
   TWidgetWorldBounds,
 } from "@vibecanvas/canvas/services"
-import { VC_ON_REMOVE_ATTR } from "@vibecanvas/canvas/core/CONSTANTS"
-import { isKonvaGroup } from "@vibecanvas/canvas/core/GUARDS"
-import Konva from "konva"
 import type { TAiChatApiPort, TAiChatApplicationPort, TWidgetBrowserPort } from "../ports"
 import { widgetUiArtifactMount } from "../widget-runtime"
 import type { TWidgetTitleBarPortal } from "../widget/interface"
@@ -38,15 +33,11 @@ type TDraftPreviewFrameServiceArgs = {
   application: TAiChatApplicationPort
   browser: TWidgetBrowserPort
   crdt: CrdtService
-  element: ElementService
   history?: HistoryService
   renderOrder: RenderOrderService
-  scene: SceneService
   selection: SelectionService
   tool: ToolService
 }
-
-type TNodeOnRemove = (args: { node: unknown }) => void
 
 type TDraftPreviewOpenArgs = {
   draftId?: string
@@ -209,11 +200,9 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     this.#throwIfStopping()
     const existing = this.#findFrame(summary.draftId)
     if (existing) {
-      const node = this.#ensureNode(existing)
-      this.#focusNode(node)
+      this.#focusElement(existing.id)
       const runtime = this.#runtimes.get(existing.id)
-      if (!runtime) throw new Error(`Draft Preview frame '${existing.id}' could not be mounted.`)
-      await runtime.refresh(summary)
+      if (runtime) await runtime.refresh(summary)
       return
     }
     const origin = this.#args.crdt.doc().elements[args.originChatElementId]
@@ -267,22 +256,21 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
 
   async #insertElement(element: TElement, result: TDraftPreviewReady) {
     this.#initialResults.set(element.id, result)
-    let node: Konva.Group | undefined
     try {
-      const createdNode = this.#args.element.createNodeFromElement(element)
-      if (!isKonvaGroup(createdNode)) throw new Error("The draft Preview frame could not be created.")
-      node = createdNode
-      this.#args.scene.staticForegroundLayer.add(node)
-      this.#args.renderOrder.assignOrderOnInsert({ parent: this.#args.scene.staticForegroundLayer, nodes: [node], position: "front" })
-      const persisted = this.#args.element.toElement(node)
-      if (!persisted) throw new Error("The draft Preview frame could not be persisted.")
+      const siblings = this.#args.renderOrder.getOrderedSiblings(null)
+      const nextOrder = siblings.reduce((maximum, item) => {
+        const match = /^z(\d+)$/.exec(item.zIndex)
+        return match ? Math.max(maximum, Number.parseInt(match[1]!, 10) + 1) : maximum
+      }, siblings.length)
+      const persisted = {
+        ...element,
+        zIndex: `z${String(nextOrder).padStart(8, "0")}`,
+      }
       const commitResult = this.#args.crdt.build().patchElement(persisted.id, persisted).commit()
-      this.#focusNode(node)
-      this.#args.scene.staticForegroundLayer.batchDraw()
-      this.#recordCreateHistory(persisted, node, commitResult)
+      this.#focusElement(persisted.id)
+      this.#recordCreateHistory(persisted, commitResult)
       return persisted
     } catch (error) {
-      node?.destroy()
       this.#initialResults.delete(element.id)
       throw error
     }
@@ -321,15 +309,16 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     return Object.values(this.#args.crdt.doc().elements).find((element) => getDraftPreviewPayload(element)?.draftId === draftId)
   }
 
-  #findNode(elementId: string) {
-    const node = this.#args.scene.staticForegroundLayer.findOne((candidate: Konva.Node) => isKonvaGroup(candidate) && candidate.id() === elementId)
-    return isKonvaGroup(node) ? node : undefined
-  }
-
   #getOriginWorldBounds(origin: TElement) {
-    const node = this.#findNode(origin.id)
-    if (!node) throw new Error("The originating AI Chat frame could not be located on the canvas.")
-    const bounds = node.getClientRect({ relativeTo: this.#args.scene.staticForegroundLayer, skipShadow: true, skipStroke: true })
+    if (origin.data.type !== "ui-widget" && origin.data.type !== "widget-instance") {
+      throw new Error("The originating AI Chat frame does not have widget bounds.")
+    }
+    const bounds = {
+      x: origin.x,
+      y: origin.y,
+      width: origin.data.w,
+      height: origin.data.h,
+    }
     if (!Number.isFinite(bounds.x) || !Number.isFinite(bounds.y) || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
       throw new Error("The originating AI Chat frame does not have usable canvas bounds.")
     }
@@ -340,51 +329,24 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
     if (this.#stopping) throw new Error("Draft Preview opening was cancelled because the canvas is stopping.")
   }
 
-  #ensureNode(element: TElement) {
-    const existing = this.#findNode(element.id)
-    if (existing) return existing
-    const node = this.#args.element.createNodeFromElement(element)
-    if (!isKonvaGroup(node)) throw new Error("The persisted draft Preview frame could not be restored.")
-    this.#args.scene.staticForegroundLayer.add(node)
-    this.#args.element.updateElement(element)
-    this.#args.renderOrder.sortChildren(this.#args.scene.staticForegroundLayer)
-    this.#args.scene.staticForegroundLayer.batchDraw()
-    return node
-  }
-
-  #focusNode(node: Konva.Group) {
+  #focusElement(elementId: string) {
+    const target = { kind: "element", id: elementId } as const
     this.#args.tool.setActiveTool("select")
-    this.#args.selection.setSelection([node])
-    this.#args.selection.setFocusedNode(node)
-    this.#args.scene.staticForegroundLayer.batchDraw()
+    this.#args.selection.setSelection([target])
+    this.#args.selection.setFocusedTarget(target)
   }
 
-  #recordCreateHistory(element: TElement, initialNode: Konva.Group, commitResult: ReturnType<ReturnType<CrdtService["build"]>["commit"]>) {
+  #recordCreateHistory(element: TElement, commitResult: ReturnType<ReturnType<CrdtService["build"]>["commit"]>) {
     if (!this.#args.history) return
-    let currentNode: Konva.Group | undefined = initialNode
     this.#args.history.record({
       label: "create-draft-preview",
       undo: () => {
-        const node = currentNode ?? this.#findNode(element.id)
-        if (node) {
-          const onRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined
-          onRemove?.({ node })
-          node.destroy()
-          currentNode = undefined
-        }
         commitResult.rollback()
-        this.#args.selection.clear()
-        this.#args.scene.staticForegroundLayer.batchDraw()
+        this.#args.selection.pruneDocument(this.#args.crdt.doc())
       },
       redo: () => {
-        const node = this.#args.element.createNodeFromElement(element)
-        if (!isKonvaGroup(node)) return
-        this.#args.scene.staticForegroundLayer.add(node)
-        this.#args.element.updateElement(element)
-        this.#args.renderOrder.sortChildren(this.#args.scene.staticForegroundLayer)
         this.#args.crdt.applyOps({ ops: commitResult.redoOps })
-        this.#focusNode(node)
-        currentNode = node
+        this.#focusElement(element.id)
       },
     })
   }

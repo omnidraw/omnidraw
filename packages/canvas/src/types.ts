@@ -2,12 +2,12 @@ import type { DocHandle } from "@automerge/automerge-repo";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { ThemeService } from "@vibecanvas/service-theme";
 import type { AsyncParallelHook, SyncExitHook, SyncHook } from "@vibecanvas/tapable";
-import type Konva from "konva";
-import type { Group } from "konva/lib/Group";
-import type { KonvaEventObject } from "konva/lib/Node";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetDropPlacementService } from "./services";
+import type { CameraService, CanvasActiveSessionService, CanvasPortalService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, GroupService, HistoryService, LoggingService, RenderOrderService, SceneService, SelectionService, SessionService, ToolService, WidgetDropPlacementService } from "./services";
 import type { TBrowserTenantScope } from "./fn.browser-tenant-scope";
+import type {
+  TCanvasInputPointerEvent,
+  TCanvasInputWheelEvent,
+} from "./engine/input/typed";
 
 export type TImageUploadFormat = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type TUploadImage = (body: { data: Uint8Array; mime_type: TImageUploadFormat }) => Promise<{ url: string }>;
@@ -59,23 +59,26 @@ export type TRenderOrderSnapshot = {
   }>;
 };
 
-export type TPointerEvent = Konva.KonvaEventObject<PointerEvent>;
-export type TMouseEvent = Konva.KonvaEventObject<MouseEvent>;
-export type TWheelEvent = Konva.KonvaEventObject<WheelEvent>;
-
-export type TElementPointerEvent = KonvaEventObject<PointerEvent, Shape<ShapeConfig> | Group>;
+export type TPointerEvent = TCanvasInputPointerEvent;
+export type TMouseEvent = TCanvasInputPointerEvent;
+export type TWheelEvent = TCanvasInputWheelEvent;
+export type TElementPointerEvent = TCanvasInputPointerEvent & {
+  hit: NonNullable<TCanvasInputPointerEvent["hit"]>;
+};
 
 export type TElementDefinitionInvalidatedEvent = {
   elementIds: readonly string[];
 };
 
 export interface IRuntimeServices {
+  activeSession: CanvasActiveSessionService;
   camera: CameraService;
   confirmDialog: ConfirmDialogService;
   contextMenu: ContextMenuService;
   crdt: CrdtService;
   history: HistoryService;
   logging: LoggingService;
+  portal: CanvasPortalService;
   scene: SceneService;
   renderOrder: RenderOrderService;
   selection: SelectionService;

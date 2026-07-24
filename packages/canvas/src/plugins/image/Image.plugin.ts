@@ -1,662 +1,540 @@
-import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TElement, TImageData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import Konva from "konva";
 import ImageIcon from "lucide-static/icons/image.svg?raw";
-import { ELEMENT_DATA_ATTR, ELEMENT_STYLE_ATTR, VC_CREATED_AT_ATTR, VC_NODE_KIND_ATTR, VC_ON_REMOVE_ATTR, VC_PENDING_PERSISTENCE_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
-import { fnGetCanvasAncestorGroups, fnGetCanvasParentGroupId } from "../../core/fn.canvas-node-semantics";
-import { fnFilterSelection } from "../../core/fn.filter-selection";
-import { fnGetNodeZIndex } from "../../core/fn.get-node-z-index";
-import {
-  fnFileToBytes,
-  fnGetImageSource,
-  fnGetSupportedImageFormat,
-} from "../../core/fn.image-utils";
-import { fnGetWorldPosition } from "../../core/fn.world-position";
-import { txSetNodeZIndex } from "../../core/tx.set-node-z-index";
+import { fnGetSupportedImageFormat } from "../../core/fn.image-utils";
 import type {
-  SceneService,
-  SessionService
-} from "../../services";
+  TCanvasProductTransientOwner,
+  TCanvasProductTransientProjection,
+} from "../../engine/product-runtime/typed";
+import { fnCanvasEngineTransientOwnerId } from "../../engine/projection/fn.ids";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
-import { txDeleteSelection } from "../select/tx.delete-selection";
-import { fnToImageElement } from "./fn.to-image-element";
-import { txCreateImageCloneDrag } from "./tx.create-image-clone-drag";
-import { txDeleteBackendFileForElement } from "./tx.delete-backend-file-for-element";
-import { txInsertImage, type TPendingImageInsertToken } from "./tx.insert-image";
-import { txSetupImageListeners } from "./tx.setup-image-listeners";
-import { txUpdateImageNodeFromElement } from "./tx.update-image-node-from-element";
+import { fnCreateImageElement } from "./fn.create-image-element";
+import { fnFitImageToViewport } from "./fn.fit-image-to-viewport";
 
-const IMAGE_URL_ATTR = "vcImageUrl";
-const IMAGE_BASE64_ATTR = "vcImageBase64";
-const IMAGE_CROP_ATTR = "vcImageCrop";
-const IMAGE_SOURCE_ATTR = "vcImageSource";
-const ELEMENT_CREATED_AT_ATTR = "vcElementCreatedAt";
+type TPendingImageInsert = {
+  id: string;
+  phase: "pending" | "committed" | "cancelled";
+  preview: TCanvasProductTransientOwner;
+  uploadPromise: Promise<
+    | { ok: true; upload: { url: string } }
+    | { ok: false; error: unknown }
+  > | null;
+  uploadedUrl: string | null;
+  cleanupStarted: boolean;
+  removeProjectionListener: (() => void) | null;
+};
 
-const setNodeZIndex = (node: Konva.Group | Konva.Shape, zIndex: string) => txSetNodeZIndex({}, { node, zIndex });
-
-function getNotification(config: {
-  notification?: {
-    showSuccess(title: string, description?: string): void;
-    showError(title: string, description?: string): void;
-    showInfo(title: string, description?: string): void;
-  };
-}) {
-  return config.notification;
+function createId(document: Document) {
+  return document.defaultView?.crypto.randomUUID()
+    ?? `image-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function getFirstSupportedImageFile(files: Iterable<File> | ArrayLike<File> | null | undefined) {
-  return Array.from(files ?? []).find((candidate) => {
-    return fnGetSupportedImageFormat(candidate.type) !== null;
-  });
+function firstImage(files: Iterable<File> | ArrayLike<File> | null | undefined) {
+  return Array.from(files ?? []).find((file) => {
+    return fnGetSupportedImageFormat(file.type) !== null;
+  }) ?? null;
 }
 
-function getFirstSupportedImageClipboardItem(items: DataTransferItemList | null | undefined) {
-  return Array.from(items ?? []).find((candidate) => {
-    return candidate.kind === "file" && fnGetSupportedImageFormat(candidate.type) !== null;
-  })?.getAsFile() ?? null;
-}
-
-function getFirstSupportedClipboardImageFile(data: DataTransfer | null | undefined) {
-  return getFirstSupportedImageFile(data?.files) ?? getFirstSupportedImageClipboardItem(data?.items);
-}
-
-function screenToWorld(render: SceneService, point: { x: number; y: number }) {
-  const transform = render.staticForegroundLayer.getAbsoluteTransform().copy();
-  transform.invert();
-  return transform.point(point);
-}
-
-function getViewportCenter(render: SceneService) {
-  return screenToWorld(render, {
-    x: render.stage.width() / 2,
-    y: render.stage.height() / 2,
-  });
-}
-
-function getViewportWorldSize(render: SceneService) {
-  const worldTopLeft = screenToWorld(render, { x: 0, y: 0 });
-  const worldBottomRight = screenToWorld(render, {
-    x: render.stage.width(),
-    y: render.stage.height(),
-  });
-
-  return {
-    width: Math.abs(worldBottomRight.x - worldTopLeft.x),
-    height: Math.abs(worldBottomRight.y - worldTopLeft.y),
-  };
-}
-
-function shouldIgnoreClipboardEvent(session: Pick<SessionService, "editingId">, event: ClipboardEvent) {
-  if (session.editingId !== null) {
+function shouldIgnorePaste(
+  editingId: string | null,
+  event: ClipboardEvent,
+) {
+  if (editingId !== null) {
     return true;
   }
-
   const target = event.target;
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
-    return true;
-  }
-
-  if (target instanceof HTMLElement && target.isContentEditable) {
-    return true;
-  }
-
-  return false;
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLElement && target.isContentEditable);
 }
 
-function syncNodeMetadata(node: Konva.Image, element: TElement) {
-  const data = element.data as TImageData;
-  node.setAttr(ELEMENT_DATA_ATTR, structuredClone(element.data));
-  node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(element.style));
-  node.setAttr(VC_CREATED_AT_ATTR, element.createdAt);
-  node.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt);
-  node.setAttr(IMAGE_URL_ATTR, data.url);
-  node.setAttr(IMAGE_BASE64_ATTR, data.base64);
-  node.setAttr(IMAGE_CROP_ATTR, structuredClone(data.crop));
-  node.setAttr(IMAGE_SOURCE_ATTR, fnGetImageSource({ url: data.url, base64: data.base64 }));
-  node.setAttr(ELEMENT_CREATED_AT_ATTR, element.createdAt);
-}
-
-function loadImageIntoNode(node: Konva.Image, source: string | null, onError?: () => void) {
-  node.setAttr(IMAGE_SOURCE_ATTR, source);
-  if (!source) {
-    node.image(null);
-    node.getLayer()?.batchDraw();
-    return;
-  }
-
-  const image = new window.Image();
-  image.onload = () => {
-    node.image(image);
-    node.getLayer()?.batchDraw();
-  };
-  image.onerror = () => {
-    onError?.();
-  };
-  image.src = source;
-}
-
-function decodeImage(source: string) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new window.Image();
-    image.onload = () => resolve(image);
+function imageDimensions(
+  document: Document,
+  source: string,
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = document.createElement("img");
+    image.onload = () => {
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      if (width <= 0 || height <= 0) {
+        reject(new Error("Decoded image has invalid dimensions"));
+        return;
+      }
+      resolve({ width, height });
+    };
     image.onerror = () => reject(new Error("Failed to decode image"));
     image.src = source;
   });
 }
 
-function createImageNode(element: TElement) {
-  const data = element.data as TImageData;
-  const node = new Konva.Image({
-    id: element.id,
-    x: element.x,
-    y: element.y,
-    rotation: element.rotation,
-    width: data.w,
-    height: data.h,
-    opacity: element.style.opacity ?? 1,
-    scaleX: element.scaleX ?? 1,
-    scaleY: element.scaleY ?? 1,
-    draggable: true,
-    image: undefined,
-  });
-
-  node.setAttr(VC_NODE_KIND_ATTR, "element");
-  syncNodeMetadata(node, element);
-  setNodeZIndex(node, element.zIndex);
-  loadImageIntoNode(node, fnGetImageSource({ url: data.url, base64: data.base64 }));
-  return node;
+function pendingImageProjection(args: {
+  center: { x: number; y: number };
+  width: number;
+  height: number;
+  decoded: boolean;
+}): TCanvasProductTransientProjection {
+  return {
+    band: "world-overlay",
+    hitTest: "none",
+    nodes: [{
+      id: "preview",
+      parentId: null,
+      orderKey: "0",
+      kind: "rect",
+      size: {
+        width: args.width,
+        height: args.height,
+      },
+      transform: {
+        position: {
+          x: args.center.x - args.width / 2,
+          y: args.center.y - args.height / 2,
+        },
+      },
+      fill: {
+        r: 0.388,
+        g: 0.4,
+        b: 0.945,
+        a: args.decoded ? 0.14 : 0.08,
+      },
+      stroke: {
+        color: {
+          r: 0.31,
+          g: 0.27,
+          b: 0.9,
+          a: 0.9,
+        },
+        width: 2,
+        dash: args.decoded ? [10, 6] : [5, 5],
+      },
+      opacity: 0.92,
+      pointerEvents: "none",
+    }],
+  };
 }
 
-function updateImageNodeFromElement(render: SceneService, node: Konva.Image, element: TElement) {
-  return txUpdateImageNodeFromElement({
-    setNodeZIndex,
-    syncNodeMetadata,
-    getImageSource: fnGetImageSource,
-    loadImageIntoNode,
-    batchDraw: () => {
-      render.staticForegroundLayer.batchDraw();
-    },
-  }, {
-    node,
-    element,
-  });
-}
-
-function toElement(node: Konva.Image): TElement {
-  const worldPosition = fnGetWorldPosition({
-    absolutePosition: node.absolutePosition(),
-    parentTransform: node.getLayer()?.getAbsoluteTransform() ?? null,
-  });
-  const absoluteScale = node.getAbsoluteScale();
-  const layer = node.getLayer();
-  const layerScaleX = layer?.scaleX() ?? 1;
-  const layerScaleY = layer?.scaleY() ?? 1;
-  const parentGroupId = fnGetCanvasParentGroupId(node);
-
-  const crop = structuredClone(node.getAttr(IMAGE_CROP_ATTR) ?? {
-    x: 0,
-    y: 0,
-    width: node.width(),
-    height: node.height(),
-    naturalWidth: node.width(),
-    naturalHeight: node.height(),
-  }) as TImageData["crop"];
-
-  return fnToImageElement({
-    id: node.id(),
-    x: worldPosition.x,
-    y: worldPosition.y,
-    rotation: node.getAbsoluteRotation(),
-    createdAt: Number(node.getAttr(ELEMENT_CREATED_AT_ATTR) ?? Date.now()),
-    updatedAt: Date.now(),
-    parentGroupId,
-    zIndex: fnGetNodeZIndex({ node }),
-    opacity: node.opacity(),
-    scaleX: absoluteScale.x / layerScaleX,
-    scaleY: absoluteScale.y / layerScaleY,
-    url: (node.getAttr(IMAGE_URL_ATTR) as string | null) ?? null,
-    base64: (node.getAttr(IMAGE_BASE64_ATTR) as string | null) ?? null,
-    width: node.width(),
-    height: node.height(),
-    crop,
-  });
-}
-
-function createPreviewClone(node: Konva.Image) {
-  const clone = new Konva.Image({
-    ...node.getAttrs(),
-    id: crypto.randomUUID(),
-    draggable: true,
-  });
-  clone.image(node.image());
-  clone.setAttr(IMAGE_URL_ATTR, node.getAttr(IMAGE_URL_ATTR) ?? null);
-  clone.setAttr(IMAGE_BASE64_ATTR, node.getAttr(IMAGE_BASE64_ATTR) ?? null);
-  clone.setAttr(IMAGE_CROP_ATTR, structuredClone(node.getAttr(IMAGE_CROP_ATTR) ?? null));
-  clone.setAttr(ELEMENT_CREATED_AT_ATTR, Date.now());
-  clone.setAttr(IMAGE_SOURCE_ATTR, node.getAttr(IMAGE_SOURCE_ATTR) ?? null);
-  setNodeZIndex(clone, "");
-  return clone;
-}
-
-function safeStopDrag(node: Konva.Node) {
-  try {
-    if (node.isDragging()) {
-      node.stopDrag();
-    }
-  } catch {
-    return;
-  }
-}
-
-function filterSelection(selection: Konva.Node[]) {
-  return fnFilterSelection({
-    selection: selection.filter((node): node is Konva.Group | Konva.Shape => {
-      return node instanceof Konva.Group || node instanceof Konva.Shape;
-    }),
-  });
-}
-
-/**
- * Handles image insertion and image node runtime wiring.
- * Supports picker, paste, drop, drag, and serialization hooks.
- */
-export function createImagePlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
-  let fileInput: HTMLInputElement | null = null;
-
+export function createImagePlugin():
+IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "image",
     apply(ctx) {
-      const contextMenu = ctx.services.require("contextMenu");
+      const camera = ctx.services.require("camera");
       const crdt = ctx.services.require("crdt");
-      const elementService = ctx.services.require("element");
-      const groupService = ctx.services.require("group");
+      const element = ctx.services.require("element");
       const history = ctx.services.require("history");
-      const render = ctx.services.require("scene");
-      const renderOrder = ctx.services.require("renderOrder");
+      const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
       const session = ctx.services.require("session");
-      const toolService = ctx.services.require("tool");
-      const pendingInserts = new Map<string, {
-        token: TPendingImageInsertToken;
-        node: Konva.Image;
-      }>();
+      const tool = ctx.services.require("tool");
+      const document = scene.container.ownerDocument;
+      const window = document.defaultView;
+      const cleanups: Array<() => void> = [];
+      const pendingInserts = new Set<TPendingImageInsert>();
+      let input: HTMLInputElement | null = null;
+      let insertSequence = 0;
+      let destroyed = false;
 
-      const updateImageNodeFromElementPortal = {
-        setNodeZIndex,
-        syncNodeMetadata,
-        getImageSource: fnGetImageSource,
-        loadImageIntoNode,
-        batchDraw: () => {
-          render.staticForegroundLayer.batchDraw();
-        },
+      const destroyPreview = (pending: TPendingImageInsert) => {
+        pending.removeProjectionListener?.();
+        pending.removeProjectionListener = null;
+        pending.preview.destroy();
+        pendingInserts.delete(pending);
       };
 
-      const cloneBackendFileForElementPortal = {
-        cloneImage: ({ url }: { url: string }) => ctx.config.image.cloneImage({ url }),
-        crdt,
-        findImageNodeById: (id: string) => {
-          const node = render.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-            return candidate instanceof Konva.Image && candidate.id() === id;
+      const cleanupUploadedImage = (
+        pending: TPendingImageInsert,
+        url: string,
+      ) => {
+        if (pending.cleanupStarted) {
+          return;
+        }
+        pending.cleanupStarted = true;
+        void ctx.config.image.deleteImage({ url }).catch((error: unknown) => {
+          ctx.config.notification?.showError(
+            "Failed to clean up image file",
+            error instanceof Error ? error.message : undefined,
+          );
+        });
+      };
+
+      const cancelPendingInsert = (pending: TPendingImageInsert) => {
+        if (pending.phase !== "pending") {
+          return;
+        }
+        pending.phase = "cancelled";
+        destroyPreview(pending);
+        if (pending.uploadedUrl !== null) {
+          cleanupUploadedImage(pending, pending.uploadedUrl);
+        } else {
+          void pending.uploadPromise?.then((result) => {
+            if (result.ok) {
+              cleanupUploadedImage(pending, result.upload.url);
+            }
           });
-
-          return node instanceof Konva.Image ? node : null;
-        },
-        notification: getNotification(ctx.config),
-        updateImageNodeFromElementPortal,
+        }
       };
 
-      const deleteBackendFileForElementPortal = {
-        deleteImage: ({ url }: { url: string }) => ctx.config.image.deleteImage({ url }),
-        notification: getNotification(ctx.config),
+      const failPendingInsert = (
+        pending: TPendingImageInsert,
+        error: unknown,
+      ) => {
+        cancelPendingInsert(pending);
+        ctx.config.notification?.showError(
+          "Failed to insert image",
+          error instanceof Error ? error.message : "Unknown image error",
+        );
       };
 
-      const applyElement = (element: TElement) => {
-        const didUpdate = elementService.updateElement(element);
-        if (!didUpdate) {
+      const retainPreviewUntilProjection = (
+        pending: TPendingImageInsert,
+        revision: number,
+      ) => {
+        pending.removeProjectionListener = scene.hooks.projection.tap((result) => {
+          if (
+            result.revision < revision
+            || (result.status !== "applied" && result.status !== "noop")
+          ) {
+            return;
+          }
+          destroyPreview(pending);
+        });
+      };
+
+      const insert = async (
+        file: File,
+        worldPoint?: { x: number; y: number },
+      ) => {
+        if (window === null || destroyed) {
+          return;
+        }
+        const format = fnGetSupportedImageFormat(file.type);
+        if (format === null) {
+          ctx.config.notification?.showError("Unsupported image format");
           return;
         }
 
-        const node = render.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-          return candidate.id() === element.id;
-        });
-        if (!node) {
+        const bounds = camera.visibleWorldBounds();
+        const center = worldPoint ?? {
+          x: (bounds.minX + bounds.maxX) / 2,
+          y: (bounds.minY + bounds.maxY) / 2,
+        };
+        const viewportSize = {
+          width: bounds.maxX - bounds.minX,
+          height: bounds.maxY - bounds.minY,
+        };
+        const pendingSize = {
+          width: Math.max(32, Math.min(240, viewportSize.width / 2)),
+          height: Math.max(32, Math.min(180, viewportSize.height / 2)),
+        };
+        const id = createId(document);
+        let preview: TCanvasProductTransientOwner | null = null;
+        try {
+          insertSequence += 1;
+          preview = scene.product.transients.createOwner({
+            ownerId: fnCanvasEngineTransientOwnerId({
+              feature: "image-insert",
+              sessionId: `${insertSequence}:${id}`,
+            }),
+          });
+          preview.replace(pendingImageProjection({
+            center,
+            ...pendingSize,
+            decoded: false,
+          }));
+        } catch (error) {
+          preview?.destroy();
+          ctx.config.notification?.showError(
+            "Failed to insert image",
+            error instanceof Error ? error.message : "Failed to show image preview",
+          );
+          return;
+        }
+        if (preview === null) {
           return;
         }
 
-        fnGetCanvasAncestorGroups(node).forEach((group) => {
-          group.fire("transform");
-        });
-        render.staticForegroundLayer.batchDraw();
-      };
+        const pending: TPendingImageInsert = {
+          id,
+          phase: "pending",
+          preview,
+          uploadPromise: null,
+          uploadedUrl: null,
+          cleanupStarted: false,
+          removeProjectionListener: null,
+        };
+        pendingInserts.add(pending);
 
-      const setupNode = (node: Konva.Image) => {
-        txSetupImageListeners({
-          elementService,
-          crdt,
-          history,
-          render,
-          selection,
-          hooks: ctx.hooks,
-          startDragClone: (args) => elementService.createDragClone(args),
-          applyElement,
-          updateImageNodeFromElementPortal,
-          filterSelection,
-          safeStopDrag,
-          toElement,
-          createThrottledPatch: () => {
-            return throttle((element: TElement) => {
-              if (crdt.doc().elements[element.id] === undefined) {
-                return;
-              }
-
-              const builder = crdt.build();
-              builder.patchElement(element.id, "x", element.x);
-              builder.patchElement(element.id, "y", element.y);
-              builder.patchElement(element.id, "updatedAt", element.updatedAt);
-              builder.commit();
-            }, 100);
-          },
-        }, {
-          node,
-        });
-        return node;
-      };
-
-      // Pending previews must not receive image persistence listeners until upload succeeds.
-      const createRuntimeImageNode = (element: TElement) => {
-        if (element.data.type !== "image") {
-          throw new Error("Failed to create image runtime node");
+        let localUrl: string;
+        try {
+          localUrl = window.URL.createObjectURL(file);
+        } catch (error) {
+          failPendingInsert(pending, error);
+          return;
         }
 
-        return createImageNode(element);
-      };
-
-      const cloneDragPortal = {
-        cloneBackendFileForElementPortal,
-        crdt,
-        history,
-        render,
-        renderOrder,
-        selection,
-        createPreviewClone: (sourceNode: Konva.Image) => createPreviewClone(sourceNode),
-        createImageNode: (element: TElement) => createImageNode(element),
-        setupNode,
-        toElement,
-        now: () => Date.now(),
-      };
-
-      const openFilePicker = () => {
-        fileInput?.click();
-      };
-
-      const insertImage = async (args: { file: File; point?: { x: number; y: number } }) => {
-        await txInsertImage({
-          crdt,
-          history,
-          render,
-          renderOrder,
-          selection,
-          uploadImage: (body) => ctx.config.image.uploadImage(body),
-          notification: getNotification(ctx.config),
-          createId: () => crypto.randomUUID(),
-          now: () => Date.now(),
-          fileToBytes: (file) => fnFileToBytes({
-            createFileReader: () => new FileReader(),
-          }, {
-            file,
-          }),
-          createObjectUrl: (file) => URL.createObjectURL(file),
-          revokeObjectUrl: (url) => URL.revokeObjectURL(url),
-          decodeImage,
-          getViewportCenter: () => getViewportCenter(render),
-          getViewportWorldSize: () => getViewportWorldSize(render),
-          createRuntimeNode: createRuntimeImageNode,
-          setupRuntimeNode: setupNode,
-          syncNodeMetadata,
-          setNodeImage: (node, image) => {
-            node.image(image);
-          },
-          loadImageIntoNode,
-          toElement,
-          registerPendingInsert: (id, token, node) => {
-            pendingInserts.set(id, { token, node });
-            node.setAttr(VC_PENDING_PERSISTENCE_ATTR, true);
-            node.setAttr(VC_ON_REMOVE_ATTR, () => {
-              const pending = pendingInserts.get(id);
-              if (pending?.token !== token) {
-                return;
-              }
-
-              token.cancelled = true;
-              pendingInserts.delete(id);
+        const uploadPromise = Promise.resolve()
+          .then(() => file.arrayBuffer())
+          .then((buffer) => {
+            return ctx.config.image.uploadImage({
+              data: new Uint8Array(buffer),
+              mime_type: format,
             });
-          },
-          isPendingInsertActive: (id, token, node) => {
-            const pending = pendingInserts.get(id);
-            return !token.cancelled
-              && pending?.token === token
-              && pending.node === node
-              && node.getLayer() === render.staticForegroundLayer;
-          },
-          promotePendingInsert: (id, token, node) => {
-            const pending = pendingInserts.get(id);
-            if (token.cancelled || pending?.token !== token || pending.node !== node) {
-              return false;
-            }
+          })
+          .then(
+            (upload) => ({ ok: true as const, upload }),
+            (error: unknown) => ({ ok: false as const, error }),
+          );
+        pending.uploadPromise = uploadPromise;
 
-            node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
-            return true;
-          },
-          releasePendingInsert: (id, token) => {
-            const pending = pendingInserts.get(id);
-            if (pending?.token !== token) {
-              return;
-            }
-
-            pending.node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
-            pending.node.setAttr(VC_ON_REMOVE_ATTR, undefined);
-            pendingInserts.delete(id);
-          },
-        }, args);
-      };
-
-      contextMenu.registerProvider("image", ({ targetElement, activeSelection }) => {
-        if (targetElement?.data.type !== "image") {
-          return [];
+        let dimensions: { width: number; height: number };
+        try {
+          dimensions = await imageDimensions(document, localUrl);
+        } catch (error) {
+          failPendingInsert(pending, error);
+          return;
+        } finally {
+          window.URL.revokeObjectURL(localUrl);
         }
 
-        return [{
-          id: "delete-image-selection",
-          label: "Delete",
-          priority: 300,
-          onSelect: () => {
-            selection.setSelection(activeSelection);
-            txDeleteSelection({
-              element: elementService,
-              group: groupService,
-              crdt,
-              history,
-              scene: render,
-              renderOrder,
-              selection,
-            }, {});
-          },
-        }];
-      });
+        if (pending.phase !== "pending" || destroyed) {
+          cancelPendingInsert(pending);
+          return;
+        }
 
-      const unregisterImageElement = elementService.registerElement({
+        const fitted = fnFitImageToViewport({
+          viewportWidth: viewportSize.width,
+          viewportHeight: viewportSize.height,
+          imageWidth: dimensions.width,
+          imageHeight: dimensions.height,
+        });
+        try {
+          pending.preview.replace(pendingImageProjection({
+            center,
+            width: fitted.width,
+            height: fitted.height,
+            decoded: true,
+          }));
+        } catch (error) {
+          failPendingInsert(pending, error);
+          return;
+        }
+
+        const uploadResult = await uploadPromise;
+        if (!uploadResult.ok) {
+          failPendingInsert(pending, uploadResult.error);
+          return;
+        }
+        const upload = uploadResult.upload;
+        pending.uploadedUrl = upload.url;
+
+        if (pending.phase !== "pending" || destroyed) {
+          cancelPendingInsert(pending);
+          cleanupUploadedImage(pending, upload.url);
+          return;
+        }
+
+        const now = Date.now();
+        const created = fnCreateImageElement({
+          id,
+          center,
+          width: fitted.width,
+          height: fitted.height,
+          sourceUrl: upload.url,
+          naturalWidth: dimensions.width,
+          naturalHeight: dimensions.height,
+          now,
+        });
+        created.zIndex = `z${String(
+          Object.keys(crdt.doc().elements).length
+            + Object.keys(crdt.doc().groups).length,
+        ).padStart(8, "0")}`;
+
+        let result: ReturnType<ReturnType<typeof crdt.build>["commit"]>;
+        retainPreviewUntilProjection(pending, crdt.revision + 1);
+        try {
+          result = crdt.build()
+            .patchElement(created.id, created)
+            .commit();
+        } catch (error) {
+          if (crdt.doc().elements[created.id] === undefined) {
+            failPendingInsert(pending, error);
+            return;
+          }
+          pending.phase = "committed";
+          ctx.config.notification?.showError(
+            "Image inserted without history",
+            error instanceof Error ? error.message : undefined,
+          );
+          return;
+        }
+
+        pending.phase = "committed";
+        try {
+          history.record({
+            label: "Insert image",
+            undo: () => crdt.applyOps({ ops: result.undoOps }),
+            redo: () => crdt.applyOps({ ops: result.redoOps }),
+          });
+          selection.select({ kind: "element", id: created.id });
+        } catch (error) {
+          ctx.config.notification?.showError(
+            "Image inserted without complete local state",
+            error instanceof Error ? error.message : undefined,
+          );
+        }
+      };
+
+      cleanups.push(element.registerElement({
         id: "image",
-        matchesElement: (element) => element.data.type === "image",
-        matchesNode: (node) => node instanceof Konva.Image,
-        toElement: (node) => {
-          if (!(node instanceof Konva.Image)) {
-            return null;
-          }
-
-          return toElement(node);
-        },
-        createNode: (element) => {
-          if (element.data.type !== "image") {
-            return null;
-          }
-
-          return createImageNode(element);
-        },
-        attachListeners: (node) => {
-          if (!(node instanceof Konva.Image)) {
-            return false;
-          }
-
-          setupNode(node);
-          return true;
-        },
-        updateElement: (element) => {
-          if (element.data.type !== "image") {
-            return false;
-          }
-
-          const node = render.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-            return candidate instanceof Konva.Image && candidate.id() === element.id;
-          });
-          if (!(node instanceof Konva.Image)) {
-            return false;
-          }
-
-          updateImageNodeFromElement(render, node, element);
-          return true;
-        },
-        createDragClone: ({ node }) => {
-          if (!(node instanceof Konva.Image)) {
-            return false;
-          }
-
-          txCreateImageCloneDrag(cloneDragPortal, { node });
-          return true;
-        },
-        onDelete: (element) => {
-          void txDeleteBackendFileForElement(deleteBackendFileForElementPortal, { element });
-        },
-        getTransformOptions: () => ({
-          keepRatio: true,
+        matchesElement: (candidate) => candidate.data.type === "image",
+        getSelectionStyleMenu: () => ({
+          sections: { showOpacityPicker: true },
+          values: { opacity: 1 },
         }),
-      });
+        getTransformPolicy: () => ({
+          handles: [
+            "move",
+            "rotate",
+            "resize-ne",
+            "resize-se",
+            "resize-sw",
+            "resize-nw",
+          ],
+          keepAspectRatio: true,
+        }),
+        onDelete: (deleted) => {
+          if (deleted.data.type === "image" && deleted.data.url !== null) {
+            void ctx.config.image.deleteImage({ url: deleted.data.url })
+              .catch((error: unknown) => {
+                ctx.config.notification?.showError(
+                  "Failed to delete image file",
+                  error instanceof Error ? error.message : undefined,
+                );
+              });
+          }
+        },
+        onRestore: (restored) => {
+          if (restored.data.type !== "image" || restored.data.url === null) {
+            return;
+          }
+          void ctx.config.image.cloneImage({ url: restored.data.url })
+            .then(({ url }) => {
+              const current = crdt.doc().elements[restored.id];
+              if (current?.data.type !== "image") {
+                return;
+              }
+              crdt.build().patchElement(current.id, {
+                ...current,
+                updatedAt: Date.now(),
+                data: { ...current.data, url },
+              }).commit();
+            })
+            .catch((error: unknown) => {
+              ctx.config.notification?.showError(
+                "Failed to restore image file",
+                error instanceof Error ? error.message : undefined,
+              );
+            });
+        },
+      }));
 
-      ctx.hooks.init.tap(() => {
-        toolService.registerTool({
-          id: "image",
-          label: "Image",
-          icon: ImageIcon,
-          shortcuts: ["9"],
-          priority: 90,
-          behavior: { type: "action" },
-          onSelect: openFilePicker,
+      cleanups.push(tool.registerTool({
+        id: "image",
+        label: "Image",
+        icon: ImageIcon,
+        shortcuts: ["9"],
+        priority: 90,
+        behavior: { type: "action" },
+        onSelect: () => input?.click(),
+      }));
+
+      input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/png,image/jpeg,image/gif,image/webp";
+      input.hidden = true;
+      const onChange = () => {
+        const file = input?.files?.[0] ?? null;
+        if (file !== null) {
+          void insert(file);
+        }
+        if (input !== null) {
+          input.value = "";
+        }
+      };
+      input.addEventListener("change", onChange);
+      scene.container.append(input);
+
+      const onPaste = (event: ClipboardEvent) => {
+        if (shouldIgnorePaste(session.editingId, event)) {
+          return;
+        }
+        const file = firstImage(event.clipboardData?.files);
+        if (file === null) {
+          return;
+        }
+        event.preventDefault();
+        void insert(file);
+      };
+      const onDragOver = (event: DragEvent) => {
+        if (firstImage(event.dataTransfer?.files) === null) {
+          return;
+        }
+        event.preventDefault();
+        if (event.dataTransfer !== null) {
+          event.dataTransfer.dropEffect = "copy";
+        }
+      };
+      const onDrop = (event: DragEvent) => {
+        const file = firstImage(event.dataTransfer?.files);
+        if (file === null) {
+          return;
+        }
+        event.preventDefault();
+        const viewport = camera.clientToViewport({
+          x: event.clientX,
+          y: event.clientY,
         });
-
-        fileInput = document.createElement("input");
-        fileInput.type = "file";
-        fileInput.accept = "image/png,image/jpeg,image/gif,image/webp";
-        fileInput.className = "hidden";
-        fileInput.addEventListener("change", () => {
-          const file = fileInput?.files?.[0];
-          const reset = () => {
-            if (fileInput) {
-              fileInput.value = "";
-            }
-          };
-
-          if (!file) {
-            reset();
-            return;
-          }
-
-          void insertImage({ file }).finally(() => {
-            reset();
-          });
+        void insert(file, camera.viewportToWorld(viewport));
+      };
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Escape" || session.editingId !== null) {
+          return;
+        }
+        const active = [...pendingInserts].filter((pending) => {
+          return pending.phase === "pending";
         });
-
-        render.stage.container().appendChild(fileInput);
-
-        const onPaste = (event: ClipboardEvent) => {
-          if (shouldIgnoreClipboardEvent(session, event)) {
-            return;
-          }
-
-          const file = getFirstSupportedClipboardImageFile(event.clipboardData);
-          if (!file) {
-            return;
-          }
-
-          event.preventDefault();
-          void insertImage({ file });
-        };
-
-        const onDragOver = (event: DragEvent) => {
-          const file = getFirstSupportedImageFile(event.dataTransfer?.files);
-          if (!file) {
-            return;
-          }
-
-          event.preventDefault();
-          if (event.dataTransfer) {
-            event.dataTransfer.dropEffect = "copy";
-          }
-        };
-
-        const onDragEnter = (event: DragEvent) => {
-          const file = getFirstSupportedImageFile(event.dataTransfer?.files);
-          if (!file) {
-            return;
-          }
-
-          event.preventDefault();
-        };
-
-        const onDragLeave = () => {};
-
-        const onDrop = (event: DragEvent) => {
-          const file = getFirstSupportedImageFile(event.dataTransfer?.files);
-          if (!file) {
-            return;
-          }
-
-          event.preventDefault();
-          const rect = render.stage.container().getBoundingClientRect();
-          const point = screenToWorld(render, {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top,
-          });
-
-          void insertImage({ file, point });
-        };
-
-        document.addEventListener("paste", onPaste);
-        render.stage.container().addEventListener("dragover", onDragOver);
-        render.stage.container().addEventListener("dragenter", onDragEnter);
-        render.stage.container().addEventListener("dragleave", onDragLeave);
-        render.stage.container().addEventListener("drop", onDrop);
-
-        ctx.hooks.destroy.tap(() => {
-          document.removeEventListener("paste", onPaste);
-          render.stage.container().removeEventListener("dragover", onDragOver);
-          render.stage.container().removeEventListener("dragenter", onDragEnter);
-          render.stage.container().removeEventListener("dragleave", onDragLeave);
-          render.stage.container().removeEventListener("drop", onDrop);
-          fileInput?.remove();
-          fileInput = null;
-        });
-      });
+        if (active.length === 0) {
+          return;
+        }
+        event.preventDefault();
+        for (const pending of active) {
+          cancelPendingInsert(pending);
+        }
+      };
+      document.addEventListener("paste", onPaste);
+      document.addEventListener("keydown", onKeyDown);
+      scene.container.addEventListener("dragover", onDragOver);
+      scene.container.addEventListener("drop", onDrop);
 
       ctx.hooks.destroy.tap(() => {
-        pendingInserts.forEach(({ token, node }) => {
-          token.cancelled = true;
-          node.setAttr(VC_ON_REMOVE_ATTR, undefined);
-          node.destroy();
-        });
-        pendingInserts.clear();
-        contextMenu.unregisterProvider("image");
-        unregisterImageElement();
-        toolService.unregisterTool("image");
+        destroyed = true;
+        document.removeEventListener("paste", onPaste);
+        document.removeEventListener("keydown", onKeyDown);
+        scene.container.removeEventListener("dragover", onDragOver);
+        scene.container.removeEventListener("drop", onDrop);
+        input?.removeEventListener("change", onChange);
+        input?.remove();
+        input = null;
+        for (const pending of [...pendingInserts]) {
+          if (pending.phase === "pending") {
+            cancelPendingInsert(pending);
+          } else {
+            destroyPreview(pending);
+          }
+        }
+        for (const cleanup of cleanups.splice(0).reverse()) {
+          cleanup();
+        }
       });
     },
   };

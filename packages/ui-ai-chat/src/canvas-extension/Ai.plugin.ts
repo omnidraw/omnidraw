@@ -1,11 +1,8 @@
 import type { IPlugin } from "@vibecanvas/runtime";
 import { fnCreateChatId } from "@vibecanvas/shared-functions/chat/fn.chat-id";
 import type { TElement, TUiWidgetData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import Konva from "konva";
 import { render } from "solid-js/web";
-import { ELEMENT_DATA_ATTR } from "@vibecanvas/canvas/core/CONSTANTS";
-import { isKonvaGroup } from "@vibecanvas/canvas/core/GUARDS";
-import type { CrdtService, SceneService, ToolService } from "@vibecanvas/canvas/services";
+import type { CrdtService } from "@vibecanvas/canvas/services";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "@vibecanvas/canvas";
 import { AiChat } from "../chat/components";
 import type { TAiChatApiPort, TAiChatApplicationPort, TAiChatBrowserPort } from "../ports";
@@ -62,7 +59,6 @@ function getAiWidgetPayload(args: { element: TElement }): Partial<TAiWidgetPaylo
 
 function persistAiPayload(args: {
   crdt: CrdtService;
-  scene: SceneService;
   elementId: string;
   payload: TAiWidgetPayload;
 }) {
@@ -79,13 +75,6 @@ function persistAiPayload(args: {
     },
   };
 
-  const node = args.scene.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-    return isKonvaGroup(candidate) && candidate.id() === args.elementId;
-  });
-  if (isKonvaGroup(node)) {
-    node.setAttr(ELEMENT_DATA_ATTR, nextData);
-  }
-
   args.crdt.build()
     .patchElement(args.elementId, "data", nextData)
     .commit();
@@ -96,8 +85,6 @@ function mountAiWidget(portal: {
   application: TAiChatApplicationPort;
   browser: TAiChatBrowserPort;
   crdt: CrdtService;
-  scene: SceneService;
-  tool: ToolService;
   createSessionId: () => string;
   openWidgetPreview: (args: { draftId?: string; draftName: string; originChatElementId: string }) => Promise<void>;
 }, args: { root: HTMLDivElement; element: TElement, id: string; titleBar: TWidgetTitleBarPortal }) {
@@ -108,7 +95,6 @@ function mountAiWidget(portal: {
   if (initialSessionId !== getAiSessionId({ element: args.element })) {
     persistAiPayload({
       crdt: portal.crdt,
-      scene: portal.scene,
       elementId: args.id,
       payload: { sessionId: initialSessionId },
     });
@@ -125,7 +111,6 @@ function mountAiWidget(portal: {
     onAiChatPreferenceChange: (preference) => {
       persistAiPayload({
         crdt: portal.crdt,
-        scene: portal.scene,
         elementId: args.id,
         payload: {
           ...preference,
@@ -138,7 +123,6 @@ function mountAiWidget(portal: {
       currentSessionId = sessionId;
       persistAiPayload({
         crdt: portal.crdt,
-        scene: portal.scene,
         elementId: args.id,
         payload: { sessionId },
       });
@@ -171,8 +155,6 @@ export function createAiPlugin(portal: {
     name: "ai",
     apply(ctx) {
       const crdt = ctx.services.require("crdt");
-      const scene = ctx.services.require("scene");
-      const tool = ctx.services.require("tool");
       const widgetManager = portal.widgetManager;
 
       ctx.hooks.init.tap(() => {
@@ -190,7 +172,11 @@ export function createAiPlugin(portal: {
             ...sourcePayload,
             sessionId: createSessionId(),
           } satisfies TAiWidgetPayload),
-          titleBarActions: [{ id: "settings", label: "Settings" }],
+          titleBarActions: [{
+            id: "settings",
+            label: "Settings",
+            kind: "menu",
+          }],
           renderDom: ({ root, element, titleBar }) => {
             if (!titleBar) throw new Error("AI Chat title bar actions are unavailable");
             return mountAiWidget({
@@ -198,8 +184,6 @@ export function createAiPlugin(portal: {
               application: portal.application,
               browser: portal.browser,
               crdt,
-              scene,
-              tool,
               createSessionId,
               openWidgetPreview: portal.openWidgetPreview,
             }, { root, element, id: element.id, titleBar });

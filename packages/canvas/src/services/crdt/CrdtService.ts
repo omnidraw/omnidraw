@@ -9,16 +9,28 @@ export type TCrdtServiceArgs = {
   docHandle: DocHandle<TCanvasDoc>;
 };
 
-export type TCrdtEntityChangeSet = {
+export type TCrdtChangeOrigin = "local" | "remote";
+
+export type TCrdtEntityChange<TEntity> = {
+  kind: "added" | "updated" | "deleted";
+  before: TEntity | null;
+  after: TEntity | null;
+  changedFields: string[];
+};
+
+export type TCrdtEntityChangeSet<TEntity = TElement | TGroup> = {
   added: string[];
   updated: string[];
   deleted: string[];
+  changes: Record<string, TCrdtEntityChange<TEntity>>;
 };
 
 export type TCrdtChangeSummary = {
+  revision: number;
+  origin: TCrdtChangeOrigin;
   fullReload: boolean;
-  elements: TCrdtEntityChangeSet;
-  groups: TCrdtEntityChangeSet;
+  elements: TCrdtEntityChangeSet<TElement>;
+  groups: TCrdtEntityChangeSet<TGroup>;
 };
 
 export interface TCrdtServiceHooks {
@@ -28,25 +40,36 @@ export interface TCrdtServiceHooks {
 
 export type TCrdtCommitResult = ReturnType<TCrdtBuilder["commit"]>;
 
-type TEntitySnapshot = {
+type TEntitySnapshot<TEntity> = {
   hash: string;
+  entity: TEntity;
 };
 
 type TDocSnapshot = {
-  elements: Map<string, TEntitySnapshot>;
-  groups: Map<string, TEntitySnapshot>;
+  elements: Map<string, TEntitySnapshot<TElement>>;
+  groups: Map<string, TEntitySnapshot<TGroup>>;
 };
 
-function createEmptyEntityChangeSet(): TCrdtEntityChangeSet {
+function cloneEntity<TEntity extends TElement | TGroup>(entity: TEntity): TEntity {
+  return JSON.parse(JSON.stringify(entity)) as TEntity;
+}
+
+function createEmptyEntityChangeSet<TEntity>(): TCrdtEntityChangeSet<TEntity> {
   return {
     added: [],
     updated: [],
     deleted: [],
+    changes: {},
   };
 }
 
-function createFullReloadChangeSummary(): TCrdtChangeSummary {
+function createFullReloadChangeSummary(args: {
+  origin: TCrdtChangeOrigin;
+  revision: number;
+}): TCrdtChangeSummary {
   return {
+    revision: args.revision,
+    origin: args.origin,
     fullReload: true,
     elements: createEmptyEntityChangeSet(),
     groups: createEmptyEntityChangeSet(),
@@ -59,7 +82,10 @@ function hashEntity(entity: TElement | TGroup) {
 
 function snapshotEntities<TEntity extends TElement | TGroup>(entities: Record<string, TEntity>) {
   return new Map(Object.entries(entities).map(([id, entity]) => {
-    return [id, { hash: hashEntity(entity) } satisfies TEntitySnapshot];
+    return [id, {
+      hash: hashEntity(entity),
+      entity: cloneEntity(entity),
+    } satisfies TEntitySnapshot<TEntity>];
   }));
 }
 
@@ -70,41 +96,80 @@ function snapshotDoc(doc: TCanvasDoc | undefined | null): TDocSnapshot {
   };
 }
 
+function changedFields<TEntity extends TElement | TGroup>(
+  before: TEntity,
+  after: TEntity,
+) {
+  return [...new Set([
+    ...Object.keys(before),
+    ...Object.keys(after),
+  ])].filter((field) => {
+    return JSON.stringify(before[field as keyof TEntity])
+      !== JSON.stringify(after[field as keyof TEntity]);
+  }).sort();
+}
+
 function diffEntitySnapshots<TEntity extends TElement | TGroup>(args: {
-  previous: Map<string, TEntitySnapshot>;
+  previous: Map<string, TEntitySnapshot<TEntity>>;
   nextEntities: Record<string, TEntity>;
 }) {
   const next = snapshotEntities(args.nextEntities);
-  const changeSet = createEmptyEntityChangeSet();
+  const changeSet = createEmptyEntityChangeSet<TEntity>();
 
   next.forEach((snapshot, id) => {
     const previousSnapshot = args.previous.get(id);
     if (!previousSnapshot) {
       changeSet.added.push(id);
+      changeSet.changes[id] = {
+        kind: "added",
+        before: null,
+        after: cloneEntity(snapshot.entity),
+        changedFields: Object.keys(snapshot.entity).sort(),
+      };
       return;
     }
 
     if (previousSnapshot.hash !== snapshot.hash) {
       changeSet.updated.push(id);
+      changeSet.changes[id] = {
+        kind: "updated",
+        before: cloneEntity(previousSnapshot.entity),
+        after: cloneEntity(snapshot.entity),
+        changedFields: changedFields(previousSnapshot.entity, snapshot.entity),
+      };
     }
   });
 
-  args.previous.forEach((_snapshot, id) => {
+  args.previous.forEach((snapshot, id) => {
     if (!next.has(id)) {
       changeSet.deleted.push(id);
+      changeSet.changes[id] = {
+        kind: "deleted",
+        before: cloneEntity(snapshot.entity),
+        after: null,
+        changedFields: Object.keys(snapshot.entity).sort(),
+      };
     }
   });
 
+  changeSet.added.sort();
+  changeSet.updated.sort();
+  changeSet.deleted.sort();
   return { changeSet, next };
 }
 
 function diffDocSnapshots(args: {
   previous: TDocSnapshot;
   nextDoc: TCanvasDoc | undefined | null;
+  origin: TCrdtChangeOrigin;
+  revision: number;
 }): { summary: TCrdtChangeSummary; snapshot: TDocSnapshot } {
   if (!args.nextDoc) {
     return {
-      summary: createFullReloadChangeSummary(),
+      summary: createFullReloadChangeSummary({
+        origin: args.origin,
+        revision: args.revision,
+      }),
       snapshot: snapshotDoc(args.nextDoc),
     };
   }
@@ -120,6 +185,8 @@ function diffDocSnapshots(args: {
 
   return {
     summary: {
+      revision: args.revision,
+      origin: args.origin,
       fullReload: false,
       elements: elements.changeSet,
       groups: groups.changeSet,
@@ -153,27 +220,43 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
   started = false;
 
   #pendingLocalChangeEvents = 0;
+  #localWriteDepth = 0;
+  #revision = 0;
   #docSnapshot: TDocSnapshot;
   #onDocChange = (_payload: DocHandleChangePayload<TCanvasDoc>) => {
     const nextDoc = this.docHandle.doc();
+    const revision = this.#revision + 1;
+    const origin = this.#localWriteDepth > 0 ? "local" : "remote";
+    if (origin === "local") {
+      this.#pendingLocalChangeEvents += 1;
+    }
     const { summary, snapshot } = diffDocSnapshots({
       previous: this.#docSnapshot,
       nextDoc,
+      origin,
+      revision,
     });
+    this.#revision = revision;
     this.#docSnapshot = snapshot;
     this.hooks.change.call(summary);
   };
   #onDocDelete = (_payload: DocHandleDeletePayload<TCanvasDoc>) => {
+    const origin = this.#localWriteDepth > 0 ? "local" : "remote";
+    if (origin === "local") {
+      this.#pendingLocalChangeEvents += 1;
+    }
+    this.#revision += 1;
     this.#docSnapshot = snapshotDoc(null);
-    this.hooks.change.call(createFullReloadChangeSummary());
+    this.hooks.change.call(createFullReloadChangeSummary({
+      origin,
+      revision: this.#revision,
+    }));
   };
   #onDocEphemeralMessage = (_payload: DocHandleEphemeralMessagePayload<TCanvasDoc>) => {};
 
   constructor(args: TCrdtServiceArgs) {
     this.docHandle = args.docHandle;
     this.#docSnapshot = snapshotDoc(this.docHandle.doc());
-    // @ts-expect-error keep this line. needed for debugging
-    window.docHandle = this.docHandle;
   }
 
   start(): void | Promise<void> {
@@ -186,7 +269,6 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
     this.docHandle.on("delete", this.#onDocDelete as (payload: DocHandleDeletePayload<unknown>) => void);
     this.docHandle.on("ephemeral-message", this.#onDocEphemeralMessage as (payload: DocHandleEphemeralMessagePayload<unknown>) => void);
     this.started = true;
-    console.log(this.docHandle.doc())
   }
 
   stop(): void | Promise<void> {
@@ -205,6 +287,10 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
    */
   doc() {
     return this.docHandle.doc();
+  }
+
+  get revision() {
+    return this.#revision;
   }
 
   /**
@@ -324,18 +410,17 @@ export class CrdtService implements IService<TCrdtServiceHooks>, IStartableServi
   }
 
   /**
-   * Executes a local write path and leaves one pending local marker behind on
-   * success. The marker is intentionally consumed later by CRDT change
-   * listeners. On failure the pending marker is removed immediately.
+   * Executes a local write path. Synchronous document events emitted within
+   * the callback are labeled local independently from the legacy hydrator
+   * marker, so origin remains correct after that skip path is removed.
    */
   #runLocalChange<TResult>(callback: () => TResult) {
-    this.#pendingLocalChangeEvents += 1;
+    this.#localWriteDepth += 1;
 
     try {
       return callback();
-    } catch (error) {
-      this.#pendingLocalChangeEvents = Math.max(0, this.#pendingLocalChangeEvents - 1);
-      throw error;
+    } finally {
+      this.#localWriteDepth = Math.max(0, this.#localWriteDepth - 1);
     }
   }
 

@@ -1,15 +1,15 @@
 import { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
-import type { IRuntime } from "@vibecanvas/runtime";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type { TCanvas } from "@vibecanvas/service-db/model";
 import type { ThemeService } from "@vibecanvas/service-theme";
-import { createEffect, createResource, createSignal, Match, onCleanup, Switch } from "solid-js";
+import { createEffect, createResource, createSignal, Match, onCleanup, onMount, Switch } from "solid-js";
 import { findDocument } from "../automerge";
 import { buildRuntime } from "../runtime";
 import type { ICanvasRuntimeExtension } from "../extension";
 import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "../types";
 import type { TBrowserTenantScope } from "../fn.browser-tenant-scope";
 import { fnBrowserTenantScopeKey } from "../fn.browser-tenant-scope";
+import { CanvasRuntimeLifecycle } from "./CanvasRuntimeLifecycle";
 
 export type TBackendCanvas = TCanvas;
 
@@ -35,8 +35,8 @@ type CanvasPageProps = {
 export function Canvas(props: CanvasPageProps) {
   let containerRef!: HTMLDivElement;
   let activeHandle: DocHandle<TCanvasDoc> | null = null;
-  let runtime: IRuntime | null = null;
   const [bootError, setBootError] = createSignal<string | null>(null);
+  const [containerReady, setContainerReady] = createSignal(false);
   const canvasSource = () => ({
     scope: props.tenant,
     scopeKey: fnBrowserTenantScopeKey(props.tenant),
@@ -52,57 +52,63 @@ export function Canvas(props: CanvasPageProps) {
     }
   });
 
+  const lifecycle = new CanvasRuntimeLifecycle<DocHandle<TCanvasDoc>>({
+    createRuntime: (nextHandle) => {
+      return buildRuntime({
+        canvasId: props.canvas.id,
+        tenant: props.tenant,
+        container: containerRef,
+        docHandle: nextHandle,
+        onToggleSidebar: props.store.onToggleSidebar,
+        env: {
+          DEV: import.meta.env.DEV,
+        },
+        image: props.image,
+        toolbarGroups: props.toolbarGroups,
+        notification: props.notification,
+        themeService: props.themeService,
+      }, props.extensions);
+    },
+    onBootStart: () => {
+      setBootError(null);
+    },
+    onBootError: (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[CanvasPage] Failed to boot canvas runtime:", error);
+      props.notification.showError("Failed to start canvas", message);
+      setBootError(message);
+    },
+    onShutdownError: (error) => {
+      console.error("[CanvasPage] Failed to stop canvas runtime:", error);
+    },
+  });
+
   createEffect<string | null>((previousSourceKey) => {
     const source = canvasSource();
     const sourceKey = `${source.scopeKey}:${source.url}`;
     if (previousSourceKey !== null && sourceKey !== previousSourceKey) {
-      runtime?.shutdown();
-      runtime = null;
       activeHandle = null;
+      void lifecycle.replace(null);
     }
     return sourceKey;
   }, null);
 
   createEffect(() => {
     const nextHandle = docHandle();
-    if (!nextHandle || nextHandle === activeHandle) return;
+    if (!containerReady() || !nextHandle || nextHandle === activeHandle) return;
 
     activeHandle = nextHandle;
-    if (runtime) {
-      runtime.shutdown()
-      runtime = null;
-    }
-    runtime = buildRuntime({
-      canvasId: props.canvas.id,
-      tenant: props.tenant,
-      container: containerRef,
-      docHandle: nextHandle,
-      onToggleSidebar: props.store.onToggleSidebar,
-      env: {
-        DEV: import.meta.env.DEV,
-      },
-      image: props.image,
-      toolbarGroups: props.toolbarGroups,
-      notification: props.notification,
-      themeService: props.themeService,
-    }, props.extensions)
-    const bootingRuntime = runtime;
-    setBootError(null);
-    void bootingRuntime.boot().catch(async (error) => {
-      if (runtime !== bootingRuntime) return;
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('[CanvasPage] Failed to boot canvas runtime:', error);
-      props.notification.showError('Failed to start canvas', message);
-      setBootError(message);
-      await bootingRuntime.shutdown().catch(() => undefined);
-      if (runtime === bootingRuntime) runtime = null;
-    });
+    void lifecycle.replace(nextHandle);
+  });
+
+  onMount(() => {
+    setContainerReady(true);
   });
 
   onCleanup(() => {
-    runtime?.shutdown();
-    runtime = null;
+    setContainerReady(false);
     activeHandle = null;
+    void lifecycle.dispose();
   });
 
   return <div ref={containerRef} style={{ position: "relative", width: "100%", height: "100%", background: "var(--vc-canvas-background, rgba(168, 162, 158, 0.10))" }}>

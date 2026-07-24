@@ -35,28 +35,25 @@ describe("package boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps runtime-neutral widget implementation in canvas", () => {
+  it("keeps renderer-neutral widget data helpers in canvas", () => {
     const widgetHostRoot = join(WORKSPACE_ROOT, "packages/canvas/src/widget-host");
     const implementationFiles = [
       "CONSTANTS.ts",
       "types.ts",
       "fn.create-cloned-widget-element.ts",
       "fn.create-widget-element.ts",
-      "fn.create-widget-node.ts",
-      "fn.get-host-theme-colors.ts",
       "fn.normalize-widget-host-data.ts",
-      "fn.to-widget-element.ts",
-      "fx.attach-widget-listener.ts",
-      "tx.create-widget-clone-drag.ts",
-      "tx.resize-widget-host.ts",
-      "tx.sync-widget-dom-portals.ts",
-      "tx.update-widget-node-from-element.ts",
+    ];
+    const compatibilityFiles = [
+      "fn.create-cloned-widget-element.ts",
+      "fn.create-widget-element.ts",
+      "fn.normalize-widget-host-data.ts",
     ];
     const forbiddenCanvasDependency = /@vibecanvas\/(?:api(?:[-/]|(?=["']|$))|service-actor|ui-ai-chat)/;
     const violations = sourceFiles(widgetHostRoot).flatMap((path) => {
       return forbiddenCanvasDependency.test(readFileSync(path, "utf8")) ? [path] : [];
     });
-    const invalidCompatibilityExports = implementationFiles.flatMap((file) => {
+    const invalidCompatibilityExports = compatibilityFiles.flatMap((file) => {
       const path = join(PACKAGE_ROOT, "src/widget", file);
       const source = readFileSync(path, "utf8");
       const lines = source.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -75,6 +72,21 @@ describe("package boundaries", () => {
     expect(forbiddenCanvasDependency.test(["@vibecanvas/api", "-actors/contract"].join(""))).toBe(true);
     expect(violations).toEqual([]);
     expect(invalidCompatibilityExports).toEqual([]);
+  });
+
+  it("keeps renderer objects out of AI widget and draft integrations", () => {
+    const ownedRoots = [
+      join(PACKAGE_ROOT, "src/widget"),
+      join(PACKAGE_ROOT, "src/canvas-extension"),
+      join(PACKAGE_ROOT, "src/draft-preview"),
+      join(PACKAGE_ROOT, "src/widget-placement"),
+    ];
+    const forbidden = /\bKonva\b|from\s+["']konva|staticForegroundLayer|createNodeFromElement/;
+    const violations = ownedRoots.flatMap(sourceFiles).filter((path) => {
+      return forbidden.test(readFileSync(path, "utf8"));
+    });
+
+    expect(violations).toEqual([]);
   });
 
   it("keeps frontend singletons, router hooks, and runtime globals behind injected ports", () => {

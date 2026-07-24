@@ -165,6 +165,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [B52](b/B52.md) - ci: build generated SDK before package tests
 - [x]: [B53](b/B53.md) - widget publish: duplicate actor identity hides new resource slots
 - [x]: [B54](b/B54.md) - widget publish: retain the draft but show it only after edits
+- [ ]: [B55](b/B55.md) - image undo: hard delete removes the only restorable media record
 
 ## A dditions
 - [x]: [A1] - file: support common CodeMirror languages
@@ -273,6 +274,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S20](s/S20.md) - cli server: restore compiled-mode port fallback when preferred port is busy
 - [x]: [S21] remove apps/server and packages/functional-core and shell
 - [x]: [S22] fix build and ci tests to use new apps/cli
+- [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
 - [x]: [S23] Use global costs for dev and prod ports
 - [x]: [S24] rename @vibecanvas/service-db -> @vibecanvas/service.db and co
 - [x]: [S25](s/S25.md) - db: remove filetrees table/schema; canvas-doc fully owns filetree state

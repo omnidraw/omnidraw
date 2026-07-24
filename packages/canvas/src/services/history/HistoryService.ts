@@ -37,6 +37,22 @@ export class HistoryService implements IService<THistoryServiceHooks> {
     this.hooks.change.call();
   }
 
+  discard(entry: THistoryEntry) {
+    const undoIndex = this.#undoStack.lastIndexOf(entry);
+    const redoIndex = this.#redoStack.lastIndexOf(entry);
+    if (undoIndex < 0 && redoIndex < 0) {
+      return false;
+    }
+    if (undoIndex >= 0) {
+      this.#undoStack.splice(undoIndex, 1);
+    }
+    if (redoIndex >= 0) {
+      this.#redoStack.splice(redoIndex, 1);
+    }
+    this.hooks.change.call();
+    return true;
+  }
+
   undo() {
     const entry = this.#undoStack.pop();
     if (!entry) {

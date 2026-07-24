@@ -40,7 +40,16 @@ function ActionButton(props: {
 
 export function CanvasRecorder(props: ICanvasRecorderProps) {
   return (
-    <div class="vc-canvas-recorder-anchor">
+    <div
+      class="vc-canvas-recorder-anchor"
+      on:pointerdown={(event) => event.stopPropagation()}
+      on:pointermove={(event) => event.stopPropagation()}
+      on:pointerup={(event) => event.stopPropagation()}
+      on:pointercancel={(event) => event.stopPropagation()}
+      on:wheel={(event) => event.stopPropagation()}
+      on:keydown={(event) => event.stopPropagation()}
+      on:keyup={(event) => event.stopPropagation()}
+    >
       <div class="vc-canvas-recorder-stack">
         <Show when={props.open()}>
           <div class="vc-canvas-recorder-panel">

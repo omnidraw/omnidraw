@@ -1,848 +1,587 @@
-import type { IService, IStartableService } from "@vibecanvas/runtime";
-import type { IServiceContext, IStoppableService } from "@vibecanvas/runtime/interface.js";
-import type { TUiWidgetData, TWidgetInstanceData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { ThemeService } from "@vibecanvas/service-theme";
-import Konva from "konva";
-import type { CameraService, ConfirmDialogService, ContextMenuService, CrdtService, ElementService, HistoryService, RenderOrderService, SceneService, SelectionService, ToolService } from "@vibecanvas/canvas/services";
-import { ELEMENT_DATA_ATTR, VC_ON_REMOVE_ATTR } from "@vibecanvas/canvas/core/CONSTANTS";
-import type { IRuntimeConfig, IRuntimeHooks } from "@vibecanvas/canvas";
+import type {
+  IService,
+  IStartableService,
+  IStoppableService,
+} from "@vibecanvas/runtime";
+import type { IServiceContext } from "@vibecanvas/runtime/interface.js";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { TWidgetError } from "@vibecanvas/service-db/model";
+import type {
+  IRuntimeConfig,
+  IRuntimeHooks,
+  TElementPointerEvent,
+} from "@vibecanvas/canvas";
+import { SyncHook } from "@vibecanvas/tapable";
+import type {
+  TCanvasPortalRenderState,
+  TCanvasPortalRendererMountArgs,
+  TWidgetDropRequest,
+  TWidgetWorldBounds,
+} from "@vibecanvas/canvas/services";
 import {
-    WIDGET_DOM_PORTAL_SYNC_ATTR,
-    WIDGET_HOST_BODY_ID,
-    WIDGET_HOST_BORDER_ID,
-    WIDGET_HOST_DIVIDER_ID,
-    WIDGET_HOST_HEADER_HEIGHT,
-    WIDGET_HOST_HEADER_ID,
-    WIDGET_HOST_MIN_HEIGHT,
-    WIDGET_HOST_MIN_WIDTH,
-    WIDGET_HOST_WINDOW_CORNER_RADIUS,
-    WIDGET_WINDOW_CONTAINED,
-    WIDGET_WINDOW_FULLSCREEN,
+  WIDGET_HOST_MIN_HEIGHT,
+  WIDGET_HOST_MIN_WIDTH,
+  WIDGET_WINDOW_CONTAINED,
+  WIDGET_WINDOW_FULLSCREEN,
+  WIDGET_WINDOW_MINIMIZED,
 } from "./CONSTANTS";
-import { fnCreateWidgetNode } from "./fn.create-widget-node";
-import { fnGetHostThemeColors } from "./fn.get-host-theme-colors";
-import { fnToWidgetElement } from "./fn.to-widget-element";
-import { fxAttachWidgetListener } from "./fx.attach-widget-listener";
-import { fxRegisterWidgetTool } from "./fx.register-tool";
+import { fnCreateWidgetElement } from "./fn.create-widget-element";
+import {
+  fnIsWidgetElement,
+  fnNextWidgetZIndex,
+  fnWidgetCreationBounds,
+} from "./fn.widget-frame";
+import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
 import type {
   IWidgetConfig,
   IWidgetManagerServiceHooks,
   IWidgetManagerServiceProps,
-  TWidgetFullscreenHostActions,
+  TWidgetTitleBarActionState,
+  TWidgetTitleBarPortal,
 } from "./interface";
-import { txAttachDomPortal } from "./attach-dom-portal";
-import { txCreateWidgetCloneDrag } from "./tx.create-widget-clone-drag";
-import { txResizeWidgetHost } from "./tx.resize-widget-host";
-import { txUpdateWidgetNodeFromElement } from "./tx.update-widget-node-from-element";
-import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
-import type { TWidgetError } from '@vibecanvas/service-db/model';
-import type { TWidgetBrowserPort } from "../ports";
-import type { TWidgetDropRequest, TWidgetWorldBounds } from "@vibecanvas/canvas/services";
-import { fnCreateWidgetElement } from "./fn.create-widget-element";
-import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
-import type { TWidgetHostData } from '@vibecanvas/canvas/widget-host/types';
-import { fnIsWidgetHostData, fnNormalizeWidgetHostData } from '@vibecanvas/canvas/widget-host/fn.normalize-widget-host-data';
-import { txMountCommittedWidgetRuntime } from './tx.mount-committed-widget-runtime';
+import { txMountCommittedWidgetRuntime } from "./tx.mount-committed-widget-runtime";
+import { txMountWidgetPortal } from "./tx.mount-widget-portal";
 
-type TWidgetDomPortalSync = () => void;
-type TNodeOnRemove = (args: { node: unknown }) => void;
+type TActiveMount = {
+  elementId: string;
+  state: TCanvasPortalRenderState;
+  contentSignature: string;
+  host: HTMLDivElement;
+  actionHandlers: Map<string, () => void>;
+  resizeBoundary: {
+    enabled: boolean;
+  };
+  cleanup: () => void;
+  syncInteraction(): void;
+};
 
-export class WidgetManagerService implements IService<IWidgetManagerServiceHooks>, IStartableService<IRuntimeHooks, IRuntimeConfig>, IStoppableService {
+function exposesWidgetResizeBoundary(element: TElement): boolean {
+  return (
+    element.data.type === "ui-widget"
+    || element.data.type === "widget-instance"
+  ) && element.data.window !== "fullscreen";
+}
+
+export class WidgetManagerService
+implements
+  IService<IWidgetManagerServiceHooks>,
+  IStartableService<IRuntimeHooks, IRuntimeConfig>,
+  IStoppableService {
   readonly name = "widget-manager";
-  #crdtService: CrdtService;
-  #historyService?: HistoryService;
-  #themeService: ThemeService;
-  #selectionService: SelectionService;
-  #contextMenuService: ContextMenuService;
-  #elementService: ElementService;
-  #toolService: ToolService;
-  #sceneService: SceneService;
-  #renderOrderService: RenderOrderService;
-  #cameraService: CameraService;
-  #confirmDialogService: ConfirmDialogService;
-  #widgetPortal!: HTMLDivElement;
-  #removeSelectionChangeListener?: () => boolean;
-  #browser: TWidgetBrowserPort;
-  #neutralHost: IWidgetManagerServiceProps['neutralHost'];
-  #started = false;
-  #registeredWidgetKinds = new Set<string>();
-  #registeredWidgetConfigs = new Map<string, IWidgetConfig>();
-  #registeredToolIdsByKind = new Map<string, string>();
-  #definitionErrors = new Map<string, TWidgetError>();
-  #elementErrors = new Map<string, TWidgetError>();
+  readonly hooks: IWidgetManagerServiceHooks = {
+    widgetChange: new SyncHook(),
+  };
+
+  readonly #props: IWidgetManagerServiceProps;
+  readonly #registeredWidgetConfigs = new Map<string, IWidgetConfig>();
+  readonly #registeredToolIdsByKind = new Map<string, string>();
+  readonly #definitionErrors = new Map<string, TWidgetError>();
+  readonly #elementErrors = new Map<string, TWidgetError>();
+  readonly #titleActionStates = new Map<
+    string,
+    Map<string, TWidgetTitleBarActionState>
+  >();
+  readonly #activeMounts = new Set<TActiveMount>();
+  readonly #cleanups: Array<() => void> = [];
   #globalDefinitionError: TWidgetError | null = null;
   #definitionDiscoveryComplete = false;
-  #neutralPortalCleanups = new Set<() => void>();
-
-  private readonly runtimeHooks!: IRuntimeHooks;
-
+  #started = false;
 
   constructor(props: IWidgetManagerServiceProps) {
-    this.#crdtService = props.crdtService;
-    this.#historyService = props.historyService;
-    this.#themeService = props.themeService;
-    this.#selectionService = props.selectionService;
-    this.#contextMenuService = props.contextMenuService;
-    this.#elementService = props.elementService;
-    this.#toolService = props.toolService;
-    this.#sceneService = props.sceneService;
-    this.#renderOrderService = props.renderOrderService;
-    this.#cameraService = props.cameraService;
-    this.#confirmDialogService = props.confirmDialogService;
-    this.#browser = props.browser;
-    this.#neutralHost = props.neutralHost;
+    this.#props = props;
   }
 
-  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void | Promise<void> {
-    // @ts-expect-error this is safe, start runs before any other method
-    this.runtimeHooks = ctx.hooks;
-    this.#widgetPortal = this.#browser.document.createElement("div");
-    this.#widgetPortal.style = "position: absolute; inset: 0; pointer-events: none;";
-    this.#sceneService.stage.container().appendChild(this.#widgetPortal);
-    // this.#domPortal.style =
-    this.#widgetPortal.id = "widget-portal";
-
-    this.#registerFallbackWidgetDefinition();
-    this.#registerNeutralWidgetDefinition();
+  start(ctx: IServiceContext<IRuntimeHooks, IRuntimeConfig>): void {
+    if (this.#started) {
+      return;
+    }
     this.#started = true;
+    this.#cleanups.push(
+      this.#props.elementService.registerElement({
+        id: "__widget-product-policy",
+        priority: 10_000,
+        matchesElement: fnIsWidgetElement,
+        getWidgetChrome: ({ element }) => {
+          const config = this.#configFor(element);
+          const actionStates = this.#titleActionStates.get(element.id);
+          return {
+            title: this.#titleFor(element, config),
+            active: this.#isContentFocused(element.id),
+            actions: element.data.type === "ui-widget"
+              ? (config?.titleBarActions ?? []).map((action) => {
+                  const state = actionStates?.get(action.id);
+                  return {
+                    ...action,
+                    label: state?.label ?? action.label,
+                    ...(state?.disabled === undefined
+                      ? {}
+                      : { disabled: state.disabled }),
+                  };
+                })
+              : [],
+          };
+        },
+        getTransformPolicy: ({ element }) => ({
+          ...(fnIsWidgetElement(element)
+              && element.data.window === WIDGET_WINDOW_FULLSCREEN
+            ? { handles: [], allowRotate: false }
+            : {}),
+          allowFlip: false,
+          keepAspectRatio: false,
+          minSize: {
+            width: WIDGET_HOST_MIN_WIDTH,
+            height: WIDGET_HOST_MIN_HEIGHT,
+          },
+        }),
+        prepareCloneData: ({ clone, createId }) => {
+          if (clone.data.type !== "widget-instance") {
+            return;
+          }
+          const { stateDocumentId: _stateDocumentId, ...data } = clone.data;
+          void _stateDocumentId;
+          return {
+            ...data,
+            instanceId: createId(),
+          };
+        },
+      }),
+      this.#props.portalService.registerRenderer({
+        id: "ui-ai-chat:widget-content",
+        priority: 100,
+        matches: ({ content }) => {
+          return content.type === "ui-widget"
+            || content.type === "widget-instance";
+        },
+        mount: (args) => this.#mount(args),
+      }),
+      ctx.hooks.elementPointerDown.tap((event) => {
+        return this.#handleSemanticWidgetClick(event);
+      }),
+      this.#props.selectionService.hooks.change.tap(() => {
+        for (const mount of this.#activeMounts) {
+          mount.syncInteraction();
+        }
+        this.#props.elementService.invalidateProjection();
+      }),
+    );
   }
 
-  stop(): void | Promise<void> {
+  stop(): void {
     this.#started = false;
-    [...this.#neutralPortalCleanups].forEach((cleanup) => cleanup());
-    this.#neutralPortalCleanups.clear();
-    this.#removeSelectionChangeListener?.();
-    this.#removeSelectionChangeListener = undefined;
-    this.#contextMenuService.close();
-    this.#widgetPortal.remove()
+    for (const cleanup of this.#cleanups.splice(0).reverse()) {
+      cleanup();
+    }
+    for (const mount of [...this.#activeMounts]) {
+      mount.cleanup();
+      mount.actionHandlers.clear();
+    }
+    this.#activeMounts.clear();
+    this.#titleActionStates.clear();
+    this.#props.contextMenuService.close();
   }
 
+  #mount(args: TCanvasPortalRendererMountArgs) {
+    const mount: TActiveMount = {
+      elementId: args.element.id,
+      state: { element: args.element, content: args.content },
+      contentSignature: JSON.stringify(args.content),
+      host: args.host,
+      actionHandlers: new Map(),
+      resizeBoundary: {
+        enabled: exposesWidgetResizeBoundary(args.element),
+      },
+      cleanup: () => undefined,
+      syncInteraction: () => {
+        const active = this.#isContentFocused(mount.elementId);
+        mount.resizeBoundary.enabled = exposesWidgetResizeBoundary(
+          mount.state.element,
+        );
+        for (
+          const root
+          of mount.host.querySelectorAll<HTMLElement>(
+            '[data-hosted-widget-root="true"]',
+          )
+        ) {
+          root.style.pointerEvents = "auto";
+          root.dataset.widgetContentFocused = String(active);
+        }
+      },
+    };
+    this.#renderMount(mount);
+    this.#activeMounts.add(mount);
+    return {
+      update: (state: TCanvasPortalRenderState) => {
+        const contentSignature = JSON.stringify(state.content);
+        mount.state = state;
+        if (contentSignature === mount.contentSignature) {
+          mount.syncInteraction();
+          return;
+        }
+        mount.contentSignature = contentSignature;
+        this.#renderMount(mount);
+      },
+      dispose: () => {
+        this.#activeMounts.delete(mount);
+        mount.cleanup();
+        mount.actionHandlers.clear();
+        if (
+          this.#props.crdtService.doc().elements[mount.elementId] === undefined
+        ) {
+          this.#titleActionStates.delete(mount.elementId);
+        }
+      },
+    };
+  }
 
-  #getWidgetElementIds(kind?: string) {
-    return Object.values(this.#crdtService.doc().elements).flatMap((element) => {
-      const host = fnNormalizeWidgetHostData(element.data);
-      if (!host) return [];
-      if (kind !== undefined && host.hostKey !== kind) return [];
+  #renderMount(mount: TActiveMount): void {
+    mount.cleanup();
+    mount.actionHandlers.clear();
+    const config = this.#configFor(mount.state.element);
+    mount.cleanup = txMountWidgetPortal(
+      { document: this.#props.browser.document },
+      {
+        host: mount.host,
+        element: mount.state.element,
+        config,
+        error: this.getWidgetError(mount.state.element),
+        titleBar: this.#titleBarFor(
+          mount.state.element,
+          config,
+          mount.actionHandlers,
+        ),
+        resizeBoundary: mount.resizeBoundary,
+        onContentPointerDown: () => {
+          this.#focusWidgetContent(mount.elementId);
+        },
+      },
+    );
+    mount.syncInteraction();
+  }
+
+  #configFor(element: TElement): IWidgetConfig | null {
+    if (element.data.type === "ui-widget") {
+      return this.#registeredWidgetConfigs.get(element.data.kind) ?? null;
+    }
+    if (element.data.type !== "widget-instance" || !this.#props.neutralHost) {
+      return null;
+    }
+    return {
+      id: "__widget-instance-runtime",
+      getTitle: (candidate) => candidate.data.type === "widget-instance"
+        ? candidate.data.definitionId
+        : "Widget",
+      renderDom: ({ root, element: candidate }) => {
+        return txMountCommittedWidgetRuntime({
+          canvasId: this.#props.neutralHost!.canvasId,
+          crdtService: this.#props.crdtService,
+          runtime: this.#props.neutralHost!.runtime,
+        }, {
+          elementId: candidate.id,
+          root,
+        });
+      },
+    };
+  }
+
+  #titleFor(element: TElement, config: IWidgetConfig | null): string {
+    const configured = config?.getTitle?.(element) ?? config?.tool?.label;
+    if (configured !== undefined) {
+      return configured;
+    }
+    if (element.data.type === "ui-widget") {
+      return element.data.kind;
+    }
+    if (element.data.type === "widget-instance") {
+      return `Widget ${element.data.definitionId.slice(0, 8)}`;
+    }
+    return "Widget";
+  }
+
+  #isContentFocused(elementId: string): boolean {
+    if (this.#props.selectionService.focusedId !== elementId) {
+      return false;
+    }
+    return !(
+      this.#props.selectionService.selection?.some((target) => {
+        return target.kind === "element" && target.id === elementId;
+      }) ?? false
+    );
+  }
+
+  #titleBarFor(
+    element: TElement,
+    config: IWidgetConfig | null,
+    handlers: Map<string, () => void>,
+  ): TWidgetTitleBarPortal | undefined {
+    if (
+      element.data.type !== "ui-widget"
+      || config?.titleBarActions === undefined
+      || config.titleBarActions.length === 0
+    ) {
+      return undefined;
+    }
+    const actionIds = new Set(config.titleBarActions.map((action) => action.id));
+    const states = this.#titleActionStates.get(element.id)
+      ?? new Map<string, TWidgetTitleBarActionState>();
+    this.#titleActionStates.set(element.id, states);
+    return {
+      onAction(id, handler) {
+        if (!actionIds.has(id)) {
+          return () => undefined;
+        }
+        handlers.set(id, handler);
+        return () => {
+          if (handlers.get(id) === handler) {
+            handlers.delete(id);
+          }
+        };
+      },
+      setActionState: (id, state) => {
+        if (!actionIds.has(id)) {
+          return;
+        }
+        const previous = states.get(id) ?? {};
+        const next = { ...previous, ...state };
+        if (
+          previous.pressed === next.pressed
+          && previous.disabled === next.disabled
+          && previous.label === next.label
+        ) {
+          return;
+        }
+        states.set(id, next);
+        this.#props.elementService.invalidateProjection();
+      },
+    };
+  }
+
+  #focusWidgetContent(elementId: string): boolean {
+    const element = this.#props.crdtService.doc().elements[elementId];
+    if (element === undefined || !fnIsWidgetElement(element)) {
+      return false;
+    }
+    const target = { kind: "element", id: elementId } as const;
+    const selectionChanged = this.#props.selectionService.setSelection([]);
+    const focusChanged = this.#props.selectionService.setFocusedTarget(target, {
+      allowUnselected: true,
+    });
+    return selectionChanged || focusChanged;
+  }
+
+  #invokeTitleAction(element: TElement, actionId: string): boolean {
+    const config = this.#configFor(element);
+    const action = config?.titleBarActions?.find((candidate) => {
+      return candidate.id === actionId;
+    });
+    if (action === undefined) {
+      return false;
+    }
+    if (
+      this.#titleActionStates.get(element.id)?.get(actionId)?.disabled
+      !== true
+    ) {
+      for (const mount of this.#activeMounts) {
+        if (mount.elementId === element.id) {
+          mount.actionHandlers.get(actionId)?.();
+          break;
+        }
+      }
+    }
+    return true;
+  }
+
+  #refreshMounts(elementIds?: ReadonlySet<string>): void {
+    for (const mount of this.#activeMounts) {
+      if (elementIds === undefined || elementIds.has(mount.elementId)) {
+        this.#renderMount(mount);
+      }
+    }
+  }
+
+  #getWidgetElementIds(kind?: string): string[] {
+    return Object.values(this.#props.crdtService.doc().elements).flatMap((element) => {
+      if (element.data.type !== "ui-widget" && element.data.type !== "widget-instance") {
+        return [];
+      }
+      if (
+        kind !== undefined
+        && (element.data.type !== "ui-widget" || element.data.kind !== kind)
+      ) {
+        return [];
+      }
       return [element.id];
     });
   }
 
-  #invalidateElements(elementIds: readonly string[]) {
-    if (elementIds.length === 0) return;
-    this.runtimeHooks.elementDefinitionInvalidated.call({ elementIds });
-  }
-
-  #removeWidgetRegistration(kind: string) {
-    this.#registeredWidgetKinds.delete(kind);
-    this.#registeredWidgetConfigs.delete(kind);
-    this.#toolService.unregisterTool(this.#registeredToolIdsByKind.get(kind) ?? kind);
-    this.#registeredToolIdsByKind.delete(kind);
-    this.#elementService.unregisterElement(kind);
-  }
-
   getWidgetError(element: TElement): TWidgetError | null {
-    if (element.data.type === 'widget-instance') return null;
-    const kind = fnNormalizeWidgetHostData(element.data)?.hostKey ?? 'unknown';
-    const error = this.#elementErrors.get(element.id)
-      ?? this.#definitionErrors.get(kind)
-      ?? this.#globalDefinitionError;
-    if (error) return error;
-    if (!this.#definitionDiscoveryComplete) return null;
-    return { phase: 'definition-fetch', code: 'WIDGET_DEFINITION_UNAVAILABLE', message: `Widget definition "${kind}" is unavailable.`, retryable: true };
-  }
-
-  completeDefinitionDiscovery() {
-    if (this.#definitionDiscoveryComplete) return;
-    this.#definitionDiscoveryComplete = true;
-    this.#invalidateElements(this.#getWidgetElementIds());
-  }
-
-  setGlobalDefinitionError(error: TWidgetError | null) {
-    if (fnWidgetErrorsEqual(this.#globalDefinitionError, error)) return;
-    this.#globalDefinitionError = error;
-    this.#invalidateElements(this.#getWidgetElementIds());
-  }
-
-  setDefinitionError(kind: string, error: TWidgetError) {
-    this.#definitionErrors.set(kind, error);
-    this.#invalidateElements(this.#getWidgetElementIds(kind));
-  }
-
-  clearDefinitionError(kind: string) {
-    this.#definitionErrors.delete(kind);
-  }
-
-  setElementError(elementId: string, error: TWidgetError) {
-    this.#elementErrors.set(elementId, error);
-    const element = this.#crdtService.doc().elements[elementId];
-    if (element && fnIsWidgetHostData(element.data)) {
-      this.#invalidateElements([elementId]);
-    }
-  }
-
-  clearElementError(elementId: string) {
-    this.#elementErrors.delete(elementId);
-    const element = this.#crdtService.doc().elements[elementId];
-    if (element && fnIsWidgetHostData(element.data)) {
-      this.#invalidateElements([elementId]);
-    }
-  }
-
-  #registerFallbackWidgetDefinition() {
-    this.#elementService.registerElement({
-      id: '__widget-error-fallback',
-      priority: 20_000,
-      matchesElement: (element) => {
-        return element.data.type === 'ui-widget'
-          && !this.#registeredWidgetKinds.has(element.data.kind);
-      },
-      matchesNode: (node) => {
-        const data = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined;
-        return data?.type === 'ui-widget' && !this.#registeredWidgetKinds.has(data.kind);
-      },
-      toElement: (node) => fnToWidgetElement(node, this.#browser.now()),
-      createNode: (element) => {
-        if (element.data.type !== 'ui-widget') return null;
-        const colors = fnGetHostThemeColors(this.#themeService, element.data.type);
-        const node = fnCreateWidgetNode(Konva, colors, element, { label: element.data.kind });
-        const onRemove = txAttachDomPortal({
-          node,
-          widgetPortal: this.#widgetPortal,
-          document: this.#browser.document,
-          browser: this.#browser,
-          widgetServie: this,
-          cameraService: this.#cameraService,
-          sceneService: this.#sceneService,
-          selectionService: this.#selectionService,
-          themeService: this.#themeService,
-          hostColors: colors,
-          fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
-        }, { element });
-        if (node && onRemove) {
-          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
-          node.setAttr(VC_ON_REMOVE_ATTR, () => onRemove());
-        }
-        return node;
-      },
-      getTransformOptions: () => ({ flipEnabled: false, keepRatio: false }),
-      onResize: ({ node, element, anchors }) => {
-        if (element.data.type !== 'ui-widget') return;
-        txResizeWidgetHost({ Circle: Konva.Circle, Group: Konva.Group, Line: Konva.Line, Rect: Konva.Rect, Text: Konva.Text }, { node, anchors });
-        this.#syncWidgetDomPortal(node);
-        return { cancel: true, crdt: false };
-      },
-      attachListeners: (node) => fxAttachWidgetListener({
-        node,
-        Circle: Konva.Circle,
-        Group: Konva.Group,
-        Line: Konva.Line,
-        Rect: Konva.Rect,
-        hooks: this.runtimeHooks,
-        selection: this.#selectionService,
-        toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
-        crdtService: this.#crdtService,
-        startDragClone: (args) => this.#elementService.createDragClone(args),
-        removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-        openWidgetMenu: (args) => this.#openWidgetHeaderMenu(args),
-        closeWidgetMenu: () => this.#contextMenuService.close(),
-        setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
-        clearTimer: (timer) => this.#browser.clearInterval(timer),
-      }, {}),
-    });
-  }
-
-  #registerNeutralWidgetDefinition() {
-    this.#elementService.registerElement({
-      id: '__widget-instance-host',
-      matchesElement: (element) => element.data.type === 'widget-instance',
-      matchesNode: (node) => {
-        const data = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetInstanceData | undefined;
-        return data?.type === 'widget-instance';
-      },
-      toElement: (node) => fnToWidgetElement(node, this.#browser.now()),
-      createNode: (element) => {
-        if (element.data.type !== 'widget-instance') return null;
-        const colors = fnGetHostThemeColors(this.#themeService, 'widget-instance');
-        const widgetConfig: IWidgetConfig = {
-          id: element.data.definitionId,
-          getTitle: (candidate) => candidate.data.type === 'widget-instance'
-            ? candidate.data.definitionId
-            : 'Widget',
-          renderDom: this.#neutralHost
-            ? ({ root, element: candidate }) => txMountCommittedWidgetRuntime({
-                canvasId: this.#neutralHost!.canvasId,
-                crdtService: this.#crdtService,
-                runtime: this.#neutralHost!.runtime,
-              }, {
-                elementId: candidate.id,
-                root,
-              })
-            : undefined,
-        };
-        const node = fnCreateWidgetNode(Konva, colors, element, {
-          label: element.data.definitionId,
-        });
-        const onRemove = txAttachDomPortal({
-          node,
-          widgetPortal: this.#widgetPortal,
-          document: this.#browser.document,
-          browser: this.#browser,
-          widgetServie: this,
-          cameraService: this.#cameraService,
-          sceneService: this.#sceneService,
-          selectionService: this.#selectionService,
-          themeService: this.#themeService,
-          hostColors: colors,
-          fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
-          widgetConfig,
-        }, { element });
-        if (node && onRemove) {
-          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
-          const existingOnRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
-          const cleanupPortal = () => {
-            this.#neutralPortalCleanups.delete(cleanupPortal);
-            onRemove();
+    if (element.data.type === "widget-instance") {
+      return this.#props.neutralHost
+        ? null
+        : {
+            phase: "instance-start",
+            code: "WIDGET_RUNTIME_UNAVAILABLE",
+            message: "The widget runtime is unavailable.",
+            retryable: true,
           };
-          this.#neutralPortalCleanups.add(cleanupPortal);
-          node.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
-            existingOnRemove?.(removeArgs);
-            cleanupPortal();
-          });
-        }
-        return node;
-      },
-      updateElement: (element) => {
-        if (element.data.type !== 'widget-instance') return false;
-        const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-          return candidate.id() === element.id;
-        });
-        if (!node) return false;
-        const colors = fnGetHostThemeColors(this.#themeService, 'widget-instance');
-        return txUpdateWidgetNodeFromElement({
-          Circle: Konva.Circle,
-          Group: Konva.Group,
-          Line: Konva.Line,
-          Rect: Konva.Rect,
-          Text: Konva.Text,
-        }, {
-          node,
-          element,
-          label: element.data.definitionId,
-          labelFill: colors.headerTitleFill,
-          hostColors: colors,
-        });
-      },
-      createDragClone: ({ node }) => {
-        if (!this.#historyService) return false;
-        return txCreateWidgetCloneDrag({
-          Group: Konva.Group,
-          crdt: this.#crdtService,
-          element: this.#elementService,
-          history: this.#historyService,
-          renderOrder: this.#renderOrderService,
-          scene: this.#sceneService,
-          selection: this.#selectionService,
-          createId: () => this.#browser.createId(),
-          createNode: (candidateElement) => {
-            const candidateNode = this.#elementService.createNodeFromElement(candidateElement);
-            return candidateNode instanceof Konva.Group ? candidateNode : null;
-          },
-          now: () => this.#browser.now(),
-          clone: <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T,
-          setupNode: (candidateNode) => fxAttachWidgetListener({
-            node: candidateNode,
-            Circle: Konva.Circle,
-            Group: Konva.Group,
-            Line: Konva.Line,
-            Rect: Konva.Rect,
-            hooks: this.runtimeHooks,
-            selection: this.#selectionService,
-            toElement: (candidate) => this.#elementService.toElement(candidate),
-            crdtService: this.#crdtService,
-            startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
-            removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-            openWidgetMenu: (menuArgs) => this.#openWidgetHeaderMenu(menuArgs),
-            closeWidgetMenu: () => this.#contextMenuService.close(),
-            setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
-            clearTimer: (timer) => this.#browser.clearInterval(timer),
-          }, {}),
-        }, { node });
-      },
-      getTransformOptions: () => ({
-        flipEnabled: false,
-        keepRatio: false,
-        boundBoxFunc: (oldBox, newBox) => {
-          if (newBox.width < WIDGET_HOST_MIN_WIDTH || newBox.height < WIDGET_HOST_MIN_HEIGHT) {
-            return oldBox;
-          }
-          return newBox;
-        },
-      }),
-      onResize: ({ node, element, anchors }) => {
-        if (element.data.type !== 'widget-instance') return;
-        txResizeWidgetHost({
-          Circle: Konva.Circle,
-          Group: Konva.Group,
-          Line: Konva.Line,
-          Rect: Konva.Rect,
-          Text: Konva.Text,
-        }, { node, anchors });
-        this.#syncWidgetDomPortal(node);
-        return { cancel: true, crdt: false };
-      },
-      attachListeners: (node) => fxAttachWidgetListener({
-        node,
-        Circle: Konva.Circle,
-        Group: Konva.Group,
-        Line: Konva.Line,
-        Rect: Konva.Rect,
-        hooks: this.runtimeHooks,
-        selection: this.#selectionService,
-        toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
-        crdtService: this.#crdtService,
-        startDragClone: (args) => this.#elementService.createDragClone(args),
-        removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-        openWidgetMenu: (args) => this.#openWidgetHeaderMenu(args),
-        closeWidgetMenu: () => this.#contextMenuService.close(),
-        setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
-        clearTimer: (timer) => this.#browser.clearInterval(timer),
-      }, {}),
-    });
-  }
-
-  #findWidgetNodeById(id: string) {
-    const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-      return candidate instanceof Konva.Group && candidate.id() === id;
-    });
-
-    return node instanceof Konva.Group ? node : null;
-  }
-
-  #removeWidgetNode(node: Konva.Node, args: { recordHistory: boolean }) {
-    const element = this.#elementService.toElement(node);
-    if (!element || !fnIsWidgetHostData(element.data)) {
-      return false;
     }
-
-    this.#contextMenuService.close();
-    const commitResult = this.#elementService.removeElement(node, this.#crdtService.build()).commit();
-    this.#selectionService.clear();
-    this.#sceneService.staticForegroundLayer.batchDraw();
-
-    if (!args.recordHistory || !this.#historyService) {
-      return true;
+    if (element.data.type !== "ui-widget") {
+      return null;
     }
-
-    this.#historyService.record({
-      label: "remove-widget",
-      undo: () => {
-        commitResult.rollback();
-        const restoredNode = this.#elementService.createNodeFromElement(element);
-        if (!(restoredNode instanceof Konva.Group)) {
-          return;
-        }
-
-        this.#sceneService.staticForegroundLayer.add(restoredNode);
-        this.#elementService.updateElement(element);
-        this.#renderOrderService.sortChildren(this.#sceneService.staticForegroundLayer);
-        this.#selectionService.setSelection([restoredNode]);
-        this.#selectionService.setFocusedNode(restoredNode);
-        this.#sceneService.staticForegroundLayer.batchDraw();
-      },
-      redo: () => {
-        const redoNode = this.#findWidgetNodeById(element.id);
-        if (redoNode) {
-          this.#removeWidgetNode(redoNode, { recordHistory: false });
-          return;
-        }
-
-        this.#crdtService.applyOps({ ops: commitResult.redoOps });
-        this.#selectionService.clear();
-        this.#sceneService.staticForegroundLayer.batchDraw();
-      },
-    });
-
-    return true;
-  }
-
-  async deleteWidgetInstanceDefinition(definitionId: string) {
-    const deleteDefinition = this.#neutralHost?.deleteDefinition;
-    if (!deleteDefinition) return false;
-    this.#contextMenuService.close();
-    const confirmed = await this.#confirmDialogService.confirm({
-      title: 'Delete widget',
-      description: 'Delete this published widget definition and all of its current canvas instances? This action cannot be undone.',
-      confirmLabel: 'Delete widget',
-      cancelLabel: 'Cancel',
-      destructive: true,
-    });
-    if (!confirmed || !await deleteDefinition({ definitionId })) return false;
-
-    const matchingElements = Object.values(this.#crdtService.doc().elements).filter((element) => {
-      return element.data.type === 'widget-instance' && element.data.definitionId === definitionId;
-    });
-    if (matchingElements.length > 0) {
-      let builder = this.#crdtService.build();
-      matchingElements.forEach((element) => {
-        const node = this.#findWidgetNodeById(element.id);
-        if (node) {
-          builder = this.#elementService.removeElement(node, builder);
-          return;
-        }
-        builder.deleteElement(element.id);
-      });
-      builder.commit();
+    const error = this.#elementErrors.get(element.id)
+      ?? this.#definitionErrors.get(element.data.kind)
+      ?? this.#globalDefinitionError;
+    if (error !== null && error !== undefined) {
+      return error;
     }
-    this.#selectionService.clear();
-    this.#sceneService.staticForegroundLayer.batchDraw();
-    return true;
-  }
-
-  #syncWidgetDomPortal(node: Konva.Node) {
-    const syncWidgetDomPortal = node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as TWidgetDomPortalSync | undefined;
-    syncWidgetDomPortal?.();
-  }
-
-  #setWidgetExpanded(node: Konva.Group, expanded: boolean) {
-    const body = node.findOne(`#${WIDGET_HOST_BODY_ID}`);
-    if (body instanceof Konva.Rect) {
-      body.visible(expanded);
-      body.listening(expanded);
+    if (
+      !this.#definitionDiscoveryComplete
+      || this.#registeredWidgetConfigs.has(element.data.kind)
+    ) {
+      return null;
     }
-
-    const border = node.findOne(`#${WIDGET_HOST_BORDER_ID}`);
-    if (border instanceof Konva.Rect) {
-      border.height(expanded ? node.height() : WIDGET_HOST_HEADER_HEIGHT);
-    }
-
-    const divider = node.findOne(`#${WIDGET_HOST_DIVIDER_ID}`);
-    if (divider instanceof Konva.Rect) {
-      divider.visible(expanded);
-      divider.listening(false);
-    }
-
-    const header = node.findOne(`#${WIDGET_HOST_HEADER_ID}`);
-    if (header instanceof Konva.Rect) {
-      header.cornerRadius([WIDGET_HOST_WINDOW_CORNER_RADIUS, WIDGET_HOST_WINDOW_CORNER_RADIUS, 0, 0]);
-    }
-
-    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData | undefined;
-    if (widgetData && fnIsWidgetHostData(widgetData)) {
-      node.setAttr(ELEMENT_DATA_ATTR, {
-        ...widgetData,
-        expanded,
-      });
-    }
-
-    this.#syncWidgetDomPortal(node);
-    node.getLayer()?.batchDraw();
-  }
-
-  #setWidgetWindowMode(node: Konva.Group, windowMode: typeof WIDGET_WINDOW_CONTAINED | typeof WIDGET_WINDOW_FULLSCREEN) {
-    if (windowMode === WIDGET_WINDOW_FULLSCREEN) {
-      if (this.#selectionService.selection.length > 0) {
-        this.#selectionService.setSelection([]);
-      }
-
-      if (this.#selectionService.focusedId !== node.id()) {
-        this.#selectionService.setFocusedId(node.id());
-      }
-    }
-
-    const widgetData = node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData | undefined;
-    if (widgetData && fnIsWidgetHostData(widgetData)) {
-      node.setAttr(ELEMENT_DATA_ATTR, {
-        ...widgetData,
-        window: windowMode,
-      });
-    }
-
-    this.#syncWidgetDomPortal(node);
-    node.getLayer()?.batchDraw();
-  }
-
-  #minimizeFullscreenWidget(node: Konva.Group) {
-    this.#contextMenuService.close();
-    this.#setWidgetWindowMode(node, WIDGET_WINDOW_CONTAINED);
-    this.#setWidgetExpanded(node, false);
-  }
-
-  #exitWidgetFullscreen(node: Konva.Group) {
-    this.#contextMenuService.close();
-    this.#setWidgetWindowMode(node, WIDGET_WINDOW_CONTAINED);
-  }
-
-  #createFullscreenHostActions(node: Konva.Group): TWidgetFullscreenHostActions {
     return {
-      close: () => {
-        this.#removeWidgetNode(node, { recordHistory: true });
-      },
-      minimize: () => this.#minimizeFullscreenWidget(node),
-      exitFullscreen: () => this.#exitWidgetFullscreen(node),
-      openMenu: ({ anchor }) => this.#openWidgetHeaderMenu({ node, anchor }),
-      closeMenu: () => this.#contextMenuService.close(),
+      phase: "definition-fetch",
+      code: "WIDGET_DEFINITION_UNAVAILABLE",
+      message: `Widget definition "${element.data.kind}" is unavailable.`,
+      retryable: true,
     };
   }
 
-  #openWidgetHeaderMenu(args: {
-    node: Konva.Group;
-    anchor: {
-      x: number;
-      y: number;
-    };
-  }) {
-    const widgetData = args.node.getAttr(ELEMENT_DATA_ATTR) as TWidgetHostData | undefined;
-    if (!widgetData || !fnIsWidgetHostData(widgetData)) {
+  completeDefinitionDiscovery(): void {
+    if (this.#definitionDiscoveryComplete) {
       return;
     }
-
-    this.#selectionService.setSelection([args.node]);
-    const deleteInstanceAction = {
-      id: "widget-delete-instance",
-      label: "Delete instance",
-      priority: 30,
-      onSelect: () => {
-        this.#removeWidgetNode(args.node, { recordHistory: true });
-      },
-    };
-    const deleteActions = widgetData.type === 'widget-instance' && this.#neutralHost?.deleteDefinition
-        ? [
-            deleteInstanceAction,
-            {
-              id: 'widget-delete-definition',
-              label: 'Delete widget',
-              priority: 40,
-              onSelect: () => {
-                void this.deleteWidgetInstanceDefinition(widgetData.definitionId);
-              },
-            },
-          ]
-        : [deleteInstanceAction];
-
-    this.#contextMenuService.openWithActionsAt({
-      x: args.anchor.x,
-      y: args.anchor.y,
-      actions: [
-        {
-          id: "widget-toggle-expanded",
-          label: widgetData.expanded === false ? "Restore" : "Minimize",
-          priority: 10,
-          onSelect: () => {
-            this.#contextMenuService.close();
-            if (widgetData.window === WIDGET_WINDOW_FULLSCREEN && widgetData.expanded !== false) {
-              this.#minimizeFullscreenWidget(args.node);
-              return;
-            }
-            this.#setWidgetExpanded(args.node, widgetData.expanded === false);
-          },
-        },
-        {
-          id: "widget-toggle-fullscreen",
-          label: widgetData.window === WIDGET_WINDOW_FULLSCREEN ? "Exit fullscreen" : "Fullscreen",
-          priority: 20,
-          onSelect: () => {
-            this.#contextMenuService.close();
-            this.#setWidgetWindowMode(
-              args.node,
-              widgetData.window === WIDGET_WINDOW_FULLSCREEN
-                ? WIDGET_WINDOW_CONTAINED
-                : WIDGET_WINDOW_FULLSCREEN,
-            );
-          },
-        },
-        ...deleteActions,
-      ],
-    });
+    this.#definitionDiscoveryComplete = true;
+    this.#refreshMounts();
   }
 
-  unregisterWidget(kind: string) {
-    this.#removeWidgetRegistration(kind);
-    if (this.#started) {
-      this.#invalidateElements(this.#getWidgetElementIds(kind));
+  setGlobalDefinitionError(error: TWidgetError | null): void {
+    if (fnWidgetErrorsEqual(this.#globalDefinitionError, error)) {
+      return;
+    }
+    this.#globalDefinitionError = error;
+    this.#refreshMounts();
+  }
+
+  setDefinitionError(kind: string, error: TWidgetError): void {
+    this.#definitionErrors.set(kind, error);
+    this.#refreshMounts(new Set(this.#getWidgetElementIds(kind)));
+  }
+
+  clearDefinitionError(kind: string): void {
+    if (this.#definitionErrors.delete(kind)) {
+      this.#refreshMounts(new Set(this.#getWidgetElementIds(kind)));
     }
   }
 
-  registerWidget(wConfig: IWidgetConfig) {
-    this.#removeWidgetRegistration(wConfig.id);
-    this.#registeredWidgetKinds.add(wConfig.id);
-    this.#registeredWidgetConfigs.set(wConfig.id, wConfig);
-    this.#registeredToolIdsByKind.set(wConfig.id, wConfig.toolId ?? wConfig.id);
-    this.clearDefinitionError(wConfig.id);
-    if (wConfig.tool) {
-      fxRegisterWidgetTool({
-        toolService: this.#toolService,
-        konva: Konva,
-        themeService: this.#themeService,
-        createId: () => this.#browser.createId(),
-        now: () => this.#browser.now(),
-      }, { widgetConfig: wConfig })
+  setElementError(elementId: string, error: TWidgetError): void {
+    this.#elementErrors.set(elementId, error);
+    this.#refreshMounts(new Set([elementId]));
+  }
+
+  clearElementError(elementId: string): void {
+    if (this.#elementErrors.delete(elementId)) {
+      this.#refreshMounts(new Set([elementId]));
     }
+  }
 
-    this.#elementService.registerElement({
-      id: wConfig.id,
-      toElement: (node) => fnToWidgetElement(node, this.#browser.now()),
-      matchesNode: (node) => {
-        const data = node.getAttr(ELEMENT_DATA_ATTR) as TUiWidgetData | undefined;
-        return data?.type === 'ui-widget' && data.kind === wConfig.id;
+  registerWidget(config: IWidgetConfig): void {
+    this.unregisterWidget(config.id);
+    this.#registeredWidgetConfigs.set(config.id, config);
+    this.#definitionErrors.delete(config.id);
+    this.#cleanups.push(this.#props.elementService.registerElement({
+      id: `ui-widget:${config.id}`,
+      matchesElement: (element) => {
+        return element.data.type === "ui-widget"
+          && element.data.kind === config.id;
       },
-      matchesElement: (element) => element.data.type === "ui-widget" && element.data.kind === wConfig.id,
-      createNode: (element) => {
-        const colors = fnGetHostThemeColors(this.#themeService, wConfig.dataType ?? 'ui-widget')
-        const node = fnCreateWidgetNode(Konva, colors, element, {
-          label: wConfig.getTitle?.(element) ?? wConfig.tool?.label,
-        })
-        const onRemove = txAttachDomPortal({
-          node,
-          widgetPortal: this.#widgetPortal,
-          document: this.#browser.document,
-          browser: this.#browser,
-          widgetServie: this,
-          cameraService: this.#cameraService,
-          sceneService: this.#sceneService,
-          selectionService: this.#selectionService,
-          themeService: this.#themeService,
-          hostColors: colors,
-          fullscreenHostActions: node ? this.#createFullscreenHostActions(node) : undefined,
-          widgetConfig: wConfig,
-        }, {element})
-        if (node && onRemove) {
-          node.setAttr(WIDGET_DOM_PORTAL_SYNC_ATTR, onRemove.syncDiv);
-          const existingOnRemove = node.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
-          node.setAttr(VC_ON_REMOVE_ATTR, (removeArgs: { node: unknown }) => {
-            existingOnRemove?.(removeArgs);
-            onRemove();
-          });
+      getTransformPolicy: ({ element }) => ({
+        ...(fnIsWidgetElement(element)
+            && element.data.window === WIDGET_WINDOW_FULLSCREEN
+          ? { handles: [], allowRotate: false }
+          : {}),
+        allowFlip: false,
+        keepAspectRatio: false,
+        minSize: {
+          width: WIDGET_HOST_MIN_WIDTH,
+          height: WIDGET_HOST_MIN_HEIGHT,
+        },
+      }),
+      prepareCloneData: ({ source, clone }) => {
+        if (config.cloneable === false) {
+          return null;
         }
-        return node
-      },
-      onDelete: () => ({}),
-      updateElement: (element) => {
-        if (element.data.type !== "ui-widget" || element.data.kind !== wConfig.id) {
-          return false;
+        if (
+          source.data.type !== "ui-widget"
+          || clone.data.type !== "ui-widget"
+          || config.createClonePayload === undefined
+        ) {
+          return;
         }
-
-        const node = this.#sceneService.staticForegroundLayer.findOne((candidate: Konva.Node) => {
-          return candidate.id() === element.id;
-        });
-        if (!node) {
-          return false;
-        }
-
-        const colors = fnGetHostThemeColors(this.#themeService, wConfig.dataType ?? 'ui-widget');
-        const didUpdate = txUpdateWidgetNodeFromElement({
-          Circle: Konva.Circle,
-          Group: Konva.Group,
-          Line: Konva.Line,
-          Rect: Konva.Rect,
-          Text: Konva.Text,
-        }, {
-          node,
-          element,
-          label: wConfig.getTitle?.(element) ?? wConfig.tool?.label,
-          labelFill: colors.headerTitleFill,
-          hostColors: colors,
-        });
-        return didUpdate;
-      },
-      createDragClone: wConfig.cloneable === false ? undefined : ({ node }) => {
-        if (!this.#historyService) {
-          return false;
-        }
-
-        return txCreateWidgetCloneDrag({
-          Group: Konva.Group,
-          crdt: this.#crdtService,
-          element: this.#elementService,
-          history: this.#historyService,
-          renderOrder: this.#renderOrderService,
-          scene: this.#sceneService,
-          selection: this.#selectionService,
-          createId: () => this.#browser.createId(),
-          createNode: (candidateElement) => {
-            const candidateNode = this.#elementService.createNodeFromElement(candidateElement);
-            return candidateNode instanceof Konva.Group ? candidateNode : null;
-          },
-          now: () => this.#browser.now(),
-          clone: <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T,
-          cloneUiWidgetPayload: wConfig.createClonePayload,
-          setupNode: (candidateNode) => {
-            return fxAttachWidgetListener({
-              node: candidateNode,
-              Circle: Konva.Circle,
-              Group: Konva.Group,
-              Line: Konva.Line,
-              Rect: Konva.Rect,
-              hooks: this.runtimeHooks,
-              selection: this.#selectionService,
-              toElement: (candidate) => this.#elementService.toElement(candidate),
-              crdtService: this.#crdtService,
-              startDragClone: (cloneArgs) => this.#elementService.createDragClone(cloneArgs),
-              removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-              openWidgetMenu: (menuArgs) => this.#openWidgetHeaderMenu(menuArgs),
-              closeWidgetMenu: () => this.#contextMenuService.close(),
-              setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
-              clearTimer: (timer) => this.#browser.clearInterval(timer),
-            }, {})
-          },
-        }, { node });
-      },
-      getTransformOptions(args) {
         return {
-          flipEnabled: false,
-          keepRatio: false,
-          boundBoxFunc: (oldBox, newBox) => {
-            if (newBox.width < WIDGET_HOST_MIN_WIDTH || newBox.height < WIDGET_HOST_MIN_HEIGHT) {
-              return oldBox;
-            }
-
-            return newBox;
-          },
-        }
-      },
-      onResize: ({ node, element, anchors }) => {
-        if (element.data.type !== "ui-widget") return;
-
-        txResizeWidgetHost({
-          Circle: Konva.Circle,
-          Group: Konva.Group,
-          Line: Konva.Line,
-          Rect: Konva.Rect,
-          Text: Konva.Text,
-        }, {
-          node,
-          anchors,
-        });
-        const syncWidgetDomPortal = node.getAttr(WIDGET_DOM_PORTAL_SYNC_ATTR) as TWidgetDomPortalSync | undefined;
-        syncWidgetDomPortal?.();
-
-        return {
-          cancel: true,
-          crdt: false,
+          ...clone.data,
+          payload: config.createClonePayload(source.data.payload ?? {}),
         };
       },
-
-      attachListeners: (node) => fxAttachWidgetListener({
-        node,
-        Circle: Konva.Circle,
-        Group: Konva.Group,
-        Line: Konva.Line,
-        Rect: Konva.Rect,
-        hooks: this.runtimeHooks,
-        selection: this.#selectionService,
-        toElement: (candidateNode) => this.#elementService.toElement(candidateNode),
-        crdtService: this.#crdtService,
-        startDragClone: (args) => this.#elementService.createDragClone(args),
-        removeWidget: (removeNode) => this.#removeWidgetNode(removeNode, { recordHistory: true }),
-        openWidgetMenu: (args) => this.#openWidgetHeaderMenu(args),
-        closeWidgetMenu: () => this.#contextMenuService.close(),
-        setTimer: (callback, timeout) => this.#browser.setInterval(callback, timeout),
-        clearTimer: (timer) => this.#browser.clearInterval(timer),
-      }, {})
-    })
-    if (this.#started) {
-      this.#invalidateElements(this.#getWidgetElementIds(wConfig.id));
+    }));
+    if (config.tool !== undefined) {
+      const toolId = config.toolId ?? config.id;
+      this.#registeredToolIdsByKind.set(config.id, toolId);
+      this.#props.toolService.registerTool({
+        id: toolId,
+        label: config.tool.label,
+        icon: config.tool.icon,
+        shortcuts: config.tool.shortcuts,
+        group: config.tool.group,
+        priority: config.tool.priority,
+        behavior: { type: "mode", mode: "draw-create" },
+        widgetPlacement: config.widgetPlacement,
+        createSession: (event) => {
+              const product = this.#props.product();
+              product.interactions.beginCreation(event, {
+                thresholdViewport: 3,
+                onCommit: (commit) => {
+                  this.placeUiWidget({
+                    kind: config.id,
+                    bounds: fnWidgetCreationBounds({
+                      commit,
+                      defaultSize: { width: 480, height: 320 },
+                      minSize: {
+                        width: WIDGET_HOST_MIN_WIDTH,
+                        height: WIDGET_HOST_MIN_HEIGHT,
+                      },
+                    }),
+                    payload: config.createInitialPayload?.()
+                      ?? config.initialPayload
+                      ?? {},
+                  });
+                },
+              });
+              return {
+                id: `widget-create:${toolId}:${event.pointerId}`,
+                cancel: () => product.interactions.cancel(),
+              };
+            },
+      });
     }
+    this.#refreshMounts(new Set(this.#getWidgetElementIds(config.id)));
+    this.hooks.widgetChange.call();
+  }
 
+  unregisterWidget(kind: string): void {
+    const elementIds = this.#getWidgetElementIds(kind);
+    this.#registeredWidgetConfigs.delete(kind);
+    this.#props.elementService.unregisterElement(`ui-widget:${kind}`);
+    const toolId = this.#registeredToolIdsByKind.get(kind);
+    if (toolId !== undefined) {
+      this.#props.toolService.unregisterTool(toolId);
+      this.#registeredToolIdsByKind.delete(kind);
+    }
+    for (const elementId of elementIds) {
+      this.#titleActionStates.delete(elementId);
+    }
+    this.#refreshMounts(new Set(elementIds));
+    this.hooks.widgetChange.call();
   }
 
   registerPlacementTool(args: {
@@ -853,8 +592,8 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     group?: string;
     priority?: number;
     placement: TWidgetDropRequest;
-  }) {
-    this.#toolService.registerTool({
+  }): void {
+    this.#props.toolService.registerTool({
       id: args.id,
       label: args.label,
       tone: args.tone,
@@ -866,8 +605,27 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     });
   }
 
-  unregisterPlacementTool(id: string) {
-    this.#toolService.unregisterTool(id);
+  unregisterPlacementTool(id: string): void {
+    this.#props.toolService.unregisterTool(id);
+  }
+
+  placeUiWidget(args: Readonly<{
+    kind: string;
+    bounds: TWidgetWorldBounds;
+    payload?: Record<string, unknown>;
+  }>): TElement {
+    const timestamp = this.#props.browser.now();
+    return this.#placeWidgetElement(fnCreateWidgetElement({
+      id: this.#props.browser.createId(),
+      dataType: "ui-widget",
+      kind: args.kind,
+      payload: args.payload,
+      x: args.bounds.x,
+      y: args.bounds.y,
+      width: args.bounds.width,
+      height: args.bounds.height,
+      now: timestamp,
+    }));
   }
 
   placeWidgetInstance(args: Readonly<{
@@ -876,14 +634,14 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
     bounds: TWidgetWorldBounds;
     instanceId?: string;
     stateDocumentId?: string;
-  }>) {
-    const timestamp = this.#browser.now();
-    const element = fnCreateWidgetElement({
-      id: this.#browser.createId(),
-      dataType: 'widget-instance',
+  }>): TElement {
+    const timestamp = this.#props.browser.now();
+    return this.#placeWidgetElement(fnCreateWidgetElement({
+      id: this.#props.browser.createId(),
+      dataType: "widget-instance",
       definitionId: args.definitionId,
       revisionId: args.revisionId,
-      instanceId: args.instanceId ?? this.#browser.createId(),
+      instanceId: args.instanceId ?? this.#props.browser.createId(),
       ...(args.stateDocumentId === undefined
         ? {}
         : { stateDocumentId: args.stateDocumentId }),
@@ -892,60 +650,259 @@ export class WidgetManagerService implements IService<IWidgetManagerServiceHooks
       width: args.bounds.width,
       height: args.bounds.height,
       now: timestamp,
-    });
-    return this.#placeWidgetElement(element, `Widget definition '${args.definitionId}'`);
+    }));
   }
 
-  #placeWidgetElement(element: TElement, errorLabel: string) {
-    const node = this.#elementService.createNodeFromElement(element);
-    if (!(node instanceof Konva.Group)) throw new Error(`${errorLabel} could not be created.`);
-    this.#sceneService.staticForegroundLayer.add(node);
-    this.#renderOrderService.assignOrderOnInsert({
-      parent: this.#sceneService.staticForegroundLayer,
-      nodes: [node],
-      position: "front",
+  #placeWidgetElement(element: TElement): TElement {
+    const zIndex = fnNextWidgetZIndex({
+      zIndices: this.#props.renderOrderService
+        .getOrderedSiblings(null)
+        .map((item) => item.zIndex),
     });
-    const persisted = this.#elementService.toElement(node);
-    if (!persisted) {
-      node.destroy();
-      throw new Error(`${errorLabel} could not be persisted.`);
-    }
-    const commitResult = this.#crdtService.build().patchElement(persisted.id, persisted).commit();
-    this.#toolService.setActiveTool("select");
-    this.#selectionService.setSelection([node]);
-    this.#selectionService.setFocusedNode(node);
-    this.#sceneService.staticForegroundLayer.batchDraw();
-    if (this.#historyService) {
-      let currentNode: Konva.Group | undefined = node;
-      this.#historyService.record({
-        label: "create-widget",
-        undo: () => {
-          const candidate = currentNode ?? this.#findWidgetNodeById(persisted.id) ?? undefined;
-          if (candidate) {
-            const onRemove = candidate.getAttr(VC_ON_REMOVE_ATTR) as TNodeOnRemove | undefined;
-            onRemove?.({ node: candidate });
-            candidate.destroy();
-          }
-          currentNode = undefined;
-          commitResult.rollback();
-          this.#selectionService.clear();
-          this.#sceneService.staticForegroundLayer.batchDraw();
-        },
-        redo: () => {
-          const restored = this.#elementService.createNodeFromElement(persisted);
-          if (!(restored instanceof Konva.Group)) return;
-          this.#sceneService.staticForegroundLayer.add(restored);
-          this.#elementService.updateElement(persisted);
-          this.#renderOrderService.sortChildren(this.#sceneService.staticForegroundLayer);
-          this.#crdtService.applyOps({ ops: commitResult.redoOps });
-          this.#selectionService.setSelection([restored]);
-          this.#selectionService.setFocusedNode(restored);
-          this.#sceneService.staticForegroundLayer.batchDraw();
-          currentNode = restored;
-        },
-      });
-    }
+    const persisted = { ...element, zIndex };
+    const commit = this.#props.crdtService
+      .build()
+      .patchElement(persisted.id, persisted)
+      .commit();
+    const target = { kind: "element", id: persisted.id } as const;
+    this.#props.toolService.setActiveTool("select");
+    this.#props.selectionService.setSelection([target]);
+    this.#props.selectionService.setFocusedTarget(null);
+    this.#props.historyService?.record({
+      label: "create-widget",
+      undo: () => {
+        commit.rollback();
+        this.#props.selectionService.pruneDocument(this.#props.crdtService.doc());
+      },
+      redo: () => {
+        this.#props.crdtService.applyOps({ ops: commit.redoOps });
+        this.#props.selectionService.setSelection([target]);
+        this.#props.selectionService.setFocusedTarget(null);
+      },
+    });
     return persisted;
   }
 
+  #patchWidgetFrame(
+    elementId: string,
+    patch: Readonly<{
+      expanded?: boolean;
+      window?: "contained" | "fullscreen" | "minimized";
+    }>,
+  ): boolean {
+    const element = this.#props.crdtService.doc().elements[elementId];
+    if (element === undefined || !fnIsWidgetElement(element)) {
+      return false;
+    }
+    const data = { ...element.data, ...patch };
+    const commit = this.#props.crdtService
+      .build()
+      .patchElement(elementId, "data", data)
+      .commit();
+    this.#props.historyService?.record({
+      label: "update-widget-frame",
+      undo: commit.rollback,
+      redo: () => this.#props.crdtService.applyOps({ ops: commit.redoOps }),
+    });
+    return true;
+  }
+
+  #removeWidget(elementId: string, recordHistory = true): boolean {
+    const element = this.#props.crdtService.doc().elements[elementId];
+    if (element === undefined || !fnIsWidgetElement(element)) {
+      return false;
+    }
+    this.#props.contextMenuService.close();
+    const commit = this.#props.elementService
+      .deleteElement(element, this.#props.crdtService.build())
+      .commit();
+    this.#props.selectionService.pruneDocument(this.#props.crdtService.doc());
+    if (recordHistory && this.#props.historyService !== undefined) {
+      const target = { kind: "element", id: elementId } as const;
+      this.#props.historyService.record({
+        label: "remove-widget",
+        undo: () => {
+          commit.rollback();
+          this.#props.selectionService.setSelection([target]);
+          this.#props.selectionService.setFocusedTarget(null);
+        },
+        redo: () => {
+          this.#props.crdtService.applyOps({ ops: commit.redoOps });
+          this.#props.selectionService.pruneDocument(this.#props.crdtService.doc());
+        },
+      });
+    }
+    return true;
+  }
+
+  async deleteWidgetInstanceDefinition(definitionId: string): Promise<boolean> {
+    const deleteDefinition = this.#props.neutralHost?.deleteDefinition;
+    if (deleteDefinition === undefined) {
+      return false;
+    }
+    this.#props.contextMenuService.close();
+    const confirmed = await this.#props.confirmDialogService.confirm({
+      title: "Delete widget",
+      description: "Delete this published widget definition and all of its current canvas instances? This action cannot be undone.",
+      confirmLabel: "Delete widget",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    if (!confirmed || !await deleteDefinition({ definitionId })) {
+      return false;
+    }
+    let builder = this.#props.crdtService.build();
+    for (const element of Object.values(this.#props.crdtService.doc().elements)) {
+      if (
+        element.data.type === "widget-instance"
+        && element.data.definitionId === definitionId
+      ) {
+        builder = this.#props.elementService.deleteElement(element, builder);
+      }
+    }
+    builder.commit();
+    this.#props.selectionService.pruneDocument(this.#props.crdtService.doc());
+    return true;
+  }
+
+  #openWidgetMenu(elementId: string, anchor: { x: number; y: number }): void {
+    const element = this.#props.crdtService.doc().elements[elementId];
+    if (element === undefined || !fnIsWidgetElement(element)) {
+      return;
+    }
+    const target = { kind: "element", id: elementId } as const;
+    this.#props.selectionService.setSelection([target]);
+    this.#props.selectionService.setFocusedTarget(null);
+    const definitionId = element.data.type === "widget-instance"
+      ? element.data.definitionId
+      : null;
+    const deleteActions = definitionId !== null
+      && this.#props.neutralHost?.deleteDefinition !== undefined
+      ? [{
+          id: "widget-delete-definition",
+          label: "Delete widget",
+          priority: 40,
+          onSelect: () => {
+            void this.deleteWidgetInstanceDefinition(definitionId);
+          },
+        }]
+      : [];
+    this.#props.contextMenuService.openWithActionsAt({
+      x: anchor.x,
+      y: anchor.y,
+      actions: [
+        {
+          id: "widget-toggle-expanded",
+          label: element.data.expanded === false
+              || element.data.window === WIDGET_WINDOW_MINIMIZED
+            ? "Restore"
+            : "Minimize",
+          priority: 10,
+          onSelect: () => {
+            this.#props.contextMenuService.close();
+            const restore = element.data.expanded === false
+              || element.data.window === WIDGET_WINDOW_MINIMIZED;
+            this.#patchWidgetFrame(elementId, {
+              expanded: restore,
+              window: restore
+                ? WIDGET_WINDOW_CONTAINED
+                : WIDGET_WINDOW_MINIMIZED,
+            });
+          },
+        },
+        {
+          id: "widget-toggle-fullscreen",
+          label: element.data.window === WIDGET_WINDOW_FULLSCREEN
+            ? "Exit fullscreen"
+            : "Fullscreen",
+          priority: 20,
+          onSelect: () => {
+            this.#props.contextMenuService.close();
+            this.#patchWidgetFrame(elementId, {
+              expanded: true,
+              window: element.data.window === WIDGET_WINDOW_FULLSCREEN
+                ? WIDGET_WINDOW_CONTAINED
+                : WIDGET_WINDOW_FULLSCREEN,
+            });
+          },
+        },
+        {
+          id: "widget-delete-instance",
+          label: "Delete instance",
+          priority: 30,
+          onSelect: () => {
+            this.#removeWidget(elementId);
+          },
+        },
+        ...deleteActions,
+      ],
+    });
+  }
+
+  #handleSemanticWidgetClick(event: TElementPointerEvent): boolean {
+    if (event.button !== 0) {
+      return false;
+    }
+    const hit = event.hit;
+    if (hit.target.kind !== "element") {
+      return false;
+    }
+    const element = this.#props.crdtService.doc().elements[hit.target.id];
+    if (element === undefined || !fnIsWidgetElement(element)) {
+      return false;
+    }
+    const customPart = typeof hit.part === "object" ? hit.part.value : null;
+    const isFrameControl = hit.part === "widget-minimize"
+      || hit.part === "widget-restore"
+      || hit.part === "widget-fullscreen"
+      || customPart?.startsWith("control:") === true;
+    if (!isFrameControl) {
+      return false;
+    }
+    const target = { kind: "element", id: element.id } as const;
+    this.#props.selectionService.setSelection([target]);
+    this.#props.selectionService.setFocusedTarget(null);
+    if (
+      hit.part === "widget-minimize"
+      || hit.part === "widget-restore"
+      || customPart === "control:minimize"
+      || customPart === "control:restore"
+    ) {
+      const restore = hit.part === "widget-restore"
+        || customPart === "control:restore"
+        || element.data.expanded === false
+        || element.data.window === WIDGET_WINDOW_MINIMIZED;
+      return this.#patchWidgetFrame(element.id, {
+        expanded: restore,
+        window: restore
+          ? WIDGET_WINDOW_CONTAINED
+          : WIDGET_WINDOW_MINIMIZED,
+      });
+    }
+    if (
+      hit.part === "widget-fullscreen"
+      || customPart === "control:maximize"
+      || customPart === "control:fullscreen"
+    ) {
+      return this.#patchWidgetFrame(element.id, {
+        expanded: true,
+        window: element.data.window === WIDGET_WINDOW_FULLSCREEN
+          ? WIDGET_WINDOW_CONTAINED
+          : WIDGET_WINDOW_FULLSCREEN,
+      });
+    }
+    if (customPart === "control:close") {
+      return this.#removeWidget(element.id);
+    }
+    if (customPart === "control:menu") {
+      this.#openWidgetMenu(element.id, event.client);
+      return true;
+    }
+    const actionId = customPart?.startsWith("control:")
+      ? customPart.slice("control:".length)
+      : null;
+    return actionId === null
+      ? false
+      : this.#invokeTitleAction(element, actionId);
+  }
 }

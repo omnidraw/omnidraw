@@ -16,7 +16,7 @@ export type TCompatibilityRow = {
 
 /**
  * The migration contract is intentionally about behavior used by Vibecanvas,
- * not every API exposed by Konva or canvas-engine.
+ * not every API exposed by canvas-engine.
  */
 export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
   {
@@ -33,7 +33,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Build Vibecanvas in CI/release without a developer-machine absolute path",
     status: "release-gap",
     owner: "release",
-    evidence: "The packed ESM passes native Node and default Vitest; only the explicitly requested absolute PoC filepath remains machine-specific.",
+    evidence: "The packed ESM passes native Node and default Vitest; the explicitly audited absolute artifact filepath remains machine-specific.",
   },
   {
     id: "lifecycle",
@@ -81,7 +81,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Pressure-shaped freehand strokes",
     status: "adapter",
     owner: "canvas",
-    evidence: "The PoC converts perfect-freehand outline points into an engine polygon.",
+    evidence: "The production pen projector converts perfect-freehand outline points into an engine polygon.",
   },
   {
     id: "text",
@@ -97,7 +97,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Shape-owned inline text moves and transforms with its host",
     status: "adapter",
     owner: "canvas",
-    evidence: "Project one product element to a semantic group with shape and derived text children.",
+    evidence: "The production projector emits one semantic element root with derived shape/text children.",
   },
   {
     id: "images",
@@ -105,7 +105,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "URL/base64 image resources, fit/crop, replacement, and failure isolation",
     status: "compatible",
     owner: "joint",
-    evidence: "Engine resources/images cover rendering; canvas retains upload/clone/delete policy.",
+    evidence: "Engine resources cover rendering while ElementService and image ports retain upload, clone, lifecycle-aware delete, and restore policy.",
   },
   {
     id: "grid",
@@ -113,7 +113,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Zoom-aware, world-anchored background grid",
     status: "compatible",
     owner: "canvas-engine",
-    evidence: "Background grid node replaces the custom Konva grid shape.",
+    evidence: "The production base-scene projection emits a zoom-aware background grid node.",
   },
   {
     id: "groups",
@@ -121,7 +121,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Nested grouping, inherited transforms, bounds, clipping, and subtree removal",
     status: "compatible",
     owner: "canvas-engine",
-    evidence: "Group hierarchy and geometry services cover renderer behavior.",
+    evidence: "Projected group hierarchy plus product group transforms cover nested bounds, transforms, and subtree removal.",
   },
   {
     id: "render-order",
@@ -129,7 +129,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Stable persisted z-order and front/back/before/after operations",
     status: "compatible",
     owner: "joint",
-    evidence: "Engine order keys and transaction helpers replace node zIndex mutation.",
+    evidence: "Product order commands preserve the persisted string zIndex and project it unchanged to engine orderKey.",
   },
   {
     id: "camera",
@@ -145,7 +145,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Painted hit testing, thin-line tolerance, marquee, and nested hit paths",
     status: "compatible",
     owner: "joint",
-    evidence: "Indexed hit/query services work; canvas chooses semantic tolerance and selection path.",
+    evidence: "Production selection uses indexed semantic hits and the engine marquee session; canvas retains selection-path policy.",
   },
   {
     id: "normalized-input",
@@ -161,7 +161,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Nested semantic selection, focus, mode, and selection filtering",
     status: "adapter",
     owner: "canvas",
-    evidence: "Engine owns ID affordances; canvas must retain product selection policy.",
+    evidence: "Engine owns ID affordances while renderer-neutral canvas services retain product selection policy.",
   },
   {
     id: "box-transforms",
@@ -169,7 +169,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Move, resize, rotate, snapping, multi-selection, and ephemeral preview",
     status: "compatible",
     owner: "joint",
-    evidence: "Engine proposals/previews cover standard transforms; canvas commits CRDT/history.",
+    evidence: "Engine proposals/previews drive element, group, and mixed-selection transforms; canvas persists product patches through CRDT/history.",
   },
   {
     id: "point-editing",
@@ -177,7 +177,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Application-defined line vertex and midpoint insertion handles",
     status: "adapter",
     owner: "canvas",
-    evidence: "Use a hit-tested screen-overlay transient owner with semantic handle IDs.",
+    evidence: "Production line point editing uses hit-tested screen transients, product bindings, active-session dependencies, and CRDT/history commits.",
   },
   {
     id: "transient-projection",
@@ -193,7 +193,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Alt-drag clone preview while the source stays in place",
     status: "adapter",
     owner: "canvas",
-    evidence: "Project clone IDs through a world transient owner, then commit the same IDs atomically.",
+    evidence: "Product subtree IDs are allocated before preview, projected through a world transient owner, and committed with the same IDs plus registered clone policy.",
   },
   {
     id: "external-widget-drop",
@@ -201,7 +201,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Sidebar-to-canvas widget placement ghost and asynchronous commit state",
     status: "adapter",
     owner: "canvas",
-    evidence: "Drive a portal-free transient widget-frame from the sidebar DOM pointer session.",
+    evidence: "The production sidebar gesture drives a portal-free widget-frame transient through asynchronous durable handoff.",
   },
   {
     id: "widget-frame",
@@ -225,7 +225,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Real hosted widget drag/resize/focus/fullscreen behavior in Vibecanvas",
     status: "validation-gap",
     owner: "joint",
-    evidence: "Engine portal tests exist, but no product host has been run on the new engine yet.",
+    evidence: "A Chromium product smoke covered portal isolation and widget drag, resize, minimize, and fullscreen; the required three-browser, DPR, and input matrix is still absent.",
   },
   {
     id: "automerge-projection",
@@ -233,7 +233,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Project Automerge elements/groups incrementally without renderer objects",
     status: "adapter",
     owner: "canvas",
-    evidence: "The PoC projects a real TCanvasDoc shape into serializable engine nodes/resources.",
+    evidence: "The production coordinator incrementally reprojects changed elements and applies semantic node/resource/portal diffs; group changes retain a bounded full-projection fallback.",
   },
   {
     id: "remote-gesture-conflicts",
@@ -241,7 +241,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Deterministic remote updates while local preview/edit gestures are active",
     status: "validation-gap",
     owner: "canvas",
-    evidence: "Requires a product adapter policy and adversarial Automerge/browser tests.",
+    evidence: "Dependency-aware cancel/rebase policy and focused tests cover transform and point-edit conflicts; the required real two-client Automerge/browser matrix has not run.",
   },
   {
     id: "history",
@@ -249,7 +249,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Undo/redo grouping with CRDT writes and transform/tool command labels",
     status: "adapter",
     owner: "canvas",
-    evidence: "Engine recorder is a mechanism; current HistoryService/CRDT policy stays app-owned.",
+    evidence: "Production HistoryService retains CRDT product commits for tools, transforms, deletion lifecycle, and coalesced style edits.",
   },
   {
     id: "context-menu",
@@ -257,7 +257,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Canvas/item/selection/connection context menu providers",
     status: "adapter",
     owner: "canvas",
-    evidence: "Use hit IDs/parts as input to the existing provider policy and Solid UI.",
+    evidence: "Production providers receive semantic hit IDs/parts and persisted targets while the Solid menu UI remains application-owned.",
   },
   {
     id: "style-menu",
@@ -265,7 +265,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Merged element style schemas, theme tokens, and CRDT style mutations",
     status: "adapter",
     owner: "canvas",
-    evidence: "Engine renders resolved styles; canvas/theme services retain token and UI policy.",
+    evidence: "Selection style changes write CRDT, remember selected/active-tool defaults, and coalesce continuous opacity input into one history entry.",
   },
   {
     id: "recorder",
@@ -273,7 +273,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Capture raw input plus CRDT operations for product bug replay",
     status: "adapter",
     owner: "canvas",
-    evidence: "Engine journal covers scene commits; canvas must still record normalized input and CRDT.",
+    evidence: "The product recorder captures normalized input and CRDT operations while the engine journal covers scene commits.",
   },
   {
     id: "runtime-extensions",
@@ -281,7 +281,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Late plugin element definitions without renderer-native objects",
     status: "adapter",
     owner: "canvas",
-    evidence: "Replace createNode/toElement callbacks with product-element to engine-node projections.",
+    evidence: "Renderer-neutral element definitions register projection, transform, clone, lifecycle, menu, and portal product policy without renderer objects.",
   },
   {
     id: "accessibility",
@@ -297,7 +297,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Meet engine gates with Automerge, Solid overlays, and hosted widgets attached",
     status: "validation-gap",
     owner: "joint",
-    evidence: "Engine benchmarks pass upstream; product-integrated workload has not been measured.",
+    evidence: "At 5k, isolated one-element projection measured p50 1.580 ms, p95 2.434 ms, and p99 2.490 ms; full 5k/50k/100k browser statistics, combined-pipeline budgets, and clean soak evidence are still missing.",
   },
   {
     id: "managed-service-boundary",

@@ -1,296 +1,369 @@
-import { layoutWithLines, prepareWithSegments } from "@chenglou/pretext";
-import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TElement, TTextData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { resolveThemeColor, type ThemeService } from "@vibecanvas/service-theme";
-import Konva from "konva";
+import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import Type from "lucide-static/icons/type.svg?raw";
-import { ELEMENT_DATA_ATTR, VC_CREATED_AT_ATTR, VC_UPDATED_AT_ATTR } from "../../core/CONSTANTS";
-import { isKonvaText } from "../../core/GUARDS";
-import { txFinalizeOwnedTransform } from "../../core/tx.finalize-owned-transform";
-import type {
-  TElementTransformAnchor
-} from "../../services";
-import { CanvasMode } from "../../services/selection/CONSTANTS";
+import { fnCreateShape2dInlineTextElement } from "../../core/fn.shape2d";
+import type { TCanvasProductTextSession } from "../../engine/product-runtime/typed";
+import { fnCanvasActiveSessionDependencies } from "../../services/active-session/fn.dependencies";
+import type { TCrdtCommitResult } from "../../services/crdt/CrdtService";
+import type { THistoryEntry } from "../../services/history/HistoryService";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
-import { txDeleteSelection } from "../select/tx.delete-selection";
 import {
   DEFAULT_TEXT_ALIGN,
   DEFAULT_TEXT_FONT_FAMILY,
   DEFAULT_TEXT_FONT_SIZE_TOKEN,
-  DEFAULT_TEXT_LINE_HEIGHT,
   DEFAULT_TEXT_VERTICAL_ALIGN,
 } from "./CONSTANTS";
 import { fnCreateTextElement } from "./fn.create-text-element";
-import { fxToTextElement } from "./fx.to-text-element";
-import { txCreateTextCloneDrag } from "./tx.create-text-clone-drag";
-import { txEnterEditMode } from "./tx.enter-edit-mode";
-import { txSetupTextNode } from "./tx.setup-text-node";
-import { txUpdateTextNodeFromElement } from "./tx.update-text-node-from-element";
 
-const FREE_TEXT_NAME = "free-text";
-const TEXT_USES_THEME_COLOR_ATTR = "vcUsesThemeTextColor";
-const ELEMENT_STYLE_ATTR = "vcElementStyle";
-const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
-const TEXT_TRANSFORM_ANCHORS: TElementTransformAnchor[] = [
-  "top-left",
-  "top-right",
-  "bottom-left",
-  "bottom-right",
-];
 const DEFAULT_TEXT_COLOR_TOKEN = "@base/900";
 
-function usesThemeTextColor(element: Pick<TElement, "style">) {
-  return !element.style.strokeColor;
+const TEXT_EDIT_ELEMENT_DEPENDENCY_FIELDS = [
+  "x",
+  "y",
+  "rotation",
+  "scaleX",
+  "scaleY",
+  "parentGroupId",
+  "data",
+  "style",
+  "locked",
+] as const;
+
+const TEXT_EDIT_GROUP_DEPENDENCY_FIELDS = [
+  "parentGroupId",
+  "locked",
+] as const;
+
+function createId(document: Document) {
+  return document.defaultView?.crypto.randomUUID()
+    ?? `text-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function getTextFillColor(theme: ThemeService, element: Pick<TElement, "style">) {
-  return resolveThemeColor(theme.getTheme(), element.style.strokeColor, theme.getTheme().colors.canvasText) ?? theme.getTheme().colors.canvasText;
+function nextZIndex(crdt: IRuntimeServices["crdt"]) {
+  const document = crdt.doc();
+  return `z${String(
+    Object.keys(document.elements).length + Object.keys(document.groups).length,
+  ).padStart(8, "0")}`;
 }
 
-function applyTextThemeState(node: Konva.Text, element: Pick<TElement, "style">) {
-  node.setAttr(TEXT_USES_THEME_COLOR_ATTR, usesThemeTextColor(element));
-}
-
-function createTextNode(theme: ThemeService, element: TElement) {
-  const data = element.data as TTextData;
-  if (data.containerId !== null) {
-    return null;
+function textOf(element: TElement) {
+  if (element.data.type === "text") {
+    return element.data.text;
   }
-
-  const node = new Konva.Text({
-    id: element.id,
-    x: element.x,
-    y: element.y,
-    rotation: element.rotation,
-    width: data.w,
-    height: data.h,
-    text: data.text,
-    fontSize: theme.resolveFontSize(element.style.fontSize),
-    fontFamily: data.fontFamily,
-    align: element.style.textAlign ?? DEFAULT_TEXT_ALIGN,
-    verticalAlign: element.style.verticalAlign ?? DEFAULT_TEXT_VERTICAL_ALIGN,
-    lineHeight: DEFAULT_TEXT_LINE_HEIGHT,
-    wrap: "none",
-    draggable: true,
-    listening: true,
-    fill: getTextFillColor(theme, element),
-    opacity: element.style.opacity ?? 1,
-    scaleX: element.scaleX ?? 1,
-    scaleY: element.scaleY ?? 1,
-  });
-
-  applyTextThemeState(node, element);
-  node.setAttr(ELEMENT_DATA_ATTR, structuredClone(element.data));
-  node.setAttr(ELEMENT_STYLE_ATTR, structuredClone(element.style));
-  node.setAttr(VC_CREATED_AT_ATTR, element.createdAt);
-  node.setAttr(VC_UPDATED_AT_ATTR, element.updatedAt);
-  node.setAttr("vcContainerId", null);
-  node.setAttr("vcOriginalText", data.originalText);
-  node.setAttr("vcTextAutoResize", data.autoResize);
-  node.name(FREE_TEXT_NAME);
-  return node;
+  if (
+    element.data.type === "rect"
+    || element.data.type === "diamond"
+    || element.data.type === "ellipse"
+  ) {
+    return element.data.text?.text ?? "";
+  }
+  return null;
 }
 
-function fxApplyRememberedTextToolStyle(args: {
+type TShapeTextHost = TElement & {
+  data: Extract<
+    TElement["data"],
+    { type: "rect" | "diamond" | "ellipse" }
+  >;
+};
+
+function isShapeTextHost(element: TElement): element is TShapeTextHost {
+  return element.data.type === "rect"
+    || element.data.type === "diamond"
+    || element.data.type === "ellipse";
+}
+
+type TPendingTextCreation = {
+  commit: TCrdtCommitResult;
   element: TElement;
-  rememberedStyle: {
-    strokeColor?: string;
-    opacity?: number;
-    fontFamily?: string;
-    fontSize?: string;
-    textAlign?: TElement["style"]["textAlign"];
-    verticalAlign?: TElement["style"]["verticalAlign"];
-  };
-}) {
-  const nextElement = structuredClone(args.element);
-  const rememberedStrokeColor = args.rememberedStyle.strokeColor;
-  if (typeof rememberedStrokeColor === "string") {
-    nextElement.style.strokeColor = rememberedStrokeColor;
-  }
+  historyEntry: THistoryEntry;
+  resolved: boolean;
+};
 
-  const rememberedOpacity = args.rememberedStyle.opacity;
-  if (typeof rememberedOpacity === "number") {
-    nextElement.style.opacity = rememberedOpacity;
-  }
-
-  if (nextElement.data.type !== "text") {
-    return nextElement;
-  }
-
-  const rememberedFontFamily = args.rememberedStyle.fontFamily;
-  if (typeof rememberedFontFamily === "string") {
-    nextElement.data.fontFamily = rememberedFontFamily;
-  }
-
-  const rememberedFontSize = args.rememberedStyle.fontSize;
-  if (typeof rememberedFontSize === "string") {
-    nextElement.style.fontSize = rememberedFontSize;
-  }
-
-
-  const rememberedTextAlign = args.rememberedStyle.textAlign;
-  if (rememberedTextAlign === "left" || rememberedTextAlign === "center" || rememberedTextAlign === "right") {
-    nextElement.style.textAlign = rememberedTextAlign;
-  }
-
-  const rememberedVerticalAlign = args.rememberedStyle.verticalAlign;
-  if (rememberedVerticalAlign === "top" || rememberedVerticalAlign === "middle" || rememberedVerticalAlign === "bottom") {
-    nextElement.style.verticalAlign = rememberedVerticalAlign;
-  }
-
-  return nextElement;
+function isUnchangedCreation(
+  current: TElement | undefined,
+  creation: TPendingTextCreation,
+) {
+  return current !== undefined
+    && JSON.stringify(current) === JSON.stringify(creation.element);
 }
 
-function txApplyTextTransform(args: {
-  node: Konva.Node;
-}) {
-  return isKonvaText(args.node);
-}
-
-/**
- * Owns standalone free-text create, edit, drag, clone-drag, and transform flows.
- */
-export function createTextPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
+export function createTextPlugin():
+IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "text",
     apply(ctx) {
-      const camera = ctx.services.require("camera");
-      const element = ctx.services.require("element");
-      const group = ctx.services.require("group");
-      const session = ctx.services.require("session");
-      const contextMenu = ctx.services.require("contextMenu");
+      const activeSession = ctx.services.require("activeSession");
       const crdt = ctx.services.require("crdt");
+      const element = ctx.services.require("element");
       const history = ctx.services.require("history");
       const scene = ctx.services.require("scene");
-      const renderOrder = ctx.services.require("renderOrder");
       const selection = ctx.services.require("selection");
+      const sharedSession = ctx.services.require("session");
       const theme = ctx.services.require("theme");
-      const document = scene.container.ownerDocument;
       const tool = ctx.services.require("tool");
-      const createId = () => crypto.randomUUID();
-      const now = () => Date.now();
+      const document = scene.container.ownerDocument;
+      const cleanups: Array<() => void> = [];
+      let editor: {
+        activeSessionId: string;
+        targetId: string;
+        textarea: HTMLTextAreaElement;
+        session: TCanvasProductTextSession;
+        creation: TPendingTextCreation | null;
+      } | null = null;
 
-      const syncThemeTextNodes = () => {
-        scene.staticForegroundLayer.find((candidate: Konva.Node) => {
-          return isKonvaText(candidate) && candidate.name() === FREE_TEXT_NAME;
-        }).forEach((candidate) => {
-          if (!isKonvaText(candidate)) {
-            return;
+      const closeEditor = (mode: "commit" | "cancel" | "destroy") => {
+        const active = editor;
+        if (active === null) {
+          return;
+        }
+        editor = null;
+        sharedSession.editingId = null;
+        activeSession.complete(active.activeSessionId);
+        try {
+          if (mode === "commit") {
+            active.session.commit();
+          } else if (mode === "cancel") {
+            active.session.cancel();
           }
+        } finally {
+          active.session.destroy();
+          active.textarea.remove();
+        }
+      };
 
-          const el = element.toElement(candidate);
-          if (!el || el.data.type !== "text") {
-            return;
+      const resolveCreation = (
+        creation: TPendingTextCreation,
+        mode: "commit" | "cancel",
+        editCommit?: TCrdtCommitResult,
+        ownedCreationBeforeEdit = false,
+      ) => {
+        if (creation.resolved) {
+          return;
+        }
+        creation.resolved = true;
+        history.discard(creation.historyEntry);
+        if (mode === "cancel") {
+          if (isUnchangedCreation(
+            crdt.doc().elements[creation.element.id],
+            creation,
+          )) {
+            creation.commit.rollback();
           }
-
-          txUpdateTextNodeFromElement({
-            Konva,
-            scene,
-            theme,
-          }, {
-            element: el,
-            freeTextName: FREE_TEXT_NAME,
+          return;
+        }
+        if (editCommit === undefined) {
+          return;
+        }
+        if (!ownedCreationBeforeEdit) {
+          history.record({
+            label: "Edit text",
+            undo: () => crdt.applyOps({ ops: editCommit.undoOps }),
+            redo: () => crdt.applyOps({ ops: editCommit.redoOps }),
           });
+          return;
+        }
+        history.record({
+          label: "Create text",
+          undo: () => {
+            crdt.applyOps({ ops: editCommit.undoOps });
+            crdt.applyOps({ ops: creation.commit.undoOps });
+          },
+          redo: () => {
+            crdt.applyOps({ ops: creation.commit.redoOps });
+            crdt.applyOps({ ops: editCommit.redoOps });
+          },
         });
-        scene.staticForegroundLayer.batchDraw();
       };
 
-      const setupNode = (node: Konva.Text) => {
-        txSetupTextNode({
-          Konva,
-          crdt,
-          history,
-          hooks: ctx.hooks,
-          render: scene,
-          selection,
-          serializeNode: ({ node, createdAt, updatedAt }) => fxToTextElement({Date}, { node }),
-          theme,
-          now,
-          startDragClone: (args) => element.createDragClone(args),
-          createThrottledPatch: (callback) => throttle(callback, 100),
-        }, {
-          freeTextName: FREE_TEXT_NAME,
-          node,
+      const finishEditor = (targetId: string) => {
+        if (editor?.targetId !== targetId) {
+          return;
+        }
+        const active = editor;
+        editor = null;
+        sharedSession.editingId = null;
+        activeSession.complete(active.activeSessionId);
+        active.session.destroy();
+        active.textarea.remove();
+      };
+
+      const openEditor = (
+        targetId: string,
+        creation: TPendingTextCreation | null = null,
+      ) => {
+        const persisted = crdt.doc().elements[targetId];
+        const initialText = persisted === undefined ? null : textOf(persisted);
+        if (persisted === undefined || initialText === null) {
+          return false;
+        }
+        closeEditor("commit");
+        const textarea = document.createElement("textarea");
+        textarea.value = initialText;
+        textarea.setAttribute("aria-label", "Edit canvas text");
+        textarea.style.position = "fixed";
+        textarea.style.margin = "0";
+        textarea.style.padding = "0";
+        textarea.style.border = "0";
+        textarea.style.outline = "none";
+        textarea.style.resize = "none";
+        textarea.style.overflow = "hidden";
+        textarea.style.background = "transparent";
+        textarea.style.zIndex = "30";
+        document.body.append(textarea);
+
+        try {
+          const productSession = scene.product.interactions.createTextSession({
+            target: { kind: "element", id: targetId },
+            role: persisted.data.type === "text" ? "render" : "inline-text",
+            element: textarea,
+            commitOnBlur: true,
+            selectOnFocus: true,
+            onCommit: (text) => {
+              const current = crdt.doc().elements[targetId];
+              if (current === undefined) {
+                if (creation !== null) {
+                  resolveCreation(creation, "cancel");
+                }
+                finishEditor(targetId);
+                return;
+              }
+              if (
+                creation !== null
+                && text === ""
+                && isUnchangedCreation(current, creation)
+              ) {
+                resolveCreation(creation, "cancel");
+                selection.clear();
+                finishEditor(targetId);
+                return;
+              }
+              const ownedCreationBeforeEdit = creation !== null
+                && isUnchangedCreation(current, creation);
+              let next: TElement;
+              if (current.data.type === "text") {
+                next = {
+                  ...current,
+                  updatedAt: Date.now(),
+                  data: {
+                    ...current.data,
+                    text,
+                    originalText: text,
+                    w: current.data.autoResize
+                      ? Math.max(4, textarea.scrollWidth)
+                      : current.data.w,
+                    h: Math.max(4, textarea.scrollHeight),
+                  },
+                };
+              } else if (isShapeTextHost(current)) {
+                next = fnCreateShape2dInlineTextElement({
+                  element: current,
+                  text,
+                  fontFamily: current.data.text?.fontFamily
+                    ?? DEFAULT_TEXT_FONT_FAMILY,
+                });
+                next.updatedAt = Date.now();
+              } else {
+                if (creation !== null) {
+                  resolveCreation(creation, "cancel");
+                }
+                finishEditor(targetId);
+                return;
+              }
+              const result = crdt.build()
+                .patchElement(targetId, next)
+                .commit();
+              if (creation === null) {
+                history.record({
+                  label: "Edit text",
+                  undo: () => crdt.applyOps({ ops: result.undoOps }),
+                  redo: () => crdt.applyOps({ ops: result.redoOps }),
+                });
+              } else {
+                resolveCreation(
+                  creation,
+                  "commit",
+                  result,
+                  ownedCreationBeforeEdit,
+                );
+              }
+              finishEditor(targetId);
+            },
+            onCancel: () => {
+              if (creation !== null) {
+                resolveCreation(creation, "cancel");
+                selection.clear();
+              }
+              finishEditor(targetId);
+            },
+          });
+          const activeSessionId = `text-edit:${targetId}`;
+          editor = {
+            activeSessionId,
+            targetId,
+            textarea,
+            session: productSession,
+            creation,
+          };
+          activeSession.register({
+            id: activeSessionId,
+            kind: "text-edit",
+            startedAtRevision: crdt.revision,
+            dependencies: fnCanvasActiveSessionDependencies({
+              document: crdt.doc(),
+              targets: [{ kind: "element", id: targetId }],
+              elementFields: TEXT_EDIT_ELEMENT_DEPENDENCY_FIELDS,
+              groupFields: TEXT_EDIT_GROUP_DEPENDENCY_FIELDS,
+            }),
+            cancel: (event) => {
+              if (event.reason.startsWith("remote-")) {
+                ctx.config.notification?.showInfo(
+                  "Text editing stopped",
+                  "The text changed in another session.",
+                );
+              }
+              closeEditor("cancel");
+            },
+          });
+          sharedSession.editingId = targetId;
+          textarea.focus();
+          textarea.select();
+          return true;
+        } catch {
+          textarea.remove();
+          return false;
+        }
+      };
+
+      const openAfterProjection = (
+        targetId: string,
+        creation: TPendingTextCreation,
+      ) => {
+        if (openEditor(targetId, creation)) {
+          return;
+        }
+        let removeListener: (() => void) | null = null;
+        removeListener = scene.hooks.projection.tap(() => {
+          if (!openEditor(targetId, creation)) {
+            return;
+          }
+          removeListener?.();
+          removeListener = null;
         });
-        return node;
+        cleanups.push(() => removeListener?.());
       };
 
-      const applyElement = (el: TElement) => {
-        element.updateElement(el);
-        scene.staticForegroundLayer.batchDraw();
-      };
-
-      const unregisterTextElement = element.registerElement({
+      cleanups.push(element.registerElement({
         id: "text",
-        matchesElement: (element) => element.data.type === "text" && element.data.containerId === null,
-        matchesNode: (node) => isKonvaText(node) && node.name() === FREE_TEXT_NAME,
-        toElement: (node) => {
-          if (!isKonvaText(node)) {
-            return null;
-          }
-
-          return fxToTextElement({ Date }, { node, });
+        matchesElement: (candidate) => {
+          return candidate.data.type === "text"
+            && candidate.data.containerId === null;
         },
-        createNode: (element) => {
-          if (element.data.type !== "text" || element.data.containerId !== null) {
-            return null;
-          }
-
-          return createTextNode(theme, element);
-        },
-        createDragClone: ({ node }) => {
-          if (!isKonvaText(node) || node.name() !== FREE_TEXT_NAME) {
-            return false;
-          }
-
-          const el = element.toElement(node);
-          if (!el || el.data.type !== "text" || el.data.containerId !== null) {
-            return false;
-          }
-
-          txCreateTextCloneDrag({
-            Konva,
-            crdt,
-            render: scene,
-            selection,
-            createId,
-            now,
-            serializeNode: ({ node: candidateNode, createdAt, updatedAt }) => fxToTextElement({ Date }, { node: candidateNode, }),
-            setupNode,
-          }, {
-            freeTextName: FREE_TEXT_NAME,
-            node,
-          });
-          return true;
-        },
-        attachListeners: (node) => {
-          if (!isKonvaText(node) || node.name() !== FREE_TEXT_NAME) {
-            return false;
-          }
-
-          setupNode(node);
-          return true;
-        },
-        updateElement: (element) => {
-          if (element.data.type !== "text" || element.data.containerId !== null) {
-            return false;
-          }
-
-          return txUpdateTextNodeFromElement({
-            Konva,
-            scene,
-            theme,
-          }, {
-            element,
-            freeTextName: FREE_TEXT_NAME,
-          });
-        },
-        getSelectionStyleMenu: ({ theme: activeTheme }) => ({
+        getSelectionStyleMenu: () => ({
           sections: {
             showStrokeColorPicker: true,
-            showTextPickers: true,
             showOpacityPicker: true,
+            showTextPickers: true,
           },
           values: {
             strokeColor: DEFAULT_TEXT_COLOR_TOKEN,
@@ -301,212 +374,105 @@ export function createTextPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRu
             verticalAlign: DEFAULT_TEXT_VERTICAL_ALIGN,
           },
         }),
-        getTransformOptions: ({ element }) => {
-          if (element.data.type !== "text" || element.data.containerId !== null) {
-            return;
-          }
+        getTransformPolicy: () => ({
+          handles: [
+            "move",
+            "rotate",
+            "resize-ne",
+            "resize-se",
+            "resize-sw",
+            "resize-nw",
+          ],
+          keepAspectRatio: true,
+        }),
+      }));
 
+      cleanups.push(tool.registerTool({
+        id: "text",
+        label: "Text",
+        icon: Type,
+        shortcuts: ["t"],
+        priority: 50,
+        behavior: { type: "mode", mode: "click-create" },
+        createSession: (event) => {
+          scene.product.interactions.beginCreation(event, {
+            thresholdViewport: 2,
+            onCommit: (commit) => {
+              const now = Date.now();
+              const remembered = theme.getRememberedStyle("text");
+              const created: TElement = fnCreateTextElement({
+                id: createId(document),
+                x: commit.start.world.x,
+                y: commit.start.world.y,
+                createdAt: now,
+                updatedAt: now,
+              });
+              created.zIndex = nextZIndex(crdt);
+              created.style = {
+                ...created.style,
+                strokeColor: remembered.strokeColor ?? DEFAULT_TEXT_COLOR_TOKEN,
+                opacity: remembered.opacity ?? 1,
+                fontSize: remembered.fontSize ?? DEFAULT_TEXT_FONT_SIZE_TOKEN,
+                textAlign: remembered.textAlign ?? DEFAULT_TEXT_ALIGN,
+                verticalAlign: remembered.verticalAlign
+                  ?? DEFAULT_TEXT_VERTICAL_ALIGN,
+              };
+              if (created.data.type === "text") {
+                created.data.fontFamily = remembered.fontFamily
+                  ?? DEFAULT_TEXT_FONT_FAMILY;
+              }
+              const result = crdt.build()
+                .patchElement(created.id, created)
+                .commit();
+              const historyEntry: THistoryEntry = {
+                label: "Create text",
+                undo: () => crdt.applyOps({ ops: result.undoOps }),
+                redo: () => crdt.applyOps({ ops: result.redoOps }),
+              };
+              history.record(historyEntry);
+              const creation: TPendingTextCreation = {
+                commit: result,
+                element: created,
+                historyEntry,
+                resolved: false,
+              };
+              selection.select({ kind: "element", id: created.id });
+              tool.setActiveTool("select");
+              openAfterProjection(created.id, creation);
+            },
+          });
           return {
-            enabledAnchors: [...TEXT_TRANSFORM_ANCHORS],
-            keepRatio: true,
+            id: `create-text-${event.pointerId}`,
+            cancel: () => scene.product.interactions.cancel(),
           };
         },
-        onResize: ({ node, element }) => {
-          if (element.data.type !== "text" || element.data.containerId !== null) {
-            return;
+      }));
+
+      cleanups.push(ctx.hooks.elementPointerDoubleClick.tap((event) => {
+        return event.hit.target.kind === "element"
+          && openEditor(event.hit.target.id);
+      }));
+      cleanups.push(ctx.hooks.keydown.tap((event) => {
+        if (editor === null) {
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          if (editor.creation !== null && editor.textarea.value === "") {
+            closeEditor("cancel");
+          } else {
+            closeEditor("commit");
           }
-
-          txApplyTextTransform({ node });
-          return {
-            cancel: false,
-            crdt: false,
-          };
-        },
-        afterResize: ({ node, element }) => {
-          if (!isKonvaText(node) || element.data.type !== "text" || element.data.containerId !== null) {
-            return;
-          }
-
-          txApplyTextTransform({ node });
-          return {
-            cancel: txFinalizeOwnedTransform({
-              crdt,
-              history,
-              applyElement,
-              serializeAfterElement: (candidateNode, beforeElement) => {
-                if (!isKonvaText(candidateNode)) {
-                  return null;
-                }
-
-                return fxToTextElement({ Date }, { node: candidateNode, });
-              },
-            }, {
-              node,
-              label: "transform-text",
-              beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
-            }),
-            crdt: false,
-          };
-        },
-        afterRotate: ({ node, element }) => {
-          if (!isKonvaText(node) || element.data.type !== "text" || element.data.containerId !== null) {
-            return;
-          }
-
-          return {
-            cancel: txFinalizeOwnedTransform({
-              crdt,
-              history,
-              applyElement,
-              serializeAfterElement: (candidateNode, beforeElement) => {
-                if (!isKonvaText(candidateNode)) {
-                  return null;
-                }
-
-                return fxToTextElement({Date}, { node: candidateNode });
-              },
-            }, {
-              node,
-              label: "rotate-text",
-              beforeAttr: TRANSFORM_BEFORE_ELEMENT_ATTR,
-            }),
-            crdt: false,
-          };
-        },
-      });
-
-      contextMenu.registerProvider("text", ({ targetElement, activeSelection }) => {
-        if (targetElement?.data.type !== "text" || targetElement.data.containerId !== null) {
-          return [];
+        } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          closeEditor("commit");
         }
-
-        return [{
-          id: "delete-text-selection",
-          label: "Delete",
-          priority: 300,
-          onSelect: () => {
-            selection.setSelection(activeSelection);
-            txDeleteSelection({ element, group, crdt, history, scene, renderOrder, selection }, {});
-          },
-        }];
-      });
-
-      ctx.hooks.init.tap(() => {
-        tool.registerTool({
-          id: "text",
-          label: "Text",
-          icon: Type,
-          shortcuts: ["t"],
-          priority: 50,
-          behavior: { type: "mode", mode: "click-create" },
-        });
-      });
-
-      theme.hooks.change.tap(() => {
-        syncThemeTextNodes();
-      });
-
-      ctx.hooks.pointerUp.tap(() => {
-        if (selection.mode !== CanvasMode.CLICK_CREATE) {
-          return;
-        }
-
-        if (tool.activeToolId !== "text") {
-          return;
-        }
-
-        const pointer = scene.staticForegroundLayer.getRelativePointerPosition();
-        if (!pointer) {
-          return;
-        }
-
-        const timestamp = now();
-        const el = fxApplyRememberedTextToolStyle({
-          element: fnCreateTextElement({
-            id: createId(),
-            x: pointer.x,
-            y: pointer.y,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }),
-          rememberedStyle: {
-            strokeColor: DEFAULT_TEXT_COLOR_TOKEN,
-            opacity: 1,
-            fontFamily: `${DEFAULT_TEXT_FONT_FAMILY}, sans-serif`,
-            fontSize: DEFAULT_TEXT_FONT_SIZE_TOKEN,
-            textAlign: DEFAULT_TEXT_ALIGN,
-            verticalAlign: DEFAULT_TEXT_VERTICAL_ALIGN,
-            ...theme.getRememberedStyle("text"),
-          },
-        });
-        const node = element.createNodeFromElement(el);
-        if (!isKonvaText(node)) {
-          return;
-        }
-
-        scene.staticForegroundLayer.add(node);
-        renderOrder.assignOrderOnInsert({
-          parent: scene.staticForegroundLayer,
-          nodes: [node],
-          position: "front",
-        });
-        scene.staticForegroundLayer.batchDraw();
-        selection.setSelection([node]);
-        selection.setFocusedNode(node);
-        tool.setActiveTool("select");
-
-        txEnterEditMode({
-          Konva,
-          camera,
-          element,
-          session,
-          crdt,
-          document,
-          history,
-          scene,
-          selection,
-          theme,
-          pretext: { layoutWithLines, prepareWithSegments },
-        }, {
-          freeTextName: FREE_TEXT_NAME,
-          node,
-          isNew: true,
-        });
-      });
-
-      ctx.hooks.elementPointerDoubleClick.tap((event) => {
-        if (!isKonvaText(event.currentTarget)) {
-          return false;
-        }
-
-        if (event.currentTarget.name() !== FREE_TEXT_NAME) {
-          return false;
-        }
-
-        txEnterEditMode({
-          Konva,
-          camera,
-          element,
-          session,
-          crdt,
-          document,
-          history,
-          scene,
-          selection,
-          theme,
-          pretext: { layoutWithLines, prepareWithSegments },
-        }, {
-          freeTextName: FREE_TEXT_NAME,
-          node: event.currentTarget,
-          isNew: false,
-        });
-        return true;
-      });
+      }));
 
       ctx.hooks.destroy.tap(() => {
-        contextMenu.unregisterProvider("text");
-        unregisterTextElement();
-        tool.unregisterTool("text");
+        closeEditor("destroy");
+        for (const cleanup of cleanups.splice(0).reverse()) {
+          cleanup();
+        }
       });
     },
   };

@@ -61,7 +61,16 @@ export function FloatingCanvasToolbar(props: IFloatingCanvasToolbarProps) {
   };
 
   return (
-    <div class="vc-canvas-toolbar-anchor">
+    <div
+      class="vc-canvas-toolbar-anchor"
+      on:pointerdown={(event) => event.stopPropagation()}
+      on:pointermove={(event) => event.stopPropagation()}
+      on:pointerup={(event) => event.stopPropagation()}
+      on:pointercancel={(event) => event.stopPropagation()}
+      on:wheel={(event) => event.stopPropagation()}
+      on:keydown={(event) => event.stopPropagation()}
+      on:keyup={(event) => event.stopPropagation()}
+    >
       {/* Main toolbar */}
       <div class="vc-canvas-toolbar-panel">
         {/* Collapsible toolbar header */}

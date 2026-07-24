@@ -1,12 +1,38 @@
-import Konva from "konva";
-import { describe, expect, test, vi } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import { VC_PENDING_PERSISTENCE_ATTR } from "../../src/core/CONSTANTS";
+import { getStroke } from "perfect-freehand";
+import { describe, expect, test, vi } from "vitest";
+import type { TCanvasProjectionDefinition } from "../../src/engine/projection/typed";
+import type { TCanvasProjectionTheme } from "../../src/engine/typed";
 import { ElementService } from "../../src/services/element/ElementService";
 
-function createElement(args?: { id?: string; type?: "text" }) : TElement {
+const THEME: TCanvasProjectionTheme = {
+  id: "element-service-test",
+  colors: {
+    accent: "#dbeafe",
+    accentForeground: "#1e3a8a",
+    border: "#d6d3d1",
+    canvasBackground: "#ffffff",
+    canvasGridMajor: "#cccccc",
+    canvasGridMinor: "#eeeeee",
+    canvasSelectionStroke: "#3b82f6",
+    canvasText: "#000000",
+    card: "#ffffff",
+    destructive: "#dc2626",
+    muted: "#e7e5e4",
+    mutedForeground: "#57534e",
+    ring: "#f59e0b",
+    success: "#16a34a",
+    warning: "#d97706",
+  },
+  colorTokens: {},
+};
+
+function createElement(
+  id = "element-1",
+  type: "text" | "rect" = "text",
+): TElement {
   return {
-    id: args?.id ?? "element-1",
+    id,
     x: 10,
     y: 20,
     rotation: 0,
@@ -16,271 +42,324 @@ function createElement(args?: { id?: string; type?: "text" }) : TElement {
     locked: false,
     createdAt: 1,
     updatedAt: 2,
-    data: {
-      type: args?.type ?? "text",
-      w: 100,
-      h: 40,
-      text: "hello",
-      originalText: "hello",
-      fontFamily: "Arial",
-      link: null,
-      containerId: null,
-      autoResize: false,
-    },
+    data: type === "rect"
+      ? {
+          type: "rect",
+          w: 100,
+          h: 40,
+        }
+      : {
+          type: "text",
+          w: 100,
+          h: 40,
+          text: "hello",
+          originalText: "hello",
+          fontFamily: "Arial",
+          link: null,
+          containerId: null,
+          autoResize: false,
+        },
     style: {},
   };
 }
 
+function projection(id: string, priority: number): TCanvasProjectionDefinition {
+  return {
+    id,
+    priority,
+    matchesElement: () => true,
+    project: () => ({ nodes: [] }),
+  };
+}
+
+function createWidgetElement(): TElement {
+  return {
+    ...createElement("widget", "rect"),
+    data: {
+      type: "ui-widget",
+      kind: "dashboard",
+      w: 320,
+      h: 200,
+      expanded: true,
+      window: "contained",
+      payload: {},
+    },
+  };
+}
+
 describe("ElementService", () => {
-  test("serializes nodes with base and modifier definitions in priority order", () => {
+  test("registers product definitions deterministically and unregisters once", () => {
     const service = new ElementService();
-    const node = new Konva.Rect({ id: "shape-1" });
-    const calls: string[] = [];
+    const changes = vi.fn();
+    service.hooks.elementsChange.tap(changes);
+    const removeHigh = service.registerElement({
+      id: "high",
+      priority: 20,
+      matchesElement: () => true,
+    });
+    service.registerElement({
+      id: "low",
+      priority: 10,
+      matchesElement: () => true,
+    });
 
+    expect(service.getDefinitions().map((definition) => definition.id))
+      .toEqual(["low", "high"]);
+    expect(changes).toHaveBeenCalledTimes(2);
+    removeHigh();
+    removeHigh();
+    expect(service.getDefinitions().map((definition) => definition.id))
+      .toEqual(["low"]);
+    expect(changes).toHaveBeenCalledTimes(3);
+    service.invalidateProjection();
+    expect(changes).toHaveBeenCalledTimes(4);
+  });
+
+  test("matches persisted product elements and merges style policy by priority", () => {
+    const service = new ElementService();
+    const text = createElement();
+    service.registerElement({
+      id: "base",
+      priority: 10,
+      matchesElement: (element) => element.data.type === "text",
+      getSelectionStyleMenu: () => ({
+        sections: {
+          showFillPicker: true,
+          showTextPickers: true,
+        },
+        values: {
+          fillColor: "#ffffff",
+          fontFamily: "Arial",
+        },
+      }),
+    });
     service.registerElement({
       id: "modifier",
       priority: 20,
-      matchesNode: () => true,
-      afterToElement: ({ element }) => {
-        calls.push(`after:${element.id}`);
-        return {
-          ...element,
-          updatedAt: 99,
-        };
-      },
-    });
-    service.registerElement({
-      id: "base",
-      priority: 10,
-      matchesNode: () => true,
-      toElement: (candidate) => {
-        calls.push(`base:${candidate.id()}`);
-        return createElement({ id: candidate.id(), type: "text" });
-      },
-    });
-    service.registerElement({
-      id: "base-after",
-      priority: 15,
-      matchesNode: () => true,
-      afterToElement: ({ element }) => {
-        calls.push(`base-after:${element.id}`);
-      },
+      matchesElement: (element) => element.id === text.id,
+      getSelectionStyleMenu: () => ({
+        sections: { showFillPicker: false },
+        values: { fillColor: "#000000" },
+      }),
     });
 
-    const element = service.toElement(node);
-
-    expect(element).toMatchObject({
-      id: "shape-1",
-      updatedAt: 99,
-      data: { type: "text" },
+    expect(service.getMatchingElementDefinitionsByElement(text)
+      .map((definition) => definition.id)).toEqual(["base", "modifier"]);
+    expect(service.getSelectionStyleMenuConfigByElement({
+      element: text,
+    })).toMatchObject({
+      sections: {
+        showFillPicker: false,
+        showTextPickers: true,
+      },
+      values: {
+        fillColor: "#000000",
+        fontFamily: "Arial",
+      },
     });
-    expect(calls).toEqual(["base:shape-1", "base-after:shape-1", "after:shape-1"]);
+    expect(service.getSelectionStyleMenuConfigByElement({
+      element: createElement("rect", "rect"),
+    })).toBeNull();
   });
 
-  test("does not serialize runtime nodes while persistence is pending", () => {
+  test("merges transform policy over renderer-neutral defaults", () => {
     const service = new ElementService();
-    const node = new Konva.Rect({ id: "pending-image" });
-    const toElement = vi.fn(() => createElement({ id: node.id(), type: "text" }));
-
+    const text = createElement();
     service.registerElement({
-      id: "pending-base",
-      matchesNode: () => true,
-      toElement,
-    });
-
-    node.setAttr(VC_PENDING_PERSISTENCE_ATTR, true);
-    expect(service.toElement(node)).toBeNull();
-    expect(toElement).not.toHaveBeenCalled();
-
-    node.setAttr(VC_PENDING_PERSISTENCE_ATTR, undefined);
-    expect(service.toElement(node)).toMatchObject({ id: "pending-image" });
-    expect(toElement).toHaveBeenCalledOnce();
-  });
-
-  test("creates nodes, runs modifiers and listeners, and aggregates update results", () => {
-    const service = new ElementService();
-    const element = createElement({ id: "shape-2", type: "text" });
-    const node = new Konva.Rect({ id: "shape-2" });
-    const calls: string[] = [];
-
-    service.registerElement({
-      id: "modifier-a",
-      priority: 15,
-      matchesElement: () => true,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      afterCreateNode: ({ node: createdNode }) => {
-        calls.push(`after-a:${createdNode.id()}`);
-      },
-      attachListeners: (candidate) => {
-        calls.push(`listen-a:${candidate.id()}`);
-        return false;
-      },
-      updateElement: () => {
-        calls.push("update-a");
-      },
-    });
-    service.registerElement({
-      id: "base",
+      id: "text-base",
       priority: 10,
-      matchesElement: () => true,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      createNode: (candidate) => {
-        calls.push(`create:${candidate.id}`);
-        return node;
-      },
-      attachListeners: (candidate) => {
-        calls.push(`listen-base:${candidate.id()}`);
-        return true;
-      },
-      updateElement: () => {
-        calls.push("update-base");
-        return true;
-      },
+      matchesElement: (element) => element.data.type === "text",
+      getTransformPolicy: () => ({
+        handles: ["move", "resize-e", "resize-w"],
+        keepAspectRatio: true,
+        minSize: { width: 40, height: 20 },
+      }),
     });
     service.registerElement({
-      id: "base-after",
-      priority: 12,
-      matchesElement: () => true,
-      afterCreateNode: ({ node: createdNode }) => {
-        calls.push(`after-base:${createdNode.id()}`);
-      },
-    });
-
-    expect(service.createNodeFromElement(element)).toBe(node);
-    expect(calls).toEqual([
-      "create:shape-2",
-      "after-base:shape-2",
-      "after-a:shape-2",
-      "listen-base:shape-2",
-      "listen-a:shape-2",
-    ]);
-
-    calls.length = 0;
-    expect(service.attachListeners(node)).toBe(true);
-    expect(calls).toEqual(["listen-base:shape-2", "listen-a:shape-2"]);
-
-    calls.length = 0;
-    expect(service.updateElement(element)).toBe(true);
-    expect(calls).toEqual(["update-base", "update-a"]);
-  });
-
-  test("merges transform options across matching definitions", () => {
-    const service = new ElementService();
-    const node = new Konva.Rect({ id: "shape-3" });
-    const element = createElement({ id: "shape-3", type: "text" });
-    const selection = [node] as Array<Konva.Group | Konva.Shape>;
-    const calls: string[] = [];
-
-    service.registerElement({
-      id: "base",
-      priority: 10,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      toElement: () => element,
-      getTransformOptions: ({ node: candidateNode, element: candidateElement, selection: candidateSelection }) => {
-        calls.push(`options-base:${candidateNode.id()}:${candidateElement.id}:${candidateSelection.length}`);
-        return {
-          enabledAnchors: ["top-left", "bottom-right"],
-          keepRatio: true,
-        };
-      },
-    });
-
-    service.registerElement({
-      id: "modifier",
+      id: "text-modifier",
       priority: 20,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      getTransformOptions: ({ node: candidateNode }) => {
-        calls.push(`options-modifier:${candidateNode.id()}`);
-        return {
-          flipEnabled: true,
-          keepRatio: false,
-        };
-      },
+      matchesElement: (element) => element.data.type === "text",
+      getTransformPolicy: () => ({
+        keepAspectRatio: false,
+        allowRotate: false,
+      }),
     });
 
-    expect(service.getTransformOptions({ node, selection })).toEqual({
-      enabledAnchors: ["top-left", "bottom-right"],
-      keepRatio: false,
-      flipEnabled: true,
+    expect(service.getTransformPolicy({
+      element: text,
+      selection: [text],
+    })).toEqual({
+      handles: ["move", "resize-e", "resize-w"],
+      keepAspectRatio: false,
+      allowFlip: false,
+      allowRotate: false,
+      minSize: { width: 40, height: 20 },
     });
-    expect(calls).toEqual([
-      "options-base:shape-3:shape-3:1",
-      "options-modifier:shape-3",
-    ]);
   });
 
-  test("returns default transform results when node does not resolve to an element", () => {
+  test("publishes only declared renderer-neutral projection extensions", () => {
     const service = new ElementService();
-    const node = new Konva.Rect({ id: "unknown" });
-    const selection = [node] as Array<Konva.Group | Konva.Shape>;
-
-    expect(service.getTransformOptions({ node, selection })).toEqual({});
-    expect(service.getMatchingElementDefinitionsByNode(node)).toEqual([]);
-  });
-
-  test("stops clone-drag dispatch after the first matching handler accepts it", () => {
-    const service = new ElementService();
-    const node = new Konva.Rect({ id: "shape-clone" });
-    const calls: string[] = [];
-
     service.registerElement({
-      id: "first",
-      priority: 10,
-      matchesElement: () => false,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      afterCreateNode: () => {},
-      createDragClone: () => {
-        calls.push("first");
-        return true;
-      },
+      id: "without-projection",
+      matchesElement: () => true,
+    });
+    service.registerElement({
+      id: "projector-low",
+      matchesElement: () => true,
+      projection: projection("projector-low", 10),
+    });
+    service.registerElement({
+      id: "projector-high",
+      matchesElement: () => true,
+      projection: projection("projector-high", 20),
     });
 
+    expect(service.projectionExtensions().definitions.map((definition) => {
+      return definition.id;
+    })).toEqual(["projector-high", "projector-low"]);
+  });
+
+  test("adapts renderer-neutral widget chrome into the engine projection", () => {
+    const service = new ElementService();
+    const widget = createWidgetElement();
     service.registerElement({
-      id: "second",
+      id: "widget-host",
       priority: 20,
-      matchesElement: () => false,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      afterCreateNode: () => {},
-      createDragClone: () => {
-        calls.push("second");
-        return true;
-      },
+      matchesElement: (element) => element.data.type === "ui-widget",
+      getWidgetChrome: () => ({
+        title: "Live dashboard",
+        active: true,
+        actions: [{
+          id: "settings",
+          label: "Settings",
+          kind: "menu",
+          disabled: true,
+        }],
+      }),
     });
 
-    expect(service.createDragClone({ node, selection: [node] })).toBe(true);
-    expect(calls).toEqual(["first"]);
+    const projector = service.projectionExtensions().definitions.find(
+      (definition) => definition.id === "widget-chrome:widget-host",
+    );
+    expect(projector).toBeDefined();
+    const projected = projector!.project({
+      element: widget,
+      parentNodeId: "vc:layer:world",
+      theme: THEME,
+      dependencies: { getStroke },
+    });
+    expect(projected.nodes.find((node) => node.kind === "widget-frame"))
+      .toMatchObject({
+        title: "Live dashboard",
+        active: true,
+        controls: expect.arrayContaining([
+          expect.objectContaining({
+            id: "settings",
+            kind: "menu",
+            label: "Settings",
+            disabled: true,
+          }),
+        ]),
+      });
   });
 
-  test("continues clone-drag dispatch past non-handling definitions", () => {
+  test("composes clone-data policies without allowing extensions to replace product IDs", () => {
     const service = new ElementService();
-    const node = new Konva.Rect({ id: "shape-clone-fallback" });
-    const calls: string[] = [];
-
+    const source = createElement("widget", "rect");
+    const clone = { ...source, id: "clone-widget" };
     service.registerElement({
-      id: "first",
-      priority: 10,
-      matchesElement: () => false,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      afterCreateNode: () => {},
-      createDragClone: () => {
-        calls.push("first");
-        return false;
-      },
+      id: "clone-base",
+      matchesElement: () => true,
+      prepareCloneData: ({ clone: current }) => ({
+        ...current.data,
+        w: 240,
+      }),
+    });
+    service.registerElement({
+      id: "clone-modifier",
+      matchesElement: () => true,
+      prepareCloneData: ({ clone: current }) => ({
+        ...current.data,
+        h: 120,
+      }),
     });
 
+    expect(service.prepareClone({
+      source,
+      clone,
+      createId: () => "extension-id",
+    })).toMatchObject({
+      id: "clone-widget",
+      data: { type: "rect", w: 240, h: 120 },
+    });
+  });
+
+  test("lets a matching clone policy veto the complete product clone", () => {
+    const service = new ElementService();
+    const source = createElement();
     service.registerElement({
-      id: "second",
-      priority: 20,
-      matchesElement: () => false,
-      matchesNode: (candidate) => candidate.id() === node.id(),
-      afterCreateNode: () => {},
-      createDragClone: () => {
-        calls.push("second");
-        return true;
-      },
+      id: "not-cloneable",
+      matchesElement: () => true,
+      prepareCloneData: () => null,
     });
 
-    expect(service.createDragClone({ node, selection: [node] })).toBe(true);
-    expect(calls).toEqual(["first", "second"]);
+    expect(service.prepareClone({
+      source,
+      clone: { ...source, id: "clone" },
+      createId: () => "id",
+    })).toBeNull();
+  });
+
+  test("binds matching delete/restore lifecycle to the CRDT transaction", () => {
+    const service = new ElementService();
+    const element = createElement();
+    const onDelete = vi.fn();
+    const onRestore = vi.fn();
+    service.registerElement({
+      id: "text",
+      matchesElement: (candidate) => candidate.data.type === "text",
+      onDelete,
+      onRestore,
+    });
+    service.registerElement({
+      id: "rect",
+      matchesElement: (candidate) => candidate.data.type === "rect",
+      onDelete: vi.fn(),
+    });
+    let callbacks: {
+      onCommit(args: { entity: TElement }): void;
+      onRollback(args: { entity: TElement }): void;
+    } | null = null;
+    const builder = {
+      deleteElement: vi.fn((_id, nextCallbacks) => {
+        callbacks = nextCallbacks;
+        return builder;
+      }),
+    };
+
+    expect(service.deleteElement(element, builder as never)).toBe(builder);
+    expect(builder.deleteElement).toHaveBeenCalledWith(element.id, expect.any(
+      Object,
+    ));
+    callbacks!.onCommit({ entity: element });
+    callbacks!.onRollback({ entity: element });
+    expect(onDelete).toHaveBeenCalledOnce();
+    expect(onRestore).toHaveBeenCalledOnce();
+  });
+
+  test("rejects empty and duplicate definition IDs", () => {
+    const service = new ElementService();
+    expect(() => service.registerElement({
+      id: " ",
+      matchesElement: () => true,
+    })).toThrow("non-empty");
+    service.registerElement({
+      id: "same",
+      matchesElement: () => true,
+    });
+    expect(() => service.registerElement({
+      id: "same",
+      matchesElement: () => true,
+    })).toThrow("already registered");
   });
 });

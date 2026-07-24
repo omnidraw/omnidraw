@@ -1,17 +1,15 @@
-import type { ThemeService } from "@vibecanvas/service-theme";
 import type { SyncHook } from "@vibecanvas/tapable";
 import type {
-  CameraService,
+  CanvasPortalService,
   ConfirmDialogService,
   ContextMenuService,
   CrdtService,
   ElementService,
   HistoryService,
-  LoggingService,
   RenderOrderService,
-  SceneService,
   SelectionService,
   TTool,
+  TToolPointerEvent,
   TWidgetDropRequest,
   ToolService,
 } from "@vibecanvas/canvas/services";
@@ -27,22 +25,46 @@ export interface IWidgetManagerServiceProps {
   crdtService: CrdtService;
   contextMenuService: ContextMenuService;
   historyService?: HistoryService;
-  loggingService: LoggingService;
-  themeService: ThemeService;
   selectionService: SelectionService;
   elementService: ElementService;
   toolService: ToolService;
-  sceneService: SceneService;
+  portalService: CanvasPortalService;
   renderOrderService: RenderOrderService;
-  cameraService: CameraService;
   confirmDialogService: ConfirmDialogService;
   browser: TWidgetBrowserPort;
+  product(): TWidgetCanvasProductPort;
   neutralHost?: Readonly<{
     canvasId: string;
     runtime: WidgetUiRuntime;
     deleteDefinition?(args: Readonly<{ definitionId: string }>): Promise<boolean>;
   }>;
 }
+
+export type TWidgetCanvasProductCreationCommit = Readonly<{
+  belowThreshold: boolean;
+  worldBounds: Readonly<{
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  }>;
+  current: Readonly<{
+    world: Readonly<{ x: number; y: number }>;
+  }>;
+}>;
+
+export type TWidgetCanvasProductPort = Readonly<{
+  interactions: {
+    beginCreation(
+      event: TToolPointerEvent,
+      options: Readonly<{
+        thresholdViewport?: number;
+        onCommit(event: TWidgetCanvasProductCreationCommit): void;
+      }>,
+    ): void;
+    cancel(): void;
+  };
+}>;
 
 export type TWidgetRenderArgs = {
   root: HTMLDivElement;
@@ -55,6 +77,7 @@ export type TWidgetRenderCleanup = () => void;
 export type TWidgetTitleBarAction = {
   id: string;
   label: string;
+  kind?: "menu" | "minimize" | "maximize" | "restore" | "close" | "custom";
 };
 
 export type TWidgetTitleBarActionState = {
@@ -66,14 +89,6 @@ export type TWidgetTitleBarActionState = {
 export type TWidgetTitleBarPortal = {
   onAction: (id: string, handler: () => void) => () => void;
   setActionState: (id: string, state: TWidgetTitleBarActionState) => void;
-};
-
-export type TWidgetFullscreenHostActions = {
-  close: () => void;
-  minimize: () => void;
-  exitFullscreen: () => void;
-  openMenu: (args: { anchor: { x: number; y: number } }) => void;
-  closeMenu: () => void;
 };
 
 export interface IWidgetConfig {

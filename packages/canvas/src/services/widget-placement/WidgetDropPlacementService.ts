@@ -1,14 +1,13 @@
 import type { IService, IStoppableService } from "@vibecanvas/runtime";
 import type { TWidgetFrameBounds } from "@vibecanvas/orpc-client";
-import Konva from "konva";
+import type { TCanvasProductTransientOwner } from "../../engine/product-runtime/typed";
 import type { CameraService } from "../camera/CameraService";
 import type { SceneService } from "../scene/SceneService";
 import {
   fnClampWidgetFrameToViewport,
-  fnClientPointToWidgetWorldPoint,
   fnHasWidgetDragThreshold,
+  fnWidgetDropGhostProjection,
   fnWidgetPlacementReferenceIsAvailable,
-  fnWidgetVisibleWorldViewport,
 } from "./fn.widget-placement";
 import type {
   TClientPoint,
@@ -32,7 +31,9 @@ export class WidgetDropPlacementService implements IService, IStoppableService {
   readonly #camera: CameraService;
   readonly #scene: SceneService;
   #session: TPointerSession | null = null;
-  #ghost: Konva.Group | null = null;
+  #ghost: TCanvasProductTransientOwner | null = null;
+  #ghostBounds: TWidgetWorldBounds | null = null;
+  #ghostSequence = 0;
 
   constructor(args: { camera: CameraService; scene: SceneService }) {
     this.#camera = args.camera;
@@ -66,11 +67,14 @@ export class WidgetDropPlacementService implements IService, IStoppableService {
   async addAtViewportCenter(request: TWidgetDropRequest): Promise<void> {
     this.cancel("replaced");
     this.#destroyGhost();
-    const rect = this.#scene.stage.container().getBoundingClientRect();
-    const clientPoint = {
-      x: rect.left + (rect.width - request.bounds.width * this.#camera.zoom) / 2,
-      y: rect.top + (rect.height - request.bounds.height * this.#camera.zoom) / 2,
+    const visible = this.#camera.visibleWorldBounds();
+    const worldPoint = {
+      x: visible.minX
+        + Math.max(0, (visible.maxX - visible.minX - request.bounds.width) / 2),
+      y: visible.minY
+        + Math.max(0, (visible.maxY - visible.minY - request.bounds.height) / 2),
     };
+    const clientPoint = this.#camera.worldToClient(worldPoint);
     this.#syncGhost(request, clientPoint);
     const ghost = this.#ghost;
     this.#markGhostCommitting(request);
@@ -78,17 +82,16 @@ export class WidgetDropPlacementService implements IService, IStoppableService {
   }
 
   resolveWorldBounds(clientPoint: TClientPoint, bounds: TWidgetFrameBounds): TWidgetWorldBounds {
-    const rect = this.#scene.stage.container().getBoundingClientRect();
-    const point = fnClientPointToWidgetWorldPoint({
-      clientPoint,
-      canvasClientOrigin: { x: rect.left, y: rect.top },
-      camera: { x: this.#camera.x, y: this.#camera.y, zoom: this.#camera.zoom },
-    });
-    const viewport = fnWidgetVisibleWorldViewport({
-      camera: { x: this.#camera.x, y: this.#camera.y, zoom: this.#camera.zoom },
-      viewportWidth: rect.width,
-      viewportHeight: rect.height,
-    });
+    const point = this.#camera.viewportToWorld(
+      this.#camera.clientToViewport(clientPoint),
+    );
+    const visible = this.#camera.visibleWorldBounds();
+    const viewport = {
+      x: visible.minX,
+      y: visible.minY,
+      width: visible.maxX - visible.minX,
+      height: visible.maxY - visible.minY,
+    };
     return fnClampWidgetFrameToViewport({ point, bounds, viewport });
   }
 
@@ -162,61 +165,41 @@ export class WidgetDropPlacementService implements IService, IStoppableService {
   };
 
   #containsClientPoint(point: TClientPoint): boolean {
-    const rect = this.#scene.stage.container().getBoundingClientRect();
+    const rect = this.#scene.container.getBoundingClientRect();
     return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
   }
 
   #syncGhost(request: TWidgetDropRequest, point: TClientPoint): void {
     const bounds = this.resolveWorldBounds(point, request.bounds);
     if (!this.#ghost) {
-      const stroke = request.reference.source === "published"
-        ? "#2563eb"
-        : request.reference.source === "draft" ? "#7c3aed" : "#059669";
-      this.#ghost = new Konva.Group({ listening: false, opacity: 0.82 });
-      this.#ghost.add(new Konva.Rect({
-        name: "widget-placement-ghost-frame",
-        stroke,
-        strokeWidth: 2 / this.#camera.zoom,
-        dash: [8 / this.#camera.zoom, 5 / this.#camera.zoom],
-        fill: `${stroke}18`,
-        cornerRadius: 10 / this.#camera.zoom,
-      }));
-      this.#ghost.add(new Konva.Text({
-        name: "widget-placement-ghost-label",
-        text: `${request.label} · ${request.reference.source === "published" ? "Published" : request.reference.source === "draft" ? "Draft" : "Preview"}`,
-        fill: stroke,
-        fontSize: 12 / this.#camera.zoom,
-        padding: 8 / this.#camera.zoom,
-      }));
-      this.#scene.dynamicLayer.add(this.#ghost);
+      this.#ghostSequence += 1;
+      this.#ghost = this.#scene.product.transients.createOwner({
+        ownerId: `vc:transient:widget-drop:${this.#ghostSequence}`,
+      });
     }
-    this.#ghost.position({ x: bounds.x, y: bounds.y });
-    const frame = this.#ghost.findOne(".widget-placement-ghost-frame");
-    if (frame instanceof Konva.Rect) frame.size({ width: bounds.width, height: bounds.height });
-    this.#scene.dynamicLayer.batchDraw();
+    this.#ghostBounds = bounds;
+    this.#ghost.replace(fnWidgetDropGhostProjection({
+      request,
+      position: bounds,
+      zoom: this.#camera.zoom,
+      state: "positioning",
+    }));
   }
 
   #markGhostCommitting(request: TWidgetDropRequest): void {
-    if (!this.#ghost) return;
-    this.#ghost.opacity(0.94);
-    const frame = this.#ghost.findOne(".widget-placement-ghost-frame");
-    if (frame instanceof Konva.Rect) {
-      frame.dash([]);
-      frame.fill(request.reference.source === "published" ? "#2563eb24" : "#7c3aed24");
-    }
-    const label = this.#ghost.findOne(".widget-placement-ghost-label");
-    if (label instanceof Konva.Text) {
-      label.text(request.reference.source === "published"
-        ? `Adding ${request.label}…`
-        : `Building ${request.label} Preview…`);
-    }
-    this.#scene.dynamicLayer.batchDraw();
+    if (!this.#ghost || !this.#ghostBounds) return;
+    this.#ghost.replace(fnWidgetDropGhostProjection({
+      request,
+      position: this.#ghostBounds,
+      zoom: this.#camera.zoom,
+      state: "committing",
+    }));
   }
 
   async #commitWithGhost(
     request: TWidgetDropRequest,
     clientPoint: TClientPoint,
-    ghost: Konva.Group | null,
+    ghost: TCanvasProductTransientOwner | null,
   ): Promise<void> {
     try {
       await request.onCommit({
@@ -229,10 +212,12 @@ export class WidgetDropPlacementService implements IService, IStoppableService {
     }
   }
 
-  #destroyGhost(ghost: Konva.Group | null = this.#ghost): void {
+  #destroyGhost(ghost: TCanvasProductTransientOwner | null = this.#ghost): void {
     ghost?.destroy();
-    if (this.#ghost === ghost) this.#ghost = null;
-    this.#scene.dynamicLayer?.batchDraw();
+    if (this.#ghost === ghost) {
+      this.#ghost = null;
+      this.#ghostBounds = null;
+    }
   }
 
   #cleanupSession(destroyGhost = true): void {

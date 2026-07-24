@@ -15,7 +15,6 @@
   },
   "devDependencies": {
     "@vibecanvas/canvas-engine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/vibecanvas-canvas-engine-0.1.0.tgz",
-    "canvas": "^3.2.3",
     "jsdom": "^29.1.1",
     "solid-devtools": "^0.34.3",
     "typescript": "catalog:",
@@ -67,7 +66,6 @@
     "@vibecanvas/tapable": "workspace:*",
     "@vibecanvas/tenant-core": "workspace:*",
     "dompurify": "^3.4.11",
-    "konva": "^10.3.0",
     "lucide-solid": "catalog:",
     "lucide-static": "catalog:",
     "microdiff": "^1.5.0",

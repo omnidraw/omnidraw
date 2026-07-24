@@ -1,78 +1,52 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import Konva from "konva";
 import Grid2x2 from "lucide-static/icons/grid-2x2.svg?raw";
-import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
-import { txDrawGrid } from "./tx.draw";
+import type { SceneService } from "../../services/scene/SceneService";
+import type {
+  IRuntimeConfig,
+  IRuntimeHooks,
+  IRuntimeServices,
+} from "../../types";
 
-export function createGridPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
-  let visible = true;
+/**
+ * Temporary narrow scene seam until grid visibility is part of SceneService's
+ * stable product projection API.
+ */
+export type TGridVisibilityScenePort = SceneService & {
+  setGridVisible?(visible: boolean): void;
+};
 
+export function createGridPlugin(): IPlugin<
+  IRuntimeServices,
+  IRuntimeHooks,
+  IRuntimeConfig
+> {
   return {
     name: "grid",
     apply(ctx) {
+      const scene = ctx.services.require("scene") as TGridVisibilityScenePort;
       const tool = ctx.services.require("tool");
-      const scene = ctx.services.require("scene");
-      const camera = ctx.services.require("camera");
-      const theme = ctx.services.require("theme");
+      let visible = true;
 
-      ctx.hooks.init.tap(() => {
-        const gridShape = new Konva.Shape({
-          listening: false,
-          sceneFunc: (shapeContext: Konva.Context) => {
-            if (!visible) return;
-
-            const width = scene.stage.width();
-            const height = scene.stage.height();
-            if (width <= 0 || height <= 0) return;
-
-            const activeTheme = theme.getTheme();
-
-            txDrawGrid({ shapeContext }, {
-              width,
-              height,
-              zoom: camera.zoom,
-              x: camera.x,
-              y: camera.y,
-              minorGridColor: activeTheme.colors.canvasGridMinor,
-              majorGridColor: activeTheme.colors.canvasGridMajor,
-            });
-          },
-        });
-
-        tool.registerTool({
-          id: "grid",
-          label: "Grid",
-          icon: Grid2x2,
-          shortcuts: ["g"],
-          priority: 9000,
-          active: visible,
-          onSelect: () => {
-            ctx.hooks.gridVisible.call(!visible);
-          },
-          behavior: { type: "action" },
-        });
-
-        scene.staticBackgroundLayer.add(gridShape);
-        scene.staticBackgroundLayer.batchDraw();
+      const syncVisibility = () => {
+        scene.setGridVisible?.(visible);
+      };
+      tool.registerTool({
+        id: "grid",
+        label: "Grid",
+        icon: Grid2x2,
+        shortcuts: ["g"],
+        priority: 9_000,
+        active: visible,
+        onSelect: () => {
+          ctx.hooks.gridVisible.call(!visible);
+        },
+        behavior: { type: "action" },
       });
-
-      camera.hooks.change.tap(() => {
-        scene.staticBackgroundLayer.batchDraw();
+      ctx.hooks.init.tap(syncVisibility);
+      ctx.hooks.gridVisible.tap((nextVisible) => {
+        visible = nextVisible;
+        syncVisibility();
       });
-
-      theme.hooks.change.tap(() => {
-        scene.staticBackgroundLayer.batchDraw();
-      });
-
-      scene.hooks.resize.tap(() => {
-        scene.staticBackgroundLayer.batchDraw();
-      });
-
-      ctx.hooks.gridVisible.tap((value) => {
-        visible = value;
-        scene.staticBackgroundLayer.batchDraw();
-      });
-
       ctx.hooks.destroy.tap(() => {
         tool.unregisterTool("grid");
       });

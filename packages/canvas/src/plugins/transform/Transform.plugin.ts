@@ -1,677 +1,465 @@
-import { throttle } from "@solid-primitives/scheduled";
 import type { IPlugin } from "@vibecanvas/runtime";
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { ThemeService } from "@vibecanvas/service-theme";
-import Konva from "konva";
-import type { Group } from "konva/lib/Group";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
-import { isCanvasGroupNode } from "../../core/GUARDS";
-import type { ElementService, TElementTransformAnchor } from "../../services";
-import type { SceneService } from "../../services/scene/SceneService";
-import type { SelectionService } from "../../services/selection/SelectionService";
+import type {
+  TCanvasProductTransformEvent,
+  TCanvasProductTransformPolicy,
+} from "../../engine/product-runtime/typed";
+import { fnCanvasActiveSessionDependencies } from "../../services/active-session/fn.dependencies";
+import { fnCollectDescendantElementIds } from "../../services/group/fn.product-groups";
+import type { TElementTransformPolicy } from "../../services/element/types";
 import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
-import { fxGetProxyBounds } from "./fx.proxy-bounds";
-import { fxGetProxyDragTarget } from "./fx.proxy-drag-target";
-import { txDispatchSelectionTransformHooks } from "./tx.dispatch-selection-transform-hooks";
-import { txSyncTransformer } from "./tx.sync-transformer";
+import {
+  fnPlanProductSubtreeClone,
+  fnProductCloneIdentity,
+  type TProductClonePlan,
+} from "./fn.clone-plan";
+import {
+  fnPersistElementThroughGroupTransform,
+  fnRootProductTransformProposals,
+  fnRootProductTransformTargets,
+} from "./fn.group-transform";
+import { fnPersistProductTransformProposal } from "./fn.persist-proposal";
+import { fnMergeProductSelectionTransformPolicy } from "./fn.selection-policy";
+import { txCloneImageAssets } from "./tx.clone-image-assets";
 
-const TRANSFORM_DRAG_PROXY_NAME = "transform-drag-proxy";
-const INTERACTION_OVERLAY_ATTR = "vcInteractionOverlay";
-const TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR = "vcTransformMoveBeforeElement";
-const TRANSFORM_BEFORE_ELEMENT_ATTR = "vcTransformBeforeElement";
-const MOVE_PATCH_INTERVAL_MS = 1000 / 30;
-
-type TTransformDragProxyState = {
-  node: Shape<ShapeConfig>;
-  beforeElement: TElement;
-  label: string;
-  proxyStartPosition: { x: number; y: number };
-  nodeStartPosition: { x: number; y: number };
-  throttledPatch: (element: TElement) => void;
+const APPEARANCE = {
+  outline: {
+    color: { r: 0.31, g: 0.27, b: 0.9, a: 1 },
+    width: 1.5,
+  },
+  handleFill: { r: 1, g: 1, b: 1, a: 1 },
+  handleStroke: {
+    color: { r: 0.31, g: 0.27, b: 0.9, a: 1 },
+    width: 1.5,
+  },
+  handleSize: 8,
+  rotateHandleOffset: 24,
 };
 
-/**
- * Expands a runtime selection into nodes that can round-trip through the canvas registry.
- * Element-groups are treated as serializable roots, while structural groups recurse into children.
- */
-function collectSerializableNodes(
-  elementSrv: ElementService,
-  nodes: Konva.Node[],
-): Array<Group | Shape<ShapeConfig>> {
-  return nodes.flatMap<Group | Shape<ShapeConfig>>((node) => {
-    if (node instanceof Konva.Group) {
-      return elementSrv.toElement(node) ? [node] : collectSerializableNodes(elementSrv  , node.getChildren());
-    }
+const TRANSFORM_ELEMENT_DEPENDENCY_FIELDS = [
+  "x",
+  "y",
+  "rotation",
+  "scaleX",
+  "scaleY",
+  "parentGroupId",
+  "data",
+  "locked",
+] as const;
 
-    if (node instanceof Konva.Shape) {
-      return [node];
-    }
+const TRANSFORM_GROUP_DEPENDENCY_FIELDS = [
+  "parentGroupId",
+  "locked",
+] as const;
 
-    return [];
-  });
+function productPolicy(
+  policy: TElementTransformPolicy | undefined,
+): TCanvasProductTransformPolicy {
+  return {
+    handles: policy?.handles ?? [
+      "move",
+      "rotate",
+      "resize-n",
+      "resize-ne",
+      "resize-e",
+      "resize-se",
+      "resize-s",
+      "resize-sw",
+      "resize-w",
+      "resize-nw",
+    ],
+    keepAspectRatio: policy?.keepAspectRatio ?? false,
+    allowFlip: policy?.allowFlip ?? false,
+    allowRotate: policy?.allowRotate ?? true,
+    ...(policy?.minSize === undefined ? {} : { minSize: policy.minSize }),
+    ...(policy?.maxSize === undefined ? {} : { maxSize: policy.maxSize }),
+    ...(policy?.snapRotationDegrees === undefined
+      ? {}
+      : {
+          snapRotationRadians:
+            policy.snapRotationDegrees * Math.PI / 180,
+        }),
+  };
 }
 
-/**
- * Serializes the current runtime nodes into persisted canvas elements.
- * Used for transform snapshots and history capture.
- */
-function serializeSelection(elementSrv: ElementService, nodes: Konva.Node[]) {
-  const serializableNodes = collectSerializableNodes(elementSrv, nodes);
-  return serializableNodes
-    .map((node) => elementSrv.toElement(node))
-    .filter((element): element is TElement => element !== null);
-}
-
-/**
- * Replays persisted elements back onto the existing runtime scene.
- */
-function applyElements(elementSrv: ElementService, elements: TElement[]) {
-  elements.forEach((element) => {
-    elementSrv.updateElement(element);
-  });
-}
-
-/**
- * Clears transient Konva transform state on structural groups after a transform commit.
- * Persisted children carry the real geometry, so group container transforms must be reset.
- */
-function normalizeSelectedGroupTransforms(nodes: Konva.Node[]) {
-  nodes.forEach((node) => {
-    if (!(node instanceof Konva.Group)) {
-      return;
-    }
-
-    node.scale({ x: 1, y: 1 });
-    node.rotation(0);
-    node.skew({ x: 0, y: 0 });
-  });
-}
-
-/**
- * Re-emits transform on selected structural groups so plugins can refresh derived visuals.
- */
-function refreshSelectedGroups(selection: SelectionService) {
-  selection.selection.forEach((node) => {
-    if (isCanvasGroupNode(node)) {
-      node.fire("transform");
-    }
-  });
-}
-
-/**
- * Returns transformer-local pointer position from the dynamic layer.
- */
-function getTransformerPointer(scene: SceneService) {
-  return scene.dynamicLayer.getRelativePointerPosition();
-}
-
-/**
- * Narrows Konva transformer anchor names into the typed registry anchor union.
- */
-function isTypedAnchor(anchor: string | null): anchor is TElementTransformAnchor {
-  return anchor === "top-left"
-    || anchor === "top-center"
-    || anchor === "top-right"
-    || anchor === "middle-left"
-    || anchor === "middle-right"
-    || anchor === "bottom-left"
-    || anchor === "bottom-center"
-    || anchor === "bottom-right";
-}
-
-/**
- * Dispatches resize-finalization callbacks after the interactive transformer gesture ends.
- */
-function txApplySelectionResizeHooks(args: {
-  element: ElementService;
-  scene: SceneService;
-  selection: Array<Group | Shape<ShapeConfig>>;
-  anchors: TElementTransformAnchor[];
-}) {
-  const pointer = getTransformerPointer(args.scene);
-
-  return txDispatchSelectionTransformHooks({
-    element: args.element,
-  }, {
-    selection: args.selection,
-    createArgs: (node, element) => ({
-      node,
-      element,
-      pointer,
-      anchors: args.anchors,
-      selection: args.selection,
-    }),
-    getHook: (definition) => definition.onResize,
-  });
-}
-
-function txApplySelectionRotateHooks(args: {
-  element: ElementService;
-  selection: Array<Group | Shape<ShapeConfig>>;
-}) {
-  return txDispatchSelectionTransformHooks({
-    element: args.element,
-  }, {
-    selection: args.selection,
-    createArgs: (node, element) => ({
-      node,
-      element,
-      rotation: node.rotation(),
-      selection: args.selection,
-    }),
-    getHook: (definition) => definition.onRotate,
-  });
-}
-
-/**
- * Dispatches resize-finalization callbacks after the interactive transformer gesture ends.
- */
-function txFinalizeSelectionResize(args: {
-  element: ElementService;
-  scene: SceneService;
-  selection: Array<Group | Shape<ShapeConfig>>;
-  anchors: TElementTransformAnchor[];
-}) {
-  const pointer = getTransformerPointer(args.scene);
-
-  return txDispatchSelectionTransformHooks({
-    element: args.element,
-  }, {
-    selection: args.selection,
-    createArgs: (node, element) => ({
-      node,
-      element,
-      pointer,
-      anchors: args.anchors,
-      selection: args.selection,
-    }),
-    getHook: (definition) => definition.afterResize,
-  });
-}
-
-function txFinalizeSelectionRotate(args: {
-  element: ElementService;
-  selection: Array<Group | Shape<ShapeConfig>>;
-}) {
-  return txDispatchSelectionTransformHooks({
-    element: args.element,
-  }, {
-    selection: args.selection,
-    createArgs: (node, element) => ({
-      node,
-      element,
-      rotation: node.rotation(),
-      selection: args.selection,
-    }),
-    getHook: (definition) => definition.afterRotate,
-  });
-}
-
-/**
- * Produces the history label for drag-proxy move operations.
- */
-function getProxyDragLabel(element: TElement) {
-  return element.data.type === "pen" ? "drag-pen" : "drag-shape1d";
-}
-
-/**
- * Applies current theme colors to the shared Konva transformer instance.
- */
-function syncTransformerTheme(theme: ThemeService, transformer: Konva.Transformer) {
-  const activeTheme = theme.getTheme();
-  transformer.borderStroke(activeTheme.colors.canvasSelectionStroke);
-  transformer.anchorStroke(activeTheme.colors.canvasSelectionStroke);
-  transformer.anchorFill(activeTheme.colors.background);
-  transformer.anchorCornerRadius(0);
-  transformer.anchorSize(8);
-}
-
-/**
- * Owns shared transform UX for existing scene nodes.
- *
- * Responsibilities:
- * - keep one shared Konva.Transformer in sync with filtered selection
- * - provide a drag proxy for single pen/shape1d selections
- * - route semantic move/resize callbacks through CanvasRegistryService
- * - keep generic transform persistence as fallback when plugins do not own it
- *
- * Design notes:
- * - move persistence belongs to element plugins when they opt into callbacks
- * - resize/rotate fallback still lives here for element types that have not claimed ownership yet
- * - drag proxy stays behind the visual node so direct pointer targeting still works
- */
-export function createTransformPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
-  let transformer: Konva.Transformer | null = null;
-  let dragProxy: Konva.Rect | null = null;
-  let dragProxyState: TTransformDragProxyState | null = null;
-  let beforeElements: TElement[] = [];
-
+export function createTransformPlugin():
+IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
   return {
     name: "transform",
     apply(ctx) {
-      const element = ctx.services.require("element");
-      const group = ctx.services.require("group");
-      const session = ctx.services.require("session");
+      const activeSession = ctx.services.require("activeSession");
       const crdt = ctx.services.require("crdt");
+      const elementService = ctx.services.require("element");
       const history = ctx.services.require("history");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
-      const theme = ctx.services.require("theme");
-
-      const refreshTransformer = () => {
-        if (!transformer) {
-          return;
-        }
-
-        txSyncTransformer({
-          Konva,
-          scene,
-          element,
-          session,
-          selection,
-          transformer,
-        }, {});
+      const cleanups: Array<() => void> = [];
+      const clonePlans = new Map<string, TProductClonePlan>();
+      const createId = () => {
+        return scene.container.ownerDocument.defaultView?.crypto.randomUUID()
+          ?? `clone-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       };
 
-      const hideDragProxy = () => {
-        if (!dragProxy) {
-          return;
-        }
-
-        dragProxy.visible(false);
-        dragProxy.listening(false);
-        dragProxy.draggable(false);
-        scene.staticForegroundLayer.batchDraw();
-      };
-
-      const txEnsureDragProxyAttached = () => {
-        if (!dragProxy) {
-          return null;
-        }
-
-        if (dragProxy.getParent() !== scene.staticForegroundLayer) {
-          scene.staticForegroundLayer.add(dragProxy);
-        }
-
-        return dragProxy;
-      };
-
-      const refreshDragProxy = () => {
-        if (!dragProxy || dragProxyState) {
-          return;
-        }
-
-        if (session.editingId !== null) {
-          hideDragProxy();
-          return;
-        }
-
-        const target = fxGetProxyDragTarget({ element, Konva }, { selection });
-        if (!target) {
-          hideDragProxy();
-          return;
-        }
-
-        const attachedDragProxy = txEnsureDragProxyAttached();
-        if (!attachedDragProxy) {
-          return;
-        }
-
-        const bounds = fxGetProxyBounds({ scene }, { node: target });
-        attachedDragProxy.position(bounds.position);
-        attachedDragProxy.rotation(bounds.rotation);
-        attachedDragProxy.scale({ x: 1, y: 1 });
-        attachedDragProxy.size({ width: bounds.width, height: bounds.height });
-        attachedDragProxy.visible(true);
-        attachedDragProxy.listening(true);
-        attachedDragProxy.draggable(true);
-        const targetIndex = target.zIndex();
-        const proxyIndex = attachedDragProxy.zIndex();
-        attachedDragProxy.zIndex(proxyIndex < targetIndex ? Math.max(0, targetIndex - 1) : targetIndex);
-        scene.staticForegroundLayer.batchDraw();
-      };
-
-      const applyProxyDragElement = (el: TElement) => {
-        applyElements(element, [el]);
-        refreshTransformer();
-        scene.staticForegroundLayer.batchDraw();
-      };
-
-      ctx.hooks.init.tap(() => {
-        dragProxy = new Konva.Rect({
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-          rotation: 0,
-          fill: theme.getTheme().colors.canvasSelectionFill,
-          opacity: 0.01,
-          strokeEnabled: false,
-          visible: false,
-          listening: false,
-          draggable: false,
-          name: TRANSFORM_DRAG_PROXY_NAME,
-        });
-        dragProxy.setAttr(INTERACTION_OVERLAY_ATTR, true);
-        scene.staticForegroundLayer.add(dragProxy);
-
-        dragProxy.on("dragstart", (event) => {
-          if (!dragProxy) {
-            return;
-          }
-
-          const target = fxGetProxyDragTarget({ element, Konva }, { selection });
-
-          if (event.evt?.altKey) {
-            dragProxy.stopDrag();
-            dragProxy.absolutePosition(dragProxy.absolutePosition());
-            if (target) {
-              element.createDragClone({
-                node: target,
-                selection: selection.selection,
-              });
-            }
-            refreshDragProxy();
-            return;
-          }
-
-          if (!target) {
-            dragProxy.stopDrag();
-            hideDragProxy();
-            return;
-          }
-
-          const beforeElement = element.toElement(target);
-          if (!beforeElement) {
-            dragProxy.stopDrag();
-            refreshDragProxy();
-            return;
-          }
-
-          target.setAttr(TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR, structuredClone(beforeElement));
-          dragProxyState = {
-            node: target,
-            beforeElement,
-            label: getProxyDragLabel(beforeElement),
-            proxyStartPosition: { ...dragProxy.absolutePosition() },
-            nodeStartPosition: { ...target.absolutePosition() },
-            throttledPatch: throttle((element: TElement) => {
-              const builder = crdt.build();
-              builder.patchElement(element.id, "x", element.x);
-              builder.patchElement(element.id, "y", element.y);
-              builder.patchElement(element.id, "updatedAt", element.updatedAt);
-              builder.commit();
-            }, MOVE_PATCH_INTERVAL_MS),
-          };
-        });
-
-        dragProxy.on("dragmove", () => {
-          if (!dragProxy || !dragProxyState) {
-            return;
-          }
-
-          const state = dragProxyState;
-          const currentProxyPosition = dragProxy.absolutePosition();
-          const dx = currentProxyPosition.x - state.proxyStartPosition.x;
-          const dy = currentProxyPosition.y - state.proxyStartPosition.y;
-          state.node.absolutePosition({
-            x: state.nodeStartPosition.x + dx,
-            y: state.nodeStartPosition.y + dy,
-          });
-
-          const el = element.toElement(state.node);
-          if (el) {
-            const moveResult = txDispatchSelectionTransformHooks({
-              element,
-            }, {
-              selection: selection.selection,
-              createArgs: () => ({
-                node: state.node,
-                element: el,
-                pointer: scene.dynamicLayer.getRelativePointerPosition(),
-                selection: selection.selection,
-              }),
-              getHook: (definition) => definition.onMove,
-            });
-
-            if (!moveResult.cancel) {
-              const nextElement = element.toElement(state.node);
-              if (nextElement) {
-                state.throttledPatch(nextElement);
-              }
-            }
-          }
-          scene.staticForegroundLayer.batchDraw();
-        });
-
-        dragProxy.on("dragend", () => {
-          if (!dragProxy || !dragProxyState) {
-            refreshDragProxy();
-            return;
-          }
-
-          const state = dragProxyState;
-          dragProxyState = null;
-          const afterElement = element.toElement(state.node);
-          state.node.setAttr(TRANSFORM_MOVE_BEFORE_ELEMENT_ATTR, undefined);
-          if (!afterElement) {
-            refreshDragProxy();
-            return;
-          }
-
-          const afterMoveResult = txDispatchSelectionTransformHooks({
-            element,
-          }, {
-            selection: selection.selection,
-            createArgs: () => ({
-              node: state.node,
-              element: afterElement,
-              pointer: scene.dynamicLayer.getRelativePointerPosition(),
-              selection: selection.selection,
-            }),
-            getHook: (definition) => definition.afterMove,
-          });
-          refreshDragProxy();
-
-          if (afterMoveResult.cancel) {
-            return;
-          }
-
-          const moveBuilder = crdt.build();
-          moveBuilder.patchElement(afterElement.id, afterElement);
-          const moveCommitResult = moveBuilder.commit();
-
-          const didMove = state.beforeElement.x !== afterElement.x || state.beforeElement.y !== afterElement.y;
-          if (!didMove) {
-            return;
-          }
-
-          const undoElement = structuredClone(state.beforeElement);
-          const redoElement = structuredClone(afterElement);
-          history.record({
-            label: state.label,
-            undo: () => {
-              applyProxyDragElement(undoElement);
-              moveCommitResult.rollback();
-              refreshDragProxy();
-            },
-            redo: () => {
-              applyProxyDragElement(redoElement);
-              crdt.applyOps({ ops: moveCommitResult.redoOps });
-              refreshDragProxy();
-            },
-          });
-        });
-
-        transformer = new Konva.Transformer();
-        syncTransformerTheme(theme, transformer);
-        scene.dynamicLayer.add(transformer);
-
-        transformer.on("transformstart", () => {
-          const nodes = transformer?.getNodes() ?? [];
-          beforeElements = serializeSelection(element, nodes);
-          nodes.forEach((node) => {
-            const beforeElement = element.toElement(node);
-            if (!beforeElement) {
+      const waitForProjection = (expectedRevision: number) => {
+        const cleanup = {
+          value: null as (() => void) | null,
+        };
+        const promise = new Promise<void>((resolve, reject) => {
+          cleanup.value = scene.hooks.projection.tap((result) => {
+            if (result.revision < expectedRevision) {
               return;
             }
-
-            node.setAttr(TRANSFORM_BEFORE_ELEMENT_ATTR, structuredClone(beforeElement));
+            cleanup.value?.();
+            cleanup.value = null;
+            if (
+              result.revision === expectedRevision
+              && (result.status === "applied" || result.status === "noop")
+            ) {
+              resolve();
+            } else {
+              reject(
+                result.status === "failed"
+                  ? result.error
+                  : new Error("Authoritative transform projection was rejected."),
+              );
+            }
           });
         });
+        return { promise, cancel: () => cleanup.value?.() };
+      };
 
-        transformer.on("transform", () => {
-          if (!transformer) {
-            return;
-          }
-
-          const activeAnchor = transformer.getActiveAnchor();
-          const anchors = isTypedAnchor(activeAnchor) ? [activeAnchor] : [];
-          const selectedNodes = transformer.getNodes() as Array<Group | Shape<ShapeConfig>>;
-          if (activeAnchor === "rotater") {
-            txApplySelectionRotateHooks({
-              element,
-              selection: selectedNodes,
-            });
-          } else {
-            txApplySelectionResizeHooks({
-              element,
-              scene: scene,
-              selection: selectedNodes,
-              anchors,
-            });
-          }
-          transformer.forceUpdate();
-          scene.dynamicLayer.batchDraw();
-          refreshDragProxy();
+      const syncSelection = () => {
+        const snapshot = selection.snapshot;
+        if (snapshot.selection.length === 0) {
+          scene.product.transforms.setSelection(null);
+          return;
+        }
+        const document = crdt.doc();
+        const targets = fnRootProductTransformTargets({
+          document,
+          targets: snapshot.selection,
         });
-
-        transformer.on("transformend", () => {
-          if (!transformer) {
-            return;
-          }
-
-          const nodes = transformer.getNodes();
-          const activeAnchor = transformer.getActiveAnchor();
-          const anchors = isTypedAnchor(activeAnchor) ? [activeAnchor] : [];
-          const transformResult = activeAnchor === "rotater"
-            ? txFinalizeSelectionRotate({
-              element,
-              selection: nodes as Array<Group | Shape<ShapeConfig>>,
-            })
-            : txFinalizeSelectionResize({
-              element,
-              scene: scene,
-              selection: nodes as Array<Group | Shape<ShapeConfig>>,
-              anchors,
+        if (targets.length === 0) {
+          scene.product.transforms.setSelection(null);
+          return;
+        }
+        const selectedElements = targets.flatMap((target) => {
+          if (target.kind === "group") {
+            return fnCollectDescendantElementIds({
+              document,
+              groupIds: [target.id],
+            }).flatMap((id) => {
+              const candidate = document.elements[id];
+              return candidate === undefined ? [] : [candidate];
             });
-
-          const afterElements = serializeSelection(element, nodes);
-          if (afterElements.length === 0) {
-            return;
           }
+          const candidate = document.elements[target.id];
+          return candidate === undefined ? [] : [candidate];
+        });
+        const uniqueElements = [...new Map(selectedElements.map((element) => {
+          return [element.id, element];
+        })).values()];
+        const policy = fnMergeProductSelectionTransformPolicy({
+          policies: uniqueElements.map((element) => {
+            return elementService.getTransformPolicy({
+              element,
+              selection: uniqueElements,
+            });
+          }),
+          includeSizeConstraints: targets.length === 1
+            && targets[0]?.kind === "element",
+          // Aggregate non-uniform scaling can introduce affine skew, which is
+          // intentionally absent from the persisted canvas element contract.
+          forceAspectRatio: targets.length > 1
+            || targets.some((target) => {
+              return target.kind === "group";
+            }),
+        });
+        const focused = snapshot.focused !== null
+          && targets.some((target) => {
+            return target.kind === snapshot.focused?.kind
+              && target.id === snapshot.focused.id;
+          })
+          ? snapshot.focused
+          : targets[0];
+        scene.product.transforms.setSelection({
+          targets,
+          ...(focused === undefined ? {} : { focused }),
+          appearance: APPEARANCE,
+          policy: productPolicy(policy),
+        });
+      };
 
-          nodes.forEach((node) => {
-            node.setAttr(TRANSFORM_BEFORE_ELEMENT_ATTR, undefined);
-          });
-
-          const fallbackBeforeElements = beforeElements.filter((element) => !transformResult.handledNodeIds.has(element.id));
-          const fallbackAfterElements = afterElements.filter((element) => !transformResult.handledNodeIds.has(element.id));
-
-          if (fallbackAfterElements.length === 0) {
-            refreshSelectedGroups(selection);
-            refreshTransformer();
-            refreshDragProxy();
-            return;
-          }
-
-          normalizeSelectedGroupTransforms(nodes);
-          applyElements(element, fallbackAfterElements);
-          refreshSelectedGroups(selection);
-          refreshTransformer();
-          refreshDragProxy();
-          const transformBuilder = crdt.build();
-          fallbackAfterElements.forEach((element) => {
-            transformBuilder.patchElement(element.id, element);
-          });
-          const transformCommitResult = transformBuilder.commit();
-
-          if (fallbackBeforeElements.length === 0) {
-            return;
-          }
-
-          const undoElements = structuredClone(fallbackBeforeElements);
-          const redoElements = structuredClone(fallbackAfterElements);
-
-          history.record({
-            label: "transform",
-            undo: () => {
-              applyElements(element, undoElements);
-              refreshSelectedGroups(selection);
-              refreshTransformer();
-              refreshDragProxy();
-              transformCommitResult.rollback();
-            },
-            redo: () => {
-              applyElements(element, redoElements);
-              refreshSelectedGroups(selection);
-              refreshTransformer();
-              refreshDragProxy();
-              crdt.applyOps({ ops: transformCommitResult.redoOps });
+      const onTransform = (event: TCanvasProductTransformEvent) => {
+        if (event.type === "transform-begin") {
+          activeSession.register({
+            id: event.gestureId,
+            kind: event.modifiers.alt ? "clone-drag" : "transform",
+            startedAtRevision: crdt.revision,
+            dependencies: fnCanvasActiveSessionDependencies({
+              document: crdt.doc(),
+              targets: event.proposals.map((proposal) => proposal.target),
+              elementFields: TRANSFORM_ELEMENT_DEPENDENCY_FIELDS,
+              groupFields: TRANSFORM_GROUP_DEPENDENCY_FIELDS,
+              includeGroupDescendants: true,
+            }),
+            cancel: () => {
+              scene.product.transforms.cancelForRemoteChange();
             },
           });
-        });
-
-        refreshTransformer();
-        refreshDragProxy();
-
-        selection.hooks.change.tap(() => {
-          refreshTransformer();
-          refreshDragProxy();
-        });
-        session.hooks.editingChange.tap(() => {
-          refreshTransformer();
-          refreshDragProxy();
-        });
-        group.hooks.groupsChange.tap(() => {
-          refreshTransformer();
-          refreshDragProxy();
-        });
-        theme.hooks.change.tap(() => {
-          if (transformer) {
-            syncTransformerTheme(theme, transformer);
+          return;
+        }
+        if (event.type === "transform-cancel") {
+          activeSession.complete(event.gestureId);
+          return;
+        }
+        if (event.type === "transform-update") {
+          return;
+        }
+        if (event.type !== "transform-commit") {
+          return;
+        }
+        activeSession.complete(event.gestureId);
+        const document = crdt.doc();
+        if (event.modifiers.alt && event.clone !== undefined) {
+          const plan = clonePlans.get(event.gestureId);
+          clonePlans.delete(event.gestureId);
+          if (plan === undefined) {
+            event.handoff.fail(new Error(
+              "Clone plan was not prepared before the transform preview.",
+            ));
+            return;
           }
-          if (dragProxy) {
-            dragProxy.fill(theme.getTheme().colors.canvasSelectionFill);
+          const cloneOperation = (async () => {
+            const now = Date.now();
+            const rootProposals = fnRootProductTransformProposals({
+              document,
+              proposals: event.proposals,
+            });
+            const proposalByTarget = new Map(rootProposals.map((proposal) => [
+              `${proposal.target.kind}:${proposal.target.id}`,
+              proposal,
+            ]));
+            let clonedAssetUrls: string[] = [];
+            let commitResult: ReturnType<
+              ReturnType<typeof crdt.build>["commit"]
+            > | null = null;
+            try {
+              for (const entry of plan.elements) {
+                const direct = proposalByTarget.get(`element:${entry.sourceId}`);
+                if (direct !== undefined) {
+                  const transformed = fnPersistProductTransformProposal(
+                    entry.clone,
+                    {
+                      ...direct,
+                      target: { kind: "element", id: entry.clone.id },
+                    },
+                    now,
+                  );
+                  if (transformed !== null) {
+                    entry.clone = transformed;
+                  }
+                } else {
+                  let parentId = document.elements[entry.sourceId]?.parentGroupId
+                    ?? null;
+                  while (parentId !== null) {
+                    const groupProposal = proposalByTarget.get(
+                      `group:${parentId}`,
+                    );
+                    if (groupProposal !== undefined) {
+                      entry.clone = fnPersistElementThroughGroupTransform({
+                        element: entry.clone,
+                        proposal: groupProposal,
+                        updatedAt: now,
+                      }) ?? entry.clone;
+                      break;
+                    }
+                    parentId = document.groups[parentId]?.parentGroupId ?? null;
+                  }
+                }
+              }
+              const assets = await txCloneImageAssets({
+                cloneImage: ctx.config.image.cloneImage,
+                deleteImage: ctx.config.image.deleteImage,
+              }, {
+                elements: plan.elements.map((entry) => entry.clone),
+              });
+              clonedAssetUrls = assets.clonedUrls;
+              for (const entry of plan.elements) {
+                const url = assets.urlByElementId.get(entry.clone.id);
+                if (url !== undefined && entry.clone.data.type === "image") {
+                  entry.clone = {
+                    ...entry.clone,
+                    data: { ...entry.clone.data, url },
+                  };
+                }
+              }
+              plan.selection.forEach((target, index) => {
+                const zIndex = `z${String(
+                  Object.keys(document.elements).length
+                    + Object.keys(document.groups).length
+                    + index,
+                ).padStart(8, "0")}`;
+                const element = plan.elements.find((entry) => {
+                  return target.kind === "element"
+                    && entry.clone.id === target.id;
+                });
+                if (element !== undefined) {
+                  element.clone.zIndex = zIndex;
+                }
+                const group = plan.groups.find((entry) => {
+                  return target.kind === "group"
+                    && entry.clone.id === target.id;
+                });
+                if (group !== undefined) {
+                  group.clone.zIndex = zIndex;
+                }
+              });
+              const projection = waitForProjection(crdt.revision + 1);
+              const builder = crdt.build();
+              for (const entry of plan.groups) {
+                builder.patchGroup(entry.clone.id, entry.clone);
+              }
+              for (const entry of plan.elements) {
+                builder.patchElement(entry.clone.id, entry.clone);
+              }
+              const committed = builder.commit();
+              commitResult = committed;
+              await projection.promise;
+              history.record({
+                label: "Clone selection",
+                undo: () => crdt.applyOps({ ops: committed.undoOps }),
+                redo: () => crdt.applyOps({ ops: committed.redoOps }),
+              });
+              selection.setSelection(plan.selection);
+            } catch (error) {
+              commitResult?.rollback();
+              await Promise.allSettled(clonedAssetUrls.map((url) => {
+                return ctx.config.image.deleteImage({ url });
+              }));
+              throw error;
+            }
+          })();
+          event.handoff.waitFor(cloneOperation);
+          return;
+        }
+        const builder = crdt.build();
+        const timestamp = Date.now();
+        let changed = false;
+        for (
+          const proposal of fnRootProductTransformProposals({
+            document,
+            proposals: event.proposals,
+          })
+        ) {
+          if (proposal.target.kind === "element") {
+            const current = document.elements[proposal.target.id];
+            if (current === undefined) {
+              continue;
+            }
+            const next = fnPersistProductTransformProposal(
+              current,
+              proposal,
+              timestamp,
+            );
+            if (next !== null) {
+              builder.patchElement(next.id, next);
+              changed = true;
+            }
+            continue;
           }
-          refreshTransformer();
-          refreshDragProxy();
-        });
-      });
-
-      ctx.hooks.pointerMove.tap((event) => {
-        if (event.evt.buttons === 0) {
+          for (const id of fnCollectDescendantElementIds({
+            document,
+            groupIds: [proposal.target.id],
+          })) {
+            const current = document.elements[id];
+            if (current === undefined) {
+              continue;
+            }
+            const next = fnPersistElementThroughGroupTransform({
+              element: current,
+              proposal,
+              updatedAt: timestamp,
+            });
+            if (next === null) {
+              continue;
+            }
+            builder.patchElement(id, next);
+            changed = true;
+          }
+        }
+        if (!changed) {
+          event.handoff.complete();
           return;
         }
 
-        refreshDragProxy();
-      });
+        const projection = waitForProjection(crdt.revision + 1);
+        try {
+          const result = builder.commit();
+          event.handoff.waitFor((async () => {
+            try {
+              await projection.promise;
+              history.record({
+                label: "Transform selection",
+                undo: () => crdt.applyOps({ ops: result.undoOps }),
+                redo: () => crdt.applyOps({ ops: result.redoOps }),
+              });
+            } catch (error) {
+              result.rollback();
+              throw error;
+            }
+          })());
+        } catch (error) {
+          projection.cancel();
+          event.handoff.fail(error);
+        }
+      };
 
-      ctx.hooks.pointerUp.tap(() => {
-        refreshDragProxy();
-      });
-
-      ctx.hooks.pointerCancel.tap(() => {
-        dragProxyState = null;
-        refreshDragProxy();
-      });
-
+      cleanups.push(ctx.hooks.init.tap(() => {
+        cleanups.push(scene.product.transforms.setClonePlanProvider({
+          prepare: ({ gestureId, targets }) => {
+            const document = crdt.doc();
+            const plan = fnPlanProductSubtreeClone({
+              document,
+              targets,
+              createId,
+              now: Date.now(),
+            });
+            for (const entry of plan.elements) {
+              const source = document.elements[entry.sourceId];
+              if (source === undefined) {
+                return null;
+              }
+              const clone = elementService.prepareClone({
+                source,
+                clone: entry.clone,
+                createId,
+              });
+              if (clone === null) {
+                return null;
+              }
+              entry.clone = clone;
+            }
+            if (plan.elements.length === 0 && plan.groups.length === 0) {
+              return null;
+            }
+            clonePlans.set(gestureId, plan);
+            return fnProductCloneIdentity(plan);
+          },
+          discard: ({ gestureId }) => {
+            clonePlans.delete(gestureId);
+          },
+        }));
+        cleanups.push(selection.hooks.change.tap(syncSelection));
+        cleanups.push(scene.hooks.projection.tap(syncSelection));
+        cleanups.push(elementService.hooks.elementsChange.tap(syncSelection));
+        cleanups.push(scene.product.transforms.subscribe(onTransform));
+        syncSelection();
+      }));
       ctx.hooks.destroy.tap(() => {
-        dragProxyState = null;
-        dragProxy?.destroy();
-        dragProxy = null;
-        transformer?.destroy();
-        transformer = null;
+        clonePlans.clear();
+        for (const cleanup of cleanups.splice(0).reverse()) {
+          cleanup();
+        }
       });
     },
   };

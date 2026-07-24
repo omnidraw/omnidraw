@@ -41,7 +41,7 @@ export function OpacitySlider(props: {
   return (
     <div style={{ display: "flex", "align-items": "center", gap: "0.75rem" }}>
       <div
-        onPointerDown={onPointerDown}
+        on:pointerdown={onPointerDown}
         style={{
           position: "relative",
           flex: 1,

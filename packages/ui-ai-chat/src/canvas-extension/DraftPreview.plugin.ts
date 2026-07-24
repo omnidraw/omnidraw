@@ -17,8 +17,8 @@ export function createDraftPreviewPlugin(portal: {
           dataType: "ui-widget",
           cloneable: false,
           titleBarActions: [
-            { id: "reset", label: "Reset" },
-            { id: "publish", label: "Publish" },
+            { id: "reset", label: "Reset", kind: "restore" },
+            { id: "publish", label: "Publish", kind: "maximize" },
           ],
           getTitle: (element) => portal.previewFrames.getTitle(element),
           renderDom: ({ root, element, titleBar }) => {

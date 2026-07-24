@@ -1,16 +1,35 @@
-# Konva to canvas-engine migration plan
+# Konva to canvas-engine migration contract
 
-Status: implementation plan; no migration is authorized by this document  
-Scope owner: `packages/canvas`  
-Plan date: 2026-07-24  
-Engine repository: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`  
-Engine commit audited: `58009176fd4622c661e50ddf0c7d3216633c76c0`  
-Filesystem artifact: `artifacts/vibecanvas-canvas-engine-0.1.0.tgz`  
+Status: **implementation cutover complete; strict qualification incomplete**
+
+Scope owner: `packages/canvas`
+
+Contract date: 2026-07-24
+
+Engine repository: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
+
+Engine commit audited: `58009176fd4622c661e50ddf0c7d3216633c76c0`
+
+Filesystem artifact: `artifacts/vibecanvas-canvas-engine-0.1.0.tgz`
+
 Artifact SHA-256: `7069d90a20253b69f7c805d369961f09e737c133bb3594684e71ca9fb0c73240`
 
-## 1. Decision
+## 1. Decision and current status
 
 Replace Konva in `packages/canvas` with `@vibecanvas/canvas-engine`.
+
+The hard implementation cutover described by this contract is now present in
+the working tree. The engine-backed runtime is the sole canvas renderer,
+renderer-neutral consumers have been migrated, and Konva source/dependency
+usage has been removed without a compatibility layer. Phases 0–10 are complete
+at the implementation level; Phase 11 remains open.
+
+This status does not weaken the Definition of Done in Section 24. The migration
+is not fully qualified until the three-browser/DPR/input matrix, real
+two-client Automerge matrix, full performance statistics and budgets,
+leak/soak checks, human screen-atlas acceptance, repository/release gates, and
+portable artifact provenance all pass. Detailed evidence and gaps live in
+[`CANVAS-MIGRATION-PROGRESS.md`](../../CANVAS-MIGRATION-PROGRESS.md).
 
 The updated canvas-engine does **not** need another public feature before this
 migration can begin. It now provides every rendering and interaction mechanism
@@ -26,8 +45,8 @@ used by Vibecanvas:
 - text editing projection;
 - deterministic lifecycle, metrics, diagnostics, and cleanup.
 
-The remaining work is application architecture. Vibecanvas must stop treating
-mutable renderer nodes as product state and introduce a deterministic
+The application architecture work is implemented: Vibecanvas no longer treats
+mutable renderer nodes as product state and now has a deterministic
 `TCanvasDoc` to engine projection boundary.
 
 This is not an import rename and must not become a Konva compatibility layer.
@@ -66,7 +85,7 @@ Upstream evidence at the audited commit includes:
 The packed-consumer verifier was re-run from this audit and produced the exact
 SHA recorded above.
 
-### 2.1 Current engine gaps
+### 2.1 Current qualification gaps
 
 There are no canvas-engine feature gaps for the existing Vibecanvas feature
 set.
@@ -75,24 +94,29 @@ WebGPU, active render-worker execution, and live SVG rendering remain
 capability-reported but unavailable production paths. Vibecanvas does not use
 them today, so they are not migration blockers.
 
-The remaining validation gaps are:
+The implementation now includes real widget portals, dependency-aware
+active-session conflict policy, and a product performance harness. The
+remaining gaps are qualification depth:
 
-- a real Vibecanvas widget mounted through an engine portal;
-- local gestures racing remote Automerge changes;
-- integrated performance with Automerge, Solid overlays, images, and widgets.
+- only a partial Chromium widget/product smoke exists; the required
+  Chromium/Firefox/WebKit matrix at DPR 1/2 and across mouse/touch/pen is
+  missing;
+- focused conflict-policy tests exist, but the required real two-client
+  Automerge/browser matrix has not run;
+- single-run product timings exist, but full p50/p95/p99 5k/50k/100k
+  statistics, budget compliance, and leak/soak evidence are missing.
 
-These are product qualification tasks, not engine feature requests.
+These remain product qualification tasks, not engine feature requests.
 
-### 2.2 Visual placeholder decision
+### 2.2 Visual placeholder implementation
 
-No visual placeholder is added in this planning-only change because the
-re-audit found no missing engine mechanism.
-
-The implementation must nevertheless include the placeholder protocol in
-Section 14. A persisted element may never disappear silently because a
-projector, resource, or engine capability is unavailable. Human testers must
-see an unmistakable derived placeholder while the original CRDT data remains
-untouched.
+The Section 14 placeholder protocol is implemented for missing/throwing
+projectors, element-specific capability gaps, and resource/portal ownership
+failures. It preserves the original CRDT element, emits a selectable derived
+placeholder, and deduplicates diagnostics/user notifications by active failure
+generation. Core engine-profile mismatches that prevent any scene from
+starting remain canvas-fatal by design. Forced placeholder/recovery tests
+exist; the final human failure matrix remains part of Phase 11.
 
 ## 3. Non-negotiable boundaries
 
@@ -103,7 +127,7 @@ untouched.
 - `packages/canvas/package.json`
 - `packages/canvas/vitest.config.ts`
 - package-local architecture and performance documentation
-- the current absolute filesystem tarball dependency for this PoC
+- the current exact filesystem tarball dependency used for local qualification
 
 ### 3.2 Out of scope
 
@@ -115,8 +139,7 @@ untouched.
 - registry publication or production packaging of canvas-engine;
 - WebGPU, render workers, 3D, or live SVG product features;
 - a legacy document migration;
-- a Konva-shaped adapter over canvas-engine;
-- production migration work in the planning change that created this file.
+- a Konva-shaped adapter over canvas-engine.
 
 ### 3.3 Persisted data invariants
 
@@ -164,11 +187,11 @@ In particular:
 The engine recorder is diagnostic machinery only. It must not become the
 Automerge source, product history source, or collaboration log.
 
-## 4. Current baseline
+## 4. Historical pre-cutover baseline
 
-At planning time, `packages/canvas` contains 200 TypeScript/TSX source files.
+At planning time, `packages/canvas` contained 200 TypeScript/TSX source files.
 
-| Coupling measure | Current count |
+| Coupling measure | Historical count |
 |---|---:|
 | Source files referencing Konva | 97 / 200 |
 | Source files with runtime `import Konva` | 19 |
@@ -179,7 +202,7 @@ At planning time, `packages/canvas` contains 200 TypeScript/TSX source files.
 | Test files referencing Konva | 38 / 58 |
 | Konva-related test lines | 309 |
 
-The problem is deeper than constructors:
+The removed coupling was deeper than constructors:
 
 - `SceneService` exposes a stage and three live layers;
 - `SelectionService` stores `Konva.Node[]`;
@@ -232,31 +255,19 @@ Widget placement remains:
 7. server functions and collaborative widget state continue through their
    existing bridges.
 
-## 5. Repository-wide Konva deletion caveat
+## 5. Repository-wide Konva deletion result
 
-The requested implementation scope is `packages/canvas`, but global Konva
-deletion has one known external dependency.
+The coordinated consumer cutover is implemented. `packages/ui-ai-chat` now
+uses renderer-neutral element/widget definitions and engine portal hit parts;
+the old canvas widget-host node factories and direct renderer values were
+deleted. The current source/manifests/lockfile scan has no Konva matches in
+`packages/canvas`, `packages/ui-ai-chat`, or `apps/frontend`, and no `konva`
+package entry.
 
-`packages/ui-ai-chat` currently:
-
-- imports Konva at runtime;
-- constructs widget host nodes through `@vibecanvas/canvas/widget-host/*`;
-- registers renderer-native definitions with `ElementService`;
-- passes live nodes through widget menu, clone, resize, and portal helpers.
-
-Therefore:
-
-- this plan makes `packages/canvas` Konva-free;
-- the canvas package will publish a renderer-neutral widget/extension contract;
-- `packages/ui-ai-chat` must adopt that breaking contract in a coordinated
-  consumer change;
-- root `konva` dependencies in `packages/ui-ai-chat` and `apps/frontend`
-  cannot be removed by a canvas-only patch;
-- no temporary Konva compatibility API should be kept inside canvas.
-
-This is an integration gate, not permission to change external packages in the
-canvas migration. The final repository-level dependency deletion must wait for
-that consumer owner.
+This satisfies the subtraction requirement without a temporary compatibility
+API. The final local release build passed for all four platform targets, and a
+scan of the generated `dist` tree also has no Konva match. Portable,
+reproducible engine artifact provenance remains a Phase 11 release gate.
 
 ## 6. Target architecture
 
@@ -1130,7 +1141,7 @@ Implementation requirements:
 
 ## 17. Plugin and folder migration map
 
-| Area | Planned change |
+| Area | Implemented cutover contract |
 |---|---|
 | `plugins/event-listener` | Engine input → canvas semantic hooks; keep host key filtering |
 | `plugins/grid` | Project one engine background node |
@@ -1158,6 +1169,23 @@ Implementation requirements:
 Each phase is independently reviewable, but this is a breaking internal
 migration. Do not carry two production renderers or add a user-visible
 engine-selection feature flag.
+
+The work lists below remain the acceptance contract. Current status:
+
+| Phase | Implementation status | Qualification note |
+|---|---|---|
+| 0 — Invariants and exact bytes | Complete | Portable provenance remains a release gate |
+| 1 — Semantic contracts | Complete | Focused contract coverage recorded |
+| 2 — Engine boundary | Complete | Focused lifecycle/ownership coverage recorded |
+| 3 — Static projection | Complete | Forced human failure matrix remains |
+| 4 — Incremental hydration | Complete | Element-only updates are incremental; group changes use bounded fallback |
+| 5 — Camera/input/selection/menus | Complete | Full browser/DPR/input matrix remains |
+| 6 — Creation tools | Complete | Human atlas acceptance remains |
+| 7 — Transforms/groups/order/clone | Complete | Real two-client and performance qualification remain |
+| 8 — Text/images | Complete | Cross-browser IME/image failure matrix remains |
+| 9 — Widgets/extensions | Complete | Partial Chromium smoke only |
+| 10 — Composition/Konva deletion | Complete | Final local build and generated `dist` scan pass |
+| 11 — Qualification/handoff | In progress | All Section 24 gates must pass |
 
 ### Phase 0 — Freeze invariants and exact engine bytes
 
@@ -1371,7 +1399,8 @@ Work:
 - remove `konva` from `packages/canvas/package.json`;
 - remove package test setup/dependencies used only by Konva;
 - update `ARCHITECTURE.md` and `PERFORMANCE.md`;
-- keep the absolute canvas-engine file import for the PoC.
+- keep the exact absolute canvas-engine artifact for local qualification while
+  preserving its explicit release/provenance gap.
 
 Exit:
 
@@ -1804,15 +1833,17 @@ entries are deleted.
 - this plan is updated with any approved deviations;
 - the compatibility report points at the final artifact and results.
 
-## 25. Immediate next action after approval
+## 25. Current next action
 
-Start Phase 0 only:
+Keep the implemented hard cutover and finish Phase 11:
 
-1. make the filesystem artifact identity explicit and cache-safe;
-2. remove the obsolete Vitest workaround;
-3. freeze schema, behavior, screenshot, and performance baselines;
-4. add no engine runtime to the production composition yet.
+1. run the clean Chromium/Firefox/WebKit × DPR 1/2 × mouse/touch/pen product
+   matrix and accept the current screen atlas;
+2. run the real two-client Automerge conflict matrix;
+3. collect full p50/p95/p99 performance results, meet the stated budgets, and
+   complete leak/soak checks;
+4. make the exact engine artifact portable and reproducibly attributable to
+   committed upstream source.
 
-Then implement Phase 1's semantic contracts as a separate reviewed change.
-
-No canvas migration was performed while creating this plan.
+Do not mark this migration complete, change task `S111` from in-progress, or
+weaken Section 24 until every gate is evidenced.

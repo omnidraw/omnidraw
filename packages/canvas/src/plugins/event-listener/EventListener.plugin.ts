@@ -1,173 +1,221 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import Konva from "konva";
-import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices, TElementPointerEvent, TMouseEvent, TPointerEvent, TWheelEvent } from "../../types";
+import type {
+  TCanvasInputEvent,
+  TCanvasInputPointerEvent,
+} from "../../engine/input/typed";
+import {
+  fnCanvasTargetKey,
+  fnCanvasTargetsEqual,
+} from "../../semantic/fn.target";
+import type { TCanvasSemanticHitPart } from "../../semantic/typed";
+import type {
+  IRuntimeConfig,
+  IRuntimeHooks,
+  IRuntimeServices,
+  TElementPointerEvent,
+} from "../../types";
 
-function isInsideHostedWidget(target: EventTarget | null) {
-  return target instanceof HTMLElement && target.closest('[data-hosted-widget-root="true"]') !== null;
-}
+const DOUBLE_CLICK_DELAY_MS = 350;
+const DOUBLE_CLICK_DISTANCE_PX = 6;
 
-function isTransformerNode(target: unknown) {
-  if (!(target instanceof Konva.Node)) {
+type TLastClick = {
+  targetKey: string;
+  timeStamp: number;
+  viewport: { x: number; y: number };
+};
+
+function isEditableOrHostedTarget(
+  document: Document,
+  target: EventTarget | null,
+): boolean {
+  const HTMLElementConstructor = document.defaultView?.HTMLElement;
+  if (
+    HTMLElementConstructor === undefined
+    || !(target instanceof HTMLElementConstructor)
+  ) {
     return false;
   }
-
-  let current: Konva.Node | null = target;
-  while (current) {
-    if (current instanceof Konva.Transformer) {
-      return true;
-    }
-
-    current = current.getParent();
-  }
-
-  return false;
+  return target.matches("input, textarea, select")
+    || target.isContentEditable
+    || target.closest('[contenteditable="true"]') !== null
+    || target.closest('[data-hosted-widget-root="true"]') !== null;
 }
 
-function isInteractionOverlayNode(target: unknown) {
-  if (!(target instanceof Konva.Node)) {
+function toElementEvent(
+  event: TCanvasInputPointerEvent,
+): TElementPointerEvent | null {
+  return event.hit === null
+    ? null
+    : {
+        ...event,
+        hit: event.hit,
+      };
+}
+
+function isWidgetFrameControl(part: TCanvasSemanticHitPart): boolean {
+  if (
+    part === "widget-minimize"
+    || part === "widget-restore"
+    || part === "widget-fullscreen"
+  ) {
+    return true;
+  }
+  return typeof part === "object" && part.value.startsWith("control:");
+}
+
+function isDoubleClick(
+  previous: TLastClick | null,
+  current: TLastClick,
+): boolean {
+  if (
+    previous === null
+    || previous.targetKey !== current.targetKey
+    || current.timeStamp - previous.timeStamp > DOUBLE_CLICK_DELAY_MS
+  ) {
     return false;
   }
-
-  let current: Konva.Node | null = target;
-  while (current) {
-    if (current.getAttr("vcInteractionOverlay") === true) {
-      return true;
-    }
-
-    current = current.getParent();
-  }
-
-  return false;
-}
-
-function getElementPointerEvent(event: TPointerEvent) {
-  const target = event.target;
-  if (!(target instanceof Konva.Group || target instanceof Konva.Shape)) {
-    return null;
-  }
-
-  if (isTransformerNode(target) || isInteractionOverlayNode(target)) {
-    return null;
-  }
-
-  return event as TElementPointerEvent;
+  return Math.hypot(
+    current.viewport.x - previous.viewport.x,
+    current.viewport.y - previous.viewport.y,
+  ) <= DOUBLE_CLICK_DISTANCE_PX;
 }
 
 /**
- * Bridges stage and DOM input into runtime hooks.
- * Keeps raw input wiring out of feature plugins.
+ * Bridges normalized engine input into the legacy runtime hook shell.
  */
-export function createEventListenerPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
+export function createEventListenerPlugin(): IPlugin<
+  IRuntimeServices,
+  IRuntimeHooks,
+  IRuntimeConfig
+> {
   return {
     name: "event-listener",
     apply(ctx) {
-      ctx.hooks.init.tap(() => {
-        const scene = ctx.services.require("scene");
-        const stage = scene.stage;
-        const container = stage.container();
+      const scene = ctx.services.require("scene");
+      const container = scene.container;
+      let unsubscribeInput: (() => void) | null = null;
+      let lastClick: TLastClick | null = null;
+      let previousTabIndex: string | null = null;
+      let previousOutline = "";
 
-        const onPointerDown = (event: TPointerEvent) => {
-          ctx.hooks.pointerDown.call(event);
-        };
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (isEditableOrHostedTarget(container.ownerDocument, event.target)) {
+          return;
+        }
+        ctx.hooks.keydown.call(event);
+      };
+      const onKeyUp = (event: KeyboardEvent) => {
+        if (isEditableOrHostedTarget(container.ownerDocument, event.target)) {
+          return;
+        }
+        ctx.hooks.keyup.call(event);
+      };
 
-        const onPointerUp = (event: TPointerEvent) => {
-          ctx.hooks.pointerUp.call(event);
-        };
-
-        const onPointerMove = (event: TMouseEvent) => {
-          ctx.hooks.pointerMove.call(event);
-        };
-
-        const onPointerOut = (event: TPointerEvent) => {
-          ctx.hooks.pointerOut.call(event);
-        };
-
-        const onPointerOver = (event: TPointerEvent) => {
-          ctx.hooks.pointerOver.call(event);
-        };
-
-        const onPointerCancel = (event: TPointerEvent) => {
-          ctx.hooks.pointerCancel.call(event);
-        };
-
-        const onPointerWheel = (event: TWheelEvent) => {
+      const onInput = (event: TCanvasInputEvent) => {
+        if (event.type === "wheel") {
           ctx.hooks.pointerWheel.call(event);
-        };
+          return {
+            handled: true,
+            preventDefault: true,
+          };
+        }
+        if (event.type === "key-down" || event.type === "key-up") {
+          return;
+        }
+        if (!("pointerId" in event)) {
+          return;
+        }
 
-        const onElementPointerClick = (event: TPointerEvent) => {
-          const elementEvent = getElementPointerEvent(event);
-          if (!elementEvent) {
+        const directWidgetHit = event.hit === null
+          ? null
+          : scene.input.hitTestViewport({
+              point: event.viewport,
+              options: {
+                kinds: ["widget-frame"],
+                mode: "topmost",
+              },
+            }).find((hit) => {
+              return fnCanvasTargetsEqual(hit.target, event.hit?.target ?? null)
+                && isWidgetFrameControl(hit.part);
+            }) ?? null;
+        const pointerEvent: TCanvasInputPointerEvent = directWidgetHit === null
+          ? event
+          : { ...event, hit: directWidgetHit };
+        const elementEvent = toElementEvent(pointerEvent);
+        switch (event.type) {
+          case "pointer-down": {
+            ctx.hooks.pointerDown.call(pointerEvent);
+            const handled = elementEvent === null
+              ? undefined
+              : ctx.hooks.elementPointerDown.call(elementEvent);
+            return handled === true
+              ? {
+                  handled: true,
+                  stopPropagation: true,
+                }
+              : undefined;
+          }
+          case "pointer-up": {
+            ctx.hooks.pointerUp.call(pointerEvent);
+            if (elementEvent === null || event.button !== 0) {
+              lastClick = null;
+              return;
+            }
+            ctx.hooks.elementPointerClick.call(elementEvent);
+            const currentClick: TLastClick = {
+              targetKey: fnCanvasTargetKey(elementEvent.hit.target),
+              timeStamp: event.timeStamp,
+              viewport: { ...event.viewport },
+            };
+            if (isDoubleClick(lastClick, currentClick)) {
+              ctx.hooks.elementPointerDoubleClick.call(elementEvent);
+              lastClick = null;
+            } else {
+              lastClick = currentClick;
+            }
             return;
           }
-
-          ctx.hooks.elementPointerClick.call(elementEvent);
-        };
-
-        const onElementPointerDown = (event: TPointerEvent) => {
-          const elementEvent = getElementPointerEvent(event);
-          if (!elementEvent) {
+          case "pointer-move":
+            ctx.hooks.pointerMove.call(pointerEvent);
             return;
-          }
-
-          const didHandle = ctx.hooks.elementPointerDown.call(elementEvent);
-          if (didHandle) {
-            event.cancelBubble = true;
-          }
-        };
-
-        const onElementPointerDoubleClick = (event: TPointerEvent) => {
-          const elementEvent = getElementPointerEvent(event);
-          if (!elementEvent) {
+          case "pointer-enter":
+            ctx.hooks.pointerOver.call(pointerEvent);
             return;
-          }
+          case "pointer-leave":
+            ctx.hooks.pointerOut.call(pointerEvent);
+            return;
+          case "pointer-cancel":
+            lastClick = null;
+            ctx.hooks.pointerCancel.call(pointerEvent);
+            return;
+        }
+      };
 
-          const didHandle = ctx.hooks.elementPointerDoubleClick.call(elementEvent);
-          if (didHandle) {
-            event.cancelBubble = true;
-          }
-        };
-
-        const onKeyDown = (event: KeyboardEvent) => {
-          if (isInsideHostedWidget(event.target)) return;
-          ctx.hooks.keydown.call(event);
-        };
-
-        const onKeyUp = (event: KeyboardEvent) => {
-          if (isInsideHostedWidget(event.target)) return;
-          ctx.hooks.keyup.call(event);
-        };
-
-        stage.on("pointerdown", onPointerDown);
-        stage.on("pointerup", onPointerUp);
-        stage.on("pointermove", onPointerMove);
-        stage.on("pointerout", onPointerOut);
-        stage.on("pointerover", onPointerOver);
-        stage.on("pointercancel", onPointerCancel);
-        stage.on("wheel", onPointerWheel);
-        stage.on("pointerclick", onElementPointerClick);
-        stage.on("pointerdown", onElementPointerDown);
-        stage.on("pointerdblclick", onElementPointerDoubleClick);
-
+      ctx.hooks.init.tap(() => {
+        previousTabIndex = container.getAttribute("tabindex");
+        previousOutline = container.style.outline;
+        container.tabIndex = 0;
+        container.style.outline = "none";
         container.addEventListener("keydown", onKeyDown);
         container.addEventListener("keyup", onKeyUp);
-        container.tabIndex = 1;
+        unsubscribeInput = scene.input.subscribe(onInput);
+        scene.input.focus();
         container.focus();
-        container.style.outline = "none";
+      });
 
-        ctx.hooks.destroy.tap(() => {
-          stage.off("pointerdown", onPointerDown);
-          stage.off("pointerup", onPointerUp);
-          stage.off("pointermove", onPointerMove);
-          stage.off("pointerout", onPointerOut);
-          stage.off("pointerover", onPointerOver);
-          stage.off("pointercancel", onPointerCancel);
-          stage.off("wheel", onPointerWheel);
-          stage.off("pointerclick", onElementPointerClick);
-          stage.off("pointerdown", onElementPointerDown);
-          stage.off("pointerdblclick", onElementPointerDoubleClick);
-          container.removeEventListener("keydown", onKeyDown);
-          container.removeEventListener("keyup", onKeyUp);
-        });
+      ctx.hooks.destroy.tap(() => {
+        unsubscribeInput?.();
+        unsubscribeInput = null;
+        lastClick = null;
+        scene.input.blur();
+        container.removeEventListener("keydown", onKeyDown);
+        container.removeEventListener("keyup", onKeyUp);
+        if (previousTabIndex === null) {
+          container.removeAttribute("tabindex");
+        } else {
+          container.setAttribute("tabindex", previousTabIndex);
+        }
+        container.style.outline = previousOutline;
       });
     },
   };

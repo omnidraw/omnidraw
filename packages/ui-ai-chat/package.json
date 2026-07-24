@@ -28,7 +28,6 @@
     "@vibecanvas/tapable": "workspace:*",
     "@vibecanvas/widget-contract": "workspace:*",
     "dompurify": "^3.4.11",
-    "konva": "^10.3.0",
     "lucide-solid": "catalog:",
     "lucide-static": "catalog:",
     "prosemirror-commands": "^1.7.1",
@@ -40,7 +39,6 @@
     "solid-js": "catalog:"
   },
   "devDependencies": {
-    "canvas": "^3.2.3",
     "jsdom": "^29.1.1",
     "typescript": "catalog:",
     "vite": "^8.1.4",

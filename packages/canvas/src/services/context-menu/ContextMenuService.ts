@@ -1,11 +1,13 @@
 import type { IService } from "@vibecanvas/runtime";
-import type { TElement, TGroup } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type {
+  TElement,
+  TGroup,
+} from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { SyncHook } from "@vibecanvas/tapable";
-import type { Group } from "konva/lib/Group";
-import type { Shape, ShapeConfig } from "konva/lib/Shape";
+import type { TCanvasTarget } from "../../semantic/typed";
+import type { TResolvedCanvasTarget } from "../selection/fn.resolve-selection";
 
 export type TContextMenuScope = "canvas" | "item" | "selection" | "connection";
-export type TContextMenuNode = Group | Shape<ShapeConfig>;
 
 export type TContextMenuAction = {
   id: string;
@@ -18,24 +20,48 @@ export type TContextMenuAction = {
 
 export type TContextMenuProviderArgs = {
   scope: TContextMenuScope;
-  targetNode: TContextMenuNode | null;
+  target: TCanvasTarget | null;
   targetElement: TElement | null;
   targetGroup: TGroup | null;
-  selection: TContextMenuNode[];
-  activeSelection: TContextMenuNode[];
+  selection: readonly TCanvasTarget[];
+  activeSelection: readonly TCanvasTarget[];
+  resolvedSelection: readonly TResolvedCanvasTarget[];
+  resolvedActiveSelection: readonly TResolvedCanvasTarget[];
   connectionId: string | null;
 };
 
-export type TContextMenuProvider = (args: TContextMenuProviderArgs) => TContextMenuAction[];
+export type TContextMenuProvider = (
+  args: TContextMenuProviderArgs,
+) => TContextMenuAction[];
 
 export interface TContextMenuServiceHooks {
   stateChange: SyncHook<[]>;
   providersChange: SyncHook<[]>;
 }
 
+function sortVisibleActions(
+  actions: readonly TContextMenuAction[],
+): TContextMenuAction[] {
+  return actions
+    .filter((action) => !action.hidden)
+    .sort((left, right) => {
+      const priority = (left.priority ?? 10_000) - (right.priority ?? 10_000);
+      return priority || left.label.localeCompare(right.label);
+    });
+}
+
+function noActions(): TContextMenuAction[] {
+  return [{
+    id: "no-actions",
+    label: "No actions available",
+    disabled: true,
+    priority: 999_999,
+    onSelect: () => undefined,
+  }];
+}
+
 /**
- * Holds context menu runtime state and provider registry.
- * Feature plugins register actions here. UI plugin only renders and opens/closes.
+ * Product-only context-menu policy and runtime state.
  */
 export class ContextMenuService implements IService<TContextMenuServiceHooks> {
   readonly name = "contextMenu";
@@ -43,7 +69,6 @@ export class ContextMenuService implements IService<TContextMenuServiceHooks> {
     stateChange: new SyncHook(),
     providersChange: new SyncHook(),
   };
-
   readonly providers = new Map<string, TContextMenuProvider>();
 
   open = false;
@@ -53,49 +78,36 @@ export class ContextMenuService implements IService<TContextMenuServiceHooks> {
   actions: TContextMenuAction[] = [];
   context: TContextMenuProviderArgs | null = null;
 
-  registerProvider(id: string, provider: TContextMenuProvider) {
+  registerProvider(id: string, provider: TContextMenuProvider): () => void {
     this.providers.set(id, provider);
     this.hooks.providersChange.call();
+    return () => {
+      this.unregisterProvider(id);
+    };
   }
 
-  unregisterProvider(id: string) {
-    const didDelete = this.providers.delete(id);
-    if (!didDelete) {
-      return;
+  unregisterProvider(id: string): void {
+    if (this.providers.delete(id)) {
+      this.hooks.providersChange.call();
     }
-
-    this.hooks.providersChange.call();
   }
 
-  getActions(args: TContextMenuProviderArgs) {
-    const actions = [...this.providers.values()].flatMap((provider) => {
-      return provider(args);
-    }).filter((action) => !action.hidden);
-
-    return actions.sort((left, right) => {
-      const leftPriority = left.priority ?? 10000;
-      const rightPriority = right.priority ?? 10000;
-      if (leftPriority !== rightPriority) {
-        return leftPriority - rightPriority;
-      }
-
-      return left.label.localeCompare(right.label);
-    });
+  getActions(args: TContextMenuProviderArgs): TContextMenuAction[] {
+    return sortVisibleActions(
+      [...this.providers.values()].flatMap((provider) => provider(args)),
+    );
   }
 
   openAt(args: {
     x: number;
     y: number;
     context: TContextMenuProviderArgs;
-  }) {
+  }): void {
     const actions = this.getActions(args.context);
-
     this.x = args.x;
     this.y = args.y;
     this.context = args.context;
-    this.actions = actions.length === 0
-      ? [{ id: "no-actions", label: "No actions available", disabled: true, priority: 999999, onSelect: () => {} }]
-      : actions;
+    this.actions = actions.length === 0 ? noActions() : actions;
     this.open = true;
     this.requestId += 1;
     this.hooks.stateChange.call();
@@ -104,34 +116,22 @@ export class ContextMenuService implements IService<TContextMenuServiceHooks> {
   openWithActionsAt(args: {
     x: number;
     y: number;
-    actions: TContextMenuAction[];
-  }) {
-    const actions = args.actions.filter((action) => !action.hidden).sort((left, right) => {
-      const leftPriority = left.priority ?? 10000;
-      const rightPriority = right.priority ?? 10000;
-      if (leftPriority !== rightPriority) {
-        return leftPriority - rightPriority;
-      }
-
-      return left.label.localeCompare(right.label);
-    });
-
+    actions: readonly TContextMenuAction[];
+  }): void {
+    const actions = sortVisibleActions(args.actions);
     this.x = args.x;
     this.y = args.y;
     this.context = null;
-    this.actions = actions.length === 0
-      ? [{ id: "no-actions", label: "No actions available", disabled: true, priority: 999999, onSelect: () => {} }]
-      : actions;
+    this.actions = actions.length === 0 ? noActions() : actions;
     this.open = true;
     this.requestId += 1;
     this.hooks.stateChange.call();
   }
 
-  close() {
+  close(): void {
     if (!this.open && this.actions.length === 0 && this.context === null) {
       return;
     }
-
     this.open = false;
     this.actions = [];
     this.context = null;

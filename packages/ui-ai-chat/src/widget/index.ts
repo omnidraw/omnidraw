@@ -1,9 +1,9 @@
 export { WidgetManagerService } from "./WidgetManagerService";
 export type {
   IWidgetConfig,
+  TWidgetCanvasProductPort,
   TWidgetRenderArgs,
   TWidgetRenderCleanup,
-  TWidgetFullscreenHostActions,
   TWidgetTitleBarAction,
   TWidgetTitleBarActionState,
   TWidgetTitleBarPortal,

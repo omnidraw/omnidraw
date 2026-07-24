@@ -42,17 +42,17 @@ function fnNormalizeShortcut(shortcut: string) {
 function txSyncCursor(render: SceneService, selection: SelectionService) {
   switch (selection.mode) {
     case CanvasMode.HAND:
-      render.stage.container().style.cursor = "grab";
+      render.container.style.cursor = "grab";
       return;
     case CanvasMode.DRAW_CREATE:
-      render.stage.container().style.cursor = "crosshair";
+      render.container.style.cursor = "crosshair";
       return;
     case CanvasMode.CLICK_CREATE:
-      render.stage.container().style.cursor = "pointer";
+      render.container.style.cursor = "pointer";
       return;
     case CanvasMode.SELECT:
     default:
-      render.stage.container().style.cursor = "default";
+      render.container.style.cursor = "default";
       return;
   }
 }
@@ -88,16 +88,16 @@ function mountToolbar(args: {
   widgetPlacement: IRuntimeServices["widgetPlacement"];
   onToolSelect: (toolId: string) => void;
 }) {
-  const mountElement = document.createElement("div");
+  const mountElement = args.scene.container.ownerDocument.createElement("div");
   mountElement.id = "toolbar";
-  args.scene.stage.container().appendChild(mountElement);
+  args.scene.container.appendChild(mountElement);
 
   const disposeRender = render(() => {
     return createComponent(RuntimeToolbar, {
       tool: args.tool,
       toolbarGroups: args.toolbarGroups,
       widgetPlacement: args.widgetPlacement,
-      viewportElement: args.scene.stage.container(),
+      viewportElement: args.scene.container,
       onToolSelect: args.onToolSelect,
     });
   }, mountElement);

@@ -1,4 +1,7 @@
-import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type {
+  TBinding,
+  TElement,
+} from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import {
   DEFAULT_OPACITY,
   DEFAULT_STROKE_COLOR_TOKEN,
@@ -79,6 +82,8 @@ export function fnCreateDraftElement(args: {
   draftCurrentPoint: TPoint | null;
   createId: () => string;
   now: () => number;
+  startBinding?: TBinding | null;
+  endBinding?: TBinding | null;
   rememberedStyle?: {
     strokeColor?: string;
     strokeWidth?: string;
@@ -118,8 +123,8 @@ export function fnCreateDraftElement(args: {
           type: "arrow",
           lineType: defaults.lineType,
           points: [[0, 0], [dx, dy]],
-          startBinding: null,
-          endBinding: null,
+          startBinding: args.startBinding ?? null,
+          endBinding: args.endBinding ?? null,
           startCap: defaults.startCap,
           endCap: defaults.endCap,
         }
@@ -127,8 +132,8 @@ export function fnCreateDraftElement(args: {
           type: "line",
           lineType: defaults.lineType,
           points: [[0, 0], [dx, dy]],
-          startBinding: null,
-          endBinding: null,
+          startBinding: args.startBinding ?? null,
+          endBinding: args.endBinding ?? null,
         },
     style: {
       strokeColor: defaults.strokeColor,

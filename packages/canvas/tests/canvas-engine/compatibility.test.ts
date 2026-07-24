@@ -29,16 +29,40 @@ import {
   assertValidSceneSnapshot,
   createRepresentativeSceneFixture,
 } from "@vibecanvas/canvas-engine/testing";
-import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type {
+  TCanvasDoc,
+  TElement,
+} from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import { getStroke } from "perfect-freehand";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CanvasEngineAdapter } from "../../src/engine/CanvasEngineAdapter";
+import {
+  CANVAS_ENGINE_LAYER_IDS,
+  CANVAS_ENGINE_SCENE_SCHEMA_VERSION,
+} from "../../src/engine/CONSTANTS";
+import { ProjectionCoordinator } from "../../src/engine/ProjectionCoordinator";
+import type { TCanvasProjectionTheme } from "../../src/engine/typed";
+import {
+  createBuiltInProjectionRegistry,
+} from "../../src/engine/projection/ProjectionRegistry";
+import {
+  fnCanvasEngineElementChildId,
+  fnCanvasEngineElementId,
+  fnCanvasEngineGroupId,
+} from "../../src/engine/projection/fn.ids";
+import {
+  CanvasProjectionRuntimePort,
+} from "../../src/engine/projection-runtime/ProjectionRuntimePort";
 import {
   createTestContainer,
   ensureDom,
   ensureRangeGeometryMocks,
   ensureResizeObserver,
 } from "../test-setup";
-import { CANVAS_ENGINE_COMPATIBILITY_MATRIX } from "./compatibility.matrix";
-import { pocProjectCanvasDocument } from "./poc.project-canvas-doc";
+import {
+  CANVAS_ENGINE_COMPATIBILITY_MATRIX,
+  type TCompatibilityRow,
+} from "./compatibility.matrix";
 
 const BLACK: TPaint = {
   type: "solid",
@@ -47,6 +71,34 @@ const BLACK: TPaint = {
 const WHITE: TPaint = {
   type: "solid",
   color: { space: "srgb", r: 1, g: 1, b: 1, a: 1 },
+};
+
+const THEME: TCanvasProjectionTheme = {
+  id: "compatibility-theme",
+  colors: {
+    accent: "#dbeafe",
+    accentForeground: "#1e3a8a",
+    border: "#d6d3d1",
+    canvasBackground: "rgba(168, 162, 158, 0.10)",
+    canvasGridMajor: "rgba(71, 85, 105, 0.28)",
+    canvasGridMinor: "rgba(71, 85, 105, 0.16)",
+    canvasSelectionStroke: "#3b82f6",
+    canvasText: "#111827",
+    card: "#ffffff",
+    destructive: "#dc2626",
+    muted: "#e7e5e4",
+    mutedForeground: "#57534e",
+    ring: "#f59e0b",
+    success: "#16a34a",
+    warning: "#d97706",
+  },
+  colorTokens: {
+    "@base/100": "#f5f5f4",
+    "@base/300": "#d6d3d1",
+    "@base/900": "#1c1917",
+    "@blue/700": "#1d4ed8",
+    "@transparent": "transparent",
+  },
 };
 
 class ProbePass implements IRenderPassBackend {
@@ -141,7 +193,18 @@ function selection(nodeIds: string[]): TSelectionOverlayState {
 }
 
 function sampleDocument(): TCanvasDoc {
-  const base = {
+  const base: Pick<
+    TElement,
+    | "bindings"
+    | "createdAt"
+    | "locked"
+    | "parentGroupId"
+    | "rotation"
+    | "scaleX"
+    | "scaleY"
+    | "style"
+    | "updatedAt"
+  > = {
     rotation: 90,
     scaleX: 1,
     scaleY: 1,
@@ -151,7 +214,7 @@ function sampleDocument(): TCanvasDoc {
     createdAt: 1,
     updatedAt: 1,
     style: {},
-  } as const;
+  };
   const crop = {
     x: 0,
     y: 0,
@@ -327,12 +390,32 @@ function sampleDocument(): TCanvasDoc {
           window: "contained",
         },
       },
+      "ui-widget": {
+        ...base,
+        id: "ui-widget",
+        x: 560,
+        y: 320,
+        rotation: 0,
+        zIndex: "J",
+        data: {
+          type: "ui-widget",
+          kind: "compatibility-widget",
+          w: 280,
+          h: 180,
+          expanded: true,
+          window: "contained",
+          payload: { source: "compatibility" },
+          uiProps: { compact: false },
+        },
+      },
     },
   };
 }
 
 describe("canvas-engine public compatibility contract", () => {
   let container: HTMLDivElement;
+  let adapter: CanvasEngineAdapter | null;
+  let createdConfig: TCanvasEngineConfig | null;
   let engine: IInfiniteCanvasEngine | null;
   let factory: ProbeFactory;
 
@@ -356,26 +439,33 @@ describe("canvas-engine public compatibility contract", () => {
       }),
     });
     factory = new ProbeFactory();
-    engine = await createInfiniteCanvas({
+    engine = null;
+    createdConfig = null;
+    adapter = new CanvasEngineAdapter({
       host: container,
-      renderProfile: {
-        vector2D: "webgl2",
-        threeD: "disabled",
-        portals: "dom",
+      createEngine: async (config) => {
+        createdConfig = config;
+        engine = await createInfiniteCanvas(config);
+        return engine;
       },
-      backendFactories: [factory],
-      clock: new ManualClock(),
-      initialCamera: {
-        center: { x: 0, y: 0 },
-        zoom: 1,
-        rotation: 0,
+      engineConfig: {
+        backendFactories: [factory],
+        clock: new ManualClock(),
+        initialCamera: {
+          center: { x: 0, y: 0 },
+          zoom: 1,
+          rotation: 0,
+        },
+        record: { actor: "compatibility-suite" },
       },
-      record: { actor: "compatibility-suite" },
     });
+    await adapter.start();
   });
 
   afterEach(async () => {
-    await engine?.destroy();
+    await adapter?.destroy();
+    adapter = null;
+    createdConfig = null;
     engine = null;
     container.remove();
   });
@@ -405,23 +495,59 @@ describe("canvas-engine public compatibility contract", () => {
     ]));
   });
 
-  it("provides the lifecycle and capability boundary needed by SceneService", async () => {
+  it("enforces the production adapter profile and capability boundary", async () => {
+    expect(createdConfig?.renderProfile).toEqual({
+      vector2D: "webgl2",
+      threeD: "disabled",
+      portals: "dom",
+    });
+    expect(createdConfig?.accessibility).toMatchObject({
+      enabled: true,
+      exposeCanvasNodes: true,
+    });
+    expect(createdConfig?.diagnostics).toMatchObject({
+      enabled: true,
+      collectFrameMetrics: true,
+    });
+    expect(adapter!.status).toBe("ready");
+    expect(adapter!.capabilities).toEqual(engine!.capabilities);
+    expect(adapter!.capabilities).toMatchObject({
+      vector2D: "webgl2",
+      threeD: "disabled",
+      portals: "dom",
+      webGl2Available: true,
+      supportsGpuPicking: false,
+      supportsSvgExport: true,
+      unsupportedNodeKinds: ["view-3d"],
+    });
     expect(engine!.status).toBe("ready");
     expect(engine!.capabilities.vector2D).toBe("webgl2");
     expect(engine!.capabilities.portals).toBe("dom");
+    expect(adapter!.sceneSnapshot()).toMatchObject({
+      schemaVersion: CANVAS_ENGINE_SCENE_SCHEMA_VERSION,
+      rootLayerIds: [
+        CANVAS_ENGINE_LAYER_IDS.background,
+        CANVAS_ENGINE_LAYER_IDS.content,
+        CANVAS_ENGINE_LAYER_IDS.overlay,
+        CANVAS_ENGINE_LAYER_IDS.debug,
+      ],
+    });
 
-    engine!.resize({ width: 1024, height: 768 });
+    adapter!.resize({ width: 1024, height: 768 });
     expect(engine!.camera.viewportSize).toEqual({ width: 1024, height: 768 });
-    engine!.suspend();
+    adapter!.suspend();
+    expect(adapter!.status).toBe("suspended");
     expect(engine!.status).toBe("suspended");
-    engine!.resume();
+    adapter!.resume();
+    expect(adapter!.status).toBe("ready");
     expect(engine!.status).toBe("ready");
-    await engine!.renderNow();
+    await adapter!.render();
     expect(factory.pass.renderCount).toBeGreaterThan(0);
   });
 
   it("publishes atomic plain-data scene changes and rolls invalid writes back", () => {
     const changes: number[] = [];
+    const recordsBefore = engine!.recorder?.read().length ?? 0;
     engine!.scene.subscribe((change) => changes.push(change.revision));
     engine!.scene.transaction((tx) => {
       tx.upsert(layer());
@@ -447,10 +573,10 @@ describe("canvas-engine public compatibility contract", () => {
     expect(engine!.scene.revision).toBe(beforeRevision);
     expect(changes).toHaveLength(1);
     expect(() => JSON.stringify(engine!.scene.snapshot())).not.toThrow();
-    expect(engine!.recorder?.read()).toHaveLength(1);
+    expect(engine!.recorder?.read()).toHaveLength(recordsBefore + 1);
   });
 
-  it("replaces Konva transforms, bounds, picking, marquee, and transform preview", () => {
+  it("covers transforms, bounds, picking, marquee, and transform preview", () => {
     engine!.scene.replace({
       schemaVersion: "1.0.0",
       rootLayerIds: ["content"],
@@ -603,51 +729,116 @@ describe("canvas-engine public compatibility contract", () => {
     expect(cleanupCount).toBe(1);
   });
 
-  it("projects a representative Vibecanvas Automerge document without Konva objects", () => {
-    const projected = pocProjectCanvasDocument(sampleDocument());
-    expect(() => assertValidSceneSnapshot(projected.snapshot)).not.toThrow();
-    expect(projected.resources).toEqual([
-      expect.objectContaining({
-        descriptor: expect.objectContaining({ id: "image:image", type: "image" }),
-      }),
-    ]);
+  it("renders the production projection for every stable persisted element family", async () => {
+    const source = sampleDocument();
+    const sourceBefore = JSON.stringify(source);
+    const runtime = new CanvasProjectionRuntimePort({
+      adapter: adapter!,
+      preloadResources: false,
+      mountContent: ({ host, initialContent }) => {
+        host.dataset.contentType = initialContent.type;
+      },
+    });
+    const coordinator = new ProjectionCoordinator({
+      registry: createBuiltInProjectionRegistry(),
+      theme: THEME,
+      dependencies: { getStroke },
+      runtime,
+    });
 
-    for (const resource of projected.resources) {
-      engine!.resources.register(resource.descriptor, resource.source);
+    try {
+      expect(await coordinator.hydrateInitial(source, 7)).toEqual({
+        status: "applied",
+        revision: 7,
+        origin: "initial",
+        mode: "replace",
+      });
+      const projection = coordinator.lastGoodProjection!;
+      expect(JSON.stringify(source)).toBe(sourceBefore);
+      expect(projection.diagnostics).toEqual([]);
+      expect(projection.snapshot.schemaVersion).toBe(
+        CANVAS_ENGINE_SCENE_SCHEMA_VERSION,
+      );
+      expect(projection.snapshot.rootLayerIds).toEqual([
+        CANVAS_ENGINE_LAYER_IDS.background,
+        CANVAS_ENGINE_LAYER_IDS.content,
+        CANVAS_ENGINE_LAYER_IDS.overlay,
+        CANVAS_ENGINE_LAYER_IDS.debug,
+      ]);
+      expect(projection.index.lastAppliedRevision).toBe(7);
+      expect(Object.keys(projection.index.elementNodeIds).sort()).toEqual(
+        Object.keys(source.elements).sort(),
+      );
+      expect(projection.portals.map((portal) => portal.content.type).sort())
+        .toEqual(["ui-widget", "widget-instance"]);
+      expect(() => assertValidSceneSnapshot(projection.snapshot)).not.toThrow();
+      expect(JSON.parse(JSON.stringify(projection))).toEqual(projection);
+      const appliedSnapshot = adapter!.sceneSnapshot();
+      expect(appliedSnapshot.schemaVersion).toBe(projection.snapshot.schemaVersion);
+      expect(appliedSnapshot.rootLayerIds).toEqual(projection.snapshot.rootLayerIds);
+      expect(new Set(appliedSnapshot.nodes.map((node) => node.id))).toEqual(
+        new Set(projection.snapshot.nodes.map((node) => node.id)),
+      );
+      const appliedNodes = new Map(appliedSnapshot.nodes.map((node) => {
+        return [node.id, node];
+      }));
+      for (const projectedNode of projection.snapshot.nodes) {
+        expect(appliedNodes.get(projectedNode.id)).toEqual(projectedNode);
+      }
+      expect(adapter!.resources.resourceCount).toBe(1);
+      expect(adapter!.portals.portalCount).toBe(2);
+
+      const kinds = new Set(engine!.scene.query(() => true).map((node) => node.kind));
+      expect(kinds).toEqual(new Set([
+        "layer",
+        "background",
+        "group",
+        "rect",
+        "text",
+        "ellipse",
+        "polygon",
+        "connector",
+        "image",
+        "widget-frame",
+      ]));
+      const rectNodeId = fnCanvasEngineElementId({ id: "rect" });
+      const inlineTextNodeId = fnCanvasEngineElementChildId({
+        id: "rect",
+        child: "inline-text",
+      });
+      const widgetNodeId = fnCanvasEngineElementChildId({
+        id: "widget",
+        child: "render",
+      });
+      const groupNodeId = fnCanvasEngineGroupId({ id: "group" });
+      expect(engine!.scene.get(rectNodeId)?.kind).toBe("group");
+      expect(engine!.scene.get(inlineTextNodeId)?.kind).toBe("text");
+      expect(engine!.scene.get(widgetNodeId)?.kind).toBe("widget-frame");
+      expect(engine!.scene.get(rectNodeId)?.transform.rotation)
+        .toBeCloseTo(Math.PI / 2);
+      expect(engine!.scene.ancestorsOf(inlineTextNodeId, {
+        includeSelf: true,
+        order: "node-to-root",
+      }).map((node) => node.id)).toEqual([
+        inlineTextNodeId,
+        rectNodeId,
+        groupNodeId,
+        CANVAS_ENGINE_LAYER_IDS.content,
+      ]);
+
+      const rendersBefore = factory.pass.renderCount;
+      await adapter!.render();
+      expect(factory.pass.renderCount).toBeGreaterThan(rendersBefore);
+    } finally {
+      coordinator.dispose();
+      await runtime.destroy();
     }
-    engine!.scene.replace(projected.snapshot, { source: "vibecanvas-poc" });
-
-    const kinds = new Set(engine!.scene.query(() => true).map((node) => node.kind));
-    expect(kinds).toEqual(new Set([
-      "layer",
-      "background",
-      "group",
-      "rect",
-      "text",
-      "ellipse",
-      "polygon",
-      "connector",
-      "image",
-      "widget-frame",
-    ]));
-    expect(engine!.scene.get("rect")?.kind).toBe("group");
-    expect(engine!.scene.get("rect::inline-text")?.kind).toBe("text");
-    expect(engine!.scene.get("widget::render")?.kind).toBe("widget-frame");
-    expect(engine!.scene.get("rect")?.transform.rotation).toBeCloseTo(Math.PI / 2);
-    expect(engine!.scene.ancestorsOf("rect::inline-text", {
-      includeSelf: true,
-      order: "node-to-root",
-    }).map((node) => node.id)).toEqual([
-      "rect::inline-text",
-      "rect",
-      "group",
-      "content",
-    ]);
-    expect(() => JSON.stringify(engine!.scene.snapshot())).not.toThrow();
   });
 
   it("keeps every stable Vibecanvas feature in the explicit matrix", () => {
-    const ids = CANVAS_ENGINE_COMPATIBILITY_MATRIX.map((row) => row.id);
+    const matrix: readonly TCompatibilityRow[] =
+      CANVAS_ENGINE_COMPATIBILITY_MATRIX;
+    const ids = matrix.map((row) => row.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual(expect.arrayContaining([
       "scene-layers",
@@ -669,14 +860,14 @@ describe("canvas-engine public compatibility contract", () => {
       "html-portals",
       "runtime-extensions",
     ]));
-    expect(CANVAS_ENGINE_COMPATIBILITY_MATRIX
+    expect(matrix
       .filter((row) => row.status === "engine-gap")
       .map((row) => row.id)).toEqual([]);
     expect(Object.fromEntries(
       ["compatible", "adapter", "engine-gap", "release-gap", "validation-gap"]
         .map((status) => [
           status,
-          CANVAS_ENGINE_COMPATIBILITY_MATRIX.filter((row) => row.status === status).length,
+          matrix.filter((row) => row.status === status).length,
         ]),
     )).toEqual({
       compatible: 19,

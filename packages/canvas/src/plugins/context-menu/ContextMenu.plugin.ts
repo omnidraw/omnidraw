@@ -1,135 +1,70 @@
 import type { IPlugin } from "@vibecanvas/runtime";
-import Konva from "konva";
+import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { createComponent, createMemo, createSignal } from "solid-js";
-import { render as renderSolid } from "solid-js/web";
+import { render } from "solid-js/web";
 import { CanvasContextMenu } from "../../components/CanvasContextMenu";
-import { isCanvasGroupNode, isCanvasNode } from "../../core/GUARDS";
+import {
+  fnCanvasTargetsEqual,
+} from "../../semantic/fn.target";
+import type { TCanvasSemanticHit, TCanvasTarget } from "../../semantic/typed";
 import type {
   ContextMenuService,
-  SceneService, SelectionService,
-  TContextMenuNode, TContextMenuScope
+  SceneService,
+  SelectionService,
+  TContextMenuScope,
 } from "../../services";
-import type { IRuntimeConfig, IRuntimeHooks, IRuntimeServices } from "../../types";
+import type {
+  IRuntimeConfig,
+  IRuntimeHooks,
+  IRuntimeServices,
+} from "../../types";
+import { fnGetSelectionPath } from "../select/fn.get-selection-path";
 
-function getSelectionPath(
-  scene: SceneService,
-  node: TContextMenuNode,
-): TContextMenuNode[] {
-  const path: TContextMenuNode[] = [];
-  let current: Konva.Node | null = node;
-
-  while (current && current !== scene.staticForegroundLayer) {
-    if (isCanvasNode(current)) {
-      path.push(current as TContextMenuNode);
-    }
-
-    current = current.getParent();
-  }
-
-  return path.reverse();
-}
-
-function filterSelection(
-  scene: SceneService,
-  selection: Konva.Node[],
-): TContextMenuNode[] {
-  void scene;
-
-  let subSelection = selection.find((node) => {
-    const parent = node.getParent();
-    return parent && isCanvasGroupNode(parent);
-  });
-  if (!subSelection) {
-    return selection.filter((node): node is TContextMenuNode => {
-      return isCanvasNode(node) && node.getStage() !== null;
-    });
-  }
-
-  const findDeepestSubSelection = () => {
-    const deeperSubSelection = selection.find((node) => node.getParent() === subSelection);
-    if (!deeperSubSelection) {
-      return;
-    }
-
-    subSelection = deeperSubSelection;
-    findDeepestSubSelection();
-  };
-
-  findDeepestSubSelection();
-
-  if (!isCanvasNode(subSelection)) {
-    return [];
-  }
-
-  return subSelection.getStage() !== null ? [subSelection as TContextMenuNode] : [];
-}
-
-function findTargetNode(
-  scene: SceneService,
-  pointer: { x: number; y: number },
-): TContextMenuNode | null {
-  const directHit = scene.stage.getIntersection(pointer);
-  let current: Konva.Node | null = directHit;
-  while (current) {
-    if (isCanvasNode(current)) {
-      return current as TContextMenuNode;
-    }
-
-    current = current.getParent();
-  }
-
-  const candidates = scene.staticForegroundLayer.find((node: Konva.Node) => {
-    return isCanvasNode(node) && node.isListening();
-  }) as TContextMenuNode[];
-
-  const fallbackTarget = [...candidates].reverse().find((node) => {
-    const box = node.getClientRect();
-    return Konva.Util.haveIntersection(box, {
-      x: pointer.x,
-      y: pointer.y,
-      width: 1,
-      height: 1,
-    });
-  });
-
-  return fallbackTarget ?? null;
-}
-
-function resolveSelection(
-  scene: SceneService,
-  selection: SelectionService,
-  target: TContextMenuNode,
-): TContextMenuNode[] {
-  const currentSelection = selection.selection.filter((node): node is TContextMenuNode => {
-    return isCanvasNode(node);
-  });
-  const activeSelection = filterSelection(scene, currentSelection);
-  if (activeSelection.includes(target)) {
-    return currentSelection;
-  }
-
-  const path = getSelectionPath(scene, target);
-  const topLevelNode = path[0];
-  const isFlatMultiSelect = currentSelection.length > 1
-    && !currentSelection.some((node) => {
-      const parent = node.getParent();
-      return parent && isCanvasGroupNode(parent);
-    });
-
-  if (isFlatMultiSelect && topLevelNode && currentSelection.includes(topLevelNode)) {
-    return currentSelection;
-  }
-
-  const nextDepth = Math.min(Math.max(currentSelection.length, 1), path.length);
-  return path.slice(0, nextDepth);
-}
-
-function getMenuScope(targetNode: TContextMenuNode | null, selection: TContextMenuNode[]): TContextMenuScope {
-  if (!targetNode) {
+function menuScope(
+  target: TCanvasTarget | null,
+  selection: readonly TCanvasTarget[],
+): TContextMenuScope {
+  if (target === null) {
     return "canvas";
   }
-
   return selection.length > 1 ? "selection" : "item";
+}
+
+function selectionForHit(
+  selection: SelectionService,
+  hit: TCanvasSemanticHit,
+): TCanvasTarget[] {
+  if (selection.selection.some((target) => {
+    return fnCanvasTargetsEqual(target, hit.target);
+  })) {
+    return selection.snapshot.selection.map((target) => ({ ...target }));
+  }
+  const path = fnGetSelectionPath({ hit });
+  const depth = Math.min(
+    Math.max(selection.selection.length, 1),
+    path.length,
+  );
+  return path.slice(0, depth);
+}
+
+function activeSelection(
+  document: TCanvasDoc,
+  selection: readonly TCanvasTarget[],
+): TCanvasTarget[] {
+  const selectedGroupIds = new Set(selection.flatMap((target) => {
+    return target.kind === "group" ? [target.id] : [];
+  }));
+  const nested = selection.filter((target) => {
+    const parentId = target.kind === "element"
+      ? document.elements[target.id]?.parentGroupId
+      : document.groups[target.id]?.parentGroupId;
+    return parentId !== null
+      && parentId !== undefined
+      && selectedGroupIds.has(parentId);
+  });
+  return nested.length === 0
+    ? selection.map((target) => ({ ...target }))
+    : [{ ...nested.at(-1)! }];
 }
 
 function mountContextMenu(args: {
@@ -138,17 +73,12 @@ function mountContextMenu(args: {
 }) {
   const mountElement = args.scene.container.ownerDocument.createElement("div");
   mountElement.id = "context-menu";
-  args.scene.stage.container().appendChild(mountElement);
-
+  args.scene.container.appendChild(mountElement);
   const [version, setVersion] = createSignal(0);
-  const syncVersion = () => {
-    setVersion((value) => value + 1);
-  };
-
-  const offStateChange = args.contextMenu.hooks.stateChange.tap(syncVersion);
-  const offProvidersChange = args.contextMenu.hooks.providersChange.tap(syncVersion);
-
-  const disposeRender = renderSolid(() => {
+  const sync = () => setVersion((value) => value + 1);
+  const offState = args.contextMenu.hooks.stateChange.tap(sync);
+  const offProviders = args.contextMenu.hooks.providersChange.tap(sync);
+  const disposeRender = render(() => {
     const mounted = createMemo(() => {
       version();
       return args.contextMenu.open;
@@ -169,7 +99,6 @@ function mountContextMenu(args: {
       version();
       return args.contextMenu.requestId;
     });
-
     return createComponent(CanvasContextMenu, {
       mounted,
       x,
@@ -177,20 +106,17 @@ function mountContextMenu(args: {
       items,
       openRequestId,
       onOpenChange: (open) => {
-        if (open) {
-          return;
+        if (!open) {
+          args.contextMenu.close();
         }
-
-        args.contextMenu.close();
       },
     });
   }, mountElement);
-
   return {
     mountElement,
     dispose() {
-      offStateChange();
-      offProvidersChange();
+      offState();
+      offProviders();
       disposeRender();
       mountElement.remove();
     },
@@ -198,81 +124,98 @@ function mountContextMenu(args: {
 }
 
 /**
- * Owns right-click hit testing and Solid context menu mount.
- * Feature actions come from ContextMenuService providers.
+ * Product context-menu policy over semantic hit and selection data.
  */
-export function createContextMenuPlugin(): IPlugin<IRuntimeServices, IRuntimeHooks, IRuntimeConfig> {
-  let menuMount: ReturnType<typeof mountContextMenu> | null = null;
-
+export function createContextMenuPlugin(): IPlugin<
+  IRuntimeServices,
+  IRuntimeHooks,
+  IRuntimeConfig
+> {
   return {
     name: "context-menu",
     apply(ctx) {
-      const element = ctx.services.require("element");
-      const group = ctx.services.require("group");
+      const camera = ctx.services.require("camera");
       const contextMenu = ctx.services.require("contextMenu");
+      const crdt = ctx.services.require("crdt");
       const scene = ctx.services.require("scene");
       const selection = ctx.services.require("selection");
+      let menuMount: ReturnType<typeof mountContextMenu> | null = null;
+
+      const onContextMenu = (event: MouseEvent) => {
+        const domTarget = event.target !== null
+          && typeof event.target === "object"
+          && "nodeType" in event.target
+          ? event.target as Node
+          : null;
+        if (
+          domTarget !== null
+          && menuMount?.mountElement.contains(domTarget)
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+
+        const viewport = camera.clientToViewport({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        const hit = scene.input.hitTestViewport({ point: viewport })[0] ?? null;
+        const nextSelection = hit === null
+          ? selection.snapshot.selection
+          : selectionForHit(selection, hit);
+        if (hit !== null) {
+          selection.setSelection(nextSelection);
+          selection.setFocusedTarget(nextSelection.at(-1) ?? null);
+        }
+
+        const document = crdt.doc();
+        const target = hit?.target ?? null;
+        const activeTargets = activeSelection(document, nextSelection);
+        const resolvedSelection = selection.resolveSelection(
+          document,
+        );
+        const resolvedActiveSelection = activeTargets.flatMap((candidate) => {
+          const resolved = selection.resolveTarget(document, candidate);
+          return resolved === null ? [] : [resolved];
+        });
+        contextMenu.openAt({
+          x: event.clientX,
+          y: event.clientY,
+          context: {
+            scope: menuScope(target, nextSelection),
+            target,
+            targetElement: target?.kind === "element"
+              ? document.elements[target.id] ?? null
+              : null,
+            targetGroup: target?.kind === "group"
+              ? document.groups[target.id] ?? null
+              : null,
+            selection: nextSelection,
+            activeSelection: activeTargets,
+            resolvedSelection,
+            resolvedActiveSelection,
+            connectionId: null,
+          },
+        });
+      };
+      const onPointerDown = (event: PointerEvent) => {
+        if (event.button === 0) {
+          contextMenu.close();
+        }
+      };
 
       ctx.hooks.init.tap(() => {
         menuMount = mountContextMenu({ scene, contextMenu });
-
-        const onContextMenu = (event: MouseEvent) => {
-          const target = event.target as Node | null;
-          if (target && menuMount?.mountElement.contains(target)) {
-            return;
-          }
-
-          event.preventDefault();
-          event.stopPropagation();
-
-          scene.stage.setPointersPositions(event);
-          const pointer = scene.stage.getPointerPosition();
-          const targetNode = pointer ? findTargetNode(scene, pointer) : null;
-          const nextSelection = targetNode
-            ? resolveSelection(scene, selection, targetNode)
-            : selection.selection.filter((node): node is TContextMenuNode => {
-              return isCanvasNode(node);
-            });
-          const activeSelection = filterSelection(scene, nextSelection);
-          const scope = getMenuScope(targetNode, nextSelection);
-
-          if (targetNode) {
-            selection.setSelection(nextSelection);
-          }
-
-          contextMenu.openAt({
-            x: event.clientX,
-            y: event.clientY,
-            context: {
-              scope,
-              targetNode,
-              targetElement: targetNode ? element.toElement(targetNode) : null,
-              targetGroup: targetNode ? group.toGroup(targetNode) : null,
-              selection: nextSelection,
-              activeSelection,
-              connectionId: null,
-            },
-          });
-        };
-
-        const onMouseDown = (event: MouseEvent) => {
-          if (event.button !== 0) {
-            return;
-          }
-
-          contextMenu.close();
-        };
-
-        scene.stage.container().addEventListener("contextmenu", onContextMenu);
-        scene.stage.container().addEventListener("mousedown", onMouseDown);
-
-        ctx.hooks.destroy.tap(() => {
-          scene.stage.container().removeEventListener("contextmenu", onContextMenu);
-          scene.stage.container().removeEventListener("mousedown", onMouseDown);
-          contextMenu.close();
-          menuMount?.dispose();
-          menuMount = null;
-        });
+        scene.container.addEventListener("contextmenu", onContextMenu);
+        scene.container.addEventListener("pointerdown", onPointerDown);
+      });
+      ctx.hooks.destroy.tap(() => {
+        scene.container.removeEventListener("contextmenu", onContextMenu);
+        scene.container.removeEventListener("pointerdown", onPointerDown);
+        contextMenu.close();
+        menuMount?.dispose();
+        menuMount = null;
       });
     },
   };

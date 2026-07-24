@@ -4,18 +4,6 @@ import type {
   TWidgetWindow,
 } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
-export type THostThemeColors = {
-  headerFill: string;
-  headerTitleFill: string;
-  bodyFill: string;
-  dividerFill: string;
-  windowStroke: string;
-  trafficLightStroke: string;
-  closeButtonFill: string;
-  minimizeButtonFill: string;
-  maximizeButtonFill: string;
-};
-
 export type TWidgetHostData = TUiWidgetData | TWidgetInstanceData;
 
 export type TNormalizedWidgetHostData = {

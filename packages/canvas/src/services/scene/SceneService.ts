@@ -1,122 +1,533 @@
-import type { IService, IStartableService, IStoppableService } from "@vibecanvas/runtime";
+import type {
+  IService,
+  IStartableService,
+  IStoppableService,
+} from "@vibecanvas/runtime";
+import type { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";
-import Konva from "konva";
+import { getStroke } from "perfect-freehand";
+import {
+  CanvasEngineAdapter,
+  type TCanvasEngineAdapterArgs,
+  type TCanvasEngineDiagnostic,
+  type TCreateCanvasEngine,
+} from "../../engine/CanvasEngineAdapter";
+import {
+  ProjectionCoordinator,
+  type TCanvasProjectionCoordinatorResult,
+} from "../../engine/ProjectionCoordinator";
+import type { CameraEngineBridge } from "../../engine/camera/CameraEngineBridge";
+import type { CanvasInputAdapter } from "../../engine/input/CanvasInputAdapter";
+import { CanvasTransientTargetRegistry } from "../../engine/input/CanvasTransientTargetRegistry";
+import {
+  createBuiltInProjectionRegistry,
+  registerProjectionDefinition,
+  type ProjectionRegistry,
+} from "../../engine/projection/ProjectionRegistry";
+import { fxReadCanvasProjectionTheme } from "../../engine/projection/fx.theme";
+import { CanvasProjectionRuntimePort } from "../../engine/projection-runtime/ProjectionRuntimePort";
+import type {
+  TCanvasProjectionIndex,
+} from "../../engine/typed";
+import type { CanvasProductRuntime } from "../../engine/product-runtime/CanvasProductRuntime";
+import type { CrdtService } from "../crdt/CrdtService";
+import type { ElementService } from "../element/ElementService";
+import type { CanvasPortalService } from "../portal/CanvasPortalService";
+import { CrdtProjectionService } from "../projection/CrdtProjectionService";
+import type { SelectionService } from "../selection/SelectionService";
+import { fnCanvasProjectionDiagnosticGeneration } from "./fn.projection-diagnostics";
+
+export type TCanvasResizeObserver = {
+  observe(target: Element): void;
+  disconnect(): void;
+};
 
 export type TSceneServiceArgs = {
   container: HTMLDivElement;
+  crdt: CrdtService;
+  theme: ThemeService;
+  selection: SelectionService;
+  element: ElementService;
+  portal: CanvasPortalService;
+  notification?: {
+    showError(title: string, description?: string): void;
+  };
+  createEngine?: TCreateCanvasEngine;
+  createResizeObserver?(
+    listener: ResizeObserverCallback,
+  ): TCanvasResizeObserver;
+  engineConfig?: TCanvasEngineAdapterArgs["engineConfig"];
 };
 
 export interface TSceneServiceHooks {
   resize: SyncHook<[number, number]>;
+  projection: SyncHook<[TCanvasProjectionCoordinatorResult]>;
+  diagnostic: SyncHook<[TCanvasEngineDiagnostic]>;
 }
 
-export class SceneService implements IService<TSceneServiceHooks>, IStartableService, IStoppableService {
-  readonly name = "scene";
+type TSceneServiceState =
+  | "idle"
+  | "starting"
+  | "ready"
+  | "stopping"
+  | "stopped"
+  | "failed";
 
+/**
+ * Production canvas scene owner. The engine is an implementation detail;
+ * callers receive only canvas-owned camera, input, projection, and lifecycle
+ * contracts.
+ */
+export class SceneService
+implements
+  IService<TSceneServiceHooks>,
+  IStartableService,
+  IStoppableService {
+  readonly name = "scene";
   readonly container: HTMLDivElement;
   readonly hooks: TSceneServiceHooks = {
     resize: new SyncHook(),
+    projection: new SyncHook(),
+    diagnostic: new SyncHook(),
   };
 
-  stage!: Konva.Stage;
-  staticBackgroundLayer!: Konva.Layer;
-  staticForegroundLayer!: Konva.Layer;
-  dynamicLayer!: Konva.Layer;
-  resizeObserver!: ResizeObserver;
-  #previewNode: Konva.Node | null = null;
-  #started = false;
+  readonly #args: TSceneServiceArgs;
+  readonly #adapter: CanvasEngineAdapter;
+  readonly #transientTargets = new CanvasTransientTargetRegistry();
+
+  #state: TSceneServiceState = "idle";
+  #camera: CameraEngineBridge | null = null;
+  #input: CanvasInputAdapter | null = null;
+  #product: CanvasProductRuntime | null = null;
+  #coordinator: ProjectionCoordinator | null = null;
+  #projectionRuntime: CanvasProjectionRuntimePort | null = null;
+  #projectionService: CrdtProjectionService | null = null;
+  #resizeObserver: TCanvasResizeObserver | null = null;
+  #removeThemeListener: (() => void) | null = null;
+  #removeElementDefinitionsListener: (() => void) | null = null;
+  #removeAdapterListener: (() => void) | null = null;
+  #startPromise: Promise<void> | null = null;
+  #stopPromise: Promise<void> | null = null;
+  #gridVisible = true;
+  #lastResize: { width: number; height: number } | null = null;
+  #activeProjectionDiagnosticKeys = new Set<string>();
 
   constructor(args: TSceneServiceArgs) {
+    this.#args = args;
     this.container = args.container;
-  }
-
-  start(): void | Promise<void> {
-    if (this.#started) {
-      return;
-    }
-
-    this.stage = this.#createStage();
-
-    const layers = this.#createLayers();
-    this.staticBackgroundLayer = layers.staticBackgroundLayer;
-    this.staticForegroundLayer = layers.staticForegroundLayer;
-    this.dynamicLayer = layers.dynamicLayer;
-
-    this.#attachLayers();
-    this.resizeObserver = this.#createResizeObserver();
-    this.resizeObserver.observe(this.container);
-    this.#started = true;
-  }
-
-  stop(): void | Promise<void> {
-    if (!this.#started) {
-      return;
-    }
-
-    this.resizeObserver.disconnect();
-    this.stage.destroy();
-    this.#started = false;
-  }
-
-  #createStage() {
-    return new Konva.Stage({
-      container: this.container,
-      width: this.container.clientWidth,
-      height: this.container.clientHeight,
+    this.#adapter = new CanvasEngineAdapter({
+      host: args.container,
+      ...(args.createEngine === undefined
+        ? {}
+        : { createEngine: args.createEngine }),
+      ...(args.engineConfig === undefined
+        ? {}
+        : { engineConfig: args.engineConfig }),
+      onDiagnostic: (diagnostic) => {
+        this.hooks.diagnostic.call(diagnostic);
+      },
     });
   }
 
-  #createLayers() {
-    return {
-      staticBackgroundLayer: new Konva.Layer(),
-      staticForegroundLayer: new Konva.Layer(),
-      dynamicLayer: new Konva.Layer(),
+  get state(): TSceneServiceState {
+    return this.#state;
+  }
+
+  get camera(): CameraEngineBridge {
+    if (this.#camera === null) {
+      throw new Error("Canvas scene camera is not ready.");
+    }
+    return this.#camera;
+  }
+
+  get input(): CanvasInputAdapter {
+    if (this.#input === null) {
+      throw new Error("Canvas scene input is not ready.");
+    }
+    return this.#input;
+  }
+
+  get product(): CanvasProductRuntime {
+    if (this.#product === null) {
+      throw new Error("Canvas product runtime is not ready.");
+    }
+    return this.#product;
+  }
+
+  get projectionIndex(): TCanvasProjectionIndex | null {
+    return this.#coordinator?.projectionIndex ?? null;
+  }
+
+  get transientTargets(): CanvasTransientTargetRegistry {
+    return this.#transientTargets;
+  }
+
+  diagnostics(): readonly TCanvasEngineDiagnostic[] {
+    return this.#adapter.diagnostics();
+  }
+
+  metricsSnapshot() {
+    return this.#adapter.metricsSnapshot();
+  }
+
+  render() {
+    return this.#adapter.render({
+      includePortals: true,
+      awaitResources: true,
+    });
+  }
+
+  get gridVisible(): boolean {
+    return this.#gridVisible;
+  }
+
+  async setGridVisible(visible: boolean): Promise<boolean> {
+    if (this.#gridVisible === visible) {
+      return false;
+    }
+    this.#gridVisible = visible;
+    const coordinator = this.#coordinator;
+    if (coordinator === null) {
+      return true;
+    }
+    coordinator.setGridVisible(visible);
+    const result = await coordinator.reproject(
+      this.#args.crdt.doc(),
+      this.#args.crdt.revision,
+      "view",
+    );
+    this.hooks.projection.call(result);
+    return result.status === "applied" || result.status === "noop";
+  }
+
+  start(): Promise<void> {
+    if (this.#startPromise !== null) {
+      return this.#startPromise;
+    }
+    if (this.#state !== "idle") {
+      return Promise.reject(
+        new Error(`Canvas scene cannot start from '${this.#state}'.`),
+      );
+    }
+    this.#state = "starting";
+    this.#startPromise = this.#start();
+    return this.#startPromise;
+  }
+
+  stop(): Promise<void> {
+    if (this.#stopPromise !== null) {
+      return this.#stopPromise;
+    }
+    this.#state = "stopping";
+    this.#stopPromise = this.#stop();
+    return this.#stopPromise;
+  }
+
+  async #start(): Promise<void> {
+    try {
+      this.#removeAdapterListener = this.#adapter.subscribe((event) => {
+        if (event.type === "resize") {
+          this.#onResize(event.cssSize.width, event.cssSize.height);
+        }
+      });
+      await this.#adapter.start();
+
+      const camera = this.#adapter.createCameraBridge({
+        initialViewport: { x: 0, y: 0, zoom: 1 },
+      });
+      camera.start();
+      this.#camera = camera;
+
+      const projectionRuntime = new CanvasProjectionRuntimePort({
+        adapter: this.#adapter,
+        mountContent: (args) => {
+          return this.#args.portal.mount(args);
+        },
+        onUpdateError: ({ portalId, error }) => {
+          this.hooks.diagnostic.call({
+            sequence: -1,
+            severity: "error",
+            source: "ownership",
+            code: "PORTAL_CONTENT_UPDATE_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+            recoverable: true,
+            details: { portalId },
+          });
+        },
+      });
+      this.#projectionRuntime = projectionRuntime;
+
+      const coordinator = new ProjectionCoordinator({
+        registry: this.#createProjectionRegistry(),
+        theme: fxReadCanvasProjectionTheme(this.#args.theme, {}),
+        dependencies: {
+          getStroke,
+          unsupportedNodeKinds: [
+            ...(this.#adapter.capabilities?.unsupportedNodeKinds ?? []),
+          ],
+          portalsAvailable: this.#adapter.capabilities?.portals === "dom",
+          getViewportSize: () => ({
+            width: this.container.clientWidth,
+            height: this.container.clientHeight,
+          }),
+        },
+        runtime: projectionRuntime,
+        onPruneSelectionAndFocus: ({ elementIds, groupIds }) => {
+          this.#args.selection.prune(new Set([
+            ...[...elementIds].map((id) => `element:${id}`),
+            ...[...groupIds].map((id) => `group:${id}`),
+          ]));
+        },
+      });
+      coordinator.setGridVisible(this.#gridVisible);
+      this.#coordinator = coordinator;
+
+      const projectionService = new CrdtProjectionService({
+        crdt: this.#args.crdt,
+        coordinator,
+      });
+      projectionService.hooks.result.tap((result) => {
+        this.hooks.projection.call(result);
+        if (result.status === "applied" || result.status === "noop") {
+          this.#publishProjectionDiagnostics();
+        }
+      });
+      projectionService.hooks.error.tap((error, revision) => {
+        this.hooks.diagnostic.call({
+          sequence: -1,
+          severity: "error",
+          source: "scene",
+          code: "PROJECTION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+          recoverable: true,
+          details: { revision },
+        });
+      });
+      this.#projectionService = projectionService;
+      await projectionService.start();
+
+      const input = this.#adapter.createInputAdapter({
+        getProjectionIndex: () => this.#coordinator?.projectionIndex ?? null,
+        getDocument: () => this.#args.crdt.doc(),
+        worldToViewport: (point) => this.camera.worldToViewport(point),
+        resolveTransientTarget: (query) => {
+          return this.#transientTargets.resolve(query);
+        },
+        onError: (error, diagnostic) => {
+          this.hooks.diagnostic.call({
+            sequence: -1,
+            severity: "error",
+            source: "adapter",
+            code: `INPUT_${diagnostic.operation.toUpperCase().replaceAll("-", "_")}`,
+            message: error instanceof Error ? error.message : String(error),
+            recoverable: true,
+          });
+        },
+      });
+      this.#input = input;
+
+      this.#product = this.#adapter.createProductRuntime({
+        getProjectionIndex: () => this.#coordinator?.projectionIndex ?? null,
+        getDocument: () => this.#args.crdt.doc(),
+        transientTargets: this.#transientTargets,
+        onDiagnostic: (diagnostic) => {
+          this.hooks.diagnostic.call({
+            sequence: -1,
+            severity: "error",
+            source: "adapter",
+            code: `PRODUCT_${diagnostic.operation.toUpperCase().replaceAll("-", "_")}`,
+            message: diagnostic.error instanceof Error
+              ? diagnostic.error.message
+              : String(diagnostic.error),
+            recoverable: true,
+            details: {
+              ...(diagnostic.gestureId === undefined
+                ? {}
+                : { gestureId: diagnostic.gestureId }),
+              ...(diagnostic.ownerId === undefined
+                ? {}
+                : { ownerId: diagnostic.ownerId }),
+            },
+          });
+        },
+      });
+      this.#removeThemeListener = this.#args.theme.hooks.change.tap(() => {
+        const activeCoordinator = this.#coordinator;
+        if (activeCoordinator === null) {
+          return;
+        }
+        activeCoordinator.setTheme(
+          fxReadCanvasProjectionTheme(this.#args.theme, {}),
+        );
+        void activeCoordinator.reproject(
+          this.#args.crdt.doc(),
+          this.#args.crdt.revision,
+          "theme",
+        ).then((result) => {
+          this.hooks.projection.call(result);
+        });
+      });
+      this.#removeElementDefinitionsListener = this.#args.element.hooks.elementsChange.tap(() => {
+        const activeCoordinator = this.#coordinator;
+        if (activeCoordinator === null) {
+          return;
+        }
+        activeCoordinator.setRegistry(this.#createProjectionRegistry());
+        void activeCoordinator.reproject(
+          this.#args.crdt.doc(),
+          this.#args.crdt.revision,
+          "extension",
+        ).then((result) => {
+          this.hooks.projection.call(result);
+        });
+      });
+
+      this.#resizeObserver = this.#createResizeObserver();
+      this.#resizeObserver.observe(this.container);
+      this.#resizeToContainer();
+      await this.#adapter.render({
+        includePortals: true,
+        awaitResources: true,
+      });
+      this.#state = "ready";
+    } catch (error) {
+      this.#state = "failed";
+      await this.#stopResources();
+      throw error;
+    }
+  }
+
+  async #stop(): Promise<void> {
+    await this.#startPromise?.catch(() => undefined);
+    const failures = await this.#stopResources();
+    this.#state = failures.length === 0 ? "stopped" : "failed";
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "Canvas scene teardown failed.");
+    }
+  }
+
+  async #stopResources(): Promise<unknown[]> {
+    const failures: unknown[] = [];
+    const attempt = async (effect: () => void | Promise<void>) => {
+      try {
+        await effect();
+      } catch (error) {
+        failures.push(error);
+      }
     };
+
+    this.#resizeObserver?.disconnect();
+    this.#resizeObserver = null;
+    this.#removeThemeListener?.();
+    this.#removeThemeListener = null;
+    this.#removeElementDefinitionsListener?.();
+    this.#removeElementDefinitionsListener = null;
+    this.#removeAdapterListener?.();
+    this.#removeAdapterListener = null;
+    this.#input?.destroy();
+    this.#input = null;
+    await attempt(() => this.#product?.destroy());
+    this.#product = null;
+    this.#transientTargets.destroy();
+    await attempt(() => this.#projectionService?.stop());
+    this.#projectionService = null;
+    this.#coordinator?.stop();
+    this.#coordinator = null;
+    this.#activeProjectionDiagnosticKeys.clear();
+    await attempt(() => this.#projectionRuntime?.destroy());
+    this.#projectionRuntime = null;
+    this.#camera?.destroy();
+    this.#camera = null;
+    await attempt(() => this.#adapter.destroy());
+    return failures;
   }
 
-  #attachLayers() {
-    this.stage.add(this.staticBackgroundLayer);
-    this.stage.add(this.staticForegroundLayer);
-    this.stage.add(this.dynamicLayer);
-  }
-
-  #createResizeObserver() {
+  #createResizeObserver(): TCanvasResizeObserver {
+    if (this.#args.createResizeObserver !== undefined) {
+      return this.#args.createResizeObserver(() => {
+        this.#resizeToContainer();
+      });
+    }
     return new ResizeObserver(() => {
-      this.#resizeStageToContainer();
+      this.#resizeToContainer();
     });
   }
 
-  #resizeStageToContainer() {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+  #resizeToContainer(): void {
+    const width = Math.max(0, this.container.clientWidth);
+    const height = Math.max(0, this.container.clientHeight);
+    this.#adapter.resize({ width, height });
+    this.#camera?.reapplyViewportSize();
+    this.#onResize(width, height);
+  }
 
-    this.stage.size({ width, height });
-    this.stage.batchDraw();
+  #onResize(width: number, height: number): void {
+    if (
+      this.#lastResize?.width === width
+      && this.#lastResize.height === height
+    ) {
+      return;
+    }
+    this.#lastResize = { width, height };
     this.hooks.resize.call(width, height);
+    const coordinator = this.#coordinator;
+    if (coordinator !== null) {
+      void coordinator.reproject(
+        this.#args.crdt.doc(),
+        this.#args.crdt.revision,
+        "view",
+      ).then((result) => {
+        this.hooks.projection.call(result);
+      });
+    }
   }
 
-  get previewNode(): Konva.Node | null {
-    return this.#previewNode;
+  #createProjectionRegistry(): ProjectionRegistry {
+    let registry = createBuiltInProjectionRegistry();
+    for (
+      const definition
+      of this.#args.element.projectionExtensions().definitions
+    ) {
+      registry = registerProjectionDefinition(registry, definition);
+    }
+    return registry;
   }
 
-  setPreviewNode(node: Konva.Node | null) {
-    if (this.#previewNode === node) {
+  #publishProjectionDiagnostics(): void {
+    const projection = this.#coordinator?.lastGoodProjection;
+    if (projection === null || projection === undefined) {
       return;
     }
-
-    if (node === null) {
-      this.clearPreviewState();
-      return;
+    const generation = fnCanvasProjectionDiagnosticGeneration({
+      previousKeys: this.#activeProjectionDiagnosticKeys,
+      diagnostics: projection.diagnostics,
+    });
+    this.#activeProjectionDiagnosticKeys = generation.activeKeys;
+    for (const diagnostic of generation.added) {
+      const target = diagnostic.target;
+      this.hooks.diagnostic.call({
+        sequence: -1,
+        severity: "error",
+        source: "scene",
+        code: `PROJECTION_${diagnostic.code}`,
+        message: diagnostic.message,
+        recoverable: true,
+        details: {
+          ...(diagnostic.projectorId === undefined
+            ? {}
+            : { projectorId: diagnostic.projectorId }),
+          ...(target === undefined
+            ? {}
+            : {
+                targetKind: target.kind,
+                targetId: target.id,
+              }),
+        },
+      });
+      this.#args.notification?.showError(
+        "Canvas feature rendered as a placeholder",
+        `${diagnostic.code}: ${diagnostic.message}`,
+      );
     }
-
-    if (node instanceof Konva.Shape || node instanceof Konva.Group) {
-      this.dynamicLayer.add(node);
-    }
-    this.#previewNode = node;
-  }
-
-  clearPreviewState() {
-    this.#previewNode?.destroy()
-    this.#previewNode = null;
   }
 }

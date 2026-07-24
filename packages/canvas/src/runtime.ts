@@ -16,6 +16,7 @@ import {
     createToolbarPlugin, createTransformPlugin, createVisualDebugPlugin
 } from "./plugins";
 import { CameraService } from "./services/camera/CameraService";
+import { CanvasActiveSessionService } from "./services/active-session/CanvasActiveSessionService";
 import { ConfirmDialogService } from "./services/confirm-dialog/ConfirmDialogService";
 import { ContextMenuService } from "./services/context-menu/ContextMenuService";
 import { CrdtService } from "./services/crdt/CrdtService";
@@ -23,6 +24,7 @@ import { ElementService } from "./services/element/ElementService";
 import { GroupService } from "./services/group/GroupService";
 import { HistoryService } from "./services/history/HistoryService";
 import { LoggingService } from "./services/logging/LoggingService";
+import { CanvasPortalService } from "./services/portal/CanvasPortalService";
 import { RenderOrderService } from "./services/render-order/RenderOrderService";
 import { SceneService } from "./services/scene/SceneService";
 import { SelectionService } from "./services/selection/SelectionService";
@@ -31,15 +33,18 @@ import { ToolService } from "./services/tool/ToolService";
 import { WidgetDropPlacementService } from "./services/widget-placement/WidgetDropPlacementService";
 import type { ICanvasRuntimeExtension, TCanvasRuntimePlugin } from "./extension";
 import { IRuntimeConfig, IRuntimeHooks } from "./types";
+import type { TSceneServiceArgs } from "./services/scene/SceneService";
 
 declare module "@vibecanvas/runtime" {
   interface IServiceMap {
+    activeSession: CanvasActiveSessionService;
     camera: CameraService;
     confirmDialog: ConfirmDialogService;
     contextMenu: ContextMenuService;
     crdt: CrdtService;
     history: HistoryService;
     logging: LoggingService;
+    portal: CanvasPortalService;
     scene: SceneService;
     renderOrder: RenderOrderService;
     selection: SelectionService;
@@ -75,38 +80,57 @@ function createHooks(): IRuntimeHooks {
   };
 }
 
-function createServices(config: Pick<IRuntimeConfig, "canvasId" | "container" | "docHandle" | "notification" | "themeService">): IServiceRegistry {
+export type TCanvasRuntimeComposition = {
+  createScene?(args: TSceneServiceArgs): SceneService;
+};
+
+function createServices(
+  config: Pick<
+    IRuntimeConfig,
+    "canvasId" | "container" | "docHandle" | "notification" | "themeService"
+  >,
+  composition: TCanvasRuntimeComposition,
+): IServiceRegistry {
   const services = createServiceRegistry();
   const crdt = new CrdtService({ docHandle: config.docHandle });
+  const activeSession = new CanvasActiveSessionService({ crdt });
   const element = new ElementService();
   const sessionService = new SessionService();
-  const scene = new SceneService({ container: config.container, });
+  const selection = new SelectionService();
+  const portal = new CanvasPortalService(crdt);
+  const sceneArgs: TSceneServiceArgs = {
+    container: config.container,
+    crdt,
+    theme: config.themeService,
+    selection,
+    element,
+    portal,
+    ...(config.notification === undefined
+      ? {}
+      : { notification: config.notification }),
+  };
+  const scene = composition.createScene?.(sceneArgs)
+    ?? new SceneService(sceneArgs);
   const camera = new CameraService({ scene });
   const confirmDialog = new ConfirmDialogService();
   const contextMenu = new ContextMenuService();
   const history = new HistoryService();
-  const selection = new SelectionService();
-  const tool = new ToolService(scene, element, crdt, selection);
+  const tool = new ToolService();
   const widgetPlacement = new WidgetDropPlacementService({ camera, scene });
   const logging = new LoggingService();
   const renderOrder = new RenderOrderService({
     crdt,
     history,
-    scene,
     contextMenu,
   });
-  const group = new GroupService(
-    camera,
-    element,
+  const group = new GroupService({
     contextMenu,
     crdt,
     history,
-    logging,
-    scene,
-    renderOrder,
     selection,
-    config.themeService,
-  );
+    createId: () => crypto.randomUUID(),
+    now: () => Date.now(),
+  });
 
   services.provide("scene", 10, scene);
   services.provide("camera", 20, camera);
@@ -117,7 +141,9 @@ function createServices(config: Pick<IRuntimeConfig, "canvasId" | "container" | 
   services.provide("history", 50, history);
   services.provide("selection", 60, selection);
   services.provide("crdt", 70, crdt);
+  services.provide("activeSession", 75, activeSession);
   services.provide("logging", 80, logging);
+  services.provide("portal", 85, portal);
   services.provide("tool", 90, tool);
   services.provide("renderOrder", 100, renderOrder);
   services.provide("widgetPlacement", 105, widgetPlacement);
@@ -127,19 +153,25 @@ function createServices(config: Pick<IRuntimeConfig, "canvasId" | "container" | 
   return services;
 }
 
-export function buildRuntime(config: IRuntimeConfig, extensions: readonly ICanvasRuntimeExtension[] = []) {
+export function buildRuntime(
+  config: IRuntimeConfig,
+  extensions: readonly ICanvasRuntimeExtension[] = [],
+  composition: TCanvasRuntimeComposition = {},
+) {
   const hooks = createHooks();
-  const services = createServices(config);
+  const services = createServices(config, composition);
   const extensionInstalls = extensions.map((extension) => extension.install({
     config,
     hooks,
     services: {
+      activeSession: services.require("activeSession"),
       camera: services.require("camera"),
       confirmDialog: services.require("confirmDialog"),
       contextMenu: services.require("contextMenu"),
       crdt: services.require("crdt"),
       history: services.require("history"),
       logging: services.require("logging"),
+      portal: services.require("portal"),
       scene: services.require("scene"),
       renderOrder: services.require("renderOrder"),
       selection: services.require("selection"),
