@@ -60,9 +60,9 @@ Historical behavior and screen states are recorded in
 | 3 — Complete static projection | completed | All built-in projectors, nested groups, deterministic index/diff, JSON-only snapshots, resources/portals, visible placeholders, and element-local capability/resource/portal failure handling are implemented and focused-tested |
 | 4 — Authoritative incremental hydration | completed | SceneService owns one serialized local/remote path; ordinary element summaries reproject changed elements only, while structural group changes retain a bounded full-projection fallback |
 | 5 — Camera, grid, input, selection, menus | completed | Engine camera/input, semantic selection/context menu, engine marquee, key filtering, remembered style defaults, and coalesced opacity history are implemented |
-| 6 — Tools and element creation | completed | Shape2d, line/arrow with product bindings, pen, text, image, cancellation, and transient-to-durable creation are renderer-neutral |
-| 7 — Transforms, groups, order, clone | completed | Element/group/mixed transforms, group/order persistence, point editing, product-first subtree clone IDs/policies, lifecycle-aware delete, and dependency-aware remote cancellation are implemented |
-| 8 — Text and image runtime behavior | completed | Text commit/cancel/history and image resource/upload/clone/delete/restore lifecycle are implemented |
+| 6 — Tools and element creation | completed | Shape2d, line/arrow, pen, text, image, cancellation, transient-to-durable creation, and product binding payload persistence are renderer-neutral; live connector target-following is not implemented |
+| 7 — Transforms, groups, order, clone | completed | Element/group/mixed transforms, group/order persistence, point editing, product-first subtree clone IDs/policies, lifecycle hook routing, and dependency-aware remote cancellation are implemented; image undo remains open in B55 |
+| 8 — Text and image runtime behavior | completed with follow-ups | Normal text commit/cancel/history and image projection/upload/clone/delete hooks are implemented; teardown-safe active text resolution is B57 and reversible image restore is B55 |
 | 9 — Real widgets and extensions | completed | Widget chrome/title actions, distinct content focus, portal ownership, frame transforms, clone policy, placement transient, and renderer-neutral `ui-ai-chat` consumer are implemented |
 | 10 — Cutover and canvas Konva deletion | completed | Engine-backed SceneService is sole runtime; source/manifests/lock scan is Konva-free and the compatibility layer was not retained |
 | 11 — Qualification and repository handoff | in progress | Final local monorepo/build/binary/index and Konva-artifact gates pass; complete browser, real two-client, performance, soak, human atlas, and portable provenance gates remain |
@@ -233,10 +233,12 @@ Historical behavior and screen states are recorded in
   preview, group ancestry and bindings are remapped, image side effects are
   compensated on failure, and registered widget cloneability/payload policy is
   applied before same-ID durable handoff.
-- Completed line/arrow endpoint binding creation and point-edit binding
-  persistence without storing engine identities.
+- Completed line/arrow endpoint binding payload creation and point-edit binding
+  persistence without storing engine identities. Projection still uses stored
+  points; live connector target-following is not implemented.
 - Routed generic selection deletion through `ElementService` so registered
-  `onDelete`/`onRestore` effects run for delete, undo, and redo.
+  `onDelete`/`onRestore` effects run for delete, undo, and redo. The image
+  implementation is not yet reversible after its eager file deletion (B55).
 - Added element-local projection fallback for capability, resource preload, and
   portal registration/mount failure. Scene diagnostics and user notifications
   are emitted once per active failure generation and reset after recovery.
@@ -383,6 +385,14 @@ progress until every strict Definition of Done gate passes.
 - Left connector-binding projection unchanged per review direction.
 - Recorded the irreversible image delete/undo lifecycle as
   [`B55`](tasks/b/B55.md), including the rapid undo/redo orphan race.
+- Recorded pointer-sequence click synthesis as [`B56`](tasks/b/B56.md), active
+  text teardown resolution as [`B57`](tasks/b/B57.md), asynchronous portal
+  update serialization as [`B58`](tasks/b/B58.md), and remaining projection
+  scale cliffs as [`D3`](tasks/d/D3.md).
+- Corrected the Phase 6–8 evidence so persisted connector binding payloads,
+  image lifecycle hook routing, and normal text editing are not mistaken for
+  live connector following, reversible image restoration, or teardown-safe
+  active editing.
 - Fixed mounted widget portal isolation so contained/fullscreen transitions
   update the live resize-boundary policy without remounting widget DOM.
 - Added regression coverage for contained → fullscreen → contained edge-event
