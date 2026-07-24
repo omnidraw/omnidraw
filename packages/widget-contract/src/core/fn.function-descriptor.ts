@@ -4,13 +4,19 @@
  */
 
 import type {
-  TWidgetManifestV2,
+  TWidgetBrowserFunctionDescriptor,
+  TWidgetCapsuleCapabilityRequest,
+  TWidgetManifestV3,
   TWidgetSerializableJsonObject,
   TWidgetSerializableJsonValue,
   TWidgetServerFunctionDescriptor,
   TWidgetServerFunctionDescriptorValidation,
   TWidgetServerFunctionResourceAccess,
 } from '../types';
+
+const SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE = 'vibecanvas.widget.functions.';
+const SERVER_FUNCTION_CAPABILITY_ID_PREFIX = `${SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE}h`;
+const SERVER_FUNCTION_CAPABILITY_VERSION = '1.0.0';
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -78,8 +84,78 @@ export function fnCanonicalizeWidgetServerFunctionDescriptors(
   });
 }
 
+export function fnNormalizeWidgetBrowserFunctionDescriptor(
+  descriptor: TWidgetBrowserFunctionDescriptor,
+): TWidgetBrowserFunctionDescriptor {
+  const { modulePath: _modulePath, ...browserDescriptor } =
+    fnNormalizeWidgetServerFunctionDescriptor(descriptor);
+  return browserDescriptor;
+}
+
+export function fnNormalizeWidgetBrowserFunctionDescriptors(
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+): readonly TWidgetBrowserFunctionDescriptor[] {
+  return [...descriptors]
+    .sort((left, right) => compareText(left.exportName, right.exportName))
+    .map(fnNormalizeWidgetBrowserFunctionDescriptor);
+}
+
+/**
+ * Projects trusted server descriptors into the browser-visible contract.
+ * `modulePath` is deliberately removed only after the full persisted
+ * descriptor contract has been verified by the trusted server boundary.
+ */
+export function fnProjectWidgetBrowserFunctionDescriptors(
+  descriptors: readonly TWidgetServerFunctionDescriptor[],
+): readonly TWidgetBrowserFunctionDescriptor[] {
+  return fnNormalizeWidgetBrowserFunctionDescriptors(descriptors.map((descriptor) => {
+    const { modulePath: _modulePath, ...browserDescriptor } =
+      fnNormalizeWidgetServerFunctionDescriptor(descriptor);
+    return browserDescriptor;
+  }));
+}
+
+/**
+ * Canonical browser-safe descriptor contract. Unlike the persisted server
+ * contract, this representation never includes host filesystem module paths.
+ */
+export function fnCanonicalizeWidgetBrowserFunctionDescriptors(
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+): string {
+  return JSON.stringify({
+    format: 'vibecanvas.browser-server-functions.v1',
+    functions: fnNormalizeWidgetBrowserFunctionDescriptors(descriptors),
+  });
+}
+
+export function fnWidgetServerFunctionCapabilityRequestMatches(
+  descriptorDigestSha256: string,
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+  requests: readonly TWidgetCapsuleCapabilityRequest[],
+): boolean {
+  const functionRequests = requests.filter((request) => (
+    request.id.startsWith(SERVER_FUNCTION_CAPABILITY_ID_NAMESPACE)
+  ));
+  if (descriptors.length === 0) return functionRequests.length === 0;
+  if (!/^[0-9a-f]{64}$/.test(descriptorDigestSha256) || functionRequests.length !== 1) {
+    return false;
+  }
+
+  const request = functionRequests[0]!;
+  const expectedOperations = descriptors
+    .map((descriptor) => descriptor.exportName)
+    .sort(compareText);
+  const actualOperations = [...request.operations].sort(compareText);
+  return request.id === `${SERVER_FUNCTION_CAPABILITY_ID_PREFIX}${descriptorDigestSha256}`
+    && request.versionRange === SERVER_FUNCTION_CAPABILITY_VERSION
+    && request.contractHash === `sha256:${descriptorDigestSha256}`
+    && request.required
+    && expectedOperations.length === actualOperations.length
+    && expectedOperations.every((operation, index) => operation === actualOperations[index]);
+}
+
 export function fnValidateWidgetServerFunctionDescriptors(
-  manifest: TWidgetManifestV2,
+  manifest: TWidgetManifestV3,
   descriptors: readonly TWidgetServerFunctionDescriptor[],
 ): TWidgetServerFunctionDescriptorValidation {
   if (manifest.server === undefined) {

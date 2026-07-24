@@ -13,12 +13,17 @@ import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlSto
 import { WidgetInstanceMetadataStoreTurso } from '@vibecanvas/service-db/WidgetInstanceMetadataStoreTurso';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import {
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
 import type {
-  TWidgetManifestV2,
+  TWidgetCapsuleBuildIdentity,
+  TWidgetCapsuleBudgets,
+  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetManifestV3,
   TWidgetServerFunctionDescriptor,
 } from '@vibecanvas/widget-contract';
 
@@ -39,6 +44,32 @@ const CANVAS_DOCUMENT_KEY = parseAutomergeUrl(CANVAS_URL).documentId;
 const UI_DIGEST = sha256('managed-lane-ui');
 const SERVER_DIGEST = sha256('managed-lane-server');
 const SOURCE_DIGEST = sha256('managed-lane-source');
+const CAPABILITY_CONTRACT_DIGEST = sha256(
+  fnCanonicalizeWidgetCapsuleCapabilityRequests([]),
+);
+const CHANNEL_CONTRACT_DIGEST = sha256(
+  fnCanonicalizeWidgetCapsuleChannelContract(null),
+);
+const WIDGET_BUILD_POLICY_ID = 'vibecanvas-capsule-widget-v1';
+const CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = {
+  packageName: '@omnidraw/capsule',
+  packageVersion: '0.9.1',
+  packageDigest: 'sha256:373b7dd1293b280d193683f4455d7420d62d8cb188ae32524da860199a52b727',
+  buildApiVersion: '0.1.0',
+  runtimeBuildDigest: 'sha256:8d6786bf0775f33724c74ea6f71841f5e61dd86d0de7c2b6c3d6c61f9d4ea146',
+};
+const CAPSULE_BUDGETS: TWidgetCapsuleBudgets = {
+  cpuMs: 100,
+  memoryBytes: 16 * 1024 * 1024,
+  domNodes: 1_000,
+  handles: 2_000,
+  messageBytes: 64 * 1024,
+  streamBytes: 64 * 1024,
+  assetBytes: 0,
+  networkBytes: 0,
+  gpuBytes: 0,
+  lifecycleBytes: 64 * 1024,
+};
 
 const TENANT = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -73,12 +104,30 @@ const FUNCTION_DESCRIPTOR: TWidgetServerFunctionDescriptor = {
   },
 };
 
-const MANIFEST: TWidgetManifestV2 = {
-  schemaVersion: 2,
+const MANIFEST: TWidgetManifestV3 = {
+  schemaVersion: 3,
   name: 'Managed Lane Widget',
   slug: 'managed-lane-widget',
-  ui: { entry: 'ui.js' },
+  ui: {
+    runtime: 'capsule',
+    entry: 'ui.js',
+    target: {
+      runtimeAbi: 'quickjs-release-sync-v1',
+      domProfile: 'dom-core-v2',
+      featureProfiles: [],
+    },
+  },
   server: { entry: 'server.js', runtimeAbi: 'vibecanvas:1' },
+};
+const UI_RUNTIME: TWidgetCapsuleRuntimeDescriptor = {
+  format: 'vibecanvas.capsule-runtime.v1',
+  capsuleArtifactHash: `sha256:${UI_DIGEST}`,
+  target: MANIFEST.ui.target,
+  budgets: CAPSULE_BUDGETS,
+  capabilityRequests: [],
+  channels: null,
+  parkability: { parkable: false },
+  signatureKeyIds: ['vibecanvas-release-v1'],
 };
 
 function deferred(): Readonly<{ promise: Promise<void>; resolve: () => void }> {
@@ -127,9 +176,19 @@ async function publishFunctionWidget(store: WidgetControlStoreTurso): Promise<st
   const contractDigestSha256 = sha256(fnCanonicalizeWidgetContractPayload({
     canonicalManifestJson,
     uiDigestSha256: UI_DIGEST,
+    capsuleArtifactHash: UI_RUNTIME.capsuleArtifactHash,
+    target: UI_RUNTIME.target,
+    budgets: UI_RUNTIME.budgets,
+    capabilityContractDigestSha256: CAPABILITY_CONTRACT_DIGEST,
+    channelContractDigestSha256: CHANNEL_CONTRACT_DIGEST,
+    signatureKeyIds: UI_RUNTIME.signatureKeyIds,
     serverDigestSha256: SERVER_DIGEST,
-    runtimeAbi: MANIFEST.server!.runtimeAbi,
+    serverRuntimeAbi: MANIFEST.server!.runtimeAbi,
     functionDescriptorsDigestSha256,
+    sourceDigestSha256: SOURCE_DIGEST,
+    builderIdentity: 'managed-transaction-lane-test',
+    capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+    buildPolicyId: WIDGET_BUILD_POLICY_ID,
   }));
   const result = await store.commitPublication(TENANT, {
     expectedActiveRevisionId: null,
@@ -140,6 +199,8 @@ async function publishFunctionWidget(store: WidgetControlStoreTurso): Promise<st
       canonicalManifestJson,
       functionDescriptors: [FUNCTION_DESCRIPTOR],
       functionDescriptorsDigestSha256,
+      capabilityContractDigestSha256: CAPABILITY_CONTRACT_DIGEST,
+      channelContractDigestSha256: CHANNEL_CONTRACT_DIGEST,
       contractDigestSha256,
       uiArtifact: {
         orgId: TENANT.orgId,
@@ -151,6 +212,7 @@ async function publishFunctionWidget(store: WidgetControlStoreTurso): Promise<st
         retainUntilMs: null,
         createdAtMs: 20,
       },
+      uiRuntime: UI_RUNTIME,
       serverArtifact: {
         orgId: TENANT.orgId,
         id: SERVER_ARTIFACT_ID,
@@ -161,6 +223,9 @@ async function publishFunctionWidget(store: WidgetControlStoreTurso): Promise<st
         retainUntilMs: null,
         createdAtMs: 20,
       },
+      serverRuntimeAbi: MANIFEST.server!.runtimeAbi,
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+      buildPolicyId: WIDGET_BUILD_POLICY_ID,
       createdAtMs: 20,
     },
     source: {

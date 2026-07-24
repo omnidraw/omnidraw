@@ -24,6 +24,14 @@ import { Database } from '../DbServiceTurso/turso-native';
 import { FunctionControlStoreTurso } from '../FunctionControlStoreTurso';
 import { fnFunctionCanonicalJson } from '../FunctionControlStoreTurso/fn.function-json';
 import { fnFunctionId } from '../FunctionControlStoreTurso/fn.function-id';
+import {
+  WIDGET_CAPSULE_ARTIFACT_HASH,
+  WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_CAPABILITY_DIGEST,
+  WIDGET_CAPSULE_CHANNEL_DIGEST,
+  WIDGET_CAPSULE_RUNTIME_JSON,
+} from './widget-capsule-fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -154,10 +162,18 @@ async function readLine(stream: ReadableStream<Uint8Array>): Promise<string> {
 async function seedControlPlane(database: TDatabase): Promise<void> {
   const canonicalDescriptors = fnCanonicalizeWidgetServerFunctionDescriptors([DESCRIPTOR]);
   const manifestJson = fnFunctionCanonicalJson({
-    schemaVersion: 2,
+    schemaVersion: 3,
     name: 'Preferences',
     slug: 'preferences',
-    ui: { entry: 'ui.js' },
+    ui: {
+      runtime: 'capsule',
+      entry: 'ui.js',
+      target: {
+        runtimeAbi: 'quickjs-release-sync-v1',
+        domProfile: 'dom-core-v2',
+        featureProfiles: [],
+      },
+    },
     server: { entry: 'server.js', runtimeAbi: 'vibecanvas:1' },
     resources: [{ slot: 'preferences', kind: 'kv', effect: 'write', required: true }],
   });
@@ -206,8 +222,14 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
       org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
       server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256,
       created_at_ms, function_descriptors_json, function_descriptors_digest_sha256,
+      ui_runtime_json, capsule_artifact_hash,
+      capability_contract_digest_sha256, channel_contract_digest_sha256,
+      capsule_build_identity_json, build_policy_id, server_runtime_abi,
       contract_format_version
-    ) VALUES (?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 2, ?, ?, 2)
+    ) VALUES (
+      ?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 2, ?, ?,
+      ?, ?, ?, ?, ?, ?, 'vibecanvas:1', 3
+    )
   `)).run(
     DEFAULT_OSS_ORGANIZATION_ID,
     REVISION_ID,
@@ -218,6 +240,12 @@ async function seedControlPlane(database: TDatabase): Promise<void> {
     CONTRACT_DIGEST,
     canonicalDescriptors,
     sha256(canonicalDescriptors),
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
   );
   await (await database.prepare(`
     INSERT INTO function_definitions (

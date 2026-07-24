@@ -1,4 +1,4 @@
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { TValidationResult } from './types';
 import { fxWalkFiles } from './fx.walk-files';
 import { fnLintRequiredWidgetFiles } from './lint/fn.required-widget-files';
@@ -38,13 +38,13 @@ export async function txValidateWidgetFiles(
   const files: string[] = await fxWalkFiles(portal, { root: args.cwd }).catch((): string[] => []);
   const hasFile = (path: string): boolean => files.includes(path);
 
-  let manifest: TWidgetManifestV2 | null = null;
+  let manifest: TWidgetManifestV3 | null = null;
   if (hasFile('vibecanvas.json')) {
     try {
       const candidate: unknown = JSON.parse(
         await portal.readFile(portal.join(args.cwd, 'vibecanvas.json'), 'utf8'),
       );
-      manifest = candidate as TWidgetManifestV2;
+      manifest = candidate as TWidgetManifestV3;
       const manifestValidation = fnValidateManifest(manifest);
       errors.push(...manifestValidation.errors);
       warnings.push(...manifestValidation.warnings);

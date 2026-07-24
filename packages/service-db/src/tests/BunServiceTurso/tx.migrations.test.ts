@@ -41,6 +41,15 @@ import {
   EXPECTED_AGENT_AUTHORING_APPLICATION_TABLES,
   EXPECTED_DATABASE_SCHEMA_CONTRACTS,
 } from '../../../src/schema/expected-schema';
+import {
+  WIDGET_CAPSULE_ARTIFACT_HASH,
+  WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_CAPABILITY_DIGEST,
+  WIDGET_CAPSULE_CHANNEL_DIGEST,
+  WIDGET_CAPSULE_RUNTIME_JSON,
+  widgetManifestV3Json,
+} from '../widget-capsule-fixture';
 
 const temporaryRoots: string[] = [];
 const databases: Database[] = [];
@@ -59,7 +68,9 @@ async function temporaryRoot(): Promise<string> {
 }
 
 async function openDatabase(databasePath: string): Promise<Database> {
-  const db = await connect(databasePath, { experimental: ['custom_types', 'triggers', 'index_method'] });
+  const db = await connect(databasePath, {
+    experimental: ['custom_types', 'triggers', 'index_method'] as never,
+  });
   databases.push(db);
   return db;
 }
@@ -167,14 +178,28 @@ async function seedVersionZeroRevision(db: Database): Promise<void> {
     INSERT INTO widget_definition_revisions (
       org_id, id, definition_id, revision_number,
       ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind,
-      manifest_json, contract_digest_sha256, created_at_ms
-    ) VALUES (?, ?, ?, 4, ?, 'ui', NULL, NULL, '{}', ?, 1)
+      manifest_json, contract_digest_sha256, created_at_ms,
+      ui_runtime_json, capsule_artifact_hash,
+      capability_contract_digest_sha256, channel_contract_digest_sha256,
+      capsule_build_identity_json, build_policy_id, server_runtime_abi,
+      contract_format_version
+    ) VALUES (
+      ?, ?, ?, 4, ?, 'ui', NULL, NULL, ?, ?, 1,
+      ?, ?, ?, ?, ?, ?, NULL, 3
+    )
   `)).run(
     DEFAULT_OSS_ORGANIZATION_ID,
     V0_REVISION_ID,
     V0_DEFINITION_ID,
     V0_ARTIFACT_ID,
+    widgetManifestV3Json({ name: 'V0 sequence', slug: 'v0-sequence' }),
     'b'.repeat(64),
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
   );
 }
 

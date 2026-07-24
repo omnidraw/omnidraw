@@ -1,5 +1,10 @@
 import type { Database } from '@tursodatabase/database';
 import { createHash } from 'node:crypto';
+import {
+  WidgetArtifactBuilderCapsule,
+  type CapsuleArtifactSigningKey,
+  type TVibecanvasCapsuleBuild,
+} from '@vibecanvas/capsule-vibecanvas/builder';
 import type { IService, IStoppableService } from '@vibecanvas/runtime';
 import { AgentAuthoringStoreTurso } from '@vibecanvas/service-db/AgentAuthoringStoreTurso';
 import { WidgetControlStoreTurso } from '@vibecanvas/service-db/WidgetControlStoreTurso';
@@ -25,10 +30,11 @@ import type {
   TWidgetArtifactReadCapability,
   TWidgetArtifactReadCapabilityIssueRequest,
   TWidgetArtifactReadRequest,
+  TWidgetCapsuleBuildIdentity,
   TWidgetDefinitionDescriptor,
   TWidgetDefinitionArchiveInput,
   TWidgetDefinitionArchiveResult,
-  TWidgetManifestV2,
+  TWidgetManifestV3,
   TWidgetPublishRequest,
   TWidgetPublishResult,
   TWidgetPublishedPlacementDescriptor,
@@ -43,14 +49,13 @@ import type {
   TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
 import {
-  ZWidgetManifestV2,
+  ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
   fnValidateWidgetBuildIntegrity,
 } from '@vibecanvas/widget-contract';
 import {
   LocalWidgetArtifactStore,
-  WidgetArtifactBuilderBun,
   WidgetArtifactGarbageCollector,
   WidgetArtifactOperationLane,
   WidgetArtifactReadAuthority,
@@ -60,7 +65,6 @@ import {
   WidgetSourceSnapshot,
   type TCapturedWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract/local';
-import { WidgetTypeScriptValidator } from './WidgetTypeScriptValidator';
 
 type TWidgetServicePlacement = Readonly<Pick<
   TTenantContext,
@@ -79,6 +83,12 @@ type TWidgetServiceConfig = Readonly<{
   nowMs?: () => number;
   functionDescriptorExtractor: IWidgetServerFunctionDescriptorExtractor;
   resolveTrustedPackageImport: (specifier: string) => string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
+  capsuleBuild: TVibecanvasCapsuleBuild;
+  loadCapsuleSigningKeys(
+    purpose: 'preview' | 'release',
+  ): Promise<readonly CapsuleArtifactSigningKey[]>;
 }>;
 
 type TWidgetSourceCaptureArgs = Readonly<{
@@ -89,7 +99,7 @@ type TWidgetSourceCaptureArgs = Readonly<{
 
 type TWidgetBuildValidationRequest = Readonly<{
   snapshot: TWidgetSourceSnapshot;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
 }>;
 
 type TWidgetBuildValidationResult = Readonly<{
@@ -101,7 +111,7 @@ const WIDGET_PLACEMENT_FALLBACK_BOUNDS = Object.freeze({ width: 360, height: 320
 const WIDGET_PLACEMENT_CATALOG_MAX_DEFINITIONS = 1_000;
 const WIDGET_PLACEMENT_CATALOG_READ_CONCURRENCY = 8;
 
-/** Organization-placement owner for manifest-v2 widget artifacts and revisions. */
+/** Organization-placement owner for manifest-v3 Capsule widget artifacts and revisions. */
 class WidgetService implements
   IService,
   IStoppableService,
@@ -117,13 +127,14 @@ class WidgetService implements
   readonly name = 'widget-service';
   readonly #placement: TWidgetServicePlacement;
   readonly #builderIdentity: string;
+  readonly #capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  readonly #buildPolicyId: string;
   readonly #artifactReadMaximumTtlMs: number;
   readonly #nowMs: () => number;
   readonly #controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator;
   readonly authoringStore: AgentAuthoringStoreTurso;
   readonly #sourceSnapshot: WidgetSourceSnapshot;
   readonly #builder: IWidgetArtifactBuilder;
-  readonly #typescriptValidator: WidgetTypeScriptValidator;
   readonly #publication: WidgetPublicationService;
   readonly #preview: WidgetPreviewService;
   readonly #artifacts: WidgetArtifactService;
@@ -132,12 +143,11 @@ class WidgetService implements
   constructor(config: TWidgetServiceConfig) {
     this.#placement = Object.freeze({ ...config.placement });
     this.#builderIdentity = config.builderIdentity;
+    this.#capsuleBuildIdentity = config.capsuleBuildIdentity;
+    this.#buildPolicyId = config.buildPolicyId;
     this.#artifactReadMaximumTtlMs = config.artifactReadMaximumTtlMs;
     this.#nowMs = config.nowMs ?? Date.now;
     this.#sourceSnapshot = new WidgetSourceSnapshot();
-    this.#typescriptValidator = new WidgetTypeScriptValidator({
-      compiledExecutable: config.compiledExecutable,
-    });
 
     const controlStore: IWidgetControlStore & IWidgetArtifactMutationCoordinator =
       new WidgetControlStoreTurso(config.database);
@@ -163,12 +173,16 @@ class WidgetService implements
       capabilityIssuer: readAuthority,
       capabilityVerifier: readAuthority,
     });
-    const builder = new WidgetArtifactBuilderBun({
+    const builder = new WidgetArtifactBuilderCapsule({
       tempRoot: config.buildTempRoot,
       builderIdentity: config.builderIdentity,
+      capsuleBuildIdentity: config.capsuleBuildIdentity,
+      buildPolicyId: config.buildPolicyId,
       snapshotService: this.#sourceSnapshot,
       functionDescriptorExtractor: config.functionDescriptorExtractor,
       resolveTrustedPackageImport: config.resolveTrustedPackageImport,
+      loadSigningKeys: config.loadCapsuleSigningKeys,
+      capsuleBuild: config.capsuleBuild,
     });
     this.#builder = builder;
     this.#publication = new WidgetPublicationService({
@@ -199,20 +213,23 @@ class WidgetService implements
     return this.#sourceSnapshot.capture(sourceRoot, args);
   }
 
-  /** Trusted, no-commit build validation over one exact immutable source snapshot. */
+  /** No-commit validation through the same injected build ports used by preview and publish. */
   async validateBuild(
     tenant: TTenantContext,
     request: TWidgetBuildValidationRequest,
   ): Promise<TWidgetBuildValidationResult> {
     this.#assertPlacement(tenant);
     try {
-      const manifest = ZWidgetManifestV2.parse(request.manifest);
+      const manifest = ZWidgetManifestV3.parse(request.manifest);
       const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifest);
       const build = await this.#builder.build(tenant, {
         snapshot: request.snapshot,
         manifest,
         canonicalManifestJson,
         builderIdentity: this.#builderIdentity,
+        capsuleBuildIdentity: this.#capsuleBuildIdentity,
+        buildPolicyId: this.#buildPolicyId,
+        signingPurpose: 'preview',
       });
       const descriptors = ZWidgetServerFunctionDescriptors.safeParse(build.functionDescriptors);
       if (!descriptors.success) {
@@ -226,6 +243,8 @@ class WidgetService implements
         manifest,
         canonicalManifestJson,
         builderIdentity: this.#builderIdentity,
+        capsuleBuildIdentity: this.#capsuleBuildIdentity,
+        buildPolicyId: this.#buildPolicyId,
         build: { ...build, functionDescriptors: descriptors.data },
         digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
       });
@@ -235,13 +254,6 @@ class WidgetService implements
           diagnostics: Object.freeze([
             `Widget builder integrity check failed: ${integrity.reason}.`,
           ]),
-        });
-      }
-      const typeDiagnostics = await this.#typescriptValidator.validate(request.snapshot);
-      if (typeDiagnostics.length > 0) {
-        return Object.freeze({
-          valid: false,
-          diagnostics: typeDiagnostics,
         });
       }
       return Object.freeze({ valid: true, diagnostics: Object.freeze([]) });

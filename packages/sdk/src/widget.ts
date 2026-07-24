@@ -1,28 +1,43 @@
 export {
-  __setServerFunctionTransport,
   createServerFunctionProxy,
-  SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY,
 } from './function-client';
+export type {
+  TServerFunctionClient,
+  TServerFunctionClientOf,
+  TWidgetCapabilityCallOptions,
+  TWidgetCapabilitySelector,
+} from './function-client';
+
 export {
-  __setCollaborativeStateTransport,
   changeCollaborativeState,
-  COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY,
+  createCollaborativeStateClient,
   getCollaborativeState,
   subscribeCollaborativeState,
 } from './collaborative-state-client';
 export type {
-  ICollaborativeStateTransport,
+  TCollaborativeStateClient,
   TCollaborativeStateSnapshot,
+  TCollaborativeStateSubscriptionOptions,
 } from './collaborative-state-client';
-export type {
-  IServerFunctionClientTransport,
-  TServerFunctionClient,
-  TServerFunctionClientOf,
-  TServerFunctionClientRequest,
-} from './function-client';
 
+export {
+  deleteWidgetLocalState,
+  emitWidgetOutput,
+  getWidgetLocalState,
+  getWidgetProps,
+  getWidgetTheme,
+  listWidgetLocalStateKeys,
+  registerWidgetSnapshotHooks,
+  setWidgetLocalState,
+  subscribeWidgetLifecycle,
+  subscribeWidgetProps,
+  subscribeWidgetTheme,
+} from './widget-channels';
 export type {
-  TWidgetManifestV2,
-  TWidgetServerManifest,
-  TWidgetUiManifest,
-} from '@vibecanvas/widget-contract';
+  TWidgetCapsuleNotificationOutput,
+  TWidgetCapsuleTheme,
+  TWidgetLifecycleEvent,
+  TWidgetSnapshotHooks,
+} from './widget-channels';
+
+export type * from './shared';

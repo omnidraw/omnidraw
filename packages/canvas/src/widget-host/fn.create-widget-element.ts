@@ -25,6 +25,7 @@ type TCreateWidgetInstanceElementArgs = TBaseCreateWidgetElementArgs & {
   revisionId: string;
   instanceId: string;
   stateDocumentId?: string;
+  uiProps?: Record<string, unknown>;
 };
 
 export type TFnCreateWidgetElementArgs =
@@ -42,6 +43,7 @@ export function fnCreateWidgetElement(args: TFnCreateWidgetElementArgs): TElemen
       ...(args.stateDocumentId === undefined
         ? {}
         : { stateDocumentId: args.stateDocumentId }),
+      ...(args.uiProps === undefined ? {} : { uiProps: args.uiProps }),
       expanded: true,
       window: "contained",
       h: args.height,

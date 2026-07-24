@@ -2,6 +2,7 @@ import type { IService } from "@vibecanvas/runtime";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { SyncHook } from "@vibecanvas/tapable";
 import type {
+  TCanvasPortalViewportState,
   TCanvasProjectedPortalContent,
 } from "../../engine/typed";
 import type { CrdtService } from "../crdt/CrdtService";
@@ -9,6 +10,7 @@ import type { CrdtService } from "../crdt/CrdtService";
 export type TCanvasPortalRenderState = Readonly<{
   element: TElement;
   content: TCanvasProjectedPortalContent;
+  viewport: TCanvasPortalViewportState;
 }>;
 
 export type TCanvasPortalRenderHandle = {
@@ -39,8 +41,12 @@ export type TCanvasPortalMountArgs = {
   elementId: string;
   host: HTMLDivElement;
   initialContent: TCanvasProjectedPortalContent;
+  initialViewport: TCanvasPortalViewportState;
   onContentUpdate(
     listener: (content: TCanvasProjectedPortalContent) => void,
+  ): () => void;
+  onViewportUpdate(
+    listener: (viewport: TCanvasPortalViewportState) => void,
   ): () => void;
 };
 
@@ -54,6 +60,7 @@ type TActivePortalMount = {
   elementId: string;
   host: HTMLDivElement;
   content: TCanvasProjectedPortalContent;
+  viewport: TCanvasPortalViewportState;
   rendererId: string | null;
   renderHandle: TCanvasPortalRenderHandle | null;
   generation: number;
@@ -67,6 +74,12 @@ function cloneContent(
   content: TCanvasProjectedPortalContent,
 ): TCanvasProjectedPortalContent {
   return JSON.parse(JSON.stringify(content)) as TCanvasProjectedPortalContent;
+}
+
+function cloneViewport(
+  viewport: TCanvasPortalViewportState,
+): TCanvasPortalViewportState {
+  return { ...viewport };
 }
 
 function toRenderHandle(
@@ -134,6 +147,7 @@ implements IService<TCanvasPortalServiceHooks> {
       elementId: args.elementId,
       host: args.host,
       content: cloneContent(args.initialContent),
+      viewport: cloneViewport(args.initialViewport),
       rendererId: null,
       renderHandle: null,
       generation: 0,
@@ -146,6 +160,10 @@ implements IService<TCanvasPortalServiceHooks> {
 
     const removeContentListener = args.onContentUpdate((content) => {
       mount.content = cloneContent(content);
+      this.#scheduleRefresh(mount);
+    });
+    const removeViewportListener = args.onViewportUpdate((viewport) => {
+      mount.viewport = cloneViewport(viewport);
       this.#scheduleRefresh(mount);
     });
     const removeDocumentListener = this.crdt.hooks.change.tap((summary) => {
@@ -161,6 +179,7 @@ implements IService<TCanvasPortalServiceHooks> {
       await this.#requestRefresh(mount);
     } catch (error) {
       removeDocumentListener();
+      removeViewportListener();
       removeContentListener();
       this.#mounts.delete(mount);
       await this.#disposeMount(mount);
@@ -174,6 +193,7 @@ implements IService<TCanvasPortalServiceHooks> {
       }
       mounted = false;
       removeDocumentListener();
+      removeViewportListener();
       removeContentListener();
       this.#mounts.delete(mount);
       void this.#disposeMount(mount);
@@ -242,6 +262,7 @@ implements IService<TCanvasPortalServiceHooks> {
     const state: TCanvasPortalRenderState = {
       element,
       content: cloneContent(mount.content),
+      viewport: cloneViewport(mount.viewport),
     };
     const renderer = this.#resolveRenderer(state, mount.portalId);
 

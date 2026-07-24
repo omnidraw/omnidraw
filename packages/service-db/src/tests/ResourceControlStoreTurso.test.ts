@@ -12,6 +12,15 @@ import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-c
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
 import { ResourceControlStoreTurso } from '../ResourceControlStoreTurso';
+import {
+  WIDGET_CAPSULE_ARTIFACT_HASH,
+  WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_CAPABILITY_DIGEST,
+  WIDGET_CAPSULE_CHANNEL_DIGEST,
+  WIDGET_CAPSULE_RUNTIME_JSON,
+  widgetManifestV3Json,
+} from './widget-capsule-fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const ORG_B = uuid(101);
@@ -94,9 +103,29 @@ async function insertWidgetRevision(
   await (await service.db.prepare(`
     INSERT INTO widget_definition_revisions (
       org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
-      server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms
-    ) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, '{}', ?, 1)
-  `)).run(tenant.orgId, REVISION, DEFINITION, UI_ARTIFACT, 'b'.repeat(64));
+      server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256,
+      created_at_ms, ui_runtime_json, capsule_artifact_hash,
+      capability_contract_digest_sha256, channel_contract_digest_sha256,
+      capsule_build_identity_json, build_policy_id, server_runtime_abi,
+      contract_format_version
+    ) VALUES (
+      ?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 1,
+      ?, ?, ?, ?, ?, ?, NULL, 3
+    )
+  `)).run(
+    tenant.orgId,
+    REVISION,
+    DEFINITION,
+    UI_ARTIFACT,
+    widgetManifestV3Json({ name: 'Resource test', slug: 'resource-test' }),
+    'b'.repeat(64),
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
+  );
 }
 
 describe('ResourceControlStoreTurso', () => {

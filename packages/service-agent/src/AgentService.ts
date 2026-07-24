@@ -5,8 +5,9 @@ import type { IServiceContext } from '@vibecanvas/runtime/interface.ts';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   ZWidgetBrowserFunctionDescriptors,
-  ZWidgetManifestV2,
-  type TWidgetManifestV2,
+  ZWidgetManifestV3,
+  type TWidgetCapsuleBuildIdentity,
+  type TWidgetManifestV3,
   type TWidgetRevisionDescriptor,
   type TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
@@ -71,7 +72,7 @@ export interface IAgentServiceConfig {
   dataPath: string;
   configPath: string;
   eventPublisherService: ITenantEventPublisherService,
-  /** Required by the manifest-v2 authoring surface. */
+  /** Required by the manifest-v3 Capsule authoring surface. */
   tenant?: TTenantContext;
   authoringStore?: IAgentAuthoringStore;
   widgetAuthoringCapability?: TWidgetAuthoringCapability;
@@ -79,6 +80,8 @@ export interface IAgentServiceConfig {
   createId?: () => string;
   nowMs?: () => number;
   widgetBuilderIdentity?: string;
+  widgetCapsuleBuildIdentity?: TWidgetCapsuleBuildIdentity;
+  widgetBuildPolicyId?: string;
   resourceService?: TAgentResourceService;
   bashCapability?: TAgentBashCapability;
   listPublishedWidgetPlacements?: () => Promise<readonly TPublishedWidgetPlacementTarget[]>;
@@ -138,7 +141,7 @@ type TLoginSession = {
 };
 
 type TAgentConnectResult = {
-  vcJson: TWidgetManifestV2 | null;
+  vcJson: TWidgetManifestV3 | null;
   messageHistory: AgentSession['messages'];
 };
 type TAgentCancelResult = {
@@ -193,6 +196,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
       && config.createId
       && config.nowMs
       && config.widgetBuilderIdentity
+      && config.widgetCapsuleBuildIdentity
+      && config.widgetBuildPolicyId
       ? new WidgetDraftController({
           tenant: config.tenant,
           workspace: this.#workspace,
@@ -212,6 +217,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
           createId: config.createId,
           nowMs: config.nowMs,
           builderIdentity: config.widgetBuilderIdentity,
+          capsuleBuildIdentity: config.widgetCapsuleBuildIdentity,
+          buildPolicyId: config.widgetBuildPolicyId,
         })
       : this.#unavailableWidgetDrafts()
     this.#widgetManagement = new WidgetManagement({
@@ -1199,8 +1206,8 @@ export class AgentService implements IService, IStartableService, IStoppableServ
     return this.#workspace.findMountedWidget(sessionId, name)
   }
 
-  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV2> {
-    return ZWidgetManifestV2.parse(
+  async #readMountedManifest(mount: TWidgetMount): Promise<TWidgetManifestV3> {
+    return ZWidgetManifestV3.parse(
       JSON.parse(await readFile(join(mount.targetPath, 'vibecanvas.json'), 'utf8')),
     )
   }

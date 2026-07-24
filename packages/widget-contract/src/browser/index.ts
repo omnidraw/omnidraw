@@ -1,4 +1,14 @@
-/** @file Browser-only widget artifact decoding surface. */
+/** @file Browser-safe trusted Capsule runtime metadata decoder. */
 
-export { fnDecodeWidgetUiArtifactEnvelope } from './fn.ui-artifact-envelope';
-export type * from './types';
+export { ZWidgetCapsuleRuntimeDescriptor } from '../runtime-descriptor-schema';
+export type {
+  TWidgetCapsuleBudgetRequest,
+  TWidgetCapsuleBudgets,
+  TWidgetCapsuleCapabilityRequest,
+  TWidgetCapsuleChannelContract,
+  TWidgetCapsuleHash,
+  TWidgetCapsuleParkability,
+  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetCapsuleSchemaReference,
+  TWidgetCapsuleTarget,
+} from '../types';

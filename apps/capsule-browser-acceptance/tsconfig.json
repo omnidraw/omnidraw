@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "paths": {
+      "@vibecanvas/capsule-vibecanvas/*": [
+        "../../packages/capsule-vibecanvas/src/*/index.ts"
+      ],
+      "@vibecanvas/ui-ai-chat/widget-runtime": [
+        "../../packages/ui-ai-chat/src/widget-runtime/index.ts"
+      ],
+      "@vibecanvas/widget-contract": [
+        "../../packages/widget-contract/src/index.ts"
+      ]
+    },
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "types": ["bun-types", "vite/client"]
+  },
+  "include": ["src", "scripts", "tests", "playwright.config.ts", "vite.config.ts"]
+}

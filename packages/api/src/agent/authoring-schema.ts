@@ -5,7 +5,8 @@ import type {
 } from '@vibecanvas/service-agent/widget-drafts/types';
 import {
   ZWidgetBrowserFunctionDescriptors,
-  ZWidgetManifestV2,
+  ZWidgetCapsuleRuntimeDescriptor,
+  ZWidgetManifestV3,
 } from '@vibecanvas/widget-contract';
 import { z } from 'zod';
 
@@ -28,6 +29,10 @@ export const ZAgentRevisionDigest = z.string().regex(REVISION_DIGEST_PATTERN);
 
 const ZDiagnostic = z.string().max(DIAGNOSTIC_MAX_LENGTH);
 const ZDiagnostics = z.array(ZDiagnostic).max(DIAGNOSTIC_MAX_COUNT);
+const ZSignedWidgetCapsuleRuntimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.refine(
+  (descriptor) => descriptor.signatureKeyIds.length > 0,
+  'Widget UI artifact must contain at least one trusted Capsule signature.',
+);
 
 const ZWidgetDraftValidation = z.object({
   status: z.enum(['unknown', 'valid', 'invalid']),
@@ -62,6 +67,7 @@ const ZWidgetPreviewUiArtifact = z.object({
   bytesBase64: z.string()
     .max(WIDGET_ARTIFACT_MAX_BASE64_LENGTH)
     .regex(BASE64_PATTERN),
+  runtimeDescriptor: ZSignedWidgetCapsuleRuntimeDescriptor,
 }).strict().superRefine((artifact, context) => {
   const decodedBytes = decodedBase64ByteLength(artifact.bytesBase64);
   if (decodedBytes > WIDGET_ARTIFACT_MAX_BYTES) {
@@ -86,11 +92,12 @@ const ZWidgetPreviewReady = z.object({
   definitionId: ZAgentOpaqueId,
   name: z.string().min(1).max(200),
   revision: ZAgentRevisionDigest,
-  manifest: ZWidgetManifestV2,
+  manifest: ZWidgetManifestV3,
   uiArtifact: ZWidgetPreviewUiArtifact,
   contract: z.object({
     digestSha256: ZAgentRevisionDigest,
     functions: ZWidgetBrowserFunctionDescriptors,
+    browserFunctionDescriptorsDigestSha256: ZAgentRevisionDigest,
   }).strict(),
   diagnostics: ZDiagnostics,
 }).strict();
@@ -119,7 +126,8 @@ const ZWidgetPublishSuccess = z.object({
   definitionId: ZAgentOpaqueId,
   revision: ZAgentRevisionDigest,
   publishedRevisionId: ZAgentOpaqueId,
-  manifest: ZWidgetManifestV2,
+  manifest: ZWidgetManifestV3,
+  uiRuntime: ZSignedWidgetCapsuleRuntimeDescriptor,
 }).strict();
 
 const ZWidgetPublishFailure = z.object({

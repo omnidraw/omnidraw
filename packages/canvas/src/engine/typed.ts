@@ -39,6 +39,7 @@ export type TCanvasProjectedPortalContent =
       revisionId: string;
       instanceId: string;
       stateDocumentId?: string;
+      uiProps?: Record<string, TCanvasJsonValue>;
     };
 
 export type TCanvasProjectedPortal = {
@@ -50,6 +51,21 @@ export type TCanvasProjectedPortal = {
   suspendWhenOffscreen: boolean;
   content: TCanvasProjectedPortalContent;
 };
+
+/**
+ * Renderer-neutral scheduling and layout hints for application-owned portal
+ * content. Dimensions and distance are viewport CSS pixels. Scale combines
+ * the effective canvas transform with device pixel ratio.
+ */
+export type TCanvasPortalViewportState = Readonly<{
+  width: number;
+  height: number;
+  scale: number;
+  visible: boolean;
+  distance: number;
+  occlusion: number;
+  interactive: boolean;
+}>;
 
 export type TCanvasProjectionDiagnosticCode =
   | "DUPLICATE_GROUP_ID"

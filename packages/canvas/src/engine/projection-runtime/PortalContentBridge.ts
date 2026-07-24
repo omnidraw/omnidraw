@@ -1,4 +1,6 @@
+import type { TPortalGeometry } from "@omnidraw/cangine";
 import type {
+  TCanvasPortalViewportState,
   TCanvasProjectedPortal,
   TCanvasProjectedPortalContent,
 } from "../typed";
@@ -10,9 +12,17 @@ import type {
   ICanvasEngineOwnershipStage,
   TCanvasEngineOwnershipStageState,
 } from "../interface";
+import {
+  fnCanvasPortalInitialViewportState,
+  fnCanvasPortalViewportState,
+} from "./fn.portal-viewport";
 
 export type TCanvasPortalContentUpdate = (
   content: TCanvasProjectedPortalContent,
+) => void;
+
+export type TCanvasPortalViewportUpdate = (
+  viewport: TCanvasPortalViewportState,
 ) => void;
 
 export type TCanvasPortalContentMountArgs = {
@@ -20,7 +30,9 @@ export type TCanvasPortalContentMountArgs = {
   elementId: string;
   host: HTMLDivElement;
   initialContent: TCanvasProjectedPortalContent;
+  initialViewport: TCanvasPortalViewportState;
   onContentUpdate(listener: TCanvasPortalContentUpdate): () => void;
+  onViewportUpdate(listener: TCanvasPortalViewportUpdate): () => void;
 };
 
 export type TMountCanvasPortalContent = (
@@ -29,6 +41,7 @@ export type TMountCanvasPortalContent = (
 
 export type TCanvasPortalContentBridgeArgs = {
   mountContent: TMountCanvasPortalContent;
+  readViewportSize(): Readonly<{ width: number; height: number }>;
   onUpdateError?(args: { portalId: string; error: unknown }): void;
 };
 
@@ -64,6 +77,21 @@ function contentSignature(content: TCanvasProjectedPortalContent): string {
   return JSON.stringify(content);
 }
 
+function cloneViewport(
+  viewport: TCanvasPortalViewportState,
+): TCanvasPortalViewportState {
+  return { ...viewport };
+}
+
+function viewportSignature(viewport: TCanvasPortalViewportState): string {
+  return JSON.stringify(viewport);
+}
+
+function readCssPixelValue(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
 /**
  * Keeps portal mount identity stable while treating projected content as
  * separately committed, renderer-neutral state.
@@ -75,15 +103,28 @@ export class PortalContentBridge {
     | undefined;
   readonly #current = new Map<string, TPortalContentRecord>();
   readonly #subscribers = new Map<string, Set<TCanvasPortalContentUpdate>>();
+  readonly #viewportSubscribers = new Map<
+    string,
+    Set<TCanvasPortalViewportUpdate>
+  >();
+  readonly #viewports = new Map<string, TCanvasPortalViewportState>();
+  readonly #geometries = new Map<string, TPortalGeometry>();
+  readonly #hosts = new Map<string, HTMLDivElement>();
+  readonly #visibility = new Map<string, boolean>();
   readonly #mounts = new Map<
     string,
     (context: TCanvasPortalMountContext) => Promise<void | (() => void)>
   >();
+  readonly #readViewportSize: () => Readonly<{
+    width: number;
+    height: number;
+  }>;
   #pending: TPortalContentStageData | null = null;
   #destroyed = false;
 
   constructor(args: TCanvasPortalContentBridgeArgs) {
     this.#mountContent = args.mountContent;
+    this.#readViewportSize = args.readViewportSize;
     this.#onUpdateError = args.onUpdateError;
   }
 
@@ -99,6 +140,12 @@ export class PortalContentBridge {
       registrationKey: `vibecanvas:projection-portal:${portal.portalId}`,
       interactive: portal.interactive,
       mount,
+      onVisibilityChange: (visible) => {
+        this.#updateVisibility(portal.portalId, visible);
+      },
+      onGeometryChange: (geometry) => {
+        this.#updateGeometry(portal.portalId, geometry);
+      },
     };
   }
 
@@ -170,6 +217,11 @@ export class PortalContentBridge {
     this.#pending = null;
     this.#current.clear();
     this.#subscribers.clear();
+    this.#viewportSubscribers.clear();
+    this.#viewports.clear();
+    this.#geometries.clear();
+    this.#hosts.clear();
+    this.#visibility.clear();
     this.#mounts.clear();
   }
 
@@ -184,6 +236,12 @@ export class PortalContentBridge {
       throw new TypeError(`Projected portal '${portalId}' has no staged content.`);
     }
     const mountSubscriptions = new Set<TCanvasPortalContentUpdate>();
+    const mountViewportSubscriptions = new Set<TCanvasPortalViewportUpdate>();
+    const initialViewport = this.#viewports.get(portalId)
+      ?? fnCanvasPortalInitialViewportState();
+    this.#viewports.set(portalId, initialViewport);
+    this.#hosts.set(portalId, context.host);
+    this.#visibility.set(portalId, initialViewport.visible);
     const onContentUpdate = (listener: TCanvasPortalContentUpdate): (() => void) => {
       let subscribers = this.#subscribers.get(portalId);
       if (subscribers === undefined) {
@@ -202,6 +260,26 @@ export class PortalContentBridge {
         mountSubscriptions.delete(listener);
       };
     };
+    const onViewportUpdate = (
+      listener: TCanvasPortalViewportUpdate,
+    ): (() => void) => {
+      let subscribers = this.#viewportSubscribers.get(portalId);
+      if (subscribers === undefined) {
+        subscribers = new Set();
+        this.#viewportSubscribers.set(portalId, subscribers);
+      }
+      subscribers.add(listener);
+      mountViewportSubscriptions.add(listener);
+      let active = true;
+      return () => {
+        if (!active) {
+          return;
+        }
+        active = false;
+        subscribers?.delete(listener);
+        mountViewportSubscriptions.delete(listener);
+      };
+    };
 
     try {
       const dispose = await this.#mountContent({
@@ -209,9 +287,16 @@ export class PortalContentBridge {
         elementId: initial.elementId,
         host: context.host,
         initialContent: cloneContent(initial.content),
+        initialViewport: cloneViewport(initialViewport),
         onContentUpdate,
+        onViewportUpdate,
       });
+      let mounted = true;
       return () => {
+        if (!mounted) {
+          return;
+        }
+        mounted = false;
         const subscribers = this.#subscribers.get(portalId);
         for (const listener of mountSubscriptions) {
           subscribers?.delete(listener);
@@ -220,6 +305,18 @@ export class PortalContentBridge {
         if (subscribers?.size === 0) {
           this.#subscribers.delete(portalId);
         }
+        const viewportSubscribers = this.#viewportSubscribers.get(portalId);
+        for (const listener of mountViewportSubscriptions) {
+          viewportSubscribers?.delete(listener);
+        }
+        mountViewportSubscriptions.clear();
+        if (viewportSubscribers?.size === 0) {
+          this.#viewportSubscribers.delete(portalId);
+        }
+        this.#hosts.delete(portalId);
+        this.#viewports.delete(portalId);
+        this.#geometries.delete(portalId);
+        this.#visibility.delete(portalId);
         dispose?.();
       };
     } catch (error) {
@@ -230,7 +327,82 @@ export class PortalContentBridge {
       if (subscribers?.size === 0) {
         this.#subscribers.delete(portalId);
       }
+      const viewportSubscribers = this.#viewportSubscribers.get(portalId);
+      for (const listener of mountViewportSubscriptions) {
+        viewportSubscribers?.delete(listener);
+      }
+      if (viewportSubscribers?.size === 0) {
+        this.#viewportSubscribers.delete(portalId);
+      }
+      this.#hosts.delete(portalId);
+      this.#viewports.delete(portalId);
+      this.#geometries.delete(portalId);
+      this.#visibility.delete(portalId);
       throw new CanvasPortalContentMountError(portalId, error);
+    }
+  }
+
+  #updateVisibility(portalId: string, visible: boolean): void {
+    if (this.#destroyed || !this.#hosts.has(portalId)) {
+      return;
+    }
+    this.#visibility.set(portalId, visible);
+    const geometry = this.#geometries.get(portalId);
+    if (geometry !== undefined) {
+      this.#updateGeometry(portalId, geometry);
+      return;
+    }
+    const previous = this.#viewports.get(portalId)
+      ?? fnCanvasPortalInitialViewportState();
+    const next = Object.freeze({
+      ...previous,
+      visible,
+      occlusion: visible ? previous.occlusion : 1,
+      interactive: false,
+    });
+    this.#publishViewport(portalId, next);
+  }
+
+  #updateGeometry(portalId: string, geometry: TPortalGeometry): void {
+    if (this.#destroyed) {
+      return;
+    }
+    const host = this.#hosts.get(portalId);
+    if (host === undefined) {
+      return;
+    }
+    this.#geometries.set(portalId, geometry);
+    const next = fnCanvasPortalViewportState({
+      geometry,
+      portalSize: {
+        width: readCssPixelValue(host.style.width),
+        height: readCssPixelValue(host.style.height),
+      },
+      canvasSize: this.#readViewportSize(),
+      visible: this.#visibility.get(portalId) ?? false,
+    });
+    this.#publishViewport(portalId, next);
+  }
+
+  #publishViewport(
+    portalId: string,
+    viewport: TCanvasPortalViewportState,
+  ): void {
+    const previous = this.#viewports.get(portalId);
+    if (
+      previous !== undefined
+      && viewportSignature(previous) === viewportSignature(viewport)
+    ) {
+      return;
+    }
+    const committed = cloneViewport(viewport);
+    this.#viewports.set(portalId, committed);
+    for (const listener of this.#viewportSubscribers.get(portalId) ?? []) {
+      try {
+        listener(cloneViewport(committed));
+      } catch (error) {
+        this.#onUpdateError?.({ portalId, error });
+      }
     }
   }
 

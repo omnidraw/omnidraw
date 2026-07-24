@@ -1,5 +1,5 @@
 /**
- * @file Pure normalization and invariant checks for widget manifest v2.
+ * @file Pure normalization and invariant checks for widget manifest v3.
  */
 
 import type {
@@ -10,11 +10,15 @@ import type {
   TResourceRequirement,
 } from '@vibecanvas/resource-runtime';
 import type {
-  TWidgetManifestV2,
+  TWidgetManifestV3,
   TWidgetResourceBindingInput,
   TWidgetResourceBindingValidation,
   TWidgetRevisionDescriptor,
 } from '../types';
+import {
+  fnNormalizeWidgetCapsuleBudgetRequest,
+  fnNormalizeWidgetCapsuleTarget,
+} from './fn.capsule';
 
 type TRequestedEffect = Exclude<TResourceEffect, 'read_write'>;
 
@@ -92,7 +96,7 @@ export function fnNormalizeWidgetRelativePath(value: string): string | null {
   return segments.join('/');
 }
 
-export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV2): TWidgetManifestV2 {
+export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV3): TWidgetManifestV3 {
   const uiEntry = fnNormalizeWidgetRelativePath(manifest.ui.entry) ?? manifest.ui.entry;
   const serverEntry = manifest.server === undefined
     ? undefined
@@ -104,13 +108,31 @@ export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV2): TWidgetM
       .map(normalizeRequirement);
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     name: manifest.name.trim(),
     slug: manifest.slug,
     ...(manifest.description === undefined
       ? {}
       : { description: manifest.description.trim() }),
-    ui: { entry: uiEntry },
+    ui: {
+      runtime: 'capsule',
+      entry: uiEntry,
+      target: fnNormalizeWidgetCapsuleTarget(manifest.ui.target),
+      ...(manifest.ui.budgets === undefined
+        ? {}
+        : { budgets: fnNormalizeWidgetCapsuleBudgetRequest(manifest.ui.budgets) }),
+      ...(manifest.ui.state === undefined
+        ? {}
+        : {
+            state: {
+              collaborative: manifest.ui.state.collaborative,
+              localStore: manifest.ui.state.localStore,
+            },
+          }),
+      ...(manifest.ui.parkability === undefined
+        ? {}
+        : { parkability: { enabled: false as const } }),
+    },
     ...(manifest.server === undefined
       ? {}
       : { server: { entry: serverEntry!, runtimeAbi: manifest.server.runtimeAbi } }),
@@ -118,12 +140,12 @@ export function fnNormalizeWidgetManifest(manifest: TWidgetManifestV2): TWidgetM
   };
 }
 
-export function fnCanonicalizeWidgetManifest(manifest: TWidgetManifestV2): string {
+export function fnCanonicalizeWidgetManifest(manifest: TWidgetManifestV3): string {
   return JSON.stringify(fnNormalizeWidgetManifest(manifest));
 }
 
 export function fnWidgetManifestAllowsResource(
-  manifest: TWidgetManifestV2,
+  manifest: TWidgetManifestV3,
   args: Readonly<{ slot: string; kind: TResourceKind; effect: TRequestedEffect }>,
 ): boolean {
   const requirement = manifest.resources?.find((candidate) => candidate.slot === args.slot);
@@ -132,7 +154,7 @@ export function fnWidgetManifestAllowsResource(
 }
 
 export function fnValidateWidgetResourceBindings(
-  manifest: TWidgetManifestV2,
+  manifest: TWidgetManifestV3,
   bindings: readonly TWidgetResourceBindingInput[],
 ): TWidgetResourceBindingValidation {
   const requirements = new Map<string, TResourceRequirement>();

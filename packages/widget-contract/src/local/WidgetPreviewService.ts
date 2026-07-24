@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
-  ZWidgetManifestV2,
+  ZWidgetCapsuleRuntimeDescriptor,
+  ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
   fnValidateWidgetBuildIntegrity,
@@ -37,13 +38,16 @@ export class WidgetPreviewService implements IWidgetPreviewService {
         'Widget preview snapshot does not match the current draft revision.',
       );
     }
-    const manifest = ZWidgetManifestV2.parse(request.manifest);
+    const manifest = ZWidgetManifestV3.parse(request.manifest);
     const canonicalManifestJson = fnCanonicalizeWidgetManifest(manifest);
     const build = await this.config.builder.build(tenant, {
       snapshot: request.snapshot,
       manifest,
       canonicalManifestJson,
       builderIdentity: request.builderIdentity,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+      signingPurpose: 'preview',
     });
     const parsedDescriptors = ZWidgetServerFunctionDescriptors.safeParse(build.functionDescriptors);
     if (!parsedDescriptors.success) {
@@ -52,12 +56,22 @@ export class WidgetPreviewService implements IWidgetPreviewService {
         'Widget builder returned malformed server-function descriptors.',
       );
     }
+    const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse(
+      build.uiArtifact.runtimeDescriptor,
+    );
+    const normalizedBuild = {
+      ...build,
+      functionDescriptors: parsedDescriptors.data,
+      uiArtifact: { ...build.uiArtifact, runtimeDescriptor },
+    };
     const integrity = fnValidateWidgetBuildIntegrity({
       snapshot: request.snapshot,
       manifest,
       canonicalManifestJson,
       builderIdentity: request.builderIdentity,
-      build: { ...build, functionDescriptors: parsedDescriptors.data },
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+      build: normalizedBuild,
       digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
     });
     if (!integrity.valid) {
@@ -72,12 +86,15 @@ export class WidgetPreviewService implements IWidgetPreviewService {
       draftRevisionSha256: request.draftRevisionSha256,
       manifest,
       builderIdentity: request.builderIdentity,
-      uiArtifact: Object.freeze({
-        digestSha256: build.uiArtifact.digestSha256,
-        bytes: build.uiArtifact.bytes,
-      }),
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+      uiArtifact: Object.freeze(normalizedBuild.uiArtifact),
       functionDescriptors: parsedDescriptors.data,
+      functionDescriptorsDigestSha256: integrity.functionDescriptorsDigestSha256,
+      capabilityContractDigestSha256: build.capabilityContractDigestSha256,
+      channelContractDigestSha256: build.channelContractDigestSha256,
       contractDigestSha256: integrity.contractDigestSha256,
+      diagnostics: build.diagnostics,
     });
   }
 }

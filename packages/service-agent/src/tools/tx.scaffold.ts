@@ -1,5 +1,8 @@
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
-import { WIDGET_TYPESCRIPT_VERSION } from '../core/CONSTANTS';
+import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
+import {
+  WIDGET_TYPESCRIPT_VERSION,
+  WIDGET_ZOD_VERSION,
+} from '../core/CONSTANTS';
 
 type TPortal = {
   mkdir: (path: string, options: { recursive: true }) => Promise<string | undefined>;
@@ -9,23 +12,22 @@ type TPortal = {
 
 type TArgs = {
   cwd: string;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
   sdkDependency: string;
 };
 
-function packageJson(manifest: TWidgetManifestV2, sdkDependency: string): string {
+function packageJson(manifest: TWidgetManifestV3, sdkDependency: string): string {
   return `${JSON.stringify({
     name: manifest.slug,
     version: '1.0.0',
     private: true,
     type: 'module',
     dependencies: {
-      '@arrow-js/core': '^1.0.6',
       '@vibecanvas/sdk': sdkDependency,
-      zod: '^4.4.3',
+      zod: WIDGET_ZOD_VERSION,
     },
     devDependencies: {
-      typescript: `^${WIDGET_TYPESCRIPT_VERSION}`,
+      typescript: WIDGET_TYPESCRIPT_VERSION,
     },
   }, null, 2)}\n`;
 }
@@ -39,9 +41,10 @@ function tsconfigJson(): string {
       strict: true,
       skipLibCheck: true,
       noEmit: true,
+      jsx: 'react-jsx',
       lib: ['ES2022', 'DOM'],
     },
-    include: ['ui/**/*.ts', 'server/**/*.ts', 'shared/**/*.ts'],
+    include: ['ui/**/*.ts', 'ui/**/*.tsx', 'server/**/*.ts', 'shared/**/*.ts'],
   }, null, 2)}\n`;
 }
 
@@ -70,23 +73,31 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
   );
   await portal.writeFile(portal.join(args.cwd, 'tsconfig.json'), tsconfigJson(), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'ui', 'main.ts'), [
-    'import { html, reactive } from "@arrow-js/core";',
     'import "./styles.css";',
     '',
-    'const state = reactive({ count: 0 });',
+    'const root = document.createElement("section");',
+    'root.className = "vibecanvas-widget";',
     '',
-    'const increment = () => {',
-    '  state.count += 1;',
+    'const message = document.createElement("p");',
+    'message.textContent = "Widget under construction";',
+    '',
+    'const output = document.createElement("output");',
+    'let count = 0;',
+    'const render = () => {',
+    '  output.textContent = `Local count: ${count}`;',
     '};',
     '',
-    'export default html`',
-    '  <section class="vibecanvas-widget">',
-    '    <p>Widget under construction</p>',
-    '    <button type="button" @click="${increment}">',
-    '      Local count: ${() => state.count}',
-    '    </button>',
-    '  </section>',
-    '`;',
+    'const button = document.createElement("button");',
+    'button.type = "button";',
+    'button.textContent = "Increment";',
+    'button.addEventListener("click", () => {',
+    '  count += 1;',
+    '  render();',
+    '});',
+    '',
+    'root.append(message, output, button);',
+    'document.body.append(root);',
+    'render();',
     '',
   ].join('\n'), 'utf8');
   await portal.writeFile(portal.join(args.cwd, 'ui', 'styles.css'), [
@@ -102,7 +113,8 @@ export async function txWriteWidgetScaffold(portal: TPortal, args: TArgs): Promi
     '  font: 14px/1.5 system-ui, sans-serif;',
     '}',
     '',
-    '.vibecanvas-widget p { margin: 0; }',
+    '.vibecanvas-widget p,',
+    '.vibecanvas-widget output { margin: 0; }',
     '',
     '.vibecanvas-widget button {',
     '  padding: 6px 12px;',

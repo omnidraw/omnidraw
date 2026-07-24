@@ -41,26 +41,35 @@ async function waitForChatApproval(service: AgentService, widgetId: string, sess
 }
 
 describe('AgentService.promptChat', () => {
-  test('teaches widget agents the browser-first v2 and short-function contract', () => {
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"schemaVersion": 2');
+  test('teaches widget agents the browser-first Capsule and short-function contract', () => {
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"schemaVersion": 3');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"runtime": "capsule"');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('"runtimeAbi": "quickjs-release-sync-v1"');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Omit `server` and `resources` for a UI-only widget');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('UI-only widgets start no backend process');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('defineServerFunction');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`fn` is deterministic and has no resources');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`fx` may read only declared resource slots');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`tx` may perform declared writes');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Draft Preview is UI-only');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Draft Preview runs the same Capsule UI path');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`localStore` is `none` or `ephemeral`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('`localStore` is `none`, `ephemeral`, or `snapshot`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Use `context.resources.read` or `context.resources.write`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('ordinary SQLite-compatible');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('vc_widget_create({ name, description? })');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('complete UI-only manifest-v2 draft');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('complete UI-only manifest-v3 Capsule draft');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Do not import `@omnidraw/capsule/guest` directly');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('React is the supported component-library path');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('`react` and `react-dom` to exactly `19.2.7`');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Other UI libraries are unsupported');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Read `vibecanvas.json`, `ui/main.ts`, and `ui/styles.css`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Update the draft with `read`, `edit`, or `patch`');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Run `vc_widget_validate`, inspect every diagnostic, and fix all errors');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('The AI cannot publish a draft');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('Publish or **Republish**');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('draft Preview title bar or draft detail page');
-    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“Ready” never means published');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('“Ready” never');
+    expect(WIDGET_CHAT_SYSTEM_PROMPT).toContain('means published');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('actor');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('vc_widget_create({ name, kind');
     expect(WIDGET_CHAT_SYSTEM_PROMPT).not.toContain('choose `widget` or `actor-widget`');

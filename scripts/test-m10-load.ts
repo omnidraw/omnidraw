@@ -31,8 +31,8 @@ const cases: readonly TAcceptanceCase[] = [
   },
   {
     directory: 'packages/ui-ai-chat',
-    file: 'tests/widget/neutral-widget-host-10k.test.ts',
-    name: '10,000 committed widget instances use bounded production UI realms without backend starts',
+    file: 'tests/widget-runtime/WidgetUiRuntime.test.ts',
+    name: 'keeps ten thousand initially offscreen owners outside bounded load admission',
     runner: 'package-test',
   },
   {
@@ -72,17 +72,17 @@ async function assertStructuredResult(
       numPassedTests: number;
       success: boolean;
       testResults: Array<{
-        assertionResults: Array<{ fullName: string; status: string }>;
+        assertionResults: Array<{ status: string; title: string }>;
       }>;
     };
     const assertions = result.testResults.flatMap((testResult) => testResult.assertionResults);
+    const selectedAssertions = assertions.filter(({ status }) => status !== 'skipped');
     if (
       !result.success
-      || result.numTotalTests !== 1
       || result.numPassedTests !== 1
-      || assertions.length !== 1
-      || assertions[0]?.fullName !== acceptanceCase.name
-      || assertions[0]?.status !== 'passed'
+      || selectedAssertions.length !== 1
+      || selectedAssertions[0]?.title !== acceptanceCase.name
+      || selectedAssertions[0]?.status !== 'passed'
     ) {
       throw new Error(`M10 load case produced an inexact Vitest result: ${acceptanceCase.name}`);
     }

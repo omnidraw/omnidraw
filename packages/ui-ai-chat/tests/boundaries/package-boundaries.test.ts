@@ -100,4 +100,16 @@ describe("package boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("uses Capsule only through the Vibecanvas browser adapter and contains no Arrow runtime", () => {
+    const source = sourceFiles(join(PACKAGE_ROOT, "src"))
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
+    const packageSource = readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8");
+
+    expect(source).not.toMatch(/from\s+["']@omnidraw\/capsule(?:[/'"]|$)/);
+    expect(source).not.toMatch(/@arrow-js|widget-artifact\.v1|__VIBECANVAS_.*TRANSPORT/);
+    expect(packageSource).not.toContain("@arrow-js/");
+    expect(packageSource).toContain("@vibecanvas/capsule-vibecanvas");
+  });
 });

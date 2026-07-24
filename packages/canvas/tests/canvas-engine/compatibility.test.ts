@@ -738,6 +738,10 @@ describe("canvas-engine public compatibility contract", () => {
       mountContent: ({ host, initialContent }) => {
         host.dataset.contentType = initialContent.type;
       },
+      readViewportSize: () => ({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      }),
     });
     const coordinator = new ProjectionCoordinator({
       registry: createBuiltInProjectionRegistry(),

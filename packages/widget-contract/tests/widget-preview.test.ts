@@ -2,76 +2,125 @@ import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   type IWidgetArtifactBuilder,
   type TWidgetBuildResult,
-  type TWidgetManifestV2,
   type TWidgetSourceSnapshot,
 } from '../src';
 import { WidgetPreviewService } from '../src/local';
+import {
+  CAPSULE_BUILD_IDENTITY,
+  CAPSULE_MANIFEST,
+  CAPSULE_RUNTIME_DESCRIPTOR,
+} from './capsule.fixture';
 
 const tenant: TTenantContext = Object.freeze({
   orgId: 'org-preview', accountId: 'account-preview', cellId: 'cell-preview',
   placementEpoch: 1, roles: ['owner'], capabilities: ['*'], requestId: 'request-preview',
 });
-const manifest: TWidgetManifestV2 = Object.freeze({
-  schemaVersion: 2, name: 'Preview widget', slug: 'preview-widget',
-  ui: Object.freeze({ entry: 'src/ui.ts' }),
-});
 const sha256 = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
-const bytes = new TextEncoder().encode('export const ui = true;');
+const bytes = new TextEncoder().encode('document.body.textContent = "preview";');
 const snapshot: TWidgetSourceSnapshot = Object.freeze({
-  id: 'source-ui', digestSha256: sha256(`14:src/ui.ts:${bytes.byteLength}:export const ui = true;;`),
-  files: Object.freeze([Object.freeze({ path: 'src/ui.ts', bytes })]), createdAtMs: 1,
+  id: 'source-ui',
+  digestSha256: sha256(bytes),
+  files: Object.freeze([Object.freeze({ path: 'src/ui.tsx', bytes })]),
+  createdAtMs: 1,
 });
 
 function builder(): IWidgetArtifactBuilder {
   return {
     async build(_tenant, request): Promise<TWidgetBuildResult> {
+      expect(request.signingPurpose).toBe('preview');
       const uiBytes = new TextEncoder().encode(`ui:${request.snapshot.digestSha256}`);
-      const uiArtifact = { kind: 'ui' as const, digestSha256: sha256(uiBytes), bytes: uiBytes };
+      const uiDigestSha256 = sha256(uiBytes);
       const functionDescriptors = Object.freeze([]);
       const functionDescriptorsDigestSha256 = sha256(
         fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors),
       );
+      const capabilityContractDigestSha256 = sha256(
+        fnCanonicalizeWidgetCapsuleCapabilityRequests([]),
+      );
+      const channelContractDigestSha256 = sha256(
+        fnCanonicalizeWidgetCapsuleChannelContract(null),
+      );
+      const contractDigestSha256 = sha256(fnCanonicalizeWidgetContractPayload({
+        canonicalManifestJson: request.canonicalManifestJson,
+        uiDigestSha256,
+        capsuleArtifactHash: CAPSULE_RUNTIME_DESCRIPTOR.capsuleArtifactHash,
+        target: CAPSULE_RUNTIME_DESCRIPTOR.target,
+        budgets: CAPSULE_RUNTIME_DESCRIPTOR.budgets,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
+        signatureKeyIds: CAPSULE_RUNTIME_DESCRIPTOR.signatureKeyIds,
+        serverDigestSha256: null,
+        serverRuntimeAbi: null,
+        functionDescriptorsDigestSha256,
+        sourceDigestSha256: request.snapshot.digestSha256,
+        builderIdentity: request.builderIdentity,
+        capsuleBuildIdentity: request.capsuleBuildIdentity,
+        buildPolicyId: request.buildPolicyId,
+      }));
       return Object.freeze({
         sourceSnapshotId: request.snapshot.id,
         sourceDigestSha256: request.snapshot.digestSha256,
         builderIdentity: request.builderIdentity,
+        capsuleBuildIdentity: request.capsuleBuildIdentity,
+        buildPolicyId: request.buildPolicyId,
         canonicalManifestJson: request.canonicalManifestJson,
         functionDescriptors,
         functionDescriptorsDigestSha256,
-        contractDigestSha256: sha256(fnCanonicalizeWidgetContractPayload({
-          canonicalManifestJson: request.canonicalManifestJson,
-          uiDigestSha256: uiArtifact.digestSha256,
-          serverDigestSha256: null,
-          runtimeAbi: null,
-          functionDescriptorsDigestSha256,
-        })),
-        uiArtifact,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
+        contractDigestSha256,
+        uiArtifact: Object.freeze({
+          kind: 'ui' as const,
+          digestSha256: uiDigestSha256,
+          bytes: uiBytes,
+          capsuleArtifactHash: CAPSULE_RUNTIME_DESCRIPTOR.capsuleArtifactHash,
+          runtimeDescriptor: CAPSULE_RUNTIME_DESCRIPTOR,
+          requestedBudgets: {},
+          effectiveBudgets: CAPSULE_RUNTIME_DESCRIPTOR.budgets,
+          builderIdentity: request.builderIdentity,
+          capsuleBuildIdentity: request.capsuleBuildIdentity,
+        }),
         serverArtifact: null,
+        diagnostics: Object.freeze([]),
       });
     },
   };
 }
 
-describe('stateless widget preview', () => {
-  test('returns verified UI bytes without an artifact or metadata store', async () => {
-    const result = await new WidgetPreviewService({ builder: builder() }).buildPreview(tenant, {
-      draftId: 'draft-ui', definitionId: 'definition-ui',
-      draftRevisionSha256: snapshot.digestSha256, snapshot, manifest,
-      builderIdentity: 'preview-builder-v1',
-    });
+function request(draftRevisionSha256 = snapshot.digestSha256) {
+  return {
+    draftId: 'draft-ui',
+    definitionId: 'definition-ui',
+    draftRevisionSha256,
+    snapshot,
+    manifest: CAPSULE_MANIFEST,
+    builderIdentity: 'preview-builder-v1',
+    capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+    buildPolicyId: 'vibecanvas-capsule-widget-v1',
+  };
+}
+
+describe('stateless Capsule widget preview', () => {
+  test('returns verified exact signed UI bytes without durable storage', async () => {
+    const result = await new WidgetPreviewService({ builder: builder() })
+      .buildPreview(tenant, request());
     expect(result.draftRevisionSha256).toBe(snapshot.digestSha256);
-    expect(new TextDecoder().decode(result.uiArtifact.bytes)).toBe(`ui:${snapshot.digestSha256}`);
+    expect(new TextDecoder().decode(result.uiArtifact.bytes))
+      .toBe(`ui:${snapshot.digestSha256}`);
+    expect(result.uiArtifact.runtimeDescriptor.signatureKeyIds)
+      .toEqual(['vibecanvas-preview-v1']);
   });
 
   test('rejects a mismatched current-draft digest before building', async () => {
-    await expect(new WidgetPreviewService({ builder: builder() }).buildPreview(tenant, {
-      draftId: 'draft-ui', definitionId: 'definition-ui',
-      draftRevisionSha256: 'c'.repeat(64), snapshot, manifest,
-      builderIdentity: 'preview-builder-v1',
-    })).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_DRAFT_STALE' });
+    await expect(new WidgetPreviewService({ builder: builder() }).buildPreview(
+      tenant,
+      request('c'.repeat(64)),
+    )).rejects.toMatchObject({ code: 'WIDGET_PREVIEW_DRAFT_STALE' });
   });
 });

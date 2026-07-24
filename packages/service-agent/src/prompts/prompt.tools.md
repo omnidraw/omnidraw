@@ -4,7 +4,7 @@ The fixed tool set is intentionally small. Use only tools that are present. Ther
 
 For a new widget:
 
-1. Use `vc_widget_create({ name, description? })` exactly once. It creates a complete UI-only manifest-v2 draft.
+1. Use `vc_widget_create({ name, description? })` exactly once. It creates a complete UI-only manifest-v3 Capsule draft.
 2. Read `vibecanvas.json`, `ui/main.ts`, and `ui/styles.css` before editing.
 3. Update the draft with `read`, `edit`, or `patch`. Use exact, narrow edits.
 4. Add `server/` files and a manifest `server` section only if local browser logic cannot satisfy the request.

@@ -29,7 +29,6 @@
     "test:perf": "vitest --run tests/perf"
   },
   "dependencies": {
-    "@arrow-js/core": "^1.0.6",
     "@automerge/automerge": "catalog:",
     "@automerge/automerge-repo": "catalog:",
     "@automerge/automerge-repo-network-broadcastchannel": "catalog:",

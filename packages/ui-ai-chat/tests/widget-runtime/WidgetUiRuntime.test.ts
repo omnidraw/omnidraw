@@ -1,47 +1,36 @@
 import { createHash } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { describe, expect, test, vi } from 'vitest';
-import type { TWidgetBrowserFunctionDescriptor } from '@vibecanvas/widget-contract';
 import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { WidgetUiArtifactCache } from '../../src/widget-runtime/WidgetUiArtifactCache';
 import { WidgetUiRuntime } from '../../src/widget-runtime/WidgetUiRuntime';
 import type {
-  TWidgetArtifactCodecPort,
   TWidgetCollaborativeStatePort,
   TWidgetCollaborativeStateSession,
   TWidgetRuntimeIdentity,
   TWidgetRuntimeLocalTarget,
   TWidgetRuntimeTransportPort,
-  TVerifiedWidgetUiArtifact,
+  TWidgetUiRuntimeHandle,
 } from '../../src/widget-runtime/interface';
 
-function digest(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-function artifact(source = 'export default "ready";', outputDigest?: string) {
-  const outputBytes = Buffer.from(source, 'utf8');
-  const envelopeBytes = Buffer.from(JSON.stringify({
-    format: 'vibecanvas.widget-artifact.v1',
-    kind: 'ui',
-    entry: 'ui/main.ts',
-    sourceDigestSha256: 'c'.repeat(64),
-    builderIdentity: 'bun-browser-v1',
-    runtimeAbi: null,
-    outputs: [{
-      path: 'output-0.js',
-      loader: 'js',
-      kind: 'entry-point',
-      digestSha256: outputDigest ?? digest(outputBytes),
-      bytesBase64: outputBytes.toString('base64'),
-    }],
-  }), 'utf8');
-  return {
-    digestSha256: digest(envelopeBytes),
-    bytesBase64: envelopeBytes.toString('base64'),
-  };
-}
-
+const CAPSULE_HASH = `sha256:${'a'.repeat(64)}` as const;
+const TARGET = Object.freeze({
+  runtimeAbi: 'quickjs-release-sync-v1',
+  domProfile: 'dom-core-v2',
+  featureProfiles: Object.freeze([]),
+});
+const BUDGETS = Object.freeze({
+  cpuMs: 100,
+  memoryBytes: 32 * 1_024 * 1_024,
+  domNodes: 2_000,
+  handles: 4_000,
+  messageBytes: 64 * 1_024,
+  streamBytes: 64 * 1_024,
+  assetBytes: 0,
+  networkBytes: 0,
+  gpuBytes: 0,
+  lifecycleBytes: 256 * 1_024,
+});
 const identity: TWidgetRuntimeIdentity = Object.freeze({
   orgId: 'org-a',
   canvasId: 'canvas-a',
@@ -51,47 +40,22 @@ const identity: TWidgetRuntimeIdentity = Object.freeze({
   revisionId: 'revision-a',
 });
 
-function functionDescriptor(exportName: string, timeoutMs: number): TWidgetBrowserFunctionDescriptor {
-  return {
-    schemaVersion: 1,
-    exportName,
-    effect: 'fn',
-    inputSchema: {},
-    outputSchema: {},
-    resources: [],
-    limits: {
-      timeoutMs,
-      memoryTier: 'small',
-      outputByteLimit: 1_024,
-      logByteLimit: 1_024,
-    },
-    retry: {
-      mode: 'none',
-      maxAttempts: 1,
-      initialBackoffMs: 0,
-      maxBackoffMs: 0,
-    },
-  };
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
 }
 
-function functionInvocation(status: 'queued' | 'succeeded') {
-  return {
-    id: 'invocation-a',
-    functionName: 'count',
-    widgetRevisionId: identity.revisionId,
-    widgetInstanceId: identity.widgetInstanceId,
-    status,
-    output: status === 'succeeded' ? { count: 2 } : null,
-    failure: null,
-    createdAtMs: 1,
-    startedAtMs: status === 'succeeded' ? 2 : null,
-    finishedAtMs: status === 'succeeded' ? 3 : null,
-  };
+function digest(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 function element(
   candidate: TWidgetRuntimeIdentity = identity,
   stateDocumentId?: string,
+  uiProps?: Record<string, unknown>,
 ): TElement {
   return {
     id: candidate.elementId,
@@ -111,6 +75,7 @@ function element(
       revisionId: candidate.revisionId,
       instanceId: candidate.widgetInstanceId,
       ...(stateDocumentId === undefined ? {} : { stateDocumentId }),
+      ...(uiProps === undefined ? {} : { uiProps }),
       w: 320,
       h: 240,
       expanded: true,
@@ -119,90 +84,163 @@ function element(
   };
 }
 
+function runtimeHandle() {
+  const destroy = vi.fn(async () => undefined);
+  const freeze = vi.fn(async () => undefined);
+  const resume = vi.fn(async () => undefined);
+  const setSchedulingMode = vi.fn(async () => undefined);
+  const handle: TWidgetUiRuntimeHandle = {
+    ready: vi.fn(async () => undefined),
+    setProps: vi.fn(),
+    setTheme: vi.fn(),
+    setViewport: vi.fn(),
+    focus: vi.fn(),
+    freeze,
+    resume,
+    setSchedulingMode,
+    diagnostics: vi.fn(() => ({ artifactHash: CAPSULE_HASH }) as never),
+    destroy,
+  };
+  return { destroy, freeze, handle, resume, setSchedulingMode };
+}
+
+function manualClock() {
+  let nowMs = 0;
+  let nextTimer = 1;
+  const timers = new Map<number, Readonly<{
+    atMs: number;
+    callback: () => void;
+  }>>();
+  const setTimeout = vi.fn((callback: () => void, timeoutMs: number): number => {
+    const timer = nextTimer;
+    nextTimer += 1;
+    timers.set(timer, {
+      atMs: nowMs + timeoutMs,
+      callback,
+    });
+    return timer;
+  });
+  const clearTimeout = vi.fn((timer: unknown): void => {
+    if (typeof timer === 'number') timers.delete(timer);
+  });
+  return {
+    now: () => nowMs,
+    setTimeout,
+    clearTimeout,
+    async advanceBy(durationMs: number): Promise<void> {
+      nowMs += durationMs;
+      while (true) {
+        const due = [...timers.entries()]
+          .filter(([, timer]) => timer.atMs <= nowMs)
+          .sort((left, right) => left[1].atMs - right[1].atMs)[0];
+        if (due === undefined) return;
+        timers.delete(due[0]);
+        due[1].callback();
+        await Promise.resolve();
+      }
+    },
+  };
+}
+
 function fixture(args: Readonly<{
-  responseIdentity?: TWidgetRuntimeIdentity;
-  organizationId?: string | (() => string);
-  tenantAuthorityKey?: string | (() => string);
-  artifact?: ReturnType<typeof artifact>;
   cache?: WidgetUiArtifactCache;
+  clock?: ReturnType<typeof manualClock>;
   collaborativeState?: TWidgetCollaborativeStatePort;
-  functionDescriptors?: readonly TWidgetBrowserFunctionDescriptor[];
+  featureProfiles?: readonly string[];
+  organizationId?: () => string;
+  tenantAuthorityKey?: () => string;
   isTargetCurrent?(target: TWidgetRuntimeLocalTarget): boolean;
-  nowMs?(): number;
-  wait?(timeoutMs: number, signal?: AbortSignal): Promise<void>;
-  loadRetry?: Readonly<{
-    initialBackoffMs?: number;
-    maxBackoffMs?: number;
-  }>;
-  maxActiveRenders?: number;
-  maxQueuedRenders?: number;
-  recoveryPaceMs?: number;
+  maxConcurrentLoads?: number;
+  maxQueuedLoads?: number;
+  digestSha256?(bytes: Uint8Array): Promise<string>;
+  load?: TWidgetRuntimeTransportPort['api']['widget']['runtime']['load'];
 }> = {}) {
-  const responseIdentity = args.responseIdentity ?? identity;
-  const { orgId: _responseOrganizationId, ...publicResponseIdentity } = responseIdentity;
-  const artifactValue = args.artifact ?? artifact();
+  const bytes = new Uint8Array([9, 8, 7, 6]);
+  const target = Object.freeze({
+    ...TARGET,
+    featureProfiles: Object.freeze([...(args.featureProfiles ?? [])]),
+  });
   const response = {
-    identity: publicResponseIdentity,
+    identity: {
+      canvasId: identity.canvasId,
+      elementId: identity.elementId,
+      widgetInstanceId: identity.widgetInstanceId,
+      definitionId: identity.definitionId,
+      revisionId: identity.revisionId,
+    },
     manifest: {
-      schemaVersion: 2 as const,
+      schemaVersion: 3 as const,
       name: 'Pinned widget',
       slug: 'pinned-widget',
-      ui: { entry: 'ui/main.ts' },
-    },
-    artifact: artifactValue,
-    functionDescriptors: args.functionDescriptors ?? [],
-  };
-  const load = vi.fn(async (
-    _request: unknown,
-    _options?: Readonly<{ signal?: AbortSignal }>,
-  ) => [undefined, response] as const);
-  const digestSha256 = vi.fn(async (bytes: Uint8Array) => digest(bytes));
-  const codec: TWidgetArtifactCodecPort = {
-    decodeBase64: (value) => Buffer.from(value, 'base64'),
-    decodeUtf8: (value) => Buffer.from(value).toString('utf8'),
-    digestSha256,
-  };
-  const cleanup = vi.fn();
-  const mount = vi.fn(() => cleanup);
-  const functionInvoke = vi.fn();
-  const functionGet = vi.fn();
-  const transport = {
-    api: {
-      widget: { runtime: { load } },
-      function: {
-        invoke: functionInvoke,
-        get: functionGet,
+      ui: {
+        runtime: 'capsule' as const,
+        entry: 'ui/main.ts',
+        target,
       },
     },
-  } as unknown as TWidgetRuntimeTransportPort;
+    artifact: {
+      digestSha256: digest(bytes),
+      byteSize: bytes.byteLength,
+      bytesBase64: Buffer.from(bytes).toString('base64'),
+    },
+    runtimeDescriptor: {
+      format: 'vibecanvas.capsule-runtime.v1' as const,
+      capsuleArtifactHash: CAPSULE_HASH,
+      target,
+      budgets: BUDGETS,
+      capabilityRequests: [],
+      channels: null,
+      parkability: { parkable: false as const },
+      signatureKeyIds: ['release-key'],
+    },
+    functionDescriptors: [],
+    browserFunctionDescriptorsDigestSha256: 'e'.repeat(64),
+  };
+  const load = args.load ?? vi.fn(async () => [undefined, response] as never);
+  const mounted = runtimeHandle();
+  const mountedHandles: ReturnType<typeof runtimeHandle>[] = [];
+  const mount = vi.fn(async () => {
+    const next = mountedHandles.length === 0 ? mounted : runtimeHandle();
+    mountedHandles.push(next);
+    return next.handle;
+  });
+  const destroyMount = vi.fn(async () => undefined);
+  const digestSha256 = vi.fn(args.digestSha256 ?? (async (value) => digest(value)));
+  const clock = args.clock ?? manualClock();
   const runtime = new WidgetUiRuntime({
-    transport,
-    codec,
-    mount: { mount },
-    createIdempotencyKey: () => 'mount-key',
-    organizationId: typeof args.organizationId === 'function'
-      ? args.organizationId
-      : () => args.organizationId ?? identity.orgId,
-    tenantAuthorityKey: typeof args.tenantAuthorityKey === 'function'
-      ? args.tenantAuthorityKey
-      : () => args.tenantAuthorityKey ?? 'tenant-authority-a',
-    nowMs: args.nowMs ?? (() => 0),
-    wait: args.wait ?? (async () => undefined),
+    transport: {
+      api: {
+        widget: { runtime: { load } },
+        function: { invoke: vi.fn(), get: vi.fn() },
+      },
+    } as unknown as TWidgetRuntimeTransportPort,
+    codec: {
+      decodeBase64: (value) => Buffer.from(value, 'base64'),
+      digestSha256,
+    },
+    mount: { mount, destroy: destroyMount },
+    createIdempotencyKey: () => 'host-key',
+    organizationId: args.organizationId ?? (() => identity.orgId),
+    tenantAuthorityKey: args.tenantAuthorityKey ?? (() => 'authority-a'),
+    nowMs: clock.now,
+    scheduleTimeout: clock.setTimeout,
+    cancelTimeout: clock.clearTimeout,
+    wait: async () => undefined,
     cache: args.cache,
     collaborativeState: args.collaborativeState,
     isTargetCurrent: args.isTargetCurrent,
-    loadRetry: args.loadRetry,
-    maxActiveRenders: args.maxActiveRenders,
-    maxQueuedRenders: args.maxQueuedRenders,
-    recoveryPaceMs: args.recoveryPaceMs,
+    maxConcurrentLoads: args.maxConcurrentLoads,
+    maxQueuedLoads: args.maxQueuedLoads,
   });
   return {
-    cleanup,
+    bytes,
+    clock,
+    destroyMount,
     digestSha256,
-    functionGet,
-    functionInvoke,
     load,
     mount,
+    mounted,
+    mountedHandles,
     response,
     runtime,
   };
@@ -210,376 +248,548 @@ function fixture(args: Readonly<{
 
 async function renderReady(
   runtime: WidgetUiRuntime,
-  candidate: TWidgetRuntimeIdentity = identity,
   stateDocumentId?: string,
+  uiProps?: Record<string, unknown>,
 ) {
   const root = document.createElement('div');
   const cleanup = runtime.render({
     root,
-    canvasId: candidate.canvasId,
-    element: element(candidate, stateDocumentId),
+    canvasId: identity.canvasId,
+    element: element(identity, stateDocumentId, uiProps),
   });
-  await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).not.toBe('loading'));
+  await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('ready'));
   return { cleanup, root };
 }
 
-function collaborativeSession(
-  stateDocumentId: string,
-  overrides: Partial<TWidgetCollaborativeStateSession> = {},
-): TWidgetCollaborativeStateSession {
+function collaborativeSession(stateDocumentId: string): TWidgetCollaborativeStateSession {
   return {
-    identity: Object.freeze({ ...identity, stateDocumentId }),
+    identity: { ...identity, stateDocumentId },
     get: vi.fn(async () => ({ version: 1, value: null })),
-    change: vi.fn(async (value) => ({ version: 2, value })),
-    next: vi.fn(() => new Promise(() => {})),
+    change: vi.fn(),
+    next: vi.fn(),
     cancel: vi.fn(),
     dispose: vi.fn(),
-    ...overrides,
   };
 }
 
-describe('WidgetUiRuntime', () => {
-  test('pins cache entries by org, definition, revision, and verified digest', async () => {
-    const cache = new WidgetUiArtifactCache();
-    const first = fixture({ cache });
-    const one = await renderReady(first.runtime);
-    expect(one.root.dataset.widgetRuntimeStatus).toBe('ready');
-    expect(first.digestSha256).toHaveBeenCalledTimes(2);
-    one.cleanup();
+describe('WidgetUiRuntime Capsule ownership', () => {
+  test('mounts the persisted widget-instance UI props as the initial channel value', async () => {
+    const current = fixture();
+    const rendered = await renderReady(
+      current.runtime,
+      undefined,
+      { count: 1, label: 'initial' },
+    );
 
-    const two = await renderReady(first.runtime);
-    expect(two.root.dataset.widgetRuntimeStatus).toBe('ready');
-    expect(first.load).toHaveBeenCalledTimes(2);
-    expect(first.digestSha256).toHaveBeenCalledTimes(2);
-    expect(first.mount).toHaveBeenCalledTimes(2);
-    const cachedArtifact = first.mount.mock.calls[0]?.[0].artifact;
-    expect(cachedArtifact.retainedByteSize).toBeGreaterThan(cachedArtifact.outputs[0]!.bytes.byteLength);
-
-    const second = fixture({ cache, organizationId: 'org-b' });
-    const root = document.createElement('div');
-    second.runtime.render({ root, canvasId: identity.canvasId, element: element(identity) });
-    await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(second.digestSha256).toHaveBeenCalledTimes(2);
-
-    const nextIdentity = {
-      ...identity,
-      revisionId: 'revision-b',
-    };
-    const third = fixture({ cache, responseIdentity: nextIdentity });
-    await renderReady(third.runtime, nextIdentity);
-    expect(third.digestSha256).toHaveBeenCalledTimes(2);
-    expect(cache.size).toBe(3);
+    expect(current.mount).toHaveBeenCalledWith(expect.objectContaining({
+      props: { count: 1, label: 'initial' },
+      browserFunctionDescriptorsDigestSha256: 'e'.repeat(64),
+    }));
+    expect(current.mounted.handle.setProps).toHaveBeenCalledWith({
+      count: 1,
+      label: 'initial',
+    });
+    rendered.cleanup();
+    await current.runtime.destroy();
   });
 
-  test('coalesces concurrent verification of the same exact artifact key', async () => {
+  test('remounts an owner after its shared host catalog is invalidated', async () => {
     const current = fixture();
+    const rendered = await renderReady(current.runtime);
+    const onFatal = current.mount.mock.calls[0]![0].onFatal;
+
+    onFatal(Object.assign(new Error('catalog changed'), {
+      code: 'WIDGET_CAPSULE_CATALOG_INVALIDATED',
+      reason: 'catalog-generation-changed',
+    }));
+
+    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledTimes(2));
+    expect(current.mountedHandles[0]!.destroy).toHaveBeenCalledWith(
+      'catalog-generation-changed',
+    );
+    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('ready');
+
+    rendered.cleanup();
+    await current.runtime.destroy();
+  });
+
+  test('caches exact opaque signed bytes by revision, digest, and Capsule hash', async () => {
+    const cache = new WidgetUiArtifactCache();
+    const current = fixture({ cache });
+    const first = await renderReady(current.runtime);
+    first.cleanup();
+    await vi.waitFor(() => expect(current.mounted.destroy).toHaveBeenCalledOnce());
+    const second = await renderReady(current.runtime);
+
+    expect(current.digestSha256).toHaveBeenCalledOnce();
+    expect(current.mount).toHaveBeenCalledTimes(2);
+    expect(current.mount.mock.calls[0]![0].artifact.bytes).toEqual(current.bytes);
+    expect(current.mount.mock.calls[0]![0].artifact.runtimeDescriptor)
+      .toBe(current.response.runtimeDescriptor);
+    second.cleanup();
+    await current.runtime.destroy();
+  });
+
+  test('does not reuse decoded artifact bytes across tenant-authority generations', async () => {
+    let authority = 'authority-a';
+    const current = fixture({
+      cache: new WidgetUiArtifactCache(),
+      tenantAuthorityKey: () => authority,
+    });
+    const first = await renderReady(current.runtime);
+    first.cleanup();
+    await vi.waitFor(() => expect(current.mounted.destroy).toHaveBeenCalledOnce());
+    authority = 'authority-b';
+    const second = await renderReady(current.runtime);
+
+    expect(current.digestSha256).toHaveBeenCalledTimes(2);
+    second.cleanup();
+    await current.runtime.destroy();
+  });
+
+  test('coalesces concurrent exact-byte decoding without limiting live handles', async () => {
+    let resolveDigest!: (value: string) => void;
+    const current = fixture({
+      digestSha256: async () => await new Promise((resolve) => {
+        resolveDigest = resolve;
+      }),
+      maxConcurrentLoads: 2,
+    });
     const firstRoot = document.createElement('div');
     const secondRoot = document.createElement('div');
-    current.runtime.render({ root: firstRoot, canvasId: identity.canvasId, element: element() });
-    current.runtime.render({ root: secondRoot, canvasId: identity.canvasId, element: element() });
-
+    const firstCleanup = current.runtime.render({
+      root: firstRoot,
+      canvasId: identity.canvasId,
+      element: element(),
+    });
+    const secondCleanup = current.runtime.render({
+      root: secondRoot,
+      canvasId: identity.canvasId,
+      element: element(),
+    });
+    await vi.waitFor(() => expect(current.digestSha256).toHaveBeenCalledOnce());
+    resolveDigest(current.response.artifact.digestSha256);
     await vi.waitFor(() => {
       expect(firstRoot.dataset.widgetRuntimeStatus).toBe('ready');
       expect(secondRoot.dataset.widgetRuntimeStatus).toBe('ready');
     });
-    expect(current.load).toHaveBeenCalledTimes(2);
-    expect(current.digestSha256).toHaveBeenCalledTimes(2);
+    expect(current.runtime.diagnostics()).toMatchObject({
+      activeLoadCount: 0,
+      queuedLoadCount: 0,
+      mountedOwnerCount: 2,
+    });
+    firstCleanup();
+    secondCleanup();
+    await current.runtime.destroy();
   });
 
-  test('binds the exact loaded function descriptor timeout policy into the mounted bridge', async () => {
-    let nowMs = 0;
+  test('wakes one overflowed owner when an earlier queued owner is destroyed', async () => {
+    const digestGate = deferred<string>();
     const current = fixture({
-      functionDescriptors: [functionDescriptor('count', 30_000)],
-      nowMs: () => nowMs,
-      wait: async (timeoutMs) => { nowMs += timeoutMs; },
+      digestSha256: async () => await digestGate.promise,
+      maxConcurrentLoads: 1,
+      maxQueuedLoads: 1,
     });
-    current.functionInvoke.mockResolvedValue([undefined, functionInvocation('queued')]);
-    current.functionGet.mockImplementation(async () => [
-      undefined,
-      nowMs >= 31_000 ? functionInvocation('succeeded') : functionInvocation('queued'),
-    ] as never);
-    const rendered = await renderReady(current.runtime);
-    const functionBridge = current.mount.mock.calls[0]?.[0].functionBridge;
-
-    await expect(functionBridge.invoke({
-      functionName: 'count',
-      input: {},
-      idempotencyKey: 'key-a',
-    })).resolves.toEqual({ count: 2 });
-    expect(nowMs).toBeGreaterThanOrEqual(31_000);
-    await expect(functionBridge.invoke({
-      functionName: 'notPublished',
-      input: {},
-      idempotencyKey: 'key-b',
-    })).rejects.toThrow('not declared by this revision');
-    expect(current.functionInvoke).toHaveBeenCalledOnce();
-    rendered.cleanup();
-  });
-
-  test('bounds active render lifetimes and skips cancelled queued hosts', async () => {
-    const current = fixture({ maxActiveRenders: 2 });
-    const pendingLoads: Array<(value: readonly [undefined, typeof current.response]) => void> = [];
-    current.load.mockImplementation(() => new Promise((resolve) => {
-      pendingLoads.push(resolve);
-    }));
-    const roots = Array.from({ length: 4 }, () => document.createElement('div'));
-    const cleanups = roots.map((root) => current.runtime.render({
+    const roots = [0, 1, 2].map(() => document.createElement('div'));
+    const owners = roots.map((root) => current.runtime.renderOwned({
       root,
       canvasId: identity.canvasId,
       element: element(),
     }));
+    expect(roots[2]!.dataset.widgetRuntimeStatus).toBe('deferred');
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        activeLoadCount: 1,
+        queuedLoadCount: 1,
+      });
+    });
+    await owners[1]!.destroy();
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        activeLoadCount: 1,
+        queuedLoadCount: 1,
+        mountedOwnerCount: 2,
+      });
+    });
 
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(2));
-    expect(roots.every((root) => root.dataset.widgetRuntimeStatus === 'loading')).toBe(true);
-    pendingLoads[0]!([undefined, current.response]);
-    await vi.waitFor(() => expect(roots[0]!.dataset.widgetRuntimeStatus).toBe('ready'));
+    await owners[2]!.resume('still-visible');
+    await owners[2]!.resume('duplicate-visible-hint');
+    expect(current.load).toHaveBeenCalledOnce();
+    digestGate.resolve(current.response.artifact.digestSha256);
+    await vi.waitFor(() => {
+      expect(roots[0]!.dataset.widgetRuntimeStatus).toBe('ready');
+      expect(roots[2]!.dataset.widgetRuntimeStatus).toBe('ready');
+    });
     expect(current.load).toHaveBeenCalledTimes(2);
-
-    cleanups[0]!();
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(3));
-    cleanups[3]!();
-    cleanups[1]!();
-    await Promise.resolve();
-    expect(current.load).toHaveBeenCalledTimes(3);
-
-    pendingLoads[2]!([undefined, current.response]);
-    await vi.waitFor(() => expect(roots[2]!.dataset.widgetRuntimeStatus).toBe('ready'));
-    pendingLoads[1]!([undefined, current.response]);
-    await Promise.resolve();
-    cleanups[2]!();
+    expect(current.mount).toHaveBeenCalledTimes(2);
+    expect(current.runtime.diagnostics()).toMatchObject({
+      activeLoadCount: 0,
+      queuedLoadCount: 0,
+      mountedOwnerCount: 2,
+    });
+    await owners[0]!.destroy();
+    await owners[2]!.destroy();
+    await current.runtime.destroy();
   });
 
-  test('bounds queued render hosts and retries deferred work only after a fresh mount', async () => {
-    const current = fixture({ maxActiveRenders: 1, maxQueuedRenders: 2 });
-    const pendingLoads: Array<(value: readonly [undefined, typeof current.response]) => void> = [];
-    current.load.mockImplementation(() => new Promise((resolve) => {
-      pendingLoads.push(resolve);
-    }));
-    const roots = Array.from({ length: 10 }, () => document.createElement('div'));
-    const cleanups = roots.map((root) => current.runtime.render({
-      root,
+  test('keeps an overflowed hidden owner passive until visibility resumes', async () => {
+    const digestGate = deferred<string>();
+    const current = fixture({
+      digestSha256: async () => await digestGate.promise,
+      maxConcurrentLoads: 1,
+      maxQueuedLoads: 0,
+    });
+    const firstRoot = document.createElement('div');
+    const hiddenRoot = document.createElement('div');
+    const first = current.runtime.renderOwned({
+      root: firstRoot,
       canvasId: identity.canvasId,
       element: element(),
-    }));
+    });
+    const hidden = current.runtime.renderOwned({
+      root: hiddenRoot,
+      canvasId: identity.canvasId,
+      element: element(),
+    });
+    hidden.setViewport({
+      width: 320,
+      height: 240,
+      scale: 1,
+      visibility: 'hidden',
+      distance: 500,
+      priority: -50,
+      occlusion: 1,
+    });
+    await hidden.freeze('offscreen');
+    expect(hiddenRoot.dataset.widgetRuntimeStatus).toBe('deferred');
 
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledOnce());
-    expect(roots.filter((root) => root.dataset.widgetRuntimeStatus === 'loading')).toHaveLength(3);
-    expect(roots.filter((root) => root.dataset.widgetRuntimeStatus === 'deferred')).toHaveLength(7);
-    expect(current.mount).not.toHaveBeenCalled();
+    digestGate.resolve(current.response.artifact.digestSha256);
+    await vi.waitFor(() => expect(firstRoot.dataset.widgetRuntimeStatus).toBe('ready'));
+    expect(current.load).toHaveBeenCalledOnce();
+    expect(hiddenRoot.dataset.widgetRuntimeStatus).toBe('deferred');
 
-    cleanups[0]!();
-    expect(current.load).toHaveBeenCalledTimes(1);
-    pendingLoads[0]!([undefined, current.response]);
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(2));
-    cleanups[1]!();
+    hidden.setViewport({
+      width: 320,
+      height: 240,
+      scale: 1,
+      visibility: 'visible',
+      distance: 0,
+      priority: 60,
+      occlusion: 0,
+    });
+    expect(current.load).toHaveBeenCalledOnce();
+    await hidden.resume('visible-again');
+    await hidden.resume('duplicate-resume');
+    await vi.waitFor(() => expect(hiddenRoot.dataset.widgetRuntimeStatus).toBe('ready'));
     expect(current.load).toHaveBeenCalledTimes(2);
-    pendingLoads[1]!([undefined, current.response]);
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(3));
-    cleanups[2]!();
-    pendingLoads[2]!([undefined, current.response]);
-    await vi.waitFor(() => expect(current.runtime.diagnostics().activeRenderCount).toBe(0));
-    expect(current.load).toHaveBeenCalledTimes(3);
+    expect(current.mount).toHaveBeenCalledTimes(2);
 
-    cleanups[3]!();
-    const retryCleanup = current.runtime.render({
-      root: roots[3]!,
-      canvasId: identity.canvasId,
-      element: element(),
+    await first.destroy();
+    await hidden.destroy();
+    await current.runtime.destroy();
+  });
+
+  test('keeps ten thousand initially offscreen owners outside bounded load admission', async () => {
+    const current = fixture({
+      maxConcurrentLoads: 1,
+      maxQueuedLoads: 1,
     });
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(4));
-    expect(roots[3]!.dataset.widgetRuntimeStatus).toBe('loading');
-
-    retryCleanup();
-    pendingLoads[3]!([undefined, current.response]);
-    for (const cleanup of cleanups.slice(4)) cleanup();
-  });
-
-  test('releases a fatal sandbox lifetime so a queued healthy widget can render', async () => {
-    const current = fixture({ maxActiveRenders: 32 });
-    const roots = Array.from({ length: 33 }, () => document.createElement('div'));
-    const cleanups = roots.map((root) => current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    }));
-
-    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledTimes(32));
-    expect(current.load).toHaveBeenCalledTimes(32);
-    expect(roots[32]!.dataset.widgetRuntimeStatus).toBe('loading');
-
-    current.mount.mock.calls[0]![0].onFatal(new Error('sandbox boot failed'));
-    current.mount.mock.calls[0]![0].onFatal(new Error('duplicate fatal'));
-
-    await vi.waitFor(() => expect(current.mount).toHaveBeenCalledTimes(33));
-    expect(current.load).toHaveBeenCalledTimes(33);
-    expect(roots[0]!.dataset.widgetRuntimeStatus).toBe('error');
-    expect(roots[0]!.textContent).toContain('sandbox boot failed');
-    expect(roots[32]!.dataset.widgetRuntimeStatus).toBe('ready');
-    for (const cleanup of cleanups) cleanup();
-  });
-
-  test('fences an in-flight load when its render host is torn down', async () => {
-    let resolveLoad!: (value: readonly [undefined, ReturnType<typeof fixture>['response']]) => void;
-    const pendingLoad = new Promise<readonly [undefined, ReturnType<typeof fixture>['response']]>(
-      (resolve) => { resolveLoad = resolve; },
-    );
-    const current = fixture();
-    current.load.mockImplementation(() => pendingLoad);
-    const root = document.createElement('div');
-    const cleanup = current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    });
-
-    cleanup();
-    resolveLoad([undefined, current.response]);
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(root.childElementCount).toBe(0);
-    expect(root.dataset.widgetRuntimeStatus).toBeUndefined();
-    expect(current.load.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-    expect(current.digestSha256).not.toHaveBeenCalled();
-    expect(current.mount).not.toHaveBeenCalled();
-  });
-
-  test('aborts every orphaned artifact RPC during repeated mount churn', async () => {
-    const current = fixture({ maxActiveRenders: 1 });
-    const signals: AbortSignal[] = [];
-    let activeRpcCount = 0;
-    current.load.mockImplementation((_request, options) => new Promise((resolve) => {
-      const signal = options?.signal;
-      if (!signal) throw new Error('Widget runtime load did not receive a cancellation signal.');
-      signals.push(signal);
-      activeRpcCount += 1;
-      signal.addEventListener('abort', () => {
-        activeRpcCount -= 1;
-        resolve([{ code: 'CANCELLED' }, undefined] as never);
-      }, { once: true });
-    }));
-
-    for (let index = 0; index < 64; index += 1) {
+    const owners = [];
+    let visibleRoot: HTMLDivElement | undefined;
+    for (let index = 0; index < 10_000; index += 1) {
       const root = document.createElement('div');
-      const cleanup = current.runtime.render({
+      const owner = current.runtime.renderOwned({
         root,
         canvasId: identity.canvasId,
         element: element(),
+        initialViewport: {
+          width: 320,
+          height: 240,
+          scale: 1,
+          visibility: 'hidden',
+          distance: index + 1,
+          priority: -50,
+          occlusion: 1,
+        },
+        initiallyFrozen: true,
       });
-      await vi.waitFor(() => expect(signals).toHaveLength(index + 1));
-      cleanup();
-      await vi.waitFor(() => expect(activeRpcCount).toBe(0));
+      owners.push(owner);
+      visibleRoot = root;
     }
 
-    expect(current.load).toHaveBeenCalledTimes(64);
-    expect(signals.every((signal) => signal.aborted)).toBe(true);
-    expect(current.digestSha256).not.toHaveBeenCalled();
-    expect(current.mount).not.toHaveBeenCalled();
+    expect(current.load).not.toHaveBeenCalled();
+    expect(current.runtime.diagnostics()).toMatchObject({
+      activeLoadCount: 0,
+      queuedLoadCount: 0,
+      mountedOwnerCount: 10_000,
+    });
+    expect(() => current.runtime.renderOwned({
+      root: document.createElement('div'),
+      canvasId: identity.canvasId,
+      element: element(),
+      initiallyFrozen: true,
+    })).toThrow('Widget UI runtime inert-owner capacity is exhausted.');
+    const visible = owners.at(-1)!;
+    visible.setViewport({
+      width: 320,
+      height: 240,
+      scale: 1,
+      visibility: 'visible',
+      distance: 0,
+      priority: 60,
+      occlusion: 0,
+    });
+    await visible.resume('visible-again');
+    await vi.waitFor(() => expect(visibleRoot?.dataset.widgetRuntimeStatus).toBe('ready'));
+    expect(current.load).toHaveBeenCalledOnce();
+    expect(current.mount).toHaveBeenCalledOnce();
+
+    await current.runtime.destroy();
+    expect(current.runtime.diagnostics()).toMatchObject({
+      activeLoadCount: 0,
+      queuedLoadCount: 0,
+      mountedOwnerCount: 0,
+    });
+  }, 10_000);
+
+  test('enforces aggregate Capsule population ceilings through the fake host', async () => {
+    const light = fixture();
+    for (let index = 0; index < 600; index += 1) {
+      light.runtime.renderOwned({
+        root: document.createElement('div'),
+        canvasId: identity.canvasId,
+        element: element(),
+      });
+    }
+    await vi.waitFor(() => {
+      expect(light.runtime.diagnostics()).toMatchObject({
+        mountedOwnerCount: 600,
+        reprioritizationCandidateCount: 512,
+        activeRuntimeCount: 16,
+        throttledRuntimeCount: 8,
+        frozenRuntimeCount: 0,
+        liveRuntimeCount: 24,
+        heavyRuntimeCount: 0,
+        gpuRuntimeCount: 0,
+      });
+    });
+    const lightModes = light.mountedHandles.flatMap(({ setSchedulingMode }) => (
+      setSchedulingMode.mock.calls.map(([mode]) => mode)
+    ));
+    expect(lightModes.filter((mode) => mode === 'active')).toHaveLength(16);
+    expect(lightModes.filter((mode) => mode === 'throttled')).toHaveLength(8);
+    expect(light.mount).toHaveBeenCalledTimes(24);
+    await light.runtime.destroy();
+
+    const heavy = fixture({ featureProfiles: ['canvas-2d-v1'] });
+    for (let index = 0; index < 12; index += 1) {
+      heavy.runtime.renderOwned({
+        root: document.createElement('div'),
+        canvasId: identity.canvasId,
+        element: element(),
+      });
+    }
+    await vi.waitFor(() => {
+      expect(heavy.runtime.diagnostics()).toMatchObject({
+        activeRuntimeCount: 8,
+        throttledRuntimeCount: 0,
+        liveRuntimeCount: 8,
+        heavyRuntimeCount: 8,
+        gpuRuntimeCount: 0,
+      });
+    });
+    expect(heavy.mount).toHaveBeenCalledTimes(8);
+    await heavy.runtime.destroy();
+
+    const gpu = fixture({ featureProfiles: ['canvas-webgpu-v1'] });
+    for (let index = 0; index < 12; index += 1) {
+      gpu.runtime.renderOwned({
+        root: document.createElement('div'),
+        canvasId: identity.canvasId,
+        element: element(),
+      });
+    }
+    await vi.waitFor(() => {
+      expect(gpu.runtime.diagnostics()).toMatchObject({
+        activeRuntimeCount: 2,
+        throttledRuntimeCount: 0,
+        liveRuntimeCount: 2,
+        heavyRuntimeCount: 2,
+        gpuRuntimeCount: 2,
+      });
+    });
+    expect(gpu.mount).toHaveBeenCalledTimes(2);
+    await gpu.runtime.destroy();
+  }, 10_000);
+
+  test('freezes offscreen owners after two seconds, destroys far owners, and remounts', async () => {
+    const current = fixture();
+    const owners = Array.from({ length: 24 }, () => current.runtime.renderOwned({
+      root: document.createElement('div'),
+      canvasId: identity.canvasId,
+      element: element(),
+    }));
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        activeRuntimeCount: 16,
+        throttledRuntimeCount: 8,
+        frozenRuntimeCount: 0,
+        liveRuntimeCount: 24,
+      });
+    });
+    owners.at(-1)!.setFocused(true, { preventScroll: true });
+    expect(current.mountedHandles.at(-1)!.handle.focus)
+      .toHaveBeenCalledWith({ preventScroll: true });
+    owners.at(-1)!.setFocused(false);
+    const farViewport = {
+      width: 320,
+      height: 240,
+      scale: 1,
+      visibility: 'hidden' as const,
+      distance: 3_000,
+      priority: -50,
+      occlusion: 1,
+    };
+    for (const owner of owners) owner.setViewport(farViewport);
+    await vi.waitFor(() => {
+      expect(current.clock.setTimeout).toHaveBeenLastCalledWith(
+        expect.any(Function),
+        2_000,
+      );
+    });
+
+    await current.clock.advanceBy(1_999);
+    await Promise.resolve();
+    expect(current.mountedHandles.reduce(
+      (count, mounted) => count + mounted.freeze.mock.calls.length,
+      0,
+    )).toBe(0);
+
+    await current.clock.advanceBy(1);
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        activeRuntimeCount: 0,
+        throttledRuntimeCount: 0,
+        frozenRuntimeCount: 16,
+        liveRuntimeCount: 16,
+      });
+    });
+    expect(current.mountedHandles.reduce(
+      (count, mounted) => count + mounted.freeze.mock.calls.length,
+      0,
+    )).toBe(16);
+    expect(current.mountedHandles.reduce(
+      (count, mounted) => count + mounted.destroy.mock.calls.length,
+      0,
+    )).toBe(8);
+
+    await current.clock.advanceBy(28_000);
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        frozenRuntimeCount: 0,
+        liveRuntimeCount: 0,
+      });
+    });
+    expect(current.mountedHandles.reduce(
+      (count, mounted) => count + mounted.destroy.mock.calls.length,
+      0,
+    )).toBe(24);
+
+    owners.at(-1)!.setViewport({
+      ...farViewport,
+      visibility: 'visible',
+      distance: 0,
+      priority: 100,
+      occlusion: 0,
+    });
+    await owners.at(-1)!.resume('fullscreen-visible');
+    await vi.waitFor(() => {
+      expect(current.runtime.diagnostics()).toMatchObject({
+        activeRuntimeCount: 1,
+        liveRuntimeCount: 1,
+      });
+    });
+    expect(current.mount).toHaveBeenCalledTimes(25);
+    expect(current.mountedHandles.at(-1)!.handle.focus).not.toHaveBeenCalled();
+    expect(current.mountedHandles.at(-1)!.setSchedulingMode)
+      .toHaveBeenLastCalledWith('active');
+
+    await current.runtime.destroy();
   });
 
-  test('holds render leases until stalled artifact verification settles under unique-target churn', async () => {
-    const current = fixture({ maxActiveRenders: 2, maxQueuedRenders: 0 });
-    current.load.mockImplementation(async (request) => [undefined, {
-      ...current.response,
-      identity: request as typeof current.response.identity,
-    }] as const);
-    const digestResolvers: Array<(value: string) => void> = [];
-    let digestCallCount = 0;
-    current.digestSha256.mockImplementation((bytes) => {
-      digestCallCount += 1;
-      if (digestCallCount <= 2) {
-        return new Promise<string>((resolve) => { digestResolvers.push(resolve); });
-      }
-      return Promise.resolve(digest(bytes));
-    });
-    const candidate = (index: number): TWidgetRuntimeIdentity => ({
-      ...identity,
-      elementId: `element-${index}`,
-      widgetInstanceId: `instance-${index}`,
-      revisionId: `revision-${index}`,
-    });
-    const firstRoots = [document.createElement('div'), document.createElement('div')];
-    const firstCleanups = firstRoots.map((root, index) => current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(candidate(index)),
-    }));
-    await vi.waitFor(() => expect(digestResolvers).toHaveLength(2));
-    expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 2,
-      queuedRenderCount: 0,
-      inFlightArtifactVerificationCount: 2,
-    });
-
-    for (const cleanup of firstCleanups) cleanup();
-    const churnRoots = Array.from({ length: 64 }, () => document.createElement('div'));
-    const churnCleanups = churnRoots.map((root, index) => current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(candidate(index + 10)),
-    }));
-    expect(churnRoots.every((root) => root.dataset.widgetRuntimeStatus === 'deferred')).toBe(true);
-    expect(current.load).toHaveBeenCalledTimes(2);
-    expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 2,
-      queuedRenderCount: 0,
-      inFlightArtifactVerificationCount: 2,
-    });
-
-    for (const resolve of digestResolvers) resolve(current.response.artifact.digestSha256);
-    await vi.waitFor(() => expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 0,
-      inFlightArtifactVerificationCount: 0,
-    }));
-
-    const retryRoot = document.createElement('div');
-    const retryCleanup = current.runtime.render({
-      root: retryRoot,
-      canvasId: identity.canvasId,
-      element: element(candidate(100)),
-    });
-    await vi.waitFor(() => expect(retryRoot.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(current.load).toHaveBeenCalledTimes(3);
-    retryCleanup();
-    for (const cleanup of churnCleanups) cleanup();
-  });
-
-  test('fences a load when the injected browser tenant changes before the response', async () => {
-    let activeTenantAuthorityKey = 'tenant-authority-a';
-    let resolveLoad!: (value: readonly [undefined, ReturnType<typeof fixture>['response']]) => void;
+  test('never wakes an overflowed owner destroyed before admission frees', async () => {
+    const digestGate = deferred<string>();
     const current = fixture({
-      tenantAuthorityKey: () => activeTenantAuthorityKey,
+      digestSha256: async () => await digestGate.promise,
+      maxConcurrentLoads: 1,
+      maxQueuedLoads: 0,
     });
-    current.load.mockImplementation(() => new Promise((resolve) => {
-      resolveLoad = resolve;
-    }));
-    const root = document.createElement('div');
-    current.runtime.render({
-      root,
+    const firstRoot = document.createElement('div');
+    const discardedRoot = document.createElement('div');
+    const first = current.runtime.renderOwned({
+      root: firstRoot,
       canvasId: identity.canvasId,
       element: element(),
     });
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledOnce());
+    const discarded = current.runtime.renderOwned({
+      root: discardedRoot,
+      canvasId: identity.canvasId,
+      element: element(),
+    });
+    expect(discardedRoot.dataset.widgetRuntimeStatus).toBe('deferred');
 
-    activeTenantAuthorityKey = 'tenant-authority-b';
-    resolveLoad([undefined, current.response]);
-    await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('error'));
+    await discarded.destroy('removed-before-wakeup');
+    expect(discardedRoot.dataset.widgetRuntimeStatus).toBeUndefined();
+    digestGate.resolve(current.response.artifact.digestSha256);
+    await vi.waitFor(() => expect(firstRoot.dataset.widgetRuntimeStatus).toBe('ready'));
+    await Promise.resolve();
+    expect(current.load).toHaveBeenCalledOnce();
+    expect(current.mount).toHaveBeenCalledOnce();
+    expect(current.runtime.diagnostics()).toMatchObject({
+      activeLoadCount: 0,
+      queuedLoadCount: 0,
+      mountedOwnerCount: 1,
+    });
 
-    expect(root.textContent).toContain('tenant scope changed');
-    expect(current.digestSha256).not.toHaveBeenCalled();
-    expect(current.mount).not.toHaveBeenCalled();
+    await first.destroy();
+    await current.runtime.destroy();
+    expect(current.runtime.diagnostics()).toMatchObject({
+      activeLoadCount: 0,
+      queuedLoadCount: 0,
+      mountedOwnerCount: 0,
+    });
   });
 
-  test('fences a tenant switch while artifact verification is pending', async () => {
-    let activeTenantAuthorityKey = 'tenant-authority-a';
-    let resolveDigest!: (value: string) => void;
-    const pendingDigest = new Promise<string>((resolve) => {
-      resolveDigest = resolve;
-    });
+  test('opens collaborative state only for the exact captured document identity', async () => {
+    const state = collaborativeSession('state-a');
+    const open = vi.fn(async () => state);
     const current = fixture({
-      tenantAuthorityKey: () => activeTenantAuthorityKey,
+      collaborativeState: {
+        open,
+      },
     });
-    current.digestSha256.mockImplementationOnce(() => pendingDigest);
+    const rendered = await renderReady(current.runtime, 'state-a');
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({
+      identity: { ...identity, stateDocumentId: 'state-a' },
+      signal: expect.any(AbortSignal),
+    }));
+    expect(open.mock.calls[0]![0].isCurrent()).toBe(true);
+    expect(current.mount.mock.calls[0]![0].collaborativeStateBridge).toBe(state);
+    rendered.cleanup();
+    await vi.waitFor(() => expect(state.dispose).toHaveBeenCalled());
+    await current.runtime.destroy();
+  });
+
+  test('fences a tenant authority change while exact bytes are being verified', async () => {
+    let authority = 'authority-a';
+    let resolveDigest!: (value: string) => void;
+    const current = fixture({
+      tenantAuthorityKey: () => authority,
+      isTargetCurrent: () => true,
+      digestSha256: async () => await new Promise((resolve) => {
+        resolveDigest = resolve;
+      }),
+    });
     const root = document.createElement('div');
     current.runtime.render({
       root,
@@ -587,472 +797,23 @@ describe('WidgetUiRuntime', () => {
       element: element(),
     });
     await vi.waitFor(() => expect(current.digestSha256).toHaveBeenCalledOnce());
-
-    activeTenantAuthorityKey = 'tenant-authority-b';
+    authority = 'authority-b';
     resolveDigest(current.response.artifact.digestSha256);
     await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('error'));
-
     expect(root.textContent).toContain('tenant scope changed');
     expect(current.mount).not.toHaveBeenCalled();
+    await current.runtime.destroy();
   });
 
-  test('fences ready function and collaborative-state bridges after tenant activation changes', async () => {
-    let activeTenantAuthorityKey = 'tenant-authority-a';
-    const stateDocumentId = 'automerge:state-a';
-    const state = collaborativeSession(stateDocumentId);
-    const open = vi.fn(async () => state);
-    const current = fixture({
-      collaborativeState: { open },
-      functionDescriptors: [functionDescriptor('count', 1_000)],
-      tenantAuthorityKey: () => activeTenantAuthorityKey,
-    });
-    const rendered = await renderReady(current.runtime, identity, stateDocumentId);
-    const functionBridge = current.mount.mock.calls[0]?.[0].functionBridge;
-    const stateOpenArgs = open.mock.calls[0]?.[0];
-    expect(stateOpenArgs.isCurrent()).toBe(true);
-
-    activeTenantAuthorityKey = 'tenant-authority-b';
-
-    expect(stateOpenArgs.isCurrent()).toBe(false);
-    await expect(functionBridge.invoke({
-      functionName: 'count',
-      input: {},
-      idempotencyKey: 'tenant-switch-key',
-    })).rejects.toThrow('target is no longer current');
-    expect(current.functionInvoke).not.toHaveBeenCalled();
-    rendered.cleanup();
-  });
-
-  test('rejects active/latest identity substitution before cache or mount', async () => {
-    const latest = { ...identity, revisionId: 'revision-latest' };
-    const { load, mount, runtime } = fixture({ responseIdentity: latest });
-    const { root } = await renderReady(runtime);
-
-    expect(root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(root.textContent).toContain('different pinned identity');
-    expect(load).toHaveBeenCalledWith(
-      {
-        canvasId: identity.canvasId,
-        elementId: identity.elementId,
-        widgetInstanceId: identity.widgetInstanceId,
-        definitionId: identity.definitionId,
-        revisionId: identity.revisionId,
-      },
-      { signal: expect.any(AbortSignal) },
-    );
-    expect(mount).not.toHaveBeenCalled();
-  });
-
-  test('rejects tampered outer envelopes before decoding or mounting', async () => {
-    const valid = artifact();
-    const tampered = {
-      digestSha256: 'f'.repeat(64),
-      bytesBase64: valid.bytesBase64,
-    };
-    const { mount, runtime } = fixture({ artifact: tampered });
-    const { root } = await renderReady(runtime);
-
-    expect(root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(root.textContent).toContain('artifact digest mismatch');
-    expect(mount).not.toHaveBeenCalled();
-  });
-
-  test('rejects tampered output bytes even when the outer envelope digest is valid', async () => {
-    const tampered = artifact('export default "tampered";', digest(Buffer.from('export default "original";')));
-    const { mount, runtime } = fixture({ artifact: tampered });
-    const { root } = await renderReady(runtime);
-
-    expect(root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(root.textContent).toContain('output digest mismatch');
-    expect(mount).not.toHaveBeenCalled();
-  });
-
-  test('rejects strict-envelope extensions without leaking server bytes or paths', async () => {
-    const envelopeBytes = Buffer.from(JSON.stringify({
-      format: 'vibecanvas.widget-artifact.v1',
-      kind: 'ui',
-      entry: 'ui/main.ts',
-      sourceDigestSha256: 'c'.repeat(64),
-      builderIdentity: 'bun-browser-v1',
-      runtimeAbi: null,
-      outputs: [{
-        path: 'output-0.js', loader: 'js', kind: 'entry-point', digestSha256: digest(Buffer.from('')), bytesBase64: '',
-      }],
-      serverPath: '/private/server.js',
-    }), 'utf8');
-    const { mount, runtime } = fixture({
-      artifact: {
-        digestSha256: digest(envelopeBytes),
-        bytesBase64: envelopeBytes.toString('base64'),
-      },
-    });
-    const { root } = await renderReady(runtime);
-
-    expect(root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(root.textContent).toContain('invalid shape');
-    expect(root.textContent).not.toContain('/private/server.js');
-    expect(mount).not.toHaveBeenCalled();
-  });
-
-  test('never opens collaborative state for an instance without a state document', async () => {
-    const open = vi.fn();
-    const current = fixture({ collaborativeState: { open } });
-    const rendered = await renderReady(current.runtime);
-
-    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('ready');
-    expect(open).not.toHaveBeenCalled();
-    expect(current.mount.mock.calls[0]?.[0].collaborativeStateBridge).toBeNull();
-    rendered.cleanup();
-  });
-
-  test('opens only the exact scoped state identity and tears it down on unmount', async () => {
-    const stateDocumentId = 'automerge:state-a';
-    const session = collaborativeSession(stateDocumentId);
-    const open = vi.fn(async () => session);
-    let targetCurrent = true;
-    const current = fixture({
-      collaborativeState: { open },
-      isTargetCurrent: () => targetCurrent,
-    });
-    const rendered = await renderReady(current.runtime, identity, stateDocumentId);
-
-    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('ready');
-    expect(open).toHaveBeenCalledOnce();
-    expect(open.mock.calls[0]?.[0].identity).toEqual({ ...identity, stateDocumentId });
-    expect(open.mock.calls[0]?.[0].isCurrent()).toBe(true);
-    expect(current.mount.mock.calls[0]?.[0].collaborativeStateBridge).toBe(session);
-
-    targetCurrent = false;
-    expect(open.mock.calls[0]?.[0].isCurrent()).toBe(false);
-
-    rendered.cleanup();
-    expect(session.dispose).toHaveBeenCalledOnce();
-  });
-
-  test('fails closed when an injected state port returns a foreign identity', async () => {
-    const stateDocumentId = 'automerge:state-a';
-    const foreign = collaborativeSession(stateDocumentId, {
-      identity: { ...identity, widgetInstanceId: 'foreign-instance', stateDocumentId },
-    });
-    const current = fixture({
-      collaborativeState: { open: vi.fn(async () => foreign) },
-    });
-    const rendered = await renderReady(current.runtime, identity, stateDocumentId);
-
-    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(rendered.root.textContent).toContain('identity mismatch');
-    expect(foreign.dispose).toHaveBeenCalledOnce();
-    expect(current.mount).not.toHaveBeenCalled();
-  });
-
-  test('retries temporary projection lag only while the exact local target remains current', async () => {
-    const waits: number[] = [];
-    const current = fixture({
-      isTargetCurrent: () => true,
-      wait: async (timeoutMs) => { waits.push(timeoutMs); },
-      loadRetry: { initialBackoffMs: 10, maxBackoffMs: 20 },
-    });
-    current.load
-      .mockResolvedValueOnce([{ code: 'NOT_FOUND' }, undefined] as never)
-      .mockResolvedValueOnce([{ code: 'NOT_FOUND' }, undefined] as never);
-
-    const rendered = await renderReady(current.runtime);
-    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('ready');
-    expect(current.load).toHaveBeenCalledTimes(3);
-    expect(waits).toEqual([10, 100, 20, 100]);
-  });
-
-  test('recovers the same committed host after transport loss and delayed projection convergence', async () => {
-    const waits: Array<Readonly<{
-      timeoutMs: number;
-      resolve(): void;
-    }>> = [];
-    const wait = vi.fn((timeoutMs: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
-      const onAbort = () => reject(new Error('cancelled'));
-      signal?.addEventListener('abort', onAbort, { once: true });
-      waits.push({
-        timeoutMs,
-        resolve: () => {
-          signal?.removeEventListener('abort', onAbort);
-          resolve();
-        },
-      });
-    }));
-    let projectionConverged = false;
-    const current = fixture({
-      isTargetCurrent: () => true,
-      wait,
-      loadRetry: { initialBackoffMs: 1, maxBackoffMs: 2 },
-    });
-    current.load.mockImplementation(async () => {
-      if (projectionConverged) return [undefined, current.response] as const;
-      if (current.load.mock.calls.length === 1) throw new Error('socket disconnected');
-      return [{ code: 'NOT_FOUND' }, undefined] as never;
-    });
-    const root = document.createElement('div');
-    const cleanup = current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    });
-
-    await vi.waitFor(() => expect(waits).toHaveLength(1));
-    expect(waits[0]?.timeoutMs).toBe(1);
-    expect(root.dataset.widgetRuntimeStatus).toBe('loading');
-    expect(root.textContent).toContain('Waiting for widget sync');
+  test('destroys every handle and then the shared mount coordinator once', async () => {
+    const current = fixture();
+    await renderReady(current.runtime);
+    await current.runtime.destroy('tenant-authority-changed');
+    await current.runtime.destroy('again');
+    expect(current.mounted.destroy).toHaveBeenCalledWith('tenant-authority-changed');
+    expect(current.destroyMount).toHaveBeenCalledOnce();
     expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 0,
-      recoveringRenderCount: 1,
+      mountedOwnerCount: 0,
     });
-
-    waits[0]!.resolve();
-    await vi.waitFor(() => expect(waits).toHaveLength(2));
-    expect(waits[1]?.timeoutMs).toBe(100);
-    waits[1]!.resolve();
-    await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(waits).toHaveLength(3));
-    expect(waits[2]?.timeoutMs).toBe(2);
-    expect(waits.filter((entry) => entry.timeoutMs === 100)).toHaveLength(1);
-
-    projectionConverged = true;
-    waits[2]!.resolve();
-    await vi.waitFor(() => expect(waits).toHaveLength(4));
-    expect(waits[3]?.timeoutMs).toBe(100);
-    waits[3]!.resolve();
-    await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(current.load).toHaveBeenCalledTimes(3);
-    expect(current.mount).toHaveBeenCalledOnce();
-    expect(current.mount.mock.calls[0]?.[0].identity).toEqual(identity);
-    cleanup();
-  });
-
-  test('requeues a capacity-limited load and mounts after admission becomes available', async () => {
-    const releases: Array<() => void> = [];
-    const wait = vi.fn(() => new Promise<void>((resolve) => {
-      releases.push(resolve);
-    }));
-    const current = fixture({
-      isTargetCurrent: () => true,
-      wait,
-    });
-    current.load
-      .mockResolvedValueOnce([{ code: 'TOO_MANY_REQUESTS' }, undefined] as never)
-      .mockResolvedValueOnce([undefined, current.response]);
-    const root = document.createElement('div');
-    const cleanup = current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    });
-
-    await vi.waitFor(() => expect(wait).toHaveBeenCalledOnce());
-    expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 0,
-      recoveringRenderCount: 1,
-    });
-    releases[0]!();
-    await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
-    releases[1]!();
-    await vi.waitFor(() => expect(root.dataset.widgetRuntimeStatus).toBe('ready'));
-    expect(current.load).toHaveBeenCalledTimes(2);
-    expect(current.mount).toHaveBeenCalledOnce();
-    cleanup();
-  });
-
-  test('counts recovery waiters against the shared active and queued render admission bound', async () => {
-    const wait = vi.fn((_timeoutMs: number, signal?: AbortSignal) => new Promise<void>((_resolve, reject) => {
-      signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
-    }));
-    const current = fixture({
-      isTargetCurrent: () => true,
-      wait,
-      maxActiveRenders: 2,
-      maxQueuedRenders: 2,
-    });
-    current.load.mockResolvedValue([{ code: 'NOT_FOUND' }, undefined] as never);
-    const admittedRoots = Array.from({ length: 4 }, () => document.createElement('div'));
-    const admittedCleanups = admittedRoots.map((root) => current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    }));
-
-    await vi.waitFor(() => expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 2,
-      queuedRenderCount: 0,
-      recoveringRenderCount: 2,
-    }));
-    const overflowRoots = Array.from({ length: 16 }, () => document.createElement('div'));
-    const overflowCleanups = overflowRoots.map((root) => current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    }));
-    expect(overflowRoots.every((root) => root.dataset.widgetRuntimeStatus === 'deferred')).toBe(true);
-    expect(current.load).toHaveBeenCalledTimes(2);
-    expect(wait).toHaveBeenCalledTimes(3);
-
-    for (const cleanup of [...admittedCleanups, ...overflowCleanups]) cleanup();
-  });
-
-  test('paces many recovering hosts through one fixed-rate retry-start gate', async () => {
-    const waits: Array<{
-      timeoutMs: number;
-      resolve(): void;
-    }> = [];
-    const wait = vi.fn((timeoutMs: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
-      const onAbort = () => reject(new Error('cancelled'));
-      signal?.addEventListener('abort', onAbort, { once: true });
-      waits.push({
-        timeoutMs,
-        resolve: () => {
-          signal?.removeEventListener('abort', onAbort);
-          resolve();
-        },
-      });
-    }));
-    const current = fixture({
-      isTargetCurrent: () => true,
-      wait,
-      maxActiveRenders: 8,
-      maxQueuedRenders: 8,
-      recoveryPaceMs: 100,
-    });
-    current.load.mockResolvedValue([{ code: 'NOT_FOUND' }, undefined] as never);
-    const roots = Array.from({ length: 16 }, () => document.createElement('div'));
-    const cleanups = roots.map((root) => current.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    }));
-
-    await vi.waitFor(() => expect(waits.filter((entry) => entry.timeoutMs === 1_000)).toHaveLength(8));
-    expect(current.load).toHaveBeenCalledTimes(8);
-    await vi.waitFor(() => expect(waits.filter((entry) => entry.timeoutMs === 100)).toHaveLength(1));
-
-    for (let retry = 1; retry <= 4; retry += 1) {
-      const paceWaits = waits.filter((entry) => entry.timeoutMs === 100);
-      paceWaits[retry - 1]!.resolve();
-      await vi.waitFor(() => expect(current.load).toHaveBeenCalledTimes(8 + retry));
-      await vi.waitFor(() => expect(waits.filter((entry) => entry.timeoutMs === 100)).toHaveLength(retry + 1));
-      expect(current.load).toHaveBeenCalledTimes(8 + retry);
-    }
-
-    expect(current.runtime.diagnostics()).toMatchObject({
-      activeRenderCount: 4,
-      recoveringRenderCount: 12,
-    });
-    for (const cleanup of cleanups) cleanup();
-  });
-
-  test('cancels retry waits and late state opens when the host is torn down', async () => {
-    let waitSignal: AbortSignal | undefined;
-    const wait = vi.fn((_timeoutMs: number, signal?: AbortSignal) => new Promise<void>((_resolve, reject) => {
-      waitSignal = signal;
-      signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
-    }));
-    const retrying = fixture({
-      isTargetCurrent: () => true,
-      wait,
-    });
-    retrying.load.mockResolvedValue([{ code: 'NOT_FOUND' }, undefined] as never);
-    const root = document.createElement('div');
-    const cleanup = retrying.runtime.render({
-      root,
-      canvasId: identity.canvasId,
-      element: element(),
-    });
-    await vi.waitFor(() => expect(wait).toHaveBeenCalledOnce());
-    cleanup();
-    expect(waitSignal?.aborted).toBe(true);
-    await Promise.resolve();
-    expect(retrying.load).toHaveBeenCalledOnce();
-    expect(retrying.mount).not.toHaveBeenCalled();
-
-    let resolveOpen!: (session: TWidgetCollaborativeStateSession) => void;
-    let openSignal: AbortSignal | undefined;
-    const pendingOpen = new Promise<TWidgetCollaborativeStateSession>((resolve) => {
-      resolveOpen = resolve;
-    });
-    const stateDocumentId = 'automerge:state-a';
-    const state = collaborativeSession(stateDocumentId);
-    const opening = fixture({
-      collaborativeState: {
-        open: vi.fn(({ signal }) => {
-          openSignal = signal;
-          return pendingOpen;
-        }),
-      },
-    });
-    const stateRoot = document.createElement('div');
-    const stateCleanup = opening.runtime.render({
-      root: stateRoot,
-      canvasId: identity.canvasId,
-      element: element(identity, stateDocumentId),
-    });
-    await vi.waitFor(() => expect(opening.load).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(openSignal).toBeDefined());
-    stateCleanup();
-    resolveOpen(state);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(openSignal?.aborted).toBe(true);
-    expect(state.dispose).toHaveBeenCalledOnce();
-    expect(opening.mount).not.toHaveBeenCalled();
-  });
-
-  test('treats a successful foreign load response as terminal without retrying', async () => {
-    const current = fixture({
-      responseIdentity: { ...identity, revisionId: 'foreign-revision' },
-      isTargetCurrent: () => true,
-      wait: vi.fn(async () => undefined),
-    });
-    const rendered = await renderReady(current.runtime);
-
-    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(rendered.root.textContent).toContain('different pinned identity');
-    expect(current.load).toHaveBeenCalledOnce();
-  });
-
-  test('does not retry non-NOT_FOUND transport or server failures', async () => {
-    const wait = vi.fn(async () => undefined);
-    const current = fixture({
-      isTargetCurrent: () => true,
-      wait,
-    });
-    current.load.mockResolvedValueOnce([
-      { code: 'INTERNAL_SERVER_ERROR' },
-      undefined,
-    ] as never);
-    const rendered = await renderReady(current.runtime);
-
-    expect(rendered.root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(current.load).toHaveBeenCalledOnce();
-    expect(wait).not.toHaveBeenCalled();
-  });
-});
-
-describe('WidgetUiArtifactCache limits', () => {
-  function cachedArtifact(retainedByteSize: number): TVerifiedWidgetUiArtifact {
-    return {
-      digestSha256: String(retainedByteSize).padStart(64, '0'),
-      envelope: {} as TVerifiedWidgetUiArtifact['envelope'],
-      outputs: [],
-      retainedByteSize,
-    };
-  }
-
-  test('evicts least-recently-used artifacts by retained bytes and skips oversize entries', () => {
-    const cache = new WidgetUiArtifactCache({ maxEntries: 8, maxBytes: 10 });
-    cache.set('a', cachedArtifact(6));
-    cache.set('b', cachedArtifact(6));
-
-    expect(cache.get('a')).toBeNull();
-    expect(cache.get('b')).not.toBeNull();
-    expect(cache.totalBytes).toBe(6);
-    cache.set('oversize', cachedArtifact(11));
-    expect(cache.get('oversize')).toBeNull();
-    expect(cache.get('b')).not.toBeNull();
-    expect(cache.totalBytes).toBe(6);
   });
 });

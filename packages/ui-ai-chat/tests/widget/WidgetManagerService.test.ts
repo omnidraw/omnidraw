@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, test, vi } from "vitest";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
-import type { TElementElementDefinition } from "@vibecanvas/canvas/services";
+import type {
+  TCanvasPortalRenderer,
+  TElementElementDefinition,
+} from "@vibecanvas/canvas/services";
 import { SyncHook } from "@vibecanvas/tapable";
 import { WidgetManagerService } from "../../src/widget/WidgetManagerService";
 
@@ -27,6 +30,34 @@ function element(): TElement {
       payload: {},
     },
     style: {},
+  };
+}
+
+function viewport() {
+  return {
+    width: 320,
+    height: 168,
+    scale: 1,
+    visible: true,
+    distance: 0,
+    occlusion: 0,
+    interactive: true,
+  } as const;
+}
+
+function widgetInstance(): TElement {
+  return {
+    ...element(),
+    data: {
+      type: "widget-instance",
+      definitionId: "11111111-1111-4111-8111-111111111111",
+      revisionId: "22222222-2222-4222-8222-222222222222",
+      instanceId: "33333333-3333-4333-8333-333333333333",
+      w: 320,
+      h: 200,
+      expanded: true,
+      window: "contained",
+    },
   };
 }
 
@@ -197,7 +228,12 @@ describe("WidgetManagerService portal lifecycle", () => {
       kind: "example",
       payload: {},
     };
-    const mount = renderer.mount({ host, element: initial, content });
+    const mount = renderer.mount({
+      host,
+      element: initial,
+      content,
+      viewport: viewport(),
+    });
     const firstSurface = host.querySelector("[data-widget-portal-surface]");
     const contentRoot = host.querySelector<HTMLElement>(
       "[data-widget-content-root]",
@@ -228,6 +264,7 @@ describe("WidgetManagerService portal lifecycle", () => {
         data: { ...initial.data, window: "fullscreen" },
       } as TElement,
       content,
+      viewport: viewport(),
     });
     expect(host.querySelector("[data-widget-portal-surface]")).toBe(firstSurface);
     contentRoot?.dispatchEvent(new MouseEvent("pointerdown", {
@@ -237,7 +274,7 @@ describe("WidgetManagerService portal lifecycle", () => {
     }));
     expect(leakedPointer).toHaveBeenCalledOnce();
 
-    mount.update({ element: initial, content });
+    mount.update({ element: initial, content, viewport: viewport() });
     contentRoot?.dispatchEvent(new MouseEvent("pointerdown", {
       bubbles: true,
       clientX: 299,
@@ -251,6 +288,7 @@ describe("WidgetManagerService portal lifecycle", () => {
         ...content,
         payload: { changed: true },
       },
+      viewport: viewport(),
     });
     expect(host.querySelector("[data-widget-portal-surface]"))
       .not.toBe(firstSurface);
@@ -369,6 +407,7 @@ describe("WidgetManagerService portal lifecycle", () => {
       host,
       element: current,
       content: { type: "ui-widget", kind: "example" },
+      viewport: viewport(),
     });
     const policy = definitions.find((definition) => {
       return definition.id === "__widget-product-policy";
@@ -501,6 +540,179 @@ describe("WidgetManagerService portal lifecycle", () => {
     expect(current.data).toMatchObject({
       expanded: true,
       window: "contained",
+    });
+    service.stop();
+  });
+
+  test("bridges portal focus, collapse, and fullscreen into the Capsule owner", async () => {
+    let current = widgetInstance();
+    let focusedId: string | null = null;
+    const selectionChange = new SyncHook<[]>();
+    const documentChange = new SyncHook<[]>();
+    let renderer: TCanvasPortalRenderer | null = null;
+    const runtimeOwner = {
+      setProps: vi.fn(),
+      setViewport: vi.fn(),
+      focus: vi.fn(),
+      freeze: vi.fn(async () => undefined),
+      resume: vi.fn(async () => undefined),
+      diagnostics: vi.fn(() => null),
+      destroy: vi.fn(async () => undefined),
+    };
+    const renderOwned = vi.fn(() => runtimeOwner);
+    const service = new WidgetManagerService({
+      browser: { document },
+      crdtService: {
+        doc: () => ({ elements: { [current.id]: current } }),
+        hooks: { change: documentChange },
+      },
+      contextMenuService: { close: vi.fn() },
+      confirmDialogService: {},
+      elementService: {
+        registerElement: vi.fn(() => vi.fn()),
+        invalidateProjection: vi.fn(),
+      },
+      portalService: {
+        registerRenderer: vi.fn((next) => {
+          renderer = next;
+          return vi.fn();
+        }),
+      },
+      renderOrderService: {},
+      selectionService: {
+        get focusedId() {
+          return focusedId;
+        },
+        selection: [],
+        hooks: { change: selectionChange },
+      },
+      toolService: {},
+      product: vi.fn(),
+      neutralHost: {
+        canvasId: "canvas",
+        runtime: { renderOwned } as never,
+      },
+    } as never);
+    service.start({
+      hooks: { elementPointerDown: new SyncHook() },
+    } as never);
+    if (renderer === null) {
+      throw new Error("Expected widget renderer registration.");
+    }
+    const host = document.createElement("div");
+    const mounted = await renderer.mount({
+      host,
+      portalId: "portal:widget",
+      element: current,
+      content: {
+        type: "widget-instance",
+        definitionId: current.data.type === "widget-instance"
+          ? current.data.definitionId
+          : "",
+        revisionId: current.data.type === "widget-instance"
+          ? current.data.revisionId
+          : "",
+        instanceId: current.data.type === "widget-instance"
+          ? current.data.instanceId
+          : "",
+      },
+      viewport: viewport(),
+    });
+    if (mounted === undefined || typeof mounted === "function") {
+      throw new Error("Expected widget render handle.");
+    }
+
+    expect(runtimeOwner.setViewport).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        visibility: "visible",
+        priority: 60,
+      }),
+    );
+
+    focusedId = current.id;
+    selectionChange.call();
+    expect(runtimeOwner.focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(runtimeOwner.setViewport).toHaveBeenLastCalledWith(
+      expect.objectContaining({ priority: 90 }),
+    );
+
+    current = {
+      ...current,
+      data: {
+        ...current.data,
+        expanded: false,
+        window: "minimized",
+      },
+    } as TElement;
+    await mounted.update?.({
+      element: current,
+      content: {
+        type: "widget-instance",
+        definitionId: current.data.type === "widget-instance"
+          ? current.data.definitionId
+          : "",
+        revisionId: current.data.type === "widget-instance"
+          ? current.data.revisionId
+          : "",
+        instanceId: current.data.type === "widget-instance"
+          ? current.data.instanceId
+          : "",
+      },
+      viewport: {
+        ...viewport(),
+        visible: false,
+        interactive: false,
+        occlusion: 1,
+      },
+    });
+    expect(runtimeOwner.freeze).toHaveBeenCalledWith(
+      "canvas-widget-collapsed",
+    );
+    expect(runtimeOwner.setViewport).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        visibility: "hidden",
+        priority: -100,
+      }),
+    );
+
+    current = {
+      ...current,
+      data: {
+        ...current.data,
+        expanded: true,
+        window: "fullscreen",
+      },
+    } as TElement;
+    await mounted.update?.({
+      element: current,
+      content: {
+        type: "widget-instance",
+        definitionId: current.data.type === "widget-instance"
+          ? current.data.definitionId
+          : "",
+        revisionId: current.data.type === "widget-instance"
+          ? current.data.revisionId
+          : "",
+        instanceId: current.data.type === "widget-instance"
+          ? current.data.instanceId
+          : "",
+      },
+      viewport: viewport(),
+    });
+    expect(runtimeOwner.resume).toHaveBeenLastCalledWith(
+      "canvas-widget-fullscreen",
+    );
+    expect(runtimeOwner.setViewport).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        visibility: "visible",
+        priority: 100,
+      }),
+    );
+
+    await mounted.dispose();
+    await mounted.dispose();
+    await vi.waitFor(() => {
+      expect(runtimeOwner.destroy).toHaveBeenCalledOnce();
     });
     service.stop();
   });

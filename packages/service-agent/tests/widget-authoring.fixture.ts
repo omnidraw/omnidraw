@@ -1,15 +1,21 @@
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type {
-  TWidgetArtifactDescriptor,
-  TWidgetManifestV2,
-  TWidgetPreviewBuildRequest,
-  TWidgetPublishRequest,
-  TWidgetRevisionDescriptor,
-  TWidgetRevisionSourceDescriptor,
-  TWidgetServerFunctionDescriptor,
-  TWidgetSourceSnapshot,
+import {
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnProjectWidgetBrowserFunctionDescriptors,
+  type TWidgetArtifactDescriptor,
+  type TWidgetCapsuleBuildIdentity,
+  type TWidgetCapsuleRuntimeDescriptor,
+  type TWidgetCapsuleUiArtifact,
+  type TWidgetManifestV3,
+  type TWidgetPreviewBuildRequest,
+  type TWidgetPublishRequest,
+  type TWidgetRevisionDescriptor,
+  type TWidgetRevisionSourceDescriptor,
+  type TWidgetServerFunctionDescriptor,
+  type TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
 import { WidgetDraftController } from '../src/widget-drafts/WidgetDraftController';
@@ -26,6 +32,16 @@ import type { ITenantEventPublisherService } from '@vibecanvas/service-event-pub
 function digest(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
+
+export const TEST_CAPSULE_BUILD_IDENTITY: TWidgetCapsuleBuildIdentity = Object.freeze({
+  packageName: '@omnidraw/capsule',
+  packageVersion: '0.9.1',
+  packageDigest: `sha256:${'a'.repeat(64)}`,
+  buildApiVersion: '0.1.0',
+  runtimeBuildDigest: `sha256:${'b'.repeat(64)}`,
+});
+
+export const TEST_CAPSULE_BUILD_POLICY_ID = 'test-vibecanvas-capsule-widget-v1';
 
 const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = Object.freeze({
   schemaVersion: 1,
@@ -48,6 +64,30 @@ const SERVER_FUNCTION: TWidgetServerFunctionDescriptor = Object.freeze({
     maxBackoffMs: 0,
   }),
 });
+
+function serverFunctions(
+  manifest: TWidgetManifestV3,
+): readonly TWidgetServerFunctionDescriptor[] {
+  return manifest.server ? Object.freeze([SERVER_FUNCTION]) : Object.freeze([]);
+}
+
+function serverFunctionDigest(
+  descriptors: readonly TWidgetServerFunctionDescriptor[],
+): string {
+  return createHash('sha256')
+    .update(fnCanonicalizeWidgetServerFunctionDescriptors(descriptors))
+    .digest('hex');
+}
+
+function browserFunctionDigest(
+  descriptors: readonly TWidgetServerFunctionDescriptor[],
+): string {
+  return createHash('sha256')
+    .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(
+      fnProjectWidgetBrowserFunctionDescriptors(descriptors),
+    ))
+    .digest('hex');
+}
 
 export class MemoryAuthoringStore implements IAgentAuthoringStore {
   readonly chats = new Map<string, TAgentAuthoringChatDescriptor>();
@@ -290,11 +330,15 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
 
   async buildPreview(_tenant: TTenantContext, request: TWidgetPreviewBuildRequest) {
     await this.beforeBuildPreview?.();
+    const functionDescriptors = serverFunctions(request.manifest);
+    const functionDescriptorsDigestSha256 = serverFunctionDigest(functionDescriptors);
     const artifact = this.#uiArtifact({
       artifactId: `preview-ui-${request.draftId}`,
       snapshot: request.snapshot,
       manifest: request.manifest,
       builderIdentity: request.builderIdentity,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      signatureKeyId: 'vibecanvas-preview-v1',
       nowMs: request.snapshot.createdAtMs,
     });
     return {
@@ -302,13 +346,16 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       definitionId: request.definitionId,
       draftRevisionSha256: request.draftRevisionSha256,
       manifest: request.manifest,
-      functionDescriptors: request.manifest.server ? [SERVER_FUNCTION] : [],
+      functionDescriptors,
+      functionDescriptorsDigestSha256,
+      capabilityContractDigestSha256: '3'.repeat(64),
+      channelContractDigestSha256: '4'.repeat(64),
       contractDigestSha256: '2'.repeat(64),
       builderIdentity: request.builderIdentity,
-      uiArtifact: {
-        digestSha256: artifact.descriptor.digestSha256,
-        bytes: artifact.bytes,
-      },
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+      uiArtifact: artifact.uiArtifact,
+      diagnostics: [],
     };
   }
 
@@ -319,11 +366,15 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       return { status: 'conflict' as const, currentActiveRevisionId: activeRevisionId };
     }
     this.publishCount += 1;
+    const functionDescriptors = serverFunctions(request.manifest);
+    const functionDescriptorsDigestSha256 = serverFunctionDigest(functionDescriptors);
     const artifact = this.#uiArtifact({
       artifactId: `ui-${request.revisionId}`,
       snapshot: request.snapshot,
       manifest: request.manifest,
       builderIdentity: request.builderIdentity,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      signatureKeyId: 'vibecanvas-release-v1',
       nowMs: request.nowMs,
     });
     const revision: TWidgetRevisionDescriptor = {
@@ -333,13 +384,19 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
       revisionNumber: this.publishCount,
       manifest: request.manifest,
       canonicalManifestJson: JSON.stringify(request.manifest),
-      functionDescriptors: request.manifest.server ? [SERVER_FUNCTION] : [],
-      functionDescriptorsDigestSha256: '1'.repeat(64),
+      functionDescriptors,
+      functionDescriptorsDigestSha256,
+      capabilityContractDigestSha256: '3'.repeat(64),
+      channelContractDigestSha256: '4'.repeat(64),
       contractDigestSha256: '2'.repeat(64),
       uiArtifact: artifact.descriptor,
+      uiRuntime: artifact.uiArtifact.runtimeDescriptor,
       serverArtifact: request.manifest.server
         ? this.#artifact(`published-server-${request.revisionId}`, 'server', '3'.repeat(64), 4, request.nowMs)
         : null,
+      serverRuntimeAbi: request.manifest.server?.runtimeAbi ?? null,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
       createdAtMs: request.nowMs,
     };
     this.revisions.set(revision.id, revision);
@@ -431,36 +488,74 @@ export class MemoryWidgetAuthoringCapability implements TWidgetAuthoringCapabili
   #uiArtifact(request: Readonly<{
     artifactId: string;
     snapshot: TWidgetSourceSnapshot;
-    manifest: TWidgetManifestV2;
+    manifest: TWidgetManifestV3;
     builderIdentity: string;
+    capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+    signatureKeyId: string;
     nowMs: number;
-  }>): { descriptor: TWidgetArtifactDescriptor; bytes: Uint8Array } {
-    const outputBytes = Buffer.from('export default function mount() {}\n', 'utf8');
-    const envelope = {
-      format: 'vibecanvas.widget-artifact.v1',
-      kind: 'ui',
-      entry: request.manifest.ui.entry,
-      sourceDigestSha256: request.snapshot.digestSha256,
-      builderIdentity: request.builderIdentity,
-      runtimeAbi: null,
-      outputs: [{
-        path: 'output-0.js',
-        loader: 'js',
-        kind: 'entry-point',
-        digestSha256: digest(outputBytes),
-        bytesBase64: outputBytes.toString('base64'),
-      }],
+  }>): {
+    descriptor: TWidgetArtifactDescriptor;
+    uiArtifact: TWidgetCapsuleUiArtifact;
+  } {
+    const functionDescriptors = serverFunctions(request.manifest);
+    const browserFunctionDescriptorsDigestSha256 =
+      browserFunctionDigest(functionDescriptors);
+    const bytes = new Uint8Array(Buffer.from(
+      `signed-capsule:${request.snapshot.digestSha256}:${request.signatureKeyId}`,
+      'utf8',
+    ));
+    const digestSha256 = digest(bytes);
+    const runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor = {
+      format: 'vibecanvas.capsule-runtime.v1',
+      capsuleArtifactHash: `sha256:${digestSha256}`,
+      target: request.manifest.ui.target,
+      budgets: {
+        cpuMs: 100,
+        memoryBytes: 16 * 1024 * 1024,
+        domNodes: 1_000,
+        handles: 2_000,
+        messageBytes: 64 * 1024,
+        streamBytes: 64 * 1024,
+        assetBytes: 2 * 1024 * 1024,
+        networkBytes: 0,
+        gpuBytes: 0,
+        lifecycleBytes: 64 * 1024,
+      },
+      capabilityRequests: functionDescriptors.length === 0
+        ? []
+        : [{
+            id: `vibecanvas.widget.functions.h${browserFunctionDescriptorsDigestSha256}`,
+            versionRange: '1.0.0',
+            contractHash: `sha256:${browserFunctionDescriptorsDigestSha256}`,
+            required: true,
+            operations: functionDescriptors
+              .map((descriptor) => descriptor.exportName)
+              .sort(),
+          }],
+      channels: null,
+      parkability: { parkable: false },
+      signatureKeyIds: [request.signatureKeyId],
     };
-    const bytes = new Uint8Array(Buffer.from(JSON.stringify(envelope), 'utf8'));
     const descriptor = this.#artifact(
       request.artifactId,
       'ui',
-      digest(bytes),
+      digestSha256,
       bytes.byteLength,
       request.nowMs,
     );
+    const uiArtifact: TWidgetCapsuleUiArtifact = {
+      kind: 'ui',
+      digestSha256,
+      bytes,
+      capsuleArtifactHash: runtimeDescriptor.capsuleArtifactHash,
+      runtimeDescriptor,
+      requestedBudgets: request.manifest.ui.budgets ?? {},
+      effectiveBudgets: runtimeDescriptor.budgets,
+      builderIdentity: request.builderIdentity,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+    };
     this.artifactBytes.set(descriptor.id, bytes);
-    return { descriptor, bytes };
+    return { descriptor, uiArtifact };
   }
 
   #artifact(
@@ -503,6 +598,8 @@ export function createWidgetDraftControllerForWorkspace(
     createId: () => `00000000-0000-4000-8000-${String(++id).padStart(12, '0')}`,
     nowMs: () => ++nowMs,
     builderIdentity: 'test-widget-builder/1',
+    capsuleBuildIdentity: TEST_CAPSULE_BUILD_IDENTITY,
+    buildPolicyId: TEST_CAPSULE_BUILD_POLICY_ID,
   });
   return { controller, store, widgets };
 }
@@ -526,16 +623,24 @@ export async function createWidgetAuthoringHarness(
     const slug = name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     await workspace.createDraft('external-chat', { name }, async ({ cwd }) => {
       await mkdir(`${cwd}/ui`, { recursive: true });
-      await writeFile(`${cwd}/ui/main.ts`, 'export default function mount() {}\n', 'utf8');
+      await writeFile(`${cwd}/ui/main.ts`, 'document.body.append(document.createElement("main"));\n', 'utf8');
       if (server) {
         await mkdir(`${cwd}/server`, { recursive: true });
         await writeFile(`${cwd}/server/main.ts`, 'export const lookup = () => ({ ok: true });\n', 'utf8');
       }
-      const manifest: TWidgetManifestV2 = {
-        schemaVersion: 2,
+      const manifest: TWidgetManifestV3 = {
+        schemaVersion: 3,
         name,
         slug,
-        ui: { entry: 'ui/main.ts' },
+        ui: {
+          runtime: 'capsule',
+          entry: 'ui/main.ts',
+          target: {
+            runtimeAbi: 'quickjs-release-sync-v1',
+            domProfile: 'dom-core-v2',
+            featureProfiles: [],
+          },
+        },
         ...(server ? { server: { entry: 'server/main.ts', runtimeAbi: 'bun-v1' } } : {}),
       };
       await writeFile(`${cwd}/vibecanvas.json`, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');

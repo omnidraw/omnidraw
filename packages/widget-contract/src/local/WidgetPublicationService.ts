@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
-  ZWidgetManifestV2,
+  ZWidgetCapsuleRuntimeDescriptor,
+  ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
   fnCanonicalizeWidgetManifest,
   fnValidateWidgetResourceBindings,
@@ -58,7 +59,7 @@ export class WidgetPublicationService implements IWidgetPublicationService {
     tenant: TTenantContext,
     request: TWidgetPublishRequest,
   ): Promise<TWidgetPublishResult> {
-    const manifest = ZWidgetManifestV2.parse(request.manifest);
+    const manifest = ZWidgetManifestV3.parse(request.manifest);
     const bindingValidation = fnValidateWidgetResourceBindings(manifest, request.bindings);
     if (!bindingValidation.valid) {
       throw invalidBindings(bindingValidation.reason, bindingValidation.slot);
@@ -71,6 +72,9 @@ export class WidgetPublicationService implements IWidgetPublicationService {
       manifest,
       canonicalManifestJson,
       builderIdentity: request.builderIdentity,
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+      signingPurpose: 'release',
     });
     const parsedFunctionDescriptors = ZWidgetServerFunctionDescriptors.safeParse(
       build.functionDescriptors,
@@ -81,12 +85,22 @@ export class WidgetPublicationService implements IWidgetPublicationService {
       });
     }
     const functionDescriptors = parsedFunctionDescriptors.data;
+    const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse(
+      build.uiArtifact.runtimeDescriptor,
+    );
+    const normalizedBuild = {
+      ...build,
+      functionDescriptors,
+      uiArtifact: { ...build.uiArtifact, runtimeDescriptor },
+    };
     const integrity = fnValidateWidgetBuildIntegrity({
       snapshot: request.snapshot,
       manifest,
       canonicalManifestJson,
       builderIdentity: request.builderIdentity,
-      build: { ...build, functionDescriptors },
+      capsuleBuildIdentity: request.capsuleBuildIdentity,
+      buildPolicyId: request.buildPolicyId,
+      build: normalizedBuild,
       digestSha256: (value) => createHash('sha256').update(value).digest('hex'),
     });
     if (!integrity.valid) {
@@ -142,9 +156,15 @@ export class WidgetPublicationService implements IWidgetPublicationService {
             canonicalManifestJson,
             functionDescriptors,
             functionDescriptorsDigestSha256: integrity.functionDescriptorsDigestSha256,
+            capabilityContractDigestSha256: build.capabilityContractDigestSha256,
+            channelContractDigestSha256: build.channelContractDigestSha256,
             contractDigestSha256: integrity.contractDigestSha256,
             uiArtifact,
+            uiRuntime: runtimeDescriptor,
             serverArtifact,
+            serverRuntimeAbi: build.serverArtifact?.runtimeAbi ?? null,
+            capsuleBuildIdentity: request.capsuleBuildIdentity,
+            buildPolicyId: request.buildPolicyId,
             createdAtMs: request.nowMs,
           },
           source: {

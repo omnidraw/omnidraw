@@ -60,7 +60,20 @@ function setup(args: {
     definitionId: "20000000-0000-4000-8000-000000000001",
     revision: current.variant.revision,
     publishedRevisionId: "30000000-0000-4000-8000-000000000001",
-    manifest: { schemaVersion: 2, name: "Weather", slug: "weather", ui: { entry: "ui/main.ts" } },
+    manifest: {
+      schemaVersion: 3,
+      name: "Weather",
+      slug: "weather",
+      ui: {
+        runtime: "capsule",
+        entry: "ui/main.ts",
+        target: {
+          runtimeAbi: "quickjs-release-sync-v1",
+          domProfile: "dom-core-v2",
+          featureProfiles: [],
+        },
+      },
+    },
   }] as const)
   const refreshPreview = vi.fn(async () => undefined)
   const published = vi.fn(async () => undefined)

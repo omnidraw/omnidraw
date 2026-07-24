@@ -392,9 +392,9 @@ describe('managed composition architecture boundaries', () => {
     expect(fixtureFiles.some((path) => path.split(sep).includes('patches'))).toBe(false)
 
     const fixtureText = (await Promise.all(fixtureFiles.map((path) => readFile(path, 'utf8')))).join('\n')
-    expect(fixtureText).not.toContain('workspace:')
-    expect(fixtureText).not.toContain('file:')
-    expect(fixtureText).not.toContain('link:')
+    expect(fixtureText).not.toMatch(/(?:^|["'\s])workspace:/m)
+    expect(fixtureText).not.toMatch(/(?:^|["'\s])file:/m)
+    expect(fixtureText).not.toMatch(/(?:^|["'\s])link:/m)
     expect(fixtureText).not.toMatch(/@vibecanvas\/[^'"\s]+\/src\//)
     expect(fixtureText).not.toContain('../../packages')
     expect(fixtureText).not.toContain('apps/cli')

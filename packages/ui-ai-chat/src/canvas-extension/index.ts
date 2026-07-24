@@ -14,9 +14,15 @@ import { DraftPreviewFrameService } from "../draft-preview/DraftPreviewFrameServ
 import { WidgetPlacementService } from "../widget-placement/WidgetPlacementService";
 import { createWidgetPlacementCoordinator, type TWidgetPlacementCoordinator } from "../widget-placement/WidgetPlacementCoordinator";
 import { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
+import { CapsuleWidgetHostCoordinator } from '../widget-runtime/CapsuleWidgetHostCoordinator';
 import { fnWidgetRuntimeLocalTargetMatchesElement } from '../widget-runtime/fn.runtime-identity';
-import type { TWidgetCollaborativeStatePort } from '../widget-runtime/interface';
-import { widgetUiArtifactMount } from '../widget-runtime/mount-widget-ui-artifact';
+import type {
+  TWidgetCapsuleHostCatalog,
+  TWidgetCapsuleOutputSink,
+  TWidgetCapsuleThemeSource,
+  TWidgetCollaborativeStatePort,
+} from '../widget-runtime/interface';
+import { createWidgetUiArtifactMountPort } from '../widget-runtime/mount-widget-ui-artifact';
 
 export type TCreateAiChatCanvasExtensionArgs = {
   chatApi: TAiChatApiPort;
@@ -24,6 +30,10 @@ export type TCreateAiChatCanvasExtensionArgs = {
   chatBrowser: TAiChatBrowserPort;
   widgetBrowser: TWidgetBrowserPort;
   application: TAiChatApplicationPort;
+  widgetCapsuleHostCatalog():
+    TWidgetCapsuleHostCatalog | Promise<TWidgetCapsuleHostCatalog>;
+  widgetCapsuleTheme: TWidgetCapsuleThemeSource;
+  widgetCapsuleOutput: TWidgetCapsuleOutputSink;
   widgetPlacement?: TWidgetPlacementCoordinator;
   widgetCollaborativeState?: TWidgetCollaborativeStatePort;
 };
@@ -33,18 +43,31 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
     name: "ai-chat",
     install(context) {
       const placementCoordinator = args.widgetPlacement ?? createWidgetPlacementCoordinator();
+      const capsuleHost = new CapsuleWidgetHostCoordinator({
+        document: args.widgetBrowser.document,
+        catalog: args.widgetCapsuleHostCatalog,
+      });
+      const widgetMount = createWidgetUiArtifactMountPort({
+        coordinator: capsuleHost,
+        createStreamId: args.widgetBrowser.createId,
+        digestSha256: args.widgetBrowser.digestSha256,
+        nowMs: args.widgetBrowser.now,
+        theme: args.widgetCapsuleTheme,
+        output: args.widgetCapsuleOutput,
+      });
       const widgetRuntime = new WidgetUiRuntime({
         transport: args.widgetTransport,
         codec: {
           decodeBase64: args.widgetBrowser.decodeBase64,
-          decodeUtf8: args.widgetBrowser.decodeUtf8,
           digestSha256: args.widgetBrowser.digestSha256,
         },
-        mount: widgetUiArtifactMount,
+        mount: widgetMount,
         createIdempotencyKey: args.widgetBrowser.createId,
         organizationId: args.widgetBrowser.organizationId,
         tenantAuthorityKey: args.widgetBrowser.tenantAuthorityKey,
         nowMs: args.widgetBrowser.now,
+        scheduleTimeout: args.widgetBrowser.setTimeout,
+        cancelTimeout: args.widgetBrowser.clearTimeout,
         wait: (timeoutMs, signal) => new Promise((resolve, reject) => {
           if (signal?.aborted) {
             reject(new Error('Widget runtime wait was cancelled.'));
@@ -90,6 +113,7 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
         api: args.chatApi,
         application: args.application,
         browser: args.widgetBrowser,
+        mountArtifact: widgetMount,
         crdt: context.services.crdt,
         history: context.services.history,
         renderOrder: context.services.renderOrder,
@@ -107,6 +131,14 @@ export function createAiChatCanvasExtension(args: TCreateAiChatCanvasExtensionAr
 
       return {
         services: [
+          {
+            name: "widget-capsule-host",
+            startOrder: 119,
+            service: {
+              name: "widget-capsule-host",
+              stop: () => widgetRuntime.destroy(),
+            },
+          },
           { name: "ai-chat-widget-manager", startOrder: 120, service: widgetManager },
           { name: "draft-preview-frame", startOrder: 121, service: previewFrames },
           { name: "widget-placement", startOrder: 122, service: widgetPlacement },

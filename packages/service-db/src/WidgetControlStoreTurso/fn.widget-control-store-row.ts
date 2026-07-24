@@ -1,8 +1,10 @@
 import type { TResourceEffect, TResourceRequirement } from '@vibecanvas/resource-runtime';
 import type {
   TWidgetArtifactDescriptor,
+  TWidgetCapsuleBuildIdentity,
+  TWidgetCapsuleRuntimeDescriptor,
   TWidgetDefinitionDescriptor,
-  TWidgetManifestV2,
+  TWidgetManifestV3,
   TWidgetRevisionDescriptor,
   TWidgetServerFunctionDescriptor,
 } from '@vibecanvas/widget-contract';
@@ -44,7 +46,7 @@ function nullableArtifact(
   });
 }
 
-export function fnWidgetControlStoreSerializeManifest(manifest: TWidgetManifestV2): string {
+export function fnWidgetControlStoreSerializeManifest(manifest: TWidgetManifestV3): string {
   const serialized = JSON.stringify(manifest);
   if (serialized === undefined) throw new TypeError('Widget manifest is not JSON serializable.');
   return serialized;
@@ -94,7 +96,9 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
     id: string;
     definition_id: string;
     revision_number: unknown;
-    manifest_json: string | TWidgetManifestV2;
+    manifest_json: string | TWidgetManifestV3;
+    ui_runtime_json: string | TWidgetCapsuleRuntimeDescriptor;
+    capsule_build_identity_json: string | TWidgetCapsuleBuildIdentity;
     contract_digest_sha256: string;
     created_at_ms: unknown;
     ui_id: string;
@@ -108,6 +112,12 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
   if (!Array.isArray(storedDescriptors?.functions)) {
     throw new TypeError('Stored widget function descriptors are invalid.');
   }
+  const runtimeDescriptor = (typeof value.ui_runtime_json === 'string'
+    ? JSON.parse(value.ui_runtime_json)
+    : value.ui_runtime_json) as TWidgetCapsuleRuntimeDescriptor;
+  const capsuleBuildIdentity = (typeof value.capsule_build_identity_json === 'string'
+    ? JSON.parse(value.capsule_build_identity_json)
+    : value.capsule_build_identity_json) as TWidgetCapsuleBuildIdentity;
   return {
     orgId: value.org_id,
     id: value.id,
@@ -115,13 +125,15 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
     revisionNumber: numberFromSql(value.revision_number, 'widget revision number'),
     manifest: (typeof value.manifest_json === 'string'
       ? JSON.parse(value.manifest_json)
-      : value.manifest_json) as TWidgetManifestV2,
+      : value.manifest_json) as TWidgetManifestV3,
     canonicalManifestJson: typeof value.manifest_json === 'string'
       ? value.manifest_json
       : JSON.stringify(value.manifest_json),
     functionDescriptors: storedDescriptors.functions as readonly TWidgetServerFunctionDescriptor[],
     functionDescriptorsDigestSha256: String(value.function_descriptors_digest_sha256),
-    contractDigestSha256: value.contract_digest_sha256,
+    capabilityContractDigestSha256: String(value.capability_contract_digest_sha256),
+    channelContractDigestSha256: String(value.channel_contract_digest_sha256),
+    contractDigestSha256: String(value.contract_digest_sha256),
     uiArtifact: fnWidgetControlStoreArtifact({
       org_id: value.org_id,
       id: value.ui_id,
@@ -132,7 +144,13 @@ export function fnWidgetControlStoreRevision(row: unknown): TWidgetRevisionDescr
       retain_until_ms: value.ui_retain_until_ms,
       created_at_ms: value.ui_created_at_ms,
     }),
+    uiRuntime: runtimeDescriptor,
     serverArtifact: nullableArtifact(value, 'server_'),
+    serverRuntimeAbi: value.server_runtime_abi === null || value.server_runtime_abi === undefined
+      ? null
+      : String(value.server_runtime_abi),
+    capsuleBuildIdentity,
+    buildPolicyId: String(value.build_policy_id),
     createdAtMs: numberFromSql(value.created_at_ms, 'widget revision created timestamp'),
   };
 }

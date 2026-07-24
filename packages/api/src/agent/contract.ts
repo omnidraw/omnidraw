@@ -1,5 +1,5 @@
 import { eventIterator, oc, type as orpcType } from '@orpc/contract';
-import { ZVibecanvasToolIcon, type TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import { ZVibecanvasToolIcon, type TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { TAgentEvent } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import type {
   TWidgetDraftSummary,
@@ -176,7 +176,7 @@ export type {
 export type { TWidgetFrameBounds, TWidgetPlacementRef } from '@vibecanvas/widget-contract';
 
 export type TAgentChatConnect = {
-  vcJson: TWidgetManifestV2 | null;
+  vcJson: TWidgetManifestV3 | null;
   messageHistory: unknown[];
 }
 

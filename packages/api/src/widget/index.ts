@@ -1,3 +1,4 @@
+export * from './api.runtime-config';
 export * from './api.runtime-load-widget';
 export * from './CONSTANTS';
 export * from './contract';

@@ -2,7 +2,7 @@ import type {
   TWidgetArtifactCodecPort,
   TVerifiedWidgetUiArtifact,
 } from './interface';
-import { WIDGET_UI_ARTIFACT_ENVELOPE_DECODER } from './CONSTANTS';
+import type { TWidgetCapsuleRuntimeDescriptor } from '@vibecanvas/widget-contract';
 
 export type TPortal = Readonly<{
   codec: TWidgetArtifactCodecPort;
@@ -10,7 +10,9 @@ export type TPortal = Readonly<{
 
 export type TArgs = Readonly<{
   expectedDigestSha256: string;
+  expectedCapsuleArtifactHash: `sha256:${string}`;
   bytesBase64: string;
+  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
 }>;
 
 export async function fxDecodeAndVerifyUiArtifact(
@@ -22,34 +24,16 @@ export async function fxDecodeAndVerifyUiArtifact(
   if (digestSha256 !== args.expectedDigestSha256) {
     throw new Error('Widget UI artifact digest mismatch.');
   }
-  const envelope = WIDGET_UI_ARTIFACT_ENVELOPE_DECODER(
-    portal.codec.decodeUtf8(artifactBytes),
-  );
-  const outputs = await Promise.all(envelope.outputs.map(async (descriptor) => {
-    const bytes = portal.codec.decodeBase64(descriptor.bytesBase64);
-    if (await portal.codec.digestSha256(bytes) !== descriptor.digestSha256) {
-      throw new Error('Widget UI artifact output digest mismatch.');
-    }
-    return Object.freeze({
-      descriptor,
-      bytes,
-      text: descriptor.loader === 'js'
-        || descriptor.loader === 'css'
-        || descriptor.loader === 'json'
-        ? portal.codec.decodeUtf8(bytes)
-        : null,
-    });
-  }));
-  const retainedByteSize = outputs.reduce((size, output) => {
-    return size
-      + output.bytes.byteLength
-      + output.descriptor.bytesBase64.length
-      + (output.text?.length ?? 0) * 2;
-  }, 0);
+  if (
+    args.runtimeDescriptor.capsuleArtifactHash !== args.expectedCapsuleArtifactHash
+  ) {
+    throw new Error('Widget Capsule artifact hash metadata mismatch.');
+  }
   return Object.freeze({
     digestSha256,
-    envelope,
-    outputs: Object.freeze(outputs),
-    retainedByteSize,
+    bytes: Uint8Array.from(artifactBytes),
+    capsuleArtifactHash: args.expectedCapsuleArtifactHash,
+    runtimeDescriptor: args.runtimeDescriptor,
+    retainedByteSize: artifactBytes.byteLength,
   });
 }

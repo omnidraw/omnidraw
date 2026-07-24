@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
-import { ZWidgetManifestV2 } from '../packages/widget-contract/src';
+import { ZWidgetManifestV3 } from '../packages/widget-contract/src';
 import { fnArtifactBlobRelativePath } from '../packages/widget-contract/src/local/fn.artifact-path';
 
 const REPO_ROOT = resolve(import.meta.dir, '..');
@@ -158,23 +158,31 @@ describe('M5 immutable widget artifact boundaries', () => {
 
   test('strictly rejects fields outside the current widget manifest', () => {
     const validManifest = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       name: 'Clock',
       slug: 'clock',
-      ui: { entry: 'src/ui.tsx' },
+      ui: {
+        runtime: 'capsule',
+        entry: 'src/ui.ts',
+        target: {
+          runtimeAbi: 'quickjs-release-sync-v1',
+          domProfile: 'dom-core-v2',
+          featureProfiles: [],
+        },
+      },
     } as const;
-    expect(ZWidgetManifestV2.safeParse(validManifest).success).toBe(true);
-    expect(ZWidgetManifestV2.safeParse({
+    expect(ZWidgetManifestV3.safeParse(validManifest).success).toBe(true);
+    expect(ZWidgetManifestV3.safeParse({
       ...validManifest,
       residentRuntime: {
         entry: 'src/runtime.ts',
       },
     }).success).toBe(false);
-    expect(ZWidgetManifestV2.safeParse({
-      schemaVersion: 1,
+    expect(ZWidgetManifestV3.safeParse({
+      schemaVersion: 2,
       name: 'Old widget',
       slug: 'old-widget',
-      runtime: { entry: 'src/runtime.ts' },
+      ui: { entry: 'src/ui.ts' },
     }).success).toBe(false);
   });
 

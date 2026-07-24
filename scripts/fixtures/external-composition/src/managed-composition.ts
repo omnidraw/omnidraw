@@ -20,7 +20,9 @@ import type {
   TTenantContext,
 } from '@vibecanvas/tenant-core'
 import type {
+  IWidgetCapsuleHostConfigurationReader,
   IWidgetArtifactStore,
+  TWidgetCapsuleHostConfiguration,
   TWidgetArtifactDescriptor,
 } from '@vibecanvas/widget-contract'
 
@@ -31,6 +33,8 @@ declare module '@vibecanvas/runtime' {
     managedIdentity: TManagedService<IIdentityProvider>
     managedPlacement: TManagedService<IPlacementDirectory>
     managedArtifacts: TManagedService<IWidgetArtifactStore>
+    managedWidgetCapsuleHostConfiguration:
+      TManagedService<IWidgetCapsuleHostConfigurationReader>
     managedDispatcher: TManagedService<IFunctionDispatcher>
     managedExecutor: TManagedService<IFunctionExecutor>
     managedResources: TManagedService<IResourceGateway>
@@ -53,6 +57,7 @@ const MANAGED_SERVICE_NAMES = [
   'managedIdentity',
   'managedPlacement',
   'managedArtifacts',
+  'managedWidgetCapsuleHostConfiguration',
   'managedDispatcher',
   'managedExecutor',
   'managedResources',
@@ -202,6 +207,63 @@ export function createManagedCompositionFixture() {
     },
   }
 
+  const widgetCapsuleHostConfigurationValue: TWidgetCapsuleHostConfiguration =
+    Object.freeze({
+      generation: 'd'.repeat(64),
+      targetBase: Object.freeze({
+        runtimeAbi: 'quickjs-release-sync-v1',
+        domProfile: 'dom-core-v2',
+      }),
+      allowedFeatureProfiles: Object.freeze([]),
+      budgetCeiling: Object.freeze({
+        cpuMs: 100,
+        memoryBytes: 16 * 1024 * 1024,
+        domNodes: 1_000,
+        handles: 2_000,
+        messageBytes: 64 * 1024,
+        streamBytes: 64 * 1024,
+        assetBytes: 2 * 1024 * 1024,
+        networkBytes: 0,
+        gpuBytes: 0,
+        lifecycleBytes: 64 * 1024,
+      }),
+      budgetDefaults: Object.freeze({
+        cpuMs: 50,
+        memoryBytes: 8 * 1024 * 1024,
+        domNodes: 500,
+        handles: 1_000,
+        messageBytes: 32 * 1024,
+        streamBytes: 32 * 1024,
+        assetBytes: 0,
+        networkBytes: 0,
+        gpuBytes: 0,
+        lifecycleBytes: 32 * 1024,
+      }),
+      previewSigningKeyId: 'managed-preview-v1',
+      releaseSigningKeyId: 'managed-release-v1',
+      signingKeys: Object.freeze([
+        Object.freeze({
+          keyId: 'managed-preview-v1',
+          algorithm: 'Ed25519',
+          format: 'raw',
+          publicKeyBase64: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        }),
+        Object.freeze({
+          keyId: 'managed-release-v1',
+          algorithm: 'Ed25519',
+          format: 'raw',
+          publicKeyBase64: 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=',
+        }),
+      ]),
+    })
+  const widgetCapsuleHostConfiguration:
+    TManagedService<IWidgetCapsuleHostConfigurationReader> = {
+      name: 'managed-widget-capsule-host-configuration',
+      async read() {
+        return widgetCapsuleHostConfigurationValue
+      },
+    }
+
   const dispatcher: TManagedService<IFunctionDispatcher> = {
     name: 'managed-dispatcher',
     async start() {
@@ -277,6 +339,11 @@ export function createManagedCompositionFixture() {
   services.provide('managedIdentity', 10, identity)
   services.provide('managedPlacement', 20, placement)
   services.provide('managedArtifacts', 30, artifacts)
+  services.provide(
+    'managedWidgetCapsuleHostConfiguration',
+    35,
+    widgetCapsuleHostConfiguration,
+  )
   services.provide('managedDispatcher', 40, dispatcher)
   services.provide('managedExecutor', 50, executor)
   services.provide('managedResources', 60, resources)
@@ -308,6 +375,7 @@ export function createManagedCompositionFixture() {
       identity,
       placement,
       artifacts,
+      widgetCapsuleHostConfiguration,
       dispatcher,
       executor,
       resources,

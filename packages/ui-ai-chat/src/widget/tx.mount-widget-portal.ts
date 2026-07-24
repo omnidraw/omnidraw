@@ -2,6 +2,7 @@ import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.ty
 import type { TWidgetError } from "@vibecanvas/service-db/model";
 import type {
   IWidgetConfig,
+  TWidgetRenderArgs,
   TWidgetRenderCleanup,
   TWidgetTitleBarPortal,
 } from "./interface";
@@ -21,6 +22,7 @@ type TArgs = Readonly<{
   resizeBoundary?: {
     enabled: boolean;
   };
+  capsuleLifecycle?: TWidgetRenderArgs["capsuleLifecycle"];
 }>;
 
 function cleanupRender(cleanup: TWidgetRenderCleanup | void): void {
@@ -139,6 +141,9 @@ export function txMountWidgetPortal(
       root: content,
       element: args.element,
       ...(args.titleBar === undefined ? {} : { titleBar: args.titleBar }),
+      ...(args.capsuleLifecycle === undefined
+        ? {}
+        : { capsuleLifecycle: args.capsuleLifecycle }),
     });
     if (args.config?.renderDom === undefined) {
       const status = portal.document.createElement("div");

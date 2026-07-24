@@ -5,15 +5,23 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import {
-  fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
-import type { TWidgetArtifactDescriptor, TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import type { TWidgetArtifactDescriptor } from '@vibecanvas/widget-contract';
 import { AgentAuthoringStoreTurso } from '../AgentAuthoringStoreTurso';
 import { DEFAULT_OSS_ACCOUNT_ID, DEFAULT_OSS_ORGANIZATION_ID } from '../CONSTANTS';
 import { DbServiceTurso } from '../DbServiceTurso/DbServiceTurso';
 import { WidgetControlStoreTurso } from '../WidgetControlStoreTurso';
+import {
+  WIDGET_CAPSULE_ARTIFACT_HASH,
+  WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_CAPABILITY_DIGEST,
+  WIDGET_CAPSULE_CHANNEL_DIGEST,
+  WIDGET_CAPSULE_RUNTIME_JSON,
+  widgetManifestV3Json,
+} from './widget-capsule-fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const digest = (value: number) => value.toString(16).padStart(64, '0');
@@ -92,15 +100,31 @@ async function insertPublishedRevision(
     INSERT INTO widget_definition_revisions (
       org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
       server_artifact_id, server_artifact_kind, manifest_json,
-      contract_digest_sha256, created_at_ms
-    ) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, '{}', ?, ?)
+      contract_digest_sha256, created_at_ms, ui_runtime_json,
+      capsule_artifact_hash, capability_contract_digest_sha256,
+      channel_contract_digest_sha256, capsule_build_identity_json,
+      build_policy_id, server_runtime_abi, contract_format_version
+    ) VALUES (
+      ?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, NULL, 3
+    )
   `)).run(
     TENANT.orgId,
     args.revisionId,
     args.definitionId,
     args.uiArtifactId,
+    widgetManifestV3Json({
+      name: `Seeded ${args.ordinal}`,
+      slug: `seeded-${args.ordinal}`,
+    }),
     digest(args.ordinal + 1_000),
     args.ordinal,
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
   );
   await (await service.db.prepare(`
     INSERT INTO widget_revision_sources (

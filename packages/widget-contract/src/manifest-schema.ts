@@ -1,5 +1,5 @@
 /**
- * @file Strict runtime schema for the current widget manifest contract.
+ * @file Strict runtime schemas for the Capsule-native widget manifest contract.
  */
 
 import { z } from 'zod';
@@ -8,12 +8,28 @@ import {
   fnNormalizeWidgetManifest,
   fnNormalizeWidgetRelativePath,
 } from './core/fn.manifest';
-import type { TWidgetManifestV2 } from './types';
+import type {
+  TWidgetCapsuleBudgetRequest,
+  TWidgetCapsuleBudgets,
+  TWidgetCapsuleCapabilityRequest,
+  TWidgetCapsuleChannelContract,
+  TWidgetCapsuleHash,
+  TWidgetCapsuleParkability,
+  TWidgetCapsuleSchemaReference,
+  TWidgetCapsuleTarget,
+  TWidgetManifestV3,
+} from './types';
 
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,199}$/;
 const NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9._-]{0,127}$/;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RUNTIME_ABI_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,99}$/;
+const TARGET_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,99}$/;
+const CAPSULE_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const CAPSULE_CAPABILITY_ID_PATTERN =
+  /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*)+$/;
+const CAPSULE_OPERATION_PATTERN = /^[a-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/;
+const CAPSULE_VERSION_RANGE_PATTERN =
+  /^(?:\*|[\^~]?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$/;
 const BUILD_ENTRY_PATTERN = /\.(?:[cm]?[jt]sx?)$/;
 
 const ZWidgetRelativePath = z.string().superRefine((value, context) => {
@@ -29,6 +45,108 @@ const ZWidgetBuildEntryPath = ZWidgetRelativePath.refine(
   (value) => BUILD_ENTRY_PATTERN.test(value),
   'Widget build entries must use a JavaScript or TypeScript extension',
 );
+
+const ZCapsuleTargetId = z.string().min(1).max(100).regex(TARGET_ID_PATTERN);
+const ZCapsuleHash = z.string().regex(CAPSULE_HASH_PATTERN)
+  .transform((value): TWidgetCapsuleHash => value as TWidgetCapsuleHash);
+const ZCapsuleIntegerBudget = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+
+export const ZWidgetCapsuleTarget: z.ZodType<TWidgetCapsuleTarget> = z.object({
+  runtimeAbi: ZCapsuleTargetId,
+  domProfile: ZCapsuleTargetId,
+  featureProfiles: z.array(ZCapsuleTargetId).max(64).superRefine((profiles, context) => {
+    const seen = new Set<string>();
+    profiles.forEach((profile, index) => {
+      if (seen.has(profile)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate Capsule feature profile: ${profile}`,
+          path: [index],
+        });
+      }
+      seen.add(profile);
+    });
+  }),
+}).strict().transform((target) => ({
+  runtimeAbi: target.runtimeAbi,
+  domProfile: target.domProfile,
+  featureProfiles: [...target.featureProfiles].sort(),
+}));
+
+const ZWidgetCapsuleBudgetsShape = z.object({
+  cpuMs: z.number().finite().min(0),
+  memoryBytes: ZCapsuleIntegerBudget,
+  domNodes: ZCapsuleIntegerBudget,
+  handles: ZCapsuleIntegerBudget,
+  messageBytes: ZCapsuleIntegerBudget,
+  streamBytes: ZCapsuleIntegerBudget,
+  assetBytes: ZCapsuleIntegerBudget,
+  networkBytes: ZCapsuleIntegerBudget,
+  gpuBytes: ZCapsuleIntegerBudget,
+  lifecycleBytes: ZCapsuleIntegerBudget,
+}).strict();
+
+export const ZWidgetCapsuleBudgets: z.ZodType<TWidgetCapsuleBudgets> =
+  ZWidgetCapsuleBudgetsShape;
+
+export const ZWidgetCapsuleBudgetRequest: z.ZodType<TWidgetCapsuleBudgetRequest> =
+  ZWidgetCapsuleBudgetsShape.partial().strict();
+
+export const ZWidgetCapsuleSchemaReference: z.ZodType<TWidgetCapsuleSchemaReference> = z.object({
+  format: z.literal('capsule-schema-v1'),
+  hash: ZCapsuleHash,
+}).strict();
+
+export const ZWidgetCapsuleCapabilityRequest: z.ZodType<TWidgetCapsuleCapabilityRequest> = z.object({
+  id: z.string().max(255).regex(CAPSULE_CAPABILITY_ID_PATTERN),
+  versionRange: z.string().max(64).regex(CAPSULE_VERSION_RANGE_PATTERN),
+  contractHash: ZCapsuleHash,
+  required: z.boolean(),
+  operations: z.array(
+    z.string().max(128).regex(CAPSULE_OPERATION_PATTERN),
+  ).max(256).superRefine((operations, context) => {
+    const seen = new Set<string>();
+    operations.forEach((operation, index) => {
+      if (seen.has(operation)) {
+        context.addIssue({
+          code: 'custom',
+          message: `Duplicate Capsule capability operation: ${operation}`,
+          path: [index],
+        });
+      }
+      seen.add(operation);
+    });
+  }),
+}).strict();
+
+export const ZWidgetCapsuleChannelContract: z.ZodType<TWidgetCapsuleChannelContract> = z.object({
+  format: z.literal('capsule-guest-channels-v1'),
+  lifecycle: z.literal(true).optional(),
+  props: ZWidgetCapsuleSchemaReference.optional(),
+  theme: ZWidgetCapsuleSchemaReference.optional(),
+  output: ZWidgetCapsuleSchemaReference.optional(),
+  store: z.object({
+    schema: ZWidgetCapsuleSchemaReference,
+    maxEntries: z.number().int().min(1).max(1_024),
+  }).strict().optional(),
+}).strict().superRefine((channels, context) => {
+  if (
+    channels.lifecycle !== true
+    && channels.props === undefined
+    && channels.theme === undefined
+    && channels.output === undefined
+    && channels.store === undefined
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'A Capsule channel contract must declare at least one channel',
+    });
+  }
+});
+
+export const ZWidgetCapsuleParkability: z.ZodType<TWidgetCapsuleParkability> = z.object({
+  parkable: z.literal(false),
+}).strict();
 
 const ZResourceOperationParameterDeclaration = z.object({
   type: z.enum(['string', 'number', 'boolean', 'bigint', 'bytes', 'json']),
@@ -75,17 +193,27 @@ const ZWidgetResourceRequirement = z.object({
   }
 });
 
-const ZWidgetManifestV2Shape = z.object({
-  schemaVersion: z.literal(2),
+const ZWidgetManifestV3Shape = z.object({
+  schemaVersion: z.literal(3),
   name: z.string().trim().min(1).max(200),
   slug: z.string().min(1).max(100).regex(SLUG_PATTERN),
   description: z.string().trim().min(1).max(2_000).optional(),
   ui: z.object({
+    runtime: z.literal('capsule'),
     entry: ZWidgetBuildEntryPath,
+    target: ZWidgetCapsuleTarget,
+    budgets: ZWidgetCapsuleBudgetRequest.optional(),
+    state: z.object({
+      collaborative: z.boolean(),
+      localStore: z.enum(['none', 'ephemeral']),
+    }).strict().optional(),
+    parkability: z.object({
+      enabled: z.literal(false),
+    }).strict().optional(),
   }).strict(),
   server: z.object({
     entry: ZWidgetBuildEntryPath,
-    runtimeAbi: z.string().min(1).max(100).regex(RUNTIME_ABI_PATTERN),
+    runtimeAbi: z.string().min(1).max(100).regex(TARGET_ID_PATTERN),
   }).strict().optional(),
   resources: z.array(ZWidgetResourceRequirement).max(64).superRefine((resources, context) => {
     const slots = new Set<string>();
@@ -102,5 +230,5 @@ const ZWidgetManifestV2Shape = z.object({
   }).optional(),
 }).strict();
 
-export const ZWidgetManifestV2: z.ZodType<TWidgetManifestV2> = ZWidgetManifestV2Shape
+export const ZWidgetManifestV3: z.ZodType<TWidgetManifestV3> = ZWidgetManifestV3Shape
   .transform((manifest) => fnNormalizeWidgetManifest(manifest));

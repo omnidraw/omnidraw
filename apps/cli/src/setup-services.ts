@@ -10,6 +10,10 @@ import {
   LocalFunctionDispatcher,
   ResourceWriteCapabilityAuthority,
 } from '@vibecanvas/function-runtime/local';
+import {
+  VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
+  type TVibecanvasCapsuleBuild,
+} from '@vibecanvas/capsule-vibecanvas/builder';
 import { AutomergeService } from '@vibecanvas/service-automerge/AutomergeService';
 import { WidgetInstanceMetadataProjector } from '@vibecanvas/service-automerge/projection';
 import { AgentService } from '@vibecanvas/service-agent';
@@ -35,6 +39,19 @@ import type { ICliConfig } from './config';
 import { OSS_FAKE_SESSION } from './plugins/auth/CONSTANTS';
 import { fnCreateOssTenantContext } from './plugins/auth/fn.oss-tenant-context';
 import { FunctionResourceGatewayFactory } from './services/FunctionResourceGatewayFactory';
+import { fnWidgetCapsuleBuilderIdentity } from './services/fn.widget-capsule-builder-identity';
+import {
+  WIDGET_CAPSULE_BUILD_IDENTITY,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+} from './services/CONSTANTS';
+import { WidgetCapsuleSigningKeyStore } from './services/WidgetCapsuleSigningKeyStore';
+import {
+  createWidgetCapsuleOciBuild,
+  resolveWidgetCapsuleOciImageId,
+} from './services/WidgetCapsuleOciBuild';
+import {
+  WidgetCapsuleHostConfigurationService,
+} from './services/WidgetCapsuleHostConfigurationService';
 import {
   FunctionService,
 } from './services/FunctionService';
@@ -67,10 +84,11 @@ const FUNCTION_BOOTSTRAP_TENANT = fnCreateOssTenantContext({
   requestId: 'function-runtime-placement-bootstrap',
 });
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@arrow-js/core',
+  '@omnidraw/capsule/guest',
   '@vibecanvas/sdk/server',
   '@vibecanvas/sdk/function-client',
   '@vibecanvas/sdk/widget',
+  ...VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
   'zod',
 ]);
 
@@ -96,6 +114,7 @@ export interface IRuntimeServices {
   humanResourceSecret: IHumanResourceSecretService;
   widgetOwner: WidgetServicePool;
   widget: TWidgetServiceCapability;
+  widgetCapsuleHostConfiguration: WidgetCapsuleHostConfigurationService;
   widgetRuntimeLoadAdmission: WidgetRuntimeLoadAdmission;
   functionOwner: FunctionServicePool;
   functionInvocation: IFunctionInvocationApiCapability;
@@ -107,6 +126,7 @@ declare module '@vibecanvas/runtime' {
 }
 
 type TSetupServicesOptions = Readonly<{
+  capsuleBuild?: TVibecanvasCapsuleBuild;
   createFunctionSandboxDriver?: (args: Readonly<{
     compiledExecutable: boolean;
     tempRoot: string;
@@ -132,7 +152,17 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
     cacheDir: config.home.cacheRoot,
     silentMigrations: process.env.VIBECANVAS_SILENT_DB_MIGRATIONS === '1',
   });
-  const widgetBuilderIdentity = `vibecanvas-widget-bun/${Bun.version}`;
+  const widgetCapsuleOciImageId = resolveWidgetCapsuleOciImageId();
+  const widgetBuilderIdentity = fnWidgetCapsuleBuilderIdentity({
+    imageId: widgetCapsuleOciImageId,
+    serverBunVersion: Bun.version,
+  });
+  const widgetCapsuleSigningKeys = new WidgetCapsuleSigningKeyStore(
+    join(config.home.homeDir, 'keys'),
+  );
+  const widgetCapsuleHostConfiguration = new WidgetCapsuleHostConfigurationService(
+    widgetCapsuleSigningKeys,
+  );
   const functionStore = new FunctionControlStoreTurso(dbService.db);
   const functionSchemas = new JsonSchemaFunctionValidator();
   const functionWriteCapabilities = new ResourceWriteCapabilityAuthority({
@@ -158,6 +188,14 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         artifactsRoot,
         buildTempRoot,
         builderIdentity: widgetBuilderIdentity,
+        capsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
+        buildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
+        capsuleBuild: options.capsuleBuild ?? createWidgetCapsuleOciBuild({
+          scratchDirectory: buildTempRoot,
+        }),
+        loadCapsuleSigningKeys: (purpose) => (
+          widgetCapsuleSigningKeys.loadSigningKeys(purpose)
+        ),
         artifactReadSecret: randomBytes(32),
         artifactReadMaximumTtlMs: WIDGET_ARTIFACT_READ_MAXIMUM_TTL_MS,
         compiledExecutable: config.compiled,
@@ -326,6 +364,8 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
         createId: randomUUID,
         nowMs: Date.now,
         widgetBuilderIdentity,
+        widgetCapsuleBuildIdentity: WIDGET_CAPSULE_BUILD_IDENTITY,
+        widgetBuildPolicyId: WIDGET_CAPSULE_BUILD_POLICY_ID,
         listPublishedWidgetPlacements: () => (
           widgetCapability.listPublishedPlacements(tenant)
         ),
@@ -378,6 +418,11 @@ function setupServices(config: ICliConfig, options: TSetupServicesOptions = {}) 
   services.provide('automerge', 50, automergeService);
   services.provide('widgetOwner', 55, widgetService);
   services.provide('widget', 56, widgetCapability);
+  services.provide(
+    'widgetCapsuleHostConfiguration',
+    57,
+    widgetCapsuleHostConfiguration,
+  );
   services.provide('widgetRuntimeLoadAdmission', 57, widgetRuntimeLoadAdmission);
   services.provide('resourceOwner', 58, resourceService);
   services.provide('resource', 59, resourceCapabilities.resource);

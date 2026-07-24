@@ -1,7 +1,17 @@
+import { createHash } from 'node:crypto';
 import { ORPCError } from '@orpc/contract';
 import type { TCanvasDoc } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import { zWidgetInstanceData } from '@vibecanvas/service-automerge/types/canvas-doc.zod';
-import type { TWidgetRevisionDescriptor } from '@vibecanvas/widget-contract';
+import {
+  ZWidgetServerFunctionDescriptors,
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnProjectWidgetBrowserFunctionDescriptors,
+  fnValidateWidgetServerFunctionDescriptors,
+  fnWidgetServerFunctionCapabilityRequestMatches,
+  type TWidgetBrowserFunctionDescriptor,
+  type TWidgetRevisionDescriptor,
+} from '@vibecanvas/widget-contract';
 import {
   WIDGET_RUNTIME_LOAD_CANCELLED_ERROR_CODE,
   WIDGET_RUNTIME_LOAD_CAPACITY_ERROR_CODE,
@@ -69,7 +79,51 @@ function revisionArtifactBindingMatches(
 ): boolean {
   return left.uiArtifact.id === right.uiArtifact.id
     && left.uiArtifact.digestSha256 === right.uiArtifact.digestSha256
-    && left.uiArtifact.byteSize === right.uiArtifact.byteSize;
+    && left.uiArtifact.byteSize === right.uiArtifact.byteSize
+    && left.contractDigestSha256 === right.contractDigestSha256
+    && left.uiRuntime.capsuleArtifactHash === right.uiRuntime.capsuleArtifactHash
+    && JSON.stringify(left.uiRuntime) === JSON.stringify(right.uiRuntime);
+}
+
+function runtimeBrowserFunctionContract(
+  revision: TWidgetRevisionDescriptor,
+): Readonly<{
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[];
+  digestSha256: string;
+}> {
+  const serverDescriptors = ZWidgetServerFunctionDescriptors.parse(
+    revision.functionDescriptors,
+  );
+  const validation = fnValidateWidgetServerFunctionDescriptors(
+    revision.manifest,
+    serverDescriptors,
+  );
+  if (!validation.valid) {
+    throw new Error('Persisted widget server-function descriptors are invalid.');
+  }
+
+  const persistedDigestSha256 = createHash('sha256')
+    .update(fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors))
+    .digest('hex');
+  if (persistedDigestSha256 !== revision.functionDescriptorsDigestSha256) {
+    throw new Error('Persisted widget server-function descriptor digest mismatch.');
+  }
+
+  const descriptors = fnProjectWidgetBrowserFunctionDescriptors(serverDescriptors);
+  const digestSha256 = createHash('sha256')
+    .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(descriptors))
+    .digest('hex');
+  if (!fnWidgetServerFunctionCapabilityRequestMatches(
+    digestSha256,
+    descriptors,
+    revision.uiRuntime.capabilityRequests,
+  )) {
+    throw new Error('Widget server-function descriptors do not match the signed runtime request.');
+  }
+  return Object.freeze({
+    descriptors,
+    digestSha256,
+  });
 }
 
 function runtimeTargetNotFound(): ORPCError<'NOT_FOUND', unknown> {
@@ -199,6 +253,10 @@ const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({ input, c
           if (!bytes || bytes.byteLength !== revision.uiArtifact.byteSize) {
             throw runtimeTargetNotFound();
           }
+          const exactByteDigest = createHash('sha256').update(bytes).digest('hex');
+          if (exactByteDigest !== revision.uiArtifact.digestSha256) {
+            throw runtimeTargetNotFound();
+          }
 
           const finalRevision = await runtimeLoadStep(lifetimeSignal, () => (
             context.widget.getRevision(context.tenant, input.revisionId)
@@ -236,6 +294,8 @@ const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({ input, c
           if (!widgetElementMatchesTarget(finalElement, input)) throw runtimeTargetNotFound();
           assertRuntimeLoadActive(lifetimeSignal);
 
+          const browserFunctionContract = runtimeBrowserFunctionContract(finalRevision);
+          const { server: _server, ...browserManifest } = finalRevision.manifest;
           return {
             identity: {
               canvasId: input.canvasId,
@@ -244,23 +304,15 @@ const apiWidgetRuntimeLoad = baseWidgetOs.runtime.load.handler(async ({ input, c
               definitionId: input.definitionId,
               revisionId: input.revisionId,
             },
-            manifest: {
-              schemaVersion: 2 as const,
-              name: finalRevision.manifest.name,
-              slug: finalRevision.manifest.slug,
-              ...(finalRevision.manifest.description === undefined
-                ? {}
-                : { description: finalRevision.manifest.description }),
-              ui: { entry: finalRevision.manifest.ui.entry },
-            },
+            manifest: browserManifest,
             artifact: {
               digestSha256: finalRevision.uiArtifact.digestSha256,
+              byteSize: finalRevision.uiArtifact.byteSize,
               bytesBase64: Buffer.from(bytes).toString('base64'),
             },
-            functionDescriptors: finalRevision.functionDescriptors.map((descriptor) => {
-              const { modulePath: _serverModulePath, ...browserDescriptor } = descriptor;
-              return browserDescriptor;
-            }),
+            runtimeDescriptor: finalRevision.uiRuntime,
+            functionDescriptors: [...browserFunctionContract.descriptors],
+            browserFunctionDescriptorsDigestSha256: browserFunctionContract.digestSha256,
           };
         } finally {
           if (canvasUrl !== null) {

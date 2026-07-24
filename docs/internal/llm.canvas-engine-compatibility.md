@@ -8,7 +8,7 @@ Inspected engine: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
 
 Engine commit audited: `bb911a1f9ad812314ebd4eee31d553bb85bfaea5`
 
-Filesystem artifact: `artifacts/omnidraw-cangine-0.1.0.tgz`
+Filesystem artifact: `artifacts/omnidraw-cangine-0.1.2.tgz`
 
 Artifact SHA-256: `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`
 
@@ -221,7 +221,7 @@ The dependency is deliberately pinned to:
 
 ```json
 "@omnidraw/cangine":
-  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.0.tgz"
+  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.2.tgz"
 ```
 
 The bytes match the engine-produced artifact manifest and packed-consumer

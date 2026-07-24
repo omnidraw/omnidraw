@@ -13,6 +13,10 @@ const widgetInstanceData = {
   revisionId: uuid(2),
   instanceId: uuid(3),
   stateDocumentId: "automerge:4P9w8qKtNvbzkexUwmBRETTKQgLf",
+  uiProps: {
+    title: "Capsule widget",
+    filters: { active: true, tags: ["one", "two"] },
+  },
   w: 480,
   h: 320,
   expanded: true,
@@ -30,6 +34,67 @@ describe("widget-instance canvas data", () => {
     void stateDocumentId;
 
     expect(zWidgetInstanceData.parse(withoutStateDocument)).toEqual(withoutStateDocument);
+  });
+
+  test("accepts bounded JSON UI props and rejects values outside the channel contract", () => {
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: { greeting: "hello", count: 2, nested: { enabled: true } },
+    }).success).toBe(true);
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: { message: "x".repeat(1_025) },
+    }).success).toBe(false);
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: Object.fromEntries(
+        Array.from({ length: 65 }, (_, index) => [`key-${index}`, index]),
+      ),
+    }).success).toBe(false);
+  });
+
+  test("matches the Capsule props channel depth boundary", () => {
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: {
+        level1: {
+          level2: {
+            level3: {
+              level4: { value: "accepted" },
+            },
+          },
+        },
+      },
+    }).success).toBe(true);
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: {
+        level1: {
+          level2: {
+            level3: {
+              level4: {
+                level5: { value: "rejected" },
+              },
+            },
+          },
+        },
+      },
+    }).success).toBe(false);
+  });
+
+  test("rejects strings and keys Capsule cannot normalize as structured values", () => {
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: { message: "\ud800" },
+    }).success).toBe(false);
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: { ["invalid-\udfff"]: "value" },
+    }).success).toBe(false);
+    expect(zWidgetInstanceData.safeParse({
+      ...widgetInstanceData,
+      uiProps: { emoji: "well-formed \ud83d\ude80" },
+    }).success).toBe(true);
   });
 
   test.each([

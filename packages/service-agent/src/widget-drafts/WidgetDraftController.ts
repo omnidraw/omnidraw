@@ -5,12 +5,21 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   ZWidgetBrowserFunctionDescriptors,
-  ZWidgetManifestV2,
-  type TWidgetManifestV2,
+  ZWidgetCapsuleRuntimeDescriptor,
+  ZWidgetManifestV3,
+  ZWidgetServerFunctionDescriptors,
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnProjectWidgetBrowserFunctionDescriptors,
+  fnValidateWidgetServerFunctionDescriptors,
+  fnWidgetServerFunctionCapabilityRequestMatches,
+  type TWidgetCapsuleBuildIdentity,
+  type TWidgetCapsuleRuntimeDescriptor,
+  type TWidgetManifestV3,
   type TWidgetPreviewBuildResult,
+  type TWidgetRevisionDescriptor,
   type TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
-import { fnDecodeWidgetUiArtifactEnvelope } from '@vibecanvas/widget-contract/browser';
 import type { ITenantEventPublisherService } from '@vibecanvas/service-event-publisher/IEventPublisherService';
 import { txValidateWidgetFiles } from '../core/tx.validate-widget-files';
 import type { TValidationResult } from '../core/types';
@@ -50,6 +59,8 @@ export type TWidgetDraftControllerConfig = Readonly<{
   createId: () => string;
   nowMs: () => number;
   builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
 }>;
 
 function controllerError(code: string, message: string): Error & { code: string } {
@@ -408,6 +419,8 @@ export class WidgetDraftController {
                 snapshot: captured.snapshot,
                 manifest: manifest.manifest,
                 builderIdentity: this.#config.builderIdentity,
+                capsuleBuildIdentity: this.#config.capsuleBuildIdentity,
+                buildPolicyId: this.#config.buildPolicyId,
               });
               return { status: 'committed' as const, result };
             },
@@ -491,6 +504,7 @@ export class WidgetDraftController {
         }
 
         let publishedRevisionId: string;
+        let publishedUiRuntime: TWidgetCapsuleRuntimeDescriptor;
         try {
           const fenced = await this.#config.workspace.withDraftRevisionFence(
             draft.name,
@@ -527,15 +541,17 @@ export class WidgetDraftController {
                 manifest: manifest.manifest,
                 bindings,
                 builderIdentity: this.#config.builderIdentity,
+                capsuleBuildIdentity: this.#config.capsuleBuildIdentity,
+                buildPolicyId: this.#config.buildPolicyId,
                 nowMs: this.#now(),
               });
               if (result.status === 'conflict') {
-                const idempotentRevisionId = await this.#idempotentPublishedRevisionId(
+                const idempotentRevision = await this.#idempotentPublishedRevision(
                   draft,
                   currentRevision,
                   result.currentActiveRevisionId,
                 );
-                if (!idempotentRevisionId) {
+                if (!idempotentRevision) {
                   return {
                     status: 'failed' as const,
                     result: this.#publishFailure(
@@ -546,13 +562,22 @@ export class WidgetDraftController {
                     ),
                   };
                 }
-                return { status: 'committed' as const, publishedRevisionId: idempotentRevisionId };
+                return {
+                  status: 'committed' as const,
+                  publishedRevisionId: idempotentRevision.id,
+                  uiRuntime: idempotentRevision.uiRuntime,
+                };
               }
-              return { status: 'committed' as const, publishedRevisionId: result.revision.id };
+              return {
+                status: 'committed' as const,
+                publishedRevisionId: result.revision.id,
+                uiRuntime: result.revision.uiRuntime,
+              };
             },
           );
           if (fenced.status === 'failed') return fenced.result;
           publishedRevisionId = fenced.publishedRevisionId;
+          publishedUiRuntime = fenced.uiRuntime;
         } catch (error) {
           const message = errorMessage(error);
           if (errorCode(error) === 'WIDGET_DRAFT_REVISION_CHANGED') {
@@ -596,6 +621,7 @@ export class WidgetDraftController {
           revision: currentRevision,
           publishedRevisionId,
           manifest: manifest.manifest,
+          uiRuntime: publishedUiRuntime,
         };
       });
     });
@@ -826,16 +852,53 @@ export class WidgetDraftController {
       if (createHash('sha256').update(bytes).digest('hex') !== uiArtifact.digestSha256) {
         throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact integrity verification failed.');
       }
-      const envelope = fnDecodeWidgetUiArtifactEnvelope(
-        new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      if (uiArtifact.builderIdentity !== preview.builderIdentity) {
+        throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact identity is inconsistent.');
+      }
+      const runtimeDescriptor = ZWidgetCapsuleRuntimeDescriptor.parse(
+        uiArtifact.runtimeDescriptor,
       );
+      const serverDescriptors = ZWidgetServerFunctionDescriptors.parse(
+        preview.functionDescriptors,
+      );
+      const descriptorValidation = fnValidateWidgetServerFunctionDescriptors(
+        preview.manifest,
+        serverDescriptors,
+      );
+      if (!descriptorValidation.valid) {
+        throw controllerError(
+          'WIDGET_PREVIEW_ARTIFACT_INVALID',
+          'Preview server-function descriptors are invalid.',
+        );
+      }
+      const persistedFunctionDigestSha256 = createHash('sha256')
+        .update(fnCanonicalizeWidgetServerFunctionDescriptors(serverDescriptors))
+        .digest('hex');
       if (
-        envelope.sourceDigestSha256 !== preview.draftRevisionSha256
-        || envelope.builderIdentity !== preview.builderIdentity
-      ) throw controllerError('WIDGET_PREVIEW_ARTIFACT_INVALID', 'Preview UI artifact identity is inconsistent.');
+        persistedFunctionDigestSha256
+        !== preview.functionDescriptorsDigestSha256
+      ) {
+        throw controllerError(
+          'WIDGET_PREVIEW_ARTIFACT_INVALID',
+          'Preview server-function descriptor integrity verification failed.',
+        );
+      }
       const browserDescriptors = ZWidgetBrowserFunctionDescriptors.parse(
-        preview.functionDescriptors.map(({ modulePath: _modulePath, ...descriptor }) => descriptor),
+        fnProjectWidgetBrowserFunctionDescriptors(serverDescriptors),
       );
+      const browserFunctionDescriptorsDigestSha256 = createHash('sha256')
+        .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(browserDescriptors))
+        .digest('hex');
+      if (!fnWidgetServerFunctionCapabilityRequestMatches(
+        browserFunctionDescriptorsDigestSha256,
+        browserDescriptors,
+        runtimeDescriptor.capabilityRequests,
+      )) {
+        throw controllerError(
+          'WIDGET_PREVIEW_ARTIFACT_INVALID',
+          'Preview server-function descriptors do not match the signed runtime request.',
+        );
+      }
       const ready: TWidgetPreviewReady = {
         ready: true,
         draftId: preview.draftId,
@@ -847,10 +910,12 @@ export class WidgetDraftController {
           digestSha256: uiArtifact.digestSha256,
           byteSize: bytes.byteLength,
           bytesBase64: Buffer.from(bytes).toString('base64'),
+          runtimeDescriptor,
         },
         contract: {
           digestSha256: preview.contractDigestSha256,
           functions: browserDescriptors,
+          browserFunctionDescriptorsDigestSha256,
         },
         diagnostics: [],
       };
@@ -993,11 +1058,11 @@ export class WidgetDraftController {
     }
   }
 
-  async #idempotentPublishedRevisionId(
+  async #idempotentPublishedRevision(
     draft: TAgentAuthoringDraftDescriptor,
     sourceDigestSha256: string,
     currentActiveRevisionId: string | null,
-  ): Promise<string | null> {
+  ): Promise<TWidgetRevisionDescriptor | null> {
     if (!currentActiveRevisionId) return null;
     const [active, source] = await Promise.all([
       this.#config.widgets.getActiveRevision(this.#config.tenant, draft.definitionId),
@@ -1008,7 +1073,7 @@ export class WidgetDraftController {
       && source?.revisionId === currentActiveRevisionId
       && source.definitionId === draft.definitionId
       && source.sourceDigestSha256 === sourceDigestSha256
-      ? currentActiveRevisionId
+      ? active
       : null;
   }
 
@@ -1096,9 +1161,9 @@ export class WidgetDraftController {
 
   async #readManifest(
     root: string,
-  ): Promise<{ ok: true; manifest: TWidgetManifestV2 } | { ok: false; message: string }> {
+  ): Promise<{ ok: true; manifest: TWidgetManifestV3 } | { ok: false; message: string }> {
     try {
-      const parsed = ZWidgetManifestV2.safeParse(
+      const parsed = ZWidgetManifestV3.safeParse(
         JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8')),
       );
       if (!parsed.success) {

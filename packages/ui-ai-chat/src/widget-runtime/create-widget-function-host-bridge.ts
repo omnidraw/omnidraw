@@ -47,6 +47,7 @@ const MIN_POLL_INTERVAL_MS = 10;
 const MAX_FUNCTION_DESCRIPTORS = 128;
 const RPC_WATCHDOG_SLICE_MS = 250;
 const RPC_WATCHDOG_TICK = Symbol('widget-function-rpc-watchdog-tick');
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~:+-]{1,200}$/;
 
 function errorCode(error: unknown): string | null {
   if (error === null || typeof error !== 'object' || !('code' in error)) return null;
@@ -251,6 +252,7 @@ export function createWidgetFunctionHostBridge(
 
   const runInvocation = <TOutput>(
     operation: (signal: AbortSignal) => Promise<TOutput>,
+    externalSignal?: AbortSignal,
   ): Promise<TOutput> => new Promise<TOutput>((resolve, reject) => {
     if (pendingInvocations.size >= MAX_IN_FLIGHT_INVOCATIONS) {
       reject(new Error(
@@ -261,15 +263,25 @@ export function createWidgetFunctionHostBridge(
 
     let settled = false;
     const abortController = new AbortController();
-    const record: TPendingInvocation = Object.freeze({
+    let record: TPendingInvocation;
+    const onExternalAbort = () => record.cancel(
+      new Error('Widget function invocation was cancelled.'),
+    );
+    record = Object.freeze({
       cancel(error) {
         if (settled) return;
         settled = true;
         abortController.abort();
+        externalSignal?.removeEventListener('abort', onExternalAbort);
         pendingInvocations.delete(record);
         reject(error);
       },
     });
+    if (externalSignal?.aborted === true) {
+      record.cancel(new Error('Widget function invocation was cancelled.'));
+      return;
+    }
+    externalSignal?.addEventListener('abort', onExternalAbort, { once: true });
     pendingInvocations.add(record);
 
     void operation(abortController.signal).then(
@@ -277,6 +289,7 @@ export function createWidgetFunctionHostBridge(
         if (settled) return;
         settled = true;
         abortController.abort();
+        externalSignal?.removeEventListener('abort', onExternalAbort);
         pendingInvocations.delete(record);
         resolve(value);
       },
@@ -284,6 +297,7 @@ export function createWidgetFunctionHostBridge(
         if (settled) return;
         settled = true;
         abortController.abort();
+        externalSignal?.removeEventListener('abort', onExternalAbort);
         pendingInvocations.delete(record);
         reject(error);
       },
@@ -292,12 +306,15 @@ export function createWidgetFunctionHostBridge(
 
   return Object.freeze({
     identity: Object.freeze({ ...args.identity }),
-    createIdempotencyKey: args.createIdempotencyKey,
     async invoke<TOutput = unknown>(request: TWidgetServerFunctionClientRequest): Promise<TOutput> {
       assertActive();
       const timeoutMs = functionTimeouts.get(request.functionName);
       if (timeoutMs === undefined) {
         throw new Error(`Widget function "${request.functionName}" is not declared by this revision.`);
+      }
+      const idempotencyKey = args.createIdempotencyKey();
+      if (!IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey)) {
+        throw new Error('Widget function host returned an invalid idempotency key.');
       }
       return runInvocation<TOutput>(async (signal) => {
         const startedAtMs = readNowMs();
@@ -321,7 +338,7 @@ export function createWidgetFunctionHostBridge(
           widgetInstanceId: args.identity.widgetInstanceId,
           functionName: request.functionName,
           input: request.input,
-          idempotencyKey: request.idempotencyKey,
+          idempotencyKey,
         });
         let delayMs = INITIAL_PROJECTION_LAG_BACKOFF_MS;
         for (let attempt = 1; attempt <= MAX_PROJECTION_LAG_ATTEMPTS; attempt += 1) {
@@ -347,7 +364,7 @@ export function createWidgetFunctionHostBridge(
           delayMs = Math.min(MAX_PROJECTION_LAG_BACKOFF_MS, delayMs * 2);
         }
         throw new Error('Widget function invocation failed.');
-      });
+      }, request.signal);
     },
     dispose() {
       if (disposed) return;

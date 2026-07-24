@@ -1,5 +1,5 @@
 import type { TResourceEffect } from '@vibecanvas/resource-runtime';
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { TWidgetResourceSelection } from './types';
 
 export type TResourceBindingPlan = {
@@ -8,7 +8,7 @@ export type TResourceBindingPlan = {
   scope: ('read' | 'write')[];
 };
 
-type TResourceManifest = TWidgetManifestV2;
+type TResourceManifest = TWidgetManifestV3;
 type TNormalizedRequirement = {
   slot: string;
   kind: TWidgetResourceSelection['kind'];

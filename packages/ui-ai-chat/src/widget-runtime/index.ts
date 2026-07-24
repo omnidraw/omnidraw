@@ -1,7 +1,14 @@
 export { createWidgetFunctionHostBridge } from './create-widget-function-host-bridge';
 export { createWidgetCollaborativeStatePort } from './create-widget-collaborative-state-port';
-export { WIDGET_SANDBOX_TRUSTED_HOST_LAYOUT_CSS } from './CONSTANTS';
+export { createWidgetCapsuleCapabilityBindings } from './create-widget-capsule-capability-bindings';
+export { CapsuleWidgetHostCoordinator } from './CapsuleWidgetHostCoordinator';
 export { fxDecodeAndVerifyUiArtifact } from './fx.decode-and-verify-ui-artifact';
+export {
+  fnAssertWidgetCapsuleRuntimeCompatible,
+  fnResolveWidgetCapsuleCapabilities,
+  fnValidateWidgetCapsuleHostCatalog,
+  fnValidateWidgetCapsuleMountCatalog,
+} from './fn.capsule-catalog';
 export {
   fnNormalizeWidgetCollaborativeJson,
   fnReadWidgetCollaborativeStateDocument,
@@ -15,6 +22,10 @@ export {
   fnWidgetRuntimeLoadRequest,
 } from './fn.runtime-identity';
 export type * from './interface';
-export { widgetUiArtifactMount } from './mount-widget-ui-artifact';
+export type {
+  TWidgetCapsuleHostConfiguration,
+  TWidgetCapsulePublicSigningKey,
+} from '@vibecanvas/widget-contract';
+export { createWidgetUiArtifactMountPort } from './mount-widget-ui-artifact';
 export { WidgetUiArtifactCache } from './WidgetUiArtifactCache';
 export { WidgetUiRuntime } from './WidgetUiRuntime';

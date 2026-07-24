@@ -2,8 +2,29 @@
 
 Prefer the smallest complete browser implementation. UI-only widgets start no backend process and should remain fully useful while offline when their feature allows it.
 
-For shared published-instance state, use the collaborative-state exports from `@vibecanvas/sdk/widget`. Preview supplies an ephemeral in-browser state session; publication supplies the host collaboration session. Treat the state as JSON, make bounded changes, and handle an initially empty document.
+For shared published-instance state, use the build-wired collaborative-state
+client from `@vibecanvas/sdk/widget`. Preview supplies an ephemeral in-browser
+state session; publication supplies the instance-bound host collaboration
+session. Treat state as bounded JSON and handle the first atomic snapshot. Do
+not invent or expose a capability selector.
 
-For optional server work, import a direct named function from a `server/*.server.ts` module and call its generated proxy from an event handler. Show pending, success, and safe error states. Do not expose invocation ids, artifact ids, resource ids, internal paths, or server diagnostics in normal UI.
+```ts
+import { createCollaborativeStateClient } from "@vibecanvas/sdk/widget";
+
+const shared = createCollaborativeStateClient<{ count: number }>();
+const unsubscribe = shared.subscribe((value) => {
+  output.textContent = String(value.count);
+});
+await shared.change({ count: 1 });
+
+// Call unsubscribe() and shared.dispose() when the widget tears down.
+```
+
+For optional server work, import a direct named function from a
+`server/*.server.ts` module and call its trusted generated proxy from an event
+handler. Show pending, success, and safe error states; Preview intentionally
+has no real server-function authority. Do not expose invocation ids, artifact
+ids, capability selectors, resource ids, internal paths, or server diagnostics
+in normal UI.
 
 Use collaborative state for persistent browser state and short server functions for backend work. Never create a long-lived backend loop.

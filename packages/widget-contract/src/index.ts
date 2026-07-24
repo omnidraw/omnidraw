@@ -10,7 +10,17 @@ export {
   ZWidgetServerFunctionDescriptor,
   ZWidgetServerFunctionDescriptors,
 } from './function-descriptor-schema';
-export { ZWidgetManifestV2 } from './manifest-schema';
+export {
+  ZWidgetCapsuleBudgetRequest,
+  ZWidgetCapsuleBudgets,
+  ZWidgetCapsuleCapabilityRequest,
+  ZWidgetCapsuleChannelContract,
+  ZWidgetCapsuleParkability,
+  ZWidgetCapsuleSchemaReference,
+  ZWidgetCapsuleTarget,
+  ZWidgetManifestV3,
+} from './manifest-schema';
+export { ZWidgetCapsuleRuntimeDescriptor } from './runtime-descriptor-schema';
 export {
   LUCIDE_STATIC_ICON_KEYS,
   LUCIDE_STATIC_ICON_KEY_SET,
@@ -32,10 +42,26 @@ export type {
   TWidgetBuildIntegrityValidation,
 } from './core/fn.build-integrity';
 export {
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
+  fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
+  fnNormalizeWidgetCapsuleBudgetRequest,
+  fnNormalizeWidgetCapsuleBudgets,
+  fnNormalizeWidgetCapsuleCapabilityRequests,
+  fnNormalizeWidgetCapsuleChannelContract,
+  fnNormalizeWidgetCapsuleRuntimeDescriptor,
+  fnNormalizeWidgetCapsuleTarget,
+} from './core/fn.capsule';
+export {
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
   fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnNormalizeWidgetBrowserFunctionDescriptor,
+  fnNormalizeWidgetBrowserFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
   fnNormalizeWidgetServerFunctionDescriptors,
+  fnProjectWidgetBrowserFunctionDescriptors,
   fnValidateWidgetServerFunctionDescriptors,
+  fnWidgetServerFunctionCapabilityRequestMatches,
 } from './core/fn.function-descriptor';
 export { fnGenerateWidgetServerFunctionClientModule } from './core/fn.server-function-client-module';
 export {

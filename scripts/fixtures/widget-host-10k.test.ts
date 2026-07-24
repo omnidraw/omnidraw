@@ -25,6 +25,49 @@ const DEFINITION_ID = uuid(10_002);
 const REVISION_ID = uuid(10_003);
 const UI_ARTIFACT_ID = uuid(10_004);
 const rejectUnexpectedStateDocument = () => false;
+const CAPSULE_ARTIFACT_HASH = `sha256:${'a'.repeat(64)}`;
+const CAPSULE_MANIFEST = {
+  schemaVersion: 3,
+  name: 'Widget Host 10k',
+  slug: 'widget-host-10k',
+  ui: {
+    runtime: 'capsule',
+    entry: 'ui.ts',
+    target: {
+      runtimeAbi: 'quickjs-release-sync-v1',
+      domProfile: 'dom-core-v2',
+      featureProfiles: [],
+    },
+  },
+} as const;
+const CAPSULE_UI_RUNTIME = {
+  format: 'vibecanvas.capsule-runtime.v1',
+  capsuleArtifactHash: CAPSULE_ARTIFACT_HASH,
+  target: CAPSULE_MANIFEST.ui.target,
+  budgets: {
+    cpuMs: 100,
+    memoryBytes: 16 * 1024 * 1024,
+    domNodes: 1_000,
+    handles: 2_000,
+    messageBytes: 64 * 1024,
+    streamBytes: 64 * 1024,
+    assetBytes: 0,
+    networkBytes: 0,
+    gpuBytes: 0,
+    lifecycleBytes: 64 * 1024,
+  },
+  capabilityRequests: [],
+  channels: null,
+  parkability: { parkable: false },
+  signatureKeyIds: ['vibecanvas-release-v1'],
+} as const;
+const CAPSULE_BUILD_IDENTITY = {
+  packageName: '@omnidraw/capsule',
+  packageVersion: '0.9.1',
+  packageDigest: `sha256:${'b'.repeat(64)}`,
+  buildApiVersion: '0.1.0',
+  runtimeBuildDigest: `sha256:${'c'.repeat(64)}`,
+} as const;
 
 const TENANT = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -83,15 +126,26 @@ async function seedWidgetRevision(service: DbServiceTurso): Promise<void> {
     INSERT INTO widget_definition_revisions (
       org_id, id, definition_id, revision_number, ui_artifact_id,
       ui_artifact_kind, server_artifact_id, server_artifact_kind,
-      manifest_json, contract_digest_sha256, created_at_ms
-    ) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 1)
+      manifest_json, contract_digest_sha256, created_at_ms,
+      ui_runtime_json, capsule_artifact_hash,
+      capability_contract_digest_sha256, channel_contract_digest_sha256,
+      capsule_build_identity_json, build_policy_id, server_runtime_abi
+    ) VALUES (
+      ?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 1,
+      ?, ?, ?, ?, ?, 'vibecanvas-capsule-widget-v1', NULL
+    )
   `)).run(
     TENANT.orgId,
     REVISION_ID,
     DEFINITION_ID,
     UI_ARTIFACT_ID,
-    JSON.stringify({ schemaVersion: 2, name: 'Widget Host 10k', slug: 'widget-host-10k', ui: { entry: 'ui.ts' } }),
-    'b'.repeat(64),
+    JSON.stringify(CAPSULE_MANIFEST),
+    'd'.repeat(64),
+    JSON.stringify(CAPSULE_UI_RUNTIME),
+    CAPSULE_ARTIFACT_HASH,
+    'e'.repeat(64),
+    'f'.repeat(64),
+    JSON.stringify(CAPSULE_BUILD_IDENTITY),
   );
   await (await service.db.prepare(`
     UPDATE widget_definitions

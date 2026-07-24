@@ -1,0 +1,24 @@
+{
+  "name": "@vibecanvas/capsule-browser-acceptance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "bun scripts/generate.ts",
+    "build": "bun run generate && vite build",
+    "dev": "bun run generate && vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "bun run build && playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibecanvas/capsule-vibecanvas": "workspace:*",
+    "@vibecanvas/sdk": "workspace:*",
+    "@vibecanvas/ui-ai-chat": "workspace:*",
+    "@vibecanvas/widget-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "typescript": "catalog:",
+    "vite": "^8.1.4"
+  }
+}

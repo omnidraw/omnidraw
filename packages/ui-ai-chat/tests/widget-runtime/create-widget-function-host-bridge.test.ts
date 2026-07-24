@@ -78,7 +78,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: { values: [1, 1] },
-      idempotencyKey: 'key-a',
     })).resolves.toEqual({ count: 2 });
     expect(bridge.identity).toEqual(identity);
     expect(invoke).toHaveBeenCalledWith(
@@ -121,7 +120,7 @@ describe('widget function host bridge', () => {
       pollIntervalMs: 10,
     });
 
-    await expect(bridge.invoke({ functionName: 'count', input: {}, idempotencyKey: 'key-a' }))
+    await expect(bridge.invoke({ functionName: 'count', input: {} }))
       .rejects.toThrow('identity mismatch');
 
     const wrongInstance = createWidgetFunctionHostBridge({
@@ -142,7 +141,7 @@ describe('widget function host bridge', () => {
       wait: async () => undefined,
       isTargetCurrent: () => true,
     });
-    await expect(wrongInstance.invoke({ functionName: 'count', input: {}, idempotencyKey: 'key-a' }))
+    await expect(wrongInstance.invoke({ functionName: 'count', input: {} }))
       .rejects.toThrow('identity mismatch');
   });
 
@@ -168,7 +167,6 @@ describe('widget function host bridge', () => {
     await expect(wrongFunction.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('identity mismatch');
 
     const get = vi.fn(async () => [undefined, invocation('succeeded', {
@@ -193,7 +191,6 @@ describe('widget function host bridge', () => {
     await expect(wrongInvocation.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('identity mismatch');
     expect(get).toHaveBeenCalledWith(
       { invocationId: 'invocation-a' },
@@ -233,7 +230,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('polling bound');
     expect(nowMs).toBe(30);
     expect(wait.mock.calls.map(([timeoutMs]) => timeoutMs)).toEqual([10, 20]);
@@ -266,7 +262,7 @@ describe('widget function host bridge', () => {
       pollIntervalMs: 10,
     });
 
-    const pending = bridge.invoke({ functionName: 'count', input: {}, idempotencyKey: 'key-a' });
+    const pending = bridge.invoke({ functionName: 'count', input: {} });
     await vi.waitFor(() => expect(wait).toHaveBeenCalledOnce());
     bridge.dispose();
 
@@ -295,11 +291,10 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: { count: 1 },
-      idempotencyKey: 'stable-key',
     })).resolves.toEqual({ count: 2 });
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke.mock.calls[1]?.[0]).toBe(invoke.mock.calls[0]?.[0]);
-    expect(invoke.mock.calls[0]?.[0].idempotencyKey).toBe('stable-key');
+    expect(invoke.mock.calls[0]?.[0].idempotencyKey).toBe('key-a');
     expect(wait).toHaveBeenCalledWith(25, expect.any(AbortSignal));
   });
 
@@ -324,7 +319,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'stable-key',
     })).rejects.toThrow('no longer current');
     expect(invoke).toHaveBeenCalledOnce();
   });
@@ -350,7 +344,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('invocation failed');
     expect(invoke).toHaveBeenCalledOnce();
     expect(wait).not.toHaveBeenCalled();
@@ -385,7 +378,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).resolves.toEqual({ count: 2 });
     expect(nowMs).toBe(32_000);
     expect(wait.mock.calls.map(([timeoutMs]) => timeoutMs)).toEqual([
@@ -426,7 +418,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('polling bound');
     expect(nowMs).toBe(32_000);
     expect(get).toHaveBeenCalledTimes(7);
@@ -449,7 +440,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'notPublished',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('not declared by this revision');
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -480,7 +470,6 @@ describe('widget function host bridge', () => {
     await expect(bridge.invoke({
       functionName: 'count',
       input: {},
-      idempotencyKey: 'key-a',
     })).rejects.toThrow('polling bound');
     expect(invoke).toHaveBeenCalledOnce();
     expect(nowMs).toBe(1);
@@ -503,14 +492,12 @@ describe('widget function host bridge', () => {
     const pending = Array.from({ length: 8 }, (_, index) => bridge.invoke({
       functionName: 'count',
       input: { index },
-      idempotencyKey: `key-${index}`,
     }));
 
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(8));
     await expect(bridge.invoke({
       functionName: 'count',
       input: { index: 8 },
-      idempotencyKey: 'key-8',
     })).rejects.toThrow('at most 8 in-flight calls');
     expect(invoke).toHaveBeenCalledTimes(8);
 

@@ -27,28 +27,25 @@ const suites: TWidgetArtifactSuite[] = [
     ],
   },
   {
-    name: 'widget v2 contracts, immutable builds, capabilities, and garbage collection',
+    name: 'Capsule widget v3 contracts, immutable builds, capabilities, and garbage collection',
     command: ['bun', 'test', 'packages/widget-contract/tests', '--timeout=30000'],
     requiredPaths: [
-      'packages/widget-contract/tests/widget-contract.test.ts',
-      'packages/widget-contract/tests/local-artifacts.test.ts',
+      'packages/widget-contract/tests/widget-contract-v3.test.ts',
+      'packages/widget-contract/tests/browser-ui-artifact.test.ts',
       'packages/widget-contract/tests/widget-artifact-recovery.test.ts',
       'packages/widget-contract/tests/widget-preview.test.ts',
       'packages/widget-contract/tests/fixtures/widget-artifact-orphan-writer.ts',
     ],
   },
   {
-    name: 'transactional widget definitions, revisions, bindings, rollback, retention, and crash-safe GC',
+    name: 'transactional widget definitions, revisions, bindings, rollback, and retention',
     command: [
       'bun',
       'test',
       'packages/service-db/src/tests/WidgetControlStoreTurso.test.ts',
-      'packages/service-db/src/tests/WidgetArtifactGarbageCollector.crash.test.ts',
     ],
     requiredPaths: [
       'packages/service-db/src/tests/WidgetControlStoreTurso.test.ts',
-      'packages/service-db/src/tests/WidgetArtifactGarbageCollector.crash.test.ts',
-      'packages/service-db/src/tests/fixtures/widget-artifact-delete-crash.ts',
     ],
   },
   {

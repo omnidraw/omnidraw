@@ -19,7 +19,9 @@ const databases: Database[] = [];
 
 async function openBaseline() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-schema-"));
-  const db = await connect(path.join(root, "main.db"), { experimental: ["custom_types"] });
+  const db = await connect(path.join(root, "main.db"), {
+    experimental: ["custom_types"] as never,
+  });
   temporaryRoots.push(root);
   databases.push(db);
   await db.exec("PRAGMA foreign_keys = ON");

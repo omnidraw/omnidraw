@@ -47,7 +47,6 @@ export type TWidgetBrowserPort = {
   setInterval(callback: () => void, timeout: number): unknown;
   clearInterval(timer: unknown): void;
   decodeBase64(value: string): Uint8Array;
-  decodeUtf8(value: Uint8Array): string;
   digestSha256(value: Uint8Array): Promise<string>;
 };
 

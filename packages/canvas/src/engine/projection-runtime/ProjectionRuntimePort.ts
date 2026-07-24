@@ -231,6 +231,7 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
     this.#adapter = args.adapter;
     this.#portalContent = new PortalContentBridge({
       mountContent: args.mountContent,
+      readViewportSize: args.readViewportSize,
       ...(args.onUpdateError === undefined
         ? {}
         : { onUpdateError: args.onUpdateError }),

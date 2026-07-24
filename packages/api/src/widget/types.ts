@@ -3,9 +3,16 @@ import type { TTenantContext } from '@vibecanvas/tenant-core';
 import type {
   IWidgetArtifactReader,
   IWidgetBrowserUiArtifactReadCapabilityIssuer,
+  IWidgetCapsuleHostConfigurationReader,
   IWidgetRevisionReader,
+  TWidgetCapsuleHostConfiguration,
+  TWidgetCapsuleHostTargetBase,
+  TWidgetCapsulePublicSigningKey,
 } from '@vibecanvas/widget-contract';
 import type { TCanvasDatabaseCapability } from '../interface';
+
+type TWidgetCapsuleHostConfigurationCapability =
+  IWidgetCapsuleHostConfigurationReader;
 
 type TWidgetRuntimeApiCapability = IWidgetRevisionReader
   & IWidgetArtifactReader
@@ -36,11 +43,16 @@ type TWidgetApiContext = Readonly<{
   db: TCanvasDatabaseCapability;
   tenant: TTenantContext;
   widget: TWidgetRuntimeApiCapability;
+  widgetCapsuleHostConfiguration: TWidgetCapsuleHostConfigurationCapability;
   widgetRuntimeLoadAdmission: TWidgetRuntimeLoadAdmissionCapability;
 }>;
 
 export type {
   TWidgetApiContext,
+  TWidgetCapsuleHostConfiguration,
+  TWidgetCapsuleHostConfigurationCapability,
+  TWidgetCapsuleHostTargetBase,
+  TWidgetCapsulePublicSigningKey,
   TWidgetRuntimeApiCapability,
   TWidgetRuntimeAutomergeCapability,
   TWidgetRuntimeLoadAdmissionCapability,

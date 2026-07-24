@@ -11,6 +11,7 @@ describe('external private-style managed composition', () => {
       'managed-identity',
       'managed-placement',
       'managed-artifacts',
+      'managed-widget-capsule-host-configuration',
       'managed-dispatcher',
       'managed-executor',
       'managed-resources',
@@ -21,6 +22,23 @@ describe('external private-style managed composition', () => {
       .toMatchObject({ orgId: MANAGED_TENANT.orgId, accountId: MANAGED_TENANT.accountId })
     expect(await fixture.services.placement.resolvePlacement(MANAGED_TENANT.orgId))
       .toEqual({ orgId: MANAGED_TENANT.orgId, cellId: MANAGED_TENANT.cellId, epoch: 7 })
+    expect(await fixture.services.widgetCapsuleHostConfiguration.read()).toMatchObject({
+      generation: 'd'.repeat(64),
+      previewSigningKeyId: 'managed-preview-v1',
+      releaseSigningKeyId: 'managed-release-v1',
+      signingKeys: [
+        {
+          keyId: 'managed-preview-v1',
+          algorithm: 'Ed25519',
+          format: 'raw',
+        },
+        {
+          keyId: 'managed-release-v1',
+          algorithm: 'Ed25519',
+          format: 'raw',
+        },
+      ],
+    })
 
     await fixture.runtime.shutdown()
   })

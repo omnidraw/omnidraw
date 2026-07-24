@@ -6,8 +6,8 @@
 
 import path from "path"
 import net from "node:net"
-import { Database as SqliteDatabase } from "bun:sqlite"
-import { chmod, mkdir, mkdtemp, readdir, rm } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
 import { Glob } from "bun"
@@ -65,6 +65,19 @@ type TManagedDatabaseSnapshot = Readonly<{
   memberships: readonly Record<string, unknown>[]
   integrityCheck: "ok"
   foreignKeyCheck: "not-verified" | "ok"
+}>
+
+type TForeignKeyListRow = Readonly<{
+  id: number
+  seq: number
+  table: string
+  from: string
+  to: string | null
+}>
+
+type TTableInfoRow = Readonly<{
+  name: string
+  pk: number
 }>
 
 const EXPECTED_MIGRATION_NAMES = Object.freeze([
@@ -292,7 +305,99 @@ async function expectedMigrationLedger(): Promise<readonly TMigrationIdentity[]>
   }))
 }
 
-async function assertManagedSchema(databasePath: string): Promise<TManagedDatabaseSnapshot> {
+function quoteSqlIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`
+}
+
+async function resolveForeignKeyParentColumns(
+  database: Database,
+  parentTable: string,
+  foreignKeyRows: readonly TForeignKeyListRow[],
+): Promise<readonly string[]> {
+  const explicitColumns = foreignKeyRows.map((row) => row.to)
+  if (explicitColumns.every((column): column is string => column !== null && column.length > 0)) {
+    return explicitColumns
+  }
+  if (explicitColumns.some((column) => column !== null && column.length > 0)) {
+    throw new Error(`Compiled control database has a partially implicit foreign key to ${parentTable}`)
+  }
+
+  const parentTableInfo = await (
+    await database.prepare(`PRAGMA table_info(${quoteSqlIdentifier(parentTable)})`)
+  ).all() as TTableInfoRow[]
+  const primaryKeyColumns = parentTableInfo
+    .filter((row) => Number(row.pk) > 0)
+    .sort((left, right) => Number(left.pk) - Number(right.pk))
+    .map((row) => String(row.name))
+  if (primaryKeyColumns.length !== foreignKeyRows.length) {
+    throw new Error(
+      `Compiled control database cannot resolve implicit foreign key to ${parentTable}`,
+    )
+  }
+  return primaryKeyColumns
+}
+
+async function assertNativeForeignKeyIntegrity(database: Database): Promise<void> {
+  const tables = await (await database.prepare(`
+    SELECT name
+    FROM sqlite_schema
+    WHERE type = 'table'
+      AND name NOT GLOB 'sqlite_*'
+    ORDER BY name
+  `)).all() as Array<{ name: string }>
+
+  for (const table of tables) {
+    const childTable = String(table.name)
+    const foreignKeyRows = await (
+      await database.prepare(`PRAGMA foreign_key_list(${quoteSqlIdentifier(childTable)})`)
+    ).all() as TForeignKeyListRow[]
+    const foreignKeys = Map.groupBy(
+      foreignKeyRows,
+      (row) => Number(row.id),
+    )
+
+    for (const rows of foreignKeys.values()) {
+      const orderedRows = rows.toSorted((left, right) => Number(left.seq) - Number(right.seq))
+      const parentTable = String(orderedRows[0]?.table ?? "")
+      if (parentTable.length === 0) {
+        throw new Error(`Compiled control database has a foreign key without a parent table on ${childTable}`)
+      }
+      const childColumns = orderedRows.map((row) => String(row.from))
+      const parentColumns = await resolveForeignKeyParentColumns(database, parentTable, orderedRows)
+      const childNotNull = childColumns
+        .map((column) => `child.${quoteSqlIdentifier(column)} IS NOT NULL`)
+        .join(" AND ")
+      const parentMatch = parentColumns
+        .map((column, index) => (
+          `parent.${quoteSqlIdentifier(column)} = child.${quoteSqlIdentifier(childColumns[index])}`
+        ))
+        .join(" AND ")
+      const violation = await (
+        await database.prepare(`
+          SELECT 1 AS violation
+          FROM ${quoteSqlIdentifier(childTable)} AS child
+          WHERE ${childNotNull}
+            AND NOT EXISTS (
+              SELECT 1
+              FROM ${quoteSqlIdentifier(parentTable)} AS parent
+              WHERE ${parentMatch}
+            )
+          LIMIT 1
+        `)
+      ).get()
+      if (violation !== undefined) {
+        throw new Error(
+          `Compiled control database foreign_key_check failed: ${childTable}(${childColumns.join(", ")}) -> ${parentTable}(${parentColumns.join(", ")})`,
+        )
+      }
+    }
+  }
+}
+
+async function assertManagedSchema(
+  databasePath: string,
+  verifyForeignKeys = false,
+): Promise<TManagedDatabaseSnapshot> {
   const database = new Database(databasePath, {
     // @ts-expect-error multiprocess_wal is ahead of the public experimental feature union.
     experimental: ["custom_types", "triggers", "index_method", "multiprocess_wal"],
@@ -402,6 +507,9 @@ async function assertManagedSchema(databasePath: string): Promise<TManagedDataba
     if (JSON.stringify(integrity) !== JSON.stringify([{ integrity_check: "ok" }])) {
       throw new Error(`Compiled control database integrity_check failed: ${JSON.stringify(integrity)}`)
     }
+    if (verifyForeignKeys) {
+      await assertNativeForeignKeyIntegrity(database)
+    }
     return Object.freeze({
       applicationId,
       userVersion,
@@ -411,7 +519,7 @@ async function assertManagedSchema(databasePath: string): Promise<TManagedDataba
       accounts,
       memberships,
       integrityCheck: "ok",
-      foreignKeyCheck: "not-verified",
+      foreignKeyCheck: verifyForeignKeys ? "ok" : "not-verified",
     })
   } finally {
     await database.close()
@@ -436,21 +544,9 @@ async function assertFileForeignKeyIntegrity(
     }
 
     const verificationPath = path.join(verificationRoot, databaseName)
-    // Turso must open the copied main file and sidecars first so its
-    // multiprocess WAL is replayed before SQLite performs the FK audit.
-    const snapshot = await assertManagedSchema(verificationPath)
-    const verifier = new SqliteDatabase(verificationPath, { readonly: true, strict: true })
-    try {
-      const violations = verifier.query("PRAGMA foreign_key_check").all()
-      if (violations.length !== 0) {
-        throw new Error(
-          `Compiled control database foreign_key_check failed: ${JSON.stringify(violations)}`,
-        )
-      }
-    } finally {
-      verifier.close(false)
-    }
-    return Object.freeze({ ...snapshot, foreignKeyCheck: "ok" })
+    // The native Turso verifier understands the managed domain types and
+    // replays the copied multiprocess WAL before auditing foreign keys.
+    return await assertManagedSchema(verificationPath, true)
   } finally {
     await rm(verificationRoot, { recursive: true, force: true })
   }
@@ -480,26 +576,30 @@ async function assertNativeEncryptionSupport(nativeAddonPath: string): Promise<v
   }
 }
 
-async function createWidgetToolchainFixtures(tempRoot: string): Promise<{ availablePath: string; missingPath: string }> {
-  const availablePath = path.join(tempRoot, "widget-toolchain-available")
-  const missingPath = path.join(tempRoot, "widget-toolchain-missing")
+async function createWidgetOciEngineFixtures(tempRoot: string): Promise<{
+  availableEnginePath: string
+  availableEngineSha256: `sha256:${string}`
+  missingEnginePath: string
+}> {
+  const availablePath = path.join(tempRoot, "widget-oci-engine-available")
+  const missingPath = path.join(tempRoot, "widget-oci-engine-missing")
   await Promise.all([mkdir(availablePath, { recursive: true }), mkdir(missingPath, { recursive: true })])
 
-  const nodePath = path.join(availablePath, "node")
-  const npmPath = path.join(availablePath, "npm")
-  await Promise.all([
-    Bun.write(nodePath, "#!/bin/sh\nprintf 'v22.0.0\\n'\n"),
-    Bun.write(npmPath, "#!/bin/sh\nprintf '10.8.0\\n'\n"),
-  ])
-  await Promise.all([chmod(nodePath, 0o755), chmod(npmPath, 0o755)])
+  const availableEnginePath = path.join(availablePath, "docker")
+  const missingEnginePath = path.join(missingPath, "docker")
+  await Bun.write(availableEnginePath, "#!/bin/sh\nprintf 'Docker version 27.5.1\\n'\n")
+  await chmod(availableEnginePath, 0o755)
+  const availableEngineSha256 =
+    `sha256:${createHash("sha256").update(await readFile(availableEnginePath)).digest("hex")}` as `sha256:${string}`
 
-  return { availablePath, missingPath }
+  return { availableEnginePath, availableEngineSha256, missingEnginePath }
 }
 
 async function assertWidgetPrerequisiteBinaryScenario(args: {
   binaryPath: string
+  enginePath: string
+  engineSha256: `sha256:${string}`
   homePath: string
-  path: string
   port: number
   warningExpected: boolean
   timeoutMs: number
@@ -510,28 +610,42 @@ async function assertWidgetPrerequisiteBinaryScenario(args: {
     stderr: "pipe",
     env: {
       ...process.env,
-      PATH: args.path,
       VIBECANVAS_HOME: args.homePath,
+      VIBECANVAS_CAPSULE_OCI_ENGINE: "docker",
+      VIBECANVAS_CAPSULE_OCI_ENGINE_PATH: args.enginePath,
+      VIBECANVAS_CAPSULE_OCI_ENGINE_SHA256: args.engineSha256,
     },
   })
   const stdoutPromise = new Response(proc.stdout).text()
   const stderrPromise = new Response(proc.stderr).text()
+  let reachabilityError: unknown
 
   try {
     await waitForHttpReachable(`http://127.0.0.1:${args.port}`, args.timeoutMs)
     await Bun.sleep(250)
+  } catch (error) {
+    reachabilityError = error
   } finally {
     proc.kill()
     await proc.exited
   }
 
   const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
+  if (reachabilityError !== undefined) {
+    throw new Error(
+      `Widget prerequisite binary server was unreachable: ${String(reachabilityError)}\nstdout: ${stdout || "<empty>"}\nstderr: ${stderr || "<empty>"}`,
+    )
+  }
   const warningText = "Widget tooling prerequisites unavailable"
   if (!stdout.includes(`Server listening on http://localhost:${args.port}`)) {
     throw new Error(`Widget prerequisite binary server did not finish startup: ${stdout || "<empty>"}`)
   }
   if (args.warningExpected) {
-    for (const expected of [warningText, "Node.js (missing), npm (missing)", "https://nodejs.org/"]) {
+    for (const expected of [
+      warningText,
+      "Docker OCI engine (missing)",
+      "VIBECANVAS_CAPSULE_OCI_ENGINE_PATH",
+    ]) {
       if (!stderr.includes(expected)) {
         throw new Error(`Widget prerequisite binary stderr did not include ${JSON.stringify(expected)}: ${stderr || "<empty>"}`)
       }
@@ -791,7 +905,7 @@ async function main() {
   const compiledHome = path.join(tempRoot, "compiled-home")
   const explicitHome = path.join(tempRoot, "explicit-home")
   const ignoredEnvHome = path.join(tempRoot, "ignored-env-home")
-  const widgetToolchains = await createWidgetToolchainFixtures(tempRoot)
+  const widgetOciEngines = await createWidgetOciEngineFixtures(tempRoot)
 
   console.log(`[test-binary] Using binary: ${binaryPath}`)
   await assertPathExists(expectedNativeAddonPath, "compiled Turso native addon")
@@ -809,23 +923,25 @@ async function main() {
 
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,
-    homePath: path.join(tempRoot, "widget-toolchain-available-home"),
-    path: widgetToolchains.availablePath,
+    enginePath: widgetOciEngines.availableEnginePath,
+    engineSha256: widgetOciEngines.availableEngineSha256,
+    homePath: path.join(tempRoot, "widget-oci-engine-available-home"),
     port: args.port,
     warningExpected: false,
     timeoutMs: args.startupTimeoutMs,
   })
-  console.log("[test-binary] PASS compiled widget prerequisite check with external Node.js/npm")
+  console.log("[test-binary] PASS compiled widget prerequisite check with configured Capsule OCI engine")
 
   await assertWidgetPrerequisiteBinaryScenario({
     binaryPath,
-    homePath: path.join(tempRoot, "widget-toolchain-missing-home"),
-    path: widgetToolchains.missingPath,
+    enginePath: widgetOciEngines.missingEnginePath,
+    engineSha256: `sha256:${"1".repeat(64)}`,
+    homePath: path.join(tempRoot, "widget-oci-engine-missing-home"),
     port: args.port + 1,
     warningExpected: true,
     timeoutMs: args.startupTimeoutMs,
   })
-  console.log("[test-binary] PASS compiled widget prerequisite warning with empty PATH")
+  console.log("[test-binary] PASS compiled widget prerequisite warning with missing Capsule OCI engine")
 
   if (args.widgetPrerequisitesOnly) {
     return

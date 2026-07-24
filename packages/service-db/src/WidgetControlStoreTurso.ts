@@ -4,8 +4,12 @@ import type { Database } from '@tursodatabase/database';
 import type { TResourceRequirement } from '@vibecanvas/resource-runtime';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
-  ZWidgetManifestV2,
+  ZWidgetCapsuleRuntimeDescriptor,
+  ZWidgetManifestV3,
   ZWidgetServerFunctionDescriptors,
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
+  fnCanonicalizeWidgetCapsuleRuntimeDescriptor,
   fnCanonicalizeWidgetContractPayload,
   fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
@@ -26,12 +30,14 @@ import type {
   TWidgetArtifactRetentionReconcileRequest,
   TWidgetArtifactRetentionReconcileResult,
   TWidgetArtifactRetentionRestoreRequest,
+  TWidgetCapsuleBuildIdentity,
+  TWidgetCapsuleRuntimeDescriptor,
   TWidgetDefinitionCreate,
   TWidgetDefinitionArchiveInput,
   TWidgetDefinitionArchiveResult,
   TWidgetDefinitionDescriptor,
   TWidgetDefinitionId,
-  TWidgetManifestV2,
+  TWidgetManifestV3,
   TWidgetPublicationCommitInput,
   TWidgetPublicationCommitResult,
   TWidgetRevisionDescriptor,
@@ -64,6 +70,11 @@ type TValidatedPublicationFunctions = Readonly<{
   canonicalJson: string;
   digestSha256: string;
 }>;
+type TValidatedPublicationRuntime = Readonly<{
+  descriptor: TWidgetCapsuleRuntimeDescriptor;
+  canonicalJson: string;
+  capsuleBuildIdentityJson: string;
+}>;
 
 const CONTROL_STORE_MAX_BATCH = 500;
 
@@ -91,6 +102,49 @@ const DURABLE_ARTIFACT_REFERENCE_SQL = `
 
 function widgetStoreError(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
+}
+
+function canonicalCapsuleBuildIdentity(value: unknown): Readonly<{
+  identity: TWidgetCapsuleBuildIdentity;
+  canonicalJson: string;
+}> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Capsule build identity must be an object.');
+  }
+  const record = value as Record<string, unknown>;
+  const expectedKeys = [
+    'buildApiVersion',
+    'packageDigest',
+    'packageName',
+    'packageVersion',
+    'runtimeBuildDigest',
+  ];
+  if (Object.keys(record).sort().join('\0') !== expectedKeys.join('\0')) {
+    throw new TypeError('Capsule build identity has unexpected fields.');
+  }
+  if (
+    record.packageName !== '@omnidraw/capsule'
+    || typeof record.packageVersion !== 'string'
+    || record.packageVersion.length < 1
+    || record.packageVersion.length > 100
+    || typeof record.buildApiVersion !== 'string'
+    || record.buildApiVersion.length < 1
+    || record.buildApiVersion.length > 100
+    || typeof record.packageDigest !== 'string'
+    || !/^sha256:[0-9a-f]{64}$/.test(record.packageDigest)
+    || typeof record.runtimeBuildDigest !== 'string'
+    || !/^sha256:[0-9a-f]{64}$/.test(record.runtimeBuildDigest)
+  ) {
+    throw new TypeError('Capsule build identity is invalid.');
+  }
+  const identity: TWidgetCapsuleBuildIdentity = {
+    packageName: '@omnidraw/capsule',
+    packageVersion: record.packageVersion,
+    packageDigest: record.packageDigest as TWidgetCapsuleBuildIdentity['packageDigest'],
+    buildApiVersion: record.buildApiVersion,
+    runtimeBuildDigest: record.runtimeBuildDigest as TWidgetCapsuleBuildIdentity['runtimeBuildDigest'],
+  };
+  return { identity, canonicalJson: JSON.stringify(identity) };
 }
 
 /** Turso-backed tenant-qualified immutable widget metadata and retention repository. */
@@ -314,7 +368,13 @@ export class WidgetControlStoreTurso implements
     return this.#runImmediate(tenant, async () => {
       const publicationManifest = this.#validatedPublicationManifest(request);
       const publicationFunctions = this.#validatedPublicationFunctions(request, publicationManifest);
-      this.#assertPublicationContract(request, publicationManifest, publicationFunctions.digestSha256);
+      const publicationRuntime = this.#validatedPublicationRuntime(request, publicationManifest);
+      this.#assertPublicationContract(
+        request,
+        publicationManifest,
+        publicationRuntime.descriptor,
+        publicationFunctions.digestSha256,
+      );
       let definition = await this.getDefinition(tenant, request.revision.definitionId);
       if (!definition) {
         if (request.expectedActiveRevisionId !== null) {
@@ -377,8 +437,14 @@ export class WidgetControlStoreTurso implements
           ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind,
           manifest_json, contract_digest_sha256, created_at_ms,
           function_descriptors_json, function_descriptors_digest_sha256,
+          ui_runtime_json, capsule_artifact_hash,
+          capability_contract_digest_sha256, channel_contract_digest_sha256,
+          capsule_build_identity_json, build_policy_id, server_runtime_abi,
           contract_format_version
-        ) VALUES (?, ?, ?, ?, ?, 'ui', ?, ?, ?, ?, ?, ?, ?, 2)
+        ) VALUES (
+          ?, ?, ?, ?, ?, 'ui', ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, 3
+        )
       `)).run(
         tenant.orgId,
         request.revision.id,
@@ -392,6 +458,13 @@ export class WidgetControlStoreTurso implements
         request.revision.createdAtMs,
         publicationFunctions.canonicalJson,
         publicationFunctions.digestSha256,
+        publicationRuntime.canonicalJson,
+        publicationRuntime.descriptor.capsuleArtifactHash,
+        request.revision.capabilityContractDigestSha256,
+        request.revision.channelContractDigestSha256,
+        publicationRuntime.capsuleBuildIdentityJson,
+        request.revision.buildPolicyId,
+        request.revision.serverRuntimeAbi,
       );
 
       await (await this.database.prepare(`
@@ -891,7 +964,10 @@ export class WidgetControlStoreTurso implements
         server.byte_size AS server_byte_size,
         server.retention_state AS server_retention_state,
         server.retain_until_ms AS server_retain_until_ms,
-        server.created_at_ms AS server_created_at_ms
+        server.created_at_ms AS server_created_at_ms,
+        source.source_digest_sha256 AS stored_source_digest_sha256,
+        source.builder_identity AS stored_builder_identity,
+        source.revision_id AS stored_source_revision_id
       FROM widget_definition_revisions AS revision
       JOIN artifact_references AS ui
         ON ui.org_id = revision.org_id
@@ -901,6 +977,10 @@ export class WidgetControlStoreTurso implements
         ON server.org_id = revision.org_id
        AND server.id = revision.server_artifact_id
        AND server.kind = revision.server_artifact_kind
+      LEFT JOIN widget_revision_sources AS source
+        ON source.org_id = revision.org_id
+       AND source.definition_id = revision.definition_id
+       AND source.revision_id = revision.id
     `;
   }
 
@@ -909,7 +989,11 @@ export class WidgetControlStoreTurso implements
       const revision = fnWidgetControlStoreRevision(row);
       const storedRow = row as Record<string, unknown>;
       const contractFormatVersion = Number(storedRow.contract_format_version);
-      const parsedManifest = ZWidgetManifestV2.safeParse(revision.manifest);
+      if (contractFormatVersion !== 3) {
+        throw new Error('Stored widget contract format is not Capsule v3.');
+      }
+
+      const parsedManifest = ZWidgetManifestV3.safeParse(revision.manifest);
       if (!parsedManifest.success) throw new Error('Stored widget manifest is invalid.');
 
       const canonicalManifestJson = fnCanonicalizeWidgetManifest(parsedManifest.data);
@@ -923,6 +1007,69 @@ export class WidgetControlStoreTurso implements
       };
       if (!fnWidgetRevisionArtifactsMatchManifest(validatedRevision)) {
         throw new Error('Stored widget artifacts do not match the manifest.');
+      }
+
+      const parsedRuntime = ZWidgetCapsuleRuntimeDescriptor.safeParse(revision.uiRuntime);
+      if (!parsedRuntime.success || parsedRuntime.data.signatureKeyIds.length === 0) {
+        throw new Error('Stored Capsule runtime descriptor is invalid.');
+      }
+      const canonicalRuntimeJson = fnCanonicalizeWidgetCapsuleRuntimeDescriptor(
+        parsedRuntime.data,
+      );
+      if (
+        canonicalRuntimeJson !== String(storedRow.ui_runtime_json)
+        || parsedRuntime.data.capsuleArtifactHash !== String(storedRow.capsule_artifact_hash)
+        || JSON.stringify(parsedRuntime.data.target) !== JSON.stringify(parsedManifest.data.ui.target)
+      ) {
+        throw new Error('Stored Capsule runtime descriptor is not canonical.');
+      }
+      const capabilityContractDigest = this.#digest(
+        fnCanonicalizeWidgetCapsuleCapabilityRequests(
+          parsedRuntime.data.capabilityRequests,
+        ),
+      );
+      const channelContractDigest = this.#digest(
+        fnCanonicalizeWidgetCapsuleChannelContract(parsedRuntime.data.channels),
+      );
+      if (
+        capabilityContractDigest !== validatedRevision.capabilityContractDigestSha256
+        || capabilityContractDigest !== String(storedRow.capability_contract_digest_sha256)
+        || channelContractDigest !== validatedRevision.channelContractDigestSha256
+        || channelContractDigest !== String(storedRow.channel_contract_digest_sha256)
+      ) {
+        throw new Error('Stored Capsule capability or channel contract digest is invalid.');
+      }
+
+      const capsuleBuildIdentity = canonicalCapsuleBuildIdentity(
+        validatedRevision.capsuleBuildIdentity,
+      );
+      if (capsuleBuildIdentity.canonicalJson !== String(storedRow.capsule_build_identity_json)) {
+        throw new Error('Stored Capsule build identity is not canonical.');
+      }
+      if (
+        typeof storedRow.build_policy_id !== 'string'
+        || storedRow.build_policy_id.length < 1
+        || storedRow.build_policy_id.length > 200
+        || validatedRevision.buildPolicyId !== storedRow.build_policy_id
+      ) {
+        throw new Error('Stored Capsule build policy identity is invalid.');
+      }
+      const serverRuntimeAbi = parsedManifest.data.server?.runtimeAbi ?? null;
+      if (
+        validatedRevision.serverRuntimeAbi !== serverRuntimeAbi
+        || (storedRow.server_runtime_abi ?? null) !== serverRuntimeAbi
+      ) {
+        throw new Error('Stored server runtime ABI does not match the manifest.');
+      }
+      if (
+        storedRow.stored_source_revision_id !== validatedRevision.id
+        || typeof storedRow.stored_source_digest_sha256 !== 'string'
+        || !/^[0-9a-f]{64}$/.test(storedRow.stored_source_digest_sha256)
+        || typeof storedRow.stored_builder_identity !== 'string'
+        || storedRow.stored_builder_identity.length < 1
+        || storedRow.stored_builder_identity.length > 200
+      ) {
+        throw new Error('Stored widget source contract identity is invalid.');
       }
 
       const parsedDescriptors = ZWidgetServerFunctionDescriptors.safeParse(
@@ -940,44 +1087,43 @@ export class WidgetControlStoreTurso implements
         throw new Error('Stored function descriptor digest is invalid.');
       }
 
-      let expectedContractDigest: string;
-      if (contractFormatVersion === 1) {
-        if (parsedDescriptors.data.length !== 0) {
-          throw new Error('Legacy widget contracts cannot contain function descriptors.');
-        }
-        expectedContractDigest = this.#legacyContractDigest({
-          canonicalManifestJson,
-          uiDigestSha256: validatedRevision.uiArtifact.digestSha256,
-          serverDigestSha256: validatedRevision.serverArtifact?.digestSha256 ?? null,
-          runtimeAbi: parsedManifest.data.server?.runtimeAbi ?? null,
-        });
-      } else if (contractFormatVersion === 2) {
-        const descriptorValidation = fnValidateWidgetServerFunctionDescriptors(
-          parsedManifest.data,
-          parsedDescriptors.data,
-        );
-        if (!descriptorValidation.valid) {
-          throw new Error('Stored function descriptors exceed their manifest ceiling.');
-        }
-        expectedContractDigest = this.#contractDigest({
-          canonicalManifestJson,
-          uiDigestSha256: validatedRevision.uiArtifact.digestSha256,
-          serverDigestSha256: validatedRevision.serverArtifact?.digestSha256 ?? null,
-          runtimeAbi: parsedManifest.data.server?.runtimeAbi ?? null,
-          functionDescriptorsDigestSha256: descriptorsDigest,
-        });
-        await this.#assertStoredFunctionDefinitions(
-          validatedRevision,
-          parsedDescriptors.data,
-          parsedManifest.data.server?.runtimeAbi ?? null,
-        );
-      } else {
-        throw new Error('Stored widget contract format is invalid.');
+      const descriptorValidation = fnValidateWidgetServerFunctionDescriptors(
+        parsedManifest.data,
+        parsedDescriptors.data,
+      );
+      if (!descriptorValidation.valid) {
+        throw new Error('Stored function descriptors exceed their manifest ceiling.');
       }
+      const expectedContractDigest = this.#contractDigest({
+        canonicalManifestJson,
+        uiDigestSha256: validatedRevision.uiArtifact.digestSha256,
+        capsuleArtifactHash: parsedRuntime.data.capsuleArtifactHash,
+        target: parsedRuntime.data.target,
+        budgets: parsedRuntime.data.budgets,
+        capabilityContractDigestSha256: capabilityContractDigest,
+        channelContractDigestSha256: channelContractDigest,
+        signatureKeyIds: parsedRuntime.data.signatureKeyIds,
+        serverDigestSha256: validatedRevision.serverArtifact?.digestSha256 ?? null,
+        serverRuntimeAbi,
+        functionDescriptorsDigestSha256: descriptorsDigest,
+        sourceDigestSha256: storedRow.stored_source_digest_sha256,
+        builderIdentity: storedRow.stored_builder_identity,
+        capsuleBuildIdentity: capsuleBuildIdentity.identity,
+        buildPolicyId: validatedRevision.buildPolicyId,
+      });
+      await this.#assertStoredFunctionDefinitions(
+        validatedRevision,
+        parsedDescriptors.data,
+        serverRuntimeAbi,
+      );
       if (validatedRevision.contractDigestSha256 !== expectedContractDigest) {
         throw new Error('Stored widget contract digest is invalid.');
       }
-      return validatedRevision;
+      return {
+        ...validatedRevision,
+        uiRuntime: parsedRuntime.data,
+        capsuleBuildIdentity: capsuleBuildIdentity.identity,
+      };
     } catch {
       throw widgetStoreError(
         'WIDGET_REVISION_INTEGRITY_FAILED',
@@ -986,12 +1132,12 @@ export class WidgetControlStoreTurso implements
     }
   }
 
-  #validatedPublicationManifest(request: TWidgetPublicationCommitInput): TWidgetManifestV2 {
-    const result = ZWidgetManifestV2.safeParse(request.revision.manifest);
+  #validatedPublicationManifest(request: TWidgetPublicationCommitInput): TWidgetManifestV3 {
+    const result = ZWidgetManifestV3.safeParse(request.revision.manifest);
     if (!result.success) {
       throw widgetStoreError(
         'WIDGET_MANIFEST_INVALID',
-        'Widget publication requires a strict manifest v2 payload.',
+        'Widget publication requires a strict Capsule manifest v3 payload.',
       );
     }
     const canonicalManifestJson = fnCanonicalizeWidgetManifest(result.data);
@@ -1006,7 +1152,7 @@ export class WidgetControlStoreTurso implements
 
   #validatedPublicationFunctions(
     request: TWidgetPublicationCommitInput,
-    manifest: TWidgetManifestV2,
+    manifest: TWidgetManifestV3,
   ): TValidatedPublicationFunctions {
     const parsed = ZWidgetServerFunctionDescriptors.safeParse(
       request.revision.functionDescriptors,
@@ -1033,6 +1179,67 @@ export class WidgetControlStoreTurso implements
       );
     }
     return { descriptors: parsed.data, canonicalJson, digestSha256 };
+  }
+
+  #validatedPublicationRuntime(
+    request: TWidgetPublicationCommitInput,
+    manifest: TWidgetManifestV3,
+  ): TValidatedPublicationRuntime {
+    const parsed = ZWidgetCapsuleRuntimeDescriptor.safeParse(request.revision.uiRuntime);
+    if (!parsed.success || parsed.data.signatureKeyIds.length === 0) {
+      throw widgetStoreError(
+        'WIDGET_CAPSULE_RUNTIME_INVALID',
+        'Widget publication requires signed Capsule runtime metadata.',
+      );
+    }
+    if (
+      JSON.stringify(parsed.data.target) !== JSON.stringify(manifest.ui.target)
+      || request.revision.serverRuntimeAbi !== (manifest.server?.runtimeAbi ?? null)
+    ) {
+      throw widgetStoreError(
+        'WIDGET_CAPSULE_RUNTIME_MISMATCH',
+        'Capsule runtime metadata does not match the widget manifest.',
+      );
+    }
+    const capabilityDigest = this.#digest(
+      fnCanonicalizeWidgetCapsuleCapabilityRequests(parsed.data.capabilityRequests),
+    );
+    const channelDigest = this.#digest(
+      fnCanonicalizeWidgetCapsuleChannelContract(parsed.data.channels),
+    );
+    if (
+      request.revision.capabilityContractDigestSha256 !== capabilityDigest
+      || request.revision.channelContractDigestSha256 !== channelDigest
+    ) {
+      throw widgetStoreError(
+        'WIDGET_REVISION_INTEGRITY_FAILED',
+        'Capsule capability or channel contract digest is invalid.',
+      );
+    }
+    if (
+      typeof request.revision.buildPolicyId !== 'string'
+      || request.revision.buildPolicyId.length < 1
+      || request.revision.buildPolicyId.length > 200
+    ) {
+      throw widgetStoreError(
+        'WIDGET_CAPSULE_BUILD_IDENTITY_INVALID',
+        'Capsule build policy identity is invalid.',
+      );
+    }
+    let buildIdentity: ReturnType<typeof canonicalCapsuleBuildIdentity>;
+    try {
+      buildIdentity = canonicalCapsuleBuildIdentity(request.revision.capsuleBuildIdentity);
+    } catch {
+      throw widgetStoreError(
+        'WIDGET_CAPSULE_BUILD_IDENTITY_INVALID',
+        'Capsule build identity is invalid.',
+      );
+    }
+    return {
+      descriptor: parsed.data,
+      canonicalJson: fnCanonicalizeWidgetCapsuleRuntimeDescriptor(parsed.data),
+      capsuleBuildIdentityJson: buildIdentity.canonicalJson,
+    };
   }
 
   async #assertStoredFunctionDefinitions(
@@ -1080,15 +1287,26 @@ export class WidgetControlStoreTurso implements
 
   #assertPublicationContract(
     request: TWidgetPublicationCommitInput,
-    manifest: TWidgetManifestV2,
+    manifest: TWidgetManifestV3,
+    runtime: TWidgetCapsuleRuntimeDescriptor,
     functionDescriptorsDigestSha256: string,
   ): void {
     const expectedContractDigest = this.#contractDigest({
       canonicalManifestJson: request.revision.canonicalManifestJson,
       uiDigestSha256: request.revision.uiArtifact.digestSha256,
+      capsuleArtifactHash: runtime.capsuleArtifactHash,
+      target: runtime.target,
+      budgets: runtime.budgets,
+      capabilityContractDigestSha256: request.revision.capabilityContractDigestSha256,
+      channelContractDigestSha256: request.revision.channelContractDigestSha256,
+      signatureKeyIds: runtime.signatureKeyIds,
       serverDigestSha256: request.revision.serverArtifact?.digestSha256 ?? null,
-      runtimeAbi: manifest.server?.runtimeAbi ?? null,
+      serverRuntimeAbi: manifest.server?.runtimeAbi ?? null,
       functionDescriptorsDigestSha256,
+      sourceDigestSha256: request.source.sourceDigestSha256,
+      builderIdentity: request.source.builderIdentity,
+      capsuleBuildIdentity: request.revision.capsuleBuildIdentity,
+      buildPolicyId: request.revision.buildPolicyId,
     });
     if (request.revision.contractDigestSha256 !== expectedContractDigest) {
       throw widgetStoreError(
@@ -1102,21 +1320,6 @@ export class WidgetControlStoreTurso implements
     return this.#digest(fnCanonicalizeWidgetContractPayload(args));
   }
 
-  #legacyContractDigest(args: Readonly<{
-    canonicalManifestJson: string;
-    uiDigestSha256: string;
-    serverDigestSha256: string | null;
-    runtimeAbi: string | null;
-  }>): string {
-    return this.#digest(JSON.stringify({
-      format: 'vibecanvas.widget-contract.v1',
-      canonicalManifestJson: args.canonicalManifestJson,
-      uiDigestSha256: args.uiDigestSha256,
-      serverDigestSha256: args.serverDigestSha256,
-      runtimeAbi: args.runtimeAbi,
-    }));
-  }
-
   #digest(value: string): string {
     return createHash('sha256').update(value).digest('hex');
   }
@@ -1125,7 +1328,7 @@ export class WidgetControlStoreTurso implements
     tenant: TTenantContext,
     definition: TWidgetDefinitionDescriptor,
     request: TWidgetPublicationCommitInput,
-    manifest: TWidgetManifestV2,
+    manifest: TWidgetManifestV3,
   ): void {
     const revision = request.revision;
     if (revision.definitionId !== definition.id
@@ -1151,6 +1354,9 @@ export class WidgetControlStoreTurso implements
     if (
       request.source.createdAtMs !== revision.createdAtMs
       || request.source.sourceArtifact.createdAtMs !== request.source.createdAtMs
+      || !/^[0-9a-f]{64}$/.test(request.source.sourceDigestSha256)
+      || request.source.builderIdentity.length < 1
+      || request.source.builderIdentity.length > 200
     ) {
       throw widgetStoreError(
         'WIDGET_REVISION_SOURCE_MISMATCH',
@@ -1183,7 +1389,7 @@ export class WidgetControlStoreTurso implements
   async #validateBindings(
     tenant: TTenantContext,
     request: TWidgetPublicationCommitInput,
-    manifest: TWidgetManifestV2,
+    manifest: TWidgetManifestV3,
   ): Promise<readonly Readonly<{
     requirement: TResourceRequirement;
     resourceId: string;

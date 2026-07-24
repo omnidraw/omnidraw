@@ -49,6 +49,7 @@ function portalContent(args: TCanvasElementProjectorArgs): TCanvasProjectedPorta
       ...(data.stateDocumentId === undefined
         ? {}
         : { stateDocumentId: data.stateDocumentId }),
+      ...(data.uiProps === undefined ? {} : { uiProps: cloneRecord(data.uiProps) }),
     };
   }
   throw new TypeError("Expected a widget element.");

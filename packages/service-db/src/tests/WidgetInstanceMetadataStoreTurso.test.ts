@@ -7,6 +7,15 @@ import {
   WidgetInstanceMetadataStoreTurso,
   type TWidgetInstanceMetadataProjectionSnapshot,
 } from '../WidgetInstanceMetadataStoreTurso';
+import {
+  WIDGET_CAPSULE_ARTIFACT_HASH,
+  WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_CAPABILITY_DIGEST,
+  WIDGET_CAPSULE_CHANNEL_DIGEST,
+  WIDGET_CAPSULE_RUNTIME_JSON,
+  widgetManifestV3Json,
+} from './widget-capsule-fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const CANVAS_ID = uuid(701);
@@ -85,15 +94,28 @@ async function seedWidgetRevision(
     INSERT INTO widget_definition_revisions (
       org_id, id, definition_id, revision_number, ui_artifact_id,
       ui_artifact_kind, server_artifact_id, server_artifact_kind,
-      manifest_json, contract_digest_sha256, created_at_ms
-    ) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 1)
+      manifest_json, contract_digest_sha256, created_at_ms,
+      ui_runtime_json, capsule_artifact_hash,
+      capability_contract_digest_sha256, channel_contract_digest_sha256,
+      capsule_build_identity_json, build_policy_id, server_runtime_abi,
+      contract_format_version
+    ) VALUES (
+      ?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 1,
+      ?, ?, ?, ?, ?, ?, NULL, 3
+    )
   `)).run(
     TENANT.orgId,
     args.revisionId,
     args.definitionId,
     args.artifactId,
-    JSON.stringify({ schemaVersion: 2, name: args.slug, slug: args.slug, ui: { entry: 'ui.ts' } }),
+    widgetManifestV3Json({ name: args.slug, slug: args.slug }),
     'b'.repeat(64),
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
   );
   await (await service.db.prepare(`
     UPDATE widget_definitions

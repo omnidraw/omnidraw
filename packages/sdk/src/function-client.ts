@@ -1,65 +1,61 @@
-/** @file Browser-side transport contract and generated server-function proxy primitive. */
+/** @file Capsule guest client primitives for generated server-function proxies. */
 
-export type TServerFunctionClientRequest = Readonly<{
-  functionName: string;
-  input: unknown;
-  idempotencyKey: string;
+import {
+  callCapabilityAsync,
+  type CapsuleCapabilitySelector,
+} from '@omnidraw/capsule/guest';
+
+export type TWidgetCapabilitySelector = CapsuleCapabilitySelector;
+
+export type TWidgetCapabilityCallOptions = Readonly<{
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }>;
 
-export interface IServerFunctionClientTransport {
-  createIdempotencyKey(): string;
-  invoke<TOutput = unknown>(request: TServerFunctionClientRequest): Promise<TOutput>;
-}
+export type TServerFunctionClient<TInput, TOutput> = (
+  input: TInput,
+  options?: TWidgetCapabilityCallOptions,
+) => Promise<TOutput>;
 
-export type TServerFunctionClient<TInput, TOutput> = (input: TInput) => Promise<TOutput>;
 export type TServerFunctionClientOf<TFunction> = TFunction extends (
   input: infer TInput,
 ) => Promise<infer TOutput>
   ? TServerFunctionClient<TInput, TOutput>
   : never;
 
-let serverFunctionTransport: IServerFunctionClientTransport | null = null;
+const SERVER_FUNCTION_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/;
 
-export const SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY = '__VIBECANVAS_SERVER_FUNCTION_TRANSPORT_V1__' as const;
-
-type TServerFunctionClientGlobal = typeof globalThis & Readonly<Record<
-  typeof SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY,
-  unknown
->>;
-
-function browserHostTransport(): IServerFunctionClientTransport | null {
-  const candidate = (globalThis as TServerFunctionClientGlobal)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
-  if (
-    candidate === null
-    || typeof candidate !== 'object'
-    || typeof (candidate as Partial<IServerFunctionClientTransport>).createIdempotencyKey !== 'function'
-    || typeof (candidate as Partial<IServerFunctionClientTransport>).invoke !== 'function'
-  ) return null;
-  return candidate as IServerFunctionClientTransport;
+function copyCapabilitySelector(
+  selector: TWidgetCapabilitySelector,
+): TWidgetCapabilitySelector {
+  return Object.freeze({
+    id: selector.id,
+    versionRange: selector.versionRange,
+    contractHash: selector.contractHash,
+  });
 }
 
-export function __setServerFunctionTransport(
-  transport: IServerFunctionClientTransport | null,
-): void {
-  serverFunctionTransport = transport;
-}
-
+/**
+ * Creates a typed client for one operation in a revision-scoped server-function
+ * capability. The trusted build supplies the exact selector; knowing it does
+ * not grant authority without Capsule's request/policy/grant/binding
+ * intersection.
+ */
 export function createServerFunctionProxy<TInput, TOutput>(
   functionName: string,
-  transport?: IServerFunctionClientTransport,
+  selector: TWidgetCapabilitySelector,
 ): TServerFunctionClient<TInput, TOutput> {
-  if (!/^[A-Za-z_$][A-Za-z0-9_$]{0,127}$/.test(functionName)) {
+  if (!SERVER_FUNCTION_NAME_PATTERN.test(functionName)) {
     throw new TypeError('Server-function proxy name is invalid.');
   }
-  return async (input: TInput) => {
-    const target = transport ?? browserHostTransport() ?? serverFunctionTransport;
-    if (target === null) {
-      throw new Error('The widget server-function transport is not connected.');
-    }
-    const idempotencyKey = target.createIdempotencyKey();
-    if (idempotencyKey.length < 1 || idempotencyKey.length > 200) {
-      throw new Error('The widget server-function transport returned an invalid idempotency key.');
-    }
-    return target.invoke<TOutput>({ functionName, input, idempotencyKey });
-  };
+  const capability = copyCapabilitySelector(selector);
+  return async (
+    input: TInput,
+    options: TWidgetCapabilityCallOptions = {},
+  ): Promise<TOutput> => await callCapabilityAsync(
+    capability,
+    functionName,
+    input,
+    options,
+  ) as TOutput;
 }

@@ -25,6 +25,15 @@ import type {
   TWidgetArtifactRetentionReconcileRequest,
   TWidgetArtifactRetentionReconcileResult,
   TWidgetArtifactRetentionRestoreRequest,
+  TWidgetCapsuleArtifactInspectionRequest,
+  TWidgetCapsuleArtifactInspectionResult,
+  TWidgetCapsuleArtifactSignRequest,
+  TWidgetCapsuleArtifactSignResult,
+  TWidgetCapsuleHostConfiguration,
+  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetCapsuleRuntimeDescriptorCreateRequest,
+  TWidgetCapsuleUiArtifact,
+  TWidgetCapsuleUiBuildRequest,
   TWidgetBuildRequest,
   TWidgetBuildResult,
   TWidgetDefinitionCreate,
@@ -52,8 +61,42 @@ import type {
   TWidgetSourceSnapshot,
 } from './types';
 
+export interface IWidgetCapsuleHostConfigurationReader {
+  read(): Promise<TWidgetCapsuleHostConfiguration>;
+}
+
 export interface IWidgetArtifactBuilder {
   build(tenant: TTenantContext, request: TWidgetBuildRequest): Promise<TWidgetBuildResult>;
+}
+
+/** Trusted build port; implementations map Vibecanvas inputs to public Capsule build APIs. */
+export interface IWidgetCapsuleUiArtifactBuilder {
+  buildCapsuleUiArtifact(
+    tenant: TTenantContext,
+    request: TWidgetCapsuleUiBuildRequest,
+  ): Promise<TWidgetCapsuleUiArtifact>;
+}
+
+/** Trusted bytes-in/bytes-out signing port. Private signing material is never part of this contract. */
+export interface IWidgetCapsuleArtifactSigner {
+  signCapsuleArtifact(
+    tenant: TTenantContext,
+    request: TWidgetCapsuleArtifactSignRequest,
+  ): Promise<TWidgetCapsuleArtifactSignResult>;
+}
+
+/** Verifies exact signed bytes and returns only serializable Capsule runtime metadata. */
+export interface IWidgetCapsuleArtifactInspector {
+  inspectCapsuleArtifact(
+    tenant: TTenantContext,
+    request: TWidgetCapsuleArtifactInspectionRequest,
+  ): Promise<TWidgetCapsuleArtifactInspectionResult>;
+}
+
+export interface IWidgetCapsuleRuntimeDescriptorFactory {
+  createCapsuleRuntimeDescriptor(
+    request: TWidgetCapsuleRuntimeDescriptorCreateRequest,
+  ): TWidgetCapsuleRuntimeDescriptor;
 }
 
 /**

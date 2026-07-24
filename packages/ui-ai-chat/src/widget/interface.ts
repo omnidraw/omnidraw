@@ -14,6 +14,7 @@ import type {
   ToolService,
 } from "@vibecanvas/canvas/services";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
+import type { CapsuleViewport } from "@vibecanvas/capsule-vibecanvas/host";
 import type { TWidgetBrowserPort } from "../ports";
 import type { WidgetUiRuntime } from '../widget-runtime/WidgetUiRuntime';
 
@@ -70,9 +71,25 @@ export type TWidgetRenderArgs = {
   root: HTMLDivElement;
   element: TElement;
   titleBar?: TWidgetTitleBarPortal;
+  capsuleLifecycle?: TWidgetCapsuleCanvasLifecycleSource;
 };
 
 export type TWidgetRenderCleanup = () => void;
+
+export type TWidgetCapsuleCanvasLifecycleState = Readonly<{
+  viewport: CapsuleViewport;
+  focused: boolean;
+  frozen: boolean;
+  collapsed: boolean;
+  fullscreen: boolean;
+}>;
+
+export type TWidgetCapsuleCanvasLifecycleSource = Readonly<{
+  current(): TWidgetCapsuleCanvasLifecycleState;
+  subscribe(
+    listener: (state: TWidgetCapsuleCanvasLifecycleState) => void,
+  ): () => void;
+}>;
 
 export type TWidgetTitleBarAction = {
   id: string;
@@ -104,17 +121,4 @@ export interface IWidgetConfig {
   createClonePayload?: (sourcePayload: Record<string, any>) => Record<string, any>;
   titleBarActions?: readonly TWidgetTitleBarAction[];
   renderDom?: (args: TWidgetRenderArgs) => TWidgetRenderCleanup | void;
-  sandbox?: IWidgetSandboxConfig;
-}
-
-interface IWidgetSandboxConfig {
-  arrowjs: {
-    "main.ts": string;
-    "main.css"?: string;
-    [key: string]: string | undefined;
-  } | {
-    "main.js": string;
-    "main.css"?: string;
-    [key: string]: string | undefined;
-  }
 }

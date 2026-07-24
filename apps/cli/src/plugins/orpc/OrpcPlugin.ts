@@ -27,6 +27,7 @@ type TOrpcTenantContextServices = Pick<IRuntimeServices,
   | 'humanResourceSecret'
   | 'resource'
   | 'widget'
+  | 'widgetCapsuleHostConfiguration'
   | 'widgetRuntimeLoadAdmission'
 >;
 
@@ -43,6 +44,7 @@ function createOrpcTenantContext(
     humanResourceSecret: services.humanResourceSecret,
     resource: services.resource,
     widget: services.widget,
+    widgetCapsuleHostConfiguration: services.widgetCapsuleHostConfiguration,
     widgetRuntimeLoadAdmission: services.widgetRuntimeLoadAdmission,
     agent: createLazyTenantServiceCapability<TAgentApiCapability>(
       () => services.agent.forTenant(tenant),
@@ -65,6 +67,9 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
       const humanResourceSecret = ctx.services.require('humanResourceSecret');
       const resource = ctx.services.require('resource');
       const widget = ctx.services.require('widget');
+      const widgetCapsuleHostConfiguration = ctx.services.require(
+        'widgetCapsuleHostConfiguration',
+      );
       const widgetRuntimeLoadAdmission = ctx.services.require('widgetRuntimeLoadAdmission');
       const agent = ctx.services.require('agent');
       const handler = new RPCHandler(baseOs.router(router), {
@@ -94,6 +99,7 @@ function createOrpcPlugin(): IPlugin<IRuntimeServices, ICliHooks, ICliConfig> {
             humanResourceSecret,
             resource,
             widget,
+            widgetCapsuleHostConfiguration,
             widgetRuntimeLoadAdmission,
             agent,
           }),

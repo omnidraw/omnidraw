@@ -345,6 +345,7 @@ function harness(args?: {
   const runtime = new CanvasProjectionRuntimePort({
     adapter,
     mountContent,
+    readViewportSize: () => ({ width: 1_000, height: 800 }),
     preloadResources: false,
     ...(args?.onPresentationCommitError === undefined
       ? {}

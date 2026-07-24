@@ -1,7 +1,10 @@
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { SyncHook } from "@vibecanvas/tapable";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TCanvasProjectedPortalContent } from "../../../src/engine/typed";
+import type {
+  TCanvasPortalViewportState,
+  TCanvasProjectedPortalContent,
+} from "../../../src/engine/typed";
 import {
   CanvasPortalService,
   type TCanvasPortalRenderHandle,
@@ -77,10 +80,22 @@ function fixture() {
   let contentListener:
     | ((content: TCanvasProjectedPortalContent) => void)
     | null = null;
+  let viewportListener:
+    | ((viewport: TCanvasPortalViewportState) => void)
+    | null = null;
   const initialContent: TCanvasProjectedPortalContent = {
     type: "ui-widget",
     kind: "weather",
     payload: { city: "Berlin" },
+  };
+  const initialViewport: TCanvasPortalViewportState = {
+    width: 320,
+    height: 200,
+    scale: 1,
+    visible: true,
+    distance: 0,
+    occlusion: 0,
+    interactive: true,
   };
   return {
     service,
@@ -96,16 +111,26 @@ function fixture() {
         elementId: "widget",
         host,
         initialContent,
+        initialViewport,
         onContentUpdate(listener) {
           contentListener = listener;
           return () => {
             contentListener = null;
           };
         },
+        onViewportUpdate(listener) {
+          viewportListener = listener;
+          return () => {
+            viewportListener = null;
+          };
+        },
       });
     },
     emitContent(content: TCanvasProjectedPortalContent) {
       contentListener?.(content);
+    },
+    emitViewport(viewport: TCanvasPortalViewportState) {
+      viewportListener?.(viewport);
     },
   };
 }
@@ -334,6 +359,48 @@ describe("CanvasPortalService", () => {
     gate.resolve();
     await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
     expect(test.host.childElementCount).toBe(0);
+    test.host.remove();
+  });
+
+  it("forwards coalesced portal viewport state and unsubscribes on release", async () => {
+    const test = fixture();
+    const update = vi.fn();
+    test.service.registerRenderer({
+      id: "weather",
+      matches: () => true,
+      mount: () => ({
+        dispose: vi.fn(),
+        update,
+      }),
+    });
+    const release = await test.mount();
+    const next: TCanvasPortalViewportState = {
+      width: 640,
+      height: 360,
+      scale: 2,
+      visible: false,
+      distance: 120,
+      occlusion: 1,
+      interactive: false,
+    };
+
+    test.emitViewport(next);
+    await vi.waitFor(() => {
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        viewport: next,
+      }));
+    });
+
+    release();
+    const updateCount = update.mock.calls.length;
+    test.emitViewport({
+      ...next,
+      visible: true,
+      distance: 0,
+      occlusion: 0,
+    });
+    await Promise.resolve();
+    expect(update).toHaveBeenCalledTimes(updateCount);
     test.host.remove();
   });
 });

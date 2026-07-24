@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import {
   fnCanonicalizeWidgetContractPayload,
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetServerFunctionDescriptors,
   type IWidgetArtifactBuilder,
   type IWidgetArtifactMutationCoordinator,
@@ -15,7 +17,7 @@ import {
   type TWidgetArtifactPut,
   type TWidgetBuildRequest,
   type TWidgetBuildResult,
-  type TWidgetManifestV2,
+  type TWidgetManifestV3,
   type TWidgetPublicationCommitInput,
   type TWidgetPublicationCommitResult,
 } from '../src';
@@ -25,6 +27,11 @@ import {
   WidgetArtifactOperationLane,
   WidgetPublicationService,
 } from '../src/local';
+import {
+  CAPSULE_BUILD_IDENTITY,
+  CAPSULE_MANIFEST,
+  CAPSULE_RUNTIME_DESCRIPTOR,
+} from './capsule.fixture';
 
 const REPO_ROOT = resolve(import.meta.dir, '../../..');
 const roots = new Set<string>();
@@ -40,11 +47,11 @@ const tenant: TTenantContext = Object.freeze({
   requestId: 'request-recovery',
 });
 
-const manifest: TWidgetManifestV2 = Object.freeze({
-  schemaVersion: 2,
+const manifest: TWidgetManifestV3 = Object.freeze({
+  ...CAPSULE_MANIFEST,
   name: 'Recovery widget',
   slug: 'recovery-widget',
-  ui: Object.freeze({ entry: 'src/ui.ts' }),
+  ui: Object.freeze({ ...CAPSULE_MANIFEST.ui, entry: 'src/ui.ts' }),
 });
 
 const snapshotFiles = Object.freeze([
@@ -144,24 +151,55 @@ function successfulBuilder(bytes = new TextEncoder().encode('immutable ui artifa
       const functionDescriptorsDigestSha256 = sha256(new TextEncoder().encode(
         fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors),
       ));
+      const capabilityContractDigestSha256 = sha256(new TextEncoder().encode(
+        fnCanonicalizeWidgetCapsuleCapabilityRequests([]),
+      ));
+      const channelContractDigestSha256 = sha256(new TextEncoder().encode(
+        fnCanonicalizeWidgetCapsuleChannelContract(null),
+      ));
       return Object.freeze({
         sourceSnapshotId: request.snapshot.id,
         sourceDigestSha256: request.snapshot.digestSha256,
         builderIdentity: request.builderIdentity,
+        capsuleBuildIdentity: request.capsuleBuildIdentity,
+        buildPolicyId: request.buildPolicyId,
         canonicalManifestJson: request.canonicalManifestJson,
         functionDescriptors,
         functionDescriptorsDigestSha256,
+        capabilityContractDigestSha256,
+        channelContractDigestSha256,
         contractDigestSha256: sha256(new TextEncoder().encode(
           fnCanonicalizeWidgetContractPayload({
             canonicalManifestJson: request.canonicalManifestJson,
             uiDigestSha256,
+            capsuleArtifactHash: CAPSULE_RUNTIME_DESCRIPTOR.capsuleArtifactHash,
+            target: CAPSULE_RUNTIME_DESCRIPTOR.target,
+            budgets: CAPSULE_RUNTIME_DESCRIPTOR.budgets,
+            capabilityContractDigestSha256,
+            channelContractDigestSha256,
+            signatureKeyIds: CAPSULE_RUNTIME_DESCRIPTOR.signatureKeyIds,
             serverDigestSha256: null,
-            runtimeAbi: null,
+            serverRuntimeAbi: null,
             functionDescriptorsDigestSha256,
+            sourceDigestSha256: request.snapshot.digestSha256,
+            builderIdentity: request.builderIdentity,
+            capsuleBuildIdentity: request.capsuleBuildIdentity,
+            buildPolicyId: request.buildPolicyId,
           }),
         )),
-        uiArtifact: Object.freeze({ kind: 'ui', digestSha256: uiDigestSha256, bytes }),
+        uiArtifact: Object.freeze({
+          kind: 'ui',
+          digestSha256: uiDigestSha256,
+          bytes,
+          capsuleArtifactHash: CAPSULE_RUNTIME_DESCRIPTOR.capsuleArtifactHash,
+          runtimeDescriptor: CAPSULE_RUNTIME_DESCRIPTOR,
+          requestedBudgets: {},
+          effectiveBudgets: CAPSULE_RUNTIME_DESCRIPTOR.budgets,
+          builderIdentity: request.builderIdentity,
+          capsuleBuildIdentity: request.capsuleBuildIdentity,
+        }),
         serverArtifact: null,
+        diagnostics: Object.freeze([]),
       });
     },
   };
@@ -339,6 +377,8 @@ function publishRequest(expectedActiveRevisionId: string | null = null) {
     manifest,
     bindings: Object.freeze([]),
     builderIdentity: 'recovery-builder-v1',
+    capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+    buildPolicyId: 'vibecanvas-capsule-widget-v1',
     nowMs: 1_000,
   });
 }

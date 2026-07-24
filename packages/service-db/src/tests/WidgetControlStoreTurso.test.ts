@@ -6,14 +6,18 @@ import path from 'node:path';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
 import {
+  fnCanonicalizeWidgetCapsuleCapabilityRequests,
+  fnCanonicalizeWidgetCapsuleChannelContract,
   fnCanonicalizeWidgetContractPayload,
+  fnCanonicalizeWidgetManifest,
   fnCanonicalizeWidgetServerFunctionDescriptors,
 } from '@vibecanvas/widget-contract';
 import type {
   IWidgetArtifactMutationCoordinator,
   IWidgetControlStore,
   TWidgetArtifactDescriptor,
-  TWidgetManifestV2,
+  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetManifestV3,
   TWidgetPublicationCommitResult,
   TWidgetRevisionDescriptor,
   TWidgetServerFunctionDescriptor,
@@ -35,6 +39,30 @@ const RESOURCE_KV_A = uuid(406);
 const RESOURCE_DB_A = uuid(407);
 const RESOURCE_FOREIGN = uuid(408);
 const CANVAS_A = uuid(409);
+const CAPSULE_TARGET = Object.freeze({
+  runtimeAbi: 'quickjs-release-sync-v1',
+  domProfile: 'dom-core-v2',
+  featureProfiles: ['artifact-resources-v1'],
+});
+const CAPSULE_BUDGETS = Object.freeze({
+  cpuMs: 50,
+  memoryBytes: 8 * 1_024 * 1_024,
+  domNodes: 1_000,
+  handles: 1_000,
+  messageBytes: 1_024 * 1_024,
+  streamBytes: 1_024 * 1_024,
+  assetBytes: 4 * 1_024 * 1_024,
+  networkBytes: 0,
+  gpuBytes: 0,
+  lifecycleBytes: 64 * 1_024,
+});
+const CAPSULE_BUILD_IDENTITY = Object.freeze({
+  packageName: '@omnidraw/capsule' as const,
+  packageVersion: '0.9.1',
+  packageDigest: `sha256:${'a'.repeat(64)}` as const,
+  buildApiVersion: 'capsule-build-v1',
+  runtimeBuildDigest: `sha256:${'b'.repeat(64)}` as const,
+});
 
 const TENANT_A = fnFreezeTenantContext({
   orgId: DEFAULT_OSS_ORGANIZATION_ID,
@@ -83,14 +111,18 @@ function manifest(
     slug?: string;
     name?: string;
     server?: boolean;
-    resources?: TWidgetManifestV2['resources'];
+    resources?: TWidgetManifestV3['resources'];
   }> = {},
-): TWidgetManifestV2 {
+): TWidgetManifestV3 {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     name: args.name ?? 'Weather',
     slug: args.slug ?? 'weather',
-    ui: { entry: 'src/ui.tsx' },
+    ui: {
+      runtime: 'capsule',
+      entry: 'src/ui.tsx',
+      target: CAPSULE_TARGET,
+    },
     ...(args.server ? { server: { entry: 'src/server.ts', runtimeAbi: 'vibecanvas:1' } } : {}),
     ...(args.resources ? { resources: args.resources } : {}),
   };
@@ -103,7 +135,7 @@ async function publish(
     definitionId?: string;
     revisionId: string;
     expectedActiveRevisionId?: string | null;
-    manifest?: TWidgetManifestV2;
+    manifest?: TWidgetManifestV3;
     canonicalManifestJson?: string;
     contractDigestSha256?: string;
     uiArtifact?: TWidgetArtifactDescriptor;
@@ -112,6 +144,7 @@ async function publish(
     sourceSnapshotId?: string;
     sourceDigestSha256?: string;
     builderIdentity?: string;
+    uiRuntime?: TWidgetCapsuleRuntimeDescriptor;
     bindings?: Parameters<IWidgetControlStore['commitPublication']>[1]['bindings'];
     functionDescriptors?: readonly TWidgetServerFunctionDescriptor[];
     nowMs?: number;
@@ -119,7 +152,8 @@ async function publish(
 ): Promise<TWidgetPublicationCommitResult> {
   const value = args.manifest ?? manifest({ server: args.serverArtifact !== undefined && args.serverArtifact !== null });
   const nowMs = args.nowMs ?? 20;
-  const canonicalManifestJson = args.canonicalManifestJson ?? JSON.stringify(value);
+  const canonicalManifestJson = args.canonicalManifestJson
+    ?? fnCanonicalizeWidgetManifest(value);
   const uiArtifact = args.uiArtifact ?? artifact(tenant, {
     id: uuid(500 + nowMs),
     kind: 'ui',
@@ -133,6 +167,18 @@ async function publish(
     digest: digest(900_000 + nowMs),
     nowMs,
   });
+  const sourceDigestSha256 = args.sourceDigestSha256 ?? sourceArtifact.digestSha256;
+  const builderIdentity = args.builderIdentity ?? 'widget-control-store-test';
+  const uiRuntime = args.uiRuntime ?? {
+    format: 'vibecanvas.capsule-runtime.v1',
+    capsuleArtifactHash: `sha256:${uiArtifact.digestSha256}`,
+    target: CAPSULE_TARGET,
+    budgets: CAPSULE_BUDGETS,
+    capabilityRequests: [],
+    channels: null,
+    parkability: { parkable: false },
+    signatureKeyIds: ['vibecanvas-release-v1'],
+  };
   const functionDescriptors = args.functionDescriptors ?? (value.server ? [{
     schemaVersion: 1 as const,
     exportName: 'run',
@@ -157,13 +203,29 @@ async function publish(
   const functionDescriptorsDigestSha256 = createHash('sha256')
     .update(fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors))
     .digest('hex');
+  const capabilityContractDigestSha256 = createHash('sha256')
+    .update(fnCanonicalizeWidgetCapsuleCapabilityRequests(uiRuntime.capabilityRequests))
+    .digest('hex');
+  const channelContractDigestSha256 = createHash('sha256')
+    .update(fnCanonicalizeWidgetCapsuleChannelContract(uiRuntime.channels))
+    .digest('hex');
   const contractDigestSha256 = args.contractDigestSha256 ?? createHash('sha256')
     .update(fnCanonicalizeWidgetContractPayload({
       canonicalManifestJson,
       uiDigestSha256: uiArtifact.digestSha256,
+      capsuleArtifactHash: uiRuntime.capsuleArtifactHash,
+      target: uiRuntime.target,
+      budgets: uiRuntime.budgets,
+      capabilityContractDigestSha256,
+      channelContractDigestSha256,
+      signatureKeyIds: uiRuntime.signatureKeyIds,
       serverDigestSha256: serverArtifact?.digestSha256 ?? null,
-      runtimeAbi: value.server?.runtimeAbi ?? null,
+      serverRuntimeAbi: value.server?.runtimeAbi ?? null,
       functionDescriptorsDigestSha256,
+      sourceDigestSha256,
+      builderIdentity,
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+      buildPolicyId: 'vibecanvas-release-v1',
     }))
     .digest('hex');
   return store.commitPublication(tenant, {
@@ -175,16 +237,22 @@ async function publish(
       canonicalManifestJson,
       functionDescriptors,
       functionDescriptorsDigestSha256,
+      capabilityContractDigestSha256,
+      channelContractDigestSha256,
       contractDigestSha256,
       uiArtifact,
+      uiRuntime,
       serverArtifact,
+      serverRuntimeAbi: value.server?.runtimeAbi ?? null,
+      capsuleBuildIdentity: CAPSULE_BUILD_IDENTITY,
+      buildPolicyId: 'vibecanvas-release-v1',
       createdAtMs: nowMs,
     },
     source: {
       sourceSnapshotId: args.sourceSnapshotId ?? uuid(910_000 + nowMs),
-      sourceDigestSha256: args.sourceDigestSha256 ?? digest(910_000 + nowMs),
+      sourceDigestSha256,
       sourceArtifact,
-      builderIdentity: args.builderIdentity ?? 'widget-control-store-test',
+      builderIdentity,
       createdAtMs: nowMs,
     },
     bindings: args.bindings ?? [],
@@ -278,6 +346,12 @@ describe('WidgetControlStoreTurso', () => {
       revisionNumber: 1,
       serverArtifact: null,
       uiArtifact: { id: uuid(412), kind: 'ui', retentionState: 'pinned' },
+      uiRuntime: {
+        format: 'vibecanvas.capsule-runtime.v1',
+        signatureKeyIds: ['vibecanvas-release-v1'],
+      },
+      capsuleBuildIdentity: { packageName: '@omnidraw/capsule' },
+      buildPolicyId: 'vibecanvas-release-v1',
     });
     expect(first.status === 'committed' && first.definition).toMatchObject({
       id: DEFINITION_A,
@@ -337,7 +411,24 @@ describe('WidgetControlStoreTurso', () => {
       revisionNumber: 2,
       functionDescriptors: [{ exportName: 'run', effect: 'fn' }],
       uiArtifact: { id: uuid(412), digestSha256: digest(1) },
+      uiRuntime: {
+        capsuleArtifactHash: `sha256:${digest(1)}`,
+        target: CAPSULE_TARGET,
+      },
       serverArtifact: { id: uuid(415), kind: 'server', digestSha256: digest(2) },
+      serverRuntimeAbi: 'vibecanvas:1',
+    });
+    expect(await (await service.db.prepare(`
+      SELECT capsule_artifact_hash, capability_contract_digest_sha256,
+        channel_contract_digest_sha256, build_policy_id, contract_format_version
+      FROM widget_definition_revisions
+      WHERE org_id = ? AND id = ?
+    `)).get(TENANT_A.orgId, uuid(413))).toEqual({
+      capsule_artifact_hash: secondRevision.uiRuntime.capsuleArtifactHash,
+      capability_contract_digest_sha256: secondRevision.capabilityContractDigestSha256,
+      channel_contract_digest_sha256: secondRevision.channelContractDigestSha256,
+      build_policy_id: secondRevision.buildPolicyId,
+      contract_format_version: 3,
     });
     expect(await (await service.db.prepare(`
       SELECT id, export_name, effect, definition_revision, artifact_digest_sha256,
@@ -392,7 +483,7 @@ describe('WidgetControlStoreTurso', () => {
       definitionId: DEFINITION_A,
       revisionId: uuid(413),
       sourceSnapshotId: uuid(910_030),
-      sourceDigestSha256: digest(910_030),
+      sourceDigestSha256: digest(900_030),
       sourceArtifact: { id: uuid(900_030), kind: 'source', digestSha256: digest(900_030) },
       builderIdentity: 'widget-control-store-test',
     });
@@ -510,7 +601,7 @@ describe('WidgetControlStoreTurso', () => {
     const legacyManifest = {
       ...manifest({ slug: 'legacy-widget', name: 'Legacy widget' }),
       actors: [{ name: 'legacy' }],
-    } as unknown as TWidgetManifestV2;
+    } as unknown as TWidgetManifestV3;
     await expect(publish(store, TENANT_A, {
       definitionId: uuid(434),
       revisionId: uuid(435),
@@ -659,78 +750,36 @@ describe('WidgetControlStoreTurso', () => {
     await expect(store.getActiveRevision(TENANT_A, DEFINITION_A)).rejects.toMatchObject({
       code: 'WIDGET_REVISION_INTEGRITY_FAILED',
     });
-  });
 
-  test('reads pre-M6 v1 revisions only with the canonical empty function set', async () => {
-    const active = committed(await publish(store, TENANT_A, {
-      revisionId: uuid(641),
-      nowMs: 10,
-    }));
-    const legacyRevisionId = uuid(642);
-    const legacyArtifactId = uuid(643);
-    const legacyArtifactDigest = digest(643);
-    const legacyContractDigest = createHash('sha256').update(JSON.stringify({
-      format: 'vibecanvas.widget-contract.v1',
-      canonicalManifestJson: active.canonicalManifestJson,
-      uiDigestSha256: legacyArtifactDigest,
-      serverDigestSha256: null,
-      runtimeAbi: null,
-    })).digest('hex');
-    await (await service.db.prepare(`
-      INSERT INTO artifact_references (
-        org_id, id, kind, digest_sha256, byte_size,
-        retention_state, retain_until_ms, created_at_ms
-      ) VALUES (?, ?, 'ui', ?, 10, 'pinned', NULL, 11)
-    `)).run(TENANT_A.orgId, legacyArtifactId, legacyArtifactDigest);
-    await (await service.db.prepare(`
-      INSERT INTO widget_definition_revisions (
-        org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind,
-        server_artifact_id, server_artifact_kind, manifest_json,
-        contract_digest_sha256, created_at_ms
-      ) VALUES (?, ?, ?, 2, ?, 'ui', NULL, NULL, ?, ?, 11)
-    `)).run(
-      TENANT_A.orgId,
-      legacyRevisionId,
-      DEFINITION_A,
-      legacyArtifactId,
-      active.canonicalManifestJson,
-      legacyContractDigest,
-    );
-    await expect(store.getRevision(TENANT_A, legacyRevisionId)).resolves.toMatchObject({
-      id: legacyRevisionId,
-      functionDescriptors: [],
-      functionDescriptorsDigestSha256: '2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b',
-      contractDigestSha256: legacyContractDigest,
-    });
-
-    const forgedDescriptors = fnCanonicalizeWidgetServerFunctionDescriptors([{
-      schemaVersion: 1,
-      exportName: 'forged',
-      effect: 'fn',
-      inputSchema: { type: 'object' },
-      outputSchema: { type: 'object' },
-      resources: [],
-      limits: {
-        timeoutMs: 1_000,
-        memoryTier: 'small',
-        outputByteLimit: 1_024,
-        logByteLimit: 1_024,
-      },
-      retry: { mode: 'none', maxAttempts: 1, initialBackoffMs: 0, maxBackoffMs: 0 },
-    }]);
     await (await service.db.prepare(`
       UPDATE widget_definition_revisions
-      SET function_descriptors_json = ?, function_descriptors_digest_sha256 = ?
+      SET contract_digest_sha256 = ?, ui_runtime_json = ?
       WHERE org_id = ? AND id = ?
     `)).run(
-      forgedDescriptors,
-      createHash('sha256').update(forgedDescriptors).digest('hex'),
+      published.contractDigestSha256,
+      JSON.stringify({
+        ...published.uiRuntime,
+        target: {
+          ...published.uiRuntime.target,
+          featureProfiles: ['artifact-resources-v1', 'canvas-2d-v1'],
+        },
+      }),
       TENANT_A.orgId,
-      legacyRevisionId,
+      revisionId,
     );
-    await expect(store.getRevision(TENANT_A, legacyRevisionId)).rejects.toMatchObject({
+    await expect(store.getRevision(TENANT_A, revisionId)).rejects.toMatchObject({
       code: 'WIDGET_REVISION_INTEGRITY_FAILED',
     });
+
+    await expect((await service.db.prepare(`
+      UPDATE widget_definition_revisions
+      SET capsule_build_identity_json = ?
+      WHERE org_id = ? AND id = ?
+    `)).run(
+      JSON.stringify({ ...published.capsuleBuildIdentity, privateKey: 'forbidden' }),
+      TENANT_A.orgId,
+      revisionId,
+    )).rejects.toThrow();
   });
 
   test('starts rollback grace at the latest pointer transition, prunes the latest inactive revision, and never reuses numbers after restart', async () => {

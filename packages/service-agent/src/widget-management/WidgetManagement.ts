@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ZWidgetManifestV2, type TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import { ZWidgetManifestV3, type TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { WidgetDraftController } from '../widget-drafts/WidgetDraftController';
 import type { WidgetWorkspace } from '../workspace/WidgetWorkspace';
 import {
@@ -217,9 +217,9 @@ export class WidgetManagement {
     }
     const workspaceRevision = await this.#drafts.getWorkspaceRevision(name, expectedRevision);
     await this.#workspace.updateDraftManifestAtomic(name, workspaceRevision, (manifestValue) => {
-      const parsed = ZWidgetManifestV2.safeParse(manifestValue);
+      const parsed = ZWidgetManifestV3.safeParse(manifestValue);
       if (!parsed.success) throw new Error('INVALID_MANIFEST: The widget draft manifest is invalid.');
-      throw new Error('INVALID_MANIFEST: Manifest v2 does not expose tool metadata.');
+      throw new Error('INVALID_MANIFEST: Manifest v3 does not expose tool metadata.');
     });
     await this.#drafts.handleToolChange({ name, type: 'changed' });
     return (await this.#readVariant(name, 'draft')).summary;
@@ -237,15 +237,15 @@ export class WidgetManagement {
     const workspaceRevision = await this.#drafts.getWorkspaceRevision(name, expectedRevision);
     const updateDraft = (coordinateCommit?: (commit: () => Promise<void>) => Promise<void>) => {
       return this.#workspace.updateDraftManifestAndNameAtomic(name, nextName, workspaceRevision, (manifestValue) => {
-        const v2 = ZWidgetManifestV2.safeParse(manifestValue);
-        if (v2.success) {
+        const v3 = ZWidgetManifestV3.safeParse(manifestValue);
+        if (v3.success) {
           if (patch.tool !== undefined) {
-            throw new Error('INVALID_MANIFEST: Manifest v2 does not expose tool metadata.');
+            throw new Error('INVALID_MANIFEST: Manifest v3 does not expose tool metadata.');
           }
           const description = patch.description === undefined
-            ? v2.data.description
+            ? v3.data.description
             : patch.description.trim() || undefined;
-          const { description: _description, ...withoutDescription } = v2.data;
+          const { description: _description, ...withoutDescription } = v3.data;
           return {
             ...withoutDescription,
             name: nextName,
@@ -395,9 +395,9 @@ export class WidgetManagement {
   async #readManifest(root: string): Promise<{ manifest: TWidgetManagementManifest | null; problem: TWidgetCatalogProblem | null; groupReference: string | null }> {
     try {
       const raw: unknown = JSON.parse(await readFile(join(root, 'vibecanvas.json'), 'utf8'));
-      const v2 = ZWidgetManifestV2.safeParse(raw);
-      if (v2.success) {
-        return { manifest: v2.data as TWidgetManifestV2, problem: null, groupReference: null };
+      const v3 = ZWidgetManifestV3.safeParse(raw);
+      if (v3.success) {
+        return { manifest: v3.data as TWidgetManifestV3, problem: null, groupReference: null };
       }
       return { manifest: null, problem: fnWidgetProblem('INVALID_MANIFEST', 'vibecanvas.json is invalid. Open Config for validation details.'), groupReference: null };
     } catch {

@@ -1,1530 +1,955 @@
-import { Buffer } from 'node:buffer';
+import { describe, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import { SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY } from '../../../sdk/src/function-client';
-import { COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY } from '../../../sdk/src/collaborative-state-client';
-import {
-  WIDGET_COLLABORATIVE_STATE_HOST_MODULE,
-  WIDGET_COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY,
-  WIDGET_SERVER_FUNCTION_HOST_MODULE,
-  WIDGET_SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY,
-} from '../../src/widget-runtime/CONSTANTS';
-import { widgetUiArtifactMount } from '../../src/widget-runtime/mount-widget-ui-artifact';
-import { WidgetUiRuntime } from '../../src/widget-runtime/WidgetUiRuntime';
-import type { TElement } from '@vibecanvas/service-automerge/types/canvas-doc.types';
 import type {
+  CapsuleCapabilityBinding,
+  CapsuleCapabilityDescriptor,
+  CapsuleKernelHostStreamSink,
+  CapsuleSchemaResource,
+} from '@vibecanvas/capsule-vibecanvas/capabilities';
+import type {
+  CapsuleHandle,
+  CapsuleHost,
+  CreateCapsuleHostOptions,
+} from '@vibecanvas/capsule-vibecanvas/host';
+import { CapsuleWidgetHostCoordinator } from '../../src/widget-runtime/CapsuleWidgetHostCoordinator';
+import { createVibecanvasGuestChannelContract } from '@vibecanvas/capsule-vibecanvas/capabilities';
+import { createWidgetCapsuleCapabilityBindings } from '../../src/widget-runtime/create-widget-capsule-capability-bindings';
+import { createWidgetUiArtifactMountPort } from '../../src/widget-runtime/mount-widget-ui-artifact';
+import type {
+  TWidgetCapsuleMountCatalog,
+  TWidgetCollaborativeStateBridge,
   TWidgetFunctionHostBridge,
-  TWidgetCollaborativeStateSession,
-  TWidgetRuntimeIdentity,
-  TWidgetRuntimeTransportPort,
   TVerifiedWidgetUiArtifact,
 } from '../../src/widget-runtime/interface';
+import {
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  type TWidgetBrowserFunctionDescriptor,
+  type TWidgetCapsuleTheme,
+} from '@vibecanvas/widget-contract';
 
-const identity: TWidgetRuntimeIdentity = Object.freeze({
-  orgId: 'org-a',
-  canvasId: 'canvas-a',
-  elementId: 'element-a',
-  widgetInstanceId: 'instance-a',
-  definitionId: 'definition-a',
-  revisionId: 'revision-a',
+const functionMetadata = [{
+  schemaVersion: 1 as const,
+  exportName: 'count',
+  effect: 'fn' as const,
+  inputSchema: {},
+  outputSchema: {},
+  resources: [],
+  limits: {
+    timeoutMs: 1_000,
+    memoryTier: 'small' as const,
+    outputByteLimit: 1_024,
+    logByteLimit: 1_024,
+  },
+  retry: {
+    mode: 'none' as const,
+    maxAttempts: 1,
+    initialBackoffMs: 0,
+    maxBackoffMs: 0,
+  },
+}];
+
+function browserFunctionDigest(
+  descriptors: readonly TWidgetBrowserFunctionDescriptor[],
+): string {
+  return createHash('sha256')
+    .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(descriptors))
+    .digest('hex');
+}
+
+const FUNCTION_DESCRIPTOR_DIGEST = browserFunctionDigest(functionMetadata);
+const HASH_A = `sha256:${FUNCTION_DESCRIPTOR_DIGEST}` as const;
+const HASH_B = `sha256:${'b'.repeat(64)}` as const;
+const SCHEMA_HASH = `sha256:${'c'.repeat(64)}` as const;
+const TARGET = Object.freeze({
+  runtimeAbi: 'quickjs-release-sync-v1',
+  domProfile: 'dom-core-v2',
+  featureProfiles: Object.freeze([]),
+});
+const TARGET_WITH_SVG = Object.freeze({
+  ...TARGET,
+  featureProfiles: Object.freeze(['svg-dom-v1']),
+});
+const BUDGETS = Object.freeze({
+  cpuMs: 100,
+  memoryBytes: 32 * 1_024 * 1_024,
+  domNodes: 2_000,
+  handles: 4_000,
+  messageBytes: 64 * 1_024,
+  streamBytes: 64 * 1_024,
+  assetBytes: 0,
+  networkBytes: 0,
+  gpuBytes: 0,
+  lifecycleBytes: 256 * 1_024,
+});
+const THEME = Object.freeze({
+  format: 'vibecanvas.widget-theme.v1' as const,
+  appearance: 'dark' as const,
+  tokens: Object.freeze({
+    background: '#000',
+    foreground: '#fff',
+    surface: '#111',
+    surfaceForeground: '#fff',
+    muted: '#222',
+    mutedForeground: '#aaa',
+    primary: '#fc0',
+    primaryForeground: '#000',
+    accent: '#333',
+    accentForeground: '#fff',
+    destructive: '#f00',
+    success: '#0f0',
+    border: '#444',
+  }),
 });
 
-const testRequire = createRequire(import.meta.url);
-const arrowSandboxPath = testRequire.resolve('@arrow-js/sandbox');
-const quickJsPath = createRequire(arrowSandboxPath).resolve('quickjs-emscripten');
-const quickJsWasmPath = createRequire(quickJsPath)
-  .resolve('@jitl/quickjs-wasmfile-release-asyncify/wasm');
-const quickJsWasm = readFileSync(quickJsWasmPath);
-const originalFetch = globalThis.fetch.bind(globalThis);
+const schema = {
+  reference: { format: 'capsule-schema-v1', hash: SCHEMA_HASH },
+  copyCanonicalBytes: () => new Uint8Array(),
+} as CapsuleSchemaResource;
 
-beforeAll(() => {
-  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (url.endsWith('/emscripten-module.wasm')) {
-      return new Response(quickJsWasm, {
-        headers: { 'content-type': 'application/wasm' },
-        status: 200,
-      });
-    }
-    return originalFetch(input, init);
-  });
-});
-
-afterAll(() => {
-  vi.unstubAllGlobals();
-});
-
-function artifact(source: string, css = ''): TVerifiedWidgetUiArtifact {
-  const encode = (value: string) => new TextEncoder().encode(value);
-  const outputs: TVerifiedWidgetUiArtifact['outputs'] = [
-    {
-      descriptor: {
-        path: 'output-0.js',
-        loader: 'js',
-        kind: 'entry-point',
-        digestSha256: 'a'.repeat(64),
-        bytesBase64: '',
-      },
-      bytes: encode(source),
-      text: source,
-    },
-    ...(css.length === 0
-      ? []
-      : [{
-          descriptor: {
-            path: 'output-1.css',
-            loader: 'css' as const,
-            kind: 'asset' as const,
-            digestSha256: 'b'.repeat(64),
-            bytesBase64: '',
-          },
-          bytes: encode(css),
-          text: css,
-        }]),
-  ];
+function descriptor(
+  id: string,
+  contractHash: typeof HASH_A | typeof HASH_B,
+  operations: readonly Readonly<{ name: string; kind: 'call' | 'stream' }>[],
+): CapsuleCapabilityDescriptor {
   return {
-    digestSha256: 'c'.repeat(64),
-    envelope: {
-      format: 'vibecanvas.widget-artifact.v1',
-      kind: 'ui',
-      entry: 'ui/main.ts',
-      sourceDigestSha256: 'd'.repeat(64),
-      builderIdentity: 'bun-browser-v1',
-      runtimeAbi: null,
-      outputs: outputs.map((output) => output.descriptor),
-    },
-    outputs,
-    retainedByteSize: outputs.reduce((size, output) => size + output.bytes.byteLength, 0),
+    id,
+    version: '1.0.0',
+    contractHash,
+    operations: operations.map((operation) => ({
+      ...operation,
+      inputSchema: schema.reference,
+      ...(operation.kind === 'stream'
+        ? { eventSchema: schema.reference }
+        : { outputSchema: schema.reference }),
+    })),
   };
 }
 
-function sha256(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
+const functionDescriptor = descriptor(
+  `vibecanvas.widget.functions.h${FUNCTION_DESCRIPTOR_DIGEST}`,
+  HASH_A,
+  [{ name: 'count', kind: 'call' }],
+);
+const alternateFunctionDescriptor = descriptor(
+  `vibecanvas.widget.functions.h${'b'.repeat(64)}`,
+  HASH_B,
+  [{ name: 'count', kind: 'call' }],
+);
+const stateDescriptor = descriptor(
+  'vibecanvas.widget.collaborative_state',
+  HASH_B,
+  [
+    { name: 'change', kind: 'call' },
+    { name: 'get', kind: 'call' },
+    { name: 'subscribe', kind: 'stream' },
+  ],
+);
 
-function encodedArtifact(source: string) {
-  const outputBytes = Buffer.from(source, 'utf8');
-  const envelopeBytes = Buffer.from(JSON.stringify({
-    format: 'vibecanvas.widget-artifact.v1',
-    kind: 'ui',
-    entry: 'ui/main.ts',
-    sourceDigestSha256: 'd'.repeat(64),
-    builderIdentity: 'sandbox-boot-deadline-test',
-    runtimeAbi: null,
-    outputs: [{
-      path: 'output-0.js',
-      loader: 'js',
-      kind: 'entry-point',
-      digestSha256: sha256(outputBytes),
-      bytesBase64: outputBytes.toString('base64'),
-    }],
-  }), 'utf8');
+function catalog(
+  generation = 'catalog-a',
+  capabilities = [
+    { kind: 'server-functions' as const, descriptor: functionDescriptor },
+    { kind: 'collaborative-state' as const, descriptor: stateDescriptor },
+  ],
+  allowedFeatureProfiles: readonly string[] = [],
+): TWidgetCapsuleMountCatalog {
   return {
-    digestSha256: sha256(envelopeBytes),
-    bytesBase64: envelopeBytes.toString('base64'),
-  };
-}
-
-function runtimeElement(elementId: string, widgetInstanceId: string): TElement {
-  return {
-    id: elementId,
-    x: 0,
-    y: 0,
-    rotation: 0,
-    zIndex: '',
-    parentGroupId: null,
-    bindings: [],
-    locked: false,
-    createdAt: 1,
-    updatedAt: 1,
-    style: {},
-    data: {
-      type: 'widget-instance',
-      definitionId: identity.definitionId,
-      revisionId: identity.revisionId,
-      instanceId: widgetInstanceId,
-      w: 320,
-      h: 240,
-      expanded: true,
-      window: 'contained',
+    generation,
+    targetBase: {
+      runtimeAbi: TARGET.runtimeAbi,
+      domProfile: TARGET.domProfile,
     },
+    allowedFeatureProfiles,
+    budgetCeiling: BUDGETS,
+    budgetDefaults: BUDGETS,
+    schemas: [schema],
+    capabilities,
+    trustedSigningKeys: new Map([
+      ['preview-key', {} as CryptoKey],
+      ['release-key', {} as CryptoKey],
+    ]),
+    previewSigningKeyId: 'preview-key',
+    releaseSigningKeyId: 'release-key',
   };
 }
 
-function bridge(overrides: Partial<TWidgetFunctionHostBridge> = {}) {
-  return {
-    identity,
-    createIdempotencyKey: vi.fn(() => 'mount-prefix'),
-    invoke: vi.fn(async () => ({ ok: true })),
-    dispose: vi.fn(),
-    ...overrides,
-  } as TWidgetFunctionHostBridge;
-}
-
-function stateBridge(overrides: Partial<TWidgetCollaborativeStateSession> = {}) {
-  return {
-    identity: { ...identity, stateDocumentId: 'automerge:state-a' },
-    get: vi.fn(async () => ({ version: 1, value: { count: 1 } })),
-    change: vi.fn(async (value) => ({ version: 2, value })),
-    next: vi.fn(() => new Promise(() => {})),
-    cancel: vi.fn(),
-    dispose: vi.fn(),
-    ...overrides,
-  } as TWidgetCollaborativeStateSession;
-}
-
-function mount(
-  source: string,
-  functionBridge = bridge(),
-  collaborativeStateBridge: TWidgetCollaborativeStateSession | null = null,
-  css = '',
-  onFatal = vi.fn(),
+function runtimeDescriptor(
+  mode: 'preview' | 'published',
+  requests = [{
+    id: functionDescriptor.id,
+    versionRange: '1.0.0',
+    contractHash: HASH_A,
+    required: true,
+    operations: ['count'],
+  }],
+  target = TARGET,
+  channels: TVerifiedWidgetUiArtifact['runtimeDescriptor']['channels'] = null,
 ) {
-  const root = document.createElement('div');
-  document.body.appendChild(root);
-  const cleanup = widgetUiArtifactMount.mount({
-    root,
-    identity,
-    artifact: artifact(source, css),
-    functionBridge,
-    collaborativeStateBridge,
-    onFatal,
-  });
-  const host = root.querySelector('arrow-sandbox') as HTMLElement | null;
-  return { cleanup, functionBridge, host, onFatal, root };
+  return {
+    format: 'vibecanvas.capsule-runtime.v1' as const,
+    capsuleArtifactHash: HASH_A,
+    target,
+    budgets: BUDGETS,
+    capabilityRequests: requests,
+    channels,
+    parkability: { parkable: false as const },
+    signatureKeyIds: [mode === 'preview' ? 'preview-key' : 'release-key'],
+  };
 }
 
-async function waitForReady(host: HTMLElement | null) {
-  expect(host).not.toBeNull();
-  customElements.upgrade?.(host as HTMLElement);
-  await vi.waitFor(() => expect(host?.dataset.ready).toBe('true'), { timeout: 10_000 });
+function artifact(
+  mode: 'preview' | 'published' = 'published',
+  requests?: Parameters<typeof runtimeDescriptor>[1],
+  target?: Parameters<typeof runtimeDescriptor>[2],
+  channels?: Parameters<typeof runtimeDescriptor>[3],
+): TVerifiedWidgetUiArtifact {
+  return {
+    digestSha256: 'd'.repeat(64),
+    bytes: new Uint8Array([1, 2, 3]),
+    capsuleArtifactHash: HASH_A,
+    runtimeDescriptor: runtimeDescriptor(mode, requests, target, channels),
+    retainedByteSize: 3,
+  };
 }
 
-type THostRendererProbe = {
-  applyPatches(patches: unknown[]): void;
-  liveAttributeCharacters: number;
-  liveAttributes: number;
-  liveEvents: number;
-  liveNodeCount: number;
-  liveTextCharacters: number;
-  render(tree: unknown): void;
-};
-
-function getHostRenderer(host: HTMLElement | null): THostRendererProbe {
-  return (host as unknown as {
-    controller: { renderer: THostRendererProbe };
-  }).controller.renderer;
+function rawHandle(artifactHash = HASH_A) {
+  const destroy = vi.fn(async () => undefined);
+  const setProps = vi.fn();
+  const setTheme = vi.fn();
+  const handle = {
+    ready: vi.fn(async () => undefined),
+    setSchedulingMode: vi.fn(async () => undefined),
+    freeze: vi.fn(async () => undefined),
+    snapshot: vi.fn(),
+    park: vi.fn(),
+    resume: vi.fn(async () => undefined),
+    focus: vi.fn(),
+    setProps,
+    setTheme,
+    setViewport: vi.fn(),
+    destroy,
+    onLifecycle: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onOutput: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onError: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    onMetrics: vi.fn(() => ({ unsubscribe: vi.fn() })),
+    diagnostics: vi.fn(() => ({ artifactHash })),
+  } as unknown as CapsuleHandle;
+  return { destroy, handle, setProps, setTheme };
 }
 
-const SAFE_SANDBOX_EVENT_TYPES = [
-  'blur', 'change', 'click', 'dblclick', 'focus', 'input', 'keydown', 'keyup',
-  'pointercancel', 'pointerdown', 'pointermove', 'pointerup', 'reset', 'submit',
-  'wheel',
-] as const;
-
-describe('widget UI artifact mount boundary', () => {
-  test('uses the exact generated-SDK global transport key', () => {
-    expect(WIDGET_SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY)
-      .toBe(SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY);
-    expect(WIDGET_COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY)
-      .toBe(COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY);
+function fakeHostFactory(mountedArtifactHash = HASH_A) {
+  const created: Array<{
+    options: CreateCapsuleHostOptions;
+    host: CapsuleHost;
+    mount: ReturnType<typeof vi.fn>;
+    destroy: ReturnType<typeof vi.fn>;
+    raw: ReturnType<typeof rawHandle>;
+  }> = [];
+  const create = vi.fn(async (options: CreateCapsuleHostOptions) => {
+    const raw = rawHandle(mountedArtifactHash);
+    const mount = vi.fn(async () => raw.handle);
+    const destroy = vi.fn(async () => undefined);
+    const host = {
+      registerSchema: vi.fn(),
+      registerCapabilityDescriptor: vi.fn((value) => ({
+        descriptor: value,
+        unregister: () => true,
+      })),
+      mount,
+      destroy,
+      diagnostics: () => ({ destroyed: false, mounts: 1 }),
+    } as unknown as CapsuleHost;
+    created.push({ options, host, mount, destroy, raw });
+    return host;
   });
+  return { create, created };
+}
 
-  test('mounts an inert artifact and destroys its QuickJS realm on cleanup', async () => {
-    const mounted = mount('export default "ready";');
-    await waitForReady(mounted.host);
-
-    expect(mounted.host?.shadowRoot?.textContent).toContain('ready');
-    expect((mounted.host as unknown as { controller: unknown }).controller).not.toBeNull();
-
-    mounted.cleanup();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.root.childElementCount).toBe(0);
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    mounted.root.remove();
-  });
-
-  test.each([
-    [
-      'serialized byte size',
-      `globalThis.__arrowHostSend('{"type":"output","payload":"' + 'x'.repeat(1_000_001) + '"}');`,
-      'host byte limit of 1000000',
-    ],
-    [
-      'render depth',
-      `
-        let tree = { kind: 'text', id: 'leaf', text: '' };
-        for (let index = 0; index < 32; index += 1) {
-          tree = { kind: 'fragment', children: [tree] };
-        }
-        globalThis.__arrowHostSend(JSON.stringify({ type: 'render', tree }));
-      `,
-      'render depth budget',
-    ],
-    [
-      'render node count',
-      `
-        const children = Array.from({ length: 4_096 }, (_, index) => ({
-          kind: 'text', id: 'node-' + index, text: '',
-        }));
-        globalThis.__arrowHostSend(JSON.stringify({
-          type: 'render', tree: { kind: 'fragment', children },
-        }));
-      `,
-      'render node budget',
-    ],
-    [
-      'render text',
-      `globalThis.__arrowHostSend(JSON.stringify({
-        type: 'render',
-        tree: { kind: 'text', id: 'text', text: 'x'.repeat(262_145) },
-      }));`,
-      'render text budget',
-    ],
-    [
-      'per-element attributes',
-      `
-        const attrs = Object.fromEntries(
-          Array.from({ length: 65 }, (_, index) => ['data-value-' + index, 'x'])
-        );
-        globalThis.__arrowHostSend(JSON.stringify({
-          type: 'render',
-          tree: {
-            kind: 'element', id: 'element', tag: 'div', attrs, events: {}, children: [],
-          },
-        }));
-      `,
-      'per-element attribute budget',
-    ],
-    [
-      'per-element events',
-      `
-        const events = Object.fromEntries(
-          Array.from({ length: 17 }, (_, index) => ['event-' + index, 'handler-' + index])
-        );
-        globalThis.__arrowHostSend(JSON.stringify({
-          type: 'render',
-          tree: {
-            kind: 'element', id: 'element', tag: 'div', attrs: {}, events, children: [],
-          },
-        }));
-      `,
-      'per-element event budget',
-    ],
-    [
-      'patch count',
-      `
-        const patches = Array.from({ length: 1_025 }, () => ({
-          type: 'set-text', nodeId: 'node', text: '',
-        }));
-        globalThis.__arrowHostSend(JSON.stringify({ type: 'patch', patches }));
-      `,
-      'patch count budget',
-    ],
-    [
-      'cumulative boot patch count',
-      `
-        const patches = Array.from({ length: 600 }, () => ({
-          type: 'set-text', nodeId: 'node', text: '',
-        }));
-        globalThis.__arrowHostSend(JSON.stringify({ type: 'patch', patches }));
-        globalThis.__arrowHostSend(JSON.stringify({ type: 'patch', patches }));
-      `,
-      'boot cap of 1024 initial patches',
-    ],
-    [
-      'duplicate node identity',
-      `globalThis.__arrowHostSend(JSON.stringify({
-        type: 'render',
-        tree: {
-          kind: 'fragment',
-          children: [
-            { kind: 'text', id: 'duplicate', text: 'a' },
-            { kind: 'text', id: 'duplicate', text: 'b' },
-          ],
-        },
-      }));`,
-      'duplicate render node id',
-    ],
-    [
-      'malformed node shape',
-      `globalThis.__arrowHostSend(JSON.stringify({
-        type: 'render',
-        tree: { kind: 'element', id: 'element', tag: 'div', attrs: [], events: {}, children: [] },
-      }));`,
-      'invalid object shape',
-    ],
-  ])('rejects forged VM messages over the %s budget before rendering', async (
-    _boundary,
-    forgedMessageSource,
-    expectedFailure,
-  ) => {
-    const mounted = mount(`${forgedMessageSource}\nexport default 'unreachable';`);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain(expectedFailure);
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes ?? []).toHaveLength(0);
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('accepts exact VM patch and text budgets without failing the sandbox', async () => {
-    const mounted = mount(`
-      const patches = Array.from({ length: 1_024 }, (_, index) => ({
-        type: 'set-text', nodeId: 'snode:1', text: 'accepted-' + index,
-      }));
-      setTimeout(() => {
-        globalThis.__arrowHostSend(JSON.stringify({ type: 'patch', patches }));
-        globalThis.__arrowHostSend(JSON.stringify({
-          type: 'patch',
-          patches: [{ type: 'set-text', nodeId: 'snode:1', text: 'x'.repeat(262_144) }],
-        }));
-      }, 10);
-      export default 'pending';
-    `);
-    await waitForReady(mounted.host);
-    await vi.waitFor(() => {
-      expect(mounted.host?.shadowRoot?.lastElementChild?.textContent).toHaveLength(262_144);
-    }, { timeout: 10_000 });
-
-    expect(mounted.host?.dataset.ready).toBe('true');
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('rejects a forged post-activation node-id collision against the live tree', async () => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      setTimeout(() => {
-        globalThis.__arrowHostSend(JSON.stringify({
-          type: 'patch',
-          patches: [{
-            type: 'replace-region',
-            regionId: 'snode:1',
-            children: [{ kind: 'text', id: 'snode:1', text: 'collision' }],
-          }],
-        }));
-      }, 10);
-      export default html\`\${() => 'ready'}\`;
-    `);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('duplicate live node id');
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('accepts exactly 4096 live nodes and rejects the next retained node', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({
-      kind: 'fragment',
-      children: [
-        { kind: 'region', id: 'retained-region', children: [] },
-        ...Array.from({ length: 4_094 }, (_, index) => ({
-          kind: 'text', id: `retained-${index}`, text: '',
-        })),
-      ],
-    });
-
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(4_096);
-    renderer.applyPatches([{
-      type: 'replace-region',
-      regionId: 'retained-region',
-      children: [{ kind: 'text', id: 'one-too-many', text: '' }],
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 4096 live nodes');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error');
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('accounts exact live totals when patches remove and replace retained DOM', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({
-      kind: 'element',
-      id: 'root',
-      tag: 'div',
-      attrs: { class: 'aa' },
-      events: { click: 'root-click' },
-      children: [
-        { kind: 'text', id: 'root-text', text: 'abc' },
-        {
-          kind: 'region',
-          id: 'region',
-          children: [{
-            kind: 'element',
-            id: 'nested',
-            tag: 'span',
-            attrs: { title: 'xy' },
-            events: { input: 'nested-input' },
-            children: [{ kind: 'text', id: 'nested-text', text: 'wxyz' }],
-          }],
-        },
-      ],
-    });
-
-    expect({
-      attributeCharacters: renderer.liveAttributeCharacters,
-      attributes: renderer.liveAttributes,
-      events: renderer.liveEvents,
-      nodes: renderer.liveNodeCount,
-      textCharacters: renderer.liveTextCharacters,
-    }).toEqual({
-      attributeCharacters: 14,
-      attributes: 2,
-      events: 2,
-      nodes: 6,
-      textCharacters: 7,
-    });
-
-    renderer.applyPatches([
-      { type: 'set-text', nodeId: 'root-text', text: 'z' },
-      { type: 'remove-attribute', nodeId: 'root', name: 'class' },
-      { type: 'clear-event-binding', nodeId: 'root', eventType: 'click' },
-      {
-        type: 'replace-region',
-        regionId: 'region',
-        children: [{ kind: 'text', id: 'replacement-text', text: 'ok' }],
-      },
+async function settleWithin<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+): Promise<Readonly<
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; reason: unknown }
+  | { status: 'timeout' }
+>> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation.then(
+        (value) => ({ status: 'fulfilled' as const, value }),
+        (reason: unknown) => ({ status: 'rejected' as const, reason }),
+      ),
+      new Promise<Readonly<{ status: 'timeout' }>>((resolve) => {
+        timeout = setTimeout(() => resolve({ status: 'timeout' }), timeoutMs);
+      }),
     ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
 
-    expect({
-      attributeCharacters: renderer.liveAttributeCharacters,
-      attributes: renderer.liveAttributes,
-      events: renderer.liveEvents,
-      nodes: renderer.liveNodeCount,
-      textCharacters: renderer.liveTextCharacters,
-    }).toEqual({
-      attributeCharacters: 0,
-      attributes: 0,
-      events: 0,
-      nodes: 5,
-      textCharacters: 3,
+describe('Capsule widget mount boundary', () => {
+  test('derives artifact capability schemas and policy through the public adapter', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(
+      new Uint8Array(32).buffer,
+    );
+    const factory = fakeHostFactory();
+    const baseCatalog = catalog('catalog-a', []);
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: async () => baseCatalog,
+      hostFactory: factory,
     });
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('accepts the exact live text budget after sequential patches and rejects one more character', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({
-      kind: 'fragment',
-      children: [
-        { kind: 'text', id: 'main-text', text: 'x'.repeat(262_143) },
-        { kind: 'text', id: 'boundary-text', text: '' },
-        { kind: 'text', id: 'overflow-text', text: '' },
-      ],
-    });
-    renderer.applyPatches([{
-      type: 'set-text', nodeId: 'boundary-text', text: 'y',
-    }]);
-
-    expect(renderer.liveTextCharacters).toBe(262_144);
-    expect(mounted.host?.shadowRoot?.lastElementChild?.textContent).toHaveLength(262_144);
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    renderer.applyPatches([{
-      type: 'set-text', nodeId: 'overflow-text', text: 'z',
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 262144 live text characters');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('reclaims one of 4096 live attributes before rejecting the next retained attribute', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({
-      kind: 'fragment',
-      children: [
-        ...Array.from({ length: 64 }, (_, elementIndex) => ({
-          kind: 'element',
-          id: `attribute-element-${elementIndex}`,
-          tag: 'div',
-          attrs: Object.fromEntries(Array.from({ length: 64 }, (_, attributeIndex) => [
-            `data-a-${elementIndex}-${attributeIndex}`,
-            'x',
-          ])),
-          events: {},
-          children: [],
-        })),
-        {
-          kind: 'element', id: 'attribute-spare-one', tag: 'div',
-          attrs: {}, events: {}, children: [],
-        },
-        {
-          kind: 'element', id: 'attribute-spare-two', tag: 'div',
-          attrs: {}, events: {}, children: [],
-        },
-      ],
-    });
-
-    expect(renderer.liveAttributes).toBe(4_096);
-    renderer.applyPatches([
-      {
-        type: 'remove-attribute', nodeId: 'attribute-element-0', name: 'data-a-0-0',
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
       },
-      {
-        type: 'set-attribute', nodeId: 'attribute-spare-one', name: 'class', value: '',
+      output: { notification: vi.fn() },
+    });
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
       },
-    ]);
-    expect(renderer.liveAttributes).toBe(4_096);
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    renderer.applyPatches([{
-      type: 'set-attribute', nodeId: 'attribute-spare-two', name: 'id', value: '',
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 4096 live attributes');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('accepts the exact live attribute-character budget and rejects a sequential addition', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({
-      kind: 'element',
-      id: 'attribute-character-element',
-      tag: 'div',
-      attrs: { id: 'x'.repeat(262_142) },
-      events: {},
-      children: [],
-    });
-
-    expect(renderer.liveAttributeCharacters).toBe(262_144);
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    renderer.applyPatches([{
-      type: 'set-attribute',
-      nodeId: 'attribute-character-element',
-      name: 'class',
-      value: '',
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 262144 live attribute characters');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('rejects a 65th live attribute added to one element by a later patch', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({
-      kind: 'element',
-      id: 'per-element-attributes',
-      tag: 'div',
-      attrs: Object.fromEntries(Array.from({ length: 64 }, (_, index) => [
-        `data-boundary-${index}`,
-        'x',
-      ])),
-      events: {},
-      children: [],
-    });
-
-    expect(renderer.liveAttributes).toBe(64);
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    renderer.applyPatches([{
-      type: 'set-attribute',
-      nodeId: 'per-element-attributes',
-      name: 'class',
-      value: '',
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 64 live attributes per element');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('reclaims one of 1024 live event bindings before rejecting the next retained binding', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    const fullEventBindings = Object.fromEntries(SAFE_SANDBOX_EVENT_TYPES.map(
-      (eventType) => [eventType, `handler-${eventType}`],
-    ));
-    renderer.render({
-      kind: 'fragment',
-      children: [
-        ...Array.from({ length: 68 }, (_, index) => ({
-          kind: 'element', id: `event-element-${index}`, tag: 'div', attrs: {},
-          events: fullEventBindings, children: [],
-        })),
-        {
-          kind: 'element', id: 'event-boundary', tag: 'div', attrs: {},
-          events: Object.fromEntries(SAFE_SANDBOX_EVENT_TYPES.slice(0, 4).map(
-            (eventType) => [eventType, `boundary-${eventType}`],
-          )),
-          children: [],
-        },
-        {
-          kind: 'element', id: 'event-spare-one', tag: 'div',
-          attrs: {}, events: {}, children: [],
-        },
-        {
-          kind: 'element', id: 'event-spare-two', tag: 'div',
-          attrs: {}, events: {}, children: [],
-        },
-      ],
-    });
-
-    expect(renderer.liveEvents).toBe(1_024);
-    renderer.applyPatches([
-      {
-        type: 'clear-event-binding', nodeId: 'event-element-0', eventType: 'blur',
-      },
-      {
-        type: 'set-event-binding', nodeId: 'event-spare-one',
-        eventType: 'click', handlerId: 'replacement-click',
-      },
-    ]);
-    expect(renderer.liveEvents).toBe(1_024);
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    renderer.applyPatches([{
-      type: 'set-event-binding', nodeId: 'event-spare-two',
-      eventType: 'change', handlerId: 'overflow-change',
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 1024 live event bindings');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('rejects live depth accumulated across sequential region replacements', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-    renderer.render({ kind: 'region', id: 'depth-1', children: [] });
-    for (let depth = 2; depth <= 32; depth += 1) {
-      renderer.applyPatches([{
-        type: 'replace-region',
-        regionId: `depth-${depth - 1}`,
-        children: [{ kind: 'region', id: `depth-${depth}`, children: [] }],
-      }]);
-    }
-
-    expect(renderer.liveNodeCount).toBe(64);
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    renderer.applyPatches([{
-      type: 'replace-region',
-      regionId: 'depth-32',
-      children: [{ kind: 'text', id: 'depth-33', text: '' }],
-    }]);
-    expect(mounted.root.textContent).toContain('host cap of 32 live levels');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('reserves a parent region identity before validating its nested children', async () => {
-    const mounted = mount(`export default 'ready';`);
-    await waitForReady(mounted.host);
-    const renderer = getHostRenderer(mounted.host);
-
-    renderer.render({
-      kind: 'region',
-      id: 'reserved-region-id',
-      children: [{ kind: 'text', id: 'reserved-region-id', text: 'collision' }],
-    });
-    expect(mounted.root.textContent).toContain('duplicate live node id');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error');
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('makes a renderer limit fatal even when guest code catches the host-send exception', async () => {
-    const mounted = mount(`
-      setTimeout(() => {
-        try {
-          globalThis.__arrowHostSend(JSON.stringify({
-            type: 'render',
-            tree: {
-              kind: 'fragment',
-              children: Array.from({ length: 4_095 }, (_, index) => ({
-                kind: 'region', id: 'oversized-' + index, children: [],
-              })),
-            },
-          }));
-        } catch {}
-        try {
-          globalThis.__arrowHostSend(JSON.stringify({
-            type: 'render',
-            tree: { kind: 'text', id: 'should-not-survive', text: 'caught' },
-          }));
-        } catch {}
-      }, 10);
-      export default 'ready';
-    `);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('host cap of 4096 live nodes');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('does not activate a controller after buffered boot patches exceed live DOM limits', async () => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      globalThis.__arrowHostSend(JSON.stringify({
-        type: 'patch',
-        patches: [{
-          type: 'replace-region',
-          regionId: 'snode:1',
-          children: Array.from({ length: 4_096 }, (_, index) => ({
-            kind: 'text', id: 'buffered-child-' + index, text: '',
-          })),
-        }],
-      }));
-      export default html\`\${() => ''}\`;
-    `);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('host cap of 4096 live nodes');
-    expect(mounted.host?.dataset.ready).not.toBe('true');
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('cleans a failed controller even when host error reporting throws', async () => {
-    const reportingError = new Error('host error reporter failed');
-    const onFatal = vi.fn(() => { throw reportingError; });
-    const mounted = mount(`
-      setTimeout(() => globalThis.__arrowHostSend(JSON.stringify({
-          type: 'render',
-          tree: {
-            kind: 'fragment',
-            children: Array.from({ length: 4_095 }, (_, index) => ({
-              kind: 'region', id: 'reporting-failure-' + index, children: [],
-            })),
-          },
-        })), 10);
-      export default 'ready';
-    `, bridge(), null, '', onFatal);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('host cap of 4096 live nodes');
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.host?.shadowRoot?.lastElementChild?.childNodes).toHaveLength(0);
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('charges rejected bridge arguments before traversal so caught floods are bounded', async () => {
-    const functionBridge = bridge();
-    const mounted = mount(`
-      import { invokeServerFunction } from '${WIDGET_SERVER_FUNCTION_HOST_MODULE}';
-      for (let index = 0; index < 64; index += 1) {
-        const circular = [];
-        circular.push(circular);
-        try { invokeServerFunction(circular); } catch {}
-      }
-      invokeServerFunction({
-        functionName: 'mustNotRun',
-        input: null,
-        idempotencyKey: 'bridge-rate-boundary',
-      });
-      export default 'unreachable';
-    `, functionBridge);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('host rate budget of 64 per 1000ms');
-    expect(functionBridge.invoke).not.toHaveBeenCalled();
-    expect(functionBridge.dispose).toHaveBeenCalledOnce();
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('charges rejected VM messages before string extraction and parsing', async () => {
-    const mounted = mount(`
-      for (let index = 0; index < 256; index += 1) {
-        try { globalThis.__arrowHostSend(1); } catch {}
-      }
-      globalThis.__arrowHostSend(JSON.stringify({
-        type: 'log', method: 'log', args: [],
-      }));
-      export default 'unreachable';
-    `);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('VM messages exceeded the host rate budget of 256 per 1000ms');
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('destroys the realm and bridge when the artifact entry import fails', async () => {
-    const mounted = mount('throw new Error("artifact import failed"); export default "never";');
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('artifact import failed');
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    expect(mounted.root.querySelector('arrow-sandbox')).toBeNull();
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-
-    mounted.cleanup();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.root.childElementCount).toBe(0);
-    mounted.root.remove();
-  });
-
-  test('fences a late boot completion after unmount', async () => {
-    let resolveInvocation!: (value: unknown) => void;
-    const invoke = vi.fn(() => new Promise((resolve) => {
-      resolveInvocation = resolve;
-    }));
-    const functionBridge = bridge({ invoke });
-    const mounted = mount(`
-      import { invokeServerFunction } from 'host-bridge:vibecanvas-server-functions';
-      await invokeServerFunction({ functionName: 'wait', input: null, idempotencyKey: 'pending-key' });
-      export default 'late';
-    `, functionBridge);
-
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce(), { timeout: 10_000 });
-    mounted.cleanup();
-    expect(functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.root.childElementCount).toBe(0);
-
-    resolveInvocation({ ok: true });
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(mounted.root.childElementCount).toBe(0);
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    mounted.root.remove();
-  });
-
-  test('aborts a never-settling boot when its portal is removed before controller assignment', async () => {
-    const mounted = mount(`
-      await new Promise(() => {});
-      export default 'unreachable';
-    `);
-    expect(mounted.host).not.toBeNull();
-    customElements.upgrade?.(mounted.host as HTMLElement);
-
-    const hostState = mounted.host as unknown as {
-      controller: unknown;
-      mountingController: null | {
-        bootAbortController: AbortController;
-      };
+      invoke: vi.fn(),
+      dispose: vi.fn(),
     };
-    await vi.waitFor(() => expect(hostState.mountingController).not.toBeNull(), {
-      timeout: 10_000,
-    });
-    const bootSignal = hostState.mountingController?.bootAbortController.signal;
-    expect(hostState.controller).toBeNull();
-    expect(bootSignal?.aborted).toBe(false);
 
-    mounted.cleanup();
-    expect(bootSignal?.aborted).toBe(true);
-    expect(hostState.mountingController).toBeNull();
-    expect(hostState.controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.root.childElementCount).toBe(0);
+    try {
+      const handle = await mount.mount({
+        mode: 'published',
+        root: document.createElement('div'),
+        identity: functionBridge.identity,
+        artifact: artifact(),
+        functionDescriptors: functionMetadata,
+        browserFunctionDescriptorsDigestSha256: browserFunctionDigest(functionMetadata),
+        functionBridge,
+        collaborativeStateBridge: null,
+        onFatal: vi.fn(),
+      });
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    expect(mounted.root.childElementCount).toBe(0);
-    mounted.root.remove();
+      expect(factory.created).toHaveLength(1);
+      expect(factory.created[0]!.options.schemas.length).toBeGreaterThan(0);
+      expect(factory.created[0]!.options.runtimePolicy.capabilities).toEqual([
+        expect.objectContaining({
+          id: functionDescriptor.id,
+          contractHash: HASH_A,
+          operations: ['count'],
+        }),
+      ]);
+      await handle.destroy();
+      expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    } finally {
+      digest.mockRestore();
+    }
   });
 
-  test('times out a never-settling boot and releases the runtime slot for the next widget', async () => {
-    const stalledArtifact = encodedArtifact(`
-      await new Promise(() => {});
-      export default 'unreachable';
-    `);
-    const healthyArtifact = encodedArtifact("export default 'queue progressed';");
-    const load = vi.fn(async (request: Omit<TWidgetRuntimeIdentity, 'orgId'>) => [undefined, {
-      identity: request,
-      manifest: {
-        schemaVersion: 2 as const,
-        name: 'Boot deadline test',
-        slug: 'boot-deadline-test',
-        ui: { entry: 'ui/main.ts' },
+  test('rejects browser descriptor field mutations before provider creation', async () => {
+    const factory = fakeHostFactory();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
+    });
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => 0,
+      theme: {
+        read: () => THEME,
+        subscribe: () => vi.fn(),
       },
-      artifact: request.elementId === 'stalled-element' ? stalledArtifact : healthyArtifact,
-      functionDescriptors: [],
-    }] as const);
-    const runtime = new WidgetUiRuntime({
-      transport: {
-        api: {
-          widget: { runtime: { load } },
-          function: { invoke: vi.fn(), get: vi.fn() },
-        },
-      } as unknown as TWidgetRuntimeTransportPort,
-      codec: {
-        decodeBase64: (value) => Buffer.from(value, 'base64'),
-        decodeUtf8: (value) => Buffer.from(value).toString('utf8'),
-        digestSha256: async (value) => sha256(value),
+      output: { notification: vi.fn() },
+    });
+    const expectedDigestSha256 = browserFunctionDigest(functionMetadata);
+    const baseline = functionMetadata[0]!;
+    const mutations: readonly TWidgetBrowserFunctionDescriptor[] = [
+      { ...baseline, effect: 'tx' },
+      { ...baseline, inputSchema: { type: 'string' } },
+      {
+        ...baseline,
+        limits: { ...baseline.limits, timeoutMs: 2_000 },
       },
-      mount: widgetUiArtifactMount,
-      createIdempotencyKey: () => 'boot-deadline-key',
-      organizationId: () => identity.orgId,
-      tenantAuthorityKey: () => 'tenant-authority-a',
-      nowMs: () => Date.now(),
-      wait: async () => undefined,
-      isTargetCurrent: () => true,
-      maxActiveRenders: 1,
-    });
-    const stalledRoot = document.createElement('div');
-    const healthyRoot = document.createElement('div');
-    document.body.append(stalledRoot, healthyRoot);
-    const cleanupStalled = runtime.render({
-      root: stalledRoot,
-      canvasId: identity.canvasId,
-      element: runtimeElement('stalled-element', 'stalled-instance'),
-    });
-    const cleanupHealthy = runtime.render({
-      root: healthyRoot,
-      canvasId: identity.canvasId,
-      element: runtimeElement('healthy-element', 'healthy-instance'),
-    });
+    ];
 
-    try {
-      await vi.waitFor(() => {
-        expect(stalledRoot.dataset.widgetRuntimeStatus).toBe('error');
-      }, { timeout: 15_000 });
-      expect(stalledRoot.textContent).toContain('host deadline of 10000ms');
-
-      await vi.waitFor(() => {
-        const host = healthyRoot.querySelector('arrow-sandbox') as HTMLElement | null;
-        expect(host?.dataset.ready).toBe('true');
-        expect(host?.shadowRoot?.textContent).toContain('queue progressed');
-      }, { timeout: 10_000 });
-      expect(healthyRoot.dataset.widgetRuntimeStatus).toBe('ready');
-      expect(load).toHaveBeenCalledTimes(2);
-    } finally {
-      cleanupStalled();
-      cleanupHealthy();
-      stalledRoot.remove();
-      healthyRoot.remove();
-    }
-  }, 25_000);
-
-  test('caps pending sandbox fetches and aborts every request during realm teardown', async () => {
-    const previousFetch = globalThis.fetch;
-    const signals: AbortSignal[] = [];
-    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
-      if (!String(input).startsWith('https://pending.example.test/')) {
-        return previousFetch(input, init);
-      }
-      const signal = init?.signal;
-      if (!signal) throw new Error('Sandbox fetch did not provide an abort signal.');
-      signals.push(signal);
-      return new Promise<Response>((_resolve, reject) => {
-        signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
-      });
-    });
-
-    try {
-      const mounted = mount(`
-        const requests = [];
-        for (let index = 0; index < 9; index += 1) {
-          requests.push(fetch('https://pending.example.test/' + index));
-        }
-        await Promise.all(requests);
-        export default 'unreachable';
-      `);
-      await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-        timeout: 10_000,
-      });
-
-      expect(mounted.root.textContent).toContain('host cap of 8 pending requests');
-      expect(signals).toHaveLength(8);
-      expect(signals.every((signal) => signal.aborted)).toBe(true);
-      expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-      expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-      mounted.cleanup();
-      mounted.root.remove();
-    } finally {
-      vi.stubGlobal('fetch', previousFetch);
-    }
-  });
-
-  test('streams and cancels an oversized fetch body without a Content-Length header', async () => {
-    const previousFetch = globalThis.fetch;
-    const arrayBuffer = vi.fn(async () => new ArrayBuffer(1_000_001));
-    let cancelled = false;
-    let pullCount = 0;
-    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) !== 'https://chunked.example.test/oversized') {
-        return previousFetch(input, init);
-      }
-      const body = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          pullCount += 1;
-          controller.enqueue(new Uint8Array(400_000));
+    for (const mutation of mutations) {
+      const functionBridge: TWidgetFunctionHostBridge = {
+        identity: {
+          kind: 'draft_preview',
+          draftId: 'draft-a',
+          definitionId: 'definition-a',
+          revision: 'revision-a',
         },
-        cancel() {
-          cancelled = true;
-        },
-      });
-      const response = new Response(body, {
-        headers: { 'content-type': 'application/octet-stream' },
-      });
-      expect(response.headers.has('content-length')).toBe(false);
-      Object.defineProperty(response, 'arrayBuffer', { value: arrayBuffer });
-      return Promise.resolve(response);
-    });
-
-    try {
-      const mounted = mount(`
-        await fetch('https://chunked.example.test/oversized');
-        export default 'unreachable';
-      `);
-      await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-        timeout: 10_000,
-      });
-
-      expect(mounted.root.textContent).toContain('exceeded 1000000 bytes');
-      expect(cancelled).toBe(true);
-      expect(pullCount).toBeGreaterThanOrEqual(3);
-      expect(arrayBuffer).not.toHaveBeenCalled();
-      expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-      expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-      expect(mounted.onFatal).toHaveBeenCalledOnce();
-      mounted.cleanup();
-      mounted.root.remove();
-    } finally {
-      vi.stubGlobal('fetch', previousFetch);
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      };
+      await expect(mount.mount({
+        mode: 'published',
+        root: document.createElement('div'),
+        identity: functionBridge.identity,
+        artifact: artifact(),
+        functionDescriptors: [mutation],
+        browserFunctionDescriptorsDigestSha256: expectedDigestSha256,
+        functionBridge,
+        collaborativeStateBridge: null,
+        onFatal: vi.fn(),
+      })).rejects.toThrow('failed integrity verification');
+      expect(functionBridge.dispose).toHaveBeenCalledOnce();
     }
-  });
 
-  test('caps pending host calls and destroys the sandbox realm', async () => {
-    const invoke = vi.fn(() => new Promise<never>(() => undefined));
-    const mounted = mount(`
-      import { invokeServerFunction } from 'host-bridge:vibecanvas-server-functions';
-      const requests = [];
-      for (let index = 0; index < 17; index += 1) {
-        requests.push(invokeServerFunction({
-          functionName: 'pending',
-          input: { index },
-          idempotencyKey: 'pending-' + index,
-        }));
-      }
-      await Promise.all(requests);
-      export default 'unreachable';
-    `, bridge({ invoke }));
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('host cap of 16 pending calls');
-    expect(invoke).toHaveBeenCalledTimes(16);
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  });
-
-  test('rejects a circular guest array before invoking a host bridge handler', async () => {
-    const collaborativeStateBridge = stateBridge();
-    const mounted = mount(`
-      const input = [];
-      input.push(input);
-      try {
-        await globalThis.__arrowHostBridge(
-          ${JSON.stringify(WIDGET_COLLABORATIVE_STATE_HOST_MODULE)},
-          'changeState',
-          input
-        );
-      } finally {
-        input.length = 0;
-      }
-      export default 'unreachable';
-    `, bridge(), collaborativeStateBridge);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('must not contain circular references');
-    expect(collaborativeStateBridge.change).not.toHaveBeenCalled();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('rejects guest bridge data deeper than 32 levels without host recursion', async () => {
-    const invoke = vi.fn(async () => ({ unreachable: true }));
-    const mounted = mount(`
-      let input = 'leaf';
-      for (let depth = 0; depth < 40; depth += 1) input = { child: input };
-      await globalThis[${JSON.stringify(WIDGET_SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY)}].invoke({
-        functionName: 'deepInput',
-        input,
-        idempotencyKey: 'deep-input',
-      });
-      export default 'unreachable';
-    `, bridge({ invoke }));
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('32-level plain-data budget');
-    expect(invoke).not.toHaveBeenCalled();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('shares one million-byte bridge budget across every argument in one call', async () => {
-    const collaborativeStateBridge = stateBridge();
-    const mounted = mount(`
-      await globalThis.__arrowHostBridge(
-        ${JSON.stringify(WIDGET_COLLABORATIVE_STATE_HOST_MODULE)},
-        'nextState',
-        'x'.repeat(500_001),
-        'y'.repeat(500_001)
-      );
-      export default 'unreachable';
-    `, bridge(), collaborativeStateBridge);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain('1000000-byte plain-data budget');
-    expect(collaborativeStateBridge.next).not.toHaveBeenCalled();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test.each([
-    ['circular', () => {
-      const value: unknown[] = [];
-      value.push(value);
-      return value;
-    }, 'must not contain circular references'],
-    ['deep', () => {
-      let value: unknown = 'leaf';
-      for (let depth = 0; depth < 40; depth += 1) value = { child: value };
-      return value;
-    }, '32-level plain-data budget'],
-    ['oversized', () => 'x'.repeat(1_000_001), '1000000-byte plain-data budget'],
-  ])('rejects a %s host bridge return before converting it into guest source', async (
-    _boundary,
-    createReturnValue,
-    expectedFailure,
-  ) => {
-    const invoke = vi.fn(async () => createReturnValue());
-    const mounted = mount(`
-      await globalThis[${JSON.stringify(WIDGET_SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY)}].invoke({
-        functionName: 'boundedReturn',
-        input: null,
-        idempotencyKey: 'bounded-return',
-      });
-      export default 'unreachable';
-    `, bridge({ invoke: invoke as never }));
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toContain(expectedFailure);
-    expect(invoke).toHaveBeenCalledOnce();
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('rejects artifact attempts to replace the fixed global bridge', async () => {
-    const mounted = mount(`
-      Object.defineProperty(globalThis, ${JSON.stringify(WIDGET_SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY)}, {
-        configurable: true,
-        value: { createIdempotencyKey: () => 'spoof', invoke: () => ({ spoofed: true }) },
-      });
-      export default 'spoofed';
-    `);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent?.toLowerCase()).toMatch(/redefine|configurable|property/);
-    expect(mounted.functionBridge.invoke).not.toHaveBeenCalled();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  });
-
-  test('exposes exact collaborative get/change capability and disposes it with the realm', async () => {
-    const collaborativeStateBridge = stateBridge();
-    const mounted = mount(`
-      const state = globalThis[${JSON.stringify(WIDGET_COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY)}];
-      const before = await state.get();
-      const after = await state.change({ count: before.value.count + 1 });
-      export default 'count:' + after.value.count;
-    `, bridge(), collaborativeStateBridge);
-    await waitForReady(mounted.host);
-
-    expect(mounted.host?.shadowRoot?.textContent).toContain('count:2');
-    expect(collaborativeStateBridge.get).toHaveBeenCalledOnce();
-    expect(collaborativeStateBridge.change).toHaveBeenCalledWith({ count: 2 });
-    mounted.cleanup();
-    expect(collaborativeStateBridge.dispose).toHaveBeenCalledOnce();
-    mounted.root.remove();
-  });
-
-  test('rejects artifact attempts to replace the fixed collaborative-state global', async () => {
-    const collaborativeStateBridge = stateBridge();
-    const mounted = mount(`
-      Object.defineProperty(globalThis, ${JSON.stringify(WIDGET_COLLABORATIVE_STATE_TRANSPORT_GLOBAL_KEY)}, {
-        configurable: true,
-        value: { get: () => ({ version: 99, value: 'spoofed' }) },
-      });
-      export default 'spoofed';
-    `, bridge(), collaborativeStateBridge);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent?.toLowerCase()).toMatch(/redefine|configurable|property/);
-    expect(collaborativeStateBridge.get).not.toHaveBeenCalled();
-    expect(collaborativeStateBridge.dispose).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  });
-
-  test.each([
-    ['scriptable tag', '<script>globalThis.__widgetHostEscaped = true</script>'],
-    ['inline handler', '<div onclick="globalThis.__widgetHostEscaped = true">unsafe</div>'],
-    ['srcdoc frame', '<iframe srcdoc="<script>globalThis.__widgetHostEscaped = true</script>"></iframe>'],
-    ['URL-bearing attribute', '<div href="javascript:globalThis.__widgetHostEscaped = true">unsafe</div>'],
-    ['inline style', '<div style="background:url(https://example.invalid/leak)">unsafe</div>'],
-    ['SVG namespace', '<svg><circle></circle></svg>'],
-  ])('rejects %s before it reaches the host DOM', async (_label, template) => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      export default html\`${template}\`;
-    `);
-    await vi.waitFor(() => expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error'), {
-      timeout: 10_000,
-    });
-
-    expect(mounted.root.textContent).toMatch(/Unsafe sandbox|Unsupported sandbox/);
-    expect(mounted.root.querySelector('script, iframe, svg')).toBeNull();
-    expect((globalThis as Record<string, unknown>).__widgetHostEscaped).toBeUndefined();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 15_000);
-
-  test('renders ordinary neutral-widget CSS inside the shadow boundary', async () => {
-    const css = `
-      .safe-card { color: rgb(12 34 56); display: grid; gap: 0.5rem; }
-      .safe-card::before { content: "safe @ text"; }
-      @media (min-width: 10px) { .safe-card { grid-template-columns: 1fr; } }
-      @keyframes pulse { from { opacity: 0.8; } to { opacity: 1; } }
-    `;
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      export default html\`<article class="safe-card">styled neutral widget</article>\`;
-    `, bridge(), null, css);
-    await waitForReady(mounted.host);
-
-    expect(mounted.host?.shadowRoot?.querySelector('article.safe-card')?.textContent)
-      .toContain('styled neutral widget');
-    expect(mounted.host?.shadowRoot?.querySelector('style')?.textContent)
-      .toContain('/* vibecanvas-trusted-host-layout-v1 */');
-    expect(mounted.host?.shadowRoot?.querySelector('style')?.textContent).toContain('.safe-card');
-    expect(mounted.host?.shadowRoot?.querySelector('style')?.textContent).toContain('@media');
-    mounted.cleanup();
-    mounted.root.remove();
-  });
-
-  test.each([
-    ['network import', '@import "https://example.invalid/leak.css";'],
-    ['network URL', '.unsafe { background: url(https://example.invalid/leak); }'],
-    ['comment-obfuscated URL', '.unsafe { background: u/**/rl(https://example.invalid/leak); }'],
-    ['escaped URL token', String.raw`.unsafe { background: u\72l(https://example.invalid/leak); }`],
-    ['image-set URL', '.unsafe { background: image-set("https://example.invalid/leak" 1x); }'],
-    ['host selector', ':host { display: none; }'],
-    ['fixed host escape', '.unsafe { position: fixed; inset: 0; }'],
-    [
-      'trusted marker spoof',
-      '/* vibecanvas-trusted-host-layout-v1 */\n:host { position: fixed; inset: 0; }',
-    ],
-  ])('rejects dangerous neutral-widget CSS: %s', (_label, css) => {
-    const root = document.createElement('div');
-    const functionBridge = bridge();
-    expect(() => widgetUiArtifactMount.mount({
-      root,
-      identity,
-      artifact: artifact('export default "ready";', css),
-      functionBridge,
+    const signedMismatchBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+    await expect(mount.mount({
+      mode: 'published',
+      root: document.createElement('div'),
+      identity: signedMismatchBridge.identity,
+      artifact: artifact('published', [{
+        id: `vibecanvas.widget.functions.h${'b'.repeat(64)}`,
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['count'],
+      }]),
+      functionDescriptors: functionMetadata,
+      browserFunctionDescriptorsDigestSha256: expectedDigestSha256,
+      functionBridge: signedMismatchBridge,
       collaborativeStateBridge: null,
       onFatal: vi.fn(),
-    })).toThrow('Unsafe sandbox CSS');
-    expect(functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(root.querySelector('arrow-sandbox')).toBeNull();
+    })).rejects.toThrow('does not match the signed capability request');
+    expect(signedMismatchBridge.dispose).toHaveBeenCalledOnce();
+
+    expect(factory.create).not.toHaveBeenCalled();
   });
 
-  test('keeps common form controls inert while delivering submit handlers', async () => {
-    const mounted = mount(`
-      import { html, reactive } from '@arrow-js/core';
-      const state = reactive({ submitted: false });
-      export default html\`
-        <form name="settings" autocomplete="off" @submit="\${() => { state.submitted = true; }}">
-          <fieldset name="profile">
-            <legend>Profile</legend>
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" value="user@example.test" />
-            <select name="role">
-              <optgroup label="Roles"><option value="admin">Admin</option></optgroup>
-            </select>
-            <textarea name="notes">hello</textarea>
-            <button type="submit" name="save" value="yes">Save</button>
-            <output name="status">\${() => state.submitted ? 'submitted' : 'idle'}</output>
-          </fieldset>
-        </form>
-      \`;
-    `);
-    await waitForReady(mounted.host);
-
-    const form = mounted.host?.shadowRoot?.querySelector('form');
-    expect(form).not.toBeNull();
-    const beforeHref = document.location.href;
-    const submit = new SubmitEvent('submit', { bubbles: true, cancelable: true });
-    expect(form?.dispatchEvent(submit)).toBe(false);
-    expect(submit.defaultPrevented).toBe(true);
-    await vi.waitFor(() => {
-      expect(mounted.host?.shadowRoot?.querySelector('output')?.textContent).toBe('submitted');
+  test('delivers fixed props/theme/output channels and releases listeners at destroy', async () => {
+    const digest = vi.spyOn(globalThis.crypto.subtle, 'digest').mockImplementation(
+      async (_algorithm, value) => {
+        const bytes = ArrayBuffer.isView(value)
+          ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+          : new Uint8Array(value);
+        return Uint8Array.from(
+          createHash('sha256').update(bytes).digest(),
+        ).buffer;
+      },
+    );
+    try {
+      const channelContract = await createVibecanvasGuestChannelContract({
+        localStore: 'ephemeral',
+      });
+    const factory = fakeHostFactory();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => catalog('catalog-a', []),
+      hostFactory: factory,
     });
-    expect(document.location.href).toBe(beforeHref);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    mounted.cleanup();
-    mounted.root.remove();
-  });
+    const themeListeners = new Set<(value: TWidgetCapsuleTheme) => void>();
+    const releaseTheme = vi.fn();
+    const notification = vi.fn();
+    let now = 1_000;
+    const mount = createWidgetUiArtifactMountPort({
+      coordinator,
+      createStreamId: () => 'stream-a',
+      digestSha256: async (bytes) => createHash('sha256').update(bytes).digest('hex'),
+      nowMs: () => now,
+      theme: {
+        read: () => THEME,
+        subscribe(listener) {
+          themeListeners.add(listener);
+          return () => {
+            themeListeners.delete(listener);
+            releaseTheme();
+          };
+        },
+      },
+      output: { notification },
+    });
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const handle = await mount.mount({
+      mode: 'published',
+      root: document.createElement('div'),
+      identity: functionBridge.identity,
+      artifact: artifact(
+        'published',
+        [],
+        TARGET,
+        channelContract.declaration,
+      ),
+      functionDescriptors: [],
+      browserFunctionDescriptorsDigestSha256: browserFunctionDigest([]),
+      functionBridge,
+      collaborativeStateBridge: null,
+      props: { count: 1 },
+      onFatal: vi.fn(),
+    });
+    const hostMount = factory.created[0]!.mount.mock.calls[0]![0];
+    expect(hostMount.guestChannels).toMatchObject({
+      props: {
+        schema: channelContract.declaration.props,
+        initial: { count: 1 },
+      },
+      theme: {
+        schema: channelContract.declaration.theme,
+        initial: THEME,
+      },
+      output: {
+        schema: channelContract.declaration.output,
+      },
+      store: {
+        schema: channelContract.declaration.store?.schema,
+        maxEntries: 64,
+      },
+    });
 
-  test('coalesces a pointermove flood and times out its hung event handler', async () => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      export default html\`<button @pointermove="\${() => new Promise(() => {})}">hang</button>\`;
-    `);
-    await waitForReady(mounted.host);
+    handle.setProps({ count: 2 });
+    expect(factory.created[0]!.raw.setProps).toHaveBeenCalledWith({ count: 2 });
+    const nextTheme = {
+      ...THEME,
+      appearance: 'light' as const,
+    };
+    for (const listener of themeListeners) listener(nextTheme);
+    expect(factory.created[0]!.raw.setTheme).toHaveBeenCalledWith(nextTheme);
 
-    const button = mounted.host?.shadowRoot?.querySelector<HTMLButtonElement>('button');
-    expect(button).not.toBeNull();
-    for (let index = 0; index < 100; index += 1) {
-      button?.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }));
+    const onOutput = hostMount.guestChannels?.output?.onOutput;
+    if (onOutput === undefined) throw new Error('Expected output channel callback.');
+    expect(() => onOutput({
+      type: 'open-url',
+      tone: 'info',
+      message: 'https://example.invalid',
+    })).toThrow('does not match');
+    for (let index = 0; index < 8; index += 1) {
+      onOutput({
+        type: 'notification',
+        tone: 'success',
+        message: `Saved ${index}`,
+      });
     }
+    expect(notification).toHaveBeenCalledTimes(5);
+    now += 10_000;
+    onOutput({
+      type: 'notification',
+      tone: 'info',
+      message: 'New window',
+    });
+    expect(notification).toHaveBeenCalledTimes(6);
 
-    await vi.waitFor(() => {
-      expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error');
-    }, { timeout: 5_000 });
-    expect(mounted.root.textContent).toContain('event dispatch exceeded the host deadline of 1000ms');
-    expect(mounted.root.textContent).not.toContain('host cap');
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
-  }, 10_000);
-
-  test('fails closed when hung event handlers fill the bounded dispatch queue', async () => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      export default html\`<button @click="\${() => new Promise(() => {})}">hang</button>\`;
-    `);
-    await waitForReady(mounted.host);
-
-    const button = mounted.host?.shadowRoot?.querySelector<HTMLButtonElement>('button');
-    expect(button).not.toBeNull();
-    for (let index = 0; index < 100; index += 1) button?.click();
-
-    await vi.waitFor(() => {
-      expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error');
-    }, { timeout: 5_000 });
-    expect(mounted.root.textContent).toContain('host cap of 16 pending dispatches');
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
+      await handle.destroy('test-complete');
+      expect(releaseTheme).toHaveBeenCalledOnce();
+      expect(themeListeners.size).toBe(0);
+      const themeCalls = factory.created[0]!.raw.setTheme.mock.calls.length;
+      for (const listener of themeListeners) listener(THEME);
+      expect(factory.created[0]!.raw.setTheme).toHaveBeenCalledTimes(themeCalls);
+      onOutput({
+        type: 'notification',
+        tone: 'error',
+        message: 'Too late',
+      });
+      expect(notification).toHaveBeenCalledTimes(6);
+    } finally {
+      digest.mockRestore();
+    }
   });
 
-  test('cancels a hung event dispatch promptly when its portal is removed', async () => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      export default html\`<button @click="\${() => new Promise(() => {})}">hang</button>\`;
-    `);
-    await waitForReady(mounted.host);
+  test('binds server calls to the exact catalog operation', async () => {
+    const invoke = vi.fn(async () => ({ count: 2 }));
+    const functionBridge: TWidgetFunctionHostBridge = {
+      identity: {
+        kind: 'draft_preview',
+        draftId: 'draft-a',
+        definitionId: 'definition-a',
+        revision: 'revision-a',
+      },
+      invoke,
+      dispose: vi.fn(),
+    };
+    const bindings = createWidgetCapsuleCapabilityBindings({
+      catalog: catalog(),
+      requests: runtimeDescriptor('published').capabilityRequests,
+      functionDescriptors: functionMetadata,
+      functionBridge,
+      collaborativeStateBridge: null,
+      createStreamId: () => 'stream-a',
+    });
 
-    mounted.host?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click();
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    mounted.cleanup();
-
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    expect(mounted.root.childElementCount).toBe(0);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(mounted.onFatal).not.toHaveBeenCalled();
-    mounted.root.remove();
+    await expect(bindings[0]!.invoke(
+      { signal: new AbortController().signal } as never,
+      'count',
+      { value: 1 },
+    )).resolves.toEqual({ count: 2 });
+    expect(invoke).toHaveBeenCalledWith({
+      functionName: 'count',
+      input: { value: 1 },
+      signal: expect.any(AbortSignal),
+    });
   });
 
-  test('destroys the neutral controller after a fatal event-dispatch error', async () => {
-    const mounted = mount(`
-      import { html } from '@arrow-js/core';
-      export default html\`<button @click="\${() => { throw new Error('neutral dispatch failed'); }}">fail</button>\`;
-    `);
-    await waitForReady(mounted.host);
-
-    mounted.host?.shadowRoot?.querySelector<HTMLButtonElement>('button')?.click();
-    await vi.waitFor(() => {
-      expect(mounted.root.dataset.widgetRuntimeStatus).toBe('error');
-    }, { timeout: 10_000 });
-    expect(mounted.root.textContent).toContain('neutral dispatch failed');
-    expect((mounted.host as unknown as { controller: unknown }).controller).toBeNull();
-    expect(mounted.functionBridge.dispose).toHaveBeenCalledOnce();
-    expect(mounted.onFatal).toHaveBeenCalledOnce();
-    mounted.cleanup();
-    mounted.root.remove();
+  test('streams one atomic current snapshot and cancels the pending wait', async () => {
+    let rejectWait: ((error: Error) => void) | undefined;
+    const cancel = vi.fn((waitId: string) => rejectWait?.(new Error(`cancelled:${waitId}`)));
+    const state: TWidgetCollaborativeStateBridge = {
+      get: vi.fn(async () => ({ version: 3, value: { count: 3 } })),
+      change: vi.fn(),
+      next: vi.fn(async (_version, _waitId) => await new Promise((_, reject) => {
+        rejectWait = reject;
+      })),
+      cancel,
+      dispose: vi.fn(),
+    };
+    const bindings = createWidgetCapsuleCapabilityBindings({
+      catalog: catalog(),
+      requests: [{
+        id: stateDescriptor.id,
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['change', 'get', 'subscribe'],
+      }],
+      functionDescriptors: [],
+      functionBridge: {
+        identity: {
+          kind: 'draft_preview',
+          draftId: 'draft-a',
+          definitionId: 'definition-a',
+          revision: 'revision-a',
+        },
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      },
+      collaborativeStateBridge: state,
+      createStreamId: () => 'wait-a',
+    });
+    const stream = await bindings[0]!.openStream!(
+      {} as never,
+      'subscribe',
+      null,
+    );
+    const event = vi.fn(async () => 'accepted' as const);
+    const sink: CapsuleKernelHostStreamSink = {
+      event,
+      error: vi.fn(),
+      close: vi.fn(),
+    };
+    await stream.start(sink);
+    await stream.request({ events: 2, bytes: 1_024 });
+    await vi.waitFor(() => expect(event).toHaveBeenCalledOnce());
+    expect(event).toHaveBeenCalledWith({ version: 3, value: { count: 3 } });
+    await stream.cancel({ code: 'guest-cancel' });
+    expect(cancel).toHaveBeenCalledWith('wait-a');
+    await Promise.resolve();
+    expect(sink.error).not.toHaveBeenCalled();
   });
 
+  test('creates one immutable-policy host and fails closed for unknown contracts', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const binding = {
+      descriptor: functionDescriptor,
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    } satisfies CapsuleCapabilityBinding;
+
+    const mounted = await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [binding],
+      onFatal: vi.fn(),
+    });
+    expect(factory.create).toHaveBeenCalledOnce();
+    expect(
+      factory.created[0]!.options.runtimePolicy.artifactVerification?.signaturePolicy,
+    ).toMatchObject({
+      minimumValidSignatures: 1,
+      requiredKeyIds: ['release-key'],
+      rejectUntrustedSignatures: true,
+    });
+    expect([
+      ...factory.created[0]!.options.runtimePolicy.artifactVerification!
+        .signaturePolicy.trustedKeys.keys(),
+    ]).toEqual(['release-key']);
+    expect(factory.created[0]!.options.runtimePolicy.capabilities).toEqual([{
+      effect: 'allow',
+      id: functionDescriptor.id,
+      versionRange: '1.0.0',
+      contractHash: HASH_A,
+      operations: ['count'],
+    }, {
+      effect: 'allow',
+      id: stateDescriptor.id,
+      versionRange: '1.0.0',
+      contractHash: HASH_B,
+      operations: ['change', 'get', 'subscribe'],
+    }]);
+
+    await expect(coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact('published', [{
+        id: 'vibecanvas.widget.unknown',
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['read'],
+      }]),
+      container: document.createElement('div'),
+      capabilityBindings: [],
+      onFatal: vi.fn(),
+    })).rejects.toThrow('not in the host catalog');
+    await mounted.destroy();
+    await coordinator.destroy();
+  });
+
+  test('rejects a mounted artifact-hash mismatch without nesting coordinator serialization', async () => {
+    const factory = fakeHostFactory(HASH_B);
+    const currentCatalog = catalog();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const binding = {
+      descriptor: functionDescriptor,
+      invoke: vi.fn(),
+      dispose: vi.fn(),
+    } satisfies CapsuleCapabilityBinding;
+
+    const settled = await settleWithin(coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [binding],
+      onFatal: vi.fn(),
+    }), 100);
+
+    expect(settled.status).toBe('rejected');
+    if (settled.status === 'rejected') {
+      expect(settled.reason).toEqual(new Error(
+        'Mounted Capsule artifact hash does not match runtime metadata.',
+      ));
+    }
+    expect(factory.created[0]!.raw.destroy).toHaveBeenCalledOnce();
+    expect(factory.created[0]!.raw.destroy)
+      .toHaveBeenCalledWith('artifact-hash-mismatch');
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(binding.dispose).toHaveBeenCalledOnce();
+    expect(coordinator.diagnostics()).toMatchObject({
+      handles: 0,
+      hosts: [],
+    });
+    await expect(settleWithin(coordinator.destroy(), 100)).resolves.toMatchObject({
+      status: 'fulfilled',
+    });
+    expect(coordinator.diagnostics()).toMatchObject({
+      destroyed: true,
+      handles: 0,
+      hosts: [],
+    });
+  });
+
+  test('catalog generation replacement destroys logical handles before the host', async () => {
+    const factory = fakeHostFactory();
+    let currentCatalog = catalog('catalog-a');
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const onFatal = vi.fn();
+    const mounted = await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal,
+    });
+
+    currentCatalog = catalog('catalog-b');
+    await coordinator.replaceCatalog();
+    expect(factory.created).toHaveLength(1);
+    expect(factory.created[0]!.raw.destroy).toHaveBeenCalledWith(
+      'catalog-generation-changed',
+    );
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(onFatal).toHaveBeenCalledWith(expect.objectContaining({
+      code: 'WIDGET_CAPSULE_CATALOG_INVALIDATED',
+      reason: 'catalog-generation-changed',
+    }));
+    await expect(mounted.destroy()).resolves.toBeUndefined();
+    expect(factory.created[0]!.raw.destroy).toHaveBeenCalledOnce();
+    await coordinator.mount({
+      mode: 'published',
+      catalog: currentCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+    expect(factory.created).toHaveLength(2);
+    await coordinator.destroy();
+  });
+
+  test('shares hosts by exact target and never widens one host across profiles', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog(
+      'catalog-a',
+      [
+        { kind: 'server-functions', descriptor: functionDescriptor },
+        { kind: 'collaborative-state', descriptor: stateDescriptor },
+      ],
+      ['svg-dom-v1'],
+    );
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const mount = (target = TARGET) => coordinator.mount({
+      mode: 'published' as const,
+      catalog: currentCatalog,
+      artifact: artifact('published', undefined, target),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    await mount();
+    await mount();
+    await mount(TARGET_WITH_SVG);
+    expect(factory.create).toHaveBeenCalledTimes(2);
+    expect(factory.created.map(({ options }) => options.runtimePolicy.target))
+      .toEqual([TARGET, TARGET_WITH_SVG]);
+    await coordinator.destroy();
+  });
+
+  test('partitions the shared pool by cryptographically required signing authority', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog();
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const mount = (mode: 'preview' | 'published') => coordinator.mount({
+      mode,
+      catalog: currentCatalog,
+      artifact: artifact(mode),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    await mount('preview');
+    await mount('preview');
+    await mount('published');
+    expect(factory.create).toHaveBeenCalledTimes(2);
+    expect(factory.created.map(({ options }) => (
+      options.runtimePolicy.artifactVerification?.signaturePolicy.requiredKeyIds
+    ))).toEqual([['preview-key'], ['release-key']]);
+    await coordinator.destroy();
+  });
+
+  test('keeps live mounts stable while partitioning immutable capability policies', async () => {
+    const factory = fakeHostFactory();
+    const currentCatalog = catalog('catalog-a', []);
+    const coordinator = new CapsuleWidgetHostCoordinator({
+      document,
+      catalog: () => currentCatalog,
+      hostFactory: factory,
+    });
+    const firstCatalog = catalog('catalog-a', [{
+      kind: 'server-functions',
+      descriptor: functionDescriptor,
+    }]);
+    const secondCatalog = catalog('catalog-a', [{
+      kind: 'server-functions',
+      descriptor: alternateFunctionDescriptor,
+    }]);
+    const first = await coordinator.mount({
+      mode: 'published',
+      catalog: firstCatalog,
+      artifact: artifact(),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: functionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+    const second = await coordinator.mount({
+      mode: 'published',
+      catalog: secondCatalog,
+      artifact: artifact('published', [{
+        id: alternateFunctionDescriptor.id,
+        versionRange: '1.0.0',
+        contractHash: HASH_B,
+        required: true,
+        operations: ['count'],
+      }]),
+      container: document.createElement('div'),
+      capabilityBindings: [{
+        descriptor: alternateFunctionDescriptor,
+        invoke: vi.fn(),
+        dispose: vi.fn(),
+      }],
+      onFatal: vi.fn(),
+    });
+
+    expect(factory.created).toHaveLength(2);
+    expect(factory.created[0]!.destroy).not.toHaveBeenCalled();
+    await first.destroy();
+    expect(factory.created[0]!.destroy).toHaveBeenCalledOnce();
+    expect(factory.created[1]!.destroy).not.toHaveBeenCalled();
+    await second.destroy();
+    expect(factory.created[1]!.destroy).toHaveBeenCalledOnce();
+  });
 });

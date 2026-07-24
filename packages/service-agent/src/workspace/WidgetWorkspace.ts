@@ -16,7 +16,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ZWidgetManifestV2, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
+import { ZWidgetManifestV3, type TWidgetSourceSnapshot } from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot as WidgetSourceSnapshotMaterializer } from '@vibecanvas/widget-contract/local';
 import { fnChatStorageSegments } from '@vibecanvas/shared-functions/chat/fn.chat-id';
 import { fnMatchesGlob } from './fn.glob';
@@ -245,9 +245,9 @@ export class WidgetWorkspace {
       let promoted = false;
       try {
         await new WidgetSourceSnapshotMaterializer().materialize(snapshot, temporary);
-        const manifest = ZWidgetManifestV2.safeParse(await this.#readManifest(temporary));
+        const manifest = ZWidgetManifestV3.safeParse(await this.#readManifest(temporary));
         if (!manifest.success) {
-          throw new Error('INVALID_MANIFEST: Published widget source has no valid manifest-v2.');
+          throw new Error('INVALID_MANIFEST: Published widget source has no valid manifest-v3.');
         }
         if (manifest.data.name !== name) {
           throw new Error(
@@ -431,9 +431,9 @@ export class WidgetWorkspace {
       join,
       dirname,
       parseManifest: (value) => {
-        const v2 = ZWidgetManifestV2.safeParse(value);
-        if (v2.success) {
-          return { ok: true as const, name: v2.data.name, kind: 'widget' as const };
+        const v3 = ZWidgetManifestV3.safeParse(value);
+        if (v3.success) {
+          return { ok: true as const, name: v3.data.name, kind: 'widget' as const };
         }
         return { ok: false as const };
       },

@@ -32,10 +32,13 @@ import {
   fnWidgetCreationBounds,
 } from "./fn.widget-frame";
 import { fnWidgetErrorsEqual } from "./fn.widget-errors-equal";
+import { fnWidgetCapsuleCanvasLifecycle } from "./fn.widget-capsule-lifecycle";
 import type {
   IWidgetConfig,
   IWidgetManagerServiceHooks,
   IWidgetManagerServiceProps,
+  TWidgetCapsuleCanvasLifecycleSource,
+  TWidgetCapsuleCanvasLifecycleState,
   TWidgetTitleBarActionState,
   TWidgetTitleBarPortal,
 } from "./interface";
@@ -51,6 +54,12 @@ type TActiveMount = {
   resizeBoundary: {
     enabled: boolean;
   };
+  capsuleLifecycle: TWidgetCapsuleCanvasLifecycleSource;
+  capsuleLifecycleState: TWidgetCapsuleCanvasLifecycleState;
+  capsuleLifecycleSignature: string;
+  capsuleLifecycleListeners: Set<
+    (state: TWidgetCapsuleCanvasLifecycleState) => void
+  >;
   cleanup: () => void;
   syncInteraction(): void;
 };
@@ -181,14 +190,50 @@ implements
   }
 
   #mount(args: TCanvasPortalRendererMountArgs) {
+    const initialLifecycle = fnWidgetCapsuleCanvasLifecycle({
+      viewport: args.viewport,
+      focused: this.#isContentFocused(args.element.id),
+      collapsed: (
+        args.element.data.type === "ui-widget"
+        || args.element.data.type === "widget-instance"
+      ) && (
+        args.element.data.expanded === false
+        || args.element.data.window === WIDGET_WINDOW_MINIMIZED
+      ),
+      fullscreen: (
+        args.element.data.type === "ui-widget"
+        || args.element.data.type === "widget-instance"
+      ) && args.element.data.window === WIDGET_WINDOW_FULLSCREEN,
+    });
     const mount: TActiveMount = {
       elementId: args.element.id,
-      state: { element: args.element, content: args.content },
+      state: {
+        element: args.element,
+        content: args.content,
+        viewport: args.viewport,
+      },
       contentSignature: JSON.stringify(args.content),
       host: args.host,
       actionHandlers: new Map(),
       resizeBoundary: {
         enabled: exposesWidgetResizeBoundary(args.element),
+      },
+      capsuleLifecycleState: initialLifecycle,
+      capsuleLifecycleSignature: JSON.stringify(initialLifecycle),
+      capsuleLifecycleListeners: new Set(),
+      capsuleLifecycle: {
+        current: () => mount.capsuleLifecycleState,
+        subscribe: (listener) => {
+          mount.capsuleLifecycleListeners.add(listener);
+          let subscribed = true;
+          return () => {
+            if (!subscribed) {
+              return;
+            }
+            subscribed = false;
+            mount.capsuleLifecycleListeners.delete(listener);
+          };
+        },
       },
       cleanup: () => undefined,
       syncInteraction: () => {
@@ -205,6 +250,34 @@ implements
           root.style.pointerEvents = "auto";
           root.dataset.widgetContentFocused = String(active);
         }
+        const element = mount.state.element;
+        const nextLifecycle = fnWidgetCapsuleCanvasLifecycle({
+          viewport: mount.state.viewport,
+          focused: active,
+          collapsed: (
+            element.data.type === "ui-widget"
+            || element.data.type === "widget-instance"
+          ) && (
+            element.data.expanded === false
+            || element.data.window === WIDGET_WINDOW_MINIMIZED
+          ),
+          fullscreen: (
+            element.data.type === "ui-widget"
+            || element.data.type === "widget-instance"
+          ) && element.data.window === WIDGET_WINDOW_FULLSCREEN,
+        });
+        const nextSignature = JSON.stringify(nextLifecycle);
+        if (nextSignature !== mount.capsuleLifecycleSignature) {
+          mount.capsuleLifecycleState = nextLifecycle;
+          mount.capsuleLifecycleSignature = nextSignature;
+          for (const listener of mount.capsuleLifecycleListeners) {
+            try {
+              listener(nextLifecycle);
+            } catch {
+              // A hosted runtime cannot interrupt canvas interaction updates.
+            }
+          }
+        }
       },
     };
     this.#renderMount(mount);
@@ -212,8 +285,16 @@ implements
     return {
       update: (state: TCanvasPortalRenderState) => {
         const contentSignature = JSON.stringify(state.content);
+        const keepsCapsuleRuntime = (
+          mount.state.content.type === "widget-instance"
+          && state.content.type === "widget-instance"
+        );
         mount.state = state;
-        if (contentSignature === mount.contentSignature) {
+        if (
+          contentSignature === mount.contentSignature
+          || keepsCapsuleRuntime
+        ) {
+          mount.contentSignature = contentSignature;
           mount.syncInteraction();
           return;
         }
@@ -224,6 +305,7 @@ implements
         this.#activeMounts.delete(mount);
         mount.cleanup();
         mount.actionHandlers.clear();
+        mount.capsuleLifecycleListeners.clear();
         if (
           this.#props.crdtService.doc().elements[mount.elementId] === undefined
         ) {
@@ -250,6 +332,7 @@ implements
           mount.actionHandlers,
         ),
         resizeBoundary: mount.resizeBoundary,
+        capsuleLifecycle: mount.capsuleLifecycle,
         onContentPointerDown: () => {
           this.#focusWidgetContent(mount.elementId);
         },
@@ -270,7 +353,7 @@ implements
       getTitle: (candidate) => candidate.data.type === "widget-instance"
         ? candidate.data.definitionId
         : "Widget",
-      renderDom: ({ root, element: candidate }) => {
+      renderDom: ({ root, element: candidate, capsuleLifecycle }) => {
         return txMountCommittedWidgetRuntime({
           canvasId: this.#props.neutralHost!.canvasId,
           crdtService: this.#props.crdtService,
@@ -278,6 +361,7 @@ implements
         }, {
           elementId: candidate.id,
           root,
+          capsuleLifecycle,
         });
       },
     };
@@ -634,6 +718,7 @@ implements
     bounds: TWidgetWorldBounds;
     instanceId?: string;
     stateDocumentId?: string;
+    uiProps?: Record<string, unknown>;
   }>): TElement {
     const timestamp = this.#props.browser.now();
     return this.#placeWidgetElement(fnCreateWidgetElement({
@@ -645,6 +730,7 @@ implements
       ...(args.stateDocumentId === undefined
         ? {}
         : { stateDocumentId: args.stateDocumentId }),
+      ...(args.uiProps === undefined ? {} : { uiProps: args.uiProps }),
       x: args.bounds.x,
       y: args.bounds.y,
       width: args.bounds.width,

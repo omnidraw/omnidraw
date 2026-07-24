@@ -4,7 +4,8 @@ import type {
   IWidgetPublicationService,
   IWidgetRevisionSourceSnapshotReader,
   TWidgetBrowserFunctionDescriptor,
-  TWidgetManifestV2,
+  TWidgetCapsuleRuntimeDescriptor,
+  TWidgetManifestV3,
   TWidgetResourceBindingInput,
   TWidgetSourceSnapshot,
 } from '@vibecanvas/widget-contract';
@@ -135,7 +136,7 @@ export type TWidgetBuildValidationCapability = Readonly<{
     tenant: TTenantContext,
     request: Readonly<{
       snapshot: TWidgetSourceSnapshot;
-      manifest: TWidgetManifestV2;
+      manifest: TWidgetManifestV3;
     }>,
   ): Promise<Readonly<{
     valid: boolean;
@@ -153,7 +154,7 @@ export type TWidgetResourceBindingResolver = (
   tenant: TTenantContext,
   request: Readonly<{
     draft: TAgentAuthoringDraftDescriptor;
-    manifest: TWidgetManifestV2;
+    manifest: TWidgetManifestV3;
     /** Undefined means no durable selection record; an empty list is an explicit clear. */
     selectedResources?: readonly TWidgetAuthoringResourceSelection[];
   }>,
@@ -194,15 +195,17 @@ export type TWidgetPreviewReady = Readonly<{
   definitionId: string;
   name: string;
   revision: string;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
   uiArtifact: Readonly<{
     digestSha256: string;
     byteSize: number;
     bytesBase64: string;
+    runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
   }>;
   contract: Readonly<{
     digestSha256: string;
     functions: readonly TWidgetBrowserFunctionDescriptor[];
+    browserFunctionDescriptorsDigestSha256: string;
   }>;
   diagnostics: readonly string[];
 }>;
@@ -235,7 +238,8 @@ export type TWidgetPublishResult =
       definitionId: string;
       revision: string;
       publishedRevisionId: string;
-      manifest: TWidgetManifestV2;
+      manifest: TWidgetManifestV3;
+      uiRuntime: TWidgetCapsuleRuntimeDescriptor;
     }>
   | Readonly<{
       published: false;

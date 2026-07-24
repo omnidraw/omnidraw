@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import {
+  buildCapsuleGuest,
+  VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
+} from '@vibecanvas/capsule-vibecanvas/build';
 import { BunChildFunctionDescriptorExtractor } from '@vibecanvas/function-runtime/local';
 import { DbServiceTurso } from '@vibecanvas/service-db/DbServiceTurso/DbServiceTurso';
 import {
@@ -10,12 +14,19 @@ import {
 } from '@vibecanvas/service-db/CONSTANTS';
 import { fnFreezeTenantContext, type TTenantContext } from '@vibecanvas/tenant-core';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
-import type { TWidgetManifestV2, TWidgetRevisionDescriptor } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3, TWidgetRevisionDescriptor } from '@vibecanvas/widget-contract';
 import { WidgetSourceSnapshot } from '@vibecanvas/widget-contract/local';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
 import { WidgetService } from '../src/services/WidgetService';
 import { WidgetServicePool } from '../src/services/WidgetServicePool';
+import { WidgetCapsuleSigningKeyStore } from '../src/services/WidgetCapsuleSigningKeyStore';
+import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
+import { resolveWidgetCapsuleOciImageId } from '../src/services/WidgetCapsuleOciBuild';
+import {
+  CAPSULE_PUBLICATION_IDENTITY,
+  capsuleUi,
+} from './widget-capsule.fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 
@@ -43,10 +54,11 @@ const OTHER_ACCOUNT_TENANT = fnFreezeTenantContext({
 
 const BUILDER_IDENTITY = 'vibecanvas-widget-test/bun';
 const TRUSTED_WIDGET_BUILD_PACKAGE_IMPORTS = Object.freeze([
-  '@arrow-js/core',
+  '@omnidraw/capsule/guest',
   '@vibecanvas/sdk/server',
   '@vibecanvas/sdk/function-client',
   '@vibecanvas/sdk/widget',
+  ...VIBECANVAS_CAPSULE_REACT_PACKAGE_MANIFEST_SPECIFIERS,
   'zod',
 ]);
 
@@ -71,7 +83,7 @@ async function writeSource(
   }
 }
 
-function outputText(bytes: Uint8Array): string {
+function serverOutputText(bytes: Uint8Array): string {
   const envelope = JSON.parse(Buffer.from(bytes).toString('utf8')) as {
     outputs: readonly Readonly<{ bytesBase64: string }>[];
   };
@@ -159,6 +171,11 @@ describe('production widget service', () => {
       artifactsRoot,
       buildTempRoot: join(root, 'temp', 'widget-builds'),
       builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
+      capsuleBuild: buildCapsuleGuest,
+      loadCapsuleSigningKeys: (purpose) => (
+        new WidgetCapsuleSigningKeyStore(join(root, 'keys')).loadSigningKeys(purpose)
+      ),
       artifactReadSecret: Buffer.alloc(32, 17),
       artifactReadMaximumTtlMs: 60_000,
       functionDescriptorExtractor,
@@ -171,7 +188,7 @@ describe('production widget service', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  test('rejects invalid UI TypeScript during trusted validation without durable writes', async () => {
+  test('rejects invalid UI TypeScript through the Capsule build port without durable writes', async () => {
     const sourceRoot = join(root, 'invalid-ui-validation');
     await writeSource(sourceRoot, {
       'src/ui.ts': 'export const broken: = 1;\n',
@@ -183,15 +200,15 @@ describe('production widget service', () => {
     const result = await service.validateBuild(TENANT, {
       snapshot,
       manifest: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'Invalid UI',
         slug: 'invalid-ui',
-        ui: { entry: 'src/ui.ts' },
+        ui: capsuleUi('src/ui.ts'),
       },
     });
 
     expect(result.valid).toBe(false);
-    expect(result.diagnostics).toEqual(['Widget source build failed.']);
+    expect(result.diagnostics).toEqual(['Widget ui build failed.']);
     expect(await tableCount(database, 'widget_definitions')).toBe(0);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
@@ -199,7 +216,7 @@ describe('production widget service', () => {
     expect(await filesBelow(artifactsRoot)).toEqual([]);
   });
 
-  test('rejects semantic TypeScript errors during trusted validation without durable writes', async () => {
+  test('rejects semantic TypeScript errors through the Capsule build port without durable writes', async () => {
     const sourceRoot = join(root, 'semantic-error-validation');
     await writeSource(sourceRoot, {
       'ui/main.ts': 'const value: string = 42;\nexport default value;\n',
@@ -211,17 +228,15 @@ describe('production widget service', () => {
     const result = await service.validateBuild(TENANT, {
       snapshot,
       manifest: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'Semantic error',
         slug: 'semantic-error',
-        ui: { entry: 'ui/main.ts' },
+        ui: capsuleUi('ui/main.ts'),
       },
     });
 
     expect(result.valid).toBe(false);
-    expect(result.diagnostics).toEqual([
-      "ui/main.ts:1:7 TS2322: Type 'number' is not assignable to type 'string'.",
-    ]);
+    expect(result.diagnostics).toEqual(['Widget ui build failed.']);
     expect(await tableCount(database, 'widget_definitions')).toBe(0);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
@@ -229,7 +244,7 @@ describe('production widget service', () => {
     expect(await filesBelow(artifactsRoot)).toEqual([]);
   });
 
-  test('rejects invalid server TypeScript during trusted validation without durable writes', async () => {
+  test('rejects invalid server TypeScript through the separate server build without durable writes', async () => {
     const sourceRoot = join(root, 'invalid-server-validation');
     await writeSource(sourceRoot, {
       'src/ui.ts': 'export const validUi = true;\n',
@@ -242,16 +257,16 @@ describe('production widget service', () => {
     const result = await service.validateBuild(TENANT, {
       snapshot,
       manifest: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'Invalid server',
         slug: 'invalid-server',
-        ui: { entry: 'src/ui.ts' },
+        ui: capsuleUi('src/ui.ts'),
         server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
       },
     });
 
     expect(result.valid).toBe(false);
-    expect(result.diagnostics).toEqual(['Widget source build failed.']);
+    expect(result.diagnostics).toEqual(['Widget server build failed.']);
     expect(await tableCount(database, 'widget_definitions')).toBe(0);
     expect(await tableCount(database, 'widget_definition_revisions')).toBe(0);
     expect(await tableCount(database, 'widget_revision_sources')).toBe(0);
@@ -262,7 +277,7 @@ describe('production widget service', () => {
   test('validates the exact documented direct server entry without durable writes', async () => {
     const sourceRoot = join(root, 'documented-server-validation');
     await writeSource(sourceRoot, {
-      'ui/main.ts': 'export default function mount() {}\n',
+      'ui/main.ts': 'document.body.append(document.createElement("main"));\n',
       'server/main.server.ts': [
         'import { defineServerFunction } from "@vibecanvas/sdk/server";',
         'import { z } from "zod";',
@@ -282,10 +297,10 @@ describe('production widget service', () => {
     const result = await service.validateBuild(TENANT, {
       snapshot,
       manifest: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: 'Documented server widget',
         slug: 'documented-server-widget',
-        ui: { entry: 'ui/main.ts' },
+        ui: capsuleUi('ui/main.ts'),
         server: {
           entry: 'server/main.server.ts',
           runtimeAbi: 'vibecanvas-function-v1',
@@ -310,11 +325,11 @@ describe('production widget service', () => {
       id: uuid(803),
       createdAtMs: 10,
     });
-    const manifest: TWidgetManifestV2 = {
-      schemaVersion: 2,
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
       name: 'Browser widget',
       slug: 'browser-widget',
-      ui: { entry: 'src/ui.ts' },
+      ui: capsuleUi('src/ui.ts'),
     };
     const published = await service.publish(TENANT, {
       definitionId: uuid(804),
@@ -324,6 +339,7 @@ describe('production widget service', () => {
       manifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
       nowMs: 20,
     });
     expect(published.status).toBe('committed');
@@ -331,7 +347,7 @@ describe('production widget service', () => {
     expect(published.revision).toMatchObject({
       revisionNumber: 1,
       serverArtifact: null,
-      manifest: { schemaVersion: 2, slug: 'browser-widget' },
+      manifest: { schemaVersion: 3, slug: 'browser-widget' },
     });
     await expect(service.resolvePublishedPlacement(TENANT, {
       definitionId: published.definition.id,
@@ -420,7 +436,13 @@ describe('production widget service', () => {
     });
     const request = readRequest(published.revision, 'ui', capability);
     const bytes = await service.readArtifact(TENANT, request);
-    expect(outputText(bytes!)).toContain('BROWSER_ONLY_WIDGET');
+    expect(bytes).toHaveLength(artifact.byteSize);
+    expect(Buffer.from(bytes!).subarray(0, 1).toString('utf8')).not.toBe('{');
+    expect(published.revision.uiRuntime).toMatchObject({
+      format: 'vibecanvas.capsule-runtime.v1',
+      capsuleArtifactHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      signatureKeyIds: ['vibecanvas-release-v1'],
+    });
     await expect(service.readArtifact(TENANT, {
       ...request,
       readCapability: artifact.digestSha256,
@@ -456,6 +478,145 @@ describe('production widget service', () => {
     })).resolves.toBeNull();
   });
 
+  test('builds Preview through the same Capsule path with the preview signing authority', async () => {
+    const sourceRoot = join(root, 'preview-source');
+    await writeSource(sourceRoot, {
+      'src/ui.ts': [
+        'const root = document.createElement("main");',
+        'root.textContent = "SIGNED_PREVIEW";',
+        'document.body.append(root);',
+      ].join('\n'),
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(814),
+      createdAtMs: 20,
+    });
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
+      name: 'Preview widget',
+      slug: 'preview-widget',
+      ui: capsuleUi('src/ui.ts'),
+    };
+
+    const preview = await service.buildPreview(TENANT, {
+      draftId: uuid(815),
+      definitionId: uuid(816),
+      draftRevisionSha256: snapshot.digestSha256,
+      snapshot,
+      manifest,
+      builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
+    });
+
+    expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
+      'vibecanvas-preview-v1',
+    ]);
+    expect(preview.uiArtifact.bytes.byteLength).toBeGreaterThan(0);
+    expect(preview.uiArtifact.digestSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(preview.uiArtifact.capsuleArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(await tableCount(database, 'widget_definitions')).toBe(0);
+    expect(await filesBelow(artifactsRoot)).toEqual([]);
+
+    const published = await service.publish(TENANT, {
+      definitionId: uuid(816),
+      revisionId: uuid(817),
+      expectedActiveRevisionId: null,
+      snapshot,
+      manifest,
+      bindings: [],
+      builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
+      nowMs: 21,
+    });
+    if (published.status !== 'committed') throw new Error('Expected publication to commit.');
+    expect(published.revision.uiRuntime.signatureKeyIds).toEqual([
+      'vibecanvas-release-v1',
+    ]);
+    expect(published.revision.uiRuntime.capsuleArtifactHash).toBe(
+      preview.uiArtifact.capsuleArtifactHash,
+    );
+    expect(published.revision.uiArtifact.digestSha256).not.toBe(
+      preview.uiArtifact.digestSha256,
+    );
+  });
+
+  test('validates, previews, and publishes exact pinned React TSX through Capsule', async () => {
+    const sourceRoot = join(root, 'react-capsule-source');
+    await writeSource(sourceRoot, {
+      'ui/main.tsx': [
+        'import { getWidgetProps } from "@vibecanvas/sdk/widget";',
+        'import { useState } from "react";',
+        'import { createRoot } from "react-dom/client";',
+        '',
+        'function Counter() {',
+        '  const props = getWidgetProps<{ label: string }>();',
+        '  const [count, setCount] = useState(0);',
+        '  return (',
+        '    <button type="button" onClick={() => setCount(count + 1)}>',
+        '      {props.label}: {count}',
+        '    </button>',
+        '  );',
+        '}',
+        '',
+        'createRoot(document.body).render(<Counter />);',
+        '',
+      ].join('\n'),
+    });
+    const snapshot = await service.captureSource(TENANT, sourceRoot, {
+      id: uuid(844),
+      createdAtMs: 30,
+    });
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
+      name: 'React Capsule widget',
+      slug: 'react-capsule-widget',
+      ui: capsuleUi('ui/main.tsx'),
+    };
+
+    await expect(service.validateBuild(TENANT, {
+      snapshot,
+      manifest,
+    })).resolves.toEqual({ valid: true, diagnostics: [] });
+
+    const preview = await service.buildPreview(TENANT, {
+      draftId: uuid(845),
+      definitionId: uuid(846),
+      draftRevisionSha256: snapshot.digestSha256,
+      snapshot,
+      manifest,
+      builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
+    });
+    expect(preview.uiArtifact.bytes.byteLength).toBeGreaterThan(0);
+    expect(preview.uiArtifact.capsuleArtifactHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(preview.uiArtifact.runtimeDescriptor.signatureKeyIds).toEqual([
+      'vibecanvas-preview-v1',
+    ]);
+
+    const published = await service.publish(TENANT, {
+      definitionId: uuid(846),
+      revisionId: uuid(847),
+      expectedActiveRevisionId: null,
+      snapshot,
+      manifest,
+      bindings: [],
+      builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
+      nowMs: 31,
+    });
+    expect(published.status).toBe('committed');
+    if (published.status !== 'committed') throw new Error('Expected React publication to commit.');
+    expect(published.revision.uiRuntime.signatureKeyIds).toEqual([
+      'vibecanvas-release-v1',
+    ]);
+    expect(published.revision.uiRuntime.capsuleArtifactHash).toBe(
+      preview.uiArtifact.capsuleArtifactHash,
+    );
+    expect(published.revision.uiArtifact.digestSha256).not.toBe(
+      preview.uiArtifact.digestSha256,
+    );
+  }, 20_000);
+
   test('fails closed for capability issuance and reads after stored revision contract tampering', async () => {
     const sourceRoot = join(root, 'tampered-contract-source');
     await writeSource(sourceRoot, {
@@ -465,11 +626,11 @@ describe('production widget service', () => {
       id: uuid(816),
       createdAtMs: 10,
     });
-    const manifest: TWidgetManifestV2 = {
-      schemaVersion: 2,
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
       name: 'Tamper-resistant widget',
       slug: 'tamper-resistant-widget',
-      ui: { entry: 'src/ui.ts' },
+      ui: capsuleUi('src/ui.ts'),
     };
     const published = await service.publish(TENANT, {
       definitionId: uuid(817),
@@ -479,6 +640,7 @@ describe('production widget service', () => {
       manifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
       nowMs: 20,
     });
     if (published.status !== 'committed') throw new Error('Expected publication to commit.');
@@ -494,7 +656,7 @@ describe('production widget service', () => {
     };
     const capability = await service.issueBrowserUiArtifactReadCapability(TENANT, capabilityRequest);
     const request = readRequest(published.revision, 'ui', capability);
-    expect(outputText((await service.readArtifact(TENANT, request))!)).toContain('IMMUTABLE_CONTRACT');
+    expect(await service.readArtifact(TENANT, request)).toHaveLength(artifact.byteSize);
 
     await (await database.db.prepare(`
       UPDATE widget_definition_revisions
@@ -523,11 +685,11 @@ describe('production widget service', () => {
       id: uuid(806),
       createdAtMs: 100,
     });
-    const firstManifest: TWidgetManifestV2 = {
-      schemaVersion: 2,
+    const firstManifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
       name: 'Revision widget',
       slug: 'revision-widget',
-      ui: { entry: 'src/ui.ts' },
+      ui: capsuleUi('src/ui.ts'),
     };
     const first = await service.publish(TENANT, {
       definitionId: uuid(807),
@@ -537,6 +699,7 @@ describe('production widget service', () => {
       manifest: firstManifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
       nowMs: 100,
     });
     if (first.status !== 'committed') throw new Error('Expected first revision to commit.');
@@ -561,7 +724,7 @@ describe('production widget service', () => {
       id: uuid(809),
       createdAtMs: 200,
     });
-    const secondManifest: TWidgetManifestV2 = {
+    const secondManifest: TWidgetManifestV3 = {
       ...firstManifest,
       server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
     };
@@ -573,6 +736,7 @@ describe('production widget service', () => {
       manifest: secondManifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
       nowMs: 200,
     });
     if (second.status !== 'committed') throw new Error('Expected second revision to commit.');
@@ -614,9 +778,9 @@ describe('production widget service', () => {
       TENANT,
       readRequest(second.revision, 'server', serverCapability),
     );
-    expect(outputText(uiBytes!)).toContain('UI_REVISION_TWO');
-    expect(outputText(uiBytes!)).not.toContain('SERVER_PRIVATE_MARKER');
-    expect(outputText(serverBytes!)).toContain('SERVER_PRIVATE_MARKER');
+    expect(uiBytes).toHaveLength(second.revision.uiArtifact.byteSize);
+    expect(Buffer.from(uiBytes!).subarray(0, 1).toString('utf8')).not.toBe('{');
+    expect(serverOutputText(serverBytes!)).toContain('SERVER_PRIVATE_MARKER');
 
     const rollback = await service.rollback(TENANT, {
       definitionId: first.definition.id,
@@ -667,11 +831,11 @@ describe('production widget service', () => {
       id: uuid(811),
       createdAtMs: 10,
     });
-    const manifest: TWidgetManifestV2 = {
-      schemaVersion: 2,
+    const manifest: TWidgetManifestV3 = {
+      schemaVersion: 3,
       name: 'Broken server widget',
       slug: 'broken-server-widget',
-      ui: { entry: 'src/ui.ts' },
+      ui: capsuleUi('src/ui.ts'),
       server: { entry: 'src/server.server.ts', runtimeAbi: 'vibecanvas:test-1' },
     };
     await expect(service.publish(TENANT, {
@@ -682,6 +846,7 @@ describe('production widget service', () => {
       manifest,
       bindings: [],
       builderIdentity: BUILDER_IDENTITY,
+      ...CAPSULE_PUBLICATION_IDENTITY,
       nowMs: 20,
     })).rejects.toMatchObject({ code: 'WIDGET_BUILD_FAILED' });
 
@@ -713,7 +878,9 @@ describe('production widget service', () => {
       helpRequested: false,
       versionRequested: false,
     };
-    const { services } = setupServices(config);
+    const { services } = setupServices(config, {
+      capsuleBuild: buildCapsuleGuest,
+    });
     const widgetOwner = services.require('widgetOwner');
     const widgetCapability = services.require('widget');
     const agentOwner = services.require('agent');
@@ -767,13 +934,17 @@ describe('production widget service', () => {
         expectedActiveRevisionId: null,
         snapshot,
         manifest: {
-          schemaVersion: 2,
+          schemaVersion: 3,
           name: 'Placement widget',
           slug: 'placement-widget',
-          ui: { entry: 'src/ui.ts' },
+          ui: capsuleUi('src/ui.ts'),
         },
         bindings: [],
-        builderIdentity: `vibecanvas-widget-bun/${Bun.version}`,
+        builderIdentity: fnWidgetCapsuleBuilderIdentity({
+          imageId: resolveWidgetCapsuleOciImageId(),
+          serverBunVersion: Bun.version,
+        }),
+        ...CAPSULE_PUBLICATION_IDENTITY,
         nowMs: 20,
       });
       if (published.status !== 'committed') throw new Error('Expected committed publication.');

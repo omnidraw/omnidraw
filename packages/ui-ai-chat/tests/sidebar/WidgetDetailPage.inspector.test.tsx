@@ -67,11 +67,19 @@ const widgetDetail: TWidgetDetail = {
   variant: variant('widget'),
   sibling: null,
   manifest: {
-    schemaVersion: 2,
+    schemaVersion: 3,
     name: 'Notes Board',
     slug: 'notes-board',
     description: 'Inspector fixture.',
-    ui: { entry: 'ui/main.ts' },
+    ui: {
+      runtime: 'capsule',
+      entry: 'ui/main.ts',
+      target: {
+        runtimeAbi: 'quickjs-release-sync-v1',
+        domProfile: 'dom-core-v2',
+        featureProfiles: [],
+      },
+    },
     server: { entry: 'server/main.ts', runtimeAbi: 'vibecanvas:1' },
     resources: [{
       slot: 'notes',

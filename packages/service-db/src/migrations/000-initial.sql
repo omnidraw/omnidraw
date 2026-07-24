@@ -187,7 +187,60 @@ CREATE TABLE widget_definition_revisions (
     ),
   function_descriptors_digest_sha256 sha256_hex NOT NULL
     DEFAULT '2ffcc4002f0abc5490138a0da6fcce85b1ee82bc9e56f0000fb552953839f40b',
-  contract_format_version INTEGER NOT NULL DEFAULT 1 CHECK (contract_format_version IN (1, 2)),
+  ui_runtime_json JSON NOT NULL CHECK (
+    json_type(ui_runtime_json) = 'object'
+    AND json_extract(ui_runtime_json, '$.format') = 'vibecanvas.capsule-runtime.v1'
+    AND json_type(ui_runtime_json, '$.target') = 'object'
+    AND json_type(ui_runtime_json, '$.budgets') = 'object'
+    AND json_type(ui_runtime_json, '$.capabilityRequests') = 'array'
+    AND json_type(ui_runtime_json, '$.channels') IN ('null', 'object')
+    AND json_extract(ui_runtime_json, '$.parkability.parkable') = 0
+    AND json_type(ui_runtime_json, '$.signatureKeyIds') = 'array'
+    AND json_array_length(ui_runtime_json, '$.signatureKeyIds') BETWEEN 1 AND 32
+    AND json_remove(
+      ui_runtime_json,
+      '$.format',
+      '$.capsuleArtifactHash',
+      '$.target',
+      '$.budgets',
+      '$.capabilityRequests',
+      '$.channels',
+      '$.parkability',
+      '$.signatureKeyIds'
+    ) = '{}'
+  ),
+  capsule_artifact_hash TEXT NOT NULL CHECK (
+    length(capsule_artifact_hash) = 71
+    AND substr(capsule_artifact_hash, 1, 7) = 'sha256:'
+    AND substr(capsule_artifact_hash, 8) NOT GLOB '*[^0-9a-f]*'
+    AND json_extract(ui_runtime_json, '$.capsuleArtifactHash') = capsule_artifact_hash
+  ),
+  capability_contract_digest_sha256 sha256_hex NOT NULL,
+  channel_contract_digest_sha256 sha256_hex NOT NULL,
+  capsule_build_identity_json JSON NOT NULL CHECK (
+    json_type(capsule_build_identity_json) = 'object'
+    AND json_extract(capsule_build_identity_json, '$.packageName') = '@omnidraw/capsule'
+    AND length(json_extract(capsule_build_identity_json, '$.packageVersion')) BETWEEN 1 AND 100
+    AND length(json_extract(capsule_build_identity_json, '$.buildApiVersion')) BETWEEN 1 AND 100
+    AND length(json_extract(capsule_build_identity_json, '$.packageDigest')) = 71
+    AND length(json_extract(capsule_build_identity_json, '$.runtimeBuildDigest')) = 71
+    AND substr(json_extract(capsule_build_identity_json, '$.packageDigest'), 1, 7) = 'sha256:'
+    AND substr(json_extract(capsule_build_identity_json, '$.runtimeBuildDigest'), 1, 7) = 'sha256:'
+    AND json_remove(
+      capsule_build_identity_json,
+      '$.packageName',
+      '$.packageVersion',
+      '$.packageDigest',
+      '$.buildApiVersion',
+      '$.runtimeBuildDigest'
+    ) = '{}'
+  ),
+  build_policy_id TEXT NOT NULL CHECK (length(trim(build_policy_id)) BETWEEN 1 AND 200),
+  server_runtime_abi TEXT CHECK (
+    (server_artifact_id IS NULL AND server_runtime_abi IS NULL)
+    OR (server_artifact_id IS NOT NULL AND length(trim(server_runtime_abi)) BETWEEN 1 AND 100)
+  ),
+  contract_format_version INTEGER NOT NULL DEFAULT 3 CHECK (contract_format_version = 3),
   PRIMARY KEY (org_id, id),
   UNIQUE (org_id, definition_id, id),
   UNIQUE (org_id, definition_id, revision_number),
@@ -933,6 +986,9 @@ CREATE INDEX widget_definition_revisions_ui_artifact_idx
 
 CREATE INDEX widget_definition_revisions_server_artifact_idx
   ON widget_definition_revisions (org_id, server_artifact_id, server_artifact_kind);
+
+CREATE INDEX widget_definition_revisions_capsule_artifact_idx
+  ON widget_definition_revisions (org_id, capsule_artifact_hash);
 
 CREATE INDEX widget_instances_definition_idx
   ON widget_instances (org_id, definition_id, revision_id);

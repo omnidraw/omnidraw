@@ -2,7 +2,7 @@ import { fxDecodeAndVerifyUiArtifact } from "../widget-runtime/fx.decode-and-ver
 import type {
   TWidgetFunctionHostBridge,
   TWidgetPreviewRuntimeIdentity,
-  TVerifiedWidgetUiArtifact,
+  TWidgetUiRuntimeHandle,
 } from "../widget-runtime/interface"
 import { createEphemeralCollaborativeStateBridge } from "./create-ephemeral-collaborative-state-bridge"
 import type {
@@ -41,11 +41,9 @@ function toFailure(args: Readonly<{
 
 function createUnavailableFunctionBridge(
   identity: TWidgetPreviewRuntimeIdentity,
-  createId: () => string,
 ): TWidgetFunctionHostBridge {
   return Object.freeze({
     identity,
-    createIdempotencyKey: createId,
     async invoke(): Promise<never> {
       const error = new Error(
         "PREVIEW_FUNCTIONS_UNAVAILABLE: Server functions and resources become available after Publish.",
@@ -65,8 +63,7 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
   let requestId = 0
   let currentRevision = ""
   let currentReady: TDraftPreviewReady | undefined
-  let currentArtifact: TVerifiedWidgetUiArtifact | undefined
-  let cleanupMounted: (() => void) | undefined
+  let currentHandle: TWidgetUiRuntimeHandle | undefined
   let activeOperation: Promise<void> = Promise.resolve()
 
   shell.className = "vc-draft-preview"
@@ -75,15 +72,15 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
   shell.append(body)
   args.root.replaceChildren(shell)
 
-  const clearMount = () => {
-    cleanupMounted?.()
-    cleanupMounted = undefined
+  const clearMount = async (reason: string) => {
+    const handle = currentHandle
+    currentHandle = undefined
     currentReady = undefined
-    currentArtifact = undefined
+    await handle?.destroy(reason).catch(() => undefined)
   }
 
-  const setBusy = (message: string) => {
-    clearMount()
+  const setBusy = async (message: string) => {
+    await clearMount("preview-replaced")
     body.replaceChildren()
     const loading = dom.createElement("div")
     loading.className = "vc-draft-preview__state vc-draft-preview__state--loading"
@@ -95,7 +92,6 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
   }
 
   const renderFailure = (failure: TDraftPreviewFailure) => {
-    clearMount()
     body.replaceChildren()
     const state = dom.createElement("div")
     const heading = dom.createElement("strong")
@@ -121,65 +117,68 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
     args.onResetStateChange?.({ disabled: true })
   }
 
-  const mountVerified = (result: TDraftPreviewReady, artifact: TVerifiedWidgetUiArtifact) => {
+  const mountVerified = async (
+    result: TDraftPreviewReady,
+    artifact: Awaited<ReturnType<typeof fxDecodeAndVerifyUiArtifact>>,
+  ) => {
     const identity: TWidgetPreviewRuntimeIdentity = Object.freeze({
       kind: "draft_preview",
       draftId: result.draftId,
       definitionId: result.definitionId,
       revision: result.revision,
     })
-    const functionBridge = createUnavailableFunctionBridge(identity, args.browser.createId)
+    const functionBridge = createUnavailableFunctionBridge(identity)
     const collaborativeStateBridge = createEphemeralCollaborativeStateBridge()
     const nextRoot = dom.createElement("div")
     nextRoot.className = "vc-draft-preview__sandbox"
-    let cleanupArtifact: (() => void) | undefined
+    body.replaceChildren(nextRoot)
+    let nextHandle: TWidgetUiRuntimeHandle | undefined
     try {
-      cleanupArtifact = args.mountArtifact.mount({
+      nextHandle = await args.mountArtifact.mount({
+        mode: "preview",
         root: nextRoot,
         identity,
         artifact,
+        functionDescriptors: result.contract.functions,
+        browserFunctionDescriptorsDigestSha256:
+          result.contract.browserFunctionDescriptorsDigestSha256,
         functionBridge,
         collaborativeStateBridge,
         onFatal(error) {
           if (!disposed) args.onLogError(error)
         },
       })
+      await nextHandle.ready()
     } catch (error) {
+      await nextHandle?.destroy("preview-mount-failed").catch(() => undefined)
       functionBridge.dispose()
       collaborativeStateBridge.dispose()
       throw error
     }
     if (disposed) {
-      cleanupArtifact()
-      functionBridge.dispose()
-      collaborativeStateBridge.dispose()
+      await nextHandle.destroy("preview-disposed")
       return
     }
-    clearMount()
-    body.replaceChildren(nextRoot)
     currentRevision = result.revision
     currentReady = result
-    currentArtifact = artifact
-    cleanupMounted = () => {
-      cleanupArtifact?.()
-      functionBridge.dispose()
-      collaborativeStateBridge.dispose()
-    }
+    currentHandle = nextHandle
     args.onResetStateChange?.({ disabled: false })
   }
 
   const verifyAndMount = async (result: TDraftPreviewReady, activeRequest: number) => {
     const artifact = await fxDecodeAndVerifyUiArtifact({ codec: args.browser }, {
       expectedDigestSha256: result.uiArtifact.digestSha256,
+      expectedCapsuleArtifactHash: result.uiArtifact.runtimeDescriptor.capsuleArtifactHash,
       bytesBase64: result.uiArtifact.bytesBase64,
+      runtimeDescriptor: result.uiArtifact.runtimeDescriptor,
     })
     if (disposed || activeRequest !== requestId) return
-    mountVerified(result, artifact)
+    await mountVerified(result, artifact)
   }
 
   const runBuild = async (initial?: TDraftPreviewResult) => {
     const activeRequest = ++requestId
-    setBusy("Building current Preview…")
+    await setBusy("Building current Preview…")
     try {
       let result = initial
       if (!result) {
@@ -227,7 +226,7 @@ export function mountDraftPreview(args: TMountDraftPreviewArgs): TDraftPreviewRu
       disposed = true
       requestId += 1
       await activeOperation.catch(() => undefined)
-      clearMount()
+      await clearMount("preview-closed")
       args.root.replaceChildren()
     },
     getCurrentRevision: () => currentRevision || currentReady?.revision || "",

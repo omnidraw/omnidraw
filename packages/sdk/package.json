@@ -28,7 +28,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@arrow-js/core": "^1.0.6",
+    "@omnidraw/capsule": "file:/Users/omarezzat/Workspace/vibecanvas/capsule",
     "@vibecanvas/widget-contract": "workspace:*"
   },
   "devDependencies": {

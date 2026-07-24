@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { generateAutomergeUrl } from '@automerge/automerge-repo';
+import { buildCapsuleGuest } from '@vibecanvas/capsule-vibecanvas/build';
 import {
   DEFAULT_OSS_ACCOUNT_ID,
   DEFAULT_OSS_CELL_ID,
@@ -11,9 +12,15 @@ import {
 import { WidgetInstanceMetadataStoreTurso } from '@vibecanvas/service-db/WidgetInstanceMetadataStoreTurso';
 import { fnResolveVibecanvasHome } from '@vibecanvas/shared-functions/vibecanvas-config/fn.resolve-vibecanvas-home';
 import { fnFreezeTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { ICliConfig } from '../src/config';
 import { setupServices } from '../src/setup-services';
+import { fnWidgetCapsuleBuilderIdentity } from '../src/services/fn.widget-capsule-builder-identity';
+import { resolveWidgetCapsuleOciImageId } from '../src/services/WidgetCapsuleOciBuild';
+import {
+  CAPSULE_PUBLICATION_IDENTITY,
+  capsuleUi,
+} from './widget-capsule.fixture';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const roots: string[] = [];
@@ -98,7 +105,9 @@ describe('production short-lived function composition', () => {
       capabilities: [],
       requestId: 'function-composition-outsider-request',
     });
-    const { services, dbService } = setupServices(config);
+    const { services, dbService } = setupServices(config, {
+      capsuleBuild: buildCapsuleGuest,
+    });
     const context = { config: {}, hooks: {} };
     const widgetOwner = services.require('widgetOwner');
     const resourceOwner = services.require('resourceOwner');
@@ -133,11 +142,11 @@ describe('production short-lived function composition', () => {
         id: uuid(963),
         createdAtMs: 10,
       });
-      const manifest: TWidgetManifestV2 = {
-        schemaVersion: 2,
+      const manifest: TWidgetManifestV3 = {
+        schemaVersion: 3,
         name: 'Function composition',
         slug: 'function-composition',
-        ui: { entry: 'ui/main.ts' },
+        ui: capsuleUi('ui/main.ts'),
         server: { entry: 'server/index.ts', runtimeAbi: 'vibecanvas:test-1' },
       };
       const published = await widget.publish(tenant, {
@@ -147,7 +156,11 @@ describe('production short-lived function composition', () => {
         snapshot,
         manifest,
         bindings: [],
-        builderIdentity: `vibecanvas-widget-bun/${Bun.version}`,
+        builderIdentity: fnWidgetCapsuleBuilderIdentity({
+          imageId: resolveWidgetCapsuleOciImageId(),
+          serverBunVersion: Bun.version,
+        }),
+        ...CAPSULE_PUBLICATION_IDENTITY,
         nowMs: 20,
       });
       if (published.status !== 'committed') throw new Error('Expected function publication to commit.');

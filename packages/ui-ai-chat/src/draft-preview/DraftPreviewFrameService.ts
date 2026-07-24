@@ -9,7 +9,7 @@ import type {
   TWidgetWorldBounds,
 } from "@vibecanvas/canvas/services"
 import type { TAiChatApiPort, TAiChatApplicationPort, TWidgetBrowserPort } from "../ports"
-import { widgetUiArtifactMount } from "../widget-runtime"
+import type { TWidgetUiArtifactMountPort } from "../widget-runtime"
 import type { TWidgetTitleBarPortal } from "../widget/interface"
 import { mountWidgetPublicationDialog } from "../publication/mount"
 import type { TWidgetPublicationApi } from "../publication/interface"
@@ -32,6 +32,7 @@ type TDraftPreviewFrameServiceArgs = {
   api: TAiChatApiPort
   application: TAiChatApplicationPort
   browser: TWidgetBrowserPort
+  mountArtifact: TWidgetUiArtifactMountPort
   crdt: CrdtService
   history?: HistoryService
   renderOrder: RenderOrderService
@@ -115,7 +116,7 @@ export class DraftPreviewFrameService implements IService, IStoppableService {
       browser: this.#args.browser,
       payload,
       initialResult: this.#initialResults.get(args.element.id),
-      mountArtifact: widgetUiArtifactMount,
+      mountArtifact: this.#args.mountArtifact,
       onResetStateChange: (state) => args.titleBar?.setActionState("reset", state),
       onLogError: this.#args.application.logError,
     })

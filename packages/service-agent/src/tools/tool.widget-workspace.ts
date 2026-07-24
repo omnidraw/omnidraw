@@ -76,7 +76,7 @@ export function createWidgetWorkspaceTools(args: TCreateWidgetWorkspaceToolsArgs
   const create = defineTool({
     name: 'vc_widget_create',
     label: 'Create Widget Draft',
-    description: 'Create and mount one complete browser-first manifest-v2 widget draft. Continue by reading the generated files, editing the construction scaffold, then call vc_widget_validate. Add server files only when the requested widget needs a short server function.',
+    description: 'Create and mount one complete browser-first manifest-v3 Capsule widget draft. Continue by reading the generated files, editing the construction scaffold, then call vc_widget_validate. Add server files only when the requested widget needs a short server function.',
     parameters: WIDGET_CREATE_PARAMETERS,
     async execute(_toolCallId, params: any) {
       if (!await args.authorize('vc_widget_create')) return fnToolError({ code: 'TOOL_NOT_AUTHORIZED', message: 'This tool call is not authorized.' });

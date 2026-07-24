@@ -243,6 +243,10 @@ implements
         mountContent: (args) => {
           return this.#args.portal.mount(args);
         },
+        readViewportSize: () => ({
+          width: this.container.clientWidth,
+          height: this.container.clientHeight,
+        }),
         onUpdateError: ({ portalId, error }) => {
           this.hooks.diagnostic.call({
             sequence: -1,

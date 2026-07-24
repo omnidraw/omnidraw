@@ -59,10 +59,18 @@ describe("WidgetDetailPage publication", () => {
       revision: "draft-revision",
       publishedRevisionId: "30000000-0000-4000-8000-000000000001",
       manifest: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: "Blobby",
         slug: "blobby",
-        ui: { entry: "ui/main.ts" },
+        ui: {
+          runtime: "capsule",
+          entry: "ui/main.ts",
+          target: {
+            runtimeAbi: "quickjs-release-sync-v1",
+            domProfile: "dom-core-v2",
+            featureProfiles: [],
+          },
+        },
       },
     }] as const)
     const controller = {
@@ -126,7 +134,7 @@ describe("WidgetDetailPage publication", () => {
     expect(refreshCatalog.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
-  test("describes v2 deletion as archival and keeps pinned canvas instances", async () => {
+  test("describes published deletion as archival and keeps pinned canvas instances", async () => {
     const publishedVariant: TWidgetVariantSummary = {
       ...variant,
       draftId: null,
@@ -141,10 +149,18 @@ describe("WidgetDetailPage publication", () => {
       relation: "published-only",
       variant: publishedVariant,
       manifest: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         name: "Blobby",
         slug: "blobby",
-        ui: { entry: "ui/main.ts" },
+        ui: {
+          runtime: "capsule",
+          entry: "ui/main.ts",
+          target: {
+            runtimeAbi: "quickjs-release-sync-v1",
+            domProfile: "dom-core-v2",
+            featureProfiles: [],
+          },
+        },
       },
     }
     const publishedCatalog: TWidgetCatalog = {

@@ -26,15 +26,6 @@ const suites: readonly TWidgetHostSuite[] = [
     ],
   },
   {
-    name: 'pinned Arrow sandbox DOM, CSS, lifecycle, and execution guards are installed',
-    command: ['node', 'scripts/patch-arrow-sandbox-security.mjs', '--check'],
-    requiredPaths: [
-      'scripts/patch-arrow-sandbox-security.mjs',
-      'packages/ui-ai-chat/node_modules/@arrow-js/sandbox/src/host/renderer.ts',
-      'packages/ui-ai-chat/node_modules/@arrow-js/sandbox/src/host/quickjs.ts',
-    ],
-  },
-  {
     name: 'neutral canvas schema accepts pinned widget-instance metadata',
     command: [
       'bun',
@@ -102,7 +93,7 @@ const suites: readonly TWidgetHostSuite[] = [
     ],
   },
   {
-    name: 'pinned browser artifact envelope and exact widget runtime authority',
+    name: 'signed Capsule artifact metadata and exact widget runtime authority',
     command: [
       'bun',
       'test',
@@ -137,7 +128,7 @@ const suites: readonly TWidgetHostSuite[] = [
     ],
   },
   {
-    name: 'generated SDK server-function proxy uses the fixed sandbox-global bridge',
+    name: 'generated SDK server-function proxy uses the Capsule guest capability bridge',
     command: [
       'bun',
       'test',
@@ -150,7 +141,7 @@ const suites: readonly TWidgetHostSuite[] = [
     ],
   },
   {
-    name: 'browser artifact runtime plus renderer-neutral portal, frame, and product creation',
+    name: 'Capsule host boundary, bounded population, plus renderer-neutral portal, frame, and product creation',
     command: [
       'bun',
       'run',
@@ -167,10 +158,9 @@ const suites: readonly TWidgetHostSuite[] = [
     ],
     requiredPaths: [
       'packages/ui-ai-chat/tests/widget-runtime/WidgetUiRuntime.test.ts',
+      'packages/ui-ai-chat/tests/widget-runtime/fn.capsule-population.test.ts',
       'packages/ui-ai-chat/tests/widget-runtime/create-widget-function-host-bridge.test.ts',
       'packages/ui-ai-chat/tests/widget-runtime/mount-widget-ui-artifact.test.ts',
-      'packages/ui-ai-chat/tests/widget-runtime/sandbox-interrupt-process.test.ts',
-      'packages/ui-ai-chat/tests/widget-runtime/fixtures/infinite-loop-mount.ts',
       'packages/ui-ai-chat/tests/widget/tx.mount-widget-portal.test.ts',
       'packages/ui-ai-chat/tests/widget/fn.widget-frame.test.ts',
       'packages/ui-ai-chat/tests/widget/widget-product-creation.test.ts',

@@ -3,6 +3,8 @@
 import { z } from 'zod';
 
 import {
+  fnNormalizeWidgetBrowserFunctionDescriptor,
+  fnNormalizeWidgetBrowserFunctionDescriptors,
   fnNormalizeWidgetServerFunctionDescriptor,
   fnNormalizeWidgetServerFunctionDescriptors,
 } from './core/fn.function-descriptor';
@@ -115,11 +117,9 @@ export const ZWidgetServerFunctionDescriptor: z.ZodType<TWidgetServerFunctionDes
   ));
 
 export const ZWidgetBrowserFunctionDescriptor: z.ZodType<TWidgetBrowserFunctionDescriptor> =
-  ZWidgetBrowserFunctionDescriptorShape.transform((descriptor) => {
-    const { modulePath: _modulePath, ...browserDescriptor } =
-      fnNormalizeWidgetServerFunctionDescriptor(descriptor);
-    return browserDescriptor;
-  });
+  ZWidgetBrowserFunctionDescriptorShape.transform(
+    fnNormalizeWidgetBrowserFunctionDescriptor,
+  );
 
 export const ZWidgetServerFunctionDescriptors = z.array(ZWidgetServerFunctionDescriptor)
   .max(128)
@@ -152,4 +152,5 @@ export const ZWidgetBrowserFunctionDescriptors = z.array(ZWidgetBrowserFunctionD
       }
       exports.add(descriptor.exportName);
     });
-  });
+  })
+  .transform(fnNormalizeWidgetBrowserFunctionDescriptors);

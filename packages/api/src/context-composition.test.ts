@@ -127,6 +127,8 @@ const fakeContext = {
   humanResourceSecret: fakeHumanResourceSecretCapability,
   resource: fakeResourceCapability,
   widget: fakeCapability<TApiContext['widget']>(),
+  widgetCapsuleHostConfiguration:
+    fakeCapability<TApiContext['widgetCapsuleHostConfiguration']>(),
   widgetRuntimeLoadAdmission: {
     run: async (_tenant, signal, operation) => await operation(
       signal ?? new AbortController().signal,

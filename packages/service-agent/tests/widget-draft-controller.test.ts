@@ -37,7 +37,7 @@ describe('WidgetDraftController stateless Preview', () => {
     const first = await controller.buildPreview(draft.draftId);
     await writeFile(
       join(root, 'pi', 'agent', 'widgets', 'drafts', draft.name, 'ui', 'main.ts'),
-      'export default function mount() { return 2; }\n',
+      'document.body.append(document.createElement("output"));\n',
       'utf8',
     );
     const second = await controller.buildPreview(draft.draftId);
@@ -52,7 +52,7 @@ describe('WidgetDraftController stateless Preview', () => {
   });
 });
 
-describe('WidgetManagement manifest-v2 metadata', () => {
+describe('WidgetManagement manifest-v3 metadata', () => {
   test('persists supported manifest metadata', async () => {
     const { workspace, controller, createDraft } = await harness();
     const draft = await createDraft('Editable Clock');
@@ -77,9 +77,9 @@ describe('WidgetManagement manifest-v2 metadata', () => {
 
     await expect(management.patchDraftMetadata(draft.name, draft.revision, {
       tool: { label: 'Ignored label' },
-    })).rejects.toThrow('Manifest v2 does not expose tool metadata.');
+    })).rejects.toThrow('Manifest v3 does not expose tool metadata.');
     await expect(management.patchDraftTool(draft.name, draft.revision, {
       group: 'Ignored group',
-    })).rejects.toThrow('Manifest v2 does not expose tool metadata.');
+    })).rejects.toThrow('Manifest v3 does not expose tool metadata.');
   });
 });

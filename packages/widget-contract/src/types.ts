@@ -45,7 +45,6 @@ export type TWidgetSerializableJsonObject = Readonly<{
 }>;
 
 export type TWidgetArtifactKind = 'ui' | 'server' | 'source' | 'source_map';
-export type TWidgetBuildArtifactKind = Extract<TWidgetArtifactKind, 'ui' | 'server'>;
 export type TWidgetDefinitionStatus = 'draft' | 'published' | 'archived';
 export type TWidgetArtifactRetentionState = 'pinned' | 'eligible' | 'deleting';
 export type TWidgetArtifactReadPurpose =
@@ -55,8 +54,139 @@ export type TWidgetArtifactReadPurpose =
   | 'source_map'
   | 'cell_move';
 
+/** Capsule content addresses include their digest algorithm domain. */
+export type TWidgetCapsuleHash = `sha256:${string}`;
+
+/** Normalized Capsule execution target selected by trusted build policy. */
+export type TWidgetCapsuleTarget = Readonly<{
+  runtimeAbi: string;
+  domProfile: string;
+  featureProfiles: readonly string[];
+}>;
+
+/** Complete Capsule resource ceiling. Zero is a valid explicit denial. */
+export type TWidgetCapsuleBudgets = Readonly<{
+  cpuMs: number;
+  memoryBytes: number;
+  domNodes: number;
+  handles: number;
+  messageBytes: number;
+  streamBytes: number;
+  assetBytes: number;
+  networkBytes: number;
+  gpuBytes: number;
+  lifecycleBytes: number;
+}>;
+
+export type TWidgetCapsuleBudgetRequest = Readonly<Partial<TWidgetCapsuleBudgets>>;
+
+/** Browser-safe deployment target shared by trusted build and host policy. */
+export type TWidgetCapsuleHostTargetBase = Readonly<
+  Pick<TWidgetCapsuleTarget, 'runtimeAbi' | 'domProfile'>
+>;
+
+/** Public verification material; private Capsule signing keys never cross this boundary. */
+export type TWidgetCapsulePublicSigningKey = Readonly<{
+  keyId: string;
+  algorithm: 'Ed25519';
+  format: 'raw';
+  publicKeyBase64: string;
+}>;
+
+/** Public, cacheable policy required to construct a Capsule browser host. */
+export type TWidgetCapsuleHostConfiguration = Readonly<{
+  generation: string;
+  targetBase: TWidgetCapsuleHostTargetBase;
+  allowedFeatureProfiles: readonly string[];
+  budgetCeiling: TWidgetCapsuleBudgets;
+  budgetDefaults: TWidgetCapsuleBudgets;
+  previewSigningKeyId: string;
+  releaseSigningKeyId: string;
+  signingKeys: readonly TWidgetCapsulePublicSigningKey[];
+}>;
+
+export type TWidgetCapsuleSchemaReference = Readonly<{
+  format: 'capsule-schema-v1';
+  hash: TWidgetCapsuleHash;
+}>;
+
+/**
+ * Host-owned widget props are JSON-only canvas data. Capsule applies the
+ * concrete depth, item, key, string, and wire-size ceilings at the channel
+ * boundary.
+ */
+export type TWidgetCapsuleProps = TWidgetSerializableJsonObject;
+
+/** Minimal semantic theme projection exposed to untrusted widget code. */
+export type TWidgetCapsuleTheme = Readonly<{
+  format: 'vibecanvas.widget-theme.v1';
+  appearance: 'light' | 'dark';
+  tokens: Readonly<{
+    background: string;
+    foreground: string;
+    surface: string;
+    surfaceForeground: string;
+    muted: string;
+    mutedForeground: string;
+    primary: string;
+    primaryForeground: string;
+    accent: string;
+    accentForeground: string;
+    destructive: string;
+    success: string;
+    border: string;
+  }>;
+}>;
+
+/**
+ * The only first-release guest output action. The guest selects neither a
+ * service nor an application identity, URL, title, or durable destination.
+ */
+export type TWidgetCapsuleNotificationOutput = Readonly<{
+  type: 'notification';
+  tone: 'info' | 'success' | 'error';
+  message: string;
+}>;
+
+/** Untrusted authority request embedded in a Capsule artifact; it grants nothing. */
+export type TWidgetCapsuleCapabilityRequest = Readonly<{
+  id: string;
+  versionRange: string;
+  contractHash: TWidgetCapsuleHash;
+  required: boolean;
+  operations: readonly string[];
+}>;
+
+/** Signed Capsule guest-channel declaration. */
+export type TWidgetCapsuleChannelContract = Readonly<{
+  format: 'capsule-guest-channels-v1';
+  lifecycle?: true;
+  props?: TWidgetCapsuleSchemaReference;
+  theme?: TWidgetCapsuleSchemaReference;
+  output?: TWidgetCapsuleSchemaReference;
+  store?: Readonly<{
+    schema: TWidgetCapsuleSchemaReference;
+    maxEntries: number;
+  }>;
+}>;
+
+/** Parking is deliberately disabled for the first Capsule release. */
+export type TWidgetCapsuleParkability = Readonly<{
+  parkable: false;
+}>;
+
 export type TWidgetUiManifest = Readonly<{
+  runtime: 'capsule';
   entry: string;
+  target: TWidgetCapsuleTarget;
+  budgets?: TWidgetCapsuleBudgetRequest;
+  state?: Readonly<{
+    collaborative: boolean;
+    localStore: 'none' | 'ephemeral';
+  }>;
+  parkability?: Readonly<{
+    enabled: false;
+  }>;
 }>;
 
 export type TWidgetServerManifest = Readonly<{
@@ -126,8 +256,8 @@ export type TWidgetServerFunctionDescriptorValidation =
     }>;
 
 /** Fields outside the current manifest contract are rejected by the runtime schema. */
-export type TWidgetManifestV2 = Readonly<{
-  schemaVersion: 2;
+export type TWidgetManifestV3 = Readonly<{
+  schemaVersion: 3;
   name: string;
   slug: string;
   description?: string;
@@ -149,17 +279,93 @@ export type TWidgetSourceSnapshot = Readonly<{
   createdAtMs: number;
 }>;
 
-export type TWidgetBuildRequest = Readonly<{
-  snapshot: TWidgetSourceSnapshot;
-  manifest: TWidgetManifestV2;
-  canonicalManifestJson: string;
-  builderIdentity: string;
+/** Exact pinned Capsule package/build identity used by trusted tooling. */
+export type TWidgetCapsuleBuildIdentity = Readonly<{
+  packageName: '@omnidraw/capsule';
+  packageVersion: string;
+  packageDigest: TWidgetCapsuleHash;
+  buildApiVersion: string;
+  runtimeBuildDigest: TWidgetCapsuleHash;
 }>;
 
-export type TWidgetBuildArtifact = Readonly<{
-  kind: TWidgetBuildArtifactKind;
+/** Trusted, serializable metadata inspected from exact signed Capsule bytes. */
+export type TWidgetCapsuleRuntimeDescriptor = Readonly<{
+  format: 'vibecanvas.capsule-runtime.v1';
+  capsuleArtifactHash: TWidgetCapsuleHash;
+  target: TWidgetCapsuleTarget;
+  budgets: TWidgetCapsuleBudgets;
+  capabilityRequests: readonly TWidgetCapsuleCapabilityRequest[];
+  channels: TWidgetCapsuleChannelContract | null;
+  parkability: TWidgetCapsuleParkability;
+  signatureKeyIds: readonly string[];
+}>;
+
+export type TWidgetBuildRequest = Readonly<{
+  snapshot: TWidgetSourceSnapshot;
+  manifest: TWidgetManifestV3;
+  canonicalManifestJson: string;
+  builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
+  /** Trusted orchestration choice; never accepted from guest source or a public API payload. */
+  signingPurpose: TWidgetCapsuleArtifactSigningPurpose;
+}>;
+
+/** Exact signed Capsule bytes plus independently verified runtime metadata. */
+export type TWidgetCapsuleUiArtifact = Readonly<{
+  kind: 'ui';
   digestSha256: TWidgetArtifactDigest;
   bytes: Uint8Array;
+  capsuleArtifactHash: TWidgetCapsuleHash;
+  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+  requestedBudgets: TWidgetCapsuleBudgetRequest;
+  effectiveBudgets: TWidgetCapsuleBudgets;
+  builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+}>;
+
+export type TWidgetCapsuleUiBuildRequest = TWidgetBuildRequest & Readonly<{
+  functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+}>;
+
+export type TWidgetCapsuleArtifactSigningPurpose = 'preview' | 'release';
+
+export type TWidgetCapsuleArtifactSignRequest = Readonly<{
+  unsignedBytes: Uint8Array;
+  capsuleArtifactHash: TWidgetCapsuleHash;
+  purpose: TWidgetCapsuleArtifactSigningPurpose;
+}>;
+
+export type TWidgetCapsuleArtifactSignResult = Readonly<{
+  signedBytes: Uint8Array;
+  signatureKeyIds: readonly string[];
+}>;
+
+export type TWidgetCapsuleArtifactInspectionRequest = Readonly<{
+  signedBytes: Uint8Array;
+  expectedTarget: TWidgetCapsuleTarget;
+}>;
+
+export type TWidgetCapsuleArtifactInspectionResult = Readonly<{
+  digestSha256: TWidgetArtifactDigest;
+  runtimeDescriptor: TWidgetCapsuleRuntimeDescriptor;
+}>;
+
+export type TWidgetCapsuleRuntimeDescriptorCreateRequest = Readonly<{
+  capsuleArtifactHash: TWidgetCapsuleHash;
+  target: TWidgetCapsuleTarget;
+  budgets: TWidgetCapsuleBudgets;
+  capabilityRequests: readonly TWidgetCapsuleCapabilityRequest[];
+  channels: TWidgetCapsuleChannelContract | null;
+  signatureKeyIds: readonly string[];
+}>;
+
+/** Server artifacts retain their distinct server execution ABI. */
+export type TWidgetServerBuildArtifact = Readonly<{
+  kind: 'server';
+  digestSha256: TWidgetArtifactDigest;
+  bytes: Uint8Array;
+  runtimeAbi: string;
 }>;
 
 /** Canonically encoded immutable source bytes stored beside a built revision. */
@@ -169,29 +375,53 @@ export type TWidgetSourceArtifact = Readonly<{
   bytes: Uint8Array;
 }>;
 
+export type TWidgetBuildDiagnostic = Readonly<{
+  severity: 'error' | 'warning' | 'info';
+  code: string;
+  message: string;
+  path?: string;
+  line?: number;
+  column?: number;
+}>;
+
 export type TWidgetBuildResult = Readonly<{
   sourceSnapshotId: TWidgetSourceSnapshotId;
   sourceDigestSha256: TWidgetArtifactDigest;
   builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
   canonicalManifestJson: string;
   functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
+  capabilityContractDigestSha256: TWidgetArtifactDigest;
+  channelContractDigestSha256: TWidgetArtifactDigest;
   contractDigestSha256: TWidgetArtifactDigest;
-  uiArtifact: TWidgetBuildArtifact;
-  serverArtifact: TWidgetBuildArtifact | null;
+  uiArtifact: TWidgetCapsuleUiArtifact;
+  serverArtifact: TWidgetServerBuildArtifact | null;
+  diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
 
 /** Persisted inputs whose canonical encoding binds a revision to its artifacts. */
 export type TWidgetContractPayloadInput = Readonly<{
   canonicalManifestJson: string;
   uiDigestSha256: TWidgetArtifactDigest;
+  capsuleArtifactHash: TWidgetCapsuleHash;
+  target: TWidgetCapsuleTarget;
+  budgets: TWidgetCapsuleBudgets;
+  capabilityContractDigestSha256: TWidgetArtifactDigest;
+  channelContractDigestSha256: TWidgetArtifactDigest;
+  signatureKeyIds: readonly string[];
   serverDigestSha256: TWidgetArtifactDigest | null;
-  runtimeAbi: string | null;
+  serverRuntimeAbi: string | null;
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
+  sourceDigestSha256: TWidgetArtifactDigest;
+  builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
 }>;
 
 export type TWidgetServerFunctionDescriptorExtractionRequest = Readonly<{
-  serverArtifact: TWidgetBuildArtifact;
+  serverArtifact: TWidgetServerBuildArtifact;
   serverEntry: string;
   runtimeAbi: string;
 }>;
@@ -299,13 +529,19 @@ export type TWidgetRevisionDescriptor = Readonly<{
   id: TWidgetRevisionId;
   definitionId: TWidgetDefinitionId;
   revisionNumber: number;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
   canonicalManifestJson: string;
   functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
   functionDescriptorsDigestSha256: TWidgetArtifactDigest;
+  capabilityContractDigestSha256: TWidgetArtifactDigest;
+  channelContractDigestSha256: TWidgetArtifactDigest;
   contractDigestSha256: TWidgetArtifactDigest;
   uiArtifact: TWidgetArtifactDescriptor;
+  uiRuntime: TWidgetCapsuleRuntimeDescriptor;
   serverArtifact: TWidgetArtifactDescriptor | null;
+  serverRuntimeAbi: string | null;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
   createdAtMs: number;
 }>;
 
@@ -490,22 +726,27 @@ export type TWidgetPreviewBuildRequest = Readonly<{
   definitionId: TWidgetDefinitionId;
   draftRevisionSha256: TWidgetArtifactDigest;
   snapshot: TWidgetSourceSnapshot;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
   builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
 }>;
 
 export type TWidgetPreviewBuildResult = Readonly<{
   draftId: string;
   definitionId: TWidgetDefinitionId;
   draftRevisionSha256: TWidgetArtifactDigest;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
   builderIdentity: string;
-  uiArtifact: Readonly<{
-    digestSha256: TWidgetArtifactDigest;
-    bytes: Uint8Array;
-  }>;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
+  uiArtifact: TWidgetCapsuleUiArtifact;
   functionDescriptors: readonly TWidgetServerFunctionDescriptor[];
+  functionDescriptorsDigestSha256: TWidgetArtifactDigest;
+  capabilityContractDigestSha256: TWidgetArtifactDigest;
+  channelContractDigestSha256: TWidgetArtifactDigest;
   contractDigestSha256: TWidgetArtifactDigest;
+  diagnostics: readonly TWidgetBuildDiagnostic[];
 }>;
 
 export type TWidgetArtifactGcRequest = Readonly<{
@@ -526,9 +767,11 @@ export type TWidgetPublishRequest = Readonly<{
   expectedActiveRevisionId: TWidgetRevisionId | null;
   revisionId: TWidgetRevisionId;
   snapshot: TWidgetSourceSnapshot;
-  manifest: TWidgetManifestV2;
+  manifest: TWidgetManifestV3;
   bindings: readonly TWidgetResourceBindingInput[];
   builderIdentity: string;
+  capsuleBuildIdentity: TWidgetCapsuleBuildIdentity;
+  buildPolicyId: string;
   nowMs: number;
 }>;
 

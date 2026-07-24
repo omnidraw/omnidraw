@@ -40,9 +40,13 @@ const durableSuites: readonly TAcceptanceSuite[] = [
   { name: 'widget host', command: ['bun', 'run', 'test:widget-host'] },
   { name: 'external composition', command: ['bun', 'run', 'test:external-composition'] },
   { name: 'architecture boundaries', command: ['bun', 'run', 'test:architecture'] },
-  { name: 'legacy-disabled joined v2 flow', command: ['bun', 'run', 'test:managed-v2-joined'] },
+  { name: 'Capsule manifest v3 joined flow', command: ['bun', 'run', 'test:managed-v3-joined'] },
   { name: 'packed public composition', command: ['bun', 'run', 'test:packed-public-composition'] },
   { name: 'load and bounded-cost acceptance', command: ['bun', 'run', 'test:m10:load'] },
+];
+const hostBoundarySuites: readonly TAcceptanceSuite[] = [
+  { name: 'Capsule browser sandbox', command: ['bun', 'run', 'test:capsule-browser'] },
+  { name: 'Capsule OCI build boundary', command: ['bun', 'run', 'test:capsule-oci-build'] },
 ];
 const commonSuites: readonly TAcceptanceSuite[] = [
   { name: 'functional-core lint', command: ['bun', 'run', 'lint:functional-core'] },
@@ -86,9 +90,17 @@ try {
     await runSuite({ name: 'git whitespace gate', command: ['git', 'diff', '--check'] }, env);
   } else {
     console.log('\n[final-acceptance] immutable git archive supplied by Docker wrapper');
+    console.log(
+      '[final-acceptance] host browser and nested OCI gates remain assigned to host final acceptance',
+    );
   }
 
-  for (const suite of [...durableSuites, ...commonSuites]) {
+  const suites = [
+    ...durableSuites,
+    ...(cleanSnapshot ? [] : hostBoundarySuites),
+    ...commonSuites,
+  ];
+  for (const suite of suites) {
     await runSuite(suite, env);
   }
 } finally {

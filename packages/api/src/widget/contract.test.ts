@@ -1,9 +1,20 @@
 import { describe, expect, mock, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { ORPCError } from '@orpc/contract';
 import type { TTenantContext } from '@vibecanvas/tenant-core';
-import type { TWidgetRevisionDescriptor } from '@vibecanvas/widget-contract';
+import {
+  fnCanonicalizeWidgetBrowserFunctionDescriptors,
+  fnCanonicalizeWidgetServerFunctionDescriptors,
+  fnProjectWidgetBrowserFunctionDescriptors,
+  type TWidgetRevisionDescriptor,
+  type TWidgetServerFunctionDescriptor,
+} from '@vibecanvas/widget-contract';
 import { router } from '../router';
-import { ZWidgetRuntimeLoadInput, ZWidgetRuntimeLoadOutput } from './contract';
+import {
+  ZWidgetCapsuleHostConfiguration,
+  ZWidgetRuntimeLoadInput,
+  ZWidgetRuntimeLoadOutput,
+} from './contract';
 import type { TWidgetApiContext } from './types';
 
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -24,43 +35,126 @@ const request = Object.freeze({
   definitionId: uuid(3),
   revisionId: uuid(4),
 });
-const artifactBytes = new TextEncoder().encode('{"format":"vibecanvas.widget-artifact.v1"}');
-const digestSha256 = 'a'.repeat(64);
+const artifactBytes = new TextEncoder().encode('capsule-signed-artifact-bytes');
+const digestSha256 = createHash('sha256').update(artifactBytes).digest('hex');
+const capsuleArtifactHash = `sha256:${'b'.repeat(64)}` as const;
+const capsuleTarget = Object.freeze({
+  runtimeAbi: 'quickjs-release-sync-v1',
+  domProfile: 'dom-core-v2',
+  featureProfiles: ['artifact-resources-v1'],
+});
+const capsuleBudgets = Object.freeze({
+  cpuMs: 50,
+  memoryBytes: 8 * 1_024 * 1_024,
+  domNodes: 1_000,
+  handles: 1_000,
+  messageBytes: 1_024 * 1_024,
+  streamBytes: 1_024 * 1_024,
+  assetBytes: 4 * 1_024 * 1_024,
+  networkBytes: 0,
+  gpuBytes: 0,
+  lifecycleBytes: 64 * 1_024,
+});
+const serverFunctionDescriptor: TWidgetServerFunctionDescriptor = Object.freeze({
+  schemaVersion: 1,
+  exportName: 'loadGreeting',
+  modulePath: 'src/private/server.ts',
+  effect: 'fn',
+  inputSchema: { type: 'object' },
+  outputSchema: { type: 'object' },
+  resources: [],
+  limits: {
+    timeoutMs: 1_000,
+    memoryTier: 'small' as const,
+    outputByteLimit: 1_024,
+    logByteLimit: 1_024,
+  },
+  retry: {
+    mode: 'none' as const,
+    maxAttempts: 1,
+    initialBackoffMs: 0,
+    maxBackoffMs: 0,
+  },
+});
+const functionDescriptors = Object.freeze([serverFunctionDescriptor]);
+const functionDescriptorsDigestSha256 = createHash('sha256')
+  .update(fnCanonicalizeWidgetServerFunctionDescriptors(functionDescriptors))
+  .digest('hex');
+const browserFunctionDescriptors =
+  fnProjectWidgetBrowserFunctionDescriptors(functionDescriptors);
+const browserFunctionDescriptorsDigestSha256 = createHash('sha256')
+  .update(fnCanonicalizeWidgetBrowserFunctionDescriptors(browserFunctionDescriptors))
+  .digest('hex');
+const hostConfiguration = Object.freeze({
+  generation: 'a'.repeat(64),
+  targetBase: Object.freeze({
+    runtimeAbi: capsuleTarget.runtimeAbi,
+    domProfile: capsuleTarget.domProfile,
+  }),
+  allowedFeatureProfiles: Object.freeze([
+    'artifact-resources-v1',
+    'canvas-2d-v1',
+  ]),
+  budgetCeiling: capsuleBudgets,
+  budgetDefaults: Object.freeze({
+    ...capsuleBudgets,
+    cpuMs: 25,
+    domNodes: 500,
+  }),
+  previewSigningKeyId: 'vibecanvas-preview-v1',
+  releaseSigningKeyId: 'vibecanvas-release-v1',
+  signingKeys: Object.freeze([
+    Object.freeze({
+      keyId: 'vibecanvas-preview-v1',
+      algorithm: 'Ed25519' as const,
+      format: 'raw' as const,
+      publicKeyBase64: Buffer.from(new Uint8Array(32).fill(1)).toString('base64'),
+    }),
+    Object.freeze({
+      keyId: 'vibecanvas-release-v1',
+      algorithm: 'Ed25519' as const,
+      format: 'raw' as const,
+      publicKeyBase64: Buffer.from(new Uint8Array(32).fill(2)).toString('base64'),
+    }),
+  ]),
+});
+const runtimeDescriptor = Object.freeze({
+  format: 'vibecanvas.capsule-runtime.v1' as const,
+  capsuleArtifactHash,
+  target: capsuleTarget,
+  budgets: capsuleBudgets,
+  capabilityRequests: [{
+    id: `vibecanvas.widget.functions.h${browserFunctionDescriptorsDigestSha256}`,
+    versionRange: '1.0.0',
+    contractHash: `sha256:${browserFunctionDescriptorsDigestSha256}` as const,
+    required: true,
+    operations: ['loadGreeting'],
+  }],
+  channels: null,
+  parkability: { parkable: false as const },
+  signatureKeyIds: ['vibecanvas-release-v1'],
+});
 const revision: TWidgetRevisionDescriptor = Object.freeze({
   orgId: tenant.orgId,
   id: request.revisionId,
   definitionId: request.definitionId,
   revisionNumber: 7,
   manifest: {
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     name: 'Pinned widget',
     slug: 'pinned-widget',
-    ui: { entry: 'src/main.ts' },
+    ui: {
+      runtime: 'capsule' as const,
+      entry: 'src/main.ts',
+      target: capsuleTarget,
+    },
     server: { entry: 'src/private/server.ts', runtimeAbi: 'vibecanvas:1' },
   },
   canonicalManifestJson: '{}',
-  functionDescriptors: [{
-    schemaVersion: 1,
-    exportName: 'loadGreeting',
-    modulePath: 'src/private/server.ts',
-    effect: 'fn',
-    inputSchema: { type: 'object' },
-    outputSchema: { type: 'object' },
-    resources: [],
-    limits: {
-      timeoutMs: 1_000,
-      memoryTier: 'small',
-      outputByteLimit: 1_024,
-      logByteLimit: 1_024,
-    },
-    retry: {
-      mode: 'none',
-      maxAttempts: 1,
-      initialBackoffMs: 0,
-      maxBackoffMs: 0,
-    },
-  }] as const,
-  functionDescriptorsDigestSha256: 'b'.repeat(64),
+  functionDescriptors,
+  functionDescriptorsDigestSha256,
+  capabilityContractDigestSha256: 'd'.repeat(64),
+  channelContractDigestSha256: 'e'.repeat(64),
   contractDigestSha256: 'c'.repeat(64),
   uiArtifact: {
     orgId: tenant.orgId,
@@ -72,7 +166,17 @@ const revision: TWidgetRevisionDescriptor = Object.freeze({
     retainUntilMs: null,
     createdAtMs: 1,
   },
+  uiRuntime: runtimeDescriptor,
   serverArtifact: null,
+  serverRuntimeAbi: 'vibecanvas:1',
+  capsuleBuildIdentity: {
+    packageName: '@omnidraw/capsule' as const,
+    packageVersion: '0.9.1',
+    packageDigest: `sha256:${'f'.repeat(64)}` as const,
+    buildApiVersion: 'capsule-build-v1',
+    runtimeBuildDigest: `sha256:${'1'.repeat(64)}` as const,
+  },
+  buildPolicyId: 'vibecanvas-release-v1',
   createdAtMs: 1,
 });
 
@@ -123,6 +227,7 @@ function context(args: Readonly<{
   getRevision?: TWidgetApiContext['widget']['getRevision'];
   issueBrowserCapability?: TWidgetApiContext['widget']['issueBrowserUiArtifactReadCapability'];
   readArtifact?: TWidgetApiContext['widget']['readArtifact'];
+  readHostConfiguration?: TWidgetApiContext['widgetCapsuleHostConfiguration']['read'];
   releaseDocument?: TWidgetApiContext['automerge']['releaseDocument'];
 }> = {}): TWidgetApiContext {
   const data = args.data ?? widgetData();
@@ -167,6 +272,9 @@ function context(args: Readonly<{
       getArtifact: async () => revision.uiArtifact,
       readArtifact: args.readArtifact ?? (async () => artifactBytes),
     },
+    widgetCapsuleHostConfiguration: {
+      read: args.readHostConfiguration ?? (async () => hostConfiguration),
+    },
     widgetRuntimeLoadAdmission: args.admission ?? {
       run: async (_tenant, signal, operation) => await operation(
         signal ?? new AbortController().signal,
@@ -183,6 +291,87 @@ function context(args: Readonly<{
 }
 
 describe('widget runtime API', () => {
+  test('returns only bounded public Capsule host configuration', async () => {
+    const read = mock(async () => hostConfiguration);
+    const config = router.api.widget.runtime.config.callable({
+      context: context({ readHostConfiguration: read }),
+    });
+
+    const result = await config();
+
+    expect(result).toEqual(hostConfiguration);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith();
+    expect(ZWidgetCapsuleHostConfiguration.parse(result)).toEqual(result);
+    expect(JSON.stringify(result)).not.toContain('private');
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...result,
+      signingKeys: result.signingKeys.map((key, index) => index === 0
+        ? { ...key, privateKeyBase64: 'forbidden' }
+        : key),
+    }).success).toBe(false);
+  });
+
+  test('rejects ambiguous or incomplete Capsule host trust configuration', () => {
+    const [previewKey, releaseKey] = hostConfiguration.signingKeys;
+    expect(previewKey).toBeDefined();
+    expect(releaseKey).toBeDefined();
+
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      signingKeys: [previewKey, { ...releaseKey, keyId: previewKey!.keyId }],
+    }).success).toBe(false);
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      signingKeys: [
+        previewKey,
+        { ...releaseKey, publicKeyBase64: previewKey!.publicKeyBase64 },
+      ],
+    }).success).toBe(false);
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      previewSigningKeyId: 'missing-preview-key',
+    }).success).toBe(false);
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      releaseSigningKeyId: hostConfiguration.previewSigningKeyId,
+    }).success).toBe(false);
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      allowedFeatureProfiles: [
+        ...hostConfiguration.allowedFeatureProfiles,
+        hostConfiguration.allowedFeatureProfiles[0],
+      ],
+    }).success).toBe(false);
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      budgetDefaults: {
+        ...hostConfiguration.budgetDefaults,
+        cpuMs: hostConfiguration.budgetCeiling.cpuMs + 1,
+      },
+    }).success).toBe(false);
+    const { lifecycleBytes: _lifecycleBytes, ...incompleteBudget } =
+      hostConfiguration.budgetCeiling;
+    expect(ZWidgetCapsuleHostConfiguration.safeParse({
+      ...hostConfiguration,
+      budgetCeiling: incompleteBudget,
+    }).success).toBe(false);
+  });
+
+  test('fails closed before transporting private or malformed signing keys', async () => {
+    const config = router.api.widget.runtime.config.callable({
+      context: context({
+        readHostConfiguration: async () => ({
+          ...hostConfiguration,
+          signingKeys: hostConfiguration.signingKeys.map((key, index) =>
+            index === 0 ? { ...key, privateKey: 'forbidden' } : key),
+        }),
+      }),
+    });
+
+    await expect(config()).rejects.toBeInstanceOf(Error);
+  });
+
   test('accepts only exact authority-free persisted identity', () => {
     expect(ZWidgetRuntimeLoadInput.parse(request)).toEqual(request);
     expect(ZWidgetRuntimeLoadInput.safeParse({ ...request, orgId: tenant.orgId }).success).toBe(false);
@@ -191,7 +380,7 @@ describe('widget runtime API', () => {
     expect(ZWidgetRuntimeLoadInput.safeParse({ ...request, artifactDigestSha256: digestSha256 }).success).toBe(false);
   });
 
-  test('returns only the exact CRDT-pinned revision and content-addressed browser envelope', async () => {
+  test('returns only the exact CRDT-pinned revision and signed Capsule artifact', async () => {
     const load = router.api.widget.runtime.load.callable({ context: context() });
     const result = await load(request);
 
@@ -201,10 +390,18 @@ describe('widget runtime API', () => {
     expect(result.manifest).not.toHaveProperty('server');
     expect(result.artifact).toEqual({
       digestSha256,
+      byteSize: artifactBytes.byteLength,
       bytesBase64: Buffer.from(artifactBytes).toString('base64'),
     });
+    expect(result.runtimeDescriptor).toEqual(runtimeDescriptor);
     const { modulePath: _modulePath, ...browserFunction } = revision.functionDescriptors[0]!;
     expect(result.functionDescriptors).toEqual([browserFunction]);
+    expect(result.browserFunctionDescriptorsDigestSha256)
+      .toBe(browserFunctionDescriptorsDigestSha256);
+    expect(result.runtimeDescriptor.capabilityRequests[0]?.contractHash)
+      .toBe(`sha256:${browserFunctionDescriptorsDigestSha256}`);
+    expect(browserFunctionDescriptorsDigestSha256)
+      .not.toBe(functionDescriptorsDigestSha256);
     expect(result.functionDescriptors[0]).not.toHaveProperty('modulePath');
     expect(ZWidgetRuntimeLoadOutput.parse(result)).toEqual(result);
     expect(JSON.stringify(result)).not.toContain('modulePath');
@@ -212,7 +409,82 @@ describe('widget runtime API', () => {
       ...result,
       functionDescriptors: [{ ...result.functionDescriptors[0], modulePath: 'src/private/server.ts' }],
     }).success).toBe(false);
+    expect(ZWidgetRuntimeLoadOutput.safeParse({
+      ...result,
+      browserFunctionDescriptorsDigestSha256: undefined,
+    }).success).toBe(false);
+    expect(ZWidgetRuntimeLoadOutput.safeParse({
+      ...result,
+      browserFunctionDescriptorsDigestSha256: 'A'.repeat(64),
+    }).success).toBe(false);
+    expect(ZWidgetRuntimeLoadOutput.safeParse({
+      ...result,
+      artifact: { ...result.artifact, byteSize: result.artifact.byteSize + 1 },
+    }).success).toBe(false);
+    expect(ZWidgetRuntimeLoadOutput.safeParse({
+      ...result,
+      runtimeDescriptor: { ...result.runtimeDescriptor, signatureKeyIds: [] },
+    }).success).toBe(false);
+    expect(ZWidgetRuntimeLoadOutput.safeParse({
+      ...result,
+      runtimeDescriptor: { ...result.runtimeDescriptor, privateKey: 'forbidden' },
+    }).success).toBe(false);
     expect(JSON.stringify(result)).not.toContain('read-capability');
+    expect(JSON.stringify(result)).not.toContain('privateKey');
+  });
+
+  test('fails closed when persisted function fields change without a new signed contract', async () => {
+    const mutations: readonly TWidgetServerFunctionDescriptor[] = [
+      { ...serverFunctionDescriptor, modulePath: 'src/private/changed.ts' },
+      {
+        ...serverFunctionDescriptor,
+        inputSchema: { type: 'object', required: ['name'] },
+      },
+      { ...serverFunctionDescriptor, effect: 'tx' },
+      {
+        ...serverFunctionDescriptor,
+        limits: { ...serverFunctionDescriptor.limits, timeoutMs: 2_000 },
+      },
+    ];
+
+    for (const descriptor of mutations) {
+      const load = router.api.widget.runtime.load.callable({
+        context: context({
+          storedRevision: {
+            ...revision,
+            functionDescriptors: [descriptor],
+          },
+        }),
+      });
+      await expect(load(request)).rejects.toMatchObject({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Widget runtime operation failed.',
+      });
+    }
+  });
+
+  test('fails closed when changed descriptors and digest retain the old signed request', async () => {
+    const changedDescriptors = [{
+      ...serverFunctionDescriptor,
+      outputSchema: { type: 'object', required: ['message'] },
+    }];
+    const changedDigest = createHash('sha256')
+      .update(fnCanonicalizeWidgetServerFunctionDescriptors(changedDescriptors))
+      .digest('hex');
+    const load = router.api.widget.runtime.load.callable({
+      context: context({
+        storedRevision: {
+          ...revision,
+          functionDescriptors: changedDescriptors,
+          functionDescriptorsDigestSha256: changedDigest,
+        },
+      }),
+    });
+
+    await expect(load(request)).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Widget runtime operation failed.',
+    });
   });
 
   test('denies a widget repin that lands while the artifact read is delayed', async () => {
@@ -248,6 +520,19 @@ describe('widget runtime API', () => {
     delayed.resolve(artifactBytes);
 
     await expect(pending).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'Widget runtime target not found.',
+    });
+  });
+
+  test('denies same-size bytes that do not match the pinned exact-byte digest', async () => {
+    const alteredBytes = new Uint8Array(artifactBytes.byteLength);
+    alteredBytes.fill(0x78);
+    const load = router.api.widget.runtime.load.callable({
+      context: context({ readArtifact: async () => alteredBytes }),
+    });
+
+    await expect(load(request)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       message: 'Widget runtime target not found.',
     });

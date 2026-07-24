@@ -1,9 +1,11 @@
-import { showErrorToast, showSuccessToast } from "@/components/ui/Toast";
+import { showErrorToast, showSuccessToast, showToast } from "@/components/ui/Toast";
 import { removeFromCache } from "@/services/automerge";
 import { getBrowserTenantActivation, getBrowserTenantScope } from "@/services/tenant";
 import { orpcWebsocketService } from "@/services/orpc-websocket";
 import { themeService, txSetThemeAppearance } from "@/services/theme";
 import { widgetCollaborativeStatePort } from "@/services/widget-collaborative-state";
+import { fnWidgetCapsuleTheme } from "@/services/fn.widget-capsule-theme";
+import { txRouteWidgetCapsuleOutput } from "@/services/tx.route-widget-capsule-output";
 import { setStore, store } from "@/store";
 import {
   createAiChatCanvasExtension,
@@ -16,6 +18,10 @@ import {
   type TWidgetBrowserPort,
   type TWidgetTransportPort,
 } from "@vibecanvas/ui-ai-chat";
+import type {
+  TWidgetCapsuleHostCatalog,
+  TWidgetCapsulePublicSigningKey,
+} from "@vibecanvas/ui-ai-chat/widget-runtime";
 import type { TCanvasImagePort, TCanvasToolbarGroupsPort } from "@vibecanvas/canvas";
 
 export const catalogInvalidation = createCatalogInvalidation();
@@ -65,7 +71,6 @@ export const widgetBrowserPort: TWidgetBrowserPort = {
   setInterval: (callback, timeout) => window.setInterval(callback, timeout),
   clearInterval: (timer) => window.clearInterval(timer as number),
   decodeBase64: (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0)),
-  decodeUtf8: (value) => new TextDecoder().decode(value),
   digestSha256: async (value) => {
     const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(value));
     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -73,6 +78,76 @@ export const widgetBrowserPort: TWidgetBrowserPort = {
 };
 
 const apiService = orpcWebsocketService.apiService;
+let widgetCapsuleHostCatalogOperation:
+  Promise<TWidgetCapsuleHostCatalog> | undefined;
+
+async function importWidgetCapsuleVerificationKey(
+  key: TWidgetCapsulePublicSigningKey,
+): Promise<readonly [string, CryptoKey]> {
+  const publicBytes = widgetBrowserPort.decodeBase64(key.publicKeyBase64);
+  const imported = await crypto.subtle.importKey(
+    key.format,
+    Uint8Array.from(publicBytes),
+    { name: key.algorithm },
+    false,
+    ["verify"],
+  );
+  if (
+    imported.type !== "public"
+    || imported.extractable
+    || imported.algorithm.name !== "Ed25519"
+    || imported.usages.length !== 1
+    || imported.usages[0] !== "verify"
+  ) {
+    throw new Error(`Capsule signing key "${key.keyId}" is not a verification-only public key.`);
+  }
+  return Object.freeze([key.keyId, imported] as const);
+}
+
+async function loadWidgetCapsuleHostCatalog(): Promise<TWidgetCapsuleHostCatalog> {
+  const [error, configuration] = await apiService.api.widget.runtime.config();
+  if (error || !configuration) {
+    throw new Error("Widget Capsule host configuration is unavailable.");
+  }
+  const importedKeys = await Promise.all(
+    configuration.signingKeys.map(importWidgetCapsuleVerificationKey),
+  );
+  const trustedSigningKeys = new Map(importedKeys);
+  if (trustedSigningKeys.size !== configuration.signingKeys.length) {
+    throw new Error("Widget Capsule host configuration contains duplicate signing keys.");
+  }
+  return Object.freeze({
+    generation: configuration.generation,
+    targetBase: Object.freeze({ ...configuration.targetBase }),
+    allowedFeatureProfiles: Object.freeze([...configuration.allowedFeatureProfiles]),
+    budgetCeiling: Object.freeze({ ...configuration.budgetCeiling }),
+    budgetDefaults: Object.freeze({ ...configuration.budgetDefaults }),
+    previewSigningKeyId: configuration.previewSigningKeyId,
+    releaseSigningKeyId: configuration.releaseSigningKeyId,
+    trustedSigningKeys,
+  });
+}
+
+function widgetCapsuleHostCatalog(): Promise<TWidgetCapsuleHostCatalog> {
+  if (widgetCapsuleHostCatalogOperation !== undefined) {
+    return widgetCapsuleHostCatalogOperation;
+  }
+  const operation = loadWidgetCapsuleHostCatalog();
+  widgetCapsuleHostCatalogOperation = operation;
+  void operation.then(
+    () => {
+      if (widgetCapsuleHostCatalogOperation === operation) {
+        widgetCapsuleHostCatalogOperation = undefined;
+      }
+    },
+    () => {
+      if (widgetCapsuleHostCatalogOperation === operation) {
+        widgetCapsuleHostCatalogOperation = undefined;
+      }
+    },
+  );
+  return operation;
+}
 
 export const canvasImagePort: TCanvasImagePort = {
   async uploadImage(body) {
@@ -116,6 +191,24 @@ export function createFrontendAiChatExtension(args: { navigate(path: string): vo
     widgetTransport: apiService as TWidgetTransportPort,
     chatBrowser: chatBrowserPort,
     widgetBrowser: widgetBrowserPort,
+    widgetCapsuleHostCatalog,
+    widgetCapsuleTheme: {
+      read: () => fnWidgetCapsuleTheme(themeService.getTheme()),
+      subscribe(listener) {
+        return themeService.hooks.change.tap((theme) => {
+          listener(fnWidgetCapsuleTheme(theme));
+        });
+      },
+    },
+    widgetCapsuleOutput: {
+      notification(output) {
+        txRouteWidgetCapsuleOutput({
+          showError: showErrorToast,
+          showInfo: showToast,
+          showSuccess: showSuccessToast,
+        }, { output });
+      },
+    },
     application: {
       openResource: (resourceId) => args.navigate(`/resources/${encodeURIComponent(resourceId)}`),
       invalidateResourceCatalog: () => catalogInvalidation.invalidate("resources"),

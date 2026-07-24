@@ -1,17 +1,21 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
-  __setServerFunctionTransport,
-  createServerFunctionProxy,
-  SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY,
-  type IServerFunctionClientTransport,
-  type TServerFunctionClientRequest,
-} from '../src/widget';
-import {
   collectServerFunctionDescriptors,
   defineServerFunction,
   type TServerFunctionContext,
   type TServerFunctionRuntimeSchema,
 } from '../src/server';
+import {
+  capsuleGuestMock,
+  loadWidgetSdk,
+} from './capsule-guest.mock';
+
+const { createServerFunctionProxy } = await loadWidgetSdk();
+const selector = Object.freeze({
+  id: 'vibecanvas.widget.functions',
+  versionRange: '^1.0.0',
+  contractHash: `sha256:${'a'.repeat(64)}` as const,
+});
 
 function runtimeSchema<TValue>(
   parse: (value: unknown) => TValue,
@@ -75,8 +79,7 @@ const context: TServerFunctionContext<'fn', Record<never, never>> = {
 };
 
 afterEach(() => {
-  __setServerFunctionTransport(null);
-  delete (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
+  capsuleGuestMock.reset();
 });
 
 describe('@vibecanvas/sdk/server', () => {
@@ -163,67 +166,48 @@ describe('@vibecanvas/sdk/server', () => {
 });
 
 describe('generated widget server-function proxy', () => {
-  test('passes one stable idempotency key through transport retries', async () => {
-    const attempts: TServerFunctionClientRequest[] = [];
-    let keyCount = 0;
-    const transport: IServerFunctionClientTransport = {
-      createIdempotencyKey: () => {
-        keyCount += 1;
-        return `key-${keyCount}`;
-      },
-      invoke: async <TOutput>(request: TServerFunctionClientRequest) => {
-        attempts.push(request, { ...request });
-        return { length: String((request.input as { text: string }).text).length } as TOutput;
-      },
+  test('calls the exact revision-scoped Capsule operation with raw function input', async () => {
+    const attempts: unknown[][] = [];
+    capsuleGuestMock.callCapabilityAsync = async (...args) => {
+      attempts.push(args);
+      return { length: String((args[2] as { text: string }).text).length };
     };
-    __setServerFunctionTransport(transport);
-    const count = createServerFunctionProxy<{ text: string }, { length: number }>('count');
+    const count = createServerFunctionProxy<{ text: string }, { length: number }>(
+      'count',
+      selector,
+    );
 
     await expect(count({ text: 'hello' })).resolves.toEqual({ length: 5 });
-    expect(keyCount).toBe(1);
-    expect(attempts).toHaveLength(2);
-    expect(attempts[0]?.idempotencyKey).toBe('key-1');
-    expect(attempts[1]?.idempotencyKey).toBe('key-1');
-    expect(attempts[0]).toMatchObject({ functionName: 'count', input: { text: 'hello' } });
+    expect(attempts).toEqual([[
+      selector,
+      'count',
+      { text: 'hello' },
+      {},
+    ]]);
   });
 
-  test('fails closed without a host transport or with an invalid host key', async () => {
-    const count = createServerFunctionProxy<{}, {}>('count');
-    await expect(count({})).rejects.toThrow('transport is not connected');
-    __setServerFunctionTransport({
-      createIdempotencyKey: () => '',
-      invoke: async () => ({}),
-    });
-    await expect(count({})).rejects.toThrow('invalid idempotency key');
-    expect(() => createServerFunctionProxy('not a function name')).toThrow('name is invalid');
+  test('forwards timeout and cancellation to Capsule', async () => {
+    let receivedOptions: Readonly<{ signal?: AbortSignal; timeoutMs?: number }> | undefined;
+    capsuleGuestMock.callCapabilityAsync = async (_selector, _operation, _input, options) => {
+      receivedOptions = options;
+      return await new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        });
+      });
+    };
+    const count = createServerFunctionProxy<{}, {}>('count', selector);
+    const controller = new AbortController();
+    const pending = count({}, { signal: controller.signal, timeoutMs: 250 });
+
+    expect(receivedOptions?.timeoutMs).toBe(250);
+    expect(receivedOptions?.signal).toBe(controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toThrow('aborted');
   });
 
-  test('resolves the revision-scoped sandbox-global bridge across a bundled SDK boundary', async () => {
-    const calls: TServerFunctionClientRequest[] = [];
-    const spoofedLocalTransport = {
-      createIdempotencyKey: () => 'spoofed-local-key',
-      invoke: async <TOutput>() => ({ length: -1 }) as TOutput,
-    } satisfies IServerFunctionClientTransport;
-    __setServerFunctionTransport(spoofedLocalTransport);
-    (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY] = Object.freeze({
-      createIdempotencyKey: () => 'global-key-a',
-      invoke: async <TOutput>(request: TServerFunctionClientRequest) => {
-        calls.push(request);
-        return { length: 7 } as TOutput;
-      },
-    } satisfies IServerFunctionClientTransport);
-
-    const count = createServerFunctionProxy<{ text: string }, { length: number }>('count');
-    await expect(count({ text: 'bundled' })).resolves.toEqual({ length: 7 });
-    expect(calls).toEqual([{
-      functionName: 'count',
-      input: { text: 'bundled' },
-      idempotencyKey: 'global-key-a',
-    }]);
-
-    delete (globalThis as Record<string, unknown>)[SERVER_FUNCTION_TRANSPORT_GLOBAL_KEY];
-    await expect(count({ text: 'legacy-local' })).resolves.toEqual({ length: -1 });
-    __setServerFunctionTransport(null);
-    await expect(count({ text: 'closed' })).rejects.toThrow('transport is not connected');
+  test('rejects invalid operation names before entering Capsule', () => {
+    expect(() => createServerFunctionProxy('not a function name', selector))
+      .toThrow('name is invalid');
   });
 });

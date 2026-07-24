@@ -2,13 +2,13 @@ import type {
   TVibecanvasToolIcon,
   TWidgetBrowserFunctionDescriptor,
   TWidgetFrameBounds,
-  TWidgetManifestV2,
+  TWidgetManifestV3,
   TWidgetPlacementRef,
 } from '@vibecanvas/widget-contract';
 import type { TWidgetDraftValidation } from '../widget-drafts/types';
 
 export type TWidgetSource = 'published' | 'draft';
-export type TWidgetManagementManifest = TWidgetManifestV2;
+export type TWidgetManagementManifest = TWidgetManifestV3;
 export type TWidgetRelation = 'published-only' | 'draft-only' | 'same' | 'different' | 'unknown';
 
 export type TWidgetCatalogProblem = {

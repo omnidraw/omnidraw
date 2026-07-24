@@ -20,6 +20,7 @@ import type {
   zRectData,
   zTextData,
   zUiWidgetData,
+  zWidgetUiProps,
   zWidgetInstanceData,
   zWidgetWindow,
 } from './canvas-doc.zod';
@@ -39,6 +40,7 @@ export type TPenData = z.infer<typeof zPenData>;
 export type TTextData = z.infer<typeof zTextData>;
 export type TImageData = z.infer<typeof zImageData>;
 export type TUiWidgetData = z.infer<typeof zUiWidgetData>;
+export type TWidgetUiProps = z.infer<typeof zWidgetUiProps>;
 export type TWidgetInstanceData = z.infer<typeof zWidgetInstanceData>;
 export type TWidgetWindow = z.infer<typeof zWidgetWindow>;
 

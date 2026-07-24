@@ -1,6 +1,6 @@
 /// <reference path="./assets.d.ts" />
 
-import arrowJsPrompt from './prompt.arrow-js.md' with { type: 'text' };
+import capsulePrompt from './prompt.capsule.md' with { type: 'text' };
 import productAndManifestPrompt from './prompt.product-and-manifest.md' with { type: 'text' };
 import serverFunctionsPrompt from './prompt.server-functions.md' with { type: 'text' };
 import stateAndResourcesPrompt from './prompt.state-and-resources.md' with { type: 'text' };
@@ -14,7 +14,7 @@ const WIDGET_CHAT_SYSTEM_PROMPT_SECTIONS = [
   stateAndResourcesPrompt,
   serverFunctionsPrompt,
   widgetImplementationPrompt,
-  arrowJsPrompt,
+  capsulePrompt,
   styleGuidePrompt,
 ];
 

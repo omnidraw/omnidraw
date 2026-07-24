@@ -29,6 +29,7 @@ import {
   type TBunChildProcessGroupController,
   fnCanonicalJson,
   fnFunctionArtifactAdmission,
+  fnParseServerArtifactEnvelope,
 } from '../src/local';
 import { createBunChildCage } from '../src/local/BunChildLifecycle';
 
@@ -160,7 +161,7 @@ function artifact(sourceText = guestSource()) {
   const source = Buffer.from(sourceText);
   const sourceDigest = createHash('sha256').update(source).digest('hex');
   const bytes = Buffer.from(JSON.stringify({
-    format: 'vibecanvas.widget-artifact.v1',
+    format: 'vibecanvas.server-artifact.v1',
     kind: 'server',
     entry: 'server.ts',
     sourceDigestSha256: 'a'.repeat(64),
@@ -180,6 +181,7 @@ function artifact(sourceText = guestSource()) {
       kind: 'server' as const,
       digestSha256: createHash('sha256').update(bytes).digest('hex'),
       bytes: new Uint8Array(bytes),
+      runtimeAbi: 'bun-test-v1',
     },
   };
 }
@@ -673,6 +675,24 @@ function executorFaultFixture(hooks: Readonly<{
 }
 
 describe('local short-lived function runtime', () => {
+  test('accepts only the dedicated version 1 server artifact format', () => {
+    const built = artifact();
+    const envelope = fnParseServerArtifactEnvelope({
+      text: Buffer.from(built.buildArtifact.bytes).toString('utf8'),
+      expectedRuntimeAbi: 'bun-test-v1',
+    });
+    expect(envelope.format).toBe('vibecanvas.server-artifact.v1');
+
+    const unsupported = {
+      ...JSON.parse(Buffer.from(built.buildArtifact.bytes).toString('utf8')),
+      format: 'vibecanvas.server-artifact.v0',
+    };
+    expect(() => fnParseServerArtifactEnvelope({
+      text: JSON.stringify(unsupported),
+      expectedRuntimeAbi: 'bun-test-v1',
+    })).toThrow('dedicated version 1 server artifact');
+  });
+
   test('canonicalizes semantic JSON and rejects non-JSON values', () => {
     expect(fnCanonicalJson({ b: 2, a: { z: true, y: [1, null] } })).toBe(
       fnCanonicalJson({ a: { y: [1, null], z: true }, b: 2 }),

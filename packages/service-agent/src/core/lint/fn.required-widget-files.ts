@@ -1,11 +1,11 @@
-import type { TWidgetManifestV2 } from '@vibecanvas/widget-contract';
+import type { TWidgetManifestV3 } from '@vibecanvas/widget-contract';
 import type { TValidationResult } from '../types';
 
 export function fnNormalizeRelativeFilePath(path: string): string {
   return path.replace(/^\.\//, '');
 }
 
-export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TWidgetManifestV2 }): TValidationResult {
+export function fnLintRequiredWidgetFiles(args: { files: string[]; manifest?: TWidgetManifestV3 }): TValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const hasFile = (path: string) => args.files.includes(fnNormalizeRelativeFilePath(path));

@@ -9,7 +9,9 @@ const databases: Database[] = [];
 
 async function openTemporaryDatabase() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-turso-feature-probe-"));
-  const db = await connect(path.join(root, "probe.db"), { experimental: ["custom_types"] });
+  const db = await connect(path.join(root, "probe.db"), {
+    experimental: ["custom_types"] as never,
+  });
   temporaryRoots.push(root);
   databases.push(db);
   return db;

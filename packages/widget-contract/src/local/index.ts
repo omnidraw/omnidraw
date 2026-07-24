@@ -4,8 +4,6 @@ export type {
   TLocalWidgetArtifactStoreConfig,
   TStoredWidgetArtifactBlob,
 } from './LocalWidgetArtifactStore';
-export { WidgetArtifactBuilderBun } from './WidgetArtifactBuilderBun';
-export type { TWidgetArtifactBuilderBunConfig } from './WidgetArtifactBuilderBun';
 export { WidgetArtifactGarbageCollector } from './WidgetArtifactGarbageCollector';
 export type { TWidgetArtifactGarbageCollectorConfig } from './WidgetArtifactGarbageCollector';
 export { WidgetArtifactOperationLane } from './WidgetArtifactOperationLane';
@@ -24,3 +22,21 @@ export type {
   TWidgetSourceSnapshotCheckpoint,
   TWidgetSourceSnapshotConfig,
 } from './WidgetSourceSnapshot';
+export {
+  fnNormalizeWidgetBuildAllowedPackageImports,
+  fnResolveWidgetBuildImport,
+  fnWidgetBuildPackageImportAllowedForTarget,
+  fnWidgetBuildPathIsServerOnly,
+  fnWidgetBuildPathIsSharedSafe,
+  fnWidgetBuildSourceHasForbiddenImportSyntax,
+  fnWidgetBuildSourceHasRuntimeReExport,
+} from './fn.build-boundary';
+export type {
+  TWidgetBuildImportResolution,
+  TWidgetBuildTargetKind,
+} from './fn.build-boundary';
+export {
+  fnAttachServerFunctionModulePaths,
+  fnGenerateServerFunctionEntrySource,
+} from './fn.server-function-modules';
+export type { TServerFunctionModule } from './fn.server-function-modules';

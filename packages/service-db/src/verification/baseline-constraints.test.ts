@@ -3,6 +3,15 @@ import { connect, type Database } from "@tursodatabase/database";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  WIDGET_CAPSULE_ARTIFACT_HASH,
+  WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+  WIDGET_CAPSULE_BUILD_POLICY_ID,
+  WIDGET_CAPSULE_CAPABILITY_DIGEST,
+  WIDGET_CAPSULE_CHANNEL_DIGEST,
+  WIDGET_CAPSULE_RUNTIME_JSON,
+  widgetManifestV3Json,
+} from "../tests/widget-capsule-fixture";
 
 const ORG_A = "00000000-0000-4000-8000-000000000001";
 const ACCOUNT_A = "00000000-0000-4000-8000-000000000002";
@@ -34,7 +43,9 @@ const digest = (character: string) => character.repeat(64);
 
 async function openBaseline() {
   const root = await mkdtemp(path.join(tmpdir(), "vibecanvas-baseline-constraints-"));
-  const db = await connect(path.join(root, "main.db"), { experimental: ["custom_types"] });
+  const db = await connect(path.join(root, "main.db"), {
+    experimental: ["custom_types"] as never,
+  });
   temporaryRoots.push(root);
   databases.push(db);
   await db.exec("PRAGMA foreign_keys = ON");
@@ -109,13 +120,24 @@ async function seedWidget(db: Database) {
   );
   await run(
     db,
-    "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms) VALUES (?, ?, ?, 1, ?, 'ui', ?, 'server', '{}', ?, 1)",
+    "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms, ui_runtime_json, capsule_artifact_hash, capability_contract_digest_sha256, channel_contract_digest_sha256, capsule_build_identity_json, build_policy_id, server_runtime_abi, contract_format_version) VALUES (?, ?, ?, 1, ?, 'ui', ?, 'server', ?, ?, 1, ?, ?, ?, ?, ?, ?, 'vibecanvas:1', 3)",
     ORG_A,
     REVISION_A,
     DEFINITION_A,
     UI_ARTIFACT_A,
     SERVER_ARTIFACT_A,
+    widgetManifestV3Json({
+      name: "Weather",
+      slug: "weather",
+      serverRuntimeAbi: "vibecanvas:1",
+    }),
     digest("c"),
+    WIDGET_CAPSULE_RUNTIME_JSON,
+    WIDGET_CAPSULE_ARTIFACT_HASH,
+    WIDGET_CAPSULE_CAPABILITY_DIGEST,
+    WIDGET_CAPSULE_CHANNEL_DIGEST,
+    WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+    WIDGET_CAPSULE_BUILD_POLICY_ID,
   );
   await run(
     db,
@@ -364,12 +386,19 @@ describe("managed schema constraints", () => {
     );
     await run(
       db,
-      "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, '{}', ?, 1)",
+      "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms, ui_runtime_json, capsule_artifact_hash, capability_contract_digest_sha256, channel_contract_digest_sha256, capsule_build_identity_json, build_policy_id, server_runtime_abi, contract_format_version) VALUES (?, ?, ?, 1, ?, 'ui', NULL, NULL, ?, ?, 1, ?, ?, ?, ?, ?, ?, NULL, 3)",
       ORG_A,
       REVISION_B,
       DEFINITION_B,
       UI_ARTIFACT_A,
+      widgetManifestV3Json({ name: "Other", slug: "other" }),
       digest("d"),
+      WIDGET_CAPSULE_RUNTIME_JSON,
+      WIDGET_CAPSULE_ARTIFACT_HASH,
+      WIDGET_CAPSULE_CAPABILITY_DIGEST,
+      WIDGET_CAPSULE_CHANNEL_DIGEST,
+      WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+      WIDGET_CAPSULE_BUILD_POLICY_ID,
     );
 
     await expectRejected(run(
@@ -381,21 +410,35 @@ describe("managed schema constraints", () => {
     ));
     await expectRejected(run(
       db,
-      "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms) VALUES (?, ?, ?, 2, ?, 'ui', NULL, NULL, '{}', ?, 2)",
+      "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms, ui_runtime_json, capsule_artifact_hash, capability_contract_digest_sha256, channel_contract_digest_sha256, capsule_build_identity_json, build_policy_id, server_runtime_abi, contract_format_version) VALUES (?, ?, ?, 2, ?, 'ui', NULL, NULL, ?, ?, 2, ?, ?, ?, ?, ?, ?, NULL, 3)",
       ORG_A,
       "00000000-0000-4000-8000-000000000038",
       DEFINITION_A,
       UI_ARTIFACT_B,
+      widgetManifestV3Json({ name: "Weather", slug: "weather" }),
       digest("e"),
+      WIDGET_CAPSULE_RUNTIME_JSON,
+      WIDGET_CAPSULE_ARTIFACT_HASH,
+      WIDGET_CAPSULE_CAPABILITY_DIGEST,
+      WIDGET_CAPSULE_CHANNEL_DIGEST,
+      WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+      WIDGET_CAPSULE_BUILD_POLICY_ID,
     ));
     await expectRejected(run(
       db,
-      "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms) VALUES (?, ?, ?, 2, ?, 'ui', NULL, NULL, '{}', ?, 2)",
+      "INSERT INTO widget_definition_revisions (org_id, id, definition_id, revision_number, ui_artifact_id, ui_artifact_kind, server_artifact_id, server_artifact_kind, manifest_json, contract_digest_sha256, created_at_ms, ui_runtime_json, capsule_artifact_hash, capability_contract_digest_sha256, channel_contract_digest_sha256, capsule_build_identity_json, build_policy_id, server_runtime_abi, contract_format_version) VALUES (?, ?, ?, 2, ?, 'ui', NULL, NULL, ?, ?, 2, ?, ?, ?, ?, ?, ?, NULL, 3)",
       ORG_A,
       "00000000-0000-4000-8000-000000000039",
       DEFINITION_A,
       SERVER_ARTIFACT_A,
+      widgetManifestV3Json({ name: "Weather", slug: "weather" }),
       digest("f"),
+      WIDGET_CAPSULE_RUNTIME_JSON,
+      WIDGET_CAPSULE_ARTIFACT_HASH,
+      WIDGET_CAPSULE_CAPABILITY_DIGEST,
+      WIDGET_CAPSULE_CHANNEL_DIGEST,
+      WIDGET_CAPSULE_BUILD_IDENTITY_JSON,
+      WIDGET_CAPSULE_BUILD_POLICY_ID,
     ));
     await expectRejected(run(
       db,

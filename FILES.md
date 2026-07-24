@@ -16,6 +16,20 @@ JSDoc convention for autoparsing:
 
 The generator reads the first top-of-file JSDoc block, preferring `@file` or `@summary` text.
 
+## apps/capsule-browser-acceptance
+
+| path | jsdocs |
+|---|---|
+| [apps/capsule-browser-acceptance/.gitignore](apps/capsule-browser-acceptance/.gitignore) |  |
+| [apps/capsule-browser-acceptance/index.html](apps/capsule-browser-acceptance/index.html) |  |
+| [apps/capsule-browser-acceptance/package.json](apps/capsule-browser-acceptance/package.json) |  |
+| [apps/capsule-browser-acceptance/playwright.config.ts](apps/capsule-browser-acceptance/playwright.config.ts) |  |
+| [apps/capsule-browser-acceptance/README.md](apps/capsule-browser-acceptance/README.md) |  |
+| [apps/capsule-browser-acceptance/scripts/generate.ts](apps/capsule-browser-acceptance/scripts/generate.ts) |  |
+| [apps/capsule-browser-acceptance/src/main.ts](apps/capsule-browser-acceptance/src/main.ts) |  |
+| [apps/capsule-browser-acceptance/tsconfig.json](apps/capsule-browser-acceptance/tsconfig.json) |  |
+| [apps/capsule-browser-acceptance/vite.config.ts](apps/capsule-browser-acceptance/vite.config.ts) |  |
+
 ## apps/cli
 
 | path | jsdocs |
@@ -57,37 +71,31 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/cli/src/plugins/server/ServerPlugin.ts](apps/cli/src/plugins/server/ServerPlugin.ts) |  |
 | [apps/cli/src/services/AgentResourceService.ts](apps/cli/src/services/AgentResourceService.ts) |  |
 | [apps/cli/src/services/CONSTANTS.ts](apps/cli/src/services/CONSTANTS.ts) |  |
+| [apps/cli/src/services/fn.widget-capsule-builder-identity.ts](apps/cli/src/services/fn.widget-capsule-builder-identity.ts) |  |
 | [apps/cli/src/services/fn.widget-runtime-load-admission.ts](apps/cli/src/services/fn.widget-runtime-load-admission.ts) |  |
 | [apps/cli/src/services/FunctionResourceGatewayFactory.ts](apps/cli/src/services/FunctionResourceGatewayFactory.ts) |  |
 | [apps/cli/src/services/FunctionService.ts](apps/cli/src/services/FunctionService.ts) |  |
 | [apps/cli/src/services/FunctionServicePool.ts](apps/cli/src/services/FunctionServicePool.ts) |  |
-| [apps/cli/src/services/fx.typecheck-widget-snapshot.ts](apps/cli/src/services/fx.typecheck-widget-snapshot.ts) |  |
 | [apps/cli/src/services/LazyTenantServiceCapability.ts](apps/cli/src/services/LazyTenantServiceCapability.ts) | Builds a method-only capability whose tenant service is resolved on first use. |
 | [apps/cli/src/services/ResourceManagementProvider.ts](apps/cli/src/services/ResourceManagementProvider.ts) |  |
 | [apps/cli/src/services/ResourceService.ts](apps/cli/src/services/ResourceService.ts) |  |
 | [apps/cli/src/services/ResourceServicePool.ts](apps/cli/src/services/ResourceServicePool.ts) |  |
 | [apps/cli/src/services/ResourceUseCoordinatorBridge.ts](apps/cli/src/services/ResourceUseCoordinatorBridge.ts) |  |
 | [apps/cli/src/services/TenantServicePool.ts](apps/cli/src/services/TenantServicePool.ts) |  |
-| [apps/cli/src/services/widget-typecheck-protocol.ts](apps/cli/src/services/widget-typecheck-protocol.ts) |  |
-| [apps/cli/src/services/widget-typecheck-worker.ts](apps/cli/src/services/widget-typecheck-worker.ts) |  |
-| [apps/cli/src/services/widget-typescript-declarations/arrow-core.d.ts](apps/cli/src/services/widget-typescript-declarations/arrow-core.d.ts) |  |
-| [apps/cli/src/services/widget-typescript-declarations/sdk-collaborative-state-client.d.ts](apps/cli/src/services/widget-typescript-declarations/sdk-collaborative-state-client.d.ts) |  |
-| [apps/cli/src/services/widget-typescript-declarations/sdk-function-client.d.ts](apps/cli/src/services/widget-typescript-declarations/sdk-function-client.d.ts) | Browser-side transport contract and generated server-function proxy primitive. |
-| [apps/cli/src/services/widget-typescript-declarations/sdk-server.d.ts](apps/cli/src/services/widget-typescript-declarations/sdk-server.d.ts) | Authoring and registration surface for bounded short-lived server functions. This tiny runtime is bundled into each server artifact. |
-| [apps/cli/src/services/widget-typescript-declarations/sdk-shared.d.ts](apps/cli/src/services/widget-typescript-declarations/sdk-shared.d.ts) |  |
-| [apps/cli/src/services/widget-typescript-declarations/sdk-widget.d.ts](apps/cli/src/services/widget-typescript-declarations/sdk-widget.d.ts) |  |
-| [apps/cli/src/services/widget-typescript-standard-libraries.ts](apps/cli/src/services/widget-typescript-standard-libraries.ts) |  |
-| [apps/cli/src/services/widget-typescript-widget-contract.d.ts](apps/cli/src/services/widget-typescript-widget-contract.d.ts) |  |
-| [apps/cli/src/services/widget-typescript-zod.d.ts](apps/cli/src/services/widget-typescript-zod.d.ts) |  |
+| [apps/cli/src/services/widget-capsule-oci/CONSTANTS.ts](apps/cli/src/services/widget-capsule-oci/CONSTANTS.ts) |  |
+| [apps/cli/src/services/widget-capsule-oci/fn.engine-selection.ts](apps/cli/src/services/widget-capsule-oci/fn.engine-selection.ts) |  |
+| [apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts](apps/cli/src/services/WidgetCapsuleHostConfigurationService.ts) |  |
+| [apps/cli/src/services/WidgetCapsuleOciBuild.ts](apps/cli/src/services/WidgetCapsuleOciBuild.ts) |  |
+| [apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts](apps/cli/src/services/WidgetCapsuleSigningKeyStore.ts) |  |
 | [apps/cli/src/services/WidgetFunctionArtifactReader.ts](apps/cli/src/services/WidgetFunctionArtifactReader.ts) |  |
 | [apps/cli/src/services/WidgetRuntimeLoadAdmission.ts](apps/cli/src/services/WidgetRuntimeLoadAdmission.ts) |  |
 | [apps/cli/src/services/WidgetService.ts](apps/cli/src/services/WidgetService.ts) |  |
 | [apps/cli/src/services/WidgetServicePool.ts](apps/cli/src/services/WidgetServicePool.ts) |  |
-| [apps/cli/src/services/WidgetTypeScriptValidator.ts](apps/cli/src/services/WidgetTypeScriptValidator.ts) |  |
 | [apps/cli/src/setup-services.ts](apps/cli/src/setup-services.ts) |  |
 | [apps/cli/src/setup-signals.ts](apps/cli/src/setup-signals.ts) |  |
 | [apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts](apps/cli/src/widget-prerequisites/fn.widget-prerequisite-warning.ts) |  |
-| [apps/cli/src/widget-prerequisites/fx.probe-widget-executable.ts](apps/cli/src/widget-prerequisites/fx.probe-widget-executable.ts) |  |
+| [apps/cli/src/widget-prerequisites/fx.probe-widget-oci-engine.ts](apps/cli/src/widget-prerequisites/fx.probe-widget-oci-engine.ts) |  |
+| [apps/cli/src/widget-prerequisites/interface.ts](apps/cli/src/widget-prerequisites/interface.ts) |  |
 | [apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts](apps/cli/src/widget-prerequisites/tx.check-widget-prerequisites.ts) |  |
 | [apps/cli/tsconfig.json](apps/cli/tsconfig.json) |  |
 
@@ -131,6 +139,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/pages/widget.tsx](apps/frontend/src/pages/widget.tsx) |  |
 | [apps/frontend/src/services/automerge.ts](apps/frontend/src/services/automerge.ts) | The frontend and canvas renderer intentionally share one browser Repo lifecycle. |
 | [apps/frontend/src/services/canvas-bootstrap.ts](apps/frontend/src/services/canvas-bootstrap.ts) |  |
+| [apps/frontend/src/services/fn.widget-capsule-theme.ts](apps/frontend/src/services/fn.widget-capsule-theme.ts) |  |
 | [apps/frontend/src/services/orpc-websocket.ts](apps/frontend/src/services/orpc-websocket.ts) |  |
 | [apps/frontend/src/services/tenant-client-state.ts](apps/frontend/src/services/tenant-client-state.ts) |  |
 | [apps/frontend/src/services/tenant-runtime.ts](apps/frontend/src/services/tenant-runtime.ts) |  |
@@ -140,6 +149,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [apps/frontend/src/services/theme.memory.ts](apps/frontend/src/services/theme.memory.ts) |  |
 | [apps/frontend/src/services/theme.ts](apps/frontend/src/services/theme.ts) |  |
 | [apps/frontend/src/services/tx.route-notification-toast.ts](apps/frontend/src/services/tx.route-notification-toast.ts) |  |
+| [apps/frontend/src/services/tx.route-widget-capsule-output.ts](apps/frontend/src/services/tx.route-widget-capsule-output.ts) |  |
 | [apps/frontend/src/services/tx.switch-browser-tenant.ts](apps/frontend/src/services/tx.switch-browser-tenant.ts) |  |
 | [apps/frontend/src/services/widget-collaborative-state.ts](apps/frontend/src/services/widget-collaborative-state.ts) |  |
 | [apps/frontend/src/services/widget-collaborative-state.vitest.ts](apps/frontend/src/services/widget-collaborative-state.vitest.ts) |  |
@@ -165,14 +175,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 
 | path | jsdocs |
 |---|---|
-| [apps/web/.astro/collections/docs.schema.json](apps/web/.astro/collections/docs.schema.json) |  |
-| [apps/web/.astro/content-assets.mjs](apps/web/.astro/content-assets.mjs) |  |
-| [apps/web/.astro/content-modules.mjs](apps/web/.astro/content-modules.mjs) |  |
-| [apps/web/.astro/content.d.ts](apps/web/.astro/content.d.ts) |  |
-| [apps/web/.astro/data-store.json](apps/web/.astro/data-store.json) |  |
-| [apps/web/.astro/dev.json](apps/web/.astro/dev.json) |  |
-| [apps/web/.astro/settings.json](apps/web/.astro/settings.json) |  |
-| [apps/web/.astro/types.d.ts](apps/web/.astro/types.d.ts) |  |
 | [apps/web/.gitignore](apps/web/.gitignore) |  |
 | [apps/web/AGENTS.md](apps/web/AGENTS.md) |  |
 | [apps/web/astro.config.mjs](apps/web/astro.config.mjs) |  |
@@ -313,6 +315,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/api/src/tool/index.ts](packages/api/src/tool/index.ts) |  |
 | [packages/api/src/tool/orpc.ts](packages/api/src/tool/orpc.ts) |  |
 | [packages/api/src/tool/types.ts](packages/api/src/tool/types.ts) |  |
+| [packages/api/src/widget/api.runtime-config.ts](packages/api/src/widget/api.runtime-config.ts) |  |
 | [packages/api/src/widget/api.runtime-load-widget.ts](packages/api/src/widget/api.runtime-load-widget.ts) |  |
 | [packages/api/src/widget/CONSTANTS.ts](packages/api/src/widget/CONSTANTS.ts) |  |
 | [packages/api/src/widget/contract.ts](packages/api/src/widget/contract.ts) |  |
@@ -404,6 +407,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/engine/product-runtime/interface.ts](packages/canvas/src/engine/product-runtime/interface.ts) |  |
 | [packages/canvas/src/engine/product-runtime/typed.ts](packages/canvas/src/engine/product-runtime/typed.ts) |  |
 | [packages/canvas/src/engine/projection-runtime/fn.commands.ts](packages/canvas/src/engine/projection-runtime/fn.commands.ts) |  |
+| [packages/canvas/src/engine/projection-runtime/fn.portal-viewport.ts](packages/canvas/src/engine/projection-runtime/fn.portal-viewport.ts) |  |
 | [packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts](packages/canvas/src/engine/projection-runtime/PortalContentBridge.ts) |  |
 | [packages/canvas/src/engine/projection-runtime/ProjectionRuntimePort.ts](packages/canvas/src/engine/projection-runtime/ProjectionRuntimePort.ts) |  |
 | [packages/canvas/src/engine/projection/CONSTANTS.ts](packages/canvas/src/engine/projection/CONSTANTS.ts) |  |
@@ -557,6 +561,40 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/tsconfig.json](packages/canvas/tsconfig.json) |  |
 | [packages/canvas/vitest.config.ts](packages/canvas/vitest.config.ts) |  |
 
+## packages/capsule-vibecanvas
+
+| path | jsdocs |
+|---|---|
+| [packages/capsule-vibecanvas/package.json](packages/capsule-vibecanvas/package.json) |  |
+| [packages/capsule-vibecanvas/src/build-runner/index.ts](packages/capsule-vibecanvas/src/build-runner/index.ts) |  |
+| [packages/capsule-vibecanvas/src/build/CONSTANTS.ts](packages/capsule-vibecanvas/src/build/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.error.ts](packages/capsule-vibecanvas/src/build/fn.error.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fn.policy.ts](packages/capsule-vibecanvas/src/build/fn.policy.ts) |  |
+| [packages/capsule-vibecanvas/src/build/fx.build-dependencies.ts](packages/capsule-vibecanvas/src/build/fx.build-dependencies.ts) |  |
+| [packages/capsule-vibecanvas/src/build/index.ts](packages/capsule-vibecanvas/src/build/index.ts) |  |
+| [packages/capsule-vibecanvas/src/build/interface.ts](packages/capsule-vibecanvas/src/build/interface.ts) |  |
+| [packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts](packages/capsule-vibecanvas/src/build/tx.sign-capsule-artifact.ts) |  |
+| [packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts](packages/capsule-vibecanvas/src/build/WidgetArtifactBuilderCapsule.ts) |  |
+| [packages/capsule-vibecanvas/src/builder/index.ts](packages/capsule-vibecanvas/src/builder/index.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/CONSTANTS.ts](packages/capsule-vibecanvas/src/capabilities/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/create-capability-contracts.ts](packages/capsule-vibecanvas/src/capabilities/create-capability-contracts.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.bounded-json-schema.ts](packages/capsule-vibecanvas/src/capabilities/fn.bounded-json-schema.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.capability.ts](packages/capsule-vibecanvas/src/capabilities/fn.capability.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.channel-schemas.ts](packages/capsule-vibecanvas/src/capabilities/fn.channel-schemas.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.channel-values.ts](packages/capsule-vibecanvas/src/capabilities/fn.channel-values.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/fn.json-schema.ts](packages/capsule-vibecanvas/src/capabilities/fn.json-schema.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/index.ts](packages/capsule-vibecanvas/src/capabilities/index.ts) |  |
+| [packages/capsule-vibecanvas/src/capabilities/types.ts](packages/capsule-vibecanvas/src/capabilities/types.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/CONSTANTS.ts](packages/capsule-vibecanvas/src/contract/CONSTANTS.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/fn.budgets.ts](packages/capsule-vibecanvas/src/contract/fn.budgets.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/fn.target.ts](packages/capsule-vibecanvas/src/contract/fn.target.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/index.ts](packages/capsule-vibecanvas/src/contract/index.ts) |  |
+| [packages/capsule-vibecanvas/src/contract/types.ts](packages/capsule-vibecanvas/src/contract/types.ts) |  |
+| [packages/capsule-vibecanvas/src/host/fn.error.ts](packages/capsule-vibecanvas/src/host/fn.error.ts) |  |
+| [packages/capsule-vibecanvas/src/host/index.ts](packages/capsule-vibecanvas/src/host/index.ts) |  |
+| [packages/capsule-vibecanvas/src/testkit/index.ts](packages/capsule-vibecanvas/src/testkit/index.ts) |  |
+| [packages/capsule-vibecanvas/tsconfig.json](packages/capsule-vibecanvas/tsconfig.json) |  |
+
 ## packages/function-runtime
 
 | path | jsdocs |
@@ -651,10 +689,11 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/sdk/server/index.js](packages/sdk/server/index.js) |  |
 | [packages/sdk/server/package.json](packages/sdk/server/package.json) |  |
 | [packages/sdk/src/collaborative-state-client.ts](packages/sdk/src/collaborative-state-client.ts) |  |
-| [packages/sdk/src/function-client.ts](packages/sdk/src/function-client.ts) | Browser-side transport contract and generated server-function proxy primitive. |
+| [packages/sdk/src/function-client.ts](packages/sdk/src/function-client.ts) | Capsule guest client primitives for generated server-function proxies. |
 | [packages/sdk/src/server.ts](packages/sdk/src/server.ts) | Authoring and registration surface for bounded short-lived server functions. This tiny runtime is bundled into each server artifact. |
 | [packages/sdk/src/shared.ts](packages/sdk/src/shared.ts) |  |
 | [packages/sdk/src/types.ts](packages/sdk/src/types.ts) |  |
+| [packages/sdk/src/widget-channels.ts](packages/sdk/src/widget-channels.ts) |  |
 | [packages/sdk/src/widget.ts](packages/sdk/src/widget.ts) |  |
 | [packages/sdk/tsconfig.build.json](packages/sdk/tsconfig.build.json) |  |
 | [packages/sdk/tsconfig.json](packages/sdk/tsconfig.json) |  |
@@ -691,7 +730,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/service-agent/src/prompts/assets.d.ts](packages/service-agent/src/prompts/assets.d.ts) |  |
 | [packages/service-agent/src/prompts/imports.d.ts](packages/service-agent/src/prompts/imports.d.ts) |  |
 | [packages/service-agent/src/prompts/index.ts](packages/service-agent/src/prompts/index.ts) |  |
-| [packages/service-agent/src/prompts/prompt.arrow-js.md](packages/service-agent/src/prompts/prompt.arrow-js.md) |  |
+| [packages/service-agent/src/prompts/prompt.capsule.md](packages/service-agent/src/prompts/prompt.capsule.md) |  |
 | [packages/service-agent/src/prompts/prompt.product-and-manifest.md](packages/service-agent/src/prompts/prompt.product-and-manifest.md) |  |
 | [packages/service-agent/src/prompts/prompt.server-functions.md](packages/service-agent/src/prompts/prompt.server-functions.md) |  |
 | [packages/service-agent/src/prompts/prompt.state-and-resources.md](packages/service-agent/src/prompts/prompt.state-and-resources.md) |  |
@@ -980,10 +1019,15 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts](packages/ui-ai-chat/src/widget-placement/fn.validate-widget-placement-descriptor.ts) |  |
 | [packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementCoordinator.ts) |  |
 | [packages/ui-ai-chat/src/widget-placement/WidgetPlacementService.ts](packages/ui-ai-chat/src/widget-placement/WidgetPlacementService.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts](packages/ui-ai-chat/src/widget-runtime/CapsuleWidgetHostCoordinator.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts](packages/ui-ai-chat/src/widget-runtime/CONSTANTS.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-capsule-capability-bindings.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/create-widget-collaborative-state-port.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-collaborative-state-port.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/create-widget-function-host-bridge.ts](packages/ui-ai-chat/src/widget-runtime/create-widget-function-host-bridge.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.artifact-cache-key.ts](packages/ui-ai-chat/src/widget-runtime/fn.artifact-cache-key.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.capsule-catalog.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-catalog.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.capsule-population.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-population.ts) |  |
+| [packages/ui-ai-chat/src/widget-runtime/fn.capsule-viewport.ts](packages/ui-ai-chat/src/widget-runtime/fn.capsule-viewport.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.collaborative-state-json.ts](packages/ui-ai-chat/src/widget-runtime/fn.collaborative-state-json.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts](packages/ui-ai-chat/src/widget-runtime/fn.runtime-identity.ts) |  |
 | [packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts](packages/ui-ai-chat/src/widget-runtime/fx.decode-and-verify-ui-artifact.ts) |  |
@@ -997,6 +1041,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/ui-ai-chat/src/widget/fn.create-widget-element.ts](packages/ui-ai-chat/src/widget/fn.create-widget-element.ts) |  |
 | [packages/ui-ai-chat/src/widget/fn.normalize-widget-host-data.ts](packages/ui-ai-chat/src/widget/fn.normalize-widget-host-data.ts) |  |
 | [packages/ui-ai-chat/src/widget/fn.resolve-widget-tool-icon.ts](packages/ui-ai-chat/src/widget/fn.resolve-widget-tool-icon.ts) |  |
+| [packages/ui-ai-chat/src/widget/fn.widget-capsule-lifecycle.ts](packages/ui-ai-chat/src/widget/fn.widget-capsule-lifecycle.ts) |  |
 | [packages/ui-ai-chat/src/widget/fn.widget-errors-equal.ts](packages/ui-ai-chat/src/widget/fn.widget-errors-equal.ts) |  |
 | [packages/ui-ai-chat/src/widget/fn.widget-frame.ts](packages/ui-ai-chat/src/widget/fn.widget-frame.ts) |  |
 | [packages/ui-ai-chat/src/widget/fn.widget-instance-runtime-identity.ts](packages/ui-ai-chat/src/widget/fn.widget-instance-runtime-identity.ts) |  |
@@ -1015,14 +1060,13 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | path | jsdocs |
 |---|---|
 | [packages/widget-contract/package.json](packages/widget-contract/package.json) |  |
-| [packages/widget-contract/src/browser/fn.ui-artifact-envelope.ts](packages/widget-contract/src/browser/fn.ui-artifact-envelope.ts) | Strict, deterministic decoder for browser UI artifact envelopes. |
-| [packages/widget-contract/src/browser/index.ts](packages/widget-contract/src/browser/index.ts) | Browser-only widget artifact decoding surface. |
-| [packages/widget-contract/src/browser/types.ts](packages/widget-contract/src/browser/types.ts) | Browser-only immutable UI artifact envelope types. |
+| [packages/widget-contract/src/browser/index.ts](packages/widget-contract/src/browser/index.ts) | Browser-safe trusted Capsule runtime metadata decoder. |
 | [packages/widget-contract/src/CONSTANTS.ts](packages/widget-contract/src/CONSTANTS.ts) |  |
 | [packages/widget-contract/src/core/fn.build-integrity.ts](packages/widget-contract/src/core/fn.build-integrity.ts) |  |
+| [packages/widget-contract/src/core/fn.capsule.ts](packages/widget-contract/src/core/fn.capsule.ts) | Pure normalization for Capsule metadata copied into widget contracts. |
 | [packages/widget-contract/src/core/fn.contract.ts](packages/widget-contract/src/core/fn.contract.ts) |  |
 | [packages/widget-contract/src/core/fn.function-descriptor.ts](packages/widget-contract/src/core/fn.function-descriptor.ts) | Pure normalization, canonicalization, and manifest ceiling checks for generated short-lived server-function descriptors. |
-| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v2. |
+| [packages/widget-contract/src/core/fn.manifest.ts](packages/widget-contract/src/core/fn.manifest.ts) | Pure normalization and invariant checks for widget manifest v3. |
 | [packages/widget-contract/src/core/fn.server-function-client-module.ts](packages/widget-contract/src/core/fn.server-function-client-module.ts) | Pure generation of a browser-only virtual module for discovered server exports. |
 | [packages/widget-contract/src/core/fn.widget-frame.ts](packages/widget-contract/src/core/fn.widget-frame.ts) |  |
 | [packages/widget-contract/src/function-descriptor-schema.ts](packages/widget-contract/src/function-descriptor-schema.ts) | Strict runtime schema for generated server-function registrations. |
@@ -1037,7 +1081,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/local/index.ts](packages/widget-contract/src/local/index.ts) |  |
 | [packages/widget-contract/src/local/LocalWidgetArtifactStore.ts](packages/widget-contract/src/local/LocalWidgetArtifactStore.ts) |  |
 | [packages/widget-contract/src/local/PinnedLocalDirectory.ts](packages/widget-contract/src/local/PinnedLocalDirectory.ts) |  |
-| [packages/widget-contract/src/local/WidgetArtifactBuilderBun.ts](packages/widget-contract/src/local/WidgetArtifactBuilderBun.ts) |  |
 | [packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts](packages/widget-contract/src/local/WidgetArtifactGarbageCollector.ts) |  |
 | [packages/widget-contract/src/local/WidgetArtifactOperationLane.ts](packages/widget-contract/src/local/WidgetArtifactOperationLane.ts) | One bounded organization-local mutation lane shared by publication and artifact GC. |
 | [packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts](packages/widget-contract/src/local/WidgetArtifactReadAuthority.ts) |  |
@@ -1045,7 +1088,8 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/widget-contract/src/local/WidgetPreviewService.ts](packages/widget-contract/src/local/WidgetPreviewService.ts) |  |
 | [packages/widget-contract/src/local/WidgetPublicationService.ts](packages/widget-contract/src/local/WidgetPublicationService.ts) |  |
 | [packages/widget-contract/src/local/WidgetSourceSnapshot.ts](packages/widget-contract/src/local/WidgetSourceSnapshot.ts) |  |
-| [packages/widget-contract/src/manifest-schema.ts](packages/widget-contract/src/manifest-schema.ts) | Strict runtime schema for the current widget manifest contract. |
+| [packages/widget-contract/src/manifest-schema.ts](packages/widget-contract/src/manifest-schema.ts) | Strict runtime schemas for the Capsule-native widget manifest contract. |
+| [packages/widget-contract/src/runtime-descriptor-schema.ts](packages/widget-contract/src/runtime-descriptor-schema.ts) | Strict browser-safe decoder for trusted Capsule runtime metadata. |
 | [packages/widget-contract/src/tool-icon.ts](packages/widget-contract/src/tool-icon.ts) |  |
 | [packages/widget-contract/src/types.ts](packages/widget-contract/src/types.ts) | Browser-safe widget manifest, immutable artifact, publication, and retention types. |
 | [packages/widget-contract/tsconfig.json](packages/widget-contract/tsconfig.json) |  |
@@ -1066,11 +1110,7 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/fixtures/resource-logical-executor.mjs](scripts/fixtures/resource-logical-executor.mjs) | Test executor with no filesystem permission. The physical path is supplied only as an adversarial probe; its usable resource channel carries logical calls and results over stdio. |
 | [scripts/generate-files-md.ts](scripts/generate-files-md.ts) | Generates FILES.md from workspace files and top-of-file JSDoc summaries. |
 | [scripts/install.sh](scripts/install.sh) | Installs the latest or selected vibecanvas binary release on the local machine. |
-| [scripts/patch-arrow-sandbox-security.mjs](scripts/patch-arrow-sandbox-security.mjs) | Applies the pinned M7 security boundary to @arrow-js/sandbox 1.0.6. |
 | [scripts/patch-automerge-repo-throttle.mjs](scripts/patch-automerge-repo-throttle.mjs) | Applies narrowly-scoped Automerge Repo runtime safety patches. |
-| [scripts/patches/arrow-sandbox-1.0.6/instance.ts](scripts/patches/arrow-sandbox-1.0.6/instance.ts) |  |
-| [scripts/patches/arrow-sandbox-1.0.6/quickjs.ts](scripts/patches/arrow-sandbox-1.0.6/quickjs.ts) |  |
-| [scripts/patches/arrow-sandbox-1.0.6/renderer.ts](scripts/patches/arrow-sandbox-1.0.6/renderer.ts) |  |
 | [scripts/publish-npm.ts](scripts/publish-npm.ts) | Publishes built vibecanvas platform packages and the wrapper package to npm. |
 | [scripts/release-channel.ts](scripts/release-channel.ts) | Infers release channels and npm dist-tags from package versions. |
 | [scripts/release.ts](scripts/release.ts) | Packages current dist artifacts and uploads them to a GitHub release. |
@@ -1088,4 +1128,5 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [scripts/test-widget-artifacts.ts](scripts/test-widget-artifacts.ts) | Durable M5 gate for immutable widget artifacts. |
 | [scripts/test-widget-host.ts](scripts/test-widget-host.ts) | Durable M7 gate for the neutral renderer host and UI scale. |
 | [scripts/tsconfig.architecture.json](scripts/tsconfig.architecture.json) |  |
+| [scripts/verify-widget-capsule-oci-build.ts](scripts/verify-widget-capsule-oci-build.ts) |  |
 | [scripts/vibecanvas.entitlements.plist](scripts/vibecanvas.entitlements.plist) |  |

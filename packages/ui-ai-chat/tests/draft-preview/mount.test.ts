@@ -23,26 +23,36 @@ function digest(bytes: Uint8Array): string {
 }
 
 function uiArtifact(source: string) {
-  const outputBytes = Buffer.from(source, "utf8")
-  const envelopeBytes = Buffer.from(JSON.stringify({
-    format: "vibecanvas.widget-artifact.v1",
-    kind: "ui",
-    entry: "ui/main.ts",
-    sourceDigestSha256: "c".repeat(64),
-    builderIdentity: "stateless-preview-test",
-    runtimeAbi: null,
-    outputs: [{
-      path: "output-0.js",
-      loader: "js",
-      kind: "entry-point",
-      digestSha256: digest(outputBytes),
-      bytesBase64: outputBytes.toString("base64"),
-    }],
-  }), "utf8")
+  const artifactBytes = Buffer.from(source, "utf8")
   return {
-    digestSha256: digest(envelopeBytes),
-    byteSize: envelopeBytes.byteLength,
-    bytesBase64: envelopeBytes.toString("base64"),
+    digestSha256: digest(artifactBytes),
+    byteSize: artifactBytes.byteLength,
+    bytesBase64: artifactBytes.toString("base64"),
+    runtimeDescriptor: {
+      format: "vibecanvas.capsule-runtime.v1" as const,
+      capsuleArtifactHash: `sha256:${"c".repeat(64)}` as const,
+      target: {
+        runtimeAbi: "quickjs-release-sync-v1",
+        domProfile: "dom-core-v2",
+        featureProfiles: [],
+      },
+      budgets: {
+        cpuMs: 100,
+        memoryBytes: 32 * 1024 * 1024,
+        domNodes: 2_000,
+        handles: 4_000,
+        messageBytes: 64 * 1024,
+        streamBytes: 64 * 1024,
+        assetBytes: 0,
+        networkBytes: 0,
+        gpuBytes: 0,
+        lifecycleBytes: 256 * 1024,
+      },
+      capabilityRequests: [],
+      channels: null,
+      parkability: { parkable: false as const },
+      signatureKeyIds: ["preview-key"],
+    },
   }
 }
 
@@ -54,13 +64,25 @@ function ready(revision: string): TDraftPreviewReady {
     name: "Weather",
     revision,
     manifest: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       name: "Weather",
       slug: "weather",
-      ui: { entry: "ui/main.ts" },
+      ui: {
+        runtime: "capsule",
+        entry: "ui/main.ts",
+        target: {
+          runtimeAbi: "quickjs-release-sync-v1",
+          domProfile: "dom-core-v2",
+          featureProfiles: [],
+        },
+      },
     },
     uiArtifact: uiArtifact(`export default '${revision}';`),
-    contract: { digestSha256: "d".repeat(64), functions: [] },
+    contract: {
+      digestSha256: "d".repeat(64),
+      functions: [],
+      browserFunctionDescriptorsDigestSha256: "e".repeat(64),
+    },
     diagnostics: [],
   }
 }
@@ -79,7 +101,6 @@ function browser(): TWidgetBrowserPort {
     setInterval: (callback, timeout) => window.setInterval(callback, timeout),
     clearInterval: (timer) => window.clearInterval(timer as number),
     decodeBase64: (value) => Buffer.from(value, "base64"),
-    decodeUtf8: (value) => Buffer.from(value).toString("utf8"),
     digestSha256: async (value) => digest(value),
   }
 }
@@ -97,11 +118,25 @@ describe("stateless Draft Preview", () => {
       .mockResolvedValueOnce([undefined, ready(REVISION_ONE)])
       .mockResolvedValueOnce([undefined, ready(REVISION_TWO)])
     const bridges: TWidgetFunctionHostBridge[] = []
+    const destroys: Array<ReturnType<typeof vi.fn>> = []
     const mountArtifact: TWidgetUiArtifactMountPort = {
-      mount: vi.fn((args) => {
+      mount: vi.fn(async (args) => {
         bridges.push(args.functionBridge)
-        return () => undefined
+        const destroy = vi.fn(async () => undefined)
+        destroys.push(destroy)
+        return {
+          ready: vi.fn(async () => undefined),
+          setProps: vi.fn(),
+          setTheme: vi.fn(),
+          setViewport: vi.fn(),
+          focus: vi.fn(),
+          freeze: vi.fn(async () => undefined),
+          resume: vi.fn(async () => undefined),
+          diagnostics: vi.fn(() => ({} as never)),
+          destroy,
+        }
       }),
+      destroy: vi.fn(async () => undefined),
     }
     const runtime = mountDraftPreview({
       root,
@@ -123,13 +158,13 @@ describe("stateless Draft Preview", () => {
     await expect(bridges[0]!.invoke({
       functionName: "loadWeather",
       input: {},
-      idempotencyKey: "preview-call-1",
     })).rejects.toMatchObject({
       code: "PREVIEW_FUNCTIONS_UNAVAILABLE",
     })
 
     await runtime.refresh()
     expect(mountArtifact.mount).toHaveBeenCalledTimes(2)
+    expect(destroys[0]).toHaveBeenCalledWith("preview-replaced")
     expect(runtime.getCurrentRevision()).toBe(REVISION_TWO)
     expect(build).toHaveBeenLastCalledWith({ draftId: DRAFT_ID })
     await runtime.dispose()
