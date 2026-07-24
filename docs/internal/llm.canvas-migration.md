@@ -8,15 +8,15 @@ Contract date: 2026-07-24
 
 Engine repository: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
 
-Engine commit audited: `58009176fd4622c661e50ddf0c7d3216633c76c0`
+Engine commit audited: `bb911a1f9ad812314ebd4eee31d553bb85bfaea5`
 
-Filesystem artifact: `artifacts/vibecanvas-canvas-engine-0.1.0.tgz`
+Filesystem artifact: `artifacts/omnidraw-cangine-0.1.0.tgz`
 
-Artifact SHA-256: `7069d90a20253b69f7c805d369961f09e737c133bb3594684e71ca9fb0c73240`
+Artifact SHA-256: `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`
 
 ## 1. Decision and current status
 
-Replace Konva in `packages/canvas` with `@vibecanvas/canvas-engine`.
+Replace Konva in `packages/canvas` with `@omnidraw/cangine`.
 
 The hard implementation cutover described by this contract is now present in
 the working tree. The engine-backed runtime is the sole canvas renderer,
@@ -305,7 +305,7 @@ object is serialized back into product data.
 
 ### 6.2 Engine containment rule
 
-Runtime imports from `@vibecanvas/canvas-engine` should be limited to a new
+Runtime imports from `@omnidraw/cangine` should be limited to a new
 `src/engine/**` boundary and the smallest necessary composition point.
 
 Feature plugins should consume canvas-owned semantic services and DTOs:
@@ -358,8 +358,6 @@ packages/canvas/src/engine/
   transients/
     CanvasTransientService.ts
     fn.placeholder.ts
-  resources/
-    ResourceOwnership.ts
   portals/
     PortalOwnership.ts
 ```
@@ -552,7 +550,7 @@ Initial hydration must:
 2. validate product entities without mutating them;
 3. topologically order groups;
 4. project groups and elements;
-5. register resources and portals;
+5. replace the engine descriptor-registration owner and register portals;
 6. atomically replace the engine scene or transact one coherent initial tree;
 7. publish the projection index;
 8. restore selection by product ID;
@@ -588,7 +586,9 @@ After every projection:
 - cancel incompatible active interactions;
 - synchronize transform overlay selection;
 - synchronize portal interactivity;
-- retain one last-good scene on transaction failure;
+- rely on engine transaction rollback for invalid operations;
+- destroy and recreate a terminal `status: "failed"` engine from the
+  authoritative application document;
 - never write back to CRDT from the projector.
 
 ### 9.3 Local commit handoff
@@ -1238,7 +1238,8 @@ Work:
 - implement resize/suspend/resume/render/destroy;
 - implement metrics/error subscription;
 - implement portal/resource/transient ownership;
-- implement last-good behavior and fatal engine fallback;
+- trust engine rollback for invalid pre-commit operations, and surface the
+  fatal fallback without restoring a snapshot into the failed engine;
 - keep it test-only until projection is ready.
 
 Exit:
@@ -1357,7 +1358,8 @@ Work:
 - migrate image resource lifecycle;
 - preserve upload/clone/delete callbacks;
 - implement load/error placeholders;
-- verify last-good image behavior on source replacement.
+- verify image source generations remain stable while registration or scene
+  usage retains them.
 
 Exit:
 

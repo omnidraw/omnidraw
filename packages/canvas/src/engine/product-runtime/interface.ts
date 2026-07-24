@@ -5,7 +5,7 @@ import type {
   ISceneStore,
   ITextService,
   ITransformController,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { CanvasTransientTargetRegistry } from "../input/CanvasTransientTargetRegistry";
 import type { CanvasTransientService } from "../transients/CanvasTransientService";
 import type {

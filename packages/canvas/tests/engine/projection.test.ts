@@ -1,4 +1,4 @@
-import { assertValidSceneSnapshot } from "@vibecanvas/canvas-engine/testing";
+import { assertValidSceneSnapshot } from "@omnidraw/cangine/testing";
 import type {
   TCanvasDoc,
   TElement,

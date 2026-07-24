@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 
 const SOURCE_ROOT = resolve(process.cwd(), "src");
 const ENGINE_ROOT = join(SOURCE_ROOT, "engine");
-const ENGINE_PACKAGE = "@vibecanvas/canvas-engine";
+const ENGINE_PACKAGE = "@omnidraw/cangine";
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true })
@@ -34,7 +34,7 @@ describe("canvas-engine import boundary", () => {
   });
 
   test("does not deep-import unpublished engine internals", () => {
-    const deepImportPattern = /@vibecanvas\/canvas-engine\/(?!types(?:["'])|geometry(?:["'])|testing(?:["'])|backend(?:["'])|package\.json(?:["']))/;
+    const deepImportPattern = /@omnidraw\/cangine\/(?!types(?:["'])|geometry(?:["'])|testing(?:["'])|backend(?:["'])|package\.json(?:["']))/;
     const violations = sourceFiles(ENGINE_ROOT)
       .flatMap((file) => {
         const source = readFileSync(file, "utf8");

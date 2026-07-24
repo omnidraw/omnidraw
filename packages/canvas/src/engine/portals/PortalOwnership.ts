@@ -4,7 +4,7 @@ import type {
   TPortalGeometry,
   TPortalId,
   TPortalState,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   ICanvasEngineOwnershipStage,
   TCanvasEngineOwnershipStageState,

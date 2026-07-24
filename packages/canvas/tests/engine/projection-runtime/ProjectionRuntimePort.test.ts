@@ -28,9 +28,6 @@ import type {
 import type {
   TCanvasOwnedPortal,
 } from "../../../src/engine/portals/PortalOwnership";
-import type {
-  TCanvasOwnedResource,
-} from "../../../src/engine/resources/ResourceOwnership";
 import {
   createBuiltInProjectionRegistry,
 } from "../../../src/engine/projection/ProjectionRegistry";
@@ -187,38 +184,30 @@ class FakeStage implements ICanvasEngineOwnershipStage {
   }
 }
 
-class FakeResourceOwnership {
+class FakeResourceRegistrationOwner {
+  readonly id = "vibecanvas:projection";
   readonly events: string[];
-  current: readonly TCanvasOwnedResource[] = [];
+  current: readonly { descriptor: { id: string; type: string; url?: string } }[] = [];
 
   constructor(events: string[]) {
     this.events = events;
   }
 
-  stage(
-    _ownerId: string,
-    resources: readonly TCanvasOwnedResource[],
-  ): ICanvasEngineOwnershipStage {
-    const desired = [...resources];
-    return new FakeStage({
-      label: "resources",
-      prepare: () => {
-        this.events.push("resources:prepare");
-      },
-      commit: () => {
-        this.events.push("resources:commit");
-        this.current = desired;
-      },
-      rollback: () => {
-        this.events.push("resources:rollback");
-      },
-    });
+  replace(
+    resources: readonly { descriptor: { id: string; type: string; url?: string } }[],
+  ): void {
+    this.events.push("resources:replace");
+    this.current = [...resources];
   }
 
-  async release(ownerId: string): Promise<void> {
-    const stage = this.stage(ownerId, []);
-    await stage.prepare();
-    await stage.commit();
+  clear(): void {
+    this.replace([]);
+  }
+
+  async preload(): Promise<void> {}
+
+  destroy(): void {
+    this.current = [];
   }
 }
 
@@ -228,6 +217,7 @@ class FakePortalOwnership {
     string,
     { portal: TCanvasOwnedPortal; dispose: () => void }
   >();
+  failNextCommit: unknown | null = null;
 
   constructor(events: string[]) {
     this.events = events;
@@ -259,6 +249,11 @@ class FakePortalOwnership {
       },
       commit: () => {
         this.events.push("portals:commit");
+        const failure = this.failNextCommit;
+        this.failNextCommit = null;
+        if (failure !== null) {
+          throw failure;
+        }
         for (const [portalId, current] of this.#current) {
           if (!desired.has(portalId)) {
             current.dispose();
@@ -295,59 +290,55 @@ class FakePortalOwnership {
 
 class FakeAdapter implements ICanvasProjectionAdapter {
   readonly events: string[] = [];
-  readonly resources = new FakeResourceOwnership(this.events);
+  readonly resources = new FakeResourceRegistrationOwner(this.events);
   readonly portals = new FakePortalOwnership(this.events);
   readonly replaceCalls: TCanvasSceneApplyArgs[] = [];
   readonly commandCalls: TCanvasSceneCommandApplyArgs[] = [];
-  failNext: { fatal: boolean; restored: boolean } | null = null;
+  failNext: { fatal: boolean } | null = null;
   #revision = 0;
+
+  createResourceRegistrationOwner() {
+    return this.resources;
+  }
 
   async applyScene(
     args: TCanvasSceneApplyArgs,
   ): Promise<TCanvasSceneApplyResult> {
     this.replaceCalls.push(args);
-    return this.#apply(args.stages ?? [], "scene:replace");
+    return this.#apply("scene:replace");
   }
 
   async applyCommands(
     args: TCanvasSceneCommandApplyArgs,
   ): Promise<TCanvasSceneApplyResult> {
     this.commandCalls.push(args);
-    return this.#apply(args.stages ?? [], "scene:commands");
+    return this.#apply("scene:commands");
   }
 
   async #apply(
-    stages: readonly ICanvasEngineOwnershipStage[],
     event: string,
   ): Promise<TCanvasSceneApplyResult> {
-    for (const stage of stages) {
-      await stage.prepare();
-    }
     this.events.push(event);
     const failure = this.failNext;
     this.failNext = null;
     if (failure !== null) {
-      for (const stage of [...stages].reverse()) {
-        await stage.rollback();
-      }
       return {
         ok: false,
         revision: this.#revision,
         error: new Error("fake adapter failure"),
         fatal: failure.fatal,
-        restored: failure.restored,
       };
     }
     this.#revision += 1;
-    for (const stage of stages) {
-      await stage.commit();
-    }
     return { ok: true, revision: this.#revision };
   }
 }
 
 function harness(args?: {
   mountContent?: ConstructorParameters<typeof CanvasProjectionRuntimePort>[0]["mountContent"];
+  onPresentationCommitError?: ConstructorParameters<
+    typeof CanvasProjectionRuntimePort
+  >[0]["onPresentationCommitError"];
 }) {
   const adapter = new FakeAdapter();
   const mountContent = args?.mountContent ?? (() => undefined);
@@ -355,6 +346,9 @@ function harness(args?: {
     adapter,
     mountContent,
     preloadResources: false,
+    ...(args?.onPresentationCommitError === undefined
+      ? {}
+      : { onPresentationCommitError: args.onPresentationCommitError }),
   });
   const coordinator = new ProjectionCoordinator({
     registry: createBuiltInProjectionRegistry(),
@@ -404,10 +398,9 @@ describe("CanvasProjectionRuntimePort", () => {
     await coordinator.hydrateInitial(document([widget("widget", 1)]), 1);
 
     expect(adapter.events).toEqual([
-      "resources:prepare",
+      "resources:replace",
       "portals:prepare",
       "scene:replace",
-      "resources:commit",
       "portals:commit",
     ]);
   });
@@ -427,10 +420,45 @@ describe("CanvasProjectionRuntimePort", () => {
 
     expect(adapter.resources.current).toHaveLength(1);
     expect(adapter.resources.current[0]?.descriptor.id).not.toBe(firstId);
-    expect(adapter.resources.current[0]?.source).toEqual({
-      type: "url",
-      url: "https://example.invalid/two.png",
+    expect(adapter.resources.current[0]?.descriptor.url).toBe(
+      "https://example.invalid/two.png",
+    );
+  });
+
+  it("keeps a committed projection authoritative after presentation commit failure", async () => {
+    const presentationErrors: { stage: string; error: unknown }[] = [];
+    const { adapter, coordinator } = harness({
+      onPresentationCommitError: (error) => {
+        presentationErrors.push(error);
+      },
     });
+    await coordinator.hydrateInitial(
+      document([image("image", "https://example.invalid/one.png")]),
+      1,
+    );
+    adapter.portals.failNextCommit = new Error(
+      "intentional portal presentation failure",
+    );
+
+    const result = await coordinator.enqueue({
+      document: document([image("image", "https://example.invalid/two.png")]),
+      revision: 2,
+      origin: "remote",
+    });
+
+    expect(result).toMatchObject({ status: "applied", revision: 2 });
+    expect(coordinator.lastAppliedRevision).toBe(2);
+    expect(adapter.resources.current[0]?.descriptor.url).toBe(
+      "https://example.invalid/two.png",
+    );
+    expect(presentationErrors).toEqual([
+      {
+        stage: "portals",
+        error: expect.objectContaining({
+          message: "intentional portal presentation failure",
+        }),
+      },
+    ]);
   });
 
   it("keeps one portal mount, updates content on commit, preserves it on rollback, and unmounts", async () => {
@@ -459,7 +487,7 @@ describe("CanvasProjectionRuntimePort", () => {
       revision: 2,
       origin: "remote",
     });
-    adapter.failNext = { fatal: false, restored: true };
+    adapter.failNext = { fatal: false };
     const failed = await coordinator.enqueue({
       document: document([widget("widget", 3)]),
       revision: 3,
@@ -485,7 +513,7 @@ describe("CanvasProjectionRuntimePort", () => {
   it("surfaces adapter failure metadata through a canvas-owned error", async () => {
     const { adapter, coordinator } = harness();
     await coordinator.hydrateInitial(document([rect("one")]), 1);
-    adapter.failNext = { fatal: true, restored: false };
+    adapter.failNext = { fatal: true };
 
     const result = await coordinator.enqueue({
       document: document([rect("one", 90)]),
@@ -500,15 +528,14 @@ describe("CanvasProjectionRuntimePort", () => {
         code: "ADAPTER_APPLY_FAILED",
         revision: 2,
         fatal: true,
-        restored: false,
       });
     }
     expect(adapter.events.slice(-5)).toEqual([
-      "resources:prepare",
+      "resources:replace",
       "portals:prepare",
       "scene:commands",
       "portals:rollback",
-      "resources:rollback",
+      "resources:replace",
     ]);
   });
 

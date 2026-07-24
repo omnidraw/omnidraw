@@ -1,14 +1,13 @@
 import type {
-  TConnectorEndpoint,
   TNodeTransformProposal,
   TPaint,
   TPathCommand,
-  TSceneNode,
   TStrokeStyle,
+  TTransientSceneCloneResult,
   TTransientSceneNode,
   TTransientSceneProjection,
   TTransform2D,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   TCanvasProductColor,
   TCanvasProductPathCommand,
@@ -24,10 +23,8 @@ type TArgsTransientProjection = {
 };
 
 type TArgsHandoffProjection = {
-  ownerId: string;
+  clone: TTransientSceneCloneResult;
   proposals: readonly TNodeTransformProposal[];
-  nodes: readonly Readonly<TSceneNode>[];
-  durableNodeIds?: ReadonlyMap<string, string>;
 };
 
 const IDENTITY_TRANSFORM: TTransform2D = {
@@ -183,93 +180,6 @@ function transientNode(
   };
 }
 
-function isTransientCompatible(
-  node: Readonly<TSceneNode>,
-): node is Readonly<Exclude<
-  TSceneNode,
-  { kind: "layer" | "html-portal" | "background" | "view-3d" }
->> {
-  return node.kind !== "layer"
-    && node.kind !== "html-portal"
-    && node.kind !== "background"
-    && node.kind !== "view-3d";
-}
-
-function remapEndpoint(
-  endpoint: TConnectorEndpoint,
-  idMap: ReadonlyMap<string, string>,
-): TConnectorEndpoint {
-  return endpoint.type === "point"
-    ? { type: "point", point: { ...endpoint.point } }
-    : {
-        ...endpoint,
-        nodeId: idMap.get(endpoint.nodeId) ?? endpoint.nodeId,
-        ...(endpoint.offset === undefined
-          ? {}
-          : { offset: { ...endpoint.offset } }),
-      };
-}
-
-function handoffNode(
-  node: Readonly<TSceneNode>,
-  idMap: ReadonlyMap<string, string>,
-  proposal: TNodeTransformProposal | undefined,
-): TTransientSceneNode | null {
-  if (!isTransientCompatible(node)) {
-    return null;
-  }
-  const {
-    accessibility: _accessibility,
-    extensions: _extensions,
-    metadata: _metadata,
-    ...withoutApplicationFields
-  } = node;
-  const base = {
-    ...withoutApplicationFields,
-    id: idMap.get(node.id)!,
-    parentId: node.parentId === null
-      ? null
-      : idMap.get(node.parentId) ?? null,
-    ...(proposal === undefined
-      ? {}
-      : { transform: proposal.nextTransform }),
-  };
-  if (node.kind === "widget-frame") {
-    const withoutPortal = { ...base } as Record<string, unknown>;
-    delete withoutPortal.portal;
-    return {
-      ...withoutPortal,
-      ...(proposal?.nextSize === undefined
-        ? {}
-        : { size: proposal.nextSize }),
-    } as unknown as TTransientSceneNode;
-  }
-  if (node.kind === "connector") {
-    return {
-      ...base,
-      from: remapEndpoint(node.from, idMap),
-      to: remapEndpoint(node.to, idMap),
-      ...(node.avoidNodeIds === undefined
-        ? {}
-        : {
-            avoidNodeIds: node.avoidNodeIds.map((id) => idMap.get(id) ?? id),
-          }),
-      ...(node.labelNodeId === undefined
-        ? {}
-        : {
-            labelNodeId: idMap.get(node.labelNodeId) ?? node.labelNodeId,
-          }),
-    } as unknown as TTransientSceneNode;
-  }
-  if (proposal?.nextSize !== undefined && "size" in base) {
-    return {
-      ...base,
-      size: proposal.nextSize,
-    } as unknown as TTransientSceneNode;
-  }
-  return base as unknown as TTransientSceneNode;
-}
-
 export function fnCanvasEngineTransientProjection(
   args: TArgsTransientProjection,
 ): TTransientSceneProjection {
@@ -289,23 +199,25 @@ export function fnCanvasEngineTransientProjection(
 export function fnCanvasTransformHandoffProjection(
   args: TArgsHandoffProjection,
 ): TTransientSceneProjection {
-  const idMap = new Map(
-    args.nodes
-      .filter(isTransientCompatible)
-      .map((node) => [
-        node.id,
-        `${args.ownerId}::${args.durableNodeIds?.get(node.id) ?? node.id}`,
-      ]),
-  );
   const proposals = new Map(
-    args.proposals.map((proposal) => [proposal.nodeId, proposal]),
+    args.proposals.map((proposal) => [
+      args.clone.idMap.get(proposal.nodeId),
+      proposal,
+    ]),
   );
   return {
-    band: "world-overlay",
-    hitTest: "none",
-    nodes: args.nodes.flatMap((node) => {
-      const projected = handoffNode(node, idMap, proposals.get(node.id));
-      return projected === null ? [] : [projected];
+    ...args.clone.projection,
+    nodes: args.clone.projection.nodes.map((node) => {
+      const proposal = proposals.get(node.id);
+      if (proposal === undefined) {
+        return node;
+      }
+      return {
+        ...node,
+        ...(proposal.nextSize === undefined || !("size" in node)
+          ? {}
+          : { size: proposal.nextSize }),
+      } as TTransientSceneNode;
     }),
   };
 }

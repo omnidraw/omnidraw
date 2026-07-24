@@ -6,7 +6,7 @@ import type {
   THitResult,
   TInteractionCancelEvent,
   TMarqueeCommit,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import { fnResolveCanvasSemanticHit, fnResolveUniqueCanvasSemanticHits } from "../input/fn.semantic-hit";
 import {
   fnCanvasEnginePointerEvent,

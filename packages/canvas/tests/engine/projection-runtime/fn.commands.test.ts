@@ -2,7 +2,7 @@ import type {
   TGroupNode,
   TSceneNode,
   TTransform2D,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import {
   describe,
   expect,

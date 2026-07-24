@@ -4,7 +4,7 @@ import type {
   TRectNode,
   TSceneNode,
   TTextNode,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TTextData } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { fnCanvasSolidPaint } from "../fn.color";
 import {

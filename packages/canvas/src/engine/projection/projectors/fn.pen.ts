@@ -1,4 +1,4 @@
-import type { TPolygonNode } from "@vibecanvas/canvas-engine";
+import type { TPolygonNode } from "@omnidraw/cangine";
 import {
   CANVAS_PROJECTION_FALLBACK_COLORS,
   CANVAS_PROJECTION_PEN_OPTIONS,

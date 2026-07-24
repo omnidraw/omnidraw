@@ -1,4 +1,4 @@
-import type { TTextNode } from "@vibecanvas/canvas-engine";
+import type { TTextNode } from "@omnidraw/cangine";
 import { fnCanvasSolidPaint } from "../fn.color";
 import {
   fnCanvasElementChildBase,

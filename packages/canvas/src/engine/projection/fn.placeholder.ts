@@ -1,7 +1,7 @@
 import type {
   TRectNode,
   TTextNode,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TElement } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type {
   TCanvasProjectionDiagnosticCode,

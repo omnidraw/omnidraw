@@ -2,7 +2,7 @@ import type {
   TCamera2DState,
   TSize2,
   TVec2,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import {
   CANVAS_CAMERA_DEFAULT_ROTATION_DEGREES,
   CANVAS_CAMERA_MAX_ZOOM,

@@ -6,6 +6,7 @@ import {
   vi,
 } from "vitest";
 import type {
+  TCanvasInputClickEvent,
   TCanvasInputEvent,
   TCanvasInputListener,
   TCanvasInputPointerEvent,
@@ -73,12 +74,36 @@ function pointer(
   };
 }
 
+function click(
+  type: TCanvasInputClickEvent["type"],
+  timeStamp: number,
+  options: Parameters<typeof pointer>[2] = {},
+): TCanvasInputClickEvent {
+  const event = pointer("pointer-up", timeStamp, options);
+  if (!("pointerId" in event)) {
+    throw new TypeError("Click fixture requires a pointer event.");
+  }
+  return {
+    type,
+    timeStamp: event.timeStamp,
+    pointerId: event.pointerId,
+    button: event.button,
+    pointerType: event.pointerType,
+    client: event.client,
+    viewport: event.viewport,
+    world: event.world,
+    modifiers: event.modifiers,
+    hit: event.hit,
+  };
+}
+
 function harness() {
   const container = document.createElement("div");
   const input = document.createElement("input");
   container.appendChild(input);
   document.body.appendChild(container);
   let inputListener: TCanvasInputListener | null = null;
+  let clickListener: ((event: TCanvasInputClickEvent) => void) | null = null;
   const focus = vi.fn();
   const blur = vi.fn();
   const hooks = {
@@ -114,6 +139,14 @@ function harness() {
               inputListener = null;
             };
           },
+          subscribeClicks: (
+            listener: (event: TCanvasInputClickEvent) => void,
+          ) => {
+            clickListener = listener;
+            return () => {
+              clickListener = null;
+            };
+          },
           focus,
           blur,
           hitTestViewport: () => [],
@@ -133,6 +166,9 @@ function harness() {
     input,
     emit(event: TCanvasInputEvent) {
       return inputListener?.(event);
+    },
+    emitClick(event: TCanvasInputClickEvent) {
+      clickListener?.(event);
     },
     hasInputListener() {
       return inputListener !== null;
@@ -162,8 +198,11 @@ describe("EventListener plugin", () => {
       stopPropagation: true,
     });
     test.emit(pointer("pointer-up", 20));
+    test.emitClick(click("click", 20));
     test.emit(pointer("pointer-down", 90));
     test.emit(pointer("pointer-up", 100));
+    test.emitClick(click("click", 100));
+    test.emitClick(click("double-click", 100));
     expect(pointerDown).toHaveBeenCalledTimes(2);
     expect(test.click).toHaveBeenCalledTimes(2);
     expect(test.doubleClick).toHaveBeenCalledOnce();
@@ -213,19 +252,11 @@ describe("EventListener plugin", () => {
   it("accepts independently matched touch and pen clicks", () => {
     const test = harness();
 
-    test.emit(pointer("pointer-down", 10, {
+    test.emitClick(click("click", 10, {
       pointerId: 7,
       pointerType: "touch",
     }));
-    test.emit(pointer("pointer-up", 20, {
-      pointerId: 7,
-      pointerType: "touch",
-    }));
-    test.emit(pointer("pointer-down", 30, {
-      pointerId: 9,
-      pointerType: "pen",
-    }));
-    test.emit(pointer("pointer-up", 40, {
+    test.emitClick(click("click", 30, {
       pointerId: 9,
       pointerType: "pen",
     }));

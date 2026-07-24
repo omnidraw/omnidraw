@@ -1,12 +1,31 @@
 import type { TCanvasModifierState } from "../../semantic/typed";
 import type {
+  TCanvasInputClickEvent,
   TCanvasInputKeyEvent,
   TCanvasInputPointerEvent,
   TCanvasInputWheelEvent,
+  TCanvasNormalizeClickEventArgs,
   TCanvasNormalizeKeyEventArgs,
   TCanvasNormalizePointerEventArgs,
   TCanvasNormalizeWheelEventArgs,
 } from "./typed";
+
+export function fnNormalizeCanvasClickEvent(
+  args: TCanvasNormalizeClickEventArgs,
+): TCanvasInputClickEvent {
+  return {
+    type: args.event.type,
+    timeStamp: args.event.timeStamp,
+    pointerId: args.event.pointerId,
+    button: args.event.button,
+    pointerType: args.event.pointerType,
+    client: { ...args.event.client },
+    viewport: { ...args.event.viewport },
+    world: { ...args.event.world },
+    modifiers: modifiers(args.event.modifiers),
+    hit: args.hit,
+  };
+}
 
 function modifiers(value: {
   alt: boolean;

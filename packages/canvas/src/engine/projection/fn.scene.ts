@@ -2,7 +2,7 @@ import type {
   TBackgroundNode,
   TLayerNode,
   TSceneNode,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import {
   CANVAS_ENGINE_BACKGROUND_IDS,
   CANVAS_ENGINE_LAYER_IDS,

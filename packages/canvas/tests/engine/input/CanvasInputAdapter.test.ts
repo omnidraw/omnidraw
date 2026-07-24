@@ -1,5 +1,6 @@
 import type {
   IInputController,
+  TClickInputEvent,
   TAabb,
   THitResult,
   THitTestOptions,
@@ -9,7 +10,7 @@ import type {
   TPointerInputEvent,
   TVec2,
   TWheelInputEvent,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   TCanvasDoc,
   TElement,
@@ -125,16 +126,27 @@ function keyEvent(): TKeyInputEvent {
 
 function inputHarness() {
   let listener: TEngineListener | null = null;
+  let clickListener: ((event: TClickInputEvent) => void) | null = null;
   let worldHits: THitResult[] = [];
   let viewportHits: THitResult[] = [];
   let rectHits: THitResult[] = [];
   const unsubscribe = vi.fn();
+  const unsubscribeClicks = vi.fn();
+  const destroyClicks = vi.fn();
   const subscribe = vi.fn((next: TEngineListener) => {
     listener = next;
     return unsubscribe;
   });
   const input: IInputController = {
     subscribe,
+    createClickRecognizer: vi.fn(() => ({
+      subscribe(next) {
+        clickListener = next;
+        return unsubscribeClicks;
+      },
+      reset: vi.fn(),
+      destroy: destroyClicks,
+    })),
     hitTestViewport: vi.fn((_point: TVec2, _options?: THitTestOptions) => {
       return viewportHits;
     }),
@@ -154,8 +166,13 @@ function inputHarness() {
     input,
     subscribe,
     unsubscribe,
+    unsubscribeClicks,
+    destroyClicks,
     emit(event: TInputEvent) {
       return listener?.(event);
+    },
+    emitClick(event: TClickInputEvent) {
+      clickListener?.(event);
     },
     setWorldHits(hits: THitResult[]) {
       worldHits = hits;
@@ -221,6 +238,44 @@ describe("CanvasInputAdapter", () => {
       composing: true,
       modifiers: { control: true, shift: true },
     });
+  });
+
+  it("normalizes engine-recognized clicks and preserves click suppression", () => {
+    const harness = inputHarness();
+    const adapter = new CanvasInputAdapter({
+      input: harness.input,
+      getProjectionIndex: () => index("first"),
+      getDocument: () => document("first"),
+      worldToViewport: (point) => point,
+    });
+    const clicks: unknown[] = [];
+    adapter.subscribeClicks((event) => clicks.push(event));
+    adapter.subscribe(() => ({ suppressClick: true }));
+
+    expect(harness.emit(pointerEvent("first"))).toMatchObject({
+      suppressClick: true,
+    });
+    const pointer = pointerEvent("first");
+    harness.emitClick({
+      type: "click",
+      timeStamp: pointer.timeStamp,
+      modifiers: pointer.modifiers,
+      pointerId: pointer.pointerId,
+      pointerType: pointer.pointerType,
+      button: pointer.button,
+      client: pointer.client,
+      viewport: pointer.viewport,
+      world: pointer.world,
+      hit: pointer.hit,
+    });
+    expect(clicks).toEqual([
+      expect.objectContaining({
+        type: "click",
+        hit: expect.objectContaining({
+          target: { kind: "element", id: "first" },
+        }),
+      }),
+    ]);
   });
 
   it("aggregates disposition and preserves capture/release intent", () => {
@@ -397,6 +452,8 @@ describe("CanvasInputAdapter", () => {
     expect(harness.input.releasePointer).toHaveBeenCalledWith(2, "resize");
     expect(harness.input.blur).toHaveBeenCalledTimes(1);
     expect(harness.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(harness.unsubscribeClicks).toHaveBeenCalledTimes(1);
+    expect(harness.destroyClicks).toHaveBeenCalledTimes(1);
     expect(() => adapter.focus()).toThrow("destroyed");
   });
 

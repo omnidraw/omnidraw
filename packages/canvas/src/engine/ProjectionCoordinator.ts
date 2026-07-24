@@ -21,7 +21,6 @@ import {
 } from "./projection/fn.persistent-record";
 import { CanvasPortalOwnershipError } from "./portals/PortalOwnership";
 import { CanvasPortalContentMountError } from "./projection-runtime/PortalContentBridge";
-import { CanvasResourceOwnershipError } from "./resources/ResourceOwnership";
 
 export type TCanvasProjectionOrigin =
   | "initial"
@@ -60,7 +59,8 @@ export type TCanvasProjectionSceneApplyArgs = {
  * Engine-independent retained-scene boundary. The concrete adapter owns how a
  * node/resource/portal diff is translated to engine transactions.
  *
- * `applyScene` must reject only after restoring its own last-good scene.
+ * Invalid engine mutations leave the durable engine scene unchanged. A
+ * committed scene remains authoritative even if later presentation work fails.
  */
 export interface ICanvasProjectionRuntimePort {
   stageOwnership(
@@ -131,7 +131,7 @@ type TQueuedProjection = {
 
 type TProjectionOwnershipFallback = {
   elementId: string;
-  code: "PORTAL_REGISTRATION_FAILED" | "RESOURCE_PRELOAD_FAILED";
+  code: "PORTAL_REGISTRATION_FAILED";
   message: string;
 };
 
@@ -156,22 +156,6 @@ function projectionOwnershipFallback(
     && !visited.has(current)
   ) {
     visited.add(current);
-    if (
-      current instanceof CanvasResourceOwnershipError
-      && current.resourceId !== undefined
-    ) {
-      const elementId = elementIdForOwnedId(
-        projection.index.elementResourceIds,
-        current.resourceId,
-      );
-      if (elementId !== null) {
-        return {
-          elementId,
-          code: "RESOURCE_PRELOAD_FAILED",
-          message: `Element '${elementId}' resource '${current.resourceId}' could not be prepared: ${current.message}`,
-        };
-      }
-    }
     if (
       current instanceof CanvasPortalOwnershipError
       && current.portalId !== undefined

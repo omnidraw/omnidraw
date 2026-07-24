@@ -7,7 +7,7 @@ import type {
   TMat3,
   TSize2,
   TVec2,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import {
   CANVAS_CAMERA_MAX_ZOOM,
   CANVAS_CAMERA_MIN_ZOOM,

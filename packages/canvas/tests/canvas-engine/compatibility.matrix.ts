@@ -151,9 +151,9 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     id: "normalized-input",
     area: "interaction",
     requirement: "Pointer/wheel/key/gesture routing plus click and double-click product semantics",
-    status: "adapter",
-    owner: "canvas",
-    evidence: "Engine normalizes low-level input; click/double-click remain app-derived DOM gestures.",
+    status: "compatible",
+    owner: "joint",
+    evidence: "Engine normalization and its opt-in recognizer validate click sequences; canvas maps recognized hits to product selection and editing policy.",
   },
   {
     id: "semantic-selection",
@@ -193,7 +193,7 @@ export const CANVAS_ENGINE_COMPATIBILITY_MATRIX = [
     requirement: "Alt-drag clone preview while the source stays in place",
     status: "adapter",
     owner: "canvas",
-    evidence: "Product subtree IDs are allocated before preview, projected through a world transient owner, and committed with the same IDs plus registered clone policy.",
+    evidence: "Product IDs and clone policy stay in canvas while engine.transients.cloneFromScene preserves and remaps the durable render subtree.",
   },
   {
     id: "external-widget-drop",

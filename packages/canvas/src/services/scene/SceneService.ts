@@ -254,6 +254,27 @@ implements
             details: { portalId },
           });
         },
+        onResourcePreloadError: (error) => {
+          this.hooks.diagnostic.call({
+            sequence: -1,
+            severity: "error",
+            source: "ownership",
+            code: "RESOURCE_PRELOAD_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+            recoverable: true,
+          });
+        },
+        onPresentationCommitError: ({ stage, error }) => {
+          this.hooks.diagnostic.call({
+            sequence: -1,
+            severity: "error",
+            source: "ownership",
+            code: "PRESENTATION_COMMIT_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+            recoverable: true,
+            details: { stage },
+          });
+        },
       });
       this.#projectionRuntime = projectionRuntime;
 
@@ -385,10 +406,6 @@ implements
       this.#resizeObserver = this.#createResizeObserver();
       this.#resizeObserver.observe(this.container);
       this.#resizeToContainer();
-      await this.#adapter.render({
-        includePortals: true,
-        awaitResources: true,
-      });
       this.#state = "ready";
     } catch (error) {
       this.#state = "failed";

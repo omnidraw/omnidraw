@@ -1,10 +1,9 @@
 import type {
   TPortalScaleMode,
   TResourceDescriptor,
-  TResourceSource,
   TSceneNode,
   TSceneSnapshot,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   TElementStyle,
   TElementType,
@@ -25,7 +24,6 @@ export type TCanvasJsonValue =
 
 export type TCanvasProjectedResource = {
   descriptor: TResourceDescriptor;
-  source?: Extract<TResourceSource, { type: "url" }>;
 };
 
 export type TCanvasProjectedPortalContent =

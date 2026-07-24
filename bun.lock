@@ -166,7 +166,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@vibecanvas/canvas-engine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/vibecanvas-canvas-engine-0.1.0.tgz",
+        "@omnidraw/cangine": "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.0.tgz",
         "jsdom": "^29.1.1",
         "solid-devtools": "^0.34.3",
         "typescript": "catalog:",
@@ -905,6 +905,8 @@
 
     "@nothing-but/utils": ["@nothing-but/utils@0.17.0", "", {}, "sha512-TuCHcHLOqDL0SnaAxACfuRHBNRgNJcNn9X0GiH5H3YSDBVquCr3qEIG3FOQAuMyZCbu9w8nk2CHhOsn7IvhIwQ=="],
 
+    "@omnidraw/cangine": ["@omnidraw/cangine@/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.0.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-7M4DEgxq+VKr1jI8Rb0FbNhuIh05ptbU5IEF2ThALVc17G1YAIrRWmVQbbO64jGt7G6uE9e3s1dE4x0o7K0LJw=="],
+
     "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.41.1", "", {}, "sha512-/UhIkaZgPutTFmQ7RnIJGgDXZmtEJ7Dvi86xNTFWcnRxVRNk/aotsqDJYeEvDP+FSMB2SdW+pQzNMcWP0rwuNA=="],
@@ -1266,8 +1268,6 @@
     "@vibecanvas/api": ["@vibecanvas/api@workspace:packages/api"],
 
     "@vibecanvas/canvas": ["@vibecanvas/canvas@workspace:packages/canvas"],
-
-    "@vibecanvas/canvas-engine": ["@vibecanvas/canvas-engine@/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/vibecanvas-canvas-engine-0.1.0.tgz", { "dependencies": { "bidi-js": "1.0.3", "fontkit": "2.0.4", "tess2": "1.0.0", "three": "0.185.1" } }, "sha512-jtucU41Dy5sCEYiBL9PKmZsOAfvySi3ciWPpmBIseXvwUdWEFtt83ejQL9sQQwgpr0AjpFLIXwPCqGBAq1AcdQ=="],
 
     "@vibecanvas/cli": ["@vibecanvas/cli@workspace:apps/cli"],
 

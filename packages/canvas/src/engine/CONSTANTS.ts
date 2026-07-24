@@ -1,4 +1,4 @@
-import type { TColor } from "@vibecanvas/canvas-engine";
+import type { TColor } from "@omnidraw/cangine";
 
 export const CANVAS_ENGINE_LAYER_IDS = {
   background: "vc:layer:background",

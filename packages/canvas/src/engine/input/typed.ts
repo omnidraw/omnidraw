@@ -1,5 +1,7 @@
 import type {
   IInputController,
+  TClickInputEvent,
+  TClickRecognizerOptions,
   TAabb,
   THitResult,
   THitTestOptions,
@@ -8,7 +10,7 @@ import type {
   TPointerInputEvent,
   TVec2,
   TWheelInputEvent,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import type {
   TCanvasModifierState,
@@ -73,6 +75,17 @@ export type TCanvasInputWheelEvent = TCanvasInputEventBase & {
   hit: TCanvasSemanticHit | null;
 };
 
+export type TCanvasInputClickEvent = TCanvasInputEventBase & {
+  type: TClickInputEvent["type"];
+  pointerId: number;
+  button: number;
+  pointerType: TClickInputEvent["pointerType"];
+  client: TCanvasPoint;
+  viewport: TCanvasPoint;
+  world: TCanvasPoint;
+  hit: TCanvasSemanticHit | null;
+};
+
 export type TCanvasInputKeyEvent = TCanvasInputEventBase & {
   type: TKeyInputEvent["type"];
   key: string;
@@ -90,8 +103,13 @@ export type TCanvasInputListener = (
   event: TCanvasInputEvent,
 ) => TInputDisposition | void;
 
+export type TCanvasInputClickListener = (
+  event: TCanvasInputClickEvent,
+) => void;
+
 export type TCanvasInputAdapterConfig = {
   input: IInputController;
+  clickRecognizer?: TClickRecognizerOptions;
   getProjectionIndex(): TCanvasProjectionIndex | null;
   getDocument(): TCanvasDoc;
   worldToViewport(point: TVec2): TVec2;
@@ -106,6 +124,9 @@ export type TCanvasInputAdapterConfig = {
 export type TCanvasInputDiagnostic =
   | {
       operation: "listener";
+    }
+  | {
+      operation: "click-listener";
     }
   | {
       operation: "release-pointer";
@@ -133,6 +154,11 @@ export type TCanvasSemanticRectQuery = {
 
 export type TCanvasNormalizePointerEventArgs = {
   event: TPointerInputEvent;
+  hit: TCanvasSemanticHit | null;
+};
+
+export type TCanvasNormalizeClickEventArgs = {
+  event: TClickInputEvent;
   hit: TCanvasSemanticHit | null;
 };
 

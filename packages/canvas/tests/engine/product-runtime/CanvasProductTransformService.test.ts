@@ -4,7 +4,7 @@ import type {
   TNodeTransformProposal,
   TSceneNode,
   TTransformGestureEvent,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import { describe, expect, it, vi } from "vitest";
 import { CanvasProductTransformService } from "../../../src/engine/product-runtime/CanvasProductTransformService";
 import type { TCanvasProductRuntimeEnginePorts } from "../../../src/engine/product-runtime/interface";
@@ -138,12 +138,64 @@ function harness(renderKind: "rect" | "widget-frame" = "rect") {
     }),
   } as unknown as ISceneStore;
   const transients = {
+    cloneFromScene: vi.fn((options: {
+      sourceNodeIds: readonly string[];
+      mapId(sourceNodeId: string): string;
+      transform?: readonly number[];
+    }) => {
+      const included = nodes.filter((node) => {
+        return options.sourceNodeIds.includes(node.id)
+          || options.sourceNodeIds.includes(node.parentId ?? "");
+      });
+      const idMap = new Map(
+        included.map((node) => [node.id, options.mapId(node.id)]),
+      );
+      return {
+        projection: {
+          band: "world-overlay" as const,
+          hitTest: "none" as const,
+          nodes: included.map((node) => {
+            const {
+              accessibility: _accessibility,
+              extensions: _extensions,
+              metadata: _metadata,
+              ...projected
+            } = node;
+            return {
+              ...projected,
+              id: idMap.get(node.id)!,
+              parentId: node.parentId === null
+                ? null
+                : idMap.get(node.parentId) ?? null,
+              ...(options.sourceNodeIds.includes(node.id)
+                && options.transform !== undefined
+                ? {
+                    transform: {
+                      ...node.transform,
+                      position: {
+                        x: options.transform[6] ?? 0,
+                        y: options.transform[7] ?? 0,
+                      },
+                    },
+                  }
+                : {}),
+            };
+          }),
+        },
+        rootIds: options.sourceNodeIds.map((id) => idMap.get(id)!),
+        idMap,
+      };
+    }),
     sync: vi.fn(),
     release: vi.fn(),
+  };
+  const geometry = {
+    worldTransform: vi.fn(() => [1, 0, 0, 0, 1, 0, 0, 0, 1]),
   };
   const diagnostics = vi.fn();
   const service = new CanvasProductTransformService({
     transforms,
+    geometry,
     scene,
     transients,
     getProjectionIndex: projectionIndex,
@@ -284,8 +336,7 @@ describe("CanvasProductTransformService", () => {
         hitTest: "none",
         nodes: expect.arrayContaining([
           expect.objectContaining({
-            id:
-              "vc:transient:alt-clone:gesture-1::vc:element:u-clone-first",
+            id: "vc:element:u-clone-first",
             transform: expect.objectContaining({
               position: { x: 40, y: 20 },
             }),
@@ -348,14 +399,11 @@ describe("CanvasProductTransformService", () => {
       expect.objectContaining({
         nodes: expect.arrayContaining([
           expect.objectContaining({
-            id:
-              "vc:transient:transform-handoff:gesture-1::vc:element:u-clone-first",
+            id: "vc:element:u-clone-first",
           }),
           expect.objectContaining({
-            id:
-              "vc:transient:transform-handoff:gesture-1::vc:element:u-clone-first:render",
-            parentId:
-              "vc:transient:transform-handoff:gesture-1::vc:element:u-clone-first",
+            id: "vc:element:u-clone-first:render",
+            parentId: "vc:element:u-clone-first",
           }),
         ]),
       }),

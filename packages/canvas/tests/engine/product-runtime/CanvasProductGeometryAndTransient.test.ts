@@ -1,7 +1,7 @@
 import type {
   ICamera2DController,
   IGeometryService,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import { describe, expect, it, vi } from "vitest";
 import { CanvasTransientTargetRegistry } from "../../../src/engine/input/CanvasTransientTargetRegistry";
 import { CanvasProductGeometryService } from "../../../src/engine/product-runtime/CanvasProductGeometryService";

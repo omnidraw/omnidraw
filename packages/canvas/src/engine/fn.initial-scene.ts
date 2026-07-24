@@ -2,7 +2,7 @@ import type {
   TLayerNode,
   TSceneSnapshot,
   TTransform2D,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import {
   CANVAS_ENGINE_LAYER_IDS,
   CANVAS_ENGINE_ORDER_KEYS,

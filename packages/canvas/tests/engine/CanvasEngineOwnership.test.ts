@@ -4,8 +4,8 @@ import {
   type THtmlPortalNode,
   type TRectNode,
   type TSceneSnapshot,
-} from "@vibecanvas/canvas-engine";
-import { ManualClock } from "@vibecanvas/canvas-engine/testing";
+} from "@omnidraw/cangine";
+import { ManualClock } from "@omnidraw/cangine/testing";
 import {
   afterEach,
   beforeEach,
@@ -127,7 +127,7 @@ describe("canvas engine ownership boundaries", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shares resources, preserves old identity, and rolls prepared additions back", async () => {
+  it("shares descriptor registrations and preserves old identity on conflicts", async () => {
     const imageA = {
       descriptor: {
         id: "vc:image:a",
@@ -135,40 +135,26 @@ describe("canvas engine ownership boundaries", () => {
       },
     } as const;
 
-    await adapter.resources.sync("element:a", [imageA]);
-    await adapter.resources.sync("element:b", [imageA]);
-    expect(adapter.resources.state("vc:image:a")).toMatchObject({
-      refCount: 2,
-    });
+    const ownerA = adapter.createResourceRegistrationOwner("element:a");
+    const ownerB = adapter.createResourceRegistrationOwner("element:b");
+    ownerA.replace([imageA]);
+    ownerB.replace([imageA]);
+    expect(adapter.metricsSnapshot().resourceCount).toBe(1);
 
-    await adapter.resources.release("element:a");
-    expect(adapter.resources.state("vc:image:a")?.refCount).toBe(1);
-    expect(() => adapter.resources.stage("element:b", [{
+    ownerA.clear();
+    expect(adapter.metricsSnapshot().resourceCount).toBe(1);
+    expect(() => ownerB.replace([{
       descriptor: {
         ...imageA.descriptor,
         url: "https://assets.invalid/replacement.png",
       },
-      source: {
-        type: "url",
-        url: "https://assets.invalid/replacement.png",
-      },
-    }])).toThrow(/changed descriptor or source/);
-    expect(adapter.resources.state("vc:image:a")?.descriptor).toEqual(
-      imageA.descriptor,
-    );
+    }])).toThrow(/incompatible|descriptor/i);
+    expect(adapter.metricsSnapshot().resourceCount).toBe(1);
 
-    const staged = adapter.resources.stage("element:staged", [{
-      descriptor: { id: "vc:image:staged", type: "image" },
-    }]);
-    await staged.prepare();
-    expect(adapter.resources.state("vc:image:staged")).not.toBeNull();
-    await staged.rollback();
-    expect(staged.state).toBe("rolled-back");
-    expect(adapter.resources.state("vc:image:staged")).toBeNull();
-
-    await adapter.resources.release("element:b");
-    expect(adapter.resources.state("vc:image:a")).toBeNull();
-    expect(adapter.resources.resourceCount).toBe(0);
+    ownerB.clear();
+    expect(adapter.metricsSnapshot().resourceCount).toBe(0);
+    ownerA.destroy();
+    ownerB.destroy();
   });
 
   it("mounts portals through a canvas-owned context and disposes after scene removal", async () => {
@@ -187,14 +173,15 @@ describe("canvas engine ownership boundaries", () => {
       interactive: true,
       mount,
     }]);
+    await stage.prepare();
     const result = await adapter.applyScene({
       snapshot: append(
         adapter.sceneSnapshot(),
         portalNode("vc:element:widget:portal", "vc:portal:widget"),
       ),
-      stages: [stage],
       render: "none",
     });
+    await stage.commit();
     expect(result.ok).toBe(true);
 
     adapter.portals.syncNow("vc:portal:widget");
@@ -224,18 +211,20 @@ describe("canvas engine ownership boundaries", () => {
       }),
     };
     const release = adapter.portals.stage("element:widget", []);
+    await release.prepare();
     await expect(adapter.applyScene({
       snapshot: withoutPortal,
-      stages: [release],
       render: "none",
     })).resolves.toMatchObject({ ok: true });
+    await release.commit();
     await Promise.resolve();
     expect(adapter.portals.has("vc:portal:widget")).toBe(false);
     expect(cleanupCount).toBe(1);
   });
 
   it("rolls staged resources and portals back when the scene cannot commit", async () => {
-    const resourceStage = adapter.resources.stage("element:new", [{
+    const resourceOwner = adapter.createResourceRegistrationOwner("element:new");
+    resourceOwner.replace([{
       descriptor: { id: "vc:image:new", type: "image" },
     }]);
     const portalStage = adapter.portals.stage("element:new", [{
@@ -245,21 +234,21 @@ describe("canvas engine ownership boundaries", () => {
     }]);
     const invalid = append(adapter.sceneSnapshot(), rect("invalid"));
     invalid.nodes.at(-1)!.transform.position.x = Number.NaN;
+    await portalStage.prepare();
 
     const result = await adapter.applyScene({
       snapshot: invalid,
-      stages: [resourceStage, portalStage],
       render: "none",
     });
+    await portalStage.rollback();
+    resourceOwner.clear();
 
     expect(result).toMatchObject({
       ok: false,
       fatal: false,
-      restored: true,
     });
-    expect(resourceStage.state).toBe("rolled-back");
     expect(portalStage.state).toBe("rolled-back");
-    expect(adapter.resources.state("vc:image:new")).toBeNull();
+    expect(adapter.metricsSnapshot().resourceCount).toBe(0);
     expect(adapter.portals.has("vc:portal:new")).toBe(false);
     expect(adapter.sceneSnapshot().nodes.some((node) => node.id === "invalid")).toBe(
       false,
@@ -267,11 +256,27 @@ describe("canvas engine ownership boundaries", () => {
   });
 
   it("owns atomic transient replacement and durable handoff cleanup", async () => {
-    adapter.transients.sync("vc:transient:clone:session", {
-      band: "world-overlay",
-      hitTest: "none",
-      nodes: [rect("vc:clone:one", null)],
+    await adapter.applyScene({
+      snapshot: append(adapter.sceneSnapshot(), rect("vc:source:one")),
+      render: "none",
     });
+    const clone = adapter.transients.cloneFromScene({
+      sourceNodeIds: ["vc:source:one"],
+      mapId: () => "vc:clone:one",
+      transform: [1, 0, 0, 0, 1, 0, 80, 40, 1],
+      hitTest: "none",
+      portals: "omit",
+    });
+    expect(clone.rootIds).toEqual(["vc:clone:one"]);
+    expect(clone.idMap.get("vc:source:one")).toBe("vc:clone:one");
+    expect(clone.projection.nodes[0]).toMatchObject({
+      id: "vc:clone:one",
+      parentId: null,
+      transform: {
+        position: { x: 90, y: 60 },
+      },
+    });
+    adapter.transients.sync("vc:transient:clone:session", clone.projection);
     expect(adapter.transients.ownerIds()).toEqual([
       "vc:transient:clone:session",
     ]);
@@ -316,7 +321,8 @@ describe("canvas engine ownership boundaries", () => {
 
   it("disposes outstanding resource, portal, and transient owners before the engine", async () => {
     let portalCleanupCount = 0;
-    await adapter.resources.sync("element:retained", [{
+    const resourceOwner = adapter.createResourceRegistrationOwner("element:retained");
+    resourceOwner.replace([{
       descriptor: { id: "vc:image:retained", type: "image" },
     }]);
     const portalStage = adapter.portals.stage("element:retained", [{
@@ -326,14 +332,15 @@ describe("canvas engine ownership boundaries", () => {
         portalCleanupCount += 1;
       },
     }]);
+    await portalStage.prepare();
     await adapter.applyScene({
       snapshot: append(
         adapter.sceneSnapshot(),
         portalNode("vc:element:retained:portal", "vc:portal:retained"),
       ),
-      stages: [portalStage],
       render: "none",
     });
+    await portalStage.commit();
     adapter.portals.syncNow("vc:portal:retained");
     await Promise.resolve();
     adapter.transients.sync("vc:transient:retained:session", {
@@ -341,7 +348,7 @@ describe("canvas engine ownership boundaries", () => {
       nodes: [rect("vc:transient:retained:node", null)],
     });
 
-    expect(adapter.resources.resourceCount).toBe(1);
+    expect(adapter.metricsSnapshot().resourceCount).toBe(1);
     expect(adapter.portals.portalCount).toBe(1);
     expect(adapter.transients.ownerCount).toBe(1);
 
@@ -350,6 +357,6 @@ describe("canvas engine ownership boundaries", () => {
     expect(portalCleanupCount).toBe(1);
     expect(factory.pass.destroyCount).toBe(1);
     expect(host.childElementCount).toBe(0);
-    expect(() => adapter.resources).toThrow(/destroyed/);
+    expect(() => resourceOwner.replace([])).toThrow();
   });
 });

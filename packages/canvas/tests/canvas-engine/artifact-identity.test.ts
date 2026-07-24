@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import canvasEnginePackage from "@vibecanvas/canvas-engine/package.json";
+import canvasEnginePackage from "@omnidraw/cangine/package.json";
 import { describe, expect, it } from "vitest";
 import canvasPackage from "../../package.json";
 
-const AUDITED_ENGINE_COMMIT = "58009176fd4622c661e50ddf0c7d3216633c76c0";
+const AUDITED_ENGINE_COMMIT = "bb911a1f9ad812314ebd4eee31d553bb85bfaea5";
 const AUDITED_ARTIFACT_PATH =
-  "/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/vibecanvas-canvas-engine-0.1.0.tgz";
+  "/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.0.tgz";
 const AUDITED_ARTIFACT_SHA256 =
-  "7069d90a20253b69f7c805d369961f09e737c133bb3594684e71ca9fb0c73240";
+  "f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486";
 const AUDITED_DEPENDENCY = `file:${AUDITED_ARTIFACT_PATH}`;
 
 describe("canvas-engine artifact identity", () => {
   it("uses the exact audited filepath artifact and bytes", () => {
     const dependency =
-      canvasPackage.devDependencies["@vibecanvas/canvas-engine"];
+      canvasPackage.devDependencies["@omnidraw/cangine"];
     const artifactSha256 = createHash("sha256")
       .update(readFileSync(AUDITED_ARTIFACT_PATH))
       .digest("hex");
@@ -27,7 +27,7 @@ describe("canvas-engine artifact identity", () => {
     };
 
     expect(identity).toEqual({
-      package: "@vibecanvas/canvas-engine",
+      package: "@omnidraw/cangine",
       version: "0.1.0",
       commit: AUDITED_ENGINE_COMMIT,
       dependency: AUDITED_DEPENDENCY,

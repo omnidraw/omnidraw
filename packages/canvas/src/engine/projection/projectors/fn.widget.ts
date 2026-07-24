@@ -1,4 +1,4 @@
-import type { TWidgetFrameNode } from "@vibecanvas/canvas-engine";
+import type { TWidgetFrameNode } from "@omnidraw/cangine";
 import type {
   TCanvasJsonValue,
   TCanvasProjectedPortalContent,

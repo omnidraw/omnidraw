@@ -2,7 +2,7 @@ import type {
   TColor,
   TPaint,
   TStrokeStyle,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   TElement,
   TElementStyle,

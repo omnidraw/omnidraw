@@ -4,8 +4,8 @@ import type {
   TCanvasEngineConfig,
   TEngineCapabilities,
   TSceneNode,
-} from "@vibecanvas/canvas-engine";
-import { CanvasEngineError } from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
+import { CanvasEngineError } from "@omnidraw/cangine";
 import type {
   IRenderBackendFactory,
   IRenderPassBackend,
@@ -14,7 +14,7 @@ import type {
   TBackendRenderResult,
   TBackendResizeContext,
   TRenderFrameContext,
-} from "@vibecanvas/canvas-engine/backend";
+} from "@omnidraw/cangine/backend";
 
 export class CanvasEngineTestPass implements IRenderPassBackend {
   readonly id = "vibecanvas-engine-boundary-test";

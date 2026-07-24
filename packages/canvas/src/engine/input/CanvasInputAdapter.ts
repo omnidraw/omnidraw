@@ -1,11 +1,14 @@
 import type {
+  IClickRecognizer,
+  TClickInputEvent,
   THitResult,
   TInputDisposition,
   TInputEvent,
   TVec2,
-} from "@vibecanvas/canvas-engine";
-import { fnNormalizeCanvasKeyEvent } from "./fn.normalize-event";
+} from "@omnidraw/cangine";
 import {
+  fnNormalizeCanvasClickEvent,
+  fnNormalizeCanvasKeyEvent,
   fnNormalizeCanvasPointerEvent,
   fnNormalizeCanvasWheelEvent,
 } from "./fn.normalize-event";
@@ -15,6 +18,7 @@ import {
 } from "./fn.semantic-hit";
 import type {
   TCanvasInputAdapterConfig,
+  TCanvasInputClickListener,
   TCanvasInputDiagnostic,
   TCanvasInputEvent,
   TCanvasInputListener,
@@ -44,22 +48,52 @@ function mergeDisposition(
     merged.capturePointer = current.capturePointer;
     merged.releasePointer = current.releasePointer;
   }
+  merged.suppressClick = current.suppressClick === true
+    || next.suppressClick === true;
   return merged;
 }
 
 export class CanvasInputAdapter {
   readonly #config: TCanvasInputAdapterConfig;
   readonly #listeners = new Set<TCanvasInputListener>();
+  readonly #clickListeners = new Set<TCanvasInputClickListener>();
+  readonly #clickRecognizer: IClickRecognizer;
   readonly #explicitCaptures = new Map<number, string>();
   #unsubscribeEngine: (() => void) | null;
+  #unsubscribeClicks: (() => void) | null;
   #focused = false;
   #destroyed = false;
 
   constructor(config: TCanvasInputAdapterConfig) {
     this.#config = config;
+    this.#clickRecognizer = config.input.createClickRecognizer({
+      clickTimeoutMs: 750,
+      movementTolerancePx: 6,
+      doubleClickTimeoutMs: 350,
+      doubleClickDistancePx: 6,
+      touchDoubleTap: "disabled",
+      tripleClick: "reset",
+      ...config.clickRecognizer,
+    });
+    this.#unsubscribeClicks = this.#clickRecognizer.subscribe((event) => {
+      this.#onEngineClick(event);
+    });
     this.#unsubscribeEngine = config.input.subscribe((event) => {
       return this.#onEngineInput(event);
     });
+  }
+
+  subscribeClicks(listener: TCanvasInputClickListener): () => void {
+    this.#assertActive();
+    this.#clickListeners.add(listener);
+    let subscribed = true;
+    return () => {
+      if (!subscribed) {
+        return;
+      }
+      subscribed = false;
+      this.#clickListeners.delete(listener);
+    };
   }
 
   subscribe(listener: TCanvasInputListener): () => void {
@@ -169,7 +203,16 @@ export class CanvasInputAdapter {
     } catch (error) {
       this.#reportError(error, { operation: "unsubscribe" });
     }
+    const unsubscribeClicks = this.#unsubscribeClicks;
+    this.#unsubscribeClicks = null;
+    try {
+      unsubscribeClicks?.();
+      this.#clickRecognizer.destroy();
+    } catch (error) {
+      this.#reportError(error, { operation: "unsubscribe" });
+    }
     this.#listeners.clear();
+    this.#clickListeners.clear();
   }
 
   #resolveHits(
@@ -256,6 +299,23 @@ export class CanvasInputAdapter {
       }
     }
     return aggregate;
+  }
+
+  #onEngineClick(event: TClickInputEvent): void {
+    const normalized = fnNormalizeCanvasClickEvent({
+      event,
+      hit: this.#resolveHit(event.hit, event.viewport),
+    });
+    for (const listener of [...this.#clickListeners]) {
+      if (!this.#clickListeners.has(listener)) {
+        continue;
+      }
+      try {
+        listener(normalized);
+      } catch (error) {
+        this.#reportError(error, { operation: "click-listener" });
+      }
+    }
   }
 
   #assertActive(): void {

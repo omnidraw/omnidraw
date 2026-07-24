@@ -9,7 +9,7 @@ import type {
   TInteractionSample,
   TMarqueeSessionOptions,
   TStrokeSessionOptions,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { describe, expect, it, vi } from "vitest";
 import { CanvasTransientTargetRegistry } from "../../../src/engine/input/CanvasTransientTargetRegistry";

@@ -4,8 +4,8 @@ import {
   type TAabb,
   type TMat3,
   type TVec2,
-} from "@vibecanvas/canvas-engine";
-import { ManualClock } from "@vibecanvas/canvas-engine/testing";
+} from "@omnidraw/cangine";
+import { ManualClock } from "@omnidraw/cangine/testing";
 import {
   afterEach,
   beforeEach,

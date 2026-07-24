@@ -1,7 +1,7 @@
 import type {
   TCameraChangeEvent,
   TSize2,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 
 export type TCanvasLegacyCameraViewport = {
   x: number;

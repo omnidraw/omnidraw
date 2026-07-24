@@ -3,7 +3,13 @@ import type {
   TSelectionAppearance,
   TTransformGestureEvent,
   TTransformPolicy,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
+import {
+  composeTransform2D,
+  mat3ApproximatelyEquals,
+  mat3Invert,
+  mat3Multiply,
+} from "@omnidraw/cangine/geometry";
 import type { TCanvasModifierState } from "../../semantic/typed";
 import {
   fnCanvasProductTransformProposal,
@@ -31,6 +37,7 @@ import type {
 type TTransformPorts = Pick<
   TCanvasProductRuntimeEnginePorts,
   | "getProjectionIndex"
+  | "geometry"
   | "onDiagnostic"
   | "scene"
   | "transforms"
@@ -428,19 +435,17 @@ export class CanvasProductTransformService {
   ): DurableHandoff {
     this.#handoffs.get(event.gestureId)?.cancel("replaced");
     const ownerId = `vc:transient:transform-handoff:${event.gestureId}`;
-    let nodes: Readonly<ReturnType<TTransformPorts["scene"]["get"]>>[] = [];
     try {
-      nodes = this.#collectProposalSubtrees(event.proposals);
-      this.#ports.transients.sync(ownerId, fnCanvasTransformHandoffProjection({
+      this.#ports.transients.sync(
         ownerId,
-        proposals: event.proposals,
-        nodes: nodes.flatMap((node) => node === null ? [] : [node]),
-        ...(clone === null || index === null
-          ? {}
-          : {
-              durableNodeIds: this.#durableCloneNodeIds(clone, index),
-            }),
-      }));
+        this.#cloneHandoffProjection(
+          ownerId,
+          event.proposals,
+          clone === null || index === null
+            ? undefined
+            : this.#durableCloneNodeIds(clone, index),
+        ),
+      );
     } catch (error) {
       this.#report({
         operation: "handoff-create",
@@ -502,13 +507,14 @@ export class CanvasProductTransformService {
     }
     try {
       this.#ports.transforms.clearPreview();
-      const nodes = this.#collectProposalSubtrees(event.proposals);
-      this.#ports.transients.sync(ownerId, fnCanvasTransformHandoffProjection({
+      this.#ports.transients.sync(
         ownerId,
-        proposals: event.proposals,
-        nodes,
-        durableNodeIds: this.#durableCloneNodeIds(clone, index),
-      }));
+        this.#cloneHandoffProjection(
+          ownerId,
+          event.proposals,
+          this.#durableCloneNodeIds(clone, index),
+        ),
+      );
       this.#altCloneOwners.add(ownerId);
     } catch (error) {
       this.#report({
@@ -625,28 +631,53 @@ export class CanvasProductTransformService {
     return nodeIds;
   }
 
-  #collectProposalSubtrees(
+  #cloneHandoffProjection(
+    ownerId: string,
     proposals: readonly TNodeTransformProposal[],
+    durableNodeIds?: ReadonlyMap<string, string>,
   ) {
-    const nodes: NonNullable<ReturnType<TTransformPorts["scene"]["get"]>>[] = [];
-    const visited = new Set<string>();
-    const work = proposals.map((proposal) => proposal.nodeId);
-    while (work.length > 0) {
-      const nodeId = work.shift()!;
-      if (visited.has(nodeId)) {
-        continue;
+    const transforms = proposals.map((proposal) => {
+      const previousLocal = composeTransform2D(proposal.previousTransform);
+      const inversePreviousLocal = mat3Invert(previousLocal);
+      const previousWorld = this.#ports.geometry.worldTransform(proposal.nodeId);
+      const inversePreviousWorld = mat3Invert(previousWorld);
+      if (inversePreviousLocal === null || inversePreviousWorld === null) {
+        throw new TypeError(
+          `Cannot clone transform proposal for singular node '${proposal.nodeId}'.`,
+        );
       }
-      visited.add(nodeId);
-      const node = this.#ports.scene.get(nodeId);
-      if (node === null) {
-        continue;
-      }
-      nodes.push(node);
-      for (const child of this.#ports.scene.childrenOf(nodeId)) {
-        work.push(child.id);
-      }
+      const parentWorld = mat3Multiply(previousWorld, inversePreviousLocal);
+      const nextWorld = mat3Multiply(
+        parentWorld,
+        composeTransform2D(proposal.nextTransform),
+      );
+      return mat3Multiply(nextWorld, inversePreviousWorld);
+    });
+    const transform = transforms[0];
+    if (
+      transform !== undefined
+      && transforms.some((candidate) => {
+        return !mat3ApproximatelyEquals(candidate, transform);
+      })
+    ) {
+      throw new TypeError(
+        "Canvas engine transient cloning requires one shared world transform.",
+      );
     }
-    return nodes;
+    const clone = this.#ports.transients.cloneFromScene({
+      sourceNodeIds: proposals.map((proposal) => proposal.nodeId),
+      mapId: (sourceNodeId) => {
+        return durableNodeIds?.get(sourceNodeId)
+          ?? `${ownerId}::${sourceNodeId}`;
+      },
+      hitTest: "none",
+      portals: "omit",
+      ...(transform === undefined ? {} : { transform }),
+    });
+    return fnCanvasTransformHandoffProjection({
+      clone,
+      proposals,
+    });
   }
 
   #engineProposals(

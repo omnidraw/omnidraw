@@ -1,4 +1,4 @@
-import type { TSceneNode } from "@vibecanvas/canvas-engine";
+import type { TSceneNode } from "@omnidraw/cangine";
 import type {
   TCanvasDocumentProjection,
   TCanvasProjectedPortal,

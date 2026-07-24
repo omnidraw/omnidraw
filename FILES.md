@@ -441,7 +441,6 @@ The generator reads the first top-of-file JSDoc block, preferring `@file` or `@s
 | [packages/canvas/src/engine/projection/projectors/fn.widget.ts](packages/canvas/src/engine/projection/projectors/fn.widget.ts) |  |
 | [packages/canvas/src/engine/projection/typed.ts](packages/canvas/src/engine/projection/typed.ts) |  |
 | [packages/canvas/src/engine/ProjectionCoordinator.ts](packages/canvas/src/engine/ProjectionCoordinator.ts) |  |
-| [packages/canvas/src/engine/resources/ResourceOwnership.ts](packages/canvas/src/engine/resources/ResourceOwnership.ts) |  |
 | [packages/canvas/src/engine/transients/CanvasTransientService.ts](packages/canvas/src/engine/transients/CanvasTransientService.ts) |  |
 | [packages/canvas/src/engine/typed.ts](packages/canvas/src/engine/typed.ts) |  |
 | [packages/canvas/src/extension.ts](packages/canvas/src/extension.ts) |  |

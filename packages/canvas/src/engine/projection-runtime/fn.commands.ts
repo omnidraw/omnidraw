@@ -1,4 +1,4 @@
-import type { TSerializedSceneCommand } from "@vibecanvas/canvas-engine";
+import type { TSerializedSceneCommand } from "@omnidraw/cangine";
 import type {
   TCanvasDocumentProjection,
   TCanvasProjectionDiff,

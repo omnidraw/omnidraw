@@ -1,7 +1,7 @@
 import type {
   TEngineCapabilities,
   TSceneNode,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 
 export type TCanvasEngineCapabilityIssue = {
   capability: string;

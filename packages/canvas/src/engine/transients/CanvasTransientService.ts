@@ -1,8 +1,10 @@
 import type {
   ITransientScene,
   ITransientSceneOwner,
+  TTransientSceneCloneOptions,
+  TTransientSceneCloneResult,
   TTransientSceneProjection,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   ICanvasEngineOwnershipStage,
   TCanvasEngineOwnershipStageState,
@@ -69,6 +71,13 @@ export class CanvasTransientService {
 
   has(ownerId: string): boolean {
     return this.#owners.has(ownerId);
+  }
+
+  cloneFromScene(
+    options: TTransientSceneCloneOptions,
+  ): TTransientSceneCloneResult {
+    this.#assertOperational();
+    return this.#transients.cloneFromScene(options);
   }
 
   createOwner(ownerId: string): TCanvasTransientOwner {

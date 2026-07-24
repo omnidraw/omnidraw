@@ -1,7 +1,7 @@
 import type {
   TWidgetFrameControl,
   TWidgetFrameNode,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TElementWidgetChrome } from "../../../services/element/types";
 import type {
   TCanvasElementProjectionDraft,

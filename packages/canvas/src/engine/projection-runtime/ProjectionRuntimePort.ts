@@ -1,4 +1,8 @@
 import type {
+  IResourceRegistrationOwner,
+  TResourceRegistrationClaim,
+} from "@omnidraw/cangine";
+import type {
   TCanvasSceneApplyArgs,
   TCanvasSceneApplyResult,
   TCanvasSceneCommandApplyArgs,
@@ -15,10 +19,6 @@ import type {
 import type {
   TCanvasOwnedPortal,
 } from "../portals/PortalOwnership";
-import type {
-  TCanvasOwnedResource,
-  TCanvasResourceStageOptions,
-} from "../resources/ResourceOwnership";
 import { fnCanvasProjectionCommands } from "./fn.commands";
 import {
   PortalContentBridge,
@@ -28,14 +28,6 @@ import {
 const PROJECTION_OWNER_ID = "vibecanvas:projection";
 
 export interface ICanvasProjectionAdapter {
-  readonly resources: {
-    stage(
-      ownerId: string,
-      resources: readonly TCanvasOwnedResource[],
-      options?: TCanvasResourceStageOptions,
-    ): ICanvasEngineOwnershipStage;
-    release(ownerId: string): Promise<void>;
-  };
   readonly portals: {
     stage(
       ownerId: string,
@@ -43,6 +35,7 @@ export interface ICanvasProjectionAdapter {
     ): ICanvasEngineOwnershipStage;
     release(ownerId: string): Promise<void>;
   };
+  createResourceRegistrationOwner(ownerId: string): IResourceRegistrationOwner;
   applyScene(args: TCanvasSceneApplyArgs): Promise<TCanvasSceneApplyResult>;
   applyCommands(
     args: TCanvasSceneCommandApplyArgs,
@@ -54,6 +47,11 @@ export type TCanvasProjectionRuntimePortArgs =
   & {
     adapter: ICanvasProjectionAdapter;
     preloadResources?: boolean;
+    onResourcePreloadError?(error: unknown): void;
+    onPresentationCommitError?(args: {
+      stage: string;
+      error: unknown;
+    }): void;
   };
 
 export type TCanvasProjectionRuntimeErrorCode =
@@ -65,7 +63,6 @@ export class CanvasProjectionRuntimeError extends Error {
   readonly code: TCanvasProjectionRuntimeErrorCode;
   readonly revision: number;
   readonly fatal: boolean;
-  readonly restored: boolean;
   readonly cause: unknown;
 
   constructor(args: {
@@ -73,7 +70,6 @@ export class CanvasProjectionRuntimeError extends Error {
     message: string;
     revision: number;
     fatal?: boolean;
-    restored?: boolean;
     cause?: unknown;
   }) {
     super(args.message);
@@ -81,7 +77,6 @@ export class CanvasProjectionRuntimeError extends Error {
     this.code = args.code;
     this.revision = args.revision;
     this.fatal = args.fatal ?? false;
-    this.restored = args.restored ?? false;
     this.cause = args.cause;
   }
 }
@@ -89,18 +84,44 @@ export class CanvasProjectionRuntimeError extends Error {
 class CompositeProjectionOwnershipStage implements ICanvasEngineOwnershipStage {
   readonly label = "projection-ownership:vibecanvas:projection";
   readonly #contentStage: ICanvasEngineOwnershipStage;
-  readonly #resourceStage: ICanvasEngineOwnershipStage;
   readonly #portalStage: ICanvasEngineOwnershipStage;
+  readonly #resourceOwner: IResourceRegistrationOwner;
+  readonly #previousResources: readonly TResourceRegistrationClaim[];
+  readonly #nextResources: readonly TResourceRegistrationClaim[];
+  readonly #preloadResources: boolean;
+  readonly #onResourcePreloadError: ((error: unknown) => void) | undefined;
+  readonly #onPresentationCommitError:
+    | ((args: { stage: string; error: unknown }) => void)
+    | undefined;
+  readonly #onCommit: () => void;
+  readonly #onRollback: () => void;
   #state: TCanvasEngineOwnershipStageState = "staged";
 
   constructor(args: {
     contentStage: ICanvasEngineOwnershipStage;
-    resourceStage: ICanvasEngineOwnershipStage;
     portalStage: ICanvasEngineOwnershipStage;
+    resourceOwner: IResourceRegistrationOwner;
+    previousResources: readonly TResourceRegistrationClaim[];
+    nextResources: readonly TResourceRegistrationClaim[];
+    preloadResources: boolean;
+    onResourcePreloadError?: (error: unknown) => void;
+    onPresentationCommitError?: (args: {
+      stage: string;
+      error: unknown;
+    }) => void;
+    onCommit(): void;
+    onRollback(): void;
   }) {
     this.#contentStage = args.contentStage;
-    this.#resourceStage = args.resourceStage;
     this.#portalStage = args.portalStage;
+    this.#resourceOwner = args.resourceOwner;
+    this.#previousResources = args.previousResources;
+    this.#nextResources = args.nextResources;
+    this.#preloadResources = args.preloadResources;
+    this.#onResourcePreloadError = args.onResourcePreloadError;
+    this.#onPresentationCommitError = args.onPresentationCommitError;
+    this.#onCommit = args.onCommit;
+    this.#onRollback = args.onRollback;
   }
 
   get state(): TCanvasEngineOwnershipStageState {
@@ -116,19 +137,26 @@ class CompositeProjectionOwnershipStage implements ICanvasEngineOwnershipStage {
     }
     const stages = [
       this.#contentStage,
-      this.#resourceStage,
       this.#portalStage,
     ];
     try {
+      this.#resourceOwner.replace(this.#nextResources);
       for (const stage of stages) {
         await stage.prepare();
+      }
+      if (this.#preloadResources) {
+        void this.#resourceOwner.preload().catch((error) => {
+          this.#onResourcePreloadError?.(error);
+        });
       }
       this.#state = "prepared";
     } catch (error) {
       for (const stage of [...stages].reverse()) {
         await stage.rollback().catch(() => undefined);
       }
+      this.#resourceOwner.replace(this.#previousResources);
       this.#state = "rolled-back";
+      this.#onRollback();
       throw error;
     }
   }
@@ -140,10 +168,21 @@ class CompositeProjectionOwnershipStage implements ICanvasEngineOwnershipStage {
     if (this.#state !== "prepared") {
       throw new TypeError(`Cannot commit projection ownership from '${this.#state}'.`);
     }
-    await this.#resourceStage.commit();
-    await this.#portalStage.commit();
-    await this.#contentStage.commit();
+    for (const stage of [this.#portalStage, this.#contentStage]) {
+      try {
+        await stage.commit();
+      } catch (error) {
+        await stage.rollback().catch((rollbackError) => {
+          this.#reportPresentationCommitError(
+            `${stage.label}:rollback`,
+            rollbackError,
+          );
+        });
+        this.#reportPresentationCommitError(stage.label, error);
+      }
+    }
     this.#state = "committed";
+    this.#onCommit();
   }
 
   async rollback(): Promise<void> {
@@ -152,63 +191,21 @@ class CompositeProjectionOwnershipStage implements ICanvasEngineOwnershipStage {
     }
     for (const stage of [
       this.#portalStage,
-      this.#resourceStage,
       this.#contentStage,
     ]) {
       await stage.rollback().catch(() => undefined);
     }
+    this.#resourceOwner.replace(this.#previousResources);
     this.#state = "rolled-back";
-  }
-}
-
-class DeferredProjectionOwnershipStage implements ICanvasEngineOwnershipStage {
-  readonly label: string;
-  readonly underlying: ICanvasEngineOwnershipStage;
-  readonly #onSettled: () => void;
-  #state: TCanvasEngineOwnershipStageState = "staged";
-
-  constructor(args: {
-    revision: number;
-    underlying: ICanvasEngineOwnershipStage;
-    onSettled(): void;
-  }) {
-    this.label = `deferred-projection-ownership:${args.revision}`;
-    this.underlying = args.underlying;
-    this.#onSettled = args.onSettled;
+    this.#onRollback();
   }
 
-  get state(): TCanvasEngineOwnershipStageState {
-    return this.#state;
-  }
-
-  async prepare(): Promise<void> {
-    if (this.#state === "prepared") {
-      return;
+  #reportPresentationCommitError(stage: string, error: unknown): void {
+    try {
+      this.#onPresentationCommitError?.({ stage, error });
+    } catch {
+      // Presentation diagnostics cannot reverse an authoritative scene commit.
     }
-    if (this.#state !== "staged") {
-      throw new TypeError(`Cannot arm projection ownership from '${this.#state}'.`);
-    }
-    this.#state = "prepared";
-  }
-
-  async commit(): Promise<void> {
-    if (this.#state === "committed") {
-      return;
-    }
-    if (this.#state !== "prepared" || this.underlying.state !== "committed") {
-      throw new TypeError("Adapter did not commit projection ownership.");
-    }
-    this.#state = "committed";
-    this.#onSettled();
-  }
-
-  async rollback(): Promise<void> {
-    if (this.#state === "rolled-back" || this.#state === "committed") {
-      return;
-    }
-    await this.underlying.rollback().catch(() => undefined);
-    this.#state = "rolled-back";
-    this.#onSettled();
   }
 }
 
@@ -219,8 +216,14 @@ class DeferredProjectionOwnershipStage implements ICanvasEngineOwnershipStage {
 export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort {
   readonly #adapter: ICanvasProjectionAdapter;
   readonly #portalContent: PortalContentBridge;
+  readonly #resourceOwner: IResourceRegistrationOwner;
   readonly #preloadResources: boolean;
-  readonly #stages = new Map<number, DeferredProjectionOwnershipStage>();
+  readonly #onResourcePreloadError: ((error: unknown) => void) | undefined;
+  readonly #onPresentationCommitError:
+    | ((args: { stage: string; error: unknown }) => void)
+    | undefined;
+  readonly #stages = new Map<number, CompositeProjectionOwnershipStage>();
+  #resourceClaims: readonly TResourceRegistrationClaim[] = [];
   #destroyPromise: Promise<void> | null = null;
   #destroyed = false;
 
@@ -232,7 +235,12 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
         ? {}
         : { onUpdateError: args.onUpdateError }),
     });
+    this.#resourceOwner = args.adapter.createResourceRegistrationOwner(
+      PROJECTION_OWNER_ID,
+    );
     this.#preloadResources = args.preloadResources ?? true;
+    this.#onResourcePreloadError = args.onResourcePreloadError;
+    this.#onPresentationCommitError = args.onPresentationCommitError;
   }
 
   stageOwnership(
@@ -245,12 +253,6 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
 
     const staged: ICanvasEngineOwnershipStage[] = [];
     try {
-      const resourceStage = this.#adapter.resources.stage(
-        PROJECTION_OWNER_ID,
-        args.next.resources,
-        { preload: this.#preloadResources },
-      );
-      staged.push(resourceStage);
       const contentStage = this.#portalContent.stage(args.next.portals);
       staged.push(contentStage);
       const portalStage = this.#adapter.portals.stage(
@@ -262,18 +264,27 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
       staged.push(portalStage);
       const underlying = new CompositeProjectionOwnershipStage({
         contentStage,
-        resourceStage,
         portalStage,
-      });
-      const deferred = new DeferredProjectionOwnershipStage({
-        revision: args.revision,
-        underlying,
-        onSettled: () => {
+        resourceOwner: this.#resourceOwner,
+        previousResources: this.#resourceClaims,
+        nextResources: args.next.resources,
+        preloadResources: this.#preloadResources,
+        ...(this.#onResourcePreloadError === undefined
+          ? {}
+          : { onResourcePreloadError: this.#onResourcePreloadError }),
+        ...(this.#onPresentationCommitError === undefined
+          ? {}
+          : { onPresentationCommitError: this.#onPresentationCommitError }),
+        onCommit: () => {
+          this.#resourceClaims = args.next.resources;
+          this.#stages.delete(args.revision);
+        },
+        onRollback: () => {
           this.#stages.delete(args.revision);
         },
       });
-      this.#stages.set(args.revision, deferred);
-      return deferred;
+      this.#stages.set(args.revision, underlying);
+      return underlying;
     } catch (error) {
       for (const stage of [...staged].reverse()) {
         void stage.rollback().catch(() => undefined);
@@ -296,7 +307,6 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
       source: `vibecanvas:projection:${args.origin}:${args.revision}`,
       coalesceKey: "vibecanvas:authoritative-projection",
       render: args.origin === "initial" ? "none" : "schedule",
-      stages: [stage.underlying],
     } as const;
     const result = args.mode.kind === "replace"
       ? await this.#adapter.applyScene({
@@ -317,7 +327,6 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
         message: `Canvas adapter failed projection revision '${args.revision}'.`,
         revision: args.revision,
         fatal: result.fatal,
-        restored: result.restored,
         cause: result.error,
       });
     }
@@ -334,7 +343,7 @@ export class CanvasProjectionRuntimePort implements ICanvasProjectionRuntimePort
       }
       this.#stages.clear();
       await this.#adapter.portals.release(PROJECTION_OWNER_ID).catch(() => undefined);
-      await this.#adapter.resources.release(PROJECTION_OWNER_ID).catch(() => undefined);
+      this.#resourceOwner.destroy();
       this.#portalContent.destroy();
     })();
     return this.#destroyPromise;

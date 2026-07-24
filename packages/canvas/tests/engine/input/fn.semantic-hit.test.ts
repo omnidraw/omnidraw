@@ -1,4 +1,4 @@
-import type { THitResult } from "@vibecanvas/canvas-engine";
+import type { THitResult } from "@omnidraw/cangine";
 import type {
   TCanvasDoc,
   TElement,

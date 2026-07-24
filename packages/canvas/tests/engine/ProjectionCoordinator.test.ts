@@ -1,4 +1,4 @@
-import { assertValidSceneSnapshot } from "@vibecanvas/canvas-engine/testing";
+import { assertValidSceneSnapshot } from "@omnidraw/cangine/testing";
 import type {
   TCanvasDoc,
   TElement,
@@ -27,7 +27,6 @@ import {
   createProjectionRegistry,
 } from "../../src/engine/projection/ProjectionRegistry";
 import { CanvasPortalOwnershipError } from "../../src/engine/portals/PortalOwnership";
-import { CanvasResourceOwnershipError } from "../../src/engine/resources/ResourceOwnership";
 
 const THEME: TCanvasProjectionTheme = {
   id: "coordinator-test",
@@ -203,19 +202,9 @@ class TestRuntime implements ICanvasProjectionRuntimePort {
 }
 
 class RecoverableOwnershipFailureRuntime extends TestRuntime {
-  failResourceOnce = false;
   failPortalOnce = false;
 
   override async applyScene(args: TCanvasProjectionSceneApplyArgs): Promise<void> {
-    const resourceId = args.next.resources[0]?.descriptor.id;
-    if (this.failResourceOnce && resourceId !== undefined) {
-      this.failResourceOnce = false;
-      throw new CanvasResourceOwnershipError(
-        "RESOURCE_PRELOAD_FAILED",
-        "synthetic preload failure",
-        { resourceId },
-      );
-    }
     const portalId = args.next.portals[0]?.portalId;
     if (this.failPortalOnce && portalId !== undefined) {
       this.failPortalOnce = false;
@@ -605,29 +594,13 @@ describe("ProjectionCoordinator", () => {
     })).toBe(true);
   });
 
-  it.each([
-    {
-      name: "resource preload",
-      element: image("image"),
-      code: "RESOURCE_PRELOAD_FAILED" as const,
-      arm(runtime: RecoverableOwnershipFailureRuntime) {
-        runtime.failResourceOnce = true;
-      },
-    },
-    {
-      name: "portal registration",
-      element: widget("widget"),
-      code: "PORTAL_REGISTRATION_FAILED" as const,
-      arm(runtime: RecoverableOwnershipFailureRuntime) {
-        runtime.failPortalOnce = true;
-      },
-    },
-  ])(
-    "retries a $name failure as a visible per-element placeholder",
-    async ({ element, code, arm }) => {
+  it(
+    "retries a portal registration failure as a visible per-element placeholder",
+    async () => {
       const runtime = new RecoverableOwnershipFailureRuntime();
-      arm(runtime);
+      runtime.failPortalOnce = true;
       const subject = coordinator(runtime);
+      const element = widget("widget");
 
       const result = await subject.hydrateInitial(document([element]), 1);
 
@@ -638,7 +611,7 @@ describe("ProjectionCoordinator", () => {
       expect(runtime.ownershipArgs).toHaveLength(2);
       expect(subject.lastGoodProjection?.diagnostics).toEqual([
         expect.objectContaining({
-          code,
+          code: "PORTAL_REGISTRATION_FAILED",
           target: { kind: "element", id: element.id },
         }),
       ]);

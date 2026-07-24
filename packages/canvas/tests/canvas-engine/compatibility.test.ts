@@ -10,7 +10,7 @@ import {
   type TRectNode,
   type TSceneNode,
   type TSelectionOverlayState,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   IRenderBackendFactory,
   IRenderPassBackend,
@@ -19,16 +19,16 @@ import type {
   TBackendRenderResult,
   TBackendResizeContext,
   TRenderFrameContext,
-} from "@vibecanvas/canvas-engine/backend";
+} from "@omnidraw/cangine/backend";
 import {
   composeTransform2D,
   mat3TransformPoint,
-} from "@vibecanvas/canvas-engine/geometry";
+} from "@omnidraw/cangine/geometry";
 import {
   ManualClock,
   assertValidSceneSnapshot,
   createRepresentativeSceneFixture,
-} from "@vibecanvas/canvas-engine/testing";
+} from "@omnidraw/cangine/testing";
 import type {
   TCanvasDoc,
   TElement,
@@ -785,7 +785,7 @@ describe("canvas-engine public compatibility contract", () => {
       for (const projectedNode of projection.snapshot.nodes) {
         expect(appliedNodes.get(projectedNode.id)).toEqual(projectedNode);
       }
-      expect(adapter!.resources.resourceCount).toBe(1);
+      expect(adapter!.metricsSnapshot().resourceCount).toBe(1);
       expect(adapter!.portals.portalCount).toBe(2);
 
       const kinds = new Set(engine!.scene.query(() => true).map((node) => node.kind));
@@ -870,8 +870,8 @@ describe("canvas-engine public compatibility contract", () => {
           matrix.filter((row) => row.status === status).length,
         ]),
     )).toEqual({
-      compatible: 19,
-      adapter: 13,
+      compatible: 20,
+      adapter: 12,
       "engine-gap": 0,
       "release-gap": 1,
       "validation-gap": 3,

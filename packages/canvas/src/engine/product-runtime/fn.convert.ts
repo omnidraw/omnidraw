@@ -7,7 +7,7 @@ import type {
   TResolvedConnectorGeometry,
   TStrokeSessionEvent,
   TTransform2D,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TCanvasTarget } from "../../semantic/typed";
 import type {
   TCanvasProductConnectorDraft,

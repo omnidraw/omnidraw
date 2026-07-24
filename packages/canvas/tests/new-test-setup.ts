@@ -2,8 +2,8 @@ import type { DocHandle } from "@automerge/automerge-repo";
 import {
   createInfiniteCanvas,
   type TEngineMetricSnapshot,
-} from "@vibecanvas/canvas-engine";
-import { ManualClock } from "@vibecanvas/canvas-engine/testing";
+} from "@omnidraw/cangine";
+import { ManualClock } from "@omnidraw/cangine/testing";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ThemeService } from "@vibecanvas/service-theme";
 import { LOCAL_BROWSER_TENANT_SCOPE } from "../src/CONSTANTS";

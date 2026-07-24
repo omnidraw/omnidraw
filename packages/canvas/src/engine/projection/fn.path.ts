@@ -1,4 +1,4 @@
-import type { TPathCommand } from "@vibecanvas/canvas-engine";
+import type { TPathCommand } from "@omnidraw/cangine";
 import type { TPoint2D } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 
 type TArgsCatmullRomPath = {

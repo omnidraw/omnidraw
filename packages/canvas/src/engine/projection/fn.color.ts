@@ -1,7 +1,7 @@
 import type {
   TColor,
   TPaint,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type { TCanvasProjectionTheme } from "../typed";
 import { CANVAS_ENGINE_COLORS } from "../CONSTANTS";
 

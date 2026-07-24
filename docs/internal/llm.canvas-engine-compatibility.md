@@ -6,17 +6,17 @@ Vibecanvas branch: `codex/canvas-engine-migration`
 
 Inspected engine: `/Users/omarezzat/Workspace/vibecanvas/canvas-engine`
 
-Engine commit audited: `58009176fd4622c661e50ddf0c7d3216633c76c0`
+Engine commit audited: `bb911a1f9ad812314ebd4eee31d553bb85bfaea5`
 
-Filesystem artifact: `artifacts/vibecanvas-canvas-engine-0.1.0.tgz`
+Filesystem artifact: `artifacts/omnidraw-cangine-0.1.0.tgz`
 
-Artifact SHA-256: `7069d90a20253b69f7c805d369961f09e737c133bb3594684e71ca9fb0c73240`
+Artifact SHA-256: `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`
 
 Report date: 2026-07-24
 
 ## Executive decision
 
-`@vibecanvas/canvas-engine` supplies the public rendering, geometry, input,
+`@omnidraw/cangine` supplies the public rendering, geometry, input,
 transform, transient, portal, resource, and lifecycle mechanisms required by
 Vibecanvas. The product has completed a hard implementation cutover: the
 production canvas uses the engine-backed projection architecture, the
@@ -37,8 +37,8 @@ It contains 36 requirements:
 
 | Status | Count | Meaning |
 |---|---:|---|
-| Compatible | 19 | canvas-engine directly supplies the mechanism |
-| Canvas adapter | 13 | Deliberately application-owned policy, now implemented above the engine |
+| Compatible | 20 | canvas-engine directly supplies the mechanism |
+| Canvas adapter | 12 | Deliberately application-owned policy, now implemented above the engine |
 | Engine gap | 0 | No missing public engine mechanism blocks parity |
 | Release gap | 1 | The absolute local artifact dependency is not portable |
 | Validation gap | 3 | Real widget matrix, real two-client conflicts, and full product performance qualification remain |
@@ -62,20 +62,22 @@ specified product matrix passes.
 - Ordinary element-only summaries reproject only changed elements and produce
   node/resource/portal diffs. Structural group updates retain a bounded
   full-projection fallback.
-- Projection/resource/portal failures retain the last good scene or localize
-  the affected element to a visible derived placeholder. Diagnostics and user
-  notifications are deduplicated by active failure generation.
+- Invalid scene operations retain the current scene and revision inside the
+  engine. Resource loading and portal presentation remain asynchronous;
+  recoverable failures never roll back a committed durable projection.
 
 ### Product interaction policy
 
-- Engine-normalized input drives semantic product IDs and hit parts.
+- Engine-normalized input and the opt-in click recognizer drive semantic
+  product IDs, click, and double-click policy. Gesture dispositions forward
+  `suppressClick` to the engine sequence.
 - Selection uses engine picking and the engine-owned marquee session rather
   than renderer node scans.
 - Element, group, and mixed-selection move/resize/rotation proposals persist
   through CRDT/history product patches.
-- Alt-drag allocates product clone IDs before preview, remaps group ancestry and
-  bindings, applies registered image/widget clone policy, and hands the same
-  IDs from transient preview to durable projection.
+- Alt-drag allocates product clone IDs before preview, uses
+  `engine.transients.cloneFromScene()` for the durable render subtree, applies
+  registered image/widget clone policy, and hands the same IDs to projection.
 - Line/arrow creation and point editing persist product binding payloads and use
   active-session dependencies.
 - Active transforms and point edits declare element/group field dependencies;
@@ -118,7 +120,7 @@ also contains no Konva match.
 ### Engine and package contract
 
 - The exact tarball hashes to
-  `7069d90a20253b69f7c805d369961f09e737c133bb3594684e71ca9fb0c73240`.
+  `f917220e3199a2939c8e5dc7cde4a59009e10123160f795dacf108a39ecf0486`.
 - Public-package contract tests cover the root, `/backend`, `/geometry`, and
   `/testing` exports without deep imports.
 - The obsolete Vitest `ssr.noExternal` workaround was removed.
@@ -218,17 +220,14 @@ preview, and bounded history.
 The dependency is deliberately pinned to:
 
 ```json
-"@vibecanvas/canvas-engine":
-  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/vibecanvas-canvas-engine-0.1.0.tgz"
+"@omnidraw/cangine":
+  "file:/Users/omarezzat/Workspace/vibecanvas/canvas-engine/artifacts/omnidraw-cangine-0.1.0.tgz"
 ```
 
-The bytes currently match the required SHA, but the audited tarball is newer
-than the tracked artifact at engine commit `5800917` and is
-modified/uncommitted in the external engine checkout. Before final handoff,
-commit a reproducible upstream artifact or vendor the exact verified artifact
-through an approved portable release mechanism. Do not silently rebuild the
-same version/filename because Bun may reuse stale filepath-package cache
-contents.
+The bytes match the engine-produced artifact manifest and packed-consumer
+report. Before portable CI/release handoff, vendor the exact verified artifact
+or publish it through the approved release mechanism; the absolute local
+dependency remains intentionally non-portable.
 
 ## Architecture verdict
 

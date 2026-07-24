@@ -1,4 +1,4 @@
-import type { TImageNode } from "@vibecanvas/canvas-engine";
+import type { TImageNode } from "@omnidraw/cangine";
 import {
   fnCanvasEngineImageResourceId,
 } from "../fn.ids";
@@ -60,10 +60,6 @@ export function fnProjectImageElement(
       descriptor: {
         id: resourceId,
         type: "image",
-        ...(data.url ? { url: data.url } : {}),
-      },
-      source: {
-        type: "url",
         url: sourceUrl,
       },
     }],

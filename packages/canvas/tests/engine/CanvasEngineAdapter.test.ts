@@ -1,12 +1,14 @@
 import {
+  CanvasEngineError,
   IDENTITY_TRANSFORM_2D,
   createInfiniteCanvas,
   type IInfiniteCanvasEngine,
   type TCanvasEngineConfig,
+  type TEngineEvent,
   type TRectNode,
   type TSceneSnapshot,
-} from "@vibecanvas/canvas-engine";
-import { ManualClock } from "@vibecanvas/canvas-engine/testing";
+} from "@omnidraw/cangine";
+import { ManualClock } from "@omnidraw/cangine/testing";
 import {
   afterEach,
   beforeEach,
@@ -186,7 +188,7 @@ describe("CanvasEngineAdapter", () => {
     expect(host.childElementCount).toBe(0);
   });
 
-  it("retains the last-good scene after validation failure", async () => {
+  it("keeps the authoritative scene unchanged after validation failure", async () => {
     const factory = new CanvasEngineTestFactory();
     const adapter = new CanvasEngineAdapter({
       host,
@@ -199,7 +201,7 @@ describe("CanvasEngineAdapter", () => {
       snapshot: valid,
       render: "none",
     })).resolves.toMatchObject({ ok: true });
-    const lastGood = adapter.lastGoodScene();
+    const authoritative = adapter.sceneSnapshot();
 
     const invalid = cloneSnapshot(valid);
     const invalidRect = invalid.nodes.find((node) => node.id === "valid");
@@ -215,12 +217,63 @@ describe("CanvasEngineAdapter", () => {
     expect(result).toMatchObject({
       ok: false,
       fatal: false,
-      restored: true,
     });
     expect(adapter.status).toBe("ready");
-    expect(adapter.sceneSnapshot()).toEqual(lastGood);
-    expect(adapter.lastGoodScene()).toEqual(lastGood);
+    expect(adapter.sceneSnapshot()).toEqual(authoritative);
     expect(adapter.diagnostics().at(-1)?.source).toBe("scene");
+    await adapter.destroy();
+  });
+
+  it("keeps a committed scene authoritative after a recoverable publication error", async () => {
+    const factory = new CanvasEngineTestFactory();
+    let engine: IInfiniteCanvasEngine | null = null;
+    let engineListener: ((event: TEngineEvent) => void) | null = null;
+    const adapter = new CanvasEngineAdapter({
+      host,
+      createEngine: async (config) => {
+        const created = await createInfiniteCanvas(config);
+        const subscribe = created.subscribe.bind(created);
+        vi.spyOn(created, "subscribe").mockImplementation((listener) => {
+          engineListener = listener;
+          return subscribe(listener);
+        });
+        engine = created;
+        return created;
+      },
+      engineConfig: { backendFactories: [factory], clock: new ManualClock() },
+    });
+    await adapter.start();
+    if (engine === null) {
+      throw new Error("Test create-engine seam did not receive an engine.");
+    }
+    const scene = (engine as IInfiniteCanvasEngine).scene;
+    const apply = scene.apply.bind(scene);
+    vi.spyOn(scene, "apply").mockImplementationOnce((commands, options) => {
+      apply(commands, options);
+      engineListener?.({
+        type: "error",
+        error: new CanvasEngineError(
+          "PORTAL_MOUNT_FAILED",
+          "intentional recoverable presentation failure",
+          { recoverable: true },
+        ),
+      });
+    });
+
+    const result = await adapter.applyCommands({
+      commands: [{ type: "upsert", node: rect("recoverable-publication") }],
+      render: "none",
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(adapter.status).toBe("ready");
+    expect(adapter.sceneSnapshot().nodes.some((node) => {
+      return node.id === "recoverable-publication";
+    })).toBe(true);
+    expect(adapter.diagnostics().at(-1)).toMatchObject({
+      code: "PORTAL_MOUNT_FAILED",
+      recoverable: true,
+    });
     await adapter.destroy();
   });
 
@@ -273,7 +326,7 @@ describe("CanvasEngineAdapter", () => {
       reparented: [],
       reordered: [],
     });
-    expect(adapter.lastGoodScene()?.nodes.find((node) => {
+    expect(adapter.sceneSnapshot().nodes.find((node) => {
       return node.id === "incremental";
     })?.transform.position).toEqual({ x: 180, y: 220 });
 
@@ -286,15 +339,13 @@ describe("CanvasEngineAdapter", () => {
     await adapter.destroy();
   });
 
-  it("does not promote a scene after a retained backend failure", async () => {
+  it("terminalizes the existing engine after a post-commit backend failure", async () => {
     const factory = new CanvasEngineTestFactory();
     const adapter = new CanvasEngineAdapter({
       host,
       engineConfig: { backendFactories: [factory], clock: new ManualClock() },
     });
     await adapter.start();
-    const lastGood = adapter.lastGoodScene();
-
     factory.pass.failNextSceneApply = true;
     const result = await adapter.applyScene({
       snapshot: withNode(adapter.sceneSnapshot(), rect("backend-failure")),
@@ -304,10 +355,9 @@ describe("CanvasEngineAdapter", () => {
     expect(result).toMatchObject({
       ok: false,
       fatal: true,
-      restored: false,
     });
     expect(adapter.status).toBe("failed");
-    expect(adapter.lastGoodScene()).toEqual(lastGood);
+    expect(() => adapter.sceneSnapshot()).toThrow(/failed/i);
     expect(
       host.querySelector("[data-vibecanvas-engine-fallback]")?.textContent,
     ).toContain("Canvas unavailable");

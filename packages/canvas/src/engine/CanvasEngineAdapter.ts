@@ -1,6 +1,7 @@
 import {
   createInfiniteCanvas,
   type IInfiniteCanvasEngine,
+  type IResourceRegistrationOwner,
   type TAccessibilityConfig,
   type TCanvasEngineConfig,
   type TDiagnosticsConfig,
@@ -15,7 +16,7 @@ import {
   type TSceneSnapshot,
   type TSerializedSceneCommand,
   type TSize2,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import { fnCanvasEngineCapabilityIssues } from "./fn.assert-capabilities";
 import { fnCanvasEngineInitialScene } from "./fn.initial-scene";
 import {
@@ -25,14 +26,12 @@ import {
 import { CanvasInputAdapter } from "./input/CanvasInputAdapter";
 import type { CanvasTransientTargetRegistry } from "./input/CanvasTransientTargetRegistry";
 import type { TCanvasInputAdapterConfig } from "./input/typed";
-import type { ICanvasEngineOwnershipStage } from "./interface";
 import { PortalOwnership } from "./portals/PortalOwnership";
 import { CanvasProductRuntime } from "./product-runtime/CanvasProductRuntime";
 import type {
   TCanvasProductRuntimeData,
   TCanvasProductRuntimeDiagnostic,
 } from "./product-runtime/typed";
-import { ResourceOwnership } from "./resources/ResourceOwnership";
 import { CanvasTransientService } from "./transients/CanvasTransientService";
 
 const REQUIRED_RENDER_PROFILE = {
@@ -106,7 +105,6 @@ export type TCanvasSceneMutationOptions = {
   source?: string;
   coalesceKey?: string;
   render?: "schedule" | "immediate" | "none";
-  stages?: readonly ICanvasEngineOwnershipStage[];
 };
 
 export type TCanvasSceneApplyArgs = TCanvasSceneMutationOptions & {
@@ -127,7 +125,6 @@ export type TCanvasSceneApplyResult =
       revision: number;
       error: unknown;
       fatal: boolean;
-      restored: boolean;
     };
 
 export type TCanvasEngineAdapterErrorCode =
@@ -183,10 +180,6 @@ function errorCode(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function cloneSnapshot(snapshot: TSceneSnapshot): TSceneSnapshot {
-  return JSON.parse(JSON.stringify(snapshot)) as TSceneSnapshot;
-}
-
 function cloneFrameMetrics(metrics: TFrameMetrics): TFrameMetrics {
   return { ...metrics };
 }
@@ -228,7 +221,6 @@ export class CanvasEngineAdapter {
 
   #status: TCanvasEngineAdapterStatus = "idle";
   #engine: IInfiniteCanvasEngine | null = null;
-  #resourceOwnership: ResourceOwnership | null = null;
   #portalOwnership: PortalOwnership | null = null;
   #transientService: CanvasTransientService | null = null;
   #engineUnsubscribe: (() => void) | null = null;
@@ -238,7 +230,6 @@ export class CanvasEngineAdapter {
   #destroyRequested = false;
   #terminalError: unknown = null;
   #capabilities: TEngineCapabilities | null = null;
-  #lastGoodScene: TSceneSnapshot | null = null;
   #lastMetrics: TEngineMetricSnapshot = emptyMetrics();
   #diagnosticSequence = 0;
   #sceneApplyActive = false;
@@ -263,13 +254,6 @@ export class CanvasEngineAdapter {
 
   get capabilities(): TEngineCapabilities | null {
     return this.#capabilities;
-  }
-
-  get resources(): ResourceOwnership {
-    if (this.#resourceOwnership === null) {
-      throw this.#unavailableError();
-    }
-    return this.#resourceOwnership;
   }
 
   get portals(): PortalOwnership {
@@ -308,6 +292,10 @@ export class CanvasEngineAdapter {
     });
   }
 
+  createResourceRegistrationOwner(ownerId: string): IResourceRegistrationOwner {
+    return this.#requireEngine().resources.createRegistrationOwner(ownerId);
+  }
+
   createProductRuntime(
     args: TCanvasProductRuntimeData & {
       transientTargets: CanvasTransientTargetRegistry;
@@ -329,10 +317,6 @@ export class CanvasEngineAdapter {
 
   sceneSnapshot(): TSceneSnapshot {
     return this.#requireEngine().scene.snapshot();
-  }
-
-  lastGoodScene(): TSceneSnapshot | null {
-    return this.#lastGoodScene === null ? null : cloneSnapshot(this.#lastGoodScene);
   }
 
   diagnostics(): readonly TCanvasEngineDiagnostic[] {
@@ -444,35 +428,6 @@ export class CanvasEngineAdapter {
 
   async #applyMutation(mutation: TSceneMutation): Promise<TCanvasSceneApplyResult> {
     const engine = this.#requireEngine();
-    const stages = [...(mutation.options.stages ?? [])];
-    const prepared: ICanvasEngineOwnershipStage[] = [];
-    const beforeRevision = engine.scene.revision;
-    const previousLastGood = this.#lastGoodScene ?? engine.scene.snapshot();
-
-    try {
-      for (const stage of stages) {
-        await stage.prepare();
-        prepared.push(stage);
-      }
-    } catch (error) {
-      await this.#rollbackStages([...prepared, ...stages.filter((stage) => {
-        return !prepared.includes(stage);
-      })]);
-      this.#publishDiagnostic({
-        severity: "error",
-        source: "ownership",
-        code: "OWNERSHIP_PREPARE_FAILED",
-        message: errorMessage(error),
-        recoverable: true,
-      });
-      return {
-        ok: false,
-        revision: engine.scene.revision,
-        error,
-        fatal: false,
-        restored: true,
-      };
-    }
 
     this.#errorDuringSceneApply = null;
     this.#sceneApplyActive = true;
@@ -486,64 +441,35 @@ export class CanvasEngineAdapter {
       });
     } catch (error) {
       this.#sceneApplyActive = false;
-      const restored = this.#restoreLastGoodScene(previousLastGood, beforeRevision);
-      await this.#rollbackStages(prepared);
+      const fatal = engineHasFailed(engine);
       this.#publishDiagnostic({
         severity: "error",
         source: "scene",
         code: errorCode(error, mutation.failureCode),
         message: errorMessage(error),
-        recoverable: true,
+        recoverable: !fatal,
       });
       return {
         ok: false,
         revision: engine.scene.revision,
         error,
-        fatal: false,
-        restored,
+        fatal,
       };
     } finally {
       this.#sceneApplyActive = false;
     }
 
     const sceneApplyError = this.#errorDuringSceneApply as TCanvasEngineDiagnostic | null;
-    if (sceneApplyError !== null || engineHasFailed(engine)) {
+    if (sceneApplyError?.recoverable === false || engineHasFailed(engine)) {
       const error = new CanvasEngineAdapterError(
         "FAILED",
         sceneApplyError?.message ?? "The canvas engine failed while applying a scene.",
       );
-      const fatal = sceneApplyError?.recoverable === false || engineHasFailed(engine);
-      const restored = fatal
-        ? false
-        : this.#restoreLastGoodScene(previousLastGood, beforeRevision);
-      await this.#rollbackStages(prepared);
-      return {
-        ok: false,
-        revision: engine.scene.revision,
-        error,
-        fatal,
-        restored,
-      };
-    }
-
-    try {
-      for (const stage of prepared) {
-        await stage.commit();
-      }
-    } catch (error) {
-      await this.#rollbackStages(prepared);
-      this.#publishFatalDiagnostic({
-        source: "ownership",
-        code: "OWNERSHIP_COMMIT_FAILED",
-        message: errorMessage(error),
-      });
-      const restored = this.#restoreLastGoodScene(previousLastGood, beforeRevision);
       return {
         ok: false,
         revision: engine.scene.revision,
         error,
         fatal: true,
-        restored,
       };
     }
 
@@ -561,16 +487,20 @@ export class CanvasEngineAdapter {
         message: errorMessage(error),
         recoverable: !engineHasFailed(engine),
       });
+      if (!engineHasFailed(engine)) {
+        return {
+          ok: true,
+          revision: engine.scene.revision,
+        };
+      }
       return {
         ok: false,
         revision: engine.scene.revision,
         error,
-        fatal: engineHasFailed(engine),
-        restored: false,
+        fatal: true,
       };
     }
 
-    this.#lastGoodScene = engine.scene.snapshot();
     return {
       ok: true,
       revision: engine.scene.revision,
@@ -620,7 +550,6 @@ export class CanvasEngineAdapter {
         this.#lastMetrics = engine.metrics.snapshot();
         this.#emit({ type: "metrics", metrics: cloneFrameMetrics(metrics) });
       });
-      this.#resourceOwnership = new ResourceOwnership({ resources: engine.resources });
       this.#portalOwnership = new PortalOwnership({ portals: engine.portals });
       this.#transientService = new CanvasTransientService({
         transients: engine.transients,
@@ -813,49 +742,6 @@ export class CanvasEngineAdapter {
     return retained;
   }
 
-  #restoreLastGoodScene(
-    snapshot: TSceneSnapshot,
-    beforeRevision: number,
-  ): boolean {
-    const engine = this.#engine;
-    if (engine === null || engine.status === "failed") {
-      return false;
-    }
-    if (engine.scene.revision === beforeRevision) {
-      return true;
-    }
-    try {
-      engine.scene.replace(snapshot, {
-        source: "vibecanvas:last-good-restore",
-        render: "none",
-      });
-      return !engineHasFailed(engine);
-    } catch (error) {
-      this.#publishFatalDiagnostic({
-        source: "scene",
-        code: "LAST_GOOD_RESTORE_FAILED",
-        message: errorMessage(error),
-      });
-      return false;
-    }
-  }
-
-  async #rollbackStages(stages: readonly ICanvasEngineOwnershipStage[]): Promise<void> {
-    for (const stage of [...stages].reverse()) {
-      try {
-        await stage.rollback();
-      } catch (error) {
-        this.#publishDiagnostic({
-          severity: "error",
-          source: "ownership",
-          code: "OWNERSHIP_ROLLBACK_FAILED",
-          message: `${stage.label}: ${errorMessage(error)}`,
-          recoverable: false,
-        });
-      }
-    }
-  }
-
   async #disposeEngine(): Promise<void> {
     this.#metricsUnsubscribe?.();
     this.#metricsUnsubscribe = null;
@@ -875,13 +761,6 @@ export class CanvasEngineAdapter {
       this.#teardownDiagnostic("PORTAL_TEARDOWN_FAILED", error);
     }
     this.#portalOwnership = null;
-
-    try {
-      await this.#resourceOwnership?.destroy();
-    } catch (error) {
-      this.#teardownDiagnostic("RESOURCE_TEARDOWN_FAILED", error);
-    }
-    this.#resourceOwnership = null;
 
     const engine = this.#engine;
     if (engine !== null) {
@@ -969,7 +848,7 @@ export class CanvasEngineAdapter {
   }
 
   #requireEngine(): IInfiniteCanvasEngine {
-    if (this.#engine !== null) {
+    if (this.#engine !== null && this.#status !== "failed") {
       return this.#engine;
     }
     throw this.#unavailableError();

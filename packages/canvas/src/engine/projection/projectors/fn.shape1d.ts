@@ -2,7 +2,7 @@ import type {
   TConnectorMarker,
   TConnectorNode,
   TStrokeStyle,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import {
   CANVAS_PROJECTION_FALLBACK_COLORS,
 } from "../CONSTANTS";

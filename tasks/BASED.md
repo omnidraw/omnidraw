@@ -278,7 +278,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [x]: [S21] remove apps/server and packages/functional-core and shell
 - [x]: [S22] fix build and ci tests to use new apps/cli
 - [~]: [S111](s/S111.md) - canvas: replace Konva with canvas-engine
-- [ ]: [S112](s/S112.md) - canvas: adopt engine resource, publication, transient-clone, and click primitives
+- [~]: [S112](s/S112.md) - canvas: adopt cangine ownership, clone, click, and terminal lifecycle APIs
 - [x]: [S23] Use global costs for dev and prod ports
 - [x]: [S24] rename @vibecanvas/service-db -> @vibecanvas/service.db and co
 - [x]: [S25](s/S25.md) - db: remove filetrees table/schema; canvas-doc fully owns filetree state
@@ -404,6 +404,7 @@ the leaf task's `## Plan` instead of living as detached references.
 - [ ]: [E35] - Markdown Notes support
 - [x]: [E36](e/E36.md) - managed multi-tenant architecture and scale-to-zero widget functions
 - [x]: [E37](e/E37.md) - canvas-engine compatibility audit and executable migration contract
+- [ ]: [E38](e/E38.md) - canvas: terminal engine recreation and bounded recovery policy
 
 ## D ebt
 - [x]: [D1](d/D1.md) - managed-service OSS rewrite and scale-to-zero functions

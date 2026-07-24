@@ -1,8 +1,8 @@
 import {
   createInfiniteCanvas,
   type TCanvasEngineConfig,
-} from "@vibecanvas/canvas-engine";
-import { ManualClock } from "@vibecanvas/canvas-engine/testing";
+} from "@omnidraw/cangine";
+import { ManualClock } from "@omnidraw/cangine/testing";
 import type { TCanvasDoc } from "@vibecanvas/service-automerge/types/canvas-doc.types";
 import { ThemeService } from "@vibecanvas/service-theme";
 import { SyncHook } from "@vibecanvas/tapable";

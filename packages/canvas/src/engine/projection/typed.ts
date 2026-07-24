@@ -3,7 +3,7 @@ import type {
   TPaint,
   TSceneNode,
   TStrokeStyle,
-} from "@vibecanvas/canvas-engine";
+} from "@omnidraw/cangine";
 import type {
   TElement,
   TGroup,

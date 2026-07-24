@@ -1,4 +1,4 @@
-import type { TColor } from "@vibecanvas/canvas-engine";
+import type { TColor } from "@omnidraw/cangine";
 import type {
   TElementStyle,
   TElementType,
